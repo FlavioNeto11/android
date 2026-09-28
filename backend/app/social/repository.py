@@ -9,9 +9,16 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Sequence
 
+from collections.abc import Callable
+from datetime import date
+
+from pydantic import ValidationError
+
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
-from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, ProfileLocality,
+from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, PersonaBiography,
+                      PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
+from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..util import new_token, now, now_iso, to_iso
 from .sessao_gate import acoes_de_sessao, app_on_device
 
@@ -43,6 +50,9 @@ class SocialRepository:
         #: registro de apps; `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
         self.app_package: str | None = None
         self.app_name: str = "Instagram"
+        #: As imagens de uma pessoa, para o DTO (migração 048). Injetado pelo AppState quando o serviço de imagens
+        #: existe; sem ele o DTO sai com a lista vazia — o repositório não conhece storage nem provedor de imagem.
+        self.imagens_de: Callable[[str], list[PersonaImageDTO]] | None = None
 
     # ------------------------------------------------------------------ perfis
     def create_profile(self, *, username: str, first_name: str | None, last_name: str | None,
@@ -74,7 +84,29 @@ class SocialRepository:
         self.db.execute("DELETE FROM instagram_profiles WHERE id=?", (profile_id,))
 
     def list_profile_ids(self) -> list[str]:
-        return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY username")]
+        """Só quem TEM conta de cadastro (`username <> ''`): é a lista de perfis do painel de hoje. Todas as pessoas,
+        com ou sem conta, saem por `list_persona_ids`."""
+        return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles WHERE username <> ''"
+                                               " ORDER BY username")]
+
+    def list_persona_ids(self) -> list[str]:
+        return [r["id"] for r in self.db.query(
+            "SELECT id FROM instagram_profiles"
+            " ORDER BY lower(COALESCE(NULLIF(display_name, ''), NULLIF(first_name, ''), username)), id")]
+
+    def adopt_account(self, profile_id: str, *, username: str, first_name: str | None, last_name: str | None,
+                      display_name: str | None, birth_date: str | None, email: str | None) -> None:
+        """Uma pessoa que existia SEM conta ganha a conta de cadastro: a mesma linha, o mesmo id. Nome, nascimento e
+        e-mail só entram onde a linha ainda estava vazia — quem criou a persona já disse quem ela é."""
+        row = self.profile_row(profile_id)
+        if row is None:
+            raise KeyError(profile_id)
+        campos: dict[str, object] = {"username": username}
+        for coluna, valor in (("first_name", first_name), ("last_name", last_name), ("display_name", display_name),
+                              ("birth_date", birth_date), ("email", email)):
+            if valor and not row[coluna]:
+                campos[coluna] = valor
+        self.update_profile(profile_id, campos)
 
     # ------------------------------------------------------------------ contas por app (migração 037)
     def list_accounts(self, profile_id: str) -> list[Row]:
@@ -368,13 +400,18 @@ class SocialRepository:
         cred = self.credential_row(profile_id)
         binding = self.binding_row(profile_id)
         session = self.session_row(profile_id)
-        persona_name = self.db.scalar("SELECT name FROM personas WHERE id=?", (row["persona_id"],)) \
-            if row["persona_id"] else None
         app, acoes = self._app_e_acoes(binding["instance_id"] if binding else None, cred, session)
+        pessoa = campos_de_persona(row)
+        imagens = self.imagens_de(row["id"]) if self.imagens_de is not None else []
+        principal = next((i.id for i in imagens if i.is_primary), None)
         return InstagramProfileDTO(
-            id=row["id"], username=row["username"], display_name=row["display_name"], first_name=row["first_name"],
+            **pessoa, visual=visual_da_linha(row),
+            generation=PersonaGeneration.model_validate(loads(row["generation"], {}) or {}),
+            display_name=row["display_name"], first_name=row["first_name"],
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
-            persona_id=row["persona_id"], persona_name=persona_name, status=row["status"],
+            # A persona é a própria pessoa: o painel de hoje acha "a persona do perfil" por estes dois campos.
+            persona_id=row["id"], persona_name=pessoa["name"], status=row["status"],
+            accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal,
             policy_group_id=row["policy_group_id"],
             policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
                                if row["policy_group_id"] else None),
@@ -397,8 +434,7 @@ class SocialRepository:
                 detail=session["detail"] if session else None,
                 stale=sessao_vencida(session, self.session_max_age_s)),
             app_on_device=app, session_actions=acoes,
-            last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"],
-            created_at=row["created_at"], updated_at=row["updated_at"])
+            last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"])
 
     def _app_e_acoes(self, instance_id: str | None, cred: Row | None,
                      session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:
@@ -418,49 +454,48 @@ class SocialRepository:
                                 session_status=session["status"] if session else None, session_open=aberta)
         return app, acoes
 
-    # ------------------------------------------------------------------ personas
-    # Persona não é "por perfil" no argumento porque tem identidade própria; a exclusividade é do esquema
-    # (índice único parcial em instagram_profiles.persona_id) e o dono se descobre com `persona_owner`.
-    def create_persona(self, *, name: str, summary: str | None = None, persona_prompt: str = "",
-                       traits: dict[str, Any] | None = None) -> str:
-        persona_id = f"persona-{new_token()}"
-        now = now_iso()
+    # ------------------------------------------------------------------ personas (= pessoas: a linha do perfil)
+    # Desde a 047 não há tabela de persona separada: a voz, a biografia e o visual moram em `instagram_profiles`, e
+    # "persona" e "perfil" são a mesma linha. O que sobra aqui é o vocabulário antigo apontando para ela.
+    def create_persona(self, *, name: str, summary: str | None, persona_prompt: str, traits: dict[str, object],
+                       visual: dict[str, object], biography: dict[str, object], generation: dict[str, object],
+                       first_name: str | None, last_name: str | None, display_name: str | None,
+                       birth_date: str | None, gender: str | None, locale: str | None) -> str:
+        """Uma pessoa nova, ainda sem conta em app nenhum (`username = ''`)."""
+        persona_id = f"ig-{new_token()}"
+        agora = now_iso()
         self.db.execute(
-            "INSERT INTO personas(id, name, summary, persona_prompt, traits, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (persona_id, name, summary, persona_prompt, dumps(traits or {}), now, now))
+            "INSERT INTO instagram_profiles(id, username, display_name, first_name, last_name, birth_date, gender,"
+            " locale, summary, persona_prompt, traits, visual, biography, generation, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (persona_id, "", display_name or name, first_name, last_name, birth_date, gender, locale, summary,
+             persona_prompt, dumps(traits), dumps(visual), dumps(biography), dumps(generation), agora, agora))
         return persona_id
 
     def persona_row(self, persona_id: str) -> Row | None:
-        return self.db.one("SELECT * FROM personas WHERE id=?", (persona_id,))
+        """A linha da pessoa. O id legado `persona-…` (coluna `persona_id`, rastro da 047) continua resolvendo, para
+        um link antigo do painel ou de um script não morrer."""
+        row = self.profile_row(persona_id)
+        if row is None:
+            row = self.db.one("SELECT * FROM instagram_profiles WHERE persona_id=?", (persona_id,))
+        return row
 
-    def update_persona(self, persona_id: str, fields: dict[str, Any]) -> None:
-        if not fields:
-            return
-        sets = ", ".join(f"{k}=?" for k in fields)
-        self.db.execute(f"UPDATE personas SET {sets}, updated_at=? WHERE id=?",
-                        (*fields.values(), now_iso(), persona_id))
+    def update_persona(self, persona_id: str, fields: dict[str, object]) -> None:
+        self.update_profile(persona_id, fields)
 
     def delete_persona(self, persona_id: str) -> None:
-        self.db.execute("DELETE FROM personas WHERE id=?", (persona_id,))
+        """Apagar a persona É apagar a pessoa: contas, credencial, vínculo, sessão e memória caem junto (FKs)."""
+        self.delete_profile(persona_id)
 
-    def persona_owner(self, persona_id: str) -> str | None:
-        """Qual perfil usa esta persona. Como só um pode usá-la, a resposta é única por construção."""
-        return self.db.scalar("SELECT id FROM instagram_profiles WHERE persona_id=?", (persona_id,))
+    def account_for_package(self, profile_id: str, package: str | None) -> Row | None:
+        """A conta desta pessoa no app de `package` (`profile_accounts` × `apps`), se houver."""
+        if not package:
+            return None
+        return self.db.one("SELECT a.* FROM profile_accounts a JOIN apps ap ON ap.id = a.app_id"
+                           " WHERE a.profile_id=? AND ap.package=?", (profile_id, package))
 
-    def list_personas(self) -> list[dict[str, Any]]:
-        return [{"id": r["id"], "name": r["name"], "summary": r["summary"],
-                 "persona_prompt": r["persona_prompt"], "traits": loads(r["traits"], {}),
-                 "profile_id": self.persona_owner(r["id"]), "created_at": r["created_at"],
-                 "updated_at": r["updated_at"]}
-                for r in self.db.query("SELECT * FROM personas ORDER BY name")]
-
-    def persona_exists(self, persona_id: str) -> bool:
-        return self.db.one("SELECT id FROM personas WHERE id=?", (persona_id,)) is not None
-
-    def persona_of_profile(self, profile_id: str) -> Row | None:
-        return self.db.one(
-            "SELECT p.* FROM personas p JOIN instagram_profiles i ON i.persona_id=p.id WHERE i.id=?", (profile_id,))
+    def accounts_count(self, profile_id: str) -> int:
+        return int(self.db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE profile_id=?", (profile_id,)) or 0)
 
     # ------------------------------------------------------------------ histórico social
     def record_interaction(self, profile_id: str, *, type: str, direction: str, status: str,
@@ -827,3 +862,43 @@ class SocialRepository:
             " updated_at=excluded.updated_at",
             (profile_id, thread_key, counterparty, summary or "", 1 if bump else 0,
              last_message_at or (now if bump else None), now))
+
+
+# ---------------------------------------------------------------------- a pessoa a partir da linha
+def traits_da_linha(row: Row) -> PersonaTraits:
+    """`traits` como a VOZ. Leitor de compatibilidade: uma linha gravada antes da 047 (ou por um cliente antigo) pode
+    trazer as três chaves visuais dentro de `traits`; elas são ignoradas aqui e lidas por `visual_da_linha`."""
+    voz, _visual = separar_visual_legado(loads(row["traits"], {}) or {})
+    try:
+        return PersonaTraits.model_validate(voz)
+    except ValidationError:
+        # Dado gravado fora do contrato (chave desconhecida, valor fora do Literal) não pode derrubar a listagem
+        # inteira de pessoas: a voz sai vazia e o painel mostra as lacunas.
+        return PersonaTraits()
+
+
+def visual_da_linha(row: Row) -> PersonaVisual:
+    _voz, legado = separar_visual_legado(loads(row["traits"], {}) or {})
+    dados = {**legado, **(loads(row["visual"], {}) or {})}
+    try:
+        return PersonaVisual.model_validate(dados)
+    except ValidationError:
+        return PersonaVisual()
+
+
+def campos_de_persona(row: Row, *, hoje: date | None = None) -> dict[str, object]:
+    """Os campos de `PersonaVoiceDTO` a partir da linha do perfil — o construtor de contexto e o DTO completo montam
+    a MESMA pessoa daqui. `username` vazio vira `None` na borda (a coluna guarda `''` = sem conta)."""
+    try:
+        biografia = PersonaBiography.model_validate(loads(row["biography"], {}) or {})
+    except ValidationError:
+        biografia = PersonaBiography()
+    username = row["username"] or None
+    idade = idade_em(row["birth_date"], hoje or now().date())
+    return {
+        "id": row["id"], "name": nome_exibido(row["display_name"], row["first_name"], row["last_name"], username),
+        "summary": row["summary"], "persona_prompt": row["persona_prompt"] or "", "traits": traits_da_linha(row),
+        "biography": biografia, "age": idade if idade is not None else biografia.approx_age,
+        "gender": row["gender"], "locale": row["locale"], "profile_id": row["id"], "profile_username": username,
+        "username": username, "created_at": row["created_at"], "updated_at": row["updated_at"],
+    }

@@ -6,12 +6,17 @@ com ele é marcada como "simulada" no banco, nos eventos e no painel, e NÃO con
 """
 from __future__ import annotations
 
+import hashlib
+import random
 import re
+from datetime import date
 from typing import Any
 
 from ..automation.hierarchy import UiElement, UiTree
-from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, Plan,
+from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, PersonaDraft, Plan,
                       PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, IDADE_MINIMA_GERADA,
+                                                            PersonaGenerationRequest, preencher_vazios)
 from ..security.redaction import looks_secret
 from ..util import norm_text
 from .capabilities import CapabilityNode, compose
@@ -344,6 +349,10 @@ class SimulatedProvider:
             content=texto[:req.max_length], rationale="[simulado] resposta montada a partir da persona e do contexto",
             memory_candidates=_candidatos(recebido, alvo)), Usage()
 
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        """Persona por sorteio determinístico (semente = hash do pedido): completa, adulta, fictícia; sem custo."""
+        return persona_simulada(req), Usage()
+
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         tree: UiTree = req.screen.tree
         p = req.ctx.parameters
@@ -399,3 +408,94 @@ def _candidatos(texto: str, alvo: str) -> list[MemoryCandidateDTO]:
     achados = [t.strip() for t in _SOBRE_SI.findall(texto or "")][:3]
     return [MemoryCandidateDTO(subject=alvo, content=f"disse que {c}"[:1000], importance=0.5, confidence=0.6)
             for c in achados if len(c) > 8]
+
+
+# ---------------------------------------------------------------- persona simulada (determinística)
+# Nomes, cidades e ofícios inventados para o sorteio. Nenhum nome completo aqui é de pessoa real conhecida; o sorteio
+# combina nome e sobrenome de listas separadas, o que é a mesma garantia que o prompt real pede ao modelo.
+_NOMES: dict[str, tuple[str, ...]] = {
+    "feminino": ("Marina", "Clara", "Helena", "Beatriz", "Lívia", "Camila", "Renata", "Juliana"),
+    "masculino": ("Rafael", "Diego", "Caio", "Otávio", "Bruno", "Felipe", "Thiago", "Henrique"),
+}
+_SOBRENOMES = ("Lopes", "Prado", "Nunes", "Braga", "Duarte", "Vieira", "Santana", "Melo", "Ferraz", "Tavares")
+_CIDADES = (("Curitiba", "PR"), ("Recife", "PE"), ("Florianópolis", "SC"), ("Belo Horizonte", "MG"),
+            ("Porto Alegre", "RS"), ("Goiânia", "GO"), ("Fortaleza", "CE"), ("Campinas", "SP"))
+_OFICIOS = (("designer", "Design"), ("dentista", "Odontologia"), ("jornalista", "Jornalismo"),
+            ("nutricionista", "Nutrição"), ("fisioterapeuta", "Fisioterapia"), ("barista", "Gastronomia"),
+            ("contabilista", "Ciências Contábeis"), ("professora de história", "História"))
+_HOBBIES = ("trilha", "cerâmica", "corrida", "violão", "yoga", "fotografia analógica", "culinária", "xadrez",
+            "ciclismo", "jardinagem")
+_TONS = ("acolhedor", "direto", "bem-humorado", "sereno", "curioso", "animado")
+
+
+def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
+    """A mesma persona para o mesmo pedido (semente = sha256 do prompt, idioma e restrições). Com `existing`, só o
+    que está vazio é preenchido — é o contrato de `enrich`. Sempre adulta; nunca um segredo em campo nenhum."""
+    chave = f"{req.prompt}|{req.locale}|{sorted(req.constraints.items())}"
+    rnd = random.Random(int(hashlib.sha256(chave.encode("utf-8")).hexdigest()[:12], 16))
+    hoje = req.today or date.today()
+    genero = (req.constraints.get("gender") or "").strip().lower()
+    if genero not in _NOMES:
+        genero = rnd.choice(sorted(_NOMES))
+    idade = _idade_pedida(req.constraints.get("age"), rnd)
+    nascimento = hoje.replace(year=hoje.year - idade, day=min(hoje.day, 28))
+    nascimento = nascimento.replace(month=max(1, nascimento.month - rnd.randint(0, nascimento.month - 1)))
+    nome, sobrenome = rnd.choice(_NOMES[genero]), rnd.choice(_SOBRENOMES)
+    cidade, uf = rnd.choice(_CIDADES)
+    origem, _uf_origem = rnd.choice([c for c in _CIDADES if c[0] != cidade])
+    oficio, curso = rnd.choice(_OFICIOS)
+    hobbies = rnd.sample(_HOBBIES, 3)
+    tom = rnd.choice(_TONS)
+    completo = f"{nome} {sobrenome}"
+    rascunho = {
+        "name": completo, "gender": genero, "locale": req.locale, "birth_date": nascimento.isoformat(),
+        "summary": f"{completo}, {idade} anos, {oficio} em {cidade}. Gosta de {hobbies[0]} e {hobbies[1]}.",
+        "persona_prompt": f"Escreva como {nome}: tom {tom}, frases curtas, sem clichê e sem prometer nada.",
+        "traits": {
+            "personality": f"{tom}, observadora do detalhe, fala do que vive", "tone": tom,
+            "formality": rnd.choice(["informal", "neutro"]), "typical_length": rnd.choice(["curta", "media"]),
+            "emojis": rnd.choice(["nunca", "raro", "moderado"]),
+            "slang": rnd.choice(["quase nenhuma", "um 'valeu' de vez em quando", "gíria regional leve"]),
+            "humor": rnd.choice(["seco", "leve", "autodepreciativo"]), "interests": hobbies,
+            "dm_style": "abre com uma frase só e pergunta algo concreto no fim",
+            "comment_style": "um detalhe da foto ou do texto, nunca elogio genérico",
+            "with_known": "corta a saudação e usa o primeiro nome", "with_strangers": "educada e breve",
+            "examples": [f"que {hobbies[0]} boa foi essa!", "conta mais disso?"],
+            "common_phrases": ["boa!", "fechou"], "forbidden_phrases": ["arrasou", "top demais"],
+        },
+        "visual": {
+            "appearance": rnd.choice(["cabelo curto escuro", "cabelo cacheado castanho", "cabelo liso claro, óculos"])
+                          + ", " + rnd.choice(["estatura média", "alta", "baixa"]),
+            "visual_style": rnd.choice(["casual de linho", "esportivo discreto", "jeans e camiseta lisa"]),
+            "photo_scenario": rnd.choice(["varanda com plantas", "café de bairro", "trilha no fim de tarde"]),
+            "palette": rnd.choice(["terrosa", "neutra", "azul e areia"]),
+        },
+        "biography": {
+            "schema_version": 1,
+            "origin": {"birthplace": origem, "nationality": "brasileira"},
+            "home": {"city": cidade, "state": uf, "country": "Brasil",
+                     "residence": rnd.choice(["apartamento pequeno", "casa com quintal", "kitnet perto do trabalho"])},
+            "work": {"profession": oficio, "education": [f"{curso} (graduação)"]},
+            "life": {"marital_status": rnd.choice(["solteira", "casada", "namorando"]), "children": 0,
+                     "history": [f"mudou-se de {origem} para {cidade} para trabalhar"]},
+            "beliefs": {},
+            "tastes": {"interests": hobbies, "hobbies": hobbies[:2],
+                       "preferences": [rnd.choice(["café coado", "chá gelado"]), "manhã cedo"],
+                       "dislikes": [rnd.choice(["barulho de trânsito", "fila", "reunião longa"])]},
+        },
+    }
+    if req.existing is not None:
+        rascunho = preencher_vazios(req.existing, rascunho)
+    return PersonaDraft.model_validate(rascunho)
+
+
+def _idade_pedida(texto: str | None, rnd: random.Random) -> int:
+    """`"30-35"` → uma idade na faixa; `"40"` → 40; vazio → sorteio dentro da faixa padrão. Sempre adulta."""
+    achados = [int(n) for n in re.findall(r"\d{2}", texto or "")]
+    if len(achados) >= 2:
+        idade = rnd.randint(min(achados[0], achados[1]), max(achados[0], achados[1]))
+    elif achados:
+        idade = achados[0]
+    else:
+        idade = rnd.randint(IDADE_MINIMA_GERADA, IDADE_MAXIMA_GERADA)
+    return max(IDADE_MINIMA_GERADA, min(idade, 90))

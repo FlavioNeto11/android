@@ -187,6 +187,11 @@ class CountingProvider:
         draft, _ = await self.inner.generate_social_response(req)
         return draft, Usage(calls=1, role="social", model="simulado")
 
+    async def generate_persona(self, req: Any) -> Any:
+        self.calls.append({"role": "social", "kind": "persona", "enrich": req.existing is not None})
+        draft, _ = await self.inner.generate_persona(req)
+        return draft, Usage(calls=1, role="social", model="simulado")
+
 
 class Harness:
     def __init__(self, tmp: Path, count: int, *, factory: Callable[[Any], Any] | None = None, **config_kw: Any):

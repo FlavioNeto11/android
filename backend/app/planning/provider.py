@@ -1,13 +1,17 @@
 """Interface do provedor de IA. Para trocar de provedor, implemente `AIProvider` e registre em `build_provider`."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..config import Config
-from ..models import AiStatus, DeliveryLevel, Plan, SocialDraftDTO
+from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
+# O pedido de geração de persona mora no domínio de identidade (prompt e regras do rascunho ficam juntos, sem
+# provedor); reexportado daqui para os provedores o importarem como importam `SocialRequest`.
+from ..modules.identity.domain.persona_generation import PersonaGenerationRequest  # noqa: F401
 
 
 #: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
@@ -179,6 +183,21 @@ class AIProvider(Protocol):
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]: ...
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]: ...
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]: ...
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]: ...
+
+
+def persona_draft_from_json(raw: str) -> PersonaDraft:
+    """JSON do modelo → `PersonaDraft`, revalidado por Pydantic: a gramática do provedor acelera, não garante. Um
+    servidor sem `json_schema` costuma embrulhar em cerca de código; desembrulhar é mais barato que pedir de novo.
+    Mora aqui (e não em `parsing.py`) para não abrir mais um import tardio no ciclo do pacote."""
+    texto = (raw or "").strip()
+    if texto.startswith("```"):
+        texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
+        texto = re.sub(r"\s*```$", "", texto).strip()
+    try:
+        return PersonaDraft.model_validate_json(texto)
+    except ValidationError as exc:
+        raise AIError(f"Rascunho de persona inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
 
 
 def build_one(cfg: Config, role: "Any") -> AIProvider:

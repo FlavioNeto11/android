@@ -175,6 +175,17 @@ ai:
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
+  # Imagens da persona (migração 048): porta própria, FORA dos cinco papéis acima — o saldo da Anthropic não compra
+  # imagem. `simulated` (padrão) pinta um degradê determinístico com Pillow, sem chave e sem nada sair da máquina;
+  # `openai` usa gpt-image-1-mini por /v1/images/generations com a chave OPENAI_API_KEY do .env (outra conta,
+  # verificação da organização exigida). Preço por imagem é DECLARADO aqui: a API de imagens não devolve custo.
+  image:
+    provider: simulated           # simulated | openai
+    model: gpt-image-1-mini
+    quality: medium               # low | medium | high
+    per_persona: 1                # imagens geradas ao criar uma persona (0 desliga)
+    on_create: true
+    price_per_image: {low: 0.005, medium: 0.011, high: 0.036}   # US$ por imagem 1024² (developers.openai.com, 27/09/2026)
   prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
     claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026
     claude-opus-5: [5.0, 0.5, 6.25, 25.0]

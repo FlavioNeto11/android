@@ -18,12 +18,14 @@ import anthropic
 
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
-from ..models import AiStatus, Plan, SocialDraftDTO
+from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
+                                                            persona_generation_user_text)
 from . import prompts
 from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
-                       Verdict, VerifyRequest)
+                       Verdict, VerifyRequest, persona_draft_from_json)
 
 if TYPE_CHECKING:
     from ..config import ResolvedRole
@@ -362,3 +364,15 @@ class AnthropicProvider:
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return social_from_json(raw, req.max_length), usage
+
+    # ------------------------------------------------------------------ geração de persona
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        """Pelo papel `social` (mesmo modelo e orçamento de quem escreve na voz da persona). Só texto: o pedido do
+        dono e, no enriquecimento, o que a persona já tem — nunca tela, memória ou credencial."""
+        resp, usage = await self._create(role="social", model=self.models["social"], system=PERSONA_GENERATION_SYSTEM,
+                                         content=[{"type": "text", "text": persona_generation_user_text(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=6000,
+                                         schema=strict_schema(PersonaDraft))
+        self._check_stop(resp, self.models["social"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        return persona_draft_from_json(raw), usage

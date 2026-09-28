@@ -18,12 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.models import AiStatus, Plan, SessionStatus, SocialDraftDTO
+from app.models import AiStatus, PersonaDraft, Plan, SessionStatus, SocialDraftDTO
 from app.modules.applications.domain.definition import AppDefinition
 from app.modules.applications.infrastructure.registry import AppManifest
 from app.modules.identity.infrastructure.sessions import SessionDeps
 from app.planning.capabilities import Capability, CapabilityCatalog
-from app.planning.provider import (Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
+from app.planning.provider import (Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest, SocialRequest, Usage, Verdict,
                                    VerifyRequest)
 from app.planning.simulated_provider import SimulatedProvider
 from app.util import now_iso
@@ -221,3 +221,6 @@ class AtorDosDoisApps:
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         rascunho, uso = await self.qa.generate_social_response(req)
         return rascunho, uso
+
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        return await self.qa.generate_persona(req)

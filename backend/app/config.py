@@ -27,6 +27,9 @@ class EnvSettings(BaseSettings):
 
     ai_provider: str = Field(default="anthropic", alias="AI_PROVIDER")
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    #: Chave da API de IMAGENS (`ai.image.provider: openai`). Outra conta, outro saldo: o crédito da Anthropic não
+    #: compra imagem. `SecretStr`, lida daqui e nunca de `os.environ` solto — não aparece em repr nem em log.
+    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -365,7 +368,26 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 
+class ImageCfg(BaseModel):
+    """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos cinco papéis de IA (`AI_ROLES`): o saldo da
+    Anthropic não compra imagem, então é outro provedor, outra chave (`OPENAI_API_KEY`) e preço por imagem
+    DECLARADO — a API de imagens não devolve custo. `simulated` (padrão) gera um degradê determinístico com Pillow,
+    sem chave e sem nada sair da máquina; `openai` é `gpt-image-1-mini` por `/v1/images/generations`."""
+
+    provider: Literal["simulated", "openai"] = "simulated"
+    model: str = "gpt-image-1-mini"
+    quality: Literal["low", "medium", "high"] = "medium"
+    #: Quantas imagens gerar ao criar uma persona (`on_create`); 0 desliga a geração automática.
+    per_persona: int = Field(1, ge=0, le=3)
+    on_create: bool = True
+    #: US$ por imagem 1024² por qualidade (developers.openai.com/api/docs/pricing, 27/09/2026). Retrato custa mais.
+    price_per_image: dict[str, float] = {"low": 0.005, "medium": 0.011, "high": 0.036}
+    timeout_s: float = Field(180.0, ge=1, le=900)
+
+
 class AiCfg(BaseModel):
+    #: Gerador de imagem da persona. Não é papel: `_ia_coerente` não o conhece e o hub não o roteia.
+    image: ImageCfg = ImageCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o

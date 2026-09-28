@@ -27,7 +27,7 @@ from .devices.compatibilidade import capacidades_de, motivo_incompativel, requis
 from .workers.local import LocalWorker
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
-from .db import Database, dumps, loads
+from .db import Database, Row, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
@@ -51,6 +51,8 @@ from .devices.installer import AppInstaller
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, package_of_provider, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
+from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
+                                                              imagens_dto, status_de_imagem)
 from .releases.inspector import ApkInspector
 from .security import local_secret
 from .security.secret_store import SecretStore, build_key_provider
@@ -250,6 +252,12 @@ class AppState:
         # O pacote da conta vem do REGISTRO de apps (quem provê a conta), como no logout: é por ele que o perfil
         # diz se o app está no aparelho antes de oferecer Conectar.
         self.social_repo.app_package = package_of_provider("instagram") or cfg.file.instagram.package
+        # Imagens da persona (048): gerador (simulado por omissão), storage dos avatares, custo em `ai_calls` e o
+        # teto do dia dos limites. O DTO da pessoa lista as imagens por esta ligação, sem o repositório conhecer o
+        # serviço.
+        self.persona_images = compor_servico_de_imagens(cfg, db=self.db, storage=self.avatares, bus=self.bus,
+                                                        settings_getter=self.settings.get)
+        self.social_repo.imagens_de = lambda pid: imagens_dto(self.persona_images.listar(pid))
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,
@@ -830,8 +838,15 @@ class AppState:
         # bloqueio é respeitado, não contornado; quem reativa é uma pessoa, na tela do perfil.
         perfil = self.social_repo.profile_row(profile_id)
         if perfil is not None and (perfil["status"] or "active") != "active":
-            return (f"perfil @{perfil['username']} está '{perfil['status']}': nenhuma tarefa é despachada para ele "
-                    "até uma pessoa reativá-lo na tela do perfil", None)
+            return (f"perfil @{perfil['username'] or perfil['display_name']} está '{perfil['status']}': nenhuma "
+                    "tarefa é despachada para ele até uma pessoa reativá-lo na tela do perfil", None)
+        pacote = package if package is not None else self.social_repo.app_package
+        if perfil is not None and not self._tem_conta_no_app(perfil, pacote):
+            # Desde a 047 a pessoa vinculada pode não ter conta NESTE app (persona criada antes da conta). Não é
+            # erro nem sessão a autenticar: é "sem conta", e a tarefa espera uma pessoa cadastrar a conta.
+            rotulo = capabilities_of(pacote).label if pacote else "este app"
+            return (f"a pessoa vinculada ({perfil['display_name'] or perfil['id']}) não tem conta em {rotulo}; "
+                    "cadastre a conta na tela do perfil antes de despachar", None)
         if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
             return recusa
         session = self.social_repo.session_row(profile_id)
@@ -868,6 +883,14 @@ class AppState:
             return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                     "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
         return motivo, (lambda: provedor.ensure_session(rt, profile_id, automatic=True))
+
+    def _tem_conta_no_app(self, perfil: Row, package: str | None) -> bool:
+        """A pessoa tem conta no app de `package`? A verdade é `profile_accounts` (037); o usuário de cadastro
+        (`username`) continua valendo como a conta do app do perfil, porque perfis anteriores à 037 e os criados sem o
+        app registrado não têm a linha de conta — e sempre foram a conta do Instagram."""
+        if self.social_repo.account_for_package(perfil["id"], package) is not None:
+            return True
+        return bool(package and package == self.social_repo.app_package and perfil["username"])
 
     # ------------------------------------------------------------------ entrega do aplicativo ao parque
     # Estados em que uma entrega FALHOU. Daqui ninguém tenta de novo sozinho: instalar é mexer no disco do aparelho, e
@@ -1706,6 +1729,9 @@ class AppState:
         # ANTES de qualquer efeito: um relógio errado só é detectável contra o banco, e subir com ele quando já
         # existe outro hospedeiro significa adotar etapa viva alheia (item 5.3).
         self.conferir_relogio()
+        # Os 8 avatares que existiam antes da 048 viram a imagem principal de cada pessoa (idempotente; migração
+        # não vê disco nem bucket). Em qualquer papel: é só banco e storage, e a segunda partida não faz nada.
+        self._importar_avatares_legados()
         if self.cfg.roda_scheduler:
             if self.manage_appium and self.cfg.file.appium.autostart:
                 ok = await asyncio.to_thread(self.appium.start)
@@ -1749,6 +1775,32 @@ class AppState:
         self.bus.emit("log", f"Backend iniciado (v{VERSION}, papel: {self.cfg.role}). "
                              f"Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))
+
+    # ------------------------------------------------------------------ imagens da persona (048)
+    def _importar_avatares_legados(self) -> None:
+        importados = 0
+        for pid in self.social_repo.list_persona_ids():
+            try:
+                if self.persona_images.importar_legado(pid) is not None:
+                    importados += 1
+            except Exception:  # noqa: BLE001 - um avatar ilegível não pode impedir a partida
+                log.exception("avatar legado da persona %s não pôde ser importado", pid)
+        if importados:
+            log.info("imagens: %d avatar(es) legado(s) registrados como imagem principal", importados)
+
+    def agendar_imagens(self, persona_id: str, count: int) -> None:
+        """Geração em segundo plano: a paga leva até minutos, e a rota responde 202. O resultado chega pelo evento
+        `persona.image.updated`; a tarefa fica em `_bg`, e `stop()` a cancela como as demais."""
+        async def _gerar() -> None:
+            try:
+                pessoa = self.social.get_persona(persona_id)
+                await self.persona_images.gerar(persona_id, identidade_para_foto(pessoa), count=count)
+            except Exception as exc:  # noqa: BLE001 - a falha vira aviso; a linha `failed` já está no banco quando houve
+                log.exception("geração de imagem da persona %s falhou", persona_id)
+                self.bus.emit("log", f"Imagem da persona {persona_id} não foi gerada: {exc}", level="warn",
+                              data={"profile_id": persona_id})
+
+        self._bg.append(asyncio.create_task(_gerar(), name=f"imagens-{persona_id}"))
 
     # ------------------------------------------------------------------ relógio
     def conferir_relogio(self) -> float:
@@ -1999,7 +2051,8 @@ class AppState:
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
             status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
-        return status
+        # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
+        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg)})
 
     def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
         """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?

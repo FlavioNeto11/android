@@ -27,10 +27,10 @@ import logging
 from typing import Any, Callable
 
 from ..config import AI_ROLES, Config, ResolvedRole
-from ..models import AiRoleStatus, AiStatus, Plan, SocialDraftDTO
+from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs
-from .provider import (AIError, AIProvider, Decision, DecisionRequest, PlanRequest, SocialRequest, Usage,
-                       Verdict, VerifyRequest, build_one)
+from .provider import (AIError, AIProvider, Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest,
+                       SocialRequest, Usage, Verdict, VerifyRequest, build_one)
 
 log = logging.getLogger("poc.ai")
 
@@ -257,6 +257,11 @@ class RoutingProvider:
         # Sem `run_id` (a prévia de persona nasce do portal): o teto por execução não se aplica, o do dia sim —
         # e era exatamente este o caminho que passava por fora de qualquer orçamento.
         return await self._call("social", None, lambda p: p.generate_social_response(req))
+
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        # Papel `social` (modelo e vagas de quem escreve na voz da persona), sem `run_id`: nasce do portal, como a
+        # prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
+        return await self._call("social", None, lambda p: p.generate_persona(req))
 
 
 def _com_provedor(cfg: Config, papel: str, provedor: str) -> ResolvedRole:

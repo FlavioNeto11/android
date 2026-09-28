@@ -107,6 +107,9 @@ async def test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo(harness: 
     # a porta de sessão é do provedor do PACOTE do item: IG → autenticador do Instagram; QA → provedor do QA
     rt = s.devices.get(IID)
     pid = s.social.create_profile(ProfileCreate(username="conta.do.qa", instance_id=IID)).id
+    # Desde a 047 a porta só considera que a pessoa tem conta num app quando há `profile_accounts` daquele app (o
+    # usuário de cadastro vale só para o app do perfil, o Instagram). Sem esta linha, o QA responderia "sem conta".
+    s.social_repo.create_account(pid, app_id="qa-messenger", handle="conta.do.qa")
     vencida = to_iso(now() - timedelta(seconds=s.social_repo.session_max_age_s + 60))
     s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id=IID, verified_at=vencida)
     do_instagram: list[dict[str, Any]] = []

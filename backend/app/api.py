@@ -16,7 +16,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from pydantic import ValidationError
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError
@@ -48,13 +49,19 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      InstancePatch, InstanceProvisionBody, InstanceState, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountPatch, ProfilePolicyPatch,
-                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
+                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
+                     PersonaImageDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
+from .modules.identity.adapters.pos_processamento import dimensoes
+from .modules.identity.domain.persona import MAIORIDADE
+from .modules.identity.domain.persona_image import OrcamentoEsgotado
+from .modules.identity.infrastructure.persona_images import imagens_dto
+from .modules.identity.presentation.schemas import PersonaGenerateBody, PersonaImagesBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import costs
@@ -738,8 +745,11 @@ async def profile_avatar(request: Request, profile_id: str) -> Any:
         perfil = s.social.get_profile(profile_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    # A chave sai do id JÁ VALIDADO no banco, nunca do texto da URL: chave não se monta com entrada crua.
-    return _servir_do_storage(s.avatares, f"avatars/{perfil.id}.jpg", "image/jpeg",
+    # A imagem PRINCIPAL da pessoa (048) quando há; senão o jpg legado de `data/avatars/`. A chave sai do id JÁ
+    # VALIDADO no banco (ou da linha da imagem), nunca do texto da URL: chave não se monta com entrada crua.
+    principal = s.persona_images.principal(perfil.id)
+    chave = principal.storage_key if principal is not None and principal.storage_key else f"avatars/{perfil.id}.jpg"
+    return _servir_do_storage(s.avatares, chave, _mime_da_chave(chave),
                               ausente=("sem_foto", "Este perfil não tem foto cadastrada."))
 
 
@@ -877,10 +887,16 @@ async def list_personas(request: Request) -> Any:
 
 @router.post("/personas", status_code=201)
 async def create_persona(request: Request, body: PersonaCreate) -> Any:
+    """Cria a PESSOA (sem conta em app nenhum). Com `ai.image.on_create`, as primeiras imagens saem em segundo plano
+    pelo gerador configurado (simulado por omissão) e chegam pelo evento `persona.image.updated`."""
+    s = st(request)
     try:
-        return st(request).social.create_persona(body)
+        pessoa = s.social.create_persona(body)
     except SocialError as exc:
         raise _social_error(exc) from exc
+    if s.persona_images.on_create and s.persona_images.per_persona > 0 and s.persona_images.generator.configured:
+        s.agendar_imagens(pessoa.id, s.persona_images.per_persona)
+    return pessoa
 
 
 @router.get("/personas/{persona_id}")
@@ -914,6 +930,123 @@ async def preview_persona(request: Request, persona_id: str, body: PersonaPrevie
         return await st(request).social.preview_persona(persona_id, body)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+@router.post("/personas/generate")
+async def generate_persona(request: Request, body: PersonaGenerateBody) -> PersonaCreate:
+    """Rascunho de persona por IA (chamada PAGA, papel social, teto do dia). NADA é gravado: a resposta tem o formato
+    de `POST /personas`, para a pessoa revisar e então criar. Rascunho fora das regras (menor, nome que não é nome,
+    voz ou biografia incompletas, texto com cara de segredo) volta como 422 `persona_draft_invalid`."""
+    try:
+        return await st(request).social.generate_persona_draft(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/personas/{persona_id}/enrich")
+async def enrich_persona(request: Request, persona_id: str) -> PersonaDTO:
+    """Completa SÓ o que está vazio numa persona existente (chamada PAGA). Sem lacuna, devolve a persona sem chamar
+    o modelo; com lacuna, o que já existia nunca é reescrito."""
+    try:
+        return await st(request).social.enrich_persona(persona_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+# ---------------------------------------------------------------- imagens da persona (048)
+_UPLOAD_DE_IMAGEM = ("image/jpeg", "image/png")
+_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _pessoa(s: AppState, persona_id: str) -> PersonaDTO:
+    try:
+        return s.social.get_persona(persona_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+def _mime_da_chave(chave: str) -> str:
+    return "image/png" if chave.lower().endswith(".png") else "image/jpeg"
+
+
+@router.get("/personas/{persona_id}/images")
+async def list_persona_images(request: Request, persona_id: str) -> list[PersonaImageDTO]:
+    s = st(request)
+    return imagens_dto(s.persona_images.listar(_pessoa(s, persona_id).id))
+
+
+@router.post("/personas/{persona_id}/images", status_code=202)
+async def add_persona_images(request: Request, persona_id: str) -> Response:
+    """Duas entradas na mesma rota, distinguidas pelo `Content-Type`:
+
+    - JSON `{count}` (1 a 3): GERA em segundo plano pelo provedor configurado e responde 202; cada imagem chega pelo
+      evento `persona.image.updated`. Teto do dia e chave são conferidos ANTES de aceitar; menor de idade é recusado;
+    - corpo cru `image/jpeg` ou `image/png` (o padrão do envio de APK): UPLOAD de uma foto, 201 com a imagem.
+    """
+    s = st(request)
+    pessoa = _pessoa(s, persona_id)
+    tipo = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    corpo = await request.body()
+    if tipo in _UPLOAD_DE_IMAGEM:
+        if len(corpo) > _UPLOAD_MAX_BYTES:
+            raise err(413, "image_too_large", "A imagem passa de 10 MB.")
+        if dimensoes(corpo) is None:
+            raise err(400, "invalid_image", "O corpo não é uma imagem JPEG/PNG legível.")
+        registro = await s.persona_images.registrar_upload(pessoa.id, corpo, tipo)
+        return JSONResponse(status_code=201, content=imagens_dto([registro])[0].model_dump())
+    try:
+        pedido = PersonaImagesBody.model_validate_json(corpo or b"{}")
+    except ValidationError as exc:
+        raise err(422, "invalid_body", f"Corpo inválido: {exc.errors()[0].get('msg', 'erro de validação')}") from exc
+    gerador = s.persona_images.generator
+    if not gerador.configured:
+        raise err(409, "image_not_configured", f"O provedor de imagem '{gerador.name}' não tem chave configurada "
+                                                "(OPENAI_API_KEY no .env) — ou use ai.image.provider: simulated.")
+    if pessoa.age is not None and pessoa.age < MAIORIDADE:
+        raise err(409, "persona_minor", f"A persona tem {pessoa.age} anos; só se fotografa pessoa adulta.")
+    try:
+        s.persona_images.conferir_orcamento()
+    except OrcamentoEsgotado as exc:
+        raise err(409, "ai_budget", str(exc)) from exc
+    s.agendar_imagens(pessoa.id, pedido.count)
+    return JSONResponse(status_code=202, content={"accepted": True, "persona_id": pessoa.id, "count": pedido.count,
+                                                  "provider": gerador.name, "simulated": gerador.simulated})
+
+
+@router.get("/personas/{persona_id}/images/{image_id}")
+async def get_persona_image(request: Request, persona_id: str, image_id: str) -> Response:
+    """Os bytes da imagem, pelo storage (disco local ou bucket), nunca por caminho vindo da URL."""
+    s = st(request)
+    registro = s.persona_images.obter(_pessoa(s, persona_id).id, image_id)
+    if registro is None:
+        raise err(404, "not_found", "Imagem não encontrada nesta persona.")
+    if registro.status != "ready" or not registro.storage_key:
+        raise err(409, "image_not_ready", f"A imagem está '{registro.status}'." + (f" {registro.error}" if registro.error else ""))
+    return _servir_do_storage(s.avatares, registro.storage_key, _mime_da_chave(registro.storage_key),
+                              ausente=("sem_foto", "O arquivo desta imagem não está no storage."))
+
+
+@router.put("/personas/{persona_id}/images/{image_id}/primary")
+async def set_primary_persona_image(request: Request, persona_id: str, image_id: str) -> PersonaDTO:
+    s = st(request)
+    pessoa = _pessoa(s, persona_id)
+    try:
+        s.persona_images.definir_principal(pessoa.id, image_id)
+    except KeyError:
+        raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
+    except ValueError as exc:
+        raise err(409, "image_not_ready", str(exc)) from None
+    return s.social.get_persona(pessoa.id)
+
+
+@router.delete("/personas/{persona_id}/images/{image_id}", status_code=204)
+async def delete_persona_image(request: Request, persona_id: str, image_id: str) -> Response:
+    s = st(request)
+    try:
+        s.persona_images.apagar(_pessoa(s, persona_id).id, image_id)
+    except KeyError:
+        raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
+    return Response(status_code=204)
 
 
 @router.get("/instagram/profiles/{profile_id}/memory")

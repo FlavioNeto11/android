@@ -50,6 +50,13 @@ _MARCA = re.compile(r"\{\{(\w+)\}\}")
 _CORPO_ABERTO = re.compile(r"\bBEGIN\b(?!.*\bEND\b)", re.IGNORECASE | re.DOTALL)
 #: Blocos que só valem num dialeto: `-- @dialect:sqlite` … `-- @dialect:end`.
 _BLOCO = re.compile(r"^[ \t]*--[ \t]*@dialect:(\w+)[ \t]*$", re.MULTILINE)
+#: Migração que RECONSTRÓI uma tabela-pai no SQLite (`-- @foreign_keys:off` no arquivo). Medido antes da 047: com
+#: `PRAGMA foreign_keys=ON`, o `DROP TABLE` da tabela antiga faz um `DELETE` implícito que dispara o `ON DELETE
+#: CASCADE` dos filhos — credenciais, sessões, vínculos e memória sumiriam junto —, e `PRAGMA foreign_keys=OFF`
+#: dentro de uma transação é operação sem efeito. É o procedimento dos 12 passos da documentação do SQLite:
+#: desligar antes do `BEGIN`, reconstruir, `PRAGMA foreign_key_check` antes do `COMMIT`, religar depois.
+#: No PostgreSQL a marca é ignorada: lá `ALTER COLUMN` resolve sem reconstruir nada.
+_SEM_CHAVES = re.compile(r"^[ \t]*--[ \t]*@foreign_keys:off[ \t]*$", re.MULTILINE)
 #: Abertura de texto entre cifrões do PostgreSQL: `$$` ou `$tag$`.
 _DOLAR = re.compile(r"\$[A-Za-z_]\w*\$|\$\$")
 
@@ -530,16 +537,42 @@ class Database:
             for f in sorted(MIGRATIONS_DIR.glob("*.sql")):
                 if f.stem in done:
                     continue
-                renderizado = self.render(f.read_text(encoding="utf-8"))
+                texto = f.read_text(encoding="utf-8")
+                renderizado = self.render(texto)
                 instrucoes = self._instrucoes(renderizado)
-                with self.tx():
+                reconstroi = self.dialect == "sqlite" and _SEM_CHAVES.search(texto) is not None
+                with self._sem_chaves_estrangeiras(reconstroi), self.tx():
                     for instrucao in instrucoes:
                         self._conn.execute(instrucao)
+                    if reconstroi:
+                        # Dentro da transação, de propósito: uma linha órfã que a reconstrução tenha deixado
+                        # desfaz a migração inteira em vez de virar dado quebrado com o esquema novo.
+                        violacoes = self._conn.execute("PRAGMA foreign_key_check").fetchall()
+                        if violacoes:
+                            raise sqlite3.IntegrityError(
+                                f"migração {f.stem}: {len(violacoes)} linha(s) com chave estrangeira quebrada "
+                                f"após a reconstrução (primeira: {violacoes[0]})")
                     self._conn.execute(
                         self._sql("INSERT INTO schema_migrations(version, applied_at, checksum) VALUES (?,?,?)"),
                         (f.stem, now_iso(), self._impressao(renderizado)))
                 applied.append(f.stem)
         return applied
+
+    @contextmanager
+    def _sem_chaves_estrangeiras(self, ligado: bool) -> Iterator[None]:
+        """`PRAGMA foreign_keys=OFF` ao redor de UMA migração marcada com `-- @foreign_keys:off` (ver `_SEM_CHAVES`).
+
+        Fora da transação, porque dentro dela o pragma não faz nada; religado no `finally`, porque uma migração que
+        falha não pode deixar a conexão sem chave estrangeira para o resto da vida do processo.
+        """
+        if not ligado:
+            yield
+            return
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            yield
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
 
 
 def dumps(value: Any) -> str:
