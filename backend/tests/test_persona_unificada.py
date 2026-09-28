@@ -29,8 +29,8 @@ import pytest
 from app.main import create_app
 from app.models import (PersonaBiography, PersonaCreate, PersonaPatch, PersonaTraits, PersonaVisual, ProfileCreate,
                         ProfilePatch)
-from app.modules.identity.domain.persona import (idade_em, lacunas_da_biografia, mesclar_secao,
-                                                 nome_ficticio_plausivel, separar_nome)
+from app.modules.identity.domain.persona import (BIOGRAPHY_SCHEMA_VERSION, idade_em, lacunas_da_biografia,
+                                                 mesclar_secao, nome_ficticio_plausivel, separar_nome)
 from app.social.service import SocialError
 
 from .conftest import Harness, make_config
@@ -76,7 +76,7 @@ def test_cria_uma_pessoa_sem_conta_com_visual_separado_da_voz(tmp_path: Path) ->
         assert dto.age == idade_em("1995-03-10", date.today()) and dto.age is not None and dto.age >= 30
         assert dto.voice_gaps == [] and dto.traits.model_dump(exclude_none=True)["interests"] == ["fotografia"]
         assert dto.visual == PersonaVisual(appearance="cabelo cacheado", photo_scenario="estúdio")
-        assert dto.biography.home.city == "Curitiba" and dto.biography.schema_version == 1
+        assert dto.biography.home.city == "Curitiba" and dto.biography.schema_version == BIOGRAPHY_SCHEMA_VERSION == 2
         assert dto.generation.source == "manual" and dto.generation.at
         assert dto.accounts_count == 0 and dto.images == [] and dto.credential.configured is False
         # No banco: `''` é "sem conta"; a voz gravada não tem chave visual; o visual tem as duas que vieram.
