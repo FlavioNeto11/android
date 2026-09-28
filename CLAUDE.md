@@ -77,6 +77,7 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 | Pacotes do plano-100 | `python scripts/plano-100-pacotes.py`, ou com `--fila --bloco <b>` | sem `--fila`, regenera o índice |
 | Documentação | `python scripts/docs-check.py` | links, IDs, mapa, migrações, vocabulário |
 | Saúde do ambiente central | `curl -s http://127.0.0.1:8000/api/health` | leitura: `commit`, `migration`, `problems` |
+| Saldo das contas de IA | `curl -s http://127.0.0.1:8000/api/ai/balances` | estimado; leitura nova: `POST …/{conta}` (ADR-051) |
 | Subir ou parar (dev) | `scripts/start.ps1 -Dev` / `-Simulated`; `scripts/stop.ps1` | [P] na máquina central: é o ambiente central |
 | Implantar | `scripts/deploy.ps1` (`-Ensaio` para ensaiar) | [P], permitido para validar (ambiente central) |
 

@@ -5,11 +5,14 @@
  *
  * - Por prompt: `POST /personas/generate` é uma chamada PAGA ao papel `social` e NÃO grava nada; o rascunho volta
  *   para a pessoa revisar e só então `POST /personas` cria. O aviso de custo fica na cara, antes do botão.
+ * - Por prompt, em LOTE (v0.34, "Quantidade" > 1): `POST /personas/generate/batch` gera N pessoas diferentes em
+ *   segundo plano; a pessoa escolhe antes se cria direto ou revisa os rascunhos, e vê o custo estimado do lote antes
+ *   de confirmar. Quantidade 1 é o fluxo de sempre, sem mudança.
  * - Manual: nome e o pouco que a pessoa souber; o resto se completa depois, seção por seção.
  */
-import { Sparkles, TriangleAlert, UserRound, Wand2 } from 'lucide-react';
+import { Layers, Sparkles, TriangleAlert, UserRound, Wand2 } from 'lucide-react';
 import { useState } from 'react';
-import { api, toApiError } from '../../api/client';
+import { api, apiLote, toApiError } from '../../api/client';
 import type { AiStatus, PersonaCreateRequest, PersonaDTO } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -18,6 +21,8 @@ import { Dialog } from '../../components/Dialog';
 import { Field, TextArea, TextInput } from '../../components/Field';
 import { toast, toastError } from '../../store/toasts';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
+import { type LinhaDeCusto, custoDaGeracao, custoDasFotos, fotosAutomaticas, socialSimulado } from './custos';
+import { LoteDePersonas } from './LoteDePersonas';
 import styles from './Profiles.module.css';
 import { useAiStatus } from './useAiStatus';
 
@@ -26,6 +31,11 @@ import { useAiStatus } from './useAiStatus';
 export const CUSTO_ESTIMADO_POR_PERSONA = '≈ US$ 0,02–0,03 por persona';
 
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** O lote aceita de 1 a 10 pessoas por pedido: o mesmo teto de `PersonaBatchBody.count` no servidor. */
+export const MAX_POR_LOTE = 10;
+/** Revisar: os rascunhos voltam para a pessoa escolher; criar: cada rascunho válido já vira persona. */
+type ModoDoLote = 'revisar' | 'criar';
 
 /** A primeira foto nasce sozinha quando `ai.image.on_create` está ligado: dizer isso evita a pessoa gerar outra. */
 function avisoDaFoto(ai: AiStatus | null): string | null {
@@ -83,9 +93,13 @@ function aplicarRevisao(r: PersonaCreateRequest, v: Revisao): PersonaCreateReque
   };
 }
 
-export function NovaPersonaPorPrompt({ onClose, onCriada }: {
+export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
   onClose: () => void;
   onCriada: (p: PersonaDTO) => Promise<void>;
+  /** Lote: relê a lista (as criadas aparecem) sem abrir ninguém. */
+  onLote?: () => Promise<void>;
+  /** Lote: "Abrir" numa pessoa criada. */
+  onAbrir?: (id: string) => void;
 }) {
   const { ai, falhou } = useAiStatus();
   const [pedido, setPedido] = useState('');
@@ -97,21 +111,43 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
   const [rascunho, setRascunho] = useState<PersonaCreateRequest | null>(null);
   const [revisao, setRevisao] = useState<Revisao | null>(null);
   const [criando, setCriando] = useState(false);
+  const [quantidade, setQuantidade] = useState('1');
+  const [modoLote, setModoLote] = useState<ModoDoLote>('revisar');
+  const [confirmandoLote, setConfirmandoLote] = useState(false);
+  const [loteId, setLoteId] = useState<string | null>(null);
 
   const social = ai?.roles?.find((r) => r.role === 'social') ?? null;
-  const simulado = !!ai && (social ? social.kind === 'simulated' || social.provider === 'simulated' : ai.simulated);
+  const simulado = socialSimulado(ai);
   const tamanho = pedido.trim().length;
+  const n = Number(quantidade);
+  const quantidadeValida = quantidade.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_POR_LOTE;
+  const emLote = quantidadeValida && n > 1;
+  // O custo do lote é mostrado ANTES de confirmar: N gerações pagas + as fotos automáticas das que forem criadas.
+  const custos: LinhaDeCusto[] = emLote
+    ? [custoDaGeracao(ai, n),
+       custoDasFotos(ai, fotosAutomaticas(ai, n),
+                     modoLote === 'criar' ? 'Fotos automáticas' : 'Fotos automáticas (só das que você criar)')]
+      .filter((c): c is LinhaDeCusto => c !== null)
+    : [];
+  const lotePago = custos.some((c) => c.pago);
+  const motivoDoPedido = tamanho < 3 ? 'Descreva a pessoa (3 a 2000 caracteres).'
+    : tamanho > 2000 ? 'O pedido passa de 2000 caracteres.'
+      : !quantidadeValida ? `Quantidade de 1 a ${MAX_POR_LOTE}.` : null;
+
+  function restricoesDoPedido(): Record<string, string> {
+    const restricoes: Record<string, string> = {};
+    if (genero.trim()) restricoes.gender = genero.trim();
+    if (cidade.trim()) restricoes.city = cidade.trim();
+    if (idade.trim()) restricoes.age = idade.trim();
+    return restricoes;
+  }
 
   async function gerar() {
     if (tamanho < 3 || tamanho > 2000 || gerando) return;
     setGerando(true);
     setErro(null);
     try {
-      const restricoes: Record<string, string> = {};
-      if (genero.trim()) restricoes.gender = genero.trim();
-      if (cidade.trim()) restricoes.city = cidade.trim();
-      if (idade.trim()) restricoes.age = idade.trim();
-      const r = await api.generatePersona({ prompt: pedido.trim(), constraints: restricoes });
+      const r = await api.generatePersona({ prompt: pedido.trim(), constraints: restricoesDoPedido() });
       setRascunho(r);
       setRevisao(revisaoDe(r));
     } catch (e) {
@@ -119,6 +155,31 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
       setErro({ code: x.code, message: x.message });
     } finally {
       setGerando(false);
+    }
+  }
+
+  /** Lote pago passa por uma confirmação com o custo; o simulado não custa e vai direto. */
+  function pedirLote() {
+    if (motivoDoPedido || !emLote || gerando) return;
+    if (lotePago) setConfirmandoLote(true);
+    else void gerarLote();
+  }
+
+  async function gerarLote() {
+    if (motivoDoPedido || !emLote || gerando) return;
+    setGerando(true);
+    setErro(null);
+    try {
+      const r = await apiLote.generatePersonaBatch({
+        prompt: pedido.trim(), constraints: restricoesDoPedido(), count: n, create: modoLote === 'criar',
+      });
+      setLoteId(r.batch_id);
+    } catch (e) {
+      const x = toApiError(e);
+      setErro({ code: x.code, message: x.message });
+    } finally {
+      setGerando(false);
+      setConfirmandoLote(false);
     }
   }
 
@@ -144,6 +205,18 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
   const voz = rascunho?.traits ?? {};
   const idadeInvalida = !!revisao?.birth_date.trim() && !DATA_ISO.test(revisao.birth_date.trim());
 
+  // Lote aceito: o diálogo passa a ser o do progresso (o lote roda no servidor; fechar não o interrompe).
+  if (loteId) return <LoteDePersonas batchId={loteId} onClose={onClose} onAbrir={onAbrir} onLote={onLote} />;
+
+  const custoDoLote = (
+    <div className={styles.loteCusto} role="group" aria-label="Custo estimado do lote">
+      <p className={styles.loteCustoTitulo}>Custo estimado do lote</p>
+      <ul className={styles.loteCustoLista}>
+        {custos.map((c) => <li key={c.rotulo}><strong>{c.rotulo}:</strong> {c.texto}</li>)}
+      </ul>
+    </div>
+  );
+
   return (
     <Dialog
       open
@@ -161,15 +234,26 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
             Criar persona
           </Button>
         </>
+      ) : confirmandoLote ? (
+        <>
+          <Button variant="secondary" onClick={() => setConfirmandoLote(false)}>Voltar</Button>
+          <Button variant="primary" icon={Layers} loading={gerando} onClick={() => void gerarLote()}>
+            Confirmar e gerar {n}
+          </Button>
+        </>
       ) : (
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" icon={Sparkles} loading={gerando}
-                  disabledReason={tamanho < 3 ? 'Descreva a pessoa (3 a 2000 caracteres).'
-                    : tamanho > 2000 ? 'O pedido passa de 2000 caracteres.' : null}
-                  onClick={() => void gerar()}>
-            Gerar rascunho
-          </Button>
+          {emLote ? (
+            <Button variant="primary" icon={Layers} loading={gerando} disabledReason={motivoDoPedido} onClick={pedirLote}>
+              Gerar {n} personas
+            </Button>
+          ) : (
+            <Button variant="primary" icon={Sparkles} loading={gerando} disabledReason={motivoDoPedido}
+                    onClick={() => void gerar()}>
+              Gerar rascunho
+            </Button>
+          )}
         </>
       )}
     >
@@ -187,7 +271,9 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
             {social ? <> (<span className="mono">{social.model}</span> em {social.provider})</> : null}
             {falhou ? ' — não foi possível ler o provedor agora, então conte com custo' : null}
             : custo estimado {CUSTO_ESTIMADO_POR_PERSONA}. O texto do pedido e as restrições saem desta máquina;
-            tela, memória e senha, nunca. Nada é gravado até você revisar e clicar em “Criar persona”.
+            tela, memória e senha, nunca. {emLote && modoLote === 'criar'
+              ? 'Em “Criar direto”, cada rascunho válido do lote já vira persona.'
+              : 'Nada é gravado até você revisar e clicar em “Criar persona”.'}
           </Banner>
         )}
 
@@ -197,7 +283,18 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
           </Banner>
         ) : null}
 
-        {rascunho && revisao ? (
+        {confirmandoLote ? (
+          <>
+            <Banner tone="warning" icon={TriangleAlert} role="status" title={`Confirmar ${n} gerações pagas`}>
+              O lote roda no servidor, duas pessoas por vez, e continua mesmo se você fechar esta janela.
+              {modoLote === 'criar' ? ' Cada rascunho válido vira persona sem revisão.'
+                : ' Os rascunhos voltam para você escolher quais criar.'} Se o teto de gasto do dia for atingido,
+              o lote para e os itens restantes aparecem como falha, sem nova tentativa.
+            </Banner>
+            <p className={styles.detail}>Pedido: “{pedido.trim()}”</p>
+            {custoDoLote}
+          </>
+        ) : rascunho && revisao ? (
           <>
             <p className={styles.detail}>
               Rascunho gerado{rascunho.generation?.model ? ` por ${rascunho.generation.model}` : ''} — ainda não gravado.
@@ -262,12 +359,45 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
                 {({ id }) => <TextInput id={id} value={cidade} onChange={(e) => setCidade(e.target.value)} />}
               </Field>
             </div>
-            <Field label="Faixa de idade" unit="opcional" hint="Ex.: 30-35. Sempre adulta: o gerador recusa menor de idade.">
-              {({ id, describedBy }) => (
-                <TextInput id={id} aria-describedby={describedBy} value={idade} placeholder="30-35"
-                           onChange={(e) => setIdade(e.target.value)} />
-              )}
-            </Field>
+            <div className={styles.pair}>
+              <Field label="Faixa de idade" unit="opcional" hint="Ex.: 30-35. Sempre adulta: o gerador recusa menor de idade.">
+                {({ id, describedBy }) => (
+                  <TextInput id={id} aria-describedby={describedBy} value={idade} placeholder="30-35"
+                             onChange={(e) => setIdade(e.target.value)} />
+                )}
+              </Field>
+              <Field label="Quantidade" unit={`1 a ${MAX_POR_LOTE}`}
+                     error={!quantidadeValida ? `Use um número inteiro de 1 a ${MAX_POR_LOTE}.` : null}
+                     hint="Com mais de uma, as pessoas saem diferentes entre si e das que já existem.">
+                {({ id, describedBy, invalid }) => (
+                  <TextInput id={id} type="number" inputMode="numeric" min={1} max={MAX_POR_LOTE} step={1}
+                             aria-describedby={describedBy} invalid={invalid} value={quantidade}
+                             onChange={(e) => setQuantidade(e.target.value)} />
+                )}
+              </Field>
+            </div>
+            {emLote ? (
+              <>
+                <fieldset className={styles.loteModo}>
+                  <legend className={styles.loteModoTitulo}>Depois de gerar as {n} pessoas</legend>
+                  <label className={styles.loteOpcao}>
+                    <input type="radio" name="modo-do-lote" value="revisar" checked={modoLote === 'revisar'}
+                           onChange={() => setModoLote('revisar')} />
+                    <span><strong>Revisar antes de criar</strong>
+                      <span className={styles.muted}> — os rascunhos voltam com caixa de seleção e você cria as escolhidas.</span>
+                    </span>
+                  </label>
+                  <label className={styles.loteOpcao}>
+                    <input type="radio" name="modo-do-lote" value="criar" checked={modoLote === 'criar'}
+                           onChange={() => setModoLote('criar')} />
+                    <span><strong>Criar direto</strong>
+                      <span className={styles.muted}> — cada rascunho válido já vira persona, sem revisão.</span>
+                    </span>
+                  </label>
+                </fieldset>
+                {custoDoLote}
+              </>
+            ) : null}
           </>
         )}
         {avisoDaFoto(ai) ? <p className={styles.detail}><Badge size="sm" tone="info">foto</Badge> {avisoDaFoto(ai)}</p> : null}

@@ -375,3 +375,43 @@
   min-height: 26px;
   padding: 2px 10px;
 }
+
+/* ADR-050: o Automático na frente; os modos manuais recolhidos atrás de um link discreto. */
+.manualLink {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.manualLink:hover { color: var(--text-1); }
+
+.manualSep {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.autoDica {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* Aviso de saldo da conta de IA (ADR-051), só quando a conta em uso pede ação. */
+.saldo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.saldo[data-tone='warning'] {
+  color: var(--warning-text);
+}
+
+.saldo[data-tone='danger'] {
+  color: var(--danger-text);
+}

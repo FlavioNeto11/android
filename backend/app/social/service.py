@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -26,8 +26,8 @@ from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfile
 from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idade_em, lacunas_da_biografia,
                                                mesclar_secao, normalizar_biografia, separar_nome,
                                                separar_visual_legado)
-from ..modules.identity.domain.persona_generation import (PersonaGenerationRequest, preencher_vazios,
-                                                            problemas_do_rascunho, textos_de)
+from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
+                                                            preencher_vazios, problemas_do_rascunho, textos_de)
 from ..modules.identity.presentation.schemas import PersonaGenerateBody
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider, session_provider_of
@@ -542,16 +542,22 @@ class SocialService:
         self.delete_profile(pid)
 
     # ------------------------------------------------------------------ geração por IA (paga)
-    async def generate_persona_draft(self, body: PersonaGenerateBody) -> PersonaCreate:
+    async def generate_persona_draft(self, body: PersonaGenerateBody, *, avoid: Sequence[PersonaEvitada] = (),
+                                     variation: int | None = None,
+                                     variety: Mapping[str, str] | None = None) -> PersonaCreate:
         """`POST /personas/generate`: um RASCUNHO, não gravado, no formato que `POST /personas` aceita.
 
         Chamada paga pelo papel `social` (o hub confere o teto do dia). O rascunho só volta se passar nas regras do
         domínio (`problemas_do_rascunho`: nome de pessoa fictícia, maior de idade, voz e biografia completas) e sem
         nenhum texto com formato de segredo — o modelo é instruído, e aqui se confere.
+
+        O lote (`social/persona_batch.py`) passa por aqui também, com `avoid` (quem não repetir) e `variation` (o
+        índice do item): mesmas regras, mesma proveniência, só o pedido ganha o bloco `<evitar>`.
         """
         hoje = now().date()
         pedido = PersonaGenerationRequest(prompt=body.prompt, locale=body.locale or "pt-BR",
-                                          constraints=dict(body.constraints), today=hoje)
+                                          constraints=dict(body.constraints), today=hoje, avoid=tuple(avoid),
+                                          variation=variation, variety=dict(variety or {}))
         draft, usage = await self._generate_persona(pedido)
         problemas = problemas_do_rascunho(nome=draft.name, birth_date=draft.birth_date,
                                           lacunas_de_voz=voice_gaps(draft.traits),
@@ -567,9 +573,15 @@ class SocialService:
             locale=draft.locale or pedido.locale, biography=draft.biography, visual=draft.visual,
             generation=self._proveniencia("ai", usage, prompt=body.prompt))
 
-    async def enrich_persona(self, persona_id: str) -> PersonaDTO:
+    async def enrich_persona(self, persona_id: str, *, instructions: str | None = None) -> PersonaDTO:
         """`POST /personas/{id}/enrich`: completa SÓ o que está vazio. Idempotente: sem lacuna, não chama o modelo;
-        com lacuna, o que já existia nunca é reescrito (`preencher_vazios`)."""
+        com lacuna, o que já existia nunca é reescrito (`preencher_vazios`). `instructions` é o pedido do dono para o
+        que falta; vai ao modelo marcado como pedido (o construtor do texto passa tudo por `sem_marcacao`), e texto
+        com cara de credencial é recusado ANTES da chamada: o pedido vai ao provedor e fica na proveniência."""
+        instrucao = (instructions or "").strip()
+        if instrucao and (looks_secret(instrucao) or mentions_credential(instrucao)):
+            raise SocialError("instructions_with_secret", "As instruções parecem conter uma senha, um código ou um "
+                              "token. Elas vão ao provedor de IA: descreva a pessoa sem nenhum valor secreto.", 422)
         dto = self.get_persona(persona_id)
         existente: dict[str, object] = {
             "name": dto.name, "summary": dto.summary, "gender": dto.gender, "locale": dto.locale,
@@ -579,8 +591,11 @@ class SocialService:
         if not self._tem_lacuna(dto):
             return dto
         hoje = now().date()
-        pedido = PersonaGenerationRequest(prompt=f"Complete a persona {dto.name} mantendo tudo o que já existe.",
-                                          locale=dto.locale or "pt-BR", existing=existente, today=hoje)
+        prompt = f"Complete a persona {dto.name} mantendo tudo o que já existe."
+        if instrucao:
+            prompt += (" Para o que falta, siga estas instruções do dono (sem reescrever o que já está preenchido): "
+                       + instrucao)
+        pedido = PersonaGenerationRequest(prompt=prompt, locale=dto.locale or "pt-BR", existing=existente, today=hoje)
         draft, usage = await self._generate_persona(pedido)
         problemas = self._textos_com_segredo(draft)
         idade = idade_em(draft.birth_date, hoje)

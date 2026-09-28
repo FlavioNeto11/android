@@ -119,12 +119,15 @@ class StepOutcome:
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
 # resolveria, então acionam o disjuntor em vez de reenviar. `_ai` é o ponto único que os classifica assim.
-ACCOUNT_ERROR_KINDS = ("billing", "not_configured")
+# `balance` (ADR-051): a PLATAFORMA barrou antes de gastar — saldo estimado da conta abaixo do bloqueio do dono.
+ACCOUNT_ERROR_KINDS = ("billing", "not_configured", "balance")
 
 # mensagem mostrada ao usuário — nunca o dicionário cru do provedor (ver achado #90).
 _ACCOUNT_ERROR_MESSAGE = {
     "billing": "Sem crédito no provedor de IA — recarregue e retome.",
     "not_configured": "Credencial do provedor de IA inválida ou ausente — corrija e retome.",
+    "balance": "Saldo estimado de uma conta de IA abaixo do limite de bloqueio — recarregue, registre o saldo "
+               "novo em Configuração › IA e retome.",
 }
 
 
@@ -916,7 +919,7 @@ class StepExecutor:
                     if exc.kind == "not_configured":
                         return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
                                            "reinicie o backend e retome este item.", ai_blocked=True)
-                    if exc.kind == "billing":
+                    if exc.kind in ("billing", "balance"):
                         return StepOutcome(Outcome.waiting_user, str(exc),
                                            needs="Recarregue o crédito do provedor de IA e retome a execução.",
                                            ai_blocked=True)
@@ -1196,7 +1199,7 @@ class StepExecutor:
             if exc.kind == "not_configured":
                 return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
                                    "reinicie o backend e retome este item.", ai_blocked=True)
-            if exc.kind == "billing":
+            if exc.kind in ("billing", "balance"):
                 return StepOutcome(Outcome.waiting_user, str(exc),
                                    needs="Recarregue o crédito do provedor de IA e retome a execução.",
                                    ai_blocked=True)

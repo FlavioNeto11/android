@@ -36,6 +36,12 @@ três provedores. Prompt, esquema (pequeno, sem união: cabe na saída estrutura
 NOMES dos dados da persona dos alvos e as perguntas do planejador — nunca valor de credencial (o serviço recusa texto
 com senha antes da chamada e redige a saída).
 
+**O modo Automático também não é função nova** (ADR-050). `POST /api/runs/targets/suggest` despacha pelo papel
+`plan` (`RoutingProvider.orchestrate_targets`) só quando a escolha depende do perfil das personas; prompt, esquema e o
+simulado ficam em `modules/execution/domain/orquestracao.py`. Sai da máquina: o pedido sem destinos e o cartão de
+até 20 personas candidatas (identidade, cidade, profissão, interesses, voz, crenças e disponibilidade) — nunca conta,
+handle, credencial ou aparelho.
+
 **O gerador de IMAGEM da persona fica fora de `AI_ROLES`** (`backend/app/config.py::ImageCfg`, bloco `ai.image`;
 porta `modules/identity/application/ports.py::ImageGenerator`). Motivo: o saldo da Anthropic não compra imagem, então
 é outro provedor (`simulated` por omissão, `openai` = `gpt-image-2` desde a Fase 17; o `gpt-image-1-mini` sai da API
@@ -125,6 +131,7 @@ só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato 
 | `_RoleGate` | `backend/app/planning/routing.py` (`asyncio.Semaphore` por papel, dentro do limite de `ai_slots`) | prioridade relativa entre funções (não deixar `social` encher a fila do `verify`) |
 | Disjuntor de conta | `backend/app/taskqueue/executor.py:83-233` (classifica cobrança/credencial; primeira falha represa a etapa sem gastar tentativa, pausa a execução, acusa em `/api/health` e na aba IA) | por execução, com liberação em `clear_ai_breaker` |
 | Teto do dia antes da imagem paga | `backend/app/modules/identity/application/persona_images.py::PersonaImageService.conferir_orcamento` (só o gerador pago; o simulado não gasta e não confere) | por dia, o mesmo `ai_max_usd_per_day`; 409 `ai_budget` na rota antes de aceitar o pedido |
+| Saldo da conta (ADR-051) | `backend/app/planning/saldos.py` + `RoutingProvider._saldo` (antes de cada chamada, também no destino do fallback) e `PersonaImageService.conferir_orcamento` | por conta (Anthropic, OpenAI, Gemini): `block_below` barra com `kind="balance"`; `warn_below` só avisa; ver §14 |
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`) | por objetivo |
 
 ## 7. Receitas, fluxos e provas locais
@@ -286,3 +293,66 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
   isso escrito).
 - **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do
   `config.yaml` e reinício do central por braço). O resultado real fica em `relatorio-validacao.md`.
+- **Medido em 28/09 (§18):**
+  - O `gpt-6-luna` custa ~US$ 0,00024 por decisão, contra ~0,0078 do Sonnet 5, e é mais rápido (p95 3,2 s contra
+    4,2 s). Mas perdeu qualidade sem raciocínio: um falso positivo de envio e um bloqueio falso. **Não adotado.**
+  - A imagem real é o `gpt-image-2` médio.
+  - Com o ator barato, o plano no Opus 5.5 (~US$ 0,05 por plano, ~1,9 mil tokens de saída) vira o maior custo.
+  - Depois de testar um modelo, mantenha o preço dele declarado (K-046).
+
+## 14. Saldo das contas de IA — livro-caixa (ADR-051)
+
+Três contas pré-pagas pagam a IA: Anthropic, OpenAI e Google AI Studio (Gemini, em R$). **Nenhuma publica o saldo por
+API** (pesquisa de 28/09). Por isso a plataforma mantém um livro-caixa:
+
+```text
+saldo = âncora − consumo desde a âncora
+âncora = saldo inicial (uma vez) | recarga (saldo de agora + valor comprado) | fechamento diário | erro de cobrança (0)
+```
+
+- **Consumo** (`planning/conciliacao.py`, adaptador `modules/billing/adapters/relatorios_de_custo.py`). Todo o
+  consumo vem do provedor ou do registro de cada chamada; nada depende de ler tela.
+  - **Anthropic:** relatório oficial de uso (`/v1/organizations/usage_report/messages`, baldes de 1 h por modelo),
+    precificado com `ai.prices`. Cobre até a última hora cheia. Validado em 28/09, das 12h às 18h UTC: US$ 5,4946
+    pelo relatório × US$ 5,4693 em `ai_calls`. O cache de 1 h é cobrado a 2× a entrada.
+  - **OpenAI:** relatório oficial de custo (`/v1/organization/costs`, diário, com o dia corrente).
+  - **Google (Gemini):** o consumo medido em cada chamada (`usageMetadata` → `ai_calls`). A chave é só da plataforma,
+    então isso é todo o consumo. O Google não publica consumo nem saldo do pré-pago por API.
+  - Com chave de administrador (`ANTHROPIC_ADMIN_KEY`, `OPENAI_ADMIN_KEY` no `.env`), o consumo de fora da plataforma
+    (console, Claude Code, scripts) entra como `external_usd` = (provedor − base) − (`ai_calls` − base) na mesma
+    janela. A **linha de base** (migração 053) é o que o provedor e `ai_calls` já tinham no instante da âncora.
+- **Laço de 10 min** (`AppState._saldos_loop`): concilia com o provedor e fecha o dia. O roteador e a saúde leem o
+  resultado da última conciliação; nenhuma chamada de modelo espera HTTP de relatório.
+- **Fechamento diário** (`saldos.fechar_dia`): uma âncora com mais de 24 h vira uma nova, com o saldo estimado
+  (`source: "fechamento"`).
+  - Mantém a janela local curta, porque a retenção apaga `ai_calls` com mais de `log_retention_days`.
+  - Absorve o atraso do relatório: o que o provedor informar depois entra na delta do dia seguinte.
+  - Não fecha conta sem crédito nem conta com conciliação falhando.
+- **Recarga** (o único evento humano): `POST /api/ai/balances/{conta}/recharge {"amount": 10}`, ou "Registrar
+  recarga" no cartão. A âncora nova é o saldo de agora + o valor. Uma conta sem crédito recomeça de 0.
+- **Saldo inicial / correção:** `POST /api/ai/balances/{conta}` com `{"balance": 9.25, "source": "console"}`. É
+  necessário uma vez por conta; depois é só conferência opcional.
+- **Moeda:** o livro fica na moeda da conta. Valor em US$ numa conta em R$ é convertido pelo câmbio dela; valor em R$
+  numa conta em US$ é recusado (400).
+- **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga) e
+  `units_per_usd`.
+- **Estados:** `unknown` (sem âncora), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
+  conta para) e `exhausted` (erro de cobrança do provedor). `stale` = conta com chave de administrador sem
+  conciliação nos últimos 30 min (ou com erro): o consumo de fora deixou de entrar.
+- **Saúde:** `ai_balance_blocked`, `ai_balance_low`, `ai_balance_unknown` e `ai_balance_stale`, só de conta em uso.
+- **Painel:**
+  - chips do cabeçalho;
+  - popover "IA em uso", com a conta de cada função;
+  - Configuração › IA: o cartão de cada conta, com a recarga como ação principal, a Situação e a coluna "Conta ·
+    saldo";
+  - azulejo "Saldo de IA" no Diagnóstico;
+  - US$ por conta no custo da semana e da execução (`UsageReport.by_account`);
+  - aviso no Comando.
+- **A IDE** lê em `GET /api/ai/balances` (`?refresh=1` concilia na hora).
+- `ai.balance_consoles` (config.yaml) fixa o link "Abrir console" do AI Studio na conta pré-paga (`?billing=<ID>`).
+
+**Biografia inteira e "o pedido manda" (28/09, decisão do dono).** O bloco `<persona>` passou a levar a biografia
+inteira (`PERSONA_BIO_FIELDS`, 16 campos em ordem de prioridade, orçamento de 350 tokens e no máximo 6 itens por lista)
+e abre com a linha "como usar esta persona" (`USO_DA_PERSONA`): o pedido de quem opera manda no QUE fazer e dizer; a
+persona só dá o jeito — voz, palavras, referências e reações —, sem contrariar nem ampliar o pedido. `SOCIAL_SYSTEM`
+ganhou a mesma regra.

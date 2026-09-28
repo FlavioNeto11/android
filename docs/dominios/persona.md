@@ -84,13 +84,13 @@ Três listas distintas, e não se confundem:
 | Lista | Onde | Caminhos | Para quê |
 |---|---|---|---|
 | `PERSONA_VOICE_TRAITS` | `models.py` | os 15 traços de voz | renderizados no bloco `<persona>` e mostrados na conferência do portal |
-| `PERSONA_BIO_FIELDS` | `models.py` | `home.city`, `work.profession`, `work.education`, `tastes.hobbies` | o que da **biografia** vai ao modelo, como linha curta |
+| `PERSONA_BIO_FIELDS` | `models.py` | desde 28/09, a biografia inteira: moradia, trabalho, formação, hobbies, origem, vida, preferências e o que não gosta (16 campos, em ordem de prioridade) | o que da **biografia** vai ao modelo, uma linha por campo, com orçamento (`ORCAMENTO_DA_BIOGRAFIA_TOKENS` = 350, no máximo 6 itens por lista; `filhos: 0` = "não tem") |
 | `BIOGRAFIA_MINIMA` | `modules/identity/domain/persona.py` | `origin.birthplace`, `home.city`, `work.profession`, `work.education`, `tastes.hobbies` | o mínimo para a biografia contar como **completa** (`generate` e `enrich`) |
 | `PERSONA_RELIGION_FIELDS` / `PERSONA_POLITICS_FIELDS` | `models.py` | os campos de `beliefs.religion` / `beliefs.politics` | seções "religião:" e "política:" do bloco `<persona>`, seguidas da linha de conduta (ADR-048) |
 | `CRENCAS_MINIMAS` | `modules/identity/domain/persona.py` | `beliefs.religion.affiliation`, `beliefs.politics.orientation` | lacuna só do `enrich`; crença **não** conta para a biografia completa |
 
 O bloco `<persona>` (`social/context.py::SocialContextBuilder._persona_block`) leva, nesta ordem: `perfil: @username`,
-`nome da persona`, `idade` (calculada), as linhas de `PERSONA_BIO_FIELDS`, as crenças e a linha `conduta sobre crenças` (ADR-048; só quando há crença), `resumo`, os traços de
+`nome da persona`, `idade` (calculada), a linha `como usar esta persona` (`USO_DA_PERSONA`: o pedido manda no QUE fazer; a persona só dá o jeito), as linhas de `PERSONA_BIO_FIELDS` dentro do orçamento, as crenças e a linha `conduta sobre crenças` (ADR-048; só quando há crença), `resumo`, os traços de
 `PERSONA_VOICE_TRAITS` preenchidos e `instruções da persona` (`persona_prompt`). **Tudo passa por `sem_marcacao`**,
 inclusive nome e resumo: texto de persona gerada por modelo não é mais confiável que uma legenda lida da tela.
 
@@ -246,6 +246,12 @@ revisar e então criar.
 Prova: `simulated` (`backend/tests/test_persona_geracao.py`, inclusive os dois provedores pagos por transporte
 falso). Geração com modelo real: `not_run` (chamada paga; exige autorização).
 
+**Em lote** (28/09): `POST /api/personas/generate/batch` gera 1 a 10 pessoas em segundo plano (concorrência 2),
+cada uma pelo mesmo caminho do rascunho único; o pedido de cada item leva `avoid` (quem já existe e as irmãs do
+lote) e `variation` (o índice), e um nome repetido depois da geração vira falha sem nova chamada. O estado fica
+em memória (perdido num reinício). No painel: "Quantidade" no "Nova persona a partir de um prompt", criar direto
+ou revisar, custo antes; e operações em lote na lista (fotos, completar, grupo, bloquear/reativar, apagar).
+
 ## Imagens (`persona_images`, migração 048)
 
 Uma galeria por pessoa: geradas por provedor de imagem, enviadas pelo painel ou herdadas dos avatares legados. Porta
@@ -397,7 +403,8 @@ do perfil. Códigos e corpos no [adendo v0.27](../api-contract.md#adendo-v027-27
 | `GET/PATCH/DELETE /api/personas/{id}` | pessoa; PATCH por seção; DELETE com as travas |
 | `POST /api/personas/{id}/preview` | testa a voz (já existia) |
 | `POST /api/personas/generate` | rascunho por IA, não gravado |
-| `POST /api/personas/{id}/enrich` | completa o vazio por IA |
+| `POST /api/personas/generate/batch`, `GET …/batch/{id}` | lote de 1 a 10 em segundo plano (202, evento `persona.batch.updated`), criar direto ou revisar ([adendo v0.34](../api-contract.md#adendo-v034-28092026--personas-em-lote)) |
+| `POST /api/personas/{id}/enrich` | completa o vazio por IA; corpo opcional `{instructions}` com o que o dono quer para o que falta (adendo v0.32); painel: "Completar com IA" na guia Persona |
 | `GET /api/personas/{id}/images` | galeria (`PersonaImageDTO[]`) |
 | `POST /api/personas/{id}/images` | JSON `{count}` → gera em segundo plano (202); corpo `image/jpeg`\|`png` → upload (201) |
 | `GET /api/personas/{id}/images/{img}` | os bytes, pelo storage |

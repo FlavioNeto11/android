@@ -11,13 +11,13 @@ import threading
 import time
 from time import monotonic
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError
@@ -62,10 +62,11 @@ from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
 from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import PersonaGenerateBody, PersonaImagesBody
+from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
+                                                     PersonaImagesBody)
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .planning import costs
+from .planning import conciliacao, costs, saldos
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -79,13 +80,15 @@ from .version import agent_version
 from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
+from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
+from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
 from .taskqueue.service import RunError
-from .util import iso_in, new_token, now_iso
+from .util import iso_in, new_token, now_iso, parse_iso, to_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
 
 from .devices.verbs import sem_hibernacao
@@ -292,6 +295,109 @@ async def ai_status(request: Request) -> Any:
     return st(request).ai_status()
 
 
+class LeituraDeSaldo(BaseModel):
+    """Uma leitura do saldo no console do provedor (ADR-051). `observed_at` vazio = agora."""
+    balance: float = Field(ge=-100_000, le=1_000_000)
+    source: Literal["manual", "console"] = "manual"
+    observed_at: str | None = None
+    currency: Literal["USD", "BRL"] | None = None
+    units_per_usd: float | None = Field(None, gt=0, le=1000)
+    note: str | None = Field(None, max_length=300)
+
+
+class RegraDeSaldo(BaseModel):
+    """Limites da conta, na moeda dela. `null` desliga o aviso/bloqueio."""
+    currency: Literal["USD", "BRL"] | None = None
+    units_per_usd: float | None = Field(None, gt=0, le=1000)
+    warn_below: float | None = None
+    block_below: float | None = None
+
+
+class RecargaDeSaldo(BaseModel):
+    """Compra de crédito no console do provedor (ADR-051): soma ao saldo estimado de agora."""
+    amount: float = Field(gt=0, le=100_000)
+    currency: Literal["USD", "BRL"] | None = None
+    note: str | None = Field(None, max_length=300)
+
+
+def _saldos_dto(s: AppState) -> dict[str, object]:
+    contas = [c.as_dict() for c in s.saldos_de_ia()]
+    return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
+            "estimated": True,
+            "note": "Livro-caixa: saldo = última âncora (leitura, recarga ou fechamento diário) menos o consumo desde "
+                    "ela. Anthropic e OpenAI pelo relatório oficial de uso do provedor (a Anthropic de hora em hora); "
+                    "o Gemini pelo consumo medido em cada chamada (usageMetadata), porque a chave é só da plataforma. "
+                    "Recarga: registre em Configuração › IA."}
+
+
+@router.get("/ai/balances")
+async def ai_balances(request: Request, refresh: bool = False) -> dict[str, object]:
+    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga. Com chave de
+    administrador no `.env`, concilia pelo relatório de custo do provedor (cache de 15 min; `refresh=1` força)."""
+    s = st(request)
+    if refresh or conciliacao.precisa_atualizar(s.cfg):
+        await conciliacao.atualizar(s.db, s.cfg, forcar=refresh)
+    return await asyncio.to_thread(_saldos_dto, s)
+
+
+@router.post("/ai/balances/{account}", status_code=201)
+async def ai_balance_reading(request: Request, account: str, body: LeituraDeSaldo) -> dict[str, object]:
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    observado = None
+    if body.observed_at:
+        try:
+            lido = parse_iso(body.observed_at)
+        except ValueError:
+            lido = None
+        if lido is None or lido.tzinfo is None:
+            raise err(400, "invalid_observed_at", "observed_at deve ser ISO-8601 com fuso (ex.: 2026-09-28T15:00:00Z).")
+        observado = to_iso(lido)
+    try:
+        saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
+                                 currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    except ValueError as exc:
+        raise err(400, "invalid_reading", str(exc)) from exc
+    # Concilia JÁ: a primeira conciliação grava a linha de base da leitura, e quanto mais perto do registro, mais
+    # exata (o gasto de fora feito antes da leitura não sai duas vezes).
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
+    return dto
+
+
+@router.post("/ai/balances/{account}/recharge", status_code=201)
+async def ai_balance_recharge(request: Request, account: str, body: RecargaDeSaldo) -> dict[str, object]:
+    """Recarga: concilia antes (o saldo de agora tem de estar em dia), grava a âncora nova e concilia de novo para
+    gravar a linha de base dela."""
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    try:
+        saldos.registrar_recarga(s.db, s.cfg, account, body.amount, currency=body.currency, note=body.note)
+    except LookupError as exc:
+        raise err(409, "no_initial_balance", str(exc)) from exc
+    except ValueError as exc:
+        raise err(400, "invalid_recharge", str(exc)) from exc
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Recarga registrada: {account}", data=dto)
+    return dto
+
+
+@router.put("/ai/balances/{account}")
+async def ai_balance_rule(request: Request, account: str, body: RegraDeSaldo) -> dict[str, object]:
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    saldos.ajustar_regra(s.db, account, **body.model_dump(exclude_unset=True))
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Limites de saldo de IA ajustados: {account}", data=dto)
+    return dto
+
+
 @router.post("/admin/shutdown", status_code=202)
 async def shutdown(request: Request, stop_emulators: bool = False) -> Any:
     """Encerramento gracioso (usado por scripts/stop.ps1): fecha sessões, para o Appium iniciado por nós e,
@@ -487,7 +593,12 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     trocas = s.db.query(
         f"SELECT fallback, requested_model, model, COUNT(*) calls FROM ai_calls WHERE {where}"
         f" AND fallback IS NOT NULL GROUP BY fallback, requested_model, model", params)
+    # Custo por CONTA de IA (ADR-051): de qual saldo o dinheiro saiu — Anthropic, OpenAI ou Google (Gemini). Mesma
+    # regra de conta do saldo (provedor → tipo e host; linha antiga → prefixo do modelo).
+    por_conta = {c: round(v, 4) for c, v in (saldos.gasto_usd_por_conta(s.db, s.cfg, run_id=run_id) if run_id else
+                                             saldos.gasto_usd_por_conta(s.db, s.cfg, iso_in(-days * 86400))).items()}
     return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
+            "by_account": por_conta,
             "fallbacks": [dict(r) for r in trocas],
             "spend_today_usd": costs.spent_today_usd(s.db, prices),
             "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,
@@ -1007,14 +1118,35 @@ async def list_personas(request: Request) -> Any:
 async def create_persona(request: Request, body: PersonaCreate) -> Any:
     """Cria a PESSOA (sem conta em app nenhum). Com `ai.image.on_create`, as primeiras imagens saem em segundo plano
     pelo gerador configurado (simulado por omissão) e chegam pelo evento `persona.image.updated`."""
-    s = st(request)
     try:
-        pessoa = s.social.create_persona(body)
+        return st(request).criar_persona(body)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    if s.persona_images.on_create and s.persona_images.per_persona > 0 and s.persona_images.generator.configured:
-        s.agendar_imagens(pessoa.id, s.persona_images.per_persona)
-    return pessoa
+
+
+# Declaradas antes de `/personas/{persona_id}`: `generate` é caminho literal, nunca um id de persona.
+@router.post("/personas/generate/batch", status_code=202)
+async def generate_persona_batch(request: Request, body: PersonaBatchBody) -> PersonaBatchAccepted:
+    """Personas em LOTE (v0.34): o mesmo pedido, `count` vezes (1 a 10), em segundo plano com concorrência 2. Cada
+    item é uma chamada PAGA pelo papel social, pelo mesmo caminho de `POST /personas/generate`; `create: true` grava
+    cada rascunho válido (com a foto automática). O progresso chega por `persona.batch.updated`; o estado, por
+    `GET /personas/generate/batch/{id}`. Sem provedor de IA, 503 antes de aceitar."""
+    try:
+        lote = st(request).lotes_de_persona.iniciar(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    return PersonaBatchAccepted(batch_id=lote.batch_id, count=lote.count)
+
+
+@router.get("/personas/generate/batch/{batch_id}")
+async def get_persona_batch(request: Request, batch_id: str) -> PersonaBatchDTO:
+    """O estado do lote. Vive na MEMÓRIA do servidor: um reinício o perde (são rascunhos; o que foi criado está no
+    banco), e aí a resposta é 404."""
+    lote = st(request).lotes_de_persona.obter(batch_id)
+    if lote is None:
+        raise err(404, "not_found", "Lote não encontrado: os lotes vivem na memória do servidor e somem num "
+                                    "reinício. As personas já criadas estão na lista.")
+    return lote
 
 
 @router.get("/personas/{persona_id}")
@@ -1100,11 +1232,12 @@ async def generate_persona(request: Request, body: PersonaGenerateBody) -> Perso
 
 
 @router.post("/personas/{persona_id}/enrich")
-async def enrich_persona(request: Request, persona_id: str) -> PersonaDTO:
+async def enrich_persona(request: Request, persona_id: str, body: PersonaEnrichBody | None = None) -> PersonaDTO:
     """Completa SÓ o que está vazio numa persona existente (chamada PAGA). Sem lacuna, devolve a persona sem chamar
-    o modelo; com lacuna, o que já existia nunca é reescrito."""
+    o modelo; com lacuna, o que já existia nunca é reescrito. `instructions` (opcional) dizem ao modelo o que o dono
+    quer para o que falta — é o "gerar por prompt" aplicado a uma persona que já existe."""
     try:
-        return await st(request).social.enrich_persona(persona_id)
+        return await st(request).social.enrich_persona(persona_id, instructions=body.instructions if body else None)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -2446,6 +2579,18 @@ async def resolve_run_targets(request: Request, body: RunTargetsResolveBody) -> 
     Não cria execução, não grava nada e não chama o planejador. Declarada antes de `/runs/{run_id}/{op}`."""
     try:
         return st(request).runs.previa_de_alvos(body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
+
+
+@router.post("/runs/targets/suggest")
+async def suggest_run_targets(request: Request, body: RunTargetsSuggestBody) -> RunTargetsSuggestion:
+    """Modo Automático (ADR-050): quem faz e onde, pelo pedido. Não cria execução. Sem IA quando o texto já diz o
+    destino ou quando o app não usa conta (distribuição pela carga); senão uma chamada do papel `plan` escolhe as
+    personas pelo perfil e o resolvedor põe cada uma no aparelho dela. Declarada antes de `/runs/{run_id}/{op}`."""
+    state = st(request)
+    try:
+        return await Orquestrador(state.runs, state.social_repo).sugerir(body)
     except RunError as exc:
         raise _run_error(exc) from exc
 

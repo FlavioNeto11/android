@@ -33,6 +33,9 @@ import httpx
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..modules.execution.domain.orquestracao import (OrquestracaoInvalida, OrquestracaoOut, PedidoDeOrquestracao,
+                                                     orquestracao_from_json, orquestracao_system,
+                                                     orquestracao_user)
 from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
                                                           RefineRequest, refine_system, refine_user,
                                                           refinement_from_json)
@@ -190,6 +193,10 @@ class OpenAICompatProvider:
                           status=resp.status_code, model=model)
         if resp.status_code == 402:
             raise AIError(f"Sem crédito em {self.role.endpoint}.", kind="billing", status=resp.status_code, model=model)
+        if resp.status_code == 429 and "insufficient_quota" in texto:
+            # A OpenAI devolve a FALTA DE CRÉDITO como 429 com `insufficient_quota`, não como 402. Tratar como
+            # limite de taxa repetia a chamada à toa e nunca acionava o disjuntor nem o saldo 0 da conta (ADR-051).
+            raise AIError(f"Sem crédito em {self.role.endpoint}.", kind="billing", status=resp.status_code, model=model)
         if resp.status_code == 429:
             raise AIError(f"Limite de requisições de {self.role.endpoint} atingido.", retryable=True,
                           status=resp.status_code, model=model)
@@ -270,6 +277,18 @@ class OpenAICompatProvider:
         try:
             return refinement_from_json(self._texto(msg)), usage
         except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
+
+    # ------------------------------------------------------------------ quem faz (ADR-050)
+    async def orchestrate_targets(self, req: PedidoDeOrquestracao) -> tuple[OrquestracaoOut, Usage]:
+        modelo = self.models.get("plan", self.model)
+        esquema = strict_schema(OrquestracaoOut)
+        msg, usage = await self._create(role="plan", model=modelo, system=orquestracao_system(prompts.UNTRUSTED_RULE),
+                                        content=[{"type": "text", "text": orquestracao_user(req) + self._json_hint(modelo, esquema)}],
+                                        max_tokens=4000, schema=esquema, schema_name="quem_faz")
+        try:
+            return orquestracao_from_json(self._texto(msg)), usage
+        except OrquestracaoInvalida as exc:
             raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
 
     # ------------------------------------------------------------------ decisão

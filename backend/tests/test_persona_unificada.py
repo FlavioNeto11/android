@@ -309,3 +309,51 @@ async def test_rotas_canonicas_e_apelidos_da_persona(tmp_path: Path) -> None:
             # Apagar pela rota antiga é apagar a pessoa também.
             assert (await c.delete(f"/api/personas/{pessoa['id']}")).status_code == 204
             assert (await c.get(f"/api/instagram/profiles/{pessoa['id']}")).status_code == 404
+
+
+def test_bloco_persona_leva_a_biografia_inteira_com_orcamento_e_a_regra_de_que_o_pedido_manda() -> None:
+    """Decisão do dono de 28/09: tudo o que a pessoa é influencia a fala — origem, moradia, trabalho, vida, gostos e
+    o que não gosta — mas o pedido manda no que fazer. A biografia entra na ordem de prioridade até o orçamento, cada
+    lista com no máximo `_ITENS_POR_LISTA` itens, e `filhos: 0` é "não tem", não vazio."""
+    from app.social.context import _ITENS_POR_LISTA, linhas_da_biografia
+
+    bio = PersonaBiography.model_validate({
+        "origin": {"birthplace": "Caruaru (PE)", "hometown": "Recife", "nationality": "brasileira"},
+        "home": {"city": "Recife", "state": "PE", "country": "Brasil", "residence": "apartamento com a irmã"},
+        "work": {"profession": "barista", "employer": "café do bairro", "education": ["Gastronomia"]},
+        "life": {"marital_status": "solteira", "children": 0, "history": ["mudou para Recife aos 18"]},
+        "tastes": {"hobbies": [f"hobby {n}" for n in range(12)], "preferences": ["café coado"],
+                   "dislikes": ["fila", "calor sem ventilador"]},
+    }).model_dump(exclude_none=True)
+    texto = "\n".join(linhas_da_biografia(bio))
+    for esperado in ("cidade onde mora: Recife", "profissão: barista", "formação: Gastronomia", "nasceu em: Caruaru (PE)",
+                     "cresceu em: Recife", "mora: apartamento com a irmã", "estado civil: solteira",
+                     "filhos: não tem", "onde trabalha: café do bairro", "gosta de: café coado",
+                     "não gosta de: fila; calor sem ventilador", "fatos marcantes: mudou para Recife aos 18",
+                     "estado onde mora: PE", "país onde mora: Brasil", "nacionalidade: brasileira"):
+        assert esperado in texto, esperado
+    hobbies = next(l for l in texto.split("\n") if l.startswith("hobbies: "))
+    assert hobbies.count(";") == _ITENS_POR_LISTA - 1                   # só os primeiros itens entram
+    # Ordem de prioridade: o essencial primeiro, o acessório no fim.
+    assert texto.index("cidade onde mora") < texto.index("nasceu em") < texto.index("nacionalidade")
+
+    # Orçamento apertado: entra o que cabe, na ordem, sem cortar linha no meio.
+    curto = linhas_da_biografia(bio, orcamento=12)
+    assert curto and curto[0].startswith("cidade onde mora: ") and len(curto) < 5
+    assert all(": " in l and not l.endswith(":") for l in curto)
+
+
+async def test_bloco_persona_traz_como_usar_so_quando_ha_persona(tmp_path: Path) -> None:
+    svc, _repo, _secrets, db = build(tmp_path)
+    try:
+        pessoa = svc.create_persona(PersonaCreate(
+            name="Nina Brito", traits=PersonaTraits(tone="leve"),
+            biography=PersonaBiography.model_validate({"tastes": {"dislikes": ["fila"]}})))
+        texto = svc.context(pessoa.id).rendered
+        assert texto.count("como usar esta persona: ") == 1 and "manda no QUE fazer" in texto
+        assert "não gosta de: fila" in texto
+        assert texto.index("como usar esta persona") < texto.index("não gosta de") < texto.index("tom: leve")
+        vazia = svc.create_persona(PersonaCreate(name="Sem Voz"))
+        assert "como usar esta persona" not in svc.context(vazia.id).rendered
+    finally:
+        db.close()

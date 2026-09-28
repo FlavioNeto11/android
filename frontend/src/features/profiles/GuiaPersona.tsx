@@ -5,9 +5,15 @@
  * Cada seção da biografia salva com um PATCH só dela (o servidor mescla; `null` apaga a chave). O que da biografia
  * vai ao modelo (`PERSONA_BIO_FIELDS`) leva a marca "vai ao modelo". As Crenças (ADR-048) também vão, inteiras, e
  * têm seção própria e rica (`CrencasPersona.tsx`).
+ *
+ * Desde 28/09 a guia é o MAPA da pessoa (`MapaDaPessoa.tsx`): retrato no topo, índice fixo ao lado, seções que abrem
+ * lendo e editam uma a uma — não uma coluna de formulários.
  */
-import { ChevronRight, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  Briefcase, ChevronRight, Heart, HeartHandshake, IdCard, Landmark, MapPin, MessageCircle, Settings2, Sparkles,
+  TriangleAlert,
+} from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import type { PersonaBiography, PersonaDTO, PersonaPatchRequest, PersonaTraits, SocialDraft } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -18,14 +24,19 @@ import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { cx } from '../../lib/format';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { toast, toastError } from '../../store/toasts';
-import { SecaoCrencas } from './CrencasPersona';
+import { SecaoCrencas, politicaDe, religiaoDe } from './CrencasPersona';
 import { Carregando } from './detalheComum';
+import {
+  Dados, Etiquetas, GostaNaoGosta, IndiceDoMapa, LinhaDoTempo, RetratoDaPessoa, idadeDe, type DadoLido, type ItemDoMapa,
+} from './MapaDaPessoa';
 import {
   CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
   PhraseColumns, ROTULO_DE_VOZ, Ruler, TagList,
 } from './PersonaVisual';
 import { PERSONA_BIO_FIELDS, type Pessoa } from './pessoa';
-import { SecaoEditavel, comoTexto, paraLista, paraNumero, paraTexto, type CampoDef } from './SecaoEditavel';
+import {
+  SecaoEditavel, comoTexto, paraLista, paraNumero, paraTexto, preenchimentoDe, type CampoDef, type Preenchimento,
+} from './SecaoEditavel';
 import styles from './Profiles.module.css';
 
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,14 +50,34 @@ function bio(chave: `${Bloco}.${string}`, rotulo: string, extra: Partial<CampoDe
 }
 
 interface DefSecao {
+  id: string;
   titulo: string;
+  icone: typeof Briefcase;
   subtitulo?: string;
   campos: CampoDef[];
+  /** A seção como se LÊ no mapa (a edição continua sendo os `campos`). */
+  leitura: (p: PersonaDTO) => ReactNode;
+  largo?: boolean;
+}
+
+/** Um campo da biografia como dado lido, com a marca do que vai ao modelo tirada da mesma lista. */
+function dado(p: PersonaDTO, chave: `${Bloco}.${string}`, rotulo: string, extra: Partial<DadoLido> = {}): DadoLido {
+  const v = valorDaBio(p, chave);
+  const valor = Array.isArray(v) ? (v.length > 0 ? <Etiquetas itens={v as string[]} /> : null)
+    : v === null || v === undefined || v === '' ? null : String(v);
+  return { rotulo, valor, vaiAoModelo: PERSONA_BIO_FIELDS.has(chave), ...extra };
 }
 
 const SECOES_DA_BIOGRAFIA: DefSecao[] = [
   {
+    id: 'mapa-origem',
     titulo: 'Origem e casa',
+    icone: MapPin,
+    leitura: (p) => <Dados itens={[
+      dado(p, 'origin.birthplace', 'Nasceu em'), dado(p, 'origin.hometown', 'Cresceu em'),
+      dado(p, 'origin.nationality', 'Nacionalidade'), dado(p, 'home.city', 'Mora em'), dado(p, 'home.state', 'Estado'),
+      dado(p, 'home.country', 'País'), dado(p, 'home.residence', 'Moradia', { largo: true }),
+    ]} />,
     campos: [
       bio('origin.birthplace', 'Nasceu em'), bio('origin.hometown', 'Cidade onde cresceu'),
       bio('origin.nationality', 'Nacionalidade'), bio('home.city', 'Cidade onde mora'), bio('home.state', 'Estado'),
@@ -54,22 +85,49 @@ const SECOES_DA_BIOGRAFIA: DefSecao[] = [
     ],
   },
   {
+    id: 'mapa-trabalho',
     titulo: 'Trabalho',
+    icone: Briefcase,
+    leitura: (p) => <Dados itens={[
+      dado(p, 'work.profession', 'Profissão'), dado(p, 'work.employer', 'Onde trabalha'),
+      dado(p, 'work.education', 'Formação', { largo: true }),
+    ]} />,
     campos: [
       bio('work.profession', 'Profissão'), bio('work.employer', 'Onde trabalha'),
       bio('work.education', 'Formação', { tipo: 'lista', dica: 'Uma por linha.' }),
     ],
   },
   {
+    id: 'mapa-vida',
     titulo: 'Vida',
+    icone: HeartHandshake,
+    leitura: (p) => {
+      const filhos = p.biography?.life?.children;
+      const marcos = p.biography?.life?.history ?? [];
+      return <Dados itens={[
+        dado(p, 'life.marital_status', 'Estado civil'),
+        { ...dado(p, 'life.children', 'Filhos'), valor: filhos === 0 ? 'não tem' : filhos ?? null },
+        { ...dado(p, 'life.history', 'Marcos da vida', { largo: true }),
+          valor: marcos.length > 0 ? <LinhaDoTempo marcos={marcos} /> : null },
+      ]} />;
+    },
     campos: [
       bio('life.marital_status', 'Estado civil'), bio('life.children', 'Filhos', { tipo: 'numero' }),
       bio('life.history', 'Marcos da vida', { tipo: 'lista', dica: 'Um por linha.' }),
     ],
   },
   {
+    id: 'mapa-gostos',
     titulo: 'Gostos',
+    icone: Heart,
+    largo: true,
     subtitulo: 'Os interesses continuam na voz (abaixo): é de lá que o modelo os lê.',
+    leitura: (p) => (
+      <>
+        <Dados itens={[dado(p, 'tastes.hobbies', 'Hobbies', { largo: true })]} />
+        <GostaNaoGosta gosta={p.biography?.tastes?.preferences} naoGosta={p.biography?.tastes?.dislikes} />
+      </>
+    ),
     campos: [
       bio('tastes.hobbies', 'Hobbies', { tipo: 'lista', dica: 'Um por linha.' }),
       bio('tastes.preferences', 'Preferências', { tipo: 'lista', dica: 'Uma por linha.' }),
@@ -141,41 +199,139 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
   if (erro && !persona) return <LoadErrorState what="a persona" error={erro} onRetry={() => setTentativa((t) => t + 1)} />;
   if (!persona) return <Carregando />;
 
+  const identidade = {
+    name: persona.name ?? '', first_name: persona.first_name ?? '', last_name: persona.last_name ?? '',
+    birth_date: persona.birth_date ?? '', gender: persona.gender ?? '', locale: persona.locale ?? '',
+  };
+  const iniciaisDe = (s: DefSecao) => Object.fromEntries(s.campos.map((c) => [c.chave, comoTexto(valorDaBio(persona, c.chave))]));
+  const religiao = religiaoDe(persona.biography);
+  const politica = politicaDe(persona.biography);
+  const crencas: Preenchimento = religiao && politica ? 'completa' : religiao || politica ? 'parcial' : 'vazia';
+  const lacunasDeVoz = persona.voice_gaps ?? [];
+  const totalDeVoz = Object.keys(ROTULO_DE_VOZ).length;
+  const voz: Preenchimento = lacunasDeVoz.length === 0 ? 'completa' : lacunasDeVoz.length >= totalDeVoz ? 'vazia' : 'parcial';
+  const itens: ItemDoMapa[] = [
+    { id: 'mapa-identidade', titulo: 'Identidade', icone: IdCard, estado: preenchimentoDe(CAMPOS_DE_IDENTIDADE, identidade),
+      vaiAoModelo: true },
+    ...SECOES_DA_BIOGRAFIA.map((s) => ({
+      id: s.id, titulo: s.titulo, icone: s.icone, estado: preenchimentoDe(s.campos, iniciaisDe(s)),
+      vaiAoModelo: s.campos.some((c) => PERSONA_BIO_FIELDS.has(c.chave)),
+    })),
+    { id: 'mapa-crencas', titulo: 'Crenças', icone: Landmark, estado: crencas, vaiAoModelo: true },
+    { id: 'mapa-voz', titulo: 'Voz', icone: MessageCircle, estado: voz, vaiAoModelo: true },
+  ];
+  const idade = idadeDe(persona.birth_date, persona.biography?.approx_age);
+
   return (
     <div className={styles.stack}>
       <p className={styles.detail}>
-        Cada seção salva sozinha. Da biografia, só o que tem a marca <Badge size="sm" tone="info">{VAI_AO_MODELO}</Badge>{' '}
-        entra no texto que o modelo recebe (cidade, profissão, formação, hobbies e as crenças); o resto fica guardado.
+        Cada seção abre em leitura; “Editar” muda só ela. O que tem a marca{' '}
+        <Badge size="sm" tone="info">{VAI_AO_MODELO}</Badge> vai ao modelo e molda como a pessoa fala e se comporta nos
+        pedidos; foto, e-mail e a data de nascimento crua ficam guardados.
       </p>
-      <div className={styles.secoes}>
-        <SecaoEditavel
-          titulo="Identidade"
-          campos={CAMPOS_DE_IDENTIDADE}
-          iniciais={{
-            name: persona.name ?? '', first_name: persona.first_name ?? '', last_name: persona.last_name ?? '',
-            birth_date: persona.birth_date ?? '', gender: persona.gender ?? '', locale: persona.locale ?? '',
-          }}
-          invalido={(v) => (!v.name?.trim() ? 'O nome não pode ficar vazio.'
-            : v.birth_date?.trim() && !DATA_ISO.test(v.birth_date.trim()) ? 'Nascimento no formato AAAA-MM-DD.' : null)}
-          onSalvar={(v) => salvar({
-            name: v.name?.trim(), first_name: paraTexto(v.first_name), last_name: paraTexto(v.last_name),
-            birth_date: paraTexto(v.birth_date), gender: paraTexto(v.gender), locale: paraTexto(v.locale),
-          }, 'Identidade salva', 'Não foi possível salvar a identidade')}
-        />
-        {SECOES_DA_BIOGRAFIA.map((s) => (
-          <SecaoEditavel
-            key={s.titulo}
-            titulo={s.titulo}
-            subtitulo={s.subtitulo}
-            campos={s.campos}
-            iniciais={Object.fromEntries(s.campos.map((c) => [c.chave, comoTexto(valorDaBio(persona, c.chave))]))}
-            onSalvar={(v) => salvar(patchDaSecao(s.campos, v), `${s.titulo}: salvo`, `Não foi possível salvar ${s.titulo.toLowerCase()}`)}
-          />
-        ))}
-        <SecaoCrencas biography={persona.biography}
-                      onSalvar={(patch, qual) => gravar(patch, `${qual}: salvo`, `Não foi possível salvar ${qual.toLowerCase()}`)} />
+      <div className={styles.mapa}>
+        <IndiceDoMapa itens={itens} />
+        <div className={styles.mapaConteudo}>
+          <RetratoDaPessoa persona={persona} total={itens.length}
+                           preenchidas={itens.filter((i) => i.estado === 'completa').length}
+                           acoes={<CompletarComIA persona={persona}
+                                                  onCompleta={async (p) => { setPersona(p); await onChanged(); }} />} />
+          <div className={styles.secoesMapa}>
+            <SecaoEditavel
+              id="mapa-identidade"
+              titulo="Identidade"
+              icone={<IdCard size={16} aria-hidden />}
+              campos={CAMPOS_DE_IDENTIDADE}
+              iniciais={identidade}
+              leitura={<Dados itens={[
+                { rotulo: 'Nome', valor: persona.name, vaiAoModelo: true },
+                { rotulo: 'Primeiro nome', valor: persona.first_name },
+                { rotulo: 'Sobrenome', valor: persona.last_name },
+                { rotulo: 'Idade', valor: idade !== null ? `${idade} anos${persona.birth_date ? ` · ${persona.birth_date}` : ''}` : null,
+                  vaiAoModelo: true },
+                { rotulo: 'Gênero', valor: persona.gender },
+                { rotulo: 'Idioma', valor: persona.locale },
+              ]} />}
+              invalido={(v) => (!v.name?.trim() ? 'O nome não pode ficar vazio.'
+                : v.birth_date?.trim() && !DATA_ISO.test(v.birth_date.trim()) ? 'Nascimento no formato AAAA-MM-DD.' : null)}
+              onSalvar={(v) => salvar({
+                name: v.name?.trim(), first_name: paraTexto(v.first_name), last_name: paraTexto(v.last_name),
+                birth_date: paraTexto(v.birth_date), gender: paraTexto(v.gender), locale: paraTexto(v.locale),
+              }, 'Identidade salva', 'Não foi possível salvar a identidade')}
+            />
+            {SECOES_DA_BIOGRAFIA.map((s) => (
+              <div key={s.id} className={cx(s.largo && styles.secaoLarga)}>
+                <SecaoEditavel
+                  id={s.id}
+                  titulo={s.titulo}
+                  icone={<s.icone size={16} aria-hidden />}
+                  subtitulo={s.subtitulo}
+                  campos={s.campos}
+                  iniciais={iniciaisDe(s)}
+                  leitura={s.leitura(persona)}
+                  onSalvar={(v) => salvar(patchDaSecao(s.campos, v), `${s.titulo}: salvo`, `Não foi possível salvar ${s.titulo.toLowerCase()}`)}
+                />
+              </div>
+            ))}
+          </div>
+          <div id="mapa-crencas" className={styles.ancora}>
+            <SecaoCrencas biography={persona.biography}
+                          onSalvar={(patch, qual) => gravar(patch, `${qual}: salvo`, `Não foi possível salvar ${qual.toLowerCase()}`)} />
+          </div>
+          <div id="mapa-voz" className={styles.ancora}>
+            <VozAtual persona={persona} onSalvar={(patch) => salvar(patch, 'Voz atualizada', 'Não foi possível salvar a voz')} />
+          </div>
+        </div>
       </div>
-      <VozAtual persona={persona} onSalvar={(patch) => salvar(patch, 'Voz atualizada', 'Não foi possível salvar a voz')} />
+    </div>
+  );
+}
+
+/**
+ * "Completar com IA": o gerar-por-prompt aplicado a uma persona que JÁ existe (pedido do dono de 28/09), sem formulário
+ * novo. Completa só o vazio — voz, biografia e crenças (ADR-048) — e o que já está preenchido não muda; a instrução
+ * opcional diz o que o dono quer para o que falta. Chamada paga ao provedor, pelo papel social.
+ */
+function CompletarComIA({ persona, onCompleta }: { persona: PersonaDTO; onCompleta: (p: PersonaDTO) => Promise<void> }) {
+  const [instrucao, setInstrucao] = useState('');
+  const [completando, setCompletando] = useState(false);
+
+  async function completar(): Promise<void> {
+    setCompletando(true);
+    try {
+      const nova = await api.enrichPersona(persona.id, instrucao.trim() || undefined);
+      // Sem lacuna o servidor nem chama o modelo e devolve a mesma persona: dizer isso é melhor que um "sucesso" mudo.
+      if (nova.updated_at === persona.updated_at) {
+        toast({ tone: 'info', title: 'Nada para completar',
+                message: 'Voz, biografia e crenças já estão preenchidas; o que existe não é reescrito.' });
+      } else {
+        toast({ tone: 'success', title: 'Persona completada com IA' });
+        setInstrucao('');
+      }
+      await onCompleta(nova);
+    } catch (e) {
+      toastError('Não foi possível completar a persona', e);
+    } finally {
+      setCompletando(false);
+    }
+  }
+
+  // Faixa no rodapé do retrato: o que falta no mapa se completa dali, numa linha — não um cartão alto ao lado.
+  return (
+    <div className={styles.completar}>
+      <p className={styles.completarTitulo}><Sparkles size={14} aria-hidden /> Completar com IA</p>
+      <Field label="Instruções para o que falta" unit="opcional" className={styles.completarCampo}
+             hint="Ex.: é evangélica e vai ao culto toda semana; trabalha como enfermeira. Sem senhas nem códigos.">
+        {({ id, describedBy }) => (
+          <TextInput id={id} small aria-describedby={describedBy} value={instrucao} maxLength={500}
+                     placeholder="Instrução opcional para o que falta — ex.: é evangélica e vai ao culto toda semana"
+                     onChange={(e) => setInstrucao(e.target.value)} />
+        )}
+      </Field>
+      <Button size="sm" icon={Sparkles} loading={completando} onClick={() => void completar()}>Completar com IA</Button>
+      <p className={styles.completarNota}>
+        Preenche só o que está vazio (voz, biografia e crenças); o que já existe não muda. Chamada paga ao provedor de IA.
+      </p>
     </div>
   );
 }

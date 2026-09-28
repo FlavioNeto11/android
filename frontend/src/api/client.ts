@@ -116,6 +116,13 @@ import type {
   DistributionPreview,
   RefineCommandRequest,
   RunSuccessorRequest,
+  AiBalanceAccount,
+  AiBalanceReadingIn,
+  AiBalanceRechargeIn,
+  AiBalanceRuleIn,
+  AiBalancesReport,
+  RunTargetsSuggestRequest,
+  RunTargetsSuggestion,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -440,6 +447,15 @@ export const api = {
     request<DistributionPreview>('GET', '/runs/distribution', { query: { count, app_id: appId }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
+  /** Saldo estimado das contas de IA (ADR-051) e os dois ajustes: nova leitura do console e limites. */
+  aiBalances: (refresh = false, signal?: AbortSignal) =>
+    request<AiBalancesReport>('GET', '/ai/balances', { query: refresh ? { refresh: 1 } : undefined, signal, timeoutMs: 45_000 }),
+  aiBalanceReading: (account: AiBalanceAccount, body: AiBalanceReadingIn) =>
+    request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}`, { body }),
+  aiBalanceRecharge: (account: AiBalanceAccount, body: AiBalanceRechargeIn) =>
+    request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}/recharge`, { body, timeoutMs: 45_000 }),
+  aiBalanceRule: (account: AiBalanceAccount, body: AiBalanceRuleIn) =>
+    request<AiBalancesReport>('PUT', `/ai/balances/${enc(account)}`, { body }),
 
   /** Custo de IA de UMA execução (`{run_id}`) ou dos últimos N dias (`{days}`). */
   usage: (scope: UsageQuery, signal?: AbortSignal) => request<UsageReport>('GET', '/usage', { query: scope, signal }),
@@ -580,7 +596,11 @@ export const api = {
   generatePersona: (body: PersonaGenerateRequest) =>
     request<PersonaCreateRequest>('POST', '/personas/generate', { body, timeoutMs: 120_000 }),
   /** Chamada PAGA quando há lacuna: completa só o que está vazio. */
-  enrichPersona: (id: string) => request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, { timeoutMs: 120_000 }),
+  /** Completa SÓ o vazio (chamada paga). `instructions` = o que o dono quer para o que falta (adendo v0.32). */
+  enrichPersona: (id: string, instructions?: string) =>
+    request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, {
+      body: instructions ? { instructions } : undefined, timeoutMs: 120_000,
+    }),
   listPersonaImages: (id: string) => request<PersonaImage[]>('GET', `/personas/${enc(id)}/images`),
   /** 202: gera em segundo plano; cada imagem chega por `persona.image.updated`. */
   generatePersonaImages: (id: string, count: number) =>
@@ -777,6 +797,10 @@ export const api = {
    *  antiga é cancelada apontando para ela. */
   runSuccessor: (runId: string, body: RunSuccessorRequest) =>
     request<RunSummary>('POST', `/runs/${enc(runId)}/successor`, { body, timeoutMs: 120_000 }),
+  /** ADR-050: quem faz e onde, pelo pedido (modo Automático). Não cria execução; pode custar uma chamada de IA
+   *  (papel `plan`) quando a escolha depende do perfil das personas. */
+  suggestRunTargets: (body: RunTargetsSuggestRequest, signal?: AbortSignal) =>
+    request<RunTargetsSuggestion>('POST', '/runs/targets/suggest', { body, signal, timeoutMs: 120_000 }),
   /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
   listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
     request<RunPage>('GET', '/runs', {
@@ -810,3 +834,16 @@ export function wsUrl(lastEventId: number): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}${API_BASE}/ws?last_event_id=${enc(String(lastEventId))}`;
 }
+
+// ---------------------------------------------------------------- personas em lote (v0.34)
+// Bloco próprio no fim do arquivo: o lote tem só estas duas rotas, e o objeto `api` é mexido por outras frentes.
+import type { PersonaBatch, PersonaBatchAccepted, PersonaBatchRequest } from './types';
+
+export const apiLote = {
+  /** 202: gera em segundo plano (concorrência 2); cada item é uma chamada PAGA pelo papel `social`. */
+  generatePersonaBatch: (body: PersonaBatchRequest) =>
+    request<PersonaBatchAccepted>('POST', '/personas/generate/batch', { body }),
+  /** Estado do lote; 404 quando o servidor reiniciou (o lote vive na memória dele). */
+  getPersonaBatch: (id: string, signal?: AbortSignal) =>
+    request<PersonaBatch>('GET', `/personas/generate/batch/${enc(id)}`, { signal }),
+};

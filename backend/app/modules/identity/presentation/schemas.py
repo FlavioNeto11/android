@@ -163,6 +163,29 @@ class PersonaGenerateBody(BaseModel):
     constraints: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
+class PersonaBatchBody(BaseModel):
+    """`POST /personas/generate/batch`: o MESMO pedido de `PersonaGenerateBody`, N vezes (1 a 10), em segundo plano.
+    Cada item é uma chamada PAGA pelo papel social. `create: true` grava cada rascunho válido como persona (e dispara
+    a foto automática de `ai.image.on_create`); `false` deixa os rascunhos no estado do lote para a pessoa revisar e
+    criar os escolhidos por `POST /personas`."""
+
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(min_length=3, max_length=2000)
+    count: int = Field(ge=1, le=10)
+    locale: str | None = Field(default=None, max_length=20)
+    constraints: dict[str, str] = Field(default_factory=dict, max_length=20)
+    create: bool = False
+
+
+class PersonaEnrichBody(BaseModel):
+    """`POST /personas/{id}/enrich` com instruções: o que o dono quer para o que FALTA ("ela é evangélica, vai ao
+    culto toda semana"). Continua só completando o vazio — instrução não reescreve o que já existe. Sem corpo, o
+    enriquecimento é o de sempre."""
+
+    model_config = ConfigDict(extra="forbid")
+    instructions: str | None = Field(default=None, max_length=500)
+
+
 class PersonaImagesBody(BaseModel):
     """`POST /personas/{id}/images` com JSON: quantas imagens gerar agora (1 a 3). Corpo cru `image/jpeg|png` na
     mesma rota é upload, não geração."""

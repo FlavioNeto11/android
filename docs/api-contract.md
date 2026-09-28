@@ -256,6 +256,11 @@ interface Snapshot {
 | `GET /api/metrics` | – | `Metrics` |
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
+| `GET /api/usage` (v0.28) | – | `UsageReport.by_account`: US$ por conta de IA (`anthropic`, `openai`, `gemini`) na janela ou na execução (ADR-051) |
+| `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
+| `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
+| `POST /api/ai/balances/{conta}/recharge` | `{amount > 0, currency?, note?}` | 201, o mesmo relatório (âncora nova = saldo de agora + valor); 409 `no_initial_balance`, 400 `invalid_recharge` |
+| `PUT /api/ai/balances/{conta}` | `{warn_below?, block_below?, units_per_usd?, currency?}` (`null` desliga) | o mesmo relatório |
 | `GET /api/apps` | – | `AppConfig[]` |
 | `POST /api/apps` | `Omit<AppConfig,'id'|'builtin'>` | `AppConfig` |
 | `PUT /api/apps/{id}` | idem parcial | `AppConfig` |
@@ -2200,3 +2205,64 @@ Corpos em `backend/app/taskqueue/assistente.py` (fora de `models.py`, como os do
   crença sem `affiliation`/`orientation`, sem sobrescrever o que existe.
 
 Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §17.
+
+## Adendo v0.32 (28/09/2026) — completar a persona com instruções do dono
+
+Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa persona existente, sem formulário novo
+([persona § Geração por IA](dominios/persona.md#geração-por-ia-post-apipersonasgenerate); extensão do ADR-041/048).
+
+- `POST /api/personas/{id}/enrich` aceita corpo **opcional** `PersonaEnrichBody {instructions?: string (≤ 500)}`
+  (`extra="forbid"`). Sem corpo, como antes. Com `instructions`, o texto vai ao modelo como pedido do dono ("para o que
+  falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
+- A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
+- Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
+  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+- Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
+  paga; `api.enrichPersona(id, instructions?)`.
+
+Provas: `simulated` (`backend/tests/test_persona_geracao.py::test_enriquecer_com_instrucoes_leva_o_pedido_do_dono_e_recusa_segredo_antes_de_chamar`,
+`::test_rotas_de_geracao_e_enriquecimento`; vitest `ProfileDetail.test.tsx` "Completar com IA …").
+
+## Adendo v0.33 (28/09/2026) — modo Automático: quem faz e onde (ADR-050)
+
+[ADR-050](decisoes.md#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão).
+Corpos em `backend/app/taskqueue/orquestrador.py`.
+
+- `POST /api/runs/targets/suggest {command, max_personas?: 1..10 = 3}` → 200 `RunTargetsSuggestion`:
+  `{modo: "ia"|"texto"|"distribuir"|"nenhuma", app_id, targets: [ResolvedTargetDTO], escolhidas: [{profile_id, nome,
+  motivo, aderencia: "alta"|"media"|"baixa", instance_id, servidor}], descartadas: [{profile_id, nome, motivo}],
+  nao_avaliaveis: [{profile_id, nome, falta}], alerta_conduta: str|null, perguntas: [str], questions (do
+  resolvedor), command_sem_destinos, resumo, warnings}`. Não cria execução.
+  - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
+  - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
+  - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
+    `targets` e `escolhidas` vêm vazios.
+  - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
+  - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
+  - Declarada antes de `/runs/{run_id}/{op}`.
+- Confirmar é `POST /api/runs` com os `targets` ecoados (agrupados por persona), como na prévia por persona.
+
+## Adendo v0.34 (28/09/2026) — personas em lote
+
+Pedido do dono de 28/09: "Nova persona a partir de um prompt" em lote e operações em lote na lista
+([persona § Geração por IA](dominios/persona.md#geração-por-ia-post-apipersonasgenerate)).
+
+- `POST /api/personas/generate/batch {prompt, count: 1..10, locale?, constraints?, create: bool = false}` → **202**
+  `{batch_id, count}`; sem provedor de IA, 503 `ai_unavailable` antes do 202; `count` fora de 1..10 ou campo a mais →
+  422. Em segundo plano, concorrência 2, cada item pelo mesmo caminho de `generate_persona_draft` (mesmas regras e a
+  mesma recusa de segredo). Com `create: true`, cada rascunho válido vira persona pela porta única
+  (`AppState.criar_persona`, a mesma do `POST /api/personas`), com a imagem de `ai.image.on_create`.
+- **Variedade:** cada item leva no pedido `avoid` (as pessoas que já existem e as irmãs do lote) e `variation` (o
+  índice); depois de gerar, nome repetido vira `failed` sem nova chamada paga. O simulado usa o índice na semente.
+- `GET /api/personas/generate/batch/{id}` → `{batch_id, prompt, count, create, items: [{index, status:
+  pending|generating|ready|created|failed, name, persona_id, draft, error}], done, created_at}`. Estado em **memória**
+  (os últimos 20 lotes terminados): perdido num reinício → 404. Rascunhos `ready` ficam no estado para o painel criar
+  os escolhidos por `POST /api/personas`.
+- Evento `persona.batch.updated` `{batch_id, index, status, name, persona_id, error, finished, count, done}`.
+- Teto de gasto do dia: a primeira recusa por orçamento encerra o lote; os itens restantes viram `failed` com o motivo.
+- **Operações em lote no painel** (sem rota nova; as rotas por persona, três de cada vez, com resumo por pessoa):
+  gerar mais fotos (`POST /personas/{id}/images {count}`), completar com IA (`POST /personas/{id}/enrich`), grupo de
+  acesso, bloquear/reativar e apagar (confirmação digitada "apagar N"; as travas do `DELETE` voltam por pessoa).
+
+Provas: `simulated` (`backend/tests/test_persona_lote.py`; vitest `NovaPersona`/`ProfilesPage`); `real` no relatório
+de validação §17.

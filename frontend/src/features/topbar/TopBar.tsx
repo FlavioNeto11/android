@@ -18,14 +18,18 @@ import {
   Smartphone,
   Stethoscope,
   UserRound,
+  Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { AiStatus, Health } from '../../api/types';
+import type { AiBalance, AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { KvList, KvRow } from '../../components/JsonTree';
+import {
+  balanceOfRole, balanceShortName, balanceStateLabel, balanceTone, balanceUsage, headerBalances, money,
+} from '../../lib/aiBalance';
 import { Popover } from '../../components/Popover';
 import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -371,6 +375,7 @@ function AiBadge() {
       ) : (
         <AiDetailsPopover ai={ai} features={features} />
       )}
+      <AiBalanceChips balances={ai.balances} />
       {ai.sends_data_externally ? (
         <Tooltip content={EXTERNAL_DATA_NOTICE}>
           <span className={styles.notice} tabIndex={0} role="img" aria-label={EXTERNAL_DATA_NOTICE}>
@@ -378,6 +383,28 @@ function AiBadge() {
           </span>
         </Tooltip>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Saldo estimado de cada conta de IA em uso (ADR-051). Só aparece a conta que paga alguma função (ou que está
+ * barrada): o chip é alerta, não enfeite — verde discreto quando tudo vai bem, cor quando pede ação.
+ */
+function AiBalanceChips({ balances }: { balances: AiBalance[] | undefined }) {
+  const list = headerBalances(balances);
+  if (list.length === 0) return null;
+  return (
+    <div className={styles.balances} role="group" aria-label="Saldo das contas de IA">
+      {list.map((b) => (
+        <Tooltip key={b.account} content={`${b.label}: ${b.message} Usada por: ${balanceUsage(b)}. Detalhes em Configuração › IA.`}>
+          <span tabIndex={0} className={styles.balanceChip} data-tone={balanceTone(b)}>
+            <Wallet size={12} aria-hidden />
+            <span>{balanceShortName(b.account)}</span>
+            <strong>{b.estimated_balance === null ? '?' : money(b.estimated_balance, b.currency)}</strong>
+          </span>
+        </Tooltip>
+      ))}
     </div>
   );
 }
@@ -409,7 +436,32 @@ function AiDetailsPopover({ ai, features: healthFeatures }: { ai: AiStatus; feat
         <>
           <h4 className={styles.aiGroupTitle}>Modelo por função</h4>
           <KvList>
-            {models.map((m) => <KvRow key={m.key} label={m.label}><span className="mono">{m.value}</span></KvRow>)}
+            {models.map((m) => {
+              // Quem paga esta função (ADR-051): o modelo sozinho não diz de qual saldo o custo sai.
+              const conta = balanceOfRole(ai.balances, m.key);
+              return (
+                <KvRow key={m.key} label={m.label}>
+                  <span className="mono">{m.value}</span>
+                  {conta ? <span className={styles.aiAccount} data-tone={balanceTone(conta)}> · {balanceShortName(conta.account)}</span> : null}
+                </KvRow>
+              );
+            })}
+          </KvList>
+        </>
+      ) : null}
+      {ai.balances && ai.balances.length > 0 ? (
+        <>
+          <h4 className={styles.aiGroupTitle}>Saldo das contas (estimado)</h4>
+          <KvList>
+            {ai.balances.map((b) => (
+              <KvRow key={b.account} label={balanceShortName(b.account)}>
+                <span className={styles.aiAccount} data-tone={balanceTone(b)}>
+                  {b.estimated_balance === null ? 'sem leitura' : money(b.estimated_balance, b.currency)}
+                  {b.state !== 'ok' ? ` · ${balanceStateLabel(b.state)}` : ''}
+                </span>
+                <br /><small className={styles.aiNote}>{balanceUsage(b)}</small>
+              </KvRow>
+            ))}
           </KvList>
         </>
       ) : null}

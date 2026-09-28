@@ -20,6 +20,66 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     depois `stop.ps1 -Simular` e o `deploy.ps1` completo, e conferir o health `ok` sem intervenção. Então encerrar à
     força só o `python -m app.main` (o filho do supervisor) e conferir que ele volta `ok`. Aí, marcar o K-039 como
     superado.
+- **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
+  modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").
+  Retrato no topo (fatos que levam à seção, medidor, Completar com IA), índice fixo com estado e marca "IA", seções
+  que abrem lendo e editam uma a uma. Prova: `simulated` (vitest 636, capturas CDP 1366/1024/375 com persona rica e
+  vazia) e conferência no Chrome do dono depois do deploy (André: 7/7, marca em todos os campos da biografia). O
+  Appium órfão (K-039) voltou no deploy e foi limpo à mão; a correção definitiva está numa tarefa separada.
+- **Saldo das contas de IA (ADR-051): IMPLANTADO em 28/09 (`3fb43d3`, migrações 052 e 053)** (pedido do dono:
+  acompanhar Anthropic, OpenAI e Gemini na plataforma, com a IDE vendo e os saldos valendo como regra). Saldo
+  estimado = última leitura do console − gasto de `ai_calls` desde ela − gasto de fora que o provedor reporta depois
+  da leitura (conciliação com `ANTHROPIC_ADMIN_KEY`/`OPENAI_ADMIN_KEY`, gravadas no `.env` do central a pedido do dono).
+  Aviso (`ai_balance_*` na saúde, chips no cabeçalho), bloqueio por conta (`kind="balance"`, desligado de fábrica) e
+  cartão em Configuração › IA. A IDE lê em `GET /api/ai/balances` e registra leitura lendo o console no Chrome.
+  - `real` (28/09, central): leituras registradas pela IDE às 16:16–16:18 UTC (Anthropic US$ 5,19, OpenAI US$ 8,25,
+    Gemini R$ 29,37); depois do deploy da 053 as três estimativas batem com o console, com a linha de base gravada
+    (OpenAI: 0,4076 do provedor e 0,122 local); painel conferido no navegador. Conciliação real também em cópia do
+    banco (15:52 UTC).
+  - `simulated`: suíte backend 2614 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`), testes de
+    saldo em PostgreSQL 17 local, frontend 633 ok.
+  - `not_run`: bloqueio real com chamada paga.
+  - **Livro-caixa: substitui a leitura de tela (28/09).** A extensão coletora (`b6e99c0`) foi rejeitada pelo dono e
+    removida. Saldo = âncora − consumo:
+    - Anthropic pelo `usage_report` horário (validado: 5,4946 × 5,4693 US$ em 6 h);
+    - OpenAI pelo `organization/costs`;
+    - Gemini por `ai_calls`.
+    Um laço de 10 min concilia e fecha o dia, e a recarga é o único gesto humano. "Desatualizado" = conciliação
+    falhando (a pendência das 72 h deixou de existir). `ai.balance_consoles.gemini` está fixado no config.yaml do
+    central.
+  - **Saldo em todo lugar que mostra IA: IMPLANTADO em 28/09 (`3db70f9`)**: popover "IA em uso", Configuração › IA
+    (Situação e Por função), azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo (`UsageReport.by_account`)
+    e aviso no Comando. `real`: conferido no painel do central (popover e Diagnóstico). Google: a API do Gemini não
+    publica custo nem saldo; o custo do Gemini só aparece pelo `ai_calls` quando ele é usado (conciliação `not_run`,
+    depende da exportação de faturamento para BigQuery, decisão do dono).
+  - **Achados:** o `cost_report` da Anthropic só tem dias fechados (o `usage_report` horário resolve); a OpenAI manda a falta de crédito como 429
+    `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
+    só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
+  - **Decisão do dono pendente:** o valor de `block_below` por conta. Opcional: exportação do BigQuery para conciliar
+    o Gemini, se a chave passar a ser compartilhada.
+- **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
+  ([relatório §18](relatorio-validacao.md)).
+  - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova
+    (`on_create`).
+  - **Ator e verificador seguem Sonnet 5, Haiku e Opus 5.5:** o `gpt-6-luna` fez 12/14 contra 13/14, a 51% do
+    custo.
+  - **Próximo:** 17.10 (cascata para ator barato) e 17.11 (`eval_run` resiste a queda).
+  - **Decisões do dono pendentes:**
+    - gerar a imagem real das 14 personas existentes (~US$ 0,75);
+    - critério para as alavancas só da Anthropic (plano e escalonamento no Sonnet 5).
+  - Evidência bruta e scripts da bateria: `data/fase17/` (fora do Git).
+  - A chave da OpenAI é do "Default project", com lista de modelos permitidos. `gpt-6-luna` e `gpt-image-2` foram
+    liberados em 28/09; a organização segue "Identity rejected" na verificação.
+- **Modo Automático do Comando (ADR-050): IMPLANTADO em 28/09 (`b0f2c07`, junto com o "Completar com IA com
+  instruções" da evolução 2, `467248a`)** (pedido do dono: o sistema decide quem faz e onde pelo pedido, pela fila e
+  pela aderência do perfil). `POST /api/runs/targets/suggest` + "Quem faz e onde" no Comando; modos manuais em
+  "escolher manualmente". Crença é coerência, não alvo de persuasão; propaganda/voto → `alerta_conduta` (ADR-048).
+  `real`: primeira chamada (`ai_calls` 2233) com as três personas vivas sem crença → "não avaliáveis"; depois,
+  pelo Chrome, "Completar com IA" nas três (2236–2238) e o mesmo pedido escolheu o **André** (católico não praticante)
+  e descartou Bruno e Lucas (sem religião) — 2239. A execução planejada `f55c04` espera o @ da prima (dado do dono;
+  executar manda mensagem real: `not_run`). Relatório §19. **Próximo ajuste:** app citado pelo nome ("no Instagram") ainda não restringe as
+  candidatas (`_app_do_comando` só casa por habilidade). K-039 voltou nos três deploys do dia (tarefa sugerida à
+  parte).
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes

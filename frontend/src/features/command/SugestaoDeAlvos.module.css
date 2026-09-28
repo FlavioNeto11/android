@@ -1,0 +1,156 @@
+/* "Quem faz e onde" (ADR-050): mesma família visual do assistente do comando — ajuda, não recusa. */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 120px), var(--surface-1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.titulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-1);
+  font-weight: 650;
+}
+
+.titulo svg { color: var(--accent-text); }
+
+.fechar { margin-left: auto; }
+
+.resumo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.linha {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-1);
+}
+
+.linha > svg { color: var(--text-3); }
+
+.onde {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.motivo {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--warning-text);
+  font-size: var(--fs-sm);
+}
+
+.aviso svg { flex: none; margin-top: 2px; }
+
+.erro {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+
+.erro svg { flex: none; margin-top: 2px; }
+
+.faltam {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.faltamIcone { color: var(--info-text); vertical-align: -2px; }
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.falta { color: var(--text-3); }
+
+.descartadas {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.descartadas summary {
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.descartadas ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  padding-left: var(--sp-4);
+}
+
+.rodape {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 560px) {
+  .box { padding: var(--sp-3); }
+  .onde { margin-left: 0; width: 100%; }
+}

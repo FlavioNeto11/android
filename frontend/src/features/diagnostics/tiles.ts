@@ -1,3 +1,5 @@
+import type { AiBalance } from '../../api/types';
+import { balanceShortName, balanceStateLabel, balanceTone, balancesByUrgency, money } from '../../lib/aiBalance';
 import type { Tone } from '../../lib/status';
 import { formatGb, formatPercent, ratio } from '../../lib/format';
 import { formatUsd as formatUsdRaw } from '../usage/usage';
@@ -7,7 +9,7 @@ import { formatUsd as formatUsdRaw } from '../usage/usage';
  * de relance "está tudo bem?" sem descer 17 mil pixels de JSON. Puro (sem React) para caber em teste de unidade.
  */
 
-export type DecisionTileKey = 'health' | 'cost' | 'devices' | 'machine' | 'acceleration';
+export type DecisionTileKey = 'health' | 'cost' | 'balance' | 'devices' | 'machine' | 'acceleration';
 
 export interface DecisionTile {
   key: DecisionTileKey;
@@ -38,6 +40,21 @@ export function costTile(spendTodayUsd: number | null | undefined, dailyLimitUsd
   const value = spend === null ? '—' : formatUsd(spend);
   const sub = hasLimit ? `de ${formatUsd(dailyLimitUsd)} hoje (teto)` : 'sem teto diário configurado';
   return { key: 'cost', title: 'Custo de IA hoje', value, sub, tone, anchor: 'diag-custo' };
+}
+
+/** Saldo das contas de IA (ADR-051): mostra a conta EM USO mais urgente; as outras vão no subtítulo. */
+export function balanceTile(balances: AiBalance[] | null | undefined): DecisionTile {
+  const lista = balancesByUrgency(balances);
+  const pior = lista[0];
+  if (!pior) {
+    return { key: 'balance', title: 'Saldo de IA', value: '—', sub: 'nenhuma conta paga em uso', tone: 'muted', anchor: 'diag-custo' };
+  }
+  const tom = balanceTone(pior);
+  const tone: Tone = tom === 'neutral' ? 'muted' : tom;
+  const valor = pior.estimated_balance === null ? 'sem leitura' : money(pior.estimated_balance, pior.currency);
+  const outras = lista.slice(1).map((b) => `${balanceShortName(b.account)} ${b.estimated_balance === null ? '?' : money(b.estimated_balance, b.currency)}`);
+  const sub = [`${balanceShortName(pior.account)} · ${balanceStateLabel(pior.state)}`, ...outras].join(' · ');
+  return { key: 'balance', title: 'Saldo de IA', value: valor, sub, tone, anchor: 'diag-custo' };
 }
 
 export function devicesTile(online: number, maxOnline: number | null | undefined, estimatedMax: number | null | undefined): DecisionTile {
@@ -93,6 +110,7 @@ export interface DecisionTilesInput {
   diskFreeGb?: number | null;
   diskTotalGb?: number | null;
   accelOk: boolean | null;
+  balances?: AiBalance[] | null;
 }
 
 /** Ordem fixa: Saúde, Custo, Aparelhos, Máquina, Aceleração — do que mais importa pro que é mais um detalhe. */
@@ -100,6 +118,7 @@ export function buildDecisionTiles(input: DecisionTilesInput): DecisionTile[] {
   return [
     healthTile(input.problemsCount, input.healthStatus),
     costTile(input.spendTodayUsd, input.dailyLimitUsd),
+    balanceTile(input.balances),
     devicesTile(input.onlineDevices, input.maxOnlineDevices, input.estimatedMaxDevices),
     machineTile(input.cpuPercent, input.memAvailableGb, input.memTotalGb, input.diskFreeGb, input.diskTotalGb),
     accelerationTile(input.accelOk),

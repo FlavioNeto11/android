@@ -46,8 +46,9 @@ from .modules.skills.infrastructure.secret_screen import RedactionSecretScreen
 from .modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
-                     OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
+                     OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
+from .planning import conciliacao, saldos
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, package_of_provider, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -63,6 +64,7 @@ from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
+from .social.persona_batch import LotesDePersona
 from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
@@ -78,6 +80,9 @@ RETENTATIVA_DE_ENTREGA_S = 24 * 3600
 from .version import VERSION, commit_em_execucao  # noqa: F401 - reexportado
 
 log = logging.getLogger("poc")
+#: Intervalo do livro-caixa das contas de IA (conciliação + fechamento diário). O relatório de uso da Anthropic é
+#: horário e o da OpenAI diário: 10 min basta para a hora cheia aparecer logo, sem martelar a API de administração.
+SALDOS_INTERVALO_S = 600
 # `VERSION` e `commit_em_execucao` moram em `version.py` e são reexportados aqui: o agente do worker
 # precisa dos dois e não pode importar `state` (ele traz banco, IA e a aplicação inteira).
 
@@ -269,6 +274,10 @@ class AppState:
                                     usage_sink=lambda u: self.repo.add_usage(None, None, u),
                                     # efeito social pendente de aparelho ALHEIO não é meu para marcar como incerto
                                     owner_id=cfg.owner_id)
+        # Personas em lote (v0.34): estado em memória; cada criação passa pela MESMA porta de `POST /personas` (com a
+        # foto automática), e a tarefa entra em `_bg` para o `stop()` cancelá-la como as demais.
+        self.lotes_de_persona = LotesDePersona(self.social, self.bus, criar=self.criar_persona,
+                                               ao_agendar=lambda t: self._bg.append(t))
         # Provedores de sessão POR PACOTE (fase K1): cada app com conta gerenciada traz no manifesto a fábrica do
         # seu (o do Instagram é o login determinístico, fora do laço da IA, com a senha só pelo canal sensível).
         # Fabricado na primeira pergunta, com as dependências DESTA composição, e o mesmo para todo mundo depois.
@@ -1807,6 +1816,7 @@ class AppState:
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+            self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura.
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
         else:
@@ -1849,6 +1859,16 @@ class AppState:
                               data={"profile_id": persona_id})
 
         self._bg.append(asyncio.create_task(_gerar(), name=f"imagens-{persona_id}"))
+
+    def criar_persona(self, body: PersonaCreate) -> PersonaDTO:
+        """A porta ÚNICA de criação de pessoa: `POST /personas` e o lote com `create: true`. Com
+        `ai.image.on_create`, as primeiras imagens saem em segundo plano pelo gerador configurado — morar só na rota
+        deixaria a persona criada pelo lote sem foto."""
+        pessoa = self.social.create_persona(body)
+        imagens = self.persona_images
+        if imagens.on_create and imagens.per_persona > 0 and imagens.generator.configured:
+            self.agendar_imagens(pessoa.id, imagens.per_persona)
+        return pessoa
 
     # ------------------------------------------------------------------ relógio
     def conferir_relogio(self) -> float:
@@ -2091,6 +2111,52 @@ class AppState:
             limpos.append(str(r["run_id"]))
         return limpos
 
+    # ------------------------------------------------------------------ saldo das contas de IA (ADR-051)
+    def saldos_de_ia(self) -> list[saldos.SaldoConta]:
+        return saldos.estado(self.db, self.cfg)
+
+    async def _saldos_loop(self) -> None:
+        """Livro-caixa das contas de IA (ADR-051): a cada `SALDOS_INTERVALO_S` concilia com o relatório oficial do
+        provedor e fecha o dia das contas com âncora velha. Sem isto a conciliação só andava quando alguém abria o
+        painel — e o roteador e a saúde leem o que ela deixou."""
+        while True:
+            try:
+                await conciliacao.atualizar(self.db, self.cfg, forcar=True)
+                if await asyncio.to_thread(saldos.fechar_dia, self.db, self.cfg):
+                    await conciliacao.atualizar(self.db, self.cfg, forcar=True)     # linha de base da âncora nova
+            except Exception:  # noqa: BLE001 - relatório fora do ar não derruba o processo; a saúde mostra
+                log.exception("livro-caixa das contas de IA")
+            await asyncio.sleep(SALDOS_INTERVALO_S)
+
+    def _problemas_de_saldo(self) -> list[Problem]:
+        """Só conta EM USO vira problema: uma conta sem função nem imagem apontada para ela não para nada."""
+        try:
+            contas = self.saldos_de_ia()
+        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa do relatório de saldo
+            log.exception("não foi possível calcular os saldos de IA")
+            return []
+        out: list[Problem] = []
+        for c in contas:
+            if not c.em_uso:
+                continue
+            usa = ", ".join(c.roles + (["imagem"] if c.image else []))
+            if c.state in ("blocked", "exhausted"):
+                out.append(Problem(code="ai_balance_blocked", message=f"{c.label}: {c.message}",
+                                   hint=f"Usada por: {usa}. Recarregue no console ({c.console}) e registre o saldo "
+                                        "novo em Configuração › IA (ou POST /api/ai/balances/<conta>)."))
+            elif c.state == "low":
+                out.append(Problem(code="ai_balance_low", message=f"{c.label}: {c.message}",
+                                   hint=f"Usada por: {usa}. Recarregue antes de chegar ao limite de bloqueio."))
+            elif c.state == "unknown":
+                out.append(Problem(code="ai_balance_unknown", message=f"{c.label}: sem leitura de saldo registrada.",
+                                   hint=f"Usada por: {usa}. Registre o saldo do console em Configuração › IA."))
+            elif c.stale:
+                out.append(Problem(code="ai_balance_stale", message=f"{c.label}: {c.message}",
+                                   hint="O relatório oficial de uso do provedor não respondeu nos últimos "
+                                        f"{saldos.CONCILIACAO_VELHA_MIN} min: o gasto de fora da plataforma não está "
+                                        "entrando. Confira a chave de administrador no .env."))
+        return out
+
     # ------------------------------------------------------------------ saúde
     def ai_status(self) -> AiStatus:
         """`provider.status()` só sabe da chave; o disjuntor de conta (crédito/credencial recusados em tempo de
@@ -2099,8 +2165,14 @@ class AppState:
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
             status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
+        try:
+            contas = [c.as_dict() for c in self.saldos_de_ia()]
+        except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa do relatório de saldo
+            log.exception("não foi possível calcular os saldos de IA")
+            contas = []
         # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
-        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg)})
+        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg),
+                                         "balances": contas})
 
     def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
         """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?
@@ -2284,10 +2356,11 @@ class AppState:
                     hint="Em 100 % as chamadas de IA passam a ser recusadas até o dia virar (UTC) ou o teto subir."))
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
-            code = "ai_billing" if breaker.kind == "billing" else "ai_auth_failed"
+            code = {"billing": "ai_billing", "balance": "ai_balance_blocked"}.get(breaker.kind, "ai_auth_failed")
             problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
+        problems.extend(self._problemas_de_saldo())
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

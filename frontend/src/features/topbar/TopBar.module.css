@@ -248,6 +248,69 @@ button.counter:focus-visible {
   min-width: 0;
 }
 
+/* Saldo das contas de IA (ADR-051): chips compactos; a cor só aparece quando pede ação. */
+.balances {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.balanceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.balanceChip strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.balanceChip[data-tone='warning'] {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.balanceChip[data-tone='danger'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.balanceChip[data-tone='warning'] strong,
+.balanceChip[data-tone='danger'] strong {
+  color: inherit;
+}
+
+@media (max-width: 1100px) {
+  /* Em tela estreita fica só o valor: o nome da conta está no tooltip. */
+  .balanceChip > span {
+    display: none;
+  }
+}
+
+/* Conta que paga a função, no popover "IA em uso" (ADR-051): a cor só aparece quando pede ação. */
+.aiAccount {
+  color: var(--text-3);
+}
+
+.aiAccount[data-tone='warning'] {
+  color: var(--warning-text);
+}
+
+.aiAccount[data-tone='danger'] {
+  color: var(--danger-text);
+}
+
 .aiModel {
   max-width: 190px;
 }

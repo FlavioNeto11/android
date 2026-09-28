@@ -187,6 +187,11 @@ class CountingProvider:
         draft, _ = await self.inner.generate_social_response(req)
         return draft, Usage(calls=1, role="social", model="simulado")
 
+    async def orchestrate_targets(self, req: Any) -> Any:
+        self.calls.append({"role": "plan", "kind": "orquestracao", "candidatas": len(req.cartoes)})
+        out, _ = await self.inner.orchestrate_targets(req)
+        return out, Usage(calls=1, role="plan", model="simulado")
+
     async def refine_command(self, req: Any) -> Any:
         self.calls.append({"role": "plan", "kind": "refine", "answers": len(req.answers), "pending": len(req.pending)})
         refinado, _ = await self.inner.refine_command(req)

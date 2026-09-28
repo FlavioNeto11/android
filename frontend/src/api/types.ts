@@ -347,6 +347,8 @@ interface AiStatus {
   spend_limit_run_usd?: number | null;
   // v0.27 — gerador de IMAGEM da persona: porta própria, fora dos papéis de `roles`.
   image?: AiImageStatus | null;
+  // v0.28 — saldo estimado de cada conta de IA (ADR-051), o mesmo de GET /api/ai/balances.
+  balances?: AiBalance[];
 }
 
 interface AiImageStatus {
@@ -437,6 +439,8 @@ interface UsageGroup { role: 'plan' | 'decide' | 'verify' | 'social'; model: str
   fresh: number; cache_read: number; cache_write: number; output: number;        // tokens
   with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
 interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;
+  // v0.28 — custo por CONTA de IA (anthropic, openai, gemini), em US$ (ADR-051), da janela ou da execução.
+  by_account?: Record<string, number>;
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
   steps_driven_by: Record<string, number>; unpriced_models: string[];
   // v0.3 — item 7.2. `fallbacks`: quantas chamadas foram servidas por outro modelo, e por quê ('refusal' = recusa
@@ -2109,4 +2113,152 @@ export interface CommandRefinement {
 export interface RunSuccessorRequest {
   command: string;
   mode: RunMode;
+}
+
+// =====================================================================================
+// Saldo das contas de IA (ADR-051). Estimativa: última leitura do console − gasto em `ai_calls` desde ela.
+export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini';
+export type AiBalanceState = 'unknown' | 'ok' | 'low' | 'blocked' | 'exhausted';
+
+export interface AiBalance {
+  account: AiBalanceAccount;
+  label: string;
+  console: string;                 // onde ler o saldo de verdade
+  currency: 'USD' | 'BRL' | string;
+  units_per_usd: number;           // câmbio: quanto da moeda vale US$ 1
+  warn_below: number | null;
+  block_below: number | null;
+  key_configured: boolean;
+  roles: string[];                 // funções de IA que esta conta paga hoje
+  image: boolean;                  // o gerador de imagem da persona usa esta conta
+  in_use: boolean;
+  anchor_balance: number | null;
+  anchor_at: string | null;
+  anchor_source: 'manual' | 'console' | 'recarga' | 'fechamento' | 'provider_error' | string | null;
+  anchor_note: string | null;
+  spent_since_usd: number;
+  estimated_balance: number | null;
+  estimated_balance_usd: number | null;
+  age_h: number | null;
+  // Conciliação pelo relatório de custo do provedor (chave de administrador no .env; Gemini não tem).
+  admin_key_configured: boolean;
+  provider_usd: number | null;     // o que o provedor cobrou na janela da leitura
+  external_usd: number;            // além do registrado aqui; já sai do saldo estimado
+  reconciled_at: string | null;
+  reconcile_error: string | null;
+  state: AiBalanceState;
+  stale: boolean;                  // com chave de administrador: sem conciliação recente (ou com erro)
+  message: string;
+}
+
+export interface AiBalancesReport {
+  accounts: AiBalance[];
+  blocked: AiBalanceAccount[];
+  estimated: true;
+  note: string;
+}
+
+export interface AiBalanceReadingIn {
+  balance: number;
+  source?: 'manual' | 'console';
+  observed_at?: string | null;
+  note?: string | null;
+}
+
+export interface AiBalanceRuleIn {
+  currency?: 'USD' | 'BRL';
+  units_per_usd?: number;
+  warn_below?: number | null;
+  block_below?: number | null;
+}
+
+/** Compra de crédito no console do provedor: soma ao saldo estimado de agora (livro-caixa, ADR-051). */
+export interface AiBalanceRechargeIn {
+  amount: number;
+  currency?: 'USD' | 'BRL';
+  note?: string | null;
+}
+
+// ---- Modo Automático: quem faz e onde (ADR-050) ----------------------------------------------------------------------
+// Bloco próprio, no fim do arquivo, como o do assistente do comando.
+
+export interface RunTargetsSuggestRequest {
+  command: string;
+  max_personas?: number;
+}
+
+export interface PersonaEscolhida {
+  profile_id: string;
+  nome: string;
+  motivo: string;
+  aderencia: 'alta' | 'media' | 'baixa';
+  instance_id: string | null;
+  servidor: string | null;
+}
+
+export interface PersonaDescartada {
+  profile_id: string;
+  nome: string;
+  motivo: string;
+}
+
+export interface PersonaNaoAvaliavel {
+  profile_id: string;
+  nome: string;
+  falta: string;
+}
+
+/** A sugestão do modo Automático. `modo`: `ia` (pelo perfil), `texto` (o comando dizia), `distribuir` (app sem conta,
+ *  pela carga) ou `nenhuma` (sem o que sugerir — ver `perguntas`/`warnings`). */
+export interface RunTargetsSuggestion {
+  modo: 'ia' | 'texto' | 'distribuir' | 'nenhuma';
+  app_id: string | null;
+  targets: ResolvedTarget[];
+  escolhidas: PersonaEscolhida[];
+  descartadas: PersonaDescartada[];
+  nao_avaliaveis: PersonaNaoAvaliavel[];
+  alerta_conduta: string | null;
+  perguntas: string[];
+  questions: TargetQuestion[];
+  command_sem_destinos: string;
+  resumo: string;
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------- personas em lote (v0.34)
+/** `POST /personas/generate/batch`: o mesmo pedido de `generate`, `count` vezes (1 a 10). `create: true` grava cada
+ *  rascunho válido; `false` deixa os rascunhos no estado do lote para revisar. */
+export interface PersonaBatchRequest extends PersonaGenerateRequest {
+  count: number;
+  create?: boolean;
+}
+
+/** 202 do lote: o progresso chega por `persona.batch.updated`; o estado, por `GET …/batch/{batch_id}`. */
+export interface PersonaBatchAccepted {
+  batch_id: string;
+  count: number;
+}
+
+export type PersonaBatchItemStatus = 'pending' | 'generating' | 'ready' | 'created' | 'failed';
+
+export interface PersonaBatchItem {
+  index: number;
+  status: PersonaBatchItemStatus;
+  name: string | null;
+  /** Só em `created`. */
+  persona_id: string | null;
+  /** Só em `ready` (lote sem `create`): o corpo de `POST /personas` para criar a escolhida. */
+  draft: PersonaCreateRequest | null;
+  error: string | null;
+}
+
+/** Estado do lote. Vive na memória do servidor: um reinício o perde (404). */
+export interface PersonaBatch {
+  batch_id: string;
+  prompt: string;
+  count: number;
+  create: boolean;
+  items: PersonaBatchItem[];
+  done: boolean;
+  created_at: string;
 }
