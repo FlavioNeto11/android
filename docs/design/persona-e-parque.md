@@ -2,9 +2,9 @@
 
 **Documento de design.** 27/09/2026. Base: commit `57f0468` (`main`; worktree `arq`, branch
 `claude/arquitetura-habilidades`). Produção no `5c98735`, migração `046`.
-**Estado (27/09, atualizado):** ondas **A** (047, 048; `8c19d5a`) e **D** (050; `11e985e`, `c59baed`) feitas no
-branch `claude/arquitetura-habilidades`; ADR-041 e ADR-042 registrados, ADR-045 (onda D) ainda por registrar; **B**,
-**C** e **E** propostas.
+**Estado (27/09, atualizado):** ondas **A** (047, 048; `8c19d5a`), **B** (049; `4b95592`) e **D** (050; `11e985e`,
+`c59baed`) feitas no branch `claude/arquitetura-habilidades` e integradas em `f72da91`; ADR-040, 041, 042 e 045
+registrados; **C** e **E** propostas.
 Nada implantado. O que a onda A entregou e onde divergiu do texto está na [§13](#13-plano-por-ondas); o doc principal
 vigente é [`dominios/persona.md`](../dominios/persona.md). Onde o texto diz **proposto**, a coisa ainda não existe; o
 resto foi conferido no código do commit base.
@@ -1111,8 +1111,8 @@ autorização do dono; até lá nada sai do branch.
 |---|---|---|---|---|---|
 | **W0** | este documento; linha no índice; ADRs 040–046 rascunhados na §16 | `docs/design/persona-e-parque.md`, `docs/README.md` | `python scripts/docs-check.py` = 0 erros | coordenador aprova | `real` (docs-check) |
 | **WA** | 047 e 048; `PersonaDTO` v2, `biography`/`visual`/`generation`, PATCH por seção; `/api/personas` canônico com apelidos; `dados_disponiveis`; porta `ImageGenerator`, adaptadores simulado e OpenAI Images, `PersonaImageSpec`, rotas de imagem, importador dos 8 avatares; `generate`/`enrich`; `ai.image` e `AiStatus.image`; porta de sessão por existência de conta | `social/{repository,service,context}.py`, `models.py`, `modules/identity/{domain,application,adapters,presentation}`, `planning/{provider,routing,simulated_provider}.py`, `config.py`, `state.py`, `api.py`, `scripts/personas_*.py`, `storage.py` | `test_persona_raiz_migracao.py`, `test_persona_modelo_rico.py`, `test_persona_geracao.py`, `test_persona_imagens.py`, `test_arquitetura.py` (adapters), `test_contrato_http.py`, `test_cobertura_de_rotas.py`; `test_social_memory.py:274` aposentado | suíte verde nos dois dialetos; 14 personas dobradas no sintético; imagem simulada gerada pela rota e servida como avatar | `simulated`; imagem real e enriquecimento real `not_run` (chave, autorização) |
-| **WB** | 049; conta única na API e no serviço; `credential_row/session_row/set_session` lendo e gravando nas tabelas de conta com a mesma assinatura; `SessionProvider` com consentimento; opção A: `RunCreate` sem `credentials`, catálogo nos prompts, `type_secret` por (perfil, app, host), `open_url` com hosts da conta, `tem_credencial` por etapa; `rekey` na conta; `apps_overview` por `account_sessions`; docs e regras | `taskqueue/{service,repository,executor}.py`, `planning/prompts.py`, `planning/provider.py`, `automation/tools.py`, `social/*`, `integrations/instagram/authentication.py`, `modules/identity/*`, `security/rekey.py`, `apps_overview.py`, `CLAUDE.md`, `.claude/rules/segredos-e-mundo-real.md` | `test_conta_unica_migracao.py`, `test_credenciais_da_conta.py`, `test_instagram_auth.py` e `test_sessao_com_validade.py` sem mudar asserção, `test_perfil_multiapp.py`, `test_previa_tela_sensivel.py`, DSL fixtures | login determinístico verde lendo pela conta; execução com `{perfil_email}` resolvido por aparelho e `type_secret` da conta do Chrome no simulado; nenhuma escrita nas tabelas antigas | `simulated`; login real com credencial da conta e o portal `22d65f` `not_run` (conta real, autorização) |
-| **WD** | 050; `POST /api/instances` local com guardas; `android_overrides` no `create`; `AvdManager.delete`; `DELETE /api/instances/{id}`; "Criar aparelho" no contrato | `devices/{manager,avd}.py`, `commands/despacho.py`, `workers/local.py`, `api.py`, `config.py`, `models.py` | `test_provisionamento_local.py`, `test_cobertura_de_rotas.py`, `test_contrato_http.py` | instância dinâmica criada, listada, recarregada por `seed()`, apagada, com `EmulatorBackend` falso na porta 5640 | `simulated`; criação real de AVD `not_run` (host de produção) |
+| **WB** (feita, [13.2](#132-onda-b-feita-2709)) | 049; conta única na API e no serviço; `credential_row/session_row/set_session` lendo e gravando nas tabelas de conta com a mesma assinatura; `SessionProvider` com consentimento; opção A: `RunCreate` sem `credentials`, catálogo nos prompts, `type_secret` por (perfil, app, host), `open_url` com hosts da conta, `tem_credencial` por etapa; `rekey` na conta; `apps_overview` por `account_sessions`; docs e regras | `taskqueue/{service,repository,executor}.py`, `planning/prompts.py`, `planning/provider.py`, `automation/tools.py`, `social/*`, `integrations/instagram/authentication.py`, `modules/identity/*`, `security/rekey.py`, `apps_overview.py`, `CLAUDE.md`, `.claude/rules/segredos-e-mundo-real.md` | `test_conta_unica_migracao.py`, `test_credenciais_da_conta.py`, `test_instagram_auth.py` e `test_sessao_com_validade.py` sem mudar asserção, `test_perfil_multiapp.py`, `test_previa_tela_sensivel.py`, DSL fixtures | login determinístico verde lendo pela conta; execução com `{perfil_email}` resolvido por aparelho e `type_secret` da conta do Chrome no simulado; nenhuma escrita nas tabelas antigas | `simulated`; login real com credencial da conta e o portal `22d65f` `not_run` (conta real, autorização) |
+| **WD** (feita, [13.3](#133-onda-d-feita-2709)) | 050; `POST /api/instances` local com guardas; `android_overrides` no `create`; `AvdManager.delete`; `DELETE /api/instances/{id}`; "Criar aparelho" no contrato | `devices/{manager,avd}.py`, `commands/despacho.py`, `workers/local.py`, `api.py`, `config.py`, `models.py` | `test_provisionamento_local.py`, `test_cobertura_de_rotas.py`, `test_contrato_http.py` | instância dinâmica criada, listada, recarregada por `seed()`, apagada, com `EmulatorBackend` falso na porta 5640 | `simulated`; criação real de AVD `not_run` (host de produção) |
 | **WC** | fase 1: chamadores do §7.2 em APIs de lista com os índices 1:1; depois 051; `bind` sem tomar; `RunCreate` com `targets`/`device_policy`/interseção; `resolver_alvos`; `TargetExtractor`; `POST /api/runs/targets/resolve`; 409 `alvos_nao_confirmados`; porta com `profile_id` do objetivo; `_sessao_desmentida` pelo objetivo | `social/repository.py`, `state.py`, `taskqueue/{service,scheduler}.py`, `modules/execution/{domain/alvos.py,application/alvos_no_texto.py}`, `modules/identity/infrastructure/account_session.py`, `contexto.py`, `models.py`, `api.py` | `test_vinculos_n_n.py`, `test_roteamento_por_persona.py` (tabela A–N), `test_alvos_no_texto.py` (frases positivas e negativas), os oito testes da §7.2 atualizados | duas personas num aparelho (apps distintos) e uma persona em dois aparelhos executam pelo caminho novo no simulado; "peça para o André…" resolve e a prévia mostra a origem | `simulated`; execução real por persona `not_run` |
 | **WE** | contrato de página; Configuração sem `pageNarrow` e com abas na página; Foco em seções com `focusActionGroups`; persona com as guias da §9.4; modo "Por persona"; "Criar aparelho"; grade com N personas | `components/Page.tsx`, `App.module.css`, `styles/tokens.css`, `features/settings/*`, `features/focus/*`, `features/devices/*`, `features/profiles/*` (dividido), `features/command/*`, `features/infra/*`, `api/{types,client}.ts` | `Page.test.tsx`, `SettingsPage`/`AiSection`/`InstancesSection` tests, `FocusPanel.test.tsx`, `ProfileDetail.test.tsx` (guias renomeadas), `CommandPanel` por persona, `app.integration.test.tsx` | `npm run typecheck && npm test && npm run build`; aceite no navegador (§9.6) com capturas | vitest `simulated`; layout `real` só com servidor de desenvolvimento e autorização; senão `not_run` |
 
@@ -1153,6 +1153,64 @@ produção `data/backups/20260927-222357` (máquina e commit a confirmar pelo co
 tabelas filhas byte a byte iguais (8 vínculos, 8 sessões, 8 credenciais, 24 memórias, 8 contas, 19 tentativas),
 `integrity_check` ok, `foreign_key_check` vazio, 14 pessoas (3 ativas, 5 bloqueadas dobradas por nome, 6 sem conta),
 `visual` em 8, idempotente. PostgreSQL pelo CI da branch: pendente. IA real, OpenAI real e produção: `not_run`.
+
+### 13.2 Onda B: feita (27/09)
+
+Commits `2ca5344` e `78136db` (049), `ad0cab6` (uma escrita, leitura compatível), `3b5088b` (dados disponíveis e
+`type_secret` por conta), `2f0952b` (rotas por conta), `f2f4684` (conta âncora só na escrita), `155f1b1`, integrados
+em `4b95592`. Doc principal: [`dominios/persona.md` § Contas e acesso](../dominios/persona.md#contas-e-acesso); ADR
+[040](../decisoes.md#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial);
+contrato no [adendo v0.28](../api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040).
+
+Entregue como planejado (§3.2, §4, §10.3, decisões 4 e 5): 049 com `account_credentials` completa e consentimento
+por conta, `profile_accounts.host`, `account_sessions` por (conta, aparelho) com vocabulário único,
+`authentication_attempts.account_id`, carga sem recifrar e sem as sessões sem vínculo, idempotente;
+`credential_row`/`session_row`/`set_session` com a mesma assinatura sobre a conta âncora; `rekey` e `apps_overview`
+nas tabelas de conta; opção A: `RunCreate` sem `credentials`, catálogo nos prompts (livre e por catálogo),
+`type_secret` por (perfil do objetivo, conta), `open_url` com os hosts da conta, `tem_credencial` por app e etapa,
+`consentimento_pendente`, pré-voo de `requires.secrets`; Instagram fora do `type_secret`; consentimento exigido
+também pelo provedor; rotas por conta e apelidos por perfil; `ProfileAccountDTO` completo.
+
+**Desvios do texto da §4 e da §10.3:**
+
+- Nomes: `049_contas_unificadas.sql`, `test_migracao_contas_unificadas.py`, `modules/identity/domain/available_data.py`
+  (não `049_conta_unica.sql`, `test_conta_unica_migracao.py`, `dados.py`/`dados_disponiveis`); `test_contas_unificadas_api.py`
+  entrou.
+- O catálogo tem só os cinco campos de perfil (`perfil_nome`, `_sobrenome`, `_nome_exibicao`, `_nascimento`,
+  `_email`) e as contas; nada da biografia (`perfil_idade`, `perfil_cidade`… da tabela da §4.2 ficam para depois).
+- A rota de credencial é `PUT /api/instagram/profiles/{id}/accounts/{aid}/credential`, não `/api/personas/…`; o
+  consentimento sem redigitar é `POST …/credential/consent`.
+- `ensure_session` segue por `profile_id`; o provedor acha a conta âncora pelo perfil. A conta âncora nasce só na
+  escrita (`conta_ancora(criar=True)`) e só para perfil com `@`; leitura nunca cria; perfil sem conta no app âncora
+  recebe 409 `no_account` nos apelidos.
+- A senha do cadastro (`ProfileCreate.password`) grava `consent_by = 'cadastro do perfil'` sem marca explícita.
+- `invalidate_sessions_of_instance` invalida só o app âncora por padrão.
+- O código do pré-voo é `missing_credential`; `teaching.py:350,500` e `generalization.py:192` ainda dizem "campo
+  Credenciais da execução"; o campo do painel (`CommandPanel.tsx`) sai na onda E (até lá, 422).
+
+**Provas.** Suíte SQLite do branch: 2433 passed, 2 flakes (`test_instalacao_do_worker`, verdes isolados)
+(`simulated`); suíte do merge: ver CHANGELOG. **Ensaio `real` da 049 (28/09, madrugada; máquina `WIN-7S2UASNLFOP`, código `073475c`)** numa cópia nova de `data/backups/20260927-222357`, junto com 047, 048 e 050: 8 credenciais de conta com os mesmos 8 `secret_ref` de `instagram_credentials` e consentimento datado; 3 sessões em `account_sessions` (android-01 `unknown`, android-03 e android-06 `session_ready`; as 5 fantasmas dos perfis bloqueados não vieram); 19 tentativas apontadas para a conta; `host` presente; 8 contas e nenhuma com handle vazio (o primeiro ensaio criou 6 contas vazias para as personas sem conta — corrigido na própria 049 antes de ir à `main`); `integrity_check` ok, `foreign_key_check` vazio, idempotente. PostgreSQL `not_run` (Actions bloqueado por cobrança, K-040). Login real com a credencial da
+conta, o portal `22d65f` e produção: `not_run`.
+
+### 13.3 Onda D: feita (27/09)
+
+Integrada em `11e985e`, com a correção `c59baed`. Doc principal:
+[`dominios/parque.md`](../dominios/parque.md#provisionamento-pela-plataforma-2709-onda-d); ADR
+[045](../decisoes.md#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois); contrato no
+[adendo v0.26](../api-contract.md#adendo-v026-27092026--provisionar-e-aposentar-instância-pela-plataforma).
+
+Entregue: 050 (`instances.android_overrides`, `instances.retired_at`, `worker_limits.max_devices`);
+`POST /api/instances` local (`DeviceManager.provisionar`) com `origin='dynamic'`, id nunca reaproveitado, portas por
+`MAX(idx)+1`, `android_de(rt)` mesclando as sobreposições, `create` pelo despacho e `start` encadeado;
+`DELETE /api/instances/{id}` com `AvdManager.delete` e `retired_at`; `max_devices` em `/api/servers/limits`.
+
+**Desvios do texto da §8 e da §10.4:** resposta com comando é **202** (não 201); códigos `teto_de_aparelhos`,
+`disco_insuficiente`, `disco_desconhecido` (não `sem_vaga_de_aparelho`/`sem_disco`); piso `provisioning.min_free_disk_gb`
+= 10 (não `limits.min_free_disk_gb_per_device` = 12); sem `profile_id`/`bind` na mesma chamada; `retired_at` não
+estava no SQL; a aposentadoria confere objetivo aberto, vínculo ativo e comando em voo (não `account_sessions`).
+
+**Provas.** `simulated`: `backend/tests/test_provisionamento.py`, `test_provisionamento_migracao.py`. `real`: a 050
+aplicada no ensaio da 13.1 sobre a cópia do backup. Criar ou apagar um AVD no host de produção: `not_run`.
 
 ---
 
@@ -1259,11 +1317,14 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 
 Cada um entra em `docs/decisoes.md` quando a onda correspondente é integrada.
 
-- **ADR-040 — A credencial da conta da persona substitui a credencial da execução** (WB; substitui em parte o
-  ADR-025, que não se reescreve). Fonte única no cofre por conta; nome lógico; consentimento por conta; `type_secret`
-  por (perfil do objetivo, app, host); ref nunca em `run_secrets`; `open_url` e a trava de site pelos hosts da
-  conta; apps com `SessionProvider` continuam determinísticos. O que continua do ADR-025: o valor nunca vai ao
-  modelo, a log, a evento, a evidência ou a memória; três travas; desafio, 2FA e CAPTCHA com a pessoa (ADR-009).
+- **ADR-040 — A credencial pertence à conta da persona e a execução não carrega credencial** (WB; **registrado**
+  em 27/09:
+  [decisões](../decisoes.md#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial);
+  substitui em parte o ADR-025, que não se reescreve). Fonte única no cofre por conta; nome lógico; consentimento
+  por conta; `type_secret` por (perfil do objetivo, conta: pacote e host); ref nunca em `run_secrets`; `open_url` e a
+  trava de site pelos hosts da conta; apps com `SessionProvider` continuam determinísticos e exigem o mesmo
+  consentimento. O que continua do ADR-025: o valor nunca vai ao modelo, a log, a evento, a evidência ou a memória;
+  três travas; desafio, 2FA e CAPTCHA com a pessoa (ADR-009).
 - **ADR-041 — A persona é a pessoa** (WA; **registrado** em 27/09:
   [decisões](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off)).
   `instagram_profiles` como raiz; `personas` dobrada; modelo rico híbrido; religião e política guardadas e não
@@ -1283,9 +1344,11 @@ Cada um entra em `docs/decisoes.md` quando a onda correspondente é integrada.
   `one`, `resolver_alvos` pura, `TargetExtractor` determinístico antes do `TemplateStage`, prévia obrigatória com
   origem por alvo e 409 `alvos_nao_confirmados`, contradição vira pergunta, mesmo aparelho duas vezes recusado na
   fase 1.
-- **ADR-045 — Provisionamento pela plataforma** (WD). `POST /api/instances` local com `origin='dynamic'`,
-  `android_overrides`, `max_devices` e guarda de disco, `create` pelo despacho, `DELETE` só para dinâmica sem uso;
-  remoto adiado para ADR próprio.
+- **ADR-045 — Provisionamento de aparelho pela plataforma: local agora, remoto depois** (WD; **registrado** em
+  27/09: [decisões](../decisoes.md#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois)).
+  `POST /api/instances` local com `origin='dynamic'`, `android_overrides`, `max_devices` e guarda de disco, `create`
+  pelo despacho (202 com `command_id`), `DELETE` só para dinâmica sem uso (`retired_at`); remoto adiado para ADR
+  próprio.
 - **ADR-046 — Contrato de página e container queries** (WE). `Page/PageHeader/PageSection/TableWrap`; faixas por
   `@container page`, não por viewport; sem variante estreita; aceite de layout no navegador em quatro larguras com o
   Foco aberto e fechado; Foco em seções com grupos de ação puros.

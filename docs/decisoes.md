@@ -37,7 +37,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-022](#adr-022--exclusões-deliberadas-de-escopo) | Exclusões deliberadas de escopo | vigente | 21/09 |
 | [ADR-023](#adr-023--ator-declarado-no-sonnet-modelo-local-fora-do-caminho-principal) | Ator declarado no Sonnet; modelo local fora do caminho principal | vigente | 25/09 |
 | [ADR-024](#adr-024--verificador-barato-com-proteções-em-vez-de-trocar-o-modelo-do-verificador) | Verificador barato com proteções, em vez de trocar o modelo do verificador | vigente | 25/09 |
-| [ADR-025](#adr-025--a-automação-digita-a-credencial-que-a-pessoa-fornece-com-consentimento) | A automação digita a credencial que a pessoa fornece, com consentimento | vigente | 26/09 |
+| [ADR-025](#adr-025--a-automação-digita-a-credencial-que-a-pessoa-fornece-com-consentimento) | A automação digita a credencial que a pessoa fornece, com consentimento | substituída em parte por ADR-040 (a credencial é da conta, não da execução) | 26/09 |
 | [ADR-026](#adr-026--todos-os-aparelhos-sempre-na-versão-promovida) | Todos os aparelhos sempre na versão promovida | vigente | 26/09 |
 | [ADR-027](#adr-027--prévia-e-observação-sob-demanda-medição-agregada) | Prévia e observação sob demanda; medição agregada | vigente | 26/09 |
 | [ADR-028](#adr-028--runtimes-executores-e-orquestração-o-que-fica-como-está-e-o-que-reabre) | Runtimes, executores e orquestração: o que fica como está e o que reabre | vigente | 26/09 |
@@ -51,9 +51,11 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-036](#adr-036--receitas-como-estratégia-de-execução) | Receitas como estratégia de execução | vigente (trilha e regras); `RecipeExecutionStrategy` proposta | 27/09 |
 | [ADR-037](#adr-037--compatibilidade-com-o-flow-legado) | Compatibilidade com o `Flow` legado | vigente; conversão em lote dos fluxos de produção proposta | 27/09 |
 | [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
-| [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; sessão por (perfil, app) proposta | 27/09 |
-| [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente (branch, não implantado); conta única proposta (onda B, ADR-040) | 27/09 |
+| [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; a sessão por (perfil, app) é `account_sessions` (ADR-040) | 27/09 |
+| [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial) | A credencial pertence à conta da persona e a execução não carrega credencial | vigente (branch, não implantado); substitui em parte o ADR-025 | 27/09 |
+| [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente (branch, não implantado); conta única feita (onda B, ADR-040) | 27/09 |
 | [ADR-042](#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd) | Imagens de persona: receita determinística, porta `ImageGenerator`, simulado primeiro, OpenAI atrás de chave, custo em `ai_calls.usd` | vigente (branch, não implantado); provedor local proposto | 27/09 |
+| [ADR-045](#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois) | Provisionamento de aparelho pela plataforma: local agora, remoto depois | vigente (branch, não implantado); remoto proposto | 27/09 |
 
 ---
 
@@ -754,7 +756,11 @@ o verificador de função só se a bateria seguinte (com capturas NOVAS) mostrar
 
 ## ADR-025 — A automação digita a credencial que a pessoa fornece, com consentimento
 
-**Data:** 26/09/2026 · **Estado:** vigente · **Substitui em parte:** ADR-009 (a recusa de digitar senha)
+**Data:** 26/09/2026 · **Estado:** substituída em parte por ADR-040 (27/09): a credencial passa a ser da **conta da
+persona** (cofre, consentimento por conta, `type_secret` por conta); `RunCreate.credentials`, `consent_credentials`,
+`run_secrets` e o 409 por execução saem. O que fica deste ADR: o valor nunca vai ao modelo, as três travas, o
+`credencial_no_comando`, e desafio/2FA/CAPTCHA com a pessoa · **Substitui em parte:** ADR-009 (a recusa de digitar
+senha)
 
 **Contexto.** Execução `r-20260926161438-22d65f`: o dono pediu para abrir o Chrome no portal MTR da CETESB e entrar
 com os dados que ele mesmo informou (senha incluída, no texto do comando). O planejador recusou por duas razões: o
@@ -1659,7 +1665,8 @@ do pedido de evolução arquitetural (27/09), linha `set_run_status`/`set_object
 
 ## ADR-039 — Manifesto de app e registro de SessionProvider
 
-**Data:** 27/09/2026 · **Estado:** vigente; sessão por (perfil, app) proposta · **Decisão técnica** dentro do pedido de
+**Data:** 27/09/2026 · **Estado:** vigente; a sessão por (perfil, app) que este ADR propunha é `account_sessions`, por
+(conta, aparelho), desde a 049 (ADR-040) · **Decisão técnica** dentro do pedido de
 evolução arquitetural (27/09), linha "cluster Identity, comparações com `"instagram"`" da §16 do design. Código da fase
 K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrados em `f06e34a`, mais a correção
 `3fbe9df`.
@@ -1716,7 +1723,8 @@ K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrado
 - A correção `3fbe9df`: H2 e K1 correram em paralelo, e os recursos (`modules/execution/infrastructure/providers.py`,
   `command_bus.py`) ainda comparavam com `"instagram"` e chamavam `s.instagram`. Agora o manifesto diz se o app tem
   login automático, e o registro entrega o provedor; sem provedor montado, recusa explícita.
-- **Proposto:** sessão por (perfil, app), antes de um segundo app com login gerenciado no mesmo perfil (item 12.3 do
+- **Respondido pela onda B (ADR-040):** a sessão é de `account_sessions` por (conta, aparelho); falta só o provedor
+  receber a conta em vez do perfil, antes de um segundo app com login gerenciado no mesmo perfil (item 12.3 do
   plano-100, decisão do dono).
 
 **Evidências.** Todas `simulated`:
@@ -1741,10 +1749,154 @@ K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrado
 [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1).
 
 
+## ADR-040 — A credencial pertence à conta da persona e a execução não carrega credencial
+
+**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado ·
+**Substitui em parte:** ADR-025 (a credencial deixa de ser da execução; o resto do ADR-025 continua) · **Decisão
+técnica** dentro da segunda evolução ([design](design/persona-e-parque.md) §3.2, §4, §10.3, §14 itens 4 e 5). Código
+da onda B: `2ca5344` e `78136db` (049), `ad0cab6` (repositório e serviço), `3b5088b` (dados disponíveis e
+`type_secret` por conta), `2f0952b` (rotas por conta), `f2f4684` (conta âncora só na escrita), `155f1b1`, integrados
+em `4b95592` (e `f72da91` depois do merge das ondas A, B e D).
+
+**Contexto.**
+
+- O ADR-025 amarrou a credencial à **execução**: campo `credentials` de `POST /api/runs`, cofre por execução,
+  `run_secrets`, 409 `consentimento_de_credencial` a cada envio. Funcionou para o caso do portal (`22d65f`), mas a
+  senha morria com a execução e a pessoa a redigitava a cada comando.
+- Desde a 037 existia `account_credentials` **sem leitor**: a senha da conta de um app comum era gravada e ninguém a
+  digitava; a do Instagram morava em `instagram_credentials`, com estado, falhas e bloqueio que a outra não tinha.
+- Duas fontes de sessão: `instagram_sessions` (uma por perfil, gravada pelo provedor) e
+  `profile_accounts.session_status` (marcação da pessoa), com vocabulários diferentes (`logged_out` só num deles).
+- Conta de portal ou site não tinha casa: no navegador o `app` é o Chrome, e "qual site recebe esta senha" vinha da
+  URL escrita no comando, não de um dado da persona.
+- Pedido do dono: a persona é a pessoa, com **contas** (app ou site), cada uma com a sua credencial; "sem soluções
+  paralelas".
+
+**Alternativas** (design §14 item 5; relatório 03).
+
+- (A) Remover `RunCreate.credentials`/`consent_credentials` e o campo do painel; fonte única é a credencial da conta.
+- (B) Manter `credentials` só por API, ao lado da credencial da conta, para um uso avulso.
+
+**Escolha.** (A). Duas fontes para a mesma senha é exatamente a solução paralela que o dono não quer, e a conta de
+portal ganha casa própria (`host`).
+
+- **Migração `049_contas_unificadas.sql`.** `account_credentials` ganha `status`, `failed_attempts`, `blocked_until`,
+  `created_at`, `last_used_at` e o consentimento por conta (`consent_at`, `consent_by`); `profile_accounts.host`,
+  unicidade `(profile_id, app_id, COALESCE(host, ''))`; **`account_sessions` com chave (conta, aparelho)** e
+  vocabulário único (`unknown | session_ready | auth_required | auth_challenge | wrong_account | needs_person`;
+  `logged_out` da 037 vira `auth_required`); `authentication_attempts.account_id`. Carga: a credencial do Instagram
+  vira a da conta Instagram do perfil com o **mesmo `secret_ref`** (nada é recifrado) e `consent_by = 'migração 049'`;
+  a sessão só onde há vínculo ativo com o aparelho (sessão de aparelho que o perfil não tem mais não vem); conta
+  âncora `acc-<perfil>` criada quando faltava; tentativas apontadas para a conta. Idempotente
+  (`INSERT … SELECT … WHERE NOT EXISTS`).
+- **Uma escrita, leitura compatível.** `social/repository.py::SocialRepository` lê e grava credencial e sessão nas
+  tabelas de conta mantendo as assinaturas por `profile_id` (`credential_row`, `set_credential`, `session_row`,
+  `set_session`) sobre a **conta âncora** (`conta_ancora`: a conta do perfil no app que provê a conta dele; criada
+  só na escrita e só para perfil com `@`). `security/rekey.py::recifrar` atualiza `account_credentials.key_id`;
+  `apps_overview.py` conta prontas por `account_sessions` no aparelho vinculado. `instagram_credentials`,
+  `instagram_sessions` e `run_secrets` ficam **só leitura** até uma migração posterior; enquanto a linha legada
+  apontar para a mesma referência, apagar a credencial da conta não apaga o segredo do cofre
+  (`SocialService._apagar_credencial`).
+- **Consentimento por conta.** `PUT …/accounts/{aid}/credential {password, login_identifier?, consent: true}`;
+  sem `consent` numa conta que ainda não consentiu, 409 `consentimento_de_credencial`
+  (`SocialService._gravar_credencial`). `POST …/credential/consent` marca sem redigitar. O consentimento é da
+  **conta**, não de uma senha: trocar a senha o preserva. Vale para o `type_secret` **e** para o provedor de
+  sessão (`integrations/instagram/authentication.py::InstagramAuthenticator._blocked_reason` e a porta de sessão
+  `state.py::AppState._session_gate`): sem a marca, ninguém digita.
+- **Catálogo de dados disponíveis** (`modules/identity/domain/available_data.py`, função pura; porta
+  `application/account_ports.py::ProfileDataStore`; adaptador `infrastructure/profile_data.py::SqlProfileDataStore`,
+  só `SELECT`). Por perfil: `perfil_nome`, `perfil_sobrenome`, `perfil_nome_exibicao`, `perfil_nascimento`,
+  `perfil_email` (lista fechada `PROFILE_FIELDS`, só os que têm valor) e, por conta, `conta_<app>[_<host>]_usuario`
+  (texto) e `conta_<app>[_<host>]_senha` (**sigiloso**: só existe como nome; oferecido só com credencial guardada,
+  consentida e de app sem `SessionProvider`). O contexto social não conhece a porta: não há caminho dele ao cofre.
+- **O que a IA recebe.** `PlanRequest.available_data` e `StepContext.available_data` (`planning/provider.py`): a
+  lista comum a todos os aparelhos da execução para o planejador livre e por catálogo (`common_data`), a lista do
+  aparelho para o ator e o verificador; o bloco `dados_block` em `planning/prompts.py` leva nome, rótulo e tipo,
+  nunca valor. `Repository.materialize` resolve `{perfil_email}` e `{conta_<app>_usuario}` por aparelho
+  (`profile_variables`, fotografadas em `instances[].variables` no planejamento).
+- **`type_secret(name)` por conta** (`taskqueue/executor.py::StepExecutor.preenchedor`): resolve pelo perfil do
+  **objetivo** (`resolve_secret`), exige `consent_at`, digita só campo de senha, só no **pacote da conta** e, no
+  navegador, só no **`host` da conta** (ou subdomínio; conta de navegador sem `host` não recebe a senha em site
+  nenhum), grava `last_used_at` e registra na execução qual conta entrou (nome, nunca valor). A referência da conta
+  nunca passa por `run_secrets`. `tem_credencial` de `pede_intervencao_humana` vale por app e etapa
+  (`typable_secret_for`); senha guardada sem consentimento põe a etapa em `waiting_user` com `consentimento_pendente`.
+- **`open_url`** aceita, além dos endereços do comando, os hosts das contas de portal da persona
+  (`ToolContext.allowed_hosts`, `automation/tools.py::_no_site_da_conta`).
+- **Pré-voo** confere `requires.secrets` da skill (`RunPlan.secrets`) contra as contas da persona de cada aparelho
+  (`RunService.pre_voo(secret_names=…)` → `missing_secrets`): o que falta recusa o aparelho com `missing_credential`.
+- **A execução não carrega credencial.** `RunCreate.credentials` e `consent_credentials` saíram (`extra="forbid"`:
+  cliente antigo recebe 422); `_exigir_consentimento`, `_guardar_no_cofre` e `add_run_secret` saíram de
+  `taskqueue/service.py`; `run_secret_refs`, `drop_run_secrets` e `purge_stale_run_secrets` saíram de
+  `taskqueue/repository.py`. 409 `credencial_no_comando` continua.
+- **Rotas por conta** (`api.py`): `PUT/DELETE …/accounts/{aid}/credential`, `POST …/credential/consent`,
+  `POST …/accounts/{aid}/session/{connect|verify|logout}`, `GET …/accounts/{aid}/auth-attempts`. As antigas por
+  perfil (`/credential`, `/connect`, `/verify`, `/logout`, `/auth-attempts`) viram **apelidos da conta âncora**
+  (`_conta_ancora_ou_409`; perfil sem conta no app âncora → 409 `no_account`). `ProfileAccountDTO` ganha
+  `login_identifier`, `host`, `credential` (só metadados), `consent_at`, `session`, `session_actions`.
+- **Instagram sem exceção arquitetural.** App com `SessionProvider` continua com login determinístico **antes** da
+  tarefa e fora do `type_secret` (`AccountRecord.managed`); o provedor lê a credencial e a sessão da conta pelas
+  assinaturas de sempre.
+
+**Invariantes preservadas do ADR-025.** O valor nunca vai ao modelo, a log, evento, evidência, memória, fixture ou
+Git; digitação só pelo canal sensível; três travas (campo de senha, app, site); credencial lida na tela ou inventada
+nunca é digitada; desafio, 2FA com código não fornecido e CAPTCHA seguem com a pessoa (ADR-009); comando com formato
+de segredo é recusado antes de gravar.
+
+**O fluxo, em oito passos.**
+
+1. A pessoa guarda a senha na conta da persona com `consent: true` (ou consente depois, sem redigitar).
+2. `POST /api/runs` sem credencial; senha no texto continua 409 `credencial_no_comando`.
+3. Pré-voo: `requires.secrets` da skill casada contra as contas da persona de cada aparelho.
+4. Planejamento: a IA recebe a lista de dados disponíveis comum aos aparelhos (nomes, rótulos, tipos).
+5. Materialização: `{perfil_email}` e `{conta_<app>_usuario}` resolvidos por aparelho.
+6. Execução: o ator conhece só os nomes; `type_secret(name)` resolve pelo perfil do objetivo, confere consentimento,
+   pacote e host, digita pelo canal sensível.
+7. Registro: `last_used_at` na conta e uma decisão na execução com o nome da conta usada.
+8. App com provedor de sessão autentica antes da tarefa, exigindo o mesmo consentimento. Fim: nada é apagado.
+
+**Consequências.**
+
+- O painel ainda mostra o campo "Senha para a automação" (`features/command/CommandPanel.tsx`) até a onda E: quem
+  digitar nele recebe 422 de `POST /api/runs`. A guia "Contas e acesso" da persona é da onda E.
+- Rotas antigas continuam respondendo o perfil, como sempre; o painel de hoje não quebra.
+- `profile_accounts.session_status` fica na tabela (migração aplicada não se edita) e ninguém a lê nem escreve.
+- Tabelas só leitura até migração posterior: `instagram_credentials`, `instagram_sessions`, `run_secrets`.
+- **Desvios do design** (§4, §10.3): arquivos chamam-se `049_contas_unificadas.sql`,
+  `test_migracao_contas_unificadas.py`, `available_data.py` (não `049_conta_unica.sql`, `test_conta_unica_migracao.py`,
+  `dados.py`); o catálogo tem só os cinco campos de perfil (sem `perfil_idade`, `perfil_cidade` etc.); a rota de
+  credencial fica em `/instagram/profiles/{id}/accounts/{aid}/credential`, não em `/personas/…`;
+  `ensure_session` segue por `profile_id` (o provedor acha a conta âncora pelo perfil); a senha do cadastro
+  (`ProfileCreate`) grava `consent_by = 'cadastro do perfil'` sem marca explícita;
+  `invalidate_sessions_of_instance` só invalida o app âncora por padrão; `teaching.py:350,500` e
+  `generalization.py:192` ainda dizem "campo Credenciais da execução".
+
+**Evidências.**
+
+- `simulated`: `backend/tests/test_migracao_contas_unificadas.py` (credencial sem recifrar e só sessão com vínculo;
+  idempotência; banco novo = atualizado; unicidade por perfil, app e host; cascata; os dois dialetos),
+  `backend/tests/test_credenciais_da_conta.py` (substitui `test_credenciais_da_execucao.py`: a execução não aceita
+  mais credencial; senha só com consentimento, também pelo apelido por perfil; dados disponíveis listam nomes e
+  nunca valores; a lista é a comum a todos os aparelhos; variável resolvida por aparelho; `type_secret` só campo de
+  senha, só pacote e host da conta, exige consentimento; Instagram fora do `type_secret`; `open_url` aceita o site
+  da conta; pré-voo recusa aparelho sem a credencial exigida), `backend/tests/test_contas_unificadas_api.py` (DTO
+  com credencial, consentimento e sessão; marcar sessão sem aparelho é 409; rotas por conta e apelidos). Suíte
+  SQLite do branch: 2433 passed, 2 flakes (`test_instalacao_do_worker`, verdes isolados); suíte do merge: ver
+  CHANGELOG.
+- Os números de produção (8 credenciais, 8 sessões das quais 5 sem vínculo ativo) são leitura de 27/09 (design
+  §2.7). **Ensaio `real` da 049 (28/09, madrugada; máquina `WIN-7S2UASNLFOP`, código `073475c`)** numa cópia nova de `data/backups/20260927-222357`, junto com 047, 048 e 050: 8 credenciais de conta com os mesmos 8 `secret_ref` de `instagram_credentials` e consentimento datado; 3 sessões em `account_sessions` (android-01 `unknown`, android-03 e android-06 `session_ready`; as 5 fantasmas dos perfis bloqueados não vieram); 19 tentativas apontadas para a conta; `host` presente; 8 contas e nenhuma com handle vazio (o primeiro ensaio criou 6 contas vazias para as personas sem conta — corrigido na própria 049 antes de ir à `main`); `integrity_check` ok, `foreign_key_check` vazio, idempotente.
+- PostgreSQL: `not_run` (GitHub Actions bloqueado por cobrança, K-040). Login real com credencial da conta, o portal
+  `22d65f` e produção: `not_run`.
+
+**Relação.** ADR-009; ADR-025 (o que fica); ADR-029; ADR-039 (a sessão por (perfil, app) que ele propunha é a de
+`account_sessions`); ADR-041; [`dominios/persona.md`](dominios/persona.md#contas-e-acesso);
+[`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md#contas-por-app-item-121);
+[`dominios/execution.md`](dominios/execution.md); [`api-contract.md`](api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040);
+[`banco.md`](banco.md).
+
 ## ADR-041 — A persona é a pessoa: instagram_profiles como raiz, personas dobrada, username opcional por string vazia e reconstrução com foreign_keys off
 
 **Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; conta única
-proposta (onda B, ADR-040) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md)
+feita (onda B, ADR-040) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md)
 §3, §10, §14 itens 1 e 2). O número 040 fica reservado para a credencial da conta (onda B), por isso o índice pula
 de 039 para 041. Código da onda A: `462d724` (047), `469baae` (modelo e rotas), `6dcbdc5` (geração), integrados em
 `8c19d5a`.
@@ -1811,7 +1963,8 @@ de 039 para 041. Código da onda A: `462d724` (047), `469baae` (modelo e rotas),
 - O painel de hoje continua funcionando: `PersonaTraitsEdit` aceita as chaves visuais dentro de `traits` até a onda E.
 - Deploy: a 047 reconstrói a tabela de produção; exige ensaio (`scripts/deploy.ps1 -Ensaio`), backup e autorização
   do dono; o checkout de produção não pode dar `git pull` (design R20).
-- **Proposto:** conta única (onda B, ADR-040); remoção de `personas` e da FK; `beliefs` no prompt (decisão do dono);
+- **Feito depois:** conta única (onda B, ADR-040). **Proposto:** remoção de `personas` e da FK; `beliefs` no prompt
+  (decisão do dono);
   as 5 fotos dos bloqueados anexadas às pessoas dobradas (decisão do dono, reversível).
 
 **Evidências.**
@@ -1896,4 +2049,69 @@ dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 it
 
 **Relação.** ADR-023 (modelo local); ADR-030 (D2/D3); ADR-041;
 [`dominios/persona.md`](dominios/persona.md#imagens-persona_images-migração-048); [`ia.md`](ia.md#1-as-cinco-funções);
+[`banco.md`](banco.md).
+
+## ADR-045 — Provisionamento de aparelho pela plataforma: local agora, remoto depois
+
+**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; remoto
+proposto (ADR próprio) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md) §8,
+§10.4, §14 item 8). Código da onda D integrado em `11e985e`, com a correção `c59baed`. Doc principal:
+[`dominios/parque.md`](dominios/parque.md#provisionamento-pela-plataforma-2709-onda-d); contrato no
+[adendo v0.26](api-contract.md#adendo-v026-27092026--provisionar-e-aposentar-instância-pela-plataforma).
+
+**Contexto.**
+
+- Uma instância nascia só de três jeitos: da configuração (`instances.count`), da adoção de um aparelho anunciado
+  pelo worker, ou do verbo `create` sobre uma instância já declarada. Criar um aparelho novo exigia editar o
+  `config.yaml` e reiniciar a produção.
+- O dono pediu "criar aparelho" pelo painel. O inventário do agente remoto é estático (`worker.yaml`), e ampliar o
+  protocolo do worker é decisão à parte (ADR-031).
+
+**Alternativas** (design §14 item 8; relatório 02): fazer local e remoto de uma vez; só local agora.
+
+**Escolha.** Só local agora; o remoto é rodada própria, com ADR.
+
+- **Migração `050_provisionamento.sql`**: `instances.android_overrides` (JSON por instância: `system_image`,
+  `ram_mb`; nulo = configuração), `instances.retired_at`, `worker_limits.max_devices` (teto de aparelhos hospedados
+  por servidor; nulo = sem teto).
+- **`POST /api/instances`** (`DeviceManager.provisionar`; corpo `InstanceProvisionBody`,
+  `modules/fleet/presentation/schemas.py`, `extra="forbid"`): insere a linha com `origin='dynamic'`,
+  `worker_id = hosted_by = OWNER_ID`, id depois de `count` (`_proximo_id_dinamico`, nunca reaproveitado), portas por
+  `MAX(idx)+1`; `DeviceManager.android_de(rt)` mescla `android_overrides` sobre `cfg.instance_android` em todos os
+  usos. Com `create: true` (padrão) o comando `create` sai pelo despacho de sempre (cerca, outbox,
+  `idempotency_key`) e a rota responde **202** com `command_id`; `start: true` encadeia a partida só depois do
+  `create` `succeeded`; `create: false` responde **201** com a linha.
+- **Guardas**: worker remoto (`provisionamento_remoto_indisponivel`), `teto_de_aparelhos` (`max_devices`),
+  `disco_insuficiente` abaixo de `provisioning.min_free_disk_gb` (padrão 10, lido da última batida) ou
+  `disco_desconhecido`, `chave_ja_usada`, `servidor_nao_hospeda`, e as recusas do pré-voo do `create`.
+- **`DELETE /api/instances/{id}`** aposenta só instância dinâmica, local, desligada, sem objetivo aberto, sem
+  vínculo ativo e sem comando em voo: apaga o AVD (`AvdManager.delete`) e marca `retired_at`; a linha, o `idx` e as
+  portas ficam, porque o histórico dos objetivos referencia o id. Aposentada some das listas e não volta no arranque.
+- **`max_devices`** entra em `GET/PUT /api/servers/limits` e **não** vai na mensagem `Limits` ao agente.
+
+**Consequências.**
+
+- Aparelho novo sem editar YAML e sem reiniciar; `seed()` recarrega as linhas `dynamic`.
+- **Desvios do design** (§8, §10.4): a resposta com comando é 202 (o design dizia 201); os códigos são
+  `teto_de_aparelhos`/`disco_insuficiente` (não `sem_vaga_de_aparelho`/`sem_disco`); o piso de disco é
+  `provisioning.min_free_disk_gb` = 10 (não `limits.min_free_disk_gb_per_device` = 12); `profile_id` e o `bind` na
+  mesma chamada não existem; `retired_at` não estava no SQL do §10.4; a aposentadoria confere vínculo, objetivo e
+  comando em voo, não `account_sessions`.
+- O remoto (verbo `provision` no protocolo, inventário mutável no agente, mapa do túnel) fica para ADR próprio,
+  com autorização do dono (design §15 item 9).
+
+**Evidências.**
+
+- `simulated`: `backend/tests/test_provisionamento.py` (instância dinâmica criada, `create` fechado e sobrevive ao
+  reinício; teto do servidor; disco insuficiente ou desconhecido; worker remoto e corpo inválido; `start` só depois
+  do `create`; aposentar apaga o AVD, some das listas e não volta; recusas de aposentar; teto pela tela de limites
+  sem ir ao agente), `backend/tests/test_provisionamento_migracao.py` (050 não toca o que havia; banco novo =
+  atualizado; os dois dialetos).
+- `real` (27/09): a 050 aplicada no ensaio sobre a **cópia** do backup de produção `20260927-222357`, máquina
+  `WIN-7S2UASNLFOP`, código `8c19d5a`, junto com 047 e 048 (ver [persona](dominios/persona.md#migração-de-dados-047)).
+- Criar ou apagar um AVD de verdade no host de produção, e PostgreSQL (Actions bloqueado por cobrança, K-040):
+  `not_run`.
+
+**Relação.** ADR-015 (limites por servidor); ADR-026; ADR-031 (o protocolo que o remoto vai ampliar); ADR-035
+(vincular é de pessoa); [`dominios/parque.md`](dominios/parque.md#provisionamento-pela-plataforma-2709-onda-d);
 [`banco.md`](banco.md).

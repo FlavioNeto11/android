@@ -39,8 +39,11 @@ Desde a migração 047 (evolução 2, onda A; [ADR-041](../decisoes.md#adr-041--
 - **`persona_in_use` (409)** hoje significa: no `DELETE /api/personas/{id}`, pessoa vinculada a aparelho ou com
   execução em curso (`SocialService.delete_persona`; apagar a persona é apagar a pessoa, com contas, credencial e
   memória); na adoção e na absorção, o `persona_id` é de outra pessoa **com** conta.
-- **Conta única** (`profile_accounts` + `account_credentials` como fonte de credencial e sessão por conta e
-  aparelho) vem na onda B do design; até lá `instagram_credentials`/`instagram_sessions` seguem como abaixo.
+- **Conta única** (onda B, migração 049,
+  [ADR-040](../decisoes.md#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial)):
+  `profile_accounts` + `account_credentials` são a fonte da credencial, e `account_sessions` a da sessão, por (conta,
+  aparelho). O documento principal é [persona § Contas e acesso](persona.md#contas-e-acesso); aqui fica o que toca
+  o provedor do Instagram e as tabelas legadas.
 
 ## Contas por app (item 12.1)
 
@@ -52,16 +55,28 @@ de cada perfil como a primeira `profile_accounts` (a **conta âncora**, que não
 `pending_approvals`, `steps`, e `app_ids` a `runs` — memória, aprovação e etapa passam a saber de QUAL app o
 fato é.
 
-`SocialService._account_dto` (`social/service.py`) distingue dois casos: se o app tem provedor de sessão no
-registro de apps (`session_provider_of(package) is not None` desde a fase K1, antes `== "instagram"`; ver
-[`apps-e-loja.md`](apps-e-loja.md#manifesto-de-app-fase-k1)),
-status/verificação vêm da sessão DETERMINÍSTICA (`instagram_sessions`, ver abaixo); senão vêm da própria linha
-de `profile_accounts`, marcada pela PESSOA pelo Foco (`update_account` recusa mexer em `session_status` de app
-com login automático — `session_managed`). É o mecanismo que, hoje, diferencia Instagram (login pelo sistema) de
-Outlook/TikTok/Facebook (login pela pessoa).
+**Desde a 049 (onda B)** a conta é a entidade única, para app com e sem provedor:
 
-Rotas: `GET/POST /api/instagram/profiles/{id}/accounts`, `PATCH/DELETE .../accounts/{account_id}`,
-`PUT .../accounts/{account_id}/credential`.
+- `profile_accounts` ganha `host` (conta de portal no navegador; unicidade por perfil, app e host);
+  `account_credentials` ganha estado, falhas, bloqueio, `last_used_at` e o **consentimento por conta**
+  (`consent_at`, `consent_by`); a sessão mora em **`account_sessions`**, uma por (conta, aparelho), com o vocabulário
+  único de `models.SessionStatus` (`auth_required` é o antigo `logged_out`; `needs_person` entrou no enum).
+  `profile_accounts.session_status` (037) ficou na tabela sem leitor.
+- `SocialService._account_dto` lê **uma fonte só**: a credencial em `account_credentials` e a sessão de
+  `SocialRepository.session_of_account` (no aparelho vinculado; sem linha nele, a mais recente). `automated_login`
+  continua dizendo se o app tem provedor (`session_provider_of(package) is not None`, fase K1; ver
+  [`apps-e-loja.md`](apps-e-loja.md#manifesto-de-app-fase-k1)); `update_account` continua recusando `session_status`
+  em app com provedor (`session_managed`), grava a marcação da pessoa na sessão do aparelho vinculado (sem vínculo,
+  409 `no_binding`) e recusa `logged_out` (422: o vocabulário é o único). É o que diferencia Instagram (login pelo
+  sistema) de Outlook/TikTok/Facebook (login pela pessoa, ou pela senha da conta via `type_secret`, ADR-040).
+- **Tabelas só leitura**: `instagram_credentials` (008) e `instagram_sessions` não recebem mais `INSERT`/`UPDATE`
+  (`security/rekey.py` atualiza `account_credentials.key_id`); saem numa migração posterior, com `run_secrets`.
+  Enquanto a linha legada referenciar a mesma `secret_ref`, apagar a credencial da conta não apaga o segredo do
+  cofre (`SocialService._apagar_credencial`).
+- Rotas: `GET/POST /api/instagram/profiles/{id}/accounts`, `PATCH/DELETE …/accounts/{aid}`, `PUT/DELETE
+  …/accounts/{aid}/credential`, `POST …/accounts/{aid}/credential/consent`,
+  `POST …/accounts/{aid}/session/{connect|verify|logout}`, `GET …/accounts/{aid}/auth-attempts`; as antigas por
+  perfil são apelidos da conta âncora ([contrato v0.28](../api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040)).
 
 ## Memória
 
@@ -128,8 +143,10 @@ contas da mesma execução escrevam o mesmo texto. Rotas: `GET /api/approvals`, 
   canal sensível (nunca reenvia por timeout). `_wrong_account()` é **sempre** intervenção humana — comentário
   no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito.
   `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho
-  de código que resolva desafio ou 2FA automaticamente.** `_needs_person()` impede o agendador de sequer tentar
-  de novo quando o estado já pede pessoa; `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)`.
+  de código que resolva desafio ou 2FA automaticamente.** `_needs_person(profile_id, instance_id)` impede o agendador de sequer tentar
+  de novo quando o estado já pede pessoa (desde a 049 lê a sessão da conta **neste** aparelho);
+  `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040);
+  `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)`.
   `emit_needs_person_change()` dispara o evento `session.needs_person` (fila "Aguardando intervenção"). Desde a
   fase K1, a função mora em `modules/identity/application/session_rules.py` e o autenticador a reexporta
   ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
@@ -166,7 +183,7 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 - `automatic=True` é a chamada do agendador; `observe_only=True` é "Verificar conta" e a reobservação (nunca
   autentica); `force_login=True` refaz o login;
 - as garantias continuam do provedor: nunca repete envio por timeout, nunca segue com conta errada, nunca resolve
-  desafio (ADR-009), senha só pelo canal sensível (ADR-025);
+  desafio (ADR-009), senha só pelo canal sensível e só com o consentimento da conta (ADR-025/040);
 - a implementação de produção é o `InstagramAuthenticator`, montado pela fábrica do manifesto
   (`integrations/instagram/manifesto.py::sessao`); em teste, também `backend/tests/fake_dois_apps.py::SessaoDoQa`.
 
@@ -187,27 +204,31 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 | `AppState._session_gate(rt, package)` | o provedor do pacote do item; sem pacote (chamador antigo), `provedor_do_perfil()` |
 | `AppState._reobservar_apos_intervencao` | `provedor_do_perfil()`, com `observe_only=True` |
 | `AppState._sessao_apos_mudanca_de_app` | `sessoes.has(pacote)`: só app com provedor invalida sessão |
-| `api.py::_start_session_job` ("Conectar", "Verificar conta") | `provedor_do_perfil()`; sem provedor, 409 `no_session_provider` |
+| `api.py::_start_session_job` ("Conectar", "Verificar conta", por conta ou pelo apelido por perfil) | `sessoes.for_package(conta.package)` (onda B); sem provedor, 409 `no_session_provider`; sem consentimento na credencial, 409 `consentimento_de_credencial` |
 | `modules/execution/infrastructure/command_bus.py` (recursos, fase H) | `sessoes.for_package` pelo pacote do app; sem provedor, recusa |
 
 - `AppState.provedor_do_perfil()` é o provedor do pacote de `social_repo.app_package`, que vem de
   `package_of_provider("instagram")` (com o `cfg.file.instagram.package` de reserva).
 - `AppState.instagram` virou propriedade: o nome antigo de `provedor_do_perfil()`, o **mesmo** objeto da porta. Um
   teste que troca um método dele troca para todos.
-- O 409 `no_session_provider` é inalcançável hoje: o Instagram sempre tem provedor
-  ([contrato](../api-contract.md#adendo-v025-27092026--conversão-de-fluxo-em-habilidade-e-provedor-de-sessão-por-app)).
+- O 409 `no_session_provider` passou a ser alcançável na onda B: `POST …/accounts/{aid}/session/connect` numa conta
+  de app sem provedor o devolve ([contrato v0.28](../api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040)).
 
-**Um registro de sessão por perfil.** O perfil guarda **uma** sessão de provedor (`instagram_sessions`), a do app de
-`social_repo.app_package`. Consequências:
+**A sessão é da conta num aparelho (049).** `account_sessions(account_id, instance_id)` substitui a sessão única por
+perfil. O provedor continua sendo chamado por `profile_id` (`ensure_session(rt, profile_id, …)`, desvio anotado no
+ADR-040): `SocialRepository.session_row(profile_id, instance_id)` e `set_session(profile_id, instance_id=…)` resolvem a
+**conta âncora** do perfil (a do app que provê a conta dele) e gravam no par (conta, aparelho); `state.py` lê a
+sessão do aparelho do item. `invalidate_sessions_of_instance` invalida, por padrão, só as contas do app âncora
+naquele aparelho (com `package`, as do app dito). Consequências:
 
 - desde a 047 a pessoa vinculada a um aparelho pode **não ter conta** no app do item: `AppState._session_gate` recusa
   com "não tem conta em <app>" sem tocar o aparelho nem autenticar (`state.py::AppState._tem_conta_no_app`: a verdade
   é `profile_accounts`; o `username` de cadastro continua contando como a conta do Instagram para perfis anteriores
   à 037). Teste: `backend/tests/test_persona_unificada.py::test_porta_de_sessao_responde_sem_conta_para_a_pessoa_sem_conta_no_app`;
 
-- hoje, um app com login gerenciado por perfil: o Instagram. Um segundo app com provedor grava na mesma linha de
-  sessão do perfil, como o QA do teste faz; dois apps com login gerenciado **no mesmo perfil** pedem sessão por
-  (perfil, app), que não existe (proposto, com decisão do dono no item 12.3);
+- hoje, um app com login gerenciado por perfil: o Instagram. A sessão por (perfil, app, aparelho) que o ADR-039
+  propunha existe (`account_sessions`), mas `ensure_session` ainda acha a conta pelo perfil: dois apps com login
+  gerenciado **no mesmo perfil** pedem que o provedor receba a conta (pendente, com decisão do dono no item 12.3);
 - a checagem "tela contradiz a sessão" (`taskqueue/executor.py::StepExecutor._sessao_desmentida`) vale para
   qualquer app com provedor (`session_provider_of(package) is not None`; antes, só o pacote do Instagram). Em
   produção é idêntico, porque o Instagram é o único com provedor.

@@ -2059,3 +2059,68 @@ um papel de `roles`.
 Provas: `simulated` (`backend/tests/test_persona_unificada.py::test_rotas_canonicas_e_apelidos_da_persona`,
 `test_persona_geracao.py::test_rotas_de_geracao_e_enriquecimento`,
 `test_persona_imagens.py::test_rotas_de_imagem_e_o_avatar_da_pessoa`). IA real e OpenAI real: `not_run`.
+
+## Adendo v0.28 (27/09/2026) — conta única, credencial com consentimento e sessão por conta e aparelho (ADR-040)
+
+Evolução 2, onda B ([persona § Contas e acesso](dominios/persona.md#contas-e-acesso);
+[ADR-040](decisoes.md#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial),
+que substitui em parte o ADR-025 e o [adendo v0.16](#adendo-v016-26092026--credencial-fornecida-para-a-execução-adr-025)).
+Código em `api.py`, `models.py`, `social/service.py`, `modules/identity/presentation/schemas.py`; integrado em
+`4b95592`.
+
+**A execução não carrega credencial.**
+
+- `POST /api/runs` **não aceita mais** `credentials` nem `consent_credentials`: `RunCreate` tem `extra="forbid"`, e
+  um cliente que ainda os mande recebe **422**. O painel de hoje ainda mostra o campo "Senha para a automação"
+  (`features/command/CommandPanel.tsx`) até a onda E: digitar nele dá 422.
+- Saem o 409 `consentimento_de_credencial` **por execução** e o 503 `cofre_indisponivel` da criação. Fica o 409
+  `credencial_no_comando`, cuja mensagem aponta a conta da persona.
+- `type_secret(name)` continua a mesma ferramenta do ator, mas `name` é o nome lógico da senha de uma conta da persona
+  (`conta_<app>_senha`, `conta_<app>_<host>_senha`): resolvido pelo perfil do objetivo, exige consentimento na conta,
+  só campo de senha, só no pacote da conta e, no navegador, só no `host` da conta (ou subdomínio). `open_url` abre os
+  endereços do comando **e** qualquer caminho dos hosts das contas de portal da persona.
+- Pré-voo: `requires.secrets` da habilidade casada é conferido contra as contas da persona de cada aparelho; aparelho
+  sem a senha utilizável é recusado com `missing_credential` (mesmo formato dos demais impedimentos do pré-voo:
+  `code`, `motivo`, `acao`).
+
+**Rotas por conta** (`/api/instagram/profiles/{id}/accounts/{aid}/…`):
+
+| Rota | Resposta | Recusas |
+|---|---|---|
+| `PUT …/credential` (`CredentialUpdate`: `password`, `login_identifier?`, `consent: bool`) | `ProfileAccountDTO` | **409** `consentimento_de_credencial` (conta que nunca consentiu, sem `consent: true`); **503** `secret_store_unavailable` |
+| `DELETE …/credential` | `ProfileAccountDTO` | **404** |
+| `POST …/credential/consent` | `ProfileAccountDTO` (marca `consent_at`/`consent_by` sem redigitar) | **409** `no_credential` |
+| `POST …/session/connect` | **202** `{command_id, …, profile_id, account_id}` | **409** `no_credential`, `consentimento_de_credencial`, `no_session_provider` (app sem login gerenciado), `device_unavailable`, `device_no_internet`, e as do portão de sessão (`social/sessao_gate.py`) |
+| `POST …/session/verify` | **202** (só observa) | as do portão |
+| `POST …/session/logout` | **202** (`session.logout`: apaga os dados do app da conta naquele aparelho) | as do portão |
+| `GET …/auth-attempts?limit=` | tentativas **desta** conta (`authentication_attempts.account_id`) | **404** |
+
+- **Apelidos por perfil**: `PUT/DELETE /instagram/profiles/{id}/credential`, `POST …/{id}/connect`, `…/verify`,
+  `…/logout`, `GET …/{id}/auth-attempts` resolvem a **conta âncora** (a do app que provê a conta do perfil) e
+  continuam devolvendo o que devolviam. Perfil sem conta no app âncora → **409** `no_account`. `PUT …/credential`
+  pelo apelido também exige `consent` (mesmo 409).
+- `POST …/accounts` (`ProfileAccountCreate`) ganha `host?` (conta de portal; normalizado: minúsculo, sem esquema,
+  caminho nem porta) e `consent`; com `password` sem `consent`, **409** `consentimento_de_credencial` antes de criar a
+  conta. `duplicate_account` passa a ser por (app, host). `PATCH …/accounts/{aid}` ganha `host` (mesmo
+  `duplicate_account`); `session_status` aceita `unknown | session_ready | auth_required | needs_person`
+  (**`logged_out` → 422**), vale para o aparelho vinculado (**409** `no_binding` sem vínculo; **409**
+  `session_managed` em app com provedor).
+
+**Campos novos.**
+
+- `ProfileAccountDTO`: `host`, `login_identifier`, `credential` (`CredentialInfo`: `configured`, `login_identifier`,
+  `status`, `failed_attempts`, `blocked_until`, `updated_at`, `last_used_at`, **`consent_at`**, **`consent_by`**),
+  `consent_at`, `session` (`SessionInfo`, com `instance_id` e `stale`), `session_actions`. Os escalares
+  `session_status`/`session_detail`/`session_verified_at`/`credential_configured` ficam por compatibilidade e leem a
+  mesma fonte (`account_sessions` no aparelho vinculado).
+- `CredentialInfo` do perfil (`PersonaDTO.credential`) ganha `consent_at`/`consent_by` (é a credencial da conta
+  âncora).
+- `SessionStatus` ganha `needs_person`; `auth_required` é o antigo `logged_out` das contas sem provedor.
+- `GET /api/instances/{id}/operational-context` (`contexto.py::contexto_do_aparelho`): `profile.accounts` lista as contas do perfil vinculado,
+  cada uma com credencial (metadados), consentimento e a sessão neste aparelho.
+
+Provas: `simulated` (`backend/tests/test_contas_unificadas_api.py::test_rotas_por_conta_e_apelidos_por_perfil`,
+`::test_dto_da_conta_traz_credencial_consentimento_e_sessao`, `::test_marcar_sessao_sem_aparelho_e_409`;
+`backend/tests/test_credenciais_da_conta.py::test_a_execucao_nao_aceita_mais_credencial`,
+`::test_put_credential_sem_consentimento_e_409_tambem_pelo_apelido_por_perfil`,
+`::test_pre_voo_recusa_aparelho_sem_a_credencial_que_a_skill_exige`). Conta real, PostgreSQL e produção: `not_run`.
