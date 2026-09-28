@@ -347,7 +347,7 @@ class ModelCaps(BaseModel):
     #: Campos extras do corpo POR MODELO, aplicados DEPOIS do `extra_body` do provedor (Fase 17). É onde mora o que
     #: um modelo exige e o vizinho no mesmo endpoint não aceita: `reasoning_effort: none` no gpt-6-luna (sem isso o
     #: Chat Completions não chama ferramenta), `thinking: {type: disabled}` no deepseek-flash.
-    extra_body: dict[str, Any] | None = None
+    extra_body: dict[str, object] | None = None
 
 
 class ProviderCfg(BaseModel):

@@ -419,3 +419,30 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
             assert len(lista) == 1 and lista[0]["source"] == "imported_legacy" and lista[0]["is_primary"]
             assert (await c.get(lista[0]["url"])).content == _png(360, 360)
             assert identidade_para_foto((await c.get(f"/api/personas/{pid}")).json() and estado.social.get_persona(pid)).initials == "BF"
+
+
+async def test_gerador_real_so_ancora_rosto_em_imagem_real(tmp_path: Path) -> None:
+    """Fase 17: ao trocar do simulado para o real, o degradê não é referência (não tem rosto) e sai da principal na
+    primeira foto real; um upload (pode ser foto de gente de verdade) continua principal, mas não ancora o rosto —
+    quem ancora é a primeira imagem real."""
+    svc, db, _storage, _eventos, _contas = _servico(tmp_path, SimulatedImageGenerator())
+    try:
+        (degrade,) = await svc.gerar("ig-1", IDENTIDADE, count=1)
+        assert degrade.is_primary and degrade.provider == "simulated"
+        real = _Gerador()
+        svc.generator = real
+        novas = await svc.gerar("ig-1", IDENTIDADE, count=2)
+        assert real.referencias == [False, True]
+        assert svc.principal("ig-1").id == novas[0].id and svc.ancora_real("ig-1").id == novas[0].id
+
+        db.execute("INSERT INTO instagram_profiles(id, username, display_name, created_at, updated_at) "
+                   "VALUES ('ig-2','','Outra Pessoa',?,?)", (TS, TS))
+        enviada = await svc.registrar_upload("ig-2", _png(16, 16), "image/png")
+        svc.definir_principal("ig-2", enviada.id)
+        real2 = _Gerador()
+        svc.generator = real2
+        await svc.gerar("ig-2", IDENTIDADE, count=2)
+        assert real2.referencias == [False, True]
+        assert svc.principal("ig-2").id == enviada.id
+    finally:
+        db.close()

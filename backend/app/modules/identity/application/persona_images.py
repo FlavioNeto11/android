@@ -7,6 +7,9 @@ Nível de aplicação (D2/D3): só portas (`ports.py`) e domínio. Quem liga ban
 - o teto DIÁRIO de IA em US$ é conferido ANTES de pedir uma imagem paga (o simulado não gasta e não confere);
 - a primeira imagem pronta de uma pessoa sem principal vira a principal; as seguintes recebem a principal como
   REFERÊNCIA, para o rosto se manter — é o único dado além de atributos que sai da máquina;
+- com gerador REAL, só é referência uma imagem que um gerador real produziu (Fase 17). O degradê simulado não tem
+  rosto, e o avatar legado e o upload podem ser foto de gente de verdade — o gerador editaria essa semelhança. Sem
+  imagem real, a pessoa ganha um rosto novo; o degradê simulado deixa de ser a principal na primeira foto real;
 - recusa do filtro vira `refused` e falha vira `failed`, com a linha no banco e o custo (quando houve) no relatório;
   nunca se cai do pago para o simulado;
 - o original do provedor é guardado intacto ao lado do JPEG servido (`original_key`): a recompressão apaga a
@@ -56,6 +59,13 @@ class PersonaImageService:
     def principal(self, persona_id: str) -> PersonaImageRecord | None:
         return next((r for r in self.records.list(persona_id) if r.is_primary and r.status == "ready"), None)
 
+    def ancora_real(self, persona_id: str) -> PersonaImageRecord | None:
+        """O rosto de referência para um gerador real: a principal, se veio de um gerador real; senão a primeira
+        imagem real pronta. Nunca o degradê simulado, o avatar legado ou o upload (ver o topo do módulo)."""
+        reais = sorted((r for r in self.records.list(persona_id) if r.status == "ready" and _gerada_por_real(r)),
+                       key=lambda r: r.created_at or "")
+        return next((r for r in reais if r.is_primary), None) or (reais[0] if reais else None)
+
     def bytes_de(self, record: PersonaImageRecord) -> bytes | None:
         return self.blobs.get(record.storage_key) if record.storage_key else None
 
@@ -79,7 +89,15 @@ class PersonaImageService:
             existentes = self.records.list(persona_id)
             indice = len(existentes)
             principal = self.principal(persona_id)
-            referencia = self.bytes_de(principal) if principal is not None else None
+            if self.generator.simulated:
+                ancora = principal
+                tornar_principal = principal is None
+            else:
+                ancora = self.ancora_real(persona_id)
+                # O degradê simulado é só um lugar guardado: a primeira foto real toma o lugar dele. Avatar legado e
+                # upload continuam principais — foram escolha do dono —, mas não ancoram o rosto.
+                tornar_principal = principal is None or (ancora is None and _placeholder_simulado(principal))
+            referencia = self.bytes_de(ancora) if ancora is not None else None
             spec = montar_spec(identity, persona_id, indice)
             image_id = self._new_id()
             pendente = PersonaImageRecord(
@@ -94,7 +112,7 @@ class PersonaImageService:
             except GeracaoFalhou as exc:
                 registro = self._encerrar(pendente, status="failed", erro=str(exc), imagem=None)
             else:
-                registro = await self._guardar(pendente, imagem, tornar_principal=principal is None)
+                registro = await self._guardar(pendente, imagem, tornar_principal=tornar_principal)
             saida.append(registro)
             if registro.status != "ready":
                 break                              # recusa ou falha: não insiste nas seguintes desta leva
@@ -202,3 +220,13 @@ class PersonaImageService:
     def _anunciar(self, persona_id: str, image_id: str, status: str, *, level: str = "info") -> None:
         self.events.emit(EVENTO_IMAGEM, f"imagem {image_id} da persona {persona_id}: {status}", level=level,
                          data={"profile_id": persona_id, "image_id": image_id, "status": status})
+
+
+def _gerada_por_real(registro: PersonaImageRecord) -> bool:
+    """Saiu de um gerador real (não do simulado, nem de upload, nem do avatar legado)."""
+    return registro.source == "generated" and (registro.provider or "") not in ("", "simulated")
+
+
+def _placeholder_simulado(registro: PersonaImageRecord) -> bool:
+    """O degradê do gerador simulado: guarda o lugar da principal até a primeira foto real."""
+    return registro.source == "generated" and registro.provider == "simulated"
