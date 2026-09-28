@@ -84,10 +84,12 @@ def recifrar(db: Database, *, antigo: KeyProvider, novo: KeyProvider, aplicar: b
                 continue
             if aplicar:
                 para.store_secret(valor, ref=ref)
-                # `instagram_credentials.key_id` é uma CÓPIA do mesmo dado, gravada no cadastro
-                # (social/service.py). Ninguém a lê hoje, mas deixá-la para trás daria duas respostas diferentes
-                # para "com que chave isto foi cifrado?" a quem abrisse o banco depois da recifragem.
-                db.execute("UPDATE instagram_credentials SET key_id=?, updated_at=? WHERE secret_ref=?",
+                # `secrets.key_id` é a verdade sobre "com que chave isto foi cifrado". `account_credentials.key_id`
+                # (049) é uma CÓPIA gravada no cadastro, que ninguém lê para decidir nada — mas é a tabela viva da
+                # credencial, e quem abrir o banco depois da recifragem não pode achar duas respostas. A
+                # `instagram_credentials` (008) é só leitura desde a 049 e sai numa migração posterior: não se
+                # escreve mais nela, nem aqui.
+                db.execute("UPDATE account_credentials SET key_id=?, updated_at=? WHERE secret_ref=?",
                            (novo.key_id, now_iso(), ref))
             relatorio["recifrados"].append(ref)
             del valor                    # o valor em claro não sobrevive à iteração

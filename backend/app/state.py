@@ -849,7 +849,8 @@ class AppState:
                     "cadastre a conta na tela do perfil antes de despachar", None)
         if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
             return recusa
-        session = self.social_repo.session_row(profile_id)
+        # A sessão é da conta NESTE aparelho (`account_sessions`, 049): lida pelo par, não "a do perfil".
+        session = self.social_repo.session_row(profile_id, rt.id)
         if session and session["status"] == SessionStatus.session_ready.value and session["instance_id"] == rt.id:
             if not self.sessao_vencida(session):
                 return None
@@ -874,6 +875,10 @@ class AppState:
         if cred is None or cred["status"] == "invalid":
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
                     if cred is None else motivo), None
+        if cred["consent_at"] is None:
+            # ADR-040: o consentimento é por conta e vale para o provedor de sessão como para o `type_secret`.
+            return ("a senha guardada desta conta ainda não tem o consentimento para a automação digitá-la; "
+                    "marque-o na conta do perfil"), None
         if not self.sensitive_input.available():
             # Achado #105: sem o canal comprovado, `ensure_session(automatic=True)` ia digitar o usuário e
             # levantar SensitiveInputUnavailable ao chegar na senha — sempre, a cada objetivo que topasse este

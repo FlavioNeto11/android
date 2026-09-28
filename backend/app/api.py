@@ -48,7 +48,7 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceProvisionBody, InstanceState, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
-                     ProfileAccountPatch, ProfilePolicyPatch,
+                     ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
                      PersonaImageDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -753,11 +753,86 @@ async def profile_avatar(request: Request, profile_id: str) -> Any:
                               ausente=("sem_foto", "Este perfil não tem foto cadastrada."))
 
 
+# ---------------------------------------------------------------- credencial e sessão POR CONTA (ADR-040)
+# A Conta é a entidade única: as rotas de credencial, conectar, verificar, sair e tentativas são da CONTA
+# (`/accounts/{account_id}/…`). As antigas, por perfil, viram apelidos que resolvem a conta âncora — a do app que
+# provê a conta do perfil (`social_repo.app_package`) — e continuam devolvendo o perfil, como sempre.
+def _conta_ancora_ou_409(s: AppState, profile_id: str) -> str:
+    try:
+        s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    # Leitura: não cria conta (um GET que insere linha seria uma surpresa); quem cria é guardar a senha.
+    conta = s.social_repo.conta_ancora(profile_id)
+    if conta is None:
+        raise err(409, "no_account", "Este perfil não tem conta no aplicativo que provê a conta dele.")
+    return str(conta["id"])
+
+
+@router.put("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
+async def put_account_credential(request: Request, profile_id: str, account_id: str,
+                                 body: CredentialUpdate) -> ProfileAccountDTO:
+    """Só escrita, com o consentimento por conta (`consent: true`, senão 409 `consentimento_de_credencial`). O
+    painel mostra apenas que existe uma credencial e quem consentiu, nunca o valor."""
+    try:
+        return st(request).social.set_account_credential(profile_id, account_id, body, by=quem(request))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
+async def delete_account_credential(request: Request, profile_id: str, account_id: str) -> ProfileAccountDTO:
+    try:
+        return st(request).social.delete_account_credential(profile_id, account_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/consent")
+async def consent_account_credential(request: Request, profile_id: str, account_id: str) -> ProfileAccountDTO:
+    """Consentir sem redigitar: marca `consent_at`/`consent_by` numa senha já guardada."""
+    try:
+        return st(request).social.consent_account_credential(profile_id, account_id, by=quem(request))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect", status_code=202)
+async def connect_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+    """Abre o app da conta no aparelho vinculado, reaproveita a sessão ou autentica, e verifica a conta. Só para
+    app com provedor de sessão (409 `no_session_provider` nos demais). 202: o resultado aparece na conta (`session`)."""
+    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta",
+                                    account_id=account_id)
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/verify", status_code=202)
+async def verify_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+    """Relê do aparelho qual conta está aberta. Não digita senha: só observa."""
+    return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
+                                    label="verificação da conta", account_id=account_id)
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/logout", status_code=202)
+async def logout_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+    """Encerra a sessão da conta no aparelho apagando os dados do app dela — o jeito determinístico de sair."""
+    return await _logout_job(request, profile_id, account_id=account_id)
+
+
+@router.get("/instagram/profiles/{profile_id}/accounts/{account_id}/auth-attempts")
+async def account_auth_attempts(request: Request, profile_id: str, account_id: str,
+                                limit: int = 20) -> list[dict[str, object]]:
+    """Tentativas de autenticação DESTA conta: quando, em qual aparelho e com que desfecho."""
+    try:
+        return st(request).social.auth_attempts(profile_id, min(max(limit, 1), 100), account_id=account_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
 @router.put("/instagram/profiles/{profile_id}/credential")
 async def put_credential(request: Request, profile_id: str, body: CredentialUpdate) -> Any:
-    """Só escrita. O painel mostra apenas que existe uma credencial, nunca o valor."""
+    """Apelido por perfil: a credencial da conta âncora. Só escrita; nunca o valor."""
     try:
-        return st(request).social.set_credential(profile_id, body)
+        return st(request).social.set_credential(profile_id, body, by=quem(request))
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -772,16 +847,16 @@ async def delete_credential(request: Request, profile_id: str) -> Any:
 
 @router.post("/instagram/profiles/{profile_id}/connect", status_code=202)
 async def connect_profile(request: Request, profile_id: str) -> Any:
-    """Abre o Instagram no aparelho vinculado, reaproveita a sessão ou autentica, e verifica a conta.
+    """Apelido por perfil de `…/accounts/{conta âncora}/session/connect`.
 
     202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
     """
-    return await _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
+    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta")
 
 
 @router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
 async def verify_profile(request: Request, profile_id: str) -> Any:
-    """Relê do aparelho qual conta está aberta. Não digita senha: só observa.
+    """Apelido por perfil de `…/session/verify`: relê do aparelho qual conta está aberta, sem digitar senha.
 
     `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
     """
@@ -791,30 +866,42 @@ async def verify_profile(request: Request, profile_id: str) -> Any:
 
 @router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
 async def logout_profile(request: Request, profile_id: str) -> Any:
-    """Encerra a sessão no aparelho apagando os dados do app — é o jeito determinístico de sair.
+    """Apelido por perfil de `…/session/logout`: apaga os dados do app da conta âncora naquele aparelho.
 
-    Apaga também cache e preferências do Instagram naquele aparelho; por isso é uma ação explícita, nunca efeito
-    colateral de outra operação.
+    Apaga também cache e preferências do app; por isso é uma ação explícita, nunca efeito colateral de outra
+    operação.
     """
+    return await _logout_job(request, profile_id, account_id=None)
+
+
+async def _logout_job(request: Request, profile_id: str, *, account_id: str | None) -> dict[str, object]:
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
-    _recusa_pelo_portao(profile, "logout")
+    conta = _conta_da_sessao(s, profile_id, account_id)
+    _recusa_pelo_portao(conta, "logout")
     # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
     # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
-    return {**_despachar_trabalho(s, rt, "session.logout", lambda: _do_logout(s, rt, profile_id),
-                                  label="logout do Instagram", params={"profile_id": profile_id}),
-            "profile_id": profile_id}
+    pacote = conta.package or s.social_repo.app_package or ""
+    return {**_despachar_trabalho(s, rt, "session.logout", lambda: _do_logout(s, rt, profile_id, conta.id, pacote),
+                                  label=f"logout de {conta.app_name or pacote}",
+                                  params={"profile_id": profile_id, "account_id": conta.id}),
+            "profile_id": profile_id, "account_id": conta.id}
 
 
-async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str) -> None:
-    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), resolvido uma vez na composição
-    # (`social_repo.app_package`) — o mesmo que a porta de sessão e "Conectar" usam.
-    package = s.social_repo.app_package
+def _conta_da_sessao(s: AppState, profile_id: str, account_id: str | None) -> Any:
+    """A conta que a rota opera: a dita, ou a âncora (apelidos por perfil)."""
+    try:
+        return s.social.get_account(profile_id, account_id or _conta_ancora_ou_409(s, profile_id))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str, account_id: str, package: str) -> None:
     await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
     rt.app_versions.clear()
-    s.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
-                              detail="Dados do app apagados neste aparelho; é preciso entrar de novo.")
-    s.bus.emit("log", f"{rt.id}: sessão do Instagram encerrada (dados do app apagados)", instance_id=rt.id)
+    s.social_repo.set_account_session(profile_id, account_id, rt.id, status=SessionStatus.unknown,
+                                      detail="Dados do app apagados neste aparelho; é preciso entrar de novo.")
+    s.bus.emit("log", f"{rt.id}: sessão da conta encerrada ({package}: dados do app apagados)", instance_id=rt.id)
 
 
 def _profile_device(s: AppState, profile_id: str) -> tuple[DeviceRuntime, Any]:
@@ -855,12 +942,16 @@ async def _exigir_internet(s: Any, rt: Any) -> None:
 
 
 async def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
-                             observe_only: bool = False) -> Any:
+                             observe_only: bool = False, account_id: str | None = None) -> dict[str, object]:
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
-    if not profile.credential.configured and not observe_only:
-        raise err(409, "no_credential", "Cadastre a senha deste perfil antes de conectar.")
-    _recusa_pelo_portao(profile, "verify" if observe_only else "connect")
+    conta = _conta_da_sessao(s, profile_id, account_id)
+    if not conta.credential.configured and not observe_only:
+        raise err(409, "no_credential", "Guarde a senha desta conta antes de conectar.")
+    if conta.credential.configured and conta.credential.consent_at is None and not observe_only:
+        raise err(409, "consentimento_de_credencial", "A senha desta conta está guardada sem o consentimento para a "
+                                                      "automação digitá-la; marque-o na conta antes de conectar.")
+    _recusa_pelo_portao(conta, "verify" if observe_only else "connect")
     if rt.state not in (InstanceState.online, InstanceState.booting, InstanceState.stopped,
                         InstanceState.hibernated, InstanceState.absent):
         raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
@@ -870,13 +961,17 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     if not observe_only:
         await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
-    provedor = s.provedor_do_perfil()
+    # O provedor de sessão do PACOTE da conta (registro por pacote, fase K1). `ensure_session` continua por perfil:
+    # o provedor acha a conta dele pelo perfil (hoje um app com provedor por perfil; ADR-040 nota).
+    provedor = s.sessoes.for_package(conta.package)
     if provedor is None:
-        raise err(409, "no_session_provider", "Nenhum aplicativo registrado provê a sessão deste perfil.")
+        raise err(409, "no_session_provider", f"O aplicativo desta conta ({conta.app_name or conta.app_id}) não tem "
+                                              "login gerenciado pelo sistema: entre pelo aparelho e marque a sessão.")
     return {**_despachar_trabalho(
         s, rt, verbo,
         lambda: provedor.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
-        label=label, params={"profile_id": profile_id}), "profile_id": profile_id}
+        label=label, params={"profile_id": profile_id, "account_id": conta.id}),
+        "profile_id": profile_id, "account_id": conta.id}
 
 
 # ====================================================================== persona, memória e histórico
@@ -1172,7 +1267,7 @@ async def list_profile_accounts(request: Request, profile_id: str) -> Any:
 @router.post("/instagram/profiles/{profile_id}/accounts", status_code=201)
 async def add_profile_account(request: Request, profile_id: str, body: ProfileAccountCreate) -> Any:
     try:
-        return st(request).social.add_account(profile_id, body)
+        return st(request).social.add_account(profile_id, body, by=quem(request))
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -1189,14 +1284,6 @@ async def patch_profile_account(request: Request, profile_id: str, account_id: s
 async def delete_profile_account(request: Request, profile_id: str, account_id: str) -> None:
     try:
         st(request).social.delete_account(profile_id, account_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.put("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
-async def put_account_credential(request: Request, profile_id: str, account_id: str, body: CredentialUpdate) -> Any:
-    try:
-        return st(request).social.set_account_credential(profile_id, account_id, body)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -1248,9 +1335,10 @@ async def delete_policy_group(request: Request, group_id: str) -> None:
 
 @router.get("/instagram/profiles/{profile_id}/auth-attempts")
 async def auth_attempts(request: Request, profile_id: str, limit: int = 20) -> Any:
-    """Tentativas de autenticação deste perfil: quando, em qual aparelho e com que desfecho."""
+    """Apelido por perfil: as tentativas de autenticação da conta âncora (as anteriores à 049 apontam para ela)."""
+    s = st(request)
     try:
-        return st(request).social.auth_attempts(profile_id, min(max(limit, 1), 100))
+        return s.social.auth_attempts(profile_id, min(max(limit, 1), 100), account_id=_conta_ancora_ou_409(s, profile_id))
     except SocialError as exc:
         raise _social_error(exc) from exc
 

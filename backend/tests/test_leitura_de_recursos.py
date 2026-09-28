@@ -25,8 +25,8 @@ from app.modules.applications.infrastructure.app_installation import AppInstalla
 from app.modules.applications.infrastructure.app_repository import AppRepository
 from app.modules.fleet.domain.resources import DeviceCode, DeviceState, ReadinessPhase
 from app.modules.fleet.infrastructure.device_state import DeviceStateProvider
-from app.modules.identity.domain.resources import (AccountSessionStatus, BindingCode, CredentialState, ProfileStatus,
-                                                   SessionCode, SessionStatus)
+from app.modules.identity.domain.resources import (BindingCode, CredentialState, ProfileStatus, SessionCode,
+                                                   SessionStatus)
 from app.modules.identity.infrastructure.account_session import AccountBindingProvider, AppSessionProvider
 from app.planning.catalog import session_provider_of
 from app.shared.resources import DriftStatus, ResourceSpec, Target
@@ -37,7 +37,7 @@ from .conftest import make_config
 AGORA = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 IG = "com.instagram.android"
 TABELAS_LIDAS = ("instances", "apps", "app_releases", "device_app_state", "instagram_profiles",
-                 "device_profile_bindings", "instagram_sessions", "instagram_credentials", "profile_accounts")
+                 "device_profile_bindings", "profile_accounts", "account_sessions", "account_credentials")
 
 DEVICE = ResourceSpec.of("device.state", None, "online")
 INSTALACAO = ResourceSpec.of("app.installation", "instagram", {"release": "promoted"})
@@ -81,6 +81,10 @@ def _estado_do_app(db: Database, iid: str, **campos: Any) -> None:
 def _perfil(db: Database, pid: str, username: str, *, status: str = "active", policy: str | None = None) -> None:
     db.execute("INSERT INTO instagram_profiles(id, username, status, offline_policy, created_at, updated_at)"
                " VALUES (?,?,?,?,?,?)", (pid, username, status, policy, to_iso(AGORA), to_iso(AGORA)))
+    # A conta do Instagram do perfil (049): é dela a credencial e a sessão que o leitor consulta.
+    db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+               " VALUES (?,?,?,?,?,?,?)", (f"acc-{pid}", pid, "instagram", username, "active", to_iso(AGORA),
+                                          to_iso(AGORA)))
 
 
 def _vincular(db: Database, pid: str, iid: str, *, worker_id: str | None = None, physical_id: str | None = None,
@@ -91,17 +95,19 @@ def _vincular(db: Database, pid: str, iid: str, *, worker_id: str | None = None,
 
 
 def _sessao(db: Database, pid: str, status: str, *, iid: str = "android-01", username: str | None = "lucas",
-            verificada: datetime | None = AGORA, streak: int = 0) -> None:
-    db.execute("INSERT INTO instagram_sessions(profile_id, instance_id, status, observed_username, verified_at,"
+            verificada: datetime | None = AGORA, streak: int = 0, conta: str | None = None) -> None:
+    db.execute("INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at,"
                " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?)",
-               (pid, iid, status, username, to_iso(verificada) if verificada else None, to_iso(AGORA), streak))
+               (conta or f"acc-{pid}", iid, status, username, to_iso(verificada) if verificada else None,
+                to_iso(AGORA), streak))
 
 
-def _credencial(db: Database, pid: str, status: str = "active") -> None:
+def _credencial(db: Database, pid: str, status: str = "active", *, consentida: bool = True) -> None:
     # Nome de referência no cofre, não um segredo: o leitor nunca o lê.
-    db.execute("INSERT INTO instagram_credentials(profile_id, login_identifier, secret_ref, key_id, status,"
-               " created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-               (pid, "login-de-teste", "ref-de-teste", "chave-de-teste", status, to_iso(AGORA), to_iso(AGORA)))
+    db.execute("INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, status,"
+               " created_at, updated_at, consent_at, consent_by) VALUES (?,?,?,?,?,?,?,?,?)",
+               (f"acc-{pid}", "login-de-teste", "ref-de-teste", "chave-de-teste", status, to_iso(AGORA),
+                to_iso(AGORA), to_iso(AGORA) if consentida else None, "teste" if consentida else None))
 
 
 def _foto(db: Database) -> dict[str, list[tuple[object, ...]]]:
@@ -260,10 +266,11 @@ def _identidades(db: Database) -> None:
     _sessao(db, "p-andre", "unknown", iid="android-03", username=None, verificada=None, streak=3)
     _credencial(db, "p-lucas")
     _credencial(db, "p-ana", status="invalid")
-    db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, session_status, created_at,"
-               " updated_at) VALUES (?,?,?,?,?,?,?,?)",
-               ("c-1", "p-lucas", "outlook", "lucas@exemplo.test", "active", "logged_out", to_iso(AGORA),
-                to_iso(AGORA)))
+    db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+               " VALUES (?,?,?,?,?,?,?)",
+               ("c-1", "p-lucas", "outlook", "lucas@exemplo.test", "active", to_iso(AGORA), to_iso(AGORA)))
+    # A marcação da pessoa ("saí") é a sessão da conta no aparelho, no vocabulário único (049).
+    _sessao(db, "p-lucas", "auth_required", username=None, verificada=None, conta="c-1")
 
 
 def test_account_binding_le_o_vinculo_ativo(banco: Database) -> None:
@@ -312,7 +319,7 @@ def test_app_session_le_provedor_conta_localidade_validade_e_teto(banco: Databas
 
     outlook = ler(SESSAO_OUTLOOK, "android-01")
     assert outlook.provider is None and outlook.account is not None
-    assert outlook.account.session_status is AccountSessionStatus.logged_out
+    assert outlook.account.session_status is SessionStatus.auth_required
     assert p.diff(SESSAO_OUTLOOK, outlook).code == SessionCode.account_logged_out
     assert _foto(banco) == antes
 

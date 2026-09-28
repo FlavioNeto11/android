@@ -238,6 +238,9 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
                # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
                "localidade_da_instancia",
+               # `app_e_acoes_do_pacote` lê `device_app_state` e `commands` — do aparelho — e recebe de quem chama as
+               # linhas do perfil já buscadas com o `profile_id` (ADR-040: as ações de sessão são por conta).
+               "app_e_acoes_do_pacote",
                # Grupo de acesso (migração 036) é CONFIGURAÇÃO compartilhada de propósito, como a persona: não guarda
                # conteúdo de perfil nenhum. `policy_group_members` devolve só id e @ (o mesmo que `list_profile_ids`).
                "create_policy_group", "policy_group_row", "policy_group_by_name", "list_policy_groups",
