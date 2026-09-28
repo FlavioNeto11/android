@@ -7,9 +7,11 @@ nome de app. Este teste, por AST e sem importar `app`, reprova uma comparação 
 - operando com uma cadeia de atributos que passa por `.instagram` (`cfg.file.instagram.package`);
 - operando com um nome importado de um módulo do Instagram (`from ...catalog.instagram import PACKAGE`).
 
-Fica de fora o que É do Instagram: `app/integrations/**`, `app/planning/catalog/**` (o catálogo e o shim do
-registro) e `app/config.py` (`InstagramCfg`). Texto que só MENCIONA o Instagram (mensagem, docstring, argumento de
-função como `package_of_provider("instagram")`) não é comparação e não conta: decidir é comparar.
+Desde o ADR-052 não há mais "o que É do Instagram" em Python: o app é um pacote de DADO em
+`app/conhecimento/apps/com.instagram.android/`, e `app/integrations/` só tem o motor genérico (`app_declarado/`). Fica
+de fora só `app/config.py` (`InstagramCfg`, até a fatia 4). Texto que só MENCIONA o Instagram (mensagem, docstring,
+argumento de função) não é comparação e não conta aqui: decidir é comparar. O texto tem catraca própria
+(`TEXTO_LEGADO`), e a pasta de integrações também (`test_integracoes_so_tem_o_motor_generico`).
 
 `EXCECOES` é a catraca, por (arquivo, função), como em `test_arquitetura.py`: só encolhe, e entrada órfã reprova.
 Nível de prova: `simulated` (análise estática).
@@ -17,12 +19,14 @@ Nível de prova: `simulated` (análise estática).
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]          # backend/
 
-#: Onde comparar com o Instagram é o assunto do arquivo.
-FORA: tuple[str, ...] = ("app/integrations/", "app/planning/catalog/", "app/config.py")
+#: Onde comparar com o Instagram ainda é o assunto do arquivo. Encolheu com o ADR-052 (saíram `app/integrations/` e
+#: `app/planning/catalog/`, que não têm mais nada do Instagram).
+FORA: tuple[str, ...] = ("app/config.py",)
 
 #: (arquivo relativo a backend/, função que contém a comparação) → por que ainda não saiu. Vazio desde a K1.
 EXCECOES: dict[tuple[str, str], str] = {}
@@ -128,6 +132,85 @@ def test_o_detector_reprova_cada_forma_e_ignora_o_que_nao_decide(tmp_path: Path)
     (app / "integrations" / "instagram" / "auth.py").write_text("def f(p):\n    return p == 'instagram'\n",
                                                                encoding="utf-8")
     achados = comparacoes_com_instagram(tmp_path)
-    assert [(f, linha) for _, f, linha, _ in achados] == [
-        ("porta", 3), ("porta", 5), ("porta", 7), ("porta", 9), ("casar", 12)]
-    assert all(a == "app/nucleo.py" for a, _, _, _ in achados)
+    # Desde o ADR-052 a pasta de integrações não é mais exceção: a comparação escondida lá também é pega.
+    assert [(a, f, linha) for a, f, linha, _ in achados] == [
+        ("app/integrations/instagram/auth.py", "f", 2), ("app/nucleo.py", "porta", 3), ("app/nucleo.py", "porta", 5),
+        ("app/nucleo.py", "porta", 7), ("app/nucleo.py", "porta", 9), ("app/nucleo.py", "casar", 12)]
+
+
+# ==================================================================== ADR-052: zero Python por app
+def test_integracoes_so_tem_o_motor_generico() -> None:
+    """Um app é uma pasta de DADO em `app/conhecimento/apps/<pacote>/`. Em `app/integrations/` fica só o motor que lê
+    esse dado (`app_declarado/`): um `integrations/<app>/` novo é o caminho que o ADR-052 fechou."""
+    pasta = RAIZ / "app" / "integrations"
+    dentro = sorted(p.name for p in pasta.iterdir() if p.name != "__pycache__")
+    assert dentro == ["__init__.py", "app_declarado"], f"código de app em integrations/: {dentro}"
+
+
+#: Nomes HISTÓRICOS que contêm "instagram" e não são conhecimento de app: a tabela do perfil (`instagram_profiles`,
+#: `instagram_credentials`), o prefixo das rotas do perfil (`/api/instagram/...`) e o nome antigo da variável da chave
+#: mestra. Renomeá-los é migração e versão de contrato, não mudança de comportamento; ficam fora desta contagem.
+NOMES_HISTORICOS = re.compile(r"\binstagram_(?:profiles|credentials)\b|^/instagram/|INSTAGRAM_CREDENTIALS_MASTER_KEY")
+
+#: Texto (fora de docstring e de nome histórico) que cita o Instagram, por arquivo de `app/`. Não decide nada — quem
+#: decide é pego acima —, mas é conhecimento de app escrito em Python, e a meta do ADR-052 é zero. Catraca: só
+#: desce; arquivo que zera sai (entrada órfã reprova).
+TEXTO_LEGADO: dict[str, int] = {
+    "app/api.py": 1,                            # "conectar perfil do Instagram" (motivo de ligar o aparelho)
+    "app/config.py": 1,                         # InstagramCfg.package (fatia 4)
+    "app/modules/execution/domain/command_refinement.py": 1,    # exemplo ao modelo ("Outlook e Instagram")
+    "app/modules/skills/infrastructure/profile_links.py": 2,    # pacote e domínios do link de perfil (fatia 4)
+    "app/planning/prompts.py": 1,               # exemplo ao modelo
+    "app/social/observacao.py": 1,              # rótulo de ruído "instagram profile picture"
+    "app/social/repository.py": 2,              # nome do app no DTO e o tipo de conta âncora (fatia 4)
+    "app/social/service.py": 4,                 # tipo de conta âncora e mensagens (fatia 4)
+    "app/state.py": 1,                          # tipo de conta âncora (fatia 4)
+}
+
+
+def _docstrings(arvore: ast.AST) -> set[int]:
+    ids: set[int] = set()
+    for no in ast.walk(arvore):
+        if isinstance(no, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and no.body:
+            primeiro = no.body[0]
+            if isinstance(primeiro, ast.Expr) and isinstance(primeiro.value, ast.Constant):
+                ids.add(id(primeiro.value))
+    return ids
+
+
+def texto_do_instagram(raiz: Path) -> dict[str, list[tuple[int, str]]]:
+    """arquivo → [(linha, texto)] de cada texto do código de `raiz/app` que cita o Instagram."""
+    achados: dict[str, list[tuple[int, str]]] = {}
+    for caminho in sorted((raiz / "app").rglob("*.py")):
+        if "__pycache__" in caminho.parts:
+            continue
+        arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+        docs = _docstrings(arvore)
+        for no in ast.walk(arvore):
+            if (isinstance(no, ast.Constant) and isinstance(no.value, str) and id(no) not in docs
+                    and "instagram" in NOMES_HISTORICOS.sub("", no.value).lower()):
+                achados.setdefault(caminho.relative_to(raiz).as_posix(), []).append((no.lineno, no.value[:80]))
+    return achados
+
+
+def test_texto_do_instagram_no_codigo_so_desce() -> None:
+    achados = texto_do_instagram(RAIZ)
+    subiu = [f"{a}: {len(v)} (teto {TEXTO_LEGADO.get(a, 0)}) — {v}" for a, v in achados.items()
+             if len(v) > TEXTO_LEGADO.get(a, 0)]
+    assert not subiu, ("conhecimento de app escrito em Python (ADR-052): ponha no pacote do app ou pergunte ao "
+                       "registro (rótulo, pacote âncora):\n  " + "\n  ".join(subiu))
+    desceu = sorted(a for a, teto in TEXTO_LEGADO.items() if len(achados.get(a, [])) < teto)
+    assert not desceu, f"a catraca desceu — baixe o teto em TEXTO_LEGADO: {desceu}"
+
+
+def test_o_detector_de_texto_ignora_docstring_e_nome_historico(tmp_path: Path) -> None:
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "m.py").write_text(
+        '"""módulo que fala de instagram"""\n'
+        "def f(db):\n"
+        '    """docstring do Instagram"""\n'
+        "    db.q('SELECT * FROM instagram_profiles')\n"
+        "    rota = '/instagram/profiles'\n"
+        "    return 'com.instagram.android', rota\n", encoding="utf-8")
+    assert [linha for linha, _ in texto_do_instagram(tmp_path)["app/m.py"]] == [6]

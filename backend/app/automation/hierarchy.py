@@ -29,8 +29,8 @@ PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {cont
 #:
 #: Casa contra o texto NORMALIZADO (`_sem_acento`: minúsculas, sem acento), por isso está escrito sem acento aqui.
 #:
-#: As frases vêm de `integrations/instagram/navigation.SIGNALS` (`two_factor` e `challenge`, en e pt), que é o
-#: classificador que já sabia reconhecer essas telas — e que só era consultado DEPOIS de a imagem ter sido
+#: As frases vêm dos sinais `two_factor` e `challenge` (en e pt) do `telas.yaml` do Instagram
+#: (`app/conhecimento/apps/com.instagram.android/`), o classificador que já sabia reconhecer essas telas — e que só era consultado DEPOIS de a imagem ter sido
 #: capturada e enviada. `test_sensitive_input` confere, string por string, que os dois concordam: dois
 #: classificadores discordando sobre a MESMA tela seria pior do que ter um só.
 _DESAFIO = re.compile(

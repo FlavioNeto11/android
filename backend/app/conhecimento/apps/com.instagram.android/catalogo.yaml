@@ -1,6 +1,6 @@
 # Catálogo de ações do Instagram, como DADO (ADR-052, fatia 2). Lido e validado por `carregar_catalogo`
-# (`app/planning/capabilities.py`), pedido pelo manifesto do app (`integrations/instagram/manifesto.py`) por
-# `catalogo_do_pacote`. Nenhum Python do Instagram monta `Capability`: acrescentar ou corrigir uma ação é mudar este
+# (`app/planning/capabilities.py`), pedido pela descoberta de pacotes (`integrations/app_declarado/pacote.py`)
+# por `catalogo_do_pacote`. Nenhum Python do Instagram monta `Capability`: acrescentar ou corrigir uma ação é mudar este
 # arquivo.
 #
 # Cada entrada é um contrato: o que a etapa faz, o que precisa antes, o que comprova depois, se tem efeito externo,

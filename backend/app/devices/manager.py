@@ -474,7 +474,7 @@ class DeviceManager:
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
         #: estava esperando uma pessoa (desafio, conta errada) é a camada social, então ela se inscreve aqui —
-        #: é o que cumpre a promessa de CHALLENGE_HELP ("devolva o controle: a verificação recomeça sozinha"),
+        #: é o que cumpre a promessa do texto de desafio (`textos.desafio` do `sessao.yaml`: "devolva o controle: a verificação recomeça sozinha"),
         #: hoje só palavra (achado #106).
         self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
         #: Modo treinamento (item 13.1): recebe cada entrada manual já executada, com a árvore da tela de ANTES.

@@ -27,11 +27,13 @@ import yaml
 from ...automation import conhecimento_de_telas as telas_
 from ...automation.conhecimento_de_telas import ConhecimentoDeTelas, ConhecimentoInvalido, TelaReconhecida
 from ...automation.hierarchy import UiElement, UiTree
+from ...planning.capabilities import CONHECIMENTO_DE_APPS
 from . import formulario as geometria
 from .formulario import LoginForm
 
-#: Onde mora o conhecimento de cada app: uma pasta por pacote Android, com `telas.yaml` e `sessao.yaml`.
-PASTA_DOS_APPS = Path(__file__).resolve().parents[2] / "conhecimento" / "apps"
+#: Onde mora o conhecimento de cada app: uma pasta por pacote Android, com `telas.yaml` e `sessao.yaml`. É a MESMA raiz
+#: do catálogo (`planning/capabilities.CONHECIMENTO_DE_APPS`) e da descoberta (`pacote.py`): uma só, para não divergir.
+PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 
 #: Desfechos que uma regra de "depois do envio" pode declarar. `conferir_conta` lê a conta na tela e decide entre
 #: sessão pronta, conta errada e incerto (motor). De propósito NÃO há `retryable` nem `session_ready`: depois que a

@@ -25,7 +25,7 @@ from ..util import new_token, now, now_iso, to_iso
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
-#: `instagram_sessions`, e `authentication.py`, `state.py` e o DTO do perfil continuam lendo por ele.
+#: `instagram_sessions`, e o motor de sessão, `state.py` e o DTO do perfil continuam lendo por ele.
 _SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS observed_username, verified_at,"
            " detail, unknown_streak, updated_at")
 
@@ -302,7 +302,7 @@ class SocialRepository:
                         " (SELECT id FROM profile_accounts WHERE profile_id=?)", (now_iso(), account_id, profile_id))
 
     # ------------------------------------------------------------------ credencial da conta âncora (compatibilidade)
-    # As assinaturas por `profile_id` ficam: `authentication.py`, `state.py` e o DTO do perfil leem por elas. O que
+    # As assinaturas por `profile_id` ficam: o motor de sessão, `state.py` e o DTO do perfil leem por elas. O que
     # mudou é a casa — `account_credentials` da conta âncora, nunca mais `instagram_credentials` (só leitura até a
     # migração que a remove). As linhas voltam com os MESMOS nomes de coluna.
     def credential_row(self, profile_id: str) -> Row | None:
@@ -582,8 +582,8 @@ class SocialRepository:
                             observed_handle: str | None = None, verified_at: str | None = None,
                             detail: str | None = None, reobserved: bool = False) -> None:
         # `unknown_streak`: quantas vezes SEGUIDAS uma tela de verdade foi CLASSIFICADA e não reconhecida (achado
-        # #104). `reobserved=True` é só o que o autenticador passa depois de `navigation.classify()` realmente
-        # rodar sobre a tela (authentication.py `_save`, casos "conta não pôde ser lida" e "não é login nem
+        # #104). `reobserved=True` é só o que o motor de sessão passa depois de reconhecer de fato a
+        # tela (`integrations/app_declarado/sessao.py`, `_save`, casos "conta não pôde ser lida" e "não é login nem
         # autenticado"). As demais gravações de `unknown` (cadastro do perfil, wipe, troca de localidade, conta
         # errada) não vêm de uma classificação de tela — contá-las bloquearia perfil por evento administrativo,
         # não por tela presa. Qualquer status diferente de `unknown`, ou `unknown` sem `reobserved`, zera.

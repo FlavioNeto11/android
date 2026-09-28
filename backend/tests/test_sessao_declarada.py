@@ -29,7 +29,7 @@ from app.events import EventBus
 from app.integrations.app_declarado import conhecimento
 from app.integrations.app_declarado.conhecimento import SessaoInvalida, do_app
 from app.integrations.app_declarado.sessao import Outcome, SessaoDeclarada
-from app.integrations.instagram import manifesto
+from app.integrations.app_declarado.pacote import PASTA_DOS_APPS, manifesto_da_pasta
 from app.models import SessionStatus
 from app.modules.identity.infrastructure.sessions import SessionDeps
 from app.security.secret_store import MemoryKeyProvider, SecretStore
@@ -57,17 +57,13 @@ def test_o_motor_de_sessao_nao_conhece_app_nenhum() -> None:
 
 
 def test_o_login_do_instagram_nao_volta_a_ser_python() -> None:
-    """A catraca da fatia 3, como a da fatia 1 em `test_conhecimento_de_telas`: autenticador, verificação e
-    reconciliação do Instagram deixaram de existir, e as peças de login saíram de `navigation.py`."""
-    pasta = RAIZ / "app" / "integrations" / "instagram"
-    for apagado in ("authentication.py", "verification.py", "reconciliation.py"):
-        assert not (pasta / apagado).exists(), apagado
-    fonte = (pasta / "navigation.py").read_text(encoding="utf-8")
-    for literal in ("def login_form", "def dismiss_button", "def save_login_dismiss", "def password_field",
-                    "alert_dialog_cancel", "negative_button", "maybe later", "profile_tab"):
-        assert literal not in fonte, literal
-    # A fábrica do manifesto monta o motor genérico com o conhecimento do pacote do Instagram.
-    provedor = manifesto.sessao(SessionDeps(None, None, None, None, None, None))  # type: ignore[arg-type]
+    """A catraca da fatia 3: autenticador, verificação, reconciliação e navegação do Instagram deixaram de existir (a
+    pasta inteira saiu na integração das fatias 2–4), e a sessão dele é o motor genérico com o dado do pacote."""
+    assert not (RAIZ / "app" / "integrations" / "instagram").exists()
+    # A fábrica do manifesto DESCOBERTO monta o motor genérico com o conhecimento do pacote do Instagram.
+    fabrica = manifesto_da_pasta(PASTA_DOS_APPS / PKG).session
+    assert fabrica is not None
+    provedor = fabrica(SessionDeps(None, None, None, None, None, None))  # type: ignore[arg-type]
     assert isinstance(provedor, SessaoDeclarada) and provedor.package == PKG
     assert provedor.conhecimento is do_app(PKG)
 

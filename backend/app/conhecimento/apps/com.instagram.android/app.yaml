@@ -1,6 +1,6 @@
 # Definição do Instagram como DADO (ADR-052). Junto de `telas.yaml` (telas e estado conhecido), `sessao.yaml`
 # (login declarado) e `catalogo.yaml` (ações), é tudo que a plataforma sabe do app: nenhuma linha de Python.
-# O registro de apps descobre esta pasta sozinho (`modules/applications/infrastructure/pacotes.py`).
+# O registro de apps descobre esta pasta sozinho (`integrations/app_declarado/pacote.py::descobrir`).
 app: com.instagram.android
 nome: Instagram
 rotulo: Instagram

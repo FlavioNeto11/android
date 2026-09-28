@@ -87,8 +87,8 @@ SALDOS_INTERVALO_S = 600
 # precisa dos dois e não pode importar `state` (ele traz banco, IA e a aplicação inteira).
 
 # O tipo de texto que cada capability escreve e as leituras de conversa (que viram fala de outra pessoa) são do
-# APP: moram no manifesto dele (`AppDefinition.text_kinds`/`conversation_reads`; o do Instagram em
-# `integrations/instagram/manifesto.py`). Quem pergunta é `_draft_gate` e `_registrar_leitura`.
+# APP: moram no manifesto dele (`AppDefinition.text_kinds`/`conversation_reads`, lidos do `app.yaml` do pacote,
+# ADR-052). Quem pergunta é `_draft_gate` e `_registrar_leitura`.
 # Teto para ler a tela antes de escrever. Curto porque é contexto opcional: a etapa seguinte observa a tela de
 # qualquer jeito, e segurar o aparelho esperando uma sessão que está subindo custaria muito mais do que vale.
 _TELA_TIMEOUT_S = 15.0
@@ -327,7 +327,7 @@ class AppState:
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
         # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
-        # é o que CHALLENGE_HELP promete e, sem isto, o código não fazia (achado #106).
+        # é o que o texto de desafio do app (`sessao.yaml`) promete e, sem isto, o código não fazia (achado #106).
         self.devices.on_control_released = self._controle_devolvido
         # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
         from .training.recorder import TrainingRecorder  # noqa: PLC0415
