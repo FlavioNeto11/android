@@ -11,13 +11,13 @@ import threading
 import time
 from time import monotonic
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError
@@ -65,7 +65,7 @@ from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import PersonaGenerateBody, PersonaImagesBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .planning import costs
+from .planning import costs, saldos
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -85,7 +85,7 @@ from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.service import RunError
-from .util import iso_in, new_token, now_iso
+from .util import iso_in, new_token, now_iso, parse_iso, to_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
 
 from .devices.verbs import sem_hibernacao
@@ -290,6 +290,71 @@ async def put_settings(request: Request, patch: dict[str, Any]) -> Any:
 @router.get("/ai")
 async def ai_status(request: Request) -> Any:
     return st(request).ai_status()
+
+
+class LeituraDeSaldo(BaseModel):
+    """Uma leitura do saldo no console do provedor (ADR-051). `observed_at` vazio = agora."""
+    balance: float = Field(ge=-100_000, le=1_000_000)
+    source: Literal["manual", "console"] = "manual"
+    observed_at: str | None = None
+    currency: Literal["USD", "BRL"] | None = None
+    units_per_usd: float | None = Field(None, gt=0, le=1000)
+    note: str | None = Field(None, max_length=300)
+
+
+class RegraDeSaldo(BaseModel):
+    """Limites da conta, na moeda dela. `null` desliga o aviso/bloqueio."""
+    currency: Literal["USD", "BRL"] | None = None
+    units_per_usd: float | None = Field(None, gt=0, le=1000)
+    warn_below: float | None = None
+    block_below: float | None = None
+    stale_after_h: int | None = Field(None, ge=1, le=24 * 60)
+
+
+def _saldos_dto(s: AppState) -> dict[str, object]:
+    contas = [c.as_dict() for c in s.saldos_de_ia()]
+    return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
+            "estimated": True,
+            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. "
+                    "Gasto fora da plataforma (console, playground, scripts que não gravam em ai_calls) não entra."}
+
+
+@router.get("/ai/balances")
+async def ai_balances(request: Request) -> dict[str, object]:
+    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga."""
+    return await asyncio.to_thread(_saldos_dto, st(request))
+
+
+@router.post("/ai/balances/{account}", status_code=201)
+async def ai_balance_reading(request: Request, account: str, body: LeituraDeSaldo) -> dict[str, object]:
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    observado = None
+    if body.observed_at:
+        try:
+            lido = parse_iso(body.observed_at)
+        except ValueError:
+            lido = None
+        if lido is None or lido.tzinfo is None:
+            raise err(400, "invalid_observed_at", "observed_at deve ser ISO-8601 com fuso (ex.: 2026-09-28T15:00:00Z).")
+        observado = to_iso(lido)
+    saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
+                             currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
+    return dto
+
+
+@router.put("/ai/balances/{account}")
+async def ai_balance_rule(request: Request, account: str, body: RegraDeSaldo) -> dict[str, object]:
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    saldos.ajustar_regra(s.db, account, **body.model_dump(exclude_unset=True))
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Limites de saldo de IA ajustados: {account}", data=dto)
+    return dto
 
 
 @router.post("/admin/shutdown", status_code=202)

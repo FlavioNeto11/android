@@ -12,6 +12,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { aiFeatureRows, aiModelRows, aiRoleRows, spendLabel } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
+import { AiBalances } from './AiBalances';
 import styles from './Settings.module.css';
 
 export function AiSection() {
@@ -134,6 +135,8 @@ export function AiSection() {
           </ol>
         </PageSection>
       </div>
+
+      <AiBalances />
 
       {papeis.length > 0 ? (
         <PageSection

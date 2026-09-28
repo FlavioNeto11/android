@@ -29,7 +29,7 @@ from typing import Any, Callable
 from ..config import AI_ROLES, Config, ResolvedRole
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
-from . import costs
+from . import costs, saldos
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest,
                        SocialRequest, Usage, Verdict, VerifyRequest, build_one)
 
@@ -170,6 +170,31 @@ class RoutingProvider:
                 self.repo.bus.emit("log", f"Gasto de IA {rotulo} em US$ {gasto:.2f} de US$ {limite:.2f} "
                                           f"({gasto / limite:.0%} do teto).", level="warn", run_id=run_id)
 
+    # ------------------------------------------------------------------ saldo da conta (ADR-051)
+    def _saldo(self, r: ResolvedRole) -> None:
+        """Conta desta função barrada (bloqueio do dono abaixo do limite, ou crédito esgotado pelo provedor)?
+
+        Diferente do teto em US$, o saldo é POR CONTA: um `fallback_provider` declarado para outra conta pode
+        atender — e passa por esta mesma conferência antes."""
+        if self.repo is None or r.kind == "simulated":
+            return
+        try:
+            motivo = saldos.motivo_de_bloqueio(self.repo.db, self.cfg,
+                                               saldos.conta_por_endpoint(r.kind, r.base_url, r.api_key_env))
+        except Exception:  # noqa: BLE001 - leitura de saldo quebrada não para a IA; o aviso fica no log
+            log.exception("não foi possível conferir o saldo da conta de %s", r.provider)
+            return
+        if motivo:
+            raise AIError(f"{motivo} Registre o saldo novo em Configuração › IA para retomar.", kind="balance",
+                          model=r.model)
+
+    def _esgotou(self, r: ResolvedRole, exc: AIError) -> None:
+        """Erro de cobrança do provedor vira leitura de saldo 0 daquela conta: a estimativa não fica otimista."""
+        if exc.kind != "billing" or self.repo is None:
+            return
+        saldos.registrar_esgotado(self.repo.db, self.cfg, saldos.conta_por_endpoint(r.kind, r.base_url, r.api_key_env),
+                                  f"{r.provider}/{r.model}: {exc}")
+
     # ------------------------------------------------------------------ despacho
     async def _call(self, papel: str, run_id: str | None, fn: Callable[[AIProvider], Any]) -> tuple[Any, Usage]:
         r = self.roles[papel]
@@ -178,7 +203,12 @@ class RoutingProvider:
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
             self._budget(run_id)
         try:
-            resultado, usage = await self._one(papel, r, fn)
+            self._saldo(r)
+            try:
+                resultado, usage = await self._one(papel, r, fn)
+            except AIError as exc:
+                self._esgotou(r, exc)
+                raise
             if usage.fallback == "refusal":
                 # A troca por recusa vira linha DA EXECUÇÃO, que é o que o pedido exige e não existia: até aqui
                 # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
@@ -192,9 +222,14 @@ class RoutingProvider:
             # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
             # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
             alternativo = _com_provedor(self.cfg, papel, alvo)
+            self._saldo(alternativo)
             log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
                         papel, r.provider, exc, alvo, alternativo.model, papel)
-            resultado, usage = await self._one(papel, alternativo, fn)
+            try:
+                resultado, usage = await self._one(papel, alternativo, fn)
+            except AIError as exc2:
+                self._esgotou(alternativo, exc2)
+                raise
             usage.fallback = alvo
             usage.requested_model = r.model
             self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "

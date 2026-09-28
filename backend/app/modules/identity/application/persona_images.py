@@ -78,6 +78,9 @@ class PersonaImageService:
         if limite > 0 and (gasto := self.accounting.spent_today_usd()) >= limite:
             raise OrcamentoEsgotado(f"Teto de gasto de IA do dia atingido: US$ {gasto:.2f} de US$ {limite:.2f}. "
                                     "Ajuste o limite em Configuração › Limites para gerar imagens.")
+        motivo = getattr(self.accounting, "balance_block_reason", lambda: None)()
+        if motivo:
+            raise OrcamentoEsgotado(f"{motivo} Registre o saldo novo em Configuração › IA para gerar imagens.")
 
     async def gerar(self, persona_id: str, identity: PersonaIdentity, *, count: int) -> list[PersonaImageRecord]:
         """`count` imagens novas para esta pessoa, uma a uma. Cada índice novo continua a numeração já existente:
@@ -110,6 +113,8 @@ class PersonaImageService:
             except GeracaoRecusada as exc:
                 registro = self._encerrar(pendente, status="refused", erro=str(exc), imagem=None)
             except GeracaoFalhou as exc:
+                if getattr(exc, "kind", None) == "billing":
+                    getattr(self.accounting, "record_exhausted", lambda _d: None)(str(exc))
                 registro = self._encerrar(pendente, status="failed", erro=str(exc), imagem=None)
             else:
                 registro = await self._guardar(pendente, imagem, tornar_principal=tornar_principal)

@@ -125,6 +125,7 @@ só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato 
 | `_RoleGate` | `backend/app/planning/routing.py` (`asyncio.Semaphore` por papel, dentro do limite de `ai_slots`) | prioridade relativa entre funções (não deixar `social` encher a fila do `verify`) |
 | Disjuntor de conta | `backend/app/taskqueue/executor.py:83-233` (classifica cobrança/credencial; primeira falha represa a etapa sem gastar tentativa, pausa a execução, acusa em `/api/health` e na aba IA) | por execução, com liberação em `clear_ai_breaker` |
 | Teto do dia antes da imagem paga | `backend/app/modules/identity/application/persona_images.py::PersonaImageService.conferir_orcamento` (só o gerador pago; o simulado não gasta e não confere) | por dia, o mesmo `ai_max_usd_per_day`; 409 `ai_budget` na rota antes de aceitar o pedido |
+| Saldo da conta (ADR-051) | `backend/app/planning/saldos.py` + `RoutingProvider._saldo` (antes de cada chamada, também no destino do fallback) e `PersonaImageService.conferir_orcamento` | por conta (Anthropic, OpenAI, Gemini): `block_below` barra com `kind="balance"`; `warn_below` só avisa; ver §14 |
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`) | por objetivo |
 
 ## 7. Receitas, fluxos e provas locais
@@ -286,3 +287,25 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
   isso escrito).
 - **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do
   `config.yaml` e reinício do central por braço). O resultado real fica em `relatorio-validacao.md`.
+
+## 14. Saldo das contas de IA (ADR-051)
+
+Três contas pré-pagas pagam a IA: Anthropic, OpenAI e Google AI Studio (Gemini, em R$). Nenhum console publica o
+saldo por API, então a plataforma **estima**: a última leitura registrada menos o gasto de `ai_calls` naquela conta
+desde ela.
+
+- **Ver:** `GET /api/ai/balances` (também em `AiStatus.balances`), no cartão "Saldo das contas" em Configuração › IA
+  e nos chips do cabeçalho (só as contas em uso ou barradas).
+- **Registrar leitura:** `POST /api/ai/balances/{anthropic|openai|gemini}` com `{"balance": 9.25, "source":
+  "console", "observed_at": "<ISO com fuso>"}`, ou pelo campo "Saldo no console agora" do cartão.
+- **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga),
+  `units_per_usd` (câmbio) e `stale_after_h`.
+- **Estados:** `unknown` (sem leitura), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
+  conta para) e `exhausted` (o provedor recusou por cobrança e gravou leitura 0). `stale` marca leitura mais velha
+  que `stale_after_h`.
+- **Saúde:** `ai_balance_blocked`, `ai_balance_low`, `ai_balance_unknown` e `ai_balance_stale`, só de conta em uso.
+- **Fora da estimativa:** o gasto que não passa por `ai_calls` (console, playground, scripts de avaliação que não
+  gravam ali). Confira o console quando o aviso de leitura antiga aparecer.
+- **Pendente (`not_run`):** conciliação pelas APIs de custo de administração (Anthropic `cost_report`, OpenAI
+  `organization/costs`), que pedem chave de administrador criada pelo dono.
+

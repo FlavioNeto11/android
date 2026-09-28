@@ -1,0 +1,88 @@
+/* Saldo das contas de IA (ADR-051): um cartão por conta; uma coluna no celular. */
+.inlineIcon {
+  flex: none;
+  vertical-align: -2px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--sp-4);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.card[data-tone='danger'] {
+  border-color: var(--danger-border);
+}
+
+.card[data-tone='warning'] {
+  border-color: var(--warning-border);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.amount {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.row > div {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.console {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 6px;
+  font-size: var(--fs-sm);
+}
+
+.note {
+  margin: var(--sp-3) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}

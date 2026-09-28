@@ -116,6 +116,10 @@ import type {
   DistributionPreview,
   RefineCommandRequest,
   RunSuccessorRequest,
+  AiBalanceAccount,
+  AiBalanceReadingIn,
+  AiBalanceRuleIn,
+  AiBalancesReport,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -440,6 +444,12 @@ export const api = {
     request<DistributionPreview>('GET', '/runs/distribution', { query: { count, app_id: appId }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
+  /** Saldo estimado das contas de IA (ADR-051) e os dois ajustes: nova leitura do console e limites. */
+  aiBalances: (signal?: AbortSignal) => request<AiBalancesReport>('GET', '/ai/balances', { signal }),
+  aiBalanceReading: (account: AiBalanceAccount, body: AiBalanceReadingIn) =>
+    request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}`, { body }),
+  aiBalanceRule: (account: AiBalanceAccount, body: AiBalanceRuleIn) =>
+    request<AiBalancesReport>('PUT', `/ai/balances/${enc(account)}`, { body }),
 
   /** Custo de IA de UMA execução (`{run_id}`) ou dos últimos N dias (`{days}`). */
   usage: (scope: UsageQuery, signal?: AbortSignal) => request<UsageReport>('GET', '/usage', { query: scope, signal }),

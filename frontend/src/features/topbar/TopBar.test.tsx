@@ -85,3 +85,33 @@ describe('TopBar — pista de rolagem da navegação', () => {
     expect(nav?.querySelectorAll('a')).toHaveLength(7);
   });
 });
+
+describe('TopBar — saldo das contas de IA (ADR-051)', () => {
+  const base = {
+    label: '', console: 'https://x', units_per_usd: 1, warn_below: 2, block_below: null, stale_after_h: 72,
+    key_configured: true, image: false, anchor_balance: 9.25, anchor_at: '2026-09-28T15:00:00Z', anchor_source: 'console',
+    anchor_note: null, spent_since_usd: 0, estimated_balance_usd: null, age_h: 1, stale: false, message: 'ok',
+  } as const;
+
+  it('mostra chip só da conta em uso ou barrada, com o tom do estado', async () => {
+    const snap = makeSnapshot();
+    const balances = [
+      { ...base, account: 'openai', label: 'OpenAI', currency: 'USD', roles: ['decide'], in_use: true,
+        estimated_balance: 1.5, state: 'low' },
+      { ...base, account: 'gemini', label: 'Gemini', currency: 'BRL', roles: [], in_use: false,
+        estimated_balance: 29.37, state: 'ok' },
+      { ...base, account: 'anthropic', label: 'Anthropic', currency: 'USD', roles: [], in_use: false,
+        estimated_balance: 0, state: 'exhausted' },
+    ];
+    const el = await renderBar([]);
+    await act(async () => {
+      useAppStore.setState({ health: { ...snap.health, ai: { ...snap.health.ai, balances } } as typeof snap.health });
+    });
+    const grupo = el.querySelector('[aria-label="Saldo das contas de IA"]') as HTMLElement;
+    expect(grupo).not.toBeNull();
+    expect(text(grupo)).toContain('US$ 1,50');
+    expect(text(grupo)).not.toContain('R$');
+    const chips = Array.from(grupo.querySelectorAll('[data-tone]')).map((c) => c.getAttribute('data-tone'));
+    expect(chips).toEqual(['warning', 'danger']);
+  });
+});

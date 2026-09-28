@@ -17,7 +17,7 @@ from app.modules.identity.adapters.simulated_images import SimulatedImageGenerat
 from app.modules.identity.application.persona_images import PersonaImageService
 from app.modules.identity.application.ports import EventSink, ImageGenerator
 from app.modules.identity.domain.persona_image import PersonaIdentity, PersonaImageRecord
-from app.planning import costs
+from app.planning import costs, saldos
 from app.storage import Storage, put_async
 from app.util import new_token, now_iso
 
@@ -111,10 +111,22 @@ class StorageBlobs:
 class AiCallsAccounting:
     """`ImageAccounting` sobre `ai_calls` (linha `role='image'` com `usd` declarado) e os limites de `settings`."""
 
-    def __init__(self, db: Database, prices: dict[str, list[float]], settings_getter: Callable[[], object]) -> None:
+    def __init__(self, db: Database, prices: dict[str, list[float]], settings_getter: Callable[[], object],
+                 cfg: Config | None = None) -> None:
         self._db = db
         self._prices = prices
         self._settings = settings_getter
+        self._cfg = cfg
+
+    def balance_block_reason(self) -> str | None:
+        if self._cfg is None or self._cfg.file.ai.image.provider == "simulated":
+            return None
+        return saldos.motivo_de_bloqueio(self._db, self._cfg, self._cfg.file.ai.image.provider)
+
+    def record_exhausted(self, detail: str) -> None:
+        """Sem crédito na API de imagens: leitura de saldo 0 da conta do gerador (ADR-051)."""
+        if self._cfg is not None:
+            saldos.registrar_esgotado(self._db, self._cfg, self._cfg.file.ai.image.provider, detail)
 
     def spent_today_usd(self) -> float:
         return costs.spent_today_usd(self._db, self._prices)
@@ -148,7 +160,7 @@ def compor_servico_de_imagens(cfg: Config, *, db: Database, storage: Storage, bu
     imagem = cfg.file.ai.image
     return PersonaImageService(
         generator=construir_gerador(cfg), records=SqlPersonaImages(db), blobs=StorageBlobs(storage),
-        accounting=AiCallsAccounting(db, cfg.file.ai.prices, settings_getter), events=bus, new_id=lambda: f"img-{new_token()}",
+        accounting=AiCallsAccounting(db, cfg.file.ai.prices, settings_getter, cfg), events=bus, new_id=lambda: f"img-{new_token()}",
         now_iso=now_iso, measure=dimensoes, per_persona=imagem.per_persona, on_create=imagem.on_create)
 
 

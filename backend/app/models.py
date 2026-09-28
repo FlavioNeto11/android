@@ -1899,6 +1899,8 @@ class AiStatus(BaseModel):
     # (a chave existe e é válida — o provedor está recusando por outro motivo, e não some sozinho).
     account_blocked: bool = False
     account_blocked_reason: str | None = None
+    #: Saldo estimado de cada conta de IA (ADR-051): o mesmo de GET /api/ai/balances, para o cabeçalho do painel.
+    balances: list[dict[str, object]] = []
 
 
 class Problem(BaseModel):

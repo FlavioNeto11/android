@@ -62,6 +62,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
+| [ADR-051](#adr-051--saldo-das-contas-de-ia-estimado-pela-última-leitura-vale-como-aviso-e-bloqueio) | Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio | vigente (código); bloqueio desligado até o dono definir | 28/09 |
 
 ---
 
@@ -2459,3 +2460,63 @@ da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, polít
 
 **Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
+
+## ADR-051 — Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio
+
+**Data:** 28/09/2026 · **Estado:** vigente no código; o valor do bloqueio é **decisão do dono** (sai desligado) ·
+**Decisão do dono** (acompanhar os três saldos, que valem como regra) e **decisão técnica** (como estimar).
+
+**Contexto.**
+
+- O dono paga três contas pré-pagas que alimentam a IA da plataforma: Anthropic (Claude Console, US$), OpenAI (US$) e
+  Google AI Studio (Gemini, R$). Em 28/09 os consoles mostravam US$ 9,25, US$ 8,39 e R$ 29,37, todas sem recarga
+  automática: ao zerar, a API recusa.
+- Ele pediu para acompanhar os três na plataforma, a IDE também enxergar, e os saldos valerem como regra e alerta,
+  visual e no backend.
+- Nenhum dos três consoles publica o saldo pré-pago por API. Anthropic e OpenAI têm relatórios de custo na API de
+  administração, com chave de administrador; o AI Studio não tem nada para o crédito pré-pago.
+
+**Alternativas.**
+
+- Raspar o console no navegador do dono: descartada como mecanismo do backend. A sessão é do navegador dele, e o
+  backend não guarda credencial de console. A IDE pode ler o console quando o dono pedir e registrar a leitura.
+- Só o teto diário em US$ (`ai_max_usd_per_day`): não basta. O teto é por dia e soma as contas, mas quem para a IA é o
+  saldo de UMA conta.
+- Conciliar pelo custo das APIs de administração: fica para depois, porque pede chave de administrador que o dono
+  cria (a IDE não cria credencial).
+
+**Escolha.**
+
+- **Saldo estimado** = a última leitura registrada (âncora: valor, moeda, câmbio, instante e origem) menos o gasto de
+  `ai_calls` naquela conta desde a leitura, pelos mesmos preços do painel de uso (`planning/costs.py`). A plataforma
+  sempre diz que é estimativa, e uma leitura mais velha que `stale_after_h` (72 h) fica marcada como desatualizada.
+- A conta de uma chamada sai do provedor (`ai_calls.provider` → tipo e host em `ai.providers`) e, nas linhas antigas
+  sem provedor, do prefixo do modelo. O endpoint local e o simulado não pertencem a conta nenhuma.
+- **Regras por conta** (`ai_billing_accounts`, migração 052), na moeda da conta:
+  - `warn_below` gera aviso: problema `ai_balance_low` em `/api/health` e chip amarelo no cabeçalho;
+  - `block_below` barra a IA daquela conta ANTES de gastar: `AIError(kind="balance")` no roteador, tratado como
+    problema de conta (disjuntor, execução pausada sem gastar tentativa). Um `fallback_provider` declarado para OUTRA
+    conta atende, e o destino passa pela mesma conferência;
+  - a geração de imagem da persona confere a conta do gerador.
+- **Erro de cobrança do provedor** (402 ou `billing`) registra leitura 0 com origem `provider_error`. A conta fica
+  "sem crédito" até alguém registrar o saldo novo.
+- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado (o valor é do dono); câmbio do Gemini em 5,2 R$/US$,
+  editável.
+- Só a conta EM USO (paga alguma função ou a imagem) vira problema de saúde.
+- **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
+  com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
+
+**Consequências.**
+
+- Gasto fora da plataforma não entra na estimativa: console, playground e scripts que não gravam em `ai_calls`.
+  Com isso, a estimativa é otimista, e o aviso de leitura antiga é o que a corrige.
+- Com o bloqueio ligado, uma estimativa errada para baixo pode parar a IA com crédito sobrando. A saída é registrar
+  a leitura nova, e o painel mostra o link do console ao lado.
+
+**Evidências.**
+
+`simulated`: `backend/tests/test_saldos_de_ia.py` (8), `frontend/src/lib/aiBalance.test.ts`,
+`frontend/src/features/topbar/TopBar.test.tsx` (saldo).
+
+**Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
+

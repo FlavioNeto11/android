@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — Saldo das contas de IA como regra (branch `claude/saldos-ia`; ADR-051)
+
+Pedido do dono de 28/09: acompanhar na plataforma os saldos da Anthropic, da OpenAI e do Google AI Studio, com a IDE
+enxergando e os saldos valendo como regra e alerta.
+
+- **Migração 052** (`ai_billing_accounts`, `ai_balance_snapshots`) e `planning/saldos.py`: saldo estimado = última
+  leitura do console − gasto de `ai_calls` naquela conta desde ela, com moeda e câmbio (o Gemini cobra em R$).
+- **Regra no backend.** Abaixo de `block_below`, o roteador barra a IA da conta antes de gastar (`kind="balance"`,
+  disjuntor e pausa como na falta de crédito); o fallback declarado para outra conta atende. A imagem da persona
+  confere a conta do gerador. Um erro de cobrança do provedor grava leitura 0.
+- **Alertas.** Problemas `ai_balance_*` em `/api/health` (só conta em uso), chips por conta no cabeçalho e o cartão
+  "Saldo das contas" em Configuração › IA, com leitura nova, limites e link do console.
+- **API.** `GET /api/ai/balances`, `POST|PUT /api/ai/balances/{conta}`; `AiStatus.balances`.
+
 ## 2026-09-28 — Fase 17: custo de inferência por provedor e imagem real (branch `claude/ia-custo`; ADR-049)
 
 Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pesquisa e plano em
