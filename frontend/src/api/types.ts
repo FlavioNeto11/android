@@ -623,6 +623,47 @@ export interface InstagramProfile {
   images?: PersonaImage[];
   primary_image_id?: string | null;
   accounts_count?: number;
+  /** v0.29 (ADR-043): TODOS os aparelhos da persona (N:N), o principal primeiro. `instance_id` (acima) passa a ser o
+   *  PRINCIPAL. Opcional: backend anterior e fixtures antigas não o mandam — aí vale só o `instance_id`. */
+  devices?: PersonaDevice[];
+}
+
+/**
+ * Um vínculo da persona com um aparelho (v0.29, migração 051): para que app (`null` = os apps sem conta gerenciada),
+ * se é o principal, onde o aparelho roda e a sessão da conta daquele app NESTE aparelho. O mesmo aparelho pode
+ * aparecer duas vezes, com apps diferentes.
+ */
+export interface PersonaDevice {
+  instance_id: string;
+  app_id: string | null;
+  is_primary: boolean;
+  /** Estado do aparelho quando o backend o conhece (`InstanceState`); o store ao vivo ganha dele na tela. */
+  state: string | null;
+  worker_id: string | null;
+  bound_at: string | null;
+  /** `null` quando a persona não tem conta que sirva ao vínculo. */
+  session: SessionInfo | null;
+}
+
+/** `GET /api/instances/{id}/personas` (v0.29): quem está neste aparelho, por vínculo, com a sessão da conta AQUI. */
+export interface PersonaOnDevice {
+  profile_id: string;
+  username: string | null;
+  display_name: string | null;
+  name: string;
+  status: string;
+  app_id: string | null;
+  /** Este aparelho é o PRINCIPAL desta persona. */
+  is_primary: boolean;
+  bound_at: string | null;
+  session: SessionInfo | null;
+}
+
+/** `POST /api/personas/{id}/devices`: soma um aparelho à persona para um app, sem tirar ninguém de lá. */
+export interface PersonaDeviceBindRequest {
+  instance_id: string;
+  app_id?: string | null;
+  primary?: boolean;
 }
 
 /**
@@ -1329,6 +1370,66 @@ export interface CreateRunRequest {
   distribute?: { count: number; app_id: string };
   // v0.28 (ADR-040): `credentials`/`consent_credentials` SAÍRAM — a execução não carrega credencial (422 se vier).
   // A senha mora na conta da persona, com consentimento por conta.
+  /** v0.29: com `instance_ids`, INTERSEÇÃO (antes substituía). */
+  profile_ids?: string[];
+  /** v0.29 (ADR-044): os alvos explícitos — o eco da prévia. Destino tirado do texto só executa ecoado aqui
+   *  (senão 409 `alvos_nao_confirmados`). Exclusivo com `distribute` (422). */
+  targets?: RunTarget[];
+  /** v0.29: quantos aparelhos de UMA persona recebem a tarefa. Padrão `one`. */
+  device_policy?: DevicePolicy;
+}
+
+/** `one` = a pessoa faz uma vez (padrão); `primary` = o aparelho principal; `all` = todos os aparelhos dela, aptos. */
+export type DevicePolicy = 'one' | 'primary' | 'all';
+
+/** Um alvo explícito (v0.29): a persona e, opcionalmente, os aparelhos dela e o app da conta que a tarefa usa.
+ *  `instance_ids` vazio = o sistema escolhe pela `device_policy`. */
+export interface RunTarget {
+  profile_id: string;
+  instance_ids?: string[];
+  app_id?: string | null;
+}
+
+/** De onde veio cada alvo da prévia: a seleção (`ui`), o texto do comando, o vínculo (sessão pronta ou principal)
+ *  ou o desempate pela carga dos servidores. */
+export type TargetOrigin = 'ui' | 'texto' | 'vinculo' | 'balanceamento';
+
+export interface ResolvedTarget {
+  instance_id: string;
+  profile_id: string | null;
+  app_id: string | null;
+  origem: TargetOrigin;
+}
+
+/**
+ * O que a pessoa precisa decidir antes (persona num aparelho com duas, homônimos, texto × seleção). As opções são
+ * ids — de persona quando `field` é `profile_id`, de aparelho quando é `instance_id`. O backend tipa a lista como
+ * `dict` genérico; este é o formato de `Pergunta.as_dict()` (`alvos.py`).
+ */
+export interface TargetQuestion {
+  code: string;
+  question: string;
+  field: 'profile_id' | 'instance_id';
+  options: string[];
+  instance_id: string | null;
+  profile_id: string | null;
+}
+
+/** `POST /api/runs/targets/resolve`: a prévia dos alvos, com a mesma seleção de `POST /runs`, sem criar nada. */
+export interface ResolveTargetsRequest {
+  command: string;
+  instance_ids?: string[];
+  profile_ids?: string[];
+  targets?: RunTarget[];
+  device_policy?: DevicePolicy;
+}
+
+export interface ResolveTargetsResponse {
+  targets: ResolvedTarget[];
+  questions: TargetQuestion[];
+  /** O comando sem os trechos de destino: é o que vai ao casamento de habilidade e ao planejador. */
+  command_sem_destinos: string;
+  warnings: string[];
 }
 
 /** Limites de UMA máquina (tela Limites → Por servidor). `null` = não definido / segue o valor da máquina. */

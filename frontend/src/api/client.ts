@@ -57,6 +57,8 @@ import type {
   PackagesResponse,
   PersonaCreateRequest,
   PersonaDTO,
+  PersonaDeviceBindRequest,
+  PersonaOnDevice,
   PersonaGenerateRequest,
   PersonaImage,
   PersonaImagesAccepted,
@@ -93,6 +95,8 @@ import type {
   RecipeStatusResult,
   RecipeStatusUpdate,
   ResolveRequest,
+  ResolveTargetsRequest,
+  ResolveTargetsResponse,
   RetryFailedResponse,
   RunDetail,
   RunPage,
@@ -173,6 +177,25 @@ export function hintForError(e: ApiError): string {
       return 'Marque que a pessoa autoriza a automação a digitar esta senha, só no app e no site desta conta.';
     case 'no_credential':
       return 'Esta conta ainda não tem senha guardada. Guarde-a em Persona → Contas e acesso.';
+    // v0.29 (ADR-043/044): vínculo N:N e roteamento por persona.
+    case 'alvos_nao_confirmados':
+      return 'O comando cita destinos (“no aparelho Y”, “peça para o André”). Confira a prévia dos alvos e confirme.';
+    case 'sem_intersecao':
+      return 'Nenhum dos aparelhos escolhidos é desta persona: tire o filtro de aparelhos ou vincule a persona a eles.';
+    case 'sem_vinculo':
+      return 'A persona não está vinculada a este aparelho. Vincule em Persona → Aparelhos, ou escolha um aparelho dela.';
+    case 'no_binding':
+      return 'A persona não está vinculada a nenhum aparelho. Vincule um em Persona → Aparelhos.';
+    case 'aparelho_repetido_na_execucao':
+      return 'Uma execução usa cada aparelho uma vez só: faça duas execuções, ou escolha outro aparelho para uma delas.';
+    case 'sem_alvo':
+      return 'Diga onde ou por quem: escolha aparelhos ou personas, ou cite no comando (“no android-03”).';
+    case 'conta_do_app_ja_no_aparelho':
+      return 'Um aparelho tem uma conta por app: escolha outro aparelho, ou desvincule quem já usa este app lá.';
+    case 'persona_in_use':
+      return 'A persona tem execução em andamento ali: espere terminar ou cancele antes.';
+    case 'not_bound':
+      return 'Este vínculo não existe mais. Atualize a tela.';
     default:
       break;
   }
@@ -448,6 +471,8 @@ export const api = {
   updateInstance: (id: string, patch: InstanceUpdate) =>
     request<Instance>('PUT', `/instances/${enc(id)}`, { body: patch }),
   packages: (id: string) => request<PackagesResponse>('GET', `/instances/${enc(id)}/packages`, { timeoutMs: 60_000 }),
+  /** v0.29: as N personas deste aparelho, cada uma com o app do vínculo e a sessão AQUI. */
+  instancePersonas: (id: string) => request<PersonaOnDevice[]>('GET', `/instances/${enc(id)}/personas`),
   instanceAction: (id: string, action: InstanceAction, params?: InstanceActionParams) =>
     request<CommandAccepted>('POST', `/instances/${enc(id)}/actions/${enc(action)}`, { body: params ?? {} }),
   bulk: (req: BulkRequest) => request<BulkResult>('POST', '/instances/bulk', { body: req }),
@@ -517,17 +542,32 @@ export const api = {
   /** Só leitura: servidor → aparelho → tela → apps → perfil → sessão, cada camada com a sua fonte. */
   instanceContext: (id: string) =>
     request<OperationalContext>('GET', `/instances/${enc(id)}/operational-context`),
-  profileContext: (id: string) =>
-    request<OperationalContext>('GET', `/instagram/profiles/${enc(id)}/operational-context`),
-  connectProfile: (id: string) =>
-    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/connect`, { timeoutMs: 60_000 }),
-  verifyProfile: (id: string) =>
-    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/verify`, { timeoutMs: 60_000 }),
-  logoutProfile: (id: string) =>
-    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/logout`, { timeoutMs: 60_000 }),
+  /** v0.29: `instanceId` escolhe outro aparelho VINCULADO (senão 409 `sem_vinculo`); sem ele, o principal. */
+  profileContext: (id: string, instanceId?: string | null) =>
+    request<OperationalContext>('GET', `/instagram/profiles/${enc(id)}/operational-context`,
+      { query: { instance_id: instanceId ?? undefined } }),
+  connectProfile: (id: string, instanceId?: string | null) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/connect`,
+      { query: { instance_id: instanceId ?? undefined }, timeoutMs: 60_000 }),
+  verifyProfile: (id: string, instanceId?: string | null) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/verify`,
+      { query: { instance_id: instanceId ?? undefined }, timeoutMs: 60_000 }),
+  logoutProfile: (id: string, instanceId?: string | null) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/logout`,
+      { query: { instance_id: instanceId ?? undefined }, timeoutMs: 60_000 }),
   /** v0.27: TODAS as pessoas, com ou sem conta (`username` nulo = ainda sem conta de cadastro). */
   listPersonas: () => request<PersonaDTO[]>('GET', '/personas'),
   getPersona: (id: string) => request<PersonaDTO>('GET', `/personas/${enc(id)}`),
+  /** v0.29 (N:N): soma um aparelho à persona, sem tirar ninguém de lá. Duas contas do mesmo app no mesmo aparelho
+   *  → 409 `conta_do_app_ja_no_aparelho` (D2-a). */
+  bindPersonaDevice: (id: string, body: PersonaDeviceBindRequest) =>
+    request<PersonaDTO>('POST', `/personas/${enc(id)}/devices`, { body }),
+  /** Com `appId`, só o vínculo daquele app. O principal que sai é trocado pelo vínculo mais antigo. */
+  unbindPersonaDevice: (id: string, instanceId: string, appId?: string | null) =>
+    request<PersonaDTO>('DELETE', `/personas/${enc(id)}/devices/${enc(instanceId)}`,
+      { query: { app_id: appId ?? undefined } }),
+  setPrimaryPersonaDevice: (id: string, instanceId: string) =>
+    request<PersonaDTO>('PUT', `/personas/${enc(id)}/devices/${enc(instanceId)}/primary`),
   createPersona: (body: PersonaInput | PersonaCreateRequest) => request<PersonaDTO>('POST', '/personas', { body }),
   /** Por seção: `traits`/`visual`/`biography` são mesclados no servidor; o que não vier fica como está. */
   updatePersona: (id: string, body: Partial<PersonaInput> | PersonaPatchRequest) =>
@@ -578,9 +618,10 @@ export const api = {
   consentAccountCredential: (profileId: string, accountId: string) =>
     request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential/consent`),
   /** Sessão POR CONTA (v0.28): 202; o resultado aparece na conta. */
-  accountSession: (profileId: string, accountId: string, verb: 'connect' | 'verify' | 'logout') =>
+  /** v0.29: `instanceId` escolhe outro aparelho vinculado; sem ele, o principal. */
+  accountSession: (profileId: string, accountId: string, verb: 'connect' | 'verify' | 'logout', instanceId?: string | null) =>
     request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/session/${verb}`,
-      { timeoutMs: 60_000 }),
+      { query: { instance_id: instanceId ?? undefined }, timeoutMs: 60_000 }),
   accountAuthAttempts: (profileId: string, accountId: string, limit = 20) =>
     request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/auth-attempts`,
       { query: { limit } }),
@@ -721,6 +762,10 @@ export const api = {
     request<ApprovalBatchResult>('POST', '/approvals/decide', { body: { decisions } }),
 
   createRun: (req: CreateRunRequest) => request<RunSummary>('POST', '/runs', { body: req, timeoutMs: 120_000 }),
+  /** v0.29 (ADR-044): para quem e onde a execução aconteceria, com a origem de cada alvo e as perguntas. Não grava
+   *  nada e não chama o planejador — é a prévia que o Comando mostra antes de Executar. */
+  resolveRunTargets: (body: ResolveTargetsRequest, signal?: AbortSignal) =>
+    request<ResolveTargetsResponse>('POST', '/runs/targets/resolve', { body, signal }),
   /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
   listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
     request<RunPage>('GET', '/runs', {
