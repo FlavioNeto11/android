@@ -107,7 +107,9 @@ def test_aviso_bloqueio_desatualizado_e_esgotado(tmp_path: Path) -> None:
     # Com chave de administrador, desatualizada = sem conciliação recente (ou com erro).
     from pydantic import SecretStr
     cfg.env.anthropic_admin_key = SecretStr("chave-falsa-de-teste")
-    a = saldos.de_uma(db, cfg, "anthropic")
+    assert not saldos.de_uma(db, cfg, "anthropic").stale            # âncora nova: o laço ainda vai consultar
+    depois = now() + timedelta(minutes=saldos.CONCILIACAO_VELHA_MIN + 1)
+    a = saldos.estado(db, cfg, agora=depois, so="anthropic")[0]
     assert a.stale and "aguardando a primeira consulta" in a.message
     ancora = int(db.scalar("SELECT MAX(id) FROM ai_balance_snapshots WHERE account='anthropic'"))
     saldos.CONCILIACOES["anthropic"] = saldos.Conciliacao(
@@ -400,7 +402,8 @@ def test_fechamento_diario_vira_ancora_sem_perder_saldo(tmp_path: Path) -> None:
     # Não fecha conta sem crédito nem conta com conciliação falhando (congelaria o saldo sem o gasto de fora).
     saldos.registrar_leitura(db, "anthropic", 9.0, observed_at=to_iso(antiga))
     cfg.env.anthropic_admin_key = SecretStr("chave-falsa-de-teste")
-    assert saldos.fechar_dia(db, cfg, agora=now()) == []                 # sem conciliação: desatualizada
+    tarde = now() + timedelta(minutes=saldos.CONCILIACAO_VELHA_MIN + 1)
+    assert saldos.fechar_dia(db, cfg, agora=tarde) == []                 # sem conciliação: desatualizada
     saldos.registrar_esgotado(db, cfg, "openai", "402")
     db.execute("UPDATE ai_balance_snapshots SET observed_at=? WHERE source='provider_error'", (to_iso(antiga),))
     assert "openai" not in saldos.fechar_dia(db, cfg)

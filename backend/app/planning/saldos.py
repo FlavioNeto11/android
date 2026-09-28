@@ -54,6 +54,9 @@ CONCILIACAO_VELHA_MIN = 30
 #: De quanto em quanto tempo o livro-caixa fecha o dia: o saldo estimado vira a âncora nova. Mantém a janela local
 #: curta (a retenção apaga `ai_calls` com mais de `log_retention_days`) e absorve o atraso do relatório.
 FECHAMENTO_H = 24
+#: Quando este processo subiu: conta que ainda não teve conciliação só vira "desatualizada" `CONCILIACAO_VELHA_MIN`
+#: depois da âncora OU da subida — senão todo reinício acusava as contas enquanto o laço fazia a primeira consulta.
+INICIO_DO_PROCESSO = now()
 
 _HOSTS = (("openai.com", "openai"), ("googleapis.com", "gemini"), ("anthropic.com", "anthropic"))
 _CHAVES = {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": "gemini", "GOOGLE_API_KEY": "gemini",
@@ -285,8 +288,11 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             # Com chave de administrador, a conta depende da conciliação: sem uma recente e sem erro, o gasto de
             # fora da plataforma deixou de entrar e o saldo pode estar alto demais.
             feito = parse_iso(s.reconciled_at) if s.reconciled_at else None
-            s.stale = (s.reconcile_error is not None or feito is None
-                       or (agora - feito).total_seconds() > CONCILIACAO_VELHA_MIN * 60)
+            if s.reconcile_error is not None:
+                s.stale = True
+            else:
+                desde = feito or max(parse_iso(ancora["created_at"]) or agora, INICIO_DO_PROCESSO)
+                s.stale = (agora - desde).total_seconds() > CONCILIACAO_VELHA_MIN * 60
         taxa = float(ancora["units_per_usd"] or s.units_per_usd or 1.0)
         s.estimated_balance = round(s.anchor_balance - (s.spent_since_usd + s.external_usd) * taxa, 4)
         s.estimated_balance_usd = round(s.estimated_balance / taxa, 4) if taxa else None
