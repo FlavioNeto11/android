@@ -626,11 +626,19 @@ class SocialService:
     async def _generate_persona(self, pedido: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         if self.provider is None:
             raise SocialError("ai_unavailable", "Nenhum provedor de IA disponível para gerar a persona.", 503)
-        try:
-            draft, usage = await self.provider.generate_persona(pedido)
-        except AIError as exc:
-            codigo = "ai_budget" if exc.kind == "budget" else "ai_refusal" if exc.kind == "refusal" else "ai_error"
-            raise SocialError(codigo, str(exc), 503) from None
+        # Uma repetição, e só quando o modelo devolve JSON quebrado: desde o K-042 o esquema do rascunho vai no TEXTO
+        # (sem gramática), e medido em 28/09 uma geração em ~8 voltou com aspas sem escape ("Expecting ',' delimiter").
+        # Orçamento, recusa e erro de rede não se repetem aqui — repetir não os resolve e custaria outra chamada.
+        for tentativa in (1, 2):
+            try:
+                draft, usage = await self.provider.generate_persona(pedido)
+                break
+            except AIError as exc:
+                if exc.kind == "invalid_output" and tentativa == 1:
+                    log.warning("rascunho de persona inválido; repetindo uma vez: %s", str(exc)[:200])
+                    continue
+                codigo = "ai_budget" if exc.kind == "budget" else "ai_refusal" if exc.kind == "refusal" else "ai_error"
+                raise SocialError(codigo, str(exc), 503) from None
         if self.usage_sink is not None:
             try:
                 self.usage_sink(usage)
