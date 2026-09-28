@@ -323,6 +323,8 @@ def _area_de_rolagem(ctx: ToolContext, el: UiElement | None, *, vertical: bool) 
     r-20260928165254-e31953 foi uma linha de ~200 px da grade, e o arrasto de 140 px dentro dela começava sobre uma
     miniatura — curto e lento, virou toque longo. Elemento que não rola, ou que é faixa estreita no eixo do arrasto,
     cede lugar ao menor ancestral rolável que é largo nesse eixo; sem ancestral, à área útil da tela (0,2h–0,85h).
+    Exceção: uma lista que ROLA e não está dentro de nada rolável (menu suspenso, folha inferior) é a própria
+    superfície — arrastar na área da tela começaria ou terminaria fora dela e fecharia a folha.
     O eixo importa: um carrossel horizontal é estreito na altura e é exatamente onde rolar para o lado."""
     padrao = (0, int(ctx.height * 0.2), ctx.width, int(ctx.height * 0.85))
     if el is None:
@@ -337,7 +339,7 @@ def _area_de_rolagem(ctx: ToolContext, el: UiElement | None, *, vertical: bool) 
     ancestrais = [e for e in ctx.tree.elements if e.scrollable and _dentro(el.bounds, e.bounds) and largo(e.bounds)]
     if ancestrais:
         return min(ancestrais, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])).bounds
-    return padrao
+    return el.bounds if el.scrollable else padrao
 
 
 def _sobreposicao_nova(antes: UiTree, depois: UiTree, recipientes: set[tuple[str, str]]) -> str | None:

@@ -265,6 +265,15 @@ async def test_rolagem_em_faixa_estreita_usa_a_area_rolavel_maior() -> None:
                        Scroll(rationale="r", direction="right", element_id=carrossel.elements[0].id))
     (x1, y1, x2, y2), = io.swipes
     assert 150 <= y1 == y2 <= 330 and x1 > x2
+    # Lista curta que rola e não está dentro de nada rolável (folha inferior): é a própria superfície. Arrastar na
+    # área da tela começaria fora dela.
+    folha = parse_hierarchy("<hierarchy>" + _no("android.widget.ListView", 0, 900, 720, 1260, scrollable="true",
+                                                resource_id="app:id/sheet_list") + "</hierarchy>")
+    io = _IoGestos()
+    await execute_tool(_ctx(io, folha, [folha]), "scroll",
+                       Scroll(rationale="r", direction="down", element_id=folha.elements[0].id))
+    (_, y1, _, y2), = io.swipes
+    assert 900 <= y2 < y1 <= 1260
 
 
 async def test_rolagem_que_abre_sobreposicao_volta_e_nao_diz_que_rolou() -> None:
