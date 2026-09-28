@@ -2051,6 +2051,96 @@ dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 it
 [`dominios/persona.md`](dominios/persona.md#imagens-persona_images-migração-048); [`ia.md`](ia.md#1-as-cinco-funções);
 [`banco.md`](banco.md).
 
+## ADR-043 — Persona N:N aparelho: vínculo por app, aparelho principal e uma conta por app em cada aparelho
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+evolução ([design](design/persona-e-parque.md) §7, §10.5, §14). Código da onda C (`2051f88`, `9bb4139`). Doc
+principal: [`dominios/persona.md`](dominios/persona.md#aparelhos-e-roteamento); contrato no
+[adendo v0.29](api-contract.md#adendo-v029-28092026--persona-nn-aparelho-e-roteamento-por-persona).
+
+**Contexto.**
+
+- O vínculo persona × aparelho era 1:1 por dois índices únicos parciais da 008 (um perfil ativo por aparelho, um
+  aparelho ativo por perfil); vincular tomava o aparelho de quem estivesse nele.
+- O dono pediu a hierarquia Servidor → Aparelho → Persona(s), com uma persona em vários aparelhos e várias personas
+  num aparelho, visível dos dois lados.
+- O 1:1 estava embutido em muitos chamadores (porta de sessão, localidade, treino, contexto operacional,
+  reobservação depois de intervenção).
+
+**Alternativas.** Tabela nova de vínculo (perde localidade e histórico); troca automática de conta no Instagram
+dentro do mesmo aparelho (achado #115, frágil); usuários Android múltiplos no emulador.
+
+**Escolha.**
+
+- `device_profile_bindings` evolui (migração 051): `app_id` (NULL = apps sem conta gerenciada) e `is_primary`;
+  saem os índices 1:1; entram um vínculo ativo por (persona, aparelho, app), **uma conta por app em cada aparelho**
+  (D2-a: duas contas do mesmo app no mesmo aparelho ficam proibidas enquanto a troca de conta no Instagram for
+  manual) e no máximo um principal por persona.
+- `bind` não toma aparelho de ninguém: colisão é 409 `conta_do_app_ja_no_aparelho`. Um vínculo sem app de uma
+  persona que tem conta no app conta para a regra.
+- A sessão continua em `account_sessions` (conta × aparelho), sem tabela nova; a mesma conta em N aparelhos é
+  permitida (D3), protegida pelo ADR-029.
+- O **principal** é o alvo padrão de conectar, verificar, sair e do contexto operacional; `?instance_id=` escolhe
+  outro aparelho vinculado.
+- **Ordem segura:** primeiro todos os chamadores passaram a APIs de lista e ao perfil do objetivo, com os índices
+  1:1 ainda valendo (fase 1, suíte verde); só depois a 051.
+
+**Consequências.**
+
+- `profile_id_for_instance`/`binding_row` ficam só por compatibilidade e levantam erro com mais de um vínculo
+  (nunca escolhem em silêncio); a porta de sessão recebe a persona do objetivo.
+- O teste "mover Mariana desvincula Lucas" foi aposentado de propósito: vincular não toma mais.
+- O painel mostra as N personas de um aparelho e os N aparelhos de uma persona (onda E).
+
+**Evidências.** `simulated`: `backend/tests/test_vinculos_n_n.py` (050→051 com o retrato de produção, esquema novo
+= atualizado, uma persona em dois aparelhos, dois aparelhos com personas diferentes, recusa D2-a),
+`backend/tests/test_personas_aparelhos_api.py`. `real` e PostgreSQL: ver o ensaio da implantação e K-040.
+
+**Relação.** ADR-029 (sessão bloqueada quando o Instagram pede verificação); ADR-035 (vincular é de pessoa);
+ADR-041; ADR-044.
+
+## ADR-044 — Roteamento das execuções por persona: alvos resolvidos, destinos no texto e prévia obrigatória
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+evolução ([design](design/persona-e-parque.md) §11, §12). Código da onda C (`0c6ab56`). Doc principal:
+[`dominios/persona.md`](dominios/persona.md#aparelhos-e-roteamento).
+
+**Contexto.** "Peça para o André fazer X" deveria escolher o aparelho sozinho; a execução só sabia ir para
+aparelhos, e `profile_ids` substituía `instance_ids` em vez de estreitá-los. O dono também quer que o texto diga os
+destinos ("no aparelho Y", "nos aparelhos Y e Z") sem perder o caminho direto por aparelho.
+
+**Alternativas.** Endpoint separado "por persona" (forquilha do fluxo de execução); extrair destinos por LLM;
+`all` como política padrão.
+
+**Escolha.**
+
+- `RunCreate` estendido, sem forquilha: `targets: [{profile_id, instance_ids[], app_id?}]`,
+  `device_policy: one|primary|all` (padrão `one`); `profile_ids` com `instance_ids` passa a ser **interseção**;
+  `targets` e `distribute` são exclusivos.
+- `resolver_alvos` puro (`modules/execution/application/alvos.py`), com a precedência **interface > texto >
+  vínculos > balanceamento**: o texto só estreita a seleção; contradição ou homônimo vira pergunta (`needs_input`,
+  sem plano); com `one`, sessão pronta num aparelho apto > principal > balanceamento.
+- `TargetExtractor` determinístico (`modules/execution/application/target_extractor.py`, sem IA) acha "com a
+  persona X", "como @user", "pelo/pela <nome>", "no(s) aparelho(s) Y e Z", `android-NN`, e tira o destino do
+  comando (`command_sem_destinos`) antes da resolução de intenção.
+- **Prévia** `POST /api/runs/targets/resolve` (não grava, não planeja); destino tirado do texto só executa depois
+  de ecoado em `targets` (409 `alvos_nao_confirmados`).
+- A foto dos alvos fica em `runs.targets` (051); o objetivo grava a persona do alvo.
+
+**Consequências.**
+
+- Nesta fase o mesmo aparelho não entra duas vezes numa execução (409 `aparelho_repetido_na_execucao`, mantém
+  `UNIQUE(run_id, instance_id)`).
+- Execuções antigas, sem `runs.targets`, re-resolvem pelo aparelho.
+- O extrator roda no `RunService` e não como etapa da resolução de intenção; `/flows/match` e `/skills/resolve`
+  passam pelo mesmo corte.
+
+**Evidências.** `simulated`: `backend/tests/test_roteamento_por_persona.py` (tabela de casos),
+`test_alvos_no_texto.py` (frases golden), `test_roteamento_execucao.py` (por persona com dois aparelhos, `all`
+cria dois objetivos, 409 do aparelho repetido, planejador chamado o mesmo número de vezes).
+
+**Relação.** ADR-043; ADR-027; o balanceamento de `Scheduler.candidatos_de`.
+
 ## ADR-045 — Provisionamento de aparelho pela plataforma: local agora, remoto depois
 
 **Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; remoto
