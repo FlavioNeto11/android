@@ -86,15 +86,13 @@ def completar(base: str, aplicar: bool) -> int:
 
 def prova(base: str, intencao: str, saida: Path) -> None:
     """A MESMA intenção em todas as personas, uma prévia cada. Nada é publicado; nada é gravado."""
-    perfis = {p.get("persona_id"): p for p in pedir(base, "GET", "/api/instagram/profiles") if p.get("persona_id")}
+    # Desde a migração 047 a persona É o perfil: o id é o mesmo, e `username` vem vazio em quem ainda não tem conta.
     linhas: list[dict[str, Any]] = []
     for p in pedir(base, "GET", "/api/personas"):
-        perfil = perfis.get(p["id"])
-        corpo = {"kind": "dm_initiate", "brief": intencao,
-                 **({"profile_id": perfil["id"]} if perfil else {})}
+        corpo = {"kind": "dm_initiate", "brief": intencao, "profile_id": p["id"]}
         draft = pedir(base, "POST", f"/api/personas/{p['id']}/preview", corpo)
         texto = (draft.get("content") or "").strip()
-        linhas.append({"persona": p["name"], "perfil": (perfil or {}).get("username"),
+        linhas.append({"persona": p["name"], "perfil": p.get("username"),
                        "campos_de_voz_vazios": p.get("voice_gaps") or [], "texto": texto,
                        "caracteres": len(texto), "recusou": bool(draft.get("refused"))})
         print(f"  {p['name']}: {len(texto)} chars · {texto[:80]}")

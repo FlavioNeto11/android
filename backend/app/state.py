@@ -27,7 +27,7 @@ from .devices.compatibilidade import capacidades_de, motivo_incompativel, requis
 from .workers.local import LocalWorker
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
-from .db import Database, dumps, loads
+from .db import Database, Row, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
@@ -830,8 +830,15 @@ class AppState:
         # bloqueio é respeitado, não contornado; quem reativa é uma pessoa, na tela do perfil.
         perfil = self.social_repo.profile_row(profile_id)
         if perfil is not None and (perfil["status"] or "active") != "active":
-            return (f"perfil @{perfil['username']} está '{perfil['status']}': nenhuma tarefa é despachada para ele "
-                    "até uma pessoa reativá-lo na tela do perfil", None)
+            return (f"perfil @{perfil['username'] or perfil['display_name']} está '{perfil['status']}': nenhuma "
+                    "tarefa é despachada para ele até uma pessoa reativá-lo na tela do perfil", None)
+        pacote = package if package is not None else self.social_repo.app_package
+        if perfil is not None and not self._tem_conta_no_app(perfil, pacote):
+            # Desde a 047 a pessoa vinculada pode não ter conta NESTE app (persona criada antes da conta). Não é
+            # erro nem sessão a autenticar: é "sem conta", e a tarefa espera uma pessoa cadastrar a conta.
+            rotulo = capabilities_of(pacote).label if pacote else "este app"
+            return (f"a pessoa vinculada ({perfil['display_name'] or perfil['id']}) não tem conta em {rotulo}; "
+                    "cadastre a conta na tela do perfil antes de despachar", None)
         if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
             return recusa
         session = self.social_repo.session_row(profile_id)
@@ -868,6 +875,14 @@ class AppState:
             return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                     "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
         return motivo, (lambda: provedor.ensure_session(rt, profile_id, automatic=True))
+
+    def _tem_conta_no_app(self, perfil: Row, package: str | None) -> bool:
+        """A pessoa tem conta no app de `package`? A verdade é `profile_accounts` (037); o usuário de cadastro
+        (`username`) continua valendo como a conta do app do perfil, porque perfis anteriores à 037 e os criados sem o
+        app registrado não têm a linha de conta — e sempre foram a conta do Instagram."""
+        if self.social_repo.account_for_package(perfil["id"], package) is not None:
+            return True
+        return bool(package and package == self.social_repo.app_package and perfil["username"])
 
     # ------------------------------------------------------------------ entrega do aplicativo ao parque
     # Estados em que uma entrega FALHOU. Daqui ninguém tenta de novo sozinho: instalar é mexer no disco do aparelho, e

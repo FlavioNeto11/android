@@ -31,6 +31,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, ReleaseBody, ServerLimitsPatch,
     WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
     ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
@@ -523,58 +524,13 @@ class ProfileLocality(BaseModel):
     detail: str | None = None
 
 
-class InstagramProfileDTO(BaseModel):
-    id: str
-    username: str
-    display_name: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    birth_date: str | None = None
-    email: str | None = None
-    persona_id: str | None = None
-    persona_name: str | None = None
-    #: Grupo de acesso (migração 036): políticas e limites herdados; o que o perfil mudou deliberadamente sobrepõe.
-    policy_group_id: str | None = None
-    policy_group_name: str | None = None
-    status: str = "active"
-    instance_id: str | None = None          # aparelho vinculado agora
-    #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
-    locality: ProfileLocality | None = None
-    offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
-    credential: CredentialInfo = CredentialInfo()
-    session: SessionInfo = SessionInfo()
-    #: O app da conta no aparelho vinculado. `None` = sem vínculo.
-    app_on_device: AppOnDevice | None = None
-    session_actions: SessionActions | None = None
-    last_verified_at: str | None = None
-    last_activity_at: str | None = None
-    created_at: str
-    updated_at: str
-
-
-class ProfilePatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    display_name: str | None = Field(default=None, max_length=120)
-    first_name: str | None = Field(default=None, max_length=80)
-    last_name: str | None = Field(default=None, max_length=80)
-    birth_date: str | None = Field(default=None, max_length=10)
-    email: str | None = Field(default=None, max_length=200)
-    persona_id: str | None = Field(default=None, max_length=120)
-    #: `null` desvincula do grupo: o perfil volta a herdar só do padrão do catálogo (as escolhas próprias ficam).
-    policy_group_id: str | None = Field(default=None, max_length=120)
-    instance_id: str | None = Field(default=None, max_length=60)
-    #: `blocked` = a plataforma bloqueou a conta: o sistema respeita o bloqueio e não despacha tarefa nenhuma para
-    #: este perfil até uma pessoa reativá-lo. `disabled` = o dono pausou. O banco já aceitava os três (migração 008).
-    status: Literal["active", "blocked", "disabled"] | None = None
-    #: O que fazer quando o servidor onde os dados vivem não está disponível. Ver `OfflinePolicy`.
-    offline_policy: OfflinePolicy | None = None
-    #: Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: a sessão de lá não existe. Sem esta
-    #: confirmação explícita a troca é recusada com 409, e o painel explica o que vai acontecer.
-    confirm_locality_change: bool = False
-
-
 class PersonaTraits(BaseModel):
-    """Os traços que descrevem a persona. Tudo é opcional: o que estiver vazio simplesmente não vai ao modelo."""
+    """Os traços que descrevem a VOZ da persona. Tudo é opcional: o que estiver vazio simplesmente não vai ao modelo.
+
+    Desde a migração 047 as três chaves visuais (`appearance`, `visual_style`, `photo_scenario`) moram em
+    `PersonaVisual`; aqui só fica como a pessoa escreve. `extra="forbid"` continua: uma chave desconhecida em
+    `traits` é dado errado, não dado a mais.
+    """
 
     model_config = ConfigDict(extra="forbid")
     personality: str | None = Field(default=None, max_length=600)
@@ -592,20 +548,111 @@ class PersonaTraits(BaseModel):
     examples: list[str] = Field(default_factory=list, max_length=20)
     common_phrases: list[str] = Field(default_factory=list, max_length=30)
     forbidden_phrases: list[str] = Field(default_factory=list, max_length=30)
-    # Identidade VISUAL: descreve a pessoa, não como ela escreve. Fica guardada e aparece no portal, mas NÃO entra
-    # no prompt (não está em `_TRACOS`): mandar aparência e cenário de foto em toda geração de texto é custo sem
-    # retorno. Quem usa isto é quem escolhe/produz a foto, não o modelo que redige.
+
+
+class PersonaTraitsEdit(PersonaTraits):
+    """`traits` como um CLIENTE pode mandar: a voz mais as três chaves visuais que o painel de hoje ainda escreve
+    dentro de `traits` (`ProfileDetail.tsx`). O servidor as move para `visual` em vez de responder 422 — a
+    compatibilidade fica na borda, e o dado gravado é o novo."""
+
     appearance: str | None = Field(default=None, max_length=600)
     visual_style: str | None = Field(default=None, max_length=600)
     photo_scenario: str | None = Field(default=None, max_length=600)
 
 
+class PersonaVisual(BaseModel):
+    """Identidade VISUAL: descreve a pessoa, não como ela escreve. Não entra no prompt de texto; alimenta a receita
+    de imagem (`modules/identity/domain/persona_image.py`) e aparece no painel."""
+
+    model_config = ConfigDict(extra="forbid")
+    appearance: str | None = Field(default=None, max_length=600)
+    visual_style: str | None = Field(default=None, max_length=600)
+    photo_scenario: str | None = Field(default=None, max_length=600)
+    palette: str | None = Field(default=None, max_length=200)
+    age_presentation: str | None = Field(default=None, max_length=80)
+    gender_presentation: str | None = Field(default=None, max_length=80)
+
+
+class BioOrigin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    birthplace: str | None = Field(default=None, max_length=120)
+    hometown: str | None = Field(default=None, max_length=120)
+    nationality: str | None = Field(default=None, max_length=60)
+
+
+class BioHome(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=80)
+    country: str | None = Field(default=None, max_length=80)
+    residence: str | None = Field(default=None, max_length=200)      # "apartamento com a irmã", "casa dos pais"
+
+
+class BioWork(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    profession: str | None = Field(default=None, max_length=120)
+    employer: str | None = Field(default=None, max_length=120)
+    education: list[str] = Field(default_factory=list, max_length=10)
+
+
+class BioLife(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    marital_status: str | None = Field(default=None, max_length=60)
+    children: int | None = Field(default=None, ge=0, le=20)
+    history: list[str] = Field(default_factory=list, max_length=20)  # fatos marcantes, um por item
+
+
+class BioBeliefs(BaseModel):
+    """Guardado, NÃO enviado ao modelo nem exigido para a biografia contar como completa: mandar religião e
+    posicionamento político para o prompt é decisão do dono, ainda pendente (fica fora de `PERSONA_BIO_FIELDS`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    religion: str | None = Field(default=None, max_length=80)
+    politics: str | None = Field(default=None, max_length=120)
+
+
+class BioTastes(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: Espelho de `traits.interests` gravado pela 047; a VOZ continua lendo `traits.interests` (fonte única do prompt).
+    interests: list[str] = Field(default_factory=list, max_length=30)
+    hobbies: list[str] = Field(default_factory=list, max_length=30)
+    preferences: list[str] = Field(default_factory=list, max_length=30)
+    dislikes: list[str] = Field(default_factory=list, max_length=30)
+
+
+class PersonaBiography(BaseModel):
+    """Quem a pessoa é fora da tela, por seção. Cada seção é mesclada no servidor num PATCH (nunca substituída
+    inteira); `schema_version` diz que forma este JSON tem."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: int = BIOGRAPHY_SCHEMA_VERSION
+    #: Idade aproximada, quando não há `birth_date` (a 047 a extrai do resumo). Nunca inventa nascimento.
+    approx_age: int | None = Field(default=None, ge=0, le=120)
+    origin: BioOrigin = BioOrigin()
+    home: BioHome = BioHome()
+    work: BioWork = BioWork()
+    life: BioLife = BioLife()
+    beliefs: BioBeliefs = BioBeliefs()
+    tastes: BioTastes = BioTastes()
+
+
+class PersonaGeneration(BaseModel):
+    """Proveniência da persona: `manual`, `ai` (gerada por modelo) ou `legacy_persona` (dobrada pela 047)."""
+
+    model_config = ConfigDict(extra="ignore")
+    source: str | None = Field(default=None, max_length=40)
+    persona_id: str | None = Field(default=None, max_length=120)     # linha de `personas` de origem (047)
+    prompt: str | None = Field(default=None, max_length=2000)
+    provider: str | None = Field(default=None, max_length=60)
+    model: str | None = Field(default=None, max_length=120)
+    usd: float | None = None
+    at: str | None = None
+    enriched_at: str | None = None
+
+
 #: Os traços que DESCREVEM A VOZ, na ordem em que fazem sentido lidos de cima para baixo, com o rótulo que o
 #: portal mostra. É a mesma lista que o construtor de contexto renderiza no bloco `<persona>` — fonte única, para
 #: um campo novo não passar a ir ao modelo sem aparecer na conferência, nem o contrário.
-#:
-#: `appearance`, `visual_style` e `photo_scenario` ficam de fora de propósito: descrevem a pessoa, não como ela
-#: escreve, e não entram no prompt.
 PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
     ("personality", "personalidade"), ("tone", "tom"), ("formality", "formalidade"),
     ("typical_length", "tamanho típico da mensagem"), ("emojis", "uso de emojis"), ("slang", "gírias"),
@@ -613,6 +660,15 @@ PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
     ("comment_style", "estilo em comentário"), ("with_known", "com quem já conhece"),
     ("with_strangers", "com desconhecidos"), ("common_phrases", "expressões comuns"),
     ("forbidden_phrases", "expressões proibidas"), ("examples", "exemplos"),
+)
+
+#: O que da BIOGRAFIA vai ao modelo, como linhas curtas no bloco `<persona>`, além do nome e da idade calculada
+#: (que vêm da identidade, não deste JSON). Caminho dentro de `biography` → rótulo. Fonte única, como a lista de
+#: voz. `beliefs.religion` e `beliefs.politics` ficam de FORA de propósito: guardar é uma coisa, mandar ao modelo é
+#: decisão do dono, ainda pendente. `tastes.interests` também fica de fora: os interesses já vão pela voz.
+PERSONA_BIO_FIELDS: tuple[tuple[str, str], ...] = (
+    ("home.city", "cidade onde mora"), ("work.profession", "profissão"), ("work.education", "formação"),
+    ("tastes.hobbies", "hobbies"),
 )
 
 
@@ -627,13 +683,23 @@ def voice_gaps(traits: PersonaTraits) -> list[str]:
     return [campo for campo, _ in PERSONA_VOICE_TRAITS if not dados.get(campo)]
 
 
-class PersonaDTO(BaseModel):
+class PersonaVoiceDTO(BaseModel):
+    """A persona como o CONSTRUTOR DE CONTEXTO a vê: voz, biografia e identidade — sem credencial, sem sessão, sem
+    aparelho. É o que entra em `SocialContextDTO.persona` e no bloco `<persona>`; a `PersonaDTO` completa é para a
+    API e herda daqui."""
+
     id: str
     name: str
     summary: str | None = None
     persona_prompt: str = ""
     traits: PersonaTraits = PersonaTraits()
-    profile_id: str | None = None           # persona pertence a UM perfil (restrição no esquema)
+    biography: PersonaBiography = PersonaBiography()
+    #: Idade calculada de `birth_date` hoje; senão `biography.approx_age`. Nunca gravada.
+    age: int | None = None
+    gender: str | None = None
+    locale: str | None = None
+    #: Compatibilidade com a `PersonaDTO` antiga: a persona É o perfil, então `profile_id == id`.
+    profile_id: str | None = None
     profile_username: str | None = None
     created_at: str
     updated_at: str
@@ -645,20 +711,166 @@ class PersonaDTO(BaseModel):
         return voice_gaps(self.traits)
 
 
+class PersonaImageDTO(BaseModel):
+    """Uma imagem da persona (migração 048). `url` é a rota que a serve pelo storage; nunca um caminho de disco."""
+
+    id: str
+    persona_id: str
+    status: str                               # pending | ready | failed | refused
+    source: str                               # generated | upload | imported_legacy
+    is_primary: bool = False
+    width: int | None = None
+    height: int | None = None
+    provider: str | None = None
+    model: str | None = None
+    seed: int | None = None
+    aspect: str | None = None
+    cost_usd: float = 0.0
+    error: str | None = None
+    created_at: str
+    url: str
+
+
+class PersonaDTO(PersonaVoiceDTO):
+    """A pessoa inteira (evolução 2, onda A): voz + biografia + visual + proveniência + o que o perfil sempre expôs
+    (conta do Instagram de cadastro, credencial, sessão, aparelho, política). `InstagramProfileDTO` é este MESMO
+    objeto, pelo nome antigo, para o painel atual não quebrar.
+
+    `username` é `None` quando a pessoa ainda não tem conta (a coluna guarda `''`; a tradução é aqui, na borda).
+    `persona_id` e `profile_id` são o próprio `id`: o painel de hoje acha a persona do perfil por eles.
+    """
+
+    visual: PersonaVisual = PersonaVisual()
+    generation: PersonaGeneration = PersonaGeneration()
+    username: str | None = None
+    display_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    birth_date: str | None = None
+    email: str | None = None
+    persona_id: str | None = None
+    #: Alias de `name`, mantido só porque `contexto.py` e o painel ainda o leem. Some com eles.
+    persona_name: str | None = None
+    #: Grupo de acesso (migração 036): políticas e limites herdados; o que o perfil mudou deliberadamente sobrepõe.
+    policy_group_id: str | None = None
+    policy_group_name: str | None = None
+    status: str = "active"
+    instance_id: str | None = None          # aparelho vinculado agora
+    #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
+    locality: ProfileLocality | None = None
+    offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
+    credential: CredentialInfo = CredentialInfo()
+    session: SessionInfo = SessionInfo()
+    #: O app da conta no aparelho vinculado. `None` = sem vínculo.
+    app_on_device: AppOnDevice | None = None
+    session_actions: SessionActions | None = None
+    accounts_count: int = 0
+    images: list[PersonaImageDTO] = Field(default_factory=list)
+    primary_image_id: str | None = None
+    last_verified_at: str | None = None
+    last_activity_at: str | None = None
+
+
+#: O nome antigo do MESMO objeto (`is`): quem importa `InstagramProfileDTO` continua funcionando.
+InstagramProfileDTO = PersonaDTO
+
+
+class ProfilePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(default=None, max_length=120)
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    birth_date: str | None = Field(default=None, max_length=10)
+    email: str | None = Field(default=None, max_length=200)
+    #: Desde a 047 a persona é a própria pessoa. Mandar aqui o id de uma persona SEM conta absorve a voz dela neste
+    #: perfil (e a linha sem conta some); o id de outra pessoa com conta é recusado (`persona_in_use`).
+    persona_id: str | None = Field(default=None, max_length=120)
+    #: `null` desvincula do grupo: o perfil volta a herdar só do padrão do catálogo (as escolhas próprias ficam).
+    policy_group_id: str | None = Field(default=None, max_length=120)
+    instance_id: str | None = Field(default=None, max_length=60)
+    #: `blocked` = a plataforma bloqueou a conta: o sistema respeita o bloqueio e não despacha tarefa nenhuma para
+    #: este perfil até uma pessoa reativá-lo. `disabled` = o dono pausou. O banco já aceitava os três (migração 008).
+    status: Literal["active", "blocked", "disabled"] | None = None
+    #: O que fazer quando o servidor onde os dados vivem não está disponível. Ver `OfflinePolicy`.
+    offline_policy: OfflinePolicy | None = None
+    #: Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: a sessão de lá não existe. Sem esta
+    #: confirmação explícita a troca é recusada com 409, e o painel explica o que vai acontecer.
+    confirm_locality_change: bool = False
+
+
+class PersonaDraft(BaseModel):
+    """O que o MODELO devolve em `generate_persona` (e o que `enrich` recebe dele): a pessoa fictícia, sem
+    proveniência nem conta. É também o esquema estrito da saída estruturada — todo campo aparece, vazio ou não."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+    summary: str | None = Field(default=None, max_length=400)
+    gender: str | None = Field(default=None, max_length=40)
+    locale: str | None = Field(default=None, max_length=20)
+    birth_date: str | None = Field(default=None, max_length=10)
+    persona_prompt: str = Field(default="", max_length=4000)
+    traits: PersonaTraits = PersonaTraits()
+    visual: PersonaVisual = PersonaVisual()
+    biography: PersonaBiography = PersonaBiography()
+
+
 class PersonaCreate(BaseModel):
+    """Cria uma PESSOA (sem conta em app nenhum). `first_name`/`last_name` vazios saem de `name` no primeiro espaço.
+    `traits` aceita as chaves visuais antigas e as move para `visual`."""
+
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)
     summary: str | None = Field(default=None, max_length=400)
     persona_prompt: str = Field(default="", max_length=4000)
-    traits: PersonaTraits = PersonaTraits()
+    traits: PersonaTraitsEdit = PersonaTraitsEdit()
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    birth_date: str | None = Field(default=None, max_length=10)
+    gender: str | None = Field(default=None, max_length=40)
+    locale: str | None = Field(default=None, max_length=20)
+    biography: PersonaBiography = PersonaBiography()
+    visual: PersonaVisual = PersonaVisual()
+    #: Preenchido pelo servidor em `POST /personas/generate`; quem cria à mão pode deixar vazio (`source=manual`).
+    generation: PersonaGeneration | None = None
+
+    @field_validator("traits", mode="before")
+    @classmethod
+    def _traits_como_edicao(cls, v: object) -> object:
+        return _traits_para_edicao(v)
 
 
 class PersonaPatch(BaseModel):
+    """PATCH parcial POR SEÇÃO: só o que vier muda. `traits`, `visual` e `biography` são MESCLADOS no servidor
+    (`modules/identity/domain/persona.py::mesclar_secao`) — um campo explicitamente `null` apaga, um campo ausente
+    fica como está. Nunca se substitui o JSON inteiro."""
+
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=80)
     summary: str | None = Field(default=None, max_length=400)
     persona_prompt: str | None = Field(default=None, max_length=4000)
-    traits: PersonaTraits | None = None
+    traits: PersonaTraitsEdit | None = None
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    display_name: str | None = Field(default=None, max_length=120)
+    birth_date: str | None = Field(default=None, max_length=10)
+    gender: str | None = Field(default=None, max_length=40)
+    locale: str | None = Field(default=None, max_length=20)
+    biography: PersonaBiography | None = None
+    visual: PersonaVisual | None = None
+
+    @field_validator("traits", mode="before")
+    @classmethod
+    def _traits_como_edicao(cls, v: object) -> object:
+        return _traits_para_edicao(v)
+
+
+def _traits_para_edicao(v: object) -> object:
+    """Quem monta o corpo em Python passa `PersonaTraits(...)` (a voz); o campo é `PersonaTraitsEdit`, subclasse com
+    as chaves visuais antigas. Pydantic não aceita a instância da classe-mãe onde espera a filha, então ela vira o
+    dicionário do que foi de fato informado."""
+    if isinstance(v, PersonaTraits) and not isinstance(v, PersonaTraitsEdit):
+        return v.model_dump(exclude_unset=True)
+    return v
 
 
 class InteractionType(StrEnum):
@@ -749,7 +961,7 @@ class SocialContextDTO(BaseModel):
 
     profile_id: str
     username: str
-    persona: PersonaDTO | None = None
+    persona: PersonaVoiceDTO | None = None      # só voz e biografia: credencial não tem caminho até aqui
     relationship: RelationshipDTO | None = None
     thread: ThreadSummaryDTO | None = None
     memories: list[MemoryItemDTO] = Field(default_factory=list)
@@ -854,7 +1066,7 @@ class TrainingSaveBody(BaseModel):
 
 class PolicyGroupMember(BaseModel):
     id: str
-    username: str
+    username: str | None = None               # pessoa sem conta também pode estar num grupo
 
 
 class PolicyGroupDTO(BaseModel):

@@ -12,18 +12,20 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..db import dumps, loads
+from ..db import Row, dumps, loads
 from ..util import now_iso
 from ..events import EventBus
-from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
-                      PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO,
-                      PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
+from ..models import (BIOGRAPHY_SCHEMA_VERSION, InstagramProfileDTO, InteractionDTO, InteractionStatus,
+                      InteractionType, MemoryItemDTO, OBJECTIVE_SETTLED, PersonaCreate, PersonaDTO, PersonaPatch,
+                      PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO, ProfilePolicyDTO, SessionStatus,
+                      SocialContextDTO, SocialDraftDTO)
+from ..modules.identity.domain.persona import mesclar_secao, separar_nome, separar_visual_legado
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider, session_provider_of
 from ..planning.provider import AIError, SocialRequest
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
-from .context import SocialContextBuilder, interaction_dto, persona_dto
+from .context import SocialContextBuilder, interaction_dto
 from .memory import MemoryRefused, MemoryStore
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
 from .repository import SocialRepository
@@ -121,18 +123,26 @@ class SocialService:
 
     # ------------------------------------------------------------------ cadastro
     def create_profile(self, body: Any) -> InstagramProfileDTO:
+        """Cadastro de uma CONTA do Instagram. Com `persona_id` de uma pessoa ainda sem conta, é ela que ganha a
+        conta (mesma linha, mesmo id — a persona é a pessoa desde a 047); sem `persona_id`, nasce uma pessoa nova."""
         if self.repo.profile_by_username(body.username):
             raise SocialError("duplicate_username", f"Já existe um perfil para @{body.username}.")
-        self._check_persona(body.persona_id)
+        pessoa = self._pessoa_sem_conta(body.persona_id)
         self._check_group(body.policy_group_id)
         self._check_instance(body.instance_id)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
 
-        profile_id = self.repo.create_profile(
-            username=body.username, first_name=body.first_name, last_name=body.last_name,
-            display_name=body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None),
-            birth_date=body.birth_date, email=body.email, persona_id=body.persona_id)
+        display_name = body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None)
+        if pessoa is not None:
+            profile_id = str(pessoa["id"])
+            self.repo.adopt_account(profile_id, username=body.username, first_name=body.first_name,
+                                    last_name=body.last_name, display_name=display_name, birth_date=body.birth_date,
+                                    email=body.email)
+        else:
+            profile_id = self.repo.create_profile(
+                username=body.username, first_name=body.first_name, last_name=body.last_name,
+                display_name=display_name, birth_date=body.birth_date, email=body.email, persona_id=None)
         if body.policy_group_id:
             self.repo.update_profile(profile_id, {"policy_group_id": body.policy_group_id})
         # Item 12.1: o perfil é a identidade; a conta do Instagram (a que o cadastro sempre descreveu) é a primeira.
@@ -158,8 +168,12 @@ class SocialService:
         instance_id = fields.pop("instance_id", "__ausente__")
         # Confirmação é DECISÃO, não campo do perfil: nunca vai para o `UPDATE`.
         confirmado = bool(fields.pop("confirm_locality_change", False))
-        if "persona_id" in fields and fields["persona_id"]:
-            self._check_persona(fields["persona_id"], para=profile_id)
+        if "persona_id" in fields:
+            # A persona é a própria pessoa: o id de uma persona SEM conta é absorvido aqui (o painel de hoje "cria a
+            # persona" e depois a aponta no perfil); o de outra pessoa com conta é recusado. Nada vai para a coluna.
+            alvo = fields.pop("persona_id")
+            if alvo:
+                self._absorver_persona(profile_id, alvo)
         if "policy_group_id" in fields:
             self._check_group(fields["policy_group_id"])
         if fields:
@@ -267,53 +281,127 @@ class SocialService:
             raise SocialError("store_instance", f"{instance_id} é a loja (Play Store): ela só guarda o aplicativo "
                                                 "oficial e não recebe perfil. Escolha um aparelho do parque.", 400)
 
-    # ------------------------------------------------------------------ personas
+    # ------------------------------------------------------------------ personas (= pessoas)
+    # Desde a 047 "persona" e "perfil" são a MESMA linha. `list_personas` devolve todas as pessoas (com ou sem
+    # conta); `list_profiles` continua devolvendo só quem tem conta de cadastro, que é o que a tela de perfis lista.
     def list_personas(self) -> list[PersonaDTO]:
-        return [self._persona_dto(self.repo.persona_row(p["id"])) for p in self.repo.list_personas()]
+        return [dto for pid in self.repo.list_persona_ids() if (dto := self.repo.profile_dto(pid))]
 
     def get_persona(self, persona_id: str) -> PersonaDTO:
+        return self.get_profile(str(self._linha_da_pessoa(persona_id)["id"]))
+
+    def create_persona(self, body: PersonaCreate) -> PersonaDTO:
+        """Uma pessoa nova, sem conta em app nenhum. `traits` com as chaves visuais antigas vira `visual`."""
+        voz, visual_legado = separar_visual_legado(body.traits.model_dump(exclude_none=True))
+        visual = mesclar_secao(visual_legado, body.visual.model_dump(exclude_unset=True))
+        biografia = mesclar_secao({"schema_version": BIOGRAPHY_SCHEMA_VERSION},
+                                  body.biography.model_dump(exclude_unset=True))
+        origem = body.generation.model_dump(exclude_none=True) if body.generation is not None else {}
+        origem.setdefault("source", "manual")
+        origem.setdefault("at", now_iso())
+        primeiro, ultimo = body.first_name, body.last_name
+        if not primeiro:
+            primeiro, ultimo = separar_nome(body.name)
+        persona_id = self.repo.create_persona(
+            name=body.name, summary=body.summary, persona_prompt=body.persona_prompt, traits=voz, visual=visual,
+            biography=biografia, generation=origem, first_name=primeiro, last_name=ultimo, display_name=body.name,
+            birth_date=body.birth_date, gender=body.gender, locale=body.locale)
+        self.bus.emit("log", f"Persona {body.name} criada", data={"profile_id": persona_id})
+        return self.get_persona(persona_id)
+
+    def update_persona(self, persona_id: str, body: PersonaPatch) -> PersonaDTO:
+        """PATCH parcial POR SEÇÃO: `traits`, `visual` e `biography` são mesclados chave a chave sobre o que está
+        gravado (`mesclar_secao`); nulo explícito apaga, ausente fica. Nulo em `name`/`persona_prompt` é "não mexer":
+        apagar o nome não é um pedido."""
+        row = self._linha_da_pessoa(persona_id)
+        pid = str(row["id"])
+        fields = body.model_dump(exclude_unset=True)
+        campos: dict[str, object] = {}
+        for chave in ("summary", "birth_date", "gender", "locale", "first_name", "last_name", "display_name"):
+            if chave in fields:
+                campos[chave] = fields[chave]
+        if fields.get("name") is not None:
+            campos["display_name"] = fields["name"]
+            if not row["first_name"] and "first_name" not in fields:
+                campos["first_name"], campos["last_name"] = separar_nome(fields["name"])
+        if fields.get("persona_prompt") is not None:
+            campos["persona_prompt"] = fields["persona_prompt"]
+        visual_patch: dict[str, object] = {}
+        if body.traits is not None:
+            voz, visual_patch = separar_visual_legado(body.traits.model_dump(exclude_unset=True))
+            campos["traits"] = dumps(mesclar_secao(loads(row["traits"], {}) or {}, voz))
+        if body.visual is not None:
+            visual_patch = {**visual_patch, **body.visual.model_dump(exclude_unset=True)}
+        if visual_patch:
+            campos["visual"] = dumps(mesclar_secao(loads(row["visual"], {}) or {}, visual_patch))
+        if body.biography is not None:
+            atual = loads(row["biography"], {}) or {}
+            atual.setdefault("schema_version", BIOGRAPHY_SCHEMA_VERSION)
+            campos["biography"] = dumps(mesclar_secao(atual, body.biography.model_dump(exclude_unset=True)))
+        self.repo.update_persona(pid, campos)
+        return self.get_persona(pid)
+
+    def delete_persona(self, persona_id: str) -> None:
+        """Apagar a persona é apagar a PESSOA — contas, credencial (e o ciphertext no cofre), memória e histórico vão
+        junto. Recusa enquanto ela estiver vinculada a um aparelho ou com execução em curso: apagar alguém que está
+        agindo num aparelho deixaria a execução sem dono."""
+        pid = str(self._linha_da_pessoa(persona_id)["id"])
+        if self.repo.binding_row(pid) is not None:
+            raise SocialError("persona_in_use", "Esta pessoa está vinculada a um aparelho. Desvincule antes de apagar.")
+        if self._execucao_em_curso(pid):
+            raise SocialError("persona_in_use", "Esta pessoa tem execução em andamento. Espere terminar ou cancele "
+                                                "antes de apagar.")
+        self.delete_profile(pid)
+
+    def _linha_da_pessoa(self, persona_id: str) -> Row:
         row = self.repo.persona_row(persona_id)
         if row is None:
             raise SocialError("not_found", "Persona não encontrada.", 404)
-        return self._persona_dto(row)
+        return row
 
-    def create_persona(self, body: Any) -> PersonaDTO:
-        persona_id = self.repo.create_persona(name=body.name, summary=body.summary,
-                                              persona_prompt=body.persona_prompt,
-                                              traits=body.traits.model_dump(exclude_none=True))
-        return self.get_persona(persona_id)
+    def _execucao_em_curso(self, profile_id: str) -> bool:
+        assentados = tuple(s.value for s in OBJECTIVE_SETTLED)
+        marcadores = ",".join("?" for _ in assentados)
+        return bool(self.repo.db.scalar(
+            f"SELECT COUNT(*) FROM objectives WHERE profile_id=? AND status NOT IN ({marcadores})",   # noqa: S608
+            (profile_id, *assentados)))
 
-    def update_persona(self, persona_id: str, body: Any) -> PersonaDTO:
-        self.get_persona(persona_id)
-        fields = body.model_dump(exclude_unset=True)
-        if fields.get("traits") is not None:
-            fields["traits"] = dumps(body.traits.model_dump(exclude_none=True))
-        # Num PATCH, nulo nestes campos significa "não mexer": a coluna é NOT NULL e apagar o nome não é um pedido.
-        fields = {k: v for k, v in fields.items() if not (v is None and k in ("name", "persona_prompt", "traits"))}
-        self.repo.update_persona(persona_id, fields)
-        return self.get_persona(persona_id)
-
-    def delete_persona(self, persona_id: str) -> None:
-        self.get_persona(persona_id)
-        dono = self.repo.persona_owner(persona_id)
-        if dono:
-            raise SocialError("persona_in_use", "Esta persona está em uso por um perfil. Desvincule antes de apagar.")
-        self.repo.delete_persona(persona_id)
-
-    def _persona_dto(self, row: Any) -> PersonaDTO:
-        dono = self.repo.persona_owner(row["id"])
-        username = self.repo.profile_row(dono)["username"] if dono else None
-        return persona_dto(row, profile_id=dono, profile_username=username)
-
-    def _check_persona(self, persona_id: str | None, *, para: str | None = None) -> None:
-        """Persona pertence a UM perfil. O esquema garante; aqui a recusa vira mensagem em vez de erro de banco."""
+    def _pessoa_sem_conta(self, persona_id: str | None) -> Row | None:
+        """A pessoa que um cadastro de conta quer adotar. Só uma pessoa SEM conta pode ganhar a conta de cadastro;
+        o id de alguém que já tem conta é outra pessoa, e a recusa vira mensagem em vez de erro de banco."""
         if not persona_id:
-            return
-        if not self.repo.persona_exists(persona_id):
+            return None
+        row = self.repo.persona_row(persona_id)
+        if row is None:
             raise SocialError("unknown_persona", "Persona não encontrada.", 400)
-        dono = self.repo.persona_owner(persona_id)
-        if dono and dono != para:
-            raise SocialError("persona_in_use", "Esta persona já pertence a outro perfil. Cada perfil tem a sua.")
+        if row["username"]:
+            raise SocialError("persona_in_use", "Esta persona já é a pessoa de outra conta. Cada conta tem a sua.")
+        return row
+
+    def _absorver_persona(self, profile_id: str, persona_id: str) -> None:
+        """`PATCH persona_id` numa pessoa que já existe: a voz, a biografia e o visual da persona SEM conta passam
+        para esta pessoa, e a linha sem conta some. O id de outra pessoa com conta é recusado."""
+        alvo = self.repo.persona_row(persona_id)
+        if alvo is None:
+            raise SocialError("unknown_persona", "Persona não encontrada.", 400)
+        if alvo["id"] == profile_id:
+            return
+        if alvo["username"]:
+            raise SocialError("persona_in_use", "Esta persona é outra pessoa, com conta própria. Cada perfil é a sua.")
+        atual = self.repo.profile_row(profile_id)
+        if atual is None:
+            raise SocialError("not_found", "Perfil não encontrado.", 404)
+        campos: dict[str, object] = {"summary": alvo["summary"], "persona_prompt": alvo["persona_prompt"] or "",
+                                  "traits": alvo["traits"], "visual": alvo["visual"], "biography": alvo["biography"],
+                                  "generation": alvo["generation"]}
+        for coluna in ("gender", "locale", "birth_date"):
+            if alvo[coluna] and not atual[coluna]:
+                campos[coluna] = alvo[coluna]
+        with self.repo.db.tx():
+            self.repo.update_profile(profile_id, campos)
+            self.repo.delete_persona(str(alvo["id"]))
+        self.bus.emit("log", "Persona absorvida pelo perfil", data={"profile_id": profile_id,
+                                                                   "persona_id": str(alvo["id"])})
 
     # ------------------------------------------------------------------ histórico social
     def record_interaction(self, profile_id: str, **campos: Any) -> InteractionDTO:
@@ -942,16 +1030,21 @@ class SocialService:
     # ------------------------------------------------------------------ contexto e geração
     def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
                 current_content: str | None = None, recall_hint: str | None = None,
-                touch: bool = False) -> SocialContextDTO:
+                touch: bool = False, app_id: str | None = None) -> SocialContextDTO:
         self.get_profile(profile_id)
         return self.contexts.build(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                   current_content=current_content, recall_hint=recall_hint, touch=touch)
+                                   current_content=current_content, recall_hint=recall_hint, touch=touch,
+                                   app_id=app_id)
 
     async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
                              persist: bool = True, screen: str = "", runner: Any = None,
-                             avoid: Sequence[str] = ()) -> tuple[SocialDraftDTO, InteractionDTO | None]:
+                             avoid: Sequence[str] = (), app_id: str | None = None) -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
+
+        `app_id` é o app da ETAPA: o "Você é @…" do prompt usa o handle da conta da pessoa nesse app, e só cai no
+        usuário de cadastro (e no nome) quando não há conta registrada ali. O executor ainda não o passa; até lá o
+        comportamento é o de sempre.
 
         Duas origens, o mesmo caminho: `incoming` é o que a contraparte disse (responder), `brief` é a intenção
         vinda do comando (comentar, puxar conversa). Pelo menos um dos dois precisa existir — sem nenhum, não há
@@ -965,7 +1058,7 @@ class SocialService:
         """
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
-        dto = self.get_profile(profile_id)
+        self.get_profile(profile_id)
         # A chave do fio sai daqui quando quem chama não a passou. Sem isto, quem escrevia uma mensagem direta
         # montava o contexto SEM conversa nenhuma (`thread=None`) enquanto o efeito, ao ser gravado, ia para
         # `dm:@alvo`: o resumo da conversa existia no banco e nunca chegava a quem estava escrevendo.
@@ -975,10 +1068,11 @@ class SocialService:
         # `<tela>`; repeti-los em `<conteudo_atual>` só duplicaria o prompt. A tela e a intenção continuam
         # valendo como PISTA DE BUSCA — é o que torna "memória relevante" relativa ao que está aberto agora.
         ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key,
-                           recall_hint=" ".join(p for p in (screen, incoming, brief) if p), touch=True)
+                           recall_hint=" ".join(p for p in (screen, incoming, brief) if p), touch=True,
+                           app_id=app_id)
         proibidos = _sem_repetir(list(avoid) + self._textos_recentes(profile_id))
         pedido = SocialRequest(
-            profile_id=profile_id, username=dto.username, kind=kind, context_text=ctx.rendered,
+            profile_id=profile_id, username=ctx.username, kind=kind, context_text=ctx.rendered,
             incoming=incoming, brief=brief, screen=screen,
             counterparty=_counterparty(counterparty) if counterparty else None,
             max_length=max_length, avoid=tuple(proibidos))
@@ -1020,21 +1114,19 @@ class SocialService:
     async def preview_persona(self, persona_id: str, body: Any) -> SocialDraftDTO:
         """Testar Persona: gera um exemplo e não grava nada — nem interação, nem memória, nem uso do aparelho."""
         persona = self.get_persona(persona_id)
-        profile_id = body.profile_id or persona.profile_id
-        if profile_id:
-            perfil = self.get_profile(profile_id)
-            if perfil.persona_id != persona_id:
-                raise SocialError("persona_mismatch", "Esta persona não é a do perfil informado.", 400)
-            # Sem `current_content`: o recebido já vai em `<conteudo_recebido>` na prévia também, e duplicá-lo
-            # faria o operador conferir uma persona num prompt que não é o da execução.
-            contexto = self.context(profile_id, counterparty=body.counterparty,
-                                    recall_hint=" ".join(p for p in (body.incoming, body.brief) if p))
-            texto, username = contexto.rendered, perfil.username
-        else:
-            texto = self.contexts.render_persona_only(persona)
-            username = persona.name
+        profile_id = persona.id
+        if body.profile_id and self.repo.persona_row(body.profile_id) is None:
+            raise SocialError("not_found", "Perfil não encontrado.", 404)
+        if body.profile_id and str(self.repo.persona_row(body.profile_id)["id"]) != profile_id:
+            raise SocialError("persona_mismatch", "Esta persona não é a do perfil informado.", 400)
+        # A persona É o perfil: a prévia usa o contexto dela (memória e relacionamento próprios; vazios numa pessoa
+        # recém-criada). Sem `current_content`: o recebido já vai em `<conteudo_recebido>` na prévia também, e
+        # duplicá-lo faria o operador conferir uma persona num prompt que não é o da execução.
+        contexto = self.context(profile_id, counterparty=body.counterparty,
+                                recall_hint=" ".join(p for p in (body.incoming, body.brief) if p))
+        texto, username = contexto.rendered, contexto.username
         draft, _usage = await self._generate(SocialRequest(
-            profile_id=profile_id or "", username=username, kind=body.kind, context_text=texto,
+            profile_id=profile_id, username=username, kind=body.kind, context_text=texto,
             # A prévia passa pelo MESMO montador do prompt da execução: intenção, tela e recebido nos mesmos
             # blocos. Conferir a persona num prompt diferente do real seria conferir outra coisa.
             incoming=body.incoming, brief=body.brief, screen=body.screen,

@@ -15,23 +15,35 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..db import loads
-from ..models import (PERSONA_VOICE_TRAITS, InteractionDTO, MemoryItemDTO, PersonaDTO, PersonaTraits,
+from ..models import (PERSONA_BIO_FIELDS, PERSONA_VOICE_TRAITS, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO,
                       RelationshipDTO, SocialContextDTO, ThreadSummaryDTO)
+from ..modules.identity.domain.persona import valor_no_caminho
 from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
-from .repository import SocialRepository
+from ..db import Row
+from .repository import SocialRepository, campos_de_persona
 
 # Rótulos dos traços na ordem em que fazem sentido lidos de cima para baixo. A lista vive em `models` porque o
 # portal precisa da MESMA: o aviso de "faltam campos de voz" e o que vai ao modelo têm de ser a mesma coisa.
 _TRACOS = PERSONA_VOICE_TRAITS
+#: Idem para a biografia: caminho no JSON → rótulo da linha. Nome e idade entram sempre, e não vêm daqui.
+_BIOGRAFIA = PERSONA_BIO_FIELDS
 
 
-def persona_dto(row: Any, *, profile_id: str | None = None, profile_username: str | None = None) -> PersonaDTO:
-    return PersonaDTO(
-        id=row["id"], name=row["name"], summary=row["summary"], persona_prompt=row["persona_prompt"] or "",
-        traits=PersonaTraits.model_validate(loads(row["traits"], {})), profile_id=profile_id,
-        profile_username=profile_username, created_at=row["created_at"], updated_at=row["updated_at"])
+def persona_dto(row: Row) -> PersonaVoiceDTO:
+    """A pessoa como o contexto a vê, a partir da linha do perfil (desde a 047 a persona É essa linha). Só voz,
+    biografia e identidade: nenhum campo de credencial, sessão ou aparelho passa por aqui."""
+    campos = campos_de_persona(row)
+    campos.pop("username")
+    return PersonaVoiceDTO(**campos)
+
+
+def tem_persona(persona: PersonaVoiceDTO) -> bool:
+    """Há algo a dizer ao modelo sobre esta pessoa? Uma linha só com nome e conta é "sem persona configurada"."""
+    voz = persona.traits.model_dump()
+    bio = persona.biography.model_dump(exclude_none=True)
+    return bool(persona.summary or persona.persona_prompt or any(voz.get(c) for c, _ in _TRACOS)
+                or any(valor_no_caminho(bio, c) for c, _ in _BIOGRAFIA))
 
 
 def interaction_dto(row: Any) -> InteractionDTO:
@@ -51,16 +63,19 @@ class SocialContextBuilder:
 
     def build(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
               current_content: str | None = None, recall_hint: str | None = None, memory_limit: int = 8,
-              memory_budget_tokens: int = 400, recent_limit: int = 6, touch: bool = True) -> SocialContextDTO:
+              memory_budget_tokens: int = 400, recent_limit: int = 6, touch: bool = True,
+              app_id: str | None = None) -> SocialContextDTO:
+        """`app_id` é o app da ETAPA: o "perfil: @…" do bloco passa a ser o handle da conta da pessoa naquele app,
+        e só cai no usuário de cadastro (e depois no nome) quando não há conta registrada ali."""
         perfil = self.repo.profile_row(profile_id)
         if perfil is None:
             raise KeyError(profile_id)
         alvo = counterparty.strip().lower().lstrip("@") if counterparty else None
         alvo = f"@{alvo}" if alvo else None
 
-        persona_row = self.repo.persona_of_profile(profile_id)
-        persona = persona_dto(persona_row, profile_id=profile_id,
-                              profile_username=perfil["username"]) if persona_row else None
+        pessoa = persona_dto(perfil)
+        persona = pessoa if tem_persona(pessoa) else None
+        handle = self.handle(profile_id, app_id=app_id, perfil=perfil) or pessoa.name
 
         rel_row = self.repo.relationship_row(profile_id, alvo) if alvo else None
         relacionamento = RelationshipDTO(
@@ -86,7 +101,7 @@ class SocialContextBuilder:
             [interaction_dto(r) for r in self.repo.list_interactions(profile_id, limit=recent_limit)]
 
         ctx = SocialContextDTO(
-            profile_id=profile_id, username=perfil["username"], persona=persona, relationship=relacionamento,
+            profile_id=profile_id, username=handle, persona=persona, relationship=relacionamento,
             thread=thread, memories=lembrancas.items, recent_interactions=recentes,
             dropped_memories=lembrancas.dropped)
         ctx.rendered = self.render(ctx, current_content=current_content)
@@ -122,25 +137,43 @@ class SocialContextBuilder:
                           + sem_marcacao(current_content) + "\n</conteudo_atual>")
         return "\n\n".join(partes)
 
-    def render_persona_only(self, persona: PersonaDTO) -> str:
-        """Prévia de uma persona ainda não vinculada a perfil: só a voz, sem memória nem histórico de ninguém."""
-        return self._persona_block(persona, persona.profile_username or "persona-em-teste")
+    def handle(self, profile_id: str, *, app_id: str | None = None, perfil: Row | None = None) -> str | None:
+        """Como esta pessoa se chama NO APP: o handle da conta dela em `app_id`; sem app (ou sem conta nele), o
+        usuário de cadastro; sem conta nenhuma, `None` (quem chama cai no nome)."""
+        if app_id:
+            conta = self.repo.account_by_app(profile_id, app_id)
+            if conta is not None and conta["handle"]:
+                return str(conta["handle"])
+        linha = perfil if perfil is not None else self.repo.profile_row(profile_id)
+        return (linha["username"] or None) if linha is not None else None
 
-    def _persona_block(self, persona: PersonaDTO | None, username: str) -> str:
+    def _persona_block(self, persona: PersonaVoiceDTO | None, username: str) -> str:
+        """O bloco `<persona>`. TUDO passa por `sem_marcacao`, inclusive nome e resumo: texto de persona gerada por
+        modelo (ou colado de fora) não é mais confiável que uma legenda lida da tela, e uma linha que fechasse o
+        bloco viraria moldura do prompt."""
         if persona is None:
-            return (f"<persona>\nperfil: @{username}\n(sem persona configurada: escreva de forma neutra, breve e "
-                    "educada)\n</persona>")
-        linhas = [f"perfil: @{username}", f"nome da persona: {persona.name}"]
+            return (f"<persona>\nperfil: @{sem_marcacao(username, limite=80)}\n(sem persona configurada: escreva de "
+                    "forma neutra, breve e educada)\n</persona>")
+        linhas = [f"perfil: @{sem_marcacao(username, limite=80)}",
+                  f"nome da persona: {sem_marcacao(persona.name, limite=120)}"]
+        if persona.age is not None:
+            linhas.append(f"idade: {persona.age} anos")
+        bio = persona.biography.model_dump(exclude_none=True)
+        for caminho, rotulo in _BIOGRAFIA:
+            valor = valor_no_caminho(bio, caminho)
+            if not valor:
+                continue
+            linhas.append(f"{rotulo}: " + _valor(valor, limite=200))
         if persona.summary:
-            linhas.append(f"resumo: {persona.summary}")
+            linhas.append(f"resumo: {sem_marcacao(persona.summary, limite=600)}")
         traits = persona.traits.model_dump()
         for campo, rotulo in _TRACOS:
             valor = traits.get(campo)
             if not valor:
                 continue
-            linhas.append(f"{rotulo}: " + ("; ".join(str(v) for v in valor) if isinstance(valor, list) else str(valor)))
+            linhas.append(f"{rotulo}: " + _valor(valor, limite=600))
         if persona.persona_prompt:
-            linhas.append(f"instruções da persona: {persona.persona_prompt}")
+            linhas.append(f"instruções da persona: {sem_marcacao(persona.persona_prompt, limite=4000)}")
         return "<persona>\n" + "\n".join(linhas) + "\n</persona>"
 
     @staticmethod
@@ -173,3 +206,10 @@ class SocialContextBuilder:
             texto = i.outgoing_content if i.direction == "outbound" else i.incoming_content
             corpo = f": {sem_marcacao(texto, limite=300)}" if texto else ""
         return f"- {i.occurred_at} {i.type} {quem} [{i.status.value}]{corpo}"
+
+
+def _valor(valor: object, *, limite: int) -> str:
+    """Lista vira `a; b; c`, cada item escapado por si; escalar vira texto escapado."""
+    if isinstance(valor, list):
+        return "; ".join(sem_marcacao(str(v), limite=limite) for v in valor)
+    return sem_marcacao(str(valor), limite=limite)

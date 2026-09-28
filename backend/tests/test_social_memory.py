@@ -386,10 +386,13 @@ async def test_rotas_de_persona_memoria_e_contexto(tmp_path: Path) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with app.router.lifespan_context(app):
             persona = (await client.post("/api/personas", json=PERSONA_LUCAS.model_dump())).json()
+            # `persona_id` de uma pessoa sem conta: é ELA que ganha a conta (mesma linha, mesmo id — 047).
             criado = await client.post("/api/instagram/profiles", json={
-                "username": "lucas.almeida9484", "password": SENHA, "persona_id": persona["id"]})
+                "username": "lucas.almeida9484", "password": SENHA, "persona_id": persona["id"],
+                "instance_id": "android-01"})
             assert criado.status_code == 201
             pid = criado.json()["id"]
+            assert pid == persona["id"] and criado.json()["persona_id"] == pid
 
             # memória do operador, listagem e remoção
             mem = await client.post(f"/api/instagram/profiles/{pid}/memory",
@@ -421,7 +424,7 @@ async def test_rotas_de_persona_memoria_e_contexto(tmp_path: Path) -> None:
             assert patch.status_code == 200
             assert patch.json()["name"] == PERSONA_LUCAS.name and patch.json()["summary"] == "novo resumo"
 
-            # persona em uso não é apagada
+            # a pessoa vinculada a um aparelho não é apagada (apagar a persona é apagar a pessoa inteira)
             apagar = await client.delete(f"/api/personas/{persona['id']}")
             assert apagar.status_code == 409 and apagar.json()["detail"]["code"] == "persona_in_use"
 
