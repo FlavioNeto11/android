@@ -4,8 +4,10 @@ Desenho: `senha -> AES-256-GCM -> ciphertext no SQLite`. A chave que abre tudo *
 Windows ela é embrulhada por DPAPI e só o mesmo usuário na mesma máquina consegue desembrulhar. Copiar banco e
 arquivos juntos não basta para abrir as senhas.
 
-Quem chama nunca recebe o valor por acaso: `get_secret` existe e é usado num único lugar, o canal de entrada
-sensível, no instante da digitação.
+Quem chama nunca recebe o valor por acaso: `get_secret` existe e é usado em dois lugares, cada um no instante do
+uso — o canal de entrada sensível (`sensitive_input.py`, a senha de uma conta no login) e a provisão de rede
+(`segredo_de_rede.py`, a chave ou a senha do perfil de rede entregue ao aparelho; ADR-056 §5). Fora deles, só o
+`rekey`, que recifra o cofre inteiro. A lista é conferida por teste (`tests/test_segredo_de_rede.py`).
 """
 from __future__ import annotations
 
@@ -270,7 +272,8 @@ class SecretStore:
         return ref
 
     def get_secret(self, ref: str) -> str:
-        """Único ponto que devolve o valor. Quem chama tem de usá-lo e soltar a referência imediatamente."""
+        """Único método que devolve o valor. Quem chama tem de usá-lo e soltar a referência imediatamente; os
+        consumidores permitidos estão no docstring do módulo."""
         row = self.db.one("SELECT key_id, nonce, ciphertext FROM secrets WHERE ref=?", (ref,))
         if row is None:
             raise KeyError(ref)

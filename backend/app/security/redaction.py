@@ -22,9 +22,14 @@ MASK = "**REDACTED**"
 #: `access[_-]?key(?:[_-]?id)?` e `secret[_-]?access[_-]?key` não são redundância de `secret`: `\b` não existe
 #: entre `_` e letra, então `secret` NÃO casa dentro de `AWS_SECRET_ACCESS_KEY=` (o `=` vem depois de `KEY`, não
 #: de `SECRET`). Chave de nuvem é o formato que o E8 (S3) acrescenta ao projeto — entra agora, não depois.
+#:
+#: `pre[_-]?shared[_-]?key|psk` (ADR-056 §5, item 25.3): a chave pré-compartilhada do WireGuard. `PrivateKey = …`
+#: já caía em `private[_-]?key`; `PresharedKey = …` e o `"pre_shared_key"` do sing-box saíam em claro, porque
+#: nenhuma palavra da lista aparece neles (`key` sozinho não está, de propósito: `PublicKey` não é segredo).
 _PALAVRAS_DE_SEGREDO = (
     r"password|passwd|senha|pin|secret|segredo|token|api[_-]?key|master[_-]?key|credential|credencial|"
-    r"secret[_-]?access[_-]?key|access[_-]?key(?:[_-]?id)?|secret[_-]?key|private[_-]?key"
+    r"secret[_-]?access[_-]?key|access[_-]?key(?:[_-]?id)?|secret[_-]?key|private[_-]?key|"
+    r"pre[_-]?shared[_-]?key|psk"
 )
 
 # Cada padrão captura o prefixo (grupo 1) e substitui o que vem depois. São formatos que carregam segredo por
@@ -56,9 +61,40 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
                 re.IGNORECASE), r"\1\2" + MASK + r"\3"),
     # O mesmo formato num endereço web: `https://usuario:<senha>@portal/`. Com a automação abrindo sites
     # (ADR-025), é o jeito de "entrar com a senha" que alguém escreveria direto no comando.
-    (re.compile(r"\b(https?://[^:/?#\s@]+:)[^@\s/]+(@)", re.IGNORECASE), r"\1" + MASK + r"\2"),
+    # `socks5://usuario:<senha>@proxy:1080` (ADR-056 §5, item 25.3): é assim que um proxy autenticado aparece na
+    # configuração do cliente VPN e na mensagem de erro dele. O usuário fica legível (diz QUAL conta do provedor),
+    # a senha não.
+    (re.compile(r"\b((?:https?|socks(?:4a?|5h?))://[^:/?#\s@]+:)[^@\s/]+(@)", re.IGNORECASE), r"\1" + MASK + r"\2"),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), MASK),
 )
+
+# ---------------------------------------------------------------- chave do WireGuard sem rótulo (item 25.3)
+# Uma chave do WireGuard são 32 bytes em base64: 43 caracteres e um `=`, e o último antes do `=` só pode ser um
+# destes 16 (os 4 bits que sobram são zero). Fora de contexto, 44 caracteres de base64 são qualquer coisa (hash,
+# id); por isso a regra só vale quando o texto FALA de WireGuard — `wg set wg0 peer … preshared-key …`, uma linha
+# de log do cliente, um bloco `[Peer]` colado num chamado. Com rótulo (`PrivateKey =`, `"private_key":`) o par
+# chave/valor acima já mascara; esta regra é para a chave que aparece solta.
+_CHAVE_WG = re.compile(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=(?![A-Za-z0-9+/=])")
+_CONTEXTO_WG = re.compile(r"wireguard|wg-quick|\bwg\d*\b|\[(?:interface|peer)\]|preshared|private[_-]?key|"
+                          r"com\.wireguard", re.IGNORECASE)
+# A chave PÚBLICA do par não é segredo, e é justamente a que o painel e o diagnóstico precisam mostrar (qual peer?).
+# Também é o que os `params` de um perfil podem carregar: mascará-la faria o cadastro recusar um WireGuard legítimo
+# (`rede.NetworkProfileInput._params` recusa o que a redação mudaria). Rótulo imediatamente antes do valor, nas
+# formas de configuração (`PublicKey = `) e de JSON (`"public_key": "`).
+_ROTULO_PUBLICO = re.compile(r"public[_-]?key\"?\s*[:=]\s*\"?$", re.IGNORECASE)
+
+
+def _mascarar_chave_wg(texto: str) -> str:
+    if not _CONTEXTO_WG.search(texto):
+        return texto
+
+    def troca(m: re.Match[str]) -> str:
+        # Só o trecho da MESMA linha antes da chave decide o rótulo: `PublicKey` numa linha não protege a chave da
+        # linha seguinte.
+        inicio_da_linha = texto.rfind("\n", 0, m.start()) + 1
+        return m.group(0) if _ROTULO_PUBLICO.search(texto[inicio_da_linha:m.start()]) else MASK
+
+    return _CHAVE_WG.sub(troca, texto)
 
 
 def redact(text: str | None) -> str | None:
@@ -68,7 +104,7 @@ def redact(text: str | None) -> str | None:
     out = text
     for pattern, replacement in _PATTERNS:
         out = pattern.sub(replacement, out)
-    return out
+    return _mascarar_chave_wg(out)
 
 
 # Nome de chave que, sozinho, já basta para mascarar o valor: numa estrutura o valor chega isolado, sem o contexto

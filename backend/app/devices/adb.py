@@ -22,6 +22,12 @@ PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ACTIVITY_RE = re.compile(r"^[A-Za-z0-9_.$]+$")
 # O que `pm path` devolve: /data/app/~~<aleatório>==/<pacote>-<aleatório>==/base.apk (ou split_config.*.apk).
 REMOTE_APK_RE = re.compile(r"^/data/app/[A-Za-z0-9_.=~/\-]+\.apk$")
+#: Onde um arquivo privado (hoje, só o segredo de rede do ADR-056 §5) pousa no convidado. Pasta ÚNICA e fixa: o
+#: `rm` da limpeza nunca recebe caminho de fora, e quem procura o que sobrou num aparelho sabe onde olhar. O nome
+#: segue a mesma regra de "nada de shell" dos outros valores montados em comando. O 25.4 estende se o cliente VPN
+#: só ler de outro lugar — e, se estender, estende AQUI, não num `shell` montado por quem chama.
+DIR_PRIVADO_NO_CONVIDADO = "/data/local/tmp/rede"
+NOME_PRIVADO_RE = re.compile(r"^[a-z0-9][a-z0-9_.\-]{0,59}$")
 
 KEYCODES = {"back": 4, "home": 3, "recents": 187, "enter": 66, "delete": 67, "wakeup": 224, "menu": 82}
 
@@ -145,10 +151,11 @@ class Adb:
 
     # -- base -----------------------------------------------------------------
     def _run(self, args: list[str], *, timeout: float = 30, binary: bool = False,
-             entrada: str | None = None) -> subprocess.CompletedProcess:
+             entrada: str | bytes | None = None) -> subprocess.CompletedProcess:
         """`entrada` vai pelo STDIN do processo. Existe por um motivo de seguranca, nao de conveniencia: o que
         entra por `args` vira linha de comando do `adb.exe` DESTA maquina, legivel por qualquer processo local que
-        saiba ler argv, enquanto o processo roda. Ver `input_text_ascii`."""
+        saiba ler argv, enquanto o processo roda. Ver `input_text_ascii`. Com `binary`, `entrada` vai em bytes:
+        em modo texto o Windows troca `\\n` por `\\r\\n` no stdin, e um arquivo de configuracao chegaria alterado."""
         cmd = [str(self.tools.adb), "-s", self.serial, *args]
         try:
             return subprocess.run(cmd, capture_output=True, timeout=timeout, env=self.tools.env(),
@@ -548,6 +555,64 @@ class Adb:
         if res.returncode != 0:
             # Sem o caminho na mensagem: ele vira evento, log e corpo de resposta HTTP.
             raise AdbError(f"adb pull falhou em {self.serial} ({res.returncode})")
+
+    # -- arquivo privado no convidado (segredo de rede, ADR-056 §5) ---------------------------------------------
+    # Os três abaixo não sabem o que carregam, de propósito: quem resolve o segredo é o consumidor restrito do
+    # cofre (`security/segredo_de_rede.py`). Aqui só se garante o CAMINHO: conteúdo nunca em argumento de processo,
+    # permissão 600 no convidado, pasta fixa, e mensagem de erro que não repete o que o subprocesso ecoou.
+    def _caminho_privado(self, nome: str) -> str:
+        if not NOME_PRIVADO_RE.match(nome) or ".." in nome:
+            raise AdbError("nome de arquivo privado inválido")
+        return f"{DIR_PRIVADO_NO_CONVIDADO}/{nome}"
+
+    def _conferir_tamanho(self, remoto: str, esperado: int) -> None:
+        """`exec-in` não devolve o código de saída do comando no convidado (o serviço `exec:` do adbd não tem
+        protocolo de shell): o único jeito de saber que o `cat` gravou tudo é reler o tamanho. O tamanho não vai à
+        mensagem: comprimento de segredo também é informação sobre ele."""
+        try:
+            gravado = int(self.shell(f"stat -c %s {remoto}", timeout=15).strip())
+        except (AdbError, ValueError):
+            gravado = -1
+        if gravado != esperado:
+            raise AdbError(f"o arquivo privado não chegou inteiro ao convidado de {self.serial}")
+
+    def gravar_arquivo_privado(self, nome: str, conteudo: bytes, *, timeout: float = 30) -> str:
+        """Grava `conteudo` em `DIR_PRIVADO_NO_CONVIDADO/<nome>` pelo STDIN do `adb exec-in` e devolve o caminho.
+
+        Nenhum arquivo nesta máquina, nenhum byte em argumento: `exec-in` repassa o stdin cru ao comando do
+        convidado (sem pty, então sem eco nem tradução de fim de linha). `umask 077` antes do `cat`: o arquivo nasce
+        600, sem janela em que outro usuário do convidado o leia."""
+        remoto = self._caminho_privado(nome)
+        cmd = f"umask 077 && mkdir -p {DIR_PRIVADO_NO_CONVIDADO} && cat > {remoto}"
+        res = self._run(["exec-in", cmd], timeout=timeout, binary=True, entrada=conteudo)
+        if res.returncode != 0:
+            # stderr em bytes, e o `cat` não ecoa o que leu; mesmo assim a mensagem é fixa: é ela que vira evento.
+            raise AdbError(f"adb exec-in falhou em {self.serial} ({res.returncode})")
+        self._conferir_tamanho(remoto, len(conteudo))
+        return remoto
+
+    def enviar_arquivo_privado(self, local: str, nome: str, *, tamanho: int, timeout: float = 60) -> str:
+        """`adb push` de um arquivo do host para `DIR_PRIVADO_NO_CONVIDADO/<nome>`, com `chmod 600` em seguida.
+
+        A alternativa ao stdin para quando o cliente precisar do arquivo por outro caminho de cópia; apagar o
+        arquivo do HOST é de quem chama (ele o criou). O argumento é o caminho do arquivo, nunca o conteúdo. O
+        `push` leva o modo do arquivo de origem, então há uma janela curta até o `chmod`: por isso o stdin é o
+        padrão do consumidor, e este caminho fica para quando ele não servir."""
+        remoto = self._caminho_privado(nome)
+        self.shell(f"umask 077 && mkdir -p {DIR_PRIVADO_NO_CONVIDADO}", timeout=15)
+        res = self._run(["push", local, remoto], timeout=timeout)
+        if res.returncode != 0:
+            raise AdbError(f"adb push do arquivo privado falhou em {self.serial} ({res.returncode})")
+        self.shell(f"chmod 600 {remoto}", timeout=15)
+        self._conferir_tamanho(remoto, tamanho)
+        return remoto
+
+    def apagar_arquivo_privado(self, nome: str) -> None:
+        """`rm -f` do arquivo privado. Só na pasta fixa: o nome passa pela mesma regra de quem gravou."""
+        remoto = self._caminho_privado(nome)
+        res = self._run(["shell", f"rm -f {remoto}"], timeout=15)
+        if res.returncode != 0:
+            raise AdbError(f"não foi possível apagar o arquivo privado em {self.serial} ({res.returncode})")
 
     def open_store_listing(self, package: str) -> None:
         """Abre a página do app na Play Store DESTE aparelho. O toque em Instalar/Atualizar é sempre do usuário."""

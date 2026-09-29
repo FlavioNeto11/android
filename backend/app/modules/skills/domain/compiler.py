@@ -50,9 +50,10 @@ _PARAM_REF = re.compile(r"^parameters\.([a-z_][a-z0-9_]*)$")
 _WHEN = re.compile(r"^\s*\$\{\s*parameters\.([a-z_][a-z0-9_]*)\s*\}\s*(?:(==|!=)\s*'([^']*)')?\s*$")
 _STEP_OUTPUT = re.compile(r"^\s*\$\{\s*steps\.([a-z][a-z0-9_]*)\.output\s*\}\s*$")
 #: Nome de parâmetro com cara de credencial. As palavras são as de `security/redaction.py` (o teste confere), mas por
-#: TOKEN do nome: `opiniao` contém "pin" e não é segredo.
-_SECRET_NAME = re.compile(r"(?:^|_)(?:password|passwd|senha|pin|secret|segredo|token|credential|credencial|otp|2fa)"
-                          r"(?:_|$)|(?:api|master|access|private|secret)_?key")
+#: TOKEN do nome: `opiniao` contém "pin" e não é segredo. `psk`/`pre_shared_key` vieram com a chave
+#: pré-compartilhada do WireGuard (ADR-056 §5, 25.3).
+_SECRET_NAME = re.compile(r"(?:^|_)(?:password|passwd|senha|pin|secret|segredo|token|credential|credencial|otp|2fa|"
+                          r"psk)(?:_|$)|(?:api|master|access|private|secret|pre_?shared)_?key")
 
 
 # ------------------------------------------------------------------ portas (do lado de quem consome)

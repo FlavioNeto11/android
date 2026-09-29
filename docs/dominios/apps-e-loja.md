@@ -312,6 +312,9 @@ para os aparelhos escolhidos (`device_proxy_state`, desejado × observado).
   proxy do sistema sai direto.
 - Sem autenticação: o Android não tem esse campo, e a senha seria segredo.
 - A loja fica de fora, e falha não se repete sozinha.
+- Rebaixado pela rede por aparelho (ADR-056): a visão `GET /api/network/devices` lê este proxy como `configurado`
+  **no máximo**, nunca como tráfego verificado. Perfis com segredo, atribuição e estados medidos estão em
+  [parque § Rede por aparelho](parque.md#rede-por-aparelho-adr-056-fase-25).
 
 ## Compatibilidade
 
