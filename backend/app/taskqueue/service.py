@@ -63,6 +63,11 @@ class RunError(Exception):
         self.details = details or {}
 
 
+def _celula(texto: str | None) -> str:
+    """Texto livre numa célula de tabela Markdown: uma linha, sem a barra que abriria outra coluna."""
+    return " ".join(str(texto or "").split()).replace("|", "/")
+
+
 def _onde(o: ObjectiveDTO) -> str:
     """"Onde rodou", numa frase — para o relatório e para quem lê o histórico meses depois.
 
@@ -1301,6 +1306,12 @@ class RunService:
         if detail is None:
             raise RunError("not_found", "Execução não encontrada.", 404)
         per_instance = []
+        # Item 24.3: o valor que uma etapa leu e outra usou, com a ORIGEM (etapa e app) — é o que diz de onde veio o
+        # alvo de uma ação. Só dado comum: código, senha e token nunca chegam à tabela (triagem do executor).
+        lidos: dict[str, list[dict[str, str | None]]] = {}
+        for v in self.repo.saidas_da_execucao(run_id):
+            lidos.setdefault(str(v["objective_id"]), []).append(
+                {k: v[k] for k in ("name", "value", "value_kind", "step_title", "app", "read_at")})
         for o in detail.objectives:
             steps = [s for s in detail.steps if s.objective_id == o.id and s.plan_version == o.plan_version]
             manual = [s.title for s in detail.steps if s.objective_id == o.id and s.result and not s.result.verified]
@@ -1317,7 +1328,7 @@ class RunService:
                 "proven_steps": proven, "manually_confirmed_steps": manual,
                 "open_steps": [s.title for s in steps if s.status not in (StepStatus.succeeded,)],
                 "plan_versions": o.plan_version, "ai_calls": o.ai_calls,
-                "ai_tokens": o.ai_input_tokens + o.ai_output_tokens})
+                "ai_tokens": o.ai_input_tokens + o.ai_output_tokens, "values_read": lidos.get(o.id, [])})
         totals = detail.counts.model_dump()
         o_por_id = {o.instance_id: o for o in detail.objectives}
         untested = [p["instance_id"] for p in per_instance if p["status"] in ("pending", "cancelled")]
@@ -1335,6 +1346,12 @@ class RunService:
             md.append(f"| {p['instance_id']} | {_onde(o_por_id[p['instance_id']]).replace('|', '/')} | {res} | "
                       f"{p['delivery_level'] or '—'} | "
                       f"{(p['blocked_reason'] or p['detail'] or '').replace('|', '/')} |")
+        if any(p["values_read"] for p in per_instance):
+            md += ["", "## Valores lidos entre etapas", "", "| Instância | Valor | Tipo | Lido na etapa | App |",
+                   "|---|---|---|---|---|"]
+            md += [f"| {p['instance_id']} | {v['name']} = {_celula(v['value'])} | {v['value_kind']} | "
+                   f"{_celula(v['step_title'])} | {_celula(v['app'] or 'app do plano')} |"
+                   for p in per_instance for v in p["values_read"]]
         md += ["", "Somente itens com SUCESSO comprovado contam como concluídos. Itens bloqueados, incertos, "
                    "cancelados ou não iniciados NÃO contam como sucesso."]
         return {"run": RunSummary(**detail.model_dump(include=set(RunSummary.model_fields))).model_dump(mode="json"),

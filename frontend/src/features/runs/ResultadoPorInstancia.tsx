@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, Hand, Server, ShieldCheck, ShieldQuestion, Zap } from 'lucide-react';
+import { CircleCheck, CircleDashed, Hand, ScanText, Server, ShieldCheck, ShieldQuestion, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -48,7 +48,8 @@ function CartaoDaInstancia({ r, n, recolhido }: { r: ResultadoDaInstancia; n: nu
   // A borda diz a qualidade do resultado de relance: sucesso sem prova completa é aviso, não verde.
   const tom: Tone = selo === 'a_mao' || selo === 'sem_prova' ? 'warning' : r.status ? metaOf(OBJECTIVE_STATUS, r.status).tone : 'muted';
   const temEtapas = r.comprovadas !== null || r.aMao !== null || r.emAberto !== null;
-  const corpo = temEtapas || r.efeitos !== null ? () => <CorpoDaInstancia r={r} /> : null;
+  const temLidos = (r.valoresLidos?.length ?? 0) > 0;
+  const corpo = temEtapas || r.efeitos !== null || temLidos ? () => <CorpoDaInstancia r={r} /> : null;
   const rodape = [
     r.versaoDoPlano !== null ? plural(r.versaoDoPlano, 'versão do plano', 'versões do plano') : null,
     r.chamadasDeIa !== null ? plural(r.chamadasDeIa, 'chamada de IA', 'chamadas de IA') : null,
@@ -109,6 +110,7 @@ function resumoDoCorpo(r: ResultadoDaInstancia): string {
   const partes = [
     r.comprovadas ? plural(r.comprovadas.length, 'etapa comprovada', 'etapas comprovadas') : null,
     r.efeitos ? plural(r.efeitos.length, 'efeito externo', 'efeitos externos') : null,
+    r.valoresLidos && r.valoresLidos.length > 0 ? plural(r.valoresLidos.length, 'valor lido', 'valores lidos') : null,
   ].filter((x): x is string => x !== null);
   return partes.length > 0 ? `Ver etapas e efeitos (${partes.join(', ')})` : 'Ver etapas e efeitos';
 }
@@ -165,6 +167,24 @@ function CorpoDaInstancia({ r }: { r: ResultadoDaInstancia }) {
               ))}
             </ul>
           )}
+        </Bloco>
+      ) : null}
+      {r.valoresLidos && r.valoresLidos.length > 0 ? (
+        // Item 24.3: o valor que uma etapa leu e outra usou, com a origem — é o que diz de onde veio o alvo de uma ação.
+        <Bloco titulo="Valores lidos entre etapas">
+          <ul className={styles.irSteps}>
+            {r.valoresLidos.map((v, i) => (
+              <li key={`${v.nome}-${i}`} className={styles.irStep}>
+                <ScanText size={14} aria-hidden className={styles.irOpen} />
+                <div className={styles.irStepBody}>
+                  <span className={styles.irStepTitle}><span className="mono">{v.nome}</span> = {v.valor}</span>
+                  <span className={styles.irProof}>
+                    lido em “{v.etapa ?? 'etapa sem título'}” · {v.app ?? 'app do plano'}{v.tipo && v.tipo !== 'text' ? ` · ${v.tipo}` : ''}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </Bloco>
       ) : null}
     </>

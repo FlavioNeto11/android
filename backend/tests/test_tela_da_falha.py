@@ -165,8 +165,8 @@ def _app_do_instagram(monkeypatch: pytest.MonkeyPatch, h: Harness) -> None:
     scheduler = h.state.scheduler
     original = scheduler._app_context                                   # noqa: SLF001
 
-    def app_context(run: Any, rt: Any, step_app_id: str | None = None) -> Any:
-        app, conta = original(run, rt, step_app_id)
+    def app_context(run: Any, rt: Any, step_app_id: str | None = None, **kw: Any) -> Any:
+        app, conta = original(run, rt, step_app_id, **kw)       # `profile_id` (item 24.4): a conta do app da etapa
         return replace(app, package=PKG), conta
 
     monkeypatch.setattr(scheduler, "_app_context", app_context)

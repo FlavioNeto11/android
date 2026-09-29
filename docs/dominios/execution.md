@@ -419,6 +419,144 @@ a aprovação de texto não acompanha a etapa revisada, e o erro de adb no scree
 Prova: `simulated` (`test_ui_ocupada.py`, `test_anr_sinal_proprio.py`, `test_recuperacao_preserva_estado.py`) e `real`
 em `r-20260928234657-bbdf3c` e `r-20260928235215-6eb84c` ([relatório §21](../relatorio-validacao.md)).
 
+## Valor lido entre etapas (item 24.3, ADR-058)
+
+Um comando que atravessa apps precisa levar um dado de uma etapa à outra ("leia o assunto do último e-mail no Outlook
+e abra no Instagram o perfil citado"). Até aqui só passavam os parâmetros da execução e os itens da coleta
+(`{item}`). O contrato C2 (migração 056) criou a forma; o 24.3 liga o comportamento.
+
+| Peça | Onde mora | O que faz |
+|---|---|---|
+| declaração | `PlanStep.saidas`, `steps.saidas` | os nomes (`^[a-z][a-z0-9_]{0,39}$`) que a etapa entrega às seguintes |
+| leitura | ferramenta `read_value` (`automation/tools.py`), tratada em `StepExecutor._run_step` | o executor tira o valor do **texto do elemento** (`taskqueue/saidas.ler_valor`); com `value`, só o trecho, que precisa estar no texto. Tipos: `text`, `number`, `url`, `list` (os textos dentro do contêiner, em JSON) |
+| triagem (D3) | `saidas.triagem` | código de verificação (o detector de `automation/hierarchy.py`, no valor e no contexto), senha e token (`security/redaction.py`) nunca são saída |
+| gravação | `StepExecutor._gravar_saidas` → `Repository.save_step_output` | só quando a etapa é comprovada, na mesma transação do `succeeded`; `StepOutcome.outputs` leva os valores |
+| referência | `{{saida:<nome>}}` em título, objetivo, pré e pós-condição, guardas, `bindings` e `variables` | `Repository.resolver_saidas`, chamado por `Scheduler._work` **antes da porta de política** |
+| dependência | `repository._dependencias_das_saidas` (na materialização) | a etapa que cita `x` depende da etapa anterior do lote que declara `x` |
+| relatório | `RunService.report` → `per_instance[].values_read` e a tabela "Valores lidos entre etapas" do Markdown | nome, valor, tipo, etapa e app de origem; no painel, o bloco do cartão da instância |
+
+Regras:
+
+- **Fato, não alegação.** O ator nunca escreve o valor: `read_value` aponta o elemento e o executor lê a árvore, como
+  na coleta. Um trecho que o elemento não tem é chamada rejeitada (o ator tenta de novo).
+- **O erro de chamada também não grava valor.** Tipo que não casa, trecho fora do texto, nome ou elemento errado
+  (`LeituraInvalida`) acontecem ANTES da triagem, então nada ali foi triado: a mensagem não cita o texto da tela nem o
+  que o modelo escreveu, os argumentos gravados saem sem o recorte e sem nome ou id que não tenham forma de nome ou de
+  id da tela (`saidas.args_da_chamada_invalida`), e a justificativa do modelo fica de fora — um código lido com o tipo
+  errado não chega a `actions` nem ao evento `action.logged`.
+- **A etapa que entrega valor não conclui sem ele.** `step_done` é recusado enquanto falta um nome; a pós-condição
+  comprovada sem o valor não é sucesso (`retry`/`failed`, ou `uncertain` com o efeito disparado). O ator sabe o que
+  ler pela linha "(executor) esta etapa entrega…" do histórico. Receita não roda nem se aprende nessa etapa: ler é
+  decisão sobre a tela da vez (`driven_by` fica `ai`).
+- **Ler antes do efeito.** Depois do toque de efeito o ator não é mais consultado (só se comprova), então uma etapa
+  com efeito e saída só conclui se leu tudo ANTES do commit; senão fica `uncertain`. O planejador deve pôr a leitura
+  numa etapa própria, antes, ou depois do efeito, em outra etapa.
+- **Código, senha ou token param a etapa.** Recusado pela triagem, o desfecho é `waiting_user` (ADR-009: o código é
+  da pessoa), e o `read_value` não grava o valor: nem em `step_outputs`, nem nos argumentos da ação (`**RECUSADO**`),
+  nem na justificativa do modelo, em evento ou na evidência dele (que sai em texto, sem captura da tela). A tela em
+  si segue as regras de sempre (as capturas das outras evidências, o resultado de um `find_element`): quem decide o
+  que é tela sensível é o detector de telas, não a leitura. A triagem é conservadora de propósito: um endereço com
+  trecho aleatório de 32+ caracteres (link mágico de entrada, id opaco de mensagem) é recusado como token.
+- **Resolvido na linha, antes da porta.** A referência vira o valor em `steps` antes de `policy_gate`: aprovação,
+  limite por alvo, coordenação de frota (uma conta por alvo, ADR-055) e o painel enxergam o valor, não o molde. O
+  `template_hash` fica o do molde, e as saídas entram nas variáveis da receita como `saida_<nome>`, para a receita
+  aprendida com "@ana" digitar "@bia" quando for o valor lido.
+- **Saída ausente nunca é inventada.** Se nenhuma etapa do plano a declara, é defeito do plano: o objetivo falha e os
+  aparelhos que não começaram ficam retidos. Se a produtora ainda está aberta, a etapa espera com o motivo. Nenhum
+  dos dois gasta tentativa.
+- **Retomada sem reler.** A recuperação atravessa a leitura comprovada com todos os valores gravados, como atravessa
+  um efeito comprovado: o valor é reaproveitado e o caminho até ela volta.
+- **`for_each`:** o nome declarado dentro do bloco ganha o sufixo do item (`assunto_i2`), nas saídas e nas referências
+  do bloco; a identidade da etapa tira o sufixo, e as cópias seguem com a receita da etapa-modelo. Uma etapa DEPOIS
+  do bloco que cita um nome do bloco não diz de qual item: a referência fica sem produtora e é defeito do plano.
+- **Referência para a frente** (a etapa que lê vem depois de quem usa) é defeito do plano, não espera: a etapa
+  anterior, pronta, seria sempre a escolhida, e a leitura nunca rodaria.
+
+Prova: `simulated` (`test_valor_entre_etapas.py`: triagem, leitura, dependência, `for_each`, ponta a ponta no QA
+Messenger falso, código na tela, erro de chamada sem valor no registro, defeito do plano e recuperação). Outlook →
+Instagram num aparelho real: `not_run` (24.9). Falta para o item fechar: (a) com a frente do planejador, a regra do
+ator em `planning/prompts.py` sobre `read_value` e ensinar o planejador a declarar `saidas` e a citar
+`{{saida:<nome>}}` — sem isso, só um plano montado à mão chega a ler um valor; (b) na DSL, a leitura nomeada, que
+espera a decisão do dono de estender a v1alpha1 (proposta em [skill-dsl](../skill-dsl.md#saídas-e-casos-de-validação)).
+
+## Conta e portas do app da etapa (item 24.4)
+
+Num comando que atravessa apps, cada etapa age pela conta da persona NO APP DELA, e as portas do despacho valem para
+cada app, inclusive os que o worker só alcança depois de minutos de trabalho. Antes, a "conta esperada" era o rótulo
+do aparelho (a conta do Instagram numa etapa do Outlook, R4) e as portas só eram conferidas no despacho (R8).
+
+| Peça | Onde mora | O que faz |
+|---|---|---|
+| conta esperada | `Repository.conta_esperada`, usada por `Scheduler._app_context(…, profile_id=)` e por `Repository._insert_steps` | três desfechos: a persona tem UMA conta ativa com nome no app da etapa (`profile_accounts`) → essa; senão (nenhuma, ou mais de uma ativa, como as contas de portal da 049), numa etapa do app do aparelho ou sem app declarado → o rótulo do aparelho, que diz qual conta está nele (rótulo vazio → nenhuma); numa etapa de outro app → nenhuma (`None`), sem escolher |
+| `{account_label}` da etapa | `Repository._insert_steps` (materialização e revisão) | numa etapa que declara app, resolvido com a conta daquele app: "Conta: {account_label}" no Outlook confere a conta do Outlook. Sem conta esperada, o molde fica SEM resolver: "Conta: " vazio casaria com qualquer conta na tela |
+| molde sem conta no despacho | `Scheduler._conta_da_etapa`, em `_work` depois de `resolver_saidas` e antes de `policy_gate` | a etapa que ainda tem `{account_label}`: com a conta conhecida agora (cadastrada depois da materialização), `Repository.resolver_conta` a grava na linha; sem ela, `waiting_user` com o motivo ("não tem UMA conta conhecida em …") e `AJUDA_DA_CONTA_DO_APP`, sem tentativa. O executor tem a mesma checagem, defensiva: o molde que chegar a ele dá `waiting_user`, nunca uma conferência contra conta vazia |
+| persona do item | `Repository.persona_do_objetivo` | a do objetivo; sem ela, a única vinculada ao aparelho; com duas, nenhuma (quem recusa a ambiguidade é a porta de sessão) |
+| conta indisponível | `Scheduler._conta_indisponivel`, primeira coisa de `_portas_do_app` | app que declara conta (`needs_profile` ou provedor de sessão) sem conta da persona, ou com ela desativada, vira `waiting_user` com o motivo e `AJUDA_DA_CONTA_DO_APP`. App com provedor e SEM linha de conta fica com a porta de sessão, que conhece o legado (o `username` como conta do Instagram antes da 037). App que exige persona e não tem provedor (o Outlook), num item sem persona definida, também para: nada mais perguntaria, e a etapa sairia sem conta esperada |
+| portas por app | `Scheduler._apps_do_objetivo` → `_portas_do_app(obj, rt, pacote, app_id)` no `_tick` | conta, app instalado, internet e sessão para cada `(app_id, pacote)` das etapas que faltam, na ordem; o primeiro que não está pronto segura o item |
+| portas na troca | `Scheduler._portas_na_troca`, chamada por `_work` quando `(app_id, pacote)` da próxima etapa difere do da última executada | rede do aparelho (contrato C4, `rede_gate`) e depois `_portas_do_app`. A primeira etapa do worker não repete (o despacho acabou de passar) |
+
+Regras:
+
+- **Segurada na troca, a etapa não começa.** Nenhuma tentativa gasta, nada da etapa seguinte acontece; as etapas
+  concluídas e as saídas gravadas (24.3) ficam. "Tentar novamente" atravessa a leitura comprovada, então o valor lido
+  no primeiro app chega ao segundo sem reler.
+- **Espera ou pessoa, como no despacho.** Rede exigida sem verificar é espera (`wait_reason='rede'`, sem
+  `waiting_user`). Conta ausente ou desativada, app que só uma pessoa resolve e sessão que precisa de pessoa são
+  `waiting_user`. Instalação e login automáticos não rodam de dentro do worker: `run_device_job` recusa o aparelho,
+  que é do próprio worker, então `_portas_do_app` anota a espera ("instalando…", "verificando a sessão…") e o worker
+  sai; o tick seguinte, com o aparelho livre, roda o trabalho e depois despacha o item de novo.
+- **Sem conta esperada, a conferência da conta não passa.** A etapa que confere a conta (`{account_label}`) e não
+  tem UMA conta conhecida no app dela para no despacho, antes de assumir a etapa. Enquanto isso, o título, o objetivo
+  e a pós-condição dela (e `plan_versions.steps`) mostram o molde `{account_label}`: o painel exibe o molde num item
+  parado por isso, e não uma conta. Num app que declara conta (`needs_profile` ou provedor), quem para antes é
+  `_conta_indisponivel`, e a pessoa vê o motivo dele. O ator só recebe "conta esperada: —" numa etapa que não
+  confere a conta.
+- **Sessão vencida na troca devolve o app ao estado conhecido.** A releitura `observe_only` abre o app da etapa
+  seguinte na tela inicial dele. Numa troca de app isso é o esperado; na recuperação da tela atual (mesmo app) as
+  portas não são repassadas.
+
+Prova: `simulated` (`test_conta_do_app_da_etapa.py`: conta esperada pelo app da etapa no ator e na pós-condição,
+conta ausente e item sem persona segurando no despacho sem tentativa, conta desativada no meio parando na troca e a retomada sem reler,
+persona sem conta no app de outra etapa sem declaração de conta parando com o molde sem resolver e concluindo depois do
+cadastro sem reler, duas contas ativas no app do aparelho usando o rótulo do aparelho e parando sem ele,
+rede do aparelho segurando e soltando a etapa do app seguinte, porta com trabalho chamada do worker). O aparelho de
+teste encena um app só: o "segundo app" é outro registro no mesmo pacote do QA. Outlook e Instagram num aparelho
+real, com conta indisponível, interrupção e retomada: `not_run` (fecha no 24.9). O texto "conta esperada" do prompt
+do ator (`planning/prompts.py`) não mudou: é o valor que chega a ele que agora é a conta do app da etapa.
+
+## Interrupção e retomada no meio da troca de app (item 24.7)
+
+A troca de app é o ponto mais longo de um comando que atravessa apps (a etapa do app seguinte pode esperar rede,
+sessão ou instalação), e por isso é onde a interrupção mais cai. O que vale ali, conferido no código de hoje com
+aparelho e provedor falsos (nenhuma mudança de código foi precisa: os mecanismos gerais já cobrem a troca):
+
+| Interrupção | O que acontece | Onde mora |
+|---|---|---|
+| reinício do backend com a etapa do app seguinte em curso | a tentativa vira `interrupted` e é devolvida; a etapa volta a `ready` e o despacho retoma dela, com as portas de todos os apps que faltam. A leitura comprovada não volta, e o valor vem de `step_outputs` | `Scheduler.reconcile_after_restart` → `_reconciliar`; `_tick` → `_apps_do_objetivo` |
+| reinício depois do efeito no app seguinte | a ação `intended` vira `unknown`; a etapa com efeito disparado só verifica pela tela e nunca reenvia | `_reconciliar`, `StepExecutor` (reconciliação) |
+| reinício com a troca segurada pela porta | não há etapa em curso: o objetivo segue `running` com a espera anotada, e o despacho do backend novo repassa as portas antes da etapa do app seguinte | `Repository.dispatchable_objectives` |
+| pausa | a etapa cede no ponto seguro (`yielded`, tentativa devolvida) e, retomada, segue do app em que estava | `Scheduler._apply`, `RunService.resume` |
+| cancelamento | a etapa em curso para no ponto seguro (`cancelled`) e as seguintes são canceladas; a segurada na troca nem começa. O concluído, a saída gravada e o relatório ("Valores lidos entre etapas") ficam | `_apply`, `_finish_cancel`, `RunService.report` |
+| sucessora (ADR-047) | nasce só de `needs_input`, que nunca executou etapa. No meio da troca a execução está `running` (ou `cancelling`/`cancelled`), então a resposta é recusada (`invalid_state`) sem criar execução: nenhuma segunda execução refaz o que a primeira fez | `ComandoAssistido.sucessora` |
+
+Regras:
+
+- **Uma leitura só.** Em todos os casos a etapa de leitura tem uma tentativa e um `read_value` concluído, e o valor que
+  chega ao app seguinte é o gravado (a linha da etapa já resolvida, ou `resolver_saidas` depois da retomada).
+- **Efeito comprovado nunca é refeito**, nem depois da queda: a reconciliação decide pela tela.
+- **Continuar numa execução nova não existe.** Depois de cancelada, a execução não se retoma ("Tentar novamente"
+  recusa execução cancelada, e o item `cancelled` não aceita a decisão "repetir"), e o "Repetir" do painel cria outra execução que planeja e executa
+  tudo de novo, inclusive a leitura e o efeito: é o gesto de repetir, não o de continuar. Uma sucessora que herde as
+  etapas comprovadas e as saídas da antiga exige decisão do dono: que plano ela segue (o da antiga, sem replanejar,
+  ou um novo, casado por chave de etapa), por quanto tempo o valor lido ainda vale e o que fazer se a persona ou o
+  aparelho mudou.
+
+Prova: `simulated` (`test_interrupcao_entre_apps.py`: reinício com a etapa do segundo app em curso, depois do efeito
+no segundo app e com a troca segurada pela rede; pausa e retomada; cancelamento em curso e na troca segurada; sucessora
+recusada no meio da troca e depois do cancelamento). O aparelho de teste encena um app só (o segundo app é outro
+registro no mesmo pacote), então "o app da etapa seguinte não está na frente depois do reinício" não é exercitado;
+Outlook → Instagram num aparelho real com interrupção e retomada: `not_run` (24.9).
+
 ## Recursos declarativos (fase H, parte 1)
 
 Um `ResourceSpec` diz o **estado desejado** de que uma skill precisa. A fase H, parte 1, entrega a leitura, a

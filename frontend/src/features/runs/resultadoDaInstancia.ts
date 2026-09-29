@@ -24,6 +24,20 @@ export interface EfeitoExterno {
   texto: string;
 }
 
+/**
+ * Um valor que uma etapa LEU na tela e outra usou (item 24.3, `values_read` do relatório), com a origem. O tipo `list`
+ * chega em JSON e é mostrado como itens separados por vírgula.
+ */
+export interface ValorLido {
+  nome: string;
+  valor: string;
+  tipo: string | null;
+  /** Título da etapa que leu o valor. */
+  etapa: string | null;
+  /** App em que foi lido; `null` = o app do plano. */
+  app: string | null;
+}
+
 export interface ResultadoDaInstancia {
   instanceId: string | null;
   status: string | null;
@@ -43,6 +57,8 @@ export interface ResultadoDaInstancia {
   aMao: string[] | null;
   emAberto: string[] | null;
   efeitos: EfeitoExterno[] | null;
+  /** `null` = o relatório não trouxe a lista (servidor anterior ao 24.3); `[]` = nenhuma etapa leu valor. */
+  valoresLidos: ValorLido[] | null;
   versaoDoPlano: number | null;
   chamadasDeIa: number | null;
   tokensDeIa: number | null;
@@ -55,6 +71,7 @@ const TEXTO_KEYS = ['detail', 'summary', 'status_detail'] as const;
 const CONHECIDAS = new Set([
   'instance_id', 'status', ...TEXTO_KEYS, 'worker_id', 'device_serial', 'proven', 'delivery_level', 'blocked_reason',
   'needs', 'effects', 'proven_steps', 'manually_confirmed_steps', 'open_steps', 'plan_versions', 'ai_calls', 'ai_tokens',
+  'values_read',
 ]);
 
 function texto(v: unknown): string | null {
@@ -90,6 +107,29 @@ export function separarEfeito(linha: string): EfeitoExterno {
   return e ? { quando, etapa: e[1] ?? null, texto: e[2] ?? '' } : { quando, etapa: null, texto: resto };
 }
 
+/** A lista `list` chega em JSON; qualquer outra coisa (ou JSON que não é lista) fica como veio. */
+function valorLegivel(valor: string, tipo: string | null): string {
+  if (tipo !== 'list') return valor;
+  try {
+    const itens: unknown = JSON.parse(valor);
+    return Array.isArray(itens) ? itens.map((i) => (typeof i === 'string' ? i : JSON.stringify(i))).join(', ') : valor;
+  } catch {
+    return valor;
+  }
+}
+
+/** `values_read`: só entradas com nome e valor viram linha; o resto some (não há o que mostrar sem os dois). */
+export function lerValoresLidos(v: unknown): ValorLido[] | null {
+  if (!Array.isArray(v)) return null;
+  return v.filter(isRecord).flatMap((x) => {
+    const nome = texto(x.name);
+    const valor = typeof x.value === 'string' ? x.value : null;
+    if (!nome || valor === null) return [];
+    const tipo = texto(x.value_kind);
+    return [{ nome, valor: valorLegivel(valor, tipo), tipo, etapa: texto(x.step_title), app: texto(x.app) }];
+  });
+}
+
 export function lerResultado(row: Record<string, unknown>): ResultadoDaInstancia {
   const candidatos = TEXTO_KEYS.map((k) => [k, texto(row[k])] as const).filter(([, v]) => v !== null);
   const principal = candidatos[0]?.[1] ?? null;
@@ -118,6 +158,7 @@ export function lerResultado(row: Record<string, unknown>): ResultadoDaInstancia
     aMao: textos(row.manually_confirmed_steps),
     emAberto: textos(row.open_steps),
     efeitos: efeitos ? efeitos.map(separarEfeito) : null,
+    valoresLidos: lerValoresLidos(row.values_read),
     versaoDoPlano: numero(row.plan_versions),
     chamadasDeIa: numero(row.ai_calls),
     tokensDeIa: numero(row.ai_tokens),

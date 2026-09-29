@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerResultado, lerResultados, seloDaProva, separarEfeito, separarProva } from './resultadoDaInstancia';
+import { lerResultado, lerResultados, lerValoresLidos, seloDaProva, separarEfeito, separarProva } from './resultadoDaInstancia';
 
 /**
  * Leitura de uma linha de `per_instance` (`RunService.report`) para o cartão da instância. As linhas abaixo têm o
@@ -88,5 +88,26 @@ describe('lerResultados', () => {
   it('uma linha que não é objeto derruba para a árvore genérica (null)', () => {
     expect(lerResultados([LINHA_02EE9E, 'texto solto'])).toBeNull();
     expect(lerResultados([LINHA_02EE9E])).toHaveLength(1);
+  });
+});
+
+describe('lerValoresLidos (item 24.3)', () => {
+  it('lê nome, valor, tipo, etapa e app; a lista em JSON vira itens e a entrada sem nome ou valor some', () => {
+    expect(lerValoresLidos([
+      { name: 'perfil', value: '@ciclano', value_kind: 'text', step_title: 'Ler o assunto', app: 'Outlook' },
+      { name: 'itens', value: '["A","B"]', value_kind: 'list', step_title: null, app: null },
+      { name: 'sem_valor', value: null },
+      'lixo',
+    ])).toEqual([
+      { nome: 'perfil', valor: '@ciclano', tipo: 'text', etapa: 'Ler o assunto', app: 'Outlook' },
+      { nome: 'itens', valor: 'A, B', tipo: 'list', etapa: null, app: null },
+    ]);
+  });
+
+  it('sem a chave (servidor anterior), null; com a chave vazia, lista vazia — e nunca vai para extras', () => {
+    expect(lerResultado(LINHA_02EE9E).valoresLidos).toBeNull();
+    const r = lerResultado({ ...LINHA_02EE9E, values_read: [] });
+    expect(r.valoresLidos).toEqual([]);
+    expect(r.extras.map(([k]) => k)).not.toContain('values_read');
   });
 });
