@@ -4,8 +4,9 @@
   candidata; antes disso, e com uma resposta diferente no meio, não; depois, a diferente a contradiz;
 - campo que é alvo de terceiro (destinatário, perfil, conversa...) nunca vira padrão;
 - a preferência só PRÉ-PREENCHE: a sugestão é lida, a execução continua esperando a pessoa e nada nasce sozinho;
-- o `PreferenceStage` decide sozinho só quando a habilidade escolhida não tem etapa com efeito externo; com efeito, a
-  pergunta continua, com a opção pré-selecionada;
+- o `PreferenceStage` decide sozinho só quando a habilidade escolhida não tem etapa com efeito externo E a versão
+  candidata agora é uma das conferidas quando a preferência nasceu; com efeito, ou numa versão nova (que pode ter
+  ganho uma etapa com efeito), a pergunta continua, com a opção pré-selecionada;
 - a escolha no desambiguador é observada pela sucessora (a execução que a pessoa respondeu) e vira preferência sem
   texto de pessoa: o sistema a valida pela repetição e a publica só sem efeito e com o modo em `on`;
 - `skills` nunca importa `learning` (DAG).
@@ -18,7 +19,7 @@ import ast
 import hashlib
 import json
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +44,7 @@ from app.modules.learning.presentation.router import router as learning_router
 from app.modules.skills.application.intent_ports import PreferenceHint
 from app.modules.skills.application.intent_resolver import IntentRequest, IntentResolver, ParameterExtractor
 from app.modules.skills.domain.intent import ResolutionMethod, ResolutionStatus, SkillMatch, StageOutcome
+from app.modules.skills.domain.refs import SkillRef
 from app.taskqueue.costuras import RespostaAPergunta
 from app.util import to_iso
 
@@ -83,7 +85,7 @@ class Mundo:
 
     # ---------------------------------------------------------------- execuções
     def execucao(self, comando: str, *, status: str, perfis: Sequence[str] = (ANDRE,), plano: object = None,
-                 skill_id: str | None = None, simulado: bool = False) -> str:
+                 skill_id: str | None = None, versao: int = 1, simulado: bool = False) -> str:
         self.n += 1
         run = f"r-{self.n:03d}"
         foto = {"alvos": [{"instance_id": f"android-{i:02d}", "profile_id": p} for i, p in enumerate(perfis, 6)],
@@ -92,7 +94,7 @@ class Mundo:
                         " created_at, plan, targets, skill_id, skill_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                         (run, run, comando, "plan", status, int(simulado), "[]", to_iso(AGORA),
                          json.dumps(plano) if plano is not None else None, json.dumps(foto), skill_id,
-                         1 if skill_id else None))
+                         versao if skill_id else None))
         return run
 
     def responder(self, campo: str, resposta: str = RESPOSTA, *, perfis: Sequence[str] = (ANDRE,),
@@ -109,8 +111,9 @@ class Mundo:
         return antiga, nova
 
     def escolher(self, escolhida: str, *, efeito: bool = False, perfis: Sequence[str] = (ANDRE,),
-                 candidatas: Sequence[str] = ("ig.a@1", "ig.b@1")) -> tuple[str, str]:
-        """A pessoa respondeu o empate entre habilidades reescrevendo o comando: a sucessora resolveu `escolhida`."""
+                 candidatas: Sequence[str] = ("ig.a@1", "ig.b@1"), versao: int = 1) -> tuple[str, str]:
+        """A pessoa respondeu o empate entre habilidades reescrevendo o comando: a sucessora resolveu `escolhida`, na
+        versão `versao` (`runs.skill_version`)."""
         antiga = self.execucao(AMBIGUO, status="cancelled", perfis=perfis)
         pergunta = {"field": "skill", "question": "Qual delas?", "reason": "ambiguous_intent",
                     "options": list(candidatas)}
@@ -118,7 +121,7 @@ class Mundo:
                         (to_iso(AGORA), "log", "warn", antiga, "empate",
                          json.dumps({"skill": None, "questions": [pergunta], "candidates": list(candidatas)})))
         nova = self.execucao(f"{AMBIGUO} ({escolhida})", status="completed", perfis=perfis, skill_id=escolhida,
-                             plano={"summary": "s", "steps": [{"key": "a", "side_effect": efeito}]})
+                             versao=versao, plano={"summary": "s", "steps": [{"key": "a", "side_effect": efeito}]})
         self.costuras.respondeu_pergunta(RespostaAPergunta(
             run_id=antiga, run_sucessora=nova, campos=("skill",), resposta_sha256="x" * 64))
         return antiga, nova
@@ -268,30 +271,40 @@ class Preferida:
         return self.dica
 
 
-def _empate(fonte: Preferida | PreferenciasDoLivro | None) -> IntentResolver:
+def _empate(fonte: Preferida | PreferenciasDoLivro | None, *, versao_b: int = 1) -> IntentResolver:
+    """O empate ig.a@1 × ig.b@`versao_b` (a versão publicada de ig.b agora)."""
     a = habilidade("ig.a", "abra {u}", {"u": "@ana"}, [HANDLE])
     b = habilidade("ig.b", "abra {v}", {"v": "@ana"}, [{**HANDLE, "name": "v"}])
+    if versao_b != 1:
+        b = replace(b, version=replace(b.version, ref=SkillRef("ig.b", versao_b), parent_version=versao_b - 1))
     return IntentResolver.standard(Fonte(SkillMatch(a), SkillMatch(b)), ParameterExtractor(lambda app_id: IG),
                                    preferences=fonte)
 
 
 def test_preference_stage_decide_sozinho_so_sem_efeito() -> None:
     pedido = IntentRequest(AMBIGUO, (ANDRE,))
-    sem_efeito = Preferida(PreferenceHint("ig.b", decide=True))
+    sem_efeito = Preferida(PreferenceHint("ig.b", decide=True, versions=(1,)))
     r = _empate(sem_efeito).resolve(pedido)
     assert r.status is ResolutionStatus.RESOLVED and r.intent is not None
     assert str(r.intent.ref) == "ig.b@1" and r.intent.method is ResolutionMethod.PREFERENCE
     assert ("preference", StageOutcome.MATCHED) in [(t.stage, t.outcome) for t in r.trace]
     assert sem_efeito.pedidos == [(AMBIGUO, ("ig.a@1", "ig.b@1"), (ANDRE,))]
     # Com efeito: a pergunta continua, com a opção pré-selecionada.
-    com_efeito = _empate(Preferida(PreferenceHint("ig.b", decide=False))).resolve(pedido)
+    com_efeito = _empate(Preferida(PreferenceHint("ig.b", decide=False, versions=(1,)))).resolve(pedido)
     assert com_efeito.status is ResolutionStatus.NEEDS_INPUT and com_efeito.intent is None
     [q] = com_efeito.questions
     assert q.suggested == "ig.b@1" and q.as_dict()["suggested"] == "ig.b@1" and "ig.b@1" in q.options
     assert ("preference", StageOutcome.SUGGESTED) in [(t.stage, t.outcome) for t in com_efeito.trace]
+    # A versão candidata AGORA não é uma das conferidas (versão nova, ou fonte que não diz a versão): só pré-seleciona.
+    for dica, versao in ((PreferenceHint("ig.b", decide=True, versions=(1,)), 2),
+                         (PreferenceHint("ig.b", decide=True), 1)):
+        r = _empate(Preferida(dica), versao_b=versao).resolve(pedido)
+        assert r.status is ResolutionStatus.NEEDS_INPUT and r.intent is None
+        assert r.questions[0].suggested == f"ig.b@{versao}"
+        assert ("preference", StageOutcome.SUGGESTED) in [(t.stage, t.outcome) for t in r.trace]
     # Sugestão fora dos candidatos, ausente ou porta quebrada: a pergunta de sempre, sem sugestão.
-    for fonte in (Preferida(PreferenceHint("ig.fora", decide=True)), Preferida(None),
-                  Preferida(PreferenceHint("ig.b", decide=True), quebra=True)):
+    for fonte in (Preferida(PreferenceHint("ig.fora", decide=True, versions=(1,))), Preferida(None),
+                  Preferida(PreferenceHint("ig.b", decide=True, versions=(1,)), quebra=True)):
         r = _empate(fonte).resolve(pedido)
         assert r.status is ResolutionStatus.NEEDS_INPUT and r.questions[0].suggested is None
         assert "suggested" not in r.questions[0].as_dict()
@@ -302,7 +315,7 @@ def test_preference_stage_decide_sozinho_so_sem_efeito() -> None:
 
 def test_preference_stage_nao_mexe_no_que_ja_decidiu() -> None:
     a = habilidade("ig.a", "abra {u}", {"u": "@ana"}, [HANDLE])
-    fonte = Preferida(PreferenceHint("ig.a", decide=True))
+    fonte = Preferida(PreferenceHint("ig.a", decide=True, versions=(1,)))
     r = IntentResolver.standard(Fonte(SkillMatch(a)), ParameterExtractor(lambda app_id: IG),
                                 preferences=fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
     assert r.intent is not None and r.intent.method is ResolutionMethod.TEMPLATE and fonte.pedidos == []
@@ -324,6 +337,9 @@ def test_escolha_repetida_sem_efeito_decide_sozinha(mundo: Mundo) -> None:
     mundo.prefs.minerar(AGORA)
     [p] = mundo.preferencias()
     assert p.state is SkillState.PUBLISHED and p.state_by == "sistema"   # D1: sem efeito, com o modo em 'on'
+    assert p.provenance["versoes"] == [1]                                   # a versão cujo plano foi conferido
+    assert {json.loads(s["data"])["versao"] for s in mundo.db.query(
+        "SELECT data FROM learning_signals WHERE kind=?", (SignalKind.ESCOLHEU_HABILIDADE.value,))} == {1}
     r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
     assert r.intent is not None and str(r.intent.ref) == "ig.b@1" and r.intent.method is ResolutionMethod.PREFERENCE
     mundo.ajustes[0] = Ajustes(enabled=False, modo_preferencias=Modo.ON)     # `enabled: false` desliga o consumo
@@ -332,6 +348,66 @@ def test_escolha_repetida_sem_efeito_decide_sozinha(mundo: Mundo) -> None:
     # Perfil sem a preferência (ou prévia sem aparelho): ninguém decide por ele.
     for perfis in ((ANDRE, BIA), (BIA,), None, ()):
         assert _empate(fonte).resolve(IntentRequest(AMBIGUO, perfis)).status is ResolutionStatus.NEEDS_INPUT
+
+
+def test_versao_nova_da_habilidade_escolhida_so_pre_seleciona(mundo: Mundo) -> None:
+    """O efeito foi conferido nos planos da versão OBSERVADA (ig.b@1). A versão nova (ig.b@2) pode ter ganho uma
+    etapa com efeito externo (seguir, mandar DM): a preferência não responde por ela, só a pré-seleciona."""
+    mundo.modo(Modo.ON)
+    for _ in range(3):
+        mundo.escolher("ig.b")
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert p.state is SkillState.PUBLISHED and not p.side_effect
+    fonte = PreferenciasDoLivro(mundo.prefs)
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).intent is not None
+    nova = _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    assert nova.status is ResolutionStatus.NEEDS_INPUT and nova.intent is None
+    [q] = nova.questions
+    assert q.suggested == "ig.b@2" and q.as_dict()["suggested"] == "ig.b@2"
+    [etapa] = [t for t in nova.trace if t.stage == "preference"]
+    assert etapa.outcome is StageOutcome.SUGGESTED and "ig.b@2" in etapa.detail
+    # Escolher a v2 depois NÃO estende o que foi conferido: o efeito do plano só é lido no nascimento da preferência.
+    for _ in range(3):
+        mundo.escolher("ig.b", versao=2)
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert p.state is SkillState.PUBLISHED and p.provenance["versoes"] == [1] and p.evidence_for == 6
+    assert _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (ANDRE,))).intent is None
+
+
+def test_escolhas_em_versoes_diferentes_conferem_as_duas(mundo: Mundo) -> None:
+    """Nascida de escolhas em ig.b@1 e ig.b@2, todas sem efeito: as duas versões foram conferidas e decidem; a v3,
+    não."""
+    mundo.modo(Modo.ON)
+    mundo.escolher("ig.b")
+    mundo.escolher("ig.b", versao=2)
+    mundo.escolher("ig.b", versao=2)
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert p.state is SkillState.PUBLISHED and p.provenance["versoes"] == [1, 2]
+    fonte = PreferenciasDoLivro(mundo.prefs)
+    for versao in (1, 2):
+        r = _empate(fonte, versao_b=versao).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+        assert r.intent is not None and str(r.intent.ref) == f"ig.b@{versao}"
+    r = _empate(fonte, versao_b=3).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    assert r.intent is None and r.questions[0].suggested == "ig.b@3"
+
+
+def test_o_veto_do_dono_vale_para_a_escolha_e_nao_para_a_versao(mundo: Mundo) -> None:
+    """O dono desligou "no empate, escolhe ig.b": uma versão nova observada depois não é conteúdo novo. As versões
+    conferidas ficam fora da identidade do item (o veto casa pelo `content_hash`), senão o sistema traria de volta —
+    e publicaria sozinho — o que uma pessoa desligou."""
+    mundo.modo(Modo.ON)
+    for _ in range(3):
+        mundo.escolher("ig.b")
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    mundo.servico.mudar_estado(LivroKind.PREFERENCIA, p.id, SkillState.DISABLED, by=DONO, reason="não quero")
+    for _ in range(3):
+        mundo.escolher("ig.b", versao=2)
+    mundo.prefs.minerar(AGORA)
+    assert [(i.id, i.state) for i in mundo.preferencias()] == [(p.id, SkillState.DISABLED)]
 
 
 def test_escolha_com_efeito_espera_o_dono_e_so_pre_seleciona(mundo: Mundo) -> None:

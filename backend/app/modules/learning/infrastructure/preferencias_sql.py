@@ -3,7 +3,8 @@
 - `PreferenciasSql` cumpre `LeituraDePreferencias`: as respostas vêm do sinal `respondeu_pergunta` do A2 (o campo e o
   sha256, nunca o valor), com o perfil e o comando lidos da execução que perguntou (a foto `runs.targets`); as
   escolhas no desambiguador vêm do mesmo sinal com o campo `skill`, cruzado com o evento do empate (os candidatos) e
-  com a habilidade que a sucessora resolveu (`runs.skill_id`, ou `runs.flow_id` como `flow:<id>`);
+  com a habilidade que a sucessora resolveu (`runs.skill_id`, ou `runs.flow_id` como `flow:<id>`) e a versão que ela
+  rodou (`runs.skill_version`; o fluxo legado é sempre a 1);
 - `PreferenciasDoLivro` cumpre `PreferenceSource` (`skills.application.intent_ports`): o DAG é `learning → skills`, e
   as habilidades nunca importam o aprendizado;
 - `montar_preferencias(db, servico)`: o serviço pronto para a rota e para a composição.
@@ -44,6 +45,11 @@ def _objeto(bruto: object) -> dict[str, object]:
 
 def _texto(valor: object) -> str:
     return valor.strip() if isinstance(valor, str) else ""
+
+
+def _versao(valor: object) -> int | None:
+    """Uma versão de habilidade (inteiro >= 1) ou `None`: o que não é versão não vira versão."""
+    return valor if isinstance(valor, int) and not isinstance(valor, bool) and valor >= 1 else None
 
 
 def _skill_id(ref: str) -> str:
@@ -115,16 +121,17 @@ class PreferenciasSql:
             if _texto(dado.get("campo")) != CAMPO_DA_HABILIDADE or not sucessora:
                 continue
             conjunto = self._empate(linhas.texto(run, "id"))
-            escolhida = self._resolvida(sucessora)
-            if len(conjunto) < 2 or escolhida is None or escolhida not in conjunto:
+            resolvida = self._resolvida(sucessora)
+            if len(conjunto) < 2 or resolvida is None or resolvida[0] not in conjunto:
                 continue                   # reescreveu para outra coisa, ou a sucessora ainda não resolveu
+            escolhida, versao = resolvida
             _, perfis = self._pedido(run)
             for perfil in perfis:
                 if perfil:
                     saida.append(EscolhaObservada(
                         run_id=linhas.texto(run, "id"), perfil=perfil, conjunto=conjunto, escolhida=escolhida,
                         run_sucessora=sucessora, app_package=linhas.texto(s, "app_package"),
-                        simulated=bool(linhas.inteiro(s, "simulated"))))
+                        simulated=bool(linhas.inteiro(s, "simulated")), versao=versao))
         return saida
 
     def _empate(self, run_id: str) -> tuple[str, ...]:
@@ -136,13 +143,17 @@ class PreferenciasSql:
                 return tuple(sorted({_skill_id(c) for c in candidatos if isinstance(c, str) and c}))
         return ()
 
-    def _resolvida(self, run_id: str) -> str | None:
-        run = self._db.one("SELECT skill_id, flow_id FROM runs WHERE id=?", (run_id,))
+    def _resolvida(self, run_id: str) -> tuple[str, int | None] | None:
+        """A habilidade que a execução resolveu e a versão que rodou (a trilha da 045): `skill_id`/`skill_version`, ou
+        o fluxo legado (`flow:<id>`, sempre a 1). Versão que não se sabe fica `None`, nunca inventada."""
+        run = self._db.one("SELECT skill_id, skill_version, flow_id FROM runs WHERE id=?", (run_id,))
         if run is None:
             return None
         skill = linhas.texto_ou_nulo(run, "skill_id")
+        if skill:
+            return skill, _versao(run["skill_version"])
         fluxo = linhas.texto_ou_nulo(run, "flow_id")
-        return skill or (LEGACY_PREFIX + fluxo if fluxo else None)
+        return (LEGACY_PREFIX + fluxo, 1) if fluxo else None
 
     def escolhas(self) -> list[Observacao]:
         saida: list[Observacao] = []
@@ -159,7 +170,7 @@ class PreferenciasSql:
                 origem=f"signal:{s['id']}", run_id=linhas.texto_ou_nulo(s, "run_id") or "", perfil=perfil,
                 campo=CAMPO_DA_HABILIDADE, modelo=modelo_do_conjunto(opcoes), valor=escolhida,
                 app_package=linhas.texto(s, "app_package"), run_sucessora=_texto(dado.get("run_sucessora")) or None,
-                simulated=bool(linhas.inteiro(s, "simulated")), opcoes=opcoes))
+                simulated=bool(linhas.inteiro(s, "simulated")), opcoes=opcoes, versao=_versao(dado.get("versao"))))
         return saida
 
     def comando(self, run_id: str) -> str | None:
@@ -206,7 +217,8 @@ class PreferenciasDoLivro:
         preferida = self._servico.preferida(tuple(c.ref.skill_id for c in candidates), profile_ids)
         if preferida is None:
             return None
-        return PreferenceHint(preferida.skill_id, decide=preferida.decide, detail=preferida.detalhe)
+        return PreferenceHint(preferida.skill_id, decide=preferida.decide, detail=preferida.detalhe,
+                              versions=preferida.versoes)
 
 
 def montar_preferencias(db: object, servico: object) -> ServicoDePreferencias | None:

@@ -8,9 +8,12 @@ Duas origens, as duas sem IA e lidas do que a pessoa já faz:
   valor é relido da execução sucessora e passa pela triagem de credencial. É texto de pessoa (`human_origin=1`): quem
   valida e publica é o dono (D1);
 - **escolha no desambiguador**: o empate entre habilidades vira pergunta, e a pessoa responde reescrevendo o comando.
-  A escolha é a habilidade que a sucessora resolveu; a varredura a grava como `escolheu_habilidade` (o evento com os
-  candidatos morre com a retenção dos eventos). Não é texto de pessoa: 3 escolhas iguais em 3 execuções validam pelo
-  sistema, e ele publica sozinho só a que não alimenta etapa com efeito externo, com o modo em `on` (D1).
+  A escolha é a habilidade que a sucessora resolveu, com a VERSÃO que ela rodou (`runs.skill_version`); a varredura a
+  grava como `escolheu_habilidade` (o evento com os candidatos morre com a retenção dos eventos). Não é texto de
+  pessoa: 3 escolhas iguais em 3 execuções validam pelo sistema, e ele publica sozinho só a que não alimenta etapa com
+  efeito externo, com o modo em `on` (D1). O efeito é conferido nos planos das sucessoras observadas, isto é, nas
+  VERSÕES observadas: a preferência guarda quais foram na proveniência (`provenance.versoes`), fora do conteúdo — o
+  veto casa pelo `content_hash`, e uma versão nova não é uma escolha nova: o que uma pessoa desligou não volta.
 
 Campo que é alvo de terceiro (destinatário, perfil, conversa...) NUNCA vira padrão. Uma resposta diferente depois
 contradiz a preferência, e o sistema a desliga (rebaixar é automático).
@@ -20,7 +23,9 @@ Consumo, sempre como sugestão e só no modo `on`, só das PUBLICADAS:
 - a resposta só PRÉ-PREENCHE (`sugestoes`): a leitura não grava nada, não cria sucessora e não muda a execução — a
   pessoa confirma;
 - no desambiguador, a porta `PreferenceSource` das habilidades (`preferida`): decide sozinha só quando nenhuma das
-  preferências dos perfis da execução tem efeito externo; com efeito, a pergunta continua, com a opção pré-selecionada.
+  preferências dos perfis da execução tem efeito externo E a versão candidata é uma das conferidas em todas elas
+  (`PreferenceHint.versions`; quem confere a versão de agora é a etapa); com efeito, ou numa versão nova da
+  habilidade (que pode ter ganho uma etapa com efeito), a pergunta continua, com a opção pré-selecionada.
 """
 from __future__ import annotations
 
@@ -95,6 +100,7 @@ class Observacao:
     simulated: bool
     opcoes: tuple[str, ...] = ()     # na escolha: o conjunto empatado
     pergunta: str = ""               # na resposta: o comando que perguntou
+    versao: int | None = None        # na escolha: a versão que a sucessora rodou (`None`: não se sabe)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +114,7 @@ class EscolhaObservada:
     run_sucessora: str
     app_package: str
     simulated: bool
+    versao: int | None               # `runs.skill_version` da sucessora (o fluxo legado é sempre a 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +151,8 @@ class Preferida:
     skill_id: str
     decide: bool
     itens: tuple[str, ...]
+    #: As versões conferidas sem efeito em TODAS as preferências dos perfis: `decide` só vale para uma delas.
+    versoes: tuple[int, ...] = ()
 
     @property
     def detalhe(self) -> str:
@@ -201,7 +210,7 @@ class ServicoDePreferencias:
             kind=SignalKind.ESCOLHEU_HABILIDADE, source_ref=f"escolha:{e.run_id}:{e.perfil}", created_by=PAINEL,
             polarity=Polaridade.NEUTRAL, run_id=e.run_id, profile_id=e.perfil, app_package=e.app_package,
             data={"conjunto": list(e.conjunto), "modelo": modelo_do_conjunto(e.conjunto), "escolhida": e.escolhida,
-                  "run_sucessora": e.run_sucessora},
+                  "versao": e.versao, "run_sucessora": e.run_sucessora},
             simulated=e.simulated))
         return int(gravado is not None)
 
@@ -229,15 +238,22 @@ class ServicoDePreferencias:
                      for o in observacoes)
         proveniencia: list[str] = list(dict.fromkeys(o.run_id for o in observacoes))[:20]
         if campo == CAMPO_DA_HABILIDADE:
+            # O efeito acima foi lido nos planos destas versões, e só delas: a versão nova de amanhã pode ter ganho
+            # uma etapa com efeito, e aí a preferência só pré-seleciona (a etapa confere). Congeladas no nascimento, e
+            # na PROVENIÊNCIA: no conteúdo, mudariam o `content_hash`, e a escolha que o dono desligou voltaria (e
+            # seria publicada pelo sistema) só porque apareceu uma versão nova.
+            versoes = sorted({o.versao for o in observacoes if o.versao is not None})
+            vistas = ", ".join(f"v{v}" for v in versoes) or "nenhuma sabida"
             novo = NovoItem(
                 kind=LivroKind.PREFERENCIA,
                 escopo=Escopo(app=ultima.app_package, capability=campo, step_hash=modelo, role=Papel.RESOLVER.value,
                               profile_id=perfil),
                 content={"campo": campo, "modelo": modelo, "chave": ultima.valor, "valor": ultima.valor,
                          "opcoes": list(ultima.opcoes)},
-                summary=f"No empate entre {', '.join(ultima.opcoes)}, a pessoa escolhe {ultima.valor}",
+                summary=(f"No empate entre {', '.join(ultima.opcoes)}, a pessoa escolhe {ultima.valor}"
+                         f" (versões observadas: {vistas})"),
                 source_kind=SourceKind.DISAMBIGUATION, side_effect=efeito,
-                provenance={"runs": list(proveniencia), "regra": "a9-escolha-repetida"})
+                provenance={"runs": list(proveniencia), "regra": "a9-escolha-repetida", "versoes": list(versoes)})
         else:
             texto = self._leitura.comando(ultima.run_sucessora) if ultima.run_sucessora else None
             if not texto or self._triagem.recusa(texto):
@@ -314,8 +330,10 @@ class ServicoDePreferencias:
         valor = valores.pop()
         if valor not in candidatas:
             return None
-        return Preferida(valor, decide=not any(i.side_effect for i in itens if i is not None),
-                         itens=tuple(i.id for i in itens if i is not None))
+        vivos = [i for i in itens if i is not None]
+        conferidas = set.intersection(*(set(versoes_conferidas(i)) for i in vivos))
+        return Preferida(valor, decide=not any(i.side_effect for i in vivos), itens=tuple(i.id for i in vivos),
+                         versoes=tuple(sorted(conferidas)))
 
     def sugestoes(self, run_id: str) -> tuple[Sugestao, ...]:
         """O que PRÉ-PREENCHER nas perguntas abertas de uma execução em `needs_input`. Só leitura: nada é gravado,
@@ -342,6 +360,15 @@ class ServicoDePreferencias:
         return tuple(saida)
 
 
+def versoes_conferidas(item: ItemDeAprendizado) -> tuple[int, ...]:
+    """As versões em que a falta de efeito da escolha foi conferida (`provenance.versoes`); item sem elas (ou
+    ilegível): nenhuma — a preferência só pré-seleciona."""
+    bruto = item.provenance.get("versoes")
+    if not isinstance(bruto, list):
+        return ()
+    return tuple(sorted({v for v in bruto if isinstance(v, int) and not isinstance(v, bool) and v >= 1}))
+
+
 def _curto(texto: str, n: int = 80) -> str:
     limpo = " ".join(texto.split())
     return limpo if len(limpo) <= n else limpo[:n].rstrip() + "…"
@@ -349,4 +376,4 @@ def _curto(texto: str, n: int = 80) -> str:
 
 __all__ = ["CAMPO_DA_HABILIDADE", "LIMIARES", "EscolhaObservada", "LeituraDePreferencias", "Observacao",
            "PerguntasAbertas", "Preferida", "ServicoDePreferencias", "Sugestao", "campo_de_terceiro",
-           "chave_da_resposta", "modelo_do_comando", "modelo_do_conjunto"]
+           "chave_da_resposta", "modelo_do_comando", "modelo_do_conjunto", "versoes_conferidas"]

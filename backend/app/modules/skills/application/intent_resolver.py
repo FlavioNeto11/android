@@ -12,7 +12,8 @@ A cadeia padrão (`IntentResolver.standard`), em ordem:
 3. **semântica** (`SemanticStage`): classificador, quando os modelos não acharam candidato completo.
 4. **preferência** (`PreferenceStage`, só quando a composição dá a fonte — ADR-054): a escolha que a pessoa repetiu
    neste empate, lida do livro de aprendizado. Decide sozinha só quando a habilidade escolhida não tem etapa com
-   efeito externo; com efeito, a pergunta continua, com a opção pré-selecionada (`MissingInfo.suggested`).
+   efeito externo na versão candidata (uma das conferidas quando a preferência nasceu); com efeito, ou numa versão
+   nova, a pergunta continua, com a opção pré-selecionada (`MissingInfo.suggested`).
 5. **desambiguação por LLM** (`LlmDisambiguationStage`): quando sobram dois ou mais candidatos válidos.
 
 As etapas 3 e 5 são PORTAS (`intent_ports.py`) cuja única implementação é a nula (`NullSemanticClassifier`,
@@ -224,9 +225,10 @@ class PreferenceStage:
     """Etapa 4 (ADR-054): a escolha que a pessoa repetiu neste empate, lida do livro de aprendizado pela porta.
 
     Só age com dois ou mais candidatos válidos, e só aceita uma sugestão entre eles. Decide sozinha só quando a fonte
-    diz que pode (`decide`: publicada, sem etapa com efeito externo); senão deixa a opção PRÉ-SELECIONADA e a
-    pergunta continua — preferência nunca responde por ação com efeito. A fonte que falha é "sem preferência": o
-    aprendizado nunca derruba a resolução."""
+    diz que pode (`decide`: publicada, sem etapa com efeito externo) E a versão candidata AGORA é uma daquelas em que
+    a falta de efeito foi conferida (`versions`) — a preferência guarda a habilidade sem versão, e a versão nova pode
+    ter ganho uma etapa com efeito. Senão deixa a opção PRÉ-SELECIONADA e a pergunta continua — preferência nunca
+    responde por ação com efeito. A fonte que falha é "sem preferência": o aprendizado nunca derruba a resolução."""
 
     name = "preference"
 
@@ -245,10 +247,15 @@ class PreferenceStage:
         alvo = next((c for c in validos if dica is not None and c.match.ref.skill_id == dica.skill_id), None)
         if dica is None or alvo is None or alvo.extraction is None:
             return state.traced(self.name, StageOutcome.NO_MATCH)
-        if dica.decide:
+        conferida = alvo.match.ref.version in dica.versions
+        if dica.decide and conferida:
             return replace(state, intent=_intent(alvo, alvo.extraction, ResolutionMethod.PREFERENCE)).traced(
                 self.name, StageOutcome.MATCHED, str(alvo.match.ref))
-        motivo = dica.detail or "a pessoa confirma"
+        if dica.decide:
+            vistas = ", ".join(f"v{v}" for v in dica.versions) or "nenhuma"
+            motivo = f"versão sem efeito conferido (observadas: {vistas}): a pessoa confirma"
+        else:
+            motivo = dica.detail or "a pessoa confirma"
         return replace(state, suggested=alvo.match.ref).traced(
             self.name, StageOutcome.SUGGESTED, f"{alvo.match.ref} pré-selecionada: {motivo}")
 

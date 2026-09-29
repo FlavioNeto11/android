@@ -55,13 +55,20 @@ class IntentDisambiguator(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PreferenceHint:
-    """A escolha que a pessoa repetiu neste empate. `skill_id` sem versão (a preferência sobrevive a uma versão nova
-    da mesma habilidade). `decide`: pode decidir SOZINHA — só quando a habilidade escolhida não tem etapa com efeito
-    externo e a preferência está publicada; senão a pergunta continua, com ela pré-selecionada."""
+    """A escolha que a pessoa repetiu neste empate.
+
+    - `skill_id` sem versão: a preferência sobrevive a uma versão nova da mesma habilidade, mas só como SUGESTÃO;
+    - `decide`: pode decidir SOZINHA — só quando a habilidade escolhida não tinha etapa com efeito externo e a
+      preferência está publicada; senão a pergunta continua, com ela pré-selecionada;
+    - `versions`: as versões em que a falta de efeito foi CONFERIDA (os planos das execuções observadas). O `decide`
+      só vale para uma delas: uma versão nova pode ter ganho uma etapa com efeito (seguir, mandar DM), e preferência
+      nunca responde por ação com efeito (ADR-054). Vazio: não decide em versão nenhuma.
+    """
 
     skill_id: str
     decide: bool
     detail: str = ""
+    versions: tuple[int, ...] = ()
 
 
 class PreferenceSource(Protocol):
