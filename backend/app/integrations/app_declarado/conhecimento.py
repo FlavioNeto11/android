@@ -12,12 +12,21 @@ tela ou tipo inexistente, valor do tipo errado, texto com lacuna que o motor nã
 
 Nada aqui conhece app nenhum. A sobrescrita por instalação (`config.yaml`) não é lida aqui: quem a entrega é
 `Config.ajustes_de_sessao`, e o motor (`sessao.SessaoDeclarada`) aplica por cima destes padrões a cada uso.
+
+Telas APRENDIDAS (ADR-054, fatia 5): o conhecimento da instalação entra por um fornecedor tipado
+(`definir_regras_aprendidas`), que o aprendizado liga na composição — este pacote não importa `app.modules`. O padrão
+não fornece nenhuma, e a sessão usa o conhecimento UNIDO (`com_as_aprendidas`) a cada chamada. O que o fornecedor
+entrega fica guardado por pacote até a próxima invalidação (a cada publicação ou desligamento) ou por
+`CACHE_DAS_APRENDIDAS_S`, o que vier antes: o desligamento feito por outro caminho vale em segundos, sem uma leitura
+do banco a cada tela.
 """
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass, fields, replace
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, fields, replace
 from functools import lru_cache
 from pathlib import Path
 from string import Formatter
@@ -25,7 +34,7 @@ from string import Formatter
 import yaml
 
 from ...automation import conhecimento_de_telas as telas_
-from ...automation.conhecimento_de_telas import ConhecimentoDeTelas, ConhecimentoInvalido, TelaReconhecida
+from ...automation.conhecimento_de_telas import ConhecimentoDeTelas, ConhecimentoInvalido, RegraDeTela, TelaReconhecida
 from ...automation.hierarchy import UiElement, UiTree
 from ...planning.capabilities import CONHECIMENTO_DE_APPS
 from . import formulario as geometria
@@ -365,3 +374,75 @@ def do_app(pacote: str) -> ConhecimentoDeSessao:
     if k.app != pacote:
         raise SessaoInvalida(f"a pasta {pacote!r} traz o conhecimento de {k.app!r}")
     return k
+
+
+# ---------------------------------------------------------------------------------------------------- aprendidas
+log = logging.getLogger("poc.conta")
+
+#: Quem entrega as telas aprendidas PUBLICADAS de um pacote (só as que valem no modo `on`).
+FornecedorDeRegras = Callable[[str], Sequence[RegraDeTela]]
+#: Quanto o que o fornecedor entregou vale sem nova leitura (além da invalidação explícita).
+CACHE_DAS_APRENDIDAS_S = 30.0
+
+
+def _nenhuma(_pacote: str) -> tuple[RegraDeTela, ...]:
+    return ()
+
+
+@dataclass(slots=True)
+class _Aprendidas:
+    """Estado do processo: o fornecedor ligado, a versão (sobe a cada invalidação) e o que já foi lido/unido."""
+
+    fornecedor: FornecedorDeRegras = _nenhuma
+    versao: int = 0
+    lidas: dict[str, tuple[int, float, tuple[RegraDeTela, ...]]] = field(default_factory=dict)
+    unidos: dict[str, tuple[ConhecimentoDeSessao, tuple[RegraDeTela, ...], ConhecimentoDeSessao]] = \
+        field(default_factory=dict)
+
+
+_APRENDIDAS = _Aprendidas()
+
+
+def definir_regras_aprendidas(fornecedor: FornecedorDeRegras | None) -> None:
+    """Liga (ou, com `None`, desliga) o fornecedor das telas aprendidas. Chamado pela composição do aprendizado e
+    pelos testes, que desligam ao terminar."""
+    _APRENDIDAS.fornecedor = fornecedor or _nenhuma
+    invalidar_regras_aprendidas()
+
+
+def invalidar_regras_aprendidas() -> None:
+    """Esquece o que foi lido: a próxima sessão pergunta de novo ao fornecedor (publicação, desligamento, conflito)."""
+    _APRENDIDAS.versao += 1
+    _APRENDIDAS.lidas.clear()
+    _APRENDIDAS.unidos.clear()
+
+
+def regras_aprendidas(pacote: str) -> tuple[RegraDeTela, ...]:
+    """As telas aprendidas deste pacote que valem agora. Falha do fornecedor é "nenhuma": a sessão segue como o
+    repositório declara, nunca cai por causa do aprendizado."""
+    agora = time.monotonic()
+    lida = _APRENDIDAS.lidas.get(pacote)
+    if lida is not None and lida[0] == _APRENDIDAS.versao and agora - lida[1] < CACHE_DAS_APRENDIDAS_S:
+        return lida[2]
+    versao = _APRENDIDAS.versao
+    try:
+        regras = tuple(r for r in _APRENDIDAS.fornecedor(pacote) if isinstance(r, RegraDeTela) and r.aprendida)
+    except Exception:  # noqa: BLE001 - aprendizado é opcional: sem ele vale o que o repositório declara
+        log.exception("telas aprendidas de %s indisponíveis (seguindo só com as declaradas)", pacote)
+        regras = ()
+    _APRENDIDAS.lidas[pacote] = (versao, agora, regras)
+    return regras
+
+
+def com_as_aprendidas(k: ConhecimentoDeSessao) -> ConhecimentoDeSessao:
+    """O conhecimento de sessão com as telas aprendidas unidas às declaradas (`conhecimento_de_telas.com_aprendidas`).
+    Sem aprendida, devolve `k` como está — o mesmo objeto."""
+    regras = regras_aprendidas(k.app)
+    if not regras:
+        return k
+    unido = _APRENDIDAS.unidos.get(k.app)
+    if unido is not None and unido[0] is k and unido[1] == regras:
+        return unido[2]
+    novo = replace(k, telas=telas_.com_aprendidas(k.telas, regras))
+    _APRENDIDAS.unidos[k.app] = (k, regras, novo)
+    return novo
