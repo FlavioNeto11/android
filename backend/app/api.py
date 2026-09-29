@@ -536,24 +536,35 @@ async def discard_training(request: Request, session_id: str) -> Any:
 
 @router.get("/desempenho")
 async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
-                     dias: int = Query(0, ge=0, le=90)) -> Any:
+                     dias: int = Query(0, ge=0, le=90), irq_horas: int = Query(0, ge=0, le=336),
+                     irq_aparelho: str | None = Query(None, max_length=64)) -> Any:
     """Métricas agregadas de desempenho (contrato C5, adendo v0.20): o acumulado DESTE processo desde a partida e
     as últimas `janelas` gravadas em `measurements` (15 min cada; todas as réplicas, com `owner`). Só lê — nada
     aqui toca aparelho ou provedor. Distribuição sem amostra devolve `None` no percentil: desconhecido, não zero.
 
     `dias` > 0 acrescenta `historico`: `desempenho.resumo` dos últimos `dias` a partir das tabelas que já existem
     (objetivos, etapas, ações, `ai_calls`, comandos, boot), com p50/p95/n por entidade. 0 (padrão) devolve o de
-    antes — a consulta varre a janela inteira e não precisa pesar em quem só quer o acumulado."""
+    antes — a consulta varre a janela inteira e não precisa pesar em quem só quer o acumulado.
+
+    `irq_horas` > 0 acrescenta `interrupcoes` (`desempenho.interrupcoes`): a fração de CPU do convidado em irq +
+    softirq gravada a cada sonda de saúde nas últimas `irq_horas`, por aparelho (série, último valor e p50/p95),
+    ou só de `irq_aparelho`. Mesmo padrão de `dias`: sem pedir, nada muda na resposta."""
     s = st(request)
     linhas = s.db.query("SELECT ts, data FROM measurements WHERE kind='metricas' ORDER BY id DESC LIMIT ?",
                         (janelas,)) if janelas else []
     out: dict[str, Any] = {"processo": {**metricas.snapshot(), "owner": s.cfg.owner_id},
                            "janelas": [{"ts": r["ts"], **loads(r["data"], {})} for r in linhas]}
+    if not (dias or irq_horas):
+        return out
+    from . import desempenho as historico  # noqa: PLC0415
     if dias:
-        from . import desempenho as historico  # noqa: PLC0415
         # Em thread: com 90 dias são dezenas de milhares de linhas de `ai_calls`, e o laço de eventos serve o painel.
         out["historico"] = await asyncio.to_thread(historico.resumo, s.db, desde_iso=iso_in(-dias * 86400),
                                                    precos=s.cfg.file.ai.prices)
+    if irq_horas:
+        # Em thread pelo mesmo motivo: `measurements` não tem índice, e são duas linhas por minuto por aparelho.
+        out["interrupcoes"] = await asyncio.to_thread(historico.interrupcoes, s.db,
+                                                      desde_iso=iso_in(-irq_horas * 3600), aparelho=irq_aparelho)
     return out
 
 

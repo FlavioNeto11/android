@@ -952,12 +952,13 @@ class DeviceManager:
         anterior, rt.cpu_ticks = rt.cpu_ticks, (float(total), float(irq))
         if anterior is None or total - anterior[0] <= 0 or irq < anterior[1]:
             return                              # primeira leitura, ou o convidado reiniciou entre as duas
-        rt.irq_frac = (irq - anterior[1]) / (total - anterior[0])
+        frac = rt.irq_frac = (irq - anterior[1]) / (total - anterior[0])
         # Ocioso de verdade: ninguém no controle E a carga baixa. Logo depois do boot o convidado passa de 15% em irq
         # com load 25–27 (medido às 18:47 de 28/09, ~100 s no ar) — é o trabalho de subir, não a doença; com a regra
         # só por controle, o reinício automático pediria outro reinício (ou diria que "não resolveu") a cada boot.
         carga, ncpu = float(p.get("load1") or 0), max(1.0, float(p.get("ncpu") or 1))
         ocioso = rt.control == ControlOwner.none and rt.state == InstanceState.online and carga <= ncpu
+        self._gravar_interrupcao(rt, frac, p, ocioso)
         rt.irq_strikes = rt.irq_strikes + 1 if (ocioso and rt.irq_frac >= IRQ_OCIOSO_MAX) else 0
         if rt.irq_strikes < IRQ_SONDAS:
             return
@@ -977,6 +978,25 @@ class DeviceManager:
         cid = self.on_health_restart(rt.id, motivo)
         self.publish(rt, f"{rt.id}: {motivo}" + (f" — comando {cid}" if cid else " — reinício não aberto"),
                      level="warn")
+
+    def _gravar_interrupcao(self, rt: DeviceRuntime, frac: float, p: dict[str, float], ocioso: bool) -> None:
+        """Cada fração medida vira uma linha `measurements(kind='irq')`: a causa do acúmulo (21–90% com dias no ar,
+        ~2% depois do reinício) não é conhecida, e em memória a série morria com o processo. Controle e interesse
+        (prévia em grade/foco) vão junto porque são hipóteses; o acerto de relógio (TIME_SET) já tem linha própria
+        (`kind='clock'`, com a instância) para cruzar pelo horário. Os ticks acumulados desde o boot do convidado
+        também: dão a fração média desde o boot e, divididos por vCPU × 100 (USER_HZ), o tempo no ar — sem outra
+        leitura de `/proc`.
+
+        Gravar é observação: uma falha do banco aqui não pode tirar a regra do reinício nem o aviso de pressão
+        (que vêm depois desta chamada), por isso é engolida com registro. Load e vCPU vão como lidos: ausente
+        fica nulo na linha, não zero (a regra do ocioso é que trata o ausente como carga baixa)."""
+        try:
+            self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "irq", dumps({
+                "instance_id": rt.id, "irq_frac": round(frac, 4), "load1": p.get("load1"), "ncpu": p.get("ncpu"),
+                "ocioso": ocioso, "controle": rt.control.value, "interesse": self.nivel_de_interesse(rt),
+                "cpu_total_ticks": p.get("cpu_total_ticks"), "cpu_irq_ticks": p.get("cpu_irq_ticks")})))
+        except Exception:  # noqa: BLE001 - medir nunca pode derrubar a sonda de saúde
+            log.exception("%s: não foi possível gravar a fração de interrupção", rt.id)
 
     async def conferir_conectividade(self, rt: DeviceRuntime) -> ConnectivityInfo:
         """Sonda a internet DENTRO do aparelho e guarda o resultado. Nunca muda `state`: sem internet o aparelho
