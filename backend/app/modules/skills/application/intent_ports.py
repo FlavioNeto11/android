@@ -12,10 +12,14 @@ por estrutura, sem importá-las.
   `not_run` na trilha. Um provedor real vai precisar de duas coisas que a porta ainda não tem: ser assíncrono e rodar
   só no `_plan`, com aviso de custo — nunca na prévia (`/api/flows/match`, `apps_exigidos`, `/api/skills/resolve`),
   que é chamada a cada tecla do painel.
+- `PreferenceSource` (etapa entre a semântica e o LLM, ADR-054): a escolha que a pessoa REPETIU neste mesmo empate.
+  Quem a guarda é o livro de aprendizado (`modules/learning`), que implementa esta porta — o DAG é `learning →
+  skills`, e as habilidades nunca importam o aprendizado. Sem IA e sem gasto: é leitura do livro.
 """
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.modules.skills.application.ports import SkillSource
@@ -47,3 +51,23 @@ class IntentDisambiguator(Protocol):
     def available(self) -> bool: ...
 
     def choose(self, command: str, candidates: Sequence[SkillMatch]) -> SkillMatch | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PreferenceHint:
+    """A escolha que a pessoa repetiu neste empate. `skill_id` sem versão (a preferência sobrevive a uma versão nova
+    da mesma habilidade). `decide`: pode decidir SOZINHA — só quando a habilidade escolhida não tem etapa com efeito
+    externo e a preferência está publicada; senão a pergunta continua, com ela pré-selecionada."""
+
+    skill_id: str
+    decide: bool
+    detail: str = ""
+
+
+class PreferenceSource(Protocol):
+    """A preferência para ESTE empate e ESTES perfis (os dos aparelhos da execução; `None` = prévia sem aparelho).
+    `None` quando não há uma que valha para todos: a pessoa decide, como antes. Só uma sugestão entre os candidatos
+    que recebeu vale — a etapa confere."""
+
+    def preferred(self, command: str, candidates: Sequence[SkillMatch],
+                  profile_ids: tuple[str | None, ...] | None) -> PreferenceHint | None: ...

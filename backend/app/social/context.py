@@ -10,10 +10,16 @@ Duas propriedades importam mais que o formato:
   conteúdo com formato de segredo. Um teste estrutural garante que este arquivo não importe nada de `security`.
 * **Tudo que veio do Instagram é DADO.** O conteúdo da contraparte entra marcado como não confiável; o prompt do
   papel social repete a regra. Texto de tela nunca vira instrução.
+
+A voz aprendida (ADR-054, pacote A9) chega por uma PORTA tipada (`FonteDeVoz`), que o livro de aprendizado cumpre: os
+pares "a persona escreveu / a pessoa corrigiu para" das aprovações editadas, publicados pelo dono, do MESMO perfil e
+da MESMA ação. Sem a porta pendurada, ou sem a ação da etapa, nada muda no texto; e a porta que falha nunca derruba a
+escrita.
 """
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import Any, Protocol
 
 from ..models import (PERSONA_BIO_FIELDS, PERSONA_POLITICS_FIELDS, PERSONA_RELIGION_FIELDS, PERSONA_VOICE_TRAITS,
                       ROTULOS_DE_CRENCA, BioBeliefs, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO, RelationshipDTO,
@@ -23,6 +29,16 @@ from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
 from ..db import Row
 from .repository import SocialRepository, campos_de_persona
+
+log = logging.getLogger(__name__)
+
+
+class FonteDeVoz(Protocol):
+    """O bloco `<exemplos_de_voz origem="pessoa">` já montado (escapado e dentro do teto) para um perfil e uma ação,
+    ou `''`. Quem cumpre é o livro de aprendizado: aqui só se pendura o texto, logo depois da persona."""
+
+    def bloco(self, profile_id: str, capability: str) -> str: ...
+
 
 # Rótulos dos traços na ordem em que fazem sentido lidos de cima para baixo. A lista vive em `models` porque o
 # portal precisa da MESMA: o aviso de "faltam campos de voz" e o que vai ao modelo têm de ser a mesma coisa.
@@ -87,16 +103,21 @@ def interaction_dto(row: Any) -> InteractionDTO:
 
 
 class SocialContextBuilder:
-    def __init__(self, repo: SocialRepository, memory: MemoryStore):
+    def __init__(self, repo: SocialRepository, memory: MemoryStore, voz: FonteDeVoz | None = None):
         self.repo = repo
         self.memory = memory
+        #: A voz aprendida (ADR-054): pendurada pelo `AppState` depois de compor o livro de aprendizado.
+        self.voz = voz
 
     def build(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
               current_content: str | None = None, recall_hint: str | None = None, memory_limit: int = 8,
               memory_budget_tokens: int = 400, recent_limit: int = 6, touch: bool = True,
-              app_id: str | None = None) -> SocialContextDTO:
+              app_id: str | None = None, capability: str | None = None) -> SocialContextDTO:
         """`app_id` é o app da ETAPA: o "perfil: @…" do bloco passa a ser o handle da conta da pessoa naquele app,
-        e só cai no usuário de cadastro (e depois no nome) quando não há conta registrada ali."""
+        e só cai no usuário de cadastro (e depois no nome) quando não há conta registrada ali.
+
+        `capability` é a ação da ETAPA (a chave do catálogo, a mesma de `pending_approvals.capability`): só com ela a
+        voz aprendida daquele perfil naquela ação entra no texto."""
         perfil = self.repo.profile_row(profile_id)
         if perfil is None:
             raise KeyError(profile_id)
@@ -134,13 +155,27 @@ class SocialContextBuilder:
             profile_id=profile_id, username=handle, persona=persona, relationship=relacionamento,
             thread=thread, memories=lembrancas.items, recent_interactions=recentes,
             dropped_memories=lembrancas.dropped)
-        ctx.rendered = self.render(ctx, current_content=current_content)
+        ctx.rendered = self.render(ctx, current_content=current_content,
+                                   voz=self._bloco_de_voz(profile_id, capability))
         ctx.estimated_tokens = estimate_tokens(ctx.rendered)
         return ctx
 
+    def _bloco_de_voz(self, profile_id: str, capability: str | None) -> str:
+        """A voz aprendida deste perfil nesta ação, ou `''`. Aprendizado é contexto opcional: a falha vira log."""
+        if self.voz is None or not capability:
+            return ""
+        try:
+            return self.voz.bloco(profile_id, capability).strip()
+        except Exception:  # noqa: BLE001 - sem a voz aprendida, o texto sai como sempre saiu
+            log.exception("voz aprendida indisponível para o perfil %s (o texto segue sem ela)", profile_id)
+            return ""
+
     # ------------------------------------------------------------------ texto que vai ao modelo
-    def render(self, ctx: SocialContextDTO, *, current_content: str | None = None) -> str:
+    def render(self, ctx: SocialContextDTO, *, current_content: str | None = None, voz: str = "") -> str:
         partes = [self._persona_block(ctx.persona, ctx.username)]
+        if voz:
+            # Logo depois de quem a pessoa é: como ELA corrige o que a persona escreve (ADR-054).
+            partes.append(voz)
         if ctx.relationship:
             r = ctx.relationship
             linhas = [f"contraparte: {sem_marcacao(r.counterparty, limite=60)}",

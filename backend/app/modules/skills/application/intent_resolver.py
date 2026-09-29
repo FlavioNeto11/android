@@ -10,29 +10,38 @@ A cadeia padrão (`IntentResolver.standard`), em ordem:
    único e válido → resolvido; único e com valor faltando ou inválido → pergunta. Entre empatados, se só UM passa
    nos tipos, ele é a resposta — determinística, não às cegas.
 3. **semântica** (`SemanticStage`): classificador, quando os modelos não acharam candidato completo.
-4. **desambiguação por LLM** (`LlmDisambiguationStage`): quando sobram dois ou mais candidatos válidos.
+4. **preferência** (`PreferenceStage`, só quando a composição dá a fonte — ADR-054): a escolha que a pessoa repetiu
+   neste empate, lida do livro de aprendizado. Decide sozinha só quando a habilidade escolhida não tem etapa com
+   efeito externo; com efeito, a pergunta continua, com a opção pré-selecionada (`MissingInfo.suggested`).
+5. **desambiguação por LLM** (`LlmDisambiguationStage`): quando sobram dois ou mais candidatos válidos.
 
-As etapas 3 e 4 são PORTAS (`intent_ports.py`) cuja única implementação é a nula (`NullSemanticClassifier`,
+As etapas 3 e 5 são PORTAS (`intent_ports.py`) cuja única implementação é a nula (`NullSemanticClassifier`,
 `NullDisambiguator`): elas não chamam IA — chamada paga exige autorização do dono — e a trilha diz `not_run`. A
-cadeia fica pronta para um provedor real sem gasto nenhum hoje.
+cadeia fica pronta para um provedor real sem gasto nenhum hoje. A 4 também é porta, mas sem IA: quem a implementa é
+o aprendizado (DAG `learning → skills`), e sem ela a cadeia é exatamente a de antes.
 
 O que sobra sem decisão vira pergunta (`IntentResolution.needs_input`), nunca escolha às cegas nem valor inventado.
 A resolução não tem efeito: não grava nada, não chama o planejador, não cria execução.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
 from app.contracts.skills.v1alpha1 import ParameterSpec
-from app.modules.skills.application.intent_ports import IntentDisambiguator, SemanticIntentClassifier, SkillCandidates
+from app.modules.skills.application.intent_ports import (IntentDisambiguator, PreferenceSource,
+                                                         SemanticIntentClassifier, SkillCandidates)
 from app.modules.skills.domain.compiler import parse_document
 from app.modules.skills.domain.errors import CompileIssue
 from app.modules.skills.domain.intent import (IntentResolution, ParameterExtraction, ProfileLinkRule, ResolutionMethod,
                                               ResolutionStatus, ResolvedIntent, SkillMatch, StageOutcome, StageTrace,
                                               ambiguity_question, extract_typed)
+from app.modules.skills.domain.refs import SkillRef
 from app.modules.skills.domain.versions import SCHEMA_LEGACY_PLAN, ResolvedSkill
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +70,8 @@ class IntentState:
     candidates: tuple[IntentCandidate, ...] = ()
     intent: ResolvedIntent | None = None
     trace: tuple[StageTrace, ...] = ()
+    #: A opção pré-selecionada de um empate que ninguém pôde decidir sozinho (a etapa de preferência).
+    suggested: SkillRef | None = None
 
     def traced(self, stage: str, outcome: StageOutcome, detail: str = "") -> IntentState:
         return replace(self, trace=(*self.trace, StageTrace(stage, outcome, detail)))
@@ -209,8 +220,41 @@ class SemanticStage:
         return replace(state, candidates=(candidato,)).traced(self.name, StageOutcome.INVALID, str(achado.ref))
 
 
+class PreferenceStage:
+    """Etapa 4 (ADR-054): a escolha que a pessoa repetiu neste empate, lida do livro de aprendizado pela porta.
+
+    Só age com dois ou mais candidatos válidos, e só aceita uma sugestão entre eles. Decide sozinha só quando a fonte
+    diz que pode (`decide`: publicada, sem etapa com efeito externo); senão deixa a opção PRÉ-SELECIONADA e a
+    pergunta continua — preferência nunca responde por ação com efeito. A fonte que falha é "sem preferência": o
+    aprendizado nunca derruba a resolução."""
+
+    name = "preference"
+
+    def __init__(self, source: PreferenceSource) -> None:
+        self._source = source
+
+    def apply(self, request: IntentRequest, state: IntentState) -> IntentState:
+        validos = [c for c in state.candidates if c.valid]
+        if state.intent is not None or len(validos) < 2:
+            return state.traced(self.name, StageOutcome.SKIPPED)
+        try:
+            dica = self._source.preferred(request.command, tuple(c.match for c in validos), request.profile_ids)
+        except Exception:  # noqa: BLE001 - preferência é sugestão: sem ela, a pessoa decide como antes
+            log.exception("preferências indisponíveis para %r (a pergunta segue sem sugestão)", request.command)
+            return state.traced(self.name, StageOutcome.NOT_RUN, "preferências indisponíveis")
+        alvo = next((c for c in validos if dica is not None and c.match.ref.skill_id == dica.skill_id), None)
+        if dica is None or alvo is None or alvo.extraction is None:
+            return state.traced(self.name, StageOutcome.NO_MATCH)
+        if dica.decide:
+            return replace(state, intent=_intent(alvo, alvo.extraction, ResolutionMethod.PREFERENCE)).traced(
+                self.name, StageOutcome.MATCHED, str(alvo.match.ref))
+        motivo = dica.detail or "a pessoa confirma"
+        return replace(state, suggested=alvo.match.ref).traced(
+            self.name, StageOutcome.SUGGESTED, f"{alvo.match.ref} pré-selecionada: {motivo}")
+
+
 class LlmDisambiguationStage:
-    """Etapa 4: desempate por LLM entre candidatos válidos. A resposta só vale se for um deles."""
+    """Etapa 5: desempate por LLM entre candidatos válidos. A resposta só vale se for um deles."""
 
     name = "llm"
 
@@ -239,10 +283,14 @@ class IntentResolver:
     @classmethod
     def standard(cls, source: SkillCandidates, extractor: ParameterExtractor, *,
                  classifier: SemanticIntentClassifier | None = None,
-                 disambiguator: IntentDisambiguator | None = None) -> IntentResolver:
-        """Modelos → tipos → semântica → LLM. Sem provedor dado, as duas últimas usam o nulo (não chamam IA)."""
+                 disambiguator: IntentDisambiguator | None = None,
+                 preferences: PreferenceSource | None = None) -> IntentResolver:
+        """Modelos → tipos → semântica → [preferência] → LLM. Sem provedor dado, semântica e LLM usam o nulo (não
+        chamam IA); a preferência só entra na cadeia quando a composição dá a fonte."""
+        preferencia: tuple[IntentStage, ...] = (PreferenceStage(preferences),) if preferences is not None else ()
         return cls((TemplateStage(source), TypedStage(extractor),
                     SemanticStage(classifier if classifier is not None else NullSemanticClassifier(), extractor),
+                    *preferencia,
                     LlmDisambiguationStage(disambiguator if disambiguator is not None else NullDisambiguator())))
 
     @property
@@ -275,5 +323,5 @@ def conclude(state: IntentState) -> IntentResolution:
         return IntentResolution(ResolutionStatus.NEEDS_INPUT, questions=extracao.questions, subject=skill,
                                 trace=state.trace)
     skills = tuple(c.match.skill for c in state.candidates)
-    return IntentResolution(ResolutionStatus.NEEDS_INPUT, questions=(ambiguity_question(skills),), candidates=skills,
-                            trace=state.trace)
+    return IntentResolution(ResolutionStatus.NEEDS_INPUT, questions=(ambiguity_question(skills, state.suggested),),
+                            candidates=skills, trace=state.trace)

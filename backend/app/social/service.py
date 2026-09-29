@@ -1455,16 +1455,17 @@ class SocialService:
     # ------------------------------------------------------------------ contexto e geração
     def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
                 current_content: str | None = None, recall_hint: str | None = None,
-                touch: bool = False, app_id: str | None = None) -> SocialContextDTO:
+                touch: bool = False, app_id: str | None = None, capability: str | None = None) -> SocialContextDTO:
         self.get_profile(profile_id)
         return self.contexts.build(profile_id, counterparty=counterparty, thread_key=thread_key,
                                    current_content=current_content, recall_hint=recall_hint, touch=touch,
-                                   app_id=app_id)
+                                   app_id=app_id, capability=capability)
 
     async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
                              persist: bool = True, screen: str = "", runner: Any = None,
-                             avoid: Sequence[str] = (), app_id: str | None = None) -> tuple[SocialDraftDTO, InteractionDTO | None]:
+                             avoid: Sequence[str] = (), app_id: str | None = None,
+                             capability: str | None = None) -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
 
         `app_id` é o app da ETAPA: o "Você é @…" do prompt usa o handle da conta da pessoa nesse app, e só cai no
@@ -1480,6 +1481,9 @@ class SocialService:
 
         `screen` é o que está ESCRITO na tela neste momento (legenda da publicação, comentários, a conversa aberta).
         É o ASSUNTO da escrita, não fala dirigida a esta conta: vai no bloco `<tela>`, e de lá não sai memória.
+
+        `capability` é a ação da etapa (a chave do catálogo): com ela, a voz aprendida deste perfil nesta ação — os
+        pares das aprovações que o dono editou e publicou (ADR-054) — entra no contexto. Sem ela, nada muda.
         """
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
@@ -1494,7 +1498,7 @@ class SocialService:
         # valendo como PISTA DE BUSCA — é o que torna "memória relevante" relativa ao que está aberto agora.
         ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key,
                            recall_hint=" ".join(p for p in (screen, incoming, brief) if p), touch=True,
-                           app_id=app_id)
+                           app_id=app_id, capability=capability)
         proibidos = _sem_repetir(list(avoid) + self._textos_recentes(profile_id))
         pedido = SocialRequest(
             profile_id=profile_id, username=ctx.username, kind=kind, context_text=ctx.rendered,

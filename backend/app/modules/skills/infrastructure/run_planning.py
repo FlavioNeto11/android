@@ -29,7 +29,7 @@ from pydantic import ValidationError
 
 from app.models import Plan
 
-from ..application.intent_ports import IntentDisambiguator, SemanticIntentClassifier, SkillCandidates
+from ..application.intent_ports import IntentDisambiguator, PreferenceSource, SemanticIntentClassifier, SkillCandidates
 from ..application.intent_resolver import IntentRequest, IntentResolver, ParameterExtractor
 from ..domain.compiler import SkillLookup
 from ..domain.errors import Code, CompileIssue
@@ -113,12 +113,30 @@ class RunPlan:
 class SkillRunPlanner:
     def __init__(self, registry: SkillCandidates, pacote_do_app: Callable[[str], str | None],
                  skills: SkillLookup | None = None, *, classifier: SemanticIntentClassifier | None = None,
-                 disambiguator: IntentDisambiguator | None = None) -> None:
-        """`classifier`/`disambiguator`: as etapas 3 e 4 da RESOLVE. Sem eles, o provedor nulo (sem IA)."""
+                 disambiguator: IntentDisambiguator | None = None,
+                 preferences: PreferenceSource | None = None) -> None:
+        """`classifier`/`disambiguator`: as etapas da RESOLVE por IA. Sem eles, o provedor nulo (sem IA).
+        `preferences`: a etapa de preferência (ADR-054), que o livro de aprendizado cumpre — ou `usar_preferencias`,
+        quando o livro é composto depois deste planejador (é o caso do `AppState`)."""
         self._compilador = SkillPlanCompiler(pacote_do_app, skills)
-        extrator = ParameterExtractor(lambda app_id: profile_links_for(pacote_do_app(app_id)) if app_id else ())
-        self._resolver = IntentResolver.standard(registry, extrator, classifier=classifier,
-                                                 disambiguator=disambiguator)
+        self._registro = registry
+        self._extrator = ParameterExtractor(lambda app_id: profile_links_for(pacote_do_app(app_id)) if app_id else ())
+        self._classificador = classifier
+        self._desempate = disambiguator
+        self._resolver = self._montar(preferences)
+
+    def _montar(self, preferences: PreferenceSource | None) -> IntentResolver:
+        return IntentResolver.standard(self._registro, self._extrator, classifier=self._classificador,
+                                       disambiguator=self._desempate, preferences=preferences)
+
+    def usar_preferencias(self, fonte: PreferenceSource) -> None:
+        """Pendura a etapa de preferência na RESOLVE. Os três chamadores (`_plan`, `apps_exigidos` e a prévia)
+        passam por este mesmo planejador, então continuam coerentes entre si."""
+        self._resolver = self._montar(fonte)
+
+    @property
+    def stages(self) -> tuple[str, ...]:
+        return self._resolver.stages
 
     @property
     def compiler(self) -> SkillPlanCompiler:

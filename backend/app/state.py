@@ -40,6 +40,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
                                                          registrar_conta_travada)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from .modules.learning.infrastructure import ligar_voz
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.skills.application.registry import CompositeSkillRegistry
@@ -417,6 +418,10 @@ class AppState:
         self.scheduler.executor.costuras = self.costuras
         self.runs.costuras = self.costuras
         self.devices.costura_de_controle = self.costuras
+        # Voz e preferências (ADR-054, A9): a voz que o dono publicou entra no contexto social (mesmo perfil, mesma
+        # ação); a escolha repetida num empate de habilidades vira a etapa de preferência da RESOLVE. Os dois passos
+        # da curadoria (varrer aprovações decididas, minerar respostas e escolhas) entram aqui. Sem IA.
+        ligar_voz.pendurar(self.learning, self.db, contextos=self.social.contexts, planejador=self.skill_planner)
         # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
         self.scheduler.executor.secrets = self.secrets
         self.scheduler.executor.sensitive_input = self.sensitive_input
@@ -1872,6 +1877,8 @@ class AppState:
                     # O fio é o que traz a conversa ao prompt: sem ele, `<resumo_da_conversa>` nunca aparecia
                     # para quem estava escrevendo, por mais mensagens que já tivessem sido trocadas.
                     counterparty=alvo, screen=tela, thread_key=fio,
+                    # A ação da etapa: é por ela (e pelo perfil) que a voz aprendida do dono entra (ADR-054).
+                    capability=cap.key,
                     # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das
                     # outras, com limite de simultâneas, teto de orçamento conferido antes de gastar e custo
                     # lançado no objetivo certo.
