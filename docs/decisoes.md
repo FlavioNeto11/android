@@ -64,6 +64,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 | [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
 | [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
+| [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`) | 28/09 |
 
 ---
 
@@ -2706,3 +2707,150 @@ Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_ru
 
 **Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
 ADR-009 (desafio e 2FA seguem com a pessoa); ADR-040 (credencial pela pessoa, canal sensível); item 12.3.
+
+---
+
+## ADR-053 — Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha
+
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`93967d0`, central e agente do notebook), com prova
+real de navegação e de efeito (curtir e comentar, autorizada pelo dono) · **Decisão técnica** (pedido do dono de
+28/09); completa o ADR-052 no caminho da execução.
+
+**Contexto.**
+
+- O dono reclamou em 28/09 que execuções como `r-20260928165254-e31953` e `r-20260928195344-02ee9e` continuavam
+  falhando e que os planos de melhoria não funcionavam. As melhorias do mesmo dia (ADR-052, digitação conferida,
+  projeção) não tocaram o que derrubava essas execuções.
+- Placar do Instagram: 24 de 31 objetivos com sucesso de 20 a 25/09; 1 de 7 em 27–28/09; 0 de 5 em 28/09.
+- Diagnóstico medido por um workflow de 109 agentes: 51 causas examinadas, 12 confirmadas por dois céticos (um
+  refazendo as consultas ao banco, aos logs e ao adb, outro lendo o código). Na 02ee9e a IA ocupou 41 s de 925 s
+  (4,5%); o resto foi o convidado saturado e o nosso código transformando lentidão em falha. As doze causas estão no
+  [relatório §21](relatorio-validacao.md#21-falhas-reiteradas-do-instagram--diagnóstico-medido-correções-e-prova-real-28092026-adr-053);
+  as que mais pesaram:
+  - **C1, substrato:** o android-06 (2 vCPU, 2 GB) com a CPU saturada durante a tarefa (load 15–35, 48–57% em irq),
+    sem falta de RAM;
+  - **C2:** o 500 transitório do UiAutomator2 ("waiting for the root AccessibilityNodeInfo … hogging the main UI
+    thread") era tratado como sessão morta, e a sessão do Appium era recriada: 5 recriações = 305,6 s de 925 s na
+    02ee9e; 4 = 214 s na e31953;
+  - **C3:** com `hide_error_dialogs=1` (gravado por `adb.py`), cada ANR do app em primeiro plano vira morte silenciosa
+    (`exit-info` reason=6) e o launcher volta; a IA reabria, a partida a frio dava outro ANR (5 mortes do Instagram
+    na 02ee9e, 6 na e31953);
+  - **C4:** a recuperação automática fazia force-stop do Instagram VIVO (a folha de comentários aberta, na e31953) e
+    podava o plano na fronteira do like, sem `commit_guard` nem `bindings.content`: 448,7 s perdidos;
+  - **C5:** `mobile: type` cortava a cauda do texto (comentário com 22 de 125 caracteres), e a conferência do 18.1 era
+    inerte, porque o compositor do Instagram é `AutoCompleteTextView` e `hierarchy.py` só reconhecia `EditText`;
+  - **C6–C12:** rolagem numa faixa estreita virando toque longo, prévia na fila única do aparelho, porta de sessão
+    travada por contador antigo, foco lido da seção congelada do último ANR, alvo sem identidade (qualquer post
+    provava "Posts"), prazos fixos que contam tempo de infraestrutura e higiene (relógio, fila do orquestrador,
+    aprendizado de execução confirmada à mão).
+- **Por que os planos anteriores não resolveram.** Miraram o último sintoma visível (texto cortado, custo, checagem
+  de sessão) sem medir para onde foi o tempo da execução. Nenhum dos 38 commits do dia tocou os mecanismos C2, C3, C4
+  e C7, que somavam a maior parte dos 925 s.
+
+**Alternativas.**
+
+- Mais vCPU ou RAM, ou menos aparelhos ligados, como correção única: descartada. O android-06 tinha RAM sobrando, e
+  mais recurso não corta o laço de recriação nem o de reabertura. Continua como remédio de capacidade, no aviso de
+  pressão.
+- Prazo maior por etapa e por objetivo: descartada. Só adia a falha; cada recriação e cada partida a frio consomem o
+  prazo novo do mesmo jeito.
+- Recriar a sessão com recuo em vez de reler: descartada. Recriar custa 27–80 s num convidado saturado e piora a
+  própria saturação (K-049).
+- Desligar `hide_error_dialogs` para o diálogo de ANR aparecer: adiada. Muda o que a IA vê em toda tela e pede
+  experimento próprio; o `exit-info` dá o sinal sem mexer no aparelho (K-048).
+- Reparar o convidado lento pela escada de reparo: descartada. A escada chega a `reset`, que apagaria a conta real
+  logada.
+
+**Escolha.** Seis decisões. As nove correções que as aplicam têm, cada uma, um teste que falhava antes e revisão
+adversarial (quatro barradas pelo revisor e ajustadas):
+
+1. **UI ocupada não é sessão morta: relê, não recria.** O 500 de UI ocupada vira `DriverBusy`. A leitura relê com
+   recuo (até 3 vezes, 4 s, dentro do prazo da etapa) sem recriar a sessão; a ação com UI ocupada fica com efeito
+   incerto e não se repete; só a sessão morta de verdade recria. Na mesma linha, o swipe não pausa depois de encostar
+   (não vira toque longo), a rolagem numa faixa estreita usa a área rolável maior, e a sobreposição aberta pelo
+   arrasto volta sem a IA (`changed=false`).
+2. **A recuperação não mata app vivo e não repete efeito comprovado.** Falha de prazo, de IA ou de guarda com o app
+   vivo em primeiro plano retoma da tela atual. Com o app encerrado, a navegação atravessa o efeito comprovado sem
+   repeti-lo (um LIKE repetido descurte). A etapa revisada herda `commit_guard`, `bindings.content` e `draft_meta`.
+   Se a projeção medida das etapas refeitas não cabe no tempo restante, falha com esse motivo.
+3. **ANR tem sinal próprio e corta o laço de reabertura.** `dumpsys activity exit-info` (`Adb.app_deaths`) diz quando
+   e por que o app morreu; o foco é lido da seção viva do `dumpsys window`, nunca da "WINDOW MANAGER LAST ANR"
+   (K-047). `open_app` espera o foco e devolve `focused`. Com morte do app na etapa: uma reabertura determinística
+   sem IA; na segunda, a etapa falha com o motivo de `adb.motivo_de_anr`, e o aviso vai para o aparelho:
+   `o <app> parou de responder (ANR) e foi fechado no <aparelho>: convidado sem CPU`. A contagem é por etapa, não por
+   tentativa. Prazo vencido vira `kind=step_deadline`, não "IA indisponível". `hide_error_dialogs` continua 1.
+4. **A identidade do alvo vem da legenda, antes de qualquer efeito.** OPEN_POST ganha `caption_contains` (o
+   planejador copia um trecho literal do pedido), e a pós-condição exige a legenda na tela. LIKE_POST, OPEN_COMMENTS e
+   CREATE_COMMENT têm guarda de cartão (`card_guard`), e o balão de OPEN_COMMENTS (`card_control`
+   `id=row_feed_button_comment`) só vale no cartão da legenda. Sem a legenda na tela, `step_blocked`. Tudo como dado
+   no `catalogo.yaml` (ADR-052); pedido sem legenda segue como antes.
+5. **Fluxo só se aprende com prova.** `learn_from_run` só aprende de execução com TODAS as etapas `verified=true` e
+   congela como modelo também `bindings`, `band_guard` e `success_criteria`: etapa confirmada à mão não vira receita.
+6. **Convidado ocioso com interrupção acumulada pede reinício a frio, nunca reset.** A sonda de saúde lê a linha `cpu`
+   de `/proc/stat` e mede a fração em irq+softirq entre duas sondas. Aparelho ocioso (ninguém no controle) acima de
+   15% em 3 sondas seguidas recebe um `restart` rastreável (`requested_by='system'`), no máximo 1 a cada 6 h por
+   aparelho; depois disso, só o aviso no cartão. Nunca a escada de reparo (K-050).
+
+**Na mesma rodada**, sem decisão nova:
+
+- **Prévia fora da fila do aparelho:** com a IA no controle, a prévia não enfileira screencap próprio, e o painel
+  recebe o frame da observação da IA ([adendo v0.36](api-contract.md)). O `drain` espera só a etapa, o relógio do
+  convidado não é acertado com objetivo em execução, e o aviso de pressão diz CPU ou RAM conforme o ramo que disparou.
+- **Digitação atômica:** o texto é definido de uma vez (set text do UiAutomator2), e `mobile: type` fica só como
+  alternativa em pedaços. `AutoCompleteTextView` e `MultiAutoCompleteTextView` contam como campo, `typed_chars` é o
+  que está no campo, e `verified=false` quando o campo não é identificado. A regra nova de mascaramento do log do
+  Appium cobre o payload. A senha (`type_secret`) fica fora do escopo.
+- **Porta de sessão:** o contador no teto com sessão anterior ao boot do emulador gera uma releitura `observe_only`
+  (uma por janela); launcher ou outro app na frente não soma `unknown_streak` e vai para o aviso do aparelho;
+  "Verificar conta" não soma acima do teto. Sem migração.
+- **Orquestrador:** conta como fila só `running`/`paused` e mostra a saúde do aparelho nas sugestões.
+
+**Consequências.**
+
+- A lentidão do convidado vira demora e aviso no aparelho, não falha nem laço. A falha que sobra diz a causa
+  verdadeira (ANR com o convidado sem CPU, prazo da etapa, legenda ausente), e não "IA indisponível".
+- Os prazos em si não mudaram (`step_timeout_s` 180 s, `objective_timeout_s` 900 s): o C11 foi tratado só no nome do
+  prazo vencido e na projeção antes da recuperação.
+- Curtir e comentar agem só no post da legenda citada; um pedido sem legenda segue com o risco antigo de agir no post
+  errado.
+- Um aparelho ocioso pode ser reiniciado sozinho, sem apagar dados; o comando fica no histórico com
+  `requested_by='system'`.
+- O deploy desta rodada exige reiniciar o Appium (regra de log nova; procedimento do K-039).
+- **Pendências dos revisores:** a aprovação de texto não acompanha a etapa revisada na recuperação (volta a pedir
+  aprovação); o link "View all N comments" segue sem guarda de cartão; erro de adb no screencap da observação ainda
+  recria a sessão; a evidência de OPEN_POST mostra só o seletor "Posts", embora a pós-condição exija a legenda
+  (`textos_do_cartao_ausentes` em `executor._verify`); a causa do acúmulo de irq não está provada.
+
+**Evidências.**
+
+`real`:
+
+- **diagnóstico** sobre o banco, o `appium.log` e o adb do central (e31953 e 02ee9e), com os números acima;
+- **irq medido** em 28/09 ~21:45 UTC (adb só leitura, 10 s de `/proc/stat` com o aparelho ocioso): android-01 0% com
+  7,7 h no ar, android-06 21% com 68 h, android-04 90% com 44 h. Depois do `restart` pela plataforma
+  (`c-20260928214526-3354ad` e `c-20260928214526-abbb42`): 2,8% e 2,0%, e "Verificar conta" do andre no android-06
+  em 21 s (`c-20260928215311-3e76c5`, `session_ready`);
+- **prova da correção, navegação** (central em `93967d0`, android-06, 28/09): `r-20260928234657-bbdf3c` terminou
+  `succeeded`, 3/3 etapas comprovadas por observação, em 89 s, com 8 chamadas de IA, plano v1, sem efeito, 0
+  recriação de sessão, 0 ANR novo e leitura de tela p95 de 6,6 s (antes, 10–45 s);
+- **prova da correção, com efeito** (autorizada pelo dono em chat em 28/09; mesmo central e aparelho, persona andre):
+  `r-20260928235215-6eb84c` curtiu uma vez e comentou num post do perfil-alvo que NÃO era o da e31953 (já curtido;
+  curtir de novo descurtiria). 5/5 etapas comprovadas em 2 min 41 s, com 13 chamadas de IA, plano v1; o comentário
+  entrou inteiro por `mobile: replaceElementValue` (234 ms) e apareceu na lista como do andre; 0 recriação de sessão
+  e 0 ANR novo. O comentário não passou por aprovação humana por causa da política própria do perfil (K-052).
+
+`simulated`: `backend/tests/test_ui_ocupada.py`, `test_anr_sinal_proprio.py`, `test_previa_nao_disputa_com_a_ia.py`,
+`test_recuperacao_preserva_estado.py`, `test_digitacao_atomica.py`, `test_porta_de_sessao_no_teto.py`,
+`test_alvo_por_legenda.py`, `test_aprendizado_de_fluxo_com_prova.py` e `test_saude_do_convidado.py`; vitest
+`DeviceCard.preview.test.tsx` e `FocusPanel.test.tsx`. Suíte do backend 2848 ok em SQLite (só `test_backup` falha,
+como sempre fora do checkout com `config.yaml`); frontend typecheck ok e 656 testes ok.
+
+`not_run`: guarda de cartão (`card_guard`) num LIKE real (a 6eb84c escolheu o post por critério negativo, sem
+`caption_contains`; o caminho de efeito da decisão 4 está provado só em `simulated`); relógio do host em NTP (exige
+autorização); experimento com `hide_error_dialogs=0`; as pendências dos revisores listadas em Consequências.
+
+**Relação.** ADR-052 (a conferência do 18.1 era inerte no `AutoCompleteTextView`; o catálogo como dado ganhou
+`caption_contains`, `card_guard` e `card_control`); ADR-027 (a prévia sob demanda agora cede a vez à IA); ADR-007 e
+K-022 (receita só de execução comprovada); ADR-029 e ADR-040 (por que nada automático chega a `reset` num aparelho com
+conta real); ADR-019 (relógio); ADR-010 (o reinício é comando cercado); K-039 (Appium no deploy); K-047 a K-052;
+Fase 19 do plano-100.

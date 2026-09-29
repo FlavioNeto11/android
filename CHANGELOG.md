@@ -19,6 +19,42 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 (noite) — Falhas reiteradas do Instagram: diagnóstico medido, 9 correções e prova real (ADR-053)
+
+**Implantado** no central em 28/09 ~23:40 UTC (`93967d0`; Appium reiniciado pelo procedimento do K-039; agente do
+notebook em `0.1.0+93967d0`). Prova real de navegação (`r-20260928234657-bbdf3c`) e com efeito, curtir e comentar,
+autorizada pelo dono (`r-20260928235215-6eb84c`): objetivos `succeeded`, 0 recriação de sessão, 0 ANR novo
+([relatório §21](docs/relatorio-validacao.md)).
+
+Origem: o dono reclamou que `r-20260928165254-e31953` e `r-20260928195344-02ee9e` continuavam falhando e que os planos
+de melhoria não funcionavam. O diagnóstico mediu para onde foi o tempo (a IA ocupou 4,5% dos 925 s da 02ee9e) e achou
+12 causas confirmadas; nenhum dos 38 commits do dia tinha tocado as principais (Fase 19 do plano-100).
+
+- **UI ocupada não é sessão morta (19.1).** O 500 "hogging the main UI thread" do UiAutomator2 vira `DriverBusy`: a
+  leitura relê sem recriar a sessão (eram 305,6 s de 925 s em recriações na 02ee9e), e a ação não se repete. Swipe sem
+  pausa depois de encostar; scroll em faixa estreita usa a área rolável maior.
+- **ANR com sinal próprio (19.2).** `dumpsys activity exit-info` diz quando o app morreu; o foco vem da seção viva do
+  `dumpsys window`, não da "LAST ANR" (K-047, K-048). Uma reabertura sem IA por etapa; na segunda morte, falha com o
+  motivo. Prazo vencido vira `step_deadline`, não "IA indisponível".
+- **Prévia fora da fila do aparelho (19.3).** Com a IA no controle, o painel recebe o frame da observação da IA, com
+  prazo de 30 s e o selo "IA sem olhar a tela" (adendo v0.36); `drain` só da etapa; relógio não é acertado com
+  objetivo em execução; o aviso de pressão diz CPU ou RAM.
+- **Recuperação preserva o estado (19.4).** Não mata o app vivo, retoma da tela atual, não repete o LIKE comprovado e
+  mantém `commit_guard` e `bindings`.
+- **Digitação atômica (19.5).** O texto é definido de uma vez no campo (`mobile: replaceElementValue`), e o compositor
+  do Instagram (`AutoCompleteTextView`) conta como campo; regra nova de mascaramento do log do Appium (reiniciar o
+  Appium no deploy).
+- **Porta de sessão (19.6), alvo pela legenda (19.7), aprendizado só com prova e orquestrador (19.8).**
+  `caption_contains`, `card_guard` e `card_control` no catálogo como dado; contador de sessão vencido relê o aparelho;
+  `learn_from_run` só aprende de execução com todas as etapas comprovadas.
+- **Reinício a frio por interrupção acumulada (19.9).** Aparelho ocioso com mais de 15% da CPU em irq em 3 sondas
+  seguidas recebe um `restart` rastreável (no máximo 1 a cada 6 h), nunca a escada de reparo; medido 21% e 90% nos
+  aparelhos com dias no ar, ~2% depois do reinício (K-050).
+- Prova: `simulated` (suíte do backend 2848 ok em SQLite, frontend 656 ok, um teste por pacote que falhava antes);
+  `real` nas duas execuções acima. `not_run`: relógio do host em NTP, `hide_error_dialogs=0` e as pendências dos
+  revisores (ADR-053).
+- Documentação: ADR-053, K-047 a K-052, relatório §21, Fase 19 do plano-100, adendo v0.36.
+
 ## 2026-09-28 — Fase 18: conhecimento de app como dado e execução medida (branch `claude/app-conhecimento`; ADR-052)
 
 **Implantado** no central em 28/09 ~19:32 UTC (`a7fe364`; agente do notebook em `0.1.0+a7fe364`). Prova real da

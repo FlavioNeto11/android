@@ -74,6 +74,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-022 | Exclusões deliberadas de escopo | segurança/produto | decisão | 21/09 | vigente | `docs/decisoes.md#adr-022` | §7 do plano-100 |
 | ADR-023 | Ator declarado no Sonnet; modelo local fora do caminho principal | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-023` | 7.1, 7.8, 7.11 |
 | ADR-024 | Verificador barato com proteções, em vez de trocar o modelo | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-024` | 7.4, 7.10 |
+| ADR-053 | Falhas reiteradas do Instagram: UI ocupada relê, recuperação preserva o estado, ANR com sinal próprio, alvo pela legenda, reinício a frio por interrupção | execução/parque | decisão | 28/09 | vigente | `docs/decisoes.md#adr-053` | fase 19 |
 | K-001 | Harness de teste usava as portas do parque real | testes | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-001` | `base_console_port` |
 | K-002 | Checkout apaga `config.yaml` não versionado | operação | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-002` | ADR-011 |
 | K-003 | "malformed database schema" após reboot | banco | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-003` | `restore.ps1` |
@@ -98,6 +99,12 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-022 | Receita vazia aprendida e laço "tocar → voltar" | receitas/execução | erro | 23–24/09 | vigente | `docs/conhecimento/aprendizados.md#k-022` | `recipes.py`, `executor.py` |
 | K-023 | `Agent` com `isolation: remote` pode cair em worktree local | ferramentas | erro | 24/09 | vigente | `docs/conhecimento/aprendizados.md#k-023` | — |
 | K-024 | Caminho do Windows em string Python vira caractere de controle | ferramentas | erro | 25/09 | vigente | `docs/conhecimento/aprendizados.md#k-024` | T.4 |
+| K-047 | `dumpsys window` do Android 14 abre com a seção "LAST ANR": o primeiro `mCurrentFocus` é o congelado | automação/adb | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-047` | 19.2, ADR-053 |
+| K-048 | `hide_error_dialogs=1` transforma ANR em morte silenciosa do app (reason=6) | automação/adb | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-048` | 19.2, ADR-053 |
+| K-049 | O 500 "hogging the main UI thread" é UI ocupada, não sessão morta | automação/Appium | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-049` | 19.1, ADR-053 |
+| K-050 | Interrupção acumulada no convidado com dias no ar; `restart` devolve ~2% | parque/emuladores | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-050` | 19.9, ADR-053 |
+| K-051 | `farm-ci-runner` em "Ready" não quer dizer runner parado | CI/operação | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-051` | 18.4 |
+| K-052 | A política própria do perfil prevalece sobre o `approval_required` do catálogo | perfis/política | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-052` | 19.10, ADR-053 |
 
 ## Como localizar
 

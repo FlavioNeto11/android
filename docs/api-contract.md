@@ -2284,3 +2284,37 @@ de validação §17.
 - `type_text` devolve o que de fato entrou (item 18.1): `typed_chars` (real), `verified` (`true`, `false` ou `null`
   quando não há leitura ou campo), `completed_after_cut`, e, se incompleto, `missing` e `field_now`. Com texto
   incompleto, `enter` sai `false`.
+
+## Adendo v0.36 (28/09/2026) — prévia com a IA no controle e `type_text` sem `null` (itens 19.3 e 19.5, ADR-053)
+
+Sem mudança de forma na prévia: `StreamInfo` e o `frame` do `InstanceDTO` são os mesmos, sem status novo. Mudam a
+origem do frame, o prazo e os textos.
+
+- **Origem do frame.** Com a IA no controle (`control == "ai"`, de `ai_begin` a `ai_end`), a prévia não põe screencap
+  próprio na fila do aparelho, nos dois `preview_mode`. O frame do painel (evento `frame`) vem da observação da IA:
+  a observação só de árvore, com alguém olhando e o frame vencido no ritmo do nível, captura logo depois da árvore só
+  para o painel (`DeviceManager._previa_pela_observacao`). O modelo continua sem imagem; falha dessa captura é falha
+  da prévia, nunca da observação.
+- **Prazo do frame.** Com a IA no controle e a prévia não pausada, `frame.stale` e `stream.status` usam no mínimo
+  `FRAME_MAX_AGE_IA_S` = 30 s (`devices/manager.py::dto`); um `frame_max_age_ms` maior continua valendo. O painel usa
+  o mesmo número (`AI_FRAME_MAX_AGE_MS` em `DeviceCard.tsx`, conferido por teste). Motivo: entre duas ações da IA no
+  android-06 o menor intervalo foi 5,8 s e a mediana 21 s, e o limite do foco (6 s) acusava "Desatualizado" a cada
+  ciclo.
+- **Textos de `stream.detail`** (`devices/stream.py`): `live` diz "Tela ao vivo no ritmo da IA: um frame a cada
+  observação dela"; `stale` diz que a IA não olha a tela há tempo demais (decisão, ação ou leitura demorada, ou
+  aparelho sobrecarregado), e não que a captura atrasou. `capture_error`, `worker_offline` e `paused` não mudam.
+- **Painel** (`features/devices/streamState.ts`): com `instance.control === 'ai'`, o selo do frame velho é "IA sem
+  olhar a tela" (aviso), decidido pelo `control` e não pelo `stream.status` guardado, que pode ser o `live` do último
+  `instance.updated`.
+- **Avisos do aparelho** (`attention`): o de pressão diz o recurso que disparou ("Convidado sob pressão de CPU", "de
+  RAM" ou "de CPU e RAM") com o remédio de cada um. Novo: "Convidado com interrupções acumuladas: …" quando o
+  reinício a frio por interrupção (item 19.9) de menos de 6 h não resolveu; o reinício em si é um `restart` com
+  `requested_by='system'`, visível no histórico de comandos.
+- **`type_text`** (revê o v0.35): o texto é definido de uma vez no campo (`mobile: replaceElementValue`), com
+  `mobile: type` só como alternativa em pedaços. `typed_chars` é o que está no campo; `verified` não sai mais `null`:
+  sem leitura da tela ou sem o campo identificado, sai `false` com `reason`. `AutoCompleteTextView` e
+  `MultiAutoCompleteTextView` contam como campo. `type_secret` não mudou.
+
+Provas: `simulated` (`backend/tests/test_previa_nao_disputa_com_a_ia.py`, `test_saude_do_convidado.py`,
+`test_digitacao_atomica.py`; vitest `DeviceCard.preview.test.tsx` e `FocusPanel.test.tsx`). `real` da digitação:
+`r-20260928235215-6eb84c`, comentário inteiro em 234 ms ([relatório §21](relatorio-validacao.md)).

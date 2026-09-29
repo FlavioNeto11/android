@@ -422,6 +422,23 @@ Design: [`design/conhecimento-de-app.md`](design/conhecimento-de-app.md). Origem
 | 18.8 | **Fatia 5: conhecimento aprendido** (tela ou ação nova vira candidata com proveniência, validada e publicada como as skills) | proposta ao dono | G |
 | 18.9 | **Nomes históricos sem app**: a tabela `instagram_profiles`/`instagram_credentials`, o prefixo de rota `/api/instagram/…` e o painel que os usa passam a nomes do perfil (migração nova, versão de contrato com rota antiga como apelido); revisar se `dm_*`/`comment_*` e os baldes do núcleo social são vocabulário de app ou de rede social | integração das fatias 2–4 (28/09) | G |
 
+### Fase 19 — Falhas reiteradas do Instagram: diagnóstico medido e correções · 10 itens (pedido do dono de 28/09/2026; ADR-053)
+
+Origem: as execuções `r-20260928165254-e31953` e `r-20260928195344-02ee9e` e a queixa do dono de que os planos de melhoria não funcionavam. Diagnóstico (causas C1–C12), correções e provas: [relatório §21](relatorio-validacao.md). Implantado em `93967d0`.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 19.1 | **UI ocupada não é sessão morta** (`automation/driver.py::DriverBusy`): a leitura relê com recuo sem recriar a sessão do Appium; ação com UI ocupada não se repete (efeito incerto); swipe sem pausa depois de encostar; scroll em faixa estreita usa a área rolável maior, e a sobreposição aberta volta sem IA (K-049) | C2, C6 (e31953, 02ee9e) | M |
+| 19.2 | **ANR com sinal próprio e foco vivo** (`Adb.app_deaths` pelo `exit-info`; foco da seção viva, não da "LAST ANR"; K-047, K-048): `open_app` espera o foco; uma reabertura sem IA por etapa e, na segunda morte, falha com o motivo; prazo vencido vira `step_deadline` | C3, C9, C11 | M |
+| 19.3 | **Prévia fora da fila do aparelho**: com a IA no controle, o painel recebe o frame da observação da IA (`FRAME_MAX_AGE_IA_S`, adendo v0.36); `drain` só da etapa; relógio não é acertado com objetivo em execução; aviso de pressão diz CPU ou RAM | C7, C12 | M |
+| 19.4 | **Recuperação que preserva estado**: não faz force-stop do app vivo em primeiro plano; retoma da tela atual; atravessa o efeito comprovado sem repeti-lo (um LIKE repetido descurte); herda `commit_guard`, `bindings` e `draft_meta`; falha com motivo se a projeção não cabe no tempo restante | C4 | M |
+| 19.5 | **Digitação atômica**: texto definido de uma vez (set text do UiAutomator2), `mobile: type` só como alternativa em pedaços; `AutoCompleteTextView` conta como campo; `typed_chars` é o que está no campo; `verified=false` sem campo identificado; regra nova de mascaramento do log do Appium | C5 | M |
+| 19.6 | **Porta de sessão com contador vencido**: teto gravado antes do boot do emulador gera uma releitura `observe_only` por janela; launcher ou outro app na frente não soma `unknown_streak` e vai para o aviso do aparelho; "Verificar conta" não soma acima do teto | C8 | P |
+| 19.7 | **Identidade do alvo pela legenda**: `caption_contains` em OPEN_POST (a pós-condição exige a legenda), `card_guard` em LIKE_POST, OPEN_COMMENTS e CREATE_COMMENT, `card_control` no balão dos comentários; sem a legenda na tela, `step_blocked`; tudo no `catalogo.yaml` | C10 | M |
+| 19.8 | **Aprender só com prova e orquestrador**: `learn_from_run` só com todas as etapas `verified=true`, templatizando `bindings`, `band_guard` e `success_criteria`; fila do orquestrador só `running`/`paused`; saúde do aparelho nas sugestões | C12 | P |
+| 19.9 | **Reinício a frio por interrupção acumulada** (K-050): fração irq+softirq entre duas sondas de saúde; aparelho ocioso acima de 15% em 3 sondas seguidas → `restart` rastreável, no máximo 1 a cada 6 h, nunca a escada de reparo | C1 (medido em 28/09) | P |
+| 19.10 | **Prova com efeito (curtir e comentar)** num post que não seja o da e31953 (já curtido; repetir descurtiria). Dependia de autorização do dono, dada em chat em 28/09; feita em `r-20260928235215-6eb84c` (relatório §21) | pedido do dono (28/09) | — |
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

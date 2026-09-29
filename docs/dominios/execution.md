@@ -259,6 +259,9 @@ Provas (`simulated`), em `backend/tests/test_habilidades_na_execucao.py`:
   Só lê `skill_versions`; fluxo nunca escreve em tabela de skill.
 - Prova (`simulated`): `test_habilidades_na_execucao.py::test_fluxo_nao_se_aprende_de_skill_nem_do_comando_que_uma_skill_publicada_cobre`;
   na fatia, com `ai.flows` ligado, a execução de skill deixa `flows` vazio.
+- **Só com prova (ADR-053):** `learn_from_run` recusa execução com etapa `succeeded` sem `verified=true` (confirmada
+  à mão), em qualquer versão do plano, e congela como modelo também `bindings`, `band_guard` e `success_criteria`.
+  Prova (`simulated`): `test_aprendizado_de_fluxo_com_prova.py`.
 
 ## Proteções herdadas
 
@@ -275,6 +278,22 @@ principais:
 | incerto nunca repetido sozinho | `StepExecutor._run_step`, `Scheduler._apply`; saída só por `RunService.resolve` ou sonda (`commands/reconciler.py`) | falha depois do disparo é `uncertain`, nunca nova tentativa |
 | aprovações e portas antes da posse | `Scheduler.policy_gate`, `AppState._draft_gate`, `AppState._approval_gate` | política, limite, rascunho e aprovação sem consumir tentativa nem IA |
 | prova por pós-condição | `StepExecutor._verify` | sucesso é observado, não declarado; a estratégia nunca declara o próprio sucesso |
+
+## Lentidão do aparelho: UI ocupada, ANR e recuperação (ADR-053)
+
+Convidado lento vira demora e aviso no aparelho, não falha nem laço (medido em `r-20260928165254-e31953` e
+`r-20260928195344-02ee9e`, em que a IA ocupou 4,5% do tempo). O 500 de UI ocupada do UiAutomator2 é `DriverBusy`: a
+leitura relê com recuo (até 3 vezes, 4 s) sem recriar a sessão do Appium, e a ação com UI ocupada fica com efeito
+incerto, sem repetição (K-049). O ANR tem sinal próprio: com `hide_error_dialogs=1` o app morre calado e o launcher
+volta (K-048), então o executor lê `dumpsys activity exit-info` (`Adb.app_deaths`) e o foco da seção viva do
+`dumpsys window` (K-047); com morte do app na etapa, reabre uma vez sem IA e, na segunda, a etapa falha dizendo que o
+app parou de responder com o convidado sem CPU. Prazo vencido é `kind=step_deadline`, não "IA indisponível". A
+recuperação automática não faz force-stop do app vivo em primeiro plano quando a falha foi de prazo, IA ou guarda:
+retoma da tela atual, atravessa o efeito comprovado sem repeti-lo (um LIKE repetido descurte), herda `commit_guard`,
+`bindings` e `draft_meta`, e falha com motivo se a projeção das etapas refeitas não cabe no tempo restante. Pendências:
+a aprovação de texto não acompanha a etapa revisada, e o erro de adb no screencap da observação ainda recria a sessão.
+Prova: `simulated` (`test_ui_ocupada.py`, `test_anr_sinal_proprio.py`, `test_recuperacao_preserva_estado.py`) e `real`
+em `r-20260928234657-bbdf3c` e `r-20260928235215-6eb84c` ([relatório §21](../relatorio-validacao.md)).
 
 ## Recursos declarativos (fase H, parte 1)
 

@@ -1397,3 +1397,114 @@ Expecting ',' delimiter" — o esquema do rascunho vai no texto desde o K-042, e
 escape. Agora a geração repete uma vez só nesse caso (orçamento e recusa não repetem). Depois do deploy, o mesmo lote
 de 1 (`lote-20260928201339-a1543f`) saiu `ready` em 30 s. O deploy esperou a execução real do dono em andamento
 (`r-20260928195344-02ee9e`) terminar antes de reiniciar o central.
+
+## 21. Falhas reiteradas do Instagram — diagnóstico medido, correções e prova real (28/09/2026, ADR-053)
+
+**Origem.** O dono reclamou em 28/09 que execuções como `r-20260928165254-e31953` e `r-20260928195344-02ee9e`
+continuavam falhando e que os planos de melhoria não funcionavam. As melhorias do dia (ADR-052, digitação conferida,
+projeção) não tocaram o que derrubava essas execuções: nenhum dos 38 commits do dia mexeu nos mecanismos C2, C3, C4 e
+C7 abaixo. Placar do Instagram: 24 de 31 objetivos com sucesso de 20 a 25/09; 1 de 7 em 27–28/09; 0 de 5 em 28/09.
+
+**Diagnóstico.** Workflow de 109 agentes: 51 causas examinadas, 12 confirmadas por dois céticos (um refazendo as
+consultas ao banco, aos logs e ao adb; outro lendo o código). Na 02ee9e a IA ocupou 41 s de 925 s (4,5%).
+
+| Causa | O que acontecia | Medida |
+|---|---|---|
+| C1 | Substrato: android-06 (2 vCPU, 2 GB) com a CPU saturada durante a tarefa, sem falta de RAM | load 15–35, 48–57% em irq |
+| C2 | O 500 transitório do UiAutomator2 ("waiting for the root AccessibilityNodeInfo … hogging the main UI thread") tratado como sessão morta: sessão do Appium recriada | 02ee9e: 5 recriações = 305,6 s de 925 s; e31953: 4 = 214 s |
+| C3 | `hide_error_dialogs=1` (`adb.py`): cada ANR em primeiro plano vira morte silenciosa (`exit-info` reason=6), o launcher volta, e a IA reabre | mortes do Instagram: 5 na 02ee9e, 6 na e31953 |
+| C4 | A recuperação fazia force-stop do Instagram VIVO (folha de comentários aberta, e31953) e podava o plano na fronteira do like, sem `commit_guard` nem `bindings.content` | 448,7 s perdidos |
+| C5 | `mobile: type` corta a cauda do texto (~10 s por chamada); a conferência era inerte: o compositor é `AutoCompleteTextView`, e `hierarchy.py` só reconhecia `EditText` | comentário com 22 de 125 caracteres |
+| C6 | Scroll desenhado numa faixa estreita da grade, com pausa depois de encostar: toque longo e o primeiro ANR | e31953: faixa de 140 px sobre uma miniatura |
+| C7 | Prévia do painel (screencap a 1 s) na mesma fila única do aparelho; o `drain` esperava futuros da prévia | — |
+| C8 | Porta de sessão bloqueava por `unknown_streak` antigo | android-01: ee9f21, 3e5ad8, 7b32d6 e c17cec bloqueadas em 2–13 ms por um contador de 26/09 |
+| C9 | `Adb.current_focus` lia a seção congelada "WINDOW MANAGER LAST ANR" do Android 14: prova falsa de app na frente (K-047) | — |
+| C10 | OPEN_POST provava "Posts" para qualquer post; LIKE e OPEN_COMMENTS sem guarda de cartão (risco de agir no post errado) | — |
+| C11 | Prazos fixos (180 s por etapa, 900 s por objetivo) contam tempo de infraestrutura; prazo vencido aparecia como "IA indisponível" | — |
+| C12 | Higiene: relógio do host sem NTP; orquestrador contava `planned` antigas como fila; `learn_from_run` aprendia de execução com etapa confirmada à mão | — |
+
+**Correções.** Nove pacotes em branches `claude/falha-*`, cada um com um teste que falhava antes e revisão
+adversarial (quatro barrados pelo revisor e ajustados), integrados em `93967d0`. O commit é a ponta de cada branch.
+
+| Pacote | Commit | O que mudou | Teste |
+|---|---|---|---|
+| driver | `1a9c2ab` | `DriverBusy` para o 500 de UI ocupada; leitura relê com recuo sem recriar a sessão; ação com UI ocupada não se repete (efeito incerto); swipe sem pausa depois de encostar; scroll em faixa estreita usa área rolável maior, e sobreposição nova volta sem IA (`changed=false`) | `test_ui_ocupada.py` |
+| anr | `11007f9` | leitura de `dumpsys activity exit-info`; foco da seção viva; `open_app` espera o foco e devolve `focused`; com morte do app na etapa, 1 reabertura sem IA e, na segunda, falha com o motivo do ANR e "convidado sem CPU"; prazo vencido vira `kind=step_deadline`; `hide_error_dialogs` continua 1 | `test_anr_sinal_proprio.py` |
+| previa | `c1df97a` | com a IA no controle, a prévia não enfileira screencap próprio e o painel recebe o frame da observação da IA (prazo de frame maior, backend e painel); `drain` só da etapa; relógio não é acertado com objetivo em execução; aviso de pressão diz CPU ou RAM | `test_previa_nao_disputa_com_a_ia.py`, `DeviceCard.preview.test.tsx`, `FocusPanel.test.tsx` |
+| recuperacao | `fa64b43` | sem force-stop do app vivo em primeiro plano quando a falha foi de prazo, IA ou guarda; retoma da tela atual; corte na fronteira de efeito reinclui a navegação sem repetir o LIKE; preserva `commit_guard` e `bindings`; falha com motivo se o tempo restante não cabe na projeção | `test_recuperacao_preserva_estado.py` |
+| digitacao | `5c90ded` | texto definido de uma vez (set text do UiAutomator2), `mobile: type` só como alternativa em pedaços; `AutoCompleteTextView`/`MultiAutoCompleteTextView` são campo; `typed_chars` é o que está no campo; `verified=false` sem campo identificado; regra nova de mascaramento do log (reiniciar o Appium no deploy). `type_secret` fora do escopo | `test_digitacao_atomica.py` |
+| porta | `8691413` | contador no teto com sessão anterior ao boot do emulador gera 1 releitura `observe_only` (trava por janela); launcher ou outro app na frente não soma `unknown_streak` e vai para o aviso do aparelho; "Verificar conta" não soma acima do teto. Sem migração | `test_porta_de_sessao_no_teto.py` |
+| alvo | `60fdb65` | OPEN_POST ganha `caption_contains` (o planejador extrai), e a pós-condição exige a legenda na tela; LIKE/OPEN_COMMENTS/CREATE_COMMENT com `card_guard`, OPEN_COMMENTS com `card_control` `id=row_feed_button_comment`; sem a legenda, `step_blocked`. Catálogo como dado | `test_alvo_por_legenda.py` |
+| higiene | `c9d200e` | `learn_from_run` só aprende com TODAS as etapas `verified=true` e templatiza `bindings`, `band_guard` e `success_criteria`; orquestrador conta como fila só `running`/`paused` e mostra a saúde do aparelho nas sugestões | `test_aprendizado_de_fluxo_com_prova.py` |
+| irq | `93967d0` | `adb.guest_pressure` traz a linha `cpu` de `/proc/stat`; o `DeviceManager` mede a fração de interrupção entre duas sondas; aparelho OCIOSO acima de 15% em 3 sondas seguidas → `restart` rastreável (`requested_by='system'`), no máximo 1 a cada 6 h, nunca a escada de reparo | `test_saude_do_convidado.py` (4 novos) |
+
+**Achado medido antes do deploy (`real`, central, 28/09 ~21:45 UTC).** Com adb só de leitura e 10 s de `/proc/stat`
+com o aparelho ocioso, a fração de CPU em interrupção (irq+softirq) acompanha o tempo no ar: android-01 0% (7,7 h no
+ar), android-06 21% (68 h), android-04 90% (44 h). Depois do `restart` (não `reset`) pela plataforma (comandos
+`c-20260928214526-3354ad` e `c-20260928214526-abbb42`): android-06 2,8% e android-04 2,0%; "Verificar conta" do andre
+no android-06 em 21 s (`c-20260928215311-3e76c5`, `session_ready`). A causa do acúmulo não está provada (K-050).
+
+**Implantação (`real`).** `scripts/deploy.ps1` no central em 28/09 ~23:40 UTC: `93967d0`. O Appium foi reiniciado
+pelo procedimento do K-039, por causa da regra de log nova; health `ok`, `problems: []`. Agente do notebook:
+`worker-install.ps1 -Simular` e depois a instalação; `0.1.0+93967d0`, `agent_outdated: false`. O runner de CI **não**
+ficou pausado: `Stop-ScheduledTask farm-ci-runner` deixou a tarefa "Ready", mas o `Runner.Listener` seguiu no ar, e o
+CI do `93967d0` rodou em prioridade ociosa durante as provas (K-051).
+
+**Prova `real` 1: só navegação** (central em `93967d0`, android-06). Execução
+`r-20260928234657-bbdf3c`: "abrir o perfil @anarabottinipsicopedagoga, abrir o post cuja legenda contém 'Ainda sobre
+Setembro Amarelo 2024' e abrir os comentários; não curtir, não comentar". Plano OPEN_PROFILE, OPEN_POST
+`{caption_contains}`, OPEN_COMMENTS `{caption_contains}`. Objetivo `succeeded`, 3/3 etapas comprovadas por observação,
+89 s (23:47:04–23:48:33 UTC), 8 chamadas de IA, plano v1 (sem recuperação), efeitos `[]`. A pós-condição de OPEN_POST
+só passa com a legenda presente (`textos_do_cartao_ausentes` em `executor._verify`), mas a mensagem da evidência
+mostra só o seletor "Posts": melhoria anotada.
+
+**Prova `real` 2: com efeito**, autorizada pelo dono em chat em 28/09 ("Curtir e comentar outro post"). Execução
+`r-20260928235215-6eb84c`, mesmo central e aparelho, persona andre (`@andre.carvalho9543`). Pedido: no perfil
+@anarabottinipsicopedagoga, a publicação mais recente cuja legenda NÃO contém "Ainda sobre Setembro Amarelo 2024"
+(essa está curtida pelo andre desde a e31953, e curtir de novo descurtiria); curtir uma vez e comentar um elogio
+simples.
+
+- Plano OPEN_PROFILE, OPEN_POST, LIKE_POST, OPEN_COMMENTS, CREATE_COMMENT; plano v1, sem recuperação. Execução
+  `completed`, objetivo `succeeded`, 5/5 etapas comprovadas, 23:52:25–23:55:05 UTC (2 min 41 s), 13 chamadas de IA.
+- A IA rolou a grade e conferiu as legendas para NÃO pegar o post excluído. O critério era negativo, então o plano
+  não levou `caption_contains`, e a guarda de cartão não entrou em jogo nesta prova.
+- Curtida: toque às 23:53:45Z; pós-condição `selector:desc==Liked` comprovada pela árvore local, sem IA.
+- Comentário: toque em "Post" às 23:54:57Z; o texto inteiro, "rapaz, que post bacana esse, com carinho de quem quer
+  fazer diferença 👏 é isso aí!", apareceu na lista como do andre.carvalho9543. Digitação por
+  `mobile: replaceElementValue` em 234 ms (HTTP 200), com o texto mascarado no `appium.log` como `**SECURE**` (0
+  ocorrências do texto no log).
+- **Achado de processo (K-052):** o comentário NÃO passou por aprovação humana. A política própria do perfil do andre
+  tem `CREATE_COMMENT = autonomous` (origem `own`), que prevalece sobre o `approval_required` do catálogo. O sistema
+  seguiu a configuração; o dono tinha ouvido que o texto passaria pela aprovação no painel, sem que a política do
+  perfil tivesse sido conferida antes.
+
+**Antes × agora** (android-06; janelas do `appium.log` e `exit-info` do Instagram antes e depois de cada execução).
+
+| | 02ee9e (antes) | bbdf3c (agora, navegação) | 6eb84c (agora, com efeito) |
+|---|---|---|---|
+| Pedido | curtir e comentar no post "Ainda sobre Setembro Amarelo 2024" | abrir perfil, post e comentários, sem efeito | curtir e comentar em outro post do mesmo perfil |
+| Resultado | falhou | `succeeded`, 3/3 comprovadas | `succeeded`, 5/5 comprovadas |
+| Duração | ~16 min (925 s de objetivo; a IA em 41 s) | 89 s | 2 min 41 s |
+| Chamadas de IA | 12 | 8 | 13 |
+| Plano | — | v1, sem recuperação | v1, sem recuperação |
+| Sessão do Appium recriada | 5 (305,6 s) | 0 | 0 |
+| Linhas de UI ocupada | presentes (C2) | 0 | 0 |
+| Mortes do Instagram (ANR) | 5 | 0 novas (9 antes, 9 depois) | 0 novas (9 antes, 9 depois) |
+| `GET /source` | 10–45 s | n=18: p50 2075 ms, p95 6620 ms, máx 9070 ms | n=25: p50 830 ms, p95 4047 ms, máx 6333 ms |
+| Digitação | comentário cortado (C5) | — | texto inteiro, 234 ms |
+
+A e31953 (antes, o mesmo pedido de efeito no post da legenda): 31 chamadas, 18,7 min, falhou, 4 recriações de sessão
+(214 s), 6 mortes do Instagram e 448,7 s perdidos na recuperação.
+
+**`simulated`.** Suíte do backend no conjunto das oito correções: 2848 ok em SQLite (só `test_backup` falha, como
+sempre fora do checkout com `config.yaml`). Frontend: typecheck ok e 656 testes ok. Correção `irq` e vizinhos: 79 + 29
+ok. Os testes de cada pacote estão na tabela das correções.
+
+**`not_run`.**
+
+- Guarda de cartão (`card_guard`) num LIKE real: a 6eb84c escolheu o post por critério negativo, sem
+  `caption_contains`.
+- Relógio do host em NTP (exige autorização) e o experimento com `hide_error_dialogs=0`.
+- Pendências dos revisores: a aprovação de texto não acompanha a etapa revisada na recuperação (volta a pedir
+  aprovação); o link "View all N comments" ainda sem guarda de cartão; erro de adb no screencap da observação ainda
+  recria a sessão; a causa do acúmulo de irq.

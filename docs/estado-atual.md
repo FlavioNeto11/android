@@ -1,9 +1,22 @@
 # Estado atual — handoff
 
-**Revisado em 28/09/2026, depois da implantação da segunda evolução (`07fce91`).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 28/09/2026, depois da implantação das correções das falhas reiteradas (`93967d0`, ADR-053).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0`, central e agente do
+  notebook).** Diagnóstico medido de e31953 e 02ee9e (a IA ocupou 4,5% do tempo; o resto era o convidado saturado e o
+  código transformando lentidão em falha) e 9 correções: UI ocupada relê sem recriar a sessão, ANR com sinal próprio,
+  prévia fora da fila do aparelho, recuperação que preserva o estado, digitação atômica, porta de sessão, alvo pela
+  legenda, aprendizado só com prova e reinício a frio por interrupção acumulada. Prova `real` no android-06:
+  navegação `r-20260928234657-bbdf3c` (89 s, 3/3) e, com autorização do dono, curtir e comentar outro post em
+  `r-20260928235215-6eb84c` (2 min 41 s, 5/5, comentário inteiro); 0 recriação de sessão e 0 ANR novo nas duas
+  ([relatório §21](relatorio-validacao.md)). **Atenção:** o post "Ainda sobre Setembro Amarelo 2024" está curtido
+  pelo andre desde a e31953, e um LIKE repetido DESCURTE; antes de prometer aprovação de texto, confira a política do
+  perfil (o do andre publica comentário sem aprovação, K-052). **Próxima ação:** o estado do plano (`aplicar` da
+  Fase 19) e, com autorização do dono, o relógio do host em NTP; seguem abertos `hide_error_dialogs=0`, a guarda de
+  cartão num LIKE real e as pendências dos revisores (ADR-053).
 
 - **Fase 18 (ADR-052): fatias 1–4 IMPLANTADAS em 28/09 (`a7fe364`, central e agente do notebook); zero Python por
   app.** Prova `real`: "Verificar conta" pelo motor genérico confirmou lucas (android-01) e andre (android-06)

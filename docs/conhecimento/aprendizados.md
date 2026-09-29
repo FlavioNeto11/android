@@ -1073,3 +1073,122 @@ dia voltou a US$ 4,69.
 
 **Aplicabilidade.** Vigente. Ao restaurar a configuração depois de qualquer teste com modelo novo, mantenha a linha de
 preço dele. A regra do preço mais caro fica como está: ela existe para um fallback não cadastrado não sair de graça.
+
+### K-047 — O `dumpsys window` do Android 14 abre com a seção "WINDOW MANAGER LAST ANR": o primeiro `mCurrentFocus` é o congelado
+
+**Data:** 28/09/2026 · **Área:** automação, adb (ADR-053)
+
+**Sintoma.** Nas execuções `r-20260928165254-e31953` e `r-20260928195344-02ee9e` (android-06), `Adb.current_focus`
+"comprovava" o Instagram em primeiro plano com o launcher na tela. A prova de app na frente era falsa, e a IA agia
+sobre uma tela que não era a que o foco dizia.
+
+**Causa.** Depois de um ANR, o Android 14 guarda uma fotografia do window manager naquele instante e a imprime NO
+COMEÇO do `dumpsys window`, na seção "WINDOW MANAGER LAST ANR" (com cópia das "display contents" depois de "Last ANR
+continued"). O foco de agora só aparece depois, na seção viva. O código lia a primeira ocorrência de
+`mCurrentFocus=`. Delimitar a seção pelo cabeçalho seguinte não serve: a cópia congelada também tem cabeçalho de
+"display contents".
+
+**O que funcionou.** Ler a ÚLTIMA ocorrência da chave (`devices/adb.py::_ultima`) em `current_focus`,
+`system_dialog`, `ui_ready` e na confirmação do toque no diálogo (`11007f9`, pacote "anr").
+Prova `simulated`: `backend/tests/test_anr_sinal_proprio.py`.
+
+**Aplicabilidade.** Vigente para toda leitura de `dumpsys window` (e de qualquer `dumpsys` com seção histórica): nunca
+o primeiro casamento. Ao investigar à mão um foco estranho, procure "LAST ANR" na saída antes de confiar na linha.
+
+### K-048 — `hide_error_dialogs=1` transforma ANR em morte silenciosa do app (reason=6), e o launcher volta
+
+**Data:** 28/09/2026 · **Área:** automação, adb (ADR-053)
+
+**Sintoma.** O Instagram "sumia" no meio da etapa e o launcher voltava, sem diálogo nenhum. A IA entendia que o app não
+tinha aberto e o reabria; a partida a frio (28–51 s num convidado saturado) dava outro ANR, e o laço comia o prazo:
+5 mortes do Instagram na `r-20260928195344-02ee9e` e 6 na `r-20260928165254-e31953`.
+
+**Causa.** O preparo do aparelho (`Adb.prepare_for_automation`) grava `settings put global hide_error_dialogs 1`,
+para diálogo de erro não travar a automação. Com isso, todo ANR do app em primeiro plano vira morte direta do processo
+("user request after error", reason=6), e quem olha a tela vê só o launcher. O motivo fica registrado apenas em
+`dumpsys activity exit-info <pacote>`. O `logcat -b events` não serve de fonte: o buffer roda e a linha some.
+
+**O que funcionou.** Ler o `exit-info` (`Adb.app_deaths`, idade medida no relógio do convidado, na mesma chamada) e
+contar as mortes pela ETAPA: uma reabertura determinística sem IA; na segunda morte, a etapa falha dizendo que o app
+parou de responder (ANR) com o convidado sem CPU, e o aviso vai para o aparelho (`11007f9`). `hide_error_dialogs`
+continua 1. Prova `simulated`: `backend/tests/test_anr_sinal_proprio.py`.
+
+**Aplicabilidade.** Vigente enquanto o preparo gravar `hide_error_dialogs=1`; o experimento com 0 (diálogo visível)
+fica para outra rodada. "O app sumiu e voltou o launcher" num convidado lento: consulte o `exit-info` antes de reabrir.
+
+### K-049 — O 500 "root AccessibilityNodeInfo … hogging the main UI thread" é UI ocupada, não sessão morta
+
+**Data:** 28/09/2026 · **Área:** automação, Appium (ADR-053)
+
+**Sintoma.** O executor recriava a sessão do Appium (`DELETE` + `POST /session`) no meio da etapa: 5 recriações =
+305,6 s de 925 s na `r-20260928195344-02ee9e`, 4 = 214 s na `r-20260928165254-e31953`. Cada recriação custava 27–80 s
+num convidado já saturado e o deixava pior.
+
+**Causa.** O UiAutomator2 responde 500 com "waiting for the root AccessibilityNodeInfo … hogging the main UI thread"
+(ou "no active window") quando o app segura a thread de UI: o servidor está vivo e a sessão também. O código tratava
+qualquer 500 como `DriverError` de sessão.
+
+**O que funcionou.** `DriverBusy` (subclasse de `DriverError`) para esse 500 (`910f8d6`/`1a9c2ab`, pacote "driver").
+A leitura relê até 3 vezes com recuo de 4 s dentro do prazo da etapa, sem recriar a sessão; a ação com UI ocupada
+fica com efeito incerto e não é repetida pelo executor; só a sessão morta de verdade recria. Na prova real de 28/09
+(`r-20260928234657-bbdf3c` e `r-20260928235215-6eb84c`, android-06), a janela do `appium.log` teve 0 `POST /session`,
+0 `DELETE /session` e 0 linhas de UI ocupada. Prova `simulated`: `backend/tests/test_ui_ocupada.py`.
+
+**Aplicabilidade.** Vigente. Pendência: erro de adb no screencap da observação ainda recria a sessão.
+
+### K-050 — Interrupção acumulada no convidado com dias no ar (irq 21–90% ocioso) derruba as tarefas; `restart` devolve ~2%
+
+**Data:** 28/09/2026 · **Área:** parque, emuladores (ADR-053)
+
+**Sintoma.** O android-06 saturava durante as tarefas (load 15–35 em 2 vCPU, 48–57% da CPU em irq) com RAM sobrando;
+leitura de tela de 10–45 s, ANR em série e sessões recriadas.
+
+**Causa.** Medido em 28/09 ~21:45 UTC (real, central, adb só leitura, 10 s de `/proc/stat` com o aparelho ocioso): a
+fração de CPU em interrupção (irq+softirq) acompanha o tempo no ar. android-01: 0% com 7,7 h no ar; android-06: 21%
+com 68 h; android-04: 90% com 44 h. A causa do acúmulo **não está provada**.
+
+**O que funcionou.** `restart` (reinício a frio, NÃO `reset`) pela plataforma (`c-20260928214526-3354ad` e
+`c-20260928214526-abbb42`): android-06 a 2,8% e android-04 a 2,0%; "Verificar conta" do andre no android-06 em 21 s
+(`c-20260928215311-3e76c5`, `session_ready`). Automatizado em `93967d0`: a sonda de saúde mede a fração entre duas
+sondas e, com o aparelho ocioso acima de 15% em 3 sondas seguidas, abre um `restart` rastreável
+(`requested_by='system'`), no máximo 1 a cada 6 h por aparelho; nunca a escada de reparo, que chega a `reset` e
+apagaria a conta real. Prova `simulated`: `backend/tests/test_saude_do_convidado.py`.
+
+**Aplicabilidade.** Vigente. Aparelho lento sem falta de RAM: meça o irq ocioso antes de pedir mais memória. Se o
+reinício de menos de 6 h não resolver, o aviso fica no cartão, e é outra doença.
+
+### K-051 — `farm-ci-runner` em "Ready" não quer dizer runner parado: o `Runner.Listener` segue no ar
+
+**Data:** 28/09/2026 · **Área:** CI, operação
+
+**Sintoma.** Para validar o `93967d0` no central sem o CI disputando CPU com o parque, rodou-se
+`Stop-ScheduledTask farm-ci-runner`, e a tarefa apareceu "Ready". O CI do `93967d0` rodou assim mesmo, em prioridade
+ociosa, durante as provas reais.
+
+**Causa.** O processo que a tarefa lança (`run.cmd`) termina depois de deixar o `Runner.Listener` de pé. Parar a
+tarefa não encerra o Listener, e o estado "Ready" só diz que a tarefa não está rodando.
+
+**O que funcionou.** Conferir pelo lado da GitHub: `gh api repos/FlavioNeto11/android/actions/runners` (estado e
+`busy` do runner `central`). Pausar de verdade = `Stop-ScheduledTask farm-ci-runner` e encerrar os processos
+`Runner.Listener` e `Runner.Worker`.
+
+**Aplicabilidade.** Vigente. Antes de afirmar "runner pausado" num relatório, confira pela API. As provas de 28/09 à
+noite (ADR-053) rodaram com o CI em prioridade ociosa, não com o runner parado.
+
+### K-052 — A política própria do perfil prevalece sobre o `approval_required` do catálogo: comentário sem aprovação
+
+**Data:** 28/09/2026 · **Área:** perfis, política, processo (ADR-053)
+
+**Sintoma.** Na prova com efeito `r-20260928235215-6eb84c` (andre, android-06), o comentário foi publicado sem passar
+por aprovação humana no painel, embora o dono tivesse ouvido que o texto passaria por ela.
+
+**Causa.** A política do perfil do andre tem `CREATE_COMMENT = autonomous` com origem `own` (o perfil mudou), e a
+ordem das camadas é perfil → grupo → padrão do catálogo (`social/policy.py::policy_for`). O sistema seguiu a
+configuração corretamente; a promessa é que foi feita sem conferir a política do perfil.
+
+**O que funcionou.** Antes de prometer aprovação (ou de pedir autorização descrevendo-a), ler
+`GET /api/instagram/profiles/<id>/policy` e conferir `capabilities.CREATE_COMMENT` e `origin` (`own`, `group` ou
+`default`); `loosened` lista as ações com política mais frouxa que o padrão.
+
+**Aplicabilidade.** Vigente para toda prova com efeito em conta real: o pedido de autorização ao dono diz a política
+efetiva de cada ação, lida da API, e não a do catálogo.

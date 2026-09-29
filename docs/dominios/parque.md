@@ -181,6 +181,20 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
 Cada degrau emite `instance.remediation` (evento, não efêmero) com `{degrau, verb, command_id, motivo}` — o que
 faz o relatório de uso e o painel não confundirem reparo automático com comando manual.
 
+### Saúde do convidado: pressão e interrupção acumulada (ADR-053)
+
+Cada sonda de saúde que acha o framework vivo (`DeviceManager.conferir_saude` → `_conferir_pressao`) lê load, memória e
+a linha `cpu` de `/proc/stat` do convidado (`adb.guest_pressure`). **Pressão** vira aviso no cartão, sem degradar: load
+acima de 4× as vCPUs ou menos de 8% de RAM livre em duas sondas seguidas, e o texto diz o recurso que disparou
+("Convidado sob pressão de CPU", "de RAM" ou "de CPU e RAM") com o remédio de cada um; antes era sempre "mais RAM", o
+remédio errado para o android-06 de 28/09, que tinha RAM sobrando. **Interrupção acumulada** (`_conferir_interrupcoes`):
+a fração de CPU em irq+softirq entre duas sondas; com o aparelho ocioso (ninguém no controle, nem a IA nem uma pessoa)
+acima de 15% em 3 sondas seguidas (`IRQ_OCIOSO_MAX`, `IRQ_SONDAS`), a plataforma abre um `restart` rastreável
+(`on_health_restart` → `AppState._reiniciar_por_saude`, `requested_by='system'`), no máximo 1 a cada 6 h por aparelho;
+se não resolver, fica só o aviso "Convidado com interrupções acumuladas". É um caminho à parte da escada acima: nunca
+chega a `reset`, que apagaria a conta real logada. Medido em 28/09: irq ocioso de 21% (68 h no ar) e 90% (44 h) voltou a
+~2% depois do `restart` ([K-050](../conhecimento/aprendizados.md), [relatório §21](../relatorio-validacao.md)).
+
 ## Capacidades — implementação e validação
 
 | Capacidade | Implementação | Validação | Origem |
