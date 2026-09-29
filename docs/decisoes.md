@@ -3056,6 +3056,13 @@ aberto) e **decisão técnica** (o desenho, sintetizado de três propostas avali
     `correcao_de_ensino`), com o operador da sessão;
   - a nota da resolução e do cancelamento de comando passa pela triagem de credencial.
 
+  **Fase 22 (29/09, noite; [relatório §25](relatorio-validacao.md)):**
+  - sinal de GESTO é um por `(kind, source_ref)`, e o primeiro autor fica; o voto do D2 segue por pessoa;
+  - a trilha nas lojas é acessória (savepoint e log, nunca derruba a escrita); a trilha da adoção de fluxo é o
+    registro do gesto (a falha dela desfaz a adoção; a alternativa acessória é decisão do dono);
+  - a tela da falha grava o nome declarado, ou o tipo do motor nas telas protegidas, e a linha sem tela do backlog
+    mede o trio em qualquer tela.
+
   **As polaridades dos três sinais são escolha do pacote e esperam a ratificação do dono.** Hoje o único consumidor é
   o negativo humano da régua diária:
   - `cancelou_execucao`: neutro antes de rodar, negativo depois;

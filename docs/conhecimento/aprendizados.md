@@ -1415,3 +1415,27 @@ a mediana era 6,1% contra 2,4%.
 
 O gasto do emulador ocioso no host (1,2–1,5 CPU por aparelho com `swiftshader_indirect`) é da frente do renderizador
 ([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado.
+
+### K-061 — No PostgreSQL, erro engolido dentro de `tx()` aborta a transação e o COMMIT vira ROLLBACK calado
+
+**Data:** 29/09/2026 · **Área:** banco, aprendizado (ADR-054, item 22.5)
+
+**Sintoma.** Revisão do A5. O ouvinte do D1 grava a trilha dentro da transação de `FlowStore`/`RecipeStore` e engole a
+falha para "nunca derrubar o save". No PostgreSQL, isso derrubava o save do mesmo jeito, e pior: em silêncio. A loja
+devolvia o id de um fluxo que não fora gravado.
+
+**Causa.** No PostgreSQL, qualquer erro numa transação a deixa abortada: as instruções seguintes são recusadas
+(`current transaction is aborted`), e o COMMIT final vira ROLLBACK sem levantar nada. O `try/except` do Python não
+desfaz o estado do servidor. No SQLite, a transação segue viva, e a suíte passa.
+
+**O que funcionou.**
+
+- `Database.savepoint()` em volta de tudo o que o bloco tocou, DENTRO do `try` que engole. Fora do `try`, o savepoint
+  não vê a falha, e o RELEASE numa transação abortada derruba tudo.
+- A defesa no `tx()` de fora: a transação abortada antes do COMMIT vira `TransacaoAbortada` (500), em vez de perda
+  calada.
+- A imitação `tests/aborto_do_postgres.embrulhar(db)`, que faz o SQLite recusar as instruções depois de um erro, pega o
+  esquecimento na suíte de sempre.
+
+**Aplicabilidade.** Vigente. Todo `except` que engole erro de SQL dentro de uma transação alheia precisa do savepoint.
+Candidatos conhecidos em [banco.md](../banco.md).

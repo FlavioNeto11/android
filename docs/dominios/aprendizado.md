@@ -39,7 +39,8 @@ infraestrutura e apresentação, com a catraca de camadas do ADR-030 e zero `Any
 Tudo o que o livro grava cabe nas sete tabelas da 055: `learning_items`, `learning_transitions` (a trilha única,
 inclusive `receita:<id>` e `fluxo:<id>`), `learning_signals`, `learning_evidence`, `learning_exposures`,
 `learning_daily` (a régua diária durável) e `learning_backlog`. Em tabela legada, o aprendizado só escreve o status de
-receita e fluxo, `attempts.failure_kind`, `steps.failure_kind` e `attempts.failure_screen` (este ainda sem escritor).
+receita e fluxo, `attempts.failure_kind`, `steps.failure_kind` e `attempts.failure_screen` (com escritor desde a
+Fase 22, item 22.3; ver "O que mais falha").
 
 ## O ciclo e o D1
 
@@ -97,8 +98,14 @@ e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta
 
 ## Sinais: o que a pessoa já faz e o botão opcional (D2)
 
-Os gestos viram `learning_signals`, idempotentes por `(kind, source_ref, created_by)`. Sinal de execução simulada não
-promove nada. Nota com cara de credencial não é gravada (`note_refused=1`, ou 409 `note_looks_secret` no voto).
+Os gestos viram `learning_signals`. Os sinais de GESTO (os sete: `confirmou_a_mao`/`repetiu_item`/`abandonou_item`,
+`repetiu_execucao`, `respondeu_pergunta`, `tomou_controle`, `cancelou_execucao`, `comando_incerto_resolvido` e
+`correcao_de_ensino`) são um por `(kind, source_ref)`, qualquer que seja o autor, e o primeiro autor fica
+(`registrar_sinal(um_por_evento=True)`, leitura e escrita numa transação sob a trava do `Database`; 22.1). O motivo: a
+régua conta linhas, e pedir o controle, desistir e outra pessoa pedir na mesma tentativa contaria em dobro. O índice
+`(kind, source_ref, created_by)` continua sendo o do voto do D2, em que duas pessoas são duas opiniões. A garantia vale
+dentro de um processo; com mais de um, precisaria de um índice único parcial (migração, não criada). Sinal de execução
+simulada não promove nada. Nota com cara de credencial não é gravada (`note_refused=1`, ou 409 `note_looks_secret` no voto).
 
 | Sinal | Quem grava | Polaridade |
 |---|---|---|
@@ -120,8 +127,9 @@ diária.
 
 **Os três escritores de 29/09 (`d33b8ab`, `61c3bad`).**
 
-- **Autor.** O `created_by` é o operador da SESSÃO (`autor_do_gesto`: sem sessão, `panel`; nunca `sistema`). Os
-  gestos do A2 ainda saem `panel`.
+- **Autor.** O `created_by` é o operador da SESSÃO (`autor_do_gesto`: sem sessão, `panel`; nunca `sistema`). Desde
+  a Fase 22 (22.1) os gestos do A2 também: resolver o item, repetir a execução, responder a pergunta e tomar o
+  controle levam o operador pelas rotas (`por=`) até o campo `quem` das costuras.
 - **Cancelamento.** É um sinal por episódio: só o gesto que abre o cancelamento grava. O clique repetido, da mesma
   pessoa ou de outra, não grava enquanto o cancelamento já vale (`cancelling`, ou `completed_with_issues` com
   `cancel_requested=1`). A execução reaberta e cancelada de novo é outro episódio: `source_ref =
@@ -251,6 +259,36 @@ com o banco aberto só para leitura.
   `promover_licao` e `promover_tela`.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
 
+## Fase 22 (29/09, noite): o que mudou nas regras
+
+- **Nota do comando (22.2).** O painel manda só o texto da pessoa e `origin: 'panel'`; o backend compõe o contexto
+  (", no painel a partir de <instance_id>", ou ", a partir de <instance_id>" quando o autor é `panel`), e a triagem
+  vê só o texto da pessoa. `result.note` guarda só esse texto, e `result.origin='panel'`. O `requested_by` passa pela
+  mesma triagem sempre que vier, com ou sem sessão (409 `note_looks_secret`, nada gravado). O prefixo do cliente
+  antigo só é reconhecido com o `instance_id` do próprio comando.
+- **Tela da falha (22.3).** `executor.tela_da_falha` classifica a última árvore observada pela tentativa com o
+  `telas.yaml` do app da etapa; `scheduler._run_guarded` a leva no `StepOutcome`, e `repository.finish_attempt` grava
+  `attempts.failure_screen` no mesmo UPDATE de `failure_kind`, só quando há tipo de falha. O valor é o nome de uma
+  regra declarada, ou o tipo do motor nas telas protegidas (`desafio`, `dois_fatores`, `login`, alinhado a
+  `licoes.TELAS_EXCLUIDAS`); NULL quando a tela é desconhecida, outro app está na frente, o app não tem conhecimento
+  ou não houve observação nesta tentativa. Nunca texto da tela. A trava achada dentro de uma ferramenta devolve a tela
+  pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`. As telas aprendidas ficam fora, para a
+  chave do grupo não depender do modo do livro.
+- **Backlog sem falso corrigido (22.3).** A chave do grupo não mudou, mas a MEDIDA de uma linha segue
+  `ChaveDoGrupo.abrange`: a linha sem tela (as abertas antes do escritor, e as de tela desconhecida) mede o mesmo
+  `(app, capability, failure_kind)` em QUALQUER tela, na linha de base, na prova e na reincidência; a linha com tela
+  também conta, na prova, o EXCESSO das ocorrências do mesmo trio em tela desconhecida acima da base dela
+  (`excesso_sem_tela`), para não virar corrigida quando o classificador deixar de reconhecer a tela; o motivo diz isso. O agrupamento do relatório segue exato, para não contar a mesma tentativa duas vezes.
+- **Adoção de fluxo com trilha (22.4).** Adotar, desfazer a adoção e publicar a versão de quem adotou gravam
+  `learning_transitions` (kind fluxo) na mesma transação, com a pessoa que decidiu e motivo fixo ("adotado pela
+  habilidade X" / "devolvido pela habilidade X"), mapeando o status pelo `estado_nativo`. Só uma pessoa adota ou
+  devolve (o sistema recebe `TransitionForbidden`). Política atual: a trilha é o registro do gesto, e a falha dela
+  desfaz a adoção (como no interruptor antigo); a alternativa (trilha acessória, com savepoint e log) é decisão do
+  dono. Efeito visível: o fluxo adotado e devolvido conta como decidido por pessoa e sai de "Revisar".
+- **Trilha nas lojas sem derrubar o save (22.5).** O ouvinte do A5 envolve a trilha e o veto em `db.savepoint()`
+  DENTRO do `try` que engole a falha; e o `tx()` de fora, no PostgreSQL, confere a transação abortada antes do COMMIT
+  (`TransacaoAbortada`): o esquecimento que antes perdia dado calado (o COMMIT virava ROLLBACK) agora falha alto.
+
 ## Onde no painel
 
 - **Aprendizado** (oitava seção da barra; `features/aprendizado/`), com a contagem de "Para aprovar" no item da barra:
@@ -277,8 +315,13 @@ lista de linhas `{kind, ref, titulo, estado, papel, braco, failure_kind, n}`. O 
   - a falha vem de `attempts.failure_kind` (o legado é classificado na leitura); sai só o tipo, nunca o texto do erro.
 - **Grupos:**
   - uma linha por item em cada grupo;
-  - o item que NASCEU da execução vai só para `candidatas`: a lição, a voz e a tela (`telas.minerar(run_id)` passa o
-    `run_id` ao nascimento);
+  - o item que NASCEU da execução vai só para `candidatas`: a lição, a voz, a tela (`telas.minerar(run_id)` passa o
+    `run_id` ao nascimento) e, desde a Fase 22 (22.6), a preferência. A preferência nasce na curadoria com observações
+    de 3 ou mais execuções; o `run_id` do nascimento é o da observação que FECHOU o limiar (a n-ésima execução
+    distinta, na ordem dos sinais), e o papel diz isso sem vendê-la como causa única ("preferência que nasceu com a
+    evidência desta execução, entre N execuções"). A proveniência guarda `limiar: {run_id, execucoes}`, fora do
+    conteúdo (não muda `content_hash` nem veto). As transições do sistema dela levam o `run_id` da evidência decisiva
+    observada desde a última mudança de estado; sem evidência nova decisiva, `run_id` nulo;
   - a tela, a voz e a preferência que já existiam e mudaram de estado com o `run_id` também entram em `candidatas`
     ("tela que já existia, desligada nesta execução…");
   - a lição tocada que não nasceu ali vai para `licoes` ("exposta ao prompt", "braço de controle").
@@ -309,9 +352,7 @@ decisão do dono.
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
 
-- **A2:** `failure_screen` sem escritor (quando for gravado, a linha do backlog aberta com a tela vazia pode cair a zero
-  e parecer corrigida); os gestos do A2 (resolver item, repetir, responder, tomar o controle) ainda saem `panel` (os
-  três escritores de 29/09 já levam o operador); `takeover_gravar` não implementado; `revise_plan` pula a etapa sem
+- **A2:** `takeover_gravar` não implementado; `revise_plan` pula a etapa sem
   limpar `failure_kind`; `respondeu_pergunta` grava o sha256 do comando inteiro da sucessora em cada campo.
 - **A3:** `PATCH … fixed_pending_proof` aceita commit que não está no ar; falso zero de custo quando não há `ai_calls`
   nem régua diária na janela; o CAS do backlog só confere o estado; reabrir só vai ao log; a seção de saúde não traz
@@ -322,19 +363,17 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   os efeitos rodam fora de uma transação única; o voto da execução pode trazer efeito com `ref` vazio; duas lacunas de
   teste (mutações sobreviventes: voto "errado" em item que falhou; filtro por objetivo).
 - **A5:** `aprendizado.fluxo.com_prova: false` e `ai.recipes_promote_after: 0` levam o sistema a publicar o que tem
-  efeito; o veto das receitas falha aberto; no PostgreSQL, a trilha dentro da transação da loja
-  (`FlowStore`/`RecipeStore`) derrubaria o save; a adoção e o desfazer de adoção de fluxo por habilidade
-  (`modules/skills/infrastructure/sql_repository.py`) mudam `flows.status` sem trilha. Fechados em 29/09: o
-  interruptor antigo sem trilha, o texto do `_learn_flow` para o candidato e o `FLOW_STATUS` cru.
+  efeito; o veto das receitas falha aberto. Fechados em 29/09: o interruptor antigo sem trilha, o texto do
+  `_learn_flow` para o candidato e o `FLOW_STATUS` cru; na Fase 22, a adoção sem trilha (22.4) e a trilha que
+  derrubaria o save no PostgreSQL (22.5).
 - **A6:** "Revisar" só rebaixa (manter o legado pede um verbo novo no backend); a página lê `/pendentes` duas vezes; o
-  limite de "outro" está fixo em 15% no painel. Do bloco da execução: a preferência nasce na curadoria periódica, sem
-  execução que a dispare, e nunca aparece como candidata de uma execução; a lição desligada por refutação (dois votos
-  "deu errado") é gravada pelo sistema e aparece como "desligada nesta execução". Fechados em 29/09: o bloco não
+  limite de "outro" está fixo em 15% no painel. Do bloco da execução: a lição desligada por refutação (dois votos
+  "deu errado") é gravada pelo sistema e aparece como "desligada nesta execução"; o LEFT JOIN novo da preferência só
+  rodou em SQLite até a suíte em PostgreSQL da Fase 22. Fechados em 29/09: o bloco não
   emitido e a projeção fora do painel.
-- **Sinais de 29/09:** as polaridades dos três escritores esperam a ratificação do dono; a correção de ensino não tem
-  tela; o `requested_by` livre (sem sessão) segue cru em `commands.reason`; o painel prefixa a nota da resolução com
-  "decidido no painel a partir de <instance_id>", o que passa na triagem com os ids `android-NN`, mas um id com
-  maiúscula, dígito e símbolo e 8 ou mais caracteres faria a resolução pelo painel ser recusada.
+- **Sinais de 29/09:** as polaridades dos três escritores esperam a ratificação do dono. Fechados na Fase 22: o
+  `requested_by` cru e o prefixo da nota do painel (22.2). Decisão do dono pendente: registrar à parte, sem contar na
+  régua, a segunda pessoa que repete o mesmo gesto (A pede o controle e desiste, B pede e recebe: o sinal fica com A).
 - **A7:** depois de "ajuda", o controle de 10% é gravado, mas nada o reavalia; a aposentadoria conta toda evidência
   contra de voto, sem olhar o braço; a exposição guarda o desfecho do primeiro assentamento; todas as lições de etapa
   livre dividem a chave `(app, '*', papel)`; o SQL novo só rodou em SQLite.

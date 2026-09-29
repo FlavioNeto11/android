@@ -693,8 +693,8 @@ o aparelho desligou, então não é recusa, mas hibernar era justamente evitar o
 | `GET /api/commands/{command_id}` | – | `Command` |
 | `GET /api/commands?instance_id=&unsettled=&limit=50` | – | `Command[]` (mais recente primeiro); `unsettled=true` devolve só os `uncertain` |
 | `POST /api/commands/{command_id}/verify` | – | `{command, changed, verifiable}` · 404 se não existe |
-| `POST /api/commands/{command_id}/resolve` | `CommandResolveBody {outcome, note?, requested_by?}` | `Command` · `409 {code:'not_unsettled'}` se não está `uncertain` |
-| `POST /api/commands/{command_id}/cancel` | `CommandCancelBody {note?, requested_by?}` | `{command, delivered, detail}` · `409 {code:'not_open'}` se o comando já fechou |
+| `POST /api/commands/{command_id}/resolve` | `CommandResolveBody {outcome, note?, requested_by?, origin?: 'panel'}` | `Command` · `409 {code:'not_unsettled'}` se não está `uncertain` |
+| `POST /api/commands/{command_id}/cancel` | `CommandCancelBody {note?, requested_by?, origin?: 'panel'}` | `{command, delivered, detail}` · `409 {code:'not_open'}` se o comando já fechou |
 
 ### Cancelar é pedir, não desfazer
 
@@ -2633,3 +2633,44 @@ de contrato; só gravam o sinal, e a falha do escritor não derruba o gesto. Pol
 **Nota triada no comando.** `POST /api/commands/{id}/resolve` e `POST /api/commands/{id}/cancel` recusam a nota com
 formato ou assunto de credencial (o critério do voto do D2): 409 `note_looks_secret` antes de qualquer escrita. Nada
 é gravado, nem a resolução nem o pedido, e o comando segue como estava.
+
+## Adendo v0.40 (29/09/2026) — Fase 22: pendências da rodada (ADR-054)
+
+**Nota e autor do comando (22.2).** `CommandResolveBody` e `CommandCancelBody` ganham `origin?: 'panel'`.
+
+- **Nota:** é só o texto da pessoa. Com `origin: 'panel'`, o backend compõe o contexto depois de "por <autor>": ", no
+  painel a partir de <instance_id>", ou só ", a partir de <instance_id>" quando o autor é `panel`.
+- **Resultado:** `result.note` guarda só o texto da pessoa, e `result.origin='panel'`.
+- **Autor livre:** o `requested_by` passa pela mesma triagem de credencial da nota sempre que vier, com ou sem sessão
+  (409 `note_looks_secret`, nada gravado, nem a decisão nem o pedido).
+- **Cliente antigo:** o prefixo "decidido/cancelado no painel a partir de <id>" continua aceito só com o
+  `instance_id` do próprio comando, e vira `origin=panel`.
+
+**Operador nos gestos (22.1).** `POST /runs/{id}/objectives/{oid}/resolve`, `POST /runs/{id}/retry_failed`, a sucessora
+e o pedido de controle do aparelho levam o operador da sessão ao sinal do aprendizado (sem sessão, `panel`). Sinal de
+gesto é um por `(kind, source_ref)`: o primeiro autor fica. Nenhum corpo ou resposta mudou.
+
+**Tela da falha (22.3).** `attempts.failure_screen` passa a ser gravado:
+- é o nome de uma regra declarada no `telas.yaml` do app da etapa, ou o tipo do motor nas telas protegidas
+  (`desafio|dois_fatores|login`);
+- é NULL quando a tela é desconhecida, outro app está na frente ou não houve observação;
+- só é gravado com `failure_kind`;
+- nunca é texto da tela.
+
+Em `GET /api/aprendizado/falhas` e no backlog, a linha sem tela mede o trio em qualquer tela (`alcance: "trio"`), e a
+linha com tela conta na prova o excesso da tela desconhecida (`alcance: "tela"`, `sem_tela: {ocorrencias, excesso,
+taxa_base}`).
+
+**Adoção de fluxo com trilha (22.4).** Adotar, desfazer a adoção e publicar a versão de quem adotou gravam a trilha do
+fluxo (`GET /api/aprendizado/fluxo/{id}` mostra "adotado pela habilidade X" / "devolvido pela habilidade X").
+- Adoção ou devolução pelo sistema: `transition_forbidden` (pelas rotas não acontece).
+- O 409 `state_conflict` da adoção tem texto novo: o banco recusou a adoção, a versão, o escopo ou a trilha; nada foi
+  gravado.
+- A falha não-integridade da trilha na adoção sobe como 500 e desfaz o gesto (política atual).
+
+**Transação abortada (22.5).** No PostgreSQL, uma escrita dentro de uma transação já abortada deixa de virar ROLLBACK
+calado: o `tx()` confere a transação antes do COMMIT e responde 500 (`TransacaoAbortada`), sem gravar nada pela metade.
+
+**Preferência no bloco da execução (22.6).** Novo `papel` no grupo `candidatas` para `kind=preferencia`: "preferência
+que nasceu com a evidência desta execução, entre N execuções", ou "… e de outras" quando o número não vem. O formato
+não muda.

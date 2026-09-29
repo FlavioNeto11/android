@@ -195,6 +195,25 @@ Não por preciosismo: cada uma quebraria no PostgreSQL.
 | `UNIQUE COLLATE NOCASE` | índice único sobre `lower(...)` | `NOCASE` não existe no PostgreSQL |
 | `executescript` | divisor de instruções próprio | é do SQLite — e o divisor precisa entender literal e corpo de gatilho |
 
+## Savepoint e transação abortada (29/09, Fase 22)
+
+- **A armadilha.** No PostgreSQL, um erro dentro de `tx()` aborta a transação: as instruções seguintes são recusadas
+  (`InFailedSqlTransaction`), e o COMMIT final vira ROLLBACK sem erro. Quem engole um erro de SQL dentro da transação
+  de outro (o ouvinte do A5 na trilha das lojas, por exemplo) fazia a loja devolver o id de uma linha que não
+  existia. A suíte em SQLite não percebe (K-061).
+- **`Database.savepoint()`.** Um sub-bloco que falha sozinho: `SAVEPOINT`, `ROLLBACK TO` e `RELEASE`, com nomes
+  `sp_<profundidade>`. É reentrante e, fora de transação, vira um `tx()` comum. Quem engole erro dentro de uma
+  transação alheia põe o savepoint DENTRO do `try`, em volta de tudo o que tocou. Desfeito com sucesso, o savepoint
+  devolve o `_suspeita` da entrada, para um deadlock lá dentro não reabrir a conexão à toa.
+- **`TransacaoAbortada`.** O `tx()` de fora confere `info.transaction_status == INERROR` antes do COMMIT, faz
+  ROLLBACK e levanta: o esquecimento vira 500, em vez de perda calada. A classe fica fora de `OPERATIONAL_ERRORS` e
+  `INTEGRITY_ERRORS`. O `sqlite3` não tem `info`, então a conferência só age no PostgreSQL e na imitação
+  `tests/aborto_do_postgres.py` (`embrulhar(db)`), que reproduz a regra sobre o SQLite.
+- **Candidatos conhecidos a conferir no PostgreSQL** (engolem erro dentro de transação):
+  - `commands/outbox.py` (`enqueue`, `INTEGRITY_ERRORS` no despacho);
+  - `social/repository.py` (`marcar_conta_travada`);
+  - `modules/learning/infrastructure/validacao_de_skills.py` (`add_case`).
+
 ## Rodar a suíte contra o PostgreSQL
 
 Prova o aplicativo **inteiro** no outro banco, não só as peças conferidas à mão. Cada teste ganha um schema
