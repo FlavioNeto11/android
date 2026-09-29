@@ -74,6 +74,29 @@ android:
   # convidado (10.0.2.3) fica sem resolver nome. Confira com `Resolve-DnsName <host> -Server <ip>` antes.
   # dns_servers: ["192.168.1.1", "8.8.8.8"]
   wake_timeout_s: 90
+  # Apps de fundo DESATIVADOS no preparo dos aparelhos da automação (`pm disable-user --user 0`), para caber nos 2 GB
+  # do convidado. Medido em 29/09: app Google 101 MB, Android System Intelligence 37 MB e Mensagens 22 MB no
+  # android-06; no android-04, load 14,7 e 82 MB livres, com YouTube, YouTube Music, Gmail e Bem-estar digital
+  # subindo sozinhos. Esta é a lista conservadora (o padrão do código). Pacote que a imagem não tem é ignorado.
+  # Reversível: tire um pacote e o preparo seguinte o reativa (`pm enable`) — só o que ele mesmo desativou; `[]`
+  # devolve tudo. NUNCA entram (o backend não sobe): Play Store, GMS, GSF, WebView, teclado, launcher, SystemUI,
+  # Chrome, Instagram, io.appium.* e o app alvo declarado em `apps`/`contas.sessao`; o do catálogo sai sozinho.
+  # Vale para os emuladores daqui e os dos workers (o central os prepara pelo túnel); a loja e o celular físico ficam
+  # fora. Por aparelho: `instances.overrides.<id>.desativar_apps`.
+  desativar_apps:
+    - com.google.android.googlequicksearchbox   # app Google
+    - com.google.android.as                     # Android System Intelligence
+    - com.google.android.apps.messaging         # Mensagens
+    - com.google.android.youtube
+    - com.google.android.apps.youtube.music
+    - com.google.android.gm                     # Gmail
+    - com.google.android.apps.wellbeing         # Bem-estar digital
+    - com.google.android.apps.photos
+    - com.google.android.apps.maps
+    - com.google.android.calendar
+    - com.google.android.apps.docs              # Drive
+    - com.google.android.videos                 # Google TV
+    - com.google.android.apps.tachyon           # Meet
 
 instances:
   # Quantos emuladores LOCAIS esta máquina gerencia: android-01 … android-04. Suba este número conforme a RAM

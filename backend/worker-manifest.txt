@@ -21,6 +21,7 @@ worker/
 contracts/                # o fio central↔agente (protocol) e o vocabulário de verbos; só stdlib + pydantic
 devices/__init__.py
 devices/adb.py
+devices/apps_de_fundo.py   # apps de fundo do preparo: importado por adb.py e config.py
 devices/avd.py
 devices/codificacao.py    # import opcional da observação na origem (Pillow)
 devices/emulator.py

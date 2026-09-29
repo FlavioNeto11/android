@@ -2,14 +2,18 @@
 devem rodar na thread do executor do dispositivo, nunca no event loop."""
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 import time
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from ..security.redaction import redact
 from ..util import url_abrivel
+from . import apps_de_fundo
+from .apps_de_fundo import AjusteDosApps
 from .sdk import NO_WINDOW, SdkTools
 # `sonda_rede`, e não `conectividade`: esta importa `models`, que não vai para o agente do worker.
 from .sonda_rede import comando_sonda, ler_sonda
@@ -20,6 +24,8 @@ ACTIVITY_RE = re.compile(r"^[A-Za-z0-9_.$]+$")
 REMOTE_APK_RE = re.compile(r"^/data/app/[A-Za-z0-9_.=~/\-]+\.apk$")
 
 KEYCODES = {"back": 4, "home": 3, "recents": 187, "enter": 66, "delete": 67, "wakeup": 224, "menu": 82}
+
+log = logging.getLogger("poc.devices.adb")
 
 
 class AdbError(RuntimeError):
@@ -128,9 +134,14 @@ def _ultima(saida: str, chave: str) -> str | None:
 
 
 class Adb:
-    def __init__(self, tools: SdkTools, serial: str):
+    def __init__(self, tools: SdkTools, serial: str, *, apps_de_fundo: Sequence[str] | None = None):
         self.tools = tools
         self.serial = serial
+        #: Apps de fundo que `prepare_for_automation` mantém desativados (`devices/apps_de_fundo.py`). `None` = este
+        #: preparo não toca em app nenhum (nem lê): é o padrão, e o do agente do worker — quem decide a lista de um
+        #: aparelho do worker é o central, que o prepara pelo túnel. Uma tupla, mesmo vazia, é "aparelho da
+        #: automação": desativa a lista e reativa o que saiu dela. Quem chama pode trocá-la antes de cada preparo.
+        self.apps_de_fundo: tuple[str, ...] | None = None if apps_de_fundo is None else tuple(apps_de_fundo)
 
     # -- base -----------------------------------------------------------------
     def _run(self, args: list[str], *, timeout: float = 30, binary: bool = False,
@@ -348,13 +359,15 @@ class Adb:
                         timeout=timeout)
         return ler_mortes(res.stdout or "", package, within_s=within_s)
 
-    def prepare_for_automation(self) -> None:
-        """Ajustes IDEMPOTENTES pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR.
+    def prepare_for_automation(self) -> AjusteDosApps | None:
+        """Ajustes IDEMPOTENTES pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR — e,
+        num aparelho da automação (`apps_de_fundo` não `None`), os apps de fundo desativados. Devolve o registro do
+        que foi feito com os apps, ou `None` quando não se mexeu neles.
 
         Roda no portão de prontidão (worker e central). Só entra aqui o que, aplicado atrasado por um `adb` que
         estourou o prazo, repete o que já vale (K-031). Dispensar um diálogo que JÁ está na tela é toque — não
         idempotente — e saiu daqui: roda depois da prontidão (`DeviceManager._arrumar_depois_de_entrar`) e na
-        abertura de app pelo instalador (`launch_probe`)."""
+        abertura de app pelo instalador (`launch_probe`). `pm disable-user`/`pm enable` são idempotentes."""
         self.shell(
             "settings put global window_animation_scale 0; settings put global transition_animation_scale 0; "
             "settings put global animator_duration_scale 0; settings put system screen_off_timeout 2147483647; "
@@ -364,6 +377,77 @@ class Adb:
             "locksettings set-disabled true; input keyevent 224; wm dismiss-keyguard",
             timeout=40,
         )
+        if self.apps_de_fundo is None:
+            return None
+        return self.ajustar_apps_de_fundo(self.apps_de_fundo)
+
+    def ajustar_apps_de_fundo(self, lista: Sequence[str], *,
+                              prazo_s: float = apps_de_fundo.PRAZO_S) -> AjusteDosApps:
+        """Desativa (`pm disable-user --user 0`) o que está na `lista` e habilitado, e reativa (`pm enable --user 0`)
+        o que ESTE preparo tinha desativado e saiu dela. Nunca levanta: o que não deu vira registro.
+
+        O estouro de prazo AQUI não é o estouro do preparo. No portão, um preparo estourado deixa a tentativa incerta
+        porque o efeito atrasado dos ajustes (keyguard, animações) cairia depois das sondas. O efeito atrasado de um
+        `pm disable-user` é matar um app de fundo da lista — nunca o alvo, o launcher, o SystemUI nem o teclado, que
+        são protegidos (`apps_de_fundo.planejar`) —, então ele vira `incerto` no registro, e o preparo seguinte, que
+        lê antes de escrever, termina o que faltou. Os ajustes de sempre, que vêm antes, seguem levantando.
+
+        Chamadas: uma leitura (habilitados, desativados, marcador); a escrita só se algo muda; o marcador só se ele
+        muda. Na segunda passagem é só a leitura. Tudo dentro de `prazo_s`.
+        """
+        fim = time.monotonic() + prazo_s
+
+        def restante() -> float:
+            return fim - time.monotonic()
+
+        if restante() < 1.0:
+            return self._registrar_apps(AjusteDosApps(incerto="sem tempo no preparo; fica para o próximo"))
+        try:
+            leitura = self._run(["shell", apps_de_fundo.COMANDO_DE_LEITURA], timeout=min(6.0, restante()))
+            estado = apps_de_fundo.ler_estado(leitura.stdout or "")
+        except AdbTimeout as exc:
+            return self._registrar_apps(AjusteDosApps(incerto=f"a leitura dos pacotes não respondeu ({exc})"))
+        except ValueError as exc:
+            return self._registrar_apps(AjusteDosApps(falhas=(f"não deu para ler os pacotes: {exc}",)))
+        plano = apps_de_fundo.planejar(lista, estado)
+        base = AjusteDosApps(ja_desativados=plano.ja_desativados, ausentes=plano.ausentes, recusados=plano.recusados)
+        desativados: tuple[str, ...] = ()
+        reativados: tuple[str, ...] = ()
+        falhas: tuple[str, ...] = ()
+        if plano.desativar or plano.reativar:
+            if restante() < 1.0:
+                return self._registrar_apps(replace(base, incerto="sem tempo para o `pm`; fica para o próximo"))
+            try:
+                escrita = self._run(["shell", apps_de_fundo.comando_de_escrita(plano)], timeout=restante())
+            except AdbTimeout as exc:
+                # Não se sabe quais chegaram a mudar: nada vai para o marcador; o próximo preparo lê e confere.
+                return self._registrar_apps(replace(base, incerto=f"o `pm` não respondeu a tempo ({exc})"))
+            desativados, reativados, falhas = apps_de_fundo.ler_escrita(escrita.stdout or "", plano)
+        ajuste = replace(base, desativados=desativados, reativados=reativados, falhas=falhas)
+        marcador = apps_de_fundo.marcador_depois(estado, plano, desativados, reativados)
+        if set(marcador) == estado.marcados:
+            return self._registrar_apps(ajuste)
+        # Sem marcador gravado, o que foi desativado agora e está na lista entra nele no preparo seguinte (está na
+        # lista e desativado: `marcador_depois`); o que foi reativado não volta a ser tentado (já está habilitado).
+        if restante() < 0.5:
+            return self._registrar_apps(replace(ajuste, incerto="sem tempo para gravar o marcador; fica para depois"))
+        try:
+            gravou = self._run(["shell", apps_de_fundo.comando_do_marcador(marcador)],
+                               timeout=min(5.0, restante()))
+        except AdbTimeout as exc:
+            return self._registrar_apps(replace(ajuste, incerto=f"o marcador não foi gravado a tempo ({exc})"))
+        if gravou.returncode != 0:
+            ajuste = replace(ajuste, falhas=(*ajuste.falhas, "o marcador não foi gravado"))
+        return self._registrar_apps(ajuste)
+
+    def _registrar_apps(self, ajuste: AjusteDosApps) -> AjusteDosApps:
+        """O registro no log DESTA máquina (central ou worker), com o serial: o que mudou em `info`, o que falhou ou
+        ficou incerto em `warning`. Passagem sem mudança não escreve nada — é o caso de todo boot depois do primeiro."""
+        if ajuste.falhas or ajuste.incerto or ajuste.recusados:
+            log.warning("%s: %s", self.serial, ajuste.resumo())
+        elif ajuste.mudou:
+            log.info("%s: %s", self.serial, ajuste.resumo())
+        return ajuste
 
     def wm_size(self) -> tuple[int, int] | None:
         m = re.search(r"(\d+)x(\d+)", self._run(["shell", "wm size"], timeout=8).stdout)

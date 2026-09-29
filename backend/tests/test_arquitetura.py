@@ -229,10 +229,10 @@ APRESENTACAO: dict[str, str] = {"fastapi": "app.modules.*.presentation", "starle
 #: vocabulário de `app.contracts.worker`. O que os instaladores copiam é `backend/worker-manifest.txt`, conferido
 #: contra este mesmo fecho em `tests/test_pacote_do_agente.py`.
 WORKER_INTERNOS = ("app", "app.worker", "app.contracts", "app.contracts.worker", "app.contracts.worker.protocol",
-                   "app.contracts.worker.verbos", "app.devices", "app.devices.adb", "app.devices.avd",
-                   "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis", "app.devices.prontidao",
-                   "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede", "app.config", "app.util",
-                   "app.version", "app.metricas", "app.security", "app.security.redaction")
+                   "app.contracts.worker.verbos", "app.devices", "app.devices.adb", "app.devices.apps_de_fundo",
+                   "app.devices.avd", "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis",
+                   "app.devices.prontidao", "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede",
+                   "app.config", "app.util", "app.version", "app.metricas", "app.security", "app.security.redaction")
 #: `worker-requirements.txt`, pelo nome de import.
 WORKER_EXTERNOS = frozenset({"pydantic", "pydantic_settings", "dotenv", "psutil", "websockets", "yaml", "PIL"})
 
