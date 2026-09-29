@@ -386,6 +386,32 @@ async def test_reinicio_por_interrupcao_nao_toca_aparelho_com_marcador(h: Harnes
     assert rt.attention and FELIPE in rt.attention
 
 
+async def test_devolver_o_controle_nao_reabre_a_conta_travada(h: Harness) -> None:
+    """Quem olha o desafio na tela assume o controle e depois o devolve: a reobservação automática da sessão
+    (achado #106) abriria o app da conta travada sem passar por porta nenhuma."""
+    s = h.state
+    assert s is not None
+    s.social.create_profile(ProfileCreate(username=FELIPE, instance_id="android-01"))   # sessão `unknown`
+    rt = s.devices.get("android-01")
+    trabalhos: list[str] = []
+    original = s.scheduler.run_device_job
+
+    def _registrar(alvo: object, fabrica: object, *, label: str) -> bool:
+        trabalhos.append(label)
+        return True
+
+    s.scheduler.run_device_job = _registrar                          # type: ignore[method-assign,assignment]
+    try:
+        s._reobservar_apos_intervencao(rt)
+        assert trabalhos == ["reobservação após devolver o controle"]  # sem marcador: relê, como sempre
+        trabalhos.clear()
+        _marcar(h, "android-01")
+        s._reobservar_apos_intervencao(rt)
+        assert trabalhos == []
+    finally:
+        s.scheduler.run_device_job = original                        # type: ignore[method-assign]
+
+
 async def test_rodizio_nao_liga_sozinho_o_aparelho_com_marcador(h: Harness) -> None:
     """O emulador desta máquina o rodízio liga direto, sem passar pelo pré-voo: a quarentena vale ali também."""
     s = h.state

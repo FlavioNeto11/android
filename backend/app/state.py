@@ -804,6 +804,10 @@ class AppState:
         Com mais de uma persona no aparelho (vínculo N:N), reobserva CADA uma que esperava uma pessoa — num só
         trabalho, em sequência, porque `run_device_job` é um por aparelho.
         """
+        if self.quarentena(rt.id) is not None:
+            # Quarentena (ADR-055): quem devolve o controle acabou de olhar o desafio de uma conta travada. Reler a
+            # sessão abriria o app dela de novo, fora de qualquer porta; o aparelho espera a decisão do dono.
+            return
         provedor = self.provedor_do_perfil()
         if provedor is None:
             return
