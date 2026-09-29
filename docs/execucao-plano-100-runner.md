@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-210 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+211 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -230,7 +230,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.7 | pendente | — | — | — |  |  |
 | 25.8 | implemented | simulated |  | — | cd C:/git/android/.claude/worktrees/evo3-d3/frontend && npx vitest run src/features/rede src/features/loja src/features/apps/AppsPage.test.tsx -> 3 arquivos, 21 testes, todos passando; npm run typecheck -> limpo. Os 4 a… | Nada bloqueado no escopo D3 (só frontend). O pedido do revisor de 'testar a rota real com TestClient contra o painel' é integração backend+frontend, fora do es… |
 | 25.9 | pendente | — | — | — |  |  |
-| 25.10 | pendente | — | — | — |  |  |
+| 25.10 | implemented | real |  | — | 29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-202609291… |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
@@ -260,7 +260,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (43): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.4, 25.5, 25.6, 25.7, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
+Pendentes (42): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.4, 25.5, 25.6, 25.7, 25.9, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

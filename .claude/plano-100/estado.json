@@ -4119,6 +4119,21 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T22:26:37+00:00"
+  },
+  "25.10": {
+   "id": "25.10",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-20260929174423-bdc392, c-20260929174417-3303c9), assinatura aprovada; canário do sing-box no android-05 (c-20260929222844-0a5046, succeeded) e promoção às ~22:29Z. WireGuard fica no catálogo como reserva, sem promoção. A entrega a cada aparelho vai pela aplicação da rede (25.4/25.9), pelo mesmo fluxo de releases.",
+   "blocker": "",
+   "arquivos": [],
+   "testes": "canário real (instalação e prova de abertura)",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T22:29:26+00:00"
   }
  },
  "rodadas": [
@@ -4704,6 +4719,15 @@
    ],
    "grupos": [
     "evolucao3-onda1"
+   ]
+  },
+  {
+   "quando": "2026-09-29T22:29:26+00:00",
+   "itens": [
+    "25.10"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
    ]
   }
  ]
