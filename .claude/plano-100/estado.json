@@ -3098,6 +3098,186 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T00:05:44+00:00"
+  },
+  "20.1": {
+   "id": "20.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "3a124ed: ADR-054 em docs/decisoes.md (desenho de 3 propostas e 3 juízes), docs de banco/api/operação; docs-check 0 erros.",
+   "grupo": "20-aprendizado",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "20.2": {
+   "id": "20.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "94b00a1/55b7f7b/9c4fa4a (fundação A1, migração 055) implantada em c359f65 (29/09 ~03:55 UTC). real: GET /api/aprendizado 125 itens (81 receitas publicadas, 10 desativadas, 25 fluxos, 1 habilidade, 100 lembranças), /revisar 39, /pendentes 0; classificador sobre 221 falhas reais com outro 4,5%. simulated: tests/test_learning_ciclo.py, test_learning_falhas.py, test_learning_repositorio.py, test_learning_livro.py, test_projecao.py; PostgreSQL 17 562 ok.",
+   "grupo": "20-aprendizado",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.1": {
+   "id": "21.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "7a7b32b (detector de conta travada: união de idiomas, apóstrofo tipográfico, sem exigir campo, antes de ANR/receita/ator, auth_challenge com subtipo) em c359f65. tests/test_detector_conta_travada.py. Tela real de desafio não observada depois do deploy (android-04 parado).",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.2": {
+   "id": "21.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "ec8b630 + migração 054 em c359f65. real: POST /api/instances/android-04/actions/open_app recusado com 409 locked_account (marcador declarado do felipe.nogueira93762026 carregado pela 054; ensaio em cópia do backup 20260929-005459). simulated: testes do pacote quarentena.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.3": {
+   "id": "21.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "f71dfd9/38311db (counterparty do autor do post, uma conta por alvo, DM fria sempre com aprovação, redator sem atribuir fala a terceiros) em c359f65. real operacional: grupo Operação com SEND_MESSAGE e CREATE_COMMENT approval_required e tetos baixos (29/09).",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.4": {
+   "id": "21.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "0d29994 (disjuntor lê status do perfil; pausa a conta e as que agiram no mesmo alvo em 48 h; login para depois de 1 envio sem sucesso; teto diário) em c359f65.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.5": {
+   "id": "21.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "377ed25 (DM: Sending…/Enviando… pendente; bolha com o texto e campo vazio = enviada por prova local; confirm_done com evidence_id) em c359f65.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.6": {
+   "id": "21.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "e9da86e (reinício de saúde e reconciliação fora da escada, test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset) + quarentena (remediar nunca reseta aparelho com vínculo ou marcador).",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.7": {
+   "id": "21.7",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "b25957e scripts/sincronizar-relogio.ps1 + tarefa farm-relogio (15 min): w32time sem resposta (origem 123 bloqueada, evento 47); desvio medido +6,240 s → +0,004 s em 28/09 21:25 local; data/logs/relogio.log.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.8": {
+   "id": "21.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Decisão medida: manter hide_error_dialogs=1. Experimento real no android-17 (sem conta, QA Messenger, 28–29/09): com 0 o diálogo 'Process system isn't responding' não saiu sozinho (325 s; ~24 min no 1º boot), BACK não fecha, Wait volta; com 1 o ANR vira morte detectável por exit-info. Nada muda no código.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.10": {
+   "id": "21.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "6799867 (leitura por adb/captura não recria sessão; prova só local com card_guard; evidência cita a legenda) implantado em 7a02491.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.11": {
+   "id": "21.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "caca1cd (aprovação acompanha a etapa revisada; Tentar novamente) implantado em 7a02491.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.12": {
+   "id": "21.12",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "d63fcd9 (herança de binding declarada no catálogo; caption_contains herdado) implantado em 7a02491.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.13": {
+   "id": "21.13",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "d121f76 implantado em 7a02491: GET /api/desempenho?irq_horas=6 devolve 674 medições persistidas (android-01 p50 1,9%, p95 14,5%, máx 21,6%).",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
+  },
+  "21.14": {
+   "id": "21.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "01c4dc1 (receita nasce candidate, promovida por 2 concordâncias em sombra, superseded gravado) implantado em 7a02491.",
+   "grupo": "21-protecao-de-contas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T04:12:19+00:00"
   }
  },
  "rodadas": [
@@ -3556,6 +3736,30 @@
    ],
    "grupos": [
     "19-falhas-reiteradas"
+   ]
+  },
+  {
+   "quando": "2026-09-29T04:12:19+00:00",
+   "itens": [
+    "20.1",
+    "20.2",
+    "21.1",
+    "21.2",
+    "21.3",
+    "21.4",
+    "21.5",
+    "21.6",
+    "21.7",
+    "21.8",
+    "21.10",
+    "21.11",
+    "21.12",
+    "21.13",
+    "21.14"
+   ],
+   "grupos": [
+    "20-aprendizado",
+    "21-protecao-de-contas"
    ]
   }
  ]
