@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from ..models import PlanStep
+from .saidas import renomear_para_o_item
 
 ITEM_MAX_CHARS = 80
 
@@ -59,14 +60,18 @@ def expand(steps: list[PlanStep], collected: dict[str, list[str]]) -> list[PlanS
             block.append(steps[i])
             i += 1
         inside = {b.key for b in block}
+        # Item 24.3: o valor que uma etapa DO BLOCO lê é de cada item (`nome_i2`), senão as cópias se sobrescreveriam
+        # (o nome é único no objetivo) e o relatório só guardaria o do último item.
+        nomes_do_bloco = {nome for b in block for nome in b.saidas}
         items = collected[source]
         for n, item in enumerate(items, start=1):
             for b in block:
                 deps = ([_copy_key(d, n) for d in b.depends_on if d in inside]
                         + outer([d for d in b.depends_on if d not in inside]))
-                out.append(b.model_copy(update={
+                copia = renomear_para_o_item(b, nomes_do_bloco, n)
+                out.append(copia.model_copy(update={
                     "key": _copy_key(b.key, n), "for_each": None, "template_key": b.template_key or b.key,
-                    "variables": {**b.variables, "item": item, "item_index": str(n)}, "depends_on": deps}))
+                    "variables": {**copia.variables, "item": item, "item_index": str(n)}, "depends_on": deps}))
         for b in block:
             copies[b.key] = [_copy_key(b.key, n) for n in range(1, len(items) + 1)]
     return out

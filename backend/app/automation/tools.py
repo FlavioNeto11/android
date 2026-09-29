@@ -165,6 +165,20 @@ class CollectList(_Action):
     exclude: list[str] = Field(default=[], description="Textos a ignorar — só se o objetivo da etapa mandar excluir.")
 
 
+class ReadValue(_Args):
+    """SÓ em etapa que entrega um valor às seguintes: lê na tela o valor de nome `name` (os nomes vêm no histórico, na
+    linha "(executor) esta etapa entrega…"). O executor tira o valor do TEXTO do elemento — você não o escreve; com
+    `value`, só aquele trecho do texto do elemento. Código de verificação, senha ou token nunca: a etapa para."""
+    # Item 24.3 (ADR-058): quem lê é o executor, pela árvore (`taskqueue/saidas.ler_valor`), como na coleta. `value` é
+    # só o RECORTE — e precisa estar no texto do elemento: um valor que a tela não tem não passa.
+    name: str = Field(description="Nome da saída declarada nesta etapa (ex.: perfil_citado).")
+    element_id: str = Field(description="O elemento cujo texto é o valor; numa lista (value_kind=list), o contêiner.")
+    value: str | None = Field(default=None, description="Só o trecho do texto do elemento que é o valor, quando o "
+                                                        "texto tem mais do que ele (ex.: o @nome dentro do assunto).")
+    value_kind: Literal["text", "number", "url", "list"] = Field(
+        default="text", description="text, number, url, ou list (os textos dentro do contêiner).")
+
+
 class VerifyState(_Args):
     """Confere, na tela atual, quais dos textos informados estão visíveis."""
     texts: list[str]
@@ -194,6 +208,7 @@ TOOLS: dict[str, type[_Args]] = {
     "drag": Drag, "scroll": Scroll, "type_text": TypeText, "press_back": PressBack, "press_home": PressHome,
     "open_app": OpenApp, "wait_for": WaitFor, "verify_state": VerifyState, "collect_list": CollectList,
     "step_done": StepDone, "step_blocked": StepBlocked, "type_secret": TypeSecret, "open_url": OpenUrl,
+    "read_value": ReadValue,
 }
 CONTROL_TOOLS = {"step_done", "step_blocked"}
 EFFECT_CAPABLE = {"tap", "long_press", "drag", "type_text"}     # podem disparar um efeito externo
@@ -666,6 +681,11 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         return ToolOutcome(result)
     if isinstance(args, CollectList):
         return await _collect(ctx, args)
+    if isinstance(args, ReadValue):
+        # A leitura precisa dos nomes que a ETAPA declara e da triagem (D3), que só o executor conhece: ele a trata
+        # antes de chegar aqui. Cair aqui é um caminho novo sem essa conferência — recusa, sem tocar o aparelho.
+        raise DriverError("read_value é conferido pelo executor da etapa, não executado no aparelho.",
+                          effect_possible=False)
     if isinstance(args, TypeText):
         el = None
         if args.element_id:

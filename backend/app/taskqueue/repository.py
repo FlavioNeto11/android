@@ -27,6 +27,7 @@ from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
+from .saidas import como_texto, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
@@ -71,6 +72,26 @@ def resolve_templates(text: str | None, variables: dict[str, str]) -> str | None
     if text is None:
         return None
     return TEMPLATE_RE.sub(lambda m: variables.get(m.group(1), m.group(0)), text)
+
+
+def _dependencias_das_saidas(steps: list[PlanStep]) -> list[PlanStep]:
+    """A referência cria a dependência (item 24.3): a etapa que cita `{{saida:x}}` passa a depender da etapa ANTERIOR
+    do mesmo lote que declara `x` — a mais próxima, quando há duas. Sem isto, uma etapa sem `depends_on` explícito
+    ficaria pronta antes da que lê o valor e pararia por saída ausente.
+
+    Só produtora anterior: dependência para a frente travaria `promote` (e o `Plan` já recusa). Produtora que não está
+    no lote (comprovada numa versão anterior, fora do replano) não entra: o valor dela já está gravado."""
+    produtoras: dict[str, str] = {}
+    out: list[PlanStep] = []
+    for s in steps:
+        novas = [produtoras[n] for n in referencias(s) if n in produtoras]
+        novas = [k for k in dict.fromkeys(novas) if k != s.key and k not in s.depends_on]
+        if novas:
+            s = s.model_copy(update={"depends_on": [*s.depends_on, *novas]})
+        for nome in s.saidas:
+            produtoras[nome] = s.key
+        out.append(s)
+    return out
 
 
 #: Validade da posse de uma etapa. Generoso de propósito: o preço de um lease longo é demorar a retomar o
@@ -153,6 +174,35 @@ class Repository:
     def _variaveis_da_persona(self, profile_id: str | None) -> dict[str, str]:
         """`{perfil_email: …}` e afins do perfil de um aparelho — só o não sigiloso; a senha nunca vira variável."""
         return profile_variables(self._dados, profile_id)
+
+    # ------------------------------------------------------------------ conta da persona no app da etapa (24.4)
+    def persona_do_objetivo(self, profile_id: str | None, instance_id: str) -> str | None:
+        """A persona por quem o item age: a do objetivo; sem ela (objetivo antigo), a ÚNICA vinculada ao aparelho.
+        Com duas e nenhuma escolhida, `None` — quem recusa essa ambiguidade é a porta de sessão, não esta leitura."""
+        if profile_id:
+            return str(profile_id)
+        vinculos = self.db.query("SELECT DISTINCT profile_id FROM device_profile_bindings WHERE instance_id=?"
+                                 " AND active=1", (instance_id,))
+        return str(vinculos[0]["profile_id"]) if len(vinculos) == 1 else None
+
+    def conta_esperada(self, profile_id: str | None, app_id: str, rotulo_do_aparelho: str | None, *,
+                       do_aparelho: bool) -> str | None:
+        """A conta que uma etapa do app `app_id` deve ver na tela (o "conta esperada" do ator e o `{account_label}`
+        da etapa): a da persona NAQUELE app (`profile_accounts`).
+
+        O rótulo do aparelho (`instances.account_label`) é a conta do app do aparelho; numa etapa de outro app ele é a
+        conta errada (R4: a etapa do Outlook esperava o @ do Instagram). Ele só vale com `do_aparelho` — a etapa é do
+        app do aparelho, ou não declara app — quando a persona não tem UMA conta com nome naquele app: nenhuma, ou
+        mais de uma ativa (contas de portal no Chrome, 049), caso em que o aparelho diz qual está nele. Numa etapa de
+        outro app, sem UMA conta, `None` — nunca escolher uma — e rótulo vazio também é `None`: "Conta: " casaria com
+        qualquer conta na tela (quem trata o `None` é o despacho, `Scheduler._conta_da_etapa`)."""
+        if profile_id:
+            contas = self.db.query("SELECT handle, host FROM profile_accounts WHERE profile_id=? AND app_id=?"
+                                   " AND status='active'", (profile_id, app_id))
+            do_app = [c for c in contas if not c["host"]] or contas
+            if len(do_app) == 1 and (do_app[0]["handle"] or "").strip():
+                return str(do_app[0]["handle"]).strip()
+        return ((rotulo_do_aparelho or "").strip() or None) if do_aparelho else None
 
     # ------------------------------------------------------------------ máquinas de estado (design §16)
     def _conferir(self, maquina: MaquinaDeEstados, de: str | None, para: str, *, entidade: str,
@@ -250,10 +300,30 @@ class Repository:
                       variables: dict[str, str], reason: str) -> None:
         resolved: list[PlanStep] = []
         # Identidade da etapa ANTES de resolver variáveis — e com os valores que o planejador escreveu por extenso
-        # devolvidos ao nome do parâmetro, senão a receita de "@nasa" nunca serve para "@outro".
-        hashes = {s.key: step_template_hash(para_hash(s, variables)) for s in steps}
+        # devolvidos ao nome do parâmetro, senão a receita de "@nasa" nunca serve para "@outro". A referência a uma
+        # saída de item (`{{saida:x_i2}}`) volta ao nome do bloco: as cópias seguem com a receita da etapa-modelo.
+        hashes = {s.key: step_template_hash(para_hash(sem_sufixo_de_item(s), variables)) for s in steps}
+        steps = _dependencias_das_saidas(steps)
+        # Item 24.4: `{account_label}` numa etapa que declara OUTRO app é a conta da persona naquele app, não o rótulo
+        # do aparelho — "Conta: {account_label}" no Outlook conferia a tela contra o @ do Instagram. Sem UMA conta
+        # conhecida no app da etapa, o molde fica SEM resolver: "Conta: " (vazio) casaria com qualquer conta na tela, e
+        # a etapa "confirmar a conta" seria comprovada sem conta esperada nenhuma. O despacho resolve na hora, se a
+        # conta tiver aparecido, ou segura o item com o motivo (`Scheduler._conta_da_etapa`).
+        contas: dict[str, str | None] = {}
+        if any(s.app_id for s in steps):
+            perfil = self.persona_do_objetivo(self.db.scalar("SELECT profile_id FROM objectives WHERE id=?", (oid,)),
+                                              iid)
+            app_do_aparelho = self.db.scalar("SELECT app_id FROM instances WHERE id=?", (iid,))
+            for app_id in {s.app_id for s in steps if s.app_id}:
+                contas[app_id] = self.conta_esperada(perfil, app_id, variables.get("account_label") or None,
+                                                     do_aparelho=app_id == app_do_aparelho)
         for s in steps:
             v = {**variables, **s.variables}                       # cópia de for_each: {item} é desta etapa
+            if s.app_id and "account_label" not in s.variables:
+                if contas[s.app_id]:
+                    v["account_label"] = contas[s.app_id]          # type: ignore[assignment]
+                else:
+                    v.pop("account_label", None)
             post = s.postcondition.model_copy(update={
                 "value": resolve_templates(s.postcondition.value, v),
                 "description": resolve_templates(s.postcondition.description, v)})
@@ -321,6 +391,113 @@ class Repository:
         """As saídas já gravadas no objetivo, por nome (vazio quando nenhuma etapa produziu nada)."""
         return {str(r["name"]): str(r["value"]) for r in self.db.query(
             "SELECT name, value FROM step_outputs WHERE objective_id=? ORDER BY name", (objective_id,))}
+
+    def saidas_com_tipo(self, objective_id: str) -> dict[str, tuple[str, str]]:
+        """As saídas do objetivo com o tipo (`nome → (valor, value_kind)`): a lista, gravada em JSON, só vira texto
+        sabendo que é lista (`saidas.como_texto`)."""
+        return {str(r["name"]): (str(r["value"]), str(r["value_kind"])) for r in self.db.query(
+            "SELECT name, value, value_kind FROM step_outputs WHERE objective_id=? ORDER BY name", (objective_id,))}
+
+    def saidas_da_etapa(self, step_id: str) -> list[str]:
+        """Os nomes que a etapa declara entregar (`steps.saidas`, migração 056); vazio no legado."""
+        return [str(n) for n in (loads(_col(self.step_row(step_id), "saidas"), []) or [])]
+
+    def saidas_da_execucao(self, run_id: str) -> list[dict[str, str | None]]:
+        """Os valores lidos numa execução, com a ORIGEM — etapa e app — para o relatório (item 24.3). Um por nome e
+        objetivo (a última leitura vence, como na tabela)."""
+        return [{"instance_id": r["instance_id"], "objective_id": r["objective_id"], "name": r["name"],
+                 "value": r["value"], "value_kind": r["value_kind"], "step_id": r["step_id"],
+                 "step_title": r["title"], "app_id": r["app_id"], "app": r["app_name"] or r["app_id"],
+                 "read_at": r["created_at"]}
+                for r in self.db.query(
+                    "SELECT o.instance_id, so.objective_id, so.name, so.value, so.value_kind, so.step_id, s.title,"
+                    " so.app_id, a.name AS app_name, so.created_at FROM step_outputs so"
+                    " JOIN objectives o ON o.id = so.objective_id JOIN steps s ON s.id = so.step_id"
+                    " LEFT JOIN apps a ON a.id = so.app_id WHERE so.run_id=? ORDER BY o.instance_id, s.seq, so.name",
+                    (run_id,))]
+
+    def resolver_saidas(self, step_id: str) -> tuple[Row, list[str]]:
+        """Resolve `{{saida:<nome>}}` na etapa PRONTA com as saídas do objetivo e grava o texto resolvido na linha.
+
+        Devolve (linha, nomes que faltaram). Faltando qualquer um, nada é gravado — a referência fica como está e
+        quem chama para a etapa com o motivo (nunca inventa). Gravar na linha, e não só na memória do executor, é o
+        que faz a porta de política, a aprovação, a coordenação de frota e o painel verem o valor lido: com o molde,
+        dois aparelhos que leram alvos diferentes pareceriam o MESMO alvo, e o aprovador aprovaria um molde.
+        `template_hash` fica: a identidade da etapa é a do molde, para a receita servir a outro valor.
+        """
+        row = self.step_row(step_id)
+        post = Postcondition.model_validate_json(row["postcondition"])
+        guardas = [str(g) for g in (loads(row["commit_guard"], []) or [])]
+        faixa = [str(g) for g in (loads(row["band_guard"], []) or [])]
+        bindings = {str(k): str(v) for k, v in (loads(row["bindings"], {}) or {}).items()}
+        variaveis = {str(k): str(v) for k, v in (loads(row["variables"], {}) or {}).items()}
+        textos = [row["title"], row["goal"], row["precondition"], post.value, post.description, *guardas, *faixa,
+                  *bindings.values(), *variaveis.values()]
+        if not any(t and "{{" in t for t in textos):
+            return row, []
+        valores = {n: como_texto(v, k) for n, (v, k) in self.saidas_com_tipo(row["objective_id"]).items()}
+        faltam: list[str] = []
+
+        def r(texto: str | None) -> str | None:
+            novo, falta = resolver(texto, valores)
+            faltam.extend(falta)
+            return novo
+
+        titulo, objetivo, pre = r(row["title"]), r(row["goal"]), r(row["precondition"])
+        post2 = post.model_copy(update={"value": r(post.value) or "", "description": r(post.description) or ""})
+        guardas2, faixa2 = [r(g) or "" for g in guardas], [r(g) or "" for g in faixa]
+        bindings2 = {k: r(v) or "" for k, v in bindings.items()}
+        variaveis2 = {k: r(v) or "" for k, v in variaveis.items()}
+        faltam = list(dict.fromkeys(faltam))
+        if faltam:
+            return row, faltam
+        if (titulo, objetivo, pre, post2, guardas2, faixa2, bindings2, variaveis2) == (
+                row["title"], row["goal"], row["precondition"], post, guardas, faixa, bindings, variaveis):
+            return row, []                  # "{{" que não é referência (texto da pessoa): nada a gravar
+        # Só a etapa PRONTA e ainda não assumida: a mesma cerca de posse das outras escritas de etapa não se aplica
+        # porque ninguém a possui ainda — e é por isso que a resolução vem antes de `claim_step`.
+        self.db.execute(
+            "UPDATE steps SET title=?, goal=?, precondition=?, postcondition=?, commit_guard=?, band_guard=?,"
+            " bindings=?, variables=? WHERE id=? AND status='ready'",
+            (titulo, objetivo, pre, post2.model_dump_json(), dumps(guardas2), dumps(faixa2) if faixa2 else None,
+             dumps(bindings2) if bindings2 else None, dumps(variaveis2) if variaveis2 else None, step_id))
+        return self.step_row(step_id), []
+
+    def usa_a_conta(self, row: Row) -> bool:
+        """A etapa ainda tem o molde `{account_label}` sem resolver (item 24.4): a materialização não conhecia UMA
+        conta da persona no app dela."""
+        post = Postcondition.model_validate_json(row["postcondition"])
+        textos = [row["title"], row["goal"], row["precondition"], post.value, post.description,
+                  *(loads(row["commit_guard"], []) or []), *(loads(row["band_guard"], []) or []),
+                  *(loads(row["bindings"], {}) or {}).values()]
+        return any(t and "{account_label}" in str(t) for t in textos)
+
+    def resolver_conta(self, step_id: str, conta: str) -> Row:
+        """Grava na etapa PRONTA a conta esperada no lugar do molde `{account_label}` — a conta que o despacho acabou
+        de conhecer (cadastrada depois da materialização). Mesma cerca de `resolver_saidas`: só antes de `claim_step`."""
+        row = self.step_row(step_id)
+        v = {"account_label": conta}
+        post = Postcondition.model_validate_json(row["postcondition"])
+        post2 = post.model_copy(update={"value": resolve_templates(post.value, v) or "",
+                                        "description": resolve_templates(post.description, v) or ""})
+        guardas = [resolve_templates(str(g), v) or "" for g in (loads(row["commit_guard"], []) or [])]
+        faixa = [resolve_templates(str(g), v) or "" for g in (loads(row["band_guard"], []) or [])]
+        bindings = {str(k): resolve_templates(str(x), v) or "" for k, x in (loads(row["bindings"], {}) or {}).items()}
+        self.db.execute(
+            "UPDATE steps SET title=?, goal=?, precondition=?, postcondition=?, commit_guard=?, band_guard=?,"
+            " bindings=? WHERE id=? AND status='ready'",
+            (resolve_templates(row["title"], v), resolve_templates(row["goal"], v),
+             resolve_templates(row["precondition"], v), post2.model_dump_json(), dumps(guardas),
+             dumps(faixa) if faixa else None, dumps(bindings) if bindings else None, step_id))
+        return self.step_row(step_id)
+
+    def produtoras_da_saida(self, objective_id: str, nome: str) -> list[Row]:
+        """As etapas do objetivo (qualquer versão do plano) que declaram entregar `nome`, da mais nova para a mais
+        antiga. O filtro fino é em Python: `saidas` é JSON, e `LIKE` casaria `x` dentro de `x_i2`."""
+        linhas = self.db.query(
+            "SELECT id, key, title, status, plan_version, seq, saidas FROM steps WHERE objective_id=? AND saidas LIKE ?"
+            " ORDER BY plan_version DESC, seq", (objective_id, f"%{nome}%"))
+        return [r for r in linhas if nome in (loads(r["saidas"], []) or [])]
 
     def transition_step(self, step_id: str, target: StepStatus, *, detail: str | None = None,
                         result: StepResult | None = None, next_retry_at: str | None = None,

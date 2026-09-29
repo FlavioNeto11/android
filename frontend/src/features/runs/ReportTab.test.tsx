@@ -185,6 +185,23 @@ describe('Resultado por instância', () => {
     expect(cartao('android-02').querySelector('details')).toBeNull();
   });
 
+  it('valores lidos entre etapas (24.3): nome = valor, a etapa e o app de origem; a lista vira itens', async () => {
+    await montar([linha({
+      values_read: [
+        { name: 'perfil_citado', value: '@ciclano', value_kind: 'text', step_title: 'Ler o assunto do último e-mail', app: 'Outlook', read_at: '2026-09-29T12:00:00Z' },
+        { name: 'contatos', value: '["Ana","Bia"]', value_kind: 'list', step_title: 'Ler a lista', app: null, read_at: '2026-09-29T12:00:01Z' },
+      ],
+    })]);
+    const t = text(cartao('android-01'));
+    expect(t).toContain('Valores lidos entre etapas');
+    expect(t).toContain('perfil_citado = @ciclano');
+    expect(t).toContain('lido em “Ler o assunto do último e-mail” · Outlook');
+    expect(t).toContain('contatos = Ana, Bia');
+    expect(t).toContain('lido em “Ler a lista” · app do plano · list');
+    // chave conhecida: não se repete como "dado extra" em JSON
+    expect(t).not.toContain('Values read');
+  });
+
   it('linha sem o formato de objeto cai para a árvore genérica, sem cartão', async () => {
     backend.on('GET', /^\/api\/runs\/[^/]+\/report$/, () => json({ ...REPORT, per_instance: ['android-01 ok'] }));
     backend.on('GET', /^\/api\/runs\/[^/]+\/feedback$/, () => json(FEEDBACK));

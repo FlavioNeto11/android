@@ -243,6 +243,22 @@ declarado (`domain/intent.py::normalize_value`, chamado por `extract_typed` no `
 
 - `outputs[]`: `name` (padrão de parâmetro, até 40) e `from` = `${steps.<coleta>.output}` de uma coleta desta skill.
   Outra coisa dá `E_OUTPUT_REF_UNSUPPORTED`; nome repetido, `E_SCHEMA`. Na v1alpha1, só coleta produz saída.
+- **Valor lido entre etapas (item 24.3): ainda não entra na v1alpha1 — decisão do dono pendente.** O plano da IA
+  declara `PlanStep.saidas`, lê com `read_value` e cita `{{saida:<nome>}}`
+  ([execution](dominios/execution.md#valor-lido-entre-etapas-item-243-adr-058)); na DSL, `NodeSpec` não tem leitura
+  nomeada. Acrescentá-la é mudança aditiva, pelo procedimento de [mudar o contrato](#o-esquema-congelado-e-como-mudar-o-contrato),
+  mas é contrato novo num esquema publicado, e por isso espera o dono escolher entre estender a v1alpha1 e deixar
+  para uma v1alpha2. **Proposta:** `reads: [nome]` só em nó `goal` (o nome no padrão `^[a-z][a-z0-9_]{0,39}$`); a
+  referência `${steps.<nó>.reads.<nome>}` num texto ou em `with`, e o compilador cria a dependência para o nó que lê
+  e recusa referência para a frente ou para nó que não declara o nome; nome único no grafo expandido (a composição
+  `skill:` não prefixa, então nome repetido entre filho e pai é erro); no bloco `foreach`, o sufixo `_iN` da execução;
+  a baixa (`lowering.py`) vira `PlanStep.saidas` e `{{saida:<nome>}}`; um `Segment` novo no IR, fora da forma
+  canônica de quem não o usa (os hashes das versões publicadas não mudam). Consumidores a tocar:
+  `contracts/skills/v1alpha1.py` e o snapshot, o compilador, os goldens, `lowering.py`, `decompiler.py` (hoje, um plano com `saidas`
+  decompilado perde a leitura), `document_validator.py` e o prompt de ensino (`teaching.py`), com um código `E_*` e
+  a fixture de cada recusa. **Hoje**, um `{{saida:…}}` escrito no texto de um nó passa pelo compilador como texto
+  (nem `${…}` nem `{x}` cru): sem etapa que o leia, o despacho o trata como defeito do plano e para o objetivo sem
+  inventar valor.
 - `validation.cases[]`: `name` (1 a 80), `kind` (`replay`, `simulated`, `device`, `negative`), `parameters` e
   `preconditions` (mapas texto → texto) e `expected` = `{outcome, proofs}`.
   - `outcome` ∈ `succeeded`, `failed`, `uncertain`, `not_proved`, `waiting_user`.

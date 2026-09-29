@@ -55,6 +55,9 @@ JANELA_DO_DISJUNTOR_S = 48 * 3600
 #: O que a pessoa faz com um item parado pela conta (perfil `blocked`/`disabled`, ou conta travada no aparelho).
 AJUDA_DA_CONTA_PARADA = ("Confira a conta no aparelho. Se ela voltou, reative o perfil na tela dele e use “Tentar "
                          "novamente” neste item; nada é feito por uma conta bloqueada.")
+#: O que fazer quando a persona não tem conta (ou a tem desativada) no app de uma etapa (item 24.4).
+AJUDA_DA_CONTA_DO_APP = ("Cadastre ou reative a conta da pessoa neste aplicativo, na tela do perfil, e use “Tentar "
+                         "novamente” neste item; o que já foi comprovado (efeito, valor lido) não se repete.")
 #: Desfechos sem "tela onde falhou" (item 22.3): o comprovado, o cancelado (decisão, não defeito) e o cedido num ponto
 #: seguro (pausa ou controle manual — a pessoa quis parar ali).
 _SEM_TELA_DA_FALHA = frozenset({Outcome.succeeded, Outcome.cancelled, Outcome.yielded})
@@ -330,10 +333,12 @@ class Scheduler:
                 continue
             # Item 12.1: um item pode atravessar apps. As portas (app instalado, sessão entrada) valem para CADA app
             # das etapas que faltam, na ordem em que aparecem; o primeiro app que não está pronto segura o item.
+            # Item 24.4: a conta da persona é conferida POR APP (id do app, não só o pacote), junto das portas.
             segurado = False
-            pacotes = self._pacotes_do_objetivo(obj, rt)
-            for pacote_do_item in pacotes or [None]:
-                if self._portas_do_app(obj, rt, pacote_do_item):
+            apps_do_item = self._apps_do_objetivo(obj, rt)
+            pacotes = [p for p in dict.fromkeys(pacote for _, pacote in apps_do_item) if p]
+            for app_id_do_item, pacote_do_item in apps_do_item or [(None, None)]:
+                if self._portas_do_app(obj, rt, pacote_do_item, app_id_do_item):
                     segurado = True
                     break
             if segurado:
@@ -415,18 +420,28 @@ class Scheduler:
             self.devices.ai_end(rt)
             self.wake()
 
-    def _portas_do_app(self, obj: Any, rt: DeviceRuntime, pacote_do_item: str | None) -> bool:
-        """Porta do app (instalado e pronto) e porta da sessão (conta entrada) para UM app do item.
+    def _portas_do_app(self, obj: Any, rt: DeviceRuntime, pacote_do_item: str | None,
+                       app_id: str | None = None) -> bool:
+        """Conta da persona no app (item 24.4), porta do app (instalado e pronto), internet e porta da sessão (conta
+        entrada) para UM app do item.
 
         `True` = o item ficou segurado neste tick (bloqueado, ou esperando instalação/login); `False` = liberado.
+
+        Chamada também de dentro do worker, na troca de app entre etapas (`_portas_na_troca`). Ali o aparelho é do
+        próprio worker, `run_device_job` recusa o trabalho, e a espera é anotada do mesmo jeito: quem instala ou
+        autentica é o próximo tick, com o aparelho devolvido ao despacho.
         """
+        if (conta := self._conta_indisponivel(obj, rt, pacote_do_item, app_id)) is not None:
+            self._block(obj, conta, AJUDA_DA_CONTA_DO_APP)
+            return True
+        no_worker = rt.id in self.workers     # só é verdade quando quem pergunta é o worker deste aparelho
         porta_app = self._app_gate(obj, rt, pacote_do_item)
         if porta_app is not None:
             motivo_app, entrega = porta_app
             if entrega is None:
                 self._block(obj, motivo_app,
                             "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
-            elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
+            elif self.run_device_job(rt, entrega, label="entrega do aplicativo") or no_worker:
                 self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}", wait_reason="device_slot")
             return True                       # este tick é da instalação; a tarefa espera o app ficar pronto
         # Porta da INTERNET, por app: `online` não prova rede (android-06, 25/09/2026: online, sem DNS, e o login do
@@ -450,7 +465,7 @@ class Scheduler:
             if trabalho is None:
                 # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
                 self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
-            elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}"):
+            elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}") or no_worker:
                 self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}", wait_reason="device_slot")
             return True                       # este tick é do login; a tarefa espera a sessão ficar pronta
         return False
@@ -460,21 +475,88 @@ class Scheduler:
 
         Sem etapa ainda (plano não materializado) ou sem app nas etapas, é o app do plano/aparelho, como antes.
         """
+        return [p for p in dict.fromkeys(pacote for _, pacote in self._apps_do_objetivo(obj, rt)) if p]
+
+    def _apps_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> list[tuple[str | None, str | None]]:
+        """`(app_id, pacote)` de cada app que as etapas que FALTAM vão operar, na ordem em que aparecem.
+
+        O id do app vai junto do pacote porque a conta da persona é por app (`profile_accounts.app_id`, item 24.4); o
+        pacote é o que as portas do app, da internet e da sessão perguntam."""
         run = self.repo.run_row(obj["run_id"])
         if run is None:
             return []
         linhas = self.repo.db.query(
             "SELECT app_id, MIN(seq) AS ordem FROM steps WHERE objective_id=? AND plan_version=? AND status NOT IN"
             " ('succeeded','skipped','cancelled') GROUP BY app_id ORDER BY ordem", (obj["id"], obj["plan_version"]))
-        pacotes: list[str] = []
+        apps: list[tuple[str | None, str | None]] = []
         for app_id in [r["app_id"] for r in linhas] or [None]:
             try:
                 app, _ = self._app_context(run, rt, app_id)
             except KeyError:
                 continue
-            if app.package and app.package not in pacotes:
-                pacotes.append(app.package)
-        return pacotes
+            chave = (app.id, app.package)
+            if app.package and chave not in apps:
+                apps.append(chave)
+        return apps
+
+    # ------------------------------------------------------------------ conta da persona no app da etapa (24.4)
+    def _persona_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> str | None:
+        return self.repo.persona_do_objetivo(obj["profile_id"], rt.id)
+
+    def _conta_indisponivel(self, obj: Any, rt: DeviceRuntime, pacote: str | None, app_id: str | None) -> str | None:
+        """Por que a conta da persona NESTE app não serve à etapa; `None` quando serve (ou o app não tem conta).
+
+        Só vale para app que declara conta da persona (`needs_profile` ou provedor de sessão): Chrome ou QA sem
+        declaração seguem livres. O Outlook (`precisa_de_perfil`, sem provedor) passava direto: a porta de sessão só
+        abre para app com provedor, e a etapa do Outlook de uma persona sem conta no Outlook era despachada.
+
+        App COM provedor e sem linha de conta fica com a porta de sessão, que conhece o legado (o `username` do perfil
+        como a conta do Instagram antes da 037); aqui entra só a conta desativada, que a porta de sessão não lê."""
+        if not app_id or not pacote:
+            return None
+        caps = capabilities_of(pacote)
+        if not (caps.needs_profile or caps.session_provider):
+            return None
+        rotulo = caps.label or pacote
+        perfil = self._persona_do_objetivo(obj, rt)
+        if perfil is None:
+            # App com provedor segue com a porta de sessão (ela decide o aparelho sem persona e a ambiguidade de duas).
+            # Sem provedor (o Outlook), nada mais perguntaria: a etapa sairia sem conta esperada nenhuma.
+            if caps.needs_profile and caps.session_provider is None:
+                return (f"nenhuma persona definida para esta execução em {rt.id}; a etapa de {rotulo} age pela conta "
+                        "de uma pessoa (vincule uma persona ao aparelho ou refaça a execução dizendo por qual)")
+            return None
+        contas = self.repo.db.query("SELECT status FROM profile_accounts WHERE profile_id=? AND app_id=?",
+                                    (perfil, app_id))
+        if any((c["status"] or "active") == "active" for c in contas):
+            return None
+        if not contas and caps.session_provider:
+            return None
+        linha = self.repo.db.one("SELECT username, display_name FROM instagram_profiles WHERE id=?", (perfil,))
+        quem = (linha["display_name"] or linha["username"] or perfil) if linha is not None else perfil
+        if contas:
+            return (f"a conta de {quem} em {rotulo} está desativada; a etapa deste app não age por uma conta "
+                    "desativada")
+        return f"a pessoa vinculada ({quem}) não tem conta em {rotulo}; a etapa deste app precisa da conta dela"
+
+    def _conta_da_etapa(self, run: Any, obj: Any, rt: DeviceRuntime, srow: Row) -> Row | None:
+        """A etapa que confere a conta (`{account_label}`) e ainda não sabe QUAL (item 24.4): a materialização não
+        conhecia UMA conta da persona no app dela e deixou o molde sem resolver.
+
+        Com a conta conhecida agora (a pessoa a cadastrou e usou "Tentar novamente"), ela é gravada na linha, antes da
+        porta de política, como o valor lido. Sem ela, o item para com o motivo e nenhuma tentativa é gasta: "Conta: "
+        vazio casaria com qualquer conta na tela, e a etapa seria comprovada sem conta esperada — incerteza contada
+        como sucesso. `None` = segurado."""
+        if not self.repo.usa_a_conta(srow):
+            return srow
+        app, conta = self._app_context(run, rt, srow["app_id"], profile_id=self._persona_do_objetivo(obj, rt))
+        if conta:
+            return self.repo.resolver_conta(srow["id"], conta)
+        nome = app.name or capabilities_of(app.package).label or app.package or "este aplicativo"
+        self._block(obj, f"Etapa '{srow['title']}': confere a conta em {nome}, e a pessoa deste item não tem UMA conta "
+                         f"conhecida em {nome} (nenhuma cadastrada, ou mais de uma ativa) — sem a conta esperada, a "
+                         "conferência passaria com qualquer conta na tela.", AJUDA_DA_CONTA_DO_APP)
+        return None
 
     def _pacote_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> str | None:
         """O pacote do app que ESTE item vai operar neste aparelho. `None` quando não há app definido.
@@ -1079,6 +1161,9 @@ class Scheduler:
         # Quem conta a verdade sobre onde o trabalho aconteceu é o despacho, não o plano.
         repo.stamp_location(objective_id, **self.onde_roda(rt))     # type: ignore[arg-type]
         resumed = self._manual_since.pop(rt.id, None) is not None   # o usuário controlou este aparelho há pouco
+        # `(app_id, pacote)` da última etapa que ESTE worker executou. `None` na primeira: o despacho acabou de passar
+        # as portas de todos os apps que faltam, e repeti-las aqui só gastaria leitura.
+        app_anterior: tuple[str | None, str | None] | None = None
         try:
             while True:
                 obj = repo.objective_row(objective_id)
@@ -1097,6 +1182,24 @@ class Scheduler:
                 if restante is not None and restante < 0:
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
                     break
+                # Item 24.4 (R8): troca de app entre etapas. As portas do despacho valeram para o instante do despacho;
+                # a etapa do app seguinte começa minutos depois, e nesse meio a rede, a sessão, o app ou a conta da
+                # persona podem ter mudado. Segurada, a etapa não começa (nenhuma tentativa gasta) e o aparelho volta
+                # ao despacho, que instala, autentica ou espera com o motivo.
+                app_da_etapa = self._app_da_linha(run, rt, srow)
+                if app_anterior is not None and app_da_etapa != app_anterior \
+                        and self._portas_na_troca(obj, rt, *app_da_etapa):
+                    break
+                # Item 24.3: `{{saida:<nome>}}` vira o valor lido ANTES da porta de política — aprovação, limite por
+                # alvo, coordenação de frota e o ator veem o valor, não o molde. Sem o valor, a etapa não começa:
+                # nenhuma tentativa consumida, nada inventado.
+                srow, faltam = repo.resolver_saidas(srow["id"])
+                if faltam:
+                    self._saida_ausente(obj, srow, faltam)
+                    break
+                srow = self._conta_da_etapa(run, obj, rt, srow)
+                if srow is None:
+                    break
                 porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
                 if porta is not None:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
@@ -1113,6 +1216,7 @@ class Scheduler:
                 self._publish_current(rt, obj, step.id)
                 outcome = await self._run_guarded(run, obj, step, attempt["id"], rt, resumed)
                 resumed = False
+                app_anterior = app_da_etapa
                 # A recuperação precisa saber se o app segue vivo na frente ANTES de decidir encerrá-lo e de montar
                 # o plano revisado (r-20260928165254-e31953). Só quando ela pode acontecer: é uma leitura a mais no
                 # aparelho, e o convidado em questão é justamente o que está saturado.
@@ -1197,7 +1301,9 @@ class Scheduler:
 
     async def _run_guarded(self, run: Any, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime,
                            resumed: bool) -> StepOutcome:
-        app, account = self._app_context(run, rt, getattr(step, "app_id", None))
+        # A conta esperada é a da persona no app DESTA etapa (item 24.4), não o rótulo do aparelho.
+        app, account = self._app_context(run, rt, getattr(step, "app_id", None),
+                                         profile_id=self._persona_do_objetivo(obj, rt))
         later = [r["title"] for r in self.repo.db.query(
             "SELECT title FROM steps WHERE objective_id=? AND plan_version=? AND seq>? ORDER BY seq",
             (obj["id"], step.plan_version, step.seq))]
@@ -1248,17 +1354,43 @@ class Scheduler:
                              (obj["id"],))
         self._block(obj, veredito.reason, veredito.hint or "Ajuste a política deste perfil e retome o item.")
 
-    def _app_context(self, run: Any, rt: DeviceRuntime,
-                     step_app_id: str | None = None) -> tuple[AppContext, str | None]:
-        """O app de uma etapa: o dela (item 12.1), senão o do plano, senão o padrão do aparelho."""
+    def _app_context(self, run: Any, rt: DeviceRuntime, step_app_id: str | None = None, *,
+                     profile_id: str | None = None) -> tuple[AppContext, str | None]:
+        """O app de uma etapa: o dela (item 12.1), senão o do plano, senão o padrão do aparelho.
+
+        O segundo valor é a conta esperada na tela (`Repository.conta_esperada`, item 24.4): com `profile_id`, a conta
+        da persona NAQUELE app; o rótulo do aparelho só vale para a etapa do app do aparelho (ou sem app declarado) —
+        numa etapa de outro app ele seria a conta errada."""
         plan = Plan.model_validate_json(run["plan"]) if run["plan"] else None
         inst = self.repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (rt.id,))
+        rotulo = inst["account_label"] if inst else None
         app_id = step_app_id or (plan.app_id if plan else None) or (inst["app_id"] if inst else None)
         row = self.repo.db.one("SELECT * FROM apps WHERE id=?", (app_id,)) if app_id else None
         if row is None:
-            return AppContext(None, None, plan.app_package if plan else None, None, None, None), inst["account_label"] if inst else None
+            return AppContext(None, None, plan.app_package if plan else None, None, None, None), rotulo
+        do_aparelho = step_app_id is None or (inst is not None and inst["app_id"] == row["id"])
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
-                           loads(row["known_selectors"])), inst["account_label"] if inst else None)
+                           loads(row["known_selectors"])),
+                self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
+
+    def _app_da_linha(self, run: Any, rt: DeviceRuntime, srow: Any) -> tuple[str | None, str | None]:
+        """`(app_id, pacote)` do app de uma etapa (linha do banco), como `_apps_do_objetivo` o conta."""
+        try:
+            app, _ = self._app_context(run, rt, srow["app_id"])
+        except KeyError:
+            return (None, None)
+        return (app.id, app.package)
+
+    def _portas_na_troca(self, obj: Any, rt: DeviceRuntime, app_id: str | None, pacote: str | None) -> bool:
+        """As portas do despacho repassadas para o app da etapa seguinte, de dentro do worker (item 24.4, R8).
+
+        A mesma ordem do `_tick`: rede do aparelho (contrato C4, ADR-056) antes de tudo — a porta da sessão pode
+        pedir um LOGIN, e autenticar por uma saída não verificada é o que a política exigida impede —; depois a conta
+        da persona no app, o app, a internet e a sessão (`_portas_do_app`). `True` = a etapa não começa agora."""
+        if self.rede_gate is not None and (motivo_rede := self.rede_gate(rt.id)) is not None:
+            self.repo.note_waiting(obj["id"], motivo_rede, wait_reason="rede")
+            return True
+        return self._portas_do_app(obj, rt, pacote, app_id)
 
     def _publish_current(self, rt: DeviceRuntime, obj: Any, step_id: str | None) -> None:
         o = self.repo.objective_row(obj["id"])
@@ -1354,10 +1486,50 @@ class Scheduler:
             self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}" + (f" {rec.motivo}" if rec.motivo else ""))
         return False
 
-    def _hold_siblings(self, obj: Any, step: Any) -> None:
+    def _saida_ausente(self, obj: Row, srow: Row, faltam: list[str]) -> None:
+        """A etapa cita `{{saida:<nome>}}` e o valor não existe (item 24.3). Nada é inventado, e nenhuma tentativa
+        é gasta. Dois desfechos:
+
+        - uma etapa ABERTA desta versão do plano, ANTERIOR a esta, declara o nome: o plano não as ligou pela ordem (a
+          dependência implícita de `_insert_steps` cobre o caso comum). A etapa espera, com o motivo, com a pessoa;
+        - nenhuma etapa viva o declara, ou só uma que vem DEPOIS desta: defeito do plano. Esperar a de depois seria
+          parar para sempre — `next_ready_step` escolhe por `seq`, e esta, pronta e anterior, voltaria sempre na
+          frente. O objetivo falha e os aparelhos que ainda não começaram (mesmo plano) são retidos.
+        """
+        antes: list[tuple[str, str]] = []
+        depois: list[tuple[str, str]] = []
+        sem_produtora: list[str] = []
+        for nome in faltam:
+            vivas = [p for p in self.repo.produtoras_da_saida(obj["id"], nome)
+                     if p["plan_version"] == obj["plan_version"]
+                     and p["status"] not in ("succeeded", "failed", "cancelled")]
+            anterior = next((p for p in vivas if int(p["seq"]) < int(srow["seq"])), None)
+            if anterior is not None:
+                antes.append((nome, str(anterior["title"])))
+            elif vivas:
+                depois.append((nome, str(vivas[0]["title"])))
+            else:
+                sem_produtora.append(nome)
+        if sem_produtora or depois:
+            partes = ([f"usa o valor {', '.join(repr(n) for n in sem_produtora)} ({{{{saida:…}}}}), que nenhuma "
+                       "etapa deste plano lê"] if sem_produtora else [])
+            partes += [f"usa o valor '{n}' antes da etapa que o lê ('{t}' vem depois dela)" for n, t in depois]
+            defeito = "; ".join(partes) + " — defeito do plano; nada foi inventado"
+            self._fail_objective(obj, f"Etapa '{srow['title']}': {defeito}.")
+            self._hold_siblings(obj, srow, motivo=f"a etapa '{srow['title']}' {defeito}")
+            return
+        nome, produtora = antes[0]
+        self._block(obj, f"Etapa '{srow['title']}': usa o valor '{nome}', que a etapa '{produtora}' ainda não leu; "
+                         "ela não começa sem o valor (nada é inventado).",
+                    "O plano não liga as duas etapas pela ordem: conclua a etapa que lê o valor e retome o item, ou "
+                    "replaneje.")
+
+    def _hold_siblings(self, obj: Any, step: Any, *, motivo: str | None = None) -> None:
         """Defeito do plano visto por um aparelho: os que ainda NÃO começaram não gastam IA para falhar igual."""
-        reason = (f"Não iniciado: em {obj['instance_id']} a etapa '{step.title}' mostrou um defeito do plano "
-                  "(pós-condição não comprovável pela tela).")
+        titulo = step.title if hasattr(step, "title") else step["title"]      # etapa (DTO) ou linha do banco
+        reason = (f"Não iniciado: em {obj['instance_id']} "
+                  + (motivo or f"a etapa '{titulo}' mostrou um defeito do plano (pós-condição não comprovável pela "
+                                "tela)") + ".")
         for o in self.repo.db.query("SELECT * FROM objectives WHERE run_id=? AND id<>? AND status=?",
                                     (obj["run_id"], obj["id"], ObjectiveStatus.pending.value)):
             if o["instance_id"] not in self.workers:
@@ -1400,7 +1572,9 @@ class Scheduler:
         repo = self.repo
         rows = repo.db.query("SELECT id, key, status, depends_on, variables FROM steps WHERE objective_id=? AND plan_version=?",
                              (o["id"], o["plan_version"]))
-        if not any(r["variables"] for r in rows) or any(r["status"] in (
+        # Etapa de ITEM é a que tem `item_index`: variáveis próprias também vêm de uma referência a saída resolvida
+        # (item 24.3), e essa etapa não faz do objetivo uma contagem por item.
+        if not any((loads(r["variables"], {}) or {}).get("item_index") for r in rows) or any(r["status"] in (
                 "ready", "running", "verifying", "retry_wait", "waiting_user", "uncertain") for r in rows):
             return False
         dead = {r["key"] for r in rows if r["status"] in ("failed", "cancelled")}
@@ -1496,13 +1670,18 @@ class Scheduler:
             (objective_id, MOTIVO_REJEICAO + "%"))} - set(proven)
         needed: set[str] = set()
         atravessadas: set[str] = set()     # efeitos comprovados no caminho: fora do plano, e o caminho até eles dentro
+        # Item 24.3 (ADR-058): a leitura comprovada com TODOS os valores gravados também se atravessa — o valor é
+        # reaproveitado na retomada, e reler (outro app aberto, outra ida à caixa de entrada) seria repetir etapa
+        # concluída. O caminho até ela continua, como o de um efeito.
+        gravadas = set(self.repo.step_outputs(objective_id))
+        leituras = {s.key for s in plan.steps if s.key in proven and s.saidas and set(s.saidas) <= gravadas}
 
         def visit(key: str) -> None:
             if key in needed or key in atravessadas or key not in by_key or key in decidido:
                 return
             if key in proven and da_tela_atual:
                 return                     # comprovada, e a tela está onde o trabalho parou: não se refaz
-            if proven.get(key):            # efeito externo já comprovado: não se repete, mas se atravessa
+            if proven.get(key) or key in leituras:   # efeito ou leitura já comprovados: não se repetem, se atravessam
                 atravessadas.add(key)
             else:
                 needed.add(key)

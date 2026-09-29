@@ -24,9 +24,9 @@ from ..automation import tools as ferramentas
 from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA,
                                     SUBTIPO_VERIFICACAO, ContaTravada, UiElement, UiTree)
-from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, TelaDeContaTravada, ToolContext,
-                                ToolValidationError, esperar_foco, execute_tool, looks_like_commit, resolve_point,
-                                urls_do_texto, validate_call)
+from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, ReadValue, StepBlocked, StepDone, TelaDeContaTravada,
+                                ToolContext, ToolValidationError, esperar_foco, execute_tool, looks_like_commit,
+                                resolve_point, urls_do_texto, validate_call)
 from ..config import Config
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
@@ -58,6 +58,8 @@ from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
+from .saidas import (LeituraInvalida, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, nomes_citados,
+                     texto_da_tela, texto_do_elemento, triagem, variaveis_da_receita)
 
 log = logging.getLogger("poc.executor")
 
@@ -705,15 +707,26 @@ class StepExecutor:
                        stop_reason: Callable[[], str | None], resumed_after_manual: bool) -> StepOutcome:
         """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
         mode = self.cfg.file.ai.recipes
+        leitura = mode != "off" and bool(self.repo.saidas_da_etapa(step.id))
+        if leitura:
+            # Item 24.3: a etapa que entrega um valor às seguintes precisa LER (`read_value`), e ler é decisão sobre a
+            # tela da vez — a receita reproduziria os gestos e concluiria sem valor nenhum.
+            mode = "off"
         self._effects.pop(step.id, None)
-        rr = _RecipeRun(mode=mode)
+        rr = _RecipeRun(mode=mode, leitura=leitura)
         fired_at_entry, _ = self.repo.commit_state(step.id)
         if mode != "off" and app.package and not fired_at_entry:
             try:
                 rr.app_version = await self.devices.app_version(rt, app.package)
                 rr.step_hash = self.repo.step_row(step.id)["template_hash"]
+                # As saídas do objetivo entram como `saida_<nome>` (item 24.3): a identidade da etapa é a do MOLDE
+                # (`{{saida:x}}`), então a receita aprendida digitando "@ana" reproduziria "@ana" quando o valor lido
+                # fosse "@bia" — com a variável, `distill` guarda `{saida_x}` e a reprodução digita o valor da vez.
                 rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
-                                "account_label": account_label or "", **step.variables}
+                                "account_label": account_label or "",
+                                **variaveis_da_receita(self.repo.saidas_com_tipo(objective["id"]),
+                                                       step.variables.get("item_index")),
+                                **step.variables}
                 rr.signature = self._installed_signature(rt.id, app.package)
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
@@ -838,6 +851,12 @@ class StepExecutor:
         except Exception:  # noqa: BLE001 - histórico nunca derruba a etapa em andamento
             log.exception("%s: não foi possível registrar o efeito no histórico", rt.id)
 
+    def _gravar_saidas(self, step: StepDTO, app: AppContext, lidos: dict[str, tuple[str, str]]) -> None:
+        """Os valores lidos, na tabela de saídas (contrato C2), com o app onde foram lidos (`None` = o do plano). Chamado
+        dentro da transação que comprova a etapa: o valor só existe para as seguintes se a etapa que o leu valeu."""
+        for nome, (valor, tipo) in lidos.items():
+            self.repo.save_step_output(step.id, nome, valor, value_kind=tipo, app_id=app.id)
+
     def _settle_effect(self, step: StepDTO, outcome: StepOutcome) -> None:
         aberto = self._effects.pop(step.id, None)
         if aberto is None or self.social is None:
@@ -855,6 +874,10 @@ class StepExecutor:
 
     def _after_step(self, rr: "_RecipeRun", outcome: StepOutcome, run_id: str, iid: str, step: StepDTO,
                     attempt_id: str, app: AppContext) -> None:
+        if rr.leitura and outcome.outcome not in (Outcome.yielded, Outcome.cancelled, Outcome.retry):
+            # A receita ficou de fora só por ser etapa de leitura (item 24.3): quem conduziu foi a IA, e a trilha diz
+            # isso como em qualquer etapa sem receita — com as receitas ligadas, `driven_by` nulo pareceria legado.
+            self.repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
         if rr.mode == "off" or outcome.outcome in (Outcome.yielded, Outcome.cancelled):
             return                                     # tentativa interrompida (cedida, cancelada): não é veredito
         ok = outcome.outcome == Outcome.succeeded
@@ -1028,6 +1051,37 @@ class StepExecutor:
                            + ": o toque em " + " ou ".join(f"'{c}'" for c in cap.card_control)
                            + " só vale no cartão dela, logo acima da legenda.")
         need = step.postcondition.required_delivery_level
+        # Item 24.3 (ADR-058): os valores que ESTA etapa entrega às seguintes (`steps.saidas`). Ficam só na memória
+        # (`lidos`) até a etapa ser comprovada: uma tentativa que falha não deixa valor para ninguém usar.
+        saidas_declaradas = repo.saidas_da_etapa(step.id)
+        lidos: dict[str, tuple[str, str]] = {}
+
+        def faltam_saidas() -> list[str]:
+            return [n for n in saidas_declaradas if n not in lidos]
+
+        # A referência `{{saida:…}}` é resolvida no despacho, antes da porta de política (`Scheduler._work`). Se uma
+        # chegou aqui sem valor, quem chamou pulou essa passagem: a etapa não roda com o molde no lugar do valor.
+        sem_valor = sorted({n for t in (step.title, step.goal, step.precondition, step.postcondition.value,
+                                        step.postcondition.description, *step.commit_guard, *step.band_guard,
+                                        *step.bindings.values(), *step.variables.values())
+                            for n in nomes_citados(t)})
+        if sem_valor:
+            return StepOutcome(Outcome.failed, "A etapa usa o valor " + ", ".join(f"'{n}'" for n in sem_valor)
+                               + " sem ele ter sido lido por uma etapa anterior; nada foi inventado.", plan_defect=True)
+        # Item 24.4: idem para a conta esperada. O despacho resolve `{account_label}` ou segura o item
+        # (`Scheduler._conta_da_etapa`); o molde que chegar aqui não vira "qualquer conta" na conferência da tela.
+        if any("{account_label}" in (t or "") for t in (step.title, step.goal, step.precondition,
+                                                          step.postcondition.value, step.postcondition.description,
+                                                          *step.commit_guard, *step.band_guard,
+                                                          *step.bindings.values())):
+            return StepOutcome(Outcome.waiting_user, "A etapa confere a conta, e não há UMA conta da pessoa conhecida "
+                                                     "no app dela; nada foi conferido contra uma conta vazia.",
+                               needs="Cadastre ou reative a conta da pessoa neste aplicativo e retome o item.")
+        if saidas_declaradas:
+            history.append("(executor) esta etapa entrega às seguintes o(s) valor(es) "
+                           + ", ".join(f"'{n}'" for n in saidas_declaradas)
+                           + ": leia cada um na tela com read_value(name, element_id) antes de concluir — o executor "
+                             "tira o valor do texto do elemento. Código de verificação, senha e token nunca.")
 
         # Item 7.6: só os parâmetros QUE ESTA ETAPA USA, não o objetivo inteiro (que pode ter dezenas de
         # aparelhos/itens de `for_each` resolvidos). Com catálogo, a capability declara exatamente quais —
@@ -1453,6 +1507,81 @@ class StepExecutor:
                 forcar_tier_1 = True
                 continue
             rationale = getattr(args, "rationale", None)
+            if isinstance(args, ReadValue):
+                # ---------- valor para as etapas seguintes (item 24.3): lido da árvore pelo executor, triado (D3)
+                bruto = args.model_dump(mode="json")
+                erro: str | None = None
+                valor, partes, alvo = "", [], None
+                if not saidas_declaradas:
+                    erro = "esta etapa não entrega valor às seguintes; read_value não se aplica aqui"
+                elif args.name not in saidas_declaradas:
+                    # O nome escrito não é citado: o modelo escreve o que quiser ali (um código, até), e esta mensagem
+                    # vai para `actions.error`. Os nomes certos são do plano.
+                    erro = ("o nome informado não é valor desta etapa; os dela são: "
+                            + ", ".join(f"'{n}'" for n in saidas_declaradas))
+                else:
+                    try:
+                        valor, partes, alvo = ler_valor(obs.tree, element_id=args.element_id, trecho=args.value,
+                                                        tipo=args.value_kind)
+                    except LeituraInvalida as exc:
+                        erro = str(exc)
+                if erro is not None:
+                    # Erro de chamada: o ator tenta de novo. Nada aqui passou pela triagem — nem o texto do elemento,
+                    # nem o que o modelo escreveu —, então nada disso vai para o registro da ação nem para o evento
+                    # `action.logged`: o erro não cita valor (`saidas.ler_valor`), os argumentos saem sem o recorte e
+                    # sem nome ou id que não tenham forma de nome ou de id (`args_da_chamada_invalida`), e a
+                    # justificativa, que pode citar o valor, fica de fora como no caminho recusado pela triagem.
+                    aid = repo.log_intent(attempt_id, "read_value", args_da_chamada_invalida(bruto, obs.tree), None,
+                                          side_effect=False)
+                    repo.finish_action(aid, ActionStatus.rejected, error=erro)
+                    history.append(f"read_value REJEITADA: {erro}")
+                    errors_in_row += 1
+                    if errors_in_row >= 4:
+                        return await fail_or_retry(f"O valor da etapa não foi lido na tela: {erro}", obs)
+                    continue
+                assert alvo is not None
+                tela = texto_da_tela(obs.tree)
+                motivo = next((m for p in partes if (m := triagem(p, do_elemento=texto_do_elemento(alvo), da_tela=tela,
+                                                                  campo_de_senha=alvo.password)) is not None), None)
+                if motivo is not None:
+                    # D3 (ADR-009, ADR-022, ADR-058): a etapa PARA. O valor não vai para a tabela de saídas, nem para os
+                    # argumentos da ação, nem para evento ou evidência — que sai em texto, sem captura da tela que o
+                    # mostra; a justificativa do modelo, que pode citá-lo, também fica de fora.
+                    aid = repo.log_intent(attempt_id, "read_value", args_sem_valor(bruto), None, side_effect=False)
+                    repo.finish_action(aid, ActionStatus.rejected, error=f"valor recusado pela triagem: {motivo}")
+                    texto = (f"O valor '{args.name}' lido na tela tem formato de {motivo}: código de verificação, "
+                             "senha e token não passam de uma etapa a outra (ADR-009, ADR-058). Nada foi gravado.")
+                    await evidence(None, f"Parada sem gravar o valor: {texto}")
+                    repo.decision(f"{iid} · {step.title}: {texto}", run_id=run_id, instance_id=iid, step_id=step.id)
+                    if step.side_effect and fired:
+                        return StepOutcome(Outcome.uncertain, texto)
+                    return StepOutcome(Outcome.waiting_user, texto,
+                                       needs="Este valor é da pessoa (ADR-009): faça esta parte manualmente, ou refaça "
+                                             "o comando sem depender dele, e retome o item.")
+                lidos[args.name] = (valor, args.value_kind)
+                aid = repo.log_intent(attempt_id, "read_value", bruto, rationale, side_effect=False)
+                repo.finish_action(aid, ActionStatus.done, result={"name": args.name, "value_kind": args.value_kind,
+                                                                   "chars": len(valor)},
+                                   target=_safe_target(alvo, obs.tree))
+                faltam = faltam_saidas()
+                history.append(f"read_value({args.name}) → lido: {como_texto(valor, args.value_kind)[:120]}"
+                               + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
+                repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da tela ({args.value_kind}, "
+                              f"{len(valor)} caractere(s))", run_id=run_id, instance_id=iid, step_id=step.id)
+                errors_in_row = 0
+                if not faltam and not judged_step and not obs.sensitive and self._postcondition_holds(step, obs, cartao):
+                    break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
+                continue
+            if isinstance(args, StepDone) and faltam_saidas():
+                aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                repo.finish_action(aid, ActionStatus.rejected, error="valor da etapa ainda não lido")
+                history.append("step_done REJEITADA: esta etapa entrega " + ", ".join(f"'{n}'" for n in faltam_saidas())
+                               + " às seguintes — leia na tela com read_value antes de concluir.")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes.",
+                                               obs)
+                continue
             if isinstance(args, StepDone) and collecting:
                 aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.rejected, error="etapa de coleta: use collect_list")
@@ -1686,20 +1815,29 @@ class StepExecutor:
                 except DriverError:
                     continue
                 if not peek.sensitive and self._postcondition_holds(step, peek, cartao):
-                    break
+                    if not faltam_saidas():
+                        break
+                    history.append("(executor) a pós-condição já vale, mas falta ler com read_value: "
+                                   + ", ".join(faltam_saidas()) + ".")
+                    continue
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
         else:
             return await fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
 
         if collecting and collected is not None:
+            if faltam_saidas():
+                return await fail_or_retry("A lista foi lida, mas o valor " + ", ".join(f"'{n}'" for n in faltam_saidas())
+                                           + " que esta etapa entrega às seguintes não foi lido (read_value).", last_obs)
             text = f"{len(collected)} item(ns) lidos até o fim da lista: " + ", ".join(collected)[:400]
             await evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
             repo.transition_step(step.id, StepStatus.verifying, message=f"Etapa '{step.title}': itens lidos pelo executor")
-            repo.transition_step(step.id, StepStatus.succeeded, detail=text,
-                                 result=StepResult(verified=True, evidence_text=text, items=collected),
-                                 message=f"Etapa '{step.title}' comprovada: {text}")
+            with repo.db.tx():
+                self._gravar_saidas(step, app, lidos)
+                repo.transition_step(step.id, StepStatus.succeeded, detail=text,
+                                     result=StepResult(verified=True, evidence_text=text, items=collected),
+                                     message=f"Etapa '{step.title}' comprovada: {text}")
             repo.finish_attempt(attempt_id, AttemptStatus.succeeded, observed=text)
-            return StepOutcome(Outcome.succeeded, text, items=collected)
+            return StepOutcome(Outcome.succeeded, text, items=collected, outputs=_saidas_do_desfecho(lidos))
 
         # ================================================================ verificar a pós-condição
         repo.transition_step(step.id, StepStatus.verifying,
@@ -1744,16 +1882,27 @@ class StepExecutor:
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
         await evidence(obs, note, kind="verifier" if obs is None else "screenshot")
+        if ok and faltam_saidas():
+            # Comprovada, mas sem o valor que as seguintes usam: nunca é sucesso — a próxima etapa pararia sem ele, e
+            # com o efeito disparado repetir a etapa é o que não se faz.
+            falta = ("Pós-condição comprovada, mas o valor " + ", ".join(f"'{n}'" for n in faltam_saidas())
+                     + " que esta etapa entrega às seguintes não foi lido na tela (read_value).")
+            if step.side_effect and fired:
+                return StepOutcome(Outcome.uncertain, falta, delivery_level=level)
+            return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, falta)
         if ok:
             if account_label and norm_text(account_label) in norm_text(step.postcondition.value + " " + (text or "")):
                 repo.db.execute("UPDATE instances SET account_evidence=?, account_evidence_ts=? WHERE id=?",
                                 (text or step.postcondition.value, now_iso(), iid))
-            repo.transition_step(step.id, StepStatus.succeeded, detail=text,
-                                 result=StepResult(verified=True, evidence_text=text, delivery_level=level),
-                                 message=f"Etapa '{step.title}' comprovada: {text}")
+            # As saídas e o sucesso na MESMA transação: sem etapa comprovada não há valor gravado, e vice-versa.
+            with repo.db.tx():
+                self._gravar_saidas(step, app, lidos)
+                repo.transition_step(step.id, StepStatus.succeeded, detail=text,
+                                     result=StepResult(verified=True, evidence_text=text, delivery_level=level),
+                                     message=f"Etapa '{step.title}' comprovada: {text}")
             repo.finish_attempt(attempt_id, AttemptStatus.succeeded, observed=text,
                                 recovery="Resultado confirmado por reconciliação da tela" if unknown else None)
-            return StepOutcome(Outcome.succeeded, text, delivery_level=level)
+            return StepOutcome(Outcome.succeeded, text, delivery_level=level, outputs=_saidas_do_desfecho(lidos))
         if step.side_effect and fired:
             return StepOutcome(Outcome.uncertain, f"O efeito foi disparado, mas não foi possível comprová-lo: {text}",
                                delivery_level=level)
@@ -2144,6 +2293,8 @@ class _RecipeRun:
     retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     settle: int = 0
+    #: Etapa de leitura (item 24.3): as receitas estão ligadas, mas esta etapa não usa nem aprende nenhuma.
+    leitura: bool = False
     #: Estratégias que a tentativa EXERCEU, em ordem (trilha da 045, `attempts.strategy`): `recipe` quando a receita
     #: foi consultada, `ai_actor` quando a IA decidiu; a divergência dá a cadeia `recipe>ai_actor`.
     exercised: list[str] = field(default_factory=list)
@@ -2151,6 +2302,11 @@ class _RecipeRun:
     def exerceu(self, kind: StrategyKind) -> None:
         if kind.value not in self.exercised:
             self.exercised.append(kind.value)
+
+
+def _saidas_do_desfecho(lidos: dict[str, tuple[str, str]]) -> dict[str, str] | None:
+    """`StepOutcome.outputs`: os valores lidos em forma de texto; `None` quando a etapa não entrega nada."""
+    return {nome: como_texto(valor, tipo) for nome, (valor, tipo) in lidos.items()} or None
 
 
 def _safe_args(raw: Any) -> dict[str, Any]:
