@@ -25,7 +25,7 @@ mecanismo (`scripts/claude-plan-100.py`).
 | Frente | Itens | Estado real | Prova |
 |---|---|---|---|
 | Contratos (Onda 0) | C1–C5, 23.1 | commitado `aad3b0d`; **implantado** em `99fc90a` (central e agente do notebook em `0.1.0+99fc90a`, migração 057, `/api/health` ok) | `simulated` (297 testes); migrações ensaiadas numa cópia do banco real (`data/backups/20260929-154437`) e aplicadas no deploy: `real` |
-| A. Distribuição | 23.2, 23.3, 23.12, 25.10 | 23.3 feito (`45bd8ea`, registrado). 23.2 **bloqueado por defeito técnico em investigação**: Outlook 5.2635.3 importado (`c-20260929184859-0fe853`, depois da correção do inspetor implantada), assinatura aprovada; o canário no android-02 falhou e a versão foi para a **quarentena**: o processo `qemu-system-x86_64-headless.exe` do emulador cai com `0xc0000005` em código sem módulo ao abrir o Outlook (4 quedas: 15:56, 16:03, 16:10, 16:15 locais; convidado com 780–860 MB livres, então não é falta de RAM do convidado). `-feature -Vulkan` não pegou; `gpu_mode: angle_indirect` também caiu; o reparo levou o android-02 (QA) ao `reset`. `config.yaml` restaurado. Em teste: o binário COM janela (android-11). 25.10: WireGuard e sing-box no catálogo, `installable`, instalados no android-05; falta canário e promoção | 23.3 `simulated`; 23.2 `real` até o canário (falho) |
+| A. Distribuição | 23.2, 23.3, 23.12, 25.10 | 23.3 feito (`45bd8ea`, registrado). 23.2 **bloqueado por defeito técnico em investigação**: Outlook 5.2635.3 importado (`c-20260929184859-0fe853`, depois da correção do inspetor implantada), assinatura aprovada; o canário no android-02 falhou e a versão foi para a **quarentena**: o processo `qemu-system-x86_64-headless.exe` do emulador cai com `0xc0000005` em código sem módulo ao abrir o Outlook (4 quedas: 15:56, 16:03, 16:10, 16:15 locais; convidado com 780–860 MB livres, então não é falta de RAM do convidado). `-feature -Vulkan` não pegou; `gpu_mode: angle_indirect` também caiu; o reparo levou o android-02 (QA) ao `reset`. `config.yaml` restaurado. Depois: também cai no binário com janela (android-11), no notebook (android-09, outra CPU) e com o Vulkan do convidado escondido — bloqueio P15, com as saídas que dependem do dono. 25.10: WireGuard e sing-box no catálogo, `installable`, instalados no android-05; falta canário e promoção | 23.3 `simulated`; 23.2 `real` até o canário (falho) |
 | B1. Sessão por conta | 23.4, 23.5, 23.6 | em implementação (workflow `wf_3f3d07a0-057`, worktree `evo3-b1`) | — |
 | B2. Cofre e painel de contas | 23.9, 23.10 | em implementação (`evo3-b2`) | — |
 | Contas reais | 23.7, 23.8, 23.11, 23.13 | esperam 23.2 (o Outlook precisa abrir num aparelho) e a integração de B | — |
@@ -148,6 +148,7 @@ entrega (`resultado.json` do mecanismo).
 | P12 | Troca das senhas das 3 contas vivas (pendência anterior): depois do clone as senhas ficam independentes | 23.11 |
 | P13 | Janela de deploy combinada com as outras sessões | passo 4 |
 | P14 | Créditos da IDE: a única medição é ~US$ 8 por item médio em Opus (n=3, `docs/claude-plano-100.md`). Com ~30 itens de código, a faixa é de US$ 200 a 400, contra US$ 250 de crédito registrado em 28/09 | ritmo da Onda 1 |
+| P15 | **Outlook derruba o emulador (bloqueio técnico, 29/09).** O Outlook 5.2635.3 faz o processo `qemu-system-x86_64[-headless].exe` do emulador 37.1.11 (último estável) cair com `0xc0000005` em código sem módulo, 10 a 30 s depois de abrir: 7 quedas entre 15:56 e 17:29 locais; no central (Core Ultra 9 185H) e no notebook (i7-9850H, android-09); com e sem janela; com SwiftShader e com `angle_indirect`; com o driver Vulkan do convidado escondido; convidado com 780 MB a 1,2 GB livres. Descartados: RAM do convidado, CPU do host, binário headless, Vulkan do convidado. Saídas, todas do dono: (a) autorizar baixar da Google o emulador do canal canary ou beta num SDK separado e testar só no android-02; (b) autorizar baixar uma imagem mais nova (API 35/36 google_apis) e criar um aparelho de QA com ela; (c) ligar o dump local do Windows para o `qemu-system-x86_64*.exe` (chave `LocalDumps` do WER; configuração de sistema, que a automação não faz) para achar o módulo; (d) um celular físico por USB. A versão está em quarentena; android-02, android-09 e android-11 voltaram limpos (o Outlook instalado à mão para diagnóstico foi desinstalado) | 23.2 (promoção), 23.7, 23.8, 23.12, 23.13, 24.9, 27.2 |
 
 ## Contratos da Onda 0 (especificação; escritor: o coordenador)
 
@@ -224,9 +225,8 @@ branch `claude/evo3-<frente>` entra no `claude/evolucao3` na ordem contratos →
 
 ## Próxima ação
 
-1. **Coordenador, agora:** fechar a causa da queda do emulador com o Outlook (23.2). Teste em curso: o binário com
-   janela (android-11). Se só o headless cai, o caminho é janela nos aparelhos que rodam o Outlook ou outra
-   solução medida; se todos caem, registrar o bloqueio com a evidência e seguir com o resto.
+1. **Outlook (P15):** bloqueado pela queda do emulador; saídas (a)–(d) pedidas ao dono. Enquanto isso, as contas
+   Outlook (23.11) podem ser cadastradas e clonadas sem aparelho, depois do deploy da Onda 1.
 2. **Onda 1 (em curso):** quando o workflow `wf_3f3d07a0-057` terminar, revisar o diff de cada frente, integrar em
    `claude/evolucao3` na ordem B → C → D, rodar a suíte inteira uma vez em segundo plano e prioridade ociosa, e
    registrar os itens pelo `aplicar`.
