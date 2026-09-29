@@ -32,6 +32,10 @@ _LABEL = re.compile(r"^application-label:'(?P<v>[^']*)'", re.MULTILINE)
 # `application-icon-<densidade>:'res/…'` — uma linha por densidade. A maior densidade é a melhor imagem, e é a
 # que a interface reduz; a menor ficaria borrada num cartão.
 _ICON_BY_DENSITY = re.compile(r"^application-icon-(?P<dpi>\d+):'(?P<v>[^']*)'", re.MULTILINE)
+# O que o apksigner diz quando o APK não tem o esquema v1 e o minSdk que ele supõe o exigiria, e o piso que confere
+# só v2/v3 (Android 7.0, API 24). Ver `ApkInspector._signature`.
+_SEM_V1 = "Missing META-INF/MANIFEST.MF"
+_MIN_SDK_SEM_V1 = 24
 # Dois formatos do `apksigner --print-certs`, e o segundo só aparece com APK Signature Scheme v3.1 (rotação de chave):
 #   Signer #1 certificate SHA-256 digest: <hex>
 #   Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: <hex>
@@ -153,6 +157,15 @@ class ApkInspector:
         res = self.tools.run([self.tools.apksigner, "verify", "--print-certs", str(path)], timeout=120)
         out = (res.stdout or "") + (res.stderr or "")
         digest = signer_sha256(out)
+        if digest is None and _SEM_V1 in out:
+            # Split de configuração (idioma, densidade) sem `uses-sdk` no manifesto: o apksigner assume minSdk 1 e
+            # exige o esquema v1 (JAR), que a Play Store não põe nos splits do Outlook (29/09, item 23.2). Com
+            # `--min-sdk-version 24` ele confere só v2/v3 — exatamente o que o Android 34 dos aparelhos confere ao
+            # instalar. Não afrouxa nada: sem assinatura v2/v3 válida a segunda leitura também falha.
+            res = self.tools.run([self.tools.apksigner, "verify", "--print-certs", "--min-sdk-version",
+                                  str(_MIN_SDK_SEM_V1), str(path)], timeout=120)
+            out = (res.stdout or "") + (res.stderr or "")
+            digest = signer_sha256(out)
         if digest is None:
             tail = out.strip().splitlines()
             raise ApkInspectionError(f"{path.name}: não foi possível ler a assinatura "

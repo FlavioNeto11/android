@@ -738,3 +738,33 @@ def test_formato_novo_do_apksigner_com_esquema_no_inicio_da_linha() -> None:
              f"Source Stamp Signer certificate SHA-256 digest: {'cd' * 32}\n")
     assert signer_sha256(saida) == quem
     assert signer_sha256(f"Source Stamp Signer certificate SHA-256 digest: {'cd' * 32}\n") is None
+
+
+def test_split_sem_esquema_v1_le_a_assinatura_pelo_v2_e_v3(tmp_path: Path) -> None:
+    """Item 23.2 (29/09): o `split_config.en.apk` do Outlook vindo da Play Store não tem o esquema v1, e o manifesto do
+    split não declara `minSdk` — o apksigner supõe minSdk 1, exige v1 e recusa ("Missing META-INF/MANIFEST.MF"). A
+    segunda leitura, com `--min-sdk-version 24`, confere só v2/v3: é o que o Android dos aparelhos confere. Sem v2/v3
+    válido, continua recusado."""
+    from types import SimpleNamespace
+
+    quem = "ef" * 32
+    chamadas: list[list[str]] = []
+
+    def run(argv: list[str], timeout: int = 0) -> SimpleNamespace:
+        chamadas.append(argv)
+        if "--min-sdk-version" in argv:
+            return SimpleNamespace(returncode=0, stdout=f"Signer #1 certificate SHA-256 digest: {quem}", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="ERROR: Missing META-INF/MANIFEST.MF")
+
+    split = tmp_path / "split_config.en.apk"
+    split.write_bytes(b"x")
+    ferramentas = SimpleNamespace(apksigner="apksigner", run=run)
+    assert ApkInspector(ferramentas)._signature(split) == quem
+    assert chamadas[1][-3:] == ["--min-sdk-version", "24", str(split)]
+
+    def sem_v2(argv: list[str], timeout: int = 0) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout="", stderr="ERROR: Missing META-INF/MANIFEST.MF")
+
+    with pytest.raises(Exception) as exc:
+        ApkInspector(SimpleNamespace(apksigner="apksigner", run=sem_v2))._signature(split)
+    assert "assinatura" in str(exc.value)

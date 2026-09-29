@@ -1,0 +1,14 @@
+# Definição do Outlook como DADO (ADR-052, ADR-057). Primeiro marco do 12.3: o caminho livre. Só esta definição,
+# sem `sessao.yaml`, sem `telas.yaml` e sem `catalogo.yaml`: a IA opera o app, e a senha da conta Outlook da
+# persona, se consentida, só passa pelo canal sensível (`type_secret`, ADR-040), no pacote desta conta.
+# O login gerenciado (provedor de sessão, telas e catálogo de leitura) entra com o 23.8, depois que o motor de
+# sessão deixa de resolver tudo pela conta âncora (23.4) e aceita formulário em etapas (23.6).
+app: com.microsoft.office.outlook
+nome: Microsoft Outlook
+rotulo: Outlook
+# A conta Outlook é da persona (uma por persona, ADR-043): a tarefa exige o perfil vinculado ao aparelho.
+precisa_de_perfil: true
+precisa_de_internet: true
+# NÃO é âncora: a conta da persona que carrega o "Conectado" do perfil segue sendo a do Instagram. Dois apps âncora
+# derrubam o registro inteiro (`pacote_ancora()`).
+ancora_do_perfil: false
