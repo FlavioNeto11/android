@@ -120,9 +120,10 @@ class RespostaAPergunta:
 
 @dataclass(frozen=True, slots=True)
 class CancelamentoDeExecucao:
-    """Uma pessoa cancelou a execução pela rota (`POST /api/runs/{id}/cancel`). O cancelamento que o assistente faz ao
-    criar a sucessora NÃO passa por aqui: é consequência da resposta (`respondeu_pergunta`), não um gesto; nem o
-    `Outcome.cancelled` do escalonador, que é o efeito do pedido."""
+    """Uma pessoa ABRIU um episódio de cancelamento pela rota (`POST /api/runs/{id}/cancel`): o gesto levou a execução
+    a `cancelling`/`cancelled`. O clique repetido no mesmo episódio não chega aqui (`RunService.cancel` decide), nem o
+    cancelamento que o assistente faz ao criar a sucessora — é consequência da resposta (`respondeu_pergunta`), não um
+    gesto —, nem o `Outcome.cancelled` do escalonador, que é o efeito do pedido."""
 
     run_id: str
     #: O status no instante do gesto, lido ANTES de cancelar (depois, `cancelling` → `cancelled` é do escalonador).
@@ -130,6 +131,9 @@ class CancelamentoDeExecucao:
     #: Nada tinha rodado (`planning`, `needs_input`, `planned`): a execução saiu direto para `cancelled`.
     antes_de_iniciar: bool
     quem: str
+    #: O instante da transição (`now_iso`): a marca do episódio. Uma execução reaberta (resolver ou repetir um item
+    #: volta a `running`) e cancelada de novo é outro episódio, e a chave do sinal tem de ser outra.
+    em: str
 
 
 class CosturasDeAprendizado(Protocol):

@@ -919,11 +919,20 @@ class RunService:
     def cancel(self, run_id: str, *, por: str | None = None) -> RunSummary:
         """`por`: quem fez o GESTO (a rota passa o autor da sessão). Só ele vira o sinal `cancelou_execucao`
         (ADR-054); o cancelamento que a sucessora faz da execução respondida chama sem `por` — é consequência da
-        resposta, que já tem o seu sinal."""
+        resposta, que já tem o seu sinal.
+
+        Um sinal por EPISÓDIO: só o gesto que abre o cancelamento o grava. O clique repetido — da mesma pessoa ou de
+        outra — com o cancelamento já valendo não grava: a execução em `cancelling`, ou assentada em
+        `completed_with_issues` com `cancel_requested` (o item falho ou incerto, que `_finish_cancel` não fecha).
+        `running` ou `paused` com `cancel_requested` só existem depois de uma REABERTURA (resolver ou repetir um item
+        de execução cancelada): cancelar ali é outro episódio."""
         run = self._run(run_id)
         status = RunStatus(run["status"])
         if status in RUN_TERMINAL and status != RunStatus.completed_with_issues:
             raise RunError("invalid_state", "A execução já terminou.")
+        episodio_novo = status != RunStatus.cancelling and (
+            not run["cancel_requested"] or status in (RunStatus.running, RunStatus.paused))
+        em = now_iso()
         self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
         antes_de_iniciar = status in (RunStatus.planned, RunStatus.needs_input, RunStatus.planning)
         if antes_de_iniciar:
@@ -936,10 +945,10 @@ class RunService:
                                      "Cancelando: trabalho futuro interrompido; o que já foi feito permanece registrado",
                                      level="warn")
             self.scheduler.wake()
-        if por is not None:
+        if por is not None and episodio_novo:
             # Só depois de o gesto valer; o status é o de ANTES (o de agora já é consequência do pedido).
             avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
-                run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por))
+                run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por, em=em))
         return self.repo.run_summary(self._run(run_id))
 
     # ------------------------------------------------------------------ retomadas

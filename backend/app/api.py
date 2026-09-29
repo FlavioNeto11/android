@@ -64,6 +64,7 @@ from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
                                                      PersonaImagesBody)
+from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
@@ -154,8 +155,14 @@ def quem(request: Request | None = None, informado: str | None = None) -> str:
 def _autor_do_sinal(request: Request) -> str:
     """Quem fez um gesto que vira sinal do aprendizado (ADR-054): o operador da SESSÃO, ou `panel` — a regra das
     rotas do livro. Diferente de `quem`, o `requested_by` do corpo não entra: qualquer chamador o escreve, e um
-    `sistema` ali tiraria o gesto da conta das pessoas na régua diária."""
+    `sistema` ali tiraria o gesto da conta das pessoas na régua diária. Por isso pode diferir do `resolved_by` que o
+    comando grava (aquele aceita o corpo sem sessão); o do comando vai em `data` do sinal, para cruzar os dois."""
     return autor_do_gesto(getattr(request.state, "operador", None))
+
+
+#: A triagem de credencial do voto do D2 (`registrar_sinal(recusar_nota=True)`), para a nota livre que uma pessoa
+#: escreve numa rota daqui e que entraria crua no banco e no evento (segredo nunca em evento).
+_TRIAGEM_DE_NOTA = TriagemDeCredencial()
 
 
 # ====================================================================== sessão do painel
@@ -2478,7 +2485,8 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
 
     Só `uncertain` é resolvível: comando terminal já tem desfecho, e reabrir seria apagar história. Quem
     resolveu e por quê ficam gravados no comando, porque "alguém decidiu" sem dizer quem é o mesmo tipo de
-    afirmação vaga que esta fase inteira existe para eliminar.
+    afirmação vaga que esta fase inteira existe para eliminar. A nota com cara de credencial é recusada (409
+    `note_looks_secret`) antes de qualquer escrita.
     """
     s = st(request)
     row = s.commands.get(command_id)
@@ -2487,6 +2495,11 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     if CommandState(row["state"]) not in COMMAND_UNSETTLED:
         raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
                                         "'uncertain' é resolvido à mão.")
+    if body.note and _TRIAGEM_DE_NOTA.recusa(body.note):
+        # A nota iria crua para `commands.reason` e `result.note`, e dali para o evento do comando no bus. A recusa é
+        # a do voto do D2: nada é gravado, nem a resolução — o comando segue `uncertain` até vir uma nota limpa.
+        raise err(409, "note_looks_secret", "A nota tem formato ou assunto de credencial e não foi gravada, nem a "
+                                            "resolução. Reescreva a observação sem o segredo.")
     alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
             "cancelled": CommandState.cancelled}[body.outcome]
     autor = quem(request, body.requested_by)

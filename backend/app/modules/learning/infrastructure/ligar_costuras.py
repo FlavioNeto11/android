@@ -20,11 +20,14 @@ O que este pacote grava por conta própria são SINAIS (`learning_signals`), ide
 - `repetiu_execucao` (neutro), por `ao_repetir`;
 - `respondeu_pergunta` (neutro), um por campo, com o campo e o sha256 da resposta — nunca o valor;
 - `tomou_controle` (negativo), um por tentativa tomada, sem árvore, texto ou coordenada;
-- `cancelou_execucao`, pela rota de cancelar (o gesto; a sucessora que cancela a execução respondida não conta):
-  neutro quando nada tinha rodado (`planning`, `needs_input`, `planned` — não diz nada de como a IA agiu), negativo
-  quando a pessoa interrompeu trabalho em curso ou fechou o que tinha ficado pendente;
+- `cancelou_execucao`, pela rota de cancelar (o gesto; a sucessora que cancela a execução respondida não conta), um
+  por EPISÓDIO (o clique repetido com o cancelamento já valendo não grava; a execução reaberta e cancelada de novo é
+  outro episódio, com o instante da transição na chave): neutro quando nada tinha rodado (`planning`, `needs_input`,
+  `planned` — não diz nada de como a IA agiu), negativo quando a pessoa interrompeu trabalho em curso ou fechou o que
+  tinha ficado pendente;
 - `comando_incerto_resolvido`, por quem tirou um comando de `uncertain`: `succeeded` é neutro (como confirmar à mão: a
-  ação valeu, a prova não veio — nunca evidência a favor), `failed` é negativo e `cancelled` é neutro;
+  ação valeu, a prova não veio — nunca evidência a favor), `failed` é negativo e `cancelled` é neutro. O autor que o
+  comando gravou (`resolved_by`) vai em `data`, só para cruzar os dois;
 - `correcao_de_ensino` (negativo: a pessoa diz que a habilidade errou naquela etapa), com o texto da correção como
   nota, ligada à execução e à etapa corrigidas.
 
@@ -222,9 +225,10 @@ class CosturasDoLivro:
         ctx = self._contexto(cancelamento.run_id)
         if ctx is None:
             return
-        # Uma execução só se cancela uma vez; o clique repetido (ainda `cancelling`) cai na mesma chave.
+        # Um sinal por EPISÓDIO: o clique repetido nem chega aqui (`RunService.cancel`), e a execução reaberta e
+        # cancelada de novo é outro episódio — a chave leva o instante da transição, senão o `ON CONFLICT` o engoliria.
         self._servico.registrar_sinal(NovoSinal(
-            kind=SignalKind.CANCELOU_EXECUCAO, source_ref=f"cancelamento:{cancelamento.run_id}",
+            kind=SignalKind.CANCELOU_EXECUCAO, source_ref=f"cancelamento:{cancelamento.run_id}:{cancelamento.em}",
             created_by=autor_do_gesto(cancelamento.quem),
             polarity=Polaridade.NEUTRAL if cancelamento.antes_de_iniciar else Polaridade.NEGATIVE,
             run_id=cancelamento.run_id, app_package=ctx.app_package,
@@ -233,9 +237,13 @@ class CosturasDoLivro:
     def comando_incerto_resolvido(self, resolucao: ResolucaoDeComando) -> None:
         if not self._ligado():
             return
-        comando = self._db.one("SELECT instance_id, verb, params FROM commands WHERE id=?", (resolucao.command_id,))
+        comando = self._db.one("SELECT instance_id, verb, params, result FROM commands WHERE id=?",
+                               (resolucao.command_id,))
         if comando is None:
             return
+        # Quem o COMANDO gravou como autor (`result.resolved_by`, que aceita o `requested_by` do corpo sem sessão) vai
+        # só em `data`, para cruzar o sinal com o comando; o autor do sinal é o da sessão (`autor_do_gesto`).
+        resolvido_por = linhas.json_objeto(comando, "result").get("resolved_by")
         bruto = linhas.json_objeto(comando, "params")
         trilha = {k: v.strip() for k in _TRILHA_DO_COMANDO if isinstance(v := bruto.get(k), str) and v.strip()}
         run_id = trilha.get("run_id")
@@ -249,7 +257,8 @@ class CosturasDoLivro:
             instance_id=linhas.texto(comando, "instance_id"),
             profile_id=trilha.get("profile_id") or (ctx.profile_id if ctx is not None else None),
             app_package=pacote or (ctx.app_package if ctx is not None else ""),
-            data={"verbo": linhas.texto(comando, "verb"), "resolucao": resolucao.resolucao},
+            data={"verbo": linhas.texto(comando, "verb"), "resolucao": resolucao.resolucao,
+                  **({"resolved_by": resolvido_por} if isinstance(resolvido_por, str) and resolvido_por else {})},
             simulated=ctx.simulated if ctx is not None else resolucao.simulated))
 
     def correcao_de_ensino(self, correcao: CorrecaoDeEnsino) -> None:
