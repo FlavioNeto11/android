@@ -136,9 +136,12 @@ def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bo
 
 class AoDesmentirSessao(Protocol):
     """`AppState._sessao_desmentida`: a tela contradisse o que a sessão do perfil afirmava. `subtipo` só acompanha
-    `auth_challenge` (ADR-055): `conta_travada` bloqueia o perfil; `codigo` e `verificacao` só pedem uma pessoa."""
+    `auth_challenge` (ADR-055): `conta_travada` bloqueia o perfil; `codigo` e `verificacao` só pedem uma pessoa.
+    `package` é o app da TELA que desmentiu (item 23.4): decide a conta da persona e se ela é a âncora (23.5). Sem ele
+    o AppState deduz pelo app da etapa em curso, e a trava vista no segundo app caía na conta do primeiro."""
 
-    def __call__(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None) -> None: ...
+    def __call__(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None,
+                 package: str | None = None) -> None: ...
 
 
 def motivo_da_trava(trava: ContaTravada) -> str:
@@ -983,10 +986,11 @@ class StepExecutor:
             # `auth_required` gastaria, sozinha, uma das tentativas de autenticação automática daquele perfil.
             return
         try:
+            # O pacote vai junto: é a conta DAQUELE app que a tela desmentiu, não a do app da etapa (item 23.4).
             if subtipo is None:
-                self.on_auth_needed(instance_id, kind, detail)
+                self.on_auth_needed(instance_id, kind, detail, package=package)
             else:
-                self.on_auth_needed(instance_id, kind, detail, subtipo=subtipo)
+                self.on_auth_needed(instance_id, kind, detail, subtipo=subtipo, package=package)
         except Exception:  # noqa: BLE001 - corrigir o cache nunca pode derrubar a etapa
             log.exception("%s: falha ao atualizar o estado de sessão do perfil", instance_id)
 

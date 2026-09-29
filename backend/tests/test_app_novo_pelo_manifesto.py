@@ -109,9 +109,12 @@ async def test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo(harness: 
     pid = s.social.create_profile(ProfileCreate(username="conta.do.qa", instance_id=IID)).id
     # Desde a 047 a porta só considera que a pessoa tem conta num app quando há `profile_accounts` daquele app (o
     # usuário de cadastro vale só para o app do perfil, o Instagram). Sem esta linha, o QA responderia "sem conta".
-    s.social_repo.create_account(pid, app_id="qa-messenger", handle="conta.do.qa")
+    conta_qa = s.social_repo.create_account(pid, app_id="qa-messenger", handle="conta.do.qa")
+    ancora = s.social_repo.conta_ancora(pid)["id"]
     vencida = to_iso(now() - timedelta(seconds=s.social_repo.session_max_age_s + 60))
+    # A sessão é da CONTA de cada app (item 23.4): as duas vencidas, cada uma na sua conta.
     s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id=IID, verified_at=vencida)
+    s.social_repo.set_account_session(pid, conta_qa, IID, status=SessionStatus.session_ready, verified_at=vencida)
     do_instagram: list[dict[str, Any]] = []
 
     async def instagram_falso(rt_: Any, profile_id: str, **kw: Any) -> None:
@@ -119,16 +122,19 @@ async def test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo(harness: 
 
     s.instagram.ensure_session = instagram_falso  # type: ignore[union-attr,method-assign]
     await s._session_gate(rt, IG)[1]()  # noqa: SLF001
-    assert do_instagram == [{"observe_only": True}] and provedor.chamadas == []
+    assert do_instagram == [{"account_id": ancora, "observe_only": True}] and provedor.chamadas == []
     await s._session_gate(rt, QA)[1]()  # noqa: SLF001
     assert provedor.chamadas == [(IID, pid, False, False, True)] and len(do_instagram) == 1
-    sessao = s.social_repo.session_row(pid)                            # gravada pelo provedor do QA
+    assert provedor.contas == [conta_qa]                               # a porta do QA pede a conta DO QA
+    sessao = s.social_repo.account_session_row(pid, conta_qa, IID)     # gravada pelo provedor do QA, na conta dele
     assert (sessao["status"], sessao["detail"]) == ("session_ready", "conta do QA Messenger aberta na tela")
+    assert s.social_repo.session_row(pid, IID)["verified_at"] == vencida   # a da âncora ficou como estava
     assert s._session_gate(rt, QA) is None  # noqa: SLF001                  # fresca: a porta abre
 
-    # mexer no disco do QA agora invalida — ele declara conta gerenciada
+    # mexer no disco do QA agora invalida — ele declara conta gerenciada — e só a conta DELE
     s.releases._app_mudou(IID, QA, "o aplicativo foi instalado neste aparelho")  # noqa: SLF001
-    assert s.social_repo.session_row(pid)["status"] == SessionStatus.unknown.value
+    assert s.social_repo.account_session_row(pid, conta_qa, IID)["status"] == SessionStatus.unknown.value
+    assert s.social_repo.session_row(pid, IID)["status"] == SessionStatus.session_ready.value
 
     # fora do registro, o QA volta ao caminho livre, sem reiniciar nada
     unregister(QA)

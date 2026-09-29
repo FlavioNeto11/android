@@ -43,12 +43,17 @@ class SessionProvider(Protocol):
       aparelho;
     - `observe_only=True` é "Verificar conta": lê a tela e nunca autentica;
     - `force_login=True` refaz o login mesmo com a sessão aberta (pedido explícito do painel);
-    - `account_id` (contrato C1, ADR-057) é a conta do perfil NESTE app. `None` = a conta do app âncora, como sempre
-      foi; a resolução por conta (um perfil com mais de uma conta) é o item 23.4.
+    - `account_id` (contrato C1, item 23.4, ADR-057) é a conta que a chamada abre: do perfil e do pacote DESTE
+      provedor, senão a chamada recusa sem tocar no aparelho. `None` = a conta do perfil neste app: no provedor do app
+      âncora é a conta âncora, como sempre foi; em qualquer outro, a conta daquele app — nunca a de outro app.
 
     O provedor nunca repete envio por timeout, nunca segue com conta errada e nunca tenta resolver desafio de
-    segurança (ADR-009); a senha só passa pelo canal sensível (ADR-025). O que ele observa ele grava na sessão do
-    perfil, aplicando as regras de `session_rules` (ADR-029).
+    segurança (ADR-009); a senha só passa pelo canal sensível (ADR-025). Tudo o que ele lê e grava — credencial,
+    tentativa, teto diário, marcação da credencial, sessão no aparelho — é DESSA conta (`account_credentials`,
+    `authentication_attempts.account_id`, `account_sessions`), e a conta lida na tela é comparada ao @ e ao login
+    dela, não ao @ de cadastro do perfil. O desafio (`session_rules.aplicar_desafio`, item 23.5): no app âncora
+    bloqueia a persona (ADR-029/055); em qualquer outro app para só a conta daquele app, e a conta travada põe o
+    aparelho em quarentena sem bloquear a persona.
 
     O classificador de tela da §7 (`classify`) ficou de fora: nenhum código do núcleo o consumiria sem mudar
     comportamento (a detecção genérica de desafio em `automation/hierarchy.py` vale para qualquer app, de propósito).
@@ -68,6 +73,16 @@ class ProfileStore(Protocol):
     def profile_row(self, profile_id: str) -> Mapping[str, object] | None: ...
 
     def update_profile(self, profile_id: str, fields: dict[str, object]) -> None: ...
+
+
+class CredenciaisDaConta(Protocol):
+    """O pedaço do repositório que para o login automático de UMA conta (item 23.5): a credencial dela e a marcação
+    (`account_credentials.status`). `social.repository.SocialRepository` cumpre por estrutura."""
+
+    def account_credential_row(self, profile_id: str, account_id: str) -> Mapping[str, object] | None: ...
+
+    def mark_account_credential(self, profile_id: str, account_id: str, *, status: str,
+                                failed_attempts: int | None = None, blocked_until: str | None = None) -> None: ...
 
 
 @runtime_checkable

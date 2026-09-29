@@ -1157,6 +1157,11 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     s = st(request)
     rt, profile = _profile_device(s, profile_id, instance_id)
     conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
+    if conta.host:
+        # Conta de portal (um site, pelo navegador): o login gerenciado é o da conta do app inteiro, a única que a
+        # porta de sessão e o despacho acham (item 23.4). O provedor também recusa; aqui a recusa é HTTP e imediata.
+        raise err(409, "conta_de_site", f"Esta conta é de site ({conta.host}), usada pelo navegador: o login "
+                                        "gerenciado do app é o da conta do app, sem site.")
     if not conta.credential.configured and not observe_only:
         raise err(409, "no_credential", "Guarde a senha desta conta antes de conectar.")
     if conta.credential.configured and conta.credential.consent_at is None and not observe_only:
@@ -1172,15 +1177,16 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     if not observe_only:
         await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
-    # O provedor de sessão do PACOTE da conta (registro por pacote, fase K1). `ensure_session` continua por perfil:
-    # o provedor acha a conta dele pelo perfil (hoje um app com provedor por perfil; ADR-040 nota).
+    # O provedor de sessão do PACOTE da conta (registro por pacote, fase K1), e a CONTA que a rota opera (item 23.4):
+    # a credencial, a tentativa e a sessão que o provedor lê e grava são as dela, não as da conta âncora do perfil.
     provedor = s.sessoes.for_package(conta.package)
     if provedor is None:
         raise err(409, "no_session_provider", f"O aplicativo desta conta ({conta.app_name or conta.app_id}) não tem "
                                               "login gerenciado pelo sistema: entre pelo aparelho e marque a sessão.")
     return {**_despachar_trabalho(
         s, rt, verbo,
-        lambda: provedor.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
+        lambda: provedor.ensure_session(rt, profile_id, account_id=conta.id, force_login=force_login,
+                                        observe_only=observe_only),
         label=label, params={"profile_id": profile_id, "account_id": conta.id}),
         "profile_id": profile_id, "account_id": conta.id}
 
@@ -2237,12 +2243,18 @@ def _recusar_mudanca_de_servidor(s: AppState, rt: Any, novo_worker: str | None, 
     if confirmado:
         return
     # Todas as personas do aparelho (vínculo N:N): basta UMA com sessão pronta NESTE aparelho para a mudança
-    # precisar de confirmação — é a sessão dela que fica no disco de trás.
+    # precisar de confirmação — é a sessão dela que fica no disco de trás. Sessão de QUALQUER conta dela ali (item
+    # 23.4): a do segundo app de login gerenciado fica no mesmo disco que a da âncora.
     com_sessao: list[str] = []
+    vistas: set[str] = set()
     for vinculo in s.social_repo.profiles_of_instance(rt.id):
         profile_id = str(vinculo["profile_id"])
-        sessao = s.social_repo.session_row(profile_id, rt.id)
-        if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
+        if profile_id in vistas:
+            continue                          # a mesma persona vinculada por dois apps é uma pessoa só na mensagem
+        vistas.add(profile_id)
+        if not any((sessao := s.social_repo.account_session_row(profile_id, str(conta["id"]), rt.id)) is not None
+                   and sessao["status"] == SessionStatus.session_ready.value
+                   for conta in s.social_repo.list_accounts(profile_id)):
             continue
         perfil = s.social_repo.profile_row(profile_id)
         com_sessao.append(f"@{perfil['username']}" if perfil is not None and perfil["username"]

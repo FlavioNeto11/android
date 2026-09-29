@@ -284,6 +284,39 @@ class SocialRepository:
             row = self.account_by_app(profile_id, app_id)
         return row
 
+    def eh_pacote_ancora(self, profile_id: str, package: str | None) -> bool:
+        """`package` é o do app que provê a conta do perfil? `profile_id` só pela regra de isolamento do repositório:
+        a resposta é a mesma para qualquer perfil (a âncora é da instalação, não da pessoa)."""
+        return bool(package) and package == self._pacote_da_conta_ancora()
+
+    def conta_do_pacote(self, profile_id: str, package: str | None, *, criar: bool = False) -> Row | None:
+        """A conta do perfil no app de `package` — a casa da credencial, da tentativa e da sessão que o motor de
+        sessão daquele app lê e grava (item 23.4, ADR-057).
+
+        No app âncora é `conta_ancora` (com o `criar` de lá: é o que `set_session` sempre fez). Em qualquer outro app,
+        a linha de `profile_accounts` daquele app, pelas duas grafias de `conta_ancora` (o id de `apps` ou o próprio
+        pacote); `criar` não vale ali — conta de outro app nasce de propósito, no cadastro, nunca por efeito de sessão.
+        Nunca cai na âncora: a sessão do segundo app gravada na conta do primeiro era exatamente o login preso à
+        âncora."""
+        if not package:
+            return None
+        if self.eh_pacote_ancora(profile_id, package):
+            return self.conta_ancora(profile_id, criar=criar)
+        app_id = self.db.scalar("SELECT id FROM apps WHERE package=?", (package,)) or package
+        row = self.account_by_app(profile_id, app_id)
+        if row is None and app_id != package:
+            row = self.account_by_app(profile_id, package)
+        return row
+
+    def pacote_da_conta(self, profile_id: str, account_id: str) -> str | None:
+        """O pacote do app desta conta do perfil: o de `apps`; sem a linha lá, o `app_id` quando ele já é um pacote
+        (conta criada antes de o app ser registrado, como em `conta_ancora`). `None` quando a conta não é do perfil."""
+        conta = self.account_row(profile_id, account_id)
+        if conta is None:
+            return None
+        pacote = self.db.scalar("SELECT package FROM apps WHERE id=?", (conta["app_id"],))
+        return str(pacote) if pacote else str(conta["app_id"])
+
     # ------------------------------------------------------------------ credencial da conta (só metadados aqui)
     def account_credential_row(self, profile_id: str, account_id: str) -> Row | None:
         return self.db.one("SELECT c.* FROM account_credentials c JOIN profile_accounts a ON a.id=c.account_id"
@@ -389,9 +422,10 @@ class SocialRepository:
                         " (SELECT id FROM profile_accounts WHERE profile_id=?)", (now_iso(), account_id, profile_id))
 
     # ------------------------------------------------------------------ credencial da conta âncora (compatibilidade)
-    # As assinaturas por `profile_id` ficam: o motor de sessão, `state.py` e o DTO do perfil leem por elas. O que
-    # mudou é a casa — `account_credentials` da conta âncora, nunca mais `instagram_credentials` (só leitura até a
-    # migração que a remove). As linhas voltam com os MESMOS nomes de coluna.
+    # As assinaturas por `profile_id` ficam para o DTO do perfil e para quem só conhece o perfil. O que mudou é a
+    # casa — `account_credentials` da conta âncora, nunca mais `instagram_credentials` (só leitura até a migração que
+    # a remove). As linhas voltam com os MESMOS nomes de coluna. O motor de sessão e a porta de sessão NÃO leem por
+    # aqui desde o 23.4: resolvem a conta do app (`conta_do_pacote`) e usam as leituras `account_*` dela.
     def credential_row(self, profile_id: str) -> Row | None:
         conta = self.conta_ancora(profile_id)
         return self.account_credential_row(profile_id, conta["id"]) if conta is not None else None
@@ -683,7 +717,8 @@ class SocialRepository:
         O que acontece junto, porque é a mesma afirmação:
         - o perfil dono da conta (achado pelo `profile_id`, pelo @ do cadastro ou pela conta do app) passa a
           `blocked` com a evidência e a origem — decisão do dono em 28/09: o desafio É a conta bloqueada. Só a partir
-          de `active`: perfil pausado pelo dono (`disabled`) fica como ele deixou;
+          de `active`: perfil pausado pelo dono (`disabled`) fica como ele deixou. Só pela conta do app âncora (item
+          23.5, `_trava_a_persona`): a de outro app para sozinha (credencial em `review`, por `session_rules.aplicar_desafio`);
         - o `account_label` do aparelho passa a dizer a conta que está lá de verdade.
 
         Não desvincula nem toca no aparelho: o que fazer com ele é decisão de pessoa. A partir daqui o aparelho está
@@ -708,7 +743,7 @@ class SocialRepository:
                             (instance_id, conta, pid, app, origem, visto_por, texto, agora, agora))
         except INTEGRITY_ERRORS:
             return False                   # outro chamador marcou no mesmo instante: o marcador existe
-        if pid is not None:
+        if pid is not None and self._trava_a_persona(pid, app):
             perfil = self.profile_row(pid)
             if perfil is not None and (perfil["status"] or "active") == "active":
                 self.mudar_status(pid, "blocked", origem=origem, autor=visto_por,
@@ -736,6 +771,16 @@ class SocialRepository:
                 for m in abertos:
                     self.on_locked_account(m, "resolvido", por)
         return len(abertos)
+
+    def _trava_a_persona(self, profile_id: str, app_id: str | None) -> bool:
+        """A conta travada leva a PERSONA junto? Só a do app âncora (item 23.5, decisão do dono P9 de 29/09): a conta
+        de outro app (o Outlook) travada põe o aparelho em quarentena e para só aquela conta — a persona e o
+        Instagram dela seguem. Sem app sabido (achada pelo @ do cadastro, que é o da âncora) ou sem âncora
+        configurada, vale o de sempre: bloqueia."""
+        if app_id is None or self._pacote_da_conta_ancora() is None:
+            return True
+        pacote = self.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) or app_id
+        return self.eh_pacote_ancora(profile_id, str(pacote))
 
     def _dona_da_conta(self, conta: str, profile_id: str | None, app_id: str | None) -> Row | None:
         """`{profile_id, app_id}` da conta travada: pela conta do app com aquele @, senão pelo @ do cadastro."""
@@ -877,12 +922,15 @@ class SocialRepository:
         self.set_account_session(profile_id, conta["id"], iid, status=status, observed_handle=observed_username,
                                  verified_at=verified_at, detail=detail, reobserved=reobserved)
 
-    def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str, package: str | None = None) -> int:
+    def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str, package: str | None = None,
+                                        todos_os_apps: bool = False) -> int:
         """Wipe, perda do aparelho ou atualização do app: a sessão daquele aparelho deixa de valer.
 
-        Por app: sem `package`, as contas do app âncora (o comportamento de sempre: é o que `state.py` invalida ao
-        mexer no disco do app com provedor); com ele, as contas daquele app. A marcação que a pessoa fez num app
-        sem provedor só cai quando aquele app é o alvo.
+        Por app: sem `package`, as contas do app âncora (o comportamento de sempre para quem não diz o app); com
+        ele, as contas daquele app. A marcação que a pessoa fez num app sem provedor só cai quando aquele app é o
+        alvo. `todos_os_apps=True` é o disco do APARELHO que foi embora (reset, troca de máquina): a sessão de toda
+        conta de todo app ali deixa de valer — antes só a da âncora caía, e a do segundo app seguia "Conectado"
+        num disco que não existe mais (item 23.4).
 
         O motivo é reescrito mesmo numa sessão que já estava `unknown`. Sem isso, uma sequência de operações
         deixaria no painel a explicação da PRIMEIRA delas — "o app foi atualizado" continuaria aparecendo depois de
@@ -890,6 +938,11 @@ class SocialRepository:
 
         O retorno conta só quem de fato mudou de estado: é o que decide se vale emitir um aviso.
         """
+        if todos_os_apps:
+            rows = self.db.query("SELECT s.account_id, s.status, a.profile_id FROM account_sessions s"
+                                 " JOIN profile_accounts a ON a.id = s.account_id WHERE s.instance_id=?",
+                                 (instance_id,))
+            return self._invalidar(instance_id, rows, reason)
         pacote = package or self._pacote_da_conta_ancora()
         if pacote is None:
             return 0
@@ -897,6 +950,9 @@ class SocialRepository:
         rows = self.db.query("SELECT s.account_id, s.status, a.profile_id FROM account_sessions s"
                              " JOIN profile_accounts a ON a.id = s.account_id"
                              " WHERE s.instance_id=? AND a.app_id IN (?, ?)", (instance_id, app_id, pacote))
+        return self._invalidar(instance_id, rows, reason)
+
+    def _invalidar(self, instance_id: str, rows: list[Row], reason: str) -> int:
         mudaram = 0
         for r in rows:
             if r["status"] != SessionStatus.unknown.value:
@@ -908,7 +964,8 @@ class SocialRepository:
     # ------------------------------------------------------------------ auditoria de autenticação (por conta)
     def start_auth_attempt(self, profile_id: str, instance_id: str, *, stage: str = "started",
                            account_id: str | None = None) -> int:
-        """A tentativa é da CONTA (049). Sem `account_id`, a da conta âncora — o provedor do Instagram chama assim."""
+        """A tentativa é da CONTA (049). O motor de sessão sempre diz qual (23.4); sem `account_id`, a da conta
+        âncora — o chamador antigo, que só conhecia o perfil."""
         conta_id = account_id
         if conta_id is None:
             conta = self.conta_ancora(profile_id)

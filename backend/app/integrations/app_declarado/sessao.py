@@ -19,6 +19,21 @@ Ler a conta é o que separa "o app abriu" de "a conta certa está aberta": nenhu
 confirmado, e conta errada nunca continua em silêncio. Nunca se presume sucesso pelo retorno do Appium: observa-se de
 novo e classifica-se pelo que está na tela.
 
+Sessão por CONTA (item 23.4, ADR-057): cada chamada resolve, antes de tocar no aparelho, a conta que ela abre — a dita
+(`account_id`, que tem de ser do perfil e deste app) ou a do perfil NESTE app — e tudo o que o motor lê e grava é
+dessa conta: credencial, consentimento, tentativa, teto diário, marcação da credencial, sessão no aparelho. Antes tudo
+caía na conta do app âncora do perfil, qualquer que fosse o app do provedor: o login do segundo app gravava a sessão e
+a senha recusada na conta do primeiro. A conta lida na tela é comparada ao @ (`handle`) e ao identificador de login
+DESSA conta, não ao @ de cadastro do perfil.
+
+Login em ETAPAS e conta fora da barra inferior (item 23.6, ADR-057), declarados no `sessao.yaml`: o identificador numa
+tela com "avançar" e a senha na seguinte — que só recebe a senha mostrando ESTE identificador (o app que lembrou outra
+conta não recebe a senha desta); a recusa do identificador para o login sem julgar a senha. A conta pode ser aberta
+por um elemento declarado (avatar, menu), lida com um valor só e, no app cuja tela inicial não a mostra, logo depois do
+envio. A Custom Tab do navegador declarado é tela do app só num site de login que o app declara (`navegador.hosts`):
+fora dele a pessoa assume, o desafio continua visto, e a senha — conferida no instante de digitar, na mesma árvore do
+campo — nunca cai lá. Conta com `host` (de portal, no navegador) não tem login gerenciado.
+
 Telas aprendidas (ADR-054, fatia 5): cada chamada usa o conhecimento UNIDO (`conhecimento.com_as_aprendidas`) — a tela
 de casa que mudou numa atualização do app, aprendida com a aba de perfil declarada, entra no estado conhecido, e a
 conferência para nela em vez de voltar para fora do app. A conta continua lida só pela tela de perfil DECLARADA. E cada
@@ -30,7 +45,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -43,16 +58,17 @@ from ...automation.hierarchy import SUBTIPO_CONTA_TRAVADA, ContaTravada, UiEleme
 from ...devices.adb import AVISO_DE_ANR, motivo_de_anr
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
-from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, bloquear_por_desafio,
-                                                           emit_needs_person_change, motivo_do_login_parado,
-                                                           registrar_conta_travada)
+from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio,
+                                                           emit_needs_person_change, motivo_do_login_parado)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
+from . import formulario as geometria
 from .conhecimento import CONFERIR_CONTA, Ajustes, ConhecimentoDeSessao, com_as_aprendidas
-from .formulario import LoginForm
+from .formulario import FormularioDoUsuario, LoginForm
 
 if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
     from ...config import Config
+    from ...db import Row
     from ...devices.manager import DeviceManager, DeviceRuntime
     from ...events import EventBus
     from ...security.secret_store import SecretStore
@@ -69,11 +85,22 @@ FILL_TRIES = 3                # tentativas de pôr o usuário no campo; só se e
 OBSERVAR_DEPOIS_DO_ENVIO_S = 2.0
 #: Tipos de tela (vocabulário de `automation/conhecimento_de_telas.py`) que só uma pessoa resolve.
 TIPOS_DE_DESAFIO = frozenset({"desafio", "dois_fatores"})
+#: Etapas do login em ETAPAS (item 23.6) em que a tentativa termina antes da senha: o desafio visto depois do
+#: "avançar", o navegador fora do site da conta, o identificador recusado, a tela da senha que não mostra esta conta
+#: e a tela da senha que não chegou. Todas param o login automático até uma pessoa olhar (o "avançar" já é efeito no
+#: servidor) e nenhuma gasta o teto diário (a senha não saiu).
+ETAPA_DESAFIO_ANTES_DA_SENHA = "challenge_before_password"
+ETAPA_NAVEGADOR_FORA_DA_CONTA = "browser_outside_account"
+ETAPA_IDENTIFICADOR_RECUSADO = "identifier_rejected"
+ETAPA_CONTA_NAO_MOSTRADA = "identity_not_shown"
+ETAPA_SEM_TELA_DA_SENHA = "password_step_missing"
 #: Etapas de uma tentativa em que a senha AINDA NÃO saiu da máquina (o envio é gravado como `submitting` antes do
 #: toque em Entrar). Todo o resto — inclusive uma tentativa que parou em `submitting` sem desfecho — conta como envio
 #: no teto diário: na dúvida, conta.
 ETAPAS_ANTES_DO_ENVIO = frozenset({"started", "form_found", "username_mismatch", "sensitive_channel_blocked",
-                                   "fill_failed", "submit_not_delivered", "account_blocked", "login_parado"})
+                                   "fill_failed", "submit_not_delivered", "account_blocked", "login_parado",
+                                   ETAPA_DESAFIO_ANTES_DA_SENHA, ETAPA_NAVEGADOR_FORA_DA_CONTA,
+                                   ETAPA_IDENTIFICADOR_RECUSADO, ETAPA_CONTA_NAO_MOSTRADA, ETAPA_SEM_TELA_DA_SENHA})
 #: Janela do teto diário de logins por conta (`max_logins_per_day`).
 JANELA_DO_TETO_DIARIO = timedelta(hours=24)
 #: Começo do aviso que ESTE motor põe no cartão do aparelho quando o app não fica na frente. É por ele que o motor
@@ -105,6 +132,8 @@ class Verdict:
     tela: str = telas.DESCONHECIDA
     etapa: str = "classified"
     trava: ContaTravada | None = None    #: desafio ou código depois do envio: subtipo e trecho (ADR-055)
+    #: Uma tela de casa em que a conta não está à vista: quem confirma é a leitura pelo acesso declarado (23.6).
+    conferir: bool = False
 
 
 @dataclass(slots=True)
@@ -127,6 +156,51 @@ class AccountCheck:
     detail: str
     outro_app: bool = False          # a leitura terminou com OUTRO app na frente (o nosso caiu ou não voltou)
     trava: ContaTravada | None = None  # a leitura parou numa tela de verificação, sem tocar nela (ADR-055)
+
+
+def normalizar_conta(valor: str | None) -> str:
+    """A conta como se compara: sem espaço, sem o '@' do começo e em minúsculas. O '@' do meio fica (e-mail)."""
+    return (valor or "").strip().lstrip("@").strip().lower()
+
+
+def _como_conta(valor: str) -> str:
+    """A conta na mensagem: `@usuario`; um e-mail vai como está (`@ana@exemplo.com` não diz nada a ninguém)."""
+    limpo = valor.strip().lstrip("@").strip()
+    return limpo if "@" in limpo else f"@{limpo}"
+
+
+@dataclass(frozen=True, slots=True)
+class ContaDaSessao:
+    """A conta que UMA chamada de `ensure_session` abre e confere (item 23.4). Resolvida antes de tocar no aparelho,
+    e é a casa de tudo o que o motor lê e grava na chamada.
+
+    `handle` é a conta como a tela deve mostrá-la (o @ da conta do app; na falta dele, o identificador de login);
+    `aceitos` são os identificadores DESTA conta, normalizados, que confirmam a leitura — o @ e o login (um app que
+    mostra o e-mail no cabeçalho confere pelo login). `ancora` = a conta do app que provê a conta do perfil, a única
+    cujo "verificado" o cartão do perfil mostra. É sempre a conta do app inteiro (`profile_accounts.host` nulo): a
+    conta de portal, com `host`, é acessada pelo navegador e não tem login gerenciado (`_resolver_conta`)."""
+
+    profile_id: str
+    id: str
+    app_id: str
+    handle: str
+    aceitos: frozenset[str]
+    ancora: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Destino:
+    """Onde a tela está, para o login (item 23.6): o app da conta, outro app, ou o navegador declarado para a Custom
+    Tab do login, num site. `permitido` = o app da conta, ou o navegador num site de login declarado pelo app — o único
+    lugar em que o motor segue o login e em que a senha pode ser digitada."""
+
+    pacote: str | None
+    host: str | None = None          # só no navegador declarado: o site da barra de endereço ('' = não lido)
+    permitido: bool = True
+
+    @property
+    def navegador(self) -> bool:
+        return self.host is not None
 
 
 @dataclass(slots=True)
@@ -195,6 +269,7 @@ def _aprendida(k: ConhecimentoDeSessao, tela: str) -> bool:
 
 Observar = Callable[[], Awaitable[tuple[UiTree, str | None]]]
 Tocar = Callable[[int, int], Awaitable[None]]
+Reconhecer = Callable[[UiTree, str | None], TelaReconhecida]
 
 
 def _nome_da_tela(r: TelaReconhecida) -> str:
@@ -207,6 +282,11 @@ def _texto_da_tela(tree: UiTree) -> str:
     return "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
 
 
+def _fora_do_site(destino: Destino) -> str:
+    return (f"o login abriu no navegador ({destino.host or 'site não identificado'}), fora dos sites declarados para "
+            "o login do app")
+
+
 def _dados_da_trava(profile_id: str, trava: ContaTravada | None) -> dict[str, str | None]:
     """O tipo e o trecho da tela de verificação no evento (ADR-055): antes eram calculados e descartados."""
     return {"profile_id": profile_id, "subtipo": trava.subtipo if trava is not None else None,
@@ -215,11 +295,13 @@ def _dados_da_trava(profile_id: str, trava: ContaTravada | None) -> dict[str, st
 
 # ---------------------------------------------------------------------------------------------------- desfechos
 def classificar_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, *, package: str | None,
-                                expected_username: str, locale: str | None = None) -> Verdict:
+                                expected_username: str, locale: str | None = None,
+                                aceitos: Iterable[str] = ()) -> Verdict:
     """Lê a tela depois do envio e decide pela tabela declarada (`depois_do_envio`): a primeira regra que casar vence.
 
     Nunca se repete o envio por causa de timeout — só uma falha COMPROVADA antes de qualquer efeito autoriza nova
-    tentativa, e essa não passa por aqui. `expected_username` é comparado sem diferenciar maiúsculas.
+    tentativa, e essa não passa por aqui. `expected_username` é comparado sem diferenciar maiúsculas nem o '@' do
+    começo; `aceitos` são os outros identificadores da MESMA conta (o login) que também a confirmam.
     """
     sig = k.telas.sinais_de(locale)
     texto = _texto_da_tela(tree)
@@ -234,33 +316,47 @@ def classificar_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, *, packag
         if not casou:
             continue
         if regra.desfecho == CONFERIR_CONTA:
-            return _conferir_conta_depois_do_envio(k, tree, r, expected_username)
+            return _conferir_conta_depois_do_envio(k, tree, r, expected_username, aceitos)
         detalhe = f"{regra.detalhe} (tela: {_nome_da_tela(r)})" if regra.anexar_tela else regra.detalhe
         return Verdict(Outcome(regra.desfecho), detalhe, tela=r.tela, etapa=regra.etapa, trava=r.trava)
     return Verdict(Outcome.UNCERTAIN, f"não foi possível classificar a tela ({r.razao})", tela=r.tela)
 
 
+def _confere(observado: str, esperado: str, aceitos: Iterable[str]) -> bool:
+    o = normalizar_conta(observado)
+    return bool(o) and (o == normalizar_conta(esperado) or o in {normalizar_conta(a) for a in aceitos})
+
+
 def _conferir_conta_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, r: TelaReconhecida,
-                                    esperado: str) -> Verdict:
+                                    esperado: str, aceitos: Iterable[str] = ()) -> Verdict:
     observado = k.conta_observada(tree)
-    if observado and observado.lower() != esperado.lower():
-        return Verdict(Outcome.WRONG_ACCOUNT, f"a conta aberta é @{observado}, e a esperada é @{esperado}",
+    if observado and not _confere(observado, esperado, aceitos):
+        return Verdict(Outcome.WRONG_ACCOUNT,
+                       f"a conta aberta é {_como_conta(observado)}, e a esperada é {_como_conta(esperado)}",
                        observed_username=observado, tela=r.tela)
     if observado:
-        return Verdict(Outcome.SESSION_READY, f"@{observado} confirmado na tela", observed_username=observado,
-                       tela=r.tela)
+        return Verdict(Outcome.SESSION_READY, f"{_como_conta(observado)} confirmado na tela",
+                       observed_username=observado, tela=r.tela)
     # Entrou no app mas a conta ainda não apareceu: quem confirma é a leitura pela aba de perfil, não este palpite.
-    return Verdict(Outcome.UNCERTAIN, "o app abriu, mas a conta ainda não foi confirmada na tela", tela=r.tela)
+    return Verdict(Outcome.UNCERTAIN, "o app abriu, mas a conta ainda não foi confirmada na tela", tela=r.tela,
+                   conferir=True)
 
 
 # ---------------------------------------------------------------------------------------------------- conta aberta
 async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, expected: str,
-                    locale: str | None) -> AccountCheck:
-    """Tenta ler a conta; abre a aba de perfil declarada e lê de lá.
+                    locale: str | None, aceitos: Iterable[str] = (),
+                    reconhecer: Reconhecer | None = None) -> AccountCheck:
+    """Tenta ler a conta; abre a aba de perfil declarada (ou o acesso à conta fora da barra, item 23.6) e lê de lá.
 
     `observe` devolve `(UiTree, package)`; `tap` recebe (x, y). Nada aqui digita nem toca em nada além de dispensas
-    de recusa e da aba de perfil, que é navegação sem efeito externo.
+    de recusa e da aba de perfil (ou do acesso), que é navegação sem efeito externo. `expected` e `aceitos` são da
+    conta do app que esta chamada abre (o @ e o login dela), nunca o @ de cadastro do perfil. `reconhecer` é o do
+    provedor (`SessaoDeclarada._reconhecer`): a Custom Tab no site da conta é tela do app, e o desafio dentro dela é
+    visto; o padrão é o conhecimento puro.
     """
+    def ver(t: UiTree, p: str | None) -> TelaReconhecida:
+        return reconhecer(t, p) if reconhecer is not None else k.reconhecer(t, package=p, locale=locale)
+
     # Depois de entrar, o app pode empilhar telas na frente: "Salvar dados de login?", dicas e passos de onboarding.
     # Nenhuma delas tem barra de perfil, então não adianta procurar a conta ali. O laço abre caminho: dispensa o que
     # estiver na frente, vai até a aba de perfil e só então lê.
@@ -277,8 +373,11 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
     espera = k.conta.espera_s
     for _ in range(k.conta.passos_max):
         tree, package = await observe()
-        if (trava := k.reconhecer(tree, package=package, locale=locale).trava) is not None:
-            return _travada(trava)
+        agora = ver(tree, package)
+        if agora.trava is not None:
+            return _travada(agora.trava)
+        if agora.outro_app and k.barra_de_endereco(package) is not None:
+            break               # o navegador declarado fora do site da conta: nem a recusa se toca numa página alheia
         dispensar = k.botao_de_nao_salvar_login(tree, locale) or k.botao_de_dispensa(tree)
         if dispensar is not None:
             await tap(*dispensar.center)
@@ -293,17 +392,17 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
         await tap(*alvo)
         await asyncio.sleep(espera)
         tree, package = await observe()
-        reconhecida = k.reconhecer(tree, package=package, locale=locale)
+        reconhecida = ver(tree, package)
         if reconhecida.trava is not None:
             return _travada(reconhecida.trava)
         if reconhecida.tela == k.conta.tela_de_perfil:
             achado = k.conta_no_cabecalho(tree)
             if achado:
-                return _check(achado, expected)
+                return _check(achado, expected, aceitos)
 
     motivo, outro_app = "tela desconhecida", False
     if tree is not None:
-        reconhecida = k.reconhecer(tree, package=package, locale=locale)
+        reconhecida = ver(tree, package)
         motivo, outro_app = reconhecida.razao, reconhecida.outro_app
     return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})", outro_app)
 
@@ -313,11 +412,11 @@ def _travada(trava: ContaTravada) -> AccountCheck:
                         trava=trava)
 
 
-def _check(observed: str, expected: str) -> AccountCheck:
-    ok = observed.lower() == expected.lower()
+def _check(observed: str, expected: str, aceitos: Iterable[str] = ()) -> AccountCheck:
+    ok = _confere(observed, expected, aceitos)
     return AccountCheck(observed, ok,
-                        f"@{observed} confirmado na tela" if ok
-                        else f"a conta aberta é @{observed}, e a esperada é @{expected}")
+                        f"{_como_conta(observed)} confirmado na tela" if ok
+                        else f"a conta aberta é {_como_conta(observed)}, e a esperada é {_como_conta(expected)}")
 
 
 # ---------------------------------------------------------------------------------------------------- o provedor
@@ -348,6 +447,43 @@ class SessaoDeclarada:
             return self.conhecimento.ajustes
         return self.conhecimento.ajustes.com(self.cfg.ajustes_de_sessao(self.package))
 
+    # ------------------------------------------------------------------ onde a tela está (item 23.6)
+    @staticmethod
+    def _destino(k: ConhecimentoDeSessao, tree: UiTree, package: str | None) -> Destino:
+        """O app da conta, outro app, ou o navegador declarado num site. O site vale só se estiver entre os de login
+        que o app declara (`navegador.hosts`, ou um subdomínio deles). Barra de endereço fora da tela = site não
+        confirmado = não permitido. O `host` de uma conta NÃO soma aqui: conta com `host` é de portal no navegador, e
+        o login gerenciado a recusa (`_resolver_conta`)."""
+        if not package or package == k.app:
+            return Destino(package)
+        sufixo = k.barra_de_endereco(package)
+        if sufixo is None or k.navegador is None:
+            return Destino(package, permitido=False)
+        host = geometria.host_da_barra(tree, pacote=package, sufixo=sufixo)
+        return Destino(package, host, permitido=geometria.host_permitido(host, k.navegador.hosts))
+
+    def _reconhecer(self, k: ConhecimentoDeSessao, tree: UiTree, package: str | None,
+                    locale: str | None) -> TelaReconhecida:
+        """A tela pelo conhecimento; na Custom Tab do navegador declarado, num site de login do app, como tela DO APP
+        (é o login dele). Fora do site, a tela é "outro app" — mas o desafio aparece mesmo assim: `classificar` devolve
+        outro app antes do detector, e um desafio dentro da Custom Tab passaria sem ser visto."""
+        destino = self._destino(k, tree, package)
+        if not destino.navegador:
+            return k.reconhecer(tree, package=package, locale=locale)
+        como_app = k.reconhecer(tree, package=k.app, locale=locale)
+        if destino.permitido or como_app.trava is not None:
+            return como_app
+        return TelaReconhecida(telas.DESCONHECIDA, telas.DESCONHECIDA, _fora_do_site(destino), outro_app=True)
+
+    def _no_navegador_fora_do_site(self, k: ConhecimentoDeSessao, tree: UiTree, package: str | None,
+                                   estado: TelaReconhecida) -> Destino | None:
+        """O navegador declarado na frente, num site que não é de login do app, sem desafio na tela: o destino, para a
+        entrega à pessoa. `None` em qualquer outro caso (o desafio segue o caminho do desafio)."""
+        if estado.trava is not None:
+            return None
+        destino = self._destino(k, tree, package)
+        return destino if destino.navegador and not destino.permitido else None
+
     # ------------------------------------------------------------------ entrada principal
     async def ensure_session(self, rt: DeviceRuntime, profile_id: str, *, account_id: str | None = None,
                              force_login: bool = False, automatic: bool = False,
@@ -361,15 +497,64 @@ class SessaoDeclarada:
         `observe_only=True` é "Verificar conta": lê a tela e nada mais. Num aparelho deslogado ele PARA na tela de
         login em vez de autenticar — antes, quem apertava "Verificar" gastava uma tentativa de login real sem saber.
 
-        `account_id` (contrato C1, ADR-057) é aceito e ainda não muda nada: este motor abre a conta do perfil no app
-        âncora, que é o comportamento de `account_id=None`. Escolher a conta pelo id (perfil com duas contas no mesmo
-        app, ou a conta do Outlook) é o item 23.4, e até lá nenhuma conta é inventada a partir dele.
+        `account_id` (contrato C1, item 23.4, ADR-057) é a conta que esta chamada abre: tem de ser do perfil e deste
+        app, senão a chamada recusa sem tocar no aparelho. `None` é a conta do perfil NESTE app — no provedor do app
+        âncora, a conta âncora, como sempre foi; em qualquer outro, a conta daquele app, e sem ela a chamada recusa.
+        Nunca cai na conta de outro app: era assim que o login do segundo app gravava na conta do primeiro.
         """
         visto = _Visto()
-        resultado = await self._garantir(rt, profile_id, visto, force_login=force_login, automatic=automatic,
-                                         observe_only=observe_only)
+        resultado = await self._garantir(rt, profile_id, visto, account_id=account_id, force_login=force_login,
+                                         automatic=automatic, observe_only=observe_only)
         self._avisar_o_aprendizado(rt, profile_id, visto, resultado)
         return resultado
+
+    def _resolver_conta(self, profile_id: str, account_id: str | None) -> ContaDaSessao | AuthResult:
+        """A conta desta chamada, ou a recusa (sem gravar nada e sem tocar no aparelho) quando não há uma que sirva.
+
+        A conta de outro app nunca é aceita: o provedor abre e confere o SEU pacote, e gravar a sessão dele noutra
+        conta afirmaria um login que ninguém viu."""
+        perfil = self.repo.profile_row(profile_id)
+        if perfil is None:
+            return AuthResult(Outcome.UNCERTAIN, "perfil não encontrado")
+        rotulo = self.conhecimento.rotulo
+        if account_id is not None:
+            linha = self.repo.account_row(profile_id, account_id)
+            if linha is None:
+                return AuthResult(Outcome.UNCERTAIN, f"a conta {account_id} não é desta persona")
+            pacote = self.repo.pacote_da_conta(profile_id, account_id)
+            if pacote != self.package:
+                return AuthResult(Outcome.UNCERTAIN, f"a conta {account_id} é de outro app ({pacote}); este login é "
+                                                     f"o do {rotulo}")
+            if str(linha["host"] or "").strip():
+                # Conta de PORTAL (um site, pelo navegador): não é a que o login gerenciado abre. A porta de sessão e o
+                # despacho nunca a acham (`conta_do_pacote` é a do app inteiro); aceitá-la só aqui abriria pelo
+                # "Conectar" um login que nenhum outro caminho reconhece, e somaria o site dela aos da Custom Tab.
+                return AuthResult(Outcome.UNCERTAIN, f"a conta {account_id} é de site ({linha['host']}), usada pelo "
+                                                     f"navegador; o login gerenciado do {rotulo} é o da conta do app, "
+                                                     "sem site")
+        else:
+            linha = self.repo.conta_do_pacote(profile_id, self.package, criar=True)
+            if linha is None:
+                # Terminal, como "não há credencial": só uma pessoa cadastrando a conta resolve; insistir não muda
+                # nada.
+                return AuthResult(Outcome.INVALID_CREDENTIAL, f"esta persona não tem conta no {rotulo}; cadastre a "
+                                                              "conta na tela da persona antes de conectar",
+                                  session_status=SessionStatus.auth_required)
+        ancora = self.repo.eh_pacote_ancora(profile_id, self.package)
+        cred = self.repo.account_credential_row(profile_id, linha["id"])
+        handle = str(linha["handle"] or "").strip()
+        if not handle and ancora:
+            handle = str(perfil["username"] or "").strip()    # conta âncora antiga, criada sem o @
+        login = str(cred["login_identifier"] or "").strip() if cred is not None else ""
+        principal = handle or login
+        if not normalizar_conta(principal):
+            # Sem um identificador, a leitura da tela não teria com o que comparar — e "qualquer conta serve" é
+            # exatamente o que nunca pode acontecer.
+            return AuthResult(Outcome.UNCERTAIN, f"a conta do {rotulo} desta persona não tem @ nem identificador de "
+                                                 "login para conferir na tela; preencha-os na conta")
+        return ContaDaSessao(profile_id=profile_id, id=str(linha["id"]), app_id=str(linha["app_id"]), handle=principal,
+                             aceitos=frozenset(n for n in (normalizar_conta(handle), normalizar_conta(login)) if n),
+                             ancora=ancora)
 
     def _avisar_o_aprendizado(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, resultado: AuthResult) -> None:
         """Um aviso por chamada, e só quando a tela foi lida (a recusa sem tocar no aparelho não é observação)."""
@@ -385,31 +570,30 @@ class SessaoDeclarada:
             except Exception:  # noqa: BLE001 - aprendizado é registro: nunca muda o desfecho da sessão
                 log.exception("%s: o aprendizado não ouviu a conferência da conta (a sessão seguiu)", rt.id)
 
-    async def _garantir(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, *, force_login: bool,
-                        automatic: bool, observe_only: bool) -> AuthResult:
+    async def _garantir(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, *, account_id: str | None,
+                        force_login: bool, automatic: bool, observe_only: bool) -> AuthResult:
         # O conhecimento UNIDO desta chamada: as telas aprendidas publicadas entram depois das declaradas (ADR-054).
         k = com_as_aprendidas(self.conhecimento)
-        profile = self.repo.profile_row(profile_id)
-        if profile is None:
-            return AuthResult(Outcome.UNCERTAIN, "perfil não encontrado")
-        username = profile["username"]
+        conta = self._resolver_conta(profile_id, account_id)
+        if isinstance(conta, AuthResult):
+            return conta
 
         # ADR-055: conta bloqueada (ou pausada pelo dono) nunca recebe a senha — nem pelo agendador, nem pelo
         # "Conectar". Recusa SEM gravar a sessão: gravar `auth_required` por cima de um desafio tirava a conta da fila
         # "Aguardando intervenção" e apagava o que a pessoa precisa ver. Só a leitura (`observe_only`) segue: não
         # digita nada, e é como a pessoa confirma que resolveu a tela (a reativação do perfil continua dela).
-        if not observe_only and (parada := self._conta_parada(profile_id)) is not None:
-            return self._recusa_sem_tocar(profile_id, rt.id, parada)
-        if automatic and (parado := self._needs_person(profile_id, rt.id)):
+        if not observe_only and (parada := self._conta_parada(conta)) is not None:
+            return self._recusa_sem_tocar(conta, rt.id, parada)
+        if automatic and (parado := self._needs_person(conta, rt.id)):
             return AuthResult(parado[0], parado[1], session_status=self._status_for(parado[0]))
-        bloqueio = self._blocked_reason(profile_id)
+        bloqueio = self._blocked_reason(conta)
         if bloqueio:
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=bloqueio)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=bloqueio)
             return AuthResult(Outcome.INVALID_CREDENTIAL, bloqueio, session_status=SessionStatus.auth_required)
-        if automatic and not observe_only and self._login_em_revisao(profile_id):
+        if automatic and not observe_only and self._login_em_revisao(conta):
             # Um envio de senha já saiu sem sucesso: o agendador não tenta de novo, nem depois de intervalo nenhum, e
             # nem toca no aparelho. Quem pode tentar é uma pessoa, pelo "Conectar" (chamada não automática).
-            return self._recusa_sem_tocar(profile_id, rt.id, motivo_do_login_parado(self.conhecimento.rotulo))
+            return self._recusa_sem_tocar(conta, rt.id, motivo_do_login_parado(self.conhecimento.rotulo))
 
         if not await self._ensure_automation(rt):
             return AuthResult(Outcome.RETRYABLE, "a sessão de automação do aparelho não ficou pronta")
@@ -421,15 +605,19 @@ class SessaoDeclarada:
         except AppParouDeResponder as exc:
             return self._parou_de_responder(rt, str(exc))
         tree, package = await self._observe(rt)
-        estado = visto.anotar(tree, k.reconhecer(tree, package=package, locale=locale))
+        # Pelo `_reconhecer` (item 23.6): a Custom Tab do login num site declarado para a conta é tela do app.
+        estado = visto.anotar(tree, self._reconhecer(k, tree, package, locale))
 
         # Depois de entrar, o app pode intercalar dicas e passos de onboarding que o tapam. São benignas e o botão
         # usado (só de RECUSA, pelo dado) não concede nada — mas enquanto estiverem na frente, a tela não é
         # classificável e a conta não tem como ser lida. Dispensa no máximo algumas, para não virar laço.
         # Só tela DESCONHECIDA é dispensada: a de verificação da conta (ADR-055) é reconhecida pelo detector antes de
         # qualquer regra — em qualquer idioma, com o apóstrofo tipográfico — e sai deste laço sem toque nenhum.
+        # O navegador declarado para o login na frente, fora dos sites da conta (item 23.6), também sai sem toque: o
+        # app deixou uma Custom Tab aberta num site que ninguém declarou, e nem a recusa se toca numa página alheia.
+        fora = self._no_navegador_fora_do_site(k, tree, package, estado)
         for _ in range(k.dispensa.intersticiais_max):
-            if estado.tela != telas.DESCONHECIDA:
+            if fora is not None or estado.tela != telas.DESCONHECIDA:
                 break
             botao = k.botao_de_dispensa(tree)
             if botao is None:
@@ -437,7 +625,13 @@ class SessaoDeclarada:
             await self._tap(rt, *botao.center)
             await asyncio.sleep(float(self.ajustes.settle_s))
             tree, package = await self._observe(rt)
-            estado = visto.anotar(tree, k.reconhecer(tree, package=package, locale=locale))
+            estado = visto.anotar(tree, self._reconhecer(k, tree, package, locale))
+            fora = self._no_navegador_fora_do_site(k, tree, package, estado)
+
+        # Voltar da Custom Tab ou reabrir o app não é o caminho — o login está lá —, e digitar ali é o que nunca
+        # acontece. A pessoa assume (o desafio já saiu como tela do app, pelo `_reconhecer`).
+        if fora is not None:
+            return self._navegador_fora_da_conta(rt, conta, fora, parar=not observe_only)
 
         # Fora do estado conhecido (conversa aberta, post, comentários, busca) ou numa tela desconhecida: volta ao
         # estado que o conhecimento declara ANTES de concluir qualquer coisa. Execução e31953: o app retomou uma
@@ -456,11 +650,14 @@ class SessaoDeclarada:
                 tree, package, estado, passos = await telas.voltar_ao_estado_conhecido(
                     k.telas, observar=lambda: self._observe(rt), voltar=voltar,
                     reabrir=lambda: self._open_app(rt, aberturas),
-                    reconhecer=lambda t, p: visto.anotar(t, k.reconhecer(t, package=p, locale=locale)))
+                    reconhecer=lambda t, p: visto.anotar(t, self._reconhecer(k, t, p, locale)))
             except AppParouDeResponder as exc:
                 return self._parou_de_responder(rt, str(exc))
             if passos:
                 log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), _nome_da_tela(estado))
+            # A reabertura pode trazer de volta a Custom Tab que estava por cima do app.
+            if (fora := self._no_navegador_fora_do_site(k, tree, package, estado)) is not None:
+                return self._navegador_fora_da_conta(rt, conta, fora, parar=not observe_only)
         visto.tipo = estado.tipo
         visto.aprendida = estado.tela if _aprendida(k, estado.tela) else None
         # O app esteve na frente nesta chamada? "voltar" só é dado sobre uma tela DELE (fora de casa), então quem
@@ -471,30 +668,31 @@ class SessaoDeclarada:
         # 1) Já autenticado? Reaproveitar é o caminho normal: ninguém digita senha à toa.
         if k.telas.autenticada(estado.tela) and not force_login:
             check = await ler_conta(k, lambda: self._observe(rt), lambda x, y: self._tap(rt, x, y),
-                                    expected=username, locale=locale)
+                                    expected=conta.handle, locale=locale, aceitos=conta.aceitos,
+                                    reconhecer=lambda t, p: self._reconhecer(k, t, p, locale))
             if check.trava is not None:
                 self._app_voltou_a_frente(rt)
-                return self._challenge(profile_id, rt.id, check.detail, check.trava)
+                return self._challenge(conta, rt.id, check.detail, check.trava)
             # Antes de conta certa/errada: `outro_app` só vem quando nada foi lido. E o aviso do cartão só sai DEPOIS
             # da leitura — tirá-lo ao ver o app e repô-lo quando ele cai publicaria "voltou / caiu" a cada tentativa.
             if check.outro_app:
-                return self._fora_do_primeiro_plano(rt, profile_id,
+                return self._fora_do_primeiro_plano(rt, conta,
                                                     f"{check.detail}; o app saiu da frente durante a leitura")
             self._app_voltou_a_frente(rt)
             if check.matches:
-                self._save(profile_id, rt.id, SessionStatus.session_ready, observed=check.observed,
+                self._save(conta, rt.id, SessionStatus.session_ready, observed=check.observed,
                            verified_at=now_iso(), detail=check.detail)
                 return AuthResult(Outcome.SESSION_READY, check.detail, check.observed, SessionStatus.session_ready)
             if check.observed:
-                return await self._wrong_account(rt, profile_id, username, check.observed, locale)
+                return await self._wrong_account(rt, conta, check.observed, locale)
             # entrou, mas a conta não pôde ser lida: não é sucesso nem motivo para digitar senha
-            self._save(profile_id, rt.id, SessionStatus.unknown, detail=check.detail, reobserved=True)
+            self._save(conta, rt.id, SessionStatus.unknown, detail=check.detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, check.detail, session_status=SessionStatus.unknown)
         if viu_o_app:
             self._app_voltou_a_frente(rt)
 
         if estado.tipo in TIPOS_DE_DESAFIO:
-            return self._challenge(profile_id, rt.id, estado.razao, estado.trava)
+            return self._challenge(conta, rt.id, estado.razao, estado.trava)
 
         # 2) Deslogado: fazer login.
         if estado.tipo != "login":
@@ -504,73 +702,112 @@ class SessaoDeclarada:
             # reabre o app e relê a tela a cada tick, para sempre.
             if estado.outro_app and not viu_o_app:
                 return self._fora_do_primeiro_plano(
-                    rt, profile_id, f"{self.conhecimento.rotulo} não chegou ao primeiro plano ({estado.razao})")
+                    rt, conta, f"{self.conhecimento.rotulo} não chegou ao primeiro plano ({estado.razao})")
             detail = (f"{self.conhecimento.rotulo} não voltou ao estado conhecido: o voltar saiu do app "
                       f"({estado.razao})" if estado.outro_app
                       else f"o app não está na tela de login nem autenticado ({estado.razao})")
             visto.sem_resolver = True                      # a tela desconhecida vista vai ao aprendizado (sinal)
-            self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
+            self._save(conta, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, detail)
 
         if observe_only:
             # "Verificar conta" só observa. Autenticar aqui gastaria uma tentativa de login REAL num clique que o
             # painel anuncia como leitura — e é o botão sugerido logo depois de um desafio resolvido à mão.
             detail = "o aparelho está deslogado; use Conectar para autenticar"
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
             return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
 
-        form = estado.formulario if isinstance(estado.formulario, LoginForm) else None
-        return await self._login(rt, profile_id, username, form, locale, automatic=automatic)
+        return await self._login(rt, k, conta, estado, tree, locale, automatic=automatic)
 
     # ------------------------------------------------------------------ login
-    async def _login(self, rt: DeviceRuntime, profile_id: str, username: str, form: LoginForm | None,
-                     locale: str | None, *, automatic: bool = False) -> AuthResult:
-        cred = self.repo.credential_row(profile_id)
+    async def _login(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                     estado: TelaReconhecida, tree: UiTree, locale: str | None, *,
+                     automatic: bool = False) -> AuthResult:
+        """Três formas de entrada, todas pelo dado do app:
+
+        - o formulário de uma tela (usuário, senha e Entrar juntos), como sempre;
+        - a etapa do identificador de um login em etapas (item 23.6): preenche, confere, avança e espera a tela da
+          senha (`_etapa_do_usuario`);
+        - a tela da senha de um login em etapas, direto (o app lembrou o identificador).
+
+        Nas duas últimas a senha só é digitada numa tela que mostra ESTE identificador: é ela que diz de quem é a senha
+        pedida, como o campo de usuário conferido diz no formulário de uma tela.
+        """
+        profile_id = conta.profile_id
+        cred = self.repo.account_credential_row(profile_id, conta.id)
         if cred is None:
             detail = "não há credencial cadastrada para este perfil"
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
             return AuthResult(Outcome.INVALID_CREDENTIAL, detail, session_status=SessionStatus.auth_required)
-        if (teto := self._teto_diario(profile_id)) is not None:
+        if (teto := self._teto_diario(conta)) is not None:
             # Vale para o "Conectar" também: o teto é da CONTA. No automático, além de recusar, para o login até uma
             # pessoa olhar — senão a porta de sessão pediria este mesmo login a cada volta do agendador até a janela
             # de 24 h andar.
             if automatic:
-                self._parar_login(profile_id, rt.id, teto, falhou=False)
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=teto)
+                self._parar_login(conta, rt.id, teto, falhou=False)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=teto)
             return AuthResult(Outcome.INVALID_CREDENTIAL, teto, session_status=SessionStatus.auth_required)
-        if form is None or not form.complete:
+
+        etapa = k.formulario.etapa_do_usuario
+        form = estado.formulario if isinstance(estado.formulario, LoginForm) else None
+        do_usuario = k.formulario_de_usuario(tree, locale) if etapa is not None and estado.tela == etapa.tela \
+            else None
+        # No login em etapas, o "usuário" acima da senha só vale se for um campo de texto: a tela da senha mostra a
+        # conta num cabeçalho clicável (o de trocar de conta), que a geometria tomaria por usuário.
+        uma_tela = form is not None and form.complete and (etapa is None or form.usuario_editavel)
+        so_senha = etapa is not None and form is not None and form.submit is not None and not uma_tela
+        if do_usuario is None and not uma_tela and not so_senha:
             detail = "o formulário de login não pôde ser identificado com segurança nesta tela"
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
             return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+        identificador = str(cred["login_identifier"] or conta.handle)
 
-        attempt = self.repo.start_auth_attempt(profile_id, rt.id, stage="form_found")
+        # A tentativa é da CONTA deste app: o teto diário e o histórico de uma conta não somam os envios da outra.
+        attempt = self.repo.start_auth_attempt(profile_id, rt.id, stage="form_found", account_id=conta.id)
         try:
-            conferido = await self._fill_username(rt, form, cred["login_identifier"] or username, locale)
-            if not conferido:
-                detail = "o campo de usuário não ficou com o valor esperado; envio abortado"
-                self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
-                                              stage="username_mismatch")
-                self._count_failure(profile_id, rt.id)
-                self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
-                return AuthResult(Outcome.RETRYABLE, detail, session_status=SessionStatus.auth_required)
+            if do_usuario is not None:
+                passo = await self._etapa_do_usuario(rt, k, conta, attempt, do_usuario, identificador, locale)
+                if isinstance(passo, AuthResult):
+                    return passo
+                form = passo
+            elif uma_tela:
+                assert form is not None and form.username is not None      # `uma_tela` garante os dois
 
-            # O teclado sobe ao focar o usuário e empurra a tela para cima; as posições lidas com o formulário vazio
-            # deixam de valer. Relê e passa a usar as coordenadas ATUAIS de senha e de Entrar. Sem isto, o toque em
-            # Entrar cai no vão abaixo do botão e o login nunca é enviado — visto no aparelho real: campos
-            # preenchidos, nenhuma mensagem de erro, parado na tela de login.
-            try:
-                tree, package = await self._observe(rt)
-                atual = self.conhecimento.reconhecer(tree, package=package, locale=locale).formulario
-                if isinstance(atual, LoginForm) and atual.complete:
-                    form = atual
-            except DriverError:
-                pass                                       # sem a releitura, segue com as coordenadas iniciais
+                def usuario_atual(t: UiTree) -> UiElement | None:
+                    atual = k.formulario_de_login(t, locale)
+                    return atual.username if atual is not None else None
+
+                if not await self._fill_username(rt, form.username, identificador, usuario_atual):
+                    detail = "o campo de usuário não ficou com o valor esperado; envio abortado"
+                    self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
+                                                  stage="username_mismatch")
+                    self._count_failure(conta, rt.id)
+                    self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+                    return AuthResult(Outcome.RETRYABLE, detail, session_status=SessionStatus.auth_required)
+
+                # O teclado sobe ao focar o usuário e empurra a tela para cima; as posições lidas com o formulário
+                # vazio deixam de valer. Relê e passa a usar as coordenadas ATUAIS de senha e de Entrar. Sem isto, o
+                # toque em Entrar cai no vão abaixo do botão e o login nunca é enviado — visto no aparelho real:
+                # campos preenchidos, nenhuma mensagem de erro, parado na tela de login.
+                try:
+                    tree, package = await self._observe(rt)
+                    atual = self._reconhecer(k, tree, package, locale).formulario
+                    if isinstance(atual, LoginForm) and atual.complete:
+                        form = atual
+                except DriverError:
+                    pass                                       # sem a releitura, segue com as coordenadas iniciais
+            elif not geometria.mostra_o_identificador(tree, identificador):
+                # A tela da senha, direto, sem dizer para quem: o app pode ter lembrado OUTRA conta.
+                return self._conta_nao_mostrada(rt, conta, attempt, identificador)
+            assert form is not None                     # as três formas chegam aqui com o formulário da senha
 
             # Relido AGORA, e não só no começo: a mesma pessoa pode estar em dois aparelhos, e o desafio visto no outro
             # bloqueia o perfil enquanto este digita o usuário. Conta bloqueada nunca recebe a senha (ADR-055).
-            if (interrompido := self._parada_no_meio(profile_id, automatic=automatic)) is not None:
-                return self._abortar_pela_conta(profile_id, attempt, *interrompido, rt.id)
-            await self._fill_password(rt, cred["secret_ref"])
+            if (interrompido := self._parada_no_meio(conta, automatic=automatic)) is not None:
+                return self._abortar_pela_conta(conta, attempt, *interrompido, rt.id)
+            await self._fill_password(rt, k, conta, cred["secret_ref"])
+            if etapa is not None:
+                form = await self._botao_de_entrar_atual(rt, k, conta, form, locale)
         except SensitiveInputUnavailable as exc:
             # Não é falha de credencial: nem a senha foi enviada, nem o app foi consultado. Contar aqui gastava o
             # teto de tentativas (e podia acionar o cooldown) por um motivo de infraestrutura do PRÓPRIO backend —
@@ -578,28 +815,28 @@ class SessaoDeclarada:
             # `auth_required`, não silenciosa.
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=str(exc),
                                           stage="sensitive_channel_blocked")
-            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=str(exc))
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=str(exc))
             return AuthResult(Outcome.RETRYABLE, str(exc), session_status=SessionStatus.auth_required)
         except SensitiveInputError as exc:
             # Mensagem fixa por construção: nunca carrega o que foi digitado.
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=str(exc),
                                           stage="fill_failed")
-            self._count_failure(profile_id, rt.id)
+            self._count_failure(conta, rt.id)
             return AuthResult(Outcome.RETRYABLE, str(exc))
         except (DriverError, KeyError) as exc:
             detail = f"não foi possível preencher o formulário: {type(exc).__name__}"
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
                                           stage="fill_failed")
-            self._count_failure(profile_id, rt.id)
+            self._count_failure(conta, rt.id)
             return AuthResult(Outcome.RETRYABLE, detail)
 
         # A última porta antes de a senha sair da máquina: o campo preenchido não é envio; o toque em Entrar é.
-        if (interrompido := self._parada_no_meio(profile_id, automatic=automatic)) is not None:
-            return self._abortar_pela_conta(profile_id, attempt, *interrompido, rt.id)
+        if (interrompido := self._parada_no_meio(conta, automatic=automatic)) is not None:
+            return self._abortar_pela_conta(conta, attempt, *interrompido, rt.id)
         # Envio: registrado ANTES de acontecer. Depois disso, timeout nunca autoriza repetir.
         self.repo.finish_auth_attempt(profile_id, attempt, outcome="", detail=None, stage="submitting")
         fired = True
-        botao: UiElement = form.submit  # type: ignore[assignment]  # `form.complete` garante o botão
+        botao: UiElement = form.submit  # type: ignore[assignment]  # as três formas garantem o botão
         try:
             await self._tap(rt, *botao.center)
         except DriverError as exc:
@@ -610,47 +847,206 @@ class SessaoDeclarada:
             detail = "o toque em Entrar não chegou ao aparelho; nada foi enviado"
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
                                           stage="submit_not_delivered")
-            self._count_failure(profile_id, rt.id)
+            self._count_failure(conta, rt.id)
             return AuthResult(Outcome.RETRYABLE, detail, attempted_login=True)
 
-        verdict = await self._watch_after_submit(rt, username, locale)
-        self._apply_verdict(profile_id, rt.id, attempt, verdict, username)
+        verdict = await self._watch_after_submit(rt, k, conta, locale)
+        self._apply_verdict(conta, rt.id, attempt, verdict)
         return AuthResult(verdict.outcome, verdict.detail, verdict.observed_username,
                           self._status_for(verdict.outcome), attempted_login=True)
 
-    async def _watch_after_submit(self, rt: DeviceRuntime, username: str, locale: str | None) -> Verdict:
-        """Observa até a tela decidir. Nunca reenvia: só olha."""
+    # ------------------------------------------------------------------ login em etapas (item 23.6)
+    async def _etapa_do_usuario(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                                attempt: int, form_u: FormularioDoUsuario, identificador: str,
+                                locale: str | None) -> LoginForm | AuthResult:
+        """A etapa do identificador: preenche, CONFERE, toca no "avançar" e espera a tela da senha — que só serve
+        mostrando este identificador. Nada secreto sai daqui: o toque é no "avançar", e a senha só é digitada depois,
+        pelo canal sensível. Devolve o formulário da tela da senha, ou o desfecho que encerra a tentativa."""
+        profile_id = conta.profile_id
+
+        def campo_atual(t: UiTree) -> UiElement | None:
+            atual = k.formulario_de_usuario(t, locale)
+            return atual.campo if atual is not None else None
+
+        if not await self._fill_username(rt, form_u.campo, identificador, campo_atual):
+            detail = "o campo do identificador não ficou com o valor esperado; nada foi enviado"
+            self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
+                                          stage="username_mismatch")
+            self._count_failure(conta, rt.id)
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+            return AuthResult(Outcome.RETRYABLE, detail, session_status=SessionStatus.auth_required)
+        # O teclado subiu com o campo: o "avançar" é relido na tela de agora (a mesma razão da releitura no formulário
+        # de uma tela).
+        tree, _ = await self._observe(rt)
+        await self._tap(rt, *(k.formulario_de_usuario(tree, locale) or form_u).botao.center)
+
         prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
-        ultimo = Verdict(Outcome.UNCERTAIN, "a tela não mudou depois do envio")
+        sem_a_conta = False
         while now().timestamp() < prazo:
             await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
             try:
                 tree, package = await self._observe(rt)
             except DriverError:
                 continue
-            ultimo = classificar_depois_do_envio(self.conhecimento, tree, package=package,
-                                                 expected_username=username, locale=locale)
+            r = self._reconhecer(k, tree, package, locale)
+            if r.trava is not None or r.tipo in TIPOS_DE_DESAFIO:
+                trava = f" [{r.trava.descrever()}]" if r.trava is not None else ""
+                self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.AUTH_CHALLENGE.value,
+                                              detail=r.razao + trava, stage=ETAPA_DESAFIO_ANTES_DA_SENHA)
+                return self._challenge(conta, rt.id, r.razao, r.trava)
+            if (fora := self._no_navegador_fora_do_site(k, tree, package, r)) is not None:
+                self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.UNCERTAIN.value,
+                                              detail=_fora_do_site(fora), stage=ETAPA_NAVEGADOR_FORA_DA_CONTA)
+                return self._navegador_fora_da_conta(rt, conta, fora, parar=True)
+            if (recusa := k.recusa_do_identificador(tree, locale)) is not None:
+                return self._identificador_recusado(rt, conta, attempt, recusa)
+            form = r.formulario if isinstance(r.formulario, LoginForm) else None
+            if form is not None and form.submit is not None:
+                if geometria.mostra_o_identificador(tree, identificador):
+                    return form
+                sem_a_conta = True          # a tela da senha chegou sem dizer para quem: pode estar carregando
+        if sem_a_conta:
+            return self._conta_nao_mostrada(rt, conta, attempt, identificador)
+        # O "avançar" já foi efeito no servidor: o identificador saiu, e o provedor de contas pode ter mandado um código
+        # por e-mail ou um pedido de aprovação no telefone. Contar falha (3 e o intervalo) repetia esse toque a cada
+        # intervalo vencido, sem fim e com a credencial `active`: o login para até uma pessoa olhar, como nas outras
+        # saídas da etapa. A senha não saiu, então a etapa segue fora do teto diário.
+        detail = ("a tela da senha não apareceu depois do identificador; a senha não foi digitada. Confira no aparelho "
+                  f"o que o {self.conhecimento.rotulo} mostrou depois do identificador")
+        self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.UNCERTAIN.value, detail=detail,
+                                      stage=ETAPA_SEM_TELA_DA_SENHA)
+        self._parar_login(conta, rt.id, detail, falhou=False)
+        self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+
+    async def _botao_de_entrar_atual(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                                     form: LoginForm, locale: str | None) -> LoginForm:
+        """Na tela da senha do login em etapas, o teclado sobe ao focar o campo e empurra o botão de entrar: o toque
+        usa a posição de AGORA, se a tela de agora ainda é o formulário no mesmo destino permitido; senão, a de antes."""
+        try:
+            tree, package = await self._observe(rt)
+        except DriverError:
+            return form
+        if not self._destino(k, tree, package).permitido:
+            return form
+        atual = self._reconhecer(k, tree, package, locale).formulario
+        return atual if isinstance(atual, LoginForm) and atual.submit is not None else form
+
+    def _conta_nao_mostrada(self, rt: DeviceRuntime, conta: ContaDaSessao, attempt: int,
+                            identificador: str) -> AuthResult:
+        """A tela da senha não diz que é desta conta: nada é digitado, e o login para até uma pessoa olhar — a tela
+        vai continuar a mesma a cada tentativa (o app lembrou outra conta, ou mudou o jeito de mostrá-la)."""
+        detail = (f"a tela da senha do {self.conhecimento.rotulo} não mostra a conta {_como_conta(identificador)}; a "
+                  "senha não foi digitada. Confira no aparelho qual conta o app está pedindo")
+        self.repo.finish_auth_attempt(conta.profile_id, attempt, outcome=Outcome.UNCERTAIN.value, detail=detail,
+                                      stage=ETAPA_CONTA_NAO_MOSTRADA)
+        self._parar_login(conta, rt.id, detail, falhou=False)
+        self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+
+    def _identificador_recusado(self, rt: DeviceRuntime, conta: ContaDaSessao, attempt: int,
+                                recusa: str) -> AuthResult:
+        """O app recusou o IDENTIFICADOR (a conta não existe, o endereço é inválido). A senha não saiu, então a
+        credencial não vira `invalid` (ninguém julgou a senha): o login para em `review` até uma pessoa conferir o
+        identificador de login da conta — insistir mostraria a mesma recusa."""
+        detail = f"{recusa}; a senha não foi digitada. Confira o identificador de login da conta"
+        self.repo.finish_auth_attempt(conta.profile_id, attempt, outcome=Outcome.INVALID_CREDENTIAL.value,
+                                      detail=detail, stage=ETAPA_IDENTIFICADOR_RECUSADO)
+        self._parar_login(conta, rt.id, detail, falhou=False)
+        self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+        return AuthResult(Outcome.INVALID_CREDENTIAL, detail, session_status=SessionStatus.auth_required)
+
+    def _navegador_fora_da_conta(self, rt: DeviceRuntime, conta: ContaDaSessao, destino: Destino, *,
+                                 parar: bool) -> AuthResult:
+        """O login está no navegador declarado, num site que não é da conta (ou sem a barra de endereço à vista): a
+        pessoa assume. Nada foi digitado ali. `parar` = o login automático para até uma pessoa olhar (a mesma Custom
+        Tab voltaria a cada tentativa); a leitura ("Verificar conta") só registra."""
+        detail = (f"{_fora_do_site(destino)}; a senha não foi digitada. Assuma o controle do aparelho e entre à mão "
+                  f"no {self.conhecimento.rotulo} — ou, se o site é o de login do app, declare-o")
+        if parar:
+            self._parar_login(conta, rt.id, detail, falhou=False)
+        self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+
+    async def _watch_after_submit(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                                  locale: str | None) -> Verdict:
+        """Observa até a tela decidir. Nunca reenvia: só olha.
+
+        Na Custom Tab declarada, num site da conta, a tela é do app. Fora do site, só o desafio decide: regra do app
+        não vale numa página alheia (uma "senha incorreta" ali não é deste login). Com `conta.ler_ao_entrar`, a tela
+        de casa sem a conta à vista chama a leitura pelo acesso declarado — uma vez: é o que confirma o login num app
+        cuja tela inicial nunca mostra a conta.
+        """
+        prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
+        ultimo = Verdict(Outcome.UNCERTAIN, "a tela não mudou depois do envio")
+        leu = False
+        while now().timestamp() < prazo:
+            await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
+            try:
+                tree, package = await self._observe(rt)
+            except DriverError:
+                continue
+            destino = self._destino(k, tree, package)
+            ultimo = classificar_depois_do_envio(k, tree, package=k.app if destino.navegador else package,
+                                                 expected_username=conta.handle, locale=locale,
+                                                 aceitos=conta.aceitos)
+            if destino.navegador and not destino.permitido and ultimo.outcome is not Outcome.AUTH_CHALLENGE:
+                ultimo = Verdict(Outcome.UNCERTAIN, _fora_do_site(destino))
+                continue
             if ultimo.outcome is not Outcome.UNCERTAIN:
                 return ultimo
+            if ultimo.conferir and k.conta.ler_ao_entrar and not leu:
+                lido, fora_da_frente = await self._ler_ao_entrar(rt, k, conta, locale)
+                if lido is not None:
+                    return lido
+                # A leitura só conta como feita com o app na frente: a Custom Tab ainda fechando (ou a tela de
+                # transição) não gasta a única leitura, que fica para quando a tela de casa chegar.
+                leu = not fora_da_frente
         return ultimo
 
+    async def _ler_ao_entrar(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                             locale: str | None) -> tuple[Verdict | None, bool]:
+        """A conta lida pelo acesso declarado logo depois do envio. Só navegação sem efeito externo (as dispensas são
+        de recusa e o acesso abre a conta). Devolve o desfecho (ou `None`: nada foi lido e a observação segue até o
+        prazo) e se a leitura terminou com OUTRO pacote na frente — o app ainda não tinha voltado da Custom Tab (a
+        página de transição do navegador, no site da conta, é "tela do app" para o reconhecimento, não para isto)."""
+        pacote_da_frente: list[str | None] = [None]
+
+        async def observar() -> tuple[UiTree, str | None]:
+            tree, package = await self._observe(rt)
+            pacote_da_frente[0] = package
+            return tree, package
+
+        check = await ler_conta(k, observar, lambda x, y: self._tap(rt, x, y),
+                                expected=conta.handle, locale=locale, aceitos=conta.aceitos,
+                                reconhecer=lambda t, p: self._reconhecer(k, t, p, locale))
+        if check.trava is not None:
+            return Verdict(Outcome.AUTH_CHALLENGE, check.detail, tela=check.trava.origem or telas.DESCONHECIDA,
+                           trava=check.trava), False
+        if check.observed:
+            return Verdict(Outcome.SESSION_READY if check.matches else Outcome.WRONG_ACCOUNT, check.detail,
+                           observed_username=check.observed, tela=k.conta.tela_de_perfil), False
+        return None, pacote_da_frente[0] is not None and pacote_da_frente[0] != k.app
+
     # ------------------------------------------------------------------ conta errada
-    async def _wrong_account(self, rt: DeviceRuntime, profile_id: str, esperado: str, observado: str,
+    async def _wrong_account(self, rt: DeviceRuntime, conta: ContaDaSessao, observado: str,
                              locale: str | None) -> AuthResult:
         # Achado #115: a troca automática nunca foi implementada (o seletor de contas do app nunca era operado)
         # e a configuração que a prometia não aparecia em lugar nenhum fora do código — sugeria um recurso que
         # não existia. Conta errada é SEMPRE intervenção humana; nenhum caminho digita senha nem troca de conta
         # sozinho aqui.
-        detail = (f"a conta aberta é @{observado}, e a esperada é @{esperado}. A troca de conta é sempre manual — "
-                  "assuma o controle do aparelho e faça login na conta certa (ou 'Sair da conta', que apaga os "
-                  "dados do app).")
-        self._save(profile_id, rt.id, SessionStatus.wrong_account, observed=observado, detail=detail)
+        detail = (f"a conta aberta é {_como_conta(observado)}, e a esperada é {_como_conta(conta.handle)}. A troca "
+                  "de conta é sempre manual — assuma o controle do aparelho e faça login na conta certa (ou 'Sair da "
+                  "conta', que apaga os dados do app).")
+        self._save(conta, rt.id, SessionStatus.wrong_account, observed=observado, detail=detail)
         self.bus.emit("log", f"{rt.id}: {detail}", level="warn", instance_id=rt.id)
         return AuthResult(Outcome.WRONG_ACCOUNT, detail, observado, SessionStatus.wrong_account)
 
     # ------------------------------------------------------------------ persistência e limites
-    def _apply_verdict(self, profile_id: str, instance_id: str, attempt: int, verdict: Verdict,
-                       username: str) -> None:
+    # Tudo daqui para baixo é da CONTA desta chamada (`ContaDaSessao`): a credencial e a marcação dela, as tentativas
+    # e o teto diário, a sessão no aparelho. O status do PERFIL (`blocked`/`disabled`) continua da persona.
+    def _apply_verdict(self, conta: ContaDaSessao, instance_id: str, attempt: int, verdict: Verdict) -> None:
+        profile_id = conta.profile_id
         textos = self.conhecimento.textos
         # A etapa nomeia o diálogo genérico de erro (declarada na regra): é o que a fase local filtra no histórico
         # (sem senha, sem token). O subtipo e o trecho do desafio vão no detalhe (ADR-055): a etapa fica a de sempre.
@@ -663,29 +1059,31 @@ class SessaoDeclarada:
         if verdict.outcome is Outcome.UNCERTAIN:
             # O incerto é o caso que se repetia (juliana, 18/09): a sessão tem de dizer que o login parou e por quê.
             detalhe = f"{verdict.detail}; {motivo_do_login_parado(self.conhecimento.rotulo)}"
-        self._save(profile_id, instance_id, status, observed=verdict.observed_username,
+        self._save(conta, instance_id, status, observed=verdict.observed_username,
                    verified_at=now_iso() if verdict.outcome is Outcome.SESSION_READY else None,
                    detail=detalhe, trava=verdict.trava)
         if verdict.outcome is Outcome.AUTH_CHALLENGE:
             self.bus.emit("log", f"{instance_id}: {textos.desafio}{trava}", level="warn", instance_id=instance_id,
                           data=_dados_da_trava(profile_id, verdict.trava))
         if verdict.outcome is Outcome.SESSION_READY:
-            self.repo.mark_credential(profile_id, status="active", failed_attempts=0, blocked_until=None)
-            self.repo.touch_credential(profile_id)
+            self.repo.mark_account_credential(profile_id, conta.id, status="active", failed_attempts=0,
+                                              blocked_until=None)
+            self.repo.touch_account_credential(profile_id, conta.id)
             return
         if verdict.outcome is Outcome.INVALID_CREDENTIAL:
             # Senha comprovadamente errada: bloqueia nova tentativa automática até a credencial mudar.
-            self.repo.mark_credential(profile_id, status="invalid", blocked_until=None)
-            self.bus.emit("log", f"{instance_id}: {textos.credencial_recusada.format(usuario=username)}",
+            self.repo.mark_account_credential(profile_id, conta.id, status="invalid", blocked_until=None)
+            usuario = conta.handle.strip().lstrip("@")
+            self.bus.emit("log", f"{instance_id}: {textos.credencial_recusada.format(usuario=usuario)}",
                           level="error", instance_id=instance_id)
             return
         # Daqui para baixo, a SENHA JÁ FOI ENVIADA e o desfecho não foi sucesso (incerto, desafio, conta errada).
         # ADR-055: UM envio assim já para o login automático até uma pessoa olhar. O freio de antes (3 falhas e 300 s
         # de espera, `_count_failure`) se repetia a cada intervalo vencido: a juliana recebeu seis envios de senha
         # em 4h25 em 18/09. O intervalo continua só para falha ANTES do envio, em que a senha não saiu da máquina.
-        self._parar_login(profile_id, instance_id, verdict.detail, falhou=True)
+        self._parar_login(conta, instance_id, verdict.detail, falhou=True)
 
-    def _count_failure(self, profile_id: str, instance_id: str) -> None:
+    def _count_failure(self, conta: ContaDaSessao, instance_id: str) -> None:
         """Toda falha repetível conta para o teto. Sem isso, um erro que se repete viraria laço infinito de login.
 
         Contar NÃO muda o estado da credencial: o status gravado é o que já estava. Revisão do pacote (ADR-055): isto
@@ -694,7 +1092,7 @@ class SessaoDeclarada:
         senha sem ninguém ter visto um login dar certo. O mesmo na corrida entre aparelhos: o B falhando antes do
         envio depois que o A pôs a credencial em `review` (ou `invalid`). De `review` só se sai guardando a senha de
         novo (`set_account_credential`) ou com um login que confirma a conta (`_apply_verdict`)."""
-        cred = self.repo.credential_row(profile_id)
+        cred = self.repo.account_credential_row(conta.profile_id, conta.id)
         if cred is None:
             return
         ajustes = self.ajustes
@@ -702,40 +1100,43 @@ class SessaoDeclarada:
         falhas = (cred["failed_attempts"] or 0) + 1
         if falhas >= int(ajustes.max_auth_attempts):
             espera = now().timestamp() + float(ajustes.auth_cooldown_s)
-            self.repo.mark_credential(profile_id, status=status, failed_attempts=falhas, blocked_until=_iso(espera))
+            self.repo.mark_account_credential(conta.profile_id, conta.id, status=status, failed_attempts=falhas,
+                                              blocked_until=_iso(espera))
             self.bus.emit("log", f"{instance_id}: {falhas} tentativas de login sem sucesso; aguardando "
                                  f"{ajustes.auth_cooldown_s}s antes de tentar de novo", level="warn",
                           instance_id=instance_id)
         else:
-            self.repo.mark_credential(profile_id, status=status, failed_attempts=falhas, blocked_until=None)
+            self.repo.mark_account_credential(conta.profile_id, conta.id, status=status, failed_attempts=falhas,
+                                              blocked_until=None)
 
-    def _parar_login(self, profile_id: str, instance_id: str, motivo: str, *, falhou: bool) -> None:
+    def _parar_login(self, conta: ContaDaSessao, instance_id: str, motivo: str, *, falhou: bool) -> None:
         """O login automático desta conta para até uma pessoa olhar (ADR-055): a credencial vai a `review`, que o
         agendador e a porta de sessão respeitam. `falhou` = houve um envio sem sucesso (soma nas falhas); o teto
         diário para sem ser falha."""
-        cred = self.repo.credential_row(profile_id)
+        cred = self.repo.account_credential_row(conta.profile_id, conta.id)
         if cred is None:
             return
         falhas = (cred["failed_attempts"] or 0) + (1 if falhou else 0)
-        self.repo.mark_credential(profile_id, status=CREDENCIAL_EM_REVISAO, failed_attempts=falhas,
-                                  blocked_until=None)
+        self.repo.mark_account_credential(conta.profile_id, conta.id, status=CREDENCIAL_EM_REVISAO,
+                                          failed_attempts=falhas, blocked_until=None)
         self.bus.emit("log", f"{instance_id}: {motivo_do_login_parado(self.conhecimento.rotulo)} ({motivo})",
                       level="error", instance_id=instance_id,
-                      data={"profile_id": profile_id, "reason": "login_parado", "detail": motivo[:300]})
+                      data={"profile_id": conta.profile_id, "account_id": conta.id, "reason": "login_parado",
+                            "detail": motivo[:300]})
 
-    def _login_em_revisao(self, profile_id: str) -> bool:
-        cred = self.repo.credential_row(profile_id)
+    def _login_em_revisao(self, conta: ContaDaSessao) -> bool:
+        cred = self.repo.account_credential_row(conta.profile_id, conta.id)
         return cred is not None and cred["status"] == CREDENCIAL_EM_REVISAO
 
-    def _teto_diario(self, profile_id: str) -> str | None:
+    def _teto_diario(self, conta: ContaDaSessao) -> str | None:
         """Motivo da recusa quando esta conta já teve `max_logins_per_day` envios de senha nas últimas 24 h."""
         limite = int(self.ajustes.max_logins_per_day)
         desde = now() - JANELA_DO_TETO_DIARIO
         envios = 0
         # Mais recentes primeiro: para no primeiro fora da janela (sem data legível, conta — na dúvida, foi recente).
         # O limite da leitura cobre as falhas ANTES do envio (no máximo `max_auth_attempts` por intervalo), que não
-        # contam mas ocupam linhas.
-        for tentativa in self.repo.auth_attempts(profile_id, limit=500):
+        # contam mas ocupam linhas. Só as tentativas DESTA conta: os envios do outro app não gastam o teto deste.
+        for tentativa in self.repo.auth_attempts(conta.profile_id, limit=500, account_id=conta.id):
             quando = parse_iso(tentativa["started_at"])
             if quando is not None and quando < desde:
                 break
@@ -747,22 +1148,25 @@ class SessaoDeclarada:
                 f"{limite}); uma conta que precisa entrar tantas vezes está perdendo a sessão — uma pessoa precisa "
                 "olhar antes de qualquer novo login")
 
-    def _conta_parada(self, profile_id: str) -> str | None:
+    def _conta_parada(self, conta: ContaDaSessao) -> str | None:
         """O perfil não está `active`: `blocked` (a plataforma travou a conta, ADR-029/055) ou `disabled` (o dono
-        pausou). Nos dois, a senha não é digitada: insistir numa conta bloqueada é o que a faz perder de vez."""
-        perfil = self.repo.profile_row(profile_id)
+        pausou). Nos dois, a senha não é digitada: insistir numa conta bloqueada é o que a faz perder de vez. O status
+        é da PERSONA e só o desafio na conta ÂNCORA o põe em `blocked`; o desafio noutro app para só aquela conta, pela
+        credencial em `review` (item 23.5, `session_rules.aplicar_desafio`), que `_parada_no_meio` e a porta de sessão
+        respeitam. A mensagem nomeia a conta desta chamada."""
+        perfil = self.repo.profile_row(conta.profile_id)
         if perfil is None:
             return None
         status = perfil["status"] or "active"
         if status == "active":
             return None
-        arroba = perfil["username"] or profile_id
+        arroba = _como_conta(conta.handle)
         if status == "blocked":
-            return (f"a conta @{arroba} está bloqueada: a senha nunca é digitada numa conta bloqueada (ADR-055); uma "
+            return (f"a conta {arroba} está bloqueada: a senha nunca é digitada numa conta bloqueada (ADR-055); uma "
                     "pessoa confere a conta no aparelho e reativa o perfil na tela dele")
-        return f"o perfil @{arroba} está '{status}': nenhum login é feito até uma pessoa reativá-lo na tela do perfil"
+        return f"o perfil {arroba} está '{status}': nenhum login é feito até uma pessoa reativá-lo na tela do perfil"
 
-    def _parada_no_meio(self, profile_id: str, *, automatic: bool) -> tuple[str, str] | None:
+    def _parada_no_meio(self, conta: ContaDaSessao, *, automatic: bool) -> tuple[str, str] | None:
         """Relida no meio do login (antes da senha e antes do toque em Entrar): (motivo, etapa) para interromper.
 
         - O perfil parou (`_conta_parada`): vale para qualquer chamada — conta bloqueada nunca recebe a senha.
@@ -770,35 +1174,39 @@ class SessaoDeclarada:
           começo. Revisão do pacote: com a mesma conta em dois aparelhos, o envio sem sucesso do A põe a credencial
           em `review` enquanto o B digita o usuário; seguir enviaria a senha uma segunda vez sem ninguém ter olhado
           (regra (e) do ADR-055). O "Conectar" é a pessoa olhando, e segue."""
-        if (parada := self._conta_parada(profile_id)) is not None:
+        if (parada := self._conta_parada(conta)) is not None:
             return parada, "account_blocked"
-        if automatic and self._login_em_revisao(profile_id):
+        if automatic and self._login_em_revisao(conta):
             return motivo_do_login_parado(self.conhecimento.rotulo), "login_parado"
         return None
 
-    def _abortar_pela_conta(self, profile_id: str, attempt: int, parada: str, etapa: str,
+    def _abortar_pela_conta(self, conta: ContaDaSessao, attempt: int, parada: str, etapa: str,
                             instance_id: str) -> AuthResult:
         """A conta (ou o login automático dela) parou no meio do login: nada é enviado. Não conta falha nem grava a
         sessão — a senha não saiu, e a sessão (um desafio, talvez) é o que a pessoa precisa ver. A `etapa` está em
         `ETAPAS_ANTES_DO_ENVIO`: a interrupção não gasta o teto diário."""
-        self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=parada,
+        self.repo.finish_auth_attempt(conta.profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=parada,
                                       stage=etapa)
         log.warning("%s: login interrompido sem enviar a senha — %s", instance_id, parada)
-        return self._recusa_sem_tocar(profile_id, instance_id, parada)
+        return self._recusa_sem_tocar(conta, instance_id, parada)
 
-    def _recusa_sem_tocar(self, profile_id: str, instance_id: str, motivo: str) -> AuthResult:
+    def _sessao(self, conta: ContaDaSessao, instance_id: str) -> Row | None:
+        """A sessão DESTA conta neste aparelho — nunca a da conta âncora do perfil (a porta de outro app)."""
+        return self.repo.account_session_row(conta.profile_id, conta.id, instance_id)
+
+    def _recusa_sem_tocar(self, conta: ContaDaSessao, instance_id: str, motivo: str) -> AuthResult:
         """Recusa sem gravar a sessão. O desfecho acompanha o que está gravado — um desafio continua desafio para
         quem chama —, e senão é o terminal de sempre das recusas (nenhum deles gera nova tentativa sozinho)."""
-        sess = self.repo.session_row(profile_id, instance_id)
+        sess = self._sessao(conta, instance_id)
         status = SessionStatus(sess["status"]) if sess is not None else SessionStatus.unknown
         desfecho = {SessionStatus.auth_challenge: Outcome.AUTH_CHALLENGE,
                     SessionStatus.wrong_account: Outcome.WRONG_ACCOUNT}.get(status, Outcome.INVALID_CREDENTIAL)
         return AuthResult(desfecho, motivo, session_status=status)
 
-    def _needs_person(self, profile_id: str, instance_id: str) -> tuple[Outcome, str] | None:
+    def _needs_person(self, conta: ContaDaSessao, instance_id: str) -> tuple[Outcome, str] | None:
         """Estado que só uma pessoa resolve: o agendador não insiste, para não virar laço nem bloquear a conta.
         A sessão é do par (conta, aparelho): a lida é a DESTE aparelho."""
-        sess = self.repo.session_row(profile_id, instance_id)
+        sess = self._sessao(conta, instance_id)
         if sess is None:
             return None
         if sess["status"] == SessionStatus.auth_challenge.value:
@@ -807,17 +1215,17 @@ class SessaoDeclarada:
             return Outcome.WRONG_ACCOUNT, (sess["detail"] or "o aparelho está logado em outra conta")
         return None
 
-    def _challenge(self, profile_id: str, instance_id: str, motivo: str,
+    def _challenge(self, conta: ContaDaSessao, instance_id: str, motivo: str,
                    trava: ContaTravada | None = None) -> AuthResult:
         """Desafio na tela: nada é tocado, a sessão vai a `auth_challenge` e a pessoa é chamada. O subtipo decide o
         destino do perfil (ADR-055, em `_save`) e vai, com o trecho que casou, na sessão e no evento."""
         detail = self.conhecimento.textos.desafio + (f" [{trava.descrever()}]" if trava is not None else "")
-        self._save(profile_id, instance_id, SessionStatus.auth_challenge, detail=detail, trava=trava)
+        self._save(conta, instance_id, SessionStatus.auth_challenge, detail=detail, trava=trava)
         self.bus.emit("log", f"{instance_id}: {detail} ({motivo})", level="warn", instance_id=instance_id,
-                      data=_dados_da_trava(profile_id, trava))
+                      data=_dados_da_trava(conta.profile_id, trava))
         return AuthResult(Outcome.AUTH_CHALLENGE, detail, session_status=SessionStatus.auth_challenge)
 
-    def _fora_do_primeiro_plano(self, rt: DeviceRuntime, profile_id: str, detail: str) -> AuthResult:
+    def _fora_do_primeiro_plano(self, rt: DeviceRuntime, conta: ContaDaSessao, detail: str) -> AuthResult:
         """OUTRO app na frente (o launcher, quase sempre): o app não chegou ao primeiro plano, ou caiu no meio da
         leitura da conta.
 
@@ -833,8 +1241,8 @@ class SessaoDeclarada:
         vazio ou o que já é deste aviso. No android-06 a pressão do convidado costuma estar lá, e ela é a causa — o
         aviso daqui não a atropela; o histórico registra do mesmo jeito.
         """
-        anterior = self.repo.session_row(profile_id, rt.id)
-        self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail)
+        anterior = self._sessao(conta, rt.id)
+        self._save(conta, rt.id, SessionStatus.unknown, detail=detail)
         if anterior is None or anterior["detail"] != detail:
             self.bus.emit("log", f"{rt.id}: {detail} — é o aparelho (lento ou o app caindo na abertura), não uma tela "
                                  "desconhecida; a conferência da conta tenta de novo sozinha", level="warn",
@@ -853,11 +1261,11 @@ class SessaoDeclarada:
             rt.attention = None
             self.devices.publish(rt, f"{rt.id}: {self.conhecimento.rotulo} voltou a abrir na frente")
 
-    def _blocked_reason(self, profile_id: str) -> str | None:
+    def _blocked_reason(self, conta: ContaDaSessao) -> str | None:
         """O que na CREDENCIAL impede o login (quem chama grava a recusa na sessão). O status do PERFIL (`blocked`,
         ADR-055) é conferido antes, por `_conta_parada`, e de novo antes da senha e do envio: aquela recusa não pode
         gravar a sessão por cima de um desafio, e a leitura (`observe_only`) de uma conta bloqueada continua valendo."""
-        cred = self.repo.credential_row(profile_id)
+        cred = self.repo.account_credential_row(conta.profile_id, conta.id)
         if cred is None:
             return "não há credencial cadastrada para este perfil"
         if cred["consent_at"] is None:
@@ -872,32 +1280,33 @@ class SessaoDeclarada:
             return f"aguardando o intervalo entre tentativas (até {cred['blocked_until']})"
         return None
 
-    def _save(self, profile_id: str, instance_id: str, status: SessionStatus, *, observed: str | None = None,
+    def _save(self, conta: ContaDaSessao, instance_id: str, status: SessionStatus, *, observed: str | None = None,
               verified_at: str | None = None, detail: str | None = None, reobserved: bool = False,
               trava: ContaTravada | None = None) -> None:
-        anterior = self.repo.session_row(profile_id, instance_id)
-        self.repo.set_session(profile_id, status=status, instance_id=instance_id, observed_username=observed,
-                              verified_at=verified_at, detail=detail, reobserved=reobserved)
-        if status is SessionStatus.session_ready:
+        profile_id = conta.profile_id
+        anterior = self._sessao(conta, instance_id)
+        self.repo.set_account_session(profile_id, conta.id, instance_id, status=status, observed_handle=observed,
+                                      verified_at=verified_at, detail=detail, reobserved=reobserved)
+        if status is SessionStatus.session_ready and conta.ancora:
+            # O "verificado em" do cartão do perfil é o da conta âncora (é a sessão que o cartão mostra); a conta de
+            # outro app tem o dela, na sessão da conta.
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
-        if status is SessionStatus.auth_challenge and (trava is None or trava.subtipo == SUBTIPO_CONTA_TRAVADA):
-            # A regra do PERFIL (ADR-029), com o rótulo do app declarado nas mensagens. Só a conta TRAVADA (ADR-055):
-            # o código de login/2FA pede uma pessoa sem bloquear — bruno e andre passaram por ele em 18/09 e seguem
-            # vivos. Sem subtipo é regra declarada por sinal, fora do detector: vale o bloqueio de sempre.
-            # Sem o "anterior": uma sessão parada num código não pode impedir o bloqueio quando a trava aparece
-            # depois; quem impede o aviso repetido é o próprio perfil já `blocked`.
-            bloqueou = bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                            anterior_status=None, detail=detail, app_label=self.conhecimento.rotulo)
-            if bloqueou or anterior is None or anterior["status"] != SessionStatus.auth_challenge.value:
-                # Protegida por dentro: a quarentena falhar não pode impedir o evento da fila logo abaixo.
-                perfil = self.repo.profile_row(profile_id)
-                registrar_conta_travada(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                        handle=str(perfil["username"] if perfil is not None else profile_id),
-                                        evidencia=trava.trecho if trava is not None else (detail or "")[:300],
-                                        visto_por="motor de sessão")
+        if status is SessionStatus.auth_challenge:
+            # A regra do desafio (item 23.5), com o rótulo do app declarado nas mensagens. Na conta âncora, só a
+            # TRAVADA (ADR-055) bloqueia o perfil: o código de login/2FA pede uma pessoa sem bloquear — bruno e andre
+            # passaram por ele em 18/09 e seguem vivos. Sem subtipo é regra declarada por sinal, fora do detector:
+            # vale como trava. Na conta de outro app, qualquer desafio para só ela (P9). A quarentena é protegida por
+            # dentro: falhar não pode impedir o evento da fila logo abaixo. A conta travada é a DESTE app (o @ e o
+            # app dela), não o @ de cadastro do perfil.
+            aplicar_desafio(self.repo, self.bus, profile_id=profile_id, account_id=conta.id, app_id=conta.app_id,
+                            handle=conta.handle, ancora=conta.ancora,
+                            travada=trava is None or trava.subtipo == SUBTIPO_CONTA_TRAVADA, instance_id=instance_id,
+                            anterior_status=anterior["status"] if anterior is not None else None, detail=detail,
+                            evidencia=trava.trecho if trava is not None else (detail or "")[:300],
+                            app_label=self.conhecimento.rotulo, visto_por="motor de sessão")
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
-                                 detail=detail)
+                                 detail=detail, account_id=conta.id)
 
     @staticmethod
     def _status_for(outcome: Outcome) -> SessionStatus:
@@ -985,8 +1394,10 @@ class SessaoDeclarada:
     async def _tap(self, rt: DeviceRuntime, x: int, y: int) -> None:
         await rt.executor.run(rt.io.tap, x, y, timeout=30, label="toque")
 
-    async def _fill_username(self, rt: DeviceRuntime, form: LoginForm, valor: str, locale: str | None) -> bool:
-        """Preenche o campo de usuário e CONFERE o que ficou lá. Devolve False se não bater — e aí nada é enviado.
+    async def _fill_username(self, rt: DeviceRuntime, campo: UiElement, valor: str,
+                             reler: Callable[[UiTree], UiElement | None]) -> bool:
+        """Preenche o campo de usuário (ou o do identificador, no login em etapas) e CONFERE o que ficou lá. Devolve
+        False se não bater — e aí nada é enviado. `reler` acha o MESMO campo numa tela relida.
 
         Tenta mais de uma vez de propósito. `mobile: type` digita no elemento em FOCO, e há campo de usuário com
         variantes: quando ele está vazio com placeholder (a que apareceu depois de reinstalar o primeiro app operado),
@@ -995,36 +1406,48 @@ class SessaoDeclarada:
         tudo). A conferência continua valendo para todas: só se envia com o campo exatamente igual ao esperado.
         """
         esperado = valor.strip().lstrip("@").lower()
+        alvo: UiElement | None = campo
         for tentativa in range(FILL_TRIES):
-            alvo = form.username
             if alvo is None:
                 return False
             await self._tap(rt, *alvo.center)
             await rt.executor.run(lambda: rt.io.type_text(valor, clear_first=True), timeout=30, label="usuário")
             await asyncio.sleep(0.6)
 
-            tree, package = await self._observe(rt)
-            atual = self.conhecimento.formulario_de_login(tree, locale)
-            if atual is None or atual.username is None:
+            tree, _ = await self._observe(rt)
+            atual = reler(tree)
+            if atual is None:
                 return False
-            if (atual.username.text or "").strip().lstrip("@").lower() == esperado:
+            if (atual.text or "").strip().lstrip("@").lower() == esperado:
                 return True
             if tentativa + 1 < FILL_TRIES:
                 log.warning("%s: o usuário não ficou no campo (tentativa %d); relendo a tela e repetindo",
                             rt.id, tentativa + 1)
-            form = atual                      # posições novas: a tela pode ter subido com o teclado
+            alvo = atual                      # posição nova: a tela pode ter subido com o teclado
         return False
 
-    async def _fill_password(self, rt: DeviceRuntime, secret_ref: str) -> None:
-        """A senha só existe entre o cofre e o driver, por um caminho que não gera ação nem histórico."""
+    async def _fill_password(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                             secret_ref: str) -> None:
+        """A senha só existe entre o cofre e o driver, por um caminho que não gera ação nem histórico.
+
+        E só cai no campo de senha do app DA CONTA, ou do navegador declarado num site da conta (item 23.6): o destino
+        é conferido na MESMA árvore em que o campo é achado, no instante de focar e de novo depois de digitar. Fora
+        dele o campo "não existe" para o canal, que recusa com a mensagem fixa dele (nunca com o valor)."""
+        pacote_da_frente: list[str | None] = [None]
+
         async def observe_tree() -> UiTree:
-            tree, _ = await self._observe(rt)
+            tree, package = await self._observe(rt)
+            pacote_da_frente[0] = package
             return tree
 
-        await self.sensitive.fill(call=rt.executor.run, io=rt.io, observe=observe_tree,
-                                  locate=self.conhecimento.campo_de_senha,
-                                  secret=lambda: self.secrets.get_secret(secret_ref))
+        def localizar(tree: UiTree) -> UiElement | None:
+            campo = k.campo_de_senha(tree)
+            if campo is None or not self._destino(k, tree, campo.package or pacote_da_frente[0]).permitido:
+                return None
+            return campo
 
+        await self.sensitive.fill(call=rt.executor.run, io=rt.io, observe=observe_tree, locate=localizar,
+                                  secret=lambda: self.secrets.get_secret(secret_ref))
 
 def _iso(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.") + \
