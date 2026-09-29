@@ -5,10 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from app.db import Database
 from app.taskqueue.projecao import EstatisticaDeAcao, Faixa, HistoricoDeAcoes, app_da_etapa, projetar, resumo
 
 from .conftest import Harness, make_config
+from .fake_skills import banco as banco_migrado
+from .test_learning_repositorio import iso, semear_execucao
 
 PRECOS = {"modelo-x": [1.0, 0.1, 1.25, 5.0]}
 
@@ -83,6 +87,45 @@ def test_a_consulta_roda_num_banco_migrado(tmp_path: Path) -> None:
     db.migrate()
     try:
         assert HistoricoDeAcoes(db, lambda: PRECOS).estatisticas() == {}
+    finally:
+        db.close()
+
+
+def test_a_janela_nunca_passa_da_retencao_de_ai_calls(tmp_path: Path) -> None:
+    """ADR-054, decisão 8 (defeito medido): `steps` não vence, mas `ai_calls` é purgado em `log_retention_days` (14).
+    Com a janela de 30 dias, as etapas de 15 a 30 dias entravam com 0 chamadas e US$ 0 e a régua saía subestimada.
+    A janela efetiva é `min(janela, retenção)`, e a etapa que COMEÇOU antes do corte fica de fora (pode ter perdido as
+    primeiras chamadas). A projeção diz a janela efetiva e quantas amostras não custaram nada."""
+    db = banco_migrado(tmp_path, "projecao.sqlite3")
+    try:
+        abrir = [("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 3)]
+        for i in range(5):
+            semear_execucao(db, f"r-recente-{i}", dias_atras=2 + i, etapas=abrir)
+        for i in range(6):                             # as chamadas destas já foram purgadas pela retenção
+            semear_execucao(db, f"r-velha-{i}", dias_atras=20 + i,
+                            etapas=[("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 0)])
+        semear_execucao(db, "r-borda", dias_atras=13.9, etapas=abrir)
+        db.execute("UPDATE steps SET started_at=? WHERE run_id='r-borda'", (iso(14.5),))   # começou antes do corte
+        semear_execucao(db, "r-receita", dias_atras=1,          # receita reproduzindo: sem custo DE VERDADE
+                        etapas=[("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 0)])
+
+        sem_correcao = HistoricoDeAcoes(db, lambda: PRECOS, janela_dias=30).de("instagram", "OPEN_POST")
+        assert sem_correcao is not None and sem_correcao.amostras == 13
+        assert sem_correcao.chamadas.p50 == 0.0                # o defeito: a mediana virava zero
+
+        retencao = [14]
+        h = HistoricoDeAcoes(db, lambda: PRECOS, janela_dias=30, ttl_s=0, retencao_dias=lambda: retencao[0])
+        assert (h.janela_dias, h.janela_configurada) == (14, 30)
+        est = h.de("instagram", "OPEN_POST")
+        assert est is not None and est.amostras == 6 and est.sem_custo == 1
+        assert est.chamadas == Faixa(3.0, 3.0) and round(est.usd.p50, 6) == 0.03
+        p = projetar([("abrir", "Abrir", "instagram", "OPEN_POST")], h, minimo=5)
+        assert (p["janela_dias"], p["janela_configurada"], p["amostras_sem_custo"]) == (14, 30, 1)
+        assert p["etapas"][0]["samples_without_cost"] == 1 and p["chamadas"] == {"p50": 3.0, "p90": 3.0}  # type: ignore[index]
+        retencao[0] = 60                                        # a retenção maior não alarga além da janela
+        assert h.janela_dias == 30
+        retencao[0] = 3                                         # nem a menor deixa passar o que já venceu
+        assert h.janela_dias == 3 and (h.de("instagram", "OPEN_POST") or pytest.fail()).amostras == 2
     finally:
         db.close()
 

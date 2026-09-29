@@ -730,8 +730,9 @@ class RunService:
         somado. É o que a pessoa vê ANTES de iniciar; etapa sem base própria vem marcada, nunca inventada."""
         if self._historico is None:
             cfg = self.scheduler.cfg
-            self._historico = HistoricoDeAcoes(self.repo.db, lambda: cfg.file.ai.prices,
-                                               janela_dias=cfg.file.ai.step_budget.window_days)
+            self._historico = HistoricoDeAcoes(
+                self.repo.db, lambda: cfg.file.ai.prices, janela_dias=cfg.file.ai.step_budget.window_days,
+                retencao_dias=lambda: int(self.scheduler.get_settings().log_retention_days))
         passos = [(p.key, p.title, p.app_id or plan.app_id or "*", p.capability or "*") for p in plan.steps]
         return projetar(passos, self._historico, minimo=self.scheduler.cfg.file.ai.step_budget.min_samples)
 

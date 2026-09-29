@@ -14,6 +14,14 @@ Três usos, todos sem chamar IA:
   laço descontrolado vira falha explicada, não 18 minutos girando até o prazo.
 
 Não conhece app nenhum: agrupa pelo que as etapas e as execuções já gravam.
+
+**A janela nunca passa da retenção de `ai_calls`** (ADR-054, decisão 8). As etapas vêm de `steps` (que não vence), mas
+o custo vem de `ai_calls`, purgado em `log_retention_days` (14 por padrão): com a janela de 30 dias, a partir do 15º
+dia as etapas antigas entravam com 0 chamadas e US$ 0 e a régua — projeção, aviso e orçamento — saía subestimada.
+A janela EFETIVA é `min(janela_dias, log_retention_days)`, e a etapa só entra se COMEÇOU dentro dela (uma etapa que
+começou antes do corte pode ter perdido as primeiras chamadas). O que precisar de mais que isso lê o agregado
+durável do aprendizado (`learning_daily`). A projeção diz a janela efetiva e quantas amostras não custaram nada
+(receita reproduzindo, fluxo) — número pequeno de verdade, não chamada perdida.
 """
 from __future__ import annotations
 
@@ -52,6 +60,7 @@ class EstatisticaDeAcao:
     chamadas: Faixa
     segundos: Faixa
     usd: Faixa
+    sem_custo: int = 0                 # etapas da amostra que não fizeram chamada de IA nenhuma
 
 
 def _pct(valores: list[float], q: float) -> float:
@@ -74,14 +83,24 @@ class HistoricoDeAcoes:
     """Estatísticas por (app, ação), relidas no máximo a cada `ttl_s` — o executor consulta a cada chamada de IA."""
 
     def __init__(self, db: object, prices: Callable[[], dict[str, list[float]]], *, janela_dias: int = 30,
-                 ttl_s: float = 600.0, relogio: Callable[[], float] = time.monotonic) -> None:
+                 ttl_s: float = 600.0, relogio: Callable[[], float] = time.monotonic,
+                 retencao_dias: Callable[[], int] | None = None) -> None:
+        """`retencao_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); sem ele, só a janela."""
         self._db = db
         self._prices = prices
-        self.janela_dias = janela_dias
+        self.janela_configurada = janela_dias
+        self._retencao = retencao_dias
         self._ttl = ttl_s
         self._relogio = relogio
         self._cache: dict[tuple[str, str], EstatisticaDeAcao] | None = None
         self._lido_em = 0.0
+
+    @property
+    def janela_dias(self) -> int:
+        """A janela EFETIVA: nunca mais longa que a retenção de `ai_calls`."""
+        if self._retencao is None:
+            return self.janela_configurada
+        return max(1, min(self.janela_configurada, int(self._retencao())))
 
     def estatisticas(self) -> dict[tuple[str, str], EstatisticaDeAcao]:
         agora = self._relogio()
@@ -94,6 +113,7 @@ class HistoricoDeAcoes:
         return self.estatisticas().get((app, acao or QUALQUER))
 
     def _ler(self) -> dict[tuple[str, str], EstatisticaDeAcao]:
+        corte = _iso_dias_atras(self.janela_dias)
         linhas = self._db.query(  # type: ignore[attr-defined]
             "SELECT s.id sid, s.capability cap, s.app_id app_id, r.app_ids app_ids, s.started_at ini, "
             "s.finished_at fim, a.model modelo, count(a.id) n, COALESCE(sum(a.input_tokens), 0) i, "
@@ -101,8 +121,9 @@ class HistoricoDeAcoes:
             "COALESCE(sum(a.output_tokens), 0) o, COALESCE(sum(a.usd), 0) usd_decl "
             "FROM steps s JOIN runs r ON r.id = s.run_id LEFT JOIN ai_calls a ON a.step_id = s.id "
             "WHERE r.simulated = 0 AND s.status = 'succeeded' AND s.finished_at >= ? "
+            "AND (s.started_at IS NULL OR s.started_at >= ?) "
             "GROUP BY s.id, s.capability, s.app_id, r.app_ids, s.started_at, s.finished_at, a.model",
-            (_iso_dias_atras(self.janela_dias),))
+            (corte, corte))
         precos = self._prices()
         por_etapa: dict[str, _Etapa] = {}
         for bruta in linhas:
@@ -127,7 +148,7 @@ class HistoricoDeAcoes:
                 app=app, acao=acao, amostras=len(etapas),
                 chamadas=Faixa(_pct(chamadas, 0.5), _pct(chamadas, 0.9)),
                 segundos=Faixa(_pct(segundos, 0.5), _pct(segundos, 0.9)) if segundos else Faixa(0.0, 0.0),
-                usd=Faixa(_pct(usd, 0.5), _pct(usd, 0.9)))
+                usd=Faixa(_pct(usd, 0.5), _pct(usd, 0.9)), sem_custo=sum(1 for e in etapas if not e.chamadas))
         return saida
 
     def orcamento_de_chamadas(self, app: str, acao: str | None, *, fator: float, folga: int,
@@ -162,6 +183,7 @@ class PassoProjetado:
     segundos: Faixa
     usd: Faixa
     sem_base: bool
+    sem_custo: int = 0
 
 
 def projetar(passos: Iterable[tuple[str, str, str, str]], historico: HistoricoDeAcoes, *,
@@ -179,13 +201,15 @@ def projetar(passos: Iterable[tuple[str, str, str, str]], historico: HistoricoDe
         itens.append(PassoProjetado(chave=chave, titulo=titulo, acao=acao or QUALQUER,
                                     amostras=est.amostras if est else 0,
                                     chamadas=est.chamadas if est else zero, segundos=est.segundos if est else zero,
-                                    usd=est.usd if est else zero, sem_base=sem_base))
+                                    usd=est.usd if est else zero, sem_base=sem_base,
+                                    sem_custo=est.sem_custo if est else 0))
 
     def soma(campo: str, q: str) -> float:
         return round(sum(float(getattr(getattr(i, campo), q)) for i in itens), 4)
 
     return {
-        "janela_dias": historico.janela_dias, "minimo_de_amostras": minimo,
+        "janela_dias": historico.janela_dias, "janela_configurada": historico.janela_configurada,
+        "minimo_de_amostras": minimo, "amostras_sem_custo": sum(i.sem_custo for i in itens),
         "chamadas": {"p50": soma("chamadas", "p50"), "p90": soma("chamadas", "p90")},
         "segundos": {"p50": soma("segundos", "p50"), "p90": soma("segundos", "p90")},
         "usd": {"p50": soma("usd", "p50"), "p90": soma("usd", "p90")},
@@ -193,7 +217,8 @@ def projetar(passos: Iterable[tuple[str, str, str, str]], historico: HistoricoDe
         "etapas": [{"key": i.chave, "title": i.titulo, "action": i.acao, "samples": i.amostras,
                     "calls": {"p50": i.chamadas.p50, "p90": i.chamadas.p90},
                     "seconds": {"p50": i.segundos.p50, "p90": i.segundos.p90},
-                    "usd": {"p50": round(i.usd.p50, 4), "p90": round(i.usd.p90, 4)}, "no_baseline": i.sem_base}
+                    "usd": {"p50": round(i.usd.p50, 4), "p90": round(i.usd.p90, 4)}, "no_baseline": i.sem_base,
+                    "samples_without_cost": i.sem_custo}
                    for i in itens],
     }
 

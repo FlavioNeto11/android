@@ -305,6 +305,28 @@ skills:                           # habilidades versionadas (docs/design/evoluca
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
 
+aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, falha classificada; NENHUMA IA no pipeline
+  enabled: true                   # digest a cada execução e curadoria periódica; false = só a leitura do livro
+  curadoria_s: 900                # passo da curadoria (régua diária dos últimos dias e passos dos pacotes seguintes)
+  # Modos: "off" não grava · "shadow" grava e mede sem consumir · "on" publica sozinho o que NÃO tem efeito externo
+  # nem texto de pessoa (D1). As aspas importam: sem elas o YAML lê off/on como booleano.
+  licoes:
+    modo: "shadow"
+    ator: {tokens: 120, max: 3}
+    planejador: {tokens: 150, max: 3}
+    minimo_por_braco: 8           # unidades por braço para o veredito de efeito (o painel mostra "faltam N")
+    maximo_por_braco: 20
+    holdout_publicada: 0.1
+  telas: {modo: "observe", observacoes: 3, execucoes: 2}    # "observe": grava e valida, a sessão não consome
+  fluxo: {concordancias: 1}
+  voz: {modo: "off"}              # a voz é sempre publicada pelo dono
+  preferencias: {modo: "off"}
+  backlog: {minimo_ocorrencias: 3, pessoa_usd: 0.25, aparelho_usd_min: 0, prova_minimo: 10, prova_fator: 0.5}
+  ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
+  takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
+  retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,
+             candidata_sem_evidencia_dias: 90}
+
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
   # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".
