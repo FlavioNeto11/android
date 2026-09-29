@@ -415,12 +415,14 @@ class AppState:
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
-        # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, responder); o gerenciador,
-        # a tomada de controle. Sem isto tudo é no-op — e nada delas decide desfecho, verificação ou guarda.
+        # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
+        # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),
+        # o comando incerto resolvido. Sem isto tudo é no-op — e nada delas decide desfecho, verificação ou guarda.
         self.costuras = costuras_do_livro(self.learning, self.db)
         self.scheduler.executor.costuras = self.costuras
         self.runs.costuras = self.costuras
         self.devices.costura_de_controle = self.costuras
+        self.teaching.costura_de_ensino = self.costuras
         # Voz e preferências (ADR-054, A9): a voz que o dono publicou entra no contexto social (mesmo perfil, mesma
         # ação); a escolha repetida num empate de habilidades vira a etapa de preferência da RESOLVE. Os dois passos
         # da curadoria (varrer aprovações decididas, minerar respostas e escolhas) entram aqui. Sem IA.

@@ -71,6 +71,7 @@ from .security import access as acesso           # o módulo, não os nomes: `LO
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome, operador_atual
+from .shared.costuras import ResolucaoDeComando, autor_do_gesto, avisar
 from .state import AppState
 from .workers.captura import ErroDeMidia
 from .workers.protocol import EnvioDeMidia, Hello, Refused, parse_upstream
@@ -148,6 +149,13 @@ def quem(request: Request | None = None, informado: str | None = None) -> str:
     """
     da_sessao = getattr(request.state, "operador", None) if request is not None else None
     return da_sessao or operador_atual() or (informado or "").strip() or "panel"
+
+
+def _autor_do_sinal(request: Request) -> str:
+    """Quem fez um gesto que vira sinal do aprendizado (ADR-054): o operador da SESSÃO, ou `panel` — a regra das
+    rotas do livro. Diferente de `quem`, o `requested_by` do corpo não entra: qualquer chamador o escreve, e um
+    `sistema` ali tiraria o gesto da conta das pessoas na régua diária."""
+    return autor_do_gesto(getattr(request.state, "operador", None))
 
 
 # ====================================================================== sessão do painel
@@ -2491,6 +2499,11 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
                       f"marcado como '{body.outcome}' por {autor}.", level="warn",
                instance_id=novo["instance_id"])
+    # Sinal `comando_incerto_resolvido` (ADR-054), só depois de a decisão valer. A falha do livro nunca desfaz nem
+    # derruba a resolução (`avisar`).
+    avisar(s.costuras.comando_incerto_resolvido, ResolucaoDeComando(
+        command_id=command_id, resolucao=body.outcome, nota=body.note, quem=_autor_do_sinal(request),
+        simulated=s.provider.simulated))
     return command_dto(novo)
 
 
@@ -2700,8 +2713,9 @@ async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -
 @router.post("/runs/{run_id}/{op}")
 async def run_op(request: Request, run_id: str, op: str) -> Any:
     runs = st(request).runs
-    ops = {"start": runs.start, "pause": runs.pause, "resume": runs.resume, "cancel": runs.cancel,
-           "retry_failed": runs.retry_failed}
+    # Cancelar pela rota é o GESTO de uma pessoa (sinal `cancelou_execucao`); o cancelamento que a sucessora faz não é.
+    ops = {"start": runs.start, "pause": runs.pause, "resume": runs.resume,
+           "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)), "retry_failed": runs.retry_failed}
     if op not in ops:
         raise err(404, "not_found", "Operação desconhecida.")
     try:

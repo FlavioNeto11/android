@@ -26,8 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.skills.application.teaching import CandidateDetail, TeachingService, TeachingView
 from app.modules.skills.domain.document import JsonObject, JsonValue
-from app.modules.skills.domain.lifecycle import (SYSTEM_ACTOR, InvalidDocument, SkillError, SkillNotFound,
-                                                 SkillState, ValidationPending)
+from app.modules.skills.domain.lifecycle import (InvalidDocument, SkillError, SkillNotFound, SkillState,
+                                                 ValidationPending)
 from app.modules.skills.domain.refs import InvalidSkillRef, SkillRef
 from app.modules.skills.domain.teaching import (CredentialInText, Demonstration, GeneralizerFailed, SkillCandidate,
                                                 TeachingInputInvalid, TeachingNotFound, TeachingSession,
@@ -37,6 +37,7 @@ from app.modules.skills.infrastructure.decompiler import DecompileIssue, PlanDec
 from app.modules.skills.infrastructure.flow_conversion import FlowConverter
 from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
 from app.modules.skills.infrastructure.sql_repository import SecretInParameters, SqlSkillRepository
+from app.shared.costuras import autor_do_gesto
 
 T = TypeVar("T")
 
@@ -82,10 +83,8 @@ def _exige_habilidades(request: Request) -> None:
 
 def _quem(request: Request) -> str:
     """Quem decide: o operador da sessão do painel, ou `panel`. Nunca o ator de sistema (ele tem outras permissões
-    na tabela de transições)."""
-    nome: object = getattr(request.state, "operador", None)
-    quem = nome if isinstance(nome, str) and nome.strip() else "panel"
-    return f"painel:{quem}" if quem == SYSTEM_ACTOR else quem
+    na tabela de transições). A regra é a do kernel (`autor_do_gesto`): a mesma do livro e dos sinais de gesto."""
+    return autor_do_gesto(getattr(request.state, "operador", None))
 
 
 def _http(exc: Exception) -> HTTPException:

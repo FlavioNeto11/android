@@ -22,12 +22,13 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.learning.application.servico import DetalheDoLivro, LearningService
-from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, EntradaInvalida, ErroDeAprendizado, NaoEncontrado,
-                                               SkillState, UseARotaDasHabilidades)
+from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizado, NaoEncontrado, SkillState,
+                                               UseARotaDasHabilidades)
 from app.modules.learning.domain.livro import EntradaDoLivro, Transicao
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
 from app.modules.skills.domain.document import JsonObject, JsonValue
+from app.shared.costuras import autor_do_gesto
 
 T = TypeVar("T")
 
@@ -45,10 +46,9 @@ def _servico(request: Request) -> LearningService:
 
 def _quem(request: Request) -> str:
     """Quem decide: o operador da sessão do painel, ou `panel`. Nunca o ator de sistema (a regra `_quem` das
-    habilidades): pela rota decide sempre uma pessoa."""
-    nome: object = getattr(request.state, "operador", None)
-    quem = nome if isinstance(nome, str) and nome.strip() else "panel"
-    return f"painel:{quem}" if quem == SYSTEM_ACTOR else quem
+    habilidades): pela rota decide sempre uma pessoa. A regra é a do kernel (`autor_do_gesto`), a mesma dos sinais
+    de gesto que chegam pelas costuras."""
+    return autor_do_gesto(getattr(request.state, "operador", None))
 
 
 def _http(exc: ErroDeAprendizado) -> HTTPException:

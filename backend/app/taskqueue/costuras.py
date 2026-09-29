@@ -1,24 +1,24 @@
 """Costuras do aprendizado nos arquivos quentes (ADR-054, pacote A2).
 
 O executor, o serviço de execução, o assistente do comando e o gerenciador de aparelhos AVISAM o aprendizado do que
-acabou de acontecer — a tentativa que fechou, a decisão de uma pessoa sobre um item, a repetição de uma execução, a
-resposta a uma pergunta, a tomada de controle — e PEDEM as lições medidas antes de consultar o ator e o planejador.
-Nada além disso: o aprendizado é fonte de decisão ou texto de contexto, nunca desfecho, verificação, guarda, política
-ou custo máximo. A lição vai para `DecisionRequest.lessons` e `PlanRequest.lessons`; o verificador não tem campo para
-ela (ADR-024).
+acabou de acontecer — a tentativa que fechou, a decisão de uma pessoa sobre um item, a repetição e o cancelamento de uma
+execução, a resposta a uma pergunta, a tomada de controle — e PEDEM as lições medidas antes de consultar o ator e o
+planejador. Nada além disso: o aprendizado é fonte de decisão ou texto de contexto, nunca desfecho, verificação,
+guarda, política ou custo máximo. A lição vai para `DecisionRequest.lessons` e `PlanRequest.lessons`; o verificador
+não tem campo para ela (ADR-024).
 
 Contrato tipado e no-op por padrão (`SEM_COSTURAS`): sem o `AppState` ligar o livro
 (`modules/learning/infrastructure/ligar_costuras.py`), tudo segue exatamente como antes. E toda chamada passa por
 `avisar` ou `pedir_licoes`, que engolem a exceção: o aprendizado nunca derruba uma etapa, um "resolver", uma
-retomada, uma sucessora nem uma tomada de controle.
+retomada, um cancelamento, uma sucessora nem uma tomada de controle.
 
 O que NUNCA passa por aqui: texto de tela, valor de resposta, coordenada, credencial. A árvore da tentativa vai inteira
 ao observador (é dele decidir o que aproveita, e a tela sensível ele pula); a resposta a uma pergunta vai só como
 sha256; a tomada de controle, só com os ids da etapa.
 
-As costuras de gesto que moram fora da fila (a tomada de controle, o `avisar` e o no-op delas) estão no kernel
-(`app/shared/costuras.py`), para o gerenciador de aparelhos avisar sem importar `taskqueue`; este módulo as reexporta
-e o `SemCosturas` daqui as herda.
+As costuras de gesto que moram fora da fila (a tomada de controle, a resolução de um comando incerto, a correção do
+ensino, o `avisar` e o no-op delas) estão no kernel (`app/shared/costuras.py`): quem as chama não pode importar
+`taskqueue`. Este módulo as reexporta, e o `SemCosturas` daqui as herda.
 """
 from __future__ import annotations
 
@@ -27,7 +27,8 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from ..automation.hierarchy import UiTree
-from ..shared.costuras import CosturaDeControle, SemCosturasDeGesto, TomadaDeControle, avisar
+from ..shared.costuras import (CorrecaoDeEnsino, CosturaDeComando, CosturaDeControle, CosturaDeEnsino,
+                               ResolucaoDeComando, SemCosturasDeGesto, TomadaDeControle, autor_do_gesto, avisar)
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -117,6 +118,20 @@ class RespostaAPergunta:
     resposta_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class CancelamentoDeExecucao:
+    """Uma pessoa cancelou a execução pela rota (`POST /api/runs/{id}/cancel`). O cancelamento que o assistente faz ao
+    criar a sucessora NÃO passa por aqui: é consequência da resposta (`respondeu_pergunta`), não um gesto; nem o
+    `Outcome.cancelled` do escalonador, que é o efeito do pedido."""
+
+    run_id: str
+    #: O status no instante do gesto, lido ANTES de cancelar (depois, `cancelling` → `cancelled` é do escalonador).
+    status_anterior: str
+    #: Nada tinha rodado (`planning`, `needs_input`, `planned`): a execução saiu direto para `cancelled`.
+    antes_de_iniciar: bool
+    quem: str
+
+
 class CosturasDeAprendizado(Protocol):
     """O que o executor, o serviço de execução e o assistente chamam."""
 
@@ -124,12 +139,13 @@ class CosturasDeAprendizado(Protocol):
     def ao_fechar_tentativa(self, fechamento: FechamentoDeTentativa) -> None: ...
     def ao_resolver(self, resolucao: ResolucaoDeItem) -> None: ...
     def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None: ...
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None: ...
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None: ...
 
 
 class SemCosturas(SemCosturasDeGesto):
-    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054. As costuras de gesto (a tomada de
-    controle) vêm no-op do kernel."""
+    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054. As costuras de gesto (tomada de
+    controle, comando incerto resolvido, correção do ensino) vêm no-op do kernel."""
 
     def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
         return []
@@ -141,6 +157,9 @@ class SemCosturas(SemCosturasDeGesto):
         return None
 
     def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None:
+        return None
+
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None:
         return None
 
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
@@ -160,7 +179,8 @@ def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> lis
     return [t for t in licoes if t.strip()]
 
 
-# `CosturaDeControle`, `TomadaDeControle` e `avisar` moram no kernel e seguem exportados daqui (compatibilidade).
-__all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CosturaDeControle", "CosturasDeAprendizado", "FechamentoDeTentativa",
-           "DecisaoSobreItem", "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeItem",
-           "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "avisar", "pedir_licoes"]
+# As costuras de gesto moram no kernel e seguem exportadas daqui (compatibilidade).
+__all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CancelamentoDeExecucao", "CorrecaoDeEnsino", "CosturaDeComando",
+           "CosturaDeControle", "CosturaDeEnsino", "CosturasDeAprendizado", "DecisaoSobreItem", "FechamentoDeTentativa",
+           "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeComando", "ResolucaoDeItem",
+           "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "autor_do_gesto", "avisar", "pedir_licoes"]

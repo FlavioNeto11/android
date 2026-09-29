@@ -33,8 +33,8 @@ from ..security.redaction import redact
 from ..shared.resources import Target
 from ..util import now_iso
 from .balanceamento import distribuir
-from .costuras import (SEM_COSTURAS, CosturasDeAprendizado, PedidoDeLicoes, RepeticaoDeExecucao, ResolucaoDeItem,
-                       avisar, pedir_licoes)
+from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
+                       RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
 from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -916,13 +916,17 @@ class RunService:
         self.scheduler.wake()
         return self.repo.run_summary(self._run(run_id))
 
-    def cancel(self, run_id: str) -> RunSummary:
+    def cancel(self, run_id: str, *, por: str | None = None) -> RunSummary:
+        """`por`: quem fez o GESTO (a rota passa o autor da sessão). Só ele vira o sinal `cancelou_execucao`
+        (ADR-054); o cancelamento que a sucessora faz da execução respondida chama sem `por` — é consequência da
+        resposta, que já tem o seu sinal."""
         run = self._run(run_id)
         status = RunStatus(run["status"])
         if status in RUN_TERMINAL and status != RunStatus.completed_with_issues:
             raise RunError("invalid_state", "A execução já terminou.")
         self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
-        if status in (RunStatus.planned, RunStatus.needs_input, RunStatus.planning):
+        antes_de_iniciar = status in (RunStatus.planned, RunStatus.needs_input, RunStatus.planning)
+        if antes_de_iniciar:
             self.repo.cancel_open_steps(run_id, reason="execução cancelada")
             for o in self.repo.db.query("SELECT id FROM objectives WHERE run_id=?", (run_id,)):
                 self.repo.set_objective(o["id"], ObjectiveStatus.cancelled, detail="Cancelado antes de iniciar.")
@@ -932,6 +936,10 @@ class RunService:
                                      "Cancelando: trabalho futuro interrompido; o que já foi feito permanece registrado",
                                      level="warn")
             self.scheduler.wake()
+        if por is not None:
+            # Só depois de o gesto valer; o status é o de ANTES (o de agora já é consequência do pedido).
+            avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
+                run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por))
         return self.repo.run_summary(self._run(run_id))
 
     # ------------------------------------------------------------------ retomadas
