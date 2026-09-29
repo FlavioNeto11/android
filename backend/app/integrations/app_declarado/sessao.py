@@ -666,11 +666,12 @@ class SessaoDeclarada:
             bloqueou = bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
                                             anterior_status=None, detail=detail, app_label=self.conhecimento.rotulo)
             if bloqueou or anterior is None or anterior["status"] != SessionStatus.auth_challenge.value:
+                # Protegida por dentro: a quarentena falhar não pode impedir o evento da fila logo abaixo.
                 perfil = self.repo.profile_row(profile_id)
-                registrar_conta_travada(self.repo, instance_id=instance_id,
+                registrar_conta_travada(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
                                         handle=str(perfil["username"] if perfil is not None else profile_id),
                                         evidencia=trava.trecho if trava is not None else (detail or "")[:300],
-                                        origem="sessao")
+                                        visto_por="motor de sessão")
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
                                  detail=detail)

@@ -21,6 +21,8 @@ Nível de prova: `simulated` — o parser de hierarquia de verdade, o motor de s
 """
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -110,6 +112,36 @@ class InstagramComTrava(FakeInstagram):
 def _depois_da_trava(app: InstagramComTrava) -> list[str]:
     assert app.trava_vista_em is not None, "a tela de verificação nunca foi desenhada"
     return [c for c in app.calls[app.trava_vista_em:] if c.startswith(TOQUES)]
+
+
+@dataclass
+class CodigoSemEditText(FakeInstagram):
+    """A tela de código de login/2FA com o campo desenhado por um widget que NÃO é da classe `EditText` — o repositório
+    registra que o Instagram usa widgets assim (`integrations/app_declarado/formulario.py`, `sessao.yaml` do app).
+    "Voltar" nela leva ao formulário de login, como no app: quem tocar ali acaba digitando a senha de novo — o SEGUNDO
+    envio que as decisões (b) e (e) do ADR-055 proíbem. `codigo_visto_em` marca o índice de `calls` em que a tela
+    foi desenhada pela primeira vez (revisão do pacote "detector", sondas `probe_2fa*.py`)."""
+
+    codigo_visto_em: int | None = None
+
+    def _build(self) -> list[Node]:
+        if self.screen != "two_factor":
+            return super()._build()
+        if self.codigo_visto_em is None:
+            self.codigo_visto_em = len(self.calls)
+        return [Node("android.widget.TextView", (40, 200, 680, 280), text="Enter the 6-digit security code"),
+                Node("android.view.View", (40, 320, 680, 390), rid="code", clickable=True)]
+
+    def press_key(self, key: str) -> None:
+        if self.screen == "two_factor":
+            self.calls.append(f"key:{key}")
+            self.screen = "login"
+            return
+        super().press_key(key)
+
+    def gestos_depois_do_codigo(self, desde: int = 0) -> list[str]:
+        assert self.codigo_visto_em is not None, "a tela do código nunca foi desenhada"
+        return [c for c in self.calls[max(desde, self.codigo_visto_em):] if c.startswith(TOQUES)]
 
 
 def _tela(texto: str, *, campo: bool = False, pkg: str = PKG) -> UiTree:
@@ -245,6 +277,82 @@ async def test_ler_conta_para_na_trava_sem_tocar(tmp_path: Path) -> None:
         assert repo.profile_row(pid)["status"] == "blocked"
     finally:
         db.close()
+
+
+@pytest.mark.parametrize("locale", ["en-US", "pt-BR"])
+async def test_sessao_para_no_codigo_cujo_campo_nao_e_edittext(tmp_path: Path, locale: str) -> None:
+    """Revisão do pacote (bloqueio 1): o detector passou a exigir campo `EditText` também da regra DECLARADA
+    `two_factor` do motor de sessão. Com o campo desenhado por outro widget, a tela virava "desconhecida", o motor
+    voltava ("voltar" é toque) e caía no login: senha digitada e enviada de novo, `session_ready`. Na base, a regra
+    casava só pelo texto. Agora: código, nada tocado, a pessoa chamada, o perfil segue ativo (decisão b)."""
+    app = CodigoSemEditText(stored_password=SENHA, screen="two_factor", locale=locale)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social, username=USUARIO, senha=SENHA)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.AUTH_CHALLENGE, (r.outcome, r.detail)
+        assert app.gestos_depois_do_codigo() == [], app.calls
+        assert app.typed == []                                            # nenhuma senha digitada
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+        assert repo.profile_row(pid)["status"] == "active"
+        assert "codigo" in (r.detail or ""), r.detail
+    finally:
+        db.close()
+
+
+async def test_codigo_sem_edittext_depois_do_envio_nao_reenvia_a_senha(tmp_path: Path) -> None:
+    """Revisão do pacote (bloqueio 1, 2ª sonda): login → envio → tela de código sem `EditText`. Antes, a 1ª chamada
+    saía `uncertain` (sessão `unknown`), e o tick automático seguinte voltava da tela do código e ENVIAVA A SENHA DE
+    NOVO. Agora a 1ª chamada é o código (pessoa, sem bloquear) e o tick automático não faz gesto nenhum: um envio só."""
+    app = CodigoSemEditText(stored_password=SENHA, two_factor_on_login=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social, username=USUARIO, senha=SENHA)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.AUTH_CHALLENGE, (r.outcome, r.detail)
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+        assert repo.profile_row(pid)["status"] == "active"
+        assert app.gestos_depois_do_codigo() == [], app.calls
+        n = len(app.calls)
+        r2 = await auth.ensure_session(FakeRt(app), pid, automatic=True)
+        assert r2.outcome is Outcome.AUTH_CHALLENGE, (r2.outcome, r2.detail)
+        assert app.gestos_depois_do_codigo(n) == [], app.calls[n:]
+        assert app.calls.count("submit") == 1 and len(repo.auth_attempts(pid)) == 1
+    finally:
+        db.close()
+
+
+def test_codigo_declarado_sem_campo_so_vale_no_motor_de_sessao() -> None:
+    """A exigência de campo para o código é de CONTEXTO. No meio da execução (padrão do detector) a linha
+    "Autenticação de dois fatores" do menu de configurações não é pedido de código. No motor de sessão a regra
+    declarada casa pelo texto: parar ali custa o clique de quem olha (código não bloqueia), tocar custava um 2º envio
+    de senha. O sinal genérico continua exigindo onde digitar nos dois."""
+    from app.automation.conhecimento_de_telas import detectar_conta_travada
+
+    k = do_app(PKG).telas
+    for texto in ("Autenticação de dois fatores", "Enter the 6-digit security code"):
+        tela = _tela(texto)
+        assert tela.conta_travada is None, texto                              # genérico: sem campo, não é código
+        assert detectar_conta_travada(tela, k) is None, texto                 # execução
+        trava = detectar_conta_travada(tela, k, codigo_declarado_exige_campo=False)
+        assert trava is not None and trava.subtipo == "codigo", texto         # motor de sessão
+        r = do_app(PKG).reconhecer(tela, package=PKG, locale="en-US")
+        assert r.tipo == "dois_fatores" and r.trava is not None and r.trava.subtipo == "codigo", texto
+
+
+def test_trava_e_codigo_na_mesma_tela_sao_conta_travada() -> None:
+    """A precedência não muda com a regra do código sem campo: a tela que pede "confirme que é humano" E cita um
+    código é conta travada (bloqueia), no motor de sessão e no meio da execução."""
+    from app.automation.conhecimento_de_telas import detectar_conta_travada
+
+    texto = f"{TRAVA_EN}. Enter the 6-digit security code"
+    k = do_app(PKG).telas
+    for campo in (False, True):
+        tela = _tela(texto, campo=campo)
+        trava = detectar_conta_travada(tela, k)
+        assert trava is not None and trava.subtipo == "conta_travada", campo
+        r = do_app(PKG).reconhecer(tela, package=PKG, locale="pt-BR")
+        assert r.trava is not None and r.trava.subtipo == "conta_travada" and r.tipo == "desafio", campo
 
 
 async def test_codigo_de_login_depois_do_envio_pede_pessoa_sem_bloquear(tmp_path: Path) -> None:
@@ -434,21 +542,128 @@ async def test_codigo_nao_bloqueia_e_trava_depois_do_codigo_bloqueia(tmp_path: P
         s = _estado(h)
         pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
         s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id=IID, verified_at=now_iso())
-        marcadas: list[tuple[str, str, str, str]] = []
-
-        def marcar_conta_travada(instance_id: str, handle: str, evidencia: str, origem: str) -> None:
-            marcadas.append((instance_id, handle, evidencia, origem))
-
-        s.social_repo.marcar_conta_travada = marcar_conta_travada  # type: ignore[attr-defined]  # dublê (pacote quarentena)
+        marcadas = _espiar_quarentena(s.social_repo)
         s._sessao_desmentida(IID, "auth_challenge", "código de login", subtipo="codigo")
         assert s.social_repo.session_row(pid, IID)["status"] == SessionStatus.auth_challenge.value
         assert s.social_repo.profile_row(pid)["status"] == "active" and marcadas == []
 
         s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada")
         assert s.social_repo.profile_row(pid)["status"] == "blocked"
-        assert len(marcadas) == 1 and marcadas[0][0] == IID and marcadas[0][1] == USUARIO
-        assert "human" in marcadas[0][2]
+        assert len(marcadas) == 1 and marcadas[0]["instance_id"] == IID and marcadas[0]["handle"] == USUARIO
+        assert "human" in str(marcadas[0]["evidencia"])
+        # O contrato com a quarentena: a origem é COMO se sabe (a tela foi lida); quem viu vai em `visto_por`.
+        assert marcadas[0]["origem"] == "observado" and marcadas[0]["visto_por"] == "execução"
+        assert marcadas[0]["profile_id"] == pid
         s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada")
         assert len(marcadas) == 1                                        # confirmar a mesma trava não remarca
+    finally:
+        await h.state.stop()  # type: ignore[union-attr]
+
+
+# ================================================================== o contrato com a quarentena
+#: As origens que a quarentena aceita: `social.repository.ORIGENS_DE_BLOQUEIO` e o CHECK da migração 054 do pacote
+#: quarentena ("observado" = a tela foi lida; "declarado" = uma pessoa disse; "regra" = uma regra decidiu). A cópia só
+#: vale enquanto o pacote não está nesta árvore; com ele, quem recusa é o método real.
+ORIGENS_DA_QUARENTENA = ("observado", "declarado", "regra")
+
+
+def _marcar_como_a_quarentena(instance_id: str, handle: str, evidencia: str | None, origem: str, *,
+                              visto_por: str = "sistema", profile_id: str | None = None,
+                              app_id: str | None = None) -> bool:
+    """Dublê com a assinatura e a recusa de `SocialRepository.marcar_conta_travada` (pacote quarentena)."""
+    if origem not in ORIGENS_DA_QUARENTENA:
+        raise ValueError(f"origem desconhecida: {origem!r} (use {', '.join(ORIGENS_DA_QUARENTENA)})")
+    if not handle.strip().lstrip("@"):
+        raise ValueError("a conta travada precisa de um @ (handle)")
+    return True
+
+
+def _espiar_quarentena(repo: object, *, falha: Exception | None = None) -> list[dict[str, object]]:
+    """Liga a quarentena ao repositório e devolve as chamadas que ela recebeu, com os argumentos pelo nome.
+
+    Revisão do pacote (bloqueio 2): o dublê antigo aceitava qualquer origem, e o detector mandava `sessao`/`execucao`
+    — a quarentena real levanta `ValueError` para tudo fora de `observado|declarado|regra` (3 falhas na árvore mesclada
+    com o pacote). Por isso: com o pacote quarentena na árvore, a chamada vai ao método REAL (a assinatura e a recusa
+    são as dele); sem ele, ao dublê com a mesma assinatura e a mesma recusa. `falha` faz a quarentena levantar, para
+    provar que o bloqueio e o aviso ao dono saem mesmo assim."""
+    real = getattr(type(repo), "marcar_conta_travada", None)
+    alvo = functools.partial(real, repo) if real is not None else _marcar_como_a_quarentena
+    chamadas: list[dict[str, object]] = []
+
+    def marcar(*args: object, **kwargs: object) -> bool:
+        ligados = inspect.signature(alvo).bind(*args, **kwargs)        # TypeError se a assinatura não bate
+        ligados.apply_defaults()
+        chamadas.append(dict(ligados.arguments))
+        if falha is not None:
+            raise falha
+        return bool(alvo(*args, **kwargs))
+
+    setattr(repo, "marcar_conta_travada", marcar)
+    return chamadas
+
+
+def _eventos(db: Any, kind: str) -> list[tuple[str, str, dict[str, object]]]:
+    return [(e["level"], e["message"], json.loads(e["data"] or "{}"))
+            for e in db.query("SELECT level, message, data FROM events WHERE kind=? ORDER BY id", (kind,))]
+
+
+async def test_sessao_leva_a_trava_a_quarentena_com_a_origem_que_ela_aceita(tmp_path: Path) -> None:
+    app = InstagramComTrava(account=USUARIO, screen="trava", trava=TRAVA_EN, locale="en-US")
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social, username=USUARIO, senha=SENHA)
+        marcadas = _espiar_quarentena(repo)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.AUTH_CHALLENGE, r.detail
+        assert len(marcadas) == 1, marcadas
+        assert marcadas[0]["origem"] == "observado" and marcadas[0]["visto_por"] == "motor de sessão"
+        assert marcadas[0]["handle"] == USUARIO and marcadas[0]["profile_id"] == pid
+        assert "human" in str(marcadas[0]["evidencia"])
+    finally:
+        db.close()
+
+
+async def test_quarentena_que_falha_nao_cala_o_desafio_na_sessao(tmp_path: Path) -> None:
+    """Revisão do pacote (bloqueio 2, a): a chamada à quarentena não era protegida em `SessaoDeclarada._save` — o erro
+    subia por `ensure_session`, e o evento da fila "Aguardando intervenção" e o aviso do desafio nunca saíam. O
+    `getattr` tolerava a AUSÊNCIA da função, não uma chamada que levanta."""
+    app = InstagramComTrava(account=USUARIO, screen="trava", trava=TRAVA_EN, locale="en-US")
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social, username=USUARIO, senha=SENHA)
+        marcadas = _espiar_quarentena(repo, falha=RuntimeError("banco indisponível"))
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.AUTH_CHALLENGE, r.detail
+        assert len(marcadas) == 1
+        assert _depois_da_trava(app) == [], app.calls
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+        assert repo.profile_row(pid)["status"] == "blocked"
+        assert any(d.get("active") is True and d.get("status") == "auth_challenge"
+                   for _, _, d in _eventos(db, "session.needs_person"))
+        logs = _eventos(db, "log")
+        assert any(d.get("subtipo") == "conta_travada" for _, _, d in logs)          # o aviso do desafio saiu
+        assert any(nivel == "error" and "quarentena" in msg and "RuntimeError" in msg for nivel, msg, _ in logs)
+    finally:
+        db.close()
+
+
+async def test_quarentena_que_falha_nao_cala_o_desafio_no_meio_da_execucao(tmp_path: Path) -> None:
+    """Revisão do pacote (bloqueio 2, b): no executor o erro era engolido pelo `except` de `_sessao_desmentida` — o
+    perfil ficava `blocked`, mas a fila "Aguardando intervenção" não era avisada e nada dizia que o marcador faltou."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = _estado(h)
+        pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+        s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id=IID, verified_at=now_iso())
+        marcadas = _espiar_quarentena(s.social_repo, falha=ValueError("origem desconhecida"))
+        s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada")
+        assert len(marcadas) == 1
+        assert s.social_repo.session_row(pid, IID)["status"] == SessionStatus.auth_challenge.value
+        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        assert any(d.get("active") is True and d.get("profile_id") == pid
+                   for _, _, d in _eventos(s.db, "session.needs_person"))
+        assert any(nivel == "error" and "quarentena" in msg and "ValueError" in msg
+                   for nivel, msg, _ in _eventos(s.db, "log"))
     finally:
         await h.state.stop()  # type: ignore[union-attr]

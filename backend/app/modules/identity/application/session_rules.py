@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.modules.identity.domain.resources import SessionStatus
 
-from .ports import EventSink, ProfileStore
+from .ports import EventSink, ProfileStore, QuarentenaDeContas
 
 #: Estados de sessão que só uma pessoa resolve — os mesmos que `state.py` usa para bloquear o agendador automático.
 #: É o que decide quando o evento dedicado da fila "Aguardando intervenção" dispara.
@@ -64,18 +64,36 @@ def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str,
     return True
 
 
-def registrar_conta_travada(repo: object, *, instance_id: str, handle: str, evidencia: str, origem: str) -> bool:
-    """Leva a conta travada à quarentena do repositório social, quando ele a conhece (ADR-055).
+#: A origem com que o detector de tela marca a conta travada na quarentena: a tela foi LIDA. É um dos valores que a
+#: quarentena aceita (`ORIGENS_DE_BLOQUEIO` e o CHECK da migração 054); quem viu vai em `visto_por`.
+ORIGEM_OBSERVADA = "observado"
 
-    `marcar_conta_travada(instance_id, handle, evidencia, origem)` é do pacote "quarentena", que chega em paralelo a
-    este: sem ela, nada muda — o bloqueio do perfil (ADR-029) quem chama já aplicou. `evidencia` é o trecho da tela
-    que casou (a frase de verificação, nunca um código); `origem` diz quem viu (`execucao` ou `sessao`). Devolve se
-    havia a quem avisar."""
-    marcar = getattr(repo, "marcar_conta_travada", None)
-    if not callable(marcar):
+
+def registrar_conta_travada(repo: object, bus: EventSink, *, profile_id: str, instance_id: str, handle: str,
+                            evidencia: str, visto_por: str) -> bool:
+    """Leva a conta travada à quarentena do repositório social, quando ele a tem (ADR-055). Devolve se o marcador
+    nasceu agora.
+
+    A quarentena (`QuarentenaDeContas`) é do pacote que chega em paralelo a este: sem ela, nada muda — o bloqueio do
+    perfil (ADR-029) quem chama já aplicou. `evidencia` é o trecho da tela que casou (a frase de verificação, nunca um
+    código); `visto_por` diz quem leu a tela (o motor de sessão ou a execução).
+
+    Nunca levanta. Na revisão do pacote, a quarentena real recusou a origem (`ValueError`) e o erro subiu por
+    `SessaoDeclarada._save` — o `ensure_session` estourava antes do evento da fila "Aguardando intervenção" e do aviso
+    do desafio — ou era engolido sem sinal no executor. O marcador que faltar vira um erro visível no histórico; o
+    bloqueio e o aviso ao dono, que quem chama emite, saem do mesmo jeito."""
+    if not isinstance(repo, QuarentenaDeContas):
         return False
-    marcar(instance_id, handle, evidencia, origem)
-    return True
+    try:
+        return repo.marcar_conta_travada(instance_id, handle, evidencia, ORIGEM_OBSERVADA, visto_por=visto_por,
+                                         profile_id=profile_id)
+    except Exception as exc:  # noqa: BLE001 - a quarentena falhar não pode calar o desafio (ver acima)
+        bus.emit("log", f"{instance_id}: a conta @{handle} está travada, mas o marcador de quarentena do aparelho "
+                        f"não pôde ser gravado ({type(exc).__name__}: {exc}): o aparelho NÃO entrou em quarentena. "
+                        "Confira-o antes de usá-lo.", level="error", instance_id=instance_id,
+                 data={"profile_id": profile_id, "handle": handle, "visto_por": visto_por,
+                       "erro": type(exc).__name__})
+        return False
 
 
 def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: str, status: str,

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.modules.identity.domain.persona_image import PersonaImageRecord, PersonaImageSpec
 
@@ -65,6 +65,24 @@ class ProfileStore(Protocol):
     def profile_row(self, profile_id: str) -> Mapping[str, object] | None: ...
 
     def update_profile(self, profile_id: str, fields: dict[str, object]) -> None: ...
+
+
+@runtime_checkable
+class QuarentenaDeContas(Protocol):
+    """A quarentena de aparelho com conta travada (ADR-055, pacote "quarentena", migração 054):
+    `social.repository.SocialRepository.marcar_conta_travada`, com a assinatura de lá.
+
+    `origem` é COMO se sabe — `observado` (a tela foi lida), `declarado` (uma pessoa disse), `regra` (uma regra
+    decidiu) — e a implementação levanta `ValueError` para qualquer outra; QUEM viu vai em `visto_por`. Na revisão do
+    pacote "detector", `origem="sessao"`/`"execucao"` fez a quarentena real recusar toda marcação. Devolve se o
+    marcador nasceu agora (`False`: já havia um aberto para a conta naquele aparelho).
+
+    `runtime_checkable` porque a quarentena chega em paralelo: o repositório que ainda não a tem simplesmente não
+    cumpre esta porta, e quem chama segue sem ela."""
+
+    def marcar_conta_travada(self, instance_id: str, handle: str, evidencia: str | None, origem: str, *,
+                             visto_por: str = ..., profile_id: str | None = ...,
+                             app_id: str | None = ...) -> bool: ...
 
 
 class EventSink(Protocol):

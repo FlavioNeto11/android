@@ -763,10 +763,12 @@ class AppState:
                                             anterior_status=None, detail=detail[:300],
                                             app_label=capabilities_of(self.social_repo.app_package).label)
             if bloqueou or anterior != status.value:
+                # Protegida por dentro: a quarentena falhar não pode impedir o evento da fila logo abaixo (o `except`
+                # do executor engolia o erro, e o dono não era avisado).
                 perfil = self.social_repo.profile_row(profile_id)
-                registrar_conta_travada(self.social_repo, instance_id=instance_id,
+                registrar_conta_travada(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
                                         handle=str(perfil["username"] if perfil is not None else profile_id),
-                                        evidencia=detail[:300], origem="execucao")
+                                        evidencia=detail[:300], visto_por="execução")
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.

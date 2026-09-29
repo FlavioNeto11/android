@@ -145,15 +145,18 @@ def _trava_declarada(k: ConhecimentoDeTelas, tipo: str, normalizado: str, bruto:
     return None
 
 
-def detectar_conta_travada(tree: UiTree, k: ConhecimentoDeTelas | None = None) -> ContaTravada | None:
+def detectar_conta_travada(tree: UiTree, k: ConhecimentoDeTelas | None = None, *,
+                           codigo_declarado_exige_campo: bool = True) -> ContaTravada | None:
     """O detector ÚNICO de conta travada (ADR-055). O executor (depois de cada observação, antes da reabertura por ANR,
     da receita e do ator), a leitura da conta e a dispensa do motor de sessão perguntam a ele — e quem ouve "sim" sai
     SEM tocar, teclar nem reabrir.
 
     - Conta travada ("Confirm you’re human", CAPTCHA, atividade suspeita) vem primeiro e NÃO exige campo de texto: a
       tela real só tem botões ("Continue", "Get support"), e era exatamente por não ter campo que ela passava.
-    - Código de login/2FA vem depois e exige onde digitar (a linha "Autenticação de dois fatores" do menu de
-      configurações não é pedido de código).
+    - Código de login/2FA vem depois. O sinal GENÉRICO exige onde digitar sempre: ele roda em qualquer tela, e a
+      linha "Autenticação de dois fatores" do menu de configurações não é pedido de código. O DECLARADO pelo app
+      (`two_factor` do `telas.yaml`) exige o campo só no meio da execução (`codigo_declarado_exige_campo`, o padrão),
+      pelo mesmo menu; o motor de sessão (`classificar`) desliga a exigência — ver lá o porquê.
     - Sinais genéricos (`hierarchy`, qualquer app) e os declarados pelo app (`telas.yaml`, tipos `desafio` e
       `dois_fatores`), estes na UNIÃO dos idiomas.
 
@@ -166,7 +169,8 @@ def detectar_conta_travada(tree: UiTree, k: ConhecimentoDeTelas | None = None) -
         return declarada
     if generica is not None and generica.subtipo == SUBTIPO_CONTA_TRAVADA:
         return generica
-    if tem_onde_digitar and k is not None and (declarada := _trava_declarada(k, "dois_fatores", normalizado, bruto)):
+    if (k is not None and (tem_onde_digitar or not codigo_declarado_exige_campo)
+            and (declarada := _trava_declarada(k, "dois_fatores", normalizado, bruto))):
         return declarada
     return generica
 
@@ -177,10 +181,18 @@ def classificar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None, lo
 
     Desafio e código não passam pelas regras: quem decide é `detectar_conta_travada`, antes de qualquer outra — o
     mesmo veredito em todo lugar que olha a tela, e tela de verificação nunca cai em "desconhecida" (de onde o motor
-    de sessão voltava e dispensava)."""
+    de sessão voltava e dispensava).
+
+    Aqui a regra DECLARADA do código casa só pelo texto, sem exigir campo `EditText` — como antes do detector. O
+    Instagram desenha campos com widgets que a heurística de classe não reconhece (`app_declarado/formulario.py`, o
+    `sessao.yaml` do app), e na revisão do pacote a tela de código com o campo num `android.view.View` virou
+    "desconhecida": o motor voltou dela (o "voltar" já é o toque proibido), caiu no login e ENVIOU A SENHA DE NOVO
+    (decisões b e e do ADR-055). O menu de configurações, que motivou a exigência, é do meio da execução — lá ela
+    continua. Se o app reabrir justo nele, o motor para e chama uma pessoa sem bloquear (código não bloqueia): um
+    clique de quem olha, contra um segundo envio de senha."""
     if package and package != k.app:
         return TelaReconhecida(DESCONHECIDA, DESCONHECIDA, f"outro app em primeiro plano ({package})", outro_app=True)
-    if (trava := detectar_conta_travada(tree, k)) is not None:
+    if (trava := detectar_conta_travada(tree, k, codigo_declarado_exige_campo=False)) is not None:
         regra = k.regra(trava.origem) or next((r for r in k.telas if r.tipo == trava.tipo), None)
         return TelaReconhecida(regra.tela if regra else trava.tipo, trava.tipo,
                                regra.razao if regra else f"a tela pede verificação ({trava.subtipo})",
