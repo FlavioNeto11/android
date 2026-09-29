@@ -7,7 +7,9 @@ da correção e propostas. Nunca chama IA, nunca grava nada.
   pela gravação — o `fk-*` que a sessão lê no md é o mesmo da linha que ela altera. App é o PACOTE (`*` quando a
   etapa não diz), ação é a `capability` (`*` = etapa livre), tela é a do pacote declarado ('' quando não há). A
   MEDIDA de uma linha sem tela (prova e reincidência) abrange o mesmo (app, ação, tipo) em qualquer tela
-  (`ChaveDoGrupo.abrange`): ela só vira corrigida quando a falha para em TODAS.
+  (`ChaveDoGrupo.abrange`): ela só vira corrigida quando a falha para em TODAS. A de uma linha COM tela soma a
+  falha do mesmo trio em tela desconhecida que passa da base dela (`excesso_sem_tela`): a tela que deixa de ser
+  reconhecida não pode passar por correção.
 - **Tipo**: um `FailureKind` (a tentativa) ou um `TipoDeVerificacao` (o sinal de pessoa que desmente o verificador).
 - **Ordem**: custo total = US$ perdido + minutos × `aparelho_usd_min` + intervenções × `pessoa_usd`. As três colunas
   saem separadas; o total só ordena. O falso positivo do verificador fica SEMPRE no topo: é o sucesso mascarado.
@@ -160,6 +162,18 @@ class ChaveDoGrupo:
         if self.tela:
             return outra == self
         return (outra.app, outra.capability, outra.tipo) == (self.app, self.capability, self.tipo)
+
+    @property
+    def alcance(self) -> str:
+        """O que a MEDIDA da linha conta, gravado na base e na verificação: `trio` (sem tela: o mesmo app, ação e tipo
+        em qualquer tela — o detalhe da linha mostra só o grupo exato, e o número da medida pode ser maior) ou `tela`
+        (a própria tela, mais o excesso da tela desconhecida, `excesso_sem_tela`)."""
+        return "tela" if self.tela else "trio"
+
+    @property
+    def sem_tela(self) -> ChaveDoGrupo:
+        """O grupo da tela desconhecida do mesmo trio (a chave exata com tela '')."""
+        return ChaveDoGrupo(self.app, self.capability, self.tipo, "")
 
 
 def chave_do_grupo(app: str | None, capability: str | None, tipo: str, tela: str | None) -> ChaveDoGrupo:
@@ -381,7 +395,12 @@ class TelaQueChamou:
 
 def telas_que_chamaram(chamadas: Iterable[ChamadaDeTela], ocorrencias: Iterable[Ocorrencia]) -> list[TelaQueChamou]:
     """As telas desconhecidas que pararam a automação: o sinal da sessão (`tela_desconhecida_chamou_pessoa`) e as
-    tentativas que falharam numa tela `desconhecida:<sig>`."""
+    tentativas que falharam numa tela `desconhecida:<sig>`.
+
+    O segundo ramo hoje não recebe nada: o escritor de `attempts.failure_screen` (item 22.3) grava NULO na tela
+    desconhecida — a assinatura de uma tela sem regra seria derivada do texto dela, e a coluna só leva nome
+    declarado. O comentário da migração 055 ("ou desconhecida:<sig8>") ficou superado; o ramo fica para quem um dia
+    gravar a assinatura, e a seção sai só das chamadas de pessoa."""
     pessoa: Counter[tuple[str, str]] = Counter()
     falhas: Counter[tuple[str, str]] = Counter()
     ultima: dict[tuple[str, str], str] = {}
@@ -475,6 +494,23 @@ def provar(estado: EstadoDoBacklog, base: Medida | None, depois: Medida, regras:
                                 f"taxa {taxa:.1%} ≤ {limite:.1%} em {depois.elegiveis} tentativas elegíveis")
     return ResultadoDaProva(Veredito.REABRE, EstadoDoBacklog.REOPENED, 0, limite,
                             f"taxa {taxa:.1%} > {limite:.1%} em {depois.elegiveis} tentativas elegíveis")
+
+
+def excesso_sem_tela(base: Medida | None, depois: Medida) -> int:
+    """As ocorrências do grupo da tela desconhecida (`ChaveDoGrupo.sem_tela`, medido EXATO) em `depois` acima do que a
+    taxa dele na linha de base explica.
+
+    Na prova e na reincidência de uma linha COM tela elas contam como da própria linha (item 22.3). A tela vem de um
+    classificador: quando o app muda os resource-ids, ou a própria correção edita o `telas.yaml`, a MESMA falha deixa
+    de cair em 'feed' e passa a cair na tela desconhecida — a linha 'feed' veria zero e seria dada como corrigida com
+    a falha continuando. Só a tela desconhecida entra: a mesma falha noutra tela NOMEADA é outro grupo (a correção
+    que deixa a etapa avançar e falhar mais adiante, numa tela conhecida, não reabre a linha que ela corrigiu). Se o
+    "mais adiante" for uma tela desconhecida, a linha pode reabrir sem ter regredido — é o lado aceito do erro: falha
+    ou incerteza nunca contam como sucesso. Arredonda para baixo o que a base explica: na dúvida, conta contra a
+    prova."""
+    taxa = base.taxa if base is not None else None
+    explicadas = int((taxa or 0.0) * depois.elegiveis)
+    return max(0, depois.ocorrencias - explicadas)
 
 
 def tentativas_da_reincidencia(regras: RegrasDoBacklog) -> int:
@@ -659,6 +695,6 @@ __all__ = ["ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "
            "ParteDeOutro", "Proposta", "RegrasDoBacklog", "ResultadoDaProva", "Saude", "SaudeDasExecucoes",
            "TelaQueChamou", "Tendencia", "TipoDeVerificacao", "Veredito", "agrupar", "camada_do_tipo",
            "chave_de_proposta", "chave_do_grupo", "commit_valido", "conferir_alteracao", "custo_total", "entra_no_topo",
-           "id_do_backlog", "linha_de_grupo", "linha_de_proposta", "medida_de_json", "onde_alterar_do_tipo", "ordenar",
-           "parte_de_outro", "proposta_de_acao", "proposta_de_item", "provar", "telas_que_chamaram",
-           "tentativas_da_reincidencia", "titulo"]
+           "excesso_sem_tela", "id_do_backlog", "linha_de_grupo", "linha_de_proposta", "medida_de_json",
+           "onde_alterar_do_tipo", "ordenar", "parte_de_outro", "proposta_de_acao", "proposta_de_item", "provar",
+           "telas_que_chamaram", "tentativas_da_reincidencia", "titulo"]

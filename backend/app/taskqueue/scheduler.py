@@ -1208,9 +1208,16 @@ class Scheduler:
             out = StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
                               f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
         if out.outcome in _SEM_TELA_DA_FALHA:
+            return replace(out, tela_da_falha=None) if out.tela_da_falha else out
+        if out.tela_da_falha:               # o executor já sabe (a trava achada dentro de uma ferramenta)
             return out
-        depois = getattr(rt, "last_tree", None)
-        return replace(out, tela_da_falha=tela_da_falha(depois, app.package) if depois is not antes else None)
+        try:
+            depois = getattr(rt, "last_tree", None)
+            tela = tela_da_falha(depois, app.package) if depois is not antes else None
+        except Exception:  # noqa: BLE001 - a tela da falha é registro: o desfecho já decidido segue sem ela
+            log.exception("etapa %s: tela da falha não classificada", step.id)
+            return out
+        return replace(out, tela_da_falha=tela)
 
     def _hold(self, obj: Any, srow: Any, veredito: Any) -> None:
         """Represa a etapa sem gastar tentativa: `retry_wait` com hora marcada, ou bloqueio para uma pessoa.
