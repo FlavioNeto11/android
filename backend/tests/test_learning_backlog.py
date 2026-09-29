@@ -34,7 +34,8 @@ from app.db import Database
 from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import (QUALQUER, ROTULO, ChaveDoGrupo, Medida, RegrasDoBacklog,
-                                                 TipoDeVerificacao, Veredito, chave_do_grupo, id_do_backlog, provar)
+                                                 TipoDeVerificacao, Veredito, chave_do_grupo, excesso_sem_tela,
+                                                 id_do_backlog, provar)
 from app.modules.learning.domain.ciclo import (EntradaInvalida, NaoEncontrado, NotaComCaraDeSegredo,
                                                TransicaoProibida)
 from app.modules.learning.domain.falhas import Camada, FailureKind
@@ -539,6 +540,192 @@ def test_reincidencia_concentrada_depois_de_muitas_boas_reabre(mundo: Mundo) -> 
     desde = medida["desde"]
     assert isinstance(desde, str) and desde > iso(AGORA + timedelta(days=3))      # a janela andou
     assert reaberta.verification["provado_em"] == iso(AGORA + timedelta(days=2))   # a prova fica registrada
+
+
+# ------------------------------------------------------------------ a linha sem tela depois do escritor (item 22.3)
+def test_chave_sem_tela_abrange_a_mesma_falha_em_qualquer_tela_e_a_com_tela_so_a_sua() -> None:
+    sem_tela = chave_do_grupo(PACOTE, "OPEN_POST", "alvo_ausente", None)
+    no_feed = chave_do_grupo(PACOTE, "OPEN_POST", "alvo_ausente", "feed")
+    no_perfil = chave_do_grupo(PACOTE, "OPEN_POST", "alvo_ausente", "profile")
+    assert sem_tela.abrange(sem_tela) and sem_tela.abrange(no_feed) and sem_tela.abrange(no_perfil)
+    assert no_feed.abrange(no_feed) and not no_feed.abrange(no_perfil) and not no_feed.abrange(sem_tela)
+    # o trio manda: outro tipo, outra ação ou outro app nunca entram, com ou sem tela
+    assert not sem_tela.abrange(chave_do_grupo(PACOTE, "OPEN_POST", "ciclo_sem_progresso", "feed"))
+    assert not sem_tela.abrange(chave_do_grupo(PACOTE, "LIKE_POST", "alvo_ausente", "feed"))
+    assert not sem_tela.abrange(chave_do_grupo("pkg.outro", "OPEN_POST", "alvo_ausente", ""))
+
+
+def _falhas_com_tela(m: Mundo, rotulo: str, quando: datetime, telas: list[str]) -> None:
+    """Falhas GRAVADAS pelo escritor da tela: o tipo e a tela nomeada na tentativa (não é o legado retroativo)."""
+    for i, tela in enumerate(telas):
+        falhando(f"r-{rotulo}{i}", quando + timedelta(minutes=i * 5), m.db, erro="Alvo ausente",
+                 tipo=FailureKind.ALVO_AUSENTE.value, tela=tela)
+
+
+def _bons(m: Mundo, rotulo: str, quando: datetime, n: int) -> None:
+    for i in range(n):
+        sucesso(f"r-{rotulo}{i}", quando + timedelta(minutes=100 + i * 5), m.db)
+
+
+def test_linha_sem_tela_nao_vira_corrigida_quando_a_falha_passa_a_vir_com_tela(mundo: Mundo) -> None:
+    """O cuidado do item 22.3. A linha aberta antes do escritor não tem tela; depois dele as MESMAS falhas chegam com a
+    tela nomeada e caem em outro grupo. Medida pela chave exata, a linha veria 0 em 10 e seria dada como corrigida —
+    a falha contada como sucesso. Ela só vira corrigida se o (app, ação, tipo) parar de falhar em QUALQUER tela."""
+    fk = _base_e_correcao(mundo)                                   # base: 5 em 10, todas sem tela (legado)
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _falhas_com_tela(mundo, "dep-tela", AGORA + timedelta(hours=1), ["feed", "feed", "profile", "feed"])
+    _bons(mundo, "dep-tela-ok", AGORA + timedelta(hours=1), 6)
+    mundo.falhas.executar(mundo.relogio.agora)
+    linha = mundo.falhas.linha(fk).linha
+    assert linha.state is E.REOPENED and linha.reopened_count == 1              # 4 em 10 = 40% > 25%
+    assert linha.verification is not None
+    assert (linha.verification["elegiveis"], linha.verification["ocorrencias"]) == (10, 4)
+    # O relatório segue agrupando pela chave exata: as falhas novas são o grupo da tela, não somam duas vezes.
+    no_feed = grupo(mundo, "alvo_ausente", tela="feed", dias=14)
+    assert no_feed is not None and no_feed.grupo.ocorrencias == 3                  # type: ignore[attr-defined]
+
+
+def test_linha_sem_tela_ja_corrigida_reabre_quando_a_falha_volta_com_tela(mundo: Mundo) -> None:
+    fk = _base_e_correcao(mundo)
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _bons(mundo, "prova-ok", AGORA + timedelta(hours=1), 10)
+    mundo.falhas.executar(mundo.relogio.agora)
+    assert mundo.falhas.linha(fk).linha.state is E.FIXED
+    # A falha volta, agora gravada com a tela: 8 em 10 nas últimas tentativas elegíveis.
+    mundo.relogio.agora = AGORA + timedelta(days=5)
+    _falhas_com_tela(mundo, "volta-tela", AGORA + timedelta(days=4), ["feed"] * 5 + ["profile"] * 3)
+    _bons(mundo, "volta-tela-ok", AGORA + timedelta(days=4), 2)
+    mundo.falhas.executar(mundo.relogio.agora)
+    reaberta = mundo.falhas.linha(fk).linha
+    assert reaberta.state is E.REOPENED and reaberta.reopened_count == 1
+    assert reaberta.verification is not None
+    medida = reaberta.verification["reincidencia"]
+    assert isinstance(medida, dict) and medida["ocorrencias"] == 8 and medida["veredito"] == "reabre"
+
+
+def test_linha_com_tela_so_mede_a_propria_tela(mundo: Mundo) -> None:
+    """A exatidão fica onde havia tela: corrigir a falha no feed não é desmentido pela mesma falha no perfil."""
+    for i in range(5):
+        falhando(f"r-feed-base{i}", dias(10 + i * 0.1), mundo.db, erro="Alvo ausente",
+                 tipo=FailureKind.ALVO_AUSENTE.value, tela="feed")
+        sucesso(f"r-feed-base-ok{i}", dias(10 + i * 0.1 + 0.05), mundo.db)
+    mundo.falhas.executar(AGORA)
+    linha = grupo(mundo, "alvo_ausente", tela="feed", dias=14)
+    assert linha is not None
+    fk = linha.grupo.id  # type: ignore[attr-defined]
+    corrigida = mundo.falhas.alterar(fk, estado=E.FIXED_PENDING_PROOF, fixed_in_commit="abc1234", by="sessao-dev")
+    assert corrigida.baseline is not None and corrigida.baseline["ocorrencias"] == 5
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _falhas_com_tela(mundo, "so-perfil", AGORA + timedelta(hours=1), ["profile"] * 4)
+    _bons(mundo, "so-perfil-ok", AGORA + timedelta(hours=1), 6)
+    mundo.falhas.executar(mundo.relogio.agora)
+    provada = mundo.falhas.linha(fk).linha
+    assert provada.state is E.FIXED
+    assert provada.verification is not None and provada.verification["ocorrencias"] == 0
+    assert provada.verification["abrange"] == "tela" and provada.baseline is not None
+    assert provada.baseline["abrange"] == "tela"
+
+
+# ------------------------------------------------------------------ a linha COM tela e a tela não mais reconhecida
+def _base_no_feed(m: Mundo, *, no_feed: int = 5, sem_tela: int = 0, bons: int = 5) -> str:
+    """Base GRAVADA pelo escritor: `no_feed` falhas na tela 'feed', `sem_tela` falhas do mesmo tipo em tela
+    desconhecida (NULL) e `bons` sucessos, nas 4 semanas antes da correção; a linha 'feed' vai para a prova."""
+    telas = ["feed"] * no_feed + [None] * sem_tela
+    for i, tela in enumerate(telas):
+        falhando(f"r-fb{i}", dias(10 + i * 0.1), m.db, erro="Alvo ausente", tipo=FailureKind.ALVO_AUSENTE.value,
+                 tela=tela)
+    for i in range(bons):
+        sucesso(f"r-fb-ok{i}", dias(9 + i * 0.1), m.db)
+    m.falhas.executar(AGORA)
+    linha = grupo(m, "alvo_ausente", tela="feed", dias=14)
+    assert linha is not None
+    fk = linha.grupo.id  # type: ignore[attr-defined]
+    corrigida = m.falhas.alterar(fk, estado=E.FIXED_PENDING_PROOF, fixed_in_commit="abc1234", by="sessao-dev")
+    assert corrigida.baseline is not None and corrigida.baseline["ocorrencias"] == no_feed
+    return fk
+
+
+def _desconhecidas(m: Mundo, rotulo: str, quando: datetime, n: int) -> None:
+    """A MESMA falha, gravada com o tipo e a tela nula: o classificador deixou de reconhecer a tela."""
+    for i in range(n):
+        falhando(f"r-{rotulo}{i}", quando + timedelta(minutes=i * 5), m.db, erro="Alvo ausente",
+                 tipo=FailureKind.ALVO_AUSENTE.value, tela=None)
+
+
+def test_linha_com_tela_nao_vira_corrigida_quando_a_tela_deixa_de_ser_reconhecida(mundo: Mundo) -> None:
+    """A brecha espelhada do item 22.3: a atualização do app muda os resource-ids (ou a correção edita o `telas.yaml`) e
+    as MESMAS falhas passam a cair na tela desconhecida. A linha 'feed' veria 0 em 10 e seria dada como corrigida; o
+    excesso da tela desconhecida sobre a base dela conta como da linha."""
+    fk = _base_no_feed(mundo)                                        # base: 5 no feed em 10, nenhuma sem tela
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _desconhecidas(mundo, "sumiu", AGORA + timedelta(hours=1), 5)
+    _bons(mundo, "sumiu-ok", AGORA + timedelta(hours=1), 5)
+    mundo.falhas.executar(mundo.relogio.agora)
+    linha = mundo.falhas.linha(fk).linha
+    assert linha.state is not E.FIXED
+    assert linha.state is E.REOPENED and linha.reopened_count == 1              # (0 + 5) em 10 = 50% > 25%
+    v = linha.verification
+    assert v is not None and v["ocorrencias"] == 0 and v["elegiveis"] == 10     # a da própria tela segue a verdade
+    assert v["sem_tela"] == {"ocorrencias": 5, "excesso": 5, "taxa_base": 0.0}
+    assert "tela desconhecida" in str(v["motivo"])
+
+
+def test_linha_com_tela_ja_corrigida_reabre_quando_a_falha_volta_sem_tela(mundo: Mundo) -> None:
+    fk = _base_no_feed(mundo)
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _bons(mundo, "prova-ok", AGORA + timedelta(hours=1), 10)
+    mundo.falhas.executar(mundo.relogio.agora)
+    assert mundo.falhas.linha(fk).linha.state is E.FIXED
+    # Depois da prova, o app muda e a falha volta sem tela: 8 em 10 nas últimas elegíveis.
+    mundo.relogio.agora = AGORA + timedelta(days=5)
+    _desconhecidas(mundo, "volta", AGORA + timedelta(days=4), 8)
+    _bons(mundo, "volta-ok", AGORA + timedelta(days=4), 2)
+    mundo.falhas.executar(mundo.relogio.agora)
+    reaberta = mundo.falhas.linha(fk).linha
+    assert reaberta.state is E.REOPENED and reaberta.reopened_count == 1
+    assert reaberta.verification is not None
+    medida = reaberta.verification["reincidencia"]
+    assert isinstance(medida, dict) and medida["veredito"] == "reabre" and medida["ocorrencias"] == 0
+    assert medida["sem_tela"] == {"ocorrencias": 8, "excesso": 8, "taxa_base": 0.0}
+
+
+def test_linha_com_tela_tolera_a_tela_desconhecida_na_taxa_de_base(mundo: Mundo) -> None:
+    """A falha em tela desconhecida que já existia na base (a mesma taxa) não impede a prova: só o que passa dela."""
+    fk = _base_no_feed(mundo, no_feed=5, sem_tela=2, bons=3)          # base do '' = 2 em 10
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _desconhecidas(mundo, "normal", AGORA + timedelta(hours=1), 2)
+    _bons(mundo, "normal-ok", AGORA + timedelta(hours=1), 8)
+    mundo.falhas.executar(mundo.relogio.agora)
+    provada = mundo.falhas.linha(fk).linha
+    assert provada.state is E.FIXED
+    assert provada.verification is not None
+    assert provada.verification["sem_tela"] == {"ocorrencias": 2, "excesso": 0, "taxa_base": 0.2}
+
+
+def test_a_medida_da_linha_sem_tela_diz_que_abrange_o_trio(mundo: Mundo) -> None:
+    """Dúvida 3 da revisão: a linha sem tela mede o trio em qualquer tela e o detalhe mostra só o grupo exato. A
+    medida gravada diz o que conta (`abrange`), na base e na verificação."""
+    fk = _base_e_correcao(mundo)
+    base = mundo.falhas.linha(fk).linha.baseline
+    assert base is not None and base["abrange"] == "trio"
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _falhas_com_tela(mundo, "trio", AGORA + timedelta(hours=1), ["feed"])
+    _bons(mundo, "trio-ok", AGORA + timedelta(hours=1), 3)
+    mundo.falhas.executar(mundo.relogio.agora)
+    v = mundo.falhas.linha(fk).linha.verification
+    assert v is not None and v["abrange"] == "trio" and v["ocorrencias"] == 1 and "sem_tela" not in v
+
+
+def test_excesso_sem_tela_puro() -> None:
+    def m(elegiveis: int, ocorrencias: int) -> Medida:
+        return Medida("a", "b", elegiveis, ocorrencias, ())
+    assert excesso_sem_tela(m(10, 0), m(10, 5)) == 5
+    assert excesso_sem_tela(m(10, 2), m(10, 2)) == 0
+    assert excesso_sem_tela(m(10, 2), m(10, 1)) == 0                  # menos que a base: nada a somar
+    assert excesso_sem_tela(m(10, 3), m(10, 4)) == 1
+    assert excesso_sem_tela(m(3, 1), m(10, 4)) == 1                   # 10 × 1/3 = 3,33 → 3 explicadas (para baixo)
+    assert excesso_sem_tela(m(0, 0), m(10, 1)) == 1                   # base sem elegível: nada explicado
+    assert excesso_sem_tela(None, m(10, 1)) == 1
 
 
 @pytest.mark.parametrize("lote", [100, 1])

@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable
 
 from ..config import Config
@@ -25,7 +25,7 @@ from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
-from .executor import Outcome, StepExecutor, StepOutcome
+from .executor import Outcome, StepExecutor, StepOutcome, tela_da_falha
 from .flows import FlowStore
 from .foreach import expand
 from .projecao import projetar
@@ -55,6 +55,9 @@ JANELA_DO_DISJUNTOR_S = 48 * 3600
 #: O que a pessoa faz com um item parado pela conta (perfil `blocked`/`disabled`, ou conta travada no aparelho).
 AJUDA_DA_CONTA_PARADA = ("Confira a conta no aparelho. Se ela voltou, reative o perfil na tela dele e use “Tentar "
                          "novamente” neste item; nada é feito por uma conta bloqueada.")
+#: Desfechos sem "tela onde falhou" (item 22.3): o comprovado, o cancelado (decisão, não defeito) e o cedido num ponto
+#: seguro (pausa ou controle manual — a pessoa quis parar ali).
+_SEM_TELA_DA_FALHA = frozenset({Outcome.succeeded, Outcome.cancelled, Outcome.yielded})
 
 
 @dataclass
@@ -1188,18 +1191,33 @@ class Scheduler:
         later = [r["title"] for r in self.repo.db.query(
             "SELECT title FROM steps WHERE objective_id=? AND plan_version=? AND seq>? ORDER BY seq",
             (obj["id"], step.plan_version, step.seq))]
+        # A árvore de ANTES da tentativa (item 22.3): a tela da falha só vale se ESTA tentativa observou. Sem nenhuma
+        # observação nova (driver caído, IA barrada antes de olhar, app encerrado pela recuperação), a última árvore
+        # é a de outra etapa — e a tela de outra etapa, gravada como a desta, seria um palpite.
+        antes = getattr(rt, "last_tree", None)
         try:
-            return await self.executor.run_step(run=run, objective=obj, step=step, attempt_id=attempt_id, rt=rt, app=app,
-                                                account_label=account, remaining=later,
-                                                stop_reason=lambda: self._stop_reason(run["id"], rt, obj["id"]),
-                                                resumed_after_manual=resumed)
+            out = await self.executor.run_step(run=run, objective=obj, step=step, attempt_id=attempt_id, rt=rt, app=app,
+                                               account_label=account, remaining=later,
+                                               stop_reason=lambda: self._stop_reason(run["id"], rt, obj["id"]),
+                                               resumed_after_manual=resumed)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - erro inesperado: nunca conta como sucesso
             log.exception("etapa %s", step.id)
             fired, _ = self.repo.commit_state(step.id)
-            return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
-                               f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
+            out = StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
+                              f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
+        if out.outcome in _SEM_TELA_DA_FALHA:
+            return replace(out, tela_da_falha=None) if out.tela_da_falha else out
+        if out.tela_da_falha:               # o executor já sabe (a trava achada dentro de uma ferramenta)
+            return out
+        try:
+            depois = getattr(rt, "last_tree", None)
+            tela = tela_da_falha(depois, app.package) if depois is not antes else None
+        except Exception:  # noqa: BLE001 - a tela da falha é registro: o desfecho já decidido segue sem ela
+            log.exception("etapa %s: tela da falha não classificada", step.id)
+            return out
+        return replace(out, tela_da_falha=tela)
 
     def _hold(self, obj: Any, srow: Any, veredito: Any) -> None:
         """Represa a etapa sem gastar tentativa: `retry_wait` com hora marcada, ou bloqueio para uma pessoa.
@@ -1275,14 +1293,15 @@ class Scheduler:
             repo.transition_step(step.id, StepStatus.cancelled, detail="cancelada pelo usuário")
             return False
         if o == Outcome.retry:
-            repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail,
+            repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha,
                                 recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s")
             repo.transition_step(step.id, StepStatus.retry_wait, detail=detail,
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
             return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
-            repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário")
+            repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário",
+                                screen=out.tela_da_falha)
             repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn")
             # `blocked_kind='ai'` (achado #93, ponto 4): distingue, na tela, "a IA está travando este item"
             # (chave ausente, sem crédito, recusa por política) de política do perfil, limite ou aprovação.
@@ -1292,7 +1311,7 @@ class Scheduler:
             rt.attention = f"Bloqueado: {detail}"
             return False
         if o == Outcome.uncertain:
-            repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail,
+            repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail, screen=out.tela_da_falha,
                                 recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático")
             repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn")
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
@@ -1303,7 +1322,8 @@ class Scheduler:
             return False
         if o == Outcome.device_stuck:
             fired, _ = repo.commit_state(step.id)
-            repo.finish_attempt(attempt_id, AttemptStatus.uncertain if fired else AttemptStatus.failed, error=detail)
+            repo.finish_attempt(attempt_id, AttemptStatus.uncertain if fired else AttemptStatus.failed, error=detail,
+                                screen=out.tela_da_falha)
             repo.transition_step(step.id, StepStatus.uncertain if (step.side_effect and fired) else StepStatus.failed,
                                  detail=detail, level="error")
             repo.set_objective(oid, ObjectiveStatus.uncertain if (step.side_effect and fired) else ObjectiveStatus.waiting_user,
@@ -1311,7 +1331,7 @@ class Scheduler:
             rt.attention = "Aparelho retido: chamada anterior ainda não terminou"
             return False
         # failed
-        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail)
+        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error")
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")

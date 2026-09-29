@@ -454,10 +454,14 @@ class Repository:
         self.db.execute("UPDATE steps SET attempts=CASE WHEN attempts > 1 THEN attempts - 1 ELSE 0 END WHERE id=?", (step_id,))
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
-                       recovery: str | None = None, observed: str | None = None) -> None:
+                       recovery: str | None = None, observed: str | None = None,
+                       screen: str | None = None) -> None:
         """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
         fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
-        desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais."""
+        desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais.
+
+        `screen`: a tela reconhecida na última observação da tentativa (`executor.tela_da_falha`, item 22.3) — um
+        nome do vocabulário declarado, nunca texto da tela."""
         atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
@@ -465,12 +469,15 @@ class Repository:
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam.
         tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value)
+        # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
+        # sem tipo seria um grupo do backlog sem falha nenhuma.
+        tela = (screen or None) if tipo is not None else None
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result), failure_kind=? WHERE id=? AND EXISTS"
+            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=? WHERE id=? AND EXISTS"
             " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
             (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
-             tipo.value if tipo is not None else None, attempt_id, self.owner_id))
+             tipo.value if tipo is not None else None, tela, attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
                                 " WHERE a.id=?", (attempt_id,))

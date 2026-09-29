@@ -30,7 +30,8 @@ from app.modules.learning.domain.backlog import (BASE_DIAS, IDS_DA_PROVA, AcaoLi
                                                  GrupoDeFalha, ItemParaPromover, LinhaDoBacklog, Medida, Ocorrencia,
                                                  ParteDeOutro, Proposta, RegrasDoBacklog, Saude, SaudeDasExecucoes,
                                                  TelaQueChamou, TipoDeVerificacao, Veredito, agrupar,
-                                                 chave_do_grupo, conferir_alteracao, entra_no_topo, linha_de_grupo,
+                                                 chave_do_grupo, conferir_alteracao, entra_no_topo, excesso_sem_tela,
+                                                 linha_de_grupo,
                                                  linha_de_proposta, medida_de_json, ordenar, parte_de_outro,
                                                  proposta_de_acao, proposta_de_item, provar, telas_que_chamaram,
                                                  tentativas_da_reincidencia)
@@ -254,7 +255,7 @@ class ServicoDeFalhas:
         if estado is EstadoDoBacklog.FIXED_PENDING_PROOF and commit is not None:
             chave = _chave_da_linha(linha)
             base = self._medir(chave, to_iso(agora - timedelta(days=BASE_DIAS)), quando, agora)
-            nova = replace(nova, fixed_in_commit=commit, fixed_at=quando, baseline=base.json(),
+            nova = replace(nova, fixed_in_commit=commit, fixed_at=quando, baseline=_json_da_medida(chave, base),
                            verification={"commit_implantado": self._commit(), "fixed_in_commit": commit,
                                          "desde": quando})
         return self._backlog.salvar(nova, de_estado=linha.state)
@@ -324,9 +325,21 @@ class ServicoDeFalhas:
             if inicio is not None and inicio > desde:
                 desde = inicio
         depois = self._medir(chave, desde, quando, agora)
-        r = provar(linha.state, base, depois, regras)
-        medida: JsonObject = {**depois.json(), "faltam": r.faltam, "limite": round(r.limite, 4),
-                              "veredito": r.veredito.value, "motivo": r.motivo, "medido_em": quando}
+        # A linha COM tela também conta a mesma falha que passou a cair na tela desconhecida acima da base dela
+        # (`excesso_sem_tela`, item 22.3): a tela que deixou de ser reconhecida não passa por correção. `ocorrencias`
+        # na verificação segue sendo só a da própria tela; o excesso vai à parte, e no motivo.
+        na_prova, sem_tela = depois, None
+        if chave.tela:
+            na_prova, sem_tela = self._com_a_tela_desconhecida(chave, base, depois, agora)
+        r = provar(linha.state, base, na_prova, regras)
+        motivo = r.motivo
+        if excesso := na_prova.ocorrencias - depois.ocorrencias:
+            motivo += (f" — contando {excesso} falha(s) do mesmo tipo em tela desconhecida acima da base"
+                       " (a tela pode ter deixado de ser reconhecida)")
+        medida: JsonObject = {**_json_da_medida(chave, depois), "faltam": r.faltam, "limite": round(r.limite, 4),
+                              "veredito": r.veredito.value, "motivo": motivo, "medido_em": quando}
+        if sem_tela is not None:
+            medida["sem_tela"] = sem_tela
         if corrigida:                                   # a prova fica; a reincidência é medida à parte
             verificacao: JsonObject = {**anterior, "reincidencia": {**medida, "janela_de_tentativas": n}}
         else:
@@ -334,17 +347,31 @@ class ServicoDeFalhas:
                            **medida}
             if r.novo_estado is EstadoDoBacklog.FIXED:
                 verificacao["provado_em"] = quando
-        nova = replace(linha, baseline=base.json(), verification=verificacao, updated_at=quando,
+        nova = replace(linha, baseline=_json_da_medida(chave, base), verification=verificacao, updated_at=quando,
                        updated_by=SYSTEM_ACTOR)
         if r.novo_estado is not None:
             nova = replace(nova, state=r.novo_estado)
             if r.veredito is Veredito.REABRE:
                 nova = replace(nova, reopened_count=linha.reopened_count + 1)
-                log.warning("aprendizado: %s reaberto (%s): %s", linha.id, linha.title, r.motivo)
+                log.warning("aprendizado: %s reaberto (%s): %s", linha.id, linha.title, motivo)
             else:
-                log.info("aprendizado: %s corrigido e provado (%s): %s", linha.id, linha.title, r.motivo)
+                log.info("aprendizado: %s corrigido e provado (%s): %s", linha.id, linha.title, motivo)
         self._backlog.salvar(nova, de_estado=linha.state)
         return 1
+
+    def _com_a_tela_desconhecida(self, chave: ChaveDoGrupo, base: Medida, depois: Medida,
+                                 agora: datetime) -> tuple[Medida, JsonObject]:
+        """A medida da prova de uma linha COM tela somada ao excesso da tela desconhecida do mesmo trio, e o registro
+        dele. O grupo '' é medido EXATO (`conta`): pela regra de `abrange`, a chave sem tela contaria o trio inteiro,
+        a própria linha inclusive. A base dele é a mesma janela da linha de base da linha."""
+        exata = chave.sem_tela
+        base_st = self._medir(exata, base.desde, base.ate, agora, conta=exata.__eq__)
+        depois_st = self._medir(exata, depois.desde, depois.ate, agora, conta=exata.__eq__)
+        excesso = excesso_sem_tela(base_st, depois_st)
+        taxa_base = base_st.taxa
+        registro: JsonObject = {"ocorrencias": depois_st.ocorrencias, "excesso": excesso,
+                                "taxa_base": None if taxa_base is None else round(taxa_base, 4)}
+        return replace(depois, ocorrencias=depois.ocorrencias + excesso), registro
 
     # ================================================================== apoio
     def _corte_de_custo(self, agora: datetime, desde: str) -> str:
@@ -374,11 +401,16 @@ class ServicoDeFalhas:
         return corte, self._fontes.ocorrencias(desde, to_iso(agora), simulados=simulados, retroativo=retroativo,
                                                corte_de_custo=corte)
 
-    def _medir(self, chave: ChaveDoGrupo, desde: str, ate: str, agora: datetime) -> Medida:
-        """Tentativas reais elegíveis da mesma (app, ação) e ocorrências do grupo em [desde, ate)."""
+    def _medir(self, chave: ChaveDoGrupo, desde: str, ate: str, agora: datetime, *,
+               conta: Callable[[ChaveDoGrupo], bool] | None = None) -> Medida:
+        """Tentativas reais elegíveis da mesma (app, ação) e ocorrências do grupo em [desde, ate). A linha sem tela
+        abrange a mesma falha em qualquer tela (`ChaveDoGrupo.abrange`, item 22.3) — na base e no depois, para as
+        duas medidas contarem a mesma coisa. `conta` troca essa regra (a medida exata do grupo da tela
+        desconhecida)."""
         corte = self._corte_de_custo(agora, desde)
+        entra = conta or chave.abrange
         ocorrencias = [o for o in self._fontes.ocorrencias(desde, ate, simulados=False, retroativo=True,
-                                                           corte_de_custo=corte) if o.chave == chave]
+                                                           corte_de_custo=corte) if entra(o.chave)]
         elegiveis = self._fontes.elegiveis(desde, ate, simulados=False).get(chave.app_e_acao, 0)
         ids = [o.attempt_id or o.run_id for o in ocorrencias]
         ids.extend(self._fontes.amostra_elegivel(chave.app, chave.capability, desde, ate, limite=IDS_DA_PROVA))
@@ -426,6 +458,12 @@ def _licoes_do_grupo(licoes: Sequence[tuple[str, str]], chave: ChaveDoGrupo) -> 
 
 def _chave_da_linha(linha: LinhaDoBacklog) -> ChaveDoGrupo:
     return chave_do_grupo(linha.app_package, linha.capability, linha.failure_kind or "", linha.failure_screen)
+
+
+def _json_da_medida(chave: ChaveDoGrupo, m: Medida) -> JsonObject:
+    """A medida gravada (base e verificação) diz o que ela conta: `abrange` = `trio` na linha sem tela (o número pode
+    passar do que o detalhe da linha mostra, que é só o grupo exato) ou `tela`."""
+    return {**m.json(), "abrange": chave.alcance}
 
 
 def _instante(iso: str, padrao: datetime) -> datetime:
