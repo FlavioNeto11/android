@@ -12,7 +12,8 @@ O que se prova:
 - o custo além da janela de `ai_calls` vem de `learning_daily` (um dia, uma fonte só), com `custo_parcial` quando um
   dia não tem nem uma nem outra; o diário recalculado pela curadoria é idempotente;
 - a prova da correção: `fixed` com ≥10 elegíveis e taxa ≤ 50% da base; `reopened` acima; "faltam N" abaixo de 10;
-  reincidência depois de `fixed` também reabre; `fixed` e `reopened` nunca por pessoa;
+  reincidência depois de `fixed` também reabre, medida nas últimas 2 × `prova_minimo` tentativas elegíveis (a volta
+  concentrada da falha não se dilui nas boas depois da prova); `fixed` e `reopened` nunca por pessoa;
 - as propostas `acao_de_catalogo`, `promover_licao` e `promover_tela`.
 
 Nível de prova: `simulated` (banco de teste; nenhum aparelho, nenhuma IA).
@@ -39,6 +40,8 @@ from app.modules.learning.domain.ciclo import (EntradaInvalida, NaoEncontrado, N
 from app.modules.learning.domain.falhas import Camada, FailureKind
 from app.modules.learning.domain.vocabulario import EstadoDoBacklog, TipoDeProposta
 from app.modules.learning.infrastructure.montagem import montar_aprendizado
+from app.modules.learning.infrastructure import relatorio_sql
+from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql
 from app.util import to_iso
 
 from .fake_skills import banco as banco_migrado
@@ -498,6 +501,74 @@ def test_prova_da_correcao_reabre_acima_da_metade_da_base(mundo: Mundo) -> None:
     reaberta = mundo.falhas.linha(fk).linha
     assert reaberta.state is E.REOPENED and reaberta.reopened_count == 1
     assert reaberta.verification is not None and reaberta.verification["taxa"] == 0.4
+
+
+def test_reincidencia_concentrada_depois_de_muitas_boas_reabre(mundo: Mundo) -> None:
+    """Depois de `fixed`, a reincidência é medida nas últimas 2 × `prova_minimo` tentativas elegíveis (janela que
+    anda), não desde a prova: as muitas boas depois dela não diluem a volta da falha. Achado do revisor sobre 2adae8c
+    (a janela [provado_em, agora) deixava a linha `fixed` com 8 falhas em 10 no último dia: 11,4% em 70)."""
+    fk = _base_e_correcao(mundo)
+    mundo.relogio.agora = AGORA + timedelta(days=2)
+    _depois(mundo, ruins=0, bons=10, a_partir=AGORA + timedelta(hours=1))
+    mundo.falhas.executar(mundo.relogio.agora)
+    assert mundo.falhas.linha(fk).linha.state is E.FIXED
+    for i in range(60):                                   # a correção funcionando por quase duas semanas...
+        sucesso(f"r-bom-{i}", AGORA + timedelta(days=3, hours=i * 4), mundo.db)
+    mundo.relogio.agora = AGORA + timedelta(days=15)
+    mundo.falhas.executar(mundo.relogio.agora)
+    seguindo = mundo.falhas.linha(fk).linha
+    assert seguindo.state is E.FIXED and seguindo.verification is not None
+    medida = seguindo.verification["reincidencia"]
+    assert isinstance(medida, dict)
+    assert (medida["elegiveis"], medida["ocorrencias"], medida["veredito"]) == (20, 0, "corrigido")
+    assert medida["janela_de_tentativas"] == 20
+    # ...e a falha volta forte no último dia: 8 em 10 (80% > 25%).
+    mundo.relogio.agora = AGORA + timedelta(days=20)
+    for i in range(8):
+        falhando(f"r-volta-{i}", AGORA + timedelta(days=19, minutes=i * 10), mundo.db, erro="Alvo ausente")
+    for i in range(2):
+        sucesso(f"r-volta-ok-{i}", AGORA + timedelta(days=19, hours=5, minutes=i * 10), mundo.db)
+    mundo.falhas.executar(mundo.relogio.agora)
+    reaberta = mundo.falhas.linha(fk).linha
+    assert reaberta.state is E.REOPENED and reaberta.reopened_count == 1
+    assert reaberta.verification is not None
+    medida = reaberta.verification["reincidencia"]
+    assert isinstance(medida, dict)
+    assert (medida["elegiveis"], medida["ocorrencias"], medida["taxa"]) == (20, 8, 0.4)
+    assert medida["veredito"] == "reabre" and medida["janela_de_tentativas"] == 20
+    desde = medida["desde"]
+    assert isinstance(desde, str) and desde > iso(AGORA + timedelta(days=3))      # a janela andou
+    assert reaberta.verification["provado_em"] == iso(AGORA + timedelta(days=2))   # a prova fica registrada
+
+
+@pytest.mark.parametrize("lote", [100, 1])
+def test_inicio_das_ultimas_elegiveis_da_app_e_acao(db: Database, lote: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O início da janela da reincidência: a n-ésima tentativa elegível mais recente da (app, ação), no mesmo filtro
+    do denominador (real, não cancelada, app pelo pacote, `*` = etapa livre); `None` com menos de n. Com lote 1, a
+    leitura atravessa páginas (a de outro app ocupa lugar na primeira)."""
+    monkeypatch.setattr(relatorio_sql, "_LOTE_DA_JANELA", lote)
+    fontes = FontesDeFalhaSql(db)
+    for i in range(5):
+        sucesso(f"r-u{i}", dias(5 - i), db)                       # 5, 4, 3, 2 e 1 dia atrás
+    semear(db, "r-sim", dias(0.5), [Etapa("e", "OPEN_POST", "succeeded", [T("succeeded")])], simulated=True)
+    semear(db, "r-canc", dias(0.4), [Etapa("e", "OPEN_POST", "cancelled", [T("cancelled")])])
+    semear(db, "r-outra", dias(0.3), [Etapa("e", "OPEN_POST", "succeeded", [T("succeeded")])], app_id="outro")
+    semear(db, "r-livre", dias(0.2), [Etapa("e", None, "succeeded", [T("succeeded")])])
+
+    def fim(run_id: str) -> str:
+        valor = db.scalar("SELECT finished_at FROM attempts WHERE id LIKE ?", (f"{run_id}:%",))
+        assert isinstance(valor, str)
+        return valor
+
+    desde, ate = iso(dias(30)), iso(AGORA)
+    # As 3 mais recentes são as de 1, 2 e 3 dias atrás: simulada, cancelada e de outro app não contam.
+    assert fontes.inicio_das_ultimas(PACOTE, "OPEN_POST", desde, ate, n=3) == fim("r-u2")
+    assert fontes.inicio_das_ultimas(PACOTE, "OPEN_POST", desde, ate, n=5) == fim("r-u0")
+    assert fontes.inicio_das_ultimas(PACOTE, "OPEN_POST", desde, ate, n=6) is None            # só há 5
+    assert fontes.inicio_das_ultimas(PACOTE, "OPEN_POST", iso(dias(2.5)), ate, n=3) is None   # 2 depois de `desde`
+    assert fontes.inicio_das_ultimas(PACOTE, "OPEN_POST", desde, iso(dias(1.5)), n=1) == fim("r-u3")
+    assert fontes.inicio_das_ultimas(PACOTE, "*", desde, ate, n=1) == fim("r-livre")
+    assert fontes.inicio_das_ultimas("pkg.outro", "OPEN_POST", desde, ate, n=1) == fim("r-outra")
 
 
 def test_fixed_e_reopened_nunca_por_pessoa_e_as_outras_recusas(mundo: Mundo) -> None:

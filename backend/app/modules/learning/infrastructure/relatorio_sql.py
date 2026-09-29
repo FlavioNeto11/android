@@ -47,6 +47,8 @@ _ETAPA_COM_DESFECHO = ("succeeded", "failed", "uncertain", "waiting_user")
 _INTERVENCOES_LIGADAS = (SignalKind.TOMOU_CONTROLE.value, SignalKind.TELA_DESCONHECIDA_CHAMOU_PESSOA.value)
 #: Tamanho do lote de um `IN (...)` (o limite de parâmetros do SQLite antigo é 999).
 _LOTE = 400
+#: Tentativas lidas por vez ao procurar o começo da janela da reincidência (o app sai do pacote, filtrado aqui).
+_LOTE_DA_JANELA = 100
 
 
 def _segundos(inicio: str | None, fim: str | None) -> float | None:
@@ -292,6 +294,34 @@ class FontesDeFalhaSql:
                 if len(saida) >= limite:
                     break
         return tuple(saida)
+
+    def inicio_das_ultimas(self, app: str, capability: str, desde: str, ate: str, *, n: int) -> str | None:
+        """O término da n-ésima tentativa elegível mais recente da (app, ação) em [desde, ate): o começo da janela da
+        reincidência. Mesmo filtro do denominador (real, não cancelada); o app sai do pacote, por isso a contagem é
+        aqui e não no SQL. Empate no término pode pôr uma ou outra a mais na janela (o `>=`), nunca a menos.
+
+        Lê em lotes, das mais recentes para trás: a curadoria roda a cada 15 min para cada linha `fixed`, e o custo fica
+        no tamanho da janela, não no tempo desde a prova."""
+        if n < 1:
+            return None
+        pacotes = self._pacotes()
+        filtro, params = ("s.capability IS NULL", ()) if capability == "*" else ("s.capability = ?", (capability,))
+        lote = max(n, _LOTE_DA_JANELA)
+        vistas = pulo = 0
+        while True:
+            lidas = self._db.query(
+                "SELECT a.finished_at, s.app_id, r.app_ids FROM attempts a JOIN steps s ON s.id = a.step_id"
+                f" JOIN runs r ON r.id = s.run_id WHERE {filtro} AND a.finished_at >= ? AND a.finished_at < ?"
+                " AND a.status <> 'cancelled' AND r.simulated = 0 ORDER BY a.finished_at DESC, a.id DESC"
+                " LIMIT ? OFFSET ?", (*params, desde, ate, lote, pulo))
+            for r in lidas:
+                if self._app(pacotes, r) == app:
+                    vistas += 1
+                    if vistas >= n:
+                        return linhas.texto(r, "finished_at")
+            if len(lidas) < lote:
+                return None
+            pulo += lote
 
     # ================================================================== seções
     def chamadas_de_tela(self, desde: str, ate: str, *, simulados: bool) -> list[ChamadaDeTela]:

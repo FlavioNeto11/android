@@ -13,6 +13,10 @@ da correção e propostas. Nunca chama IA, nunca grava nada.
 - **Prova da correção**: depois do commit implantado, ≥ `prova_minimo` tentativas elegíveis com taxa ≤
   `prova_fator` × a linha de base marcam `fixed`; acima, `reopened`; abaixo do mínimo, "faltam N". É medida, não
   declaração: `fixed` e `reopened` nunca vêm de uma pessoa.
+- **Reincidência**: depois de `fixed`, a mesma régua roda numa janela que ANDA — as últimas
+  `JANELA_DA_REINCIDENCIA` × `prova_minimo` tentativas elegíveis, nunca antes da prova. Medida desde a prova, a janela
+  só cresceria e as boas de semanas diluiriam a volta concentrada da falha (a linha nunca mais reabriria: falha
+  contada como sucesso).
 """
 from __future__ import annotations
 
@@ -39,6 +43,11 @@ EXEMPLOS = 3
 IDS_DA_PROVA = 20
 #: A linha de base da prova: as semanas antes da correção.
 BASE_DIAS = 28
+#: A reincidência depois de `fixed` olha as últimas `JANELA_DA_REINCIDENCIA × prova_minimo` tentativas elegíveis. Com
+#: base de 50% (limite 25%) e uma correção boa (~10% de falha): com 1× (10), 3 em 10 saem em ~7% das janelas e a linha
+#: reabriria à toa em alguma das avaliações a cada 15 min; com 2× (20), 6 em 20 saem em ~1%, e a volta da falha (8 em 10
+#: no último dia) ainda passa do limite (8/20 = 40%).
+JANELA_DA_REINCIDENCIA = 2
 #: `steps.driven_by` nulo (etapa anterior à coluna, ou que nunca chegou ao executor).
 SEM_CONDUCAO = "-"
 #: Propostas (ADR-054, tipos "ação nova", "lição" e "tela").
@@ -454,6 +463,11 @@ def provar(estado: EstadoDoBacklog, base: Medida | None, depois: Medida, regras:
                             f"taxa {taxa:.1%} > {limite:.1%} em {depois.elegiveis} tentativas elegíveis")
 
 
+def tentativas_da_reincidencia(regras: RegrasDoBacklog) -> int:
+    """Quantas tentativas elegíveis (as mais recentes, desde a prova) a reincidência mede."""
+    return max(1, JANELA_DA_REINCIDENCIA * regras.prova_minimo)
+
+
 # ------------------------------------------------------------------ a linha gravada e o que a pessoa pode mudar
 @dataclass(frozen=True, slots=True)
 class LinhaDoBacklog:
@@ -625,11 +639,12 @@ class Saude:
         return round(self.intervencoes * 10 / self.execucoes, 2) if self.execucoes else None
 
 
-__all__ = ["ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "IDS_DA_PROVA", "LIMITE_DE_OUTRO",
-           "QUALQUER", "ROTULO", "SEM_CONDUCAO", "AcaoLivre", "ChamadaDeTela", "ChaveDoGrupo", "Exemplo", "FonteDaOcorrencia",
-           "GrupoDeFalha", "ItemParaPromover", "LinhaDoBacklog", "Medida", "Ocorrencia", "ParteDeOutro", "Proposta",
-           "RegrasDoBacklog", "ResultadoDaProva", "Saude", "SaudeDasExecucoes", "TelaQueChamou", "Tendencia",
-           "TipoDeVerificacao", "Veredito", "agrupar", "camada_do_tipo", "chave_de_proposta", "chave_do_grupo",
-           "commit_valido", "conferir_alteracao", "custo_total", "entra_no_topo", "id_do_backlog", "linha_de_grupo",
-           "linha_de_proposta", "medida_de_json", "onde_alterar_do_tipo", "ordenar", "parte_de_outro",
-           "proposta_de_acao", "proposta_de_item", "provar", "telas_que_chamaram", "titulo"]
+__all__ = ["ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "IDS_DA_PROVA", "JANELA_DA_REINCIDENCIA",
+           "LIMITE_DE_OUTRO", "QUALQUER", "ROTULO", "SEM_CONDUCAO", "AcaoLivre", "ChamadaDeTela", "ChaveDoGrupo",
+           "Exemplo", "FonteDaOcorrencia", "GrupoDeFalha", "ItemParaPromover", "LinhaDoBacklog", "Medida", "Ocorrencia",
+           "ParteDeOutro", "Proposta", "RegrasDoBacklog", "ResultadoDaProva", "Saude", "SaudeDasExecucoes",
+           "TelaQueChamou", "Tendencia", "TipoDeVerificacao", "Veredito", "agrupar", "camada_do_tipo",
+           "chave_de_proposta", "chave_do_grupo", "commit_valido", "conferir_alteracao", "custo_total", "entra_no_topo",
+           "id_do_backlog", "linha_de_grupo", "linha_de_proposta", "medida_de_json", "onde_alterar_do_tipo", "ordenar",
+           "parte_de_outro", "proposta_de_acao", "proposta_de_item", "provar", "telas_que_chamaram",
+           "tentativas_da_reincidencia", "titulo"]

@@ -11,7 +11,8 @@ marcado retroativo).
   ausente não é zero.
 - `executar(agora)`: o passo `backlog` da curadoria (registrado no `LearningService`). Grava os grupos que passam do
   mínimo e as propostas (upsert pela `cluster_key`, sem mexer no estado) e prova as correções em
-  `fixed_pending_proof` e `fixed`. Idempotente.
+  `fixed_pending_proof` (acumulando desde a correção) e `fixed` (a reincidência, numa janela que anda: as últimas
+  2 × `prova_minimo` tentativas elegíveis desde a prova, para a volta da falha não se diluir). Idempotente.
 - `alterar(...)`: o que a pessoa (ou a sessão de desenvolvimento) marca. `fixed` e `reopened` são medida; a correção
   vai para a prova com o commit, a linha de base das 4 semanas anteriores e o commit que o `/api/health` mostra.
 """
@@ -31,7 +32,8 @@ from app.modules.learning.domain.backlog import (BASE_DIAS, IDS_DA_PROVA, AcaoLi
                                                  TelaQueChamou, TipoDeVerificacao, Veredito, agrupar,
                                                  chave_do_grupo, conferir_alteracao, entra_no_topo, linha_de_grupo,
                                                  linha_de_proposta, medida_de_json, ordenar, parte_de_outro,
-                                                 proposta_de_acao, proposta_de_item, provar, telas_que_chamaram)
+                                                 proposta_de_acao, proposta_de_item, provar, telas_que_chamaram,
+                                                 tentativas_da_reincidencia)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState)
 from app.modules.learning.domain.falhas import Camada
@@ -62,6 +64,11 @@ class FontesDeFalha(Protocol):
                     corte_de_custo: str) -> list[Ocorrencia]: ...
     def elegiveis(self, desde: str, ate: str, *, simulados: bool) -> dict[tuple[str, str], int]: ...
     def amostra_elegivel(self, app: str, capability: str, desde: str, ate: str, *, limite: int) -> tuple[str, ...]: ...
+    def inicio_das_ultimas(self, app: str, capability: str, desde: str, ate: str, *, n: int) -> str | None:
+        """O término da n-ésima tentativa elegível mais recente da (app, ação) em [desde, ate), no mesmo filtro de
+        `elegiveis`; `None` com menos de n. É o começo da janela da reincidência."""
+        ...
+
     def chamadas_de_tela(self, desde: str, ate: str, *, simulados: bool) -> list[ChamadaDeTela]: ...
     def acoes_livres(self, desde: str, ate: str) -> list[AcaoLivre]: ...
     def saude(self, desde: str, ate: str, *, simulados: bool) -> SaudeDasExecucoes: ...
@@ -309,12 +316,19 @@ class ServicoDeFalhas:
         provado_em = anterior.get("provado_em")
         corrigida = linha.state is EstadoDoBacklog.FIXED
         desde = provado_em if corrigida and isinstance(provado_em, str) else linha.fixed_at
+        n = tentativas_da_reincidencia(regras)
+        if corrigida:
+            # A reincidência anda: só as últimas n elegíveis desde a prova. Medida em [provado_em, agora), a janela só
+            # cresceria e as boas de semanas diluiriam a volta concentrada da falha — a linha nunca mais reabriria.
+            inicio = self._fontes.inicio_das_ultimas(chave.app, chave.capability, desde, quando, n=n)
+            if inicio is not None and inicio > desde:
+                desde = inicio
         depois = self._medir(chave, desde, quando, agora)
         r = provar(linha.state, base, depois, regras)
         medida: JsonObject = {**depois.json(), "faltam": r.faltam, "limite": round(r.limite, 4),
                               "veredito": r.veredito.value, "motivo": r.motivo, "medido_em": quando}
         if corrigida:                                   # a prova fica; a reincidência é medida à parte
-            verificacao: JsonObject = {**anterior, "reincidencia": medida}
+            verificacao: JsonObject = {**anterior, "reincidencia": {**medida, "janela_de_tentativas": n}}
         else:
             verificacao = {**{k: v for k, v in anterior.items() if k in ("commit_implantado", "fixed_in_commit")},
                            **medida}
