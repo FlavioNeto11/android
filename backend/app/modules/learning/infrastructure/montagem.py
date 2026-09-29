@@ -61,6 +61,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                                  precos=precos)
     servico = LearningService(repo, FontesSql(db), TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias)
-    for ligar in (ligar_costuras.ligar, ligar_nativos.ligar, ligar_telas.ligar, ligar_voz.ligar):
+    for ligar in (ligar_costuras.ligar, ligar_nativos.ligar, ligar_voz.ligar):
         ligar(servico)
+    # A8 (fatia 5): as telas aprendidas precisam do repositório e do banco, e penduram-se nas extensões das costuras.
+    ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
     return servico

@@ -18,6 +18,12 @@ automático para até uma pessoa olhar; e há um teto de envios por conta em 24 
 Ler a conta é o que separa "o app abriu" de "a conta certa está aberta": nenhuma ação social acontece sem isso
 confirmado, e conta errada nunca continua em silêncio. Nunca se presume sucesso pelo retorno do Appium: observa-se de
 novo e classifica-se pelo que está na tela.
+
+Telas aprendidas (ADR-054, fatia 5): cada chamada usa o conhecimento UNIDO (`conhecimento.com_as_aprendidas`) — a tela
+de casa que mudou numa atualização do app, aprendida com a aba de perfil declarada, entra no estado conhecido, e a
+conferência para nela em vez de voltar para fora do app. A conta continua lida só pela tela de perfil DECLARADA. E cada
+conferência avisa um observador tipado (`definir_observador_da_sessao`; o padrão é nenhum) do que viu: a tela
+aprendida em que parou, o desfecho e, quando o voltar saiu do app sem resolver, a tela desconhecida de antes.
 """
 from __future__ import annotations
 
@@ -28,7 +34,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ...automation import conhecimento_de_telas as telas
 from ...automation.conhecimento_de_telas import TelaReconhecida
@@ -42,7 +48,7 @@ from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO
                                                            registrar_conta_travada)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
-from .conhecimento import CONFERIR_CONTA, Ajustes, ConhecimentoDeSessao
+from .conhecimento import CONFERIR_CONTA, Ajustes, ConhecimentoDeSessao, com_as_aprendidas
 from .formulario import LoginForm
 
 if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
@@ -133,6 +139,58 @@ class _Aberturas:
 
 class AppParouDeResponder(RuntimeError):
     """A 2ª morte por ANR na mesma chamada: a reabertura já foi gasta (pacote "anr")."""
+
+
+# ---------------------------------------------------------------------------------------------------- aprendizado
+@dataclass(frozen=True, slots=True)
+class ConferenciaDaSessao:
+    """O que UMA conferência da conta viu, para o aprendizado (ADR-054, fatia 5). Nenhum texto: a árvore da tela
+    desconhecida vai ao observador, que tira dela só os ids e pula a tela protegida."""
+
+    pacote: str
+    instance_id: str
+    profile_id: str
+    desfecho: str                    # `Outcome.value`
+    tipo_da_tela: str                # o tipo da tela em que a conferência decidiu (depois de voltar ao conhecido)
+    tela_aprendida: str | None       # a tela aprendida em que ela parou, quando parou numa
+    desconhecida: UiTree | None      # a tela do app não reconhecida de onde o voltar saiu, quando nada a resolveu
+    tentou_login: bool
+
+
+class ObservadorDaSessao(Protocol):
+    def ao_conferir(self, conferencia: ConferenciaDaSessao) -> None: ...
+
+
+_OBSERVADOR: list[ObservadorDaSessao] = []
+
+
+def definir_observador_da_sessao(observador: ObservadorDaSessao | None) -> None:
+    """Liga (ou, com `None`, desliga) quem ouve as conferências. Um só por processo: a composição do aprendizado."""
+    _OBSERVADOR.clear()
+    if observador is not None:
+        _OBSERVADOR.append(observador)
+
+
+@dataclass(slots=True)
+class _Visto:
+    """O que a chamada viu, anotado no caminho para um aviso só no fim."""
+
+    observou: bool = False           # a tela do aparelho foi lida nesta chamada (sem isso, nada a avisar)
+    tipo: str = telas.DESCONHECIDA
+    aprendida: str | None = None
+    desconhecida: UiTree | None = None
+    sem_resolver: bool = False
+
+    def anotar(self, tree: UiTree, r: TelaReconhecida) -> TelaReconhecida:
+        self.observou = True
+        if r.tela == telas.DESCONHECIDA and not r.outro_app:
+            self.desconhecida = tree
+        return r
+
+
+def _aprendida(k: ConhecimentoDeSessao, tela: str) -> bool:
+    regra = k.telas.regra(tela)
+    return regra is not None and regra.aprendida
 
 
 Observar = Callable[[], Awaitable[tuple[UiTree, str | None]]]
@@ -302,7 +360,30 @@ class SessaoDeclarada:
         `observe_only=True` é "Verificar conta": lê a tela e nada mais. Num aparelho deslogado ele PARA na tela de
         login em vez de autenticar — antes, quem apertava "Verificar" gastava uma tentativa de login real sem saber.
         """
-        k = self.conhecimento
+        visto = _Visto()
+        resultado = await self._garantir(rt, profile_id, visto, force_login=force_login, automatic=automatic,
+                                         observe_only=observe_only)
+        self._avisar_o_aprendizado(rt, profile_id, visto, resultado)
+        return resultado
+
+    def _avisar_o_aprendizado(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, resultado: AuthResult) -> None:
+        """Um aviso por chamada, e só quando a tela foi lida (a recusa sem tocar no aparelho não é observação)."""
+        if not _OBSERVADOR or not visto.observou:
+            return
+        conferencia = ConferenciaDaSessao(
+            pacote=self.package, instance_id=rt.id, profile_id=profile_id, desfecho=resultado.outcome.value,
+            tipo_da_tela=visto.tipo, tela_aprendida=visto.aprendida,
+            desconhecida=visto.desconhecida if visto.sem_resolver else None, tentou_login=resultado.attempted_login)
+        for observador in tuple(_OBSERVADOR):
+            try:
+                observador.ao_conferir(conferencia)
+            except Exception:  # noqa: BLE001 - aprendizado é registro: nunca muda o desfecho da sessão
+                log.exception("%s: o aprendizado não ouviu a conferência da conta (a sessão seguiu)", rt.id)
+
+    async def _garantir(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, *, force_login: bool,
+                        automatic: bool, observe_only: bool) -> AuthResult:
+        # O conhecimento UNIDO desta chamada: as telas aprendidas publicadas entram depois das declaradas (ADR-054).
+        k = com_as_aprendidas(self.conhecimento)
         profile = self.repo.profile_row(profile_id)
         if profile is None:
             return AuthResult(Outcome.UNCERTAIN, "perfil não encontrado")
@@ -335,7 +416,7 @@ class SessaoDeclarada:
         except AppParouDeResponder as exc:
             return self._parou_de_responder(rt, str(exc))
         tree, package = await self._observe(rt)
-        estado = k.reconhecer(tree, package=package, locale=locale)
+        estado = visto.anotar(tree, k.reconhecer(tree, package=package, locale=locale))
 
         # Depois de entrar, o app pode intercalar dicas e passos de onboarding que o tapam. São benignas e o botão
         # usado (só de RECUSA, pelo dado) não concede nada — mas enquanto estiverem na frente, a tela não é
@@ -351,7 +432,7 @@ class SessaoDeclarada:
             await self._tap(rt, *botao.center)
             await asyncio.sleep(float(self.ajustes.settle_s))
             tree, package = await self._observe(rt)
-            estado = k.reconhecer(tree, package=package, locale=locale)
+            estado = visto.anotar(tree, k.reconhecer(tree, package=package, locale=locale))
 
         # Fora do estado conhecido (conversa aberta, post, comentários, busca) ou numa tela desconhecida: volta ao
         # estado que o conhecimento declara ANTES de concluir qualquer coisa. Execução e31953: o app retomou uma
@@ -370,11 +451,13 @@ class SessaoDeclarada:
                 tree, package, estado, passos = await telas.voltar_ao_estado_conhecido(
                     k.telas, observar=lambda: self._observe(rt), voltar=voltar,
                     reabrir=lambda: self._open_app(rt, aberturas),
-                    reconhecer=lambda t, p: k.reconhecer(t, package=p, locale=locale))
+                    reconhecer=lambda t, p: visto.anotar(t, k.reconhecer(t, package=p, locale=locale)))
             except AppParouDeResponder as exc:
                 return self._parou_de_responder(rt, str(exc))
             if passos:
                 log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), _nome_da_tela(estado))
+        visto.tipo = estado.tipo
+        visto.aprendida = estado.tela if _aprendida(k, estado.tela) else None
         # O app esteve na frente nesta chamada? "voltar" só é dado sobre uma tela DELE (fora de casa), então quem
         # termina no launcher depois de um "voltar" viu o app — a tela dele é que não foi reconhecida, e o voltar saiu
         # dela (a raiz). Só a outra forma de acabar no launcher é "o app não chegou ao primeiro plano".
@@ -420,6 +503,7 @@ class SessaoDeclarada:
             detail = (f"{self.conhecimento.rotulo} não voltou ao estado conhecido: o voltar saiu do app "
                       f"({estado.razao})" if estado.outro_app
                       else f"o app não está na tela de login nem autenticado ({estado.razao})")
+            visto.sem_resolver = True                      # a tela desconhecida vista vai ao aprendizado (sinal)
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, detail)
 

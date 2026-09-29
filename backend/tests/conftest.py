@@ -367,6 +367,21 @@ def _transicoes_dentro_da_tabela() -> Iterator[None]:
                     f"{dict(novas)} — confira app/modules/execution/domain/states.py", pytrace=False)
 
 
+@pytest.fixture(autouse=True)
+def _telas_aprendidas_sao_do_teste() -> Iterator[None]:
+    """O fornecedor das telas aprendidas e o observador da sessão (ADR-054, fatia 5) são estado do PROCESSO: o
+    `AppState` de um teste os liga, e o motor de sessão montado à mão no teste seguinte os herdaria — com o banco do
+    teste anterior. Cada teste começa e termina sem eles."""
+    from app.integrations.app_declarado.conhecimento import definir_regras_aprendidas
+    from app.integrations.app_declarado.sessao import definir_observador_da_sessao
+
+    definir_regras_aprendidas(None)
+    definir_observador_da_sessao(None)
+    yield
+    definir_regras_aprendidas(None)
+    definir_observador_da_sessao(None)
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

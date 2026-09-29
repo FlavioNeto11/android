@@ -9,11 +9,19 @@ checagem de sessão chamou uma pessoa).
 
 A única peça que continua vindo de fora é a detecção do formulário de senha (`formulario`): ela é heurística de
 geometria e fica com quem já a tem até a fatia do fluxo de sessão declarativo.
+
+Telas APRENDIDAS (ADR-054, fatia 5 do ADR-052): uma tela que o arquivo não conhece, vista em etapas comprovadas, vira
+regra de dado de instalação. Ela entra por `com_aprendidas`, sempre DEPOIS das declaradas (desafio, 2FA, login,
+intersticial e carregando vencem sempre), só como `autenticada`, casando por `ids_todos` (todos presentes, sufixo
+exato) — e é pulada em tela protegida (sensível, com senha ou com texto de verificação). Segurança continua só no
+repositório: só ele declara tipo diferente de `autenticada`, sinal de texto, extração e formulário.
 """
 from __future__ import annotations
 
+import copy
 import re
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -31,6 +39,18 @@ DESCONHECIDA = "desconhecida"
 #: Tipos que só o detector de conta travada decide (ADR-055), e o subtipo de cada um.
 TIPOS_DE_TRAVA = {"desafio": SUBTIPO_CONTA_TRAVADA, "dois_fatores": SUBTIPO_CODIGO}
 
+#: De onde veio a regra. A do repositório é a base curada, com teste; a aprendida é dado de instalação (ADR-054).
+ORIGEM_REPOSITORIO = "repositorio"
+ORIGEM_APRENDIDA = "aprendida"
+#: O nome de toda tela aprendida começa assim: nunca colide com uma declarada e se reconhece em qualquer leitura.
+PREFIXO_APRENDIDA = "aprendida_"
+#: Quantos ids uma regra aprendida exige, todos presentes: um só é largo demais; mais de quatro, frágil.
+IDS_TODOS_MIN = 2
+IDS_TODOS_MAX = 4
+#: Os campos que uma regra aprendida pode ter. Sinal de texto, extração, formulário, "sem elementos" e ids por prefixo
+#: são do repositório: é por eles que desafio, 2FA, login e a leitura da conta se declaram.
+_CAMPOS_DA_APRENDIDA = frozenset({"tela", "tipo", "autenticada", "ids_todos", "casa", "razao"})
+
 
 class ConhecimentoInvalido(ValueError):
     """O arquivo de conhecimento não se sustenta: recusa na carga, antes de classificar a primeira tela."""
@@ -47,6 +67,15 @@ class RegraDeTela:
     sem_elementos: bool = False
     ids: tuple[str, ...] = ()
     extracao: str | None = None
+    #: Todos presentes, por sufixo EXATO (o `ids` casa com qualquer um, por prefixo — largo demais para o aprendido).
+    ids_todos: tuple[str, ...] = ()
+    origem: str = ORIGEM_REPOSITORIO
+    #: Só na aprendida: entra no estado conhecido (a declarada diz isso em `estado_conhecido.telas`).
+    casa: bool = False
+
+    @property
+    def aprendida(self) -> bool:
+        return self.origem != ORIGEM_REPOSITORIO
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +157,28 @@ def _tem_id(tree: UiTree, prefixos: tuple[str, ...]) -> bool:
     return any(_sufixo(e.resource_id).startswith(prefixos) for e in tree.elements)
 
 
+def _tem_todos(tree: UiTree, ids: tuple[str, ...]) -> bool:
+    presentes = {_sufixo(e.resource_id) for e in tree.elements if e.resource_id}
+    return all(i in presentes for i in ids)
+
+
+def sufixos(tree: UiTree, pacote: str | None = None) -> list[str]:
+    """Os sufixos de resource-id da tela, em minúsculas e COM repetição (quem filtra item de lista precisa contar),
+    só dos elementos do `pacote` quando ele é dado (teclado e barra do sistema ficam de fora). Nunca texto."""
+    return [_sufixo(e.resource_id) for e in tree.elements
+            if e.resource_id and (pacote is None or e.package == pacote)]
+
+
+def tela_protegida(tree: UiTree) -> bool:
+    """Onde nada aprendido vale e nada se aprende (ADR-054): tela sensível (senha, verificação, declarada pelo parque,
+    aparelho-loja), campo de senha, ou texto de verificação — conta travada ou pedido de código, este MESMO sem campo
+    de texto (aqui a dúvida protege: a regra aprendida só deixa de valer)."""
+    if tree.sensitive or tree.conta_travada is not None or any(e.password for e in tree.elements):
+        return True
+    normalizado = "\n".join(normalizar_texto_de_tela(f"{e.text} {e.desc}") for e in tree.elements if e.text or e.desc)
+    return detectar_trava_generica(normalizado, tem_onde_digitar=True) is not None
+
+
 def _texto_da_tela(tree: UiTree) -> str:
     return "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
 
@@ -199,8 +250,16 @@ def classificar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None, lo
                                [trava.trecho], trava=trava)
     texto = _texto_da_tela(tree)
     sinais = k.sinais_de(locale)
+    protegida: bool | None = None                  # calculada só se houver regra aprendida a considerar
     for r in k.telas:
         if r.tipo in TIPOS_DE_TRAVA:
+            continue
+        if r.aprendida:
+            if protegida is None:
+                protegida = tela_protegida(tree)
+            if protegida:
+                continue
+        if r.ids_todos and not _tem_todos(tree, r.ids_todos):
             continue
         if r.sinal is not None and not ((p := sinais.get(r.sinal)) and p.search(texto)):
             continue
@@ -329,7 +388,8 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
                                   autenticada=bool(r.get("autenticada", False)), sinal=sinal,
                                   formulario_de_senha=bool(r.get("formulario_de_senha", False)),
                                   sem_elementos=bool(r.get("sem_elementos", False)),
-                                  ids=_textos(r.get("ids"), f"{onde}.ids"), extracao=extracao))
+                                  ids=_textos(r.get("ids"), f"{onde}.ids"), extracao=extracao,
+                                  ids_todos=_textos(r.get("ids_todos"), f"{onde}.ids_todos")))
     if not regras:
         raise ConhecimentoInvalido("nenhuma regra em `telas`")
     ec = _mapa(raiz.get("estado_conhecido"), "estado_conhecido")
@@ -349,6 +409,96 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
 
 def carregar(caminho: Path) -> ConhecimentoDeTelas:
     return de_dados(yaml.safe_load(caminho.read_text(encoding="utf-8")) or {})
+
+
+# ---------------------------------------------------------------------------------------------------- aprendidas
+def regra_aprendida(dados: object) -> RegraDeTela:
+    """A regra de uma tela aprendida (o `content` do item do livro), validada. Recusa tudo o que só o repositório
+    declara: tipo diferente de `autenticada`, sinal de texto, extração, formulário de senha, "sem elementos" e ids por
+    prefixo — e nome fora de `aprendida_*`, e menos de 2 ou mais de 4 ids exigidos."""
+    r = _mapa(dados, "regra aprendida")
+    if estranhos := sorted(set(r) - _CAMPOS_DA_APRENDIDA):
+        raise ConhecimentoInvalido(f"regra aprendida: {', '.join(estranhos)} não se aprende (é do repositório)")
+    if r.get("tipo") != "autenticada" or r.get("autenticada") is not True:
+        raise ConhecimentoInvalido("regra aprendida: só `autenticada` se aprende; os outros tipos são do repositório")
+    nome = str(r.get("tela") or "")
+    if not nome.startswith(PREFIXO_APRENDIDA) or len(nome) == len(PREFIXO_APRENDIDA):
+        raise ConhecimentoInvalido(f"regra aprendida: o nome {nome!r} precisa começar por {PREFIXO_APRENDIDA!r}")
+    ids = tuple(dict.fromkeys(_textos(r.get("ids_todos"), "regra aprendida.ids_todos")))
+    if not IDS_TODOS_MIN <= len(ids) <= IDS_TODOS_MAX or not all(ids):
+        raise ConhecimentoInvalido(f"regra aprendida: exige de {IDS_TODOS_MIN} a {IDS_TODOS_MAX} ids em `ids_todos`")
+    casa = r.get("casa", False)
+    if not isinstance(casa, bool):
+        raise ConhecimentoInvalido("regra aprendida: `casa` é true ou false")
+    return RegraDeTela(tela=nome, tipo="autenticada", razao=str(r.get("razao") or nome), autenticada=True,
+                       ids_todos=ids, origem=ORIGEM_APRENDIDA, casa=casa)
+
+
+def _vale_como_aprendida(r: RegraDeTela) -> bool:
+    return (r.aprendida and r.tipo == "autenticada" and r.autenticada and r.tela.startswith(PREFIXO_APRENDIDA)
+            and IDS_TODOS_MIN <= len(r.ids_todos) <= IDS_TODOS_MAX and r.sinal is None and r.extracao is None
+            and not r.formulario_de_senha and not r.sem_elementos and not r.ids)
+
+
+def com_aprendidas(k: ConhecimentoDeTelas, regras: Iterable[RegraDeTela]) -> ConhecimentoDeTelas:
+    """O conhecimento UNIDO: as declaradas, depois as aprendidas (desafio, 2FA, login, intersticial e carregando
+    vencem sempre), e as aprendidas de casa acrescentadas ao estado conhecido — é o que faz `autenticada()` e
+    `em_casa()` valerem para elas na sessão. Função pura: o conhecimento declarado não muda.
+
+    Nunca derruba: regra que não vale como aprendida (tipo, campo do repositório, nome) ou que repete o nome de uma
+    tela já declarada — a absorvida pelo YAML, por exemplo — fica de fora."""
+    nomes = {r.tela for r in k.telas}
+    novas: list[RegraDeTela] = []
+    for r in regras:
+        if _vale_como_aprendida(r) and r.tela not in nomes:
+            nomes.add(r.tela)
+            novas.append(r)
+    if not novas:
+        return k
+    casa = tuple(dict.fromkeys((*k.estado_conhecido.telas, *(r.tela for r in novas if r.casa))))
+    return replace(k, telas=(*k.telas, *novas), estado_conhecido=replace(k.estado_conhecido, telas=casa))
+
+
+def fragmento_de_aprendidas(arquivo: Path, regras: Sequence[RegraDeTela], *, cabecalho: Sequence[str] = (),
+                            notas: Mapping[str, Sequence[str]] | None = None) -> str:
+    """A ponte para o repositório (ADR-054): o fragmento YAML das regras aprendidas, no formato deste arquivo, com
+    comentários (o `cabecalho` e as `notas` de proveniência de cada tela). Sai CONFERIDO: acrescentado ao `arquivo`
+    do app (as regras ao fim de `telas:`, as de casa em `estado_conhecido.telas`), ele carrega por `de_dados` e cada
+    regra volta igual — ids, tipo e casa. Recusa (`ConhecimentoInvalido`) o que não volta."""
+    novas = [r for r in regras if _vale_como_aprendida(r)]
+    if not novas:
+        raise ConhecimentoInvalido("nenhuma regra aprendida válida para exportar")
+    saida = [*(f"# {linha}" for linha in cabecalho), "telas:"]
+    for r in novas:
+        saida.extend(f"  # {linha}" for linha in (notas or {}).get(r.tela, ()))
+        corpo = yaml.safe_dump([{"tela": r.tela, "tipo": r.tipo, "autenticada": True, "ids_todos": list(r.ids_todos),
+                                 "razao": r.razao}], allow_unicode=True, sort_keys=False, default_flow_style=None,
+                               width=110)
+        saida.extend(f"  {linha}" for linha in corpo.splitlines())
+    casas = [r.tela for r in novas if r.casa]
+    if casas:
+        saida += ["# Telas de casa (a aba de perfil declarada estava em toda observação):", "estado_conhecido:",
+                  "  telas: " + yaml.safe_dump(casas, default_flow_style=True, width=110).strip()]
+    texto = "\n".join(saida) + "\n"
+    _conferir_fragmento(yaml.safe_load(arquivo.read_text(encoding="utf-8")) or {}, texto, novas)
+    return texto
+
+
+def _conferir_fragmento(base: object, texto: str, regras: Sequence[RegraDeTela]) -> None:
+    fragmento = yaml.safe_load(texto)
+    if not isinstance(base, dict) or not isinstance(fragmento, dict):
+        raise ConhecimentoInvalido("o arquivo do app e o fragmento precisam ser mapas YAML")
+    unido = copy.deepcopy(base)
+    unido["telas"] = [*(base.get("telas") or []), *(fragmento.get("telas") or [])]
+    estado = dict(base.get("estado_conhecido") or {})
+    estado["telas"] = [*(estado.get("telas") or []), *((fragmento.get("estado_conhecido") or {}).get("telas") or [])]
+    unido["estado_conhecido"] = estado
+    k = de_dados(unido)
+    for r in regras:
+        lida = k.regra(r.tela)
+        if (lida is None or lida.ids_todos != r.ids_todos or lida.tipo != r.tipo or not lida.autenticada
+                or k.em_casa(r.tela) != r.casa):
+            raise ConhecimentoInvalido(f"a tela {r.tela} não volta igual pelo carregador")
 
 
 @lru_cache(maxsize=None)
