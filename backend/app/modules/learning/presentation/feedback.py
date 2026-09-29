@@ -7,8 +7,10 @@
 - `GET /api/runs/{run_id}/feedback`: os votos por item e os sinais implícitos da execução;
 - `GET /api/aprendizado/sinais?dias=&kind=&app=`: a aba Sinais.
 
-Cada efeito diz o que mudou (`de` → `para`) e, quando o voto desligou algo, o `desfazer`: a chamada exata do
-`POST /api/aprendizado/{kind}/{ref}/status` que o reativa (a única volta da tabela do D1 é `published`, e é de pessoa).
+Cada efeito diz o que mudou (`de` → `para`) e, quando o voto desligou algo que ESTAVA publicado, o `desfazer`: a
+chamada exata do `POST /api/aprendizado/{kind}/{ref}/status` que o reativa (a única volta da tabela do D1 é
+`published`, e é de pessoa). Desligado do `candidate`/`validated`, o `desfazer` vem `null`: aquela volta não
+desfaria, publicaria o que nunca foi aprovado (a regra é `reativar_desfaz`, no domínio).
 
 A ORDEM importa duas vezes: estas rotas entram antes do livro (`router.py`), cuja `{kind}/{ref}` casaria com
 `/sinais`; e o roteador do aprendizado entra antes do `api.py` (`main.py`), cujo `POST /runs/{run_id}/{op}` casaria com

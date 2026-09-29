@@ -1,5 +1,5 @@
 """Pacote A4 do ADR-054: o botão do D2 ("deu certo / deu errado + motivo") e os efeitos do voto — rebaixar o que o
-item usou e o que aprendeu, com trilha, veto e reativação em um clique.
+item usou e o que aprendeu, com trilha, veto e — para o que estava publicado — reativação em um clique.
 
 A ORDEM de `votar` é a garantia de "recusa não deixa rastro":
 1. o vocabulário (`conferir_voto`: 'errado' exige motivo; 'certo' não leva);
@@ -11,6 +11,9 @@ A ORDEM de `votar` é a garantia de "recusa não deixa rastro":
 
 Quem desliga o fluxo e a receita é QUEM VOTOU: o veto passa a ser de pessoa (o sistema não traz de volta o mesmo
 conteúdo), e só uma pessoa reativa — pelo `POST /api/aprendizado/{kind}/{ref}/status`, o "desfazer" da resposta.
+O desfazer só existe para o que ESTAVA publicado (`reativar_desfaz`): a única volta da tabela do D1 é `→ published`,
+e do `candidate`/`validated` ela não desfaria, PROMOVERIA — pulando a repetição do D1 e, com efeito, a fila "Para
+aprovar" do dono. Ali o efeito vem sem desfazer, e publicar fica como decisão do dono no catálogo.
 Votar de novo troca o voto, mas não reativa nada sozinho. A lição é a exceção: quem a desliga é a contagem de
 refutações (o sistema), porque um voto só não diz que a LIÇÃO atrapalhou.
 
@@ -36,7 +39,7 @@ from app.modules.learning.domain.vocabulario import (LivroKind, MotivoDoVoto, Po
                                                      Veredito)
 from app.modules.learning.domain.voto import (DESLIGAVEIS, REF_NO_BACKLOG, AcaoDoEfeito, Conhecimento, Efeito,
                                               ItemVotado, PlanoDoVoto, Uso, Verificador, conferir_voto, desfecho,
-                                              efeitos_do_voto, licao_refutada)
+                                              efeitos_do_voto, licao_refutada, reativar_desfaz)
 from app.modules.skills.domain.document import JsonObject
 from app.util import to_iso
 
@@ -131,7 +134,8 @@ class EfeitoAplicado:
     efeito: Efeito
     aplicado: bool
     erro: str | None = None
-    #: Desligado por este voto: a pessoa o reativa em um clique (`→ published`, a única volta da tabela do D1).
+    #: Desligado por este voto e ESTAVA publicado: a pessoa desfaz em um clique (`→ published` devolve o estado de
+    #: antes). Do `candidate`/`validated` fica `False`: a mesma volta promoveria o que nunca foi aprovado (D1).
     reativavel: bool = False
 
 
@@ -239,7 +243,9 @@ class ServicoDeFeedback:
                                        run_id=run_id)
         except ErroDeAprendizado as exc:
             return EfeitoAplicado(e, aplicado=False, erro=exc.code)
-        return EfeitoAplicado(e, aplicado=True, reativavel=True)
+        # `e.de` foi lido no plano, mas vale: nenhum caminho leva um item publicado de volta a candidate/validated (o
+        # D1 e as rotas legadas só vão a active/disabled/quarantined), e a leitura atrasada só erra para o lado seguro.
+        return EfeitoAplicado(e, aplicado=True, reativavel=reativar_desfaz(e.de))
 
     def _refutacao(self, ref: str, lido: ItemLido) -> EfeitoAplicado | None:
         """Depois da evidência DESTE voto: com refutações o bastante (votos distintos, só reais), o sistema desliga."""
@@ -259,7 +265,7 @@ class ServicoDeFeedback:
                                        reason=f"{refutacoes} refutações por 'deu errado' (D2)", run_id=lido.run_id)
         except ErroDeAprendizado as exc:
             return EfeitoAplicado(efeito, aplicado=False, erro=exc.code)
-        return EfeitoAplicado(efeito, aplicado=True, reativavel=True)
+        return EfeitoAplicado(efeito, aplicado=True, reativavel=reativar_desfaz(atual))
 
     # ================================================================== leitura
     def da_execucao(self, run_id: str) -> SinaisDaExecucao:
@@ -301,7 +307,10 @@ def _frase(a: EfeitoAplicado, lido: ItemLido) -> str:
     if e.acao is AcaoDoEfeito.DESLIGAR:
         estado = {LivroKind.RECEITA.value: "em quarentena", LivroKind.LICAO.value: "desligada"}.get(e.kind,
                                                                                                   "desligado")
-        return f"{_nome(e)} {estado} — reativar"
+        if a.reativavel:
+            return f"{_nome(e)} {estado} — reativar"
+        publicado = "publicada" if e.kind in (LivroKind.RECEITA.value, LivroKind.LICAO.value) else "publicado"
+        return f"{_nome(e)} {estado} (não estava {publicado}: não há o que reativar; publicar é decisão do dono)"
     if e.acao is AcaoDoEfeito.EVIDENCIA_CONTRA:
         return f"evidência contra {_nome(e)}"
     if e.acao is AcaoDoEfeito.EVIDENCIA_A_FAVOR:

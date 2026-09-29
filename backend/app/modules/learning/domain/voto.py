@@ -14,6 +14,9 @@ no sentido SEGURO — rebaixar. Promover continua sendo da repetição e do dono
 | certo | falhou ou incerto | falso negativo do verificador; o status NÃO muda (para isso existe "Confirmar concluído") |
 | qualquer | execução simulada | nada: o voto é gravado com `simulated=1` e não rebaixa nada real |
 
+O "reativar" de um clique só acompanha o desligamento do que ESTAVA publicado (`reativar_desfaz`): do candidato ou
+do validado, a única volta da tabela do D1 (`→ published`) promoveria em vez de desfazer.
+
 O falso positivo e o falso negativo não viram linha de backlog aqui: vão no próprio sinal (`step_verified` e
 `data.verificador`), que é a fonte do relatório "O que mais falha" (pacote A3). E nenhum dos dois vira lição do
 verificador (ADR-024).
@@ -201,6 +204,18 @@ def licao_refutada(refutacoes: int) -> bool:
     return refutacoes >= REFUTACOES_PARA_DESLIGAR
 
 
+def reativar_desfaz(de: SkillState | None) -> bool:
+    """O "reativar" (`disabled → published`, a única volta da tabela do D1) DESFAZ o desligamento de um item que
+    estava `de`?
+
+    Só quando ele estava publicado: aí a volta devolve o estado de antes. Do `candidate` ou do `validated`, a mesma
+    chamada PROMOVERIA o que nunca foi publicado: pularia a repetição do D1 e, com efeito ou texto de pessoa, a fila
+    "Para aprovar" (o fluxo e a receita com efeito esperam o dono ali). Nesses casos não há desfazer: publicar o que o
+    voto desligou é uma decisão do dono, não a volta de um clique.
+    """
+    return de is _S.PUBLISHED
+
+
 __all__ = ["DESLIGAVEIS", "REFUTACOES_PARA_DESLIGAR", "REF_NO_BACKLOG", "AcaoDoEfeito", "Conhecimento", "Desfecho",
            "Efeito", "ItemVotado", "PlanoDoVoto", "Uso", "Verificador", "conferir_voto", "desfecho",
-           "efeitos_do_voto", "licao_refutada"]
+           "efeitos_do_voto", "licao_refutada", "reativar_desfaz"]

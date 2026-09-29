@@ -18,7 +18,9 @@ O que se prova:
   favor do que ele usou;
 - `texto_ruim` só alimenta a voz; `demorou_ou_gastou` só o relatório; `pediu_ajuda_a_toa` só tela e lição;
 - execução simulada: o voto é gravado com `simulated=1` e nada é rebaixado;
-- a reativação em um clique pelo `POST /api/aprendizado/{kind}/{ref}/status`, com a trilha de volta.
+- a reativação em um clique pelo `POST /api/aprendizado/{kind}/{ref}/status`, com a trilha de volta — só para o que
+  ESTAVA publicado: do `candidate`/`validated` o `desfazer` vem nulo, porque a única volta da tabela do D1
+  (`→ published`) promoveria o que nunca foi publicado nem aprovado, pulando a fila "Para aprovar".
 
 Nível de prova: `simulated` (banco de teste; nenhum aparelho, nenhuma IA). O último teste usa o Harness da porta 5640.
 """
@@ -42,7 +44,7 @@ from app.modules.learning.domain.livro import Escopo, NovoItem
 from app.modules.learning.domain.vocabulario import (LivroKind, MotivoDoVoto, Polaridade, SignalKind, SourceKind,
                                                      Veredito)
 from app.modules.learning.domain.voto import (AcaoDoEfeito, Conhecimento, Desfecho, ItemVotado, Uso, Verificador,
-                                              desfecho, efeitos_do_voto, licao_refutada)
+                                              desfecho, efeitos_do_voto, licao_refutada, reativar_desfaz)
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.montagem import GuardaDoFluxo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -95,17 +97,17 @@ def _etapa(db: Database, oid: str, chave: str, *, status: str, verificada: bool 
     return sid
 
 
-def _receita(db: Database, passo: str, *, status: str, aprendida_em: str) -> int:
-    acoes = [{"tool": "tap", "args": {}, "selectors": [{"rid": f"botao-{passo}"}], "commit": False}]
+def _receita(db: Database, passo: str, *, status: str, aprendida_em: str, commit: bool = False) -> int:
+    acoes = [{"tool": "tap", "args": {}, "selectors": [{"rid": f"botao-{passo}"}], "commit": commit}]
     return int(db.inserted_id(
         "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version, status,"
         " actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (PACOTE, "447", "sig", "pt/420", f"h-{passo}", passo, 1, status, json.dumps(acoes), aprendida_em, TS)))
 
 
-def _fluxo(db: Database, fid: str, *, status: str, origem: str | None) -> None:
+def _fluxo(db: Database, fid: str, *, status: str, origem: str | None, efeito: bool = False) -> None:
     plano = {"summary": fid, "app_id": "instagram", "parameters": {},
-             "steps": [{"key": "a", "title": "a", "goal": "a", "side_effect": False,
+             "steps": [{"key": "a", "title": "a", "goal": "a", "side_effect": efeito,
                         "postcondition": {"kind": "app_foreground", "value": "x", "description": "x"}}]}
     db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at, source,"
                " source_run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -267,6 +269,13 @@ def test_efeitos_do_voto_puro() -> None:
     assert not licao_refutada(1) and licao_refutada(2)
 
 
+def test_reativar_so_desfaz_o_que_estava_publicado() -> None:
+    """`disabled → published` é a única volta da tabela do D1: desfaz só o desligamento do publicado. Do candidato ou
+    do validado, a mesma chamada PROMOVERIA o que nunca foi publicado nem aprovado."""
+    assert [s for s in SkillState if reativar_desfaz(s)] == [S.PUBLISHED]
+    assert reativar_desfaz(None) is False
+
+
 # ------------------------------------------------------------------ o voto de navegação (o caso principal)
 async def test_errado_de_navegacao_rebaixa_o_usado_e_o_aprendido(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
     r = await cliente.post(f"/api/runs/{RUN}/feedback",
@@ -293,9 +302,18 @@ async def test_errado_de_navegacao_rebaixa_o_usado_e_o_aprendido(mundo: Mundo, c
         "published", "disabled", True, "usou")
     assert desligou["desfazer"]["href"] == "/api/aprendizado/fluxo/fluxo-usado/status"
     assert desligou["desfazer"]["body"]["to"] == "published"
-    assert next(e for e in corpo["efeitos"] if e["ref"] == "fluxo-aprendido")["uso"] == "aprendeu"
+    # O aprendido desta execução e a receita aprendida eram CANDIDATOS: desligados, mas sem desfazer — a única volta
+    # (→ published) publicaria o que nunca foi publicado nem aprovado.
+    aprendido = next(e for e in corpo["efeitos"] if e["ref"] == "fluxo-aprendido")
+    assert (aprendido["uso"], aprendido["de"], aprendido["para"], aprendido["aplicado"], aprendido["desfazer"]) == (
+        "aprendeu", "candidate", "disabled", True, None)
+    receita = next(e for e in corpo["efeitos"] if e["ref"] == str(mundo.receita_aprendida))
+    assert (receita["de"], receita["para"], receita["desfazer"]) == ("candidate", "disabled", None)
     assert next(e for e in corpo["efeitos"] if e["kind"] == "backlog")["desfazer"] is None
-    assert "fluxo aprendido desta execução fluxo-aprendido desligado — reativar" in corpo["resumo"]
+    assert "fluxo usado fluxo-usado desligado — reativar" in corpo["resumo"]
+    assert "fluxo-aprendido desligado — reativar" not in corpo["resumo"]
+    assert "fluxo aprendido desta execução fluxo-aprendido desligado (não estava publicado" in corpo["resumo"]
+    assert f"{mundo.receita_aprendida} em quarentena — reativar" not in corpo["resumo"]
     assert "falso positivo" in corpo["resumo"]
     # O banco: rebaixado o que o item usou e aprendeu; o resto intacto; a habilidade nunca é desabilitada.
     assert mundo.status("flows", "fluxo-usado") == "disabled" and mundo.status("flows", "fluxo-aprendido") == "disabled"
@@ -473,6 +491,57 @@ async def test_reativacao_em_um_clique_com_a_trilha_de_volta(mundo: Mundo, clien
     assert mundo.status("recipes", mundo.receita_usada) == "active"
 
 
+async def test_desligar_o_que_nunca_foi_publicado_nao_oferece_desfazer(mundo: Mundo,
+                                                                      cliente: httpx.AsyncClient) -> None:
+    """O caso do revisor: fluxo CANDIDATO com etapa de efeito, aprendido desta execução, e receita VALIDADA com
+    commit — o que o D1 manda esperar o dono em "Para aprovar". O voto os desliga (rebaixar é automático), mas o
+    `desfazer` vem nulo: `→ published` não devolveria o estado de antes, publicaria. A lição candidata que o sistema
+    desliga por refutação segue a mesma regra. O publicado usado continua com o seu desfazer."""
+    db, run = mundo.db, "r-com-efeito"
+    _fluxo(db, "fluxo-publicado", status="active", origem="r-antiga")
+    _fluxo(db, "fluxo-com-efeito", status="candidate", origem=run, efeito=True)
+    _execucao(db, run, flow_id="fluxo-publicado")
+    oid = _objetivo(db, run, "android-06", "succeeded")
+    etapa = _etapa(db, oid, "enviar", status="succeeded", verificada=True, acao="enviar_mensagem")
+    receita = _receita(db, "enviar", status="validated", aprendida_em=etapa, commit=True)
+    licao = mundo.servico.propor(NovoItem(
+        kind=LivroKind.LICAO, escopo=Escopo(app=PACOTE, capability="enviar_mensagem", role="actor"),
+        content={"texto": "confira o destinatário"}, summary="confira o destinatário",
+        source_kind=SourceKind.RECOVERY, side_effect=False)).id
+    db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, tokens, run_id, objective_id,"
+               " app_package, capability, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+               (licao, f"step:{etapa}", "actor", "with", 9, run, oid, PACOTE, "enviar_mensagem", TS))
+    rota, corpo = f"/api/runs/{run}/feedback", {"objective_id": oid, "verdict": "errado", "reason": "alvo_errado"}
+
+    r = await cliente.post(rota, json=corpo)
+    assert r.status_code == 201, r.text
+    desligados = {e["ref"]: e for e in r.json()["efeitos"] if e["acao"] == "desligar"}
+    assert set(desligados) == {"fluxo-publicado", "fluxo-com-efeito", str(receita)}
+    fluxo, rec = desligados["fluxo-com-efeito"], desligados[str(receita)]
+    assert (fluxo["de"], fluxo["para"], fluxo["aplicado"], fluxo["desfazer"]) == ("candidate", "disabled", True, None)
+    assert (rec["de"], rec["para"], rec["aplicado"], rec["desfazer"]) == ("validated", "disabled", True, None)
+    assert desligados["fluxo-publicado"]["desfazer"]["body"]["to"] == "published"
+    # O invariante do contrato: todo desfazer oferecido devolve ao publicado de onde o item saiu — nunca promove.
+    assert all(e["de"] == "published" for e in r.json()["efeitos"] if e["desfazer"] is not None)
+    resumo = r.json()["resumo"]
+    assert "fluxo usado fluxo-publicado desligado — reativar" in resumo
+    assert "fluxo aprendido desta execução fluxo-com-efeito desligado (não estava publicado" in resumo
+    assert f"receita aprendida desta execução {receita} em quarentena (não estava publicada" in resumo
+    assert "fluxo-com-efeito desligado — reativar" not in resumo and f"{receita} em quarentena — reativar" not in resumo
+    # Nada foi publicado: o fluxo e a receita ficam fora de circulação até uma pessoa decidir publicá-los.
+    assert mundo.status("flows", "fluxo-com-efeito") == "disabled" and mundo.status("recipes", receita) == "quarantined"
+
+    # A segunda refutação (outra pessoa) faz o SISTEMA desligar a lição candidata: também sem desfazer.
+    segunda = await cliente.post(rota, json=corpo, headers={"x-operador": "ana"})
+    assert segunda.status_code == 201, segunda.text
+    desligou = next(e for e in segunda.json()["efeitos"] if e["acao"] == "desligar" and e["ref"] == licao)
+    assert (desligou["de"], desligou["para"], desligou["aplicado"], desligou["desfazer"]) == (
+        "candidate", "disabled", True, None)
+    assert f"lição exposta {licao} desligada (não estava publicada" in segunda.json()["resumo"]
+    assert mundo.db.scalar("SELECT state FROM learning_items WHERE id=?", (licao,)) == "disabled"
+    assert all(e["de"] == "published" for e in segunda.json()["efeitos"] if e["desfazer"] is not None)
+
+
 async def test_duas_refutacoes_desligam_a_licao(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
     rota = f"/api/runs/{RUN}/feedback"
     corpo = {"objective_id": mundo.ok, "verdict": "errado", "reason": "fez_outra_coisa"}
@@ -483,6 +552,9 @@ async def test_duas_refutacoes_desligam_a_licao(mundo: Mundo, cliente: httpx.Asy
     segunda = await cliente.post(rota, json=corpo, headers={"x-operador": "ana"})
     assert segunda.status_code == 201, segunda.text
     assert ("desligar", "licao", mundo.licao) in _por_acao(segunda.json())
+    # A lição estava publicada: o desligamento do sistema tem desfazer (a pessoa a traz de volta).
+    desligou = next(e for e in segunda.json()["efeitos"] if e["acao"] == "desligar" and e["ref"] == mundo.licao)
+    assert desligou["de"] == "published" and desligou["desfazer"]["body"]["to"] == "published"
     assert mundo.db.scalar("SELECT state FROM learning_items WHERE id=?", (mundo.licao,)) == "disabled"
     assert mundo.db.scalar("SELECT decided_by FROM learning_transitions WHERE item_ref=? ORDER BY id DESC LIMIT 1",
                            (mundo.licao,)) == SYSTEM_ACTOR
