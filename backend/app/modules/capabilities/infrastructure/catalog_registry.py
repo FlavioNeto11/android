@@ -54,6 +54,7 @@ CAMPOS: dict[str, str] = {
     "collect_rewind": "output.rewind",
     "item_key": "output.item_key",
     "failure_marks": "side_effect.failure_marks",
+    "pending_marks": "side_effect.pending_marks",
     "local_proof": "local_proof",
 }
 
@@ -88,7 +89,8 @@ def definicao(cap: Capability, package: str) -> CapabilityDefinition:
         side_effect=SideEffectContract(external=cap.side_effect, commit_selector=cap.commit_selector,
                                        commit_guard=tuple(cap.commit_guard), band_guard=tuple(cap.band_guard),
                                        interaction_type=cap.interaction_type,
-                                       failure_marks=tuple(cap.failure_marks)),
+                                       failure_marks=tuple(cap.failure_marks),
+                                       pending_marks=tuple(cap.pending_marks)),
         governance=Governance(risk=Risk(cap.risk), default_policy=DefaultPolicy(cap.default_policy),
                               limit_bucket=cap.limit_bucket, needs_draft=cap.needs_draft),
         execution=ExecutionContract(internal=cap.internal, timeout_s=cap.timeout_s, max_attempts=cap.max_attempts,

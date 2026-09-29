@@ -20,9 +20,9 @@ import { useControlStore } from '../../store/control';
 import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
-import { attemptsByStep, currentSteps, headlineStep, isBlocked, previousVersionSteps } from './model';
+import { attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps, printParaConfirmar } from './model';
 import { SideEffectFlag } from './PlanTab';
-import { resolveObjective } from './runActions';
+import { type Confirmacao, resolveObjective } from './runActions';
 import styles from './Runs.module.css';
 
 /**
@@ -127,6 +127,11 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   const server = useMemo(() => serverHintOf({ id: o.instance_id, worker_id: workerId }, workers),
                          [o.instance_id, workerId, workers]);
   const onde = ondeRodou(o);
+  // ADR-055: o Marcar como concluído cita o print da etapa parada (o servidor o exige quando ela tem efeito externo).
+  const confirmacao = useMemo<Confirmacao>(() => ({
+    print: printParaConfirmar(detail, o),
+    efeitoExterno: etapaAConfirmar(detail, o)?.side_effect ?? false,
+  }), [detail, o]);
 
   return (
     <section className={cx(styles.obj, blocked && styles.objBlocked)} aria-label={`Objetivo em ${o.instance_id}`}>
@@ -156,7 +161,7 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
 
       {open ? (
         <div id={bodyId} className={styles.objBody}>
-          {blocked ? <BlockedBox objective={o} /> : o.status_detail ? <p className={styles.muted} style={{ marginTop: 10 }}>{o.status_detail}</p> : null}
+          {blocked ? <BlockedBox objective={o} confirmacao={confirmacao} /> : o.status_detail ? <p className={styles.muted} style={{ marginTop: 10 }}>{o.status_detail}</p> : null}
 
           {o.delivery_level && o.delivery_level !== 'none' ? (
             <p><span className={styles.muted}>Nível de entrega observado: </span><StatusBadge meta={metaOf(DELIVERY_LEVEL, o.delivery_level)} size="sm" /></p>
@@ -210,7 +215,7 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   );
 }
 
-function BlockedBox({ objective: o }: { objective: Objective }) {
+function BlockedBox({ objective: o, confirmacao }: { objective: Objective; confirmacao: Confirmacao }) {
   const openFocus = useUiStore((s) => s.openFocus);
   const take = useControlStore((s) => s.take);
   const hasLease = useControlStore((s) => !!s.leases[o.instance_id]);
@@ -225,7 +230,7 @@ function BlockedBox({ objective: o }: { objective: Objective }) {
     if (busy) return;
     setBusy(r);
     try {
-      await resolveObjective(o, r);
+      await resolveObjective(o, r, confirmacao);
     } finally {
       setBusy(null);
     }

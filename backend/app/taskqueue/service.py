@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..db import dumps, loads
+from ..db import Row, dumps, loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
@@ -972,6 +972,25 @@ class RunService:
             self.scheduler.wake()
         return {"retried": retried, "skipped": skipped}
 
+    def _print_da_confirmacao(self, obj: Row, etapa: Row, evidence_id: int | None) -> Row | None:
+        """O print em que a pessoa se baseou para o "confirmar concluído"; `None` quando nenhum foi citado.
+
+        ADR-055: em 19/09 o verificador de DM errou nos dois sentidos, e a saída de pessoa era uma nota livre que não
+        dizia QUE tela foi vista (a DM da beatriz estava com "Sending…" congelado). Etapa com efeito externo só se
+        confirma citando uma evidência `screenshot` com imagem, desta execução e deste aparelho — a nota continua
+        valendo como comentário. Sem efeito externo (navegação parada), o print é opcional: nada saiu da máquina."""
+        if evidence_id is None:
+            if etapa["side_effect"]:
+                raise RunError("evidence_required", "Esta etapa tem efeito externo: para confirmar, indique o print "
+                                                    "(evidência) que mostra o resultado, não só uma nota.", 422)
+            return None
+        ev = self.repo.db.one("SELECT * FROM evidence WHERE id=?", (evidence_id,))
+        if (ev is None or ev["run_id"] != obj["run_id"] or ev["instance_id"] != obj["instance_id"]
+                or ev["kind"] != "screenshot" or ev["redacted"] or not ev["path"]):
+            raise RunError("invalid_evidence", f"A evidência #{evidence_id} não é um print deste item (desta execução, "
+                                               f"de {obj['instance_id']}, com imagem).", 422)
+        return ev
+
     def resolve(self, run_id: str, objective_id: str, body: ResolveBody) -> ObjectiveDTO:
         self._run(run_id)
         try:
@@ -1000,13 +1019,16 @@ class RunService:
                 raise RunError("invalid_state", "Não há etapa aguardando confirmação.")
             if blocking["status"] == "failed":
                 raise RunError("invalid_state", "Uma etapa que falhou não pode ser confirmada; use repetir ou abandonar.")
-            self.repo.transition_step(blocking["id"], StepStatus.succeeded, detail="Confirmado manualmente pelo usuário." + note,
-                                      result=StepResult(verified=False, evidence_text="Confirmado manualmente pelo usuário." + note))
+            evidencia = self._print_da_confirmacao(obj, blocking, body.evidence_id)
+            confirmado = "Confirmado manualmente pelo usuário" + (
+                f", com base na evidência #{evidencia['id']} (print de {evidencia['ts']})" if evidencia else "") + "." + note
+            self.repo.transition_step(blocking["id"], StepStatus.succeeded, detail=confirmado,
+                                      result=StepResult(verified=False, evidence_text=confirmado,
+                                                        evidence_id=evidencia["id"] if evidencia else None))
             # A etapa vira feita, mas quem "vira fato" no histórico do perfil é a confirmação da INTERAÇÃO:
             # sem isto, relacionamento, conversa e memória seguiriam sem a mensagem que o usuário viu sair.
             if self.profiles is not None:
-                self.profiles.confirm_effects_of_step(
-                    obj["profile_id"], blocking["id"], evidence="Confirmado manualmente pelo usuário." + note)
+                self.profiles.confirm_effects_of_step(obj["profile_id"], blocking["id"], evidence=confirmado)
             self.repo.set_objective(objective_id, ObjectiveStatus.running,
                                     detail="Usuário confirmou a etapa; seguindo com as demais." + note)
             self.scheduler._maybe_complete(objective_id)  # noqa: SLF001

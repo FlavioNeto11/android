@@ -145,7 +145,8 @@ def test_prova_local_de_dm_enviada_exige_fora_do_campo_de_escrita() -> None:
 
 def test_catalogo_do_instagram_declara_prova_local_para_enviar_mensagem() -> None:
     cap = capability_of("com.instagram.android", "SEND_MESSAGE")
-    assert cap is not None and cap.local_proof == "sent_text"
+    # ADR-055: a mesma prova, com o campo de escrita da conversa declarado (ele precisa estar na tela e sem o texto)
+    assert cap is not None and cap.local_proof == "sent_text:id=row_thread_composer_edittext"
 
 
 # ---------------------------------------------------------------- provas locais por seletor (24/09)
@@ -199,7 +200,8 @@ def test_catalogo_do_instagram_declara_provas_locais_bem_formadas() -> None:
 
     esperado = {"LIKE_POST": "selector:desc==Liked", "UNLIKE_POST": "selector:desc==Like",
                 "LIKE_COMMENT": "selector_band:desc==Liked", "OPEN_PROFILE": "selector:id=action_bar_title|text=={username}",
-                "OPEN_THREAD": "selector:text=={username}&id=row_thread_composer_edittext", "SEND_MESSAGE": "sent_text"}
+                "OPEN_THREAD": "selector:text=={username}&id=row_thread_composer_edittext",
+                "SEND_MESSAGE": "sent_text:id=row_thread_composer_edittext"}
     for chave, prova in esperado.items():
         cap = capability_of("com.instagram.android", chave)
         assert cap is not None and cap.local_proof == prova and local_proof_error(cap.local_proof) is None, chave

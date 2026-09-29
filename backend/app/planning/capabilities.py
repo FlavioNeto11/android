@@ -102,12 +102,18 @@ class Capability:
     # Textos que, se aparecerem na tela DEPOIS do efeito, provam que ele NÃO valeu (ex.: "Not delivered").
     # Ficam aqui, e não no executor, porque são específicos do app e da versão — como `commit_selector`.
     failure_marks: tuple[str, ...] = ()
+    # Textos que, ENQUANTO aparecem na tela, dizem que o efeito ainda está a caminho (ex.: "Sending…"). Não desmentem
+    # o efeito, mas também nunca o comprovam: nem a prova local nem o "sim" do modelo fecham a etapa com um deles à
+    # vista, e o modelo nem é perguntado — o executor segue olhando até o prazo da verificação. Motivo: em 19/09 a DM
+    # da beatriz foi dada por enviada com "Sending…" congelado debaixo da bolha (ADR-055).
+    pending_marks: tuple[str, ...] = ()
     # Prova local (sem modelo) para uma pós-condição `model_judged`, quando existe uma conferência determinística
     # confiável pela árvore (gramática e regras em `taskqueue/proofs.py`): "sent_text" (o `content` apareceu no
-    # fio e saiu do campo de escrita, achado #102), "selector:<sel>" (algum elemento casa; `==` exato, `{username}`
-    # resolvido, `@` opcional) ou "selector_band:<sel>" (o elemento casado na faixa de cada `band_guard`). Com
-    # `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova positiva dispensa o
-    # modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
+    # fio e saiu do campo de escrita, achado #102), "sent_text:<sel>" (o mesmo, com o campo de escrita da conversa
+    # declarado pelo seletor: ele precisa estar na tela e sem o texto), "selector:<sel>" (algum elemento casa; `==`
+    # exato, `{username}` resolvido, `@` opcional) ou "selector_band:<sel>" (o elemento casado na faixa de cada
+    # `band_guard`). Com `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova
+    # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
 
     def describe(self) -> str:
@@ -137,7 +143,7 @@ class CapabilityNode:
 
 
 #: Formas aceitas de `Capability.local_proof` (a semântica está em `taskqueue/proofs.py`).
-LOCAL_PROOFS = ("sent_text", "selector:", "selector_band:")
+LOCAL_PROOFS = ("sent_text", "sent_text:", "selector:", "selector_band:")
 
 
 def local_proof_error(valor: str | None) -> str | None:
@@ -145,11 +151,11 @@ def local_proof_error(valor: str | None) -> str | None:
     montar o catálogo: uma prova mal escrita não pode virar "sempre cai para o modelo" em silêncio."""
     if valor is None or valor == "sent_text":
         return None
-    for prefixo in ("selector:", "selector_band:"):
+    for prefixo in ("sent_text:", "selector:", "selector_band:"):
         if valor.startswith(prefixo):
             corpo = valor[len(prefixo):]
-            if prefixo == "selector_band:" and "&" in corpo:
-                return "selector_band: não aceita `&` (a faixa é de UM elemento)"
+            if prefixo in ("sent_text:", "selector_band:") and "&" in corpo:
+                return f"{prefixo} não aceita `&` (o seletor é de UM elemento)"
             return None if all(p.strip() for p in corpo.split("&")) else f"{prefixo} sem seletor"
     return f"prova local desconhecida: {valor!r} (aceitas: {', '.join(LOCAL_PROOFS)})"
 

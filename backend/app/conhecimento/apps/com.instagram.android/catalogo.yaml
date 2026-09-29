@@ -337,7 +337,8 @@ acoes:
     # envio" fazia todo envio bem-sucedido voltar como "não foi possível comprovar". A prova observável é a TRANSIÇÃO:
     # o texto sai do campo de escrita e vira mensagem no fio.
     post_description: A mensagem aparece na conversa com {username} como mensagem enviada — ela saiu do campo
-      de escrita, que volta vazio — e não há marca de falha (como 'Not delivered' ou 'Tap to retry').
+      de escrita, que volta vazio — e não há marca de falha (como 'Not delivered' ou 'Tap to retry'). Ainda com
+      'Sending…'/'Enviando…' na tela a mensagem está pendente, e pendente não conta como enviada.
     side_effect: true
     risk: high
     commit_selector: desc=Send
@@ -347,7 +348,14 @@ acoes:
     needs_draft: true
     failure_marks: [Not delivered, Tap to retry, Failed to send, Message not sent, Não entregue, Toque para
         tentar novamente]
-    local_proof: sent_text
+    # Critério objetivo da DM (ADR-055), conferido pela árvore ANTES do modelo. Em 19/09 o verificador por modelo errou
+    # nos dois sentidos: 5 DMs com a bolha enviada no print dadas por não enviadas (numa, "apenas parte do texto" com o
+    # texto inteiro) e a DM da beatriz dada por ENVIADA com "Sending…" congelado. Pendente nunca é enviada: com uma
+    # destas marcas na tela nem a prova local nem o modelo fecham a etapa (as duas grafias da reticência, porque a
+    # comparação é por texto). Com o texto na bolha e o campo de escrita da conversa na tela sem ele, é enviada, sem
+    # modelo. O id do campo foi lido das telas reais julgadas em 24–25/09 (o mesmo da prova de OPEN_THREAD).
+    pending_marks: [Sending…, Sending..., Enviando…, Enviando...]
+    local_proof: sent_text:id=row_thread_composer_edittext
     reconciliation: 'Observar a conversa: a mensagem aparece uma vez. Reenviar por timeout duplicaria.'
 
   - key: FOLLOW

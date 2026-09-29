@@ -55,6 +55,8 @@ CAMPOS_NOVOS: dict[str, object] = {
     "card_control": [],
     # Rodada seguinte ao ADR-053: argumentos opcionais que a etapa herda da anterior do mesmo plano (a legenda).
     "inherited_bindings": [],
+    # ADR-055 (pacote dm-verificador): marcas de efeito A CAMINHO ("Sending…"), que nunca deixam a etapa passar.
+    "pending_marks": [],
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
@@ -83,6 +85,15 @@ MUDANCAS: dict[tuple[str, str], object] = {
     ("LIKE_POST", "inherited_bindings"): ["caption_contains"],
     ("OPEN_COMMENTS", "inherited_bindings"): ["caption_contains"],
     ("CREATE_COMMENT", "inherited_bindings"): ["caption_contains"],
+    # ADR-055 (pacote dm-verificador) — 19/09: o verificador por modelo deu 5 DMs enviadas por não enviadas e a da
+    # beatriz, com "Sending…" congelado, por ENVIADA. Critério objetivo pela árvore, antes do modelo: pendente nunca é
+    # enviada; bolha com o texto e o campo de escrita da conversa (declarado) sem ele = enviada.
+    ("SEND_MESSAGE", "pending_marks"): ["Sending…", "Sending...", "Enviando…", "Enviando..."],
+    ("SEND_MESSAGE", "local_proof"): "sent_text:id=row_thread_composer_edittext",
+    ("SEND_MESSAGE", "post_description"): ("A mensagem aparece na conversa com {username} como mensagem enviada — ela "
+                                           "saiu do campo de escrita, que volta vazio — e não há marca de falha (como "
+                                           "'Not delivered' ou 'Tap to retry'). Ainda com 'Sending…'/'Enviando…' na "
+                                           "tela a mensagem está pendente, e pendente não conta como enviada."),
 }
 
 
