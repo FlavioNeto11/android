@@ -21,6 +21,13 @@ import type {
   BulkRequest,
   AppRelease,
   AppStoreEntry,
+  NetworkAssignRequest,
+  NetworkAssignResult,
+  NetworkDeviceList,
+  NetworkProfile,
+  NetworkProfileCreateRequest,
+  NetworkProfileList,
+  NetworkRequestAccepted,
   ProxyList,
   ProxyProfile,
   ReleaseLifecycleBody,
@@ -795,6 +802,27 @@ export const api = {
   /** `proxy_id: null` tira o proxy. Alvo: `instance_ids` OU `all: true` (nunca inferido). `dry_run` = prévia. */
   applyProxy: (body: { proxy_id: string | null; instance_ids?: string[]; all?: boolean; dry_run?: boolean }) =>
     request<{ accepted: boolean; dry_run: boolean; devices: DistributeDevice[] }>('POST', '/proxies/apply', { body }),
+
+  // ---- Rede por aparelho (ADR-056, C3, rotas 25.2/25.8) -------------------------------------------------------
+  // Envelopes exatamente como `backend/app/devices/rede.py` (D1) devolve — não um desenho livre do painel.
+  /** Perfis de VPN e de proxy, sem segredo (só `has_secret`), cada um com os aparelhos que o pedem hoje. */
+  listNetworkProfiles: () => request<NetworkProfileList>('GET', '/network/profiles'),
+  /** O segredo (chave, senha, certificado) vai só nesta chamada, uma vez; nunca volta em nenhuma leitura. */
+  createNetworkProfile: (body: NetworkProfileCreateRequest) =>
+    request<NetworkProfile>('POST', '/network/profiles', { body }),
+  deleteNetworkProfile: (id: string) => request<void>('DELETE', `/network/profiles/${enc(id)}`),
+  /** Uma linha por aparelho do parque (a loja já vem de fora): desejado × observado novo, o legado da 041, conta
+   *  real vinculada e o que falta — tudo resolvido pelo backend, nunca recombinado aqui. */
+  listNetworkDevices: () => request<NetworkDeviceList>('GET', '/network/devices'),
+  /** `dry_run` = prévia obrigatória antes de qualquer atribuição em lote (nunca se pula a prévia). */
+  assignNetwork: (body: NetworkAssignRequest) =>
+    request<NetworkAssignResult>('POST', '/network/assign', { body }),
+  /** Registra o PEDIDO de medir de novo (202): não mede nada aqui — a sonda (25.5) é quem executa. */
+  verifyNetworkDevice: (instanceId: string) =>
+    request<NetworkRequestAccepted>('POST', `/network/devices/${enc(instanceId)}/verify`),
+  /** Registra o PEDIDO de reaplicar a configuração desejada (202): a aplicação (25.4) é quem executa. */
+  reapplyNetworkDevice: (instanceId: string) =>
+    request<NetworkRequestAccepted>('POST', `/network/devices/${enc(instanceId)}/reapply`),
 
   listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>
     request<Approval[]>('GET', '/approvals', {

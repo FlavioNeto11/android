@@ -33,6 +33,7 @@ import {
   ScrollText,
   Send,
   ShieldAlert,
+  ShieldCheck,
   SkipForward,
   Stamp,
   TriangleAlert,
@@ -44,7 +45,7 @@ import {
 } from 'lucide-react';
 import type {
   ActionStatus, AttemptStatus, AutomationState, ConnectivityInfo, ControlOwner, DeliveryLevel, EventRecord, Flow, Health,
-  InstanceState, Objective, ObjectiveStatus, ReadinessInfo, RunStatus, Step, StepStatus, StreamStatus,
+  InstanceState, NetworkState, Objective, ObjectiveStatus, ReadinessInfo, RunStatus, Step, StepStatus, StreamStatus,
 } from '../api/types';
 
 /**
@@ -179,6 +180,18 @@ export const EVENT_LEVEL: Record<EventRecord['level'], StatusMeta> = {
   info: { label: 'Info', tone: 'info', icon: Info },
   warn: { label: 'Aviso', tone: 'warning', icon: TriangleAlert },
   error: { label: 'Erro', tone: 'danger', icon: CircleX },
+};
+
+/**
+ * Rede por aparelho (ADR-056 §3): cinco estados, cor que NUNCA promete sucesso. Só `trafego_verificado` prova o
+ * tráfego — `configurado` e `conectado` provam a configuração e a sessão, não que o tráfego saiu pela rota certa.
+ */
+export const NETWORK_STATE: Record<NetworkState, StatusMeta> = {
+  pendente: { label: 'Pendente', tone: 'muted', icon: CircleDashed, description: 'Ainda não foi pedido, ou o pedido ainda não chegou ao aparelho.' },
+  configurado: { label: 'Configurado', tone: 'info', icon: CircleDot, description: 'O aparelho aceitou a configuração. Isso prova a configuração, não o tráfego.' },
+  conectado: { label: 'Conectado', tone: 'info', icon: Wifi, description: 'O cliente de VPN está com a sessão ativa. O IP de saída ainda não foi medido de dentro do aparelho.' },
+  trafego_verificado: { label: 'Tráfego verificado', tone: 'success', icon: ShieldCheck, description: 'Medido de dentro do aparelho: o tráfego saiu pela rota configurada.' },
+  parcial: { label: 'Parcial', tone: 'warning', icon: TriangleAlert, description: 'Só parte do que foi pedido está confirmada (ex.: VPN sem o proxy encadeado, ou só alguns apps cobertos).' },
 };
 
 export const UNKNOWN_STATUS: StatusMeta = { label: 'Desconhecido', tone: 'muted', icon: CircleHelp };
@@ -335,11 +348,15 @@ export function slotWaitDetail(
  * cheio) ou resposta do modelo (chamada em voo). "aguardando aparelho" (`device_slot`/`profile_limit`) e
  * "aguardando pessoa" continuam cobertos por `slotWaitDetail`/`waiting_user`; este mapa é só a parte de IA.
  */
-export type WaitReason = 'device_slot' | 'profile_limit' | 'ai_capacity' | 'model_response' | 'pathfinder';
+// C4 (Onda 0): o portão de rede (`Scheduler.rede_gate`) grava `wait_reason='rede'` quando a etapa precisa da rede
+// verificada (política `exigida`/`exigida_com_bloqueio`) e o aparelho ainda não chegou a `trafego_verificado`.
+export type WaitReason = 'device_slot' | 'profile_limit' | 'ai_capacity' | 'model_response' | 'pathfinder' | 'rede';
 
 export const WAIT_REASON: Record<WaitReason, StatusMeta> = {
   device_slot: { label: 'Aguardando aparelho', tone: 'info', icon: Hourglass },
   profile_limit: { label: 'Aguardando limite do perfil', tone: 'warning', icon: Hourglass },
+  rede: { label: 'Aguardando rede', tone: 'warning', icon: Hourglass,
+         description: 'A política de rede deste aparelho exige tráfego verificado antes da tarefa; veja o painel Rede.' },
   ai_capacity: { label: 'Aguardando vaga de IA', tone: 'info', icon: Bot,
                 description: 'O limite de chamadas simultâneas ao modelo está cheio; a etapa entra assim que abrir vaga.' },
   model_response: { label: 'Aguardando resposta do modelo', tone: 'accent', icon: LoaderCircle, spin: true,
