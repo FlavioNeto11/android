@@ -353,6 +353,66 @@ describe('Custo de IA desta execução', () => {
     expect(el.querySelector('summary')?.textContent).toContain('sem preço');
   });
 
+  // Item 18.3: o formato de `taskqueue/projecao.py::projetar`, com a janela efetiva menor que a configurada.
+  const PROJECAO = {
+    janela_dias: 14, janela_configurada: 30, minimo_de_amostras: 5, amostras_sem_custo: 3,
+    chamadas: { p50: 10, p90: 17 }, segundos: { p50: 180, p90: 420 }, usd: { p50: 0.2, p90: 0.38 }, sem_base: ['curtir'],
+    etapas: [
+      { key: 'abrir', title: 'Abrir o perfil', action: 'abrir_perfil', samples: 12, calls: { p50: 4, p90: 7 },
+        seconds: { p50: 60, p90: 150 }, usd: { p50: 0.08, p90: 0.15 }, no_baseline: false, samples_without_cost: 3 },
+      { key: 'curtir', title: 'Curtir', action: '*', samples: 2, calls: { p50: 6, p90: 10 },
+        seconds: { p50: 120, p90: 270 }, usd: { p50: 0.12, p90: 0.23 }, no_baseline: true, samples_without_cost: 0 },
+    ],
+  };
+
+  it('mostra o normal medido do plano ao lado do custo, com o rótulo da janela efetiva', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json(REPORT));
+    backend.on('GET', /^\/api\/runs\/[^/]+\/projection$/, () => json(PROJECAO));
+    const el = await render(<RunUsageCard run={{ id: RUN_ID, status: 'running' }} />);
+    expect(backend.callsTo('GET', /projection$/)).toHaveLength(0);           // recolhido: nada lido ainda
+    await openDetails(/Custo de IA desta execução/, el);
+    await waitFor(() => expect(text(el)).toContain('Normal medido para este plano'));
+    expect(backend.callsTo('GET', /projection$/)[0]?.path).toBe(`/api/runs/${RUN_ID}/projection`);
+    expect(text(el)).toContain('Normal medido nos últimos 14 dias — a janela configurada é de 30 dias, limitada pela '
+                               + 'retenção dos registros de IA');
+    expect(text(el)).toContain('10–17');
+    expect(text(el)).toContain('US$ 0,20–0,38');
+    expect(text(el)).toContain('3–7 min');
+    expect(text(el)).toContain('1 etapa sem base própria (menos de 5 amostras da ação)');
+    expect(text(el)).toContain('3 amostras não fizeram chamada de IA');
+    // O custo real continua lá, e a tabela por etapa só monta quando aberta.
+    await waitFor(() => expect(text(el)).toContain('US$ 0,0868'));
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(2);
+    await openDetails(/Por etapa/, el);
+    await waitFor(() => expect(el.querySelectorAll('tbody tr')).toHaveLength(4));
+    expect(text(el)).toContain('Curtir · sem base própria');
+  });
+
+  it('409 no_plan não é erro: diz que a projeção vem com o plano, e relê quando a situação muda', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json(REPORT));
+    backend.on('GET', /^\/api\/runs\/[^/]+\/projection$/, () => apiError(409, 'no_plan', 'A execução ainda não tem plano.'));
+    const el = await render(<RunUsageCard run={{ id: RUN_ID, status: 'planning' }} />);
+    await openDetails(/Custo de IA/, el);
+    await waitFor(() => expect(text(el)).toContain('A execução ainda não tem plano: a projeção aparece quando ele ficar pronto.'));
+    expect(text(el)).not.toContain('Projeção indisponível');
+    backend.on('GET', /^\/api\/runs\/[^/]+\/projection$/, () => json(PROJECAO));
+    await render(<RunUsageCard run={{ id: RUN_ID, status: 'planned' }} />);
+    await waitFor(() => expect(text(el)).toContain('US$ 0,20–0,38'));
+    expect(backend.callsTo('GET', /projection$/)).toHaveLength(2);
+  });
+
+  it('sem histórico: diz que a primeira execução mede, sem inventar número', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json(REPORT));
+    backend.on('GET', /^\/api\/runs\/[^/]+\/projection$/, () => json({
+      ...PROJECAO, janela_dias: 30, chamadas: { p50: 0, p90: 0 }, usd: { p50: 0, p90: 0 }, sem_base: ['abrir', 'curtir'],
+    }));
+    const el = await render(<RunUsageCard run={{ id: RUN_ID, status: 'planned' }} />);
+    await openDetails(/Custo de IA/, el);
+    await waitFor(() => expect(text(el)).toContain('Sem histórico suficiente para projetar as 2 etapas — a primeira execução mede.'));
+    expect(text(el)).toContain('Normal medido nos últimos 30 dias.');
+    expect(text(el)).not.toContain('limitada pela retenção');
+  });
+
   it('erro do backend vira estado de erro com "Tentar de novo"', async () => {
     backend.on('GET', /^\/api\/usage$/, () => apiError(503, 'db_locked', 'Banco ocupado'));
     const el = await render(<RunUsageCard run={{ id: RUN_ID, status: 'running' }} />);

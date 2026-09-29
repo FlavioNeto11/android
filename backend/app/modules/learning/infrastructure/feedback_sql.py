@@ -109,13 +109,7 @@ class LeituraDoVotoSql:
         return tuple(refs)
 
     def _aprendidas(self, etapas: Sequence[str]) -> list[int]:
-        saida: list[int] = []
-        for i in range(0, len(etapas), _LOTE):
-            lote = tuple(etapas[i:i + _LOTE])
-            marcas = ",".join("?" for _ in lote)
-            saida.extend(linhas.inteiro(r, "id") for r in self._db.query(
-                f"SELECT id FROM recipes WHERE learned_from_step IN ({marcas}) ORDER BY id", lote))
-        return saida
+        return receitas_aprendidas(self._db, etapas)
 
     def _pacote(self, app_id: object, app_ids: object) -> str:
         app = app_da_etapa(app_id, app_ids)
@@ -154,6 +148,17 @@ def montar_feedback(db: object, servico: LearningService) -> ServicoDeFeedback |
 
 
 # ------------------------------------------------------------------ apoio
+def receitas_aprendidas(db: Database, etapas: Sequence[str]) -> list[int]:
+    """As receitas que nasceram destas etapas (`recipes.learned_from_step`), em lotes abaixo do limite do SQLite."""
+    saida: list[int] = []
+    for i in range(0, len(etapas), _LOTE):
+        lote = tuple(etapas[i:i + _LOTE])
+        marcas = ",".join("?" for _ in lote)
+        saida.extend(linhas.inteiro(r, "id") for r in db.query(
+            f"SELECT id FROM recipes WHERE learned_from_step IN ({marcas}) ORDER BY id", lote))
+    return saida
+
+
 def _verificada(etapa: Row) -> bool:
     """A etapa concluiu com prova da tela (`StepResult.verified`)? Sem resultado legível, não."""
     resultado = linhas.json_legado(linhas.texto_ou_nulo(etapa, "result"))
@@ -208,4 +213,4 @@ def _sinal(r: Row) -> SinalGravado:
         updated_at=linhas.texto_ou_nulo(r, "updated_at"))
 
 
-__all__ = ["LeituraDoVotoSql", "montar_feedback"]
+__all__ = ["LeituraDoVotoSql", "montar_feedback", "receitas_aprendidas"]

@@ -7,7 +7,8 @@
   continua lida só pela tela de perfil declarada; sem a aba, ela não entra em casa;
 - o CICLO: observação em etapa comprovada, candidata, prova local e negativa, publicação sozinha só no modo `on`,
   evidência simulada que não publica, o primeiro conflito que desliga, a exportação YAML que volta pelo carregador e a
-  absorção pelo repositório;
+  absorção pelo repositório; a candidata nasce com o `run_id` do digest, e ela e o desligamento pelo conflito
+  aparecem no "Aprendizado desta execução" (`GET /api/runs/{id}/feedback`) da execução certa;
 - o DEIXA-UM-FORA com as telas do dublê (sem `feed` → candidata de casa; sem `thread` → o compositor da conversa) e o
   app de e-mail declarado só em dado aprendendo uma tela nova.
 
@@ -39,14 +40,17 @@ from app.db import Database
 from app.events import EventBus
 from app.integrations.app_declarado import conhecimento
 from app.integrations.app_declarado.sessao import ConferenciaDaSessao, Outcome, SessaoDeclarada
+from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.application.telas import ServicoDeTelas, TelaDaTentativa
 from app.modules.learning.domain import telas as dominio
+from app.modules.learning.domain.aprendido import Grupo
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.promocao import Decisao, Limiares, veredito_de_repeticao
 from app.modules.learning.domain.vocabulario import LivroKind, ModoDeTelas, Posicao
 from app.modules.learning.infrastructure import ligar_telas
+from app.modules.learning.infrastructure.aprendido_sql import LeituraDoAprendidoSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -435,6 +439,48 @@ def test_o_primeiro_conflito_desliga(mundo: Mundo) -> None:
     assert any(e.stance is Posicao.CONFLICT for e in mundo.repo.evidencias(item.id))
     assert "conflito" in mundo.repo.trilha(item.id)[-1].reason
     assert conhecimento.regras_aprendidas(CORREIO) == ()                # a sessão para de consumir na hora
+
+
+def _execucao(db: Database, run_id: str) -> None:
+    """A linha de `runs` que o "Aprendizado desta execução" exige (a coleta e o digest das telas não a leem)."""
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES (?,?,?,?,?,?,?,?)", (run_id, run_id, "abrir a pasta", "execute", "completed", 0,
+                                             '["android-02"]', to_iso(AGORA)))
+
+
+def test_a_tela_nascida_no_digest_e_a_desligada_no_conflito_aparecem_no_aprendizado_da_execucao(mundo: Mundo) -> None:
+    """Pelo minerador REAL (sinais `tela_vista` → digest de r2): a tela nasce com o `run_id` de r2 e aparece entre as
+    candidatas do "Aprendizado desta execução" de r2 — não na de r1, que só a observou. O primeiro conflito, em r3,
+    a desliga: no bloco de r3 ela entra no mesmo grupo como tela que já existia, desligada nesta execução."""
+    _aprender(mundo, PASTA_NOVA)
+    (item,) = mundo.itens()
+    trilha = mundo.repo.trilha(item.id)
+    assert [(t.to_state, t.run_id) for t in trilha] == [(S.CANDIDATE, "r2"), (S.VALIDATED, None),
+                                                        (S.PUBLISHED, None)]
+    for run_id in ("r1", "r2", "r3"):
+        _execucao(mundo.db, run_id)
+    bloco = AprendizadoDaExecucao(mundo.livro, LeituraDoAprendidoSql(mundo.db), TriagemDeCredencial())
+    [nascida] = [i for i in bloco.da_execucao("r2") if i.grupo is Grupo.CANDIDATA]
+    assert (nascida.kind, nascida.ref, nascida.estado, nascida.titulo) == (
+        LivroKind.TELA, item.id, SkillState.PUBLISHED, item.summary)
+    assert nascida.papel == "tela, evidência a favor"
+    assert not any(i.ref == item.id for i in bloco.da_execucao("r1"))       # r1 só reforçou: fica de fora
+    # O conflito de r3 (um uso e um login no mesmo aparelho, 30 s depois).
+    login = parse_hierarchy(FakeCorreio(tela="entrada").page_source())
+    mundo.andar(minutes=10)
+    mundo.fechar(_fechamento(_tela(*PASTA_NOVA), run="r3", n=2))
+    mundo.andar(seconds=30)
+    mundo.fechar(_fechamento(login, run="r3", n=4, status="failed", verified=False))
+    assert mundo.repo.item(item.id).state is SkillState.DISABLED
+    assert mundo.repo.trilha(item.id)[-1].run_id == "r3"
+    [desligada] = [i for i in bloco.da_execucao("r3") if i.grupo is Grupo.CANDIDATA]
+    assert (desligada.ref, desligada.estado) == (item.id, SkillState.DISABLED)
+    # O uso de r3 (a favor) e o conflito que a desligou, pelo sistema: "nesta execução".
+    assert desligada.papel == ("tela que já existia, desligada nesta execução, evidência a favor, "
+                               "evidência em conflito")
+    # E r2 continua dizendo que a tela nasceu dela, agora com o estado de hoje.
+    [de_r2] = [i for i in bloco.da_execucao("r2") if i.grupo is Grupo.CANDIDATA]
+    assert (de_r2.papel, de_r2.estado) == ("tela, evidência a favor", SkillState.DISABLED)
 
 
 def test_o_uso_e_o_instante_da_observacao_e_nao_o_do_digest(mundo: Mundo) -> None:

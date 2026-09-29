@@ -237,10 +237,12 @@ class ServicoDeTelas:
 
     # ================================================================== digest e curadoria
     def minerar(self, run_id: str) -> int:
-        """Minerador do digest: os apps com tela desconhecida vista nesta execução são minerados de novo."""
+        """Minerador do digest: os apps com tela desconhecida vista nesta execução são minerados de novo. A candidata
+        que nasce aqui leva o `run_id` no nascimento: foi esta execução que a fez passar da repetição mínima, e o
+        "Aprendizado desta execução" a mostra entre as candidatas geradas."""
         if self.ajustes.modo is ModoDeTelas.OFF:
             return 0
-        return sum(self.minerar_app(app) for app in self._leitura.apps_da_execucao(run_id))
+        return sum(self.minerar_app(app, run_id=run_id) for app in self._leitura.apps_da_execucao(run_id))
 
     def executar(self, agora: datetime) -> int:
         """Passo da curadoria: valida e publica o que ficou para trás, absorve e aposenta."""
@@ -257,7 +259,9 @@ class ServicoDeTelas:
             feito += self._aposentar(app, agora)
         return feito
 
-    def minerar_app(self, app: str) -> int:
+    def minerar_app(self, app: str, *, run_id: str | None = None) -> int:
+        """`run_id`: a execução cujo digest minera (vai só no nascimento da candidata; a validação e a publicação
+        que vêm logo depois dependem de observações de várias execuções e ficam sem ele)."""
         declaradas = self._declarado.declaradas(app)
         if declaradas is None:
             return 0
@@ -269,7 +273,7 @@ class ServicoDeTelas:
         regras = [r for _, r in self._vivas(app)]
         livres = [o for o in positivas if not any(r.casa_com(o.ids) for r in regras)]
         for candidata in dominio.propor(livres, amostras, declaradas, minimo=aj.observacoes):
-            item = self._nascer(app, candidata)
+            item = self._nascer(app, candidata, run_id=run_id)
             if item is not None:
                 feito += 1 + self._evidenciar(app, candidata.observacoes, so=item.id)
         return feito + self._avaliar(app, amostras)
@@ -332,7 +336,7 @@ class ServicoDeTelas:
                     detail=None if posicao is Posicao.FOR else "tela de casa vista sem a aba de perfil")))
         return feito
 
-    def _nascer(self, app: str, c: dominio.Candidata) -> ItemDeAprendizado | None:
+    def _nascer(self, app: str, c: dominio.Candidata, *, run_id: str | None = None) -> ItemDeAprendizado | None:
         versoes = Counter(o.versao for o in c.observacoes if o.versao)
         observacoes: list[JsonValue] = [o.origem for o in c.observacoes[:20]]
         execucoes: list[JsonValue] = [r for r in sorted({o.run_id for o in c.observacoes if o.run_id})[:20]]
@@ -346,7 +350,8 @@ class ServicoDeTelas:
                 kind=LivroKind.TELA, escopo=Escopo(app=app), content=c.regra.conteudo(),
                 summary=f"Tela aprendida {c.regra.tela} ({len(c.regra.ids_todos)} ids{casa})",
                 source_kind=SourceKind.SCREEN_OBSERVATION, side_effect=False,
-                app_version=versoes.most_common(1)[0][0] if versoes else None, provenance=proveniencia))
+                app_version=versoes.most_common(1)[0][0] if versoes else None, provenance=proveniencia),
+                run_id=run_id)
         except ErroDeAprendizado as exc:
             log.info("aprendizado: a candidata de tela %s não nasceu (%s)", c.regra.tela, exc)
             return None

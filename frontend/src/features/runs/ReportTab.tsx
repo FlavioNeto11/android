@@ -14,7 +14,10 @@ import { copyText, humanizeKey, isRecord, scalarToText } from '../../lib/format'
 import { DELIVERY_LEVEL, OBJECTIVE_STATUS, isRunTerminal, metaOf } from '../../lib/status';
 import { useSessionStore } from '../../store/session';
 import { toast } from '../../store/toasts';
-import { type FeedbackDaExecucao, type ItemAprendidoNaExecucao, rotuloDoMotivo, rotuloDoSinal, votoDoItem } from '../aprendizado/model';
+import {
+  type FeedbackDaExecucao, type ItemAprendidoNaExecucao, isEstadoDoLivro, rotuloDoEstado, rotuloDoMotivo, rotuloDoSinal,
+  votoDoItem,
+} from '../aprendizado/model';
 import aprendizadoStyles from '../aprendizado/Aprendizado.module.css';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import styles from './Runs.module.css';
@@ -175,6 +178,11 @@ export function ReportTab({ run }: { run: RunSummary }) {
   );
 }
 
+/** O estado vem no vocabulário do livro (`published`…): na linha, o mesmo rótulo da página Aprendizado. */
+function estadoLegivel(estado: string): string {
+  return isEstadoDoLivro(estado) ? rotuloDoEstado(estado).toLowerCase() : estado;
+}
+
 const GRUPO_DO_APRENDIZADO: Record<ItemAprendidoNaExecucao['grupo'], string> = {
   receita: 'Receitas aprendidas ou usadas', fluxo: 'Fluxos criados, usados ou desligados', falha: 'Falhas classificadas',
   candidata: 'Candidatas geradas', licao: 'Lições expostas (com o braço)',
@@ -182,10 +190,12 @@ const GRUPO_DO_APRENDIZADO: Record<ItemAprendidoNaExecucao['grupo'], string> = {
 
 /**
  * "Aprendizado desta execução" (ADR-054, D2): o que ela ensinou ou usou do livro, os votos e os sinais implícitos
- * (confirmar à mão, repetir, abandonar, tomar o controle…). O detalhe por receita/fluxo/lição vem do bloco opcional
- * `aprendizado` de `GET /api/runs/{id}/feedback`; sem ele, ficam os votos e os sinais.
+ * (confirmar à mão, repetir, abandonar, tomar o controle…). O detalhe por receita/fluxo/lição vem do bloco
+ * `aprendizado` de `GET /api/runs/{id}/feedback`. `aprendizado: null` (a leitura do bloco falhou no servidor, ou um
+ * servidor antigo não o manda) NÃO é "nada aprendido": a seção diz que não conseguiu ler e mostra os votos e os sinais.
  */
 function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | null | undefined }) {
+  const semBloco = feedback?.aprendizado === null;
   const grupos = feedback?.aprendizado
     ? (Object.keys(GRUPO_DO_APRENDIZADO) as ItemAprendidoNaExecucao['grupo'][])
         .map((g) => ({ g, itens: feedback.aprendizado?.filter((i) => i.grupo === g) ?? [] }))
@@ -193,7 +203,7 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
     : [];
   const votos = feedback?.votos ?? [];
   const sinais = (feedback?.sinais ?? []).filter((s) => s.kind !== 'feedback');
-  const vazio = grupos.length === 0 && votos.length === 0 && sinais.length === 0;
+  const vazio = !semBloco && grupos.length === 0 && votos.length === 0 && sinais.length === 0;
   return (
     <section className={aprendizadoStyles.naExecucao} aria-labelledby="relatorio-aprendizado">
       <h3 id="relatorio-aprendizado" className={styles.subTitle}>Aprendizado desta execução</h3>
@@ -205,6 +215,9 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
         <p className={styles.muted}>Nada aprendido, usado do livro ou sinalizado nesta execução.</p>
       ) : (
         <>
+          {semBloco ? (
+            <p className={styles.muted}>Não foi possível ler o que esta execução aprendeu ou usou do livro.</p>
+          ) : null}
           {grupos.map(({ g, itens }) => (
             <div key={g}>
               <p className={styles.muted}>{GRUPO_DO_APRENDIZADO[g]}</p>
@@ -212,7 +225,7 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
                 {itens.map((i, n) => (
                   <li key={`${g}-${i.ref ?? n}`}>
                     {i.texto}{i.ref && i.texto !== i.ref ? <span className="mono"> ({i.ref})</span> : null}
-                    {i.papel ? ` · ${i.papel}` : ''}{i.estado ? ` · ${i.estado}` : ''}
+                    {i.papel ? ` · ${i.papel}` : ''}{i.estado ? ` · ${estadoLegivel(i.estado)}` : ''}
                   </li>
                 ))}
               </ul>

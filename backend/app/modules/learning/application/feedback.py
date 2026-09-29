@@ -39,7 +39,8 @@ from app.modules.learning.domain.vocabulario import (LivroKind, MotivoDoVoto, Po
                                                      Veredito)
 from app.modules.learning.domain.voto import (DESLIGAVEIS, REF_NO_BACKLOG, AcaoDoEfeito, Conhecimento, Efeito,
                                               ItemVotado, PlanoDoVoto, Uso, Verificador, conferir_voto, desfecho,
-                                              efeitos_do_voto, licao_refutada, reativar_desfaz)
+                                              efeitos_do_voto, licao_refutada, motivo_do_desligamento,
+                                              reativar_desfaz)
 from app.modules.skills.domain.document import JsonObject
 from app.util import to_iso
 
@@ -213,7 +214,7 @@ class ServicoDeFeedback:
                  by: str) -> tuple[EfeitoAplicado, ...]:
         origem = f"signal:{sid}"
         detalhe = f"voto {voto.verdict.value}" + (f": {voto.reason.value}" if voto.reason else "")
-        motivo = f"deu errado: {voto.reason.value if voto.reason else 'sem motivo'} (voto em {_fonte(lido)})"
+        motivo = motivo_do_desligamento(voto.reason, _fonte(lido))
         saida: list[EfeitoAplicado] = []
         for e in plano.efeitos:
             if e.acao is AcaoDoEfeito.DESLIGAR:

@@ -11,12 +11,16 @@ import usageStyles from '../usage/Usage.module.css';
 import { isUsageEmpty, usageTotals } from '../usage/usage';
 import { RunUsageTotals, UsageTable } from '../usage/UsageView';
 import { useUsage } from '../usage/useUsage';
+import { ProjecaoDoPlano } from './ProjecaoDoPlano';
 
 type RunRef = Pick<RunSummary, 'id' | 'status'>;
 
 /**
  * "Custo de IA desta execução" — recolhido por padrão; o `GET /api/usage?run_id=` só acontece na primeira
  * abertura. Depois disso recarrega sozinho quando a execução termina, ou pelo botão "Atualizar".
+ *
+ * Logo abaixo do custo real, o normal medido para o plano (item 18.3, `GET …/projection`), com a janela efetiva:
+ * a comparação que faltava para saber se o gasto está fora do normal. Também só é lido na primeira abertura.
  */
 export function RunUsageCard({ run }: { run: RunRef }) {
   const [total, setTotal] = useState<string | null>(null);
@@ -25,7 +29,12 @@ export function RunUsageCard({ run }: { run: RunRef }) {
       summary={<><Coins size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Custo de IA desta execução</>}
       meta={total ?? undefined}
     >
-      {() => <RunUsageBody run={run} onTotal={setTotal} />}
+      {() => (
+        <div className={usageStyles.wrap}>
+          <RunUsageBody run={run} onTotal={setTotal} />
+          <ProjecaoDoPlano run={run} />
+        </div>
+      )}
     </Disclosure>
   );
 }
