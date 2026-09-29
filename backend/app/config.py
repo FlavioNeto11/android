@@ -603,6 +603,76 @@ class SkillsCfg(BaseModel):
     enabled: bool = False
 
 
+class LicoesDoPapelCfg(BaseModel):
+    """Teto das lições no prompt de um papel (ator ou planejador; o verificador nunca recebe lição, ADR-024)."""
+
+    tokens: int = Field(120, ge=0, le=2000)
+    max: int = Field(3, ge=0, le=20)
+
+
+class LicoesCfg(BaseModel):
+    #: off = não grava · shadow = grava e mede sem ir ao prompt · on = publica sem efeito e vai ao prompt (em prova)
+    modo: Literal["off", "shadow", "on"] = "shadow"
+    ator: LicoesDoPapelCfg = LicoesDoPapelCfg()
+    planejador: LicoesDoPapelCfg = LicoesDoPapelCfg(tokens=150)
+    minimo_por_braco: int = Field(8, ge=1, le=1000)        # unidades por braço para o veredito de efeito
+    maximo_por_braco: int = Field(20, ge=1, le=1000)       # 'neutra' aos N por braço
+    holdout_publicada: float = Field(0.1, ge=0, le=0.5)    # braço de controle depois de 'ajuda'
+
+
+class TelasAprendidasCfg(BaseModel):
+    #: off = não observa · observe = grava, minera e valida, sem a sessão consumir · on = publica sozinha (D1)
+    modo: Literal["off", "observe", "on"] = "observe"
+    observacoes: int = Field(3, ge=1, le=100)
+    execucoes: int = Field(2, ge=1, le=100)
+
+
+class FluxoAprendidoCfg(BaseModel):
+    concordancias: int = Field(1, ge=0, le=20)             # execuções concordantes, além da que gerou, para publicar
+
+
+class ModoDoAprendizadoCfg(BaseModel):
+    modo: Literal["off", "shadow", "on"] = "off"
+
+
+class BacklogCfg(BaseModel):
+    minimo_ocorrencias: int = Field(3, ge=1, le=1000)
+    pessoa_usd: float = Field(0.25, ge=0, le=100)          # custo de uma intervenção humana, só para ordenar
+    aparelho_usd_min: float = Field(0.0, ge=0, le=100)     # custo de um minuto de aparelho, só para ordenar
+    prova_minimo: int = Field(10, ge=1, le=10_000)         # tentativas elegíveis depois do commit para provar
+    prova_fator: float = Field(0.5, gt=0, le=1)            # taxa depois ≤ fator × linha de base → corrigido
+
+
+class RetencaoDoAprendizadoCfg(BaseModel):
+    sinais_dias: int = Field(180, ge=1, le=3650)
+    feedback_dias: int = Field(365, ge=1, le=3650)         # o voto explícito vive mais que os sinais implícitos
+    exposicoes_dias: int = Field(120, ge=1, le=3650)       # depois de preenchidas
+    evidencias_por_item: int = Field(200, ge=1, le=100_000)  # as mais recentes; os contadores guardam o total
+    diario_dias: int = Field(400, ge=1, le=3650)
+    candidata_sem_evidencia_dias: int = Field(90, ge=1, le=3650)
+
+
+class LearningCfg(BaseModel):
+    """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
+    no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
+    até a primeira prova real; publicar sozinho (D1) exige o modo do tipo em `on` e nunca vale para o que tem efeito
+    externo ou texto de pessoa. Itens publicados, desligados, a trilha e o backlog nunca são purgados."""
+
+    enabled: bool = True
+    curadoria_s: int = Field(900, ge=60, le=86_400)
+    licoes: LicoesCfg = LicoesCfg()
+    telas: TelasAprendidasCfg = TelasAprendidasCfg()
+    fluxo: FluxoAprendidoCfg = FluxoAprendidoCfg()
+    voz: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
+    preferencias: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
+    backlog: BacklogCfg = BacklogCfg()
+    #: Lições escritas por IA a partir das falhas: DESCARTADAS como padrão (gastam saldo e abrem injeção). Só 0 é
+    #: aceito — ligar exige código novo e decisão do dono sobre chamada paga (ADR-049/051).
+    ia_resumos_por_dia: int = Field(0, ge=0, le=0)
+    takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
+    retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
+
+
 class AppSeed(BaseModel):
     id: str
     name: str
@@ -641,6 +711,7 @@ class AppConfigFile(BaseModel):
     releases: ReleasesCfg = ReleasesCfg()
     skills: SkillsCfg = SkillsCfg()
     provisioning: ProvisioningCfg = ProvisioningCfg()
+    aprendizado: LearningCfg = LearningCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 

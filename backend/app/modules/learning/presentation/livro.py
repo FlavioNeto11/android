@@ -1,0 +1,137 @@
+"""Rotas do livro de aprendizado (ADR-054, fluxo §8): a leitura única e o status com trilha.
+
+- `GET  /api/aprendizado?kind=&state=&app=&origem=`: a união (receita, fluxo, habilidade, memória e os itens do
+  livro), com a contagem por tipo e estado;
+- `GET  /api/aprendizado/pendentes`: a fila do D1 ("Para aprovar") e a contagem da barra do topo;
+- `GET  /api/aprendizado/revisar`: receitas e fluxos ATIVOS com efeito externo que nenhuma pessoa decidiu pelo livro
+  (o legado anterior ao D1);
+- `GET  /api/aprendizado/{kind}/{ref}`: o item com a evidência e a trilha (memória: só a contagem);
+- `POST /api/aprendizado/{kind}/{ref}/status {to, reason}`: em receita e fluxo, CAS no status nativo e trilha; em
+  habilidade, 409 com o endereço da rota das habilidades; motivo obrigatório.
+
+Camada de apresentação: fala FastAPI, traduz as recusas do domínio (`ErroDeAprendizado.code`) para o
+`{code, message}` de sempre e monta o JSON. Regra nenhuma mora aqui. As rotas ESPECÍFICAS dos pacotes seguintes
+(`/api/aprendizado/falhas`, `/licoes/previa`...) entram ANTES destas em `router.py`: `{kind}/{ref}` casaria com elas.
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TypeVar
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.modules.learning.application.servico import DetalheDoLivro, LearningService
+from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, EntradaInvalida, ErroDeAprendizado, NaoEncontrado,
+                                               SkillState, UseARotaDasHabilidades)
+from app.modules.learning.domain.livro import EntradaDoLivro, Transicao
+from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.vocabulario import LivroKind, Origem
+from app.modules.skills.domain.document import JsonObject, JsonValue
+
+T = TypeVar("T")
+
+router = APIRouter(prefix="/api/aprendizado")
+
+
+# ------------------------------------------------------------------ acesso ao estado
+def _servico(request: Request) -> LearningService:
+    poc: object = getattr(request.app.state, "poc", None)
+    servico: object = getattr(poc, "learning", None)
+    if not isinstance(servico, LearningService):
+        raise HTTPException(503, detail={"code": "not_ready", "message": "O aprendizado ainda não foi composto."})
+    return servico
+
+
+def _quem(request: Request) -> str:
+    """Quem decide: o operador da sessão do painel, ou `panel`. Nunca o ator de sistema (a regra `_quem` das
+    habilidades): pela rota decide sempre uma pessoa."""
+    nome: object = getattr(request.state, "operador", None)
+    quem = nome if isinstance(nome, str) and nome.strip() else "panel"
+    return f"painel:{quem}" if quem == SYSTEM_ACTOR else quem
+
+
+def _http(exc: ErroDeAprendizado) -> HTTPException:
+    detalhe: dict[str, JsonValue] = {"code": exc.code, "message": str(exc)}
+    if isinstance(exc, NaoEncontrado):
+        return HTTPException(404, detail=detalhe)
+    if isinstance(exc, EntradaInvalida):
+        return HTTPException(422, detail=detalhe)
+    if isinstance(exc, UseARotaDasHabilidades):
+        detalhe["href"] = exc.href
+    return HTTPException(409, detail=detalhe)
+
+
+def _chamar(fn: Callable[[], T]) -> T:
+    try:
+        return fn()
+    except ErroDeAprendizado as exc:
+        raise _http(exc) from exc
+
+
+# ------------------------------------------------------------------ JSON
+def _entrada(e: EntradaDoLivro) -> JsonObject:
+    return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
+            "native_status": e.native_status, "title": e.title, "app": e.app, "origin": e.origin.value,
+            "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
+            "created_at": e.created_at, "state_at": e.state_at, "last_used_at": e.last_used_at, "uses": e.uses,
+            "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail}
+
+
+def _evidencia(e: Evidencia) -> JsonObject:
+    return {"stance": e.stance.value, "origin_ref": e.origin_ref, "run_id": e.run_id, "instance_id": e.instance_id,
+            "app_version": e.app_version, "simulated": e.simulated, "detail": e.detail, "observed_at": e.observed_at}
+
+
+def _transicao(t: Transicao) -> JsonObject:
+    return {"id": t.id, "from": t.from_state.value if t.from_state else None, "to": t.to_state.value,
+            "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id}
+
+
+def _detalhe(d: DetalheDoLivro) -> JsonObject:
+    return {"item": _entrada(d.entrada), "evidencias": [_evidencia(e) for e in d.evidencias],
+            "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes)}
+
+
+def _lista(entradas: tuple[EntradaDoLivro, ...]) -> JsonObject:
+    return {"itens": [_entrada(e) for e in entradas], "total": len(entradas)}
+
+
+class CorpoDeStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to: SkillState
+    reason: str = Field(min_length=1, max_length=500)
+
+
+# ------------------------------------------------------------------ rotas
+@router.get("", response_model=None)
+async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
+                    app: str | None = None, origem: Origem | None = None) -> JsonObject:
+    livro = _servico(request).livro(kind=kind, state=state, app=app, origem=origem)
+    contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
+    return {"itens": [_entrada(e) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
+
+
+@router.get("/pendentes", response_model=None)
+async def pendentes(request: Request) -> JsonObject:
+    return _lista(_servico(request).pendentes())
+
+
+@router.get("/revisar", response_model=None)
+async def revisar(request: Request) -> JsonObject:
+    return _lista(_servico(request).revisar())
+
+
+@router.get("/{kind}/{ref}", response_model=None)
+async def ler_item(request: Request, kind: LivroKind, ref: str) -> JsonObject:
+    servico = _servico(request)
+    return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)))
+
+
+@router.post("/{kind}/{ref}/status", response_model=None)
+async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: CorpoDeStatus) -> JsonObject:
+    servico = _servico(request)
+    quem = _quem(request)
+    entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)))

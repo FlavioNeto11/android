@@ -37,6 +37,7 @@ from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -329,8 +330,9 @@ class AppState:
         # "Conectado" para uma conta presa num desafio, e o login automático nunca disparava.
         self.scheduler.executor.on_auth_needed = self._sessao_desmentida
         self.scheduler.policy_gate = self._policy_gate
-        # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre.
-        self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
+        # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre. E o digest do
+        # aprendizado (ADR-054) é encadeado aqui, numa thread: o fim da execução nunca espera nem cai por causa dele.
+        self.scheduler.on_run_settled = self._execucao_assentada
         self.scheduler.on_items_collected = self._registrar_leitura
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
@@ -380,6 +382,13 @@ class AppState:
             self.skill_repo, LegacyFlowAdapter(self.db, self.scheduler.flows),
             skills_enabled=lambda: self.cfg.file.skills.enabled, flows_enabled=lambda: self.cfg.file.ai.flows)
         self.skill_planner = SkillRunPlanner(self.skill_registry, self._pacote_do_app_id, travas)
+        # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
+        # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
+        self.learning = montar_aprendizado(
+            self.db, config=lambda: self.cfg.file.aprendizado,
+            retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
+            precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo)
+        self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
         self.teaching = TeachingService(
@@ -1899,6 +1908,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
+            # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
+            self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura.
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
         else:
@@ -2021,6 +2032,9 @@ class AppState:
         finally:
             if self.manage_appium:
                 await asyncio.to_thread(self.appium.stop)
+            if self._digestoes:
+                # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
+                await asyncio.wait(set(self._digestoes), timeout=10)
             self.db.close()
 
     def _check_health(self) -> None:
@@ -2064,6 +2078,33 @@ class AppState:
             except Exception:  # noqa: BLE001 - medir nunca pode derrubar o backend
                 log.exception("gravação da janela de métricas")
 
+    # ------------------------------------------------------------------ aprendizado contínuo (ADR-054)
+    def _execucao_assentada(self, run_id: str) -> None:
+        """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
+        self._draft_locks.pop(run_id, None)
+        try:
+            laco = asyncio.get_running_loop()
+        except RuntimeError:
+            return                                   # fora do laço de eventos não há execução assentando
+        tarefa = laco.create_task(self._digerir(run_id), name=f"aprendizado-{run_id}")
+        self._digestoes.add(tarefa)
+        tarefa.add_done_callback(self._digestoes.discard)
+
+    async def _digerir(self, run_id: str) -> None:
+        try:
+            await asyncio.to_thread(self.learning.digerir_execucao, run_id)
+        except Exception:  # noqa: BLE001 - o aprendizado nunca derruba o fim de uma execução
+            log.exception("aprendizado: digest da execução %s", run_id)
+
+    async def _curadoria_loop(self) -> None:
+        """A régua diária durável e os passos registrados pelos pacotes seguintes, a cada `aprendizado.curadoria_s`."""
+        while True:
+            await asyncio.sleep(max(60, int(self.cfg.file.aprendizado.curadoria_s)))
+            try:
+                await asyncio.to_thread(self.learning.curar)
+            except Exception:  # noqa: BLE001 - a curadoria nunca derruba o processo
+                log.exception("aprendizado: curadoria")
+
     async def _retention_loop(self) -> None:
         while True:
             try:
@@ -2103,6 +2144,14 @@ class AppState:
         sumir da reconciliação de partida só porque é velho.
         """
         total = 0
+        # ADR-054: os dias ainda inteiros que esta purga vai morder entram na régua diária ANTES de `ai_calls` vencer
+        # (só lacuna; o dia agregado quando estava inteiro não é reescrito). Falha aqui não impede a purga.
+        corte = parse_iso(cutoff)
+        try:
+            if corte is not None:
+                self.learning.antes_da_purga(corte)
+        except Exception:  # noqa: BLE001 - a régua é do aprendizado; a retenção do resto segue
+            log.exception("aprendizado: régua diária antes da purga")
         total += self.db.execute(
             "DELETE FROM commands WHERE state IN ({}) AND finished_at IS NOT NULL AND finished_at < ?".format(
                 ",".join("?" for _ in COMMAND_TERMINAL)),
@@ -2113,6 +2162,10 @@ class AppState:
         total += self.db.execute(
             "DELETE FROM worker_enrollments WHERE created_at < ? AND (used_at IS NOT NULL OR expires_at < ?)",
             (enroll_cut, to_iso(now()))).rowcount
+        try:
+            total += self.learning.aplicar_retencao()        # `aprendizado.retencao` (ADR-054)
+        except Exception:  # noqa: BLE001 - idem
+            log.exception("aprendizado: retenção")
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:

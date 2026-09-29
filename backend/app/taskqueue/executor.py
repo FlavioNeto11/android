@@ -219,7 +219,8 @@ class StepExecutor:
         self.recipes = RecipeStore(repo.db)
         # Normal medido por ação (item 18.3): aviso ao passar do p90 e parada conservadora de laço descontrolado.
         self.historico = HistoricoDeAcoes(repo.db, lambda: cfg.file.ai.prices,
-                                          janela_dias=cfg.file.ai.step_budget.window_days)
+                                          janela_dias=cfg.file.ai.step_budget.window_days,
+                                          retencao_dias=lambda: int(self.get_settings().log_retention_days))
         self._acima_do_normal: set[str] = set()
         #: Os dados da persona de cada aparelho (ADR-040): a lista para o ator, a resolução de `type_secret(name)` e
         #: "há senha para o app desta etapa?". Metadados e referência do cofre; o valor só no canal sensível.
@@ -507,9 +508,10 @@ class StepExecutor:
         feitas = int(self.repo.db.query("SELECT count(*) n FROM ai_calls WHERE step_id=?", (step_id,))[0]["n"])
         nome = acao or "etapa livre"
         normal = f"{est.chamadas.p50:g}–{est.chamadas.p90:g}"
+        janela = self.historico.janela_dias          # a EFETIVA: nunca passa da retenção de ai_calls (ADR-054)
         if feitas >= limite:
             exc = AIError(f"A etapa passou do orçamento de {limite} chamadas de IA para {nome}: o normal, em "
-                          f"{est.amostras} etapas concluídas nos últimos {orc.window_days} dias, é {normal}. Parada "
+                          f"{est.amostras} etapas concluídas nos últimos {janela} dias, é {normal}. Parada "
                           "para não girar até o prazo.", kind="budget")
             self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
             raise exc
