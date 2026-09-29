@@ -9,6 +9,9 @@
   ganho uma etapa com efeito), a pergunta continua, com a opção pré-selecionada;
 - a escolha no desambiguador é observada pela sucessora (a execução que a pessoa respondeu) e vira preferência sem
   texto de pessoa: o sistema a valida pela repetição e a publica só sem efeito e com o modo em `on`;
+- a preferência nasce na curadoria, mas a trilha leva a execução cuja observação FECHOU o limiar (a n-ésima, não a
+  última), e cada decisão do sistema, a da evidência que virou o veredito; a publicação numa passada posterior (o
+  modo mudou) fica sem execução; no "Aprendizado desta execução" ela é candidata só da que fechou, "entre N";
 - `skills` nunca importa `learning` (DAG).
 
 Nível de prova: `simulated` (banco de teste pela fábrica da suíte, habilidades falsas; nenhum aparelho, nenhuma IA).
@@ -29,12 +32,16 @@ import pytest
 from fastapi import FastAPI
 
 from app.db import Database
+from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.ports import Ajustes
-from app.modules.learning.application.preferencias import ServicoDePreferencias, campo_de_terceiro
+from app.modules.learning.application.preferencias import (Observacao, ServicoDePreferencias, campo_de_terceiro,
+                                                           execucao_que_fechou)
 from app.modules.learning.application.servico import LearningService
+from app.modules.learning.domain.aprendido import Grupo
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.livro import ItemDeAprendizado
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, SignalKind, SourceKind
+from app.modules.learning.infrastructure.aprendido_sql import LeituraDoAprendidoSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from app.modules.learning.infrastructure.preferencias_sql import PreferenciasDoLivro, montar_preferencias
@@ -437,6 +444,88 @@ def test_escolha_diferente_contradiz(mundo: Mundo) -> None:
     assert p.state is SkillState.DISABLED
     assert _empate(PreferenciasDoLivro(mundo.prefs)).resolve(
         IntentRequest(AMBIGUO, (ANDRE,))).status is ResolutionStatus.NEEDS_INPUT
+
+
+# ================================================================== a execução na trilha e no bloco do D2
+def _trilha(mundo: Mundo, item_id: str) -> list[tuple[str | None, str, str | None]]:
+    return [(r["from_state"], r["to_state"], r["run_id"]) for r in mundo.db.query(
+        "SELECT from_state, to_state, run_id FROM learning_transitions WHERE item_ref=? ORDER BY id", (item_id,))]
+
+
+def test_nascimento_leva_a_execucao_que_fechou_o_limiar(mundo: Mundo) -> None:
+    """Cinco escolhas iguais antes da curadoria: quem fechou o limiar foi a TERCEIRA (as seguintes só reforçam). A
+    validação na mesma passada vem da mesma evidência; a publicação numa passada seguinte, porque o modo passou a
+    'on', não tem execução que a cause."""
+    execucoes = [mundo.escolher("ig.b")[0] for _ in range(5)]
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    terceira = execucoes[2]
+    assert p.provenance["limiar"] == {"run_id": terceira, "execucoes": 3}
+    assert p.provenance["runs"] == execucoes                               # a proveniência segue com todas
+    assert _trilha(mundo, p.id) == [(None, "candidate", terceira), ("candidate", "validated", terceira)]
+    mundo.modo(Modo.ON)
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-1] == ("validated", "published", None)
+
+
+def test_com_o_modo_on_nascer_validar_publicar_e_desligar_levam_a_execucao(mundo: Mundo) -> None:
+    mundo.modo(Modo.ON)
+    execucoes = [mundo.escolher("ig.b")[0] for _ in range(3)]
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    terceira = execucoes[2]
+    assert _trilha(mundo, p.id) == [(None, "candidate", terceira), ("candidate", "validated", terceira),
+                                    ("validated", "published", terceira)]
+    # A escolha diferente depois contradiz: a execução dela é a que desligou.
+    diferente, _ = mundo.escolher("ig.a")
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-1] == ("published", "disabled", diferente)
+
+
+def test_resposta_repetida_nasce_e_e_contradita_com_a_execucao(mundo: Mundo) -> None:
+    """Texto de pessoa: o sistema não valida, mas o nascimento e o desligamento pela resposta diferente levam a
+    execução que os fechou."""
+    execucoes = [mundo.responder("mensagem")[0] for _ in range(4)]
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert p.provenance["limiar"] == {"run_id": execucoes[2], "execucoes": 3}
+    assert _trilha(mundo, p.id) == [(None, "candidate", execucoes[2])]
+    diferente, _ = mundo.responder("mensagem", "mande a mensagem 'boa noite' para o grupo")
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-1] == ("candidate", "disabled", diferente)
+
+
+def test_execucao_que_fechou_nao_inventa() -> None:
+    def obs(run: str) -> Observacao:
+        return Observacao(origem=f"signal:{run}", run_id=run, perfil=ANDRE, campo="skill", modelo="emp-x",
+                          valor="ig.b", app_package="com.instagram.android", run_sucessora=None, simulated=False)
+
+    assert execucao_que_fechou([obs("r1"), obs("r1"), obs("r2")]) is None          # 2 execuções não fecham
+    assert execucao_que_fechou([obs("r1"), obs("r2"), obs("r2"), obs("r3"), obs("r4")]) == ("r3", 3)
+    assert execucao_que_fechou([obs("r1"), obs("r2"), obs("")]) is None            # a que fechou não tem execução
+
+
+def test_a_preferencia_aparece_no_bloco_da_execucao_que_fechou_o_limiar(mundo: Mundo) -> None:
+    """`GET /api/runs/{id}/feedback` → `aprendizado.candidatas`: só na execução que fechou o limiar, "entre 3
+    execuções"; nas outras ela só foi reforçada, e o bloco não a mostra (a página Aprendizado, sim)."""
+    mundo.modo(Modo.ON)
+    execucoes = [mundo.escolher("ig.b")[0] for _ in range(4)]
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    bloco = AprendizadoDaExecucao(mundo.servico, LeituraDoAprendidoSql(mundo.db), TriagemDeCredencial())
+    [linha] = bloco.da_execucao(execucoes[2])
+    assert (linha.grupo, linha.kind, linha.ref, linha.estado) == (
+        Grupo.CANDIDATA, LivroKind.PREFERENCIA, p.id, SkillState.PUBLISHED)
+    assert linha.papel == ("preferência que nasceu com a evidência desta execução, entre 3 execuções, validada e "
+                           "publicada nesta execução, evidência a favor")
+    assert linha.titulo is not None and "ig.b" in linha.titulo
+    for outra in (execucoes[0], execucoes[1], execucoes[3]):
+        assert bloco.da_execucao(outra) == ()
+    # Sem a marca na proveniência (item de antes desta regra, ou ilegível): sem número, "e de outras".
+    mundo.db.execute("UPDATE learning_items SET provenance='{}' WHERE id=?", (p.id,))
+    [linha] = bloco.da_execucao(execucoes[2])
+    assert linha.papel is not None and linha.papel.startswith(
+        "preferência que nasceu com a evidência desta execução e de outras,")
 
 
 # ================================================================== DAG

@@ -23,7 +23,8 @@ O que se prova:
   (`→ published`) promoveria o que nunca foi publicado nem aprovado, pulando a fila "Para aprovar";
 - o bloco `aprendizado` do GET ("Aprendizado desta execução" no relatório), no formato que o painel lê
   (`model.ts::lerAprendizado`): as cinco listas sempre presentes; uma linha por item em cada grupo; a lição que nasceu
-  da execução só como candidata, e a tela que já existia e mudou de estado nela também; a falha legada classificada na
+  da execução só como candidata, e a tela que já existia e mudou de estado nela também; a preferência nascida com a
+  evidência desta execução como candidata "entre N execuções", nunca como causa única; a falha legada classificada na
   leitura sem gravar e sem o texto do erro; o título com cara de credencial fora e o comprido cortado em `TITULO_MAX`;
   a habilidade e o que é de outra execução fora (a evidência de outra execução contra um item que esta também toca
   não entra no papel dela); a transição de uma pessoa (o desligamento pelo voto) dita como dela, nunca "nesta
@@ -676,6 +677,30 @@ def test_aprendido_na_execucao_puro() -> None:
     assert falhas == [("alvo_ausente", 2, None),
                       ("pos_condicao_nao_comprovada", 1, "classificada na leitura (retroativo)")]
     assert aprendido_na_execucao(FatosDaExecucao()) == ()
+
+
+def test_preferencia_nascida_da_execucao_nao_e_vendida_como_causa_unica() -> None:
+    """A preferência nasce na curadoria, da evidência de várias execuções: a que fechou o limiar a vê como candidata,
+    "entre N execuções" (ou "e de outras", sem o número); a que já existia e foi desligada diz que já existia."""
+    fatos = FatosDaExecucao(
+        transicoes=(TransicaoDaExecucao("li-pref", "preferencia", None, "candidate", entre=3),
+                    TransicaoDaExecucao("li-pref", "preferencia", "candidate", "validated"),
+                    TransicaoDaExecucao("li-pref", "preferencia", "validated", "published"),
+                    TransicaoDaExecucao("li-sem-n", "preferencia", None, "candidate"),
+                    TransicaoDaExecucao("li-velha", "preferencia", "published", "disabled")),
+        evidencias=(EvidenciaDaExecucao("li-pref", "preferencia", "for", 1),
+                    EvidenciaDaExecucao("li-velha", "preferencia", "against", 1)))
+    por = {i.ref: i for i in aprendido_na_execucao(fatos)}
+    assert {i.grupo for i in por.values()} == {Grupo.CANDIDATA}
+    assert (por["li-pref"].kind, por["li-pref"].papel) == (
+        LivroKind.PREFERENCIA, "preferência que nasceu com a evidência desta execução, entre 3 execuções, validada e "
+                               "publicada nesta execução, evidência a favor")
+    assert por["li-sem-n"].papel == "preferência que nasceu com a evidência desta execução e de outras"
+    assert por["li-velha"].papel == "preferência que já existia, desligada nesta execução, evidência contra"
+    # As outras candidatas que nascem da execução não mudam: a lição nasce de UMA execução.
+    licao = aprendido_na_execucao(FatosDaExecucao(transicoes=(
+        TransicaoDaExecucao("li-nova", "licao", None, "candidate", entre=3),)))
+    assert [i.papel for i in licao] == ["lição"]
 
 
 async def test_bloco_do_aprendizado_antes_e_depois_do_voto(mundo: Mundo, cliente: httpx.AsyncClient) -> None:

@@ -18,6 +18,10 @@ Duas origens, as duas sem IA e lidas do que a pessoa já faz:
 Campo que é alvo de terceiro (destinatário, perfil, conversa...) NUNCA vira padrão. Uma resposta diferente depois
 contradiz a preferência, e o sistema a desliga (rebaixar é automático).
 
+Ela nasce na curadoria periódica, não numa execução, mas a trilha leva o `run_id` da observação que fechou o limiar
+(`execucao_que_fechou`), e cada mudança de estado do sistema, o da evidência que virou o veredito
+(`evidencia_decisiva`): é assim que ela aparece no "Aprendizado desta execução" (D2), dita "entre N execuções".
+
 Consumo, sempre como sugestão e só no modo `on`, só das PUBLICADAS:
 
 - a resposta só PRÉ-PREENCHE (`sugestoes`): a leitura não grava nada, não cria sucessora e não muda a execução — a
@@ -41,9 +45,11 @@ from app.modules.learning.application.ports import NovaEvidencia, NovoSinal, Rep
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, ErroDeAprendizado, NaoEncontrado, SkillState
 from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem
-from app.modules.learning.domain.promocao import Decisao, Limiares, veredito_de_repeticao
+from app.modules.learning.domain.promocao import (Decisao, Evidencia, Limiares, evidencia_decisiva,
+                                                  veredito_de_repeticao)
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, Papel, Polaridade, Posicao, SignalKind,
                                                      SourceKind)
+from app.modules.skills.domain.document import JsonObject
 from app.util import to_iso
 
 #: O campo da pergunta de empate entre habilidades (`ambiguity_question`).
@@ -237,6 +243,13 @@ class ServicoDePreferencias:
         efeito = any(self._leitura.plano_tem_efeito(o.run_sucessora) if o.run_sucessora else True
                      for o in observacoes)
         proveniencia: list[str] = list(dict.fromkeys(o.run_id for o in observacoes))[:20]
+        # A preferência nasce na curadoria, não numa execução: a trilha leva a execução cuja observação FECHOU o limiar,
+        # e a proveniência, em quantas execuções estava a evidência até ali — o bloco da execução diz "entre N", para
+        # não vendê-la como causa única. Fora do conteúdo, como as versões: não muda o `content_hash` nem o veto.
+        fechou = execucao_que_fechou(observacoes)
+        run_id = fechou[0] if fechou is not None else None
+        limiar: JsonObject = ({"limiar": {"run_id": fechou[0], "execucoes": fechou[1]}} if fechou is not None
+                              else {})
         if campo == CAMPO_DA_HABILIDADE:
             # O efeito acima foi lido nos planos destas versões, e só delas: a versão nova de amanhã pode ter ganho
             # uma etapa com efeito, e aí a preferência só pré-seleciona (a etapa confere). Congeladas no nascimento, e
@@ -253,7 +266,8 @@ class ServicoDePreferencias:
                 summary=(f"No empate entre {', '.join(ultima.opcoes)}, a pessoa escolhe {ultima.valor}"
                          f" (versões observadas: {vistas})"),
                 source_kind=SourceKind.DISAMBIGUATION, side_effect=efeito,
-                provenance={"runs": list(proveniencia), "regra": "a9-escolha-repetida", "versoes": list(versoes)})
+                provenance={"runs": list(proveniencia), "regra": "a9-escolha-repetida", "versoes": list(versoes),
+                            **limiar})
         else:
             texto = self._leitura.comando(ultima.run_sucessora) if ultima.run_sucessora else None
             if not texto or self._triagem.recusa(texto):
@@ -264,9 +278,9 @@ class ServicoDePreferencias:
                 content={"campo": campo, "modelo": modelo, "chave": ultima.valor, "valor": texto,
                          "pergunta": ultima.pergunta},
                 summary=f"Resposta a “{campo}”: {_curto(texto)}", source_kind=SourceKind.ANSWER, side_effect=efeito,
-                provenance={"runs": list(proveniencia), "regra": "a9-resposta-repetida"})
+                provenance={"runs": list(proveniencia), "regra": "a9-resposta-repetida", **limiar})
         try:
-            return self._servico.propor(novo)
+            return self._servico.propor(novo, run_id=run_id)
         except ErroDeAprendizado:          # vetada, texto recusado, outra sessão chegou antes
             return None
 
@@ -286,28 +300,39 @@ class ServicoDePreferencias:
         atual = self._repo.item(item.id)
         if atual is None or atual.state not in _VIVOS:
             return 0
-        veredito = veredito_de_repeticao(self._repo.evidencias(atual.id), LIMIARES)
+        evidencias = self._repo.evidencias(atual.id)
+        veredito = veredito_de_repeticao(evidencias, LIMIARES)
+        # A leitura vem da mais nova para a mais antiga; a execução que decidiu é a da evidência que virou o veredito.
+        cronologicas = evidencias[::-1]
         try:
             if veredito.decisao is Decisao.CONTRADITA:
-                self._mover(atual, SkillState.DISABLED, f"contradita: {veredito.contra} resposta(s) diferente(s)")
+                self._mover(atual, SkillState.DISABLED, f"contradita: {veredito.contra} resposta(s) diferente(s)",
+                            _run_de(evidencia_decisiva(cronologicas, Decisao.CONTRADITA, LIMIARES)))
                 return 1
             if atual.human_origin:
                 return 0                   # texto de pessoa: o dono valida e publica
             feito = 0
+            validou_agora: str | None = None
             if atual.state is SkillState.CANDIDATE and veredito.decisao is Decisao.PROMOVE:
+                validou_agora = _run_de(evidencia_decisiva(cronologicas, Decisao.PROMOVE, LIMIARES))
                 self._mover(atual, SkillState.VALIDATED,
-                            f"repetiu: {veredito.a_favor} escolhas iguais em {veredito.execucoes} execuções")
+                            f"repetiu: {veredito.a_favor} escolhas iguais em {veredito.execucoes} execuções",
+                            validou_agora)
                 feito += 1
                 atual = self._repo.item(atual.id) or atual
             if atual.state is SkillState.VALIDATED and not atual.side_effect and modo is Modo.ON:
-                self._mover(atual, SkillState.PUBLISHED, "sem efeito externo e repetida: publicada sozinha (D1)")
+                # Na mesma passada da validação, a publicação é consequência da mesma evidência. Validada antes e
+                # publicada agora (o modo passou a 'on'), nenhuma execução a causou: a trilha fica sem `run_id`.
+                self._mover(atual, SkillState.PUBLISHED, "sem efeito externo e repetida: publicada sozinha (D1)",
+                            validou_agora)
                 feito += 1
             return feito
         except ErroDeAprendizado:          # outra sessão decidiu antes: a próxima curadoria confere de novo
             return 0
 
-    def _mover(self, item: ItemDeAprendizado, para: SkillState, motivo: str) -> None:
-        self._servico.mudar_estado(LivroKind.PREFERENCIA, item.id, para, by=SYSTEM_ACTOR, reason=motivo)
+    def _mover(self, item: ItemDeAprendizado, para: SkillState, motivo: str, run_id: str | None = None) -> None:
+        self._servico.mudar_estado(LivroKind.PREFERENCIA, item.id, para, by=SYSTEM_ACTOR, reason=motivo,
+                                   run_id=run_id)
 
     # ---------------------------------------------------------------- consumo
     def _publicadas(self, campo: str, modelo: str) -> dict[str, ItemDeAprendizado]:
@@ -360,6 +385,24 @@ class ServicoDePreferencias:
         return tuple(saida)
 
 
+def execucao_que_fechou(observacoes: Sequence[Observacao]) -> tuple[str, int] | None:
+    """A execução cuja observação fechou o limiar do nascimento, e em quantas execuções estava a evidência até ela.
+
+    O mesmo teste de `_grupo` (execuções distintas até `LIMIARES.n_min`), na ordem da leitura (a dos sinais): quando a
+    curadoria encontra mais observações que o limiar pede, a que fechou é a n-ésima, não a última — as seguintes só
+    reforçam. Sem `run_id` na que fechou (a escolha lida sem execução), `None`: a trilha fica sem, nada é inventado."""
+    vistas: set[str] = set()
+    for o in observacoes:
+        vistas.add(o.run_id)
+        if len(vistas) >= LIMIARES.n_min:
+            return (o.run_id, len(vistas)) if o.run_id else None
+    return None
+
+
+def _run_de(evidencia: Evidencia | None) -> str | None:
+    return evidencia.run_id if evidencia is not None and evidencia.run_id else None
+
+
 def versoes_conferidas(item: ItemDeAprendizado) -> tuple[int, ...]:
     """As versões em que a falta de efeito da escolha foi conferida (`provenance.versoes`); item sem elas (ou
     ilegível): nenhuma — a preferência só pré-seleciona."""
@@ -376,4 +419,5 @@ def _curto(texto: str, n: int = 80) -> str:
 
 __all__ = ["CAMPO_DA_HABILIDADE", "LIMIARES", "EscolhaObservada", "LeituraDePreferencias", "Observacao",
            "PerguntasAbertas", "Preferida", "ServicoDePreferencias", "Sugestao", "campo_de_terceiro",
-           "chave_da_resposta", "modelo_do_comando", "modelo_do_conjunto", "versoes_conferidas"]
+           "chave_da_resposta", "execucao_que_fechou", "modelo_do_comando", "modelo_do_conjunto",
+           "versoes_conferidas"]

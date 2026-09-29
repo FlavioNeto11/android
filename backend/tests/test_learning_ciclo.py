@@ -16,7 +16,8 @@ import pytest
 from app.modules.learning.domain.ciclo import (ESTADOS, SYSTEM_ACTOR, TRANSICOES, Actor, Desligamento, ExigeODono,
                                                SkillState, TransicaoProibida, conferir_nascimento, conferir_transicao,
                                                exige_o_dono, motivo_do_veto, permitido)
-from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, contadores, veredito_de_repeticao
+from app.modules.learning.domain.promocao import (Decisao, Evidencia, Limiares, contadores, evidencia_decisiva,
+                                                  veredito_de_repeticao)
 from app.modules.learning.domain.tokens import TETOS_DE_FABRICA, Teto, caber, estimar_tokens
 from app.modules.learning.domain.vocabulario import Papel, Posicao
 
@@ -178,6 +179,20 @@ def test_contra_ou_conflito_real_contradiz_e_simulado_nao() -> None:
     assert veredito_de_repeticao([*base, _ev(Posicao.AGAINST, run="r4", simulado=True)]).decisao is Decisao.PROMOVE
     c = contadores([*base, _ev(Posicao.AGAINST, run="r4"), _ev(run="r9", simulado=True)])
     assert (c.a_favor, c.contra, c.execucoes, c.aparelhos) == (3, 1, 3, 1)
+
+
+def test_evidencia_decisiva_e_a_primeira_que_vira_o_veredito() -> None:
+    """A execução que a trilha leva: a da evidência cujo prefixo já dá o veredito — a simulada e a da mesma execução
+    não viram nada; depois de virado, as seguintes só reforçam."""
+    limiares = Limiares(n_min=3, execucoes_min=3, aparelhos_min=0, contra_max=0)
+    cronologicas = [_ev(run="r1"), _ev(run="r1", origem="attempt:bis"), _ev(run="r2"), _ev(run="r9", simulado=True),
+                    _ev(run="r3"), _ev(run="r4"), _ev(Posicao.AGAINST, run="r5"), _ev(Posicao.AGAINST, run="r6")]
+    promove = evidencia_decisiva(cronologicas, Decisao.PROMOVE, limiares)
+    assert promove is not None and promove.run_id == "r3"
+    contradita = evidencia_decisiva(cronologicas, Decisao.CONTRADITA, limiares)
+    assert contradita is not None and contradita.run_id == "r5"
+    assert evidencia_decisiva(cronologicas[:3], Decisao.PROMOVE, limiares) is None
+    assert evidencia_decisiva([], Decisao.CONTRADITA, limiares) is None
 
 
 # ------------------------------------------------------------------ teto de tokens
