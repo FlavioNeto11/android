@@ -91,6 +91,29 @@ _DESFECHO_DO_DESBRAVADOR = {
 }
 
 
+def texto_do_fluxo_salvo(flow_id: str, status: str, *, aprendizado_ligado: bool) -> str | None:
+    """A decisão na linha do tempo quando a execução vira fluxo — verdadeira pelo status com que ele NASCEU —, ou
+    `None` quando o anúncio é de outro dono.
+
+    Só o ativo é reaproveitado. O candidato (D1, ADR-054) com o aprendizado ligado é anunciado pela sombra do digest
+    (`SombraDosFluxos._texto_do_nascimento`), que diz também quando ele passa a valer: um dono só para o anúncio e
+    para a regra `1 + aprendizado.fluxo.concordancias`, que não se repete aqui (antes as duas decisões saíam na mesma
+    execução, com frases diferentes). Com `aprendizado.enabled: false` o digest não roda: o anúncio fica aqui, e
+    nenhuma execução o promove — com ou sem efeito externo, simulada ou real, quem publica é uma pessoa.
+    """
+    if status == "active":
+        return (f"Fluxo “{flow_id}” salvo: comandos iguais (com outros valores) reaproveitam este plano sem chamar o "
+                "planejador")
+    if status != "candidate":
+        return (f"Fluxo “{flow_id}” salvo com o status “{status}”: comandos iguais não o reaproveitam enquanto ele "
+                "não estiver ativo")
+    if aprendizado_ligado:
+        return None
+    return (f"Fluxo “{flow_id}” aprendido como candidato (D1): comandos iguais ainda NÃO reaproveitam este plano — o "
+            "planejador segue sendo chamado. Com o aprendizado desligado (aprendizado.enabled: false), nenhuma "
+            "execução o promove: só uma pessoa o publica")
+
+
 class Scheduler:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
                  settings_getter: Callable[[], Any]):
@@ -1145,9 +1168,19 @@ class Scheduler:
         except Exception:  # noqa: BLE001 - otimização: nunca afeta o resultado da execução
             log.exception("aprender fluxo de %s", run_id)
             return
-        if flow_id:
-            self.repo.decision(f"Fluxo “{flow_id}” salvo: comandos iguais (com outros valores) reaproveitam este plano "
-                               "sem chamar o planejador", run_id=run_id)
+        if not flow_id:
+            return
+        # O texto segue o status REAL: com o D1 (ADR-054) o fluxo nasce candidato e inerte, e dizer "reaproveitam"
+        # ali era anunciar como feito o que só vale depois da prova. A leitura e a decisão ficam sob um `try` como o do
+        # aprendizado: roda no `finally` do worker, e uma falha aqui pularia o `wake()` de quem chama.
+        try:
+            linha = self.flows.db.one("SELECT status FROM flows WHERE id=?", (flow_id,))
+            texto = texto_do_fluxo_salvo(flow_id, str(linha["status"]) if linha is not None else "?",
+                                         aprendizado_ligado=self.cfg.file.aprendizado.enabled)
+            if texto is not None:
+                self.repo.decision(texto, run_id=run_id)
+        except Exception:  # noqa: BLE001 - a linha do tempo informa; nunca afeta o resultado da execução
+            log.exception("decisão do fluxo aprendido de %s", run_id)
 
     async def _run_guarded(self, run: Any, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime,
                            resumed: bool) -> StepOutcome:

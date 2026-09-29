@@ -152,8 +152,13 @@ describe('mapas novos de StatusMeta — todo enum tem rótulo em português, tom
 
   it('DRIFT_KIND, FLOW_STATUS e ACCOUNT_SESSION_STATUS traduzem os valores que o painel mostra', () => {
     expect(metaOf(DRIFT_KIND, 'downgrade_refused').label).toBe('Downgrade recusado');
+    // Os quatro status que um fluxo pode ter (D1, ADR-054): o candidato não aparece mais cru em Aplicativos nem na guia
+    // Habilidades.
+    expect(Object.keys(FLOW_STATUS).sort()).toEqual(['active', 'candidate', 'disabled', 'validated']);
+    expect(metaOf(FLOW_STATUS, 'candidate').label).toBe('Em prova');
+    expect(metaOf(FLOW_STATUS, 'validated').label).toBe('Esperando o dono');
     expect(FLOW_STATUS.active.label).toBe('Ativo');
-    expect(FLOW_STATUS.disabled.label).toBe('Desativado');
+    expect(FLOW_STATUS.disabled.label).toBe('Desligado');
     // Os valores do Instagram continuam iguais aos de SESSION_STATUS; os manuais ganham rótulo próprio.
     expect(metaOf(ACCOUNT_SESSION_STATUS, 'session_ready').label).toBe('Conectado');
     expect(metaOf(ACCOUNT_SESSION_STATUS, 'logged_out').label).toBe('Fora da conta');

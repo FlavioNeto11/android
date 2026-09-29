@@ -8,6 +8,7 @@ import {
   CircleDashed,
   CircleDot,
   CircleHelp,
+  CircleOff,
   CirclePause,
   CircleSlash,
   CircleX,
@@ -33,6 +34,7 @@ import {
   Send,
   ShieldAlert,
   SkipForward,
+  Stamp,
   TriangleAlert,
   Unplug,
   UserX,
@@ -41,7 +43,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type {
-  ActionStatus, AttemptStatus, AutomationState, ConnectivityInfo, ControlOwner, DeliveryLevel, EventRecord, Health,
+  ActionStatus, AttemptStatus, AutomationState, ConnectivityInfo, ControlOwner, DeliveryLevel, EventRecord, Flow, Health,
   InstanceState, Objective, ObjectiveStatus, ReadinessInfo, RunStatus, Step, StepStatus, StreamStatus,
 } from '../api/types';
 
@@ -263,10 +265,25 @@ export const DRIFT_KIND: Record<string, StatusMeta> = {
                        description: 'O Android recusou voltar a versão preservando os dados. Reinstalar resolve, mas apaga a sessão do app.' },
 };
 
-/** `Flow.status`: fluxo ativo é reproduzido por seletores; desativado volta a ser planejado pela IA. */
-export const FLOW_STATUS: Record<'active' | 'disabled', StatusMeta> = {
-  active: { label: 'Ativo', tone: 'success', icon: CircleCheck },
-  disabled: { label: 'Desativado', tone: 'muted', icon: CirclePause, description: 'Comandos parecidos voltam a ser planejados pela IA.' },
+/** Onde o dono decide o que o D1 (ADR-054) parou em `validated`. */
+export const OWNER_QUEUE = 'Aprendizado › Para aprovar';
+
+/**
+ * `Flow.status` (D1, ADR-054): o fluxo aprendido de execução nasce em prova e só é reaproveitado depois de a IA repetir
+ * o mesmo plano numa execução real; com efeito externo, espera o dono. Um mapa só para Aplicativos, a guia Habilidades
+ * e Configuração › Fluxos e receitas — antes Aplicativos e a guia mostravam o candidato cru.
+ */
+export const FLOW_STATUS: Record<Flow['status'], StatusMeta> = {
+  candidate: {
+    label: 'Em prova', tone: 'info', icon: Hourglass,
+    description: 'Aprendido de uma execução comprovada, ainda sem uso: a IA segue planejando o comando, e o plano novo é comparado com este. Sem efeito externo, o sistema o publica quando a IA repetir o mesmo plano; dois planos diferentes o desligam.',
+  },
+  validated: {
+    label: 'Esperando o dono', tone: 'warning', icon: Stamp,
+    description: `A IA repetiu o mesmo plano, mas ele tem etapa de efeito externo: só você o publica, em ${OWNER_QUEUE}.`,
+  },
+  active: { label: 'Ativo', tone: 'success', icon: CircleCheck, description: 'Comandos iguais reaproveitam o plano sem chamar o planejador.' },
+  disabled: { label: 'Desligado', tone: 'muted', icon: CircleOff, description: 'Fora de uso: o planejador é chamado para este comando.' },
 };
 
 export const POSTCONDITION_KIND: Record<string, string> = {

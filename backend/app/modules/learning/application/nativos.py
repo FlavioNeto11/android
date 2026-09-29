@@ -178,7 +178,8 @@ class D1Nativo:
         """O status do fluxo que nasce de uma execução, ou `None` (não aprende).
 
         - reaproveitar a linha desligada só quando quem a desligou foi o SISTEMA (a sombra refutou): o que uma pessoa
-          desligou — pelo livro ou pela rota antiga, que não deixa trilha — fica desligado;
+          desligou — pelo livro, pela rota antiga (`PUT /api/flows`, que também grava a trilha) ou numa linha de antes
+          da trilha, sem linha nenhuma — fica desligado;
         - o conteúdo vetado (`motivo_do_veto`: desligado por pessoa, ou pelo sistema há menos de 90 dias) não volta;
         - `com_prova` desligado é o modo anterior: comando novo nasce ativo, e nada é reaprendido.
         """
@@ -287,11 +288,15 @@ class SombraDosFluxos:
                                "comandos iguais passam a reaproveitar o plano sem chamar o planejador")
 
     def _texto_do_nascimento(self, fluxo: FluxoEmProva, simulada: bool) -> str:
+        """O anúncio do fluxo que nasce candidato, e o ÚNICO com o aprendizado ligado: o `_learn_flow` do scheduler
+        se cala nesse caso (`texto_do_fluxo_salvo`) e só fala do que nasce ativo ou quando o digest não roda."""
         inicio = (f"Fluxo “{fluxo.id}” aprendido como candidato (D1): ainda não é reaproveitado — a IA segue "
                   "planejando este comando e o plano novo é comparado com ele")
+        # A simulada deixa evidência, mas `veredito_de_repeticao` só conta a real: a que o gerou não entra, e faltam
+        # as `1 + concordancias` reais inteiras (antes dizia "só uma pessoa o publica", e as reais o publicavam).
+        n = max(0, int(self._concordancias())) + (1 if simulada else 0)
         if simulada:
-            return inicio + ". Execução simulada não é prova: só uma pessoa o publica"
-        n = max(0, int(self._concordancias()))
+            inicio += ". Execução simulada não é prova (a que o gerou não conta)"
         quando = f"depois de mais {n} execução(ões) real(is) com o mesmo plano" if n else "já com esta execução"
         if fluxo.efeito:
             return inicio + f"; {quando} ele fica validado, e o dono o publica (tem etapa de efeito externo)"

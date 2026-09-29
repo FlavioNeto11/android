@@ -24,7 +24,8 @@ from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR, Actor, SkillState,
 from app.util import parse_iso
 
 __all__ = ["SYSTEM_ACTOR", "Actor", "SkillState", "actor_of", "ESTADOS", "TRANSICOES", "VETO_DO_SISTEMA_DIAS",
-           "Desligamento", "conferir_nascimento", "conferir_transicao", "exige_o_dono", "motivo_do_veto", "permitido"]
+           "Desligamento", "caminho_da_pessoa", "conferir_nascimento", "conferir_transicao", "exige_o_dono",
+           "motivo_do_veto", "permitido"]
 
 #: O livro não tem rascunho: o item nasce congelado (mudar é criar outro com `parent_id`).
 ESTADOS = frozenset(s for s in SkillState if s is not SkillState.DRAFT)
@@ -147,6 +148,30 @@ def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect:
     if actor is Actor.SYSTEM and to is SkillState.VALIDATED and human_origin:
         raise ExigeODono("Texto de pessoa é validado pela pessoa (D1), não pela repetição.")
     return actor
+
+
+#: O gesto de pessoa que a tabela não tem num passo só: as rotas legadas (`PUT /api/flows|recipes`) dizem só o
+#: destino, e o interruptor do painel manda "ativo" para o fluxo em prova. Validar e publicar são as duas decisões
+#: dela, no mesmo gesto — as duas na trilha. Explícito de propósito: uma busca no grafo acharia caminhos que
+#: republicam o aposentado a caminho de outro destino.
+_GESTOS_EM_DOIS_PASSOS: Mapping[tuple[SkillState, SkillState], tuple[SkillState, ...]] = {
+    (_S.CANDIDATE, _S.PUBLISHED): (_S.VALIDATED, _S.PUBLISHED),
+}
+
+
+def caminho_da_pessoa(frm: SkillState, to: SkillState) -> tuple[SkillState, ...]:
+    """Os estados por que uma PESSOA passa para levar o item de `frm` a `to` num gesto só (vazio: já está lá).
+
+    Cada passo ainda é conferido por `conferir_transicao` (e o veto, a guarda do fluxo e o CAS, pelo serviço e pelo
+    repositório); aqui só se escolhe a sequência. O que a tabela não deixa uma pessoa fazer é recusado com a razão."""
+    if frm is to:
+        return ()
+    if Actor.PERSON in TRANSICOES.get((frm, to), frozenset()):
+        return (to,)
+    passos = _GESTOS_EM_DOIS_PASSOS.get((frm, to))
+    if passos is None:
+        raise TransicaoProibida(f"Transição proibida: {frm} → {to}.")
+    return passos
 
 
 def conferir_nascimento(estado: SkillState, by: str, *, side_effect: bool, human_origin: bool) -> None:

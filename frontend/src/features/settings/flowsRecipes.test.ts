@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FLOW_STATUS as FLOW_STATUS_CENTRAL } from '../../lib/status';
 import { FLOW_STATUS, OWNER_QUEUE, RECIPE_STATUS, recipeToggleTarget, scrollText, selectorText, shadowText, splitTemplate } from './flowsRecipes';
 
 describe('splitTemplate — marcadores do comando-modelo', () => {
@@ -28,6 +29,10 @@ describe('fluxos (D1)', () => {
     const semPlanejador = (Object.keys(FLOW_STATUS) as (keyof typeof FLOW_STATUS)[])
       .filter((s) => /sem chamar o planejador/.test(FLOW_STATUS[s].description ?? ''));
     expect(semPlanejador).toEqual(['active']);
+  });
+
+  it('é o mesmo mapa que Aplicativos e a guia Habilidades usam (lib/status)', () => {
+    expect(FLOW_STATUS).toBe(FLOW_STATUS_CENTRAL);
   });
 });
 

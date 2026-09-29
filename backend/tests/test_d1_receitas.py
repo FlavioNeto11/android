@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from app.db import Database
@@ -28,6 +29,7 @@ from app.modules.learning.infrastructure.sql_repository import SqlLearningReposi
 from app.taskqueue.recipes import RecipeStore
 from app.util import now
 
+from .conftest import Harness
 from .fake_skills import TS
 from .fake_skills import banco as banco_migrado
 
@@ -35,6 +37,7 @@ S = SkillState
 PKG = "com.pocqa.messenger"
 CHAVE = {"signature": "", "variant": "en-US/xhdpi"}
 DONO = "painel:dono"
+NOME = "Ana Ribeiro"                                                        # o operador que faz login no painel
 
 
 def _acoes(*, commit: bool, rid: str = "app:id/send") -> list[dict[str, Any]]:
@@ -214,3 +217,92 @@ def test_quarentena_do_sistema_nao_veta_o_reaprendizado(mundo: Mundo) -> None:
     # a etapa volta a ser aprendida com o mesmo caminho: nova candidata, que prova de novo em sombra antes de agir
     v2 = mundo.salva(commit=False, learned_from="s2")
     assert v2 and mundo.status(v2) == "candidate" and mundo.status(rid) == "superseded"
+
+
+# ------------------------------------------------------------------ a rota antiga passa pelo livro (Harness)
+def _cliente(h: Harness, *, base: str = "http://test") -> httpx.AsyncClient:
+    """`base="http://127.0.0.1"` para a sessão, como em `test_sessao_do_painel`: o login do loopback dispensa token,
+    e o jar do cliente devolve o cookie nas requisições seguintes."""
+    from app.main import create_app
+
+    app = create_app(h.cfg, state=h.state)
+    app.state.poc = h.state
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base)
+
+
+async def test_pela_rota_antiga_a_quarentena_da_pessoa_veta_o_caminho(tmp_path: Path) -> None:
+    """`PUT /api/recipes/{id}` grava a trilha com a pessoa. Antes não gravava: a candidata que ela pôs em quarentena
+    renascia da próxima execução em que a IA fizesse o mesmo caminho (nova versão, a dela substituída)."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        mundo = Mundo(s.db)
+        rid = mundo.salva(commit=False)                                      # candidata em prova
+        assert rid and mundo.status(rid) == "candidate"
+        s.db.execute("UPDATE recipes SET consecutive_fail=2 WHERE id=?", (rid,))
+        async with _cliente(h) as c:
+            r = await c.put(f"/api/recipes/{rid}", json={"status": "quarantined"})
+            assert r.status_code == 200 and r.json() == {"id": rid, "status": "quarantined"}   # a resposta de sempre
+            assert (await c.put(f"/api/recipes/{rid}", json={"status": "disabled"})).status_code == 400
+            nada = await c.put("/api/recipes/987654", json={"status": "quarantined"})
+            assert nada.status_code == 404 and nada.json()["detail"]["code"] == "not_found"
+        assert mundo.status(rid) == "quarantined"
+        assert s.db.scalar("SELECT consecutive_fail FROM recipes WHERE id=?", (rid,)) == 0   # o que a rota sempre fez
+        assert mundo.trilha(rid)[-1] == ("candidate", "disabled", "panel")
+        # a IA comprova de novo o MESMO caminho: não renasce candidata (veto da pessoa)
+        assert mundo.salva(commit=False, learned_from="s2") is None
+        assert s.db.scalar("SELECT COUNT(*) FROM recipes") == 1
+        # reativar pela rota é da pessoa: a trilha registra, e o veto dela se desfaz
+        async with _cliente(h) as c:
+            assert (await c.put(f"/api/recipes/{rid}", json={"status": "active"})).status_code == 200
+        assert mundo.status(rid) == "active" and mundo.trilha(rid)[-1] == ("disabled", "published", "panel")
+        # a substituída não volta pela rota (o painel já não oferecia o botão)
+        outro = mundo.salva("rolar", commit=False, learned_from="s3")
+        assert outro
+        s.db.execute("UPDATE recipes SET status='superseded' WHERE id=?", (outro,))
+        async with _cliente(h) as c:
+            volta = await c.put(f"/api/recipes/{outro}", json={"status": "active"})
+            assert volta.status_code == 409 and volta.json()["detail"]["code"] == "transition_forbidden"
+        assert mundo.status(outro) == "superseded"
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_pela_rota_antiga_a_trilha_diz_o_operador_e_o_gesto_recusado_no_meio_nao_deixa_nada(
+        tmp_path: Path) -> None:
+    """Com sessão aberta, quem decide na trilha é o nome do login (o `_quem` do livro), não `panel`. E reativar a
+    candidata são dois passos do livro (candidata → validada → ativa) num gesto só, na transação da rota: o segundo
+    é recusado (outra ativa na mesma chave: nunca duas), e o primeiro também não fica — nem o status, nem a linha na
+    trilha, nem o zerar das falhas seguidas."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        mundo = Mundo(s.db)
+        for versao, status in ((1, "active"), (2, "candidate")):
+            s.db.execute("INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key,"
+                         " version, status, actions, learned_from_step, consecutive_fail, created_at)"
+                         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (PKG, "1.0(1)", "", "en-US/xhdpi", "h-enviar", "enviar", versao, status,
+                          json.dumps(_acoes(commit=False)), f"s{versao}", 2, TS))
+        ativa, candidata = (int(s.db.scalar("SELECT id FROM recipes WHERE step_hash='h-enviar' AND version=?", (v,)))
+                            for v in (1, 2))
+        async with _cliente(h, base="http://127.0.0.1") as c:
+            entrada = await c.post("/api/login", json={"operator": NOME})
+            assert entrada.status_code == 200, entrada.text
+            recusa = await c.put(f"/api/recipes/{candidata}", json={"status": "active"})
+            assert recusa.status_code == 409, recusa.text
+            assert recusa.json()["detail"]["code"] == "state_conflict"
+            assert mundo.status(candidata) == "candidate" and mundo.trilha(candidata) == []
+            assert s.db.scalar("SELECT consecutive_fail FROM recipes WHERE id=?", (candidata,)) == 2
+            quarentena = await c.put(f"/api/recipes/{candidata}", json={"status": "quarantined"})
+            assert quarentena.status_code == 200, quarentena.text
+        assert mundo.trilha(candidata) == [("candidate", "disabled", NOME)]
+        assert mundo.status(ativa) == "active" and mundo.trilha(ativa) == []
+    finally:
+        if h.state is not None:
+            await h.state.stop()

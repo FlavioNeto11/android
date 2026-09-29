@@ -26,7 +26,8 @@ from fastapi import FastAPI
 from app.db import Database
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import (ESTADOS, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
+                                               SkillState, TransicaoProibida, caminho_da_pessoa, permitido)
 from app.modules.learning.domain.livro import (ESTADO_DA_RECEITA, ESTADO_DO_FLUXO, EntradaDoLivro, estado_nativo,
                                                receita_tem_efeito, status_nativo)
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
@@ -240,6 +241,86 @@ async def test_status_de_fluxo_respeita_a_adocao_e_habilidade_aponta_a_rota_dela
     assert memoria.status_code == 409
     assert (await cliente.post("/api/aprendizado/fluxo/nao-existe/status",
                                json={"to": "disabled", "reason": "x"})).status_code == 404
+
+
+# ------------------------------------------------------------------ rotas legadas (PUT /api/flows|recipes)
+def test_vocabulario_das_rotas_legadas_e_o_caminho_da_pessoa() -> None:
+    """O status que `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` aceitam, no estado do livro, e os passos com que a
+    pessoa chega lá a partir de cada estado (a rota só diz o destino)."""
+    rota = {LivroKind.FLUXO: {"active": S.PUBLISHED, "disabled": S.DISABLED},
+            LivroKind.RECEITA: {"active": S.PUBLISHED, "quarantined": S.DISABLED}}
+    for kind, valores in rota.items():
+        for status, estado in valores.items():
+            assert estado_nativo(kind, status) is estado and status_nativo(kind, estado) == status
+    assert estado_nativo(LivroKind.FLUXO, "quarantined") is None and estado_nativo(LivroKind.RECEITA, "disabled") is None
+    assert caminho_da_pessoa(S.PUBLISHED, S.PUBLISHED) == () and caminho_da_pessoa(S.DISABLED, S.DISABLED) == ()
+    assert caminho_da_pessoa(S.CANDIDATE, S.PUBLISHED) == (S.VALIDATED, S.PUBLISHED)   # o interruptor do fluxo em prova
+    assert caminho_da_pessoa(S.VALIDATED, S.PUBLISHED) == (S.PUBLISHED,)
+    assert caminho_da_pessoa(S.DISABLED, S.PUBLISHED) == (S.PUBLISHED,)
+    for de in (S.CANDIDATE, S.VALIDATED, S.PUBLISHED):
+        assert caminho_da_pessoa(de, S.DISABLED) == (S.DISABLED,)
+    with pytest.raises(TransicaoProibida):
+        caminho_da_pessoa(S.DEPRECATED, S.DISABLED)                       # a substituída não vai para quarentena
+    # Todo passo devolvido é permitido à pessoa pela tabela (a conferência de cada um continua no serviço).
+    for de in ESTADOS:
+        for para in (S.PUBLISHED, S.DISABLED):
+            try:
+                passos = caminho_da_pessoa(de, para)
+            except TransicaoProibida:
+                continue
+            for a, b in zip((de, *passos), passos, strict=False):
+                assert permitido(a, b, Actor.PERSON), (a, b)
+
+
+def test_rotas_legadas_mudam_pelo_livro_com_trilha_e_guardas(mundo: Mundo) -> None:
+    sv, db = mundo.servico, mundo.db
+    F, R = LivroKind.FLUXO, LivroKind.RECEITA
+
+    def trilha(kind: LivroKind, ref: str | int) -> list[tuple[str | None, str, str, str]]:
+        return [(t.from_state.value if t.from_state else None, t.to_state.value, t.decided_by, t.reason)
+                for t in sv.detalhe(kind, str(ref)).trilha]
+
+    def muda(kind: LivroKind, ref: str | int, status: str) -> str | None:
+        return sv.mudar_status_nativo(kind, str(ref), status, by="panel", reason=f"pelo painel: {status}").native_status
+
+    # Fluxo em prova ligado pelo interruptor: a pessoa valida e publica no mesmo gesto, os dois passos na trilha.
+    _fluxo(db, "fluxo-em-prova", status="candidate", efeito=False)
+    assert muda(F, "fluxo-em-prova", "active") == "active"
+    assert trilha(F, "fluxo-em-prova") == [("candidate", "validated", "panel", "pelo painel: active"),
+                                           ("validated", "published", "panel", "pelo painel: active")]
+    # Já estar lá não é transição: nada entra na trilha (o painel repete o gesto sem efeito).
+    assert muda(F, "fluxo-em-prova", "active") == "active" and len(trilha(F, "fluxo-em-prova")) == 2
+    assert muda(F, "fluxo-desligado", "disabled") == "disabled" and trilha(F, "fluxo-desligado") == []
+    assert muda(F, "fluxo-com-efeito", "disabled") == "disabled"
+    assert trilha(F, "fluxo-com-efeito") == [("published", "disabled", "panel", "pelo painel: disabled")]
+    assert muda(F, "fluxo-validado", "active") == "active"                  # com efeito: a pessoa publica
+    with pytest.raises(ConflitoDeEstado, match="adotado"):                  # a guarda do livro também vale aqui
+        muda(F, "fluxo-adotado", "active")
+    assert db.scalar("SELECT status FROM flows WHERE id='fluxo-adotado'") == "disabled"
+    with pytest.raises(EntradaInvalida):
+        muda(F, "fluxo-validado", "quarantined")
+    with pytest.raises(EntradaInvalida):
+        muda(R, mundo.ativa, "disabled")
+    with pytest.raises(NaoEncontrado):
+        muda(F, "nao-existe", "disabled")
+
+    assert muda(R, mundo.ativa, "quarantined") == "quarantined"
+    assert trilha(R, mundo.ativa) == [("published", "disabled", "panel", "pelo painel: quarantined")]
+    assert muda(R, mundo.candidata, "quarantined") == "quarantined"
+    assert trilha(R, mundo.candidata)[-1][:2] == ("candidate", "disabled")
+    # Nunca duas ativas por chave: com a v1 religada, a v2 da mesma etapa não se reativa (a rota antiga deixava).
+    assert muda(R, mundo.ativa, "active") == "active"
+    with pytest.raises(ConflitoDeEstado):
+        muda(R, mundo.em_quarentena, "active")
+    # A substituída não volta nem vai para a quarentena; a que não existe é 404.
+    for status in ("active", "quarantined"):
+        with pytest.raises(TransicaoProibida):
+            muda(R, mundo.substituida, status)
+    assert db.scalar("SELECT status FROM recipes WHERE id=?", (mundo.substituida,)) == "superseded"
+    with pytest.raises(NaoEncontrado):
+        muda(R, 987654, "quarantined")
+    # A com commit que o D1 parou em `validated`: a pessoa a publica.
+    assert muda(R, mundo.validada_com_commit, "active") == "active"
 
 
 async def test_sem_o_aprendizado_composto_a_rota_diz_503() -> None:

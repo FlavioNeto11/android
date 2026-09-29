@@ -9,6 +9,9 @@
 - `POST /api/aprendizado/{kind}/{ref}/status {to, reason}`: em receita e fluxo, CAS no status nativo e trilha; em
   habilidade, 409 com o endereço da rota das habilidades; motivo obrigatório.
 
+`mudar_status_legado` leva ao mesmo serviço as rotas antigas `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` (que moram
+em `app/api.py`, com o vocabulário nativo): a mesma trilha, o mesmo quem, o mesmo veto.
+
 Camada de apresentação: fala FastAPI, traduz as recusas do domínio (`ErroDeAprendizado.code`) para o
 `{code, message}` de sempre e monta o JSON. Regra nenhuma mora aqui. As rotas ESPECÍFICAS dos pacotes seguintes
 (`/api/aprendizado/falhas`, `/licoes/previa`...) entram ANTES destas em `router.py`: `{kind}/{ref}` casaria com elas.
@@ -49,6 +52,15 @@ def _quem(request: Request) -> str:
     habilidades): pela rota decide sempre uma pessoa. A regra é a do kernel (`autor_do_gesto`), a mesma dos sinais
     de gesto que chegam pelas costuras."""
     return autor_do_gesto(getattr(request.state, "operador", None))
+
+
+def mudar_status_legado(request: Request, kind: LivroKind, ref: str, status: str, *, reason: str) -> EntradaDoLivro:
+    """O que `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` (em `app/api.py`) decidem, pelo livro: o mesmo quem
+    (`_quem`), o mesmo serviço e as mesmas recusas (`{code, message}`; 404, 422 ou 409). Sem isso, o que uma pessoa
+    desligava por ali não entrava na trilha — não vetava, e o sistema podia reaprender o mesmo caminho."""
+    servico = _servico(request)
+    quem = _quem(request)
+    return _chamar(lambda: servico.mudar_status_nativo(kind, ref, status, by=quem, reason=reason))
 
 
 def _http(exc: ErroDeAprendizado) -> HTTPException:
