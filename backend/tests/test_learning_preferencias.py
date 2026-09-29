@@ -10,8 +10,10 @@
 - a escolha no desambiguador é observada pela sucessora (a execução que a pessoa respondeu) e vira preferência sem
   texto de pessoa: o sistema a valida pela repetição e a publica só sem efeito e com o modo em `on`;
 - a preferência nasce na curadoria, mas a trilha leva a execução cuja observação FECHOU o limiar (a n-ésima, não a
-  última), e cada decisão do sistema, a da evidência que virou o veredito; a publicação numa passada posterior (o
-  modo mudou) fica sem execução; no "Aprendizado desta execução" ela é candidata só da que fechou, "entre N";
+  última, e a observação sem execução não conta), e cada decisão do sistema, a da evidência que virou o veredito —
+  só entre a que chegou depois da última mudança de estado (a reativação por uma pessoa não devolve a culpa à
+  execução antiga); a publicação numa passada posterior (o modo mudou) fica sem execução; no "Aprendizado desta
+  execução" (`GET /api/runs/{id}/feedback`) ela é candidata só da que fechou, "entre N";
 - `skills` nunca importa `learning` (DAG).
 
 Nível de prova: `simulated` (banco de teste pela fábrica da suíte, habilidades falsas; nenhum aparelho, nenhuma IA).
@@ -23,7 +25,7 @@ import hashlib
 import json
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,19 +34,19 @@ import pytest
 from fastapi import FastAPI
 
 from app.db import Database
-from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.ports import Ajustes
-from app.modules.learning.application.preferencias import (Observacao, ServicoDePreferencias, campo_de_terceiro,
-                                                           execucao_que_fechou)
+from app.modules.learning.application.preferencias import (EscolhaObservada, Observacao, PerguntasAbertas,
+                                                           ServicoDePreferencias, campo_de_terceiro,
+                                                           desde_a_ultima_mudanca, execucao_que_fechou)
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.domain.aprendido import Grupo
 from app.modules.learning.domain.ciclo import SkillState
-from app.modules.learning.domain.livro import ItemDeAprendizado
-from app.modules.learning.domain.vocabulario import LivroKind, Modo, SignalKind, SourceKind
-from app.modules.learning.infrastructure.aprendido_sql import LeituraDoAprendidoSql
+from app.modules.learning.domain.livro import ItemDeAprendizado, Transicao
+from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.vocabulario import LivroKind, Modo, Posicao, SignalKind, SourceKind
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.ligar_costuras import costuras_do_livro
-from app.modules.learning.infrastructure.preferencias_sql import PreferenciasDoLivro, montar_preferencias
+from app.modules.learning.infrastructure.preferencias_sql import (PreferenciasDoLivro, PreferenciasSql,
+                                                                  montar_preferencias)
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.presentation.router import router as learning_router
@@ -74,21 +76,28 @@ class Mundo:
     db: Database
     ajustes: list[Ajustes] = field(default_factory=lambda: [Ajustes(modo_preferencias=Modo.SHADOW)])
     n: int = 0
+    #: O relógio do livro: parado em `AGORA`, salvo quando o teste o avança (`passar`) para separar uma passada da
+    #: curadoria de um gesto de pessoa, como no mundo — com ele parado, tudo cai no mesmo milissegundo.
+    relogio: list[datetime] = field(default_factory=lambda: [AGORA])
 
     def __post_init__(self) -> None:
         perfil(self.db, ANDRE)
         perfil(self.db, BIA)
-        self.repo = SqlLearningRepository(self.db, precos=dict, clock=lambda: to_iso(AGORA))
+        self.repo = SqlLearningRepository(self.db, precos=dict, clock=lambda: to_iso(self.relogio[0]))
         self.servico = LearningService(self.repo, FontesSql(self.db), TriagemDeCredencial(),
-                                       ajustes=lambda: self.ajustes[0], relogio=lambda: AGORA,
+                                       ajustes=lambda: self.ajustes[0], relogio=lambda: self.relogio[0],
                                        retencao_de_logs_dias=lambda: 14)
-        prefs = montar_preferencias(self.db, self.servico)
-        assert prefs is not None
-        self.prefs: ServicoDePreferencias = prefs
+        assert montar_preferencias(self.db, self.servico) is not None
+        # O serviço sob teste grava a evidência pelo MESMO relógio da trilha, como na composição (os dois
+        # repositórios com `now_iso`): a atribuição da execução compara os dois carimbos (`desde_a_ultima_mudanca`).
+        self.prefs = ServicoDePreferencias(self.servico, self.repo, PreferenciasSql(self.db), TriagemDeCredencial())
         self.costuras = costuras_do_livro(self.servico, self.db)
 
     def modo(self, modo: Modo) -> None:
         self.ajustes[0] = Ajustes(modo_preferencias=modo)
+
+    def passar(self, segundos: int = 60) -> None:
+        self.relogio[0] += timedelta(seconds=segundos)
 
     # ---------------------------------------------------------------- execuções
     def execucao(self, comando: str, *, status: str, perfis: Sequence[str] = (ANDRE,), plano: object = None,
@@ -495,6 +504,71 @@ def test_resposta_repetida_nasce_e_e_contradita_com_a_execucao(mundo: Mundo) -> 
     assert _trilha(mundo, p.id)[-1] == ("candidate", "disabled", diferente)
 
 
+def test_a_diferente_seguida_de_iguais_desliga_com_a_execucao_da_diferente(mundo: Mundo) -> None:
+    """A escolha diferente e, depois dela, mais iguais antes da mesma curadoria: quem desligou foi a diferente, não a
+    última registrada (a evidência mais nova é uma "a favor")."""
+    mundo.modo(Modo.ON)
+    for _ in range(3):
+        mundo.escolher("ig.b")
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    mundo.passar()
+    diferente, _ = mundo.escolher("ig.a")
+    iguais = [mundo.escolher("ig.b")[0] for _ in range(2)]
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-1] == ("published", "disabled", diferente)
+    assert iguais[-1] != diferente
+
+
+def test_reativada_pela_pessoa_o_desligamento_seguinte_nao_culpa_a_execucao_antiga(mundo: Mundo) -> None:
+    """A pessoa reativou o que a escolha diferente desligou. A curadoria seguinte desliga de novo (o veredito pesa toda
+    a evidência, e isso é de antes desta regra), mas a execução antiga já tinha sido pesada — por quem desligou e por
+    quem reativou —: sem evidência nova, a trilha fica sem `run_id`. Uma escolha diferente nova, depois da reativação,
+    é a execução que desliga."""
+    mundo.modo(Modo.ON)
+    for _ in range(3):
+        mundo.escolher("ig.b")
+    mundo.prefs.minerar(AGORA)
+    diferente, _ = mundo.escolher("ig.a")
+    mundo.prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert _trilha(mundo, p.id)[-1] == ("published", "disabled", diferente)
+    mundo.passar()
+    mundo.servico.mudar_estado(LivroKind.PREFERENCIA, p.id, SkillState.PUBLISHED, by=DONO, reason="quero de volta")
+    mundo.passar()
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-2:] == [("disabled", "published", None), ("published", "disabled", None)]
+    mundo.passar()
+    mundo.servico.mudar_estado(LivroKind.PREFERENCIA, p.id, SkillState.PUBLISHED, by=DONO, reason="de novo")
+    mundo.passar()
+    nova, _ = mundo.escolher("ig.a")
+    mundo.prefs.minerar(AGORA)
+    assert _trilha(mundo, p.id)[-1] == ("published", "disabled", nova)
+
+
+def test_so_a_evidencia_desde_a_ultima_mudanca_de_estado() -> None:
+    def ev(n: int, quando: str) -> Evidencia:
+        return Evidencia(item_ref="li-x", stance=Posicao.FOR, origin_ref=f"signal:{n}", run_id=f"r{n}",
+                         instance_id=None, app_version=None, simulated=False, detail=None, observed_at=quando)
+
+    def tr(n: int, de: SkillState | None, para: SkillState, quando: str) -> Transicao:
+        return Transicao(id=n, item_ref="li-x", item_kind=LivroKind.PREFERENCIA, content_hash=None, scope_key="k",
+                         app_version=None, from_state=de, to_state=para, reason="r", decided_by="sistema",
+                         decided_at=quando, run_id=None)
+
+    t0, t1, t2 = "2026-09-29T12:00:00.000Z", "2026-09-29T12:01:00.000Z", "2026-09-29T12:02:00.000Z"
+    evs = [ev(1, t0), ev(2, t0), ev(3, t1), ev(4, t2)]
+    assert desde_a_ultima_mudanca(evs, []) == evs                                   # sem trilha: toda
+    # O nascimento e a evidência da mesma passada caem no mesmo milissegundo: são dele.
+    assert desde_a_ultima_mudanca(evs, [tr(1, None, SkillState.CANDIDATE, t0)]) == evs
+    nascida_e_reativada = [tr(1, None, SkillState.CANDIDATE, t0), tr(2, SkillState.CANDIDATE, SkillState.DISABLED, t0),
+                           tr(3, SkillState.DISABLED, SkillState.PUBLISHED, t1)]
+    assert desde_a_ultima_mudanca(evs, nascida_e_reativada) == evs[2:]
+    # A mudança de detalhe (`de = para`) não é mudança de estado: o marco continua o anterior.
+    detalhe = [*nascida_e_reativada, tr(4, SkillState.PUBLISHED, SkillState.PUBLISHED, t2)]
+    assert desde_a_ultima_mudanca(evs, detalhe) == evs[2:]
+
+
 def test_execucao_que_fechou_nao_inventa() -> None:
     def obs(run: str) -> Observacao:
         return Observacao(origem=f"signal:{run}", run_id=run, perfil=ANDRE, campo="skill", modelo="emp-x",
@@ -502,29 +576,90 @@ def test_execucao_que_fechou_nao_inventa() -> None:
 
     assert execucao_que_fechou([obs("r1"), obs("r1"), obs("r2")]) is None          # 2 execuções não fecham
     assert execucao_que_fechou([obs("r1"), obs("r2"), obs("r2"), obs("r3"), obs("r4")]) == ("r3", 3)
-    assert execucao_que_fechou([obs("r1"), obs("r2"), obs("")]) is None            # a que fechou não tem execução
+    # A observação sem execução não conta como uma (como no veredito da validação): nem fecha, nem soma no "entre N".
+    assert execucao_que_fechou([obs("r1"), obs("r2"), obs("")]) is None
+    assert execucao_que_fechou([obs(""), obs("r1"), obs("r2")]) is None
+    assert execucao_que_fechou([obs(""), obs("r1"), obs("r2"), obs("r3")]) == ("r3", 3)
 
 
-def test_a_preferencia_aparece_no_bloco_da_execucao_que_fechou_o_limiar(mundo: Mundo) -> None:
+@dataclass
+class _SoEscolhas:
+    """A leitura com escolhas dadas pelo teste (a do banco sempre traz a execução; `''` é a linha legada sem ela)."""
+
+    obs: list[Observacao]
+
+    def respostas(self) -> list[Observacao]:
+        return []
+
+    def escolhas_a_registrar(self, desde: str) -> list[EscolhaObservada]:
+        return []
+
+    def escolhas(self) -> list[Observacao]:
+        return list(self.obs)
+
+    def comando(self, run_id: str) -> str | None:
+        return None
+
+    def plano_tem_efeito(self, run_id: str) -> bool:
+        return False
+
+    def perguntas_abertas(self, run_id: str) -> PerguntasAbertas | None:
+        return None
+
+
+def test_escolha_sem_execucao_nao_conta_para_o_nascimento(mundo: Mundo) -> None:
+    """O nascimento conta as execuções como a validação: a escolha sem `run_id` não é uma. Com ela e mais duas, nada
+    nasce (a validação, com as mesmas, não fecharia); com três de verdade, nasce "entre 3", sem a vazia na
+    proveniência."""
+    runs = [mundo.execucao(AMBIGUO, status="cancelled") for _ in range(3)]
+
+    def obs(run: str, n: int) -> Observacao:
+        return Observacao(origem=f"signal:{n}", run_id=run, perfil=ANDRE, campo="skill", modelo="emp-x",
+                          valor="ig.b", app_package="com.instagram.android", run_sucessora=None, simulated=False,
+                          opcoes=("ig.a", "ig.b"), versao=1)
+
+    leitura = _SoEscolhas([obs("", 1), obs(runs[0], 2), obs(runs[1], 3)])
+    prefs = ServicoDePreferencias(mundo.servico, mundo.repo, leitura, TriagemDeCredencial())
+    prefs.minerar(AGORA)
+    assert mundo.preferencias() == []
+    leitura.obs.append(obs(runs[2], 4))
+    prefs.minerar(AGORA)
+    [p] = mundo.preferencias()
+    assert p.provenance["limiar"] == {"run_id": runs[2], "execucoes": 3}
+    assert p.provenance["runs"] == runs
+    assert _trilha(mundo, p.id)[0] == (None, "candidate", runs[2])
+
+
+async def test_a_preferencia_aparece_no_bloco_da_execucao_que_fechou_o_limiar(
+        mundo: Mundo, cliente: httpx.AsyncClient) -> None:
     """`GET /api/runs/{id}/feedback` → `aprendizado.candidatas`: só na execução que fechou o limiar, "entre 3
     execuções"; nas outras ela só foi reforçada, e o bloco não a mostra (a página Aprendizado, sim)."""
     mundo.modo(Modo.ON)
     execucoes = [mundo.escolher("ig.b")[0] for _ in range(4)]
     mundo.prefs.minerar(AGORA)
     [p] = mundo.preferencias()
-    bloco = AprendizadoDaExecucao(mundo.servico, LeituraDoAprendidoSql(mundo.db), TriagemDeCredencial())
-    [linha] = bloco.da_execucao(execucoes[2])
-    assert (linha.grupo, linha.kind, linha.ref, linha.estado) == (
-        Grupo.CANDIDATA, LivroKind.PREFERENCIA, p.id, SkillState.PUBLISHED)
-    assert linha.papel == ("preferência que nasceu com a evidência desta execução, entre 3 execuções, validada e "
-                           "publicada nesta execução, evidência a favor")
-    assert linha.titulo is not None and "ig.b" in linha.titulo
+
+    async def bloco(run: str) -> dict[str, list[dict[str, object]]]:
+        r = await cliente.get(f"/api/runs/{run}/feedback")
+        assert r.status_code == 200, r.text
+        lido = r.json()["aprendizado"]
+        assert isinstance(lido, dict), lido            # `null` é a leitura que quebrou: não passa em silêncio
+        return lido
+
+    lido = await bloco(execucoes[2])
+    [linha] = lido["candidatas"]
+    assert all(not v for k, v in lido.items() if k != "candidatas")
+    assert (linha["kind"], linha["ref"], linha["estado"]) == (LivroKind.PREFERENCIA.value, p.id,
+                                                              SkillState.PUBLISHED.value)
+    assert linha["papel"] == ("preferência que nasceu com a evidência desta execução, entre 3 execuções, validada e "
+                              "publicada nesta execução, evidência a favor")
+    assert isinstance(linha["titulo"], str) and "ig.b" in linha["titulo"]
     for outra in (execucoes[0], execucoes[1], execucoes[3]):
-        assert bloco.da_execucao(outra) == ()
+        assert all(not v for v in (await bloco(outra)).values())
     # Sem a marca na proveniência (item de antes desta regra, ou ilegível): sem número, "e de outras".
     mundo.db.execute("UPDATE learning_items SET provenance='{}' WHERE id=?", (p.id,))
-    [linha] = bloco.da_execucao(execucoes[2])
-    assert linha.papel is not None and linha.papel.startswith(
+    [linha] = (await bloco(execucoes[2]))["candidatas"]
+    assert isinstance(linha["papel"], str) and linha["papel"].startswith(
         "preferência que nasceu com a evidência desta execução e de outras,")
 
 

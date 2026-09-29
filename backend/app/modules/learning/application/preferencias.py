@@ -20,7 +20,8 @@ contradiz a preferência, e o sistema a desliga (rebaixar é automático).
 
 Ela nasce na curadoria periódica, não numa execução, mas a trilha leva o `run_id` da observação que fechou o limiar
 (`execucao_que_fechou`), e cada mudança de estado do sistema, o da evidência que virou o veredito
-(`evidencia_decisiva`): é assim que ela aparece no "Aprendizado desta execução" (D2), dita "entre N execuções".
+(`evidencia_decisiva`) entre a que chegou depois da última mudança (`desde_a_ultima_mudanca`; sem evidência nova, sem
+`run_id`): é assim que ela aparece no "Aprendizado desta execução" (D2), dita "entre N execuções".
 
 Consumo, sempre como sugestão e só no modo `on`, só das PUBLICADAS:
 
@@ -44,7 +45,7 @@ from typing import Protocol
 from app.modules.learning.application.ports import NovaEvidencia, NovoSinal, RepositorioDeAprendizado, TriagemDeTexto
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, ErroDeAprendizado, NaoEncontrado, SkillState
-from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem
+from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.promocao import (Decisao, Evidencia, Limiares, evidencia_decisiva,
                                                   veredito_de_repeticao)
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, Papel, Polaridade, Posicao, SignalKind,
@@ -224,7 +225,7 @@ class ServicoDePreferencias:
                modo: Modo) -> int:
         if not vivas:
             valores = {o.valor for o in observacoes}
-            execucoes = {o.run_id for o in observacoes}
+            execucoes = {o.run_id for o in observacoes if o.run_id}       # sem execução não conta como uma
             if len(valores) != 1 or len(execucoes) < LIMIARES.n_min:
                 return 0                   # ainda não repetiu, ou já houve resposta diferente: nada nasce
             nascida = self._nascer(chave, observacoes)
@@ -242,7 +243,7 @@ class ServicoDePreferencias:
         ultima = observacoes[-1]
         efeito = any(self._leitura.plano_tem_efeito(o.run_sucessora) if o.run_sucessora else True
                      for o in observacoes)
-        proveniencia: list[str] = list(dict.fromkeys(o.run_id for o in observacoes))[:20]
+        proveniencia: list[str] = list(dict.fromkeys(o.run_id for o in observacoes if o.run_id))[:20]
         # A preferência nasce na curadoria, não numa execução: a trilha leva a execução cuja observação FECHOU o limiar,
         # e a proveniência, em quantas execuções estava a evidência até ali — o bloco da execução diz "entre N", para
         # não vendê-la como causa única. Fora do conteúdo, como as versões: não muda o `content_hash` nem o veto.
@@ -302,19 +303,21 @@ class ServicoDePreferencias:
             return 0
         evidencias = self._repo.evidencias(atual.id)
         veredito = veredito_de_repeticao(evidencias, LIMIARES)
-        # A leitura vem da mais nova para a mais antiga; a execução que decidiu é a da evidência que virou o veredito.
-        cronologicas = evidencias[::-1]
+        # O veredito pesa TODA a evidência; a execução que a trilha leva, só a que chegou depois da última mudança de
+        # estado. A de antes já foi pesada por quem decidiu por último (a pessoa que reativou, ou o sistema noutra
+        # passada) e não causou esta: sem evidência nova que dê o veredito, a trilha fica sem `run_id`.
+        novas = desde_a_ultima_mudanca(evidencias[::-1], self._repo.trilha(atual.id))
         try:
             if veredito.decisao is Decisao.CONTRADITA:
                 self._mover(atual, SkillState.DISABLED, f"contradita: {veredito.contra} resposta(s) diferente(s)",
-                            _run_de(evidencia_decisiva(cronologicas, Decisao.CONTRADITA, LIMIARES)))
+                            _run_de(evidencia_decisiva(novas, Decisao.CONTRADITA, LIMIARES)))
                 return 1
             if atual.human_origin:
                 return 0                   # texto de pessoa: o dono valida e publica
             feito = 0
             validou_agora: str | None = None
             if atual.state is SkillState.CANDIDATE and veredito.decisao is Decisao.PROMOVE:
-                validou_agora = _run_de(evidencia_decisiva(cronologicas, Decisao.PROMOVE, LIMIARES))
+                validou_agora = _run_de(evidencia_decisiva(novas, Decisao.PROMOVE, LIMIARES))
                 self._mover(atual, SkillState.VALIDATED,
                             f"repetiu: {veredito.a_favor} escolhas iguais em {veredito.execucoes} execuções",
                             validou_agora)
@@ -390,13 +393,30 @@ def execucao_que_fechou(observacoes: Sequence[Observacao]) -> tuple[str, int] | 
 
     O mesmo teste de `_grupo` (execuções distintas até `LIMIARES.n_min`), na ordem da leitura (a dos sinais): quando a
     curadoria encontra mais observações que o limiar pede, a que fechou é a n-ésima, não a última — as seguintes só
-    reforçam. Sem `run_id` na que fechou (a escolha lida sem execução), `None`: a trilha fica sem, nada é inventado."""
+    reforçam. A observação sem `run_id` (a escolha lida sem execução) não conta como execução, como no veredito da
+    validação (`veredito_de_repeticao`): senão o nascimento diria "entre 3" com uma desconhecida, e a validação, com as
+    mesmas observações, não fecharia."""
     vistas: set[str] = set()
     for o in observacoes:
+        if not o.run_id:
+            continue
         vistas.add(o.run_id)
         if len(vistas) >= LIMIARES.n_min:
-            return (o.run_id, len(vistas)) if o.run_id else None
+            return o.run_id, len(vistas)
     return None
+
+
+def desde_a_ultima_mudanca(cronologicas: Sequence[Evidencia], trilha: Sequence[Transicao]) -> list[Evidencia]:
+    """A evidência observada desde a última mudança de ESTADO do item (a de detalhe, `de = para`, não conta): só ela
+    pode ter causado a próxima. `>=`, não `>`: o nascimento e a evidência que a mesma passada registra logo depois
+    caem no mesmo milissegundo, e são dela. Os dois carimbos vêm do relógio do repositório — o mesmo `now_iso` no da
+    trilha e no da evidência, na composição —, no formato de `to_iso`, que ordena como texto. Item sem trilha (de antes
+    dela): toda."""
+    mudancas = [t for t in trilha if t.from_state != t.to_state]
+    if not mudancas:
+        return list(cronologicas)
+    marco = mudancas[-1].decided_at
+    return [e for e in cronologicas if e.observed_at >= marco]
 
 
 def _run_de(evidencia: Evidencia | None) -> str | None:
@@ -419,5 +439,5 @@ def _curto(texto: str, n: int = 80) -> str:
 
 __all__ = ["CAMPO_DA_HABILIDADE", "LIMIARES", "EscolhaObservada", "LeituraDePreferencias", "Observacao",
            "PerguntasAbertas", "Preferida", "ServicoDePreferencias", "Sugestao", "campo_de_terceiro",
-           "chave_da_resposta", "execucao_que_fechou", "modelo_do_comando", "modelo_do_conjunto",
-           "versoes_conferidas"]
+           "chave_da_resposta", "desde_a_ultima_mudanca", "execucao_que_fechou", "modelo_do_comando",
+           "modelo_do_conjunto", "versoes_conferidas"]
