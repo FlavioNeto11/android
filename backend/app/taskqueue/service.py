@@ -927,7 +927,11 @@ class RunService:
         steps = self.scheduler.recovery_steps(run, obj["id"])
         if not steps:
             raise RunError("nothing_to_retry", "Não há etapas pendentes para refazer neste item.")
-        self.repo.revise_plan(obj["id"], reason, steps)
+        versao = self.repo.revise_plan(obj["id"], reason, steps)
+        # O mesmo que a recuperação automática faz depois de revisar: o texto escrito (e talvez aprovado) mora na
+        # LINHA da etapa, não em `runs.plan`. Sem herdá-lo, a etapa renascia sem `content`, sem a guarda e sem a
+        # marca de rascunho — a porta escrevia outro texto, pago, e a aprovação já dada não valia para ele.
+        self.scheduler.herdar_textos(obj["id"], versao)
         self.repo.db.execute("UPDATE objectives SET started_at=NULL, finished_at=NULL WHERE id=?", (obj["id"],))
         self.repo.set_objective(obj["id"], ObjectiveStatus.pending, detail=reason,
                                 message=f"{obj['instance_id']}: item retomado — {reason}")

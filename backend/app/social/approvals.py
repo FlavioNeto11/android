@@ -14,7 +14,7 @@ digitou não teria como voltar atrás — `succeeded` é estado terminal na máq
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from ..db import Database, dumps, loads
 from ..security.sessions import operador_atual
@@ -78,6 +78,46 @@ class ApprovalStore:
         row = self.db.one("SELECT * FROM pending_approvals WHERE step_id=? ORDER BY created_at DESC LIMIT 1",
                           (step_id,))
         return self._dto(row) if row else None
+
+    def acompanhar_revisao(self, step_id: str, *, profile_id: str | None, capability: str, target: str | None,
+                           content: str | None, disparou: Callable[[str], bool]) -> Approval | None:
+        """A decisão já tomada sobre ESTA etapa numa versão anterior do plano, quando ela vale para a etapa revisada.
+
+        A revisão do plano (recuperação automática, “Tentar novamente”) recria a etapa com id novo, e `for_step`
+        procura pelo id: um CREATE_COMMENT aprovado na v1 abria pedido novo na v2 e o objetivo voltava a esperar
+        alguém — a pessoa aprovava a mesma frase duas vezes, e na espera o prazo corria.
+
+        Vale só o que foi de fato aprovado: a decisão mais recente sobre a mesma chave do mesmo objetivo, aprovada
+        ou editada (uma rejeição posterior encerra o assunto), para o mesmo perfil, a mesma ação, o mesmo alvo e
+        o MESMO texto (o editado, quando houve edição). Texto diferente é pedido novo. Chave diferente também, mesmo
+        com texto e alvo iguais: são duas publicações. E uma aprovação cujo efeito já saiu (interação aberta no
+        commit, ou etapa antiga com efeito disparado — `disparou`, a mesma regra de `Repository.commit_state`) foi
+        gasta: repetir o envio pede decisão de novo.
+
+        Quando vale, a aprovação passa a apontar para a etapa revisada, em vez de ser copiada: é a etapa que vai
+        rodar, e é por ela que o commit liga a interação (`link_interaction`). Uma cópia poria dois cartões da
+        mesma decisão na aba de aprovações.
+        """
+        etapa = self.db.one("SELECT objective_id, key, plan_version FROM steps WHERE id=?", (step_id,))
+        if etapa is None or not etapa["objective_id"]:
+            return None
+        row = self.db.one(
+            "SELECT a.* FROM pending_approvals a JOIN steps s ON s.id=a.step_id WHERE s.objective_id=? AND s.key=?"
+            " AND s.plan_version<? AND a.status IN ('approved','edited','rejected')"
+            " ORDER BY s.plan_version DESC, a.created_at DESC LIMIT 1",
+            (etapa["objective_id"], etapa["key"], etapa["plan_version"]))
+        if row is None:
+            return None
+        anterior = self._dto(row)
+        vale = (anterior.status in ("approved", "edited") and anterior.interaction_id is None
+                and anterior.profile_id == profile_id and anterior.capability == capability
+                and (anterior.target or None) == (target or None)
+                and (anterior.content or "").strip() == (content or "").strip())
+        if not vale or anterior.step_id is None or disparou(anterior.step_id):
+            return None
+        self.db.execute("UPDATE pending_approvals SET step_id=? WHERE id=? AND step_id=?",
+                        (step_id, anterior.id, anterior.step_id))
+        return self.for_step(step_id)
 
     def list(self, *, status: str | None = "pending", profile_id: str | None = None, run_id: str | None = None,
              limit: int = 50) -> list[Approval]:

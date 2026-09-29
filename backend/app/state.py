@@ -1797,11 +1797,25 @@ class AppState:
         haveria como "editar e refazer" depois que o texto já foi digitado e enviado.
         """
         pedido = self.approvals.for_step(srow["id"])
+        bindings = loads(srow["bindings"], {}) or {}
+        alvo = bindings.get("username") or bindings.get("target")
         if pedido is None:
-            bindings = loads(srow["bindings"], {}) or {}
+            # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
+            # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
+            # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.
+            pedido = self.approvals.acompanhar_revisao(
+                srow["id"], profile_id=profile_id, capability=cap.key, target=alvo, content=bindings.get("content"),
+                disparou=lambda etapa: self.repo.commit_state(etapa)[0])
+            if pedido is not None:
+                self.repo.decision(
+                    f"{obj['instance_id']}: a decisão {pedido.id} ({pedido.status}) sobre '{srow['title']}' numa "
+                    f"versão anterior do plano vale para a etapa revisada (v{srow['plan_version']}): mesma ação, mesmo "
+                    "alvo e mesmo texto, e o efeito ainda não tinha saído.",
+                    run_id=obj["run_id"], instance_id=obj["instance_id"], step_id=srow["id"])
+        if pedido is None:
             pedido = self.approvals.open(
                 profile_id=profile_id, capability=cap.key, summary=srow["title"],
-                target=bindings.get("username") or bindings.get("target"), content=bindings.get("content"),
+                target=alvo, content=bindings.get("content"),
                 run_id=obj["run_id"], objective_id=obj["id"], step_id=srow["id"])
             self.bus.emit("approval.pending", f"{obj['instance_id']}: {srow['title']} aguarda aprovação",
                           level="warn", run_id=obj["run_id"], instance_id=obj["instance_id"],
