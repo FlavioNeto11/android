@@ -33,7 +33,12 @@ Pedido do dono: os dois estavam "muito ruins de ler". Só painel; nenhuma mudan�
 - **Prova.** `simulated`: typecheck e vitest 751/751. Os testes novos estão em `resultadoDaInstancia.test.ts`,
   `ReportTab.test.tsx` (falha com a etapa comprovada e em aberto, sucesso com etapa à mão, recolhimento) e
   `outros.test.ts`/`DiagnosticsPage.test.tsx`. Visual: Vite local com os dados reais do central, só leitura (6eb84c,
-  7cfa59 com 8 aparelhos, 02ee9e a 375 px). A implantação e a captura no painel do central vêm na entrada seguinte.
+  7cfa59 com 8 aparelhos, 02ee9e a 375 px).
+- **Implantado** no central junto com a Fase 22 da outra sessão: `/api/health` em `b34e2f6` (que contém `13fb5c0`), o
+  `frontend/dist` servido tem o código novo. Prova `real` (29/09 ~17:10Z, painel em 127.0.0.1:8000): a 6eb84c ›
+  Relatório mostra o cartão do android-06 (Sucesso, Comprovado, Entregue, `WIN-7S2UASNLFOP · emulator-5564`, 5 etapas
+  comprovadas com a prova e 2 efeitos com horário), e o Diagnóstico › Outros dados mostra as 5 seções com as tabelas.
+  CI verde em `13fb5c0` (run 36584078149; PostgreSQL pulado).
 
 ## 2026-09-29 (tarde) — O código em aberto: interruptor antigo pelo livro, bloco da execução, três sinais, dívida de import e irq medido (ADR-054)
 
