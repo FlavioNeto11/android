@@ -6,18 +6,20 @@ trilha e da evidência com o `run_id` dela (`learning_transitions`, `learning_ev
 `learning_exposures`; e a falha, de `attempts.failure_kind` (o legado sem tipo vai com o erro e o status para o domínio
 classificar na leitura, sem gravar). O erro não sai daqui para o painel: só o tipo. Da trilha vêm também o
 `decided_by` e o `reason`, só para o domínio dizer se a transição foi do sistema, do voto de uma pessoa ou de uma
-pessoa; nenhum dos dois sai no bloco.
+pessoa; nenhum dos dois sai no bloco. No nascimento da preferência, o item diz em quantas execuções estava a evidência
+que fechou o limiar (`provenance.limiar`): só o número sai, no papel.
 
 SQL portável (SQLite e PostgreSQL): agregados com todas as colunas não agregadas no `GROUP BY`, e o `IN (...)` das
 receitas aprendidas em lotes (`receitas_aprendidas`, o mesmo do voto).
 """
 from __future__ import annotations
 
-from app.db import Database
+from app.db import Database, Row
 from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.aprendido import (EvidenciaDaExecucao, ExposicaoDaExecucao, FatosDaExecucao,
                                                    TentativaDaExecucao, TransicaoDaExecucao)
+from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure import linhas
 from app.modules.learning.infrastructure.feedback_sql import receitas_aprendidas
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -50,9 +52,11 @@ class LeituraDoAprendidoSql:
             transicoes=tuple(TransicaoDaExecucao(
                 item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto(r, "item_kind"),
                 de=linhas.texto_ou_nulo(r, "from_state"), para=linhas.texto(r, "to_state"),
-                por=linhas.texto(r, "decided_by"), motivo=linhas.texto(r, "reason"))
-                for r in self._db.query("SELECT item_ref, item_kind, from_state, to_state, decided_by, reason"
-                                        " FROM learning_transitions WHERE run_id=? ORDER BY id", (run_id,))),
+                por=linhas.texto(r, "decided_by"), motivo=linhas.texto(r, "reason"), entre=_entre(r, run_id))
+                for r in self._db.query(
+                    "SELECT t.item_ref, t.item_kind, t.from_state, t.to_state, t.decided_by, t.reason, i.provenance"
+                    " FROM learning_transitions t LEFT JOIN learning_items i ON i.id = t.item_ref"
+                    " WHERE t.run_id=? ORDER BY t.id", (run_id,))),
             evidencias=tuple(EvidenciaDaExecucao(
                 item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto_ou_nulo(r, "item_kind"),
                 posicao=linhas.texto(r, "stance"), n=linhas.inteiro(r, "n"))
@@ -68,6 +72,19 @@ class LeituraDoAprendidoSql:
             tentativas=tuple(TentativaDaExecucao(
                 failure_kind=linhas.texto_ou_nulo(t, "failure_kind"), status=linhas.texto_ou_nulo(t, "status"),
                 erro=linhas.texto_ou_nulo(t, "error")) for t in tentativas))
+
+
+def _entre(r: Row, run_id: str) -> int | None:
+    """No nascimento da preferência, em quantas execuções estava a evidência que fechou o limiar
+    (`provenance.limiar`, gravado por `preferencias._nascer`) — só se foi ESTA a execução que o fechou. Fora disso,
+    ou ilegível, `None`: o papel diz "e de outras", sem número inventado."""
+    if linhas.texto_ou_nulo(r, "from_state") is not None or linhas.texto(r, "item_kind") != LivroKind.PREFERENCIA.value:
+        return None
+    limiar = linhas.json_objeto(r, "provenance").get("limiar")
+    if not isinstance(limiar, dict) or limiar.get("run_id") != run_id:
+        return None
+    n = limiar.get("execucoes")
+    return n if isinstance(n, int) and not isinstance(n, bool) and n >= 1 else None
 
 
 def montar_aprendizado(db: object, servico: LearningService) -> AprendizadoDaExecucao | None:

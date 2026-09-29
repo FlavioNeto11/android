@@ -6,15 +6,16 @@ D2). Puro: recebe os fatos já lidos e devolve as linhas agrupadas como o painel
 | receita | a que a execução usou (`attempts.recipe_id`), a que aprendeu (`learned_from_step`), a que mudou de estado ou recebeu evidência por causa dela |
 | fluxo | o que usou (`runs.flow_id`), o que nasceu dela (`source_run_id`), o que mudou de estado ou recebeu evidência por causa dela |
 | falha | as tentativas que falharam, pelo tipo gravado (A2) ou, no legado, pelo mesmo classificador puro na leitura (retroativo) |
-| candidata | o item do livro (lição, tela, voz, preferência) que NASCEU desta execução (a transição de nascimento leva o `run_id`), e a tela, a voz e a preferência que já existiam e mudaram de estado por causa dela (o papel diz "… que já existia" e o que mudou) |
+| candidata | o item do livro (lição, tela, voz, preferência) que NASCEU desta execução (a transição de nascimento leva o `run_id`; a preferência, o da observação que fechou o limiar, e o papel diz "entre N execuções"), e a tela, a voz e a preferência que já existiam e mudaram de estado por causa dela (o papel diz "… que já existia" e o que mudou) |
 | licao | a lição que não nasceu aqui e foi exposta (por papel e braço), mudou de estado ou recebeu evidência por causa dela |
 
 Uma linha por item em cada grupo — o painel usa `grupo-ref` como chave —, e cada item num grupo só: a lição que nasceu
 desta execução e recebeu dela a primeira evidência é candidata, não "lição exposta". O que o painel não tem onde
 mostrar fica de fora: a versão de habilidade (a trilha dela é outra) e a tela, a voz e a preferência que a execução só
 reforçou (a página Aprendizado as mostra com a evidência). Quem nasce com o `run_id`: a lição e a voz (mineradores do
-digest) e a tela (`telas.minerar(run_id)`); a preferência nasce na curadoria periódica, sem execução, e nunca aparece
-como nascida de uma.
+digest), a tela (`telas.minerar(run_id)`) e a preferência. Esta nasce na curadoria periódica, da evidência de várias
+execuções: a trilha leva a execução cuja observação fechou o limiar, e o papel não a vende como causa única — "nasceu
+com a evidência desta execução, entre N execuções" (`TransicaoDaExecucao.entre`, lido de `provenance.limiar`).
 
 A trilha diz QUEM decidiu (`decided_by`). Só a transição do sistema é "nesta execução"; a de uma pessoa que leva o
 `run_id` (hoje, o desligamento pelo voto "deu errado") diz que foi uma pessoa — "pelo voto de uma pessoa" quando o
@@ -54,7 +55,8 @@ CHAVE_DO_GRUPO: Mapping[Grupo, str] = {Grupo.RECEITA: "receitas", Grupo.FLUXO: "
 class TransicaoDaExecucao:
     """Uma linha de `learning_transitions` com o `run_id` desta execução. `de=None` é o nascimento do item. `por` é o
     `decided_by` e `motivo` o `reason`: só servem para dizer se foi o sistema, o voto de uma pessoa ou uma pessoa —
-    nenhum dos dois sai no papel."""
+    nenhum dos dois sai no papel. `entre`: no nascimento da preferência, em quantas execuções estava a evidência que
+    fechou o limiar (as outras transições, `None`)."""
 
     item_ref: str
     item_kind: str
@@ -62,6 +64,7 @@ class TransicaoDaExecucao:
     para: str
     por: str = SYSTEM_ACTOR
     motivo: str = ""
+    entre: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +171,7 @@ class _Marcas:
     kind: LivroKind
     ref: str
     nasceu: bool = False
+    entre: int | None = None                 # a preferência nasce da evidência de várias execuções
     usos: list[str] = field(default_factory=list)
     exposicoes: list[tuple[str, str]] = field(default_factory=list)
     transicoes: list[tuple[str, str]] = field(default_factory=list)     # (para, autoria), na ordem da trilha
@@ -184,6 +188,7 @@ class _Marcas:
     def transitar(self, t: TransicaoDaExecucao) -> None:
         if t.de is None:
             self.nasceu = True
+            self.entre = t.entre
             return
         marca = (t.para, _autoria(t))
         if not self.transicoes or self.transicoes[-1] != marca:
@@ -194,7 +199,14 @@ class _Marcas:
         if _grupo(self) is Grupo.CANDIDATA:
             # Na candidata que já existia, o papel diz que ela não nasceu aqui: o grupo é "Candidatas geradas".
             rotulo = _ROTULO_DO_KIND.get(self.kind, self.kind.value)
-            partes.append(rotulo if self.nasceu else f"{rotulo} que já existia")
+            if not self.nasceu:
+                partes.append(f"{rotulo} que já existia")
+            elif self.kind is LivroKind.PREFERENCIA:
+                # Nasce da repetição em várias execuções: esta só fechou o limiar, não a causou sozinha.
+                outras = f", entre {self.entre} execuções" if self.entre and self.entre > 1 else " e de outras"
+                partes.append(f"{rotulo} que nasceu com a evidência desta execução{outras}")
+            else:
+                partes.append(rotulo)
         partes.extend(self.usos)
         partes.extend(f"{_ROTULO_DO_BRACO.get(b, b)} ({_ROTULO_DO_PAPEL.get(p, p)})" for p, b in self.exposicoes)
         blocos: list[tuple[str, list[str]]] = []       # as transições seguidas de um mesmo autor, num verbo só

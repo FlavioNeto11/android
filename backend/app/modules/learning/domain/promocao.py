@@ -6,7 +6,7 @@ são por tipo e vêm do config (`aprendizado.*`); aqui só a regra.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -63,6 +63,18 @@ def veredito_de_repeticao(evidencias: Iterable[Evidencia], limiares: Limiares = 
     faltam = max(limiares.n_min - len(favor), limiares.execucoes_min - execucoes, limiares.aparelhos_min - aparelhos, 0)
     decisao = Decisao.PROMOVE if faltam == 0 else Decisao.ESPERA
     return VereditoDeRepeticao(decisao, len(favor), execucoes, aparelhos, contra, faltam)
+
+
+def evidencia_decisiva(cronologicas: Sequence[Evidencia], decisao: Decisao,
+                       limiares: Limiares = Limiares()) -> Evidencia | None:
+    """A evidência que levou a repetição a `decisao`: a primeira, na ordem em que foram observadas, cujo prefixo já dá
+    esse veredito — é a execução dela que a trilha leva (`run_id`). `None` quando nem todas juntas dão. A mesma regra de
+    `veredito_de_repeticao`, prefixo a prefixo, para não divergir dela; a simulada nunca é a decisiva (não muda o
+    veredito)."""
+    for i in range(len(cronologicas)):
+        if veredito_de_repeticao(cronologicas[:i + 1], limiares).decisao is decisao:
+            return cronologicas[i]
+    return None
 
 
 @dataclass(frozen=True, slots=True)
