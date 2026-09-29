@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { isString, isStringArray, loadJson, saveJson } from '../lib/storage';
 
-export type View = 'painel' | 'perfis' | 'aplicativos' | 'execucoes' | 'infraestrutura' | 'configuracao' | 'diagnostico';
+export type View = 'painel' | 'perfis' | 'aplicativos' | 'execucoes' | 'aprendizado' | 'infraestrutura' | 'configuracao'
+  | 'diagnostico';
 
-export const VIEWS: readonly View[] = ['painel', 'perfis', 'aplicativos', 'execucoes', 'infraestrutura',
+export const VIEWS: readonly View[] = ['painel', 'perfis', 'aplicativos', 'execucoes', 'aprendizado', 'infraestrutura',
                                        'configuracao', 'diagnostico'];
 
 export function isView(v: unknown): v is View {

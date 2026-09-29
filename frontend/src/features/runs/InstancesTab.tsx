@@ -20,6 +20,9 @@ import { useControlStore } from '../../store/control';
 import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
+import { useSessionStore } from '../../store/session';
+import { type Voto, votoDoItem } from '../aprendizado/model';
+import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import { attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps, printParaConfirmar } from './model';
 import { SideEffectFlag } from './PlanTab';
 import { type Confirmacao, resolveObjective } from './runActions';
@@ -56,6 +59,9 @@ export function InstancesTab({ detail }: { detail: RunDetail }) {
     [detail.objectives],
   );
   const attempts = useMemo(() => attemptsByStep(detail), [detail]);
+  // D2 (ADR-054): os votos já dados, lidos uma vez por execução e repartidos entre os itens.
+  const feedback = useFeedbackDaExecucao(detail.id);
+  const operador = useSessionStore((s) => s.operator);
   // Bloqueados começam abertos: é onde o usuário precisa agir.
   const [open, setOpen] = useState<Set<string>>(() => new Set(detail.objectives.filter(isBlocked).map((o) => o.id)));
   // …e um objetivo que FICA bloqueado depois também se abre sozinho (uma vez; o usuário pode recolher).
@@ -89,7 +95,8 @@ export function InstancesTab({ detail }: { detail: RunDetail }) {
   return (
     <div className={styles.objList}>
       {objectives.map((o) => (
-        <ObjectiveRow key={o.id} detail={detail} objective={o} attempts={attempts} open={open.has(o.id)} onToggle={() => toggle(o.id)} />
+        <ObjectiveRow key={o.id} detail={detail} objective={o} attempts={attempts} voto={votoDoItem(feedback, o.id, operador)}
+                      open={open.has(o.id)} onToggle={() => toggle(o.id)} />
       ))}
     </div>
   );
@@ -99,11 +106,13 @@ interface ObjectiveRowProps {
   detail: RunDetail;
   objective: Objective;
   attempts: Map<string, Attempt[]>;
+  /** O voto do D2 que ESTA pessoa já deu neste item. */
+  voto: Voto | null;
   open: boolean;
   onToggle: () => void;
 }
 
-function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: ObjectiveRowProps) {
+function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: ObjectiveRowProps) {
   const steps = useMemo(() => currentSteps(detail, o), [detail, o]);
   const headline = headlineStep(steps);
   const meta = metaOf(OBJECTIVE_STATUS, o.status);
@@ -162,6 +171,10 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
       {open ? (
         <div id={bodyId} className={styles.objBody}>
           {blocked ? <BlockedBox objective={o} confirmacao={confirmacao} /> : o.status_detail ? <p className={styles.muted} style={{ marginTop: 10 }}>{o.status_detail}</p> : null}
+
+          {/* D2 (ADR-054): ao lado de Confirmar, Repetir e Abandonar, e também no item concluído ou que falhou.
+              Nunca pergunta sozinho: votar é opcional. */}
+          <FeedbackItem runId={detail.id} objectiveId={o.id} voto={voto} simulada={detail.simulated} />
 
           {o.delivery_level && o.delivery_level !== 'none' ? (
             <p><span className={styles.muted}>Nível de entrega observado: </span><StatusBadge meta={metaOf(DELIVERY_LEVEL, o.delivery_level)} size="sm" /></p>

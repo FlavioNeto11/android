@@ -1,0 +1,757 @@
+/**
+ * Aprendizado contínuo no painel (ADR-054, pacote A6): tipos, rótulos e regras puras da página Aprendizado e do botão
+ * "Deu certo / Deu errado" (D2).
+ *
+ * O painel não decide nada sobre o ciclo de vida: o domínio (`backend/app/modules/learning/domain/ciclo.py`) é quem
+ * recusa. Aqui só se espelha a tabela de transições da PESSOA para não oferecer botão que o backend recusaria, e se
+ * traduz o vocabulário fechado para português.
+ *
+ * As rotas do livro (`/api/aprendizado`, `/pendentes`, `/revisar`, `/{kind}/{ref}`, `POST …/status`) já existem (A1).
+ * As do "o que mais falha" (A3), do voto e dos sinais (A4) chegam em pacotes paralelos: por isso a leitura delas é
+ * TOLERANTE (`ler*`) — campo ausente vira `null`, linha que não é objeto some, e nada quebra a página.
+ */
+import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } from 'lucide-react';
+import type { SkillState } from '../../api/types';
+import { isRecord } from '../../lib/format';
+import type { StatusMeta } from '../../lib/status';
+
+// ---------------------------------------------------------------- vocabulário do livro
+
+export type LivroKind = 'receita' | 'fluxo' | 'habilidade' | 'memoria' | 'tela' | 'licao' | 'voz' | 'preferencia';
+export const LIVRO_KINDS: readonly LivroKind[] = ['receita', 'fluxo', 'habilidade', 'memoria', 'tela', 'licao', 'voz',
+                                                  'preferencia'];
+/** O livro não tem rascunho: o item nasce congelado (`ciclo.py::ESTADOS`). */
+export type EstadoDoLivro = Exclude<SkillState, 'draft'>;
+export const ESTADOS_DO_LIVRO: readonly EstadoDoLivro[] = ['candidate', 'validated', 'published', 'deprecated', 'disabled'];
+export type Origem = 'execucao' | 'treino' | 'pessoa' | 'ensino' | 'sistema';
+export const ORIGENS: readonly Origem[] = ['execucao', 'treino', 'pessoa', 'ensino', 'sistema'];
+
+export function isLivroKind(v: unknown): v is LivroKind {
+  return typeof v === 'string' && (LIVRO_KINDS as readonly string[]).includes(v);
+}
+
+export function isEstadoDoLivro(v: unknown): v is EstadoDoLivro {
+  return typeof v === 'string' && (ESTADOS_DO_LIVRO as readonly string[]).includes(v);
+}
+
+/** Uma linha do livro, como `presentation/livro.py::_entrada` devolve. */
+export interface EntradaDoLivro {
+  kind: LivroKind;
+  /** Id na fonte: receita = número, habilidade = `id@versão`, memória = perfil, item = `li-…`. */
+  ref: string;
+  state: SkillState | null;
+  native_status: string | null;
+  title: string;
+  app: string | null;
+  origin: Origem;
+  side_effect: boolean;
+  human_origin: boolean;
+  /** Derivado no backend (`side_effect OR human_origin`, ou habilidade): nenhuma rota o edita. */
+  requires_owner: boolean;
+  created_at: string | null;
+  state_at: string | null;
+  last_used_at: string | null;
+  uses: number | null;
+  evidence: { for: number; against: number };
+  /** Memória: quantas lembranças (o conteúdo nunca sai no livro). */
+  count: number | null;
+  /** `state_detail`: `em_prova`, `medida:ajuda`, `absorvida:<commit>`… */
+  detail: string | null;
+}
+
+export interface ListaDoLivro {
+  itens: EntradaDoLivro[];
+  total: number;
+  /** Só em `GET /api/aprendizado`: {tipo: {estado: n}}. */
+  contagem?: Record<string, Record<string, number>>;
+}
+
+export interface EvidenciaDoLivro {
+  stance: 'for' | 'against' | 'conflict';
+  origin_ref: string;
+  run_id: string | null;
+  instance_id: string | null;
+  app_version: string | null;
+  simulated: boolean;
+  detail: string | null;
+  observed_at: string;
+}
+
+export interface TransicaoDoLivro {
+  id: number;
+  from: SkillState | null;
+  to: SkillState;
+  reason: string;
+  decided_by: string;
+  decided_at: string;
+  run_id: string | null;
+}
+
+export interface DetalheDoLivro {
+  item: EntradaDoLivro;
+  evidencias: EvidenciaDoLivro[];
+  trilha: TransicaoDoLivro[];
+  exposicoes: unknown[];
+}
+
+// ---------------------------------------------------------------- rótulos
+
+export const ESTADO_META: Record<SkillState, StatusMeta> = {
+  draft: { label: 'Rascunho', tone: 'muted', icon: FilePen, description: 'Ainda em edição.' },
+  candidate: { label: 'Candidato', tone: 'info', icon: CircleDashed,
+               description: 'Nasceu de uma observação e ainda não se repetiu o bastante: não é usado.' },
+  validated: { label: 'Validado', tone: 'warning', icon: ShieldCheck,
+               description: 'Repetiu (ou uma pessoa validou). Sem efeito externo o sistema publica sozinho; com efeito, espera o dono.' },
+  published: { label: 'Publicado', tone: 'success', icon: CircleCheck, description: 'Em uso nas execuções.' },
+  deprecated: { label: 'Aposentado', tone: 'muted', icon: Archive,
+                description: 'Saiu de circulação (sem uso, efeito neutro, versão nova do app ou absorvido). Uma pessoa pode reativar.' },
+  disabled: { label: 'Desligado', tone: 'danger', icon: CircleOff,
+              description: 'Refutado ou rejeitado. O sistema não o traz de volta; uma pessoa pode reativar.' },
+};
+
+export function rotuloDoEstado(s: SkillState | null | undefined): string {
+  return s ? ESTADO_META[s]?.label ?? s : 'Sem estado';
+}
+
+const KIND_LABEL: Record<LivroKind, string> = {
+  receita: 'Receita', fluxo: 'Fluxo', habilidade: 'Habilidade', memoria: 'Memória da persona', tela: 'Tela aprendida',
+  licao: 'Lição', voz: 'Voz da persona', preferencia: 'Preferência',
+};
+
+export function rotuloDoKind(k: string | null | undefined): string {
+  return k && isLivroKind(k) ? KIND_LABEL[k] : k ?? '—';
+}
+
+export const ORIGEM_LABEL: Record<Origem, string> = {
+  execucao: 'Aprendido de execução', treino: 'Demonstrado no treino', pessoa: 'Texto ou decisão de pessoa',
+  ensino: 'Ensino de habilidade', sistema: 'Observação automática',
+};
+
+/** `domain/falhas.py::Camada`. */
+export const CAMADAS = ['ia_ator', 'plano', 'verificacao', 'conhecimento_do_app', 'aparelho', 'automacao',
+                        'conta_sessao', 'provedor_ia', 'orcamento', 'execucao', 'pessoa', 'indefinida'] as const;
+export type Camada = (typeof CAMADAS)[number];
+
+const CAMADA_LABEL: Record<Camada, string> = {
+  ia_ator: 'IA (ator)', plano: 'Plano', verificacao: 'Verificação', conhecimento_do_app: 'Conhecimento do app',
+  aparelho: 'Aparelho', automacao: 'Automação', conta_sessao: 'Conta e sessão', provedor_ia: 'Provedor de IA',
+  orcamento: 'Orçamento', execucao: 'Fila de execução', pessoa: 'Pessoa (falta informação)',
+  indefinida: 'Indefinida (classificador)',
+};
+
+function isCamada(v: string): v is Camada {
+  return (CAMADAS as readonly string[]).includes(v);
+}
+
+export function rotuloDaCamada(c: string | null | undefined): string {
+  if (!c) return '—';
+  return isCamada(c) ? CAMADA_LABEL[c] : c;
+}
+
+/** `domain/falhas.py::FailureKind` → frase curta e a camada (o mesmo mapa `CAMADA` do domínio). */
+const FALHA: Record<string, { label: string; camada: Camada }> = {
+  prazo_da_etapa: { label: 'Prazo da etapa esgotado', camada: 'aparelho' },
+  ui_ocupada: { label: 'Interface ocupada', camada: 'aparelho' },
+  app_anr: { label: 'App sem resposta (ANR)', camada: 'aparelho' },
+  aparelho_travado: { label: 'Aparelho travado', camada: 'aparelho' },
+  sessao_de_automacao: { label: 'Sessão de automação caiu', camada: 'automacao' },
+  interrompida: { label: 'Tentativa interrompida', camada: 'execucao' },
+  autenticacao: { label: 'Autenticação', camada: 'conta_sessao' },
+  conta_errada: { label: 'Conta errada', camada: 'conta_sessao' },
+  ia_indisponivel: { label: 'IA indisponível', camada: 'provedor_ia' },
+  ia_recusa: { label: 'IA recusou', camada: 'provedor_ia' },
+  ia_orcamento: { label: 'Orçamento de IA', camada: 'orcamento' },
+  ia_saldo: { label: 'Saldo da conta de IA', camada: 'provedor_ia' },
+  ia_chamada_invalida: { label: 'Chamada de IA inválida', camada: 'ia_ator' },
+  ia_declarou_bloqueio: { label: 'IA declarou bloqueio', camada: 'ia_ator' },
+  ciclo_sem_progresso: { label: 'Ciclo sem progresso', camada: 'ia_ator' },
+  alvo_ausente: { label: 'Alvo ausente na tela', camada: 'ia_ator' },
+  efeito_alvo_errado: { label: 'Efeito no alvo errado', camada: 'ia_ator' },
+  efeito_guarda_nao_atendida: { label: 'Guarda do efeito não atendida', camada: 'ia_ator' },
+  efeito_nao_comprovado: { label: 'Efeito não comprovado', camada: 'verificacao' },
+  pos_condicao_nao_comprovada: { label: 'Pós-condição não comprovada', camada: 'verificacao' },
+  coleta_vazia: { label: 'Coleta vazia', camada: 'conhecimento_do_app' },
+  coleta_incompleta: { label: 'Coleta incompleta', camada: 'conhecimento_do_app' },
+  digitacao_incompleta: { label: 'Digitação incompleta', camada: 'automacao' },
+  defeito_do_plano: { label: 'Defeito do plano', camada: 'plano' },
+  falta_informacao: { label: 'Falta informação de quem pediu', camada: 'pessoa' },
+  outro: { label: 'Outro (sem regra)', camada: 'indefinida' },
+  // Categorias do backlog (A3), não tipos de tentativa: o sucesso mascarado e o fracasso que era sucesso.
+  verificacao_falso_positivo: { label: 'Verificador aceitou o que deu errado', camada: 'verificacao' },
+  verificacao_falso_negativo: { label: 'Verificador recusou o que deu certo', camada: 'verificacao' },
+  verificacao_lacuna: { label: 'Confirmado à mão (verificação não comprovou)', camada: 'verificacao' },
+};
+
+export function rotuloDaFalha(k: string | null | undefined): string {
+  if (!k) return '—';
+  return FALHA[k]?.label ?? k;
+}
+
+export function camadaDaFalha(k: string | null | undefined): Camada | null {
+  return k ? FALHA[k]?.camada ?? null : null;
+}
+
+/** Por que este item espera o dono (D1): o sistema publica sozinho só o que não tem efeito nem texto de pessoa. */
+export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'kind' | 'side_effect' | 'human_origin'>): string | null {
+  if (e.kind === 'habilidade') return 'habilidade: publicar é sempre de uma pessoa';
+  if (e.side_effect) return 'tem efeito externo';
+  if (e.human_origin) return 'tem texto de pessoa';
+  return null;
+}
+
+/** `state_detail` em português (o que a medida disse, a prova em andamento). */
+export function rotuloDoDetalhe(d: string | null | undefined): string | null {
+  if (!d) return null;
+  const fixos: Record<string, string> = {
+    em_prova: 'em prova (braço de controle)', fila_de_prova: 'na fila da prova', 'medida:ajuda': 'efeito medido: ajuda',
+    'medida:neutra': 'efeito medido: neutro', 'medida:atrapalha': 'efeito medido: atrapalha', contradita: 'contradita',
+  };
+  if (fixos[d]) return fixos[d] ?? d;
+  if (d.startsWith('absorvida:')) return `absorvida pelo YAML (${d.slice('absorvida:'.length)})`;
+  return d;
+}
+
+// ---------------------------------------------------------------- o que a PESSOA pode fazer
+
+export interface AcaoDoItem {
+  to: EstadoDoLivro;
+  label: string;
+  /** Rótulo do botão que confirma, depois do motivo. */
+  confirmar: string;
+  perigo: boolean;
+}
+
+const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });
+
+/**
+ * As transições que uma PESSOA pode fazer a partir do estado atual — o espelho de `ciclo.py::TRANSICOES` (ator
+ * PERSON), com as exceções do serviço: habilidade tem rota e ciclo próprios, memória fica fora do D1, fluxo não tem
+ * `deprecated` (sai de circulação como `disabled`) e receita substituída não volta.
+ */
+export function acoesDoItem(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem[] {
+  if (e.kind === 'habilidade' || e.kind === 'memoria' || !e.state) return [];
+  switch (e.state) {
+    case 'candidate':
+      return [A('validated', 'Validar', 'Confirmar validação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
+    case 'validated':
+      return [A('published', 'Aprovar', 'Confirmar aprovação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
+    case 'published':
+      return e.kind === 'fluxo'
+        ? [A('disabled', 'Desligar', 'Confirmar desligamento', true)]
+        : [A('deprecated', 'Aposentar', 'Confirmar aposentadoria'), A('disabled', 'Desligar', 'Confirmar desligamento', true)];
+    case 'deprecated':
+      return e.kind === 'receita' ? [] : [A('published', 'Reativar', 'Confirmar reativação')];
+    case 'disabled':
+      return [A('published', 'Reativar', 'Confirmar reativação')];
+    default:
+      return [];
+  }
+}
+
+/** O passo "para cima" que a fila Para aprovar oferece (e a aprovação em lote aplica). */
+export function acaoDeAprovar(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem | null {
+  const acao = acoesDoItem(e)[0];
+  return acao && (e.state === 'candidate' || e.state === 'validated') ? acao : null;
+}
+
+export function acaoDeRejeitar(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem | null {
+  return acoesDoItem(e).find((a) => a.to === 'disabled') ?? null;
+}
+
+// ---------------------------------------------------------------- habilidade na fila (a rota das habilidades)
+
+/** Onde fica o ciclo completo da habilidade no painel (`settings/FlowsRecipesSection.tsx`, seção Habilidades). */
+export const ONDE_FICAM_AS_HABILIDADES = 'Configuração → Fluxos e receitas → Habilidades';
+
+/**
+ * `skill_versions.id` = `<skill_id>@<versão>`, lido como `skills/domain/refs.py::SkillRef.parse`: parte no ÚLTIMO `@`
+ * e a versão é inteira, a partir de 1. Fora disso, `null` (e a fila não oferece botão).
+ */
+export function refDaHabilidade(ref: string): { skillId: string; version: number } | null {
+  const i = ref.lastIndexOf('@');
+  const numero = ref.slice(i + 1);
+  if (i <= 0 || !/^\d+$/.test(numero)) return null;
+  const version = Number(numero);
+  return Number.isSafeInteger(version) && version >= 1 ? { skillId: ref.slice(0, i), version } : null;
+}
+
+/**
+ * As ações da fila Para aprovar. O livro põe TODA versão de habilidade validada nesta fila (publicar é sempre de uma
+ * pessoa), mas não a move: a rota do livro devolve 409 `use_skills_route`. Então, para a habilidade, a fila oferece o
+ * passo da PESSOA no ciclo dela (`skills/domain/lifecycle.py::TRANSITIONS`: validated → published | disabled) e
+ * `aplicarTransicao` o manda pela rota das habilidades. Os outros tipos seguem a tabela do livro (`acoesDoItem`).
+ */
+export function acoesNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem[] {
+  if (e.kind !== 'habilidade') return [acaoDeAprovar(e), acaoDeRejeitar(e)].filter((a): a is AcaoDoItem => a !== null);
+  if (e.state !== 'validated' || !refDaHabilidade(e.ref)) return [];
+  return [A('published', 'Publicar', 'Confirmar publicação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
+}
+
+/** O passo "para cima" da fila, que a aprovação em lote aplica: para a habilidade validada, publicar. */
+export function acaoDeAprovarNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem | null {
+  return e.kind === 'habilidade' ? acoesNaFila(e).find((a) => a.to === 'published') ?? null : acaoDeAprovar(e);
+}
+
+/** Limite do motivo no backend (`CorpoDeStatus.reason`, 1 a 500). */
+export const MOTIVO_MAX = 500;
+
+export function erroDoMotivo(motivo: string): string | null {
+  const m = motivo.trim();
+  if (!m) return 'Diga o motivo: fica na trilha do item.';
+  if (m.length > MOTIVO_MAX) return `No máximo ${MOTIVO_MAX} caracteres.`;
+  return null;
+}
+
+// ---------------------------------------------------------------- ordenação
+
+function tempo(ts: string | null | undefined): number {
+  const n = ts ? Date.parse(ts) : Number.NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Fila do D1: o validado (que espera SÓ o dono) primeiro; dentro de cada grupo, o mais recente primeiro. */
+export function ordenarPendentes(itens: readonly EntradaDoLivro[]): EntradaDoLivro[] {
+  const peso = (e: EntradaDoLivro) => (e.state === 'validated' ? 0 : 1);
+  return itens.slice().sort((a, b) => peso(a) - peso(b) || tempo(b.state_at ?? b.created_at) - tempo(a.state_at ?? a.created_at)
+    || a.ref.localeCompare(b.ref));
+}
+
+// ---------------------------------------------------------------- o que mais falha (A3)
+
+export interface ExemploDeFalha {
+  run_id: string;
+  attempt_id: string | null;
+  erro: string | null;
+}
+
+export interface GrupoDeFalha {
+  /** Chave estável `fk-…` (a mesma do md e do backlog). */
+  id: string;
+  app: string;
+  capability: string;
+  failure_kind: string;
+  failure_screen: string | null;
+  titulo: string | null;
+  camada: string | null;
+  onde_alterar: string[];
+  doc: string | null;
+  prova: string | null;
+  ocorrencias: number;
+  taxa: number | null;
+  execucoes: number | null;
+  aparelhos: number | null;
+  usd_perdido: number | null;
+  min_perdidos: number | null;
+  intervencoes: number | null;
+  /** O que ORDENA (US$ + minutos + intervenções, pesos do config): vem pronto do backend, nunca recalculado aqui. */
+  custo_total: number | null;
+  tendencia: { atual: number; anterior: number } | null;
+  exemplos: ExemploDeFalha[];
+  /** Legado classificado na leitura (nunca gravado). */
+  retroativo: boolean;
+  estado_backlog: string | null;
+  /** O sucesso mascarado: sempre no topo. */
+  falso_positivo: boolean;
+  /** O md do item, quando o backend o manda pronto. */
+  md: string | null;
+}
+
+export interface RelatorioDeFalhas {
+  dias: number | null;
+  grupos: GrupoDeFalha[];
+  /** Porcentagem classificada como `outro` (acima de 15% o classificador precisa de regra nova). */
+  outro_pct: number | null;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function bool(v: unknown): boolean {
+  return v === true || v === 1;
+}
+
+/** O primeiro campo presente entre os nomes dados (o contrato de A3/A4 ainda pode escolher um ou outro). */
+function campo(o: Record<string, unknown>, ...nomes: string[]): unknown {
+  for (const n of nomes) if (o[n] !== undefined && o[n] !== null) return o[n];
+  return undefined;
+}
+
+function lista(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function listaDeTextos(v: unknown): string[] {
+  return lista(v).filter((x): x is string => typeof x === 'string' && x !== '');
+}
+
+function lerExemplo(v: unknown): ExemploDeFalha | null {
+  if (!isRecord(v)) return null;
+  const run = str(v.run_id);
+  if (!run) return null;
+  return { run_id: run, attempt_id: str(v.attempt_id), erro: str(campo(v, 'erro', 'error')) };
+}
+
+function lerGrupo(linha: unknown): GrupoDeFalha | null {
+  if (!isRecord(linha)) return null;
+  // A linha do relatório pode embrulhar o grupo (`{grupo: {...}, estado, licoes_ativas}`) e o grupo pode trazer a
+  // chave aninhada (`chave: {app, capability, tipo, tela}`, a `ChaveDoGrupo` do domínio): tudo vira um nível só.
+  const v: Record<string, unknown> = isRecord(linha.grupo) ? { ...linha.grupo, ...linha } : linha;
+  const chave = isRecord(v.chave) ? v.chave : null;
+  const tipo = str(campo(v, 'failure_kind', 'tipo')) ?? str(chave?.tipo) ?? 'outro';
+  const app = str(campo(v, 'app_package', 'app')) ?? str(chave?.app) ?? '*';
+  const capability = str(campo(v, 'capability', 'acao')) ?? str(chave?.capability) ?? '*';
+  const tela = str(campo(v, 'failure_screen', 'tela')) ?? str(chave?.tela);
+  // Sem a chave estável `fk-*` (que o backend deriva por sha1), a `cluster_key` identifica o grupo do mesmo jeito.
+  const id = str(campo(v, 'id', 'key')) ?? (typeof v.chave === 'string' ? v.chave : null)
+    ?? str(v.cluster_key) ?? (chave ? [app, capability, tipo, tela ?? ''].join('|') : null);
+  if (!id) return null;
+  // `onde_alterar` pode vir como o `OndeAlterar` do domínio ({arquivos, doc, prova}), lista ou texto.
+  const onde = campo(v, 'onde_alterar', 'where');
+  const ondeObj = isRecord(onde) ? onde : null;
+  const arquivos = ondeObj ? listaDeTextos(ondeObj.arquivos) : typeof onde === 'string' ? [onde] : listaDeTextos(onde);
+  const tend = campo(v, 'tendencia', 'trend');
+  const tAtual = isRecord(tend) ? num(campo(tend, 'atual', 'ultimos_7d')) : null;
+  const tAnterior = isRecord(tend) ? num(campo(tend, 'anterior', 'anteriores_7d')) : null;
+  const ocorrencias = num(campo(v, 'ocorrencias', 'occurrences', 'n')) ?? 0;
+  const elegiveis = num(v.elegiveis);
+  return {
+    id,
+    app,
+    capability,
+    failure_kind: tipo,
+    failure_screen: tela,
+    titulo: str(campo(v, 'title', 'titulo')),
+    camada: str(v.camada) ?? camadaDaFalha(tipo),
+    onde_alterar: arquivos,
+    doc: str(ondeObj?.doc) ?? str(v.doc),
+    prova: str(ondeObj?.prova) ?? str(campo(v, 'prova', 'prova_sugerida')),
+    ocorrencias,
+    // A taxa é sobre as tentativas elegíveis; sem elas (ausente não é zero), não há taxa.
+    taxa: num(campo(v, 'taxa', 'rate')) ?? (elegiveis ? ocorrencias / elegiveis : null),
+    execucoes: num(campo(v, 'execucoes', 'runs')),
+    aparelhos: num(campo(v, 'aparelhos', 'devices')),
+    usd_perdido: num(v.usd_perdido),
+    min_perdidos: num(v.min_perdidos),
+    intervencoes: num(campo(v, 'intervencoes', 'interventions')),
+    custo_total: num(v.custo_total),
+    tendencia: tAtual !== null && tAnterior !== null ? { atual: tAtual, anterior: tAnterior } : null,
+    exemplos: lista(v.exemplos).map(lerExemplo).filter((x): x is ExemploDeFalha => x !== null),
+    retroativo: bool(v.retroativo) || (num(v.retroativas) ?? 0) > 0,
+    estado_backlog: str(campo(v, 'estado_backlog', 'backlog_state', 'estado', 'state')),
+    falso_positivo: bool(v.falso_positivo) || tipo === 'verificacao_falso_positivo',
+    md: str(v.md),
+  };
+}
+
+function lerOutroPct(raw: Record<string, unknown>): number | null {
+  const direto = num(campo(raw, 'outro_pct', 'pct_outro'));
+  if (direto !== null) return direto;
+  const outro = isRecord(raw.outro) ? raw.outro : null;
+  const n = num(outro?.ocorrencias);
+  const total = num(outro?.total);
+  return n !== null && total ? (100 * n) / total : null;
+}
+
+export function lerRelatorioDeFalhas(raw: unknown): RelatorioDeFalhas {
+  if (!isRecord(raw)) return { dias: null, grupos: [], outro_pct: null };
+  // Os grupos do topo e, à parte, os da verificação (falso positivo e negativo): entram todos, sem repetir.
+  const linhas = [...lista(campo(raw, 'grupos', 'itens', 'top')), ...lista(raw.verificacao)];
+  const vistos = new Set<string>();
+  const grupos: GrupoDeFalha[] = [];
+  for (const g of linhas.map(lerGrupo)) {
+    if (g && !vistos.has(g.id)) {
+      vistos.add(g.id);
+      grupos.push(g);
+    }
+  }
+  const janela = isRecord(raw.janela) ? raw.janela : null;
+  return { dias: num(raw.dias) ?? num(janela?.dias), grupos, outro_pct: lerOutroPct(raw) };
+}
+
+/** O falso positivo do verificador (o sucesso mascarado) SEMPRE no topo; depois o custo total, depois a frequência.
+ *  Sem o custo total em todos (os pesos ficam no config do backend e não se repetem aqui), vale a ordem em que o
+ *  backend mandou — que já é a do custo. */
+export function ordenarFalhas(grupos: readonly GrupoDeFalha[]): GrupoDeFalha[] {
+  const comCusto = grupos.every((g) => g.custo_total !== null);
+  const indice = new Map(grupos.map((g, i) => [g.id, i]));
+  const custo = (g: GrupoDeFalha) => g.custo_total ?? 0;
+  return grupos.slice().sort((a, b) => Number(b.falso_positivo) - Number(a.falso_positivo)
+    || (comCusto ? custo(b) - custo(a) || b.ocorrencias - a.ocorrencias || a.id.localeCompare(b.id)
+      : (indice.get(a.id) ?? 0) - (indice.get(b.id) ?? 0)));
+}
+
+function usd(n: number | null): string {
+  return n === null ? '—' : `US$ ${n.toFixed(2).replace('.', ',')}`;
+}
+
+/** O que "Copiar para sessão" põe na área de transferência: o item pronto para colar numa sessão de desenvolvimento
+ *  (a mesma chave `fk-*` do backlog, onde alterar e como provar a correção). */
+export function mdDoItem(g: GrupoDeFalha): string {
+  if (g.md) return g.md;
+  const onde = g.capability === '*' ? g.app : `${g.app} › ${g.capability}`;
+  const linhas = [
+    `## ${g.id} — ${rotuloDaFalha(g.failure_kind)}${g.titulo ? `: ${g.titulo}` : ''}`,
+    '',
+    `- Onde: ${onde}${g.failure_screen ? ` (tela ${g.failure_screen})` : ''}`,
+    `- Tipo: \`${g.failure_kind}\` · camada: ${rotuloDaCamada(g.camada)}${g.retroativo ? ' · classificado na leitura (retroativo)' : ''}`,
+    `- Ocorrências: ${g.ocorrencias}${g.taxa !== null ? ` (taxa ${(g.taxa * 100).toFixed(0)}%)` : ''}`
+      + `${g.execucoes !== null ? ` em ${g.execucoes} execução(ões)` : ''}${g.aparelhos !== null ? `, ${g.aparelhos} aparelho(s)` : ''}`,
+    `- Custo: ${usd(g.usd_perdido)} perdidos · ${g.min_perdidos ?? '—'} min · ${g.intervencoes ?? '—'} intervenção(ões) humana(s)`,
+  ];
+  if (g.estado_backlog) linhas.push(`- Backlog: ${g.estado_backlog}`);
+  if (g.onde_alterar.length > 0) linhas.push(`- Onde alterar: ${g.onde_alterar.map((a) => `\`${a}\``).join(', ')}${g.doc ? ` (doc: ${g.doc})` : ''}`);
+  if (g.prova) linhas.push(`- Prova da correção: ${g.prova}`);
+  if (g.exemplos.length > 0) {
+    linhas.push('- Exemplos:');
+    for (const x of g.exemplos) linhas.push(`  - ${x.run_id}${x.attempt_id ? ` / ${x.attempt_id}` : ''}${x.erro ? ` — ${x.erro}` : ''}`);
+  }
+  return linhas.join('\n');
+}
+
+// ---------------------------------------------------------------- sinais (A4)
+
+export type Polaridade = 'positive' | 'negative' | 'neutral';
+
+export interface Sinal {
+  id: number | null;
+  kind: string;
+  polarity: Polaridade | null;
+  verdict: Veredito | null;
+  reason: string | null;
+  /** Já redigida pelo backend (e recusada quando parece credencial). */
+  note: string | null;
+  source_ref: string;
+  created_by: string;
+  created_at: string | null;
+  run_id: string | null;
+  objective_id: string | null;
+  app_package: string;
+  capability: string;
+  failure_kind: string | null;
+  simulated: boolean;
+}
+
+export const SINAL_LABEL: Record<string, string> = {
+  feedback: 'Voto (deu certo / deu errado)', confirmou_a_mao: 'Confirmou à mão', repetiu_item: 'Repetiu o item',
+  abandonou_item: 'Abandonou o item', repetiu_execucao: 'Repetiu a execução', cancelou_execucao: 'Cancelou a execução',
+  tomou_controle: 'Tomou o controle', respondeu_pergunta: 'Respondeu uma pergunta',
+  escolheu_habilidade: 'Escolheu a habilidade', aprovacao_decidida: 'Decidiu uma aprovação',
+  comando_incerto_resolvido: 'Resolveu um comando incerto', correcao_de_ensino: 'Corrigiu no ensino',
+  tela_vista: 'Tela vista', tela_desconhecida_chamou_pessoa: 'Tela desconhecida chamou uma pessoa',
+};
+
+export const SINAL_KINDS: readonly string[] = Object.keys(SINAL_LABEL);
+
+export function rotuloDoSinal(k: string): string {
+  return SINAL_LABEL[k] ?? k;
+}
+
+function isPolaridade(v: unknown): v is Polaridade {
+  return v === 'positive' || v === 'negative' || v === 'neutral';
+}
+
+function lerSinal(v: unknown): Sinal | null {
+  if (!isRecord(v)) return null;
+  const kind = str(v.kind);
+  if (!kind) return null;
+  return {
+    id: num(v.id), kind, polarity: isPolaridade(v.polarity) ? v.polarity : null,
+    verdict: isVeredito(v.verdict) ? v.verdict : null, reason: str(v.reason), note: str(v.note),
+    source_ref: str(v.source_ref) ?? '', created_by: str(v.created_by) ?? '', created_at: str(v.created_at),
+    run_id: str(v.run_id), objective_id: str(v.objective_id), app_package: str(v.app_package) ?? '',
+    capability: str(v.capability) ?? '', failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+  };
+}
+
+export function lerSinais(raw: unknown): Sinal[] {
+  const linhas = Array.isArray(raw) ? raw : isRecord(raw) ? campo(raw, 'sinais', 'itens', 'signals') : undefined;
+  return lista(linhas).map(lerSinal).filter((s): s is Sinal => s !== null);
+}
+
+// ---------------------------------------------------------------- o voto do D2 (A4)
+
+export type Veredito = 'certo' | 'errado';
+
+export function isVeredito(v: unknown): v is Veredito {
+  return v === 'certo' || v === 'errado';
+}
+
+export type Motivo = 'fez_outra_coisa' | 'alvo_errado' | 'nao_terminou' | 'texto_ruim' | 'demorou_ou_gastou'
+  | 'pediu_ajuda_a_toa' | 'outro';
+
+/** `vocabulario.py::MotivoDoVoto`. Os de navegação rebaixam o que o item usou e o que aprendeu. */
+export const MOTIVOS: readonly { id: Motivo; label: string; efeito: string; navegacao: boolean }[] = [
+  { id: 'fez_outra_coisa', label: 'Fez outra coisa', efeito: 'desliga o fluxo e as receitas envolvidos', navegacao: true },
+  { id: 'alvo_errado', label: 'Alvo errado', efeito: 'desliga o fluxo e as receitas envolvidos', navegacao: true },
+  { id: 'nao_terminou', label: 'Não terminou', efeito: 'desliga o fluxo e as receitas envolvidos', navegacao: true },
+  { id: 'texto_ruim', label: 'Texto ruim', efeito: 'vira evidência para a voz da persona', navegacao: false },
+  { id: 'demorou_ou_gastou', label: 'Demorou ou gastou demais', efeito: 'só entra no relatório', navegacao: false },
+  { id: 'pediu_ajuda_a_toa', label: 'Pediu ajuda à toa', efeito: 'evidência para tela e lição da etapa', navegacao: false },
+  { id: 'outro', label: 'Outro', efeito: 'só entra no relatório', navegacao: false },
+];
+
+export function rotuloDoMotivo(m: string | null | undefined): string | null {
+  if (!m) return null;
+  return MOTIVOS.find((x) => x.id === m)?.label ?? m;
+}
+
+export function isMotivo(v: unknown): v is Motivo {
+  return typeof v === 'string' && MOTIVOS.some((m) => m.id === v);
+}
+
+/** Limite da nota do voto (`servico.py::NOTA_MAX`). */
+export const NOTA_MAX = 500;
+
+export interface CorpoDoVoto {
+  objective_id?: string;
+  verdict: Veredito;
+  reason?: Motivo;
+  note?: string;
+}
+
+export interface Voto {
+  objective_id: string | null;
+  verdict: Veredito;
+  reason: string | null;
+  created_by: string | null;
+}
+
+export interface EfeitoDoVoto {
+  kind: string;
+  ref: string;
+  de: string | null;
+  para: string | null;
+  /** Quando o backend diz: `false` = o efeito não foi aplicado (e `erro` diz por quê). */
+  aplicado?: boolean | null;
+  erro?: string | null;
+  /** Opaco: verdadeiro, ou a chamada de volta (`{method, href, body: {to, reason}}`), quando dá para desfazer. */
+  desfazer: unknown;
+}
+
+export interface RespostaDoVoto {
+  efeitos: EfeitoDoVoto[];
+  resumo: string;
+}
+
+function lerEfeito(v: unknown): EfeitoDoVoto | null {
+  if (!isRecord(v)) return null;
+  const kind = str(v.kind);
+  const ref = typeof v.ref === 'number' ? String(v.ref) : str(v.ref);
+  if (!kind || !ref) return null;
+  return { kind, ref, de: str(v.de), para: str(v.para), aplicado: typeof v.aplicado === 'boolean' ? v.aplicado : null,
+           erro: str(v.erro), desfazer: v.desfazer ?? null };
+}
+
+export function lerRespostaDoVoto(raw: unknown): RespostaDoVoto {
+  if (!isRecord(raw)) return { efeitos: [], resumo: '' };
+  return { efeitos: lista(raw.efeitos).map(lerEfeito).filter((e): e is EfeitoDoVoto => e !== null),
+           resumo: str(raw.resumo) ?? '' };
+}
+
+/** O que "Aprendizado desta execução" mostra, quando o backend o manda (bloco opcional de `GET …/feedback`). */
+export interface ItemAprendidoNaExecucao {
+  grupo: 'receita' | 'fluxo' | 'falha' | 'candidata' | 'licao';
+  kind: string | null;
+  ref: string | null;
+  texto: string;
+  estado: string | null;
+  papel: string | null;
+}
+
+export interface FeedbackDaExecucao {
+  votos: Voto[];
+  sinais: Sinal[];
+  aprendizado: ItemAprendidoNaExecucao[] | null;
+}
+
+function lerVoto(v: unknown): Voto | null {
+  if (!isRecord(v) || !isVeredito(v.verdict)) return null;
+  return { objective_id: str(v.objective_id), verdict: v.verdict, reason: str(v.reason), created_by: str(v.created_by) };
+}
+
+const GRUPOS_DO_APRENDIZADO: readonly [ItemAprendidoNaExecucao['grupo'], string][] = [
+  ['receita', 'receitas'], ['fluxo', 'fluxos'], ['falha', 'falhas'], ['candidata', 'candidatas'], ['licao', 'licoes'],
+];
+
+function lerAprendizado(v: unknown): ItemAprendidoNaExecucao[] | null {
+  if (!isRecord(v)) return null;
+  const saida: ItemAprendidoNaExecucao[] = [];
+  for (const [grupo, chave] of GRUPOS_DO_APRENDIZADO) {
+    for (const linha of lista(v[chave])) {
+      if (!isRecord(linha)) continue;
+      const ref = typeof linha.ref === 'number' ? String(linha.ref) : str(linha.ref);
+      const tipo = str(linha.failure_kind);
+      const n = num(linha.n);
+      const texto = str(campo(linha, 'titulo', 'title'))
+        ?? (grupo === 'falha' && tipo ? `${rotuloDaFalha(tipo)}${n !== null ? ` × ${n}` : ''}` : ref ?? '');
+      if (!texto) continue;
+      const braco = str(linha.braco);
+      saida.push({ grupo, kind: str(linha.kind) ?? (grupo === 'receita' || grupo === 'fluxo' ? grupo : grupo === 'licao' ? 'licao' : null),
+                   ref, texto, estado: str(campo(linha, 'estado', 'state')),
+                   papel: str(linha.papel) ?? (braco ? (braco === 'with' ? 'exposta ao prompt' : 'braço de controle') : null) });
+    }
+  }
+  return saida;
+}
+
+export function lerFeedbackDaExecucao(raw: unknown): FeedbackDaExecucao {
+  if (!isRecord(raw)) return { votos: [], sinais: [], aprendizado: null };
+  return {
+    votos: lista(raw.votos).map(lerVoto).filter((v): v is Voto => v !== null),
+    sinais: lerSinais(raw.sinais),
+    aprendizado: lerAprendizado(raw.aprendizado),
+  };
+}
+
+/** O voto de um item (`objectiveId`) ou da execução inteira (`null`). Com `quem`, só o voto DESSA pessoa: é um voto
+ *  por pessoa e por item, e marcar o botão com o voto de outra pessoa diria que foi ela quem votou. */
+export function votoDoItem(f: FeedbackDaExecucao | null | undefined, objectiveId: string | null,
+                           quem?: string | null): Voto | null {
+  if (!f) return null;
+  return f.votos.find((v) => v.objective_id === objectiveId && (!quem || v.created_by === quem)) ?? null;
+}
+
+// ---------------------------------------------------------------- desfazer (um clique, com trilha)
+
+/** Status nativo → estado do livro (`domain/livro.py::ESTADO_DA_RECEITA` e `ESTADO_DO_FLUXO`). */
+const NATIVO: Partial<Record<LivroKind, Record<string, EstadoDoLivro>>> = {
+  receita: { active: 'published', candidate: 'candidate', validated: 'validated', quarantined: 'disabled', superseded: 'deprecated' },
+  fluxo: { active: 'published', candidate: 'candidate', validated: 'validated', disabled: 'disabled' },
+};
+
+/** O estado do livro de um valor que pode vir no vocabulário do livro ou no status nativo da fonte. */
+export function estadoDoLivro(kind: LivroKind, valor: string | null | undefined): EstadoDoLivro | null {
+  if (!valor) return null;
+  const nativo = NATIVO[kind]?.[valor];
+  if (nativo) return nativo;
+  return isEstadoDoLivro(valor) ? valor : null;
+}
+
+/** O motivo gravado na trilha quando o backend não sugere um. */
+export const MOTIVO_DO_DESFAZER = 'Desfeito no painel, logo depois do voto';
+
+/** Desfazer um efeito do voto é a transição de volta pelo livro (`POST /api/aprendizado/{kind}/{ref}/status`): o
+ *  `to` sai sempre no vocabulário do livro, porque a rota recusa (422) o status nativo. O backend (A4) manda a
+ *  chamada pronta em `desfazer.body`; sem ela, a volta é para o estado `de`. */
+export function desfazerDoEfeito(e: EfeitoDoVoto): { kind: LivroKind; ref: string; to: EstadoDoLivro; reason: string } | null {
+  if (!e.desfazer || !isLivroKind(e.kind) || e.aplicado === false) return null;
+  const pedido = isRecord(e.desfazer) ? e.desfazer : null;
+  const corpo = pedido && isRecord(pedido.body) ? pedido.body : pedido;
+  const kind = pedido && isLivroKind(pedido.kind) ? pedido.kind : e.kind;
+  const ref = (pedido && str(pedido.ref)) ?? e.ref;
+  const to = estadoDoLivro(kind, (corpo && str(corpo.to)) ?? e.de);
+  return to ? { kind, ref, to, reason: (corpo && str(corpo.reason)) ?? MOTIVO_DO_DESFAZER } : null;
+}
+
+/** "fluxo f-1 desligado" — a linha do "o que mudou" quando o backend não manda o resumo. */
+export function textoDoEfeito(e: EfeitoDoVoto): string {
+  const alvo = isLivroKind(e.kind) ? rotuloDoKind(e.kind).toLowerCase() : e.kind;
+  const para = isLivroKind(e.kind) ? estadoDoLivro(e.kind, e.para) : null;
+  const base = `${alvo} ${e.ref}${para ? `: ${rotuloDoEstado(para).toLowerCase()}` : e.para ? `: ${e.para}` : ''}`;
+  return e.aplicado === false ? `${base} (não aplicado${e.erro ? `: ${e.erro}` : ''})` : base;
+}
