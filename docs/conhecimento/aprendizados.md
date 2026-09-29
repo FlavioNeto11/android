@@ -1296,7 +1296,9 @@ mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" pa
 emulador ou rede, proxy): é evasão, e é proibida.
 
 **Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
-uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias.
+uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias. Em parte substituído pelo ADR-056
+(29/09, decisão do dono): a rede por aparelho, declarada e medida, deixou de ser proibida; rotação de IP, mascarar
+emulador ou identidade e resolver desafio seguem proibidos, e a conduta acima continua inteira.
 
 ### K-058 — Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez
 

@@ -66,7 +66,11 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
 | [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`); pendências dos revisores resolvidas em `7a02491` (itens 21.10–21.14) | 28/09 |
 | [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | aceito; fundação (A1, migração 055) integrada em `c359f65`, a implantar; A2–A9 pendentes | 29/09 |
-| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029 | 29/09 |
+| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede) | 29/09 |
+| [ADR-056](#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055) | Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida; revisa a cláusula de rede do ADR-055 | vigente (decisão do dono); Fase 25 a implementar; substitui em parte o ADR-055 | 29/09 |
+| [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
+| [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | proposto (Fase 24) | 29/09 |
+| [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
 
 ---
 
@@ -3438,4 +3442,170 @@ bloqueio real; o "Enviando…" do Instagram em português.
 travada bloqueia, e o bloqueio vale também fora da entrada do estado); ADR-040 (a credencial é da conta; `review` é
 estado dela); ADR-053 (o `restart` por irq deixa de ser `system`; `hide_error_dialogs` segue 1); ADR-052
 (`counterparty`, `pending_marks` e `sent_text` como dado no catálogo); ADR-054 (numeração cruzada: o ADR-054 usa a
-migração 055, e este a 054); ADR-019 (relógio); K-052 a K-059; Fase 21 do plano-100; relatório §22 e §23.
+migração 055, e este a 054); ADR-019 (relógio); K-052 a K-059; Fase 21 do plano-100; relatório §22 e §23; ADR-056 (29/09, decisão do dono: substitui em parte a
+proibição de rede das Alternativas e da Conduta; o resto segue).
+
+## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
+
+**Data:** 29/09/2026 · **Estado:** vigente (decisão); implementação planejada na Fase 25, `not_run` · **Decisão do
+dono** (pergunta da sessão de planejamento de 29/09, opção "Rever o ADR-055 por ADR novo") e **decisão técnica** (a
+composição); substitui em parte o ADR-055 (só a cláusula de rede).
+
+**Contexto.**
+
+- Pedido do dono de 29/09 (`prompt-outlook-comandos-multiapp-tarefas-continuas.md`): VPN e proxy configurados
+  individualmente por dispositivo, "com isolamento, persistência e comprovação da rota e do IP de saída efetivos", e,
+  "como objetivo de separação", "saída pública distinta e estável por dispositivo".
+- O ADR-055 (29/09, madrugada) descartou e proibiu "proxy ou IP rotativo para esconder a origem comum" e "mascarar
+  … rede do emulador"; o K-057 repete. O proxy por aparelho já existia (migração 041, pedido do dono de 26/09), mas
+  só grava o proxy HTTP global do Android e relê o valor: prova a configuração, não o tráfego, e não tem autenticação.
+- Fontes técnicas conferidas em 29/09:
+  - [Proxy no Android Emulator](https://developer.android.com/studio/run/emulator-networking-proxy): o `-http-proxy`
+    encaminha TCP e "doesn't support UDP redirection"; não tem lista de exceções; a senha iria no argumento do processo;
+  - [VPN no Android](https://developer.android.com/develop/connectivity/vpn): um serviço VPN ativo por usuário (um
+    segundo derruba o primeiro); always-on desde o Android 7; "Block connections without VPN" bloqueia o tráfego fora da
+    VPN no sistema;
+  - `VpnService.Builder.setHttpProxy`: o proxy é recomendação; o app pode ignorá-lo.
+
+**Decisão.**
+
+1. **A saída de rede é propriedade do aparelho**, configurada pela plataforma, persistente e medida. Endpoint,
+   configuração e IP de saída observado são campos distintos; configuração diferente não prova IP diferente, e dois
+   aparelhos com o mesmo IP medido geram aviso.
+2. **Composição:** a VPN roda dentro do Android, num único cliente `VpnService` com always-on e bloqueio de conexões
+   fora da VPN. O proxy, quando houver, é encadeado dentro do mesmo cliente (app → TUN → proxy autenticado → túnel →
+   saída). O `-http-proxy` do emulador não é usado; rota no host do central ou do worker também não (o túnel e o ADB
+   passam por ele). O proxy global legado fica, rebaixado: no máximo "configurado".
+3. **Cinco estados por aparelho:** `pendente`, `configurado`, `conectado`, `trafego_verificado`, `parcial`. Só
+   `trafego_verificado` libera tarefa com política exigida, e só com medição de dentro do aparelho, por app (o teste no
+   navegador não prova os outros apps).
+4. **Cliente:** WireGuard oficial ou sing-box, ambos da Play Store com a conta do dono, escolhido pela medição do item
+   25.1. Nada de implementação própria de VPN antes disso.
+5. **Segredos:** chave, senha de proxy e certificado no cofre por `secret_ref`; um segundo consumidor de `get_secret`,
+   restrito à provisão de rede; entrega por stdin ou arquivo no convidado, nunca argumento de processo, evento, log ou
+   evidência; a redação por formato ganha `socks5://`, `PrivateKey` e `PresharedKey`.
+6. **Continua proibido:** rotação de IP, mascarar emulador, imagem, `ro.serialno` ou impressão digital, resolver
+   desafio ou CAPTCHA, e qualquer artifício para o antibot não ver o que o sistema faz. A conduta do ADR-055 (uma conta
+   por alvo, sem rajada coordenada, DM fria com aprovação, parar no primeiro sinal de trava) continua valendo inteira.
+7. **Aparelho com conta real logada só muda de saída com autorização do dono por aparelho**, fora de uso, com a conta
+   conferida antes e depois. A loja (android-11) e o aparelho em quarentena ficam fora.
+
+**Alternativas.**
+
+- **Manter o ADR-055 e tratar a rede só como isolamento, sem IP distinto como objetivo:** recomendada pela sessão da
+  IDE e **não adotada** pelo dono. O motivo da recomendação fica registrado: trocar o IP de saída de uma conta logada
+  costuma disparar verificação, e 5 de 8 contas já foram perdidas (K-057). Por isso o item 7.
+- **Proxy do emulador (`-http-proxy`):** descartado: não cobre UDP (QUIC sai direto), não bloqueia a saída direta,
+  expõe a senha no argumento e invalida o snapshot da hibernação.
+- **Dois clientes, um de VPN e outro de proxy:** descartado: disputam o único serviço VPN do usuário.
+- **Rota ou VPN no host:** descartado: separa pouco (todos os aparelhos do host saem juntos) e mexe no caminho do túnel
+  e do ADB, que exige autorização.
+
+**Consequências.**
+
+- Fase 25 do plano-100 (25.1–25.10); migração 057; adendo novo do contrato; painel Rede no lugar da aba Proxy.
+- IP de saída distinto por aparelho depende de provedor e de quantidade de endereços que o dono ainda não forneceu:
+  sem isso, a prova fica `not_run` com a dependência exata, e configurações diferentes não são apresentadas como IPs
+  diferentes.
+- O invariante do `CLAUDE.md` contra evasão fica; ganha a ressalva de que a rede por aparelho sob este ADR é
+  configuração declarada e medida.
+
+**Evidências.** Diagnóstico em [design/terceira-evolucao.md](design/terceira-evolucao.md) §2.2 (`devices/proxy.py`,
+migração 041, `devices/sonda_rede.py`, `devices/emulator.py`, `security/redaction.py`), leitura de `GET /api/proxies`
+em 29/09 (nenhum perfil cadastrado). Nenhuma prova de funcionamento ainda.
+
+**Relação.** ADR-055 (substituído em parte: a cláusula de rede); ADR-009 (desafio é da pessoa); ADR-040 (segredo no
+cofre); ADR-026 (desejado × observado); ADR-002 (o túnel não é tocado); K-057, K-059; Fase 25.
+
+## ADR-057 — Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre
+
+**Data:** 29/09/2026 · **Estado:** vigente (decisão); implementação planejada na Fase 23, `not_run` · **Decisão do
+dono** (o pedido de 29/09 escolhe o Outlook, que era a decisão pendente do 12.3; a credencial clonada foi escolhida na
+pergunta da sessão de planejamento) e **decisão técnica** (o desenho).
+
+**Contexto.**
+
+- O pedido de 29/09: Outlook na loja e em todos os perfis; "os perfis que já têm conta no Instagram também possuem um
+  e-mail Outlook criado, com o mesmo login e a mesma senha utilizados naquela conta do Instagram".
+- A loja e a distribuição já são genéricas por pacote. O login gerenciado não é: credencial, tentativa, sessão e
+  invalidação são resolvidas pela conta do app âncora (o Instagram), e a interface de sessão não recebe a conta
+  (`integrations/app_declarado/sessao.py`, `state.py`, `modules/identity/application/ports.py`). O motor só entende um
+  formulário com usuário, senha e botão na mesma tela, e lê a conta por uma aba inferior. Um desafio em qualquer app
+  bloqueia a persona inteira. Não há caminho para reaproveitar a senha de outra conta.
+
+**Decisão.**
+
+1. O Outlook é o primeiro app do 12.3. Ele **não** é âncora; o primeiro marco é o caminho livre (só `app.yaml`), e o
+   login gerenciado entra depois de desancorar o motor.
+2. `SessionProvider.ensure_session` passa a receber a conta; tudo o que hoje cai na âncora passa a ser por conta e
+   pacote.
+3. Formulário em etapas, leitura da conta fora da aba inferior e Custom Tab com host declarado entram no motor
+   genérico, declarados em YAML (ADR-052: zero Python por app).
+4. **Credencial clonada no cofre:** `SecretStore.clonar(ref)` cria uma entrada nova com o mesmo valor sem que o valor
+   saia do módulo; só entre contas da mesma persona; o consentimento nunca é clonado (o dono dá o de cada conta
+   Outlook); trocar ou apagar uma não afeta a outra.
+5. O endereço de cada conta Outlook vem do dado conferido pelo dono; nunca é derivado do usuário do Instagram. Perfil
+   sem conta identificada recebe o app e fica com a pendência.
+6. Catálogo inicial só de leitura; enviar e-mail fica `manual_only`. Desafio, 2FA e CAPTCHA da Microsoft seguem com a
+   pessoa (ADR-009).
+
+**Alternativas.** Redigitar a senha no painel (sem código novo, mais lento; não adotada pelo dono); compartilhar a
+referência do segredo entre as contas (descartada: trocar ou apagar uma afeta a outra); tornar o Outlook âncora
+(impossível: dois âncoras derrubam o registro).
+
+**Consequências.** Fase 23 (23.1–23.13). O `ehInstagram` do painel e a política de ações sem app deixam de existir. A
+troca das senhas das três contas vivas, pendente do dono, passa a ser por conta.
+
+**Evidências.** [design/terceira-evolucao.md](design/terceira-evolucao.md) §2.3.
+
+**Relação.** ADR-040 (a credencial é da conta; aqui, uma conta por app); ADR-052 (app como dado); ADR-043 (vínculo por
+app); ADR-055 (quarentena, uma conta por alvo); ADR-009; item 12.3.
+
+## ADR-058 — Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas
+
+**Data:** 29/09/2026 · **Estado:** proposto (desenho da Fase 24; a implementação confirma ou corrige) · **Decisão
+técnica** sobre o pedido do dono de 29/09.
+
+**Contexto.** O 12.1 deu app por etapa, contexto por etapa e portas por app no despacho, mas: citar outro app derruba
+o catálogo e a porta de política recusa efeito sem capability; o planejador com catálogo conhece um app só; nenhum
+valor passa de uma etapa a outra; a conta esperada é a do aparelho; roteamento e modo Automático olham um app
+([design/terceira-evolucao.md](design/terceira-evolucao.md) §2.4).
+
+**Decisão.**
+
+1. O planejador recebe os catálogos de todos os apps exigidos e compõe cada etapa pelo seu `app_id`; `required_apps`
+   é sempre preenchido.
+2. A regra da porta de política não muda: efeito sem capability em app com catálogo continua recusado.
+3. Saída de etapa tipada e nomeada, persistida (migração 056) e reaproveitada na retomada. Código de verificação,
+   senha e token nunca são saída: a etapa para (ADR-009, ADR-022). O exemplo do 12.1 que lia um código no Outlook é
+   corrigido.
+4. Conta esperada e portas de app, internet, sessão e rede são as do app de cada etapa, repassadas a cada troca.
+
+**Alternativas.** Só skills compiladas para vários apps (já funciona, mas exige ensino antes de todo comando); plano
+livre sem catálogo (descartado: a porta recusa efeito, com razão).
+
+**Relação.** ADR-032/033 (capability e DSL); ADR-044 e ADR-050 (roteamento); ADR-047 (sucessora); ADR-009; Fase 24.
+
+## ADR-059 — Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução
+
+**Data:** 29/09/2026 · **Estado:** proposto (a Fase 26 pesquisa e decide) · **Decisão técnica** sobre o pedido do
+dono de 29/09.
+
+**Contexto.** O dono quer pedidos que continuem ativos: agendados, recorrentes, por evento ou condição, e acompanhados
+pela persona, com colaboração entre personas. Hoje não há agendamento, recorrência nem gatilho; há espera com hora
+marcada, idempotência por chave, posse por prazo, sucessora e o gancho de fim de execução.
+
+**Decisão (ponto de partida da pesquisa).**
+
+1. Estado e execução ficam no backend e nos workers, com continuidade entre reinícios; nada depende da sessão da IDE
+   nem das ferramentas de agendamento dela.
+2. Um pedido gera ocorrências, e cada ocorrência gera execuções (`runs`) comuns; a identidade da ocorrência é a chave
+   de idempotência, para nenhum efeito sair duas vezes.
+3. O vocabulário de partida para agendamento é o de sistemas consolidados (política de sobreposição, janela de
+   recuperação, `coalesce`: [Temporal Schedules](https://docs.temporal.io/schedule),
+   [APScheduler](https://apscheduler.readthedocs.io/en/master/userguide.html), consultados em 29/09). Adotar
+   biblioteca é resultado da pesquisa, não premissa.
+4. Colaboração entre personas é divisão interna de trabalho; para fora valem uma conta por alvo (ADR-055), aprovação e
+   a proibição de simular apoio de pessoas independentes.
+
+**Relação.** ADR-047, ADR-051, ADR-054, ADR-055; Fase 26; [design/pedidos-persistentes.md](design/pedidos-persistentes.md).

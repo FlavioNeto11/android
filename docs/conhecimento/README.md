@@ -77,6 +77,10 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-053 | Falhas reiteradas do Instagram: UI ocupada relê, recuperação preserva o estado, ANR com sinal próprio, alvo pela legenda, reinício a frio por interrupção | execução/parque | decisão | 28/09 | vigente | `docs/decisoes.md#adr-053` | fase 19 |
 | ADR-054 | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas, backlog do que mais falha | aprendizado/IA | decisão | 29/09 | vigente (fundação integrada, a implantar) | `docs/decisoes.md#adr-054` | fase 20 |
 | ADR-055 | Proteção de contas: conta travada para sem ser tocada, quarentena do aparelho, uma conta por alvo, DM fria com aprovação, nenhum reset com conta | perfis/Instagram/parque | decisão | 29/09 | vigente (integrado, a implantar) | `docs/decisoes.md#adr-055` | fase 21, ADR-029 |
+| ADR-056 | Rede por aparelho: VPN dentro do Android com proxy encadeado, cinco estados, IP de saída medido; revisa a cláusula de rede do ADR-055 | parque/rede/segurança | decisão | 29/09 | vigente (a implementar, Fase 25) | `docs/decisoes.md#adr-056` | Fase 25, ADR-055, K-057 |
+| ADR-057 | Outlook como primeiro app novo: conta por app, sessão por conta, credencial clonada no cofre | apps/contas/segurança | decisão | 29/09 | vigente (a implementar, Fase 23) | `docs/decisoes.md#adr-057` | Fase 23, 12.3, ADR-040, ADR-052 |
+| ADR-058 | Comando entre aplicativos: catálogo pelo app da etapa, valor lido entre etapas | execução/IA | decisão | 29/09 | proposto (Fase 24) | `docs/decisoes.md#adr-058` | Fase 24, 12.1, ADR-009 |
+| ADR-059 | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | execução/produto | decisão | 29/09 | proposto (Fase 26) | `docs/decisoes.md#adr-059` | Fase 26 |
 | K-001 | Harness de teste usava as portas do parque real | testes | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-001` | `base_console_port` |
 | K-002 | Checkout apaga `config.yaml` não versionado | operação | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-002` | ADR-011 |
 | K-003 | "malformed database schema" após reboot | banco | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-003` | `restore.ps1` |
@@ -111,7 +115,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-054 | `hide_error_dialogs=0` trava o aparelho no ANR do `system_server`: manter 1 | emuladores/adb | erro | 28–29/09 | vigente | `docs/conhecimento/aprendizados.md#k-054` | 21.8, K-048 |
 | K-055 | NTP bloqueado com porta de origem 123: `w32time` não sincroniza, `stripchart` sim (`farm-relogio`) | operação/host | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-055` | 21.7, ADR-019 |
 | K-056 | Aposentar no Windows: arquivo somente-leitura do emulador (`pstore.bin`) faz o `rmtree` falhar | parque/provisionamento | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-056` | 21.9 |
-| K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios: conduta, não disfarce | perfis/Instagram/política | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055 |
+| K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios: conduta, não disfarce | perfis/Instagram/política | erro | 29/09 | vigente; a cláusula de rede foi substituída pelo ADR-056 | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055, ADR-056 |
 | K-058 | Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez | parque/operação/processo | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-058` | 21.16, ADR-055 |
 | K-059 | Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável | parque/emuladores | erro | 29/09 | vigente (a relação com o irq segue aberta) | `docs/conhecimento/aprendizados.md#k-059` | 21.15, K-050 |
 

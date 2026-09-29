@@ -1,9 +1,27 @@
 # Estado atual — handoff
 
-**Revisado em 29/09/2026 (noite), depois do deploy de `b34e2f6`: Fase 22, as pendências da rodada.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 29/09/2026 (noite): planejamento da terceira evolução (Fases 23–27), depois do deploy de `b34e2f6`
+(Fase 22).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Terceira evolução (29/09, noite): PLANEJADA, nada implementado.** Pedido do dono: Outlook em todos os perfis com
+  as contas vinculadas, comando que atravessa vários apps, VPN e proxy por aparelho com IP de saída medido, e a
+  pesquisa de pedidos persistentes. Diagnóstico e desenho em [design/terceira-evolucao.md](design/terceira-evolucao.md);
+  coordenação, arquivos reservados, dependências e pendências em
+  [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md); itens nas Fases 23–27 do plano (43 itens,
+  pendentes); ADR-056 a ADR-059.
+  - **Decisões do dono de 29/09:** rever a cláusula de rede do ADR-055 (ADR-056; a recomendação contrária da IDE
+    está anotada); clonar a senha do Instagram no cofre para a conta Outlook, com consentimento por conta (ADR-057); o
+    Outlook é o primeiro app do 12.3.
+  - **Achados que mudam o trabalho:** o login gerenciado está preso à conta âncora (o Instagram); um desafio em
+    qualquer app bloqueia a persona inteira; o proxy atual prova só a configuração, e o `-http-proxy` do emulador não
+    cobre UDP; nenhum valor passa de uma etapa a outra; não há agendamento no produto.
+  - **Para o dono:** provedor e endpoints de rede (nada é contratado sozinho), o Outlook e o cliente VPN no android-11,
+    o endereço Outlook de cada persona e o consentimento de cada conta, autorização por aparelho para trocar a rede de
+    conta real, e as validações pagas (saldo estimado da Anthropic em US$ 3,31).
+  - **Próxima ação:** Onda 0 pelo coordenador (contratos C1–C5 e o 23.1); em paralelo, com o dono, o 23.2 e o 25.1.
 
 - **Fase 22 (29/09, noite): IMPLANTADA em `b34e2f6`** (~17:05Z; sem migração nova; `/api/health` `ok`; agente do
   notebook em `0.1.0+b34e2f6`; leva junto o layout da outra sessão, `13fb5c0`). [Relatório §25](relatorio-validacao.md),

@@ -27,7 +27,8 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
   (ADR-040, que substitui em parte o ADR-025): cofre, consentimento por conta, digitação só pelo canal sensível
   (`type_secret`), só no app e no site daquela conta; a execução não carrega credencial. Os limites da IA são de
   comportamento: sem fake news, sem ofensa explícita. Desafio, 2FA com código não fornecido e CAPTCHA seguem com a
-  pessoa (ADR-009); nada de evasão de detecção de emulador ou antibot.
+  pessoa (ADR-009); nada de evasão de detecção de emulador ou antibot. A rede por aparelho (ADR-056) é configuração
+  declarada e medida; rotação de IP e mascarar emulador, imagem ou identidade seguem proibidos.
 - **Segredo nunca** em código, teste, log, evento, evidência, prompt, memória, fixture ou Git. Não leia nem imprima
   o `.env`. Para saber se a chave está configurada, use `GET /api/ai`.
 - **APK só da Play Store com a conta do dono, ou arquivo que ele fornecer.** Nunca de espelho de terceiros; a pasta

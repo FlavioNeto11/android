@@ -511,6 +511,117 @@ uma onda seguinte.
 | 22.8 | **Aviso de saldo da Anthropic (`ai_balance_stale`)**: diagnóstico só de leitura do 503 do relatório de uso (desde quando, o que a plataforma pede) e o que fazer | fechamento de 29/09 | P |
 | 22.9 | **Arrumação dos worktrees da rodada**: desfazer as junções (`rmdir` do link), conferir o `venv` e o `node_modules` reais, e só então `git worktree remove`; só os desta sessão | fechamento de 29/09 | P |
 
+### Fase 23 — Outlook e contas por app · 13 itens (pedido do dono de 29/09/2026; ADR-057; realiza o 12.3)
+
+Origem: o pedido do dono de 29/09 para o Outlook na plataforma e em todos os perfis, com as contas que as personas já
+têm (mesmo login e senha da conta do Instagram, segundo o dono) e o funcionamento comprovado. O pedido decide o 12.3:
+o Outlook é o primeiro app novo. Diagnóstico e decisões: [design/terceira-evolucao.md](design/terceira-evolucao.md);
+coordenação: [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md). **[A]** marca item cujo ato real exige
+autorização do dono (o agente entrega código e procedimento e marca `not_run`).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 23.1 | **Avisos de autorização no gerador de pacotes**: incluir em `AUTORIZACAO` (`scripts/plano-100-pacotes.py`) os itens [A] das Fases 23–27, com o ato que cada um exige | mecanismo (29/09) | P |
+| 23.2 | **Outlook na loja** [A]: aquisição no android-11 pela Play Store (login Google e "Instalar" são do dono), `store/sync`, inspeção, aprovação da assinatura, canário num aparelho de QA livre, medição do APK, dos splits e do `MemAvailable` com os dois apps, promoção. Os aparelhos das personas são `google_apis` (com GMS, sem Play Store): o canário confere que o APK da loja instala e abre neles | pedido do dono | M |
+| 23.3 | **Conhecimento mínimo do Outlook**: pasta `backend/app/conhecimento/apps/com.microsoft.office.outlook/` com `app.yaml` sem âncora e sem provedor de sessão (caminho livre); cadastro em `apps`; teste no molde de `test_pacote_declarado.py` | pedido do dono | P |
+| 23.4 | **Motor de sessão por conta**: `ensure_session(rt, profile_id, account_id)`; credencial, tentativa, marcação, sessão e invalidação resolvidas por conta e pacote, não pela âncora; conta lida comparada ao login da conta do app (`integrations/app_declarado/sessao.py`, `modules/identity/application/ports.py`, `social/repository.py`, `state.py`, `api.py`) | login preso à âncora (diagnóstico §2.3) | G |
+| 23.5 | **Escopo do bloqueio por desafio**: `codigo` e `verificacao` param só a conta daquele app; `conta_travada` mantém a quarentena do aparelho (ADR-055). O efeito sobre as outras contas da persona é decisão do dono (P9) (`session_rules.py`) | desafio bloqueia a persona inteira (§2.3) | M |
+| 23.6 | **Formulário em etapas e conta fora da aba inferior** no motor genérico, declarados em YAML (`app_declarado/formulario.py`, `conhecimento.py`); Custom Tab só com o host declarado da conta, senão entrega à pessoa | formulário numa tela só (§2.3) | G |
+| 23.7 | **Observação das telas do Outlook** [A]: no canário, com a pessoa no Foco e sem digitar: boas-vindas, login, desafio; decide WebView × Custom Tab e o número de etapas. Chrome, WebView e GMS já são protegidos no preparo do 21.15 (`devices/apps_de_fundo.py`); conferir no aparelho que seguem ativos | pedido do dono | M |
+| 23.8 | **`telas.yaml`, `sessao.yaml` e `catalogo.yaml` do Outlook**: sinais en/pt, telas sensíveis, desafios da Microsoft no detector (`automation/hierarchy.py`, `test_sensitive_input.py`); catálogo só de leitura (abrir a caixa, ler cabeçalhos, buscar); enviar e-mail fica `manual_only` | pedido do dono | G |
+| 23.9 | **Clonar credencial no cofre** (decisão do dono de 29/09): `SecretStore.clonar(ref)` devolve referência nova sem expor o valor; `add_account(credencial_de=)` só entre contas da mesma persona; consentimento nunca é clonado; apagar ou trocar uma não afeta a outra; trilha sem valor | reuso de senha sem caminho (§2.3) | M |
+| 23.10 | **Painel de contas por app**: sem `ehInstagram`; "usar a senha de outra conta desta persona"; política de ações por app (`GuiaContas.tsx`, `PolicyGroups.tsx`, `social/service.py`) | painel preso ao Instagram (§2.3) | M |
+| 23.11 | **Cadastro e vínculo das contas Outlook** [A]: endereço completo conferido pelo dono (nunca derivado do usuário do Instagram), conta, vínculo (persona, aparelho, outlook), clone e consentimento; perfil sem conta identificada recebe o app e fica com a pendência registrada | pedido do dono | M |
+| 23.12 | **Distribuição ao parque** [A]: um aparelho, depois lotes; locais e remotos; um trabalho pesado por vez no central (K-058); matriz de instalação por aparelho | pedido do dono | M |
+| 23.13 | **Login e persistência por perfil** [A]: caixa de entrada por prova local, conta lida igual à esperada, fechar e reabrir mantém a sessão; desafio vai à pessoa e os demais perfis seguem; instalação, vínculo e autenticação registrados separadamente. Só em aparelho com a rede validada (25.9) | pedido do dono | M |
+
+**Fecha quando:** Outlook promovido e distribuído com prova `install` e `launch` por aparelho; contas Outlook
+vinculadas às personas com o endereço confirmado; login e persistência provados por perfil com prova `real`, com
+instalação, vínculo e autenticação registrados separadamente; perfis sem conta com a pendência registrada.
+
+### Fase 24 — Comando entre aplicativos · 9 itens (pedido do dono de 29/09/2026; ADR-058)
+
+Origem: o mesmo pedido de 29/09: o comando representa o objetivo, não um app, e a persona passa do Outlook ao
+Instagram preservando contexto, identidade e progresso. O 12.1 já deu o app por etapa; faltam o catálogo de vários
+apps, o valor que passa de uma etapa a outra e as checagens que só olham um app
+([design/terceira-evolucao.md](design/terceira-evolucao.md) §2.4). Ler código de verificação num e-mail para usar em
+outro app segue vedado (ADR-009, ADR-022).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 24.1 | **Planejador com catálogo de vários apps**: os catálogos dos apps exigidos vão ao prompt; `catalog_plan_from_json` compõe pelo `app_id` da etapa; `required_apps` sempre preenchido (`taskqueue/service.py`, `planning/prompts.py`, `planning/parsing.py`) | R1, R2, R6 (§2.4) | G |
+| 24.2 | **Porta de política pelo app da etapa**, sem liberar efeito novo: efeito sem capability em app com catálogo segue recusado (`state.py::_policy_gate`) | R1 | M |
+| 24.3 | **Valor lido entre etapas**: ferramenta `read_value`, `StepOutcome.outputs`, tabela de saídas (migração 056), referência no plano e na DSL, triagem por formato que para a etapa em código, senha ou token; valor lido no relatório | R3 | G |
+| 24.4 | **Conta e portas do app da etapa**: conta esperada pela conta do app, não a do aparelho; portas de app, internet, sessão e rede repassadas a cada troca; conta indisponível vira `waiting_user` preservando o concluído (`taskqueue/scheduler.py`) | R4, R8 | M |
+| 24.5 | **Roteamento por conjunto de apps**: `_app_do_comando`, `_mundo`, `alvos.Mundo.serve`, `_mistura_de_apps`, `_incompativeis`, `_app_preflight`, desbravador e modo Automático | R5, R7 | G |
+| 24.6 | **Painel**: app de cada etapa no Plano e na Execução; apps exigidos por alvo na prévia; o Comando deixa de escolher "um app" (`features/runs`, `features/command`) | R9 | M |
+| 24.7 | **Interrupção e retomada entre apps**: cancelar, reiniciar o backend e criar a sucessora no meio da troca; a saída persistida é reaproveitada e nenhuma etapa concluída se repete | pedido do dono | M |
+| 24.8 | **Exemplo vedado corrigido**: o comentário de `models.py` (`PlanStep.app_id`) e o prompt livre (`planning/prompts.py`) trocam "código no Outlook" por um exemplo permitido | ADR-009 | P |
+| 24.9 | **Prova real** [A]: comando Outlook → Instagram só de leitura, com os cenários de conta indisponível, interrupção e retomada; chamada paga pontual | pedido do dono | M |
+
+**Fecha quando:** um comando com etapas no Outlook e no Instagram conclui num aparelho real sem efeito externo, com o
+valor lido numa etapa usado na outra, e os cenários de conta indisponível, interrupção e retomada provados sem repetir
+etapa concluída.
+
+### Fase 25 — Rede por aparelho · 10 itens (pedido do dono de 29/09/2026; ADR-056)
+
+Origem: o pedido de 29/09 de VPN e proxy individuais por aparelho, com isolamento, persistência e comprovação da rota
+e do IP de saída. O dono reviu em 29/09 a cláusula de rede do ADR-055 (ADR-056). O proxy legado grava o proxy HTTP
+global e relê o valor: prova a configuração, não o tráfego. A composição escolhida é VPN dentro do Android, num
+cliente só, com o proxy encadeado nele ([design/terceira-evolucao.md](design/terceira-evolucao.md) §3).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 25.1 | **Medição do cliente** [A]: num aparelho de QA livre, WireGuard e sing-box: instalação pela loja, permissão de VPN sem diálogo, provisão sem segredo em argumento, always-on e bloqueio, reboot, snapshot, ADB e Appium vivos com o bloqueio, UDP, DNS, IPv6 e composição com proxy (conferir na documentação da versão publicada como o sing-box declara o WireGuard e o encadeamento). Entrega a escolha do cliente | pedido do dono; ADR-056 | M |
+| 25.2 | **Modelo e contrato**: perfis de rede (tipo, protocolo, endpoint, `secret_ref`), atribuição por aparelho, política `livre`/`exigida`/`exigida_com_bloqueio`, estado em cinco níveis (`pendente`, `configurado`, `conectado`, `trafego_verificado`, `parcial`), histórico de medições com IP de saída, legado da 041 (migração 057, adendo do contrato) | proxy só prova configuração (§2.2) | G |
+| 25.3 | **Segredos de rede**: cofre por `secret_ref`, consumidor restrito à provisão de rede, entrega por stdin ou arquivo no convidado, nunca argumento nem evento; a redação por formato ganha `socks5://`, `PrivateKey` e `PresharedKey` (`security/secret_store.py`, `security/redaction.py`) | cofre e redação (§2.2) | M |
+| 25.4 | **Aplicação e convergência**: comando `device.network`; o pendente é aplicado antes de qualquer tarefa que dependa dele; reaplicar e reverificar depois de boot, wake e reinício do backend ou do worker; invalidar em wipe e reset; deriva periódica; rollback por aparelho; aparelho ocupado espera ponto seguro (`devices/rede.py` novo, `vitrine.py`, `commands/despacho.py`, `devices/manager.py`) | desvio e pendência (§2.2) | G |
+| 25.5 | **Sonda de saída**: o app de QA mede IP v4 e v6, resolvedor DNS e UDP de dentro do aparelho; conferência por UID para Outlook e Instagram; comparação entre aparelhos (saída compartilhada vira aviso); teste de vazamento com a VPN derrubada | sem medição de IP de saída (§2.2) | M |
+| 25.6 | **Portão de rede no scheduler**: política exigida sem `trafego_verificado` válido faz a tarefa esperar; a queda suspende as dependentes (`taskqueue/scheduler.py`, porta injetada em `state.py`) | portão só de internet (§2.2) | M |
+| 25.7 | **Aparelhos do worker** [A]: aplicação pelo túnel sem mudar a rota do host nem o túnel; endpoint alcançável da rede do notebook; prova num remoto | pedido do dono | M |
+| 25.8 | **Painel Rede**: por aparelho, perfis VPN e proxy, desejado × observado, conexão, IP medido, última verificação, erro ou pendência; prévia em lote, edição individual, testar e reaplicar; segredo nunca exibido | pedido do dono | M |
+| 25.9 | **Implantação em ondas e matriz** [A]: aparelho livre, lote de QA, remotos; aparelho com conta real logada só com autorização do dono por aparelho; matriz com configuração, rota, IP observado, cobertura e pendências | pedido do dono; ADR-056 | M |
+| 25.10 | **Cliente VPN na loja** [A]: aquisição pela Play Store com a conta do dono, canário, promoção e distribuição do cliente escolhido no 25.1 | pedido do dono | P |
+
+**Fecha quando:** matriz por aparelho com configuração, estado, IP de saída medido (data e método), cobertura por
+app, comportamento de DNS, IPv4, IPv6 e UDP, persistência e isolamento, com prova `real` onde houver endpoint e
+`not_run` com a dependência exata onde não houver.
+
+### Fase 26 — Pedidos persistentes: pesquisa e desenho · 8 itens (pedido do dono de 29/09/2026; ADR-059)
+
+Origem: o pedido de 29/09 de uma fase nova para pedidos agendados, recorrentes, condicionais e acompanhados pela
+persona, gerenciados pelo backend e pelos workers, sem depender da sessão da IDE. Esta fase é pesquisa e desenho;
+a implementação vira fase própria no 26.8. Esqueleto: [design/pedidos-persistentes.md](design/pedidos-persistentes.md).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 26.1 | **Pesquisa em fontes primárias**, com data: agendamento durável, recorrência e fuso (RFC 5545, base IANA), filas em banco, idempotência, orquestração de agentes | pedido do dono | M |
+| 26.2 | **Modelo do pedido**: objetivo, contexto, critérios de sucesso, duração, frequência, gatilhos, encerramento e grau de autonomia; pedido → ocorrência → execução | questão 1 | M |
+| 26.3 | **Agendamento confiável**: trava de líder, atraso, disparos perdidos, sobreposição, cancelamento, tentativas e efeito duplicado; alternativas e recomendação | questão 3 | G |
+| 26.4 | **Memória e planejamento adaptativo**: o que o pedido guarda entre ocorrências; a persona decide quando voltar, pesquisar de novo ou trocar de app, dentro dos limites | questões 2 e 4 | M |
+| 26.5 | **Colaboração entre personas**: papéis por capacidade, dependência entre objetivos, consolidação, prevenção de conflito e de ciclo de delegação; uma conta por alvo para fora (ADR-055) e nada de simular apoio de pessoas independentes | questão 5 | M |
+| 26.6 | **Recursos e custo**: orçamento por pedido, saldo das contas de IA (ADR-051), capacidade de aparelhos e workers, saúde da rede, reaproveitamento de resultado | questão 6 | M |
+| 26.7 | **Experiência**: tela de pedidos com estado, histórico, próximas execuções, evidências e relatórios; editar, pausar, retomar e cancelar | questão 7 | M |
+| 26.8 | **Casos e plano incremental**: acompanhamento de políticos, pesquisa de produto e monitoramento de reputação (amostra × população, fontes, autorizações); fases de implementação com dependências e aceites | questão 8 | M |
+
+**Fecha quando:** [design/pedidos-persistentes.md](design/pedidos-persistentes.md) completo, com fontes datadas,
+alternativas, recomendação, capacidades existentes separadas das propostas e o plano incremental da implementação
+registrado no plano-100.
+
+### Fase 27 — Aceite integrado e revisão · 3 itens (pedido do dono de 29/09/2026; ADR-056, ADR-057, ADR-058)
+
+Origem: o §7 do pedido de 29/09: o aceite combina rede validada, conta correta e comando entre apps no mesmo aparelho;
+configuração só cadastrada não é funcionamento comprovado.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 27.1 | **Cenários e revisão**: critérios por frente, cenários preparados enquanto a implementação avança e revisão de cada lote antes da integração | pedido do dono | M |
+| 27.2 | **Aceite integrado** [A]: no mesmo aparelho, rede `trafego_verificado`, Outlook e Instagram com a conta certa e um comando entre os dois apps | pedido do dono | M |
+| 27.3 | **Fechamento**: seção nova em `relatorio-validacao.md`, matrizes por aparelho e por perfil, CHANGELOG, handoff e estado pelo mecanismo | pedido do dono | P |
+
+**Fecha quando:** no mesmo aparelho, rede `trafego_verificado`, conta correta nos dois apps e comando entre apps
+concluído, com prova `real`, e o resumo real × simulado × não executado publicado.
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |
