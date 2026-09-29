@@ -1158,8 +1158,8 @@ apagaria a conta real. Prova `simulated`: `backend/tests/test_saude_do_convidado
 
 **Aplicabilidade.** Vigente. Aparelho lento sem falta de RAM: meça o irq ocioso antes de pedir mais memória. Se o
 reinício de menos de 6 h não resolver, o aviso fica no cartão, e é outra doença. Desde `e9da86e` o reinício
-sai com `requested_by='saude'` e não conta como degrau da escada de reparo (ADR-055); a causa do acúmulo
-segue em aberto (item 21.15).
+sai com `requested_by='saude'` e não conta como degrau da escada de reparo (ADR-055); a causa do acúmulo foi
+medida em 29/09 (K-060): dois terços são o app logado rodando, um terço o tempo no ar.
 
 ### K-051 — `farm-ci-runner` em "Ready" não quer dizer runner parado: o `Runner.Listener` segue no ar
 
@@ -1367,5 +1367,51 @@ ligado. Real, 29/09, depois do deploy de `f497075`:
 **Aplicabilidade.** Vigente. Aparelho lento com pouca RAM livre: confira os apps em segundo plano antes de pedir mais
 memória. A relação com o acúmulo de irq (K-050) NÃO está provada. A memória liberada foi medida, mas a coleta
 `data\logs\irq_convidados.csv` mostra o irq ocioso do android-06, com o Instagram em primeiro plano, subindo de ~4%
-(2,7 h no ar) para ~8% (6,4 h), enquanto o android-04 no launcher ficou em 2–3%. A causa segue aberta (item 21.15). O
+(2,7 h no ar) para ~8% (6,4 h), enquanto o android-04 no launcher ficou em 2–3%. A causa foi medida depois (K-060). O
 passo dos apps só vai ao log quando fica `incerto` sob carga (prazo de 12 s): no painel não aparece.
+
+### K-060 — Irq do convidado ocioso: dois terços são o app logado rodando, um terço o tempo no ar; o custo no host não muda
+
+**Data:** 29/09/2026 · **Área:** parque, emuladores (ADR-053; K-050, K-059)
+
+**Sintoma.** Com o parque ocioso, o android-06 (andre logado no Instagram, 14,6 h no ar) tinha 8,4–8,7% da CPU em
+irq. O android-01 (sem o Instagram desde o reset, 10,1 h no ar) tinha 1,6–2,3%. Na medida persistida de 24 h (21.13),
+a mediana era 6,1% contra 2,4%.
+
+**Causa.** Medida em 29/09 (real, central, adb só leitura salvo onde dito; `/proc/interrupts`, `/proc/softirqs`,
+`/proc/stat`, `/proc/vmstat` e a CPU do processo do emulador no Windows):
+
+- **Não é transmissão de tela.** Nenhuma conexão estabelecida nas portas encaminhadas do UiAutomator2 (MJPEG).
+- **Não é o primeiro plano.** A tecla HOME às 12:27:12Z (tela conferida antes: o perfil do próprio andre) deu 5,8%
+  em 1 min e 8,4% em 5 min.
+- **Dois terços são o processo do Instagram logado, em qualquer plano.** O `am force-stop` às 12:40:59Z, com o
+  aparelho ocioso, não desloga e a próxima execução reabre o app. Depois dele: 5,8% em 2 min e 4,6% em 6 min. O
+  tempo de sistema caiu de 7,7% para 2,0%, igual ao do android-01, e as interrupções entre CPUs (CAL) de 128/s para
+  43/s. Sozinho, com o aparelho parado, o app gastava 4,5% de uma vCPU.
+- **Um terço é o tempo no ar.** Sem o app, sobram ~1,8 ponto acima do android-01, com o temporizador local 1,6 vez
+  maior (192/s contra 122/s). No mesmo aparelho e no launcher, o irq foi de 2,8–4,8% (6,7–9,7 h no ar) para 8,4%
+  (14,8 h). O android-01 no launcher não subiu: 1,3–3,4% até 6 h e 1,6–2,3% com 10 h. É isso que o reinício a frio
+  zera (K-050).
+- **O host não muda.** O processo do emulador do android-06 gasta 148% de uma CPU da máquina, antes e depois do
+  `force-stop`, contra 117–121% do android-01. Tem mais threads (206–237 contra 183–187) e mais handles (1619 contra
+  1287).
+- **Canais identificados.** `virtio23` é o `vmw_vsock_virtio_transport`, canal do adb; a taxa dele varia com as
+  próprias leituras por adb (inclusive as desta medida) e não separa os aparelhos. `virtio7` é o console, e
+  `virtio22` o Wi-Fi simulado.
+
+**O que funcionou.** Nada novo no código, por decisão medida:
+
+- parar o app sozinho não libera a máquina: a CPU do emulador no host é a mesma;
+- o custo seria uma partida a frio do app em toda execução;
+- a faixa que derruba tarefas (21–90%, K-050) já tem o reinício a frio automático: com o aparelho ocioso, ≥15% em 3
+  sondas.
+
+**Aplicabilidade.** Vigente. Para medir irq num convidado:
+
+- compare com um aparelho de controle no mesmo minuto: a carga do host move os dois;
+- separe por linha (`/proc/interrupts`), não só pelo total;
+- descarte a taxa do vsock, que as suas próprias leituras por adb inflam;
+- antes de mexer no aparelho, confira a tela e a conta (K-053).
+
+O gasto do emulador ocioso no host (1,2–1,5 CPU por aparelho com `swiftshader_indirect`) é da frente do renderizador
+([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado.
