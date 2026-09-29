@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-174 de 188 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+174 de 197 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -190,12 +190,21 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 21.14 | implemented | simulated | opus | — | 01c4dc1 (receita nasce candidate, promovida por 2 concordâncias em sombra, superseded gravado) implantado em 7a02491. |  |
 | 21.15 | implemented | real | opus | — | Apps de segundo plano: b5036ec em f497075, real (11 desativados no android-01 e android-06, MemAvailable 974-1054 MB). Causa do irq MEDIDA em 29/09 (K-060, d4ab5cf): android-06 (andre) contra android-01 (sem Instagram).… |  |
 | 21.16 | implemented | simulated | opus | — | 9348e9c (reparo espera 10 min com a CPU da máquina >= instances.remediation_host_cpu_max) implantado desde ~04:17Z de 29/09; tests/test_saude_do_convidado.py::test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir… |  |
+| 22.1 | pendente | — | — | — |  |  |
+| 22.2 | pendente | — | — | — |  |  |
+| 22.3 | pendente | — | — | — |  |  |
+| 22.4 | pendente | — | — | — |  |  |
+| 22.5 | pendente | — | — | — |  |  |
+| 22.6 | pendente | — | — | — |  |  |
+| 22.7 | pendente | — | — | — |  |  |
+| 22.8 | pendente | — | — | — |  |  |
+| 22.9 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (14): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, T.2
+Pendentes (23): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 22.1, 22.2, 22.3, 22.4, 22.5, 22.6, 22.7, 22.8, 22.9, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

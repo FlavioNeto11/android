@@ -490,6 +490,27 @@ ficou em aberto (as pendências dos revisores do ADR-053). Diagnóstico, correç
 | 21.15 | **Causa do acúmulo de irq e apps em segundo plano**: os apps em segundo plano estão ENTREGUES — `android.desativar_apps` (`e2b54a0` + `b5036ec`) desativa 13 apps do Google no preparo, reversível e com os protegidos recusados na carga; real em 29/09: 11 desativados no android-01 e no android-06, `MemAvailable` de 670–960 MB para 974–1054 MB, Instagram ok (K-059). A causa do irq está MEDIDA (29/09, K-060): cerca de dois terços do excesso ocioso são o processo do Instagram logado rodando, em qualquer plano (HOME não mudou nada; `force-stop` levou o android-06 de 8,4% a 4,6%, e o tempo de sistema e as interrupções entre CPUs ao nível do aparelho de controle), e um terço é o tempo no ar (temporizador local 1,6x), que o reinício a frio zera. A CPU do emulador no host não muda com o app parado (148% antes e depois), então não há mecanismo novo: a faixa que derruba tarefas segue com o reinício automático. `virtio23` é o vsock do adb | K-050, K-059, K-060 | M |
 | 21.16 | **O reparo espera a máquina aliviar** (`9348e9c`, no ar desde 29/09 ~04:17Z): com a CPU do central em `instances.remediation_host_cpu_max` (90%) ou mais, o reparo de aparelho local adia 10 min, com aviso no cartão, em vez de subir de degrau (101 desliga; a suíte usa 101). Resposta ao `reset` do android-01, que apagou a sessão do lucas com a máquina saturada pela IDE (29/09, 02:15Z) | incidente de 29/09 (K-058) | P |
 
+### Fase 22 — Pendências da rodada de 29/09 (tarde) · 9 itens (pedido do dono de 29/09/2026; ADR-054, ADR-055)
+
+Origem: o pedido do dono de 29/09 para "criar um plano para corrigir todas essas pendências e já atuar nelas", sobre o
+"ainda aberto" do fechamento do código em aberto ([relatório §24](relatorio-validacao.md)). Ficam fora, por não serem
+código: a ratificação das polaridades dos três sinais (decisão do dono) e o CI de contêiner (cobrança do Actions, volta
+depois de 1º/10). A suíte em PostgreSQL depende da autorização do dono para ligar o Docker/WSL; sem ela, o CI a roda
+depois de 1º/10. A lista longa de pendências A2–A9 de [dominios/aprendizado.md](dominios/aprendizado.md) fica para
+uma onda seguinte.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 22.1 | **Operador nos gestos do A2**: resolver item, repetir a execução, responder pergunta e tomar o controle gravam o operador da sessão (`autor_do_gesto`), não `panel` (`ligar_costuras.py`, `api.py`, `shared/costuras.py`) | pendência A2 | P |
+| 22.2 | **Nota do painel triada só no texto da pessoa**: o `CommandTrail` deixa de prefixar a nota com o contexto (o backend o acrescenta), e o `requested_by` livre passa pela mesma triagem de credencial | revisão das costuras (29/09) | P |
+| 22.3 | **Escritor de `failure_screen`**: a tela classificada (`conhecimento_de_telas`) da última observação da tentativa que falhou; nulo quando desconhecida. O backlog não pode dar como corrigida a linha antiga "sem tela" só porque as falhas passaram a vir com a tela nomeada | pendência A2 | M |
+| 22.4 | **Adoção de fluxo por habilidade com trilha**: adotar e desfazer a adoção (`modules/skills/infrastructure/sql_repository.py`) gravam a transição do fluxo com quem decidiu | pendência A5 | P |
+| 22.5 | **Trilha nas lojas segura no PostgreSQL**: a trilha que o ouvinte do A5 grava dentro da transação de `FlowStore`/`RecipeStore` não derruba o salvamento (savepoint ou depois do commit) | pendência A5 | M |
+| 22.6 | **Preferência com a execução que completou a evidência**: o nascimento leva o `run_id` da observação que fechou o limiar, com papel próprio no bloco da execução ("entre N execuções") | pendência A6 | P |
+| 22.7 | **Correção de ensino no painel**: ação no treinamento para corrigir etapa `failed`/`uncertain` de uma sessão de ensino (`POST /api/teaching-sessions/{id}/corrections`), que faz nascer o sinal `correcao_de_ensino` | revisão das costuras (29/09) | M |
+| 22.8 | **Aviso de saldo da Anthropic (`ai_balance_stale`)**: diagnóstico só de leitura do 503 do relatório de uso (desde quando, o que a plataforma pede) e o que fazer | fechamento de 29/09 | P |
+| 22.9 | **Arrumação dos worktrees da rodada**: desfazer as junções (`rmdir` do link), conferir o `venv` e o `node_modules` reais, e só então `git worktree remove`; só os desta sessão | fechamento de 29/09 | P |
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |
