@@ -31,6 +31,7 @@ CAMPOS: dict[str, str] = {
     "post_description": "postcondition.description",
     "bindings": "parameters.required",
     "optional_bindings": "parameters.optional",
+    "inherited_bindings": "parameters.inherited",
     "precondition": "precondition",
     "side_effect": "side_effect.external",
     "risk": "governance.risk",
@@ -77,7 +78,8 @@ def definicao(cap: Capability, package: str) -> CapabilityDefinition:
         goal=cap.goal,
         parameters=ParameterContract(required=tuple(cap.bindings), optional=tuple(cap.optional_bindings),
                                      # a mesma regra que o `build_step` aplica a etapa que escreve
-                                     one_of=(BRIEFING, TEXTO) if cap.needs_draft else ()),
+                                     one_of=(BRIEFING, TEXTO) if cap.needs_draft else (),
+                                     inherited=tuple(cap.inherited_bindings)),
         precondition=cap.precondition,
         postcondition=PostconditionContract(kind=PostconditionKind(cap.post_kind), value=cap.post_value,
                                             description=cap.post_description),
@@ -96,7 +98,7 @@ def definicao(cap: Capability, package: str) -> CapabilityDefinition:
         requirements=AppRequirements(session_provider=app.session_provider, needs_profile=app.needs_profile,
                                      requires_internet=app.requires_internet),
         card_guard=tuple(cap.card_guard),
-        card_control=cap.card_control,
+        card_control=tuple(cap.card_control),
     )
 
 

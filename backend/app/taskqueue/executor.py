@@ -811,7 +811,8 @@ class StepExecutor:
             # que já satura a CPU (android-06, r-20260928195344-02ee9e).
             history.append("(executor) a publicação desta etapa é a da legenda com "
                            + ", ".join(f'"{c}"' for c in cartao)
-                           + f": o toque em '{cap.card_control}' só vale no cartão dela, logo acima da legenda.")
+                           + ": o toque em " + " ou ".join(f"'{c}'" for c in cap.card_control)
+                           + " só vale no cartão dela, logo acima da legenda.")
         need = step.postcondition.required_delivery_level
 
         # Item 7.6: só os parâmetros QUE ESTA ETAPA USA, não o objetivo inteiro (que pode ter dezenas de
@@ -1264,7 +1265,7 @@ class StepExecutor:
                 try:
                     px, py, _ = resolve_point(tool_ctx, getattr(args, "element_id", None), getattr(args, "x", None),
                                               getattr(args, "y", None))
-                    fora_do_cartao = rejeicao_do_controle(cap.card_control, cartao, obs.tree, (px, py))
+                    fora_do_cartao = rejeicao_dos_controles(cap.card_control, cartao, obs.tree, (px, py))
                 except DriverError:
                     fora_do_cartao = None      # o próprio toque falha adiante, sem chegar ao aparelho
                 if fora_do_cartao:
@@ -1715,6 +1716,13 @@ def rejeicao_do_controle(card_control: str, cartao: Sequence[str], tree: UiTree,
             + ", ".join(f'"{m}"' for m in fora)
             + " — é o controle logo ACIMA dessa legenda; este é de outra publicação. Role até a legenda aparecer logo"
               " abaixo do controle, ou chame step_blocked se ela não estiver nesta tela")
+
+
+def rejeicao_dos_controles(controles: Sequence[str], cartao: Sequence[str], tree: UiTree,
+                           ponto: tuple[int, int]) -> str | None:
+    """`rejeicao_do_controle` para cada controle declarado (`card_control` é lista: mais de um controle do cartão abre
+    a mesma folha). A primeira recusa vale; um controle que não está na tela não dispensa a conferência dos outros."""
+    return next((r for c in controles if (r := rejeicao_do_controle(c, cartao, tree, ponto))), None)
 
 
 def textos_do_cartao_ausentes(cartao: Sequence[str], tree: UiTree) -> list[str]:

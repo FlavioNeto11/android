@@ -68,6 +68,9 @@ class ParameterContract:
     #: Pelo menos um destes precisa de valor. É a regra da etapa que escreve (`needs_draft`): a intenção
     #: (`content_brief`) ou o texto exato (`content`) — sem nenhum dos dois, o `build_step` recusa.
     one_of: tuple[str, ...] = ()
+    #: Opcionais que, sem valor na etapa, vêm da etapa anterior do mesmo plano que declara o argumento (a legenda da
+    #: publicação alvo). Subconjunto de `optional`, sem texto a escrever: conferido na carga do catálogo.
+    inherited: tuple[str, ...] = ()
 
     @property
     def accepted(self) -> tuple[str, ...]:
@@ -158,9 +161,10 @@ class CapabilityDefinition:
     #: preenchido, a pós-condição exige o texto na tela, o toque de efeito só vale no cartão que o traz e a prova
     #: local só vale nesse cartão; sem ele, nada muda. Não é do efeito: abrir a publicação também o usa.
     card_guard: tuple[str, ...] = ()
-    #: Seletor do controle do cartão que a etapa toca SEM efeito (o balão de comentários): com a legenda de
-    #: `card_guard`, o toque que o acerta só vale no cartão dela. Sem ele, só o toque de efeito é conferido por cartão.
-    card_control: str | None = None
+    #: Seletores dos controles do cartão que a etapa toca SEM efeito (o balão de comentários): com a legenda de
+    #: `card_guard`, o toque que acerta um deles só vale no cartão dela. Vazio: só o toque de efeito é conferido por
+    #: cartão.
+    card_control: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         # `collect` e `post_kind == items_collected` dizem a mesma coisa em dois campos do catálogo. Divergirem seria

@@ -29,7 +29,7 @@ from typing import Any, AsyncIterator
 import pytest_asyncio
 
 from app.automation.hierarchy import UiElement, UiTree, parse_hierarchy
-from app.db import Row
+from app.db import Row, loads
 from app.models import Plan, PlannerInfo
 from app.modules.capabilities.domain.definition import CapabilityRef
 from app.modules.capabilities.domain.verification import Observation, StepView, VerifyOutcome
@@ -241,7 +241,7 @@ def test_o_balao_de_comentarios_e_o_controle_do_cartao_declarado_no_catalogo() -
     `row_feed_button_comment`, desc "Comment", [131,455][179,547] no android-06."""
     cap = capability_of(PKG, "OPEN_COMMENTS")
     assert cap is not None and not cap.side_effect and cap.commit_selector is None
-    assert cap.card_control == "id=row_feed_button_comment" and cap.card_guard == ("{caption_contains}",)
+    assert cap.card_control == ("id=row_feed_button_comment",) and cap.card_guard == ("{caption_contains}",)
     # só OPEN_COMMENTS declara: a curtida já é conferida pelo `commit_selector` no caminho do efeito
     catalogo = load_catalog(PKG)
     assert catalogo is not None
@@ -272,6 +272,21 @@ def test_toque_no_balao_do_outro_cartao_e_recusado() -> None:
     assert rejeicao_do_controle(controle, cartao, rolada, _baloes(rolada)[0].center) is not None
     # sem caption_contains (post por posição): qualquer balão, como hoje
     assert rejeicao_do_controle(controle, (), tree, de_cima.center) is None
+
+
+def test_cada_controle_declarado_na_lista_e_conferido() -> None:
+    """`card_control` é lista: o balão e, quando o id for medido, o link "View all N comments" abrem a mesma folha.
+    Um controle que não está na tela não dispensa a conferência do que está — a primeira recusa vale."""
+    from app.taskqueue.executor import rejeicao_dos_controles
+
+    tree = _tela()
+    de_cima, de_baixo = _baloes(tree)
+    controles, cartao = ("id=controle_que_nao_esta_na_tela", "id=row_feed_button_comment"), (LEGENDA,)
+    motivo = rejeicao_dos_controles(controles, cartao, tree, de_cima.center)
+    assert motivo is not None and "row_feed_button_comment" in motivo and LEGENDA in motivo
+    assert rejeicao_dos_controles(controles, cartao, tree, de_baixo.center) is None
+    assert rejeicao_dos_controles(controles, (), tree, de_cima.center) is None      # por posição: como hoje
+    assert rejeicao_dos_controles((), cartao, tree, de_cima.center) is None         # ação sem controle declarado
 
 
 # ==================================================================== prova local e pós-condição
@@ -433,6 +448,24 @@ class AtorDosComentarios(AtorDePublicacoes):
         return d("tap", element_id=baloes[recusados].id, x=None, y=None, is_commit_action=False, expect_done=True)
 
 
+class AtorQueSoCitaALegendaNaAbertura(AtorDosComentarios):
+    """O planejador real às vezes põe `caption_contains` só em OPEN_POST. Sem herança, OPEN_COMMENTS nascia sem legenda
+    e o balão de CIMA (o do outro cartão) passava — a folha errada, e o comentário seguinte no post errado."""
+
+    name = "ator-legenda-so-na-abertura"
+
+    async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        catalogo = load_catalog(PKG)
+        assert catalogo is not None
+        alvo = {"target": f"publicação com o texto \"{LEGENDA}\"", "caption_contains": LEGENDA}
+        nos = [CapabilityNode(key="abrir_post", capability="OPEN_POST", bindings=alvo),
+               CapabilityNode(key="comentarios", capability="OPEN_COMMENTS", depends_on=["abrir_post"])]
+        etapas, faltando = compose(catalogo, nos)
+        return Plan(summary="[roteiro] legenda só na abertura do post", app_id="instagram", app_package=PKG,
+                    parameters={}, steps=etapas, missing=faltando,
+                    planner=PlannerInfo(provider=self.name, model=self.model, simulated=True)), Usage()
+
+
 async def _parque(tmp_path: Path, legenda: str | None, ator: AtorDePublicacoes | None = None,
                   **tela: object) -> AsyncIterator[Harness]:
     h = Harness(tmp_path, 1, factory=lambda rt: InstagramComPublicacoes(account="eu.teste", screen="feed",
@@ -567,6 +600,26 @@ async def test_abrir_comentarios_com_legenda_recusa_o_balao_do_outro_cartao(come
     rejeitadas = _rejeitadas(h, passo["id"])
     assert len(rejeitadas) == 1 and rejeitadas[0]["source"] == "ai"
     assert "cartão" in (rejeitadas[0]["error"] or "") and LEGENDA in (rejeitadas[0]["error"] or "")
+
+
+@pytest_asyncio.fixture
+async def legenda_so_na_abertura(tmp_path: Path) -> AsyncIterator[Harness]:
+    async for h in _parque(tmp_path, LEGENDA, AtorQueSoCitaALegendaNaAbertura(LEGENDA)):
+        yield h
+
+
+async def test_legenda_so_na_abertura_ainda_guarda_o_balao_dos_comentarios(legenda_so_na_abertura: Harness) -> None:
+    """O plano cita a legenda só em OPEN_POST; OPEN_COMMENTS a herda (declarado no catálogo) e o executor recusa o
+    balão do cartão de cima, como se o planejador a tivesse repetido."""
+    h = legenda_so_na_abertura
+    run = h.run([IID], command=f"abra os comentários do post de @anarabottinipsicopedagoga com o texto \"{LEGENDA}\"")
+    detalhe = await h.wait_run(run.id, timeout=60)
+    assert detalhe.status == "completed", (detalhe.status, detalhe.status_detail)
+    assert _aparelho(h).folhas_abertas == [_ALVO]                # nunca a folha da outra publicação
+    passo = _etapas(h, run.id)["comentarios"]
+    assert loads(passo["bindings"], {}).get("caption_contains") == LEGENDA
+    rejeitadas = _rejeitadas(h, passo["id"])
+    assert len(rejeitadas) == 1 and "cartão" in (rejeitadas[0]["error"] or "")
 
 
 async def test_sem_caption_contains_os_comentarios_seguem_pelo_primeiro_balao(comentarios_por_posicao: Harness) -> None:

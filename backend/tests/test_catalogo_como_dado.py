@@ -50,8 +50,11 @@ def _normalizado(cap: Capability) -> dict[str, object]:
 CAMPOS_NOVOS: dict[str, object] = {
     # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
     "card_guard": [],
-    # C10, revisão: o controle do cartão tocado SEM efeito (o balão que abre a folha "Comments").
-    "card_control": None,
+    # C10, revisão: os controles do cartão tocados SEM efeito (o balão que abre a folha "Comments"). Lista desde a
+    # rodada seguinte ao ADR-053: o link "View all N comments" abre a mesma folha e entra quando o id for medido.
+    "card_control": [],
+    # Rodada seguinte ao ADR-053: argumentos opcionais que a etapa herda da anterior do mesmo plano (a legenda).
+    "inherited_bindings": [],
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
@@ -68,12 +71,18 @@ MUDANCAS: dict[tuple[str, str], object] = {
     ("OPEN_COMMENTS", "card_guard"): ["{caption_contains}"],
     # A folha "Comments" é igual para qualquer publicação e, aberta, deixa a legenda do fundo na árvore
     # (r-20260928165254-e31953): só o toque que a abre distingue o cartão. Medido: e29, `row_feed_button_comment`.
-    ("OPEN_COMMENTS", "card_control"): "id=row_feed_button_comment",
+    ("OPEN_COMMENTS", "card_control"): ["id=row_feed_button_comment"],
     ("LIKE_POST", "optional_bindings"): ["caption_contains"],
     ("LIKE_POST", "commit_guard"): ["{caption_contains}"],
     ("LIKE_POST", "card_guard"): ["{caption_contains}"],
     ("CREATE_COMMENT", "optional_bindings"): ["content_brief", "content", "content_verbatim", "caption_contains"],
     ("CREATE_COMMENT", "commit_guard"): ["{content}", "{caption_contains}"],
+    # Rodada seguinte ao ADR-053 — a guarda de cartão só agia se o planejador repetisse a legenda em CADA etapa; com
+    # ela só em OPEN_POST, curtida, balão e comentário voltavam a valer em qualquer cartão. Estas três herdam a legenda
+    # da etapa anterior do plano; OPEN_POST não herda (começa um alvo novo, e pode ser por posição).
+    ("LIKE_POST", "inherited_bindings"): ["caption_contains"],
+    ("OPEN_COMMENTS", "inherited_bindings"): ["caption_contains"],
+    ("CREATE_COMMENT", "inherited_bindings"): ["caption_contains"],
 }
 
 
@@ -173,11 +182,31 @@ def test_um_catalogo_minimo_de_outro_app_carrega_so_com_dado(tmp_path: Path) -> 
     (_doc(_acao(item_key="(sem fechar")), "item_key: expressão regular inválida"),
     (_doc(_acao(local_proof="selector:")), "local_proof"),
     # Controle de cartão sem legenda a conferir nunca seria conferido: declará-lo seria uma guarda de mentira.
-    (_doc(_acao(card_control="id=row_feed_button_comment")), "card_control — sem card_guard"),
-    (_doc(_acao(card_control="  ", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+    (_doc(_acao(card_control=["id=row_feed_button_comment"])), "card_control — sem card_guard"),
+    (_doc(_acao(card_control=["  "], card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
      "card_control — seletor vazio"),
-    (_doc(_acao(card_control="id=botao|", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+    (_doc(_acao(card_control=["id=botao|"], card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
      "card_control — seletor vazio"),
+    # um vazio no meio da lista também: o controle de mentira não pode se esconder atrás de um de verdade
+    (_doc(_acao(card_control=["id=row_feed_button_comment", ""], card_guard=["{caption_contains}"],
+                optional_bindings=["caption_contains"])), "card_control — seletor vazio"),
+    # lista, não texto solto: é o que deixa o segundo controle (o link "View all N comments") entrar sem mudar o tipo
+    (_doc(_acao(card_control="id=row_feed_button_comment", card_guard=["{caption_contains}"],
+                optional_bindings=["caption_contains"])), "card_control: esperava uma lista"),
+    # Herança mal declarada: só argumento OPCIONAL herda (o obrigatório o planejador preenche, e sem ele a etapa vira
+    # pergunta); texto a escrever nunca (o comentário repetiria a mensagem anterior); e nada repetido.
+    (_doc(_acao(inherited_bindings=["caption_contains"])),
+     "inherited_bindings — 'caption_contains' não está em optional_bindings"),
+    (_doc(_acao(bindings=["username"], inherited_bindings=["username"])),
+     "inherited_bindings — 'username' não está em optional_bindings"),
+    (_doc(_acao(optional_bindings=["content_brief"], inherited_bindings=["content_brief"])),
+     "inherited_bindings — 'content_brief' é texto a escrever"),
+    (_doc(_acao(optional_bindings=["content", "content_brief"], inherited_bindings=["content"])),
+     "inherited_bindings — 'content' é texto a escrever"),
+    (_doc(_acao(optional_bindings=["caption_contains"], inherited_bindings=["caption_contains", "caption_contains"])),
+     "inherited_bindings — 'caption_contains' repetido"),
+    (_doc(_acao(optional_bindings=["caption_contains"], inherited_bindings="caption_contains")),
+     "inherited_bindings: esperava uma lista"),
     (_doc(_acao(), contract_version=2), "contract_version: 2 não é entendida"),
     (_doc(_acao(), contract_version=None), "contract_version: esperava um inteiro"),
     (_doc(), "ao menos uma ação"),

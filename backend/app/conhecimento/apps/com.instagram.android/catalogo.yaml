@@ -110,6 +110,10 @@ acoes:
   - key: OPEN_COMMENTS
     title: Abrir os comentários
     optional_bindings: [caption_contains]
+    # Sem legenda nesta etapa, vale a da etapa anterior do plano (a que abriu o post): o planejador às vezes a cita só
+    # em OPEN_POST, e sem ela o balão de qualquer cartão passava. OPEN_POST não herda — ele COMEÇA um alvo, e abrir
+    # outro post por posição não pode exigir a legenda do anterior.
+    inherited_bindings: [caption_contains]
     precondition: Uma publicação está aberta.
     goal: Abrir a lista de comentários da publicação aberta.
     post_kind: element_present
@@ -125,7 +129,14 @@ acoes:
     # sai no post errado. Com `caption_contains`, o toque neste controle só vale no cartão da legenda (a receita, que
     # não distingue argumentos, pode repetir o primeiro balão da tela). Medido em r-20260928165254-e31953, ação e29 da
     # open_comments_1: `row_feed_button_comment`, desc "Comment", [131,455][179,547] no android-06.
-    card_control: id=row_feed_button_comment
+    #
+    # PENDENTE: o link "View all N comments" (abaixo da legenda) abre a mesma folha e ainda passa SEM guarda. O id não
+    # foi medido: a árvore do android-06 lida em 2026-09-29T00:28Z (`GET /api/instances/android-06/hierarchy`) tinha a
+    # folha aberta sobre um post com um comentário de prévia e nenhum "View all". Medir o resource-id numa tela que o
+    # mostre e acrescentar a esta lista — e, junto, conferir a região do cartão: `UiTree.text_in_card` procura a
+    # legenda do TOPO do controle para BAIXO (feito para o balão, acima dela); para um controle abaixo da legenda ela
+    # não acharia a do próprio cartão (recusa o certo) e a janela alcançaria o cartão seguinte.
+    card_control: [id=row_feed_button_comment]
 
   - key: OPEN_INBOX
     title: Abrir as mensagens
@@ -208,6 +219,7 @@ acoes:
     title: Curtir a publicação
     interaction_type: post_liked
     optional_bindings: [caption_contains]
+    inherited_bindings: [caption_contains]      # a legenda da etapa anterior (ver OPEN_COMMENTS)
     precondition: A publicação alvo está aberta na tela.
     goal: Curtir a publicação aberta, uma única vez.
     post_kind: model_judged
@@ -268,6 +280,9 @@ acoes:
     title: Comentar na publicação
     interaction_type: comment_replied
     optional_bindings: [content_brief, content, content_verbatim, caption_contains]
+    # Só a legenda: o texto a escrever nunca herda (o carregador recusa), senão o segundo comentário repetiria o
+    # primeiro.
+    inherited_bindings: [caption_contains]
     precondition: A lista de comentários está aberta e o texto já foi escrito e aprovado.
     goal: Publicar o comentário com o conteúdo aprovado.
     post_kind: model_judged
