@@ -28,8 +28,8 @@ from ..events import EventBus
 from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
-# A porta do aprendizado (ADR-054): só o contrato, que puxa stdlib e a árvore — nada da fila entra aqui.
-from ..taskqueue.costuras import SEM_COSTURAS, CosturaDeControle, TomadaDeControle, avisar
+# A porta do aprendizado (ADR-054): só o contrato, do kernel — `devices` não conhece a fila nem o livro.
+from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
@@ -511,7 +511,7 @@ class DeviceManager:
         #: Aprendizado (ADR-054, A2): uma pessoa pediu o aparelho com a IA no meio de uma etapa. Só os ids — nem
         #: árvore, nem texto, nem coordenada; as entradas manuais seguem fora (`aprendizado.takeover_gravar: false`).
         #: Injetado pelo AppState; no-op por padrão.
-        self.costura_de_controle: CosturaDeControle = SEM_COSTURAS
+        self.costura_de_controle: CosturaDeControle = SEM_COSTURAS_DE_GESTO
         #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".

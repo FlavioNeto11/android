@@ -313,6 +313,15 @@ def test_agente_do_worker_nao_carrega_o_central() -> None:
     assert not fora, f"dependência fora de worker-requirements.txt no fecho do agente: {fora}"
 
 
+def test_aparelhos_nao_conhecem_a_fila() -> None:
+    """`app.devices` nunca importa `app.taskqueue` — nem tardio, nem por `TYPE_CHECKING`. O gerenciador avisa o
+    aprendizado pelo kernel (`app.shared.costuras`), e o que recebe da fila (as vagas de IA) é por duck-typing. Foi a
+    dívida aceita na integração do A2 (ADR-054); esta regra não a deixa voltar."""
+    intrusos = sorted(f"{i.origem}:{i.linha} importa {i.alvo} ({i.tipo})" for i in imports()
+                      if i.interno and _casa(i.origem, "app.devices") and _casa(i.alvo, "app.taskqueue"))
+    assert not intrusos, "aparelho importando a fila:\n  " + "\n  ".join(intrusos)
+
+
 def test_nenhum_ciclo_no_import_de_topo() -> None:
     """Ciclo de topo é ImportError esperando a ordem certa de import. Hoje são zero — e ficam zero."""
     assert componentes(grafo(so_executa=True, so_topo=True)) == []

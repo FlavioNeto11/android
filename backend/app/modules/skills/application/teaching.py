@@ -33,6 +33,7 @@ from app.modules.skills.domain.teaching import (ACCEPTS_DEMONSTRATION, Candidate
                                                 TeachingValidation, TurnAuthor, TurnKind, answered_questions,
                                                 check_move, open_questions, source_of, suggest_skill_id)
 from app.modules.skills.domain.versions import DocumentFacts, Provenance, SourceKind
+from app.shared.costuras import SEM_COSTURAS_DE_GESTO, CorrecaoDeEnsino, CosturaDeEnsino, avisar
 from app.util import new_token, now_iso
 
 S = TeachingStatus
@@ -89,6 +90,9 @@ class TeachingService:
         self._clock = clock
         self._new_id = new_id
         self._on_updated = on_updated
+        #: Aprendizado (ADR-054): a correção de uma pessoa vira o sinal `correcao_de_ensino`. Injetado pelo AppState
+        #: depois de montar o livro; no-op por padrão, e a falha do livro nunca derruba a correção (`avisar`).
+        self.costura_de_ensino: CosturaDeEnsino = SEM_COSTURAS_DE_GESTO
 
     @property
     def enabled(self) -> bool:
@@ -204,10 +208,14 @@ class TeachingService:
         texto = self._person_text(body, "correção")
         dados = as_json_object(payload or {})
         self._screen_json(dados, "correção")
-        self._repo.add_turn(NewTurn(sessao.id, TurnKind.CORRECTION, TurnAuthor.PERSON, body=texto,
-                                    target={"run_id": run_id, "step_id": step_id}, payload=dados or None,
-                                    created_by=by), at=self._clock())
+        turno = self._repo.add_turn(NewTurn(sessao.id, TurnKind.CORRECTION, TurnAuthor.PERSON, body=texto,
+                                            target={"run_id": run_id, "step_id": step_id}, payload=dados or None,
+                                            created_by=by), at=self._clock())
         self._notify(sessao.id, "correção registrada")
+        # Só depois de a correção valer; o texto já passou pela recusa de credencial (`_person_text`).
+        avisar(self.costura_de_ensino.correcao_de_ensino, CorrecaoDeEnsino(
+            teaching_id=sessao.id, turno=turno.id, skill_id=sessao.skill_id, run_id=run_id, step_id=step_id,
+            nota=texto, quem=by))
         return self.get(sessao.id)
 
     def discard(self, teaching_id: str, *, by: str | None = None) -> TeachingView:

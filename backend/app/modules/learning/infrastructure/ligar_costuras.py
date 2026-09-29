@@ -1,4 +1,5 @@
-"""Pacote A2 do ADR-054: liga as costuras tipadas dos arquivos quentes (`app/taskqueue/costuras.py`) ao livro.
+"""Pacote A2 do ADR-054: liga as costuras tipadas dos arquivos quentes (`app/taskqueue/costuras.py`, e as de gesto
+fora da fila em `app/shared/costuras.py`) ao livro.
 
 Duas partes:
 
@@ -18,13 +19,25 @@ O que este pacote grava por conta própria são SINAIS (`learning_signals`), ide
   parece credencial não fica: `note_refused=1`);
 - `repetiu_execucao` (neutro), por `ao_repetir`;
 - `respondeu_pergunta` (neutro), um por campo, com o campo e o sha256 da resposta — nunca o valor;
-- `tomou_controle` (negativo), um por tentativa tomada, sem árvore, texto ou coordenada.
+- `tomou_controle` (negativo), um por tentativa tomada, sem árvore, texto ou coordenada;
+- `cancelou_execucao`, pela rota de cancelar (o gesto; a sucessora que cancela a execução respondida não conta), um
+  por EPISÓDIO (o clique repetido com o cancelamento já valendo não grava; a execução reaberta e cancelada de novo é
+  outro episódio, com o instante da transição na chave): neutro quando nada tinha rodado (`planning`, `needs_input`,
+  `planned` — não diz nada de como a IA agiu), negativo quando a pessoa interrompeu trabalho em curso ou fechou o que
+  tinha ficado pendente;
+- `comando_incerto_resolvido`, por quem tirou um comando de `uncertain`: `succeeded` é neutro (como confirmar à mão: a
+  ação valeu, a prova não veio — nunca evidência a favor), `failed` é negativo e `cancelled` é neutro. O autor que o
+  comando gravou (`resolved_by`) vai em `data`, só para cruzar os dois;
+- `correcao_de_ensino` (negativo: a pessoa diz que a habilidade errou naquela etapa), com o texto da correção como
+  nota, ligada à execução e à etapa corrigidas.
 
-Quem faz o gesto é uma pessoa pelo painel, mas o nome do operador não chega aos arquivos quentes: o sinal sai como
-`panel` (a regra `_quem`: sem nome, `panel`), nunca como `sistema` — a régua diária só conta como negativo humano o que
-não é do sistema. O app e a ação do sinal saem da etapa pela mesma regra da régua diária (`app_da_etapa`, ação nula
-= `*`), para os dois agregarem na mesma chave; `simulated` vem de `runs.simulated`, e sinal de execução simulada
-nunca promove nada.
+Quem faz o gesto é uma pessoa pelo painel. Os três últimos levam o operador da sessão (`autor_do_gesto`, a regra das
+rotas do livro: sem sessão, `panel`); os do A2 ainda saem como `panel`, porque o nome não chega a `resolve`,
+`retry_failed`, ao assistente nem ao gerenciador. Nunca como `sistema` — a régua diária só conta como negativo humano
+o que não é do sistema. O app e a ação do sinal saem da etapa pela mesma regra da régua diária (`app_da_etapa`, ação
+nula = `*`), para os dois agregarem na mesma chave; `simulated` vem de `runs.simulated` (no comando sem execução, do
+modo da instalação), e sinal de execução simulada nunca promove nada. Nenhum dos três novos conta como intervenção na
+régua diária (`SINAIS_DE_INTERVENCAO`): o ADR-054 não os lista.
 
 `aprendizado.enabled: false` desliga tudo (lido a cada chamada); lições no modo `off` nem são pedidas.
 """
@@ -42,20 +55,27 @@ from app.modules.learning.application.ports import NovoSinal
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.vocabulario import Modo, Polaridade, SignalKind
 from app.modules.learning.infrastructure import linhas
-from app.taskqueue.costuras import (DecisaoSobreItem, FechamentoDeTentativa, PedidoDeLicoes, RepeticaoDeExecucao,
-                                    ResolucaoDeItem, RespostaAPergunta, TomadaDeControle)
+from app.shared.costuras import (PAINEL, CorrecaoDeEnsino, DesfechoDoComando, ResolucaoDeComando, TomadaDeControle,
+                                 autor_do_gesto)
+from app.taskqueue.costuras import (CancelamentoDeExecucao, DecisaoSobreItem, FechamentoDeTentativa, PedidoDeLicoes,
+                                    RepeticaoDeExecucao, ResolucaoDeItem, RespostaAPergunta)
 from app.taskqueue.projecao import QUALQUER, app_da_etapa
 
 log = logging.getLogger("poc.aprendizado")
-
-#: Quem deu o sinal de um gesto do painel (ver o docstring do módulo).
-PAINEL = "panel"
 
 _DO_GESTO: dict[DecisaoSobreItem, tuple[SignalKind, Polaridade]] = {
     "confirm_done": (SignalKind.CONFIRMOU_A_MAO, Polaridade.NEUTRAL),
     "retry": (SignalKind.REPETIU_ITEM, Polaridade.NEUTRAL),
     "abandon": (SignalKind.ABANDONOU_ITEM, Polaridade.NEGATIVE),
 }
+#: A decisão de uma pessoa sobre um comando incerto (ver o docstring do módulo).
+_DO_DESFECHO: dict[DesfechoDoComando, Polaridade] = {
+    "succeeded": Polaridade.NEUTRAL,
+    "failed": Polaridade.NEGATIVE,
+    "cancelled": Polaridade.NEUTRAL,
+}
+#: As chaves do `params` de um comando que são TRILHA (quem o pediu) — nunca argumento com valor de pessoa.
+_TRILHA_DO_COMANDO = ("run_id", "objective_id", "package", "app_id", "profile_id")
 
 _FORA_DO_CAMPO = re.compile(r"[^a-z0-9_]+")
 
@@ -126,7 +146,8 @@ class _Contexto:
 
 
 class CosturasDoLivro:
-    """Cumpre `CosturasDeAprendizado` e `CosturaDeControle` (`app/taskqueue/costuras.py`). Toda exceção daqui é
+    """Cumpre `CosturasDeAprendizado` (`app/taskqueue/costuras.py`) e as costuras de gesto do kernel
+    (`CosturaDeControle`, `CosturaDeComando`, `CosturaDeEnsino`, em `app/shared/costuras.py`). Toda exceção daqui é
     engolida por quem chama (`avisar`, `pedir_licoes`): o gesto e a etapa seguem."""
 
     def __init__(self, servico: LearningService, db: Database, ext: Extensoes) -> None:
@@ -197,6 +218,64 @@ class CosturasDoLivro:
                 data={"campo": campo, "resposta_sha256": resposta.resposta_sha256,
                       "run_sucessora": resposta.run_sucessora},
                 simulated=ctx.simulated))
+
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None:
+        if not self._ligado():
+            return
+        ctx = self._contexto(cancelamento.run_id)
+        if ctx is None:
+            return
+        # Um sinal por EPISÓDIO: o clique repetido nem chega aqui (`RunService.cancel`), e a execução reaberta e
+        # cancelada de novo é outro episódio — a chave leva o instante da transição, senão o `ON CONFLICT` o engoliria.
+        self._servico.registrar_sinal(NovoSinal(
+            kind=SignalKind.CANCELOU_EXECUCAO, source_ref=f"cancelamento:{cancelamento.run_id}:{cancelamento.em}",
+            created_by=autor_do_gesto(cancelamento.quem),
+            polarity=Polaridade.NEUTRAL if cancelamento.antes_de_iniciar else Polaridade.NEGATIVE,
+            run_id=cancelamento.run_id, app_package=ctx.app_package,
+            data={"status_anterior": cancelamento.status_anterior}, simulated=ctx.simulated))
+
+    def comando_incerto_resolvido(self, resolucao: ResolucaoDeComando) -> None:
+        if not self._ligado():
+            return
+        comando = self._db.one("SELECT instance_id, verb, params, result FROM commands WHERE id=?",
+                               (resolucao.command_id,))
+        if comando is None:
+            return
+        # Quem o COMANDO gravou como autor (`result.resolved_by`, que aceita o `requested_by` do corpo sem sessão) vai
+        # só em `data`, para cruzar o sinal com o comando; o autor do sinal é o da sessão (`autor_do_gesto`).
+        resolvido_por = linhas.json_objeto(comando, "result").get("resolved_by")
+        bruto = linhas.json_objeto(comando, "params")
+        trilha = {k: v.strip() for k in _TRILHA_DO_COMANDO if isinstance(v := bruto.get(k), str) and v.strip()}
+        run_id = trilha.get("run_id")
+        ctx = self._contexto(run_id, objective_id=trilha.get("objective_id")) if run_id else None
+        pacote = trilha.get("package") or (self._pacote(trilha["app_id"]) if "app_id" in trilha else "")
+        self._servico.registrar_sinal(NovoSinal(
+            kind=SignalKind.COMANDO_INCERTO_RESOLVIDO, source_ref=f"comando:{resolucao.command_id}",
+            created_by=autor_do_gesto(resolucao.quem), polarity=_DO_DESFECHO[resolucao.resolucao],
+            note=resolucao.nota, run_id=run_id if ctx is not None else None,
+            objective_id=ctx.objective_id if ctx is not None else None,
+            instance_id=linhas.texto(comando, "instance_id"),
+            profile_id=trilha.get("profile_id") or (ctx.profile_id if ctx is not None else None),
+            app_package=pacote or (ctx.app_package if ctx is not None else ""),
+            data={"verbo": linhas.texto(comando, "verb"), "resolucao": resolucao.resolucao,
+                  **({"resolved_by": resolvido_por} if isinstance(resolvido_por, str) and resolvido_por else {})},
+            simulated=ctx.simulated if ctx is not None else resolucao.simulated))
+
+    def correcao_de_ensino(self, correcao: CorrecaoDeEnsino) -> None:
+        if not self._ligado():
+            return
+        ctx = self._contexto(correcao.run_id, step_id=correcao.step_id)
+        if ctx is None:
+            return
+        self._servico.registrar_sinal(NovoSinal(
+            kind=SignalKind.CORRECAO_DE_ENSINO, source_ref=f"correcao:{correcao.teaching_id}:{correcao.turno}",
+            created_by=autor_do_gesto(correcao.quem), polarity=Polaridade.NEGATIVE, note=correcao.nota,
+            run_id=correcao.run_id, objective_id=ctx.objective_id, step_id=correcao.step_id,
+            instance_id=ctx.instance_id, profile_id=ctx.profile_id, app_package=ctx.app_package,
+            capability=ctx.capability, step_hash=ctx.step_hash,
+            # Só se corrige etapa que falhou ou ficou sem prova (`CORRECTABLE_STEP`): nunca comprovada.
+            step_verified=False, data={"teaching_id": correcao.teaching_id, "skill_id": correcao.skill_id},
+            simulated=ctx.simulated))
 
     def tomou_controle(self, tomada: TomadaDeControle) -> None:
         if not self._ligado():

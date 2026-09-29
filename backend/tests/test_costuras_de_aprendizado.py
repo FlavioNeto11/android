@@ -10,6 +10,10 @@ O que se prova, com o harness (aparelhos falsos, provedor simulado: toda prova a
 - os gestos viram sinais do livro: `ao_resolver` com a nota (redigida; a que parece credencial não é gravada),
   `repetiu_execucao`, `tomou_controle` só com a IA numa etapa e sem árvore, texto nem coordenada, e
   `respondeu_pergunta` com o campo e o sha256 — nunca o valor;
+- os três gestos que faltavam escritor: `cancelou_execucao` só pela rota (a sucessora que cancela a execução
+  respondida não conta), `comando_incerto_resolvido` pela rota dos comandos e `correcao_de_ensino` pelo ensino — com
+  o operador da SESSÃO como autor (nunca o `requested_by` do corpo), a nota pela triagem de credencial e a falha do
+  livro sem derrubar o gesto;
 - `aprendizado.enabled: false` desliga tudo, e o modo `off` das lições não pede lição a ninguém.
 """
 from __future__ import annotations
@@ -21,19 +25,28 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from app.automation.hierarchy import UiTree
-from app.models import ControlOwner, InstanceCurrent, ResolveBody
+from app.main import create_app
+from app.models import CommandState, ControlOwner, InstanceCurrent, ResolveBody
 from app.modules.learning.infrastructure.ligar_costuras import extensoes
+from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR
 from app.planning.provider import DecisionRequest, PlanRequest, StepContext, VerifyRequest
+from app.shared import costuras as do_kernel
+from app.taskqueue import costuras as da_fila
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
-from app.taskqueue.costuras import (SEM_COSTURAS, FechamentoDeTentativa, PedidoDeLicoes, RepeticaoDeExecucao,
-                                    ResolucaoDeItem, RespostaAPergunta, TomadaDeControle, avisar, pedir_licoes)
+from app.taskqueue.costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CorrecaoDeEnsino, FechamentoDeTentativa,
+                                    PedidoDeLicoes, RepeticaoDeExecucao, ResolucaoDeComando, ResolucaoDeItem,
+                                    RespostaAPergunta, TomadaDeControle, autor_do_gesto, avisar, pedir_licoes)
+from app.util import parse_iso
 
 from .conftest import COMMAND, Harness
 
 PKG = "com.pocqa.messenger"
+NOME = "Ana Ribeiro"
+HABILIDADE = "qa.abrir_conversa"
 INCOMPLETO = "Abra o QA Messenger e envie uma mensagem"
 LICAO_DO_ATOR = "Em abrir_conversa: o toque em [row_x] não achou o alvo; o que comprovou foi tocar em [row_y]."
 LICAO_DO_PLANO = "Em com.pocqa.messenger: não use a pós-condição texto_na_tela em abrir_conversa."
@@ -50,10 +63,22 @@ class Espia:
         self.repeticoes: list[RepeticaoDeExecucao] = []
         self.respostas: list[RespostaAPergunta] = []
         self.tomadas: list[TomadaDeControle] = []
+        self.cancelamentos: list[CancelamentoDeExecucao] = []
+        self.comandos: list[ResolucaoDeComando] = []
+        self.correcoes: list[CorrecaoDeEnsino] = []
 
     def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
         self.pedidos.append(pedido)
         return list(self.ator if pedido.papel == "actor" else self.plano)
+
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None:
+        self.cancelamentos.append(cancelamento)
+
+    def comando_incerto_resolvido(self, resolucao: ResolucaoDeComando) -> None:
+        self.comandos.append(resolucao)
+
+    def correcao_de_ensino(self, correcao: CorrecaoDeEnsino) -> None:
+        self.correcoes.append(correcao)
 
     def ao_fechar_tentativa(self, fechamento: FechamentoDeTentativa) -> None:
         self.fechamentos.append(fechamento)
@@ -92,12 +117,24 @@ class Explode:
     def tomou_controle(self, tomada: TomadaDeControle) -> None:
         raise RuntimeError("costura quebrada")
 
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None:
+        raise RuntimeError("costura quebrada")
+
+    def comando_incerto_resolvido(self, resolucao: ResolucaoDeComando) -> None:
+        raise RuntimeError("costura quebrada")
+
+    def correcao_de_ensino(self, correcao: CorrecaoDeEnsino) -> None:
+        raise RuntimeError("costura quebrada")
+
 
 def _instalar(h: Harness, costuras: Any) -> None:
+    """Pendura as costuras onde o `AppState` as pendura — inclusive `state.costuras`, que a rota de comandos lê."""
     assert h.state is not None
     h.state.scheduler.executor.costuras = costuras
     h.state.runs.costuras = costuras
     h.state.devices.costura_de_controle = costuras
+    h.state.teaching.costura_de_ensino = costuras
+    h.state.costuras = costuras
 
 
 def _sinais(h: Harness, kind: str) -> list[dict[str, Any]]:
@@ -124,6 +161,29 @@ def test_o_padrao_e_no_op_e_a_licao_nunca_chega_ao_verificador() -> None:
     # o verificador recebe o MESMO StepContext do ator: por construção, a lição não tem onde entrar nele
     assert "lessons" not in {f.name for f in fields(StepContext)}
     assert "lessons" not in {f.name for f in fields(VerifyRequest)}
+
+
+def test_as_costuras_de_gesto_moram_no_kernel_e_a_fila_as_reexporta() -> None:
+    # compatibilidade: quem importava da fila recebe os MESMOS objetos do kernel
+    for nome in ("TomadaDeControle", "CosturaDeControle", "CosturaDeComando", "CosturaDeEnsino", "ResolucaoDeComando",
+                 "CorrecaoDeEnsino", "autor_do_gesto", "avisar"):
+        assert getattr(da_fila, nome) is getattr(do_kernel, nome), nome
+    # o no-op da fila herda o de gesto: `SEM_COSTURAS` cumpre as duas portas
+    assert isinstance(SEM_COSTURAS, do_kernel.SemCosturasDeGesto)
+    assert SEM_COSTURAS.cancelou_execucao(CancelamentoDeExecucao("r1", "running", False, "panel",
+                                                                 "2026-09-29T10:00:00.000Z")) is None
+    for padrao in (SEM_COSTURAS, do_kernel.SEM_COSTURAS_DE_GESTO):
+        assert padrao.comando_incerto_resolvido(ResolucaoDeComando("c1", "failed", None, "panel", False)) is None
+        assert padrao.correcao_de_ensino(CorrecaoDeEnsino("ens-1", 1, "qa.x", "r1", "s1", "nota", None)) is None
+        assert padrao.tomou_controle(TomadaDeControle("android-01", "r1", None, "s1")) is None
+
+
+def test_autor_do_gesto_e_a_regra_do_livro() -> None:
+    assert do_kernel.SISTEMA == SYSTEM_ACTOR                  # repetido no kernel, que não vê as habilidades
+    assert autor_do_gesto(None) == autor_do_gesto("") == autor_do_gesto("   ") == autor_do_gesto(42) == "panel"
+    assert autor_do_gesto(NOME) == NOME
+    assert autor_do_gesto(SYSTEM_ACTOR) == f"painel:{SYSTEM_ACTOR}"   # pela rota decide sempre uma pessoa
+    assert autor_do_gesto(autor_do_gesto(SYSTEM_ACTOR)) == f"painel:{SYSTEM_ACTOR}"
 
 
 def test_costura_que_lanca_vira_nenhuma_licao_e_nenhum_aviso() -> None:
@@ -414,6 +474,249 @@ async def test_respondeu_pergunta_com_o_campo_e_o_sha256_nunca_o_valor(harness: 
         assert "QA-001" not in texto and "Teste POC" not in texto                # o valor nunca entra
     assistente.sucessora(run.id, RunSuccessorBody(command=COMMAND, mode="plan"))  # duplo clique: nada de novo
     assert len(_sinais(harness, "respondeu_pergunta")) == 2
+    # a sucessora cancelou a antiga — consequência da resposta, não gesto de cancelar
+    assert st.repo.run_row(run.id)["status"] == "cancelled"
+    assert _sinais(harness, "cancelou_execucao") == []
+
+
+def _cliente(h: Harness) -> httpx.AsyncClient:
+    """O painel pelo loopback, com jarra de cookies: o login dá o nome da sessão às rotas."""
+    app = create_app(h.cfg, state=h.state)
+    app.state.poc = h.state
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 123)),
+                             base_url="http://127.0.0.1")
+
+
+def _comando_incerto(h: Harness, cid: str, **trilha: str) -> str:
+    """Um `reset` que terminou sem se saber o efeito (nenhuma sonda o fecha). Só linha no banco: nada é despachado."""
+    assert h.state is not None
+    h.state.commands.create(command_id=cid, instance_id="android-02", verb="reset", idempotency_key=f"chave-{cid}",
+                            params=dict(trilha) or None)
+    h.state.commands.transition(cid, CommandState.dispatched)
+    h.state.commands.transition(cid, CommandState.uncertain, reason="o canal caiu depois do envio")
+    return cid
+
+
+def _habilidade(h: Harness) -> str:
+    """Uma habilidade existente: a correção é sempre de uma habilidade que errou."""
+    assert h.state is not None
+    agora = "2026-09-29T10:00:00Z"
+    h.state.db.execute("INSERT INTO skill_definitions(id, name, app_id, created_at, updated_at) VALUES (?,?,?,?,?)"
+                       " ON CONFLICT DO NOTHING", (HABILIDADE, "Abrir conversa", "qa-messenger", agora, agora))
+    return HABILIDADE
+
+
+def _etapa_falhada(h: Harness, run_id: str, iid: str) -> str:
+    """A etapa de abrir o app, marcada `failed` (só etapa que falhou ou ficou sem prova se corrige)."""
+    assert h.state is not None
+    etapa = f"{run_id}:{iid}:v1:open_app"
+    h.state.db.execute("UPDATE steps SET status='failed' WHERE id=?", (etapa,))
+    assert h.state.db.scalar("SELECT status FROM steps WHERE id=?", (etapa,)) == "failed"
+    return etapa
+
+
+async def test_cancelar_pela_rota_grava_o_sinal_com_o_operador_da_sessao(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    planejada = harness.run(["android-01"], mode="plan")
+    await harness.wait_run(planejada.id, statuses=("planned",))
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r = await c.post(f"/api/runs/{planejada.id}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancelled", r.text
+    [s] = _sinais(harness, "cancelou_execucao")
+    # nada tinha rodado: cancelar antes de começar não diz nada de como a IA agiu
+    assert (s["run_id"], s["created_by"], s["polarity"]) == (planejada.id, NOME, "neutral")
+    # a chave é a do EPISÓDIO: a execução e o instante da transição
+    prefixo = f"cancelamento:{planejada.id}:"
+    assert s["source_ref"].startswith(prefixo) and parse_iso(s["source_ref"].removeprefix(prefixo)) is not None
+    assert json.loads(s["data"]) == {"status_anterior": "planned"}
+    assert (s["objective_id"], s["step_id"], s["simulated"], s["note"]) == (None, None, 1, None)
+
+    # com trabalho feito e um item parado na pessoa: fechar o que ficou pendente é negativo; sem sessão, `panel`
+    harness.fakes["android-02"].require_login = True
+    parada = harness.run(["android-02"])
+    assert (await harness.wait_run(parada.id)).status == "completed_with_issues"
+    async with _cliente(harness) as c:
+        assert (await c.post(f"/api/runs/{parada.id}/cancel")).status_code == 200
+    [s2] = [s for s in _sinais(harness, "cancelou_execucao") if s["run_id"] == parada.id]
+    assert (s2["created_by"], s2["polarity"], s2["app_package"]) == ("panel", "negative", PKG)
+    assert json.loads(s2["data"]) == {"status_anterior": "completed_with_issues"}
+    # sem `por` (quem chama por dentro, como a sucessora) não há gesto e não há sinal
+    outra = harness.run(["android-03"], mode="plan")
+    await harness.wait_run(outra.id, statuses=("planned",))
+    assert st.runs.cancel(outra.id).status == "cancelled"
+    assert len(_sinais(harness, "cancelou_execucao")) == 2
+
+
+async def test_cancelamento_e_um_sinal_por_episodio(harness: Harness) -> None:
+    """O clique repetido com o cancelamento já valendo não grava; a execução reaberta e cancelada de novo, sim.
+
+    As chamadas a `st.runs` sem `await` entre elas são atômicas diante do escalonador (uma tarefa do mesmo laço): é o
+    que prende a execução em `cancelling`, ou em `running` logo depois de reaberta, na hora do clique."""
+    st = harness.state
+    assert st is not None
+    harness.fakes["android-02"].require_login = True
+    run = harness.run(["android-02"])
+    assert (await harness.wait_run(run.id)).status == "completed_with_issues"
+    oid = f"{run.id}:android-02"
+    # o item abandonado fica `failed`: a execução segue em aberto, e repetir o item a reabre depois
+    st.runs.resolve(run.id, oid, ResolveBody(resolution="abandon", note="sem jeito"))
+    assert st.repo.run_row(run.id)["status"] == "completed_with_issues"
+
+    def cancelamentos() -> list[dict[str, Any]]:
+        return _sinais(harness, "cancelou_execucao")
+
+    def assentar() -> Any:
+        return harness.wait(lambda: st.repo.run_row(run.id)["status"] != "cancelling", what="assentar o cancelamento")
+
+    # episódio 1: o gesto que leva a execução a `cancelling` grava; o segundo clique — de outra pessoa ou da mesma —
+    # com a execução ainda em `cancelling` não grava
+    st.runs.cancel(run.id, por=NOME)
+    assert st.repo.run_row(run.id)["status"] == "cancelling"
+    st.runs.cancel(run.id, por="Bruno Lima")
+    st.runs.cancel(run.id, por=NOME)
+    assert len(cancelamentos()) == 1
+    # assentada: o item falho não se cancela (`_finish_cancel` só fecha o que estava aberto), e a execução volta a
+    # `completed_with_issues` com o cancelamento valendo — clicar de novo ainda é o mesmo episódio
+    await assentar()
+    assert st.repo.run_row(run.id)["status"] == "completed_with_issues"
+    st.runs.cancel(run.id, por=NOME)
+    await assentar()
+    assert len(cancelamentos()) == 1
+
+    # episódio 2: repetir o item reabre a execução (`completed_with_issues` → `running`), e cancelar ali é outro gesto
+    st.runs.resolve(run.id, oid, ResolveBody(resolution="retry"))
+    assert st.repo.run_row(run.id)["status"] == "running"
+    st.runs.cancel(run.id, por=NOME)
+    sinais = cancelamentos()
+    assert len(sinais) == 2 and len({s["source_ref"] for s in sinais}) == 2
+    assert [json.loads(s["data"])["status_anterior"] for s in sinais] == ["completed_with_issues", "running"]
+    assert {(s["created_by"], s["polarity"], s["run_id"]) for s in sinais} == {(NOME, "negative", run.id)}
+    await assentar()
+
+
+async def test_comando_incerto_resolvido_vira_sinal_do_operador_com_a_trilha_do_comando(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    run = harness.run(["android-02"], mode="plan")
+    await harness.wait_run(run.id, statuses=("planned",))
+    livre = _comando_incerto(harness, "c-teste-incerto-1")
+    da_execucao = _comando_incerto(harness, "c-teste-incerto-2", run_id=run.id, objective_id=f"{run.id}:android-02",
+                                   app_id="qa-messenger", profile_id="perfil-teste")
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r1 = await c.post(f"/api/commands/{livre}/resolve",
+                          json={"outcome": "succeeded", "note": "abri: os dados do app sumiram"})
+        # a nota com cara de credencial é RECUSADA, como no voto do D2: nada é gravado, nem a resolução
+        recusada = await c.post(f"/api/commands/{da_execucao}/resolve",
+                                json={"outcome": "failed", "note": "senha: segredo123"})
+        assert recusada.status_code == 409 and recusada.json()["detail"]["code"] == "note_looks_secret"
+        registro = st.commands.get(da_execucao)
+        assert registro is not None and registro["state"] == "uncertain"
+        assert registro["reason"] == "o canal caiu depois do envio"                  # intocado
+        assert "segredo123" not in json.dumps(dict(registro), default=str)
+        assert not [s for s in _sinais(harness, "comando_incerto_resolvido") if s["source_ref"].endswith(da_execucao)]
+        r2 = await c.post(f"/api/commands/{da_execucao}/resolve",
+                          json={"outcome": "failed", "note": "o aparelho voltou sem os dados"})
+    assert (r1.status_code, r1.json()["state"], r2.status_code, r2.json()["state"]) == (200, "succeeded", 200,
+                                                                                          "failed")
+    sinais = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}
+    s1 = sinais[f"comando:{livre}"]
+    # `succeeded` lê como confirmar à mão: a ação valeu, a prova não veio — neutro, nunca evidência a favor
+    assert (s1["created_by"], s1["polarity"], s1["note"], s1["note_refused"]) == (NOME, "neutral",
+                                                                                  "abri: os dados do app sumiram", 0)
+    # sem execução no comando: o aparelho, e `simulated` do modo da instalação (o harness é simulado)
+    assert (s1["instance_id"], s1["run_id"], s1["app_package"], s1["simulated"]) == ("android-02", None, "", 1)
+    # o autor que o COMANDO gravou vai em `data`, para cruzar os dois (aqui coincide com a sessão)
+    assert json.loads(s1["data"]) == {"verbo": "reset", "resolucao": "succeeded", "resolved_by": NOME}
+    s2 = sinais[f"comando:{da_execucao}"]
+    assert (s2["polarity"], s2["note"], s2["note_refused"]) == ("negative", "o aparelho voltou sem os dados", 0)
+    assert (s2["run_id"], s2["objective_id"], s2["profile_id"], s2["app_package"]) == (
+        run.id, f"{run.id}:android-02", "perfil-teste", PKG)
+
+    # o nome do CORPO não entra como autor do sinal: sem sessão é `panel`, mesmo que o corpo diga `sistema`; o que o
+    # comando gravou (o corpo) fica em `data`, e só lá
+    forjado = _comando_incerto(harness, "c-teste-incerto-3")
+    async with _cliente(harness) as c:
+        r3 = await c.post(f"/api/commands/{forjado}/resolve",
+                          json={"outcome": "cancelled", "requested_by": SYSTEM_ACTOR})
+    assert r3.status_code == 200
+    registro = st.commands.get(forjado)
+    assert registro is not None and json.loads(registro["result"])["resolved_by"] == SYSTEM_ACTOR
+    s3 = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}[f"comando:{forjado}"]
+    assert (s3["created_by"], s3["polarity"]) == ("panel", "neutral")
+    assert json.loads(s3["data"])["resolved_by"] == SYSTEM_ACTOR
+
+    # a triagem do próprio livro segue de pé para quem chama a costura por dentro: a nota ruim não fica
+    por_dentro = _comando_incerto(harness, "c-teste-incerto-4")
+    st.costuras.comando_incerto_resolvido(ResolucaoDeComando(por_dentro, "failed", "senha: segredo123", NOME, True))
+    s4 = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}[f"comando:{por_dentro}"]
+    assert (s4["note"], s4["note_refused"], s4["created_by"]) == (None, 1, NOME)
+
+
+async def test_comando_incerto_simulated_vem_da_execucao_senao_da_instalacao(harness: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """As duas fontes DISCORDANDO: com a execução do `params` no banco vale `runs.simulated`; sem ela (id inexistente
+    ou purgado) o sinal não aponta execução nenhuma e vale o modo da instalação no instante do gesto."""
+    st = harness.state
+    assert st is not None
+    run = harness.run(["android-02"], mode="plan")
+    await harness.wait_run(run.id, statuses=("planned",))
+    casos = {  # comando: (instalação simulada?, runs.simulated forçado, run_id no params)
+        "c-sim-1": (False, 1, run.id),
+        "c-sim-2": (True, 0, run.id),
+        "c-sim-3": (False, None, "r-inexistente"),
+        "c-sim-4": (True, None, "r-inexistente"),
+    }
+    for cid, (instalacao, da_execucao, run_id) in casos.items():
+        _comando_incerto(harness, cid, run_id=run_id)
+        if da_execucao is not None:
+            st.db.execute("UPDATE runs SET simulated=? WHERE id=?", (da_execucao, run.id))
+        monkeypatch.setattr(st.provider, "simulated", instalacao)
+        async with _cliente(harness) as c:
+            assert (await c.post(f"/api/commands/{cid}/resolve", json={"outcome": "failed"})).status_code == 200
+    sinais = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}
+    assert {cid: (sinais[f"comando:{cid}"]["run_id"], sinais[f"comando:{cid}"]["simulated"]) for cid in casos} == {
+        "c-sim-1": (run.id, 1),                  # a instalação diz real, a execução é simulada: vale a execução
+        "c-sim-2": (run.id, 0),
+        "c-sim-3": (None, 0),                    # execução inexistente: nada apontado, vale a instalação
+        "c-sim-4": (None, 1),
+    }
+
+
+async def test_correcao_de_ensino_vira_sinal_ligado_a_etapa_corrigida(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    st.cfg.file.skills.enabled = True
+    habilidade = _habilidade(harness)
+    run = harness.run(["android-01"], mode="plan")
+    await harness.wait_run(run.id, statuses=("planned",))
+    etapa = _etapa_falhada(harness, run.id, "android-01")
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r = await c.post("/api/teaching-sessions", json={"instruction": "Abrir a conversa", "skill_id": habilidade})
+        assert r.status_code == 201, r.text
+        tid = r.json()["id"]
+        r = await c.post(f"/api/teaching-sessions/{tid}/corrections",
+                         json={"body": "o contato certo é o QA-001", "run_id": run.id, "step_id": etapa})
+    assert r.status_code == 200, r.text
+    [s] = _sinais(harness, "correcao_de_ensino")
+    turno = st.db.scalar("SELECT id FROM teaching_turns WHERE teaching_id=? AND kind='correction'", (tid,))
+    linha = st.db.one("SELECT capability, template_hash FROM steps WHERE id=?", (etapa,))
+    assert linha is not None
+    assert (s["source_ref"], s["created_by"], s["polarity"], s["note"]) == (f"correcao:{tid}:{turno}", NOME,
+                                                                            "negative", "o contato certo é o QA-001")
+    assert (s["run_id"], s["step_id"], s["objective_id"], s["instance_id"]) == (run.id, etapa, f"{run.id}:android-01",
+                                                                                "android-01")
+    assert (s["app_package"], s["capability"], s["step_hash"]) == (PKG, linha["capability"] or "*",
+                                                                   linha["template_hash"])
+    assert (s["step_verified"], s["simulated"]) == (0, 1)
+    assert json.loads(s["data"]) == {"teaching_id": tid, "skill_id": habilidade}
+
+    # outra correção na mesma etapa é outro gesto; sem pessoa identificada, `panel` (nunca some por falta de autor)
+    st.teaching.add_correction(tid, "e o botão é Enviar", run_id=run.id, step_id=etapa, by=None)
+    assert [x["created_by"] for x in _sinais(harness, "correcao_de_ensino")] == [NOME, "panel"]
 
 
 async def test_costura_que_lanca_nao_derruba_nenhum_gesto(harness: Harness) -> None:
@@ -433,6 +736,18 @@ async def test_costura_que_lanca_nao_derruba_nenhum_gesto(harness: Harness) -> N
     rt = _ia_numa_etapa(harness, "android-03", "r-x", "r-x:android-03:v1:open_app")
     assert st.devices.request_control(rt)[0] == "pending"
     rt.takeover_requested, rt.pending_lease_id, rt.control, rt.current = False, None, ControlOwner.none, None
+    # os três gestos que ganharam escritor: cancelar, resolver o comando incerto e corrigir no ensino
+    planejada = harness.run(["android-03"], mode="plan")
+    await harness.wait_run(planejada.id, statuses=("planned",))
+    assert st.runs.cancel(planejada.id, por=NOME).status == "cancelled"
+    cid = _comando_incerto(harness, "c-teste-explode")
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/commands/{cid}/resolve", json={"outcome": "failed"})
+    assert r.status_code == 200 and r.json()["state"] == "failed"
+    etapa = _etapa_falhada(harness, planejada.id, "android-03")
+    tid = st.teaching.start("Abrir a conversa", skill_id=_habilidade(harness)).session.id
+    visao = st.teaching.add_correction(tid, "o botão é outro", run_id=planejada.id, step_id=etapa, by=NOME)
+    assert [t.kind.value for t in visao.turns].count("correction") == 1
     assert st.db.scalar("SELECT COUNT(*) FROM learning_signals") == 0
 
 
@@ -454,6 +769,21 @@ async def test_livro_desligado_nao_grava_nem_pede_licao(harness: Harness) -> Non
     run = harness.run(["android-01"])
     await harness.wait_run(run.id)
     st.runs.resolve(run.id, f"{run.id}:android-01", ResolveBody(resolution="abandon", note="nada"))
+    assert st.db.scalar("SELECT COUNT(*) FROM learning_signals") == 0
+    # os três escritores novos também se calam: corrigir no ensino, cancelar e resolver o comando pela rota
+    planejada = harness.run(["android-03"], mode="plan")
+    await harness.wait_run(planejada.id, statuses=("planned",))
+    etapa = _etapa_falhada(harness, planejada.id, "android-03")
+    tid = st.teaching.start("Abrir a conversa", skill_id=_habilidade(harness)).session.id
+    visao = st.teaching.add_correction(tid, "o botão é outro", run_id=planejada.id, step_id=etapa, by=NOME)
+    assert [t.kind.value for t in visao.turns].count("correction") == 1
+    cid = _comando_incerto(harness, "c-teste-desligado")
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r = await c.post(f"/api/runs/{planejada.id}/cancel")
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
+        r = await c.post(f"/api/commands/{cid}/resolve", json={"outcome": "failed", "note": "voltou sem os dados"})
+        assert r.status_code == 200 and r.json()["state"] == "failed"
     assert st.db.scalar("SELECT COUNT(*) FROM learning_signals") == 0
 
 

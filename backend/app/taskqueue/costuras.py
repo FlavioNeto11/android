@@ -1,32 +1,34 @@
 """Costuras do aprendizado nos arquivos quentes (ADR-054, pacote A2).
 
 O executor, o serviço de execução, o assistente do comando e o gerenciador de aparelhos AVISAM o aprendizado do que
-acabou de acontecer — a tentativa que fechou, a decisão de uma pessoa sobre um item, a repetição de uma execução, a
-resposta a uma pergunta, a tomada de controle — e PEDEM as lições medidas antes de consultar o ator e o planejador.
-Nada além disso: o aprendizado é fonte de decisão ou texto de contexto, nunca desfecho, verificação, guarda, política
-ou custo máximo. A lição vai para `DecisionRequest.lessons` e `PlanRequest.lessons`; o verificador não tem campo para
-ela (ADR-024).
+acabou de acontecer — a tentativa que fechou, a decisão de uma pessoa sobre um item, a repetição e o cancelamento de uma
+execução, a resposta a uma pergunta, a tomada de controle — e PEDEM as lições medidas antes de consultar o ator e o
+planejador. Nada além disso: o aprendizado é fonte de decisão ou texto de contexto, nunca desfecho, verificação,
+guarda, política ou custo máximo. A lição vai para `DecisionRequest.lessons` e `PlanRequest.lessons`; o verificador
+não tem campo para ela (ADR-024).
 
 Contrato tipado e no-op por padrão (`SEM_COSTURAS`): sem o `AppState` ligar o livro
 (`modules/learning/infrastructure/ligar_costuras.py`), tudo segue exatamente como antes. E toda chamada passa por
 `avisar` ou `pedir_licoes`, que engolem a exceção: o aprendizado nunca derruba uma etapa, um "resolver", uma
-retomada, uma sucessora nem uma tomada de controle.
+retomada, um cancelamento, uma sucessora nem uma tomada de controle.
 
 O que NUNCA passa por aqui: texto de tela, valor de resposta, coordenada, credencial. A árvore da tentativa vai inteira
 ao observador (é dele decidir o que aproveita, e a tela sensível ele pula); a resposta a uma pergunta vai só como
 sha256; a tomada de controle, só com os ids da etapa.
 
-Só stdlib e a árvore (`automation.hierarchy`): o gerenciador de aparelhos importa este módulo, e nada aqui pode puxar
-o resto da fila para dentro dele.
+As costuras de gesto que moram fora da fila (a tomada de controle, a resolução de um comando incerto, a correção do
+ensino, o `avisar` e o no-op delas) estão no kernel (`app/shared/costuras.py`): quem as chama não pode importar
+`taskqueue`. Este módulo as reexporta, e o `SemCosturas` daqui as herda.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol
 
 from ..automation.hierarchy import UiTree
+from ..shared.costuras import (CorrecaoDeEnsino, CosturaDeComando, CosturaDeControle, CosturaDeEnsino,
+                               ResolucaoDeComando, SemCosturasDeGesto, TomadaDeControle, autor_do_gesto, avisar)
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -117,13 +119,21 @@ class RespostaAPergunta:
 
 
 @dataclass(frozen=True, slots=True)
-class TomadaDeControle:
-    """Uma pessoa pediu o aparelho enquanto a IA conduzia uma etapa. Sem árvore, texto nem coordenada."""
+class CancelamentoDeExecucao:
+    """Uma pessoa ABRIU um episódio de cancelamento pela rota (`POST /api/runs/{id}/cancel`): o gesto levou a execução
+    a `cancelling`/`cancelled`. O clique repetido no mesmo episódio não chega aqui (`RunService.cancel` decide), nem o
+    cancelamento que o assistente faz ao criar a sucessora — é consequência da resposta (`respondeu_pergunta`), não um
+    gesto —, nem o `Outcome.cancelled` do escalonador, que é o efeito do pedido."""
 
-    instance_id: str
     run_id: str
-    objective_id: str | None
-    step_id: str
+    #: O status no instante do gesto, lido ANTES de cancelar (depois, `cancelling` → `cancelled` é do escalonador).
+    status_anterior: str
+    #: Nada tinha rodado (`planning`, `needs_input`, `planned`): a execução saiu direto para `cancelled`.
+    antes_de_iniciar: bool
+    quem: str
+    #: O instante da transição (`now_iso`): a marca do episódio. Uma execução reaberta (resolver ou repetir um item
+    #: volta a `running`) e cancelada de novo é outro episódio, e a chave do sinal tem de ser outra.
+    em: str
 
 
 class CosturasDeAprendizado(Protocol):
@@ -133,17 +143,13 @@ class CosturasDeAprendizado(Protocol):
     def ao_fechar_tentativa(self, fechamento: FechamentoDeTentativa) -> None: ...
     def ao_resolver(self, resolucao: ResolucaoDeItem) -> None: ...
     def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None: ...
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None: ...
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None: ...
 
 
-class CosturaDeControle(Protocol):
-    """O que o gerenciador de aparelhos chama (a porta é dele: o gerenciador não conhece a fila nem o livro)."""
-
-    def tomou_controle(self, tomada: TomadaDeControle) -> None: ...
-
-
-class SemCosturas:
-    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054."""
+class SemCosturas(SemCosturasDeGesto):
+    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054. As costuras de gesto (tomada de
+    controle, comando incerto resolvido, correção do ensino) vêm no-op do kernel."""
 
     def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
         return []
@@ -157,24 +163,14 @@ class SemCosturas:
     def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None:
         return None
 
-    def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
+    def cancelou_execucao(self, cancelamento: CancelamentoDeExecucao) -> None:
         return None
 
-    def tomou_controle(self, tomada: TomadaDeControle) -> None:
+    def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
         return None
 
 
 SEM_COSTURAS = SemCosturas()
-
-_T = TypeVar("_T")
-
-
-def avisar(aviso: Callable[[_T], None], dado: _T) -> None:
-    """Chama uma costura de aviso. A falha vira log: o aprendizado nunca derruba quem o avisou."""
-    try:
-        aviso(dado)
-    except Exception:  # noqa: BLE001 - aprendizado é registro: nunca derruba a etapa, o gesto nem a execução
-        log.exception("aprendizado: a costura %s falhou (a operação seguiu)", type(dado).__name__)
 
 
 def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> list[str]:
@@ -187,6 +183,8 @@ def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> lis
     return [t for t in licoes if t.strip()]
 
 
-__all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CosturaDeControle", "CosturasDeAprendizado", "FechamentoDeTentativa",
-           "DecisaoSobreItem", "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeItem",
-           "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "avisar", "pedir_licoes"]
+# As costuras de gesto moram no kernel e seguem exportadas daqui (compatibilidade).
+__all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CancelamentoDeExecucao", "CorrecaoDeEnsino", "CosturaDeComando",
+           "CosturaDeControle", "CosturaDeEnsino", "CosturasDeAprendizado", "DecisaoSobreItem", "FechamentoDeTentativa",
+           "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeComando", "ResolucaoDeItem",
+           "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "autor_do_gesto", "avisar", "pedir_licoes"]
