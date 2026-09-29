@@ -1,5 +1,5 @@
-import { CircleCheck, History, Hourglass, ShieldAlert } from 'lucide-react';
-import type { Recipe } from '../../api/types';
+import { CircleCheck, CircleOff, History, Hourglass, ShieldAlert, Stamp } from 'lucide-react';
+import type { Flow, Recipe } from '../../api/types';
 import { formatInt } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
 
@@ -27,14 +27,22 @@ export function splitTemplate(template: string): TemplatePart[] {
   return parts;
 }
 
+/** Onde o dono decide o que o D1 (ADR-054) parou em `validated`. */
+export const OWNER_QUEUE = 'Aprendizado › Para aprovar';
+
 /**
- * O pedido de tela fala em "Ativa / Quarentena". `candidate` (aprendida, ainda em prova) e `superseded` (substituída
- * por uma versão mais nova) só o backend atribui; a substituída não pode ser revertida pelo `PUT`.
+ * O pedido de tela fala em "Ativa / Quarentena". `candidate` (aprendida, ainda em prova), `validated` (provou-se, mas
+ * tem ação de efeito externo: espera o dono — D1, ADR-054) e `superseded` (substituída por uma versão mais nova) só o
+ * backend atribui; a substituída não pode ser revertida pelo `PUT`.
  */
 export const RECIPE_STATUS: Record<Recipe['status'], StatusMeta> = {
   candidate: {
     label: 'Candidata', tone: 'info', icon: Hourglass,
     description: 'Aprendida e ainda em prova: a IA conduz a etapa e a receita só é comparada com o que a IA fez. Vira ativa depois de execuções seguidas em que a IA fizer exatamente o caminho dela; uma divergência recomeça a contagem.',
+  },
+  validated: {
+    label: 'Esperando o dono', tone: 'warning', icon: Stamp,
+    description: `Concordou com a IA nas execuções seguidas, mas tem ação de efeito externo (envia, publica, segue): o sistema não a publica sozinho. Enquanto você não aprovar em ${OWNER_QUEUE}, a IA segue conduzindo a etapa.`,
   },
   active: { label: 'Ativa', tone: 'success', icon: CircleCheck, description: 'Usada nas próximas execuções desta etapa.' },
   quarantined: { label: 'Quarentena', tone: 'warning', icon: ShieldAlert, description: 'Fora de uso: falhou ao reproduzir ou foi pausada por você. A IA conduz a etapa.' },
@@ -42,14 +50,32 @@ export const RECIPE_STATUS: Record<Recipe['status'], StatusMeta> = {
 };
 
 /**
- * Para onde o botão leva: Ativa ou Candidata → quarentena; Quarentena → ativa; Substituída → sem ação. A candidata
- * não ganha "ativar" aqui: ela vira ativa pela prova (concordância em sombra), não por um clique.
+ * Para onde o botão leva: Ativa, Candidata ou Esperando o dono → quarentena; Quarentena → ativa; Substituída → sem
+ * ação. A candidata não ganha "ativar" aqui: ela vira ativa pela prova (concordância em sombra), não por um clique; a
+ * que espera o dono é aprovada no livro de aprendizado, onde a decisão fica na trilha.
  */
 export function recipeToggleTarget(status: Recipe['status']): 'active' | 'quarantined' | null {
-  if (status === 'active' || status === 'candidate') return 'quarantined';
+  if (status === 'active' || status === 'candidate' || status === 'validated') return 'quarantined';
   if (status === 'quarantined') return 'active';
   return null;
 }
+
+/**
+ * Estado do fluxo (D1, ADR-054). O aprendido de execução nasce em prova e só é reaproveitado depois de a IA repetir o
+ * mesmo plano numa execução real; com etapa de efeito externo, espera o dono.
+ */
+export const FLOW_STATUS: Record<Flow['status'], StatusMeta> = {
+  candidate: {
+    label: 'Em prova', tone: 'info', icon: Hourglass,
+    description: 'Aprendido de uma execução comprovada, ainda sem uso: a IA segue planejando o comando, e o plano novo é comparado com este. Sem efeito externo, o sistema o publica quando a IA repetir o mesmo plano; dois planos diferentes o desligam.',
+  },
+  validated: {
+    label: 'Esperando o dono', tone: 'warning', icon: Stamp,
+    description: `A IA repetiu o mesmo plano, mas ele tem etapa de efeito externo: só você o publica, em ${OWNER_QUEUE}.`,
+  },
+  active: { label: 'Ativo', tone: 'success', icon: CircleCheck, description: 'Comandos iguais reaproveitam o plano sem chamar o planejador.' },
+  disabled: { label: 'Desligado', tone: 'muted', icon: CircleOff, description: 'Fora de uso: o planejador é chamado para este comando.' },
+};
 
 /**
  * Concordância em modo sombra, por execução da etapa: "12/15 (80%)"; `null` quando ainda não houve comparação. Na

@@ -1,8 +1,12 @@
 """Composição do aprendizado: o que o `AppState` chama para ter um `LearningService` pronto.
 
 Aqui (e só aqui) o bloco `aprendizado:` do config vira `Ajustes`, a guarda do fluxo vira uma função sobre o
-repositório das habilidades, e os pacotes seguintes ligam as suas partes (`ligar_*`, hoje sem efeito). Cada
-leitura do config é feita A CADA uso: o arquivo muda com o processo no ar.
+repositório das habilidades, e os pacotes seguintes ligam as suas partes (`ligar_*`). Cada leitura do config é
+feita A CADA uso: o arquivo muda com o processo no ar.
+
+O D1 dos conhecimentos nativos (A5, `ligar_nativos`) precisa de mais que o serviço: o repositório (evidência e
+trilha), o banco, as habilidades e as DUAS lojas do scheduler (`FlowStore`, `RecipeStore`), onde a política e o
+ouvinte entram. Sem as lojas (testes do livro isolado), só os mineradores do digest são ligados.
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ from functools import partial
 from app.config import PROJECT_ROOT, BacklogCfg, LearningCfg
 from app.db import Database
 from app.modules.learning.application.falhas import ServicoDeFalhas
+from app.modules.learning.application.nativos import Decidir
 from app.modules.learning.application.ports import Ajustes, Retencao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
@@ -23,6 +28,8 @@ from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, 
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
+from app.taskqueue.flows import FlowStore
+from app.taskqueue.recipes import RecipeStore
 from app.util import now
 from app.version import commit_em_execucao
 
@@ -67,9 +74,12 @@ def regras_do_backlog(cfg: BacklogCfg) -> RegrasDoBacklog:
 
 def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], retencao_de_logs_dias: Callable[[], int],
                        precos: Callable[[], dict[str, list[float]]], habilidades: SqlSkillRepository | None = None,
-                       relogio: Callable[[], datetime] = now,
+                       fluxos: FlowStore | None = None, receitas: RecipeStore | None = None,
+                       decidir: Decidir | None = None, relogio: Callable[[], datetime] = now,
                        commit: Callable[[], str | None] | None = None) -> LearningService:
-    """`commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
+    """`fluxos`/`receitas`: as lojas do scheduler, que passam a nascer e mudar de status com o D1 e a trilha.
+    `decidir(texto, run_id)`: a linha do tempo da execução (cada transição do sistema vira uma decisão nela).
+    `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`)."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
@@ -82,6 +92,9 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                              contagem_do_livro=lambda: servico.livro().contagem)
     servico.anexar(falhas)
     servico.registrar_passo(falhas)
-    for ligar in (ligar_costuras.ligar, ligar_nativos.ligar, ligar_telas.ligar, ligar_voz.ligar):
+    for ligar in (ligar_costuras.ligar, ligar_telas.ligar, ligar_voz.ligar):
         ligar(servico)
+    ligar_nativos.ligar(servico, repo, db, concordancias=lambda: config().fluxo.concordancias,
+                        com_prova=lambda: config().fluxo.com_prova, habilidades=habilidades, fluxos=fluxos,
+                        receitas=receitas, decidir=decidir, relogio=relogio)
     return servico

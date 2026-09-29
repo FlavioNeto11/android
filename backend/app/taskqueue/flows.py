@@ -4,12 +4,20 @@ Por quê: o planejador real reescreve chaves, títulos e pós-condições a cada
 receitas (taskqueue/recipes.py) nunca casariam de novo. Quando uma execução termina com TODOS os aparelhos
 comprovados, o comando vira um modelo — os valores dos parâmetros dão lugar a {nome} — e o plano é guardado do mesmo
 jeito. Um comando novo que case com o modelo (mesmo texto, outros valores) reaproveita o plano sem chamar o planejador.
+
+D1 (ADR-054): com a política do livro de aprendizado ligada (`politica`, posta pela composição), o fluxo aprendido de
+execução nasce `candidate` — inerte: `match` só casa `active` — e quem o valida é a sombra no digest da execução
+seguinte do mesmo comando; publicar o que tem etapa de efeito externo é do dono. Sem a política (a loja crua dos
+testes de unidade) vale o modo anterior: nasce ativo. O treino (`learn_from_plan`) é decisão de pessoa e publica na
+hora nos dois modos. Nenhuma linha de `flows` é apagada por aqui: o comando refutado pelo sistema é reaprendido na
+MESMA linha (a `match_key` é única, e `flow_scope`/`flow_required_apps` cairiam em cascata).
 """
 from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from ..db import Database, Row
 from ..models import Plan, PlannerInfo, StepResult
@@ -17,6 +25,62 @@ from ..util import now_iso
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+#: Quem decide quando a própria loja muda o status (nascimento de execução, reaproveitamento). O treino leva a origem.
+SISTEMA = "sistema"
+
+
+@dataclass(frozen=True, slots=True)
+class NascimentoDoFluxo:
+    """O que a política do livro vê ANTES de um fluxo nascer de uma execução (e decide com que status, se nascer)."""
+
+    run_id: str
+    match_key: str
+    #: O plano-modelo em JSON exatamente como será gravado: é a base do `content_hash` do veto.
+    plano: str
+    #: A linha desligada da mesma `match_key` que seria reaproveitada (`None`: comando novo).
+    reaproveita: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MudancaDoFluxo:
+    """Uma mudança de status feita pela própria loja, para a trilha (`learning_transitions`)."""
+
+    flow_id: str
+    de: str | None
+    para: str
+    motivo: str
+    por: str
+    run_id: str | None = None
+
+
+class PoliticaDoFluxo(Protocol):
+    """O livro de aprendizado (ADR-054) do lado da loja. Chamada DENTRO da transação da escrita: a trilha entra junto
+    com o status, ou nenhum dos dois."""
+
+    def ao_nascer(self, nascimento: NascimentoDoFluxo) -> str | None:
+        """O status com que o fluxo nasce (`candidate` no D1), ou `None`: não aprende (conteúdo vetado, linha que uma
+        pessoa desligou)."""
+        ...
+
+    def mudou(self, mudanca: MudancaDoFluxo) -> None: ...
+
+
+def confirmada_a_mao(db: Database, run_id: str) -> bool:
+    """Alguma etapa da execução terminou `succeeded` sem prova da tela (`verified` ≠ true)?
+
+    Motivo real: r-20260928165254-e31953 e r-20260928195344-02ee9e (android-06). "Confirmar concluído" marca a
+    etapa como feita com `verified=false`, e a execução fecha `completed`; o fluxo aprendido dali passava a valer
+    como caminho comprovado sem nunca ter sido observado. TODAS as versões do plano contam: a recuperação refaz
+    só o que faltava, então a etapa confirmada à mão na v1 continua sendo parte do caminho da v2.
+
+    Não exige que haja etapas gravadas: quem chama só chega aqui com a execução `completed`, e ela só fecha assim com
+    toda etapa da versão corrente `succeeded`. O que se procura é a contradição. A sombra do D1 usa a mesma regra:
+    execução com etapa confirmada à mão não é evidência de caminho.
+    """
+    for r in db.query("SELECT result FROM steps WHERE run_id=? AND status='succeeded'", (run_id,)):
+        if not r["result"] or not StepResult.model_validate_json(r["result"]).verified:
+            return True
+    return False
 
 
 def _norm(text: str) -> str:
@@ -37,8 +101,10 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
 
 
 class FlowStore:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, politica: PoliticaDoFluxo | None = None):
         self.db = db
+        #: O D1 do livro de aprendizado (ADR-054). `None` = o modo anterior: o fluxo aprendido nasce ativo.
+        self.politica = politica
 
     # ------------------------------------------------------------------ aprender
     def learn_from_run(self, run: Row) -> str | None:
@@ -48,8 +114,13 @@ class FlowStore:
         caso da execução que caiu no planejador por estar fora do escopo da skill (design §15.2): o fluxo criado
         disputaria o comando com ela. Aqui só se LÊ a tabela de habilidades; fluxo nunca escreve nela.
 
-        Nem de execução com etapa confirmada À MÃO (`_confirmada_a_mao`): `completed` aceita a decisão da pessoa, o
+        Nem de execução com etapa confirmada À MÃO (`confirmada_a_mao`): `completed` aceita a decisão da pessoa, o
         fluxo só aceita o que a tela comprovou.
+
+        Com a política do D1: o status de nascimento é dela (`candidate`, ou `None` quando o conteúdo está vetado), e
+        a linha DESLIGADA da mesma chave é reaproveitada (`_reaproveitavel`) — sem isso, o comando cujo fluxo o sistema
+        refutou nunca mais seria aprendido. Candidato, validado ou ativo da mesma chave: nada muda aqui (quem compara
+        é a sombra no digest).
         """
         if not run["plan"] or run["flow_id"] or run["skill_id"]:
             return None
@@ -64,7 +135,8 @@ class FlowStore:
                   if k not in RESERVED and v and len(v) >= 3 and v in command and run["id"] not in v}
         template = _sub_values(command, values) or command
         key = _norm(template)
-        if self.db.one("SELECT id FROM flows WHERE match_key=?", (key,)):
+        existente = self.db.one("SELECT id, status, source FROM flows WHERE match_key=?", (key,))
+        if existente is not None and (self.politica is None or not self._reaproveitavel(existente)):
             return None
         if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
             return None
@@ -83,33 +155,53 @@ class FlowStore:
             s.postcondition.description = _sub_values(s.postcondition.description, values) or s.postcondition.description
         tpl.summary = _sub_values(tpl.summary, values) or tpl.summary
         tpl.success_criteria = [_sub_values(c, values) or c for c in tpl.success_criteria]
-        base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
-                      .decode().lower()).strip("-")[:40] or "fluxo"
-        flow_id, n = base, 2
-        while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
-            flow_id, n = f"{base}-{n}", n + 1
-        self.db.execute(
-            "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (flow_id, plan.summary[:120], key, template, tpl.model_dump_json(), plan.app_id, run["id"], now_iso()))
-        self.set_required_apps(flow_id, tpl.required_apps or ([plan.app_id] if plan.app_id else []))
+        plano = tpl.model_dump_json()
+        reaproveita: str | None = existente["id"] if existente is not None else None
+        status: str | None = "active"
+        if self.politica is not None:
+            status = self.politica.ao_nascer(NascimentoDoFluxo(run_id=run["id"], match_key=key, plano=plano,
+                                                               reaproveita=reaproveita))
+        if status is None:
+            return None
+        apps = tpl.required_apps or ([plan.app_id] if plan.app_id else [])
+        de: str | None = None
+        with self.db.tx():
+            if reaproveita is not None:
+                # CAS no status: a linha só é reaproveitada se ainda estiver desligada (ninguém a religou no meio).
+                cur = self.db.execute(
+                    "UPDATE flows SET name=?, command_template=?, plan=?, app_id=?, source_run_id=?, status=?, uses=0,"
+                    " created_at=?, last_used_at=NULL WHERE id=? AND status='disabled'",
+                    (plan.summary[:120], template, plano, plan.app_id, run["id"], status, now_iso(), reaproveita))
+                if int(cur.rowcount or 0) != 1:
+                    return None
+                flow_id, de, motivo = reaproveita, "disabled", f"reaprendido da execução {run['id']} (mesma linha)"
+            else:
+                base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
+                              .decode().lower()).strip("-")[:40] or "fluxo"
+                flow_id, n = base, 2
+                while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
+                    flow_id, n = f"{base}-{n}", n + 1
+                self.db.execute(
+                    "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, status,"
+                    " created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (flow_id, plan.summary[:120], key, template, plano, plan.app_id, run["id"], status, now_iso()))
+                motivo = f"aprendido da execução {run['id']}"
+            self.set_required_apps(flow_id, apps)
+            if self.politica is not None:
+                self.politica.mudou(MudancaDoFluxo(flow_id=flow_id, de=de, para=status, motivo=motivo, por=SISTEMA,
+                                                   run_id=run["id"]))
         return flow_id
 
+    def _reaproveitavel(self, linha: Row) -> bool:
+        """A linha da mesma `match_key` pode renascer desta execução? Só a DESLIGADA, aprendida de execução (o treino é
+        da pessoa) e sem habilidade que a tenha adotado (ela é o caminho de volta da adoção). Quem a desligou decide a
+        política: só a refutação do sistema libera — o que uma pessoa desligou fica desligado."""
+        if linha["status"] != "disabled" or str(linha["source"] or "").startswith("training"):
+            return False
+        return self.db.one("SELECT id FROM skill_definitions WHERE legacy_flow_id=?", (linha["id"],)) is None
+
     def _confirmada_a_mao(self, run_id: str) -> bool:
-        """Alguma etapa da execução terminou `succeeded` sem prova da tela (`verified` ≠ true)?
-
-        Motivo real: r-20260928165254-e31953 e r-20260928195344-02ee9e (android-06). "Confirmar concluído" marca a
-        etapa como feita com `verified=false`, e a execução fecha `completed`; o fluxo aprendido dali passava a valer
-        como caminho comprovado sem nunca ter sido observado. TODAS as versões do plano contam: a recuperação refaz
-        só o que faltava, então a etapa confirmada à mão na v1 continua sendo parte do caminho da v2.
-
-        Não exige que haja etapas gravadas: quem chama (`_learn_flow`) só chega aqui com a execução `completed`, e
-        ela só fecha assim com toda etapa da versão corrente `succeeded`. O que se procura é a contradição.
-        """
-        for r in self.db.query("SELECT result FROM steps WHERE run_id=? AND status='succeeded'", (run_id,)):
-            if not r["result"] or not StepResult.model_validate_json(r["result"]).verified:
-                return True
-        return False
+        return confirmada_a_mao(self.db, run_id)
 
     # ------------------------------------------------------------------ habilidade treinada (item 13.2)
     def learn_from_plan(self, plan: Plan, command_template: str, *, source: str) -> str:
@@ -129,12 +221,18 @@ class FlowStore:
         flow_id, n = base, 2
         while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
             flow_id, n = f"{base}-{n}", n + 1
-        self.db.execute(
-            "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at, source)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(), source))
-        apps = [plan.app_id, *(s.app_id for s in plan.steps)]
-        self.set_required_apps(flow_id, [a for a in apps if a])
+        with self.db.tx():
+            self.db.execute(
+                "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at,"
+                " source) VALUES (?,?,?,?,?,?,?,?,?)",
+                (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(),
+                 source))
+            apps = [plan.app_id, *(s.app_id for s in plan.steps)]
+            self.set_required_apps(flow_id, [a for a in apps if a])
+            if self.politica is not None:
+                # Treino é decisão de pessoa (D1): publica na hora, e a trilha diz de qual demonstração veio.
+                self.politica.mudou(MudancaDoFluxo(flow_id=flow_id, de=None, para="active",
+                                                   motivo="ensinado no modo treinamento", por=source))
         return flow_id
 
     def set_scope(self, flow_id: str, *, profile_ids: list[str], group_ids: list[str]) -> None:

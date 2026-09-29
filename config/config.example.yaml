@@ -321,7 +321,10 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     maximo_por_braco: 20
     holdout_publicada: 0.1
   telas: {modo: "observe", observacoes: 3, execucoes: 2}    # "observe": grava e valida, a sessão não consome
-  fluxo: {concordancias: 1}
+  # Fluxo aprendido de execução (D1): nasce candidato; a sombra no digest publica o sem efeito depois de
+  # `concordancias` execuções concordantes além da que o gerou, e o com efeito para em validated (o dono aprova).
+  # com_prova: false = o modo anterior (nasce ativo, sem D1): só para a suíte que prova o reaproveitamento.
+  fluxo: {concordancias: 1, com_prova: true}
   voz: {modo: "off"}              # a voz é sempre publicada pelo dono
   preferencias: {modo: "off"}
   backlog: {minimo_ocorrencias: 3, pessoa_usd: 0.25, aparelho_usd_min: 0, prova_minimo: 10, prova_fator: 0.5}

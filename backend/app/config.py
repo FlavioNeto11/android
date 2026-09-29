@@ -641,6 +641,9 @@ class TelasAprendidasCfg(BaseModel):
 
 class FluxoAprendidoCfg(BaseModel):
     concordancias: int = Field(1, ge=0, le=20)             # execuções concordantes, além da que gerou, para publicar
+    #: D1 no fluxo aprendido de execução: nasce candidato e só publica com prova. false = sem prova: nasce ativo (o
+    #: modo anterior), como `ai.recipes_promote_after: 0` — só para a suíte que prova o reaproveitamento.
+    com_prova: bool = True
 
 
 class ModoDoAprendizadoCfg(BaseModel):
