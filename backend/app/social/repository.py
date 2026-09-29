@@ -983,9 +983,10 @@ class SocialRepository:
 
         A regra existe para que o conteúdo de um perfil nunca vaze para outro. Isto aqui não devolve conteúdo
         nenhum — nem linha, nem texto, nem `profile_id` de quem — só uma CONTAGEM agregada de quantos OUTROS
-        perfis da frota mexeram com o mesmo alvo (`counterparty`) numa janela, e QUANDO foi a ação mais recente
-        entre eles. É o dado mínimo para o achado #114: sem enxergar a frota inteira, nada detecta 8 contas
-        seguindo a mesma pessoa em 20 minutos — um padrão que pertence à conta que opera, não a um perfil só.
+        perfis da frota mexeram com o mesmo alvo (`counterparty`) numa janela — pela interação de saída OU por um
+        pedido de aprovação ainda em aberto sobre ele (ADR-055) —, e QUANDO foi a ação mais recente entre eles. É o
+        dado mínimo para o achado #114: sem enxergar a frota inteira, nada detecta 8 contas seguindo a mesma pessoa
+        em 20 minutos — um padrão que pertence à conta que opera, não a um perfil só.
         """
         if not types or not statuses or not counterparty:
             return 0, None
