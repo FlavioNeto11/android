@@ -11,7 +11,8 @@ O kernel é a raiz do grafo: qualquer pacote o enxerga, e ele não enxerga ningu
 quem cumpre as duas é o livro (`modules/learning/infrastructure/ligar_costuras.py`).
 
 O que NUNCA passa por aqui: texto de tela, coordenada, credencial. A tomada de controle leva só os ids da etapa; a nota
-de uma pessoa (resolução de comando, correção) vai crua e é o livro que a triagem antes de gravar.
+de uma pessoa já chega triada por quem a recebeu (a rota de resolução de comando recusa com 409, o ensino recusa a
+correção), e o livro a tria de novo antes de gravar.
 
 `autor_do_gesto` é a regra única de QUEM fez um gesto pelo painel — a mesma das rotas do livro e das habilidades.
 """
