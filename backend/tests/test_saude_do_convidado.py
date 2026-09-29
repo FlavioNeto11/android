@@ -541,3 +541,40 @@ async def test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset(tm
             despacho_mod._do_action = original
     finally:
         await h.state.stop()
+
+
+
+@pytest.mark.asyncio
+async def test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir_de_degrau(tmp_path: Path) -> None:
+    """29/09 02:05–02:15Z: com a máquina saturada (testes e o boot de outro aparelho), o android-01 do lucas levou
+    restart e depois reset automáticos. Com a CPU do hospedeiro alta, o reparo espera e não abre comando."""
+    from app.commands.despacho import remediar
+    from app.models import Metrics
+
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        rt = s.devices.get("android-01")
+        rt.worker_verbs = ["restart", "reset", "start", "stop"]
+        s.cfg.file.instances.remediation_host_cpu_max = 90.0
+        s.devices.last_metrics = Metrics(ts="t", cpu_percent=95.0, mem_total_gb=32.0,
+                                         mem_available_gb=10.0, mem_used_percent=60.0)
+        assert remediar(s, "android-01", "o system_server caiu") is None
+        assert s.commands.remediacoes_recentes("android-01") == []
+        assert rt.attention and rt.attention.startswith("Reparo adiado")
+        import app.commands.despacho as despacho_mod
+
+        async def _falso(*args: Any, **_k: Any) -> None:
+            return None
+
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
+        try:
+            s.devices.last_metrics = Metrics(ts="t", cpu_percent=30.0, mem_total_gb=32.0, mem_available_gb=10.0,
+                                             mem_used_percent=60.0)
+            cid = remediar(s, "android-01", "o system_server caiu")
+            assert cid is not None and s.commands.get(cid)["verb"] == "restart"
+        finally:
+            despacho_mod._do_action = original
+    finally:
+        await h.state.stop()

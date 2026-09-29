@@ -845,6 +845,8 @@ REQUESTED_BY_SAUDE = "saude"
 DEGRAUS_DE_RESTART = 2
 RETENTATIVA_APOS_ESCADA_S = 6 * 3600
 JANELA_DA_ESCADA_H = 24.0
+#: Quanto o reparo automático espera quando a máquina está sobrecarregada (o teto é `instances.remediation_host_cpu_max`).
+ADIAMENTO_POR_HOSPEDEIRO_S = 600
 
 
 def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
@@ -866,6 +868,19 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     """
     rt = s.devices.devices.get(instance_id)
     if rt is None:
+        return None
+    # Hospedeiro sobrecarregado: o convidado "degradou" porque a MÁQUINA não tem CPU, não porque o Android dele
+    # adoeceu. Subir de degrau aí só piora (reiniciar é o momento mais pesado de um convidado) e, com a escada, chega
+    # ao reset. Em 29/09 02:05–02:15Z o android-01 (lucas) levou restart e reset nessa situação, com a máquina
+    # saturada por testes e o boot de outro aparelho (ADR-055). Espera a máquina aliviar e reconfere.
+    metricas = s.devices.last_metrics
+    local = not rt.worker_id or rt.worker_id == s.cfg.owner_id
+    teto_cpu = float(s.cfg.file.instances.remediation_host_cpu_max)
+    if local and metricas is not None and metricas.cpu_percent >= teto_cpu:
+        s.devices.marcar_atencao(rt, f"Reparo adiado: esta máquina está com {metricas.cpu_percent:.0f}% de CPU; "
+                                     f"reiniciar o aparelho agora não resolveria ({motivo}). Nova conferência em "
+                                     f"{ADIAMENTO_POR_HOSPEDEIRO_S // 60} min.")
+        s.devices.adiar_reparo(rt, ADIAMENTO_POR_HOSPEDEIRO_S)
         return None
     historico = s.commands.remediacoes_recentes(instance_id, janela_h=JANELA_DA_ESCADA_H)
     restarts = sum(1 for c in historico if c["verb"] == "restart")

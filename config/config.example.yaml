@@ -76,6 +76,9 @@ android:
   wake_timeout_s: 90
 
 instances:
+  # CPU desta máquina (%) a partir da qual o reparo automático de aparelho espera em vez de reiniciar (ADR-055):
+  # com a máquina saturada, reiniciar um convidado só piora. 101 desliga.
+  remediation_host_cpu_max: 90
   # Quantos emuladores LOCAIS esta máquina gerencia: android-01 … android-04. Suba este número conforme a RAM
   # livre — a guarda acima recusa o boot que não couber, com o motivo no cartão.
   count: 4

@@ -237,6 +237,10 @@ class InstancesCfg(BaseModel):
     # despacha tarefa. É o emulador com Play Store onde o usuário instala o app pela loja oficial; o backend copia
     # o pacote dali e o distribui ao parque. Id de uma instância existente (ex.: "android-11"); vazio = sem loja.
     store: str | None = None
+    #: CPU desta máquina (%) a partir da qual o reparo automático de aparelho ESPERA em vez de subir de degrau: com a
+    #: máquina saturada o convidado "degrada" por falta de CPU, e reiniciá-lo só piora (29/09, android-01, ADR-055).
+    #: 101 desliga (a suíte de testes usa, porque roda com a máquina carregada).
+    remediation_host_cpu_max: float = Field(90.0, ge=10, le=101)
 
 
 class AppiumCfg(BaseModel):

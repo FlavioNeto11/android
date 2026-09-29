@@ -46,6 +46,8 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                       # nenhum `adb connect` de verdade acontece — o que se exercita é a REGRA, não o transporte.
                       "external": external or {},
                       "base_console_port": 5640,
+                      # O reparo que espera a máquina aliviar lê a CPU REAL: a suíte roda com a máquina carregada.
+                      "remediation_host_cpu_max": 101,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
         # Achado #164: a suíte pagava em tempo REAL assentamentos pensados para um emulador de verdade — o recuo
