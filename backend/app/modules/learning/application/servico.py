@@ -20,6 +20,7 @@ from app.modules.learning.application.ports import (Ajustes, FontesDoLivro, Mine
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, conferir_transicao, motivo_do_veto)
+from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, para_aprovar, status_nativo)
 from app.modules.learning.domain.promocao import Evidencia
@@ -30,6 +31,8 @@ log = logging.getLogger("poc.aprendizado")
 
 #: Tamanho máximo de uma nota de pessoa (o botão do D2 e a varredura).
 NOTA_MAX = 500
+#: Exposições de uma lição que o detalhe do livro mostra (as mais recentes).
+EXPOSICOES_NO_DETALHE = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +46,7 @@ class DetalheDoLivro:
     entrada: EntradaDoLivro
     evidencias: tuple[Evidencia, ...]
     trilha: tuple[Transicao, ...]
-    #: As exposições das lições (pacote A7); vazio até lá.
+    #: As exposições de uma lição (pacote A7): braço, tokens e desfecho de cada unidade; vazio nos outros tipos.
     exposicoes: tuple[JsonValue, ...] = ()
 
 
@@ -149,7 +152,12 @@ class LearningService:
         e = self.entrada(kind, ref)
         if kind is LivroKind.MEMORIA:
             return DetalheDoLivro(e, (), ())            # só a contagem: o conteúdo da memória nunca sai no livro
-        return DetalheDoLivro(e, tuple(self._repo.evidencias(e.trail_ref)), tuple(self._repo.trilha(e.trail_ref)))
+        exposicoes: tuple[JsonValue, ...] = ()
+        if kind is LivroKind.LICAO:                     # as mais recentes: o braço e o desfecho de cada unidade
+            todas = self._repo.exposicoes(e.ref, limite=100_000)
+            exposicoes = tuple(exposicao_json(x) for x in todas[-EXPOSICOES_NO_DETALHE:])
+        return DetalheDoLivro(e, tuple(self._repo.evidencias(e.trail_ref)), tuple(self._repo.trilha(e.trail_ref)),
+                              exposicoes)
 
     def pendentes(self) -> tuple[EntradaDoLivro, ...]:
         """"Para aprovar": a fila do D1 (e a contagem da barra do topo)."""
@@ -174,10 +182,12 @@ class LearningService:
         return True                                     # receita e fluxo: os interruptores são os deles
 
     def mudar_estado(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str,
-                     run_id: str | None = None) -> EntradaDoLivro:
+                     run_id: str | None = None, detalhe: str | None = None) -> EntradaDoLivro:
         """Move um item do livro, com a trilha. Pessoa ou sistema (`by='sistema'`); o D1 vale nos dois.
 
         Habilidade tem rota e ciclo próprios (409 com o endereço); memória segue a regra dela e não passa por aqui.
+        `detalhe`: o `state_detail` que o item passa a ter (só nos itens do livro; ex.: a lição publicada entra na
+        `fila_de_prova`, a desligada pela medida leva `medida:atrapalha`). Sem ele, o detalhe é limpo.
         """
         motivo = reason.strip()
         if not motivo:
@@ -190,12 +200,13 @@ class LearningService:
         if kind is LivroKind.MEMORIA:
             raise TransicaoProibida("A memória da persona segue a regra dela (fato confirmado) e fica fora do D1.")
         if kind in KINDS_DE_ITEM:
-            return entrada_do_item(self._mover_item(kind, ref, para, by=by, reason=motivo, run_id=run_id))
+            return entrada_do_item(self._mover_item(kind, ref, para, by=by, reason=motivo, run_id=run_id,
+                                                    detalhe=detalhe))
         self._mover_nativo(self.entrada(kind, ref), para, by=by, reason=motivo, run_id=run_id)
         return self.entrada(kind, ref)
 
     def _mover_item(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str,
-                    run_id: str | None) -> ItemDeAprendizado:
+                    run_id: str | None, detalhe: str | None = None) -> ItemDeAprendizado:
         item = self._repo.item(ref)
         if item is None or item.kind is not kind:
             raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
@@ -203,7 +214,7 @@ class LearningService:
                                    human_origin=item.human_origin, modo_publica=self._modo_publica(kind))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED):
             self._conferir_veto(item.content_hash, item.escopo.chave(kind), item.app_version)
-        return self._repo.transicionar_item(item, para, by=by, reason=reason, run_id=run_id)
+        return self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
 
     def _mover_nativo(self, e: EntradaDoLivro, para: SkillState, *, by: str, reason: str,
                       run_id: str | None) -> None:

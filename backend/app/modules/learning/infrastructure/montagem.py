@@ -22,7 +22,7 @@ from app.modules.learning.application.ports import Ajustes, Retencao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
-from app.modules.learning.infrastructure import ligar_costuras, ligar_nativos, ligar_telas, ligar_voz
+from app.modules.learning.infrastructure import ligar_costuras, ligar_licoes, ligar_nativos, ligar_telas, ligar_voz
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -97,4 +97,6 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_nativos.ligar(servico, repo, db, concordancias=lambda: config().fluxo.concordancias,
                         com_prova=lambda: config().fluxo.com_prova, habilidades=habilidades, fluxos=fluxos,
                         receitas=receitas, decidir=decidir, relogio=relogio)
+    # Pacote A7: as lições medidas (fornecedor da costura, mineradores do digest e passo da curadoria).
+    ligar_licoes.ligar(servico, repo, db, config=lambda: config().licoes, precos=precos, relogio=relogio)
     return servico
