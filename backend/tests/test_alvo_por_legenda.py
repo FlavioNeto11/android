@@ -174,8 +174,8 @@ def test_com_legenda_curtir_e_comentar_exigem_o_texto_antes_do_efeito() -> None:
     for chave in ("OPEN_POST", "LIKE_POST", "OPEN_COMMENTS", "CREATE_COMMENT"):
         cap = capability_of(PKG, chave)
         assert cap is not None and "caption_contains" in cap.optional_bindings, chave
-    # o planejador fica sabendo do argumento pela linha do catálogo
-    assert "OPEN_POST(target, caption_contains?)" in load_catalog(PKG).prompt_block()
+    # o planejador fica sabendo do argumento pela linha do catálogo (e do autor, ADR-055, logo depois)
+    assert "OPEN_POST(target, caption_contains?, post_author?)" in load_catalog(PKG).prompt_block()
 
 
 def test_o_planejador_e_instruido_a_extrair_o_texto_do_post() -> None:

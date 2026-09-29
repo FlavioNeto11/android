@@ -36,6 +36,7 @@ from ..security.redaction import looks_secret, mentions_credential, redact, reda
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
 from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
+from .conteudo import fala_atribuida_a_terceiro
 from .memory import MemoryRefused, MemoryStore
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
@@ -965,7 +966,7 @@ class SocialService:
     def open_effect(self, profile_id: str, *, capability: str, interaction_type: str, bindings: dict[str, str],
                     run_id: str | None = None, objective_id: str | None = None, step_id: str | None = None,
                     instance_id: str | None = None, draft_meta: dict[str, Any] | None = None,
-                    app_id: str | None = None) -> str:
+                    app_id: str | None = None, counterparty: str | None = None) -> str:
         """Registra a INTENÇÃO de um efeito externo, no instante em que ele é disparado.
 
         Nasce `pending` de propósito: uma ação disparada cujo resultado ainda não foi observado já mexeu com a conta
@@ -979,8 +980,12 @@ class SocialService:
         respondido) — nunca o que estava na tela em volta. É assim que essa fala reaparece em
         `<interacoes_recentes>` nas conversas seguintes, e gravar ali a legenda de um terceiro faria o próprio
         histórico do perfil mentir sobre quem falou o quê.
+
+        `counterparty` é o alvo que a AÇÃO declara no catálogo (`Capability.counterparty`, ADR-055) — em curtir e
+        comentar, o autor da publicação. Sem ele, o palpite antigo (`username`, depois `target`): foi esse palpite que
+        deixou `counterparty` NULL em todo `post_liked`/`comment_replied` do central.
         """
-        alvo = bindings.get("username") or bindings.get("target")
+        alvo = counterparty or bindings.get("username") or bindings.get("target")
         meta: dict[str, Any] = {"capability": capability}
         candidatos = (draft_meta or {}).get("memory_candidates") or []
         if candidatos:
@@ -1504,6 +1509,20 @@ class SocialService:
             segunda, _usage2 = await self._generate(replace(pedido, retry=True), runner=runner)
             if not _repetido(segunda, proibidos) and (segunda.content or "").strip():
                 draft = segunda
+        # A persona fala só por si (ADR-055). Em 19/09 (r-20260919220216-7cfa59) sete contas escreveram à mesma
+        # pessoa "seu marido mandou um oi" — recado que ninguém mandou. A regra está no papel do sistema; esta é a
+        # trava em código: uma reescrita, e se ainda atribuir fala a alguém, recusa (espera uma pessoa).
+        if not draft.refused and (trecho := fala_atribuida_a_terceiro(draft.content)):
+            log.info("perfil %s: o texto atribuía fala a terceiro (%r); gerando de novo", profile_id, trecho)
+            corrigido, _usage3 = await self._generate(replace(pedido, attribution_retry=True), runner=runner)
+            resto = None if corrigido.refused else fala_atribuida_a_terceiro(corrigido.content)
+            if corrigido.refused or (resto is None and (corrigido.content or "").strip()):
+                draft = corrigido
+            else:
+                draft = SocialDraftDTO(
+                    refused=True, rationale=draft.rationale,
+                    refusal_reason=(f"o texto atribuía fala, intenção ou recado a um terceiro (“{resto or trecho}”); "
+                                    "a persona fala só por si (ADR-055)"))
         # A regra de que só `<conteudo_recebido>` gera memória está escrita no papel do sistema — e regra de prompt
         # é pedido, não garantia. Sem fala dirigida a esta conta, os candidatos são descartados AQUI, em código:
         # senão uma legenda de terceiro ("fulano deve R$5.000 a beltrano") viraria fato permanente do perfil,

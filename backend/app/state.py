@@ -51,7 +51,8 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, saldos
-from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
+from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
+                                    texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
@@ -68,7 +69,7 @@ from .social.repository import SocialRepository, frase_da_quarentena, sessao_ven
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.persona_batch import LotesDePersona
-from .social.policy import PolicyEngine, Verdict
+from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
@@ -1655,10 +1656,33 @@ class AppState:
                                hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com "
                                     "“envie exatamente…”) e retome o item.")
             return None
-        # Alvo desta etapa, para a coordenação de frota (achado #114): toda capability com `limit_bucket` no
-        # catálogo do Instagram amarra `username` como binding obrigatório (FOLLOW, SEND_MESSAGE, LIKE_COMMENT,
-        # REPLY_COMMENT) — é o mesmo dado que vira `{username}` no texto da etapa.
-        alvo = (loads(srow["bindings"], {}) or {}).get("username") if "bindings" in srow.keys() else None
+        # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
+        # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
+        # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
+        bindings = (loads(srow["bindings"], {}) or {}) if "bindings" in srow.keys() else {}
+        alvo = contraparte(cap, bindings)
+        # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
+        # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
+        # antes de qualquer um disparar, e passariam todos. Decide-se pela execução, de forma determinística.
+        irmaos = self._mesmo_pedido_noutras_contas(obj, cap, profile_id, alvo)
+        confirmacao = ""
+        if irmaos:
+            contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
+            escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
+                                                    *((o, a) for o, a, _d in irmaos)])
+            if cap.limit_bucket in UMA_CONTA_POR_ALVO and escolhido_id != obj["id"]:
+                return Verdict(
+                    allowed=False, policy=cap.default_policy,
+                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; em "
+                            "seguir, mensagem e comentário vale uma conta por alvo (ADR-055) — segue só a de "
+                            f"{escolhido_aparelho}, e esta foi recusada"),
+                    hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado.")
+            confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
+                           f"sobre {alvo}" + (" — só esta conta segue; as outras foram recusadas"
+                                              if cap.limit_bucket in UMA_CONTA_POR_ALVO else ""))
+            if self.approvals.for_step(srow["id"]) is None:        # uma vez por etapa, não a cada retomada
+                self.repo.decision(f"{obj['instance_id']}: {confirmacao}", run_id=obj["run_id"],
+                                   instance_id=obj["instance_id"], step_id=srow["id"])
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None)
         if not veredito.allowed:
@@ -1669,9 +1693,34 @@ class AppState:
         if parado is not None:
             return parado
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
-        if veredito.needs_approval:
-            return self._approval_gate(obj, srow, cap, profile_id)
+        # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
+        # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
+        if veredito.needs_approval or confirmacao:
+            motivo = "; ".join(m for m in (veredito.reason, confirmacao) if m)
+            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo)
         return None
+
+    def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
+                                     alvo: str | None) -> list[tuple[str, str, str]]:
+        """`(objetivo, aparelho, perfil)` das OUTRAS contas desta execução com a mesma ação sobre o mesmo alvo.
+
+        Só conta objetivo vivo (falhou ou foi cancelado não age mais), etapa da versão atual do plano dele e não
+        cancelada, e alvo já concreto (uma cópia de `for_each` ainda com `{item}` não é alvo de ninguém). A mesma
+        persona em dois aparelhos não é "outra conta": o aviso disso é da prévia de alvos."""
+        if not alvo or not cap.side_effect or not cap.limit_bucket:
+            return []
+        linhas = self.db.query(
+            "SELECT o.id AS objetivo, o.instance_id, o.profile_id, s.bindings FROM steps s"
+            " JOIN objectives o ON o.id = s.objective_id"
+            " WHERE s.run_id=? AND s.capability=? AND s.plan_version=o.plan_version AND s.status<>'cancelled'"
+            " AND o.id<>? AND o.status NOT IN ('failed','cancelled')",
+            (obj["run_id"], cap.key, obj["id"]))
+        achados: dict[str, tuple[str, str]] = {}
+        for r in linhas:
+            dono = r["profile_id"] or self.social_repo.perfil_unico_da_instancia(r["instance_id"])
+            if dono and dono != profile_id and contraparte(cap, loads(r["bindings"], {}) or {}) == alvo:
+                achados[str(r["objetivo"])] = (str(r["instance_id"]), str(dono))
+        return sorted((o, a, d) for o, (a, d) in achados.items())
 
     def _registrar_leitura(self, obj: Any, step: Any, items: list[str]) -> None:
         """Uma etapa de leitura de conversa terminou: o que a outra pessoa disse entra no HISTÓRICO do perfil.
@@ -1771,7 +1820,8 @@ class AppState:
             # O tipo de texto e as leituras de tela são do APP da etapa (o manifesto dele no registro de apps).
             tipo = capabilities_of(pacote).text_kind(cap.key) or "dm_initiate"
             leitor = screen_reader_of(pacote)
-            alvo = bindings.get("username") or bindings.get("target")
+            # Quem recebe o texto é o alvo que a AÇÃO declara (ADR-055): no comentário, o autor da publicação.
+            alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
@@ -1820,9 +1870,12 @@ class AppState:
                 return Verdict(allowed=False, policy=cap.default_policy,
                                reason=f"não foi possível escrever o texto desta etapa: {exc}", hint=dica)
             if draft.refused or not (draft.content or "").strip():
+                # O motivo da recusa vem antes da justificativa: é ele que diz o que mudar na intenção (ex.: o
+                # texto atribuía um recado a um terceiro, ADR-055) — a justificativa só explica a escolha do texto.
                 return Verdict(allowed=False, policy=cap.default_policy,
                                reason="a persona se recusou a escrever este texto",
-                               hint=f"{draft.rationale or 'sem justificativa'}. Reescreva a intenção e retome o item.")
+                               hint=f"{draft.refusal_reason or draft.rationale or 'sem justificativa'}. Reescreva a "
+                                    "intenção e retome o item.")
             # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
             # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
             with self.db.tx():
@@ -1875,15 +1928,19 @@ class AppState:
             return None
         return arvore
 
-    def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
+    def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "") -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
         haveria como "editar e refazer" depois que o texto já foi digitado e enviado.
+
+        `motivo` é o porquê de a aprovação ser exigida além da política (DM fria, o mesmo pedido a várias contas —
+        ADR-055): vai no resumo do pedido e no motivo da espera, para quem decide saber o que está confirmando.
         """
         pedido = self.approvals.for_step(srow["id"])
         bindings = loads(srow["bindings"], {}) or {}
-        alvo = bindings.get("username") or bindings.get("target")
+        # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
+        alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
         if pedido is None:
             # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
@@ -1899,7 +1956,8 @@ class AppState:
                     run_id=obj["run_id"], instance_id=obj["instance_id"], step_id=srow["id"])
         if pedido is None:
             pedido = self.approvals.open(
-                profile_id=profile_id, capability=cap.key, summary=srow["title"],
+                profile_id=profile_id, capability=cap.key,
+                summary=f"{srow['title']} — {motivo}" if motivo else srow["title"],
                 target=alvo, content=bindings.get("content"),
                 run_id=obj["run_id"], objective_id=obj["id"], step_id=srow["id"])
             self.bus.emit("approval.pending", f"{obj['instance_id']}: {srow['title']} aguarda aprovação",
@@ -1913,7 +1971,8 @@ class AppState:
                            hint="Nada será enviado neste alvo. Retome o item se quiser planejar outra coisa.")
         self.db.execute("UPDATE objectives SET blocked_kind='approval' WHERE id=?", (obj["id"],))
         return Verdict(allowed=False, policy="approval_required",
-                       reason=f"{srow['title']} precisa de aprovação antes de acontecer",
+                       reason=f"{srow['title']} precisa de aprovação antes de acontecer"
+                              + (f" ({motivo})" if motivo else ""),
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:

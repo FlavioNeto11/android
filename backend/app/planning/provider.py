@@ -175,6 +175,9 @@ class SocialRequest:
     # Sem isso, personas diferentes convergem para a mesma frase óbvia — voz própria não é só tom, é não repetir.
     avoid: tuple[str, ...] = ()
     retry: bool = False                       # segunda tentativa: a primeira saiu igual a um texto que já existe
+    # Segunda tentativa porque a primeira atribuía fala, intenção ou recado a um terceiro ("seu marido mandou um oi",
+    # r-20260919220216-7cfa59) — ADR-055. O prompt diz o que corrigir; a trava é `social/conteudo.py`.
+    attribution_retry: bool = False
 
 
 class AIProvider(Protocol):

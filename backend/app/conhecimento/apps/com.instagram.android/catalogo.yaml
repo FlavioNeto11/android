@@ -91,7 +91,12 @@ acoes:
     bindings: [target]
     # `caption_contains`: um trecho literal da legenda, quando o pedido identifica a publicação por um texto dela.
     # Sem ele, a publicação é por posição ("a primeira da grade") e nada muda.
-    optional_bindings: [caption_contains]
+    # `post_author` (ADR-055): o @ de quem PUBLICOU, que o planejador conhece quando abre a publicação a partir de um
+    # perfil ou quando o comando cita o @. É o alvo da regra de uma conta por alvo em curtir e comentar: sem ele, todo
+    # `post_liked`/`comment_replied` do central ficava com `counterparty` NULL e a frota não era coordenada. Nasce
+    # AQUI e é herdado pelas etapas que continuam a mesma publicação; OPEN_POST não herda (começa um alvo novo), então
+    # outra publicação aberta sem o autor corta a cadeia e a ação sobre ela é recusada, nunca atribuída ao anterior.
+    optional_bindings: [caption_contains, post_author]
     goal: Abrir a publicação identificada por {target}. Se ela não aparecer nem depois de rolar, chame step_blocked
       em vez de abrir outra no lugar.
     post_kind: element_present
@@ -218,8 +223,11 @@ acoes:
   - key: LIKE_POST
     title: Curtir a publicação
     interaction_type: post_liked
-    optional_bindings: [caption_contains]
-    inherited_bindings: [caption_contains]      # a legenda da etapa anterior (ver OPEN_COMMENTS)
+    optional_bindings: [caption_contains, post_author]
+    # a legenda da etapa anterior (ver OPEN_COMMENTS) e o autor declarado em OPEN_POST (ver lá)
+    inherited_bindings: [caption_contains, post_author]
+    # Quem recebe a curtida é quem publicou: é por ele que a frota conta contas por alvo (ADR-055).
+    counterparty: post_author
     precondition: A publicação alvo está aberta na tela.
     goal: Curtir a publicação aberta, uma única vez.
     post_kind: model_judged
@@ -244,6 +252,9 @@ acoes:
   - key: UNLIKE_POST
     title: Descurtir a publicação
     interaction_type: post_unliked
+    optional_bindings: [post_author]
+    inherited_bindings: [post_author]
+    counterparty: post_author
     precondition: A publicação alvo está aberta na tela.
     goal: Remover a curtida da publicação aberta.
     post_kind: model_judged
@@ -272,6 +283,7 @@ acoes:
     commit_guard: ['{username}']
     band_guard: ['{username}']
     limit_bucket: likes
+    counterparty: username                      # o dono do comentário, não o autor da publicação
     # O coração marcado tem de estar na FAIXA do comentário de {username}: o de cima não prova o de baixo.
     local_proof: selector_band:desc==Liked
     reconciliation: Observar o ícone do comentário alvo depois do toque.
@@ -279,10 +291,12 @@ acoes:
   - key: CREATE_COMMENT
     title: Comentar na publicação
     interaction_type: comment_replied
-    optional_bindings: [content_brief, content, content_verbatim, caption_contains]
-    # Só a legenda: o texto a escrever nunca herda (o carregador recusa), senão o segundo comentário repetiria o
-    # primeiro.
-    inherited_bindings: [caption_contains]
+    optional_bindings: [content_brief, content, content_verbatim, caption_contains, post_author]
+    # Só a legenda e o autor: o texto a escrever nunca herda (o carregador recusa), senão o segundo comentário
+    # repetiria o primeiro. O autor vem de OPEN_POST com nome PRÓPRIO: `username` de REPLY_COMMENT/LIKE_COMMENT é o
+    # dono do comentário, e herdar `username` faria um comentário no post contar para quem comentou nele.
+    inherited_bindings: [caption_contains, post_author]
+    counterparty: post_author
     precondition: A lista de comentários está aberta e o texto já foi escrito e aprovado.
     goal: Publicar o comentário com o conteúdo aprovado.
     post_kind: model_judged
@@ -320,6 +334,7 @@ acoes:
     commit_guard: ['{username}', '{content}']
     band_guard: ['{username}']
     limit_bucket: comments
+    counterparty: username
     default_policy: approval_required
     needs_draft: true
     reconciliation: A resposta precisa aparecer na conversa do comentário; nunca reenviar por timeout.
@@ -343,6 +358,7 @@ acoes:
     commit_selector: desc=Send
     commit_guard: ['{username}', '{content}']
     limit_bucket: dms
+    counterparty: username
     default_policy: approval_required
     needs_draft: true
     failure_marks: [Not delivered, Tap to retry, Failed to send, Message not sent, Não entregue, Toque para
@@ -364,6 +380,7 @@ acoes:
     commit_selector: text=Follow
     commit_guard: ['{username}']
     limit_bucket: follows
+    counterparty: username
     default_policy: approval_required
     reconciliation: 'Ler o botão depois do toque: Following, Requested ou ainda Follow.'
 
@@ -381,6 +398,7 @@ acoes:
     commit_selector: text=Following
     commit_guard: ['{username}']
     limit_bucket: follows
+    counterparty: username
     default_policy: manual_only
     reconciliation: Ler o botão depois da confirmação; o app costuma pedir confirmação em diálogo.
 
@@ -399,6 +417,7 @@ acoes:
     commit_guard: ['{username}']
     band_guard: ['{username}']
     limit_bucket: follows
+    counterparty: username
     default_policy: approval_required
     reconciliation: A linha do pedido some ou muda de estado; não tocar de novo.
 
@@ -417,6 +436,7 @@ acoes:
     commit_guard: ['{username}']
     band_guard: ['{username}']
     limit_bucket: follows
+    counterparty: username
     default_policy: approval_required
     reconciliation: A linha some da lista; recusar duas vezes não é possível, mas tocar de novo acerta outro
       pedido.

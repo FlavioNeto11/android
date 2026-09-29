@@ -55,12 +55,14 @@ CAMPOS_NOVOS: dict[str, object] = {
     "card_control": [],
     # Rodada seguinte ao ADR-053: argumentos opcionais que a etapa herda da anterior do mesmo plano (a legenda).
     "inherited_bindings": [],
+    # ADR-055: o argumento que diz quem é a pessoa do outro lado do efeito (alvo da regra de uma conta por alvo).
+    "counterparty": None,
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
     # e `desc==Liked` valiam para QUALQUER publicação, e a curtida tocava o primeiro coração da tela. Com o argumento
     # opcional `caption_contains`, a legenda passa a ser exigida (sem ele, tudo segue como antes).
-    ("OPEN_POST", "optional_bindings"): ["caption_contains"],
+    ("OPEN_POST", "optional_bindings"): ["caption_contains", "post_author"],     # + post_author (ADR-055)
     ("OPEN_POST", "goal"): ("Abrir a publicação identificada por {target}. Se ela não aparecer nem depois de rolar, "
                             "chame step_blocked em vez de abrir outra no lugar."),
     ("OPEN_POST", "post_description"): ('A publicação está aberta (título "Posts"), com curtidas e comentários '
@@ -72,17 +74,34 @@ MUDANCAS: dict[tuple[str, str], object] = {
     # A folha "Comments" é igual para qualquer publicação e, aberta, deixa a legenda do fundo na árvore
     # (r-20260928165254-e31953): só o toque que a abre distingue o cartão. Medido: e29, `row_feed_button_comment`.
     ("OPEN_COMMENTS", "card_control"): ["id=row_feed_button_comment"],
-    ("LIKE_POST", "optional_bindings"): ["caption_contains"],
+    ("LIKE_POST", "optional_bindings"): ["caption_contains", "post_author"],     # + post_author (ADR-055)
     ("LIKE_POST", "commit_guard"): ["{caption_contains}"],
     ("LIKE_POST", "card_guard"): ["{caption_contains}"],
-    ("CREATE_COMMENT", "optional_bindings"): ["content_brief", "content", "content_verbatim", "caption_contains"],
+    ("CREATE_COMMENT", "optional_bindings"): ["content_brief", "content", "content_verbatim", "caption_contains",
+                                              "post_author"],                    # + post_author (ADR-055)
     ("CREATE_COMMENT", "commit_guard"): ["{content}", "{caption_contains}"],
     # Rodada seguinte ao ADR-053 — a guarda de cartão só agia se o planejador repetisse a legenda em CADA etapa; com
     # ela só em OPEN_POST, curtida, balão e comentário voltavam a valer em qualquer cartão. Estas três herdam a legenda
     # da etapa anterior do plano; OPEN_POST não herda (começa um alvo novo, e pode ser por posição).
-    ("LIKE_POST", "inherited_bindings"): ["caption_contains"],
+    ("LIKE_POST", "inherited_bindings"): ["caption_contains", "post_author"],    # + post_author (ADR-055)
     ("OPEN_COMMENTS", "inherited_bindings"): ["caption_contains"],
-    ("CREATE_COMMENT", "inherited_bindings"): ["caption_contains"],
+    ("CREATE_COMMENT", "inherited_bindings"): ["caption_contains", "post_author"],  # + post_author (ADR-055)
+    # ADR-055 (29/09) — em 19/09 (r-20260919220216-7cfa59) sete contas mandaram DM à mesma pessoa em oito minutos, e
+    # todo `post_liked`/`comment_replied` do central tinha `counterparty` NULL: curtir e comentar não diziam de quem
+    # era a publicação, e a coordenação de frota nem era consultada. Toda ação com limite declara o alvo; nas da
+    # publicação é o autor (`post_author`, nascido em OPEN_POST e herdado), nas do comentário, o dono dele.
+    ("LIKE_POST", "counterparty"): "post_author",
+    ("UNLIKE_POST", "optional_bindings"): ["post_author"],
+    ("UNLIKE_POST", "inherited_bindings"): ["post_author"],
+    ("UNLIKE_POST", "counterparty"): "post_author",
+    ("CREATE_COMMENT", "counterparty"): "post_author",
+    ("LIKE_COMMENT", "counterparty"): "username",
+    ("REPLY_COMMENT", "counterparty"): "username",
+    ("SEND_MESSAGE", "counterparty"): "username",
+    ("FOLLOW", "counterparty"): "username",
+    ("UNFOLLOW", "counterparty"): "username",
+    ("ACCEPT_FOLLOW_REQUEST", "counterparty"): "username",
+    ("DECLINE_FOLLOW_REQUEST", "counterparty"): "username",
 }
 
 

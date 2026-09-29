@@ -285,13 +285,20 @@ class LimitsCfg(BaseModel):
     # reobservar a cada tick para sempre. Ao alcançar o teto, a porta do despacho trata como "só uma pessoa
     # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha.
     session_unknown_retry_cap: int = Field(3, ge=1, le=20)
-    # Coordenação de frota sobre o mesmo alvo (achado #114). Fica em LimitsCfg, não no `automation_policy` de
-    # cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o que protege a conta
-    # dos outros 7. `fleet_max_accounts_per_target`: quantos perfis DIFERENTES podem mexer com o mesmo alvo
-    # dentro da janela antes de bloquear o próximo. `fleet_min_spacing_between_accounts_s` +
-    # `fleet_spacing_jitter_s`: intervalo mínimo (mais aleatoriedade, para não virar um padrão regular por si
-    # só) entre a ação de uma conta e a de outra sobre o MESMO alvo, mesmo abaixo do teto de contas.
+    # Coordenação de frota sobre o mesmo alvo (achado #114, endurecida pelo ADR-055). Fica em LimitsCfg, não no
+    # `automation_policy` de cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o
+    # que protege a conta dos outros 7. Seguir, mandar mensagem e comentar são de UMA conta por alvo, e isso é
+    # regra do dono no código (`social/policy.py::UMA_CONTA_POR_ALVO`), não número daqui.
+    # `fleet_max_accounts_per_target`: desde o ADR-055, o teto de contas DIFERENTES por alvo só nas CURTIDAS; o
+    # excedente é recusado, não adiado. Conta-se qualquer ação das outras contas sobre o alvo (todos os baldes).
+    # `fleet_target_window_days`: a janela dessa contagem, em DIAS — a de 1 h deixava a segunda conta mandar DM à
+    # mesma pessoa uma hora depois (r-20260919220216-7cfa59: sete contas, oito minutos, uma pessoa).
+    # `fleet_min_spacing_between_accounts_s` + `fleet_spacing_jitter_s`: intervalo mínimo (mais aleatoriedade, para
+    # não virar um padrão regular por si só) entre a curtida de uma conta e a de outra sobre o MESMO alvo, abaixo do
+    # teto. `fleet_target_window_s` ficou sem uso (substituído pela janela em dias); continua aqui só porque o tipo
+    # `Settings` do painel e o valor gravado no banco o citam — sai quando o painel mudar.
     fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
+    fleet_target_window_days: int = Field(30, ge=1, le=365)
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
     fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
     fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)

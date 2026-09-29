@@ -1220,9 +1220,10 @@ class SocialRepository:
 
         A regra existe para que o conteúdo de um perfil nunca vaze para outro. Isto aqui não devolve conteúdo
         nenhum — nem linha, nem texto, nem `profile_id` de quem — só uma CONTAGEM agregada de quantos OUTROS
-        perfis da frota mexeram com o mesmo alvo (`counterparty`) numa janela, e QUANDO foi a ação mais recente
-        entre eles. É o dado mínimo para o achado #114: sem enxergar a frota inteira, nada detecta 8 contas
-        seguindo a mesma pessoa em 20 minutos — um padrão que pertence à conta que opera, não a um perfil só.
+        perfis da frota mexeram com o mesmo alvo (`counterparty`) numa janela — pela interação de saída OU por um
+        pedido de aprovação ainda em aberto sobre ele (ADR-055) —, e QUANDO foi a ação mais recente entre eles. É o
+        dado mínimo para o achado #114: sem enxergar a frota inteira, nada detecta 8 contas seguindo a mesma pessoa
+        em 20 minutos — um padrão que pertence à conta que opera, não a um perfil só.
         """
         if not types or not statuses or not counterparty:
             return 0, None
@@ -1230,12 +1231,38 @@ class SocialRepository:
         # Item 12.1: @nasa no Instagram e @nasa no TikTok são alvos diferentes — a coordenação é por (app, alvo).
         # Interação sem app (anterior à migração 037 foi toda preenchida) conta em qualquer app, por segurança.
         por_app = " AND (app_id=? OR app_id IS NULL)" if app_id else ""
-        linha = self.db.one(
-            f"SELECT COUNT(DISTINCT profile_id) AS n, MAX(occurred_at) AS ultima FROM social_interactions"
+        contas = {str(r["profile_id"]) for r in self.db.query(
+            f"SELECT DISTINCT profile_id FROM social_interactions"
+            f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
+            f" AND type IN ({t}) AND status IN ({s}){por_app}",
+            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ())))}
+        ultima = self.db.scalar(
+            f"SELECT MAX(occurred_at) FROM social_interactions"
             f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
             f" AND type IN ({t}) AND status IN ({s}){por_app}",
             (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ())))
-        return (int(linha["n"] or 0), linha["ultima"]) if linha else (0, None)
+        # ADR-055: um pedido de aprovação ainda em aberto de outra conta RESERVA o alvo. Sem isto, duas execuções
+        # quase juntas passavam as duas pela porta — nenhuma tinha disparado nada ainda — e a pessoa aprovava as duas.
+        # O alvo do pedido é gravado cru (`@Ana`, `ana`) nos pedidos antigos: compara-se normalizado dos dois lados.
+        # Os ids servem só para a união das duas fontes; daqui sai apenas a contagem.
+        contas |= {str(r["profile_id"]) for r in self.db.query(
+            "SELECT DISTINCT profile_id FROM pending_approvals WHERE profile_id IS NOT NULL AND profile_id<>?"
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
+            " AND lower(ltrim(trim(target), '@'))=?",
+            (exclude_profile_id, since, counterparty.lower().lstrip("@")))}
+        return len(contas), ultima
+
+    def has_inbound_from(self, profile_id: str, counterparty: str, *, types: tuple[str, ...],
+                         app_id: str | None = None) -> bool:
+        """A contraparte já escreveu a este perfil (fala de ENTRADA destes tipos)? Pergunta do próprio perfil."""
+        if not types or not counterparty:
+            return False
+        t = ",".join("?" * len(types))
+        por_app = " AND (app_id=? OR app_id IS NULL)" if app_id else ""
+        return self.db.one(
+            f"SELECT 1 FROM social_interactions WHERE profile_id=? AND counterparty=? AND direction='inbound'"
+            f" AND type IN ({t}){por_app} LIMIT 1",
+            (profile_id, counterparty, *types, *((app_id,) if app_id else ()))) is not None
 
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
