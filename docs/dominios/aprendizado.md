@@ -138,7 +138,7 @@ diária.
   autor que o COMANDO gravou, só para cruzar os dois. Ele pode diferir do `created_by`: sem sessão, o comando aceita o
   `requested_by` do corpo, e o sinal fica `panel`. Sem execução no `params`, `simulated` vem do modo da instalação.
 - **Correção de ensino.** `source_ref = correcao:<teaching_id>:<teaching_turns.id>`, `data {teaching_id, skill_id}`.
-  O painel ainda não chama a rota de correção: o sinal só nasce por chamada direta à API.
+  Desde a Fase 22 (22.7) o painel chama a rota pela visão da execução ("Corrigir esta etapa", abaixo).
 - **Régua.** O único consumidor é o `human_negative` da régua diária. Cancelar uma execução pausada, fechar o pendente
   de uma `completed_with_issues` ou marcar como falho um comando incerto conta como negativo humano na chave
   `(app, '*')`. As polaridades são escolha do pacote e esperam a ratificação do dono (ADR-054).
@@ -288,6 +288,16 @@ com o banco aberto só para leitura.
 - **Trilha nas lojas sem derrubar o save (22.5).** O ouvinte do A5 envolve a trilha e o veto em `db.savepoint()`
   DENTRO do `try` que engole a falha; e o `tx()` de fora, no PostgreSQL, confere a transação abortada antes do COMMIT
   (`TransacaoAbortada`): o esquecimento que antes perdia dado calado (o COMMIT virava ROLLBACK) agora falha alto.
+
+- **Correção de ensino na execução (22.7).** Na aba "Por aparelho", a etapa `failed` ou `uncertain` que veio de uma
+  habilidade ganha "Corrigir esta etapa" no detalhe, e a linha recolhida leva a marca "corrigível". A regra é a mesma
+  da rota: habilidades ligadas (`features.skills`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
+  em `plan_versions` pela mesma versão do mesmo objetivo). O envio acha um ensino aberto da mesma habilidade e versão
+  que já corrige esta execução (ou um vazio aberto por esta ação), ou abre um com instrução fixa ("Corrigir a
+  habilidade <id> (versão N)."), e posta a correção com `step_id` = `steps.id`, não a key. O ensino que fica aberto e
+  vazio quando a correção é recusada não é descartado: a próxima correção da mesma habilidade e versão o reaproveita.
+  A triagem é a do ensino (400 `credential_in_text`), e o sinal tria de novo. Ainda não há tela para continuar esse
+  ensino (gerar a candidata, virar rascunho): o aviso de sucesso aponta para Aprendizado.
 
 ## Onde no painel
 

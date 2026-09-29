@@ -2671,6 +2671,15 @@ fluxo (`GET /api/aprendizado/fluxo/{id}` mostra "adotado pela habilidade X" / "d
 **Transação abortada (22.5).** No PostgreSQL, uma escrita dentro de uma transação já abortada deixa de virar ROLLBACK
 calado: o `tx()` confere a transação antes do COMMIT e responde 500 (`TransacaoAbortada`), sem gravar nada pela metade.
 
+**Correção de ensino pela execução (22.7).** Nenhuma rota nova.
+- `GET /api/runs/{id}` já devolve `origin {skill_id, skill_version, node_id, strategies}` em `plan.steps` e em
+  `plan_versions[].steps` quando a etapa veio de habilidade; o tipo `PlanStep` do painel passa a declará-lo.
+- O painel usa `GET /api/teaching-sessions?status=open` (o resumo traz `base_version`), `POST /api/teaching-sessions`
+  com `{instruction, skill_id, base_version}` (versão inexistente: 404 `not_found`) e
+  `POST /api/teaching-sessions/{id}/corrections` com `{body, run_id, step_id}`, em que `step_id` é o `steps.id`.
+- Erros mostrados em português: 400 `credential_in_text`, `correction_needs_skill`, `step_not_correctable`, 409
+  `teaching_state`, 404 e 422.
+
 **Preferência no bloco da execução (22.6).** Novo `papel` no grupo `candidatas` para `kind=preferencia`: "preferência
 que nasceu com a evidência desta execução, entre N execuções", ou "… e de outras" quando o número não vem. O formato
 não muda.

@@ -117,6 +117,10 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     camada, "onde alterar" e o estado no backlog. O falso positivo do verificador fica no topo;
   - **Sinais:** os votos e os gestos que viram evidência.
 
+  Na aba "Por aparelho", a etapa que falhou ou ficou incerta e veio de uma habilidade tem **"Corrigir esta etapa"**
+  (no detalhe; a linha recolhida mostra a marca "corrigível"): a pessoa diz o que devia ter acontecido, e a correção
+  entra no ensino daquela habilidade e versão (item 22.7, 29/09).
+
   Na execução, cada objetivo (aba "Por aparelho") e a execução inteira (aba "Relatório") têm o botão **"Deu certo /
   Deu errado"**: sem modal e sem pergunta, com o motivo em linha. "Deu errado" por navegação desliga o fluxo e as
   receitas envolvidos, e "Reativar" aparece quando o que foi desligado estava publicado. Nota com cara de senha é
