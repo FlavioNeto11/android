@@ -13,8 +13,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from app.automation.driver import DriverError
 from app.db import Database
-from app.integrations.app_declarado.sessao import Outcome
+from app.integrations.app_declarado.sessao import ETAPAS_ANTES_DO_ENVIO, Outcome
 from app.models import ProfileCreate, SessionStatus
 from app.modules.identity.application.session_rules import CREDENCIAL_EM_REVISAO
 from app.modules.identity.domain.resources import CredentialState, SessionCode, diff_app_session, plan_app_session
@@ -59,6 +62,98 @@ async def test_um_envio_sem_sucesso_para_o_login_automatico_ate_uma_pessoa_olhar
         r3 = await auth.ensure_session(FakeRt(app), pid)
         assert r3.ready and _envios(app) == 1
         assert repo.credential_row(pid)["status"] == "active"
+    finally:
+        db.close()
+
+
+def _falha_ao_digitar_a_senha(app: FakeInstagram) -> None:
+    """O driver falha ao preencher o campo de senha (uma vez): `fill_failed`, e nada é enviado."""
+    original = app.type_text
+
+    def type_text(text: str, *, clear_first: bool) -> None:
+        if getattr(app, "_focus", "username") == "password":
+            app.type_text = original  # type: ignore[method-assign]
+            raise DriverError("falha simulada ao digitar", effect_possible=False)
+        original(text, clear_first=clear_first)
+
+    app.type_text = type_text  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize("falha", ["submit_not_delivered", "fill_failed"])
+async def test_conectar_que_falha_antes_do_envio_nao_solta_o_login_parado(tmp_path: Path, falha: str) -> None:
+    """Revisão do pacote (ADR-055): a credencial está em `review`; uma pessoa aperta Conectar (chamada não
+    automática, que pode tentar) e a tentativa falha ANTES do envio. Contar essa falha trocava `review` por `active`,
+    e a volta seguinte do agendador enviava a senha de novo sem ninguém ter visto um login dar certo. Só saem de
+    `review` a senha guardada de novo ou um login que confirma a conta."""
+    app = FakeInstagram(stored_password=SENHA, submit_fault="lost" if falha == "submit_not_delivered" else None)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        repo.mark_credential(pid, status=CREDENCIAL_EM_REVISAO, failed_attempts=1)
+        if falha == "fill_failed":
+            _falha_ao_digitar_a_senha(app)
+        r = await auth.ensure_session(FakeRt(app), pid)                      # "Conectar" de uma pessoa
+        assert r.outcome is Outcome.RETRYABLE, r.detail
+        assert repo.auth_attempts(pid)[0]["stage"] == falha
+        cred = repo.credential_row(pid)
+        assert cred["status"] == CREDENCIAL_EM_REVISAO and cred["failed_attempts"] == 2
+
+        # O automático seguinte continua parado: não toca no aparelho, não digita, não envia.
+        app.submit_fault = None
+        digitado = list(app.typed)
+        app.calls.clear()
+        r2 = await auth.ensure_session(FakeRt(app), pid, automatic=True)
+        assert not r2.ready and "pessoa" in r2.detail
+        assert app.typed == digitado and _envios(app) == 0 and app.calls == []
+    finally:
+        db.close()
+
+
+async def test_login_parado_no_outro_aparelho_interrompe_o_automatico_em_curso(tmp_path: Path) -> None:
+    """Corrida entre dois aparelhos (revisão do pacote): o login automático do B já passou da porta quando o envio sem
+    sucesso do A pôs a credencial em `review`. O B relê antes da senha e não digita nem envia nada — seria um segundo
+    envio sem ninguém ter olhado (regra (e) do ADR-055) — e não solta o login parado."""
+    app = FakeInstagram(stored_password=SENHA)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        original = app.type_text
+
+        def type_text(text: str, *, clear_first: bool) -> None:
+            original(text, clear_first=clear_first)
+            if getattr(app, "_focus", "username") == "username":
+                repo.mark_credential(pid, status=CREDENCIAL_EM_REVISAO, failed_attempts=1)   # o A, agora
+
+        app.type_text = type_text  # type: ignore[method-assign]
+        r = await auth.ensure_session(FakeRt(app), pid, automatic=True)
+        assert not r.ready and "pessoa" in r.detail
+        assert SENHA not in app.typed and app.password_field == "" and _envios(app) == 0
+        assert repo.credential_row(pid)["status"] == CREDENCIAL_EM_REVISAO
+        # A interrupção não é envio: não gasta o teto diário da conta.
+        assert repo.auth_attempts(pid)[0]["stage"] in ETAPAS_ANTES_DO_ENVIO
+    finally:
+        db.close()
+
+
+async def test_login_parado_no_meio_para_antes_do_toque_em_entrar(tmp_path: Path) -> None:
+    """A mesma corrida, mais tarde: a senha já está no campo quando o A põe a credencial em `review`. O campo
+    preenchido não é envio; o toque em Entrar é — e ele não acontece."""
+    app = FakeInstagram(stored_password=SENHA)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        original = app.type_text
+
+        def type_text(text: str, *, clear_first: bool) -> None:
+            original(text, clear_first=clear_first)
+            if getattr(app, "_focus", "username") == "password":
+                repo.mark_credential(pid, status=CREDENCIAL_EM_REVISAO, failed_attempts=1)
+
+        app.type_text = type_text  # type: ignore[method-assign]
+        r = await auth.ensure_session(FakeRt(app), pid, automatic=True)
+        assert not r.ready and "pessoa" in r.detail
+        assert _envios(app) == 0
+        assert repo.credential_row(pid)["status"] == CREDENCIAL_EM_REVISAO
     finally:
         db.close()
 

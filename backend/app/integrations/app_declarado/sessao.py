@@ -66,7 +66,7 @@ TIPOS_DE_DESAFIO = frozenset({"desafio", "dois_fatores"})
 #: toque em Entrar). Todo o resto — inclusive uma tentativa que parou em `submitting` sem desfecho — conta como envio
 #: no teto diário: na dúvida, conta.
 ETAPAS_ANTES_DO_ENVIO = frozenset({"started", "form_found", "username_mismatch", "sensitive_channel_blocked",
-                                   "fill_failed", "submit_not_delivered", "account_blocked"})
+                                   "fill_failed", "submit_not_delivered", "account_blocked", "login_parado"})
 #: Janela do teto diário de logins por conta (`max_logins_per_day`).
 JANELA_DO_TETO_DIARIO = timedelta(hours=24)
 #: Começo do aviso que ESTE motor põe no cartão do aparelho quando o app não fica na frente. É por ele que o motor
@@ -451,8 +451,8 @@ class SessaoDeclarada:
 
             # Relido AGORA, e não só no começo: a mesma pessoa pode estar em dois aparelhos, e o desafio visto no outro
             # bloqueia o perfil enquanto este digita o usuário. Conta bloqueada nunca recebe a senha (ADR-055).
-            if (parada := self._conta_parada(profile_id)) is not None:
-                return self._abortar_pela_conta(profile_id, attempt, parada, rt.id)
+            if (interrompido := self._parada_no_meio(profile_id, automatic=automatic)) is not None:
+                return self._abortar_pela_conta(profile_id, attempt, *interrompido, rt.id)
             await self._fill_password(rt, cred["secret_ref"])
         except SensitiveInputUnavailable as exc:
             # Não é falha de credencial: nem a senha foi enviada, nem o app foi consultado. Contar aqui gastava o
@@ -477,8 +477,8 @@ class SessaoDeclarada:
             return AuthResult(Outcome.RETRYABLE, detail)
 
         # A última porta antes de a senha sair da máquina: o campo preenchido não é envio; o toque em Entrar é.
-        if (parada := self._conta_parada(profile_id)) is not None:
-            return self._abortar_pela_conta(profile_id, attempt, parada, rt.id)
+        if (interrompido := self._parada_no_meio(profile_id, automatic=automatic)) is not None:
+            return self._abortar_pela_conta(profile_id, attempt, *interrompido, rt.id)
         # Envio: registrado ANTES de acontecer. Depois disso, timeout nunca autoriza repetir.
         self.repo.finish_auth_attempt(profile_id, attempt, outcome="", detail=None, stage="submitting")
         fired = True
@@ -567,20 +567,28 @@ class SessaoDeclarada:
         self._parar_login(profile_id, instance_id, verdict.detail, falhou=True)
 
     def _count_failure(self, profile_id: str, instance_id: str) -> None:
-        """Toda falha repetível conta para o teto. Sem isso, um erro que se repete viraria laço infinito de login."""
+        """Toda falha repetível conta para o teto. Sem isso, um erro que se repete viraria laço infinito de login.
+
+        Contar NÃO muda o estado da credencial: o status gravado é o que já estava. Revisão do pacote (ADR-055): isto
+        gravava `active` sem condição, e a falha antes do envio de um "Conectar" (a pessoa tenta com a credencial em
+        `review`, e o toque em Entrar não chega) soltava o login parado — a volta seguinte do agendador enviava a
+        senha sem ninguém ter visto um login dar certo. O mesmo na corrida entre aparelhos: o B falhando antes do
+        envio depois que o A pôs a credencial em `review` (ou `invalid`). De `review` só se sai guardando a senha de
+        novo (`set_account_credential`) ou com um login que confirma a conta (`_apply_verdict`)."""
         cred = self.repo.credential_row(profile_id)
         if cred is None:
             return
         ajustes = self.ajustes
+        status = cred["status"] or "active"
         falhas = (cred["failed_attempts"] or 0) + 1
         if falhas >= int(ajustes.max_auth_attempts):
             espera = now().timestamp() + float(ajustes.auth_cooldown_s)
-            self.repo.mark_credential(profile_id, status="active", failed_attempts=falhas, blocked_until=_iso(espera))
+            self.repo.mark_credential(profile_id, status=status, failed_attempts=falhas, blocked_until=_iso(espera))
             self.bus.emit("log", f"{instance_id}: {falhas} tentativas de login sem sucesso; aguardando "
                                  f"{ajustes.auth_cooldown_s}s antes de tentar de novo", level="warn",
                           instance_id=instance_id)
         else:
-            self.repo.mark_credential(profile_id, status="active", failed_attempts=falhas, blocked_until=None)
+            self.repo.mark_credential(profile_id, status=status, failed_attempts=falhas, blocked_until=None)
 
     def _parar_login(self, profile_id: str, instance_id: str, motivo: str, *, falhou: bool) -> None:
         """O login automático desta conta para até uma pessoa olhar (ADR-055): a credencial vai a `review`, que o
@@ -635,12 +643,28 @@ class SessaoDeclarada:
                     "pessoa confere a conta no aparelho e reativa o perfil na tela dele")
         return f"o perfil @{arroba} está '{status}': nenhum login é feito até uma pessoa reativá-lo na tela do perfil"
 
-    def _abortar_pela_conta(self, profile_id: str, attempt: int, parada: str, instance_id: str) -> AuthResult:
-        """A conta ficou parada no meio do login: nada é enviado. Não conta falha nem grava a sessão — a senha não
-        saiu, e a sessão (um desafio, talvez) é o que a pessoa precisa ver."""
+    def _parada_no_meio(self, profile_id: str, *, automatic: bool) -> tuple[str, str] | None:
+        """Relida no meio do login (antes da senha e antes do toque em Entrar): (motivo, etapa) para interromper.
+
+        - O perfil parou (`_conta_parada`): vale para qualquer chamada — conta bloqueada nunca recebe a senha.
+        - O login automático parou (credencial em `review`): vale só para o automático, que já passou pela porta do
+          começo. Revisão do pacote: com a mesma conta em dois aparelhos, o envio sem sucesso do A põe a credencial
+          em `review` enquanto o B digita o usuário; seguir enviaria a senha uma segunda vez sem ninguém ter olhado
+          (regra (e) do ADR-055). O "Conectar" é a pessoa olhando, e segue."""
+        if (parada := self._conta_parada(profile_id)) is not None:
+            return parada, "account_blocked"
+        if automatic and self._login_em_revisao(profile_id):
+            return motivo_do_login_parado(self.conhecimento.rotulo), "login_parado"
+        return None
+
+    def _abortar_pela_conta(self, profile_id: str, attempt: int, parada: str, etapa: str,
+                            instance_id: str) -> AuthResult:
+        """A conta (ou o login automático dela) parou no meio do login: nada é enviado. Não conta falha nem grava a
+        sessão — a senha não saiu, e a sessão (um desafio, talvez) é o que a pessoa precisa ver. A `etapa` está em
+        `ETAPAS_ANTES_DO_ENVIO`: a interrupção não gasta o teto diário."""
         self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=parada,
-                                      stage="account_blocked")
-        log.warning("%s: login interrompido antes da senha — %s", instance_id, parada)
+                                      stage=etapa)
+        log.warning("%s: login interrompido sem enviar a senha — %s", instance_id, parada)
         return self._recusa_sem_tocar(profile_id, instance_id, parada)
 
     def _recusa_sem_tocar(self, profile_id: str, instance_id: str, motivo: str) -> AuthResult:
