@@ -7,7 +7,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, type FiltroDoLivro } from './api';
-import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
+import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
   ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type ListaDoLivro, acoesDoItem, isEstadoDoLivro, isLivroKind,
   rotuloDoEstado, rotuloDoKind,
@@ -38,7 +38,8 @@ function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']
 /**
  * O catálogo unificado (ADR-054, decisão 3): receitas, fluxos, habilidades, memória (só a contagem) e os itens do
  * livro, com o estado, o efeito medido, o último uso e as decisões da pessoa — desligar, aposentar e reativar, sempre
- * com motivo. Habilidade tem ciclo próprio (publicar é sempre de uma pessoa, pela tela dela).
+ * com motivo. Habilidade tem ciclo próprio (publicar é sempre de uma pessoa): aqui só o caminho até ele, em
+ * Configuração → Fluxos e receitas → Habilidades; a validada também aparece na fila Para aprovar.
  */
 export function AprendidoTab() {
   const [filtro, setFiltro] = useState<FiltroDoLivro>({});
@@ -122,9 +123,7 @@ export function AprendidoTab() {
                   entrada={e}
                   acoes={acoesDoItem(e)}
                   onMudou={() => void carregar(filtro)}
-                  extra={e.kind === 'habilidade'
-                    ? <p className={styles.secaoLead}>O ciclo da habilidade (publicar, desligar) fica na aba Habilidades da persona: publicar é sempre de uma pessoa.</p>
-                    : null}
+                  extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila={false} /> : null}
                 />
               ))}
             </ul>

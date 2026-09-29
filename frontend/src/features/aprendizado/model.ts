@@ -258,6 +258,40 @@ export function acaoDeRejeitar(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoD
   return acoesDoItem(e).find((a) => a.to === 'disabled') ?? null;
 }
 
+// ---------------------------------------------------------------- habilidade na fila (a rota das habilidades)
+
+/** Onde fica o ciclo completo da habilidade no painel (`settings/FlowsRecipesSection.tsx`, seção Habilidades). */
+export const ONDE_FICAM_AS_HABILIDADES = 'Configuração → Fluxos e receitas → Habilidades';
+
+/**
+ * `skill_versions.id` = `<skill_id>@<versão>`, lido como `skills/domain/refs.py::SkillRef.parse`: parte no ÚLTIMO `@`
+ * e a versão é inteira, a partir de 1. Fora disso, `null` (e a fila não oferece botão).
+ */
+export function refDaHabilidade(ref: string): { skillId: string; version: number } | null {
+  const i = ref.lastIndexOf('@');
+  const numero = ref.slice(i + 1);
+  if (i <= 0 || !/^\d+$/.test(numero)) return null;
+  const version = Number(numero);
+  return Number.isSafeInteger(version) && version >= 1 ? { skillId: ref.slice(0, i), version } : null;
+}
+
+/**
+ * As ações da fila Para aprovar. O livro põe TODA versão de habilidade validada nesta fila (publicar é sempre de uma
+ * pessoa), mas não a move: a rota do livro devolve 409 `use_skills_route`. Então, para a habilidade, a fila oferece o
+ * passo da PESSOA no ciclo dela (`skills/domain/lifecycle.py::TRANSITIONS`: validated → published | disabled) e
+ * `aplicarTransicao` o manda pela rota das habilidades. Os outros tipos seguem a tabela do livro (`acoesDoItem`).
+ */
+export function acoesNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem[] {
+  if (e.kind !== 'habilidade') return [acaoDeAprovar(e), acaoDeRejeitar(e)].filter((a): a is AcaoDoItem => a !== null);
+  if (e.state !== 'validated' || !refDaHabilidade(e.ref)) return [];
+  return [A('published', 'Publicar', 'Confirmar publicação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
+}
+
+/** O passo "para cima" da fila, que a aprovação em lote aplica: para a habilidade validada, publicar. */
+export function acaoDeAprovarNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem | null {
+  return e.kind === 'habilidade' ? acoesNaFila(e).find((a) => a.to === 'published') ?? null : acaoDeAprovar(e);
+}
+
 /** Limite do motivo no backend (`CorpoDeStatus.reason`, 1 a 500). */
 export const MOTIVO_MAX = 500;
 

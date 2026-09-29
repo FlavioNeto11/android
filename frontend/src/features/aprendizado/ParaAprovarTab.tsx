@@ -8,8 +8,10 @@ import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '..
 import { toast } from '../../store/toasts';
 import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
-import { DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
-import { type AcaoDoItem, type EntradaDoLivro, acaoDeAprovar, acaoDeRejeitar, ordenarPendentes } from './model';
+import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
+import {
+  type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
+} from './model';
 import styles from './Aprendizado.module.css';
 
 /** "Revisar": o legado ativo com efeito só pode ser rebaixado pela pessoa (published → disabled). */
@@ -24,8 +26,10 @@ const VAZIA: Leitura = { itens: null, erro: null };
 
 /**
  * A fila do D1 (ADR-054): o que o sistema NÃO publica sozinho — tem efeito externo ou texto de pessoa — e espera o
- * dono, com a evidência ao lado e a aprovação em lote. Embaixo, "Revisar": receitas e fluxos já ativos com efeito,
- * anteriores ao D1, que continuam valendo até o dono decidir (desvio consciente do ADR-054).
+ * dono, com a evidência ao lado e a aprovação em lote. A habilidade validada também espera aqui (publicar é sempre
+ * de uma pessoa) e se decide pela rota das habilidades (`acoesNaFila`, `aplicarTransicao`). Embaixo, "Revisar":
+ * receitas e fluxos já ativos com efeito, anteriores ao D1, que continuam valendo até o dono decidir (desvio
+ * consciente do ADR-054).
  */
 export function ParaAprovarTab() {
   const [fila, setFila] = useState<Leitura>(VAZIA);
@@ -71,7 +75,9 @@ export function ParaAprovarTab() {
     for (const e of itens) {
       const acao = acaoDe(e);
       if (!acao) {
-        falhas.push(`${e.title}: não há o que aprovar neste estado`);
+        falhas.push(e.kind === 'habilidade'
+          ? `${e.title}: decida em ${ONDE_FICAM_AS_HABILIDADES}`
+          : `${e.title}: não há o que aprovar neste estado`);
         continue;
       }
       const falha = await aplicarTransicao(e, acao, motivo);
@@ -127,7 +133,7 @@ export function ParaAprovarTab() {
             rotulo="Motivo da aprovação em lote"
             acao={{ confirmar: `Confirmar aprovação de ${escolhidosFila.length}`, perigo: false }}
             onCancelar={() => setLote(null)}
-            onConfirmar={(motivo) => aplicarEmLote(escolhidosFila, acaoDeAprovar, motivo)}
+            onConfirmar={(motivo) => aplicarEmLote(escolhidosFila, acaoDeAprovarNaFila, motivo)}
           />
         ) : null}
         {fila.itens !== null && itensFila.length === 0 ? (
@@ -140,10 +146,11 @@ export function ParaAprovarTab() {
               <ItemDoLivro
                 key={chaveDoItem(e)}
                 entrada={e}
-                acoes={[acaoDeAprovar(e), acaoDeRejeitar(e)].filter((a): a is AcaoDoItem => a !== null)}
+                acoes={acoesNaFila(e)}
                 selecionado={selFila.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelFila)(e, sim)}
                 onMudou={() => void carregar()}
+                extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila /> : null}
               />
             ))}
           </ul>

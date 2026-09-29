@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CAMADAS, type EntradaDoLivro, type GrupoDeFalha, MOTIVOS, MOTIVO_DO_DESFAZER, acaoDeAprovar, acoesDoItem,
+  CAMADAS, type EntradaDoLivro, type GrupoDeFalha, MOTIVOS, MOTIVO_DO_DESFAZER, acaoDeAprovar, acaoDeAprovarNaFila,
+  acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
   rotuloDoKind, textoDoEfeito, votoDoItem,
@@ -97,6 +98,40 @@ describe('ações da pessoa (a tabela de transições do domínio)', () => {
     expect(acaoDeAprovar(entrada({ state: 'validated' }))?.to).toBe('published');
     expect(acaoDeAprovar(entrada({ state: 'published' }))).toBeNull();
     expect(acaoDeAprovar(entrada({ kind: 'habilidade', state: 'validated' }))).toBeNull();
+  });
+});
+
+describe('habilidade na fila Para aprovar (a rota das habilidades, não a do livro)', () => {
+  it('a referência é `<skill_id>@<versão>`, partida no ÚLTIMO @, com versão inteira a partir de 1 (SkillRef.parse)', () => {
+    expect(refDaHabilidade('instagram.abrir-conversa@2')).toEqual({ skillId: 'instagram.abrir-conversa', version: 2 });
+    expect(refDaHabilidade('a@b@13')).toEqual({ skillId: 'a@b', version: 13 });
+    expect(refDaHabilidade('sem-versao')).toBeNull();
+    expect(refDaHabilidade('x@')).toBeNull();
+    expect(refDaHabilidade('@2')).toBeNull();
+    expect(refDaHabilidade('x@0')).toBeNull();
+    expect(refDaHabilidade('x@1.5')).toBeNull();
+    expect(refDaHabilidade('x@-1')).toBeNull();
+    expect(refDaHabilidade('x@dois')).toBeNull();
+  });
+
+  it('validada: publicar ou rejeitar (os passos da PESSOA no ciclo da habilidade); aprovar é publicar', () => {
+    const hab = entrada({ kind: 'habilidade', ref: 'instagram.abrir-conversa@2', state: 'validated', side_effect: false });
+    expect(acoesNaFila(hab).map((a) => [a.to, a.label])).toEqual([['published', 'Publicar'], ['disabled', 'Rejeitar']]);
+    expect(acaoDeAprovarNaFila(hab)?.to).toBe('published');
+  });
+
+  it('sem referência legível ou fora de validada, a fila não oferece nada para a habilidade', () => {
+    expect(acoesNaFila(entrada({ kind: 'habilidade', ref: 'sem-versao', state: 'validated' }))).toEqual([]);
+    expect(acaoDeAprovarNaFila(entrada({ kind: 'habilidade', ref: 'sem-versao', state: 'validated' }))).toBeNull();
+    expect(acoesNaFila(entrada({ kind: 'habilidade', ref: 'x@2', state: 'published' }))).toEqual([]);
+    expect(acoesNaFila(entrada({ kind: 'habilidade', ref: 'x@2', state: 'candidate' }))).toEqual([]);
+  });
+
+  it('os outros tipos seguem a tabela do livro: aprovar (o próximo passo) e rejeitar', () => {
+    expect(acoesNaFila(entrada({ state: 'validated' })).map((a) => a.to)).toEqual(['published', 'disabled']);
+    expect(acoesNaFila(entrada({ kind: 'licao', ref: 'li-1', state: 'candidate' })).map((a) => a.to)).toEqual(['validated', 'disabled']);
+    expect(acaoDeAprovarNaFila(entrada({ state: 'validated' }))?.to).toBe('published');
+    expect(acoesNaFila(entrada({ kind: 'memoria', state: null }))).toEqual([]);
   });
 });
 

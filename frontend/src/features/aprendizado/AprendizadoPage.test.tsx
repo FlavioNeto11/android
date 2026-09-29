@@ -3,6 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { isBoolean, isString, loadJson } from '../../lib/storage';
+import { useToastStore } from '../../store/toasts';
+import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import type { EntradaDoLivro } from './model';
 
@@ -26,6 +29,11 @@ const LICAO = entrada({ kind: 'licao', ref: 'li-abc', state: 'candidate', native
 const LEGADO = entrada({ kind: 'receita', ref: '40', state: 'published', native_status: 'active', title: 'Curtir a última foto' });
 const PUBLICADO = entrada({ kind: 'fluxo', ref: 'f-9', state: 'published', native_status: 'active', side_effect: false,
                             requires_owner: false, title: 'Abrir o perfil', uses: 7 });
+// Habilidade validada: o livro põe TODA versão validada na fila do D1 (publicar é sempre de uma pessoa), mas a
+// transição vai pela rota das habilidades — a do livro devolve 409 `use_skills_route`.
+const HABILIDADE = entrada({ kind: 'habilidade', ref: 'instagram.abrir-conversa@2', native_status: 'validated',
+                             side_effect: false, origin: 'ensino', app: 'com.instagram.android',
+                             title: 'Abrir a conversa com o contato', state_at: '2026-09-26T10:00:00Z' });
 const MEMORIA = entrada({ kind: 'memoria', ref: 'ig-1', state: null, native_status: null, side_effect: false,
                           requires_owner: false, title: 'Marina Costa', count: 12 });
 
@@ -57,7 +65,7 @@ beforeEach(() => {
   window.localStorage.clear();
   backend = new FakeBackend();
   backend.install();
-  backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA, LICAO], total: 2 }));
+  backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA, LICAO, HABILIDADE], total: 3 }));
   backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [LEGADO], total: 1 }));
   backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [PUBLICADO, MEMORIA, RECEITA], total: 3,
                                                           contagem: { fluxo: { published: 1 }, memoria: { '-': 12 }, receita: { validated: 1 } } }));
@@ -67,6 +75,16 @@ beforeEach(() => {
                                                                   contagem: { tomou_controle: 1 }, dias: Number(c.query.get('dias')) }));
   backend.on('POST', /^\/api\/aprendizado\/[a-z]+\/[^/]+\/status$/, (c) => json({ item: { ...RECEITA, state: (c.body as { to: string }).to },
                                                                               evidencias: [], trilha: [], exposicoes: [] }));
+  // A rota das habilidades (§10.3): o livro a recusa com 409 `use_skills_route`, então o painel nem tenta o livro.
+  backend.on('POST', /^\/api\/aprendizado\/habilidade\//, () => json({ detail: {
+    code: 'use_skills_route', message: 'use a rota das habilidades', href: '/api/skills/instagram.abrir-conversa/versions/2/status',
+  } }, 409));
+  backend.on('POST', /^\/api\/skills\/[^/]+\/versions\/\d+\/status$/, (c) => json({
+    ref: 'instagram.abrir-conversa@2', skill_id: 'instagram.abrir-conversa', version: 2,
+    state: (c.body as { to: string }).to, history: [],
+  }));
+  useToastStore.setState({ toasts: [] });
+  useUiStore.setState({ view: 'aprendizado' });
   clipboard = vi.fn(async () => undefined);
   Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: clipboard }, configurable: true });
@@ -88,6 +106,8 @@ async function montar(): Promise<void> {
 
 const item = (ref: string) => container.querySelector(`[data-item="${ref}"]`) as HTMLElement;
 const statusCalls = () => backend.callsTo('POST', /\/status$/);
+const HAB = 'habilidade:instagram.abrir-conversa@2';
+const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
 describe('página Aprendizado', () => {
   it('tem as quatro abas, e cada uma lê a sua rota', async () => {
@@ -151,6 +171,75 @@ describe('página Aprendizado', () => {
     const porCaminho = Object.fromEntries(statusCalls().map((c) => [c.path, c.body]));
     expect(porCaminho['/api/aprendizado/receita/12/status']).toEqual({ to: 'published', reason: 'revisado em lote' });
     expect(porCaminho['/api/aprendizado/licao/li-abc/status']).toEqual({ to: 'validated', reason: 'revisado em lote' });
+  });
+
+  it('habilidade validada na fila: publicar exige motivo e vai pela rota das habilidades, nunca pela do livro', async () => {
+    await montar();
+    await waitFor(() => expect(item(HAB)).toBeTruthy());
+    const hab = item(HAB);
+    expect(text(hab)).toContain('publicar é sempre de uma pessoa');
+    await click(byRole('button', /^Publicar$/, hab));
+    await click(byRole('button', /^Confirmar publicação/, hab));
+    expect(statusCalls()).toHaveLength(0);                       // sem motivo, nada sai
+
+    await setValue(byRole('textbox', /Motivo/, hab) as HTMLInputElement, 'conferi os casos da habilidade');
+    await click(byRole('button', /^Confirmar publicação/, hab));
+    await waitFor(() => expect(statusCalls()).toHaveLength(1));
+    expect(statusCalls()[0]?.path).toBe('/api/skills/instagram.abrir-conversa/versions/2/status');
+    expect(statusCalls()[0]?.body).toEqual({ to: 'published', reason: 'conferi os casos da habilidade' });
+    expect(backend.callsTo('POST', /^\/api\/aprendizado\//)).toHaveLength(0);
+  });
+
+  it('habilidade validada na fila: rejeitar desabilita pela rota das habilidades', async () => {
+    await montar();
+    await waitFor(() => expect(item(HAB)).toBeTruthy());
+    await click(byRole('button', /^Rejeitar$/, item(HAB)));
+    await setValue(byRole('textbox', /Motivo/, item(HAB)) as HTMLInputElement, 'o comando casa com o fluxo antigo');
+    await click(byRole('button', /^Confirmar rejeição/, item(HAB)));
+    await waitFor(() => expect(statusCalls()).toHaveLength(1));
+    expect(statusCalls()[0]?.path).toBe('/api/skills/instagram.abrir-conversa/versions/2/status');
+    expect(statusCalls()[0]?.body).toEqual({ to: 'disabled', reason: 'o comando casa com o fluxo antigo' });
+  });
+
+  it('"Selecionar todos → Aprovar selecionados" decide também a habilidade, pela rota dela, sem falha falsa', async () => {
+    await montar();
+    await waitFor(() => expect(item(HAB)).toBeTruthy());
+    await click(byRole('button', /^Selecionar todos$/, fila()));
+    await click(byRole('button', /^Aprovar selecionados \(3\)/, fila()));
+    await setValue(byRole('textbox', /Motivo da aprovação em lote/, fila()) as HTMLInputElement, 'revisado em lote');
+    await click(byRole('button', /^Confirmar aprovação de 3/, fila()));
+    await waitFor(() => expect(statusCalls()).toHaveLength(3));
+    const porCaminho = Object.fromEntries(statusCalls().map((c) => [c.path, c.body]));
+    expect(porCaminho['/api/aprendizado/receita/12/status']).toEqual({ to: 'published', reason: 'revisado em lote' });
+    expect(porCaminho['/api/aprendizado/licao/li-abc/status']).toEqual({ to: 'validated', reason: 'revisado em lote' });
+    expect(porCaminho['/api/skills/instagram.abrir-conversa/versions/2/status']).toEqual({ to: 'published', reason: 'revisado em lote' });
+    await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
+    const aviso = useToastStore.getState().toasts[0];
+    expect(aviso?.tone).toBe('success');
+    expect(aviso?.title).toBe('3 de 3 item(ns) decidido(s)');
+    expect(aviso?.details ?? []).toEqual([]);
+  });
+
+  it('a habilidade na fila leva ao ciclo completo dela (Configuração → Fluxos e receitas → Habilidades)', async () => {
+    await montar();
+    await waitFor(() => expect(item(HAB)).toBeTruthy());
+    await click(byRole('button', /Configuração → Fluxos e receitas → Habilidades/, item(HAB)));
+    expect(useUiStore.getState().view).toBe('configuracao');
+    expect(loadJson('settingsSection', isString)).toBe('fluxos');
+    expect(loadJson('settings.section.habilidades', isBoolean)).toBe(true);
+  });
+
+  it('no Aprendido, a habilidade aponta para onde o ciclo dela fica, sem botão do livro', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...HABILIDADE, state: 'published', native_status: 'published' }],
+                                                            total: 1, contagem: { habilidade: { published: 1 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item(HAB)).toBeTruthy());
+    const hab = item(HAB);
+    expect(text(hab)).not.toContain('aba Habilidades da persona');
+    expect(allByRole('button', /^(Aposentar|Desligar|Reativar|Publicar)$/, hab)).toHaveLength(0);
+    await click(byRole('button', /Configuração → Fluxos e receitas → Habilidades/, hab));
+    expect(useUiStore.getState().view).toBe('configuracao');
   });
 
   it('"Revisar" mostra o legado ativo com efeito, que só a pessoa rebaixa', async () => {

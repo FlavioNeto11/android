@@ -1,17 +1,19 @@
 import { Zap } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { hintForError, toApiError } from '../../api/client';
+import { api, hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox, Field, TextInput } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt } from '../../lib/format';
+import { saveJson } from '../../lib/storage';
 import { formatClock } from '../../lib/time';
+import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ORIGEM_LABEL, erroDoMotivo,
-  porQueOSistemaNaoPublica, rotuloDoDetalhe, rotuloDoEstado, rotuloDoKind,
+  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ONDE_FICAM_AS_HABILIDADES,
+  ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoEstado, rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -61,15 +63,56 @@ export function DecisaoInline({ acao, rotulo = 'Motivo', onConfirmar, onCancelar
   );
 }
 
-/** Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log. */
+/**
+ * Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log.
+ *
+ * Habilidade vai direto pela rota das habilidades (`POST /api/skills/{id}/versions/{n}/status`): a do livro a recusa
+ * com 409 `use_skills_route`, e mandar lá primeiro só gastaria uma ida. Quem decide continua sendo a pessoa da sessão
+ * (a rota registra o operador); a recusa do domínio dela (comando duplicado, transição proibida) volta como a de
+ * qualquer item.
+ */
 export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem, 'to'>, motivo: string): Promise<string | null> {
   try {
-    await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo);
+    if (e.kind === 'habilidade') {
+      const ref = refDaHabilidade(e.ref);
+      if (!ref) return `A referência "${e.ref}" não diz a versão: decida em ${ONDE_FICAM_AS_HABILIDADES}.`;
+      await api.transitionSkill(ref.skillId, ref.version, { to: acao.to, reason: motivo });
+    } else {
+      await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo);
+    }
     return null;
   } catch (err) {
-    const api = toApiError(err);
-    return `${api.message} ${hintForError(api)}`.trim();
+    const recusa = toApiError(err);
+    return `${recusa.message} ${hintForError(recusa)}`.trim();
   }
+}
+
+/** Abre Configuração já em Fluxos e receitas, com a seção Habilidades aberta (as chaves que a página lembra, como faz
+ *  `infra/CriarAparelho.tsx` para Limites). */
+function abrirHabilidades(): void {
+  saveJson('settingsSection', 'fluxos');
+  saveJson('settings.section.habilidades', true);
+  useUiStore.getState().setView('configuracao');
+}
+
+/**
+ * O aviso da habilidade: ciclo próprio, publicar é sempre de uma pessoa. Na fila, diz o que publicar faz (a mesma regra
+ * do diálogo de Configuração); no catálogo, onde ficam as outras decisões. Nos dois, o caminho até o ciclo completo.
+ */
+export function AvisoDaHabilidade({ naFila }: { naFila: boolean }) {
+  return (
+    <p className={styles.secaoLead}>
+      {naFila
+        ? 'Habilidade tem ciclo próprio e publicar é sempre de uma pessoa: publicar aqui usa a rota das habilidades. '
+          + 'A versão publicada desta habilidade, se houver, é substituída na mesma operação; a publicação é recusada se '
+          + 'um fluxo ativo ou outra habilidade publicada tiver o mesmo comando. '
+        : 'Habilidade tem ciclo próprio e publicar é sempre de uma pessoa: publicar, recolher e desabilitar ficam em '}
+      <button type="button" className={styles.linkBtn} onClick={abrirHabilidades}>
+        {naFila ? `Ciclo completo em ${ONDE_FICAM_AS_HABILIDADES}` : ONDE_FICAM_AS_HABILIDADES}
+      </button>
+      {naFila ? '' : '.'}
+    </p>
+  );
 }
 
 function DetalheDoItem({ entrada }: { entrada: EntradaDoLivro }) {
