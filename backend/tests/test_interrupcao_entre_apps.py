@@ -244,6 +244,53 @@ async def test_reinicio_retoma_no_segundo_app_de_outro_pacote(harness: Harness, 
     assert confirma["status"] == "succeeded" and confirma["app_id"] == "qa-contas"
 
 
+async def test_etapa_de_outro_app_nao_conclui_com_o_primeiro_app_na_frente(harness: Harness,
+                                                                          contas_em_outro_pacote: None) -> None:
+    """Falha ou incerteza nunca contam como sucesso: a etapa do `qa-contas` não fecha enquanto a tela é do QA.
+
+    As duas telas são iguais (o dublê encena as mesmas no outro pacote), então a pós-condição "Conta: …" vale na tela
+    do QA também. Antes, o `step_done` do ator com o QA à frente fechava a etapa do segundo app como comprovada — a
+    conta conferida era a do app errado. Agora o executor recusa a conclusão fora do app da etapa, diz ao ator qual
+    app abrir, e a etapa só fecha depois que o pacote dela chega à frente."""
+    st = harness.state
+    assert st is not None
+    qa = st.db.one("SELECT activity FROM apps WHERE package=?", (QA,))
+    st.db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('qa-contas','QA Contas',?,?,0)",
+                  (PKG_CONTAS, qa["activity"]))
+    _persona(harness, contas={"qa-contas": CONTA_NO_SEGUNDO_APP})
+    fake = harness.fakes[IID]
+    fake.pacotes_extras = (PKG_CONTAS,)
+    inner = harness.ai.inner
+    inner.plan = _plano_que_troca_de_app(inner)
+    ler = _decide_leitura(inner, {"decisoes": 1})
+    fora: list[tuple[str, list[str]]] = []           # (etapa, histórico) de cada decisão do 2º app com o QA à frente
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.app.package != PKG_CONTAS:
+            return await ler(req)
+        if req.screen.package != PKG_CONTAS:
+            fora.append((req.ctx.step_key, list(req.history)))
+            if len(fora) == 1:                         # conclui sem abrir o app da etapa: a tela do QA "comprova"
+                return Decision(tool="step_done", args={"rationale": "a conta aparece", "evidence": "Conta: …",
+                                                        "delivery_level": None}), Usage()
+            return Decision(tool="open_app", args={"rationale": "abrir o app desta etapa", "package": None}), Usage()
+        return await ler(replace(req, screen=replace(req.screen, package=QA)))
+
+    inner.decide = decide
+    run = harness.run([IID])
+    assert (await harness.wait_run(run.id, timeout=90)).status == "completed"
+    obj = _objetivo(harness, run.id)
+    # a mesma etapa viu o QA à frente DUAS vezes: a conclusão foi recusada, e o ator soube qual app abrir
+    assert [k for k, _ in fora] == ["confirm_account", "confirm_account"]
+    assert any("step_done REJEITADA" in h and PKG_CONTAS in h for h in fora[1][1])
+    confirma = _etapas(harness, obj["id"])["v1:confirm_account"]
+    acoes = st.db.query("SELECT a.tool, a.status FROM actions a JOIN attempts t ON t.id=a.attempt_id"
+                        " WHERE t.step_id=? ORDER BY a.rowid", (confirma["id"],))
+    assert [(r["tool"], r["status"]) for r in acoes][:2] == [("step_done", "rejected"), ("open_app", "done")]
+    assert confirma["status"] == "succeeded" and confirma["attempts"] == 1
+    assert fake.foreground == PKG_CONTAS and [m.contact for m in fake.messages] == [LIDO]
+
+
 # ================================================================== pausa no meio da troca
 async def test_pausar_com_a_etapa_do_segundo_app_em_curso_e_retomar_nao_rele(harness: Harness) -> None:
     """A pausa é a interrupção que volta sozinha: a etapa do 2º app cede no ponto seguro (`yielded`, tentativa

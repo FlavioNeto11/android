@@ -81,13 +81,20 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.INTERROMPIDA, ("tentativa interrompida",)),
     (_F.AUTENTICACAO, ("pede autenticacao", "consentimento_pendente", "auth_required", "tela de login",
                        "login manualmente")),
-    (_F.CONTA_ERRADA, ("wrong_account", "conta errada", "outra conta logada")),
+    # "não há UMA conta da pessoa" (item 24.4): a etapa confere a conta e não há conta certa para conferir — é a conta
+    # da pessoa no app, não navegação; como a conta errada, fica com ela e nunca vira lição.
+    (_F.CONTA_ERRADA, ("wrong_account", "conta errada", "outra conta logada", "nao ha uma conta da pessoa")),
     (_F.PRAZO_DA_ETAPA, ("tempo da etapa esgotado", "prazo da etapa", "passou do prazo restante da etapa")),
     (_F.IA_RECUSA, ("recusou esta requisicao por politica", "recusou a requisicao por politica",
                     "recusou verificar esta etapa por politica", "recusou todas as variacoes")),
     (_F.IA_SALDO, ("sem credito", "recarregue no console", "recarregue o credito")),
     (_F.IA_ORCAMENTO, ("teto de gasto de ia", "chamadas de ia por objetivo", "orcamento de")),
-    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "nao usou collect_list", "acao da receita invalida")),
+    # O valor que a etapa entrega às seguintes (item 24.3) só existe se o ator chamar `read_value`: como o
+    # `collect_list` da coleta, deixar de ler (ou insistir em leitura inválida) é conduta do ator com a ferramenta. E
+    # concluir na tela de outro app (item 24.7) também: o executor disse qual app abrir e o ator não abriu.
+    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "nao usou collect_list", "acao da receita invalida",
+                              "concluiu a etapa sem ler o valor", "o valor da etapa nao foi lido",
+                              "entrega as seguintes nao foi lido", "concluir a etapa fora do app dela")),
     (_F.IA_INDISPONIVEL, ("ia indisponivel", "verificacao nao pode ser feita", "sem chave configurada",
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",
@@ -96,7 +103,8 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.APARELHO_TRAVADO, ("chamada ao aparelho travada", "tempo esgotado numa chamada ao aparelho")),
     (_F.SESSAO_DE_AUTOMACAO, ("sessao de automacao indisponivel", "nao foi possivel observar a tela",
                               "falhas consecutivas do driver")),
-    (_F.DEFEITO_DO_PLANO, ("defeito do plano",)),
+    # A etapa cita `{{saida:…}}` que nenhuma etapa anterior leu (item 24.3): o plano ligou mal as etapas.
+    (_F.DEFEITO_DO_PLANO, ("defeito do plano", "sem ele ter sido lido por uma etapa anterior")),
     (_F.EFEITO_NAO_COMPROVADO, ("efeito foi disparado, mas nao foi possivel compro",)),
     (_F.EFEITO_ALVO_ERRADO, ("efeito externo foi tentado no elemento errado", "controle de outra publicacao",
                              "alvo do efeito externo")),

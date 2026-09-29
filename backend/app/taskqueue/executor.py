@@ -1384,7 +1384,7 @@ class StepExecutor:
                 try:
                     decision = rep.next(obs.tree)
                     if decision is None:                       # receita esgotada: falta só comprovar
-                        if judged_step or self._postcondition_holds(step, obs, cartao):
+                        if judged_step or self._postcondition_holds(step, obs, cartao, pacote=app.package):
                             rr.completed_by_recipe = True
                             aid = repo.log_intent(attempt_id, "step_done", {"rationale": "[receita] ações reproduzidas"},
                                                   f"[receita v{rep.version}] ações reproduzidas; conferindo a pós-condição",
@@ -1398,7 +1398,8 @@ class StepExecutor:
                         raise RecipeDiverged("ações reproduzidas, mas a pós-condição não apareceu")
                     from_recipe = True
                 except RecipeDiverged as exc:
-                    if rep.done_actions == 0 and not judged_step and self._postcondition_holds(step, obs, cartao):
+                    if (rep.done_actions == 0 and not judged_step
+                            and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                         rr.completed_by_recipe = True          # o aparelho já estava no estado final desta etapa
                         break
                     rr.diverged = str(exc)
@@ -1523,6 +1524,10 @@ class StepExecutor:
                     # vai para `actions.error`. Os nomes certos são do plano.
                     erro = ("o nome informado não é valor desta etapa; os dela são: "
                             + ", ".join(f"'{n}'" for n in saidas_declaradas))
+                elif (frente := self._tela_fora_do_app(step, obs, app.package)) is not None:
+                    # Um valor lido na tela de OUTRO app seria entregue às seguintes como se fosse deste.
+                    erro = (f"a tela é do app {frente}, não do app desta etapa ({app.package}): abra-o com open_app "
+                            "antes de ler")
                 else:
                     try:
                         valor, partes, alvo = ler_valor(obs.tree, element_id=args.element_id, trecho=args.value,
@@ -1573,8 +1578,26 @@ class StepExecutor:
                 repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da tela ({args.value_kind}, "
                               f"{len(valor)} caractere(s))", run_id=run_id, instance_id=iid, step_id=step.id)
                 errors_in_row = 0
-                if not faltam and not judged_step and not obs.sensitive and self._postcondition_holds(step, obs, cartao):
+                if (not faltam and not judged_step and not obs.sensitive
+                        and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
+                continue
+            if ((isinstance(args, StepDone) or decision.tool == "collect_list")
+                    and (frente := self._tela_fora_do_app(step, obs, app.package)) is not None):
+                # Etapa entre apps (item 24.7): as telas de dois apps podem mostrar a mesma coisa ("Conta: …", a lista),
+                # e concluir ou coletar na tela do app errado seria dar por comprovado o que não foi. Recusa aqui, sem
+                # gastar tentativa nem verificação, e diz ao ator qual app abrir; `_verify` tem a mesma trava.
+                aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
+                                      side_effect=False, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected,
+                                   error=f"a tela é do app {frente}, não do app da etapa ({app.package})")
+                if from_recipe:
+                    rr.diverged = f"a tela é do app {frente}, não do app da etapa"
+                history.append(f"{decision.tool} REJEITADA: esta etapa é do app {app.package}, e a tela é do app "
+                               f"{frente} — abra o app da etapa com open_app e conclua nele.")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("A IA insistiu em concluir a etapa fora do app dela.", obs)
                 continue
             if isinstance(args, StepDone) and faltam_saidas():
                 aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
@@ -1818,7 +1841,7 @@ class StepExecutor:
                     peek = last_obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
                 except DriverError:
                     continue
-                if not peek.sensitive and self._postcondition_holds(step, peek, cartao):
+                if not peek.sensitive and self._postcondition_holds(step, peek, cartao, pacote=app.package):
                     if not faltam_saidas():
                         break
                     history.append("(executor) a pós-condição já vale, mas falta ler com read_value: "
@@ -1855,7 +1878,8 @@ class StepExecutor:
                                                                   local_proof=(cap.local_proof if cap else None),
                                                                   capability=(CapabilityRef(app.package, cap.key)
                                                                               if cap and app.package else None),
-                                                                  attempt_id=attempt_id, cartao=cartao)
+                                                                  attempt_id=attempt_id, cartao=cartao,
+                                                                  pacote=app.package)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -1934,19 +1958,37 @@ class StepExecutor:
             return False, "os itens ainda não foram coletados (collect_list)"
         return True, ""
 
-    def _postcondition_holds(self, step: StepDTO, obs: Observation, cartao: tuple[str, ...] = ()) -> bool:
+    @staticmethod
+    def _tela_fora_do_app(step: StepDTO, obs: Observation, pacote: str | None) -> str | None:
+        """O pacote à frente quando a tela NÃO é do app da etapa (`pacote`); `None` quando é, ou não há o que conferir.
+
+        Com etapas de apps diferentes no mesmo objetivo (item 24.7), duas telas podem mostrar o mesmo texto e o mesmo
+        seletor; a pós-condição comprovada na tela de outro app é sucesso falso. Pacote desconhecido nunca comprova
+        (incerteza nunca conta como sucesso); a leitura só com `package` vazio e o da etapa na árvore segue a mesma
+        regra do `app_foreground` em `_deterministic`. Ficam de fora a etapa sem pacote e a pós-condição
+        `app_foreground`, que já diz qual pacote quer à frente."""
+        if not pacote or step.postcondition.kind == "app_foreground":
+            return None
+        if obs.package == pacote or (obs.package is None and pacote in obs.tree.packages):
+            return None
+        return obs.package or "desconhecido"
+
+    def _postcondition_holds(self, step: StepDTO, obs: Observation, cartao: tuple[str, ...] = (), *,
+                             pacote: str | None) -> bool:
         """Conferência barata (sem modelo) usada pelo atalho `expect_done`; nunca vale para etapa julgada por visão.
         Com a legenda da publicação alvo (`cartao`), ela também precisa estar na tela — senão o atalho da receita
-        ("o aparelho já estava no estado final") aceitaria qualquer publicação aberta."""
+        ("o aparelho já estava no estado final") aceitaria qualquer publicação aberta. E a tela precisa ser do app da
+        etapa (`pacote`): o atalho sai do laço de ações, e sair na tela de outro app só gastaria a verificação."""
         if step.postcondition.kind == "model_judged" or step.postcondition.required_delivery_level is not None:
             return False
-        return self._deterministic(step, obs)[0] and not textos_do_cartao_ausentes(cartao, obs.tree)
+        return (self._deterministic(step, obs)[0] and not textos_do_cartao_ausentes(cartao, obs.tree)
+                and self._tela_fora_do_app(step, obs, pacote) is None)
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
-                      attempt_id: str | None = None, cartao: tuple[str, ...] = ()
+                      attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -1972,6 +2014,13 @@ class StepExecutor:
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
+            if (frente := self._tela_fora_do_app(step, obs, pacote)) is not None:
+                # A tela é de OUTRO app (etapas entre apps, item 24.7): o texto ou o seletor da pós-condição podem
+                # estar lá também, e o modelo julgaria a tela errada. Nem prova local nem modelo; segue olhando até o
+                # fim do prazo desta verificação (o app da etapa pode estar chegando à frente) e, sem ele, não comprova.
+                ok, judged = False, False
+                text = "; ".join(t for t in (text, f"a tela é do app {frente}, não do app da etapa ({pacote}): não "
+                                             "conta como prova") if t)
             pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
             if pendentes:
                 # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da beatriz foi dada por
@@ -2090,6 +2139,11 @@ class StepExecutor:
                     marcas = ", ".join(f'"{m}"' for m in achadas)
                     text = "; ".join(x for x in (text, f"a tela passou a mostrar {marcas} depois do envio") if x)
                     return False, text, level, obs, False
+                if (frente := self._tela_fora_do_app(step, obs, pacote)) is not None:
+                    # O retrato assentado já é de outro app: o "sim" de antes não vale para a etapa (item 24.7).
+                    ok = False
+                    text = "; ".join(x for x in (text, f"depois de assentar, a tela é do app {frente}, não do app da "
+                                                 f"etapa ({pacote})") if x)
                 pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
                 if pendentes:
                     # O mesmo retrato assentado com "Sending…" (ADR-055): não desmente o envio, mas também não deixa

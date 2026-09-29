@@ -822,7 +822,7 @@ class RunService:
         """O que vai ao planejador (item 24.1, ADR-058): `(catalog, catalogs, apps, pacote_das_licoes)`.
 
         Candidatos = os apps dos aparelhos mais os que o comando cita. Nenhum candidato com catálogo: plano livre, com
-        todos os apps. Um candidato só, com catálogo, e nenhum site pedido: o planejamento por catálogo de sempre.
+        todos os apps (e, com um candidato só e nenhum site, o pacote dele para as lições). Um candidato só, com catálogo, e nenhum site pedido: o planejamento por catálogo de sempre.
         Qualquer outro caso (o comando cita outro app ou pede um site, e algum candidato tem catálogo) é ENTRE APPS: os
         catálogos de todos os candidatos que têm um vão juntos, e os apps sem catálogo entram como apps de etapa livre.
 
@@ -839,10 +839,13 @@ class RunService:
         candidatos = [por_id[i] for i in dict.fromkeys(
             [a.id for a in apps_citados(comando, apps)] + [a.id for a in apps if a.id in do_aparelho]) if i in por_id]
         catalogos = {a.id: c for a in candidatos if a.id and (c := load_catalog(a.package)) is not None}
+        # O pacote das lições do planejador independe de catálogo: com UM app no pedido e nenhum site, as lições são
+        # daquele app mesmo no plano livre (antes do 24.1 era o app único dos aparelhos; sem ele, o planejador de
+        # um app sem catálogo pedia lições de app nenhum e nunca recebia as dele).
+        unico = candidatos[0] if len(candidatos) == 1 and not pede_site(comando) else None
         if not catalogos:
-            return None, {}, apps, None
-        if len(candidatos) == 1 and not pede_site(comando):
-            unico = candidatos[0]
+            return None, {}, apps, unico.package if unico else None
+        if unico is not None:
             return catalogos[str(unico.id)], {}, apps, unico.package
         ofertados = [a for a in apps if a.id in catalogos or load_catalog(a.package) is None]
         return None, catalogos, ofertados, None

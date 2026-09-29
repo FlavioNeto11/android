@@ -169,7 +169,7 @@ Como é cada etapa:
   objetivo, pós-condição, side_effect, commit_guard, precondition, timeout_s, max_attempts).
 - Use só os apps listados, e só os que o comando precisa: app que o pedido não usa fica fora do plano. Não crie
   etapa só para trocar de app: cada etapa é conduzida no app dela. `depends_on` pode citar etapa de outro app.
-- Valor lido num app e usado em outro (ex.: o perfil citado no assunto do e-mail, procurado no Instagram): quem lê é
+- Valor lido num app e usado em outro (ex.: o perfil citado no assunto do e-mail, procurado na rede social): quem lê é
   uma etapa LIVRE, com o nome em `livre.saidas`; a etapa seguinte, livre ou do catálogo, o cita como
   {{{{saida:<nome>}}}} no texto ou num argumento de `bindings`. Ação do catálogo não lê valor.
 - `app_id` do plano é o app principal: o do resultado que o comando pede.

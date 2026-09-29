@@ -67,15 +67,16 @@ def _conversa(*, status: str | None = None, no_campo: str = "Message…", bolha:
 class _Aparelho:
     """Devolve as telas na ordem, repetindo a última: é o `devices` que o `_verify` lê."""
 
-    def __init__(self, telas: list[UiTree]) -> None:
+    def __init__(self, telas: list[UiTree], frente: str = PKG) -> None:
         self.telas = telas
+        self.frente = frente            # o pacote em primeiro plano que a observação diz
         self.leituras = 0
 
     async def observe(self, rt: object, *, timeout: float, imagem: bool) -> Observation:
         tela = self.telas[min(self.leituras, len(self.telas) - 1)]
         self.leituras += 1
         return Observation(frame_id=str(self.leituras), ts="2026-09-19T21:00:00Z", width=720, height=1280, jpeg=None,
-                           tree=tela, package=PKG, sensitive=False)
+                           tree=tela, package=self.frente, sensitive=False)
 
     async def completar_imagem(self, rt: object, obs: Observation, *, timeout: float, lado_max: int) -> Observation:
         return obs
@@ -92,12 +93,13 @@ class _VerificadorQueDizSim:
         return Verdict(satisfied="yes", evidence="[teste] a mensagem aparece na conversa"), Usage()
 
 
-def _executor(tmp_path: Path, telas: list[UiTree], verificador: _VerificadorQueDizSim) -> StepExecutor:
+def _executor(tmp_path: Path, telas: list[UiTree], verificador: _VerificadorQueDizSim, *,
+              frente: str = PKG) -> StepExecutor:
     """Só o que `StepExecutor._verify` lê: config, aparelho, provedor, porta de capability e `_ai` (sem banco)."""
     ex = object.__new__(StepExecutor)
     ex.cfg = make_config(tmp_path, 1)
     ex.repo = SimpleNamespace(decision=lambda *a, **k: None)  # type: ignore[assignment]
-    ex.devices = _Aparelho(telas)  # type: ignore[assignment]
+    ex.devices = _Aparelho(telas, frente)  # type: ignore[assignment]
     ex.provider = verificador  # type: ignore[assignment]
     ex.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None))
 
@@ -130,7 +132,7 @@ async def _verificar(ex: StepExecutor, etapa: StepDTO) -> tuple[bool, str]:
     ok, texto, _nivel, _obs, _nao_comprovavel = await ex._verify(  # noqa: SLF001
         SimpleNamespace(id=IID), etapa, lambda: SimpleNamespace(step_key=etapa.key, instance_id=IID),  # type: ignore[arg-type]
         "r-dm", f"r-dm:{IID}", time.monotonic() + 1.0, 5.0, patient=True, facts=[],
-        failure_marks=tuple(cap.failure_marks), local_proof=cap.local_proof, capability=ENVIO)
+        failure_marks=tuple(cap.failure_marks), local_proof=cap.local_proof, capability=ENVIO, pacote=PKG)
     return ok, texto
 
 
@@ -186,6 +188,19 @@ async def test_sending_que_aparece_depois_do_sim_nao_vira_enviada(tmp_path: Path
     ok, texto = await _verificar(ex, _envio())
     assert not ok, texto
     assert "Sending…" in texto
+
+
+# ==================================================================== a tela de outro app não prova a etapa
+async def test_tela_de_outro_app_nao_comprova_nem_vai_ao_modelo(tmp_path: Path) -> None:
+    """Item 24.7: a mesma árvore que comprova o envio (bolha + campo vazio), mas com OUTRO pacote em primeiro plano —
+    duas telas de apps diferentes podem mostrar o mesmo texto. A etapa é do Instagram: nem a prova local nem o modelo
+    fecham a verificação, que segue olhando até o prazo e devolve "não comprovado" dizendo qual app estava à frente."""
+    verificador = _VerificadorQueDizSim()
+    ex = _executor(tmp_path, [_conversa()], verificador, frente="com.pocqa.messenger")
+    ok, texto = await _verificar(ex, _envio())
+    assert not ok, texto
+    assert verificador.chamadas == 0
+    assert "com.pocqa.messenger" in texto and PKG in texto and "árvore local" not in texto
 
 
 # ==================================================================== bolha + campo vazio = enviada

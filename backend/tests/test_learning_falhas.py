@@ -68,6 +68,21 @@ TEXTOS: list[tuple[str, FailureKind]] = [
      "14 dias, é 3–9. Parada para não girar até o prazo.", F.IA_ORCAMENTO),
     ("A IA insistiu em chamadas inválidas.", F.IA_CHAMADA_INVALIDA),
     ("A IA não usou collect_list na etapa de coleta.", F.IA_CHAMADA_INVALIDA),
+    # Saídas de etapa (item 24.3): o valor que as seguintes usam, não lido pelo ator, e a citação sem leitura anterior.
+    ("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes.", F.IA_CHAMADA_INVALIDA),
+    ("O valor da etapa não foi lido na tela: o elemento e9 não existe nesta tela", F.IA_CHAMADA_INVALIDA),
+    ("A lista foi lida, mas o valor 'assunto' que esta etapa entrega às seguintes não foi lido (read_value).",
+     F.IA_CHAMADA_INVALIDA),
+    ("Pós-condição comprovada, mas o valor 'assunto' que esta etapa entrega às seguintes não foi lido na tela "
+     "(read_value).", F.IA_CHAMADA_INVALIDA),
+    ("A etapa usa o valor 'assunto' sem ele ter sido lido por uma etapa anterior; nada foi inventado.",
+     F.DEFEITO_DO_PLANO),
+    ("A etapa confere a conta, e não há UMA conta da pessoa conhecida no app dela; nada foi conferido contra uma "
+     "conta vazia.", F.CONTA_ERRADA),
+    # Item 24.7: concluir (ou coletar) com a tela de outro app à frente.
+    ("A IA insistiu em concluir a etapa fora do app dela.", F.IA_CHAMADA_INVALIDA),
+    ("Pós-condição não comprovada: a tela é do app com.pocqa.messenger, não do app da etapa (com.pocqa.contas): não "
+     "conta como prova", F.POS_CONDICAO_NAO_COMPROVADA),
     ("O efeito externo foi tentado no elemento errado.", F.EFEITO_ALVO_ERRADO),
     ("O toque foi tentado no controle de outra publicação.", F.EFEITO_ALVO_ERRADO),
     ("Pré-condições do efeito externo não foram atendidas.", F.EFEITO_GUARDA_NAO_ATENDIDA),

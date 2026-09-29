@@ -135,6 +135,9 @@ def test_um_app_com_catalogo_sem_outro_app_segue_no_planejamento_por_catalogo() 
 def test_sem_catalogo_nenhum_o_plano_e_livre_com_todos_os_apps() -> None:
     comando = 'Abra o QA Messenger e depois o Outlook'
     assert RunService._catalogos(comando, TODOS, NO_QA) == (None, {}, TODOS, None)  # noqa: SLF001
+    # Um app só, sem catálogo: o plano é livre, mas as lições do planejador são as DELE (o pacote vai junto).
+    assert RunService._catalogos("envie oi para a ana", TODOS, NO_QA) == (None, {}, TODOS, QA)  # noqa: SLF001
+    assert RunService._catalogos("abra o site https://exemplo.test", TODOS, NO_QA)[3] is None  # noqa: SLF001
 
 
 def test_citar_outro_app_ou_um_site_nao_derruba_o_catalogo() -> None:
