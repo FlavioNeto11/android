@@ -33,6 +33,8 @@ from ..security.redaction import redact
 from ..shared.resources import Target
 from ..util import now_iso
 from .balanceamento import distribuir
+from .costuras import (SEM_COSTURAS, CosturasDeAprendizado, PedidoDeLicoes, RepeticaoDeExecucao, ResolucaoDeItem,
+                       avisar, pedir_licoes)
 from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -113,6 +115,9 @@ class RunService:
         # Serviço social (opcional): resolve perfil ↔ aparelho. Sem ele, só execução por aparelho.
         self.profiles = profiles
         self._planning: dict[str, asyncio.Task[None]] = {}
+        #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições do planejador e o aviso dos gestos
+        #: de uma pessoa (resolver um item, repetir itens). No-op por padrão; nunca mudam o que o gesto faz.
+        self.costuras: CosturasDeAprendizado = SEM_COSTURAS
 
     # ------------------------------------------------------------------ criar + planejar
     def create(self, req: RunCreate) -> RunSummary:
@@ -675,8 +680,14 @@ class RunService:
                 # O app da CONTA do aparelho não é o alvo quando o comando pede outro app ou um site (22d65f: "abra o
                 # Chrome e entre no site…" num aparelho da conta Instagram recebeu só as ações do Instagram e
                 # voltou sem etapas). Nesse caso o plano é livre.
-                catalog = (load_catalog(pacotes.pop())
-                           if len(pacotes) == 1 and not pede_outro_alvo(comando, apps, pacotes) else None)
+                unico = len(pacotes) == 1 and not pede_outro_alvo(comando, apps, pacotes)
+                alvo = next(iter(pacotes)) if unico else None
+                catalog = load_catalog(alvo) if unico else None
+                # Lições medidas do planejador (ADR-054): só quando o planejador é de fato chamado (skill ou fluxo
+                # casados não pedem), uma vez por planejamento. Falha = nenhuma lição.
+                licoes = pedir_licoes(self.costuras, PedidoDeLicoes(
+                    papel="planner", unidade=f"plan:{run_id}", run_id=run_id, app_package=alvo or "",
+                    capability="", step_hash="", simulated=bool(run["simulated"])))
                 # O planejamento passa pelo MESMO laço das demais chamadas de IA (achado #96, item 4): antes ele
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
@@ -686,7 +697,8 @@ class RunService:
                     # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
                     lambda: self.provider.plan(PlanRequest(
                         command=comando, run_id=run_id, instances=instances, apps=apps, catalog=catalog,
-                        available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])))),
+                        available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
+                        lessons=list(licoes))),
                     role="plan")
         except AIError as exc:
             if exc.kind == "refusal":
@@ -971,6 +983,12 @@ class RunService:
             self.scheduler.executor.clear_ai_breaker(run_id)   # disjuntor de conta de IA: solta para esta execução
             self.repo.recompute_run(run_id)
             self.scheduler.wake()
+            # Sinal `repetiu_execucao` (ADR-054): um por gesto — a identidade é o que foi retomado, em que versão.
+            versoes = {r["id"]: r["plan_version"] for r in self.repo.db.query(
+                f"SELECT id, plan_version FROM objectives WHERE id IN ({','.join('?' * len(retried))})",
+                tuple(retried))}
+            avisar(self.costuras.ao_repetir,
+                   RepeticaoDeExecucao(run_id, tuple(f"{oid}@{versoes.get(oid, 0)}" for oid in retried)))
         return {"retried": retried, "skipped": skipped}
 
     def _print_da_confirmacao(self, obj: Row, etapa: Row, evidence_id: int | None) -> Row | None:
@@ -1000,6 +1018,10 @@ class RunService:
             raise RunError("not_found", "Objetivo não encontrado.", 404) from None
         if obj["run_id"] != run_id or obj["status"] not in ("waiting_user", "uncertain", "failed"):
             raise RunError("invalid_state", "Este item não está aguardando decisão.")
+        # A etapa que espera a decisão, lida ANTES de agir: "repetir" revisa o plano e ela deixa de ser a vigente.
+        blocking = self.repo.db.one(
+            "SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND status IN ('uncertain','waiting_user','failed')"
+            " ORDER BY seq LIMIT 1", (objective_id, obj["plan_version"]))
         note = f" Nota: {body.note}" if body.note else ""
         if body.resolution == "abandon":
             self.repo.cancel_open_steps(run_id, objective_id=objective_id, reason="abandonado pelo usuário")
@@ -1013,9 +1035,6 @@ class RunService:
             raise RunError("needs_approval", "Este item aguarda aprovação: use Aprovar, Editar ou Rejeitar "
                                              "na tela de Aprovações.")
         else:  # confirm_done — vale como decisão do usuário, não como comprovação automática
-            blocking = self.repo.db.one(
-                "SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND status IN ('uncertain','waiting_user','failed')"
-                " ORDER BY seq LIMIT 1", (objective_id, obj["plan_version"]))
             if blocking is None:
                 raise RunError("invalid_state", "Não há etapa aguardando confirmação.")
             if blocking["status"] == "failed":
@@ -1040,6 +1059,12 @@ class RunService:
         if rt:
             rt.attention = None
             self.devices.publish(rt)
+        # Sinal do gesto (ADR-054): confirmar à mão, repetir ou abandonar, com a nota — só depois de o gesto valer.
+        # `<versão do plano>.<seq>` da etapa que esperava: dois gestos no mesmo item nunca têm a mesma chave.
+        avisar(self.costuras.ao_resolver, ResolucaoDeItem(
+            run_id=run_id, objective_id=objective_id, resolucao=body.resolution,
+            ordem=f"{obj['plan_version']}.{blocking['seq'] if blocking is not None else 0}", nota=body.note,
+            step_id=str(blocking["id"]) if blocking is not None else None))
         return self.repo.objective_dto(self.repo.objective_row(objective_id))
 
     # ------------------------------------------------------------------ relatório

@@ -79,6 +79,10 @@ class PlanRequest:
     #: aparelhos da execução. Não sigiloso vira variável `{perfil_email}`; sigiloso só existe como nome para
     #: `type_secret` — o valor nunca vai ao modelo.
     available_data: list[AvailableDatum] = field(default_factory=list)
+    #: Lições medidas do planejador (ADR-054, decisão 5): texto de modelo fechado, já cortado no teto do papel. É
+    #: contexto, nunca ordem; sem lição, o pedido é o de antes. Quem monta é a costura `licoes_para` (A2); quem põe no
+    #: prompt é o A7. O provedor que não as conhece as ignora.
+    lessons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -121,6 +125,10 @@ class DecisionRequest:
     screen: ScreenInput
     history: list[str] = field(default_factory=list)   # ações anteriores desta tentativa, em texto
     tier: int = 0                                      # 0 = modelo do ator; 1 = modelo de escalonamento
+    #: Lições medidas do ator (ADR-054, decisão 5), pedidas uma vez por tentativa. Aqui e NÃO em `StepContext`: o
+    #: verificador recebe o mesmo `StepContext` (`VerifyRequest.ctx`), e lição no juiz o empurraria a aceitar
+    #: (ADR-024). Vazio = o pedido de antes.
+    lessons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

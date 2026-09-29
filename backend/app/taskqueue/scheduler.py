@@ -16,6 +16,7 @@ from ..config import Config
 from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
+from ..modules.learning.domain.falhas import FailureKind
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
 from ..planning.catalog import capabilities_of
@@ -1681,10 +1682,14 @@ class Scheduler:
                     repo.db.execute("UPDATE actions SET status=?, effect_possible=1, error=?, done_at=? WHERE id=?",
                                     (ActionStatus.unknown.value, f"{causa}; resultado da ação desconhecido",
                                      now_iso(), a["id"]))
+                # `interrompida` qualquer que seja o texto guardado (ADR-054): o erro que sobra pode ser o anterior da
+                # própria tentativa, e quem a fechou foi a reconciliação.
                 repo.db.execute(
-                    "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(error, ?), recovery=? WHERE step_id=? AND status='running'",
+                    "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(error, ?), recovery=?, failure_kind=?"
+                    " WHERE step_id=? AND status='running'",
                     (AttemptStatus.interrupted.value, now_iso(), f"Tentativa interrompida: {causa}",
-                     "Reconciliar pelo estado real da tela antes de continuar", s["id"]))
+                     "Reconciliar pelo estado real da tela antes de continuar", FailureKind.INTERROMPIDA.value,
+                     s["id"]))
                 repo.refund_attempt(s["id"])
             fired, _ = repo.commit_state(s["id"])
             repo.transition_step(s["id"], StepStatus.ready, level="warn",

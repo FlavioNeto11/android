@@ -40,6 +40,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
                                                          registrar_conta_travada)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
@@ -409,6 +410,13 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
+        # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, responder); o gerenciador,
+        # a tomada de controle. Sem isto tudo é no-op — e nada delas decide desfecho, verificação ou guarda.
+        self.costuras = costuras_do_livro(self.learning, self.db)
+        self.scheduler.executor.costuras = self.costuras
+        self.runs.costuras = self.costuras
+        self.devices.costura_de_controle = self.costuras
         # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
         self.scheduler.executor.secrets = self.secrets
         self.scheduler.executor.sensitive_input = self.sensitive_input

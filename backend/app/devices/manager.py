@@ -28,6 +28,8 @@ from ..events import EventBus
 from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
+# A porta do aprendizado (ADR-054): só o contrato, que puxa stdlib e a árvore — nada da fila entra aqui.
+from ..taskqueue.costuras import SEM_COSTURAS, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
@@ -504,6 +506,10 @@ class DeviceManager:
         self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
         #: Modo treinamento (item 13.1): recebe cada entrada manual já executada, com a árvore da tela de ANTES.
         self.on_training_input: Callable[[DeviceRuntime, dict[str, Any], Any], None] | None = None
+        #: Aprendizado (ADR-054, A2): uma pessoa pediu o aparelho com a IA no meio de uma etapa. Só os ids — nem
+        #: árvore, nem texto, nem coordenada; as entradas manuais seguem fora (`aprendizado.takeover_gravar: false`).
+        #: Injetado pelo AppState; no-op por padrão.
+        self.costura_de_controle: CosturaDeControle = SEM_COSTURAS
         #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
@@ -3492,10 +3498,17 @@ class DeviceManager:
             return "granted", rt.lease_id
         if rt.control == ControlOwner.ai:
             # a IA termina a ação em andamento e cede num ponto seguro
-            if not rt.pending_lease_id:
+            primeiro_pedido = not rt.pending_lease_id
+            if primeiro_pedido:
                 rt.pending_lease_id = new_token()
             rt.takeover_requested = True
             self._control_event(rt, "Usuário pediu o controle; aguardando a IA concluir a ação atual")
+            atual = rt.current
+            if primeiro_pedido and atual is not None and atual.run_id and atual.step_id:
+                # Uma tomada, um aviso (o clique repetido enquanto a IA cede não é outra tomada); sem etapa em curso
+                # (trabalho exclusivo: instalar, autenticar) não há o que aprender.
+                avisar(self.costura_de_controle.tomou_controle,
+                       TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id))
             return "pending", rt.pending_lease_id
         lease = new_token()
         self._grant_user(rt, lease)

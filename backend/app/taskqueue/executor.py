@@ -46,11 +46,13 @@ from ..planning.capabilities import CONHECIMENTO_DE_APPS, capability_of, contrap
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
-from ..db import loads
+from ..db import Row, loads
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now, now_iso, parse_iso
+from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, FechamentoDeTentativa, PedidoDeLicoes,
+                       avisar, pedir_licoes)
 from .foreach import sanitize_item
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
@@ -231,6 +233,15 @@ def _inicio_monotonico(started_at: str | None, inicio_da_tentativa: float) -> fl
     return min(inicio_da_tentativa, time.monotonic() - max(0.0, (now() - inicio).total_seconds()))
 
 
+def _perfil_do_objetivo(objective: Row) -> str | None:
+    """O perfil do objetivo, quando a linha o tem (a fotografia do planejamento); nunca adivinhado."""
+    try:
+        perfil = objective["profile_id"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    return str(perfil) if perfil else None
+
+
 @dataclass(slots=True)
 class AiBreakerTrip:
     """Última vez que o disjuntor de conta de IA disparou: `/api/health` e a aba IA leem isto."""
@@ -265,6 +276,10 @@ class StepExecutor:
         #: executor é quem está olhando a tela naquele instante — antes ele devolvia `waiting_user` e deixava o
         #: perfil dizendo "Conectado". Injetado pelo AppState: (instance_id, kind, detail, subtipo=).
         self.on_auth_needed: AoDesmentirSessao | None = None
+        #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições medidas do ator (pedidas UMA vez
+        #: por tentativa, e nunca na etapa que a receita conduz) e o aviso de cada tentativa fechada. No-op por padrão;
+        #: nunca decidem desfecho, verificação nem guarda.
+        self.costuras: CosturasDeAprendizado = SEM_COSTURAS
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
@@ -665,12 +680,18 @@ class StepExecutor:
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
                 log.warning("%s: receitas indisponíveis nesta etapa: %s", rt.id, exc)
                 rr = _RecipeRun(mode="off")
+        fechada = False
         try:
             outcome = await self._run_step(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt,
                                            app=app, account_label=account_label, remaining=remaining,
                                            stop_reason=stop_reason, resumed_after_manual=resumed_after_manual, rr=rr)
+            fechada = True
         finally:
             self._registrar_estrategia(attempt_id, rr)
+            if not fechada:
+                # Saiu por exceção (o scheduler a transforma em falha): o aprendizado sabe da tentativa do mesmo jeito,
+                # uma vez, e sem desfecho que pareça sucesso.
+                self._fechar_tentativa(run, objective, step, attempt_id, rt, app, rr, None)
         if outcome.outcome in (Outcome.succeeded, Outcome.failed, Outcome.uncertain, Outcome.cancelled):
             self._reabertas_por_anr.discard(step.id)     # desfecho final: a etapa não volta a rodar com este id
         try:
@@ -680,7 +701,44 @@ class StepExecutor:
         self._settle_effect(step, outcome)
         if outcome.outcome == Outcome.succeeded:
             self._remember_screen(objective, step, rt, outcome, app)
+        self._fechar_tentativa(run, objective, step, attempt_id, rt, app, rr, outcome)
         return outcome
+
+    def _fechar_tentativa(self, run: Row, objective: Row, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
+                          app: AppContext, rr: "_RecipeRun", outcome: StepOutcome | None) -> None:
+        """Costura `ao_fechar_tentativa` (ADR-054, A2): UMA vez por tentativa, com o que já está em memória — a última
+        árvore observada inclusive (sem dump extra). Quem observa decide o que aproveita; a tela sensível e o
+        aparelho-loja vão marcados, e nada daqui volta para a etapa."""
+        try:
+            ultima = getattr(rt, "last_tree", None)
+            fechamento = FechamentoDeTentativa(
+                attempt_id=attempt_id, step_id=step.id, run_id=str(run["id"]), objective_id=str(objective["id"]),
+                instance_id=rt.id, profile_id=_perfil_do_objetivo(objective), app_package=app.package,
+                capability=step.capability, template_hash=rr.step_hash,
+                status=outcome.outcome.value if outcome is not None else SAIU_POR_EXCECAO,
+                verified=outcome is not None and outcome.outcome == Outcome.succeeded,
+                arvore=ultima if isinstance(ultima, UiTree) else None, loja=bool(getattr(rt, "store", False)),
+                simulated=bool(run["simulated"]))
+        except Exception:  # noqa: BLE001 - aprendizado é registro: nunca derruba a etapa já decidida
+            log.exception("%s: fechamento da tentativa %s não chegou ao aprendizado", rt.id, attempt_id)
+            return
+        avisar(self.costuras.ao_fechar_tentativa, fechamento)
+
+    def _licoes_da_tentativa(self, run: Row, objective: Row, step: StepDTO, attempt_id: str, app: AppContext,
+                             rr: "_RecipeRun") -> list[str]:
+        """Costura `licoes_para` (ADR-054, A2): as lições medidas do ator para ESTA etapa, pedidas uma vez por
+        tentativa, no instante da primeira consulta ao ator — a etapa que a receita conduz sem divergir nunca chega
+        aqui, então não gera lição, exposição nem custo. Falha = nenhuma lição (o prompt sai como o de antes)."""
+        try:
+            passo = rr.step_hash or str(self.repo.step_row(step.id)["template_hash"] or "")
+            pedido = PedidoDeLicoes(papel="actor", unidade=f"step:{step.id}", run_id=str(run["id"]),
+                                    app_package=app.package or "", capability=step.capability or "*", step_hash=passo,
+                                    simulated=bool(run["simulated"]), objective_id=str(objective["id"]),
+                                    step_id=step.id, attempt_id=attempt_id)
+        except Exception:  # noqa: BLE001 - lição é contexto opcional
+            log.exception("etapa %s: pedido de lições não montado (seguindo sem lição)", step.id)
+            return []
+        return pedir_licoes(self.costuras, pedido)
 
     def _registrar_estrategia(self, attempt_id: str, rr: "_RecipeRun") -> None:
         """Trilha da 045: a cadeia exercida e a receita reproduzida (só quando ela foi de fato consultada). Vale
@@ -1039,6 +1097,9 @@ class StepExecutor:
         judged_step = step.postcondition.kind == "model_judged" or need is not None
         decisions = 0
         image_requested = False
+        # Lições medidas do ator (ADR-054): pedidas na PRIMEIRA consulta ao ator desta tentativa e reusadas nas
+        # seguintes. Preguiçoso de propósito — a tentativa que a receita leva até o fim nunca pede.
+        licoes: list[str] | None = None
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
         # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
         # repetida na mesma tela.
@@ -1281,9 +1342,13 @@ class StepExecutor:
                 decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
                 rr.exerceu(StrategyKind.ai_actor)
+                if licoes is None:
+                    licoes = self._licoes_da_tentativa(run, objective, step, attempt_id, app, rr)
+                pedidas = licoes
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
-                        DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier)),
+                        DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier,
+                                        lessons=list(pedidas))),
                         step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id)
                 except AIError as exc:
                     if exc.kind == "not_configured":
