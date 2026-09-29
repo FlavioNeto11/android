@@ -3543,8 +3543,8 @@ class DeviceManager:
         if rt.control == ControlOwner.ai:
             # a IA termina a ação em andamento e cede num ponto seguro
             primeiro_pedido = not rt.pending_lease_id
-            if primeiro_pedido:
-                rt.pending_lease_id = new_token()
+            pendente = rt.pending_lease_id or new_token()
+            rt.pending_lease_id = pendente
             rt.takeover_requested = True
             self._control_event(rt, "Usuário pediu o controle; aguardando a IA concluir a ação atual")
             atual = rt.current
@@ -3553,7 +3553,7 @@ class DeviceManager:
                 # (trabalho exclusivo: instalar, autenticar) não há o que aprender.
                 avisar(self.costura_de_controle.tomou_controle,
                        TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id))
-            return "pending", rt.pending_lease_id
+            return "pending", pendente
         lease = new_token()
         self._grant_user(rt, lease)
         return "granted", lease
