@@ -8,18 +8,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from functools import partial
 
-from app.config import LearningCfg
+from app.config import PROJECT_ROOT, BacklogCfg, LearningCfg
 from app.db import Database
+from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.ports import Ajustes, Retencao
 from app.modules.learning.application.servico import LearningService
+from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
 from app.modules.learning.infrastructure import ligar_costuras, ligar_nativos, ligar_telas, ligar_voz
 from app.modules.learning.infrastructure.fontes import FontesSql
+from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.util import now
+from app.version import commit_em_execucao
 
 
 def ajustes_do_config(cfg: LearningCfg) -> Ajustes:
@@ -54,13 +59,29 @@ class GuardaDoFluxo:
         return None
 
 
+def regras_do_backlog(cfg: BacklogCfg) -> RegrasDoBacklog:
+    return RegrasDoBacklog(minimo_ocorrencias=cfg.minimo_ocorrencias, pessoa_usd=cfg.pessoa_usd,
+                           aparelho_usd_min=cfg.aparelho_usd_min, prova_minimo=cfg.prova_minimo,
+                           prova_fator=cfg.prova_fator)
+
+
 def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], retencao_de_logs_dias: Callable[[], int],
                        precos: Callable[[], dict[str, list[float]]], habilidades: SqlSkillRepository | None = None,
-                       relogio: Callable[[], datetime] = now) -> LearningService:
+                       relogio: Callable[[], datetime] = now,
+                       commit: Callable[[], str | None] | None = None) -> LearningService:
+    """`commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
+    backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`)."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     servico = LearningService(repo, FontesSql(db), TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias)
+    # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
+    falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
+                             TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),
+                             relogio=relogio, commit=commit or partial(commit_em_execucao, PROJECT_ROOT),
+                             contagem_do_livro=lambda: servico.livro().contagem)
+    servico.anexar(falhas)
+    servico.registrar_passo(falhas)
     for ligar in (ligar_costuras.ligar, ligar_nativos.ligar, ligar_telas.ligar, ligar_voz.ligar):
         ligar(servico)
     return servico

@@ -86,6 +86,7 @@ class LearningService:
         self._retencao_de_logs = retencao_de_logs_dias
         self._mineradores: list[Minerador] = list(mineradores)
         self._passos: list[PassoDeCuradoria] = list(passos)
+        self._extensoes: list[object] = []
 
     @property
     def ajustes(self) -> Ajustes:
@@ -96,6 +97,17 @@ class LearningService:
 
     def registrar_passo(self, passo: PassoDeCuradoria) -> None:
         self._passos.append(passo)
+
+    def anexar(self, extensao: object) -> None:
+        """O serviço de um pacote seguinte (A3–A9), pendurado aqui pela composição: a apresentação o acha pelo tipo
+        (`extensao`), sem o `AppState` conhecer cada um."""
+        self._extensoes.append(extensao)
+
+    def extensao[T](self, tipo: type[T]) -> T | None:
+        for e in self._extensoes:
+            if isinstance(e, tipo):
+                return e
+        return None
 
     # ================================================================== leitura única
     def livro(self, *, kind: LivroKind | None = None, state: SkillState | None = None, app: str | None = None,
