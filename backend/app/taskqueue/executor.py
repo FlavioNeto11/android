@@ -52,7 +52,7 @@ from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavai
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now, now_iso, parse_iso
 from .foreach import sanitize_item
-from .proofs import variantes_de_arroba
+from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
@@ -1688,6 +1688,7 @@ class StepExecutor:
         judged_sig: str | None = None
         verdict_text, level, obs = "", None, None
         escalou = False                            # no máximo UM rejulgamento escalado por verificação (item 7.10)
+        marcas_pendentes = self._marcas_pendentes(capability)
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
@@ -1702,6 +1703,16 @@ class StepExecutor:
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
+            pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
+            if pendentes:
+                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da beatriz foi dada por
+                # enviada com "Sending…" congelado: a bolha e o campo limpo já estavam lá, e o modelo disse "sim". Nem
+                # a prova local nem o modelo são consultados; segue olhando até o fim do prazo desta verificação (o
+                # app costuma sair de "Sending…" em 1–2 s). Sem sair, o efeito disparado fica incerto.
+                ok, judged = False, False
+                text = "; ".join(t for t in (text, "envio pendente: a tela ainda mostra "
+                                             + ", ".join(f'"{m}"' for m in pendentes)
+                                             + " — pendente não conta como feito, e o modelo não é consultado") if t)
             ausentes = textos_do_cartao_ausentes(cartao, obs.tree)
             legendas = ", ".join(f'"{c}"' for c in cartao)
             if ausentes:
@@ -1725,8 +1736,9 @@ class StepExecutor:
             if judged and need is None and local_proof and await self._prova_local(step, capability, obs):
                 ok, judged = True, False
                 text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
-                        if local_proof != "sent_text" else
-                        "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita")
+                        if not local_proof.startswith("sent_text") else
+                        "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita"
+                        + (", sem marca de envio pendente" if marcas_pendentes else ""))
                 if cartao:
                     # Com legenda, a prova só casa o elemento do CARTÃO dela (`proofs.local_proof_holds`); a evidência
                     # diz, em vez de parecer que só o seletor foi conferido.
@@ -1797,7 +1809,7 @@ class StepExecutor:
                     if verdict.satisfied == "unprovable":      # esperar ou rejulgar não muda nada: sai já, sem 2ª chamada
                         return False, "; ".join(t for t in (text, verdict_text) if t), level, obs, True
                 text = "; ".join(t for t in (text, verdict_text) if t)
-            if ok and failure_marks:
+            if ok and (failure_marks or marcas_pendentes):
                 # Um "sim" no primeiro retrato é UI otimista: no app de mensagem o balão aparece e o campo
                 # limpa ANTES de o servidor confirmar — a marca de falha só chega depois. Assenta e
                 # reconfere por TEXTO (sem gastar outra chamada de modelo) antes de dar a etapa por provada.
@@ -1809,9 +1821,27 @@ class StepExecutor:
                     marcas = ", ".join(f'"{m}"' for m in achadas)
                     text = "; ".join(x for x in (text, f"a tela passou a mostrar {marcas} depois do envio") if x)
                     return False, text, level, obs, False
+                pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
+                if pendentes:
+                    # O mesmo retrato assentado com "Sending…" (ADR-055): não desmente o envio, mas também não deixa
+                    # o "sim" valer. Segue olhando até o prazo; se a marca sumir, a prova se refaz na próxima leitura.
+                    ok = False
+                    text = "; ".join(x for x in (text, "depois de assentar, a tela mostra "
+                                                 + ", ".join(f'"{m}"' for m in pendentes)
+                                                 + ": envio pendente, não conta como feito") if x)
             if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+
+    @staticmethod
+    def _marcas_pendentes(capability: CapabilityRef | None) -> tuple[str, ...]:
+        """As `pending_marks` que o catálogo declara para a ação desta etapa ("Sending…" no SEND_MESSAGE, ADR-055).
+
+        Lidas pela referência de capability que o `_run_step` já entrega ao `_verify`: acrescentar uma marca no
+        catálogo não pede fiação nova. Etapa sem catálogo (QA Messenger, plano livre) não tem marca: o "Enviando…"
+        dele continua julgado como sempre."""
+        cap = capability_of(capability.app, capability.key) if capability is not None else None
+        return tuple(m for m in cap.pending_marks if m) if cap is not None else ()
 
     async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation) -> bool:
         """A prova local pela porta `CapabilityProvider.verify` (fase G). `proved` é o atalho de sempre.

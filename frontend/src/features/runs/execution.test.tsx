@@ -2,7 +2,8 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Approval, RunDetail, UsageReport } from '../../api/types';
+import type { Approval, Evidence, RunDetail, UsageReport } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
 import { ACTION, ATTEMPT, RUN_ID, makeRunDetail } from '../../test/fixtures';
 import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { InstancesTab } from './InstancesTab';
@@ -108,6 +109,54 @@ describe('Por aparelho — selos de receita e rodízio', () => {
     expect(text(actions[0]!)).toContain('Passo gravado na receita'); // sem rationale, mas veio da receita
     expect(text(actions[1]!)).toContain('Tocar em Enviar');
     expect(text(actions[1]!)).not.toMatch(/\breceita\b/);
+  });
+});
+
+describe('Marcar como concluído cita o print (ADR-055)', () => {
+  /** android-01 incerto no envio (efeito externo): a DM que o verificador não conseguiu provar. */
+  function detailIncerto(evidencias: Evidence[]): RunDetail {
+    const base = makeRunDetail();
+    const [openApp, send, ...resto] = base.steps;
+    return {
+      ...base,
+      objectives: [{ ...base.objectives[0]!, status: 'uncertain', needs: null, blocked_reason: null,
+                     status_detail: 'O efeito foi disparado, mas não foi possível comprová-lo' }, base.objectives[1]!],
+      steps: [openApp!, { ...send!, status: 'uncertain' }, ...resto],
+      evidence: evidencias,
+    };
+  }
+  const envio = `${RUN_ID}:android-01:v1:send`;
+  const print = (id: number, over: Partial<Evidence> = {}): Evidence => ({
+    id, run_id: RUN_ID, instance_id: 'android-01', step_id: envio, attempt_id: 'att-2', ts: '2026-09-19T21:00:00.000Z',
+    kind: 'screenshot', note: 'Pós-condição NÃO comprovada', url: `/api/evidence/${id}`, redacted: false, ...over,
+  });
+
+  it('cita o print mais recente da etapa parada e manda o id dele junto da decisão', async () => {
+    backend.on('POST', /\/objectives\/[^/]+\/resolve$/, () => json({ ...makeRunDetail().objectives[0]!, status: 'running' }));
+    const el = await render(<><InstancesTab detail={detailIncerto([
+      print(10), print(11), print(12, { url: null, redacted: true }), print(13, { kind: 'verifier', url: null }),
+      print(14, { step_id: `${RUN_ID}:android-01:v1:open_app` }),
+    ])} /><ConfirmHost /></>);
+    await click(byRole('button', /Marcar como concluído/, el));
+    const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
+    expect(text(dialogo)).toContain('print #11');           // o último print COM imagem da etapa a confirmar
+    expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(0);
+    await click(byRole('button', /Sim, está concluído/, dialogo));
+    await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { resolution: string; evidence_id?: number };
+    expect(corpo).toMatchObject({ resolution: 'confirm_done', evidence_id: 11 });
+  });
+
+  it('etapa com efeito externo sem print avisa que a confirmação será recusada e não inventa um id', async () => {
+    backend.on('POST', /\/objectives\/[^/]+\/resolve$/, () => apiError(422, 'evidence_required', 'indique o print'));
+    const el = await render(<><InstancesTab detail={detailIncerto([print(12, { url: null, redacted: true })])} /><ConfirmHost /></>);
+    await click(byRole('button', /Marcar como concluído/, el));
+    const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
+    expect(text(dialogo)).toContain('não há print');
+    await click(byRole('button', /Sim, está concluído/, dialogo));
+    await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { evidence_id?: number };
+    expect(corpo.evidence_id).toBeUndefined();
   });
 });
 

@@ -97,6 +97,9 @@ class SideEffectContract:
     interaction_type: str | None = None
     #: Textos que, visíveis depois do efeito, provam que ele NÃO valeu.
     failure_marks: tuple[str, ...] = ()
+    #: Textos que, enquanto visíveis, dizem que o efeito ainda está a caminho ("Sending…"): não desmentem nem
+    #: comprovam. Nenhuma prova (local ou do modelo) fecha a etapa com um deles na tela (ADR-055, DM de 19/09).
+    pending_marks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

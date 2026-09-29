@@ -217,7 +217,8 @@ interface Step {
   status: StepStatus; status_detail: string | null;
   next_retry_at: string | null;
   started_at: string | null; finished_at: string | null;
-  result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel } | null;
+  // `evidence_id`: na confirmação manual, o print em que a pessoa se baseou (ADR-055)
+  result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null } | null;
   claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | null;   // v0.2 — quem decidiu as ações da etapa
 }
@@ -1539,7 +1540,9 @@ export interface RetryFailedResponse {
 }
 
 export type Resolution = 'confirm_done' | 'retry' | 'abandon';
-export interface ResolveRequest { resolution: Resolution; note?: string }
+/** `evidence_id`: o print (evidência `screenshot` do item) em que a confirmação se baseia. O servidor o exige no
+ * `confirm_done` de etapa com efeito externo (ADR-055): só nota livre não dizia que tela a pessoa viu. */
+export interface ResolveRequest { resolution: Resolution; note?: string; evidence_id?: number }
 
 /**
  * `GET /api/runs/{id}/report` — o contrato só fixa as chaves de topo; o conteúdo interno é livre,

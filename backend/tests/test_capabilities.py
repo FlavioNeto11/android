@@ -1255,11 +1255,17 @@ async def test_confirmar_concluido_tambem_fecha_a_interacao_no_historico(harness
         run_id="run-c", objective_id="run-c:android-01", step_id="run-c:android-01:v1:send_1",
         counterparty="@ana", thread_key="@ana", outgoing_content="boa noite")
 
-    state.runs.resolve("run-c", "run-c:android-01", ResolveBody(resolution="confirm_done", note="vi sair no aparelho"))
+    # ADR-055: etapa com efeito externo só se confirma citando o print em que a pessoa se baseou
+    eid = state.runs.repo.add_evidence(run_id="run-c", instance_id="android-01", step_id="run-c:android-01:v1:send_1",
+                                       attempt_id=None, kind="screenshot", note="Pós-condição NÃO comprovada",
+                                       data=b"\xff\xd8jpeg")
+    state.runs.resolve("run-c", "run-c:android-01", ResolveBody(resolution="confirm_done", note="vi sair no aparelho",
+                                                                evidence_id=eid))
 
     linha = state.social_repo.interaction_row(pid, iid)
     assert linha["status"] == "confirmed"                       # o histórico deixa de dizer "não se sabe"
     assert "usuário" in (linha["evidence"] or "").lower()       # e registra que quem provou foi uma pessoa
+    assert f"#{eid}" in (linha["evidence"] or "")               # e em que print ela se baseou
     # o que a confirmação destrava: relacionamento e conversa passam a contar esta mensagem
     assert db.one("SELECT 1 FROM relationship_summaries WHERE profile_id=? AND counterparty=?", (pid, "@ana"))
     assert db.one("SELECT 1 FROM thread_summaries WHERE profile_id=? AND thread_key=?", (pid, "@ana"))

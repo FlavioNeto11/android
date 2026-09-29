@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { api } from '../../api/client';
-import type { Objective, Resolution, RetryFailedResponse, RunMode, RunSummary } from '../../api/types';
+import type { Evidence, Objective, Resolution, RetryFailedResponse, RunMode, RunSummary } from '../../api/types';
 import { confirm } from '../../components/Confirm';
+import { formatClock } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { refreshSelectedRun } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
@@ -107,14 +108,30 @@ const RESOLUTION_COPY: Record<Resolution, { title: string; confirmLabel: string;
   abandon: { title: 'Abandonar este objetivo?', confirmLabel: 'Abandonar objetivo', danger: true, ok: 'Objetivo abandonado' },
 };
 
-export async function resolveObjective(objective: Objective, resolution: Resolution): Promise<boolean> {
+/**
+ * O que o "Marcar como concluído" cita (ADR-055): o print mais recente da etapa a confirmar e se ela tem efeito
+ * externo. Numa etapa com efeito, o servidor exige o print — nota livre sozinha não diz que tela a pessoa viu.
+ */
+export interface Confirmacao {
+  print: Evidence | null;
+  efeitoExterno: boolean;
+}
+
+export async function resolveObjective(objective: Objective, resolution: Resolution,
+                                       confirmacao?: Confirmacao): Promise<boolean> {
   const copy = RESOLUTION_COPY[resolution];
   const uncertain = objective.status === 'uncertain';
   const hasEffects = (objective.effects?.length ?? 0) > 0;
+  const print = resolution === 'confirm_done' ? (confirmacao?.print ?? null) : null;
 
   const paragraphs: string[] = [];
   if (resolution === 'confirm_done') {
     paragraphs.push(`Você confirma que verificou ${objective.instance_id} e que o objetivo foi atingido. O objetivo passa a contar como sucesso.`);
+    if (print) {
+      paragraphs.push(`A confirmação fica registrada com o print #${print.id} (captura de ${formatClock(print.ts)}, aba Evidências). Confira nele o resultado: com “Sending…”/“Enviando…” a mensagem ainda está pendente, não enviada.`);
+    } else if (confirmacao?.efeitoExterno) {
+      paragraphs.push('Esta etapa tem efeito externo e não há print dela para citar: sem ele a confirmação é recusada. Use “Tentar novamente” ou “Abandonar”.');
+    }
   } else if (resolution === 'retry') {
     paragraphs.push(`A IA volta a trabalhar neste objetivo em ${objective.instance_id}, a partir da tela atual.`);
     if (uncertain || hasEffects) {
@@ -135,7 +152,11 @@ export async function resolveObjective(objective: Objective, resolution: Resolut
   if (!confirmed) return false;
 
   try {
-    const updated = await api.resolveObjective(objective.run_id, objective.id, note ? { resolution, note } : { resolution });
+    const updated = await api.resolveObjective(objective.run_id, objective.id, {
+      resolution,
+      ...(note ? { note } : {}),
+      ...(print ? { evidence_id: print.id } : {}),
+    });
     useAppStore.getState().upsertObjective(updated);
     toast({ tone: 'success', title: `${copy.ok} — ${objective.instance_id}` });
     return true;

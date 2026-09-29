@@ -1656,6 +1656,10 @@ class ResolveBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     resolution: Literal["confirm_done", "retry", "abandon"]
     note: str | None = Field(default=None, max_length=500)
+    #: O print (evidência `screenshot` deste item) em que a pessoa se baseou para confirmar. Obrigatório no
+    #: `confirm_done` de etapa com efeito externo (ADR-055): em 19/09 a DM confirmada só com nota livre não dizia QUE
+    #: tela a pessoa viu — e a da beatriz estava com "Sending…" congelado.
+    evidence_id: int | None = Field(default=None, ge=1)
 
 
 class RunCounts(BaseModel):
@@ -1694,6 +1698,7 @@ class StepResult(BaseModel):
     delivery_level: DeliveryLevel | None = None
     driven_by: str | None = None              # ai | recipe | recipe+ai
     items: list[str] | None = None            # etapa de coleta: itens lidos da tela
+    evidence_id: int | None = None            # confirmação manual: o print em que a pessoa se baseou (ADR-055)
 
 
 class StepDTO(BaseModel):

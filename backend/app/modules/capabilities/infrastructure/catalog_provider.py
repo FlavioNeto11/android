@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from app.automation.hierarchy import UiTree
 from app.planning.capabilities import guardas_do_cartao
-from app.taskqueue.proofs import local_proof_holds
+from app.taskqueue.proofs import local_proof_holds, marcas_pendentes_na_tela
 
 from ..domain.definition import CapabilityRef, PostconditionKind
 from ..domain.strategy import StrategyContext, StrategyResult
@@ -78,6 +78,12 @@ class CatalogCapabilityProvider:
         if marcas:
             return VerifyResult(VerifyOutcome.not_proved,
                                 "a tela mostra " + ", ".join(f'"{m}"' for m in marcas) + " depois do efeito")
+        # Efeito a caminho ("Sending…"): antes da prova local, porque a bolha com o texto e o campo limpo também estão
+        # na tela enquanto o app ainda envia — foi assim que a DM da beatriz passou por enviada em 19/09 (ADR-055).
+        pendentes = marcas_pendentes_na_tela(definicao.side_effect.pending_marks, tela)
+        if pendentes:
+            return VerifyResult(VerifyOutcome.pending, "envio pendente: a tela ainda mostra "
+                                + ", ".join(f'"{m}"' for m in pendentes) + " (pendente não conta como feito)")
         if definicao.postcondition.kind is not PostconditionKind.model_judged:
             # Pós-condição determinística (seletor, texto, app em primeiro plano) é conferida pelo executor
             # (`_deterministic`, e a legenda de `card_guard` junto); a prova local só existe como atalho do

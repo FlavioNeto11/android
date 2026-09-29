@@ -5,6 +5,10 @@ indisponível cai para o modelo, como sempre — a prova local nunca reprova soz
 
 - `sent_text`: o `content` da etapa apareceu num elemento não editável e sumiu do campo de escrita
   (`UiTree.sent_as_message`, achado #102);
+- `sent_text:<seletor>`: o mesmo, com o campo de escrita DA CONVERSA declarado — ele precisa estar na tela e sem o
+  texto. É o critério objetivo da DM (ADR-055): bolha com o texto e campo vazio = enviada. Sem o campo na tela, não
+  dá para dizer que ele está vazio, e a árvore não afirma. A marca de pendente ("Sending…", `pending_marks`) é
+  conferida por quem chama, antes desta prova: bolha com "Sending…" embaixo também passaria aqui;
 - `selector:<seletor>`: algum elemento casa o seletor (`id=`, `desc=`, `text=`; `==` casa exato; `|` une partes
   no mesmo elemento). `{username}` e afins são resolvidos pelos bindings da etapa; `text=@ana` também casa "ana".
   `&` exige vários seletores na mesma tela, cada um no seu elemento: `text=={username}&id=composer` (27/09);
@@ -21,10 +25,12 @@ Medido em 19-24/09: 207 chamadas de verificação para 158 etapas julgadas; boa 
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from ..automation.hierarchy import UiTree
 from ..planning.capabilities import LOCAL_PROOFS, local_proof_error  # noqa: F401  (a gramática mora no catálogo)
+from ..util import norm_text
 from .repository import resolve_templates
 
 
@@ -40,16 +46,37 @@ def variantes_de_arroba(term: str) -> tuple[str, ...]:
     return (t, t[1:]) if t.startswith("@") and len(t) > 1 else (t,)
 
 
+def marcas_pendentes_na_tela(marcas: Iterable[str], tree: UiTree) -> list[str]:
+    """As marcas de efeito PENDENTE (`pending_marks` do catálogo, ex.: "Sending…") visíveis nesta tela.
+
+    Por texto, como as marcas de falha: qualquer elemento, texto ou descrição. Não se exclui a bolha que traz o
+    conteúdo: o Instagram pode juntar mensagem e status na mesma descrição de acessibilidade, e excluí-la daria por
+    enviada justamente a DM pendente. O preço é o lado seguro: uma DM cujo texto contenha "Sending…" fica pendente
+    até o prazo e vira incerta, nunca enviada sem prova."""
+    return [m for m in marcas if m and tree.contains_text(m)]
+
+
 def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool | None:
     """`True` = comprovado pela árvore, sem modelo. `False`/`None` = não dá para afirmar: o chamador julga pelo
     modelo, como antes. Nunca vira reprovação por si só."""
     if not local_proof:
         return None
     bindings = {k: str(v) for k, v in (getattr(step, "bindings", None) or {}).items() if v is not None}
-    if local_proof == "sent_text":
-        conteudo = bindings.get("content")
-        return tree.sent_as_message(conteudo) if conteudo else None
     tipo, _, bruto = local_proof.partition(":")
+    if tipo == "sent_text":
+        conteudo = bindings.get("content")
+        if not conteudo:
+            return None
+        if bruto:
+            campo = resolve_templates(bruto.strip(), bindings) or ""
+            if not campo or "{" in campo:
+                return None
+            compositores = tree.find_proof(campo, variants=variantes_de_arroba)
+            # O campo de escrita da conversa precisa ESTAR na tela para se dizer que está vazio; com o texto ainda
+            # nele, a mensagem não saiu (a dica "Message…" do campo vazio não contém o texto).
+            if not compositores or any(norm_text(conteudo) in norm_text(c.text) for c in compositores):
+                return False
+        return tree.sent_as_message(conteudo)
     # O `&` é separado ANTES de resolver as variáveis: um valor de binding nunca vira operador da prova.
     seletores = [resolve_templates(p.strip(), bindings) or "" for p in bruto.split("&")]
     if any(not s or "{" in s for s in seletores):     # variável sem valor nesta etapa: não há o que provar

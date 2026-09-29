@@ -1,4 +1,4 @@
-import type { Attempt, EventRecord, Objective, RunDetail, RunSummary, Step } from '../../api/types';
+import type { Attempt, EventRecord, Evidence, Objective, RunDetail, RunSummary, Step } from '../../api/types';
 import type { StackedSegment } from '../../components/ProgressBar';
 import { isRecord } from '../../lib/format';
 
@@ -45,6 +45,27 @@ export function headlineStep(steps: readonly Step[]): Step | null {
   const next = steps.find((s) => s.status === 'ready' || s.status === 'pending');
   if (next) return next;
   return steps.length > 0 ? (steps[steps.length - 1] ?? null) : null;
+}
+
+/** A etapa que o "Marcar como concluído" fecha: a primeira da versão atual parada (incerta, aguardando ou com falha)
+ *  — a mesma consulta do servidor (`RunService.resolve`). */
+export function etapaAConfirmar(detail: RunDetail, objective: Objective): Step | null {
+  return currentSteps(detail, objective).find((s) => s.status === 'uncertain' || s.status === 'waiting_user' || s.status === 'failed') ?? null;
+}
+
+/**
+ * O print que a confirmação manual cita (ADR-055): a captura de tela MAIS RECENTE da etapa a confirmar, com imagem.
+ * Em 19/09 uma DM confirmada só com nota livre não dizia que tela a pessoa viu — e a da beatriz estava com "Sending…"
+ * congelado. `null` quando a etapa não tem print; numa etapa com efeito externo o servidor então recusa a confirmação.
+ */
+export function printParaConfirmar(detail: RunDetail, objective: Objective): Evidence | null {
+  const etapa = etapaAConfirmar(detail, objective);
+  if (!etapa) return null;
+  let ultimo: Evidence | null = null;
+  for (const e of detail.evidence) {
+    if (e.step_id === etapa.id && e.kind === 'screenshot' && e.url && (!ultimo || e.id > ultimo.id)) ultimo = e;
+  }
+  return ultimo;
 }
 
 export function isBlocked(o: Pick<Objective, 'status'>): boolean {
