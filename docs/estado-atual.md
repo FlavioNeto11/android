@@ -35,8 +35,8 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     - o 503 do saldo era o incidente da Anthropic (22.8);
     - 28 worktrees removidos com segurança (22.9).
   - **Provas:** simuladas em quase tudo; nenhum gesto real foi fabricado. O SQL novo passou em PostgreSQL 17 real
-    (subconjunto, 656 ok). A suíte inteira em PostgreSQL roda depois da implantação (resultado no §25).
-  - **Docker/WSL:** ligados para a suíte em PostgreSQL, a desligar quando ela terminar. O contêiner rápido `farm-pg-rapido` (dados em
+    (subconjunto, 656 ok). A suíte inteira em PostgreSQL 17 deu 3497 ok e só a falha de ambiente do `test_backup` (1 h 33 min).
+  - **Docker/WSL:** ligados para a suíte em PostgreSQL e desligados às ~18:41Z. O contêiner rápido `farm-pg-rapido` (dados em
     memória, só `127.0.0.1:55434`) é o jeito de rodar a suíte aqui; o `farm-pg` com disco faz ~7 testes/min.
   - **Decisões do dono:**
     - trilha da adoção: registro do gesto (atual) ou acessória;

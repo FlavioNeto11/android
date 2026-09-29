@@ -1888,7 +1888,11 @@ duas. A ação foi para a aba "Por aparelho" da execução.
 - A correção de ensino real (22.7): o central não tem execução de habilidade com etapa `failed`/`uncertain` (as 3
   execuções de habilidade terminaram bem).
 
-Nenhum desses gestos foi fabricado. A suíte inteira em PostgreSQL roda depois desta seção e é registrada no fechamento.
+Nenhum desses gestos foi fabricado.
+
+**Suíte inteira em PostgreSQL 17 (`simulated`, servidor real no contêiner rápido, 29/09 17:06–18:40Z, `b34e2f6`):**
+3497 ok, 9 pulados e 1 falha de ambiente (`test_backup`, a mesma do SQLite), em 1 h 33 min em prioridade ociosa.
+Depois, o Docker Desktop foi fechado e o WSL desligado (`wsl --shutdown`).
 
 **Decisões do dono que a Fase 22 abriu.**
 
