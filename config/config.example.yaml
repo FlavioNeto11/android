@@ -173,6 +173,8 @@ ai:
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo; false = nunca
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
+  recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
+                                  # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro

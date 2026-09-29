@@ -37,7 +37,8 @@ def _defeito(condicao: bool, mensagem: str) -> None:
 
 # ------------------------------------------------------------------ privacidade dos rótulos (C5)
 _VOCABULARIO = {
-    "receita.consulta": {"resultado": {"encontrada", "ausente", "quarentena"}},
+    # `candidata`: a receita em prova (test_receita_candidata) — achada, mas a IA decide e ela só é comparada
+    "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena"}},
     "receita.reproducao": {"resultado": {"ok", "divergiu"}},
     "receita.retorno_ia": {"motivo": {m for _, m in _MOTIVOS_DO_RETORNO} | {"outro"}},
     "pathfinder.desfecho": {"resultado": {"aprendeu", "falhou", "expirou", "liberado"}},

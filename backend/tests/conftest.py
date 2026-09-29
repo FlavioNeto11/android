@@ -59,7 +59,11 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                    # T.2 (achado #164, fatia que faltava): o poll de `_wait_boot` (boot_completed/ui_ready) era
                    # o último `sleep` fixo do laço de boot; vira configurável do mesmo jeito, e cai aqui junto.
                    "boot_poll_s": 0.01},
-        "ai": {"effect_settle_s": 0, "action_settle_s": 0, "recipe_settle_s": 0, "judge_wait_s": 0.05},
+        # `recipes_promote_after: 0`: a suíte que prova a REPRODUÇÃO (aprende no 1º aparelho, repete no 2º) segue com a
+        # receita nascendo ativa; a prova por repetição da candidata tem os testes próprios (test_receita_candidata),
+        # que ligam o valor de produção (2).
+        "ai": {"effect_settle_s": 0, "action_settle_s": 0, "recipe_settle_s": 0, "judge_wait_s": 0.05,
+               "recipes_promote_after": 0},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
         # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que

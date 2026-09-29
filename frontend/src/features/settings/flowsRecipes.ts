@@ -1,4 +1,4 @@
-import { CircleCheck, History, ShieldAlert } from 'lucide-react';
+import { CircleCheck, History, Hourglass, ShieldAlert } from 'lucide-react';
 import type { Recipe } from '../../api/types';
 import { formatInt } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
@@ -28,23 +28,33 @@ export function splitTemplate(template: string): TemplatePart[] {
 }
 
 /**
- * O contrato tem três situações; o pedido de tela fala em "Ativa / Quarentena". `superseded` (substituída por
- * uma versão mais nova) só o backend atribui e não pode ser revertida pelo `PUT`.
+ * O pedido de tela fala em "Ativa / Quarentena". `candidate` (aprendida, ainda em prova) e `superseded` (substituída
+ * por uma versão mais nova) só o backend atribui; a substituída não pode ser revertida pelo `PUT`.
  */
 export const RECIPE_STATUS: Record<Recipe['status'], StatusMeta> = {
+  candidate: {
+    label: 'Candidata', tone: 'info', icon: Hourglass,
+    description: 'Aprendida e ainda em prova: a IA conduz a etapa e a receita só é comparada com o que a IA fez. Vira ativa depois de execuções seguidas em que a IA fizer exatamente o caminho dela; uma divergência recomeça a contagem.',
+  },
   active: { label: 'Ativa', tone: 'success', icon: CircleCheck, description: 'Usada nas próximas execuções desta etapa.' },
   quarantined: { label: 'Quarentena', tone: 'warning', icon: ShieldAlert, description: 'Fora de uso: falhou ao reproduzir ou foi pausada por você. A IA conduz a etapa.' },
   superseded: { label: 'Substituída', tone: 'muted', icon: History, description: 'Há uma versão mais nova desta receita.' },
 };
 
-/** Para onde o botão leva: Ativa → quarentena; Quarentena → ativa; Substituída → sem ação. */
+/**
+ * Para onde o botão leva: Ativa ou Candidata → quarentena; Quarentena → ativa; Substituída → sem ação. A candidata
+ * não ganha "ativar" aqui: ela vira ativa pela prova (concordância em sombra), não por um clique.
+ */
 export function recipeToggleTarget(status: Recipe['status']): 'active' | 'quarantined' | null {
-  if (status === 'active') return 'quarantined';
+  if (status === 'active' || status === 'candidate') return 'quarantined';
   if (status === 'quarantined') return 'active';
   return null;
 }
 
-/** Concordância em modo sombra: "12/15 (80%)"; `null` quando ainda não houve comparação. */
+/**
+ * Concordância em modo sombra, por execução da etapa: "12/15 (80%)"; `null` quando ainda não houve comparação. Na
+ * candidata a divergência zera os dois números (a prova recomeça), então ali o primeiro é a sequência atual.
+ */
 export function shadowText(r: Pick<Recipe, 'shadow_agree' | 'shadow_total'>): string | null {
   if (!(r.shadow_total > 0)) return null;
   const pct = Math.round((r.shadow_agree / r.shadow_total) * 100);

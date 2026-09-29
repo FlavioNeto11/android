@@ -52,7 +52,7 @@ from ..util import norm_text, now, now_iso, parse_iso
 from .foreach import sanitize_item
 from .proofs import variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
-from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
+from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
@@ -558,19 +558,23 @@ class StepExecutor:
         return max(1.0, max(obs.width, obs.height) / self.cfg.file.ai.screenshot_max_side)
 
     def _shadow_compare(self, rr: "_RecipeRun", obs: Observation, decision: Decision) -> None:
-        """Modo sombra: a receita diz o que FARIA; só a IA age. A taxa de concordância fica na receita."""
-        assert rr.replayer is not None and rr.row is not None
+        """Modo sombra: a receita diz o que FARIA; só a IA age. O veredito é da EXECUÇÃO da etapa (`_after_step`)."""
+        assert rr.replayer is not None
+        if decision.tool in READ_ONLY:
+            return          # olhar a tela não é caminho: `distill` nunca grava leitura, então não há o que comparar
+        if decision.tool == "step_done" and rr.replayer.idx == 0:
+            return          # já estava no estado final (K-004): não houve caminho — nem concordância nem divergência
         try:
             would = rr.replayer.next(obs.tree)
         except RecipeDiverged as exc:
             rr.diverged = str(exc)
-            self.recipes.shadow(rr.row["id"], False)
             return
         if would is None:
-            agreed = decision.tool == "step_done"
+            agreed = decision.tool == "step_done"                # a receita acabou: só falta declarar pronta
         else:
-            agreed = would.tool == decision.tool and would.args.get("element_id") == decision.args.get("element_id")
-        self.recipes.shadow(rr.row["id"], agreed)
+            # O texto entra na conta: com o mesmo campo e outro texto, a receita digitaria o que a IA não digitou.
+            agreed = (would.tool == decision.tool and would.args.get("element_id") == decision.args.get("element_id")
+                      and (would.tool != "type_text" or would.args.get("text") == decision.args.get("text")))
         if not agreed:
             rr.diverged = "a IA escolheu outra ação"
 
@@ -611,6 +615,8 @@ class StepExecutor:
                                            signature=rr.signature, variant=rr.variant)
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
+                    if rr.row["status"] == "candidate":
+                        rr.mode = "shadow"      # em prova: a IA decide a etapa e a receita só é comparada
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
                 log.warning("%s: receitas indisponíveis nesta etapa: %s", rt.id, exc)
                 rr = _RecipeRun(mode="off")
@@ -717,6 +723,8 @@ class StepExecutor:
             # (que continua só com veredito da etapa). Interrompida (cedida, cancelada) não conta; modo sombra não
             # reproduz, então também não.
             metricas.contar("receita.reproducao", resultado="ok" if (ok and replayed and not rr.diverged) else "divergiu")
+        if rr.mode == "shadow" and rr.row is not None:
+            self._veredito_da_sombra(rr, ok, run_id, iid, step)
         if not veredito:
             return
         repo = self.repo
@@ -733,19 +741,54 @@ class StepExecutor:
                               "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
             return
         repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
-        if not ok or rr.row is not None or not (app.package and rr.app_version and rr.step_hash):
+        # A candidata que divergiu é trocada pelo caminho que a IA acabou de comprovar: sem isto, uma IA que passou a
+        # fazer outro caminho deixaria a etapa presa para sempre numa candidata que nunca concorda (e candidata não
+        # reproduz, então nem a quarentena a tiraria dali).
+        substitui = rr.row["id"] if rr.row is not None and rr.row["status"] == "candidate" and rr.diverged else None
+        if not ok or (rr.row is not None and substitui is None) or not (app.package and rr.app_version and rr.step_hash):
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
         actions, why = distill(rows, rr.variables)
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
+        n = self.cfg.file.ai.recipes_promote_after
         rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
                                 step_key=step.key, actions=actions, learned_from=step.id,
-                                signature=rr.signature, variant=rr.variant)
-        if rid:
+                                signature=rr.signature, variant=rr.variant, candidate=n > 0, replaces=substitui)
+        if rid and n > 0:
+            no_lugar = f", no lugar da v{rr.row['version']}, que divergiu" if substitui else ""
+            repo.decision(f"{iid} · {step.title}: receita aprendida como candidata ({len(actions)} ação(ões)){no_lugar}"
+                          f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de {n} "
+                          "execução(ões) seguidas em que a IA fizer exatamente o caminho dela",
+                          run_id=run_id, instance_id=iid, step_id=step.id)
+        elif rid:
             repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
                           "desta etapa dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+
+    def _veredito_da_sombra(self, rr: "_RecipeRun", ok: bool, run_id: str, iid: str, step: StepDTO) -> None:
+        """Uma execução da etapa, um veredito sobre a receita comparada. Concordar = a IA fez, uma a uma, todas as
+        ações da receita e nada além (nem declarou pronta antes do fim dela), e a etapa foi comprovada — pela IA ou
+        pela prova local depois do efeito, que encerra a etapa sem outra decisão. A divergência conta sempre que foi
+        vista — também numa tentativa que vai se repetir: segurar a promoção é o lado seguro. Sem nenhuma comparação
+        conclusiva (a etapa falhou antes, ou o aparelho já estava no estado final) não há veredito."""
+        rep = rr.replayer
+        if ok and not rr.diverged and rep is not None and 0 < rep.idx < len(rep.actions):
+            # Comprovada no meio da receita: reproduzida, ela faria ações a mais depois do fim da etapa. É outro
+            # caminho — e marcado como divergência para o caminho da IA poder substituí-la (`_after_step`); sem isso
+            # a candidata ficaria sem veredito para sempre, nem promovida nem trocada.
+            rr.diverged = f"a etapa se comprovou na ação {rep.idx} de {len(rep.actions)} da receita"
+        if rr.diverged:
+            concordou = False
+        elif ok and rep is not None and rep.exhausted:
+            concordou = True
+        else:
+            return
+        promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after)
+        if promovida:
+            self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
+                               "exatamente o caminho dela em execuções seguidas; as próximas execuções desta etapa "
+                               "dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
 
     def _installed_signature(self, instance_id: str, package: str) -> str:
         """Assinatura do APK que está NESTE aparelho, quando ele veio de uma release catalogada.

@@ -478,6 +478,11 @@ class AiCfg(BaseModel):
     recipe_settle_s: float = Field(1.0, ge=0, le=10)
     # Receitas: off = só IA · shadow = aprende e compara com a IA, sem agir · replay = repete sem IA, IA só se divergir
     recipes: Literal["off", "shadow", "replay"] = "off"
+    # Receita que a IA aprende nasce CANDIDATA: a IA segue decidindo a etapa e a receita só é comparada (sombra), ao
+    # mesmo custo de uma etapa sem receita. Depois de N execuções SEGUIDAS da etapa em que a IA fez exatamente o
+    # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
+    # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
+    recipes_promote_after: int = Field(2, ge=0, le=20)
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
     pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
     # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing
