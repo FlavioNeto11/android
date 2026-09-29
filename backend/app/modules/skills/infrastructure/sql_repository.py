@@ -9,8 +9,10 @@ publicando ao mesmo tempo não publicam as duas. Publicar deprecia a publicada a
 índices parciais (`ux_skill_versions_publicada`, `ux_skill_versions_comando`) conferem a cada instrução, e a anterior
 quase sempre tem o mesmo comando.
 
-`flows` só é tocado em dois lugares, e só no `status`: a adoção desliga o fluxo, e desfazer a adoção o religa — na
-mesma transação que cria ou desabilita a versão. Nunca há escrita dupla (o mesmo comando vivo nos dois lugares).
+`flows` só é tocado em três lugares, e só no `status`: a adoção desliga o fluxo, desfazer a adoção o religa e publicar
+uma versão de quem o adotou o desliga de novo — na mesma transação que cria, desabilita ou publica a versão. Nunca há
+escrita dupla (o mesmo comando vivo nos dois lugares). Cada mudança vai à trilha do livro de aprendizado
+(`flow_trail`, 22.4), na mesma transação, com quem decidiu — sempre uma pessoa: o sistema não adota nem devolve.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import builtins
 from collections.abc import Callable, Sequence
 
 from app.db import INTEGRITY_ERRORS, Database, Row
-from app.modules.skills.application.ports import DocumentValidator
+from app.modules.skills.application.ports import DocumentValidator, FlowStatusTrail
 from app.modules.skills.domain.document import JsonObject, NotJson, as_json_object, canonical_json
 from app.modules.skills.domain.lifecycle import (SYSTEM_ACTOR, Actor, DuplicateCommand, FrozenVersion,
                                                  InvalidDocument, SkillError, SkillNotFound, SkillState,
@@ -54,13 +56,17 @@ class SkillsDisabled(SkillError):
 class SqlSkillRepository:
     def __init__(self, db: Database, validator: DocumentValidator, *,
                  clock: Callable[[], str] | None = None,
-                 adoption_enabled: Callable[[], bool] | None = None) -> None:
+                 adoption_enabled: Callable[[], bool] | None = None,
+                 flow_trail: FlowStatusTrail | None = None) -> None:
         """`adoption_enabled`: o `skills.enabled` da instalação, lido a cada adoção. `None` = sem a guarda (testes do
         repositório isolado); a composição do `AppState` sempre a passa."""
         self._db = db
         self._validator = validator
         self._clock = clock if clock is not None else db.agora_iso
         self._adoption_enabled = adoption_enabled
+        #: A trilha do livro para o status do fluxo adotado (22.4). Posta pela composição do aprendizado
+        #: (`ligar_nativos.ligar`), que nasce DEPOIS deste repositório; `None` = sem trilha (o repositório isolado).
+        self.flow_trail = flow_trail
 
     # ================================================================== leitura
     def definition(self, skill_id: str) -> SkillDefinition | None:
@@ -277,7 +283,7 @@ class SqlSkillRepository:
             self._move(self._from_row(anterior), SkillState.DEPRECATED, by=SYSTEM_ACTOR,
                        detail=f"substituída por {versao.ref} (publicada por {by})", at=at)
         if fluxo_a_desligar is not None:
-            self._set_flow_status(fluxo_a_desligar, frm="active", to="disabled")
+            self._set_flow_status(fluxo_a_desligar, frm="active", to="disabled", skill_id=versao.ref.skill_id, by=by)
 
     def _move(self, versao: SkillVersion, to: SkillState, *, by: str, detail: str | None, at: str) -> SkillVersion:
         nova = versao.moved_to(to, by=by, detail=detail, at=at)
@@ -301,6 +307,10 @@ class SqlSkillRepository:
             raise InvalidSkillRef(f"id de habilidade inválido: {skill_id!r}")
         if not by.strip():
             raise TransitionForbidden("A adoção precisa dizer quem decidiu.")
+        if actor_of(by) is not Actor.PERSON:
+            # Hoje ninguém passa o sistema aqui (a rota usa a pessoa da sessão), e a fronteira garante que continue:
+            # na trilha do livro (22.4), o fluxo desligado pelo sistema vira veto de 90 dias sobre o conteúdo.
+            raise TransitionForbidden("Adotar um fluxo é decisão de uma pessoa, não do sistema.")
         if self._adoption_enabled is not None and not self._adoption_enabled():
             raise SkillsDisabled(f"As habilidades estão desligadas (skills.enabled): adotar o fluxo {flow_id} o "
                                  "desligaria e o comando ficaria sem resolução. Ligue as habilidades antes.")
@@ -330,13 +340,21 @@ class SqlSkillRepository:
                     self._db.execute("INSERT INTO skill_scope(skill_id, profile_id, group_id) VALUES (?,?,?)",
                                      (skill_id, rows.texto_ou_nulo(r, "profile_id"),
                                       rows.texto_ou_nulo(r, "group_id")))
-                self._set_flow_status(flow_id, frm="active", to="disabled")
+                self._set_flow_status(flow_id, frm="active", to="disabled", skill_id=skill_id, by=by)
         except INTEGRITY_ERRORS as exc:
-            raise StateConflict(f"O banco recusou a adoção do fluxo {flow_id}.") from exc
+            # A trilha do livro (22.4) grava na mesma transação: a recusa pode ser dela, não só da versão ou do escopo.
+            raise StateConflict(f"O banco recusou a adoção do fluxo {flow_id} (a versão, o escopo ou a trilha dela "
+                                "no livro); nada foi gravado.") from exc
         return versao
 
     def release_flow(self, skill_id: str, *, by: str, reason: str) -> None:
         """Desfaz a adoção: desabilita a versão publicada e religa o fluxo, na mesma transação."""
+        if not by.strip():
+            # Como na adoção: o gesto vai à trilha do livro, e a trilha nunca fica sem quem decidiu.
+            raise TransitionForbidden("Desfazer a adoção precisa dizer quem decidiu.")
+        if actor_of(by) is not Actor.PERSON:
+            # Religar o fluxo é `disabled → published` na trilha do livro, que só uma pessoa faz (`ciclo.TRANSICOES`).
+            raise TransitionForbidden("Desfazer a adoção é decisão de uma pessoa, não do sistema.")
         agora = self._clock()
         with self._db.tx():
             definicao = self.definition(skill_id)
@@ -355,7 +373,7 @@ class SqlSkillRepository:
                             (rows.texto(fluxo, "match_key"),)):
                 raise DuplicateCommand(f"Outra habilidade publicada já usa o comando do fluxo "
                                        f"{definicao.legacy_flow_id}.")
-            self._set_flow_status(definicao.legacy_flow_id, frm="disabled", to="active")
+            self._set_flow_status(definicao.legacy_flow_id, frm="disabled", to="active", skill_id=skill_id, by=by)
 
     def convert_flow(self, flow_id: str, *, skill_id: str, by: str, draft_of: Callable[[SkillVersion], JsonObject],
                      reason: str = "") -> tuple[SkillVersion, SkillVersion]:
@@ -441,10 +459,15 @@ class SqlSkillRepository:
             " updated_at) VALUES (?,?,?,?,?,?,?,?)",
             (skill_id, rows.texto(fluxo, "name"), "", rows.texto_ou_nulo(fluxo, "app_id"), flow_id, by, at, at))
 
-    def _set_flow_status(self, flow_id: str, *, frm: str, to: str) -> None:
+    def _set_flow_status(self, flow_id: str, *, frm: str, to: str, skill_id: str, by: str) -> None:
         cur = self._db.execute("UPDATE flows SET status=? WHERE id=? AND status=?", (to, flow_id, frm))
         if int(cur.rowcount or 0) != 1:
             raise StateConflict(f"O fluxo {flow_id} não estava '{frm}'.")
+        if self.flow_trail is not None:
+            # Motivo fixo: o que a pessoa escreveu fica na trilha da VERSÃO (`skill_version_transitions`); a do fluxo
+            # diz só quem o tirou de circulação ou o devolveu, e por qual habilidade.
+            acao = "adotado" if to == "disabled" else "devolvido"
+            self.flow_trail.flow_status_changed(flow_id, frm, to, by=by, reason=f"{acao} pela habilidade {skill_id}")
 
     # ================================================================== escopo
     def set_scope(self, skill_id: str, *, profile_ids: Sequence[str], group_ids: Sequence[str]) -> None:

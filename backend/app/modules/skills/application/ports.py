@@ -8,6 +8,8 @@
   sempre o escreveu, e habilidade nunca escreve fluxo (a não ser o status, na adoção).
 - `DocumentValidator`: o schema `automation/v1alpha1` + o compilador, que são de outra peça. O repositório pergunta
   a ele o que o documento declara (metadados, comando-modelo, apps) e se ele compila sem erro.
+- `FlowStatusTrail`: a trilha do livro de aprendizado (ADR-054) para o status de fluxo que a adoção muda. É do
+  aprendizado; a composição a põe no repositório.
 
 Ensino v2 (fase F, §13):
 - `SkillGeneralizer`: da instrução, das demonstrações e das respostas a uma candidata `{document, annotations}` +
@@ -60,6 +62,17 @@ class SkillRepository(Protocol):
 
 class DocumentValidator(Protocol):
     def inspect(self, document: JsonObject) -> DocumentFacts: ...
+
+
+class FlowStatusTrail(Protocol):
+    """Adotar, desfazer a adoção e publicar a versão de quem adotou mudam `flows.status` (22.4): sem isto, a mudança
+    não entrava em `learning_transitions`, e o livro não sabia quem tirou o fluxo de circulação nem quem o devolveu.
+
+    Chamada DENTRO da transação do repositório, com o status NATIVO (`active`/`disabled`) — o mapa para o estado do
+    livro é de quem implementa. Se a trilha falhar, a exceção sobe e a adoção inteira é desfeita: aqui a trilha é o
+    registro do gesto da pessoa, não um acessório."""
+
+    def flow_status_changed(self, flow_id: str, frm: str, to: str, *, by: str, reason: str) -> None: ...
 
 
 # ------------------------------------------------------------------ ensino v2 (fase F)

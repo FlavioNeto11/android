@@ -9,7 +9,14 @@
 
 A leitura das execuções mora aqui (infraestrutura: `Plan`, a identidade de etapa das receitas, o JSON das colunas
 legadas); a regra fica em `application/nativos.py`. As lojas chamam política e ouvinte DENTRO da transação delas:
-o que falha aqui vira log — o fluxo e a receita da execução nunca caem por causa do aprendizado.
+o que falha aqui vira log — o fluxo e a receita da execução nunca caem por causa do aprendizado. Por isso todo
+`try` que engole a falha dentro da transação da loja envolve o que tocou num `db.savepoint()` (22.5): no PostgreSQL,
+o erro engolido sem ele deixava a transação abortada, e o `COMMIT` da loja virava `ROLLBACK` sem aviso — a loja
+devolvia o id de uma linha que nunca existiu.
+
+A ADOÇÃO de um fluxo por uma habilidade (`SqlSkillRepository`, 22.4) também muda `flows.status`: `TrilhaDaAdocao`
+leva a mudança à mesma trilha, com a pessoa que decidiu. Ali a trilha não é acessória — é o registro do gesto —,
+então a falha dela desfaz a adoção inteira, como no interruptor antigo (`mudar_status_nativo`).
 """
 from __future__ import annotations
 
@@ -150,9 +157,10 @@ class TrilhaDasLojas:
 class PoliticaD1DoFluxo:
     """`flows.PoliticaDoFluxo`: o status com que o fluxo nasce de uma execução, e a trilha do que a loja mudou."""
 
-    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas) -> None:
+    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas, db: Database) -> None:
         self._d1 = d1
         self._trilha = trilha
+        self._db = db
 
     def ao_nascer(self, nascimento: NascimentoDoFluxo) -> str | None:
         try:
@@ -167,8 +175,9 @@ class PoliticaD1DoFluxo:
     def mudou(self, mudanca: MudancaDoFluxo) -> None:
         m = mudanca
         try:
-            self._trilha.registrar(LivroKind.FLUXO, m.flow_id, m.de, m.para, motivo=m.motivo, por=m.por,
-                                   run_id=m.run_id)
+            with self._db.savepoint():                # dentro do `try`: o savepoint precisa VER a falha para desfazê-la
+                self._trilha.registrar(LivroKind.FLUXO, m.flow_id, m.de, m.para, motivo=m.motivo, por=m.por,
+                                       run_id=m.run_id)
         except Exception:  # noqa: BLE001 - a trilha informa; o fluxo aprendido não cai por causa dela
             log.exception("aprendizado: trilha do fluxo %s", m.flow_id)
 
@@ -184,9 +193,11 @@ class OuvinteD1DasReceitas:
     def vetada(self, receita: ReceitaVista) -> bool:
         r = receita
         try:
-            return self._d1.receita_vetada(hash_da_receita(linhas.json_legado(r.actions)),
-                                           escopo_da_receita(r.package, r.app_version, r.signature, r.variant,
-                                                             r.step_hash), r.app_version)
+            # Só leitura, mas dentro da transação da loja: uma consulta que falha também a abortaria no PostgreSQL.
+            with self._db.savepoint():
+                return self._d1.receita_vetada(hash_da_receita(linhas.json_legado(r.actions)),
+                                               escopo_da_receita(r.package, r.app_version, r.signature, r.variant,
+                                                                 r.step_hash), r.app_version)
         except Exception:  # noqa: BLE001 - o veto informa a loja; ilegível não trava o aprendizado da etapa
             log.exception("aprendizado: veto da receita (%s)", r.step_hash)
             return False
@@ -194,8 +205,10 @@ class OuvinteD1DasReceitas:
     def mudou(self, mudanca: MudancaDaReceita) -> None:
         m = mudanca
         try:
-            self._trilha.registrar(LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, motivo=m.motivo, por=m.por,
-                                   run_id=self._execucao_de_origem(m.recipe_id) if m.de is None else None)
+            with self._db.savepoint():                # a execução de origem também é lida sob ele
+                origem = self._execucao_de_origem(m.recipe_id) if m.de is None else None
+                self._trilha.registrar(LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, motivo=m.motivo,
+                                       por=m.por, run_id=origem)
         except Exception:  # noqa: BLE001 - a trilha informa; a receita não cai por causa dela
             log.exception("aprendizado: trilha da receita %s", m.recipe_id)
 
@@ -203,6 +216,21 @@ class OuvinteD1DasReceitas:
         row = self._db.one("SELECT s.run_id FROM recipes r JOIN steps s ON s.id = r.learned_from_step WHERE r.id=?",
                            (recipe_id,))
         return linhas.texto_ou_nulo(row, "run_id") if row is not None else None
+
+
+class TrilhaDaAdocao:
+    """`skills.FlowStatusTrail` (22.4): o status do fluxo que a adoção por uma habilidade muda, na trilha, com a pessoa
+    que adotou ou desfez. O mapa do status nativo para o estado do livro é o do interruptor antigo (`estado_nativo`:
+    `active`→`published`, `disabled`→`disabled`), dentro de `TrilhaDasLojas.registrar`.
+
+    Sem `try` e sem savepoint, de propósito: aqui a trilha é o registro do gesto, e a falha dela sobe e desfaz a
+    adoção inteira (a mesma regra de `mudar_status_nativo`, que é o outro caminho da pessoa para o mesmo status)."""
+
+    def __init__(self, trilha: TrilhaDasLojas) -> None:
+        self._trilha = trilha
+
+    def flow_status_changed(self, flow_id: str, frm: str, to: str, *, by: str, reason: str) -> None:
+        self._trilha.registrar(LivroKind.FLUXO, flow_id, frm, to, motivo=reason, por=by, run_id=None)
 
 
 # ------------------------------------------------------------------ composição
@@ -221,11 +249,13 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     if habilidades is not None:
         servico.registrar_minerador(ValidacaoPorExecucao(leitura, ValidacaoDeHabilidadesSql(habilidades),
                                                          decidir=decidir))
+        habilidades.flow_trail = TrilhaDaAdocao(trilha)
     if fluxos is not None:
-        fluxos.politica = PoliticaD1DoFluxo(d1, trilha)
+        fluxos.politica = PoliticaD1DoFluxo(d1, trilha, db)
     if receitas is not None:
         receitas.ouvinte = OuvinteD1DasReceitas(d1, trilha, db)
     return d1
 
 
-__all__ = ["LeituraSql", "OuvinteD1DasReceitas", "PoliticaD1DoFluxo", "TrilhaDasLojas", "assinatura", "ligar"]
+__all__ = ["LeituraSql", "OuvinteD1DasReceitas", "PoliticaD1DoFluxo", "TrilhaDaAdocao", "TrilhaDasLojas", "assinatura",
+           "ligar"]

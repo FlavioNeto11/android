@@ -5,6 +5,10 @@ para o dono. Duas discordâncias reais desligam, e a linha desligada pelo sistem
 (a `match_key` é única e a linha nunca é apagada), com a contagem recomeçada. Execução simulada deixa evidência e não
 conta; o que uma pessoa desligou não renasce; o conteúdo vetado não volta; o treino publica na hora.
 
+A trilha que a loja grava não derruba o fluxo nem com o aborto de transação do PostgreSQL (22.5, imitado sobre o
+SQLite em `aborto_do_postgres`), e a adoção por uma habilidade — adotar, desfazer, publicar a versão de quem adotou —
+entra na mesma trilha com a pessoa que decidiu, ou a adoção não acontece (22.4); o sistema não adota nem devolve.
+
 Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; o último teste no Harness da porta 5640,
 aparelho falso e IA simulada).
 """
@@ -19,7 +23,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.db import Database
+from app.db import OPERATIONAL_ERRORS, Database
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition, StepResult
 from app.modules.learning.application.nativos import AssinaturaDoPlano, PassoAssinado, comparar
 from app.modules.learning.application.ports import Ajustes
@@ -30,14 +34,20 @@ from app.modules.learning.infrastructure import ligar_nativos
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
+from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR, DuplicateCommand, TransitionForbidden
 from app.modules.skills.domain.refs import SkillRef
+from app.modules.skills.domain.versions import Provenance, SourceKind
 from app.modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
+from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.flows import FlowStore
 from app.taskqueue.scheduler import Scheduler, texto_do_fluxo_salvo
 from app.util import now, now_iso
 
+from .aborto_do_postgres import embrulhar, savepoints
 from .conftest import COMMAND, Harness
 from .fake_skills import banco as banco_migrado
+from .fake_skills import documento, repositorio
+from .fake_skills import fluxo as fluxo_gravado
 
 S = SkillState
 DONO = "painel:dono"
@@ -69,7 +79,7 @@ def _plano(usuario: str, *, extra: bool = False, efeito: bool = False) -> Plan:
 
 
 class Mundo:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, *, habilidades: SqlSkillRepository | None = None) -> None:
         self.db = db
         self.config: dict[str, Any] = {"concordancias": 1, "com_prova": True}
         self.decisoes: list[tuple[str, str]] = []
@@ -77,7 +87,7 @@ class Mundo:
         self.servico = LearningService(self.repo, FontesSql(db), TriagemDeCredencial(), ajustes=Ajustes, relogio=now,
                                        retencao_de_logs_dias=lambda: 14)
         self.flows = FlowStore(db)
-        ligar_nativos.ligar(self.servico, self.repo, db, fluxos=self.flows,
+        ligar_nativos.ligar(self.servico, self.repo, db, fluxos=self.flows, habilidades=habilidades,
                             concordancias=lambda: int(self.config["concordancias"]),
                             com_prova=lambda: bool(self.config["com_prova"]),
                             decidir=lambda texto, run_id: self.decisoes.append((run_id, texto)))
@@ -348,6 +358,166 @@ def test_loja_crua_segue_o_modo_anterior(mundo: Mundo) -> None:
     crua = FlowStore(mundo.db)
     flow_id = crua.learn_from_run(run)
     assert flow_id and mundo.status(flow_id) == "active" and mundo.trilha(flow_id) == []
+
+
+# ------------------------------------------------------------------ a trilha não derruba a loja (22.5)
+def test_trilha_que_falha_no_banco_nao_derruba_o_fluxo_nem_com_o_aborto_do_postgres(mundo: Mundo) -> None:
+    """O revisor do A5: a trilha é gravada DENTRO da transação da loja, e o erro engolido pelo ouvinte deixava a
+    transação abortada no PostgreSQL — o `COMMIT` virava `ROLLBACK`, e `learn_from_run` devolvia o id de um fluxo que
+    nunca existiu. Com o savepoint dentro do `try` do ouvinte, só a trilha sai."""
+    if mundo.db.dialect != "sqlite":
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite")
+    run = mundo.execucao("r-1", _plano("@nasa"), _comando("@nasa"))
+    pg = embrulhar(mundo.db)
+    pg.falhar_em = "INSERT INTO learning_transitions"
+    flow_id = mundo.flows.learn_from_run(run)
+    assert flow_id and mundo.status(flow_id) == "candidate"                  # o fluxo existe de verdade
+    assert pg.commits_perdidos == 0 and mundo.trilha(flow_id) == []          # só a trilha saiu
+    assert savepoints(pg) == ["SAVEPOINT sp_1", "ROLLBACK TO SAVEPOINT sp_1", "RELEASE SAVEPOINT sp_1"]
+    # o treino também passa pelo ouvinte; e, com a trilha de volta, ela entra junto como sempre
+    plano = _plano("{username}")
+    plano.parameters = {"username": "{username}"}
+    treinado = mundo.flows.learn_from_plan(plano, "abra o perfil de {username}", source="training:t-1")
+    assert mundo.status(treinado) == "active" and mundo.trilha(treinado) == [] and pg.commits_perdidos == 0
+    pg.falhar_em = None
+    outro = _plano("{username}")
+    outro.parameters = {"username": "{username}"}
+    terceiro = mundo.flows.learn_from_plan(outro, "mostre o perfil de {username}", source="training:t-2")
+    assert mundo.trilha(terceiro) == [(None, "published", "training:t-2", None)]
+
+
+# ------------------------------------------------------------------ adoção por habilidade (22.4)
+@pytest.fixture
+def adocao(tmp_path: Path) -> Iterator[tuple[Mundo, SqlSkillRepository]]:
+    db = banco_migrado(tmp_path, "d1-adocao.sqlite3")
+    habilidades = repositorio(db)[0]
+    yield Mundo(db, habilidades=habilidades), habilidades
+    db.close()
+
+
+def _trilha_da_adocao(mundo: Mundo, flow_id: str) -> list[tuple[str | None, str, str, str]]:
+    return [(t.from_state.value if t.from_state else None, t.to_state.value, t.decided_by, t.reason)
+            for t in mundo.repo.trilha(f"fluxo:{flow_id}")]
+
+
+def test_adotar_e_desfazer_a_adocao_gravam_a_trilha_do_fluxo_com_quem_decidiu(
+        adocao: tuple[Mundo, SqlSkillRepository]) -> None:
+    mundo, habilidades = adocao
+    fluxo_gravado(mundo.db, "curtir", "curtir o post de {perfil}")
+    habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO, reason="agora é habilidade")
+    assert mundo.status("curtir") == "disabled"
+    assert _trilha_da_adocao(mundo, "curtir") == [("published", "disabled", DONO, "adotado pela habilidade ig.curtir")]
+    # o mesmo conteúdo e o mesmo escopo que o livro lê: é o que o veto e o "Revisar" procuram
+    [t] = mundo.repo.trilha("fluxo:curtir")
+    entrada = mundo.servico.entrada(LivroKind.FLUXO, "curtir")
+    assert (t.content_hash, t.scope_key) == (entrada.content_hash, entrada.scope_key)
+    habilidades.release_flow("ig.curtir", by="painel:Ana Ribeiro", reason="voltar ao fluxo")
+    assert mundo.status("curtir") == "active"
+    assert _trilha_da_adocao(mundo, "curtir")[1:] == [
+        ("disabled", "published", "painel:Ana Ribeiro", "devolvido pela habilidade ig.curtir")]
+    assert "fluxo:curtir" in mundo.repo.refs_decididas_por_pessoa((LivroKind.FLUXO,))
+
+
+def test_publicar_a_versao_de_quem_adotou_desliga_o_fluxo_de_novo_com_trilha(
+        adocao: tuple[Mundo, SqlSkillRepository]) -> None:
+    """O terceiro lugar que muda `flows.status`: depois de desfeita a adoção, publicar outra versão da habilidade
+    que adotou desliga o fluxo na mesma transação (nunca o mesmo comando vivo nos dois lugares)."""
+    mundo, habilidades = adocao
+    fluxo_gravado(mundo.db, "curtir", "curtir o post de {perfil}")
+    habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO)
+    habilidades.release_flow("ig.curtir", by=DONO, reason="voltar ao fluxo")
+    v2 = habilidades.create_draft("ig.curtir", documento("ig.curtir", "curtir o post de {perfil}", nota="v2"),
+                                  source=Provenance(SourceKind.MANUAL), by=DONO)
+    habilidades.transition(v2.ref, S.CANDIDATE, by=DONO, reason="submeter")
+    habilidades.transition(v2.ref, S.VALIDATED, by=DONO, reason="validada no teste", manual=True)
+    habilidades.transition(v2.ref, S.PUBLISHED, by="painel:Ana Ribeiro", reason="publicar a v2")
+    assert mundo.status("curtir") == "disabled"
+    assert [(de, para, por) for de, para, por, _ in _trilha_da_adocao(mundo, "curtir")] == [
+        ("published", "disabled", DONO), ("disabled", "published", DONO),
+        ("published", "disabled", "painel:Ana Ribeiro")]
+    assert _trilha_da_adocao(mundo, "curtir")[-1][3] == "adotado pela habilidade ig.curtir"
+
+
+def test_adocao_recusada_ou_com_a_trilha_quebrada_nao_deixa_nada(adocao: tuple[Mundo, SqlSkillRepository],
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mesma transação: a adoção que o banco recusa não deixa trilha, e a trilha que falha desfaz a adoção — aqui ela
+    é o registro do gesto da pessoa (como no interruptor antigo), não um acessório engolido."""
+    mundo, habilidades = adocao
+    fluxo_gravado(mundo.db, "curtir", "curtir o post de {perfil}")
+    fluxo_gravado(mundo.db, "seguir", "seguir {perfil}")
+    habilidades.create_draft("ig.outra", documento("ig.outra", "curtir o post de {perfil}"),
+                             source=Provenance(SourceKind.MANUAL), by=DONO)
+    ref = SkillRef("ig.outra", 1)
+    habilidades.transition(ref, S.CANDIDATE, by=DONO, reason="submeter")
+    habilidades.transition(ref, S.VALIDATED, by=DONO, reason="validada no teste", manual=True)
+    mundo.db.execute("UPDATE flows SET status='disabled' WHERE id='curtir'")
+    habilidades.transition(ref, S.PUBLISHED, by=DONO, reason="publicar")        # o comando agora é da outra
+    mundo.db.execute("UPDATE flows SET status='active' WHERE id='curtir'")
+    with pytest.raises(DuplicateCommand):
+        habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO)
+    assert mundo.status("curtir") == "active" and _trilha_da_adocao(mundo, "curtir") == []
+
+    def quebrada(*_: object, **__: object) -> None:
+        raise RuntimeError("a trilha caiu")
+
+    assert habilidades.flow_trail is not None
+    monkeypatch.setattr(habilidades.flow_trail, "flow_status_changed", quebrada)
+    with pytest.raises(RuntimeError, match="a trilha caiu"):
+        habilidades.adopt_flow("seguir", skill_id="ig.seguir", by=DONO)
+    assert mundo.status("seguir") == "active" and habilidades.definition("ig.seguir") is None
+    assert habilidades.published("ig.seguir") is None
+    with pytest.raises(TransitionForbidden):                                     # a trilha nunca fica sem autor
+        habilidades.release_flow("ig.curtir", by="  ", reason="sem quem")
+
+
+def test_insert_da_trilha_que_falha_desfaz_a_adocao_e_a_devolucao_sem_engolir(
+        adocao: tuple[Mundo, SqlSkillRepository]) -> None:
+    """Revisor do 22.4: a regra "a trilha que falha desfaz a adoção" só estava provada com um dublê no lugar da
+    `TrilhaDaAdocao` — uma `TrilhaDaAdocao` que engolisse a falha passava. Aqui quem falha é o INSERT de verdade, com o
+    aborto do PostgreSQL imitado: o erro sobe, nada fica (nem a definição, nem o fluxo desligado), nenhum savepoint o
+    engole e nenhum `COMMIT` se perde. Vale para desfazer a adoção também: o fluxo não religa sem a trilha.
+
+    É a política de hoje (a mesma do interruptor antigo, `mudar_status_nativo`); se o dono decidir que a trilha é
+    acessória também aqui, este teste muda junto com ela."""
+    mundo, habilidades = adocao
+    if mundo.db.dialect != "sqlite":
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite")
+    fluxo_gravado(mundo.db, "curtir", "curtir o post de {perfil}")
+    pg = embrulhar(mundo.db)
+    pg.falhar_em = "INSERT INTO learning_transitions"
+    with pytest.raises(OPERATIONAL_ERRORS, match="falha de teste"):
+        habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO)
+    assert mundo.status("curtir") == "active" and habilidades.definition("ig.curtir") is None
+    assert mundo.db.one("SELECT id FROM skill_definitions WHERE id='ig.curtir'") is None
+    assert pg.commits_perdidos == 0 and savepoints(pg) == [] and not pg.abortada
+    pg.falhar_em = None
+    habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO)
+    pg.falhar_em = "INSERT INTO learning_transitions"
+    with pytest.raises(OPERATIONAL_ERRORS, match="falha de teste"):
+        habilidades.release_flow("ig.curtir", by=DONO, reason="voltar ao fluxo")
+    assert mundo.status("curtir") == "disabled" and habilidades.published("ig.curtir") is not None
+    assert pg.commits_perdidos == 0 and savepoints(pg) == []
+    assert _trilha_da_adocao(mundo, "curtir") == [("published", "disabled", DONO, "adotado pela habilidade ig.curtir")]
+
+
+def test_o_sistema_nao_adota_nem_devolve_o_fluxo(adocao: tuple[Mundo, SqlSkillRepository]) -> None:
+    """Revisor do 22.4: a fronteira do repositório só conferia `by.strip()`. Pelo sistema, adotar gravaria na trilha
+    um desligamento do sistema (veto de 90 dias sobre o conteúdo) e devolver gravaria `disabled → published`, que o
+    livro só aceita de pessoa. A devolução é provada com a versão já desabilitada à mão: sem versão publicada, nada
+    antes da guarda recusaria o sistema."""
+    mundo, habilidades = adocao
+    fluxo_gravado(mundo.db, "curtir", "curtir o post de {perfil}")
+    with pytest.raises(TransitionForbidden, match="pessoa"):
+        habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=SYSTEM_ACTOR)
+    assert mundo.status("curtir") == "active" and habilidades.definition("ig.curtir") is None
+    habilidades.adopt_flow("curtir", skill_id="ig.curtir", by=DONO)
+    habilidades.transition(SkillRef("ig.curtir", 1), S.DISABLED, by=DONO, reason="parada de emergência")
+    with pytest.raises(TransitionForbidden, match="pessoa"):
+        habilidades.release_flow("ig.curtir", by=SYSTEM_ACTOR, reason="o sistema quis")
+    assert mundo.status("curtir") == "disabled"
+    assert _trilha_da_adocao(mundo, "curtir") == [("published", "disabled", DONO, "adotado pela habilidade ig.curtir")]
+    habilidades.release_flow("ig.curtir", by=DONO, reason="voltar ao fluxo")        # a pessoa, sim
+    assert mundo.status("curtir") == "active"
 
 
 # ------------------------------------------------------------------ de ponta a ponta, no central (Harness)
