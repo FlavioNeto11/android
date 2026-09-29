@@ -1361,9 +1361,10 @@ export interface CommandAccepted {
 export interface CommandVerified { command: Command; changed: boolean; verifiable: boolean }
 
 /**
- * De onde veio a decisão sobre um comando. `panel`: o backend acrescenta "no painel, a partir de <aparelho>" ao
- * motivo. O contexto não vai na nota: a nota passa pela triagem de credencial, e um id de aparelho fora do padrão
- * (`Pixel_7a-Lab.02`) recusava a decisão inteira (409 `note_looks_secret`) por causa do prefixo.
+ * De onde veio a decisão sobre um comando. `panel`: o backend acrescenta ", no painel a partir de <aparelho>" ao
+ * motivo, depois de "por <autor>" (só ", a partir de <aparelho>" quando o autor já é `panel`). O contexto não vai na
+ * nota: a nota passa pela triagem de credencial, e um id de aparelho fora do padrão (`Pixel_7a-Lab.02`) recusava a
+ * decisão inteira (409 `note_looks_secret`) por causa do prefixo.
  */
 export type CommandDecisionOrigin = 'panel';
 

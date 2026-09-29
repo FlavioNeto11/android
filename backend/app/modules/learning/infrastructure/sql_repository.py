@@ -288,14 +288,30 @@ class SqlLearningRepository:
                                                                 (*params, int(limite)))]
 
     # ================================================================== sinais
-    def registrar_sinal(self, sinal: NovoSinal, *, substituir: bool = False) -> int | None:
+    def registrar_sinal(self, sinal: NovoSinal, *, substituir: bool = False,
+                        um_por_evento: bool = False) -> int | None:
         """INSERT idempotente pela chave `(kind, source_ref, created_by)`. `substituir`: o voto troca (upsert por
-        pessoa e por item); sem ele, a varredura sem cursor não duplica nada e devolve `None` no repetido."""
+        pessoa e por item); sem ele, a varredura sem cursor não duplica nada e devolve `None` no repetido.
+
+        `um_por_evento` (o gesto de uma pessoa, ADR-054): a chave é `(kind, source_ref)`, qualquer que seja o autor —
+        o `source_ref` do gesto é a identidade do EVENTO, e o mesmo evento feito de novo por outra pessoa não vira
+        segunda linha (a régua conta linhas); o primeiro autor fica e o repetido devolve `None`. Leitura e escrita na
+        mesma transação, sob a trava do `Database`: duas threads do processo não gravam as duas. Entre PROCESSOS só
+        um índice único parcial em `(kind, source_ref)` garantiria — hoje o backend é um processo só."""
         s = sinal
         conflito = ("DO UPDATE SET polarity=excluded.polarity, verdict=excluded.verdict, reason=excluded.reason,"
                     " note=excluded.note, note_refused=excluded.note_refused, data=excluded.data,"
                     " step_verified=excluded.step_verified, updated_at=excluded.created_at"
                     if substituir else "DO NOTHING")
+        if um_por_evento:
+            with self._db.tx():
+                if self._db.one("SELECT 1 FROM learning_signals WHERE kind=? AND source_ref=? LIMIT 1",
+                                (s.kind.value, s.source_ref)) is not None:
+                    return None
+                return self._inserir_sinal(s, conflito)
+        return self._inserir_sinal(s, conflito)
+
+    def _inserir_sinal(self, s: NovoSinal, conflito: str) -> int | None:
         row = self._db.one(
             "INSERT INTO learning_signals(kind, polarity, verdict, reason, note, note_refused, source_ref, created_by,"
             " run_id, objective_id, step_id, attempt_id, instance_id, profile_id, app_package, capability, step_hash,"

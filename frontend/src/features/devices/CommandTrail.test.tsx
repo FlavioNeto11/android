@@ -144,7 +144,7 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     await waitFor(() => expect(text(el)).toContain('Executando'));
     await click(byRole('button', /Cancelar/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/cancel$/)).toHaveLength(1));
-    // Sem nota: o id do aparelho não passa pela triagem de credencial; o backend compõe "no painel, a partir de…".
+    // Sem nota: o id do aparelho não passa pela triagem de credencial; o backend compõe ", no painel a partir de…".
     const corpo = backend.callsTo('POST', /\/cancel$/)[0]?.body as Record<string, unknown>;
     expect(corpo).toEqual({ origin: 'panel' });
   });

@@ -286,8 +286,10 @@ class LearningService:
         return self._repo.criar_item(novo, by=by, estado=SkillState.CANDIDATE, detalhe=None,
                                      reason="nascimento", run_id=run_id)
 
-    def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False) -> int | None:
-        """Grava um sinal (idempotente por `(kind, source_ref, created_by)`).
+    def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
+                        um_por_evento: bool = False) -> int | None:
+        """Grava um sinal (idempotente por `(kind, source_ref, created_by)`; com `um_por_evento`, o gesto de uma
+        pessoa, por `(kind, source_ref)`: o primeiro autor fica — ver o repositório).
 
         A nota passa pela triagem de credencial: com `recusar_nota` (o botão do D2) a nota ruim é recusa (409) e nada
         é gravado; sem ele (a varredura) o sinal é gravado sem a nota e com `note_refused=1`. A nota que fica é
@@ -302,7 +304,8 @@ class LearningService:
                 raise NotaComCaraDeSegredo("A nota tem formato ou assunto de credencial e não foi gravada.")
             nota, recusada = "", True
         limpo = self._triagem.redigir(nota)[:NOTA_MAX] if nota else None
-        return self._repo.registrar_sinal(replace(sinal, note=limpo, note_refused=recusada), substituir=substituir)
+        return self._repo.registrar_sinal(replace(sinal, note=limpo, note_refused=recusada), substituir=substituir,
+                                          um_por_evento=um_por_evento)
 
     # ================================================================== digest e curadoria
     def digerir_execucao(self, run_id: str) -> Relatorio:

@@ -302,19 +302,21 @@ class CosturasDoLivro:
 
     # ---------------------------------------------------------------- escrita
     def _gesto(self, sinal: NovoSinal) -> None:
-        """Grava o sinal de um gesto, UM por `(kind, source_ref)`, qualquer que seja o autor: o primeiro fica.
+        """Grava o sinal de um gesto, UM por `(kind, source_ref)`, qualquer que seja o autor: o primeiro fica
+        (`registrar_sinal(um_por_evento=True)`). Vale para os SETE escritores deste pacote.
 
         Enquanto os gestos do A2 saíam todos `panel`, o autor fixo fazia o `ON CONFLICT (kind, source_ref,
         created_by)` engolir a repetição do mesmo evento. Com o operador da sessão, o mesmo evento feito de novo por
         OUTRA pessoa viraria uma segunda linha — pedir o controle, desistir e outra pessoa pedir na mesma tentativa;
         "abandonar" de novo o item que já falhou, na mesma etapa —, e a régua conta linhas (intervenção por tentativa,
-        negativo humano). A chave do gesto já é o evento, não a pessoa; o índice com o autor é o do voto do D2, em que
-        duas pessoas no mesmo item são duas opiniões, e continua valendo para ele. Leitura e escrita no mesmo laço (as
-        costuras rodam na rota ou no escalonador, sem `await` entre as duas)."""
-        if self._db.one("SELECT 1 FROM learning_signals WHERE kind=? AND source_ref=? LIMIT 1",
-                        (sinal.kind.value, sinal.source_ref)) is not None:
-            return
-        self._servico.registrar_sinal(sinal)
+        negativo humano). O índice com o autor é o do voto do D2, em que duas pessoas no mesmo item são duas opiniões,
+        e continua valendo para ele.
+
+        **Requisito de quem escreve aqui:** o `source_ref` é a identidade do EVENTO, nunca a de uma classe de eventos
+        — a tentativa tomada, o ponto de decisão do item (`ordem`), os itens retomados com a versão nova, o campo da
+        execução respondida, o instante da transição do cancelamento, o comando (resolvido uma vez só), o turno da
+        correção. Uma chave que deixasse de ser única por evento faria o gesto de OUTRA pessoa sumir sem aviso."""
+        self._servico.registrar_sinal(sinal, um_por_evento=True)
 
     # ---------------------------------------------------------------- leitura
     def _contexto(self, run_id: str, *, objective_id: str | None = None,

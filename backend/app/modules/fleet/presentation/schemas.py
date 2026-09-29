@@ -83,8 +83,9 @@ class InstanceProvisionBody(BaseModel):
 
 
 #: De onde veio a decisão sobre um comando. `panel`: do cartão do próprio aparelho no painel — o backend acrescenta
-#: "no painel, a partir de <aparelho>" ao motivo, e a nota continua sendo só o texto da pessoa (a triagem de
-#: credencial olha só ele: um id de aparelho fora do padrão `android-NN` não pode recusar a decisão).
+#: ", no painel a partir de <aparelho>" ao motivo, depois de "por <autor>" (só ", a partir de <aparelho>" quando o
+#: autor já é `panel`), e a nota continua sendo só o texto da pessoa (a triagem de credencial olha só ele: um id de
+#: aparelho fora do padrão `android-NN` não pode recusar a decisão).
 OrigemDaDecisao = Literal["panel"]
 
 

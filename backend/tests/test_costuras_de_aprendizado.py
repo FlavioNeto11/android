@@ -814,21 +814,34 @@ async def test_nota_da_resolucao_pelo_painel_e_so_o_texto_da_pessoa(harness: Har
     assert sinais[f"comando:{so_prefixo}"]["note"] is None and f"comando:{outro_id}" not in sinais
 
     # `requested_by` (o autor sem sessão, gravado cru no motivo, em `resolved_by` e no evento): mesma triagem, mesma
-    # recusa, nada gravado; o rótulo limpo continua valendo
+    # recusa, nada gravado — COM sessão também (ela o ignora como autor, mas a regra é uma só); o rótulo limpo
+    # continua valendo
     for rotulo in ("senha: segredo123", "Xy9!abcdEF#2026"):
-        async with _cliente(harness) as c:
-            r = await c.post(f"/api/commands/{outro_id}/resolve",
-                             json={"outcome": "failed", "requested_by": rotulo})
-        assert r.status_code == 409 and r.json()["detail"]["code"] == "note_looks_secret", rotulo
-        linha = st.commands.get(outro_id)
-        assert linha is not None and linha["state"] == "uncertain"
-        assert rotulo not in json.dumps(dict(linha), default=str)
+        for com_sessao in (False, True):
+            async with _cliente(harness) as c:
+                if com_sessao:
+                    await _logado(c, NOME)
+                r = await c.post(f"/api/commands/{outro_id}/resolve",
+                                 json={"outcome": "failed", "requested_by": rotulo})
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "note_looks_secret", (rotulo, com_sessao)
+            linha = st.commands.get(outro_id)
+            assert linha is not None and linha["state"] == "uncertain"
+            assert rotulo not in json.dumps(dict(linha), default=str)
     assert f"comando:{outro_id}" not in {s["source_ref"] for s in _sinais(harness, "comando_incerto_resolvido")}
     async with _cliente(harness) as c:
         r = await c.post(f"/api/commands/{outro_id}/resolve",
                          json={"outcome": "failed", "requested_by": "script-de-carga", "origin": "panel"})
     assert r.status_code == 200, r.text
     assert registro(outro_id)[0] == f"resolvido à mão por script-de-carga, no painel a partir de {avd}"
+
+    # ninguém identificado: o autor já é `panel`, e o contexto não repete o painel
+    sem_ninguem = _comando_incerto(harness, "c-teste-origem-5", instance_id=avd)
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/commands/{sem_ninguem}/resolve", json={"outcome": "succeeded", "origin": "panel"})
+    assert r.status_code == 200, r.text
+    motivo, dados = registro(sem_ninguem)
+    assert motivo == f"resolvido à mão por panel, a partir de {avd}"
+    assert (dados["resolved_by"], dados["origin"], dados["note"]) == ("panel", "panel", None)
 
 
 async def test_comando_incerto_simulated_vem_da_execucao_senao_da_instalacao(harness: Harness,

@@ -74,7 +74,7 @@ from .security import access as acesso           # o módulo, não os nomes: `LO
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome, operador_atual
-from .shared.costuras import ResolucaoDeComando, autor_do_gesto, avisar
+from .shared.costuras import PAINEL, ResolucaoDeComando, autor_do_gesto, avisar
 from .state import AppState
 from .workers.captura import ErroDeMidia
 from .workers.protocol import EnvioDeMidia, Hello, Refused, parse_upstream
@@ -151,7 +151,7 @@ def quem(request: Request | None = None, informado: str | None = None) -> str:
     ninguém se identificou".
     """
     da_sessao = getattr(request.state, "operador", None) if request is not None else None
-    return da_sessao or operador_atual() or (informado or "").strip() or "panel"
+    return da_sessao or operador_atual() or (informado or "").strip() or PAINEL
 
 
 def _autor_do_sinal(request: Request) -> str:
@@ -173,15 +173,17 @@ _TRIAGEM_DE_NOTA = TriagemDeCredencial()
 _PREFIXO_ANTIGO_DO_PAINEL = {"resolve": "decidido no painel a partir de ", "cancel": "cancelado no painel a partir de "}
 
 
-def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None, origem: str | None,
+def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None, origem: str | None, autor: str,
                            gesto: Literal["resolve", "cancel"], o_que: str) -> tuple[str | None, str]:
-    """O texto da pessoa (sem o contexto) e o contexto que o motivo do comando acrescenta (", no painel a partir de
-    <aparelho>" ou nada). Recusa com 409 `note_looks_secret` ANTES de qualquer escrita, pela triagem do voto do D2:
+    """O texto da pessoa (sem o contexto) e o contexto que o motivo do comando acrescenta depois de "por <autor>":
+    ", no painel a partir de <aparelho>" — ou só ", a partir de <aparelho>" quando o autor já é `panel` (ninguém se
+    identificou; "por panel, no painel" repetiria o painel) —, ou nada fora do painel. Recusa com 409
+    `note_looks_secret` ANTES de qualquer escrita, pela triagem do voto do D2:
 
     - a nota, só o texto da pessoa — o contexto é do backend e nunca passa pela triagem;
-    - o `requested_by` do corpo, sempre que vier: sem sessão ele é o autor gravado cru no motivo, em
-      `result.resolved_by` e no evento do comando; com sessão é ignorado, mas um rótulo com cara de credencial não
-      tem uso legítimo e a regra fica uma só."""
+    - o `requested_by` do corpo, sempre que vier, COM ou sem sessão: sem sessão ele é o autor gravado cru no motivo,
+      em `result.resolved_by` e no evento do comando; com sessão é ignorado, mas um rótulo com cara de credencial
+      não tem uso legítimo e a regra fica uma só."""
     texto = (nota or "").strip()
     antigo = f"{_PREFIXO_ANTIGO_DO_PAINEL[gesto]}{row['instance_id']}"
     do_painel = origem == "panel"
@@ -195,8 +197,11 @@ def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None,
     rotulo = (requested_by or "").strip()
     if rotulo and _TRIAGEM_DE_NOTA.recusa(rotulo):
         raise err(409, "note_looks_secret", f"O requested_by tem formato ou assunto de credencial e não foi gravado, "
-                                            f"nem {o_que}. Use um rótulo sem o segredo, ou entre com uma sessão.")
-    return texto or None, (f", no painel a partir de {row['instance_id']}" if do_painel else "")
+                                            f"nem {o_que}. Mande um rótulo sem o segredo, ou nenhum (com sessão, o "
+                                            f"autor é o operador dela).")
+    if not do_painel:
+        return texto or None, ""
+    return texto or None, f", {'' if autor == PAINEL else 'no painel '}a partir de {row['instance_id']}"
 
 
 # ====================================================================== sessão do painel
@@ -2509,9 +2514,10 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
         raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
                                    "ser cancelado.")
     corpo = body or CommandCancelBody()
-    nota, contexto = _decisao_sobre_comando(row, corpo.note, corpo.requested_by, corpo.origin, "cancel",
-                                            "o pedido de cancelamento")
+    # `quem` só lê; o `requested_by` que ele pode devolver é triado logo abaixo, antes de qualquer escrita.
     autor = quem(request, corpo.requested_by)
+    nota, contexto = _decisao_sobre_comando(row, corpo.note, corpo.requested_by, corpo.origin, autor, "cancel",
+                                            "o pedido de cancelamento")
     if CommandState(row["state"]) is not CommandState.cancel_requested:
         motivo = f"cancelamento pedido por {autor}{contexto}" + (f": {nota}" if nota else "")
         try:
@@ -2547,10 +2553,11 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     if CommandState(row["state"]) not in COMMAND_UNSETTLED:
         raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
                                         "'uncertain' é resolvido à mão.")
-    nota, contexto = _decisao_sobre_comando(row, body.note, body.requested_by, body.origin, "resolve", "a resolução")
+    autor = quem(request, body.requested_by)       # só lê: a triagem abaixo vem antes de qualquer escrita
+    nota, contexto = _decisao_sobre_comando(row, body.note, body.requested_by, body.origin, autor, "resolve",
+                                            "a resolução")
     alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
             "cancelled": CommandState.cancelled}[body.outcome]
-    autor = quem(request, body.requested_by)
     motivo = f"resolvido à mão por {autor}{contexto}" + (f": {nota}" if nota else "")
     anterior = loads(row["result"], {}) if row["result"] else {}
     dados = {**(anterior or {}), "resolved_by": autor, "resolved_at": now_iso(), "resolution": body.outcome,
