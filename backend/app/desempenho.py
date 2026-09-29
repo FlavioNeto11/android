@@ -29,7 +29,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Iterable
 
-from .db import loads
+from .db import Database, dumps, loads
 from .metricas import percentil
 from .planning import costs
 from .util import now_iso, parse_iso
@@ -39,6 +39,13 @@ STATUS_OBJETIVO = ("succeeded", "failed", "uncertain", "waiting_user", "cancelle
 #: Teto de ferramentas distintas na tabela de ações. O conjunto real é pequeno (as ferramentas do ator); passar
 #: disto é sinal de nome livre, e o excedente vai para `_outras` em vez de explodir o payload.
 MAX_FERRAMENTAS = 40
+#: Teto de linhas `measurements(kind='irq')` por consulta. A sonda de saúde grava uma a cada 30 s por aparelho no
+#: ar: dez aparelhos dão 1200 por hora, e o teto cobre ~16 h do parque inteiro ou dias de um aparelho só. Passado
+#: dele ficam as MAIS RECENTES, e a resposta diz `truncada` — série cortada nunca passa por série inteira.
+IRQ_MAX_LINHAS = 20_000
+#: Campos de cada ponto da série. Os ticks acumulados e as vCPU ficam só no `ultimo`: na série inteira, dobrariam o
+#: payload sem ajudar a ler a curva.
+_IRQ_PONTO = ("ts", "irq_frac", "load1", "ocioso", "controle", "interesse")
 
 
 # ---------------------------------------------------------------------------------------------- utilitários
@@ -346,4 +353,42 @@ def resumo(db: Any, *, desde_iso: str, precos: dict[str, list[float]], ate_iso: 
         "ia": _ia(db, desde_iso, ate, precos, incluir_simulados),
         "comandos": _comandos(db, desde_iso, ate),
         "aparelhos": _aparelhos(db, desde_iso, ate),
+    }
+
+
+def interrupcoes(db: Database, *, desde_iso: str, aparelho: str | None = None,
+                 limite: int = IRQ_MAX_LINHAS) -> dict[str, object]:
+    """Fração de CPU do convidado em interrupção (irq + softirq), por aparelho, desde `desde_iso`: a série, o
+    último valor e a distribuição. Lê o que `DeviceManager._gravar_interrupcao` grava a cada sonda de saúde.
+
+    Existe para achar a causa do acúmulo (21–90% com dias no ar, ~2% depois do reinício a frio): a série se cruza
+    com os acertos de relógio (`kind='clock'`) e com a prévia aberta (`interesse` no ponto). Aparelho sem linha na
+    janela não aparece — sem medida não há "0%".
+    """
+    sql, params = "SELECT ts, data FROM measurements WHERE kind='irq' AND ts >= ?", [desde_iso]
+    if aparelho:
+        # `instance_id` mora no JSON, e JSON no SQL é dialeto. O LIKE, com o id codificado como o gravador o codifica
+        # (`dumps`), só pré-filtra — `_` e `%` num id casariam a mais, e no SQLite o LIKE ignora caixa —, e a
+        # igualdade exata é conferida abaixo, em Python.
+        sql += " AND data LIKE ?"
+        params.append(f'%"instance_id":{dumps(aparelho)}%')
+    linhas = list(reversed(db.query(sql + " ORDER BY id DESC LIMIT ?", (*params, limite))))
+    series: dict[str, list[dict[str, object]]] = defaultdict(list)
+    fracoes: dict[str, list[float | None]] = defaultdict(list)
+    ultimo: dict[str, dict[str, object]] = {}
+    for ln in linhas:
+        d = loads(ln["data"], {}) or {}
+        iid, frac = d.get("instance_id"), d.get("irq_frac")
+        if not isinstance(iid, str) or (aparelho and iid != aparelho) or not isinstance(frac, (int, float)):
+            continue
+        ponto = {"ts": ln["ts"], **{k: v for k, v in d.items() if k != "instance_id"}}
+        series[iid].append({k: ponto.get(k) for k in _IRQ_PONTO})
+        fracoes[iid].append(float(frac))
+        ultimo[iid] = ponto
+    return {
+        "desde": desde_iso, "aparelho": aparelho,
+        "n": sum(len(v) for v in series.values()),
+        "truncada": len(linhas) >= limite,
+        "por_aparelho": {iid: {"ultimo": ultimo[iid], "irq_frac": _dist(fracoes[iid]), "serie": serie}
+                         for iid, serie in sorted(series.items())},
     }

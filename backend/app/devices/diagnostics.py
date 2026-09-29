@@ -42,11 +42,12 @@ def _tool(name: str, cmd: list[str] | None, pattern: str | None = None, path: st
 
 def medicoes_recentes(db: Database, limite: int = 60) -> list[dict[str, Any]]:
     """As últimas medições para o Diagnóstico. As janelas de métricas de desempenho (kind='metricas', uma a cada
-    15 min) têm rota própria (GET /api/desempenho); listadas aqui, empurrariam boot, relógio e capacidade para
+    15 min) e a fração de interrupção do convidado (kind='irq', uma por sonda de saúde: duas por minuto por
+    aparelho) têm rota própria (GET /api/desempenho); listadas aqui, empurrariam boot, relógio e capacidade para
     fora das 60 linhas."""
     return [{"ts": r["ts"], "kind": r["kind"], **loads(r["data"], {})}
-            for r in db.query("SELECT * FROM measurements WHERE kind <> 'metricas' ORDER BY id DESC LIMIT ?",
-                              (limite,))]
+            for r in db.query("SELECT * FROM measurements WHERE kind NOT IN ('metricas', 'irq') ORDER BY id DESC"
+                              " LIMIT ?", (limite,))]
 
 
 def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
