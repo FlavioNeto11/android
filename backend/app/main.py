@@ -257,10 +257,12 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
             OPERADOR.reset(marca)
 
     if cfg.serve_api:
+        # Livro de aprendizado (ADR-054; `/api/aprendizado*`) ANTES do `router`: o voto do D2
+        # (`POST /api/runs/{id}/feedback`) casaria com `POST /runs/{run_id}/{op}` de lá e viraria 404.
+        app.include_router(learning_router)
         app.include_router(router)
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
-        app.include_router(learning_router)   # livro de aprendizado (ADR-054); `/api/aprendizado*`
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():
