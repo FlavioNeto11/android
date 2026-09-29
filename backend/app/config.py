@@ -191,9 +191,9 @@ class AndroidCfg(BaseModel):
     #: 14,7 e 82 MB livres no android-04, com YouTube e Gmail subindo sozinhos (`devices/apps_de_fundo.py`). O padrão é
     #: o conservador de lá. Reversível: tirado da lista, o pacote volta (`pm enable`) no preparo seguinte — só o que o
     #: próprio preparo desativou; `[]` devolve tudo. Pacote protegido (Play Store, GMS, GSF, WebView, teclado,
-    #: launcher, SystemUI, Chrome, Instagram, `io.appium.*`) ou app alvo declarado aqui é RECUSADO na carga. Vale para
-    #: o que o CENTRAL prepara (os emuladores dele e os dos workers, pelo túnel), menos a loja e o celular físico; no
-    #: `worker.yaml` não tem efeito.
+    #: launcher, SystemUI, Chrome, `io.appium.*`) ou app alvo (declarado em `app/conhecimento/apps/`, em `apps` ou em
+    #: `contas.sessao`) é RECUSADO na carga. Vale para o que o CENTRAL prepara (os emuladores dele e os dos workers,
+    #: pelo túnel), menos a loja e o celular físico; no `worker.yaml` não tem efeito.
     desativar_apps: list[str] = Field(default_factory=lambda: list(PADRAO_DE_APPS_DE_FUNDO))
 
     # ------------------------------------------------------------------ o que vale de fato

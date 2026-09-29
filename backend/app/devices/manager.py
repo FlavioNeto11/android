@@ -32,6 +32,7 @@ from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
 from .apps_de_fundo import AjusteDosApps
+from .apps_de_fundo import validar_lista as validar_apps_de_fundo
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
@@ -1901,7 +1902,7 @@ class DeviceManager:
         - os outros: a lista MENOS os pacotes do catálogo de apps. O app alvo nunca é desativado — a carga já recusa o
           que a configuração declara; o que foi cadastrado depois, no banco, sai aqui, e volta se estava desativado.
 
-        Catálogo ilegível: `None` — sem saber qual é o alvo, não se desativa nada.
+        Catálogo ilegível (ou lista inválida): `None` — sem saber qual é o alvo, não se desativa nada.
         """
         if rt.external and not rt.worker_id:
             return None
@@ -1909,9 +1910,12 @@ class DeviceManager:
             return ()
         try:
             alvos = {str(r["package"]).strip() for r in self.db.query("SELECT package FROM apps")}
-            lista = self.android_de(rt).desativar_apps
+            # De novo pelo validador: o override do YAML entra por `model_copy(update=)`, sem validar — a carga só
+            # conferiu uma CÓPIA dele, e um " com.google.android.gm" com espaço chegaria cru e viraria "recusado".
+            lista = validar_apps_de_fundo(self.android_de(rt).desativar_apps)
         except Exception:  # noqa: BLE001 - sem o catálogo, o preparo segue sem mexer em app nenhum
-            log.exception("%s: não deu para ler o catálogo de apps; o preparo não mexe nos apps de fundo", rt.id)
+            log.exception("%s: não deu para montar a lista (catálogo de apps ou configuração); o preparo não mexe "
+                          "nos apps de fundo", rt.id)
             return None
         return tuple(p for p in lista if p not in alvos)
 

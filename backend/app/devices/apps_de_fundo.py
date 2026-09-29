@@ -8,13 +8,18 @@ sozinhos. O convidado tem 2 GB. Um app desativado não sobe mais em segundo plan
 
 O que NUNCA se desativa (`PROTEGIDOS`): a Play Store (instala o APK com a conta do dono), o GMS e o GSF (a conta
 Google e tudo que depende dela), o WebView (e a biblioteca de que ele depende), o teclado, o launcher, o SystemUI, o
-Chrome (sites, ADR-025), o app alvo (Instagram; os outros vêm do catálogo, no central) e o `io.appium.*` (o servidor
-de automação). Pacote protegido na lista é RECUSADO na carga da configuração (`validar_lista`) e, se chegar por
-código, pulado pelo `Adb` antes de qualquer `pm` (`planejar`).
+Chrome (sites, ADR-025), o `io.appium.*` (o servidor de automação) e o app alvo. O alvo não tem nome escrito aqui
+(ADR-052: conhecimento de app é dado): é todo app DECLARADO em `app/conhecimento/apps/<pacote>/` (o Instagram
+inclusive), mais, no central, o catálogo de apps do banco e o que a configuração declara (`apps`, `contas.sessao`).
+Pacote protegido na lista é RECUSADO na carga da configuração (`validar_lista`) e, se chegar por código, pulado pelo
+`Adb` antes de qualquer `pm` (`planejar`).
 
-Reversível: o preparo grava no aparelho (`MARCADOR`) o que ELE desativou. Tirado da lista, o pacote volta com
-`pm enable` no preparo seguinte — e só o que está no marcador: o que a pessoa desativou à mão fica como está. O
-marcador vive com o estado dos pacotes: vai junto no snapshot e some junto no reset.
+Reversível: o preparo grava no aparelho (`MARCADOR`) os pacotes da lista que ficaram desativados. Tirado da lista, o
+pacote volta com `pm enable` no preparo seguinte — e só o que está no marcador: o que a pessoa desativou à mão FORA da
+lista fica como está. Um pacote da lista que já estava desativado (à mão, ou a imagem o trazia assim) entra no
+marcador também: estar na lista é a pessoa dizendo "desativado", e tirá-lo é dizendo "habilitado" — é também o que
+recupera um marcador que não chegou a ser gravado. O marcador vive com o estado dos pacotes: vai junto no snapshot e
+some junto no reset.
 
 Idempotente: uma leitura primeiro (habilitados, desativados, marcador), e `pm` só para o que precisa mudar. Na segunda
 vez não há escrita nenhuma.
@@ -26,6 +31,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 #: O mesmo formato de `adb.PACKAGE_RE` (daqui não se importa `adb`: `config.py` também usa este módulo, e `adb.py`
 #: chega a `config.py` por `sdk.py`). É o que torna seguro montar a linha do shell com o nome do pacote.
@@ -66,7 +72,6 @@ PROTEGIDOS: dict[str, str] = {
     "com.android.launcher": "launcher: a tela inicial",
     "com.android.systemui": "SystemUI: barra, notificações, diálogos do sistema",
     "com.android.chrome": "Chrome: é por ele que a automação usa os sites (ADR-025)",
-    "com.instagram": "app alvo da automação",
     "io.appium": "servidor de automação (Appium/UiAutomator2)",
     "com.android.settings": "Configurações do sistema",
     "com.android.shell": "shell do adb",
@@ -104,11 +109,29 @@ COMANDO_DE_LEITURA = (f"pm list packages -e --user 0; echo {_DESATIVADOS}; pm li
                       f"echo {_DO_MARCADOR}; cat {MARCADOR} 2>/dev/null; echo {_FIM}")
 
 
+#: Onde moram os apps DECLARADOS (ADR-052: um app é uma pasta de dado com `app.yaml`, com o nome do pacote). É daqui
+#: que sai o app alvo, e não de um nome escrito em Python. No agente do worker a pasta não existe (lá o `Adb` nunca
+#: recebe lista: quem prepara com lista é o central).
+PASTA_DOS_APPS_DECLARADOS = Path(__file__).resolve().parents[1] / "conhecimento" / "apps"
+
+
+def apps_declarados(raiz: Path | None = None) -> frozenset[str]:
+    """Os pacotes com pasta de conhecimento (`<raiz>/<pacote>/app.yaml`). Lido a cada chamada: é uma pasta pequena,
+    e um app declarado depois da partida já sai protegido no preparo seguinte."""
+    base = raiz or PASTA_DOS_APPS_DECLARADOS
+    if not base.is_dir():
+        return frozenset()
+    return frozenset(p.name for p in base.iterdir()
+                     if p.is_dir() and PACOTE_RE.match(p.name) and (p / "app.yaml").is_file())
+
+
 def protecao(pacote: str) -> str | None:
     """Por que `pacote` nunca é desativado, ou None quando ele pode ser."""
     for familia, motivo in PROTEGIDOS.items():
         if pacote == familia or pacote.startswith(familia + "."):
             return motivo
+    if pacote in apps_declarados():
+        return "app declarado em app/conhecimento/apps: é alvo da automação"
     return None
 
 
@@ -237,9 +260,10 @@ def ler_escrita(saida: str, plano: PlanoDosApps) -> tuple[tuple[str, ...], tuple
 
 def marcador_depois(estado: EstadoDosApps, plano: PlanoDosApps, desativados: Iterable[str],
                     reativados: Iterable[str]) -> tuple[str, ...]:
-    """O marcador depois desta passagem: o que está na lista e desativado (inclusive o que já estava — está na lista,
-    é o dono quem o quer desativado), mais o que era nosso, saiu da lista e ainda não voltou (tenta de novo depois).
-    Some o que voltou, o que a imagem não tem mais e o que já está habilitado (alguém reativou)."""
+    """O marcador depois desta passagem: o que está na lista e desativado (inclusive o que já estava, à mão ou de
+    fábrica — está na lista, é o dono quem o quer desativado; tirado dela, volta HABILITADO, mesmo que a imagem o
+    trouxesse desativado), mais o que era nosso, saiu da lista e ainda não voltou (tenta de novo depois). Some o que
+    voltou, o que a imagem não tem mais e o que já está habilitado (alguém reativou)."""
     na_lista = set(plano.ja_desativados) | set(desativados)
     voltou = set(reativados)
     pendentes = {p for p in estado.marcados

@@ -80,7 +80,8 @@ android:
   # subindo sozinhos. Esta é a lista conservadora (o padrão do código). Pacote que a imagem não tem é ignorado.
   # Reversível: tire um pacote e o preparo seguinte o reativa (`pm enable`) — só o que ele mesmo desativou; `[]`
   # devolve tudo. NUNCA entram (o backend não sobe): Play Store, GMS, GSF, WebView, teclado, launcher, SystemUI,
-  # Chrome, Instagram, io.appium.* e o app alvo declarado em `apps`/`contas.sessao`; o do catálogo sai sozinho.
+  # Chrome, io.appium.* e o app alvo — o declarado em backend/app/conhecimento/apps (o Instagram) e o de
+  # `apps`/`contas.sessao`; o do catálogo do banco sai sozinho da lista.
   # Vale para os emuladores daqui e os dos workers (o central os prepara pelo túnel); a loja e o celular físico ficam
   # fora. Por aparelho: `instances.overrides.<id>.desativar_apps`.
   desativar_apps:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -133,7 +134,7 @@ def test_o_exemplo_traz_o_mesmo_padrao_do_modelo() -> None:
     "com.android.vending", "com.google.android.gms", "com.google.android.gms.policy_sidecar_aps",
     "com.google.android.gsf", "com.google.android.gsf.login", "com.google.android.webview", "com.android.webview",
     "com.google.android.inputmethod.latin", "com.google.android.apps.nexuslauncher", "com.android.launcher3",
-    "com.android.systemui", "com.android.chrome", "com.instagram.android", "com.instagram.lite",
+    "com.android.systemui", "com.android.chrome", "com.instagram.android",
     "io.appium.uiautomator2.server", "io.appium.uiautomator2.server.test", "io.appium.settings",
 ])
 def test_pacote_protegido_na_lista_e_recusado_na_carga(pacote: str) -> None:
@@ -141,6 +142,16 @@ def test_pacote_protegido_na_lista_e_recusado_na_carga(pacote: str) -> None:
     with pytest.raises(ValidationError) as erro:
         AndroidCfg(desativar_apps=[YOUTUBE, pacote])
     assert pacote in str(erro.value) and "protegido" in str(erro.value)
+
+
+def test_o_app_alvo_vem_do_conhecimento_declarado_e_nao_de_nome_escrito(tmp_path: Path) -> None:
+    """ADR-052: o alvo é todo app com pasta em `app/conhecimento/apps/` (o Instagram hoje), não um nome no código."""
+    assert "com.instagram.android" in apps.apps_declarados()
+    (tmp_path / "com.exemplo.alvo").mkdir()
+    (tmp_path / "com.exemplo.alvo" / "app.yaml").write_text("pacote: com.exemplo.alvo", encoding="utf-8")
+    (tmp_path / "sem.manifesto").mkdir()                   # pasta sem `app.yaml` não é app
+    assert apps.apps_declarados(tmp_path) == frozenset({"com.exemplo.alvo"})
+    assert apps.apps_declarados(tmp_path / "nao-existe") == frozenset()   # o agente do worker não tem a pasta
 
 
 @pytest.mark.parametrize("bruto", ["youtube", "com.google.android.youtube; reboot", "com..gm", "1com.x.y", ""])
@@ -335,6 +346,29 @@ async def test_central_nao_mexe_nos_apps_do_celular_fisico(harness: Harness, mon
     assert s.devices.apps_de_fundo_de(rt) is None
     rt.worker_id = "notebook"                     # aparelho de worker, pelo túnel: é o central quem prepara
     assert s.devices.apps_de_fundo_de(rt) == tuple(apps.PADRAO)
+
+
+async def test_override_do_yaml_chega_limpo_ao_preparo(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`instance_android` aplica o override por `model_copy(update=)`, sem validar: o espaço chegaria cru e o `Adb`
+    o recusaria como nome inválido, calando a intenção do dono."""
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    s.devices.cfg.file.instances.overrides["android-01"] = {"desativar_apps": [f" {GMAIL} ", GMAIL, YOUTUBE]}
+    assert s.devices.apps_de_fundo_de(rt) == (GMAIL, YOUTUBE)
+
+
+def test_pacote_da_lista_ja_desativado_passa_a_ser_do_preparo() -> None:
+    """Estar na lista é o dono dizendo "desativado"; tirá-lo é dizendo "habilitado" — mesmo o que já estava
+    desativado antes (à mão, de fábrica, ou um marcador que não chegou a ser gravado)."""
+    convidado = ConvidadoFalso({*SISTEMA}, desativados={YOUTUBE})
+    adb = _adb(convidado, (YOUTUBE,))
+    ajuste = adb.prepare_for_automation()
+    assert ajuste is not None and ajuste.ja_desativados == (YOUTUBE,) and not ajuste.mudou
+    assert convidado.marcador == {YOUTUBE} and convidado.pm("disable-user") == []
+    adb.apps_de_fundo = ()
+    adb.prepare_for_automation()
+    assert convidado.pm("enable") == [YOUTUBE] and YOUTUBE in convidado.habilitados
 
 
 async def test_a_loja_nao_tem_app_desativado(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
