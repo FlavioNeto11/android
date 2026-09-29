@@ -4134,6 +4134,23 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T22:29:26+00:00"
+  },
+  "27.1": {
+   "id": "27.1",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/relatorio-validacao.md §26.3 (revisão adversarial por frente com os achados graves corrigidos, correção da integração eb38139 e das regressões 99abe23) e §26.4 (cenários do aceite integrado no mesmo aparelho); critérios por frente em docs/design/terceira-evolucao.md §4 e no Fecha quando das Fases 23–27.",
+   "blocker": "",
+   "arquivos": [
+    "docs/relatorio-validacao.md"
+   ],
+   "testes": "docs-check 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T22:30:01+00:00"
   }
  },
  "rodadas": [
@@ -4725,6 +4742,15 @@
    "quando": "2026-09-29T22:29:26+00:00",
    "itens": [
     "25.10"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
+   ]
+  },
+  {
+   "quando": "2026-09-29T22:30:01+00:00",
+   "itens": [
+    "27.1"
    ],
    "grupos": [
     "evolucao3-coordenador"
