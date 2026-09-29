@@ -61,9 +61,52 @@ class BindingConflict(RuntimeError):
         self.instance_id, self.app_id, self.other_profile_id = instance_id, app_id, other_profile_id
 
 
+#: De onde vem a afirmação de que uma conta travou (ADR-055, migração 054): a tela foi LIDA (`observado`), uma
+#: pessoa DISSE (`declarado`) ou uma regra DECIDIU (`regra`, como o bloqueio do ADR-029 por desafio).
+ORIGENS_DE_BLOQUEIO = ("observado", "declarado", "regra")
+#: A origem do `instances.account_label` quando é a plataforma que o deriva (054). NULL = configuração ou digitado.
+_ROTULO_DERIVADO = ("vinculo", "marcador")
+
+
+def normalizar_handle(handle: str) -> str:
+    """A conta como o marcador a guarda: sem '@' e em minúsculas — o Instagram não distingue, e o índice de
+    unicidade do marcador aberto precisa ver `@Felipe` e `felipe` como a mesma conta."""
+    return handle.strip().lstrip("@").strip().lower()
+
+
+def frase_da_quarentena(marcador: Row, acao: str | None = None) -> str:
+    """Por que o aparelho está em quarentena, na MESMA frase para o 409 do painel, o histórico do comando, a porta
+    do despacho e a entrega que ficou de fora. Função de módulo: recebe a linha que quem chamou já buscou."""
+    quem = f" ({marcador['seen_by']})" if marcador.get("seen_by") else ""
+    texto = (f"{marcador['instance_id']} está em quarentena: a conta @{marcador['handle']} está travada e logada "
+             f"nele desde {marcador['since']} ({marcador['origin']}{quem}; ADR-055). Nada toca neste aparelho além "
+             "de parar ou hibernar até uma pessoa decidir")
+    if acao:
+        texto += f"; '{acao}' só com a confirmação explícita da pessoa (confirm_locked_account)"
+    return texto
+
+
+class AparelhoEmQuarentena(RuntimeError):
+    """O aparelho tem conta travada logada (marcador aberto, 054): nenhuma persona é vinculada nele. O serviço a
+    traduz em 409 `aparelho_em_quarentena`. O android-04 ficou no ar com o felipe no desafio e sem vínculo, e o
+    vínculo, a troca de aparelho e o cadastro aceitariam outra persona ali — que entraria no app de uma conta morta."""
+
+    code = "aparelho_em_quarentena"
+
+    def __init__(self, marcador: Row) -> None:
+        super().__init__(frase_da_quarentena(marcador) + ". Escolha outro aparelho.")
+        self.marcador = marcador
+
+
 class SocialRepository:
     def __init__(self, db: Database):
         self.db = db
+        #: Toda mudança de status do perfil passa por `mudar_status` e é anunciada aqui:
+        #: `(profile_id, anterior, novo, origem, autor, evidencia)`. Injetado pelo `SocialService`, que tem o
+        #: barramento; sem ele (teste, script) a mudança é gravada do mesmo jeito, só sem evento.
+        self.on_status_changed: Callable[[str, str, str, str, str, str | None], None] | None = None
+        #: Marcador de conta travada criado ou resolvido: `(linha do marcador, "marcado" | "resolvido", autor)`.
+        self.on_locked_account: Callable[[Row, str, str], None] | None = None
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
@@ -101,15 +144,51 @@ class SocialRepository:
         return self.db.one("SELECT * FROM instagram_profiles WHERE lower(username)=lower(?)", (username,))
 
     def update_profile(self, profile_id: str, fields: dict[str, Any]) -> None:
-        if not fields:
-            return
-        sets = ", ".join(f"{k}=?" for k in fields)
-        self.db.execute(f"UPDATE instagram_profiles SET {sets}, updated_at=? WHERE id=?",
-                        (*fields.values(), now_iso(), profile_id))
+        """Grava campos do perfil. O `status` NUNCA vai direto para o `UPDATE`: passa por `mudar_status`, que
+        preenche `blocked_*` e anuncia a mudança. Quem escreve o status por aqui sem dizer a origem é regra do
+        sistema — hoje só o bloqueio por desafio do ADR-029 (`session_rules.bloquear_por_desafio`); quem sabe a
+        origem chama `mudar_status` direto."""
+        campos = dict(fields)
+        status = campos.pop("status", None)
+        if campos:
+            sets = ", ".join(f"{k}=?" for k in campos)
+            self.db.execute(f"UPDATE instagram_profiles SET {sets}, updated_at=? WHERE id=?",
+                            (*campos.values(), now_iso(), profile_id))
+        if status is not None:
+            self.mudar_status(profile_id, str(status), origem="regra", autor="sistema")
+
+    def mudar_status(self, profile_id: str, status: str, *, origem: str, autor: str,
+                     evidencia: str | None = None) -> bool:
+        """Troca o status do perfil deixando rastro (ADR-055). Devolve se houve mudança.
+
+        Antes, `status` era uma coluna qualquer: em 28/09 havia cinco perfis `blocked` sem dizer quando, por quê nem
+        quem decidiu, e a mudança não gerava evento. Agora a entrada em `blocked` grava `blocked_at`, a evidência e a
+        origem; a saída (a pessoa reativou) os zera — o histórico fica nos eventos `profile.status`. Confirmar o
+        mesmo status não é mudança: sem gravação e sem evento.
+        """
+        if origem not in ORIGENS_DE_BLOQUEIO:
+            raise ValueError(f"origem de status desconhecida: {origem!r} (use {', '.join(ORIGENS_DE_BLOQUEIO)})")
+        linha = self.profile_row(profile_id)
+        if linha is None:
+            return False
+        anterior = str(linha["status"] or "active")
+        if anterior == status:
+            return False
+        bloqueio: tuple[str | None, str | None, str | None] = (
+            (now_iso(), (evidencia or "")[:500] or None, origem) if status == "blocked" else (None, None, None))
+        self.db.execute("UPDATE instagram_profiles SET status=?, blocked_at=?, blocked_evidence=?, blocked_origin=?,"
+                        " updated_at=? WHERE id=?", (status, *bloqueio, now_iso(), profile_id))
+        if self.on_status_changed is not None:
+            self.on_status_changed(profile_id, anterior, status, origem, autor, evidencia)
+        return True
 
     def delete_profile(self, profile_id: str) -> None:
-        """Em cascata: credencial, binding, sessão e tentativas somem junto (chave estrangeira do esquema)."""
+        """Em cascata: credencial, binding, sessão e tentativas somem junto (chave estrangeira do esquema). O
+        marcador de conta travada NÃO (054): ele é do aparelho, e a conta continua logada lá."""
+        aparelhos = {str(b["instance_id"]) for b in self.bindings_of_profile(profile_id)}
         self.db.execute("DELETE FROM instagram_profiles WHERE id=?", (profile_id,))
+        for iid in sorted(aparelhos):
+            self._sincronizar_rotulo(iid)
 
     def list_profile_ids(self) -> list[str]:
         """Só quem TEM conta de cadastro (`username <> ''`): é a lista de perfis do painel de hoje. Todas as pessoas,
@@ -158,6 +237,7 @@ class SocialRepository:
         self.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, notes, host, created_at,"
                         " updated_at) VALUES (?,?,?,?,?,?,?,?)",
                         (account_id, profile_id, app_id, handle, notes, host, agora, agora))
+        self._sincronizar_rotulos_da_persona(profile_id)
         return account_id
 
     def update_account(self, profile_id: str, account_id: str, fields: dict[str, Any]) -> None:
@@ -166,9 +246,12 @@ class SocialRepository:
         sets = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE profile_accounts SET {sets}, updated_at=? WHERE id=? AND profile_id=?",
                         (*fields.values(), now_iso(), account_id, profile_id))
+        if "handle" in fields:
+            self._sincronizar_rotulos_da_persona(profile_id)
 
     def delete_account(self, profile_id: str, account_id: str) -> None:
         self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
+        self._sincronizar_rotulos_da_persona(profile_id)
 
     def _pacote_da_conta_ancora(self) -> str | None:
         """O pacote do app que provê a conta do perfil: o que a composição injetou (`app_package`) ou, fora dela
@@ -428,6 +511,11 @@ class SocialRepository:
         o id lógico de lugar, e é a diferença entre o fotografado e o atual que denuncia a troca.
         """
         with self.db.tx():
+            # Quarentena (ADR-055) antes de tudo: com conta travada logada no aparelho, nenhuma persona entra —
+            # nem a própria dona da conta, que está bloqueada. A recusa é daqui, e não só do serviço, para quem
+            # vincula por fora dele também topar nela.
+            if (marcador := self.conta_travada_no_aparelho(instance_id)) is not None:
+                raise AparelhoEmQuarentena(marcador)
             if (conflito := self.quem_ja_serve(profile_id, instance_id, app_id)) is not None:
                 raise BindingConflict(instance_id, *conflito)
             existente = self.binding(profile_id, instance_id, app_id) if app_id is not None else self.db.one(
@@ -450,6 +538,7 @@ class SocialRepository:
                      int(principal)))
             except INTEGRITY_ERRORS as exc:
                 raise BindingConflict(instance_id, app_id, None) from exc
+            self._sincronizar_rotulo(instance_id)
 
     def quem_ja_serve(self, profile_id: str | None, instance_id: str,
                       app_id: str | None) -> tuple[str | None, str] | None:
@@ -510,10 +599,14 @@ class SocialRepository:
             sql += " AND app_id=?"
             params += (app_id,)
         with self.db.tx():
+            aparelhos = {str(b["instance_id"]) for b in self.bindings_of_profile(profile_id)
+                         if instance_id is None or b["instance_id"] == instance_id}
             self.db.execute(sql, params)
             restantes = self.bindings_of_profile(profile_id)
             if restantes and not any(b["is_primary"] for b in restantes):
                 self.db.execute("UPDATE device_profile_bindings SET is_primary=1 WHERE id=?", (restantes[0]["id"],))
+            for iid in sorted(aparelhos):
+                self._sincronizar_rotulo(iid)
 
     #: Estados de worker em que a máquina ainda responde. `degraded` é "conectado com problema declarado" — o
     #: aparelho pode até não servir, mas os dados do perfil continuam alcançáveis, que é o que esta pergunta faz.
@@ -563,6 +656,150 @@ class SocialRepository:
     def binding_history(self, profile_id: str) -> list[Row]:
         return self.db.query("SELECT * FROM device_profile_bindings WHERE profile_id=? ORDER BY id DESC",
                              (profile_id,))
+
+    # ------------------------------------------------------------------ conta travada no aparelho (054, ADR-055)
+    # O marcador é do APARELHO, não do perfil nem do vínculo — por isso estas leituras não pedem `profile_id`, como a
+    # localidade de `instances` acima. O android-04 ficou no ar com o felipe no desafio e sem vínculo nenhum: pela
+    # regra de isolamento, perguntar "de quem é este aparelho" devolvia "de ninguém", e o parque tratou um aparelho
+    # com conta morta logada como aparelho livre.
+    def conta_travada_no_aparelho(self, instance_id: str) -> Row | None:
+        """O marcador ABERTO do aparelho (o mais antigo, se houver mais de uma conta travada), ou `None`."""
+        return self.db.one("SELECT * FROM device_locked_accounts WHERE instance_id=? AND resolved_at IS NULL"
+                           " ORDER BY id LIMIT 1", (instance_id,))
+
+    def contas_travadas_abertas(self) -> list[Row]:
+        """Todos os marcadores abertos, de todos os aparelhos: é o que a saúde do sistema confere."""
+        return self.db.query("SELECT * FROM device_locked_accounts WHERE resolved_at IS NULL"
+                             " ORDER BY instance_id, id")
+
+    def marcar_conta_travada(self, instance_id: str, handle: str, evidencia: str | None, origem: str, *,
+                             visto_por: str = "sistema", profile_id: str | None = None,
+                             app_id: str | None = None) -> bool:
+        """Registra que `handle` está travada e LOGADA em `instance_id` (tela "Confirm you are human", desafio). É a
+        porta pública para quem detecta — o detector de tela chama daqui. Devolve `True` quando o marcador nasceu
+        agora; `False` quando já havia um aberto para a mesma conta naquele aparelho (idempotente: detectar de novo
+        não repete o aviso).
+
+        O que acontece junto, porque é a mesma afirmação:
+        - o perfil dono da conta (achado pelo `profile_id`, pelo @ do cadastro ou pela conta do app) passa a
+          `blocked` com a evidência e a origem — decisão do dono em 28/09: o desafio É a conta bloqueada. Só a partir
+          de `active`: perfil pausado pelo dono (`disabled`) fica como ele deixou;
+        - o `account_label` do aparelho passa a dizer a conta que está lá de verdade.
+
+        Não desvincula nem toca no aparelho: o que fazer com ele é decisão de pessoa. A partir daqui o aparelho está
+        em quarentena — vínculo, verbos e entregas recusados, fora da escada de reparo e do reinício de saúde.
+        """
+        if origem not in ORIGENS_DE_BLOQUEIO:
+            raise ValueError(f"origem desconhecida: {origem!r} (use {', '.join(ORIGENS_DE_BLOQUEIO)})")
+        conta = normalizar_handle(handle)
+        if not conta:
+            raise ValueError("a conta travada precisa de um @ (handle)")
+        if self.db.one("SELECT 1 FROM device_locked_accounts WHERE instance_id=? AND handle=? AND resolved_at IS NULL",
+                       (instance_id, conta)) is not None:
+            return False
+        dona = self._dona_da_conta(conta, profile_id, app_id)
+        pid = profile_id or (str(dona["profile_id"]) if dona is not None else None)
+        app = app_id or (str(dona["app_id"]) if dona is not None and dona["app_id"] else None)
+        agora = now_iso()
+        texto = (evidencia or "")[:500] or None
+        try:
+            self.db.execute("INSERT INTO device_locked_accounts(instance_id, handle, profile_id, app_id, origin,"
+                            " seen_by, evidence, since, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (instance_id, conta, pid, app, origem, visto_por, texto, agora, agora))
+        except INTEGRITY_ERRORS:
+            return False                   # outro chamador marcou no mesmo instante: o marcador existe
+        if pid is not None:
+            perfil = self.profile_row(pid)
+            if perfil is not None and (perfil["status"] or "active") == "active":
+                self.mudar_status(pid, "blocked", origem=origem, autor=visto_por,
+                                  evidencia=f"{instance_id}: {texto}" if texto else f"conta travada em {instance_id}")
+        self._sincronizar_rotulo(instance_id)
+        if self.on_locked_account is not None and (linha := self.conta_travada_no_aparelho(instance_id)) is not None:
+            self.on_locked_account(linha, "marcado", visto_por)
+        return True
+
+    def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,
+                               handle: str | None = None) -> int:
+        """Uma pessoa decidiu o destino do aparelho (ou o disco foi apagado): o marcador aberto sai, e fica como
+        história. Com `handle`, só o daquela conta. Devolve quantos foram resolvidos. O PERFIL não é reativado aqui —
+        reativar é afirmar que a conta voltou a ser usável, e isso é decisão de pessoa na tela do perfil."""
+        abertos = [m for m in self.db.query("SELECT * FROM device_locked_accounts WHERE instance_id=?"
+                                            " AND resolved_at IS NULL ORDER BY id", (instance_id,))
+                   if handle is None or m["handle"] == normalizar_handle(handle)]
+        for m in abertos:
+            self.db.execute("UPDATE device_locked_accounts SET resolved_at=?, resolved_by=?, resolution=?"
+                            " WHERE id=? AND resolved_at IS NULL", (now_iso(), por, (nota or "")[:500] or None,
+                                                                    m["id"]))
+        if abertos:
+            self._sincronizar_rotulo(instance_id)
+            if self.on_locked_account is not None:
+                for m in abertos:
+                    self.on_locked_account(m, "resolvido", por)
+        return len(abertos)
+
+    def _dona_da_conta(self, conta: str, profile_id: str | None, app_id: str | None) -> Row | None:
+        """`{profile_id, app_id}` da conta travada: pela conta do app com aquele @, senão pelo @ do cadastro."""
+        filtros, params = "lower(handle)=?", [conta]
+        if profile_id is not None:
+            filtros += " AND profile_id=?"
+            params.append(profile_id)
+        if app_id is not None:
+            filtros += " AND app_id=?"
+            params.append(app_id)
+        linha = self.db.one(f"SELECT profile_id, app_id FROM profile_accounts WHERE {filtros} ORDER BY created_at"
+                            " LIMIT 1", tuple(params))
+        if linha is not None or profile_id is not None:
+            return linha
+        perfil = self.profile_by_username(conta)
+        return {"profile_id": perfil["id"], "app_id": None} if perfil is not None else None
+
+    # ------------------------------------------------------------------ account_label derivado (054)
+    # `instances.account_label` vinha só da configuração (`instances.accounts`) ou do que alguém digitou, e nunca
+    # mais mudava: em 28/09 os quinze aparelhos diziam `qa-user-NN`, inclusive o android-04 com o felipe logado — e
+    # um experimento acreditou nisso e tocou o desafio. Os leitores (planejamento, variável `{account_label}`,
+    # cartão do aparelho) leem a COLUNA, então ela é mantida aqui a cada vínculo, desvínculo e marcador, e varrida
+    # na partida (`sincronizar_rotulos`). O rótulo da configuração só é tocado quando há o que derivar.
+    def _rotulo_derivado(self, instance_id: str) -> tuple[str | None, str | None]:
+        """`(rótulo, origem)` da conta do app DO APARELHO (`instances.app_id`): a conta travada logada (marcador
+        aberto) vence — é o que está lá de verdade —, depois a conta da persona vinculada. `(None, None)` = nada a
+        derivar. Um vínculo de outro app (a conta do Chrome num aparelho de Instagram) não rotula o aparelho."""
+        inst = self.db.one("SELECT app_id FROM instances WHERE id=?", (instance_id,))
+        if inst is None or not inst["app_id"]:
+            return None, None
+        app = str(inst["app_id"])
+        for m in self.db.query("SELECT handle, app_id FROM device_locked_accounts WHERE instance_id=?"
+                               " AND resolved_at IS NULL ORDER BY id", (instance_id,)):
+            if m["app_id"] in (None, app):
+                return str(m["handle"]), "marcador"
+        for v in self.profiles_of_instance(instance_id, app):
+            conta = self.account_by_app(str(v["profile_id"]), app)
+            if conta is not None and conta["handle"]:
+                return str(conta["handle"]), "vinculo"
+        return None, None
+
+    def _sincronizar_rotulo(self, instance_id: str) -> None:
+        """Grava em `instances` o rótulo derivado; sem nada a derivar, apaga só o que ERA derivado."""
+        linha = self.db.one("SELECT account_label, account_label_origin FROM instances WHERE id=?", (instance_id,))
+        if linha is None:
+            return
+        rotulo, origem = self._rotulo_derivado(instance_id)
+        if rotulo is None:
+            if linha["account_label_origin"] in _ROTULO_DERIVADO:
+                self.db.execute("UPDATE instances SET account_label=NULL, account_label_origin=NULL WHERE id=?",
+                                (instance_id,))
+            return
+        if (linha["account_label"], linha["account_label_origin"]) != (rotulo, origem):
+            self.db.execute("UPDATE instances SET account_label=?, account_label_origin=? WHERE id=?",
+                            (rotulo, origem, instance_id))
+
+    def sincronizar_rotulos(self) -> None:
+        """A varredura da partida: todo aparelho do parque com o rótulo derivado do que existe agora."""
+        for linha in self.db.query("SELECT id FROM instances WHERE retired_at IS NULL ORDER BY id"):
+            self._sincronizar_rotulo(str(linha["id"]))
+
+    def _sincronizar_rotulos_da_persona(self, profile_id: str) -> None:
+        for iid in sorted({str(b["instance_id"]) for b in self.bindings_of_profile(profile_id)}):
+            self._sincronizar_rotulo(iid)
 
     # ------------------------------------------------------------------ sessão (cache do observado): por (conta, aparelho)
     def account_session_row(self, profile_id: str, account_id: str, instance_id: str) -> Row | None:

@@ -32,6 +32,7 @@ from ..devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE
 from ..models import CommandState, InstanceActionBody, InstanceState, ReleaseChannel, ReleaseState
 from ..releases.catalog import InstalacaoIncerta
 from ..security.sessions import operador_atual
+from ..social.repository import frase_da_quarentena
 from ..util import new_command_id, new_token, now, parse_iso
 from ..workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, ObserveResult, Progress, Result,
                                ResultAck)
@@ -86,6 +87,11 @@ VERBOS_EXCLUSIVOS = {"create", "start", "stop", "hibernate", "wake", "restart", 
 #: Verbos que MEXEM no aparelho de um jeito que não se desfaz olhando. Com o inventário divergente (item 4.5),
 #: qualquer um deles pode agir no aparelho errado — é exatamente o dano que o achado #47 descreve como latente.
 VERBOS_DESTRUTIVOS = {"reset", "stop", "restart", "hibernate", "install_apk", "create"}
+
+#: Quarentena (ADR-055): com conta travada logada no aparelho, só estes verbos de ciclo de vida passam sem a
+#: confirmação explícita da pessoa (`confirm_locked_account`). Parar e hibernar não abrem o app nem apagam nada;
+#: todo o resto abre o app de uma conta morta (open_app, teclas, restart, start) ou apaga a prova (reset).
+VERBOS_DA_QUARENTENA = {"stop", "hibernate"}
 
 
 def _release_pronta_para(s: AppState, rt: DeviceRuntime, release_id: str) -> Row:
@@ -163,6 +169,10 @@ def _publish_command(s: AppState, row: Row) -> None:
 #: desconhecido, nem estado `uncertain` para o timeout que não prova nada.
 APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", "app.distribute", "store.sync",
                      "session.connect", "session.verify", "session.logout", "device.proxy"}
+#: Na quarentena (ADR-055), os verbos de app e de sessão que continuam: ler o que está instalado (`app.verify` é
+#: inspeção por adb, não abre o app) e a cópia da loja (a loja nunca tem conta de tarefa). Instalar, provar e voltar
+#: de versão terminam na prova de ABERTURA do app; os de sessão abrem a conta travada.
+VERBOS_DE_APP_NA_QUARENTENA = {"app.verify", "store.sync"}
 
 
 def _abrir_comando_de_app(s: AppState, instance_id: str, verb: str, *, params: dict[str, object] | None = None,
@@ -199,6 +209,16 @@ def _despachar_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Call
         return {"accepted": True, "command_id": row["id"], "state": row["state"], "deduplicated": True,
                 "instance_id": rt.id}
     command_id = str(row["id"])
+    if (verb not in VERBOS_DE_APP_NA_QUARENTENA
+            and (marcador := s.social_repo.conta_travada_no_aparelho(rt.id)) is not None):
+        # Quarentena (ADR-055): a recusa fica no histórico do aparelho com o motivo, e nada foi tocado. Quem
+        # distribui para o parque recebe o "não" como item, como o ocupado — o resto do parque segue.
+        motivo = frase_da_quarentena(marcador)
+        _publish_command(s, s.commands.transition(command_id, CommandState.rejected, reason=motivo))
+        if not recusar_ocupado:
+            return {"accepted": False, "command_id": command_id, "state": CommandState.rejected.value,
+                    "deduplicated": False, "instance_id": rt.id, "reason": motivo}
+        raise DespachoRecusado(409, "locked_account", f"{motivo}.", command_id=command_id)
 
     async def envolvido() -> object:
         try:
@@ -549,6 +569,15 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
     ser distinguível de `rejected` por quem chama a API."""
     if action not in LIFECYCLE_ACTIONS:
         return "rejected", "ação desconhecida"
+    # Quarentena (ADR-055) antes de tudo: conta travada logada. Em 27/09 01:47Z um `open_app` chegou ao android-04
+    # com o felipe já bloqueado e o desafio na tela. Só parar e hibernar passam; o resto exige a confirmação
+    # explícita da pessoa — que o pedido automático (remediação, rodízio, saúde, reconciliação) nunca manda.
+    if action not in VERBOS_DA_QUARENTENA and (marcador := s.social_repo.conta_travada_no_aparelho(rt.id)) is not None:
+        if not body.confirm_locked_account:
+            return "locked_account", frase_da_quarentena(marcador, action)
+        s.bus.emit("log", f"{rt.id}: '{action}' confirmado explicitamente apesar da quarentena da conta "
+                          f"@{marcador['handle']} (confirm_locked_account; pedido por {_autor_sem_requisicao()})",
+                   level="warn", instance_id=rt.id, data={"command_id": command_id, "verb": action})
     if action == "reset" and not body.confirm:
         return "rejected", "o reset apaga dados e sessão do aparelho; envie confirm=true"
     # Inventário divergente (item 4.5; achado #47): as fontes discordam sobre QUAL aparelho está por trás deste
@@ -828,6 +857,12 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     não confundirem reparo com comando manual.
 
     Antes: 2 restarts em memória e "a decisão é de uma pessoa" — para sempre, e zerado num reinício do backend.
+
+    ADR-055: o `reset` automático NUNCA acontece em aparelho com conta — vínculo ativo ou marcador de conta travada.
+    Em 24/09 o 3º degrau apagou a sessão do andre (conta real, viva); reset automático só vale para aparelho sem
+    conta nenhuma. Com vínculo, o 3º degrau é "precisa do dono" + `stop` (parar não apaga nada, e o estado desejado
+    vira `stopped`: a escada não volta sozinha). Com conta travada logada (quarentena) nem os `restart` acontecem —
+    reiniciar religaria o app de uma conta morta —: é direto o "precisa do dono" + `stop`.
     """
     rt = s.devices.devices.get(instance_id)
     if rt is None:
@@ -835,9 +870,21 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     historico = s.commands.remediacoes_recentes(instance_id, janela_h=JANELA_DA_ESCADA_H)
     restarts = sum(1 for c in historico if c["verb"] == "restart")
     resets = sum(1 for c in historico if c["verb"] == "reset")
-    pode_resetar = "reset" in (rt.worker_verbs or []) and not rt.store
+    paradas = sum(1 for c in historico if c["verb"] == "stop")
+    marcador = s.social_repo.conta_travada_no_aparelho(instance_id)
+    com_conta = marcador is not None or bool(s.social_repo.profiles_of_instance(instance_id))
+    pode_resetar = "reset" in (rt.worker_verbs or []) and not rt.store and not com_conta
     degrau = len(historico) + 1
-    if restarts < DEGRAUS_DE_RESTART:
+    if com_conta and (marcador is not None or restarts >= DEGRAUS_DE_RESTART):
+        conta = (f"a conta @{marcador['handle']} está travada e logada nele (quarentena)" if marcador is not None
+                 else "há conta vinculada nele, e o reset apagaria a sessão dela")
+        s.devices.marcar_atencao(rt, f"Precisa do dono: {motivo}. O reparo automático parou aqui porque {conta}; "
+                                     "nenhum reset automático acontece em aparelho com conta (ADR-055).")
+        if paradas or "stop" not in (rt.worker_verbs or []):
+            s.devices.adiar_reparo(rt, RETENTATIVA_APOS_ESCADA_S)
+            return None
+        verbo = "stop"
+    elif restarts < DEGRAUS_DE_RESTART:
         verbo = "restart"
     elif pode_resetar and resets == 0:
         verbo = "reset"

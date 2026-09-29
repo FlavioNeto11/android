@@ -515,6 +515,10 @@ class DeviceManager:
         #: Reinício a frio por SAÚDE do convidado ocioso (interrupções acumuladas). Só `restart`, nunca a escada de
         #: reparo: a escada chega a `reset`, que apagaria a conta real logada no aparelho. Devolve o id do comando.
         self.on_health_restart: Callable[[str, str], str | None] = lambda instance_id, motivo: None
+        #: A conta travada logada no aparelho (o @ do marcador aberto, migração 054), ou `None`. Injetado pelo
+        #: AppState, que conhece o domínio social. Aparelho com conta travada fica fora do reinício de saúde e o
+        #: cartão diz por quê (ADR-055).
+        self.conta_travada_em: Callable[[str], str | None] = lambda instance_id: None
         #: O RODÍZIO precisa ligar/desligar um aparelho que mora em OUTRA máquina. O gerenciador não fala com o
         #: agente (quem despacha é a camada da API, pelo mesmo caminho rastreável do painel), então ela se
         #: inscreve aqui. Devolve o id do comando aberto, ou `None` quando não deu para abrir (verbo recusado,
@@ -657,8 +661,12 @@ class DeviceManager:
 
     # ------------------------------------------------------------------ DTO/eventos
     def dto(self, rt: DeviceRuntime) -> InstanceDTO:
-        row = self.db.one("SELECT app_id, account_label, account_evidence, account_evidence_ts FROM instances WHERE id=?",
-                          (rt.id,))
+        # A conta travada logada (054) vem na MESMA consulta: o DTO é montado a cada publicação do aparelho, e uma
+        # segunda ida ao banco por cartão dobraria o custo de um caminho quente.
+        row = self.db.one("SELECT app_id, account_label, account_evidence, account_evidence_ts,"
+                          " (SELECT d.handle FROM device_locked_accounts d WHERE d.instance_id = instances.id"
+                          " AND d.resolved_at IS NULL ORDER BY d.id LIMIT 1) AS locked_account"
+                          " FROM instances WHERE id=?", (rt.id,))
         s = self.get_settings()
         frame = None
         # O prazo do frame acompanha o ritmo da captura: foco (inclusive controle manual) captura mais rápido.
@@ -686,7 +694,8 @@ class DeviceManager:
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
-            account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
+            account_evidence_ts=row["account_evidence_ts"], locked_account=row["locked_account"],
+            control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
             # Fora do ar a última sonda é história: "healthy" num aparelho hibernado seria afirmação sem prova.
             readiness=ReadinessInfo(phase=rt.readiness_phase, detail=rt.readiness_detail,  # type: ignore[arg-type]
@@ -970,6 +979,14 @@ class DeviceManager:
                 if rt.attention != texto:
                     rt.attention = texto
                     self.publish(rt, f"{rt.id}: {texto}", level="warn")
+            return
+        if (travada := self.conta_travada_em(rt.id)) is not None:
+            # Quarentena (ADR-055): conta travada logada. Reiniciar é religar o app de uma conta morta; o aviso
+            # fica, e quem decide o aparelho é o dono.
+            rt.irq_strikes = 0
+            self.marcar_atencao(rt, f"{IRQ_PREFIXO}: {rt.irq_frac:.0%} da CPU em interrupção com o aparelho ocioso, "
+                                    f"mas a conta @{travada} está travada e logada nele (quarentena): o reinício "
+                                    "automático não mexe neste aparelho. Precisa do dono.")
             return
         motivo = (f"{IRQ_PREFIXO}: {rt.irq_frac:.0%} da CPU em interrupção com o aparelho ocioso "
                   f"({rt.irq_strikes} sondas seguidas); reinício a frio preventivo (não apaga dados)")
@@ -2589,6 +2606,14 @@ class DeviceManager:
         """
         if (rt.state not in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated)
                 or time.monotonic() < rt.start_backoff_until):
+            return False
+        if (travada := self.conta_travada_em(rt.id)) is not None:
+            # Quarentena (ADR-055): conta travada logada. O painel e o agente já recusam `start` sem a confirmação
+            # da pessoa (`despacho._precheck`); o emulador DESTA máquina, que o rodízio liga direto, recusa aqui —
+            # senão o aparelho do felipe subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
+            rt.start_backoff_until = time.monotonic() + 600
+            self.marcar_atencao(rt, f"Em quarentena: a conta @{travada} está travada e logada neste aparelho; ele não "
+                                    "é ligado automaticamente. Precisa do dono.")
             return False
         if rt.external:
             if not self.gerenciado_remoto(rt):

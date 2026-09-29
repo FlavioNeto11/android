@@ -34,10 +34,12 @@ from ..planning.catalog import capabilities_of, pacote_ancora, session_provider_
 from ..planning.provider import AIError, SocialRequest, Usage
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
+from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .memory import MemoryRefused, MemoryStore
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
-from .repository import BindingConflict, SocialRepository, campos_de_persona, sessao_vencida
+from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
+                         sessao_vencida)
 
 log = logging.getLogger("poc.social")
 
@@ -107,6 +109,11 @@ class SocialService:
         self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
         self.policies = PolicyEngine(repo)
         self.usage_sink = usage_sink    # registra o custo da função social no mesmo relatório das demais
+        # ADR-055: toda mudança de status do perfil e todo marcador de conta travada viram evento persistido — o
+        # repositório grava, e quem tem o barramento anuncia. Vale também para quem escreve pelo repositório por
+        # fora deste serviço (o bloqueio por desafio do ADR-029, o detector de tela).
+        repo.on_status_changed = self._anunciar_status
+        repo.on_locked_account = self._anunciar_conta_travada
 
     # ------------------------------------------------------------------ consulta
     def list_profiles(self) -> list[InstagramProfileDTO]:
@@ -203,11 +210,45 @@ class SocialService:
                 self._absorver_persona(profile_id, alvo)
         if "policy_group_id" in fields:
             self._check_group(fields["policy_group_id"])
+        # O status é DECLARAÇÃO de uma pessoa (a tela do perfil): vai por `mudar_status`, com origem e autor, e
+        # nunca como coluna solta — era assim que cinco perfis ficaram `blocked` sem quando nem por quê (ADR-055).
+        status = fields.pop("status", None)
         if fields:
             self.repo.update_profile(profile_id, fields)
+        if status is not None:
+            autor = operador_atual() or "painel"
+            self.repo.mudar_status(profile_id, str(status), origem="declarado", autor=autor,
+                                   evidencia=f"declarado por {autor} na tela do perfil")
         if instance_id != "__ausente__":
             self._rebind(profile_id, instance_id, confirmado=confirmado)
         return self.get_profile(profile_id)
+
+    def _anunciar_status(self, profile_id: str, anterior: str, novo: str, origem: str, autor: str,
+                         evidencia: str | None) -> None:
+        """Evento `profile.status` de CADA mudança de status (ADR-055): o rastro de quem bloqueou, reativou ou
+        pausou, de onde veio a afirmação e o que foi visto — o que faltava para dizer por que cinco contas estão
+        `blocked`."""
+        linha = self.repo.profile_row(profile_id)
+        arroba = (linha["username"] or linha["display_name"] or profile_id) if linha is not None else profile_id
+        self.bus.emit("profile.status", f"Perfil @{arroba}: {anterior} → {novo} ({origem}, por {autor})"
+                      + (f" — {evidencia}" if evidencia else ""),
+                      level="warn" if novo == "blocked" else "info",
+                      data={"profile_id": profile_id, "anterior": anterior, "status": novo, "origem": origem,
+                            "autor": autor, "evidencia": (evidencia or "")[:500] or None})
+
+    def _anunciar_conta_travada(self, marcador: Row, acao: str, autor: str) -> None:
+        """Evento `device.locked_account`: o aparelho entrou em quarentena (ou saiu dela) — aviso ao dono."""
+        iid = str(marcador["instance_id"])
+        if acao == "marcado":
+            texto = (f"{iid}: conta @{marcador['handle']} travada e logada ({marcador['origin']}, por {autor}). "
+                     "O aparelho entrou em quarentena: nada o toca além de parar ou hibernar até você decidir.")
+        else:
+            texto = f"{iid}: a quarentena da conta @{marcador['handle']} foi resolvida por {autor}."
+        self.bus.emit("device.locked_account", texto, level="error" if acao == "marcado" else "info",
+                      instance_id=iid,
+                      data={"instance_id": iid, "handle": marcador["handle"], "profile_id": marcador["profile_id"],
+                            "app_id": marcador["app_id"], "origem": marcador["origin"], "acao": acao, "autor": autor,
+                            "evidencia": marcador["evidence"]})
 
     def delete_profile(self, profile_id: str) -> None:
         """Apagar o perfil apaga a credencial junto — inclusive o ciphertext no cofre."""
@@ -336,7 +377,7 @@ class SocialService:
         """`repo.bind` com a recusa de D2-a traduzida em 409 `conta_do_app_ja_no_aparelho`."""
         try:
             self.repo.bind(profile_id, instance_id, app_id=app_id, primary=primary, reason=reason)
-        except BindingConflict as exc:
+        except (BindingConflict, AparelhoEmQuarentena) as exc:
             raise SocialError(exc.code, str(exc), 409) from exc
 
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
@@ -405,6 +446,10 @@ class SocialService:
             # mandaria execução para a Play Store pelo caminho `profile_ids`.
             raise SocialError("store_instance", f"{instance_id} é a loja (Play Store): ela só guarda o aplicativo "
                                                 "oficial e não recebe perfil. Escolha um aparelho do parque.", 400)
+        # Quarentena (ADR-055): conta travada logada no aparelho. Conferida AQUI — antes de qualquer linha no
+        # cadastro, e antes de tirar o vínculo antigo na troca — para o 409 querer dizer "nada mudou".
+        if (marcador := self.repo.conta_travada_no_aparelho(instance_id)) is not None:
+            raise SocialError(AparelhoEmQuarentena.code, str(AparelhoEmQuarentena(marcador)), 409)
 
     # ------------------------------------------------------------------ aparelhos da persona (N:N, 051)
     def bind_device(self, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:

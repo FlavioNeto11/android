@@ -54,6 +54,7 @@ from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, 
 from .planning.provider import AIProvider, build_provider
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
                                                               imagens_dto, status_de_imagem)
+from .releases.catalog import ReleaseValidationError
 from .releases.inspector import ApkInspector
 from .security import local_secret
 from .security.secret_store import SecretStore, build_key_provider
@@ -61,7 +62,7 @@ from .security.sessions import PanelSessions, PortaoDeLogin
 from .releases.repository import ReleaseRepository
 from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
-from .social.repository import SocialRepository, sessao_vencida
+from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.persona_batch import LotesDePersona
@@ -354,6 +355,8 @@ class AppState:
         # alguém pede o reinício. O gerenciador não conhece comandos; quem os abre é a camada da API.
         self.devices.on_remediation_needed = self._remediar_aparelho
         self.devices.on_health_restart = self._reiniciar_por_saude
+        # Quarentena (ADR-055): o gerenciador pergunta, antes do reinício de saúde, se há conta travada logada.
+        self.devices.conta_travada_em = self._conta_travada_em
         # O rodízio passa a ligar e desligar aparelho de outra máquina — pelo worker, como um comando do painel.
         self.devices.on_lifecycle_request = self._pedir_ciclo_de_vida
         self.devices.worker_hibernates = self.workers.hiberna
@@ -521,6 +524,31 @@ class AppState:
         if linhas:
             self.bus.emit("log", f"{instance_id}: o app deixou de constar como instalado — {motivo}",
                           level="warn", instance_id=instance_id)
+        # Disco apagado: a conta travada não está mais logada ali (ADR-055). Numa quarentena o reset só chega com a
+        # confirmação explícita da pessoa; manter o marcador travaria para sempre um aparelho já limpo.
+        self.social_repo.resolver_conta_travada(instance_id, por="reset do aparelho",
+                                                nota=f"dados do aparelho apagados — {motivo}")
+
+    def _conta_travada_em(self, instance_id: str) -> str | None:
+        """O @ da conta travada logada no aparelho (marcador aberto, 054), ou `None`."""
+        marcador = self.social_repo.conta_travada_no_aparelho(instance_id)
+        return str(marcador["handle"]) if marcador is not None else None
+
+    def quarentena(self, instance_id: str) -> str | None:
+        """Por que o aparelho está em quarentena (conta travada logada, ADR-055), ou `None`. A mesma frase do 409
+        do painel, para a porta do despacho, a entrega e a distribuição contarem a mesma história."""
+        marcador = self.social_repo.conta_travada_no_aparelho(instance_id)
+        return frase_da_quarentena(marcador) if marcador is not None else None
+
+    def _contas_travadas_no_ar(self) -> list[str]:
+        """`aparelho (@conta)` de cada marcador aberto em aparelho LIGADO — no ar, subindo ou degradado no ar."""
+        no_ar = (InstanceState.online, InstanceState.booting, InstanceState.error)
+        saida: list[str] = []
+        for m in self.social_repo.contas_travadas_abertas():
+            rt = self.devices.devices.get(str(m["instance_id"]))
+            if rt is not None and rt.state in no_ar:
+                saida.append(f"{rt.id} (@{m['handle']})")
+        return saida
 
     def pacotes_com_dado_velho(self, instance_id: str) -> list[str]:
         """Pacotes cuja afirmação "está instalado aqui" passou da validade neste aparelho.
@@ -889,6 +917,11 @@ class AppState:
 
         Aparelho sem perfil vinculado não tem porta: o QA Messenger e o caminho antigo seguem iguais.
         """
+        # Quarentena (ADR-055) ANTES de "aparelho sem perfil não tem porta": era exatamente o android-04 — conta
+        # travada logada, sem vínculo — e a porta deixava passar qualquer tarefa, de qualquer app. Só uma pessoa
+        # decide o destino de um aparelho com conta morta na tela.
+        if (quarentena := self.quarentena(rt.id)) is not None:
+            return quarentena, None
         provedor = self.sessoes.for_package(package) if package is not None else self.provedor_do_perfil()
         if provedor is None:
             return None
@@ -1312,6 +1345,10 @@ class AppState:
         só 4 aparelhos ficam ligados por vez, e os demais recebem a versão na próxima vez que pegarem uma tarefa
         daquele pacote — ANTES da tarefa.
         """
+        # Quarentena (ADR-055): a porta do app vem ANTES da de sessão e termina na prova de ABERTURA do app —
+        # instalar aqui abriria o app da conta travada. Bloqueia para uma pessoa, sem gravar versão desejada.
+        if (quarentena := self.quarentena(rt.id)) is not None:
+            return quarentena, None
         row = self.release_repo.app_state(rt.id, package)
         if row is None or not row["desired_release_id"] or not self._entregavel(row["desired_release_id"]):
             # Aparelho que nunca recebeu distribuição daquele app: se existe versão promovida e este aparelho é
@@ -1360,6 +1397,10 @@ class AppState:
         """
         from .devices.installer import DowngradeRefused  # noqa: PLC0415
 
+        if (quarentena := self.quarentena(rt.id)) is not None:
+            # Última linha da quarentena (ADR-055): quem chega aqui por um caminho que não conferiu antes não
+            # instala nem abre o app. Levanta ANTES do `try`: não é falha de entrega, e não vira `install_failed`.
+            raise ReleaseValidationError(quarentena + ".")
         inicio = parse_iso(to_iso(now()))       # na resolução do banco (ms): comparável com `observed_at`
         rebaixar =self._rebaixa_do_parque(rt.id, package, release_id)
         try:
@@ -1423,17 +1464,24 @@ class AppState:
             nao_ligaveis = [r["instance_id"] for r in candidatos
                             if self.devices.devices[r["instance_id"]].external
                             and self.devices.devices[r["instance_id"]].state != InstanceState.online]
-            pendentes = [r for r in candidatos if r["instance_id"] not in nao_ligaveis]
+            # Aparelho em quarentena (ADR-055) também não é pendência: ninguém entrega nada nele até uma pessoa
+            # decidir, e ele seguraria a entrega imediata aberta para sempre.
+            em_quarentena = [r["instance_id"] for r in candidatos if self.quarentena(r["instance_id"]) is not None]
+            pendentes = [r for r in candidatos if r["instance_id"] not in nao_ligaveis
+                         and r["instance_id"] not in em_quarentena]
             if not pendentes:
                 self._entrega_imediata.discard(rid)
                 prontos = sum(1 for r in linhas if r["installed_release_id"] == rid)
                 falhas = sum(1 for r in linhas if r["state"] in self._ENTREGA_FALHOU)
                 esperando = (f", {len(nao_ligaveis)} aguardando ser ligados em outro servidor "
                              f"({', '.join(sorted(nao_ligaveis))})" if nao_ligaveis else "")
+                if em_quarentena:
+                    esperando += (f", {len(em_quarentena)} em quarentena por conta travada "
+                                  f"({', '.join(sorted(em_quarentena))})")
                 self.bus.emit("log", f"Entrega imediata encerrada: {prontos} aparelho(s) na versão, {falhas} com falha"
                                      + esperando
                                      + ("" if entregavel else " — a versão deixou de poder ser entregue") + ".",
-                              level="warn" if falhas or nao_ligaveis or not entregavel else "info",
+                              level="warn" if falhas or nao_ligaveis or em_quarentena or not entregavel else "info",
                               data={"release_id": rid})
                 continue
             package = rel["package_name"]
@@ -1473,6 +1521,11 @@ class AppState:
         alvos = alvos_da_distribuicao(self, rel, instance_ids=instance_ids, count=count)
         saida: list[dict[str, Any]] = []
         for rt in alvos:
+            if (quarentena := self.quarentena(rt.id)) is not None:
+                # Conta travada logada (ADR-055): o aparelho fica como está, sem versão desejada — instalar termina
+                # na prova de abertura do app. Quando uma pessoa resolver, a convergência o alcança.
+                saida.append({"id": rt.id, "outcome": "kept", "reason": quarentena})
+                continue
             if (porque := motivo_incompativel(requisitos, capacidades_de(rt), aparelho=rt.id)) is not None:
                 # A versão desejada NÃO é gravada: mandar instalar o que não roda ali deixaria o aparelho em
                 # falha permanente de entrega, e o operador sem saber por quê. A explicação sai com o resultado.
@@ -1876,6 +1929,9 @@ class AppState:
                 ok = await asyncio.to_thread(self.appium.start)
                 log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
             await self.devices.start()
+            # O `account_label` de cada aparelho passa a ser o derivado (vínculo ou conta travada; ADR-055) — em 28/09
+            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o felipe logado enganou um experimento.
+            self.social_repo.sincronizar_rotulos()
             # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
             # comando despachado sem o worker local no ar seria recusado com "não está conectado".
             await self.local_worker.conectar()
@@ -2376,6 +2432,16 @@ class AppState:
         problema_capacidade = self._problema_de_capacidade_local()
         if problema_capacidade is not None:
             problems.append(problema_capacidade)
+        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com o felipe no desafio
+        # e a saúde não dizia nada; um aparelho assim é um risco à conta enquanto estiver de pé.
+        if (travadas := self._contas_travadas_no_ar()):
+            problems.append(Problem(
+                code="locked_account_on_device",
+                message=f"{len(travadas)} aparelho(s) ligado(s) com conta travada logada: " + ", ".join(travadas)
+                        + ".",
+                hint="O aparelho está em quarentena: nada o toca além de parar ou hibernar. O desafio é com a pessoa "
+                     "(ADR-009); decida o destino do aparelho — reset ou religar só com a confirmação explícita "
+                     "(confirm_locked_account)."))
         # Achado #179: o túnel SSH é o único transporte do ADB remoto e do canal do agente. Sem este problema
         # dedicado, a queda dele só aparecia como sintomas espalhados (aparelhos "sem ADB", worker "sem batida"),
         # sem nada apontando a causa comum.

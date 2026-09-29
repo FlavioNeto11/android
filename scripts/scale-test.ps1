@@ -38,8 +38,10 @@ function Get-Instances { (Invoke-RestMethod "$Base/api/instances") | ForEach-Obj
 # 12..15 viraram aparelhos de OUTRA máquina, o número virou mentira — e `-StopAtEnd` mandava `stop` aos remotos
 # pelo worker enquanto media só a RAM local. A loja (`kind = 'store'`) nunca entra: não é aparelho de tarefa.
 # A ordem é local primeiro, depois remoto, para que um alvo pequeno continue testando só o host, como sempre.
+# Aparelho em quarentena (conta travada logada, ADR-055: `locked_account` no GET) também nunca entra: ligar e
+# rodar a demonstração nele abriria o app de uma conta morta.
 function Get-Alvos {
-  $todas = @(Get-Instances | Where-Object { $_.kind -ne 'store' })
+  $todas = @(Get-Instances | Where-Object { $_.kind -ne 'store' -and -not $_.locked_account })
   switch -Regex ($Onde) {
     '^local$' { $todas = @($todas | Where-Object { -not $_.worker_id }) }
     '^worker:(.+)$' { $w = $Matches[1]; $todas = @($todas | Where-Object { $_.worker_id -eq $w }) }

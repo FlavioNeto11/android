@@ -372,6 +372,9 @@ class InstanceDTO(BaseModel):
     account_label: str | None = None
     account_evidence: str | None = None
     account_evidence_ts: str | None = None
+    #: A conta travada logada neste aparelho (marcador aberto, migração 054): o aparelho está em quarentena. Os
+    #: scripts de medição (`scale-test`, `rotation-test`) o deixam de fora por aqui.
+    locked_account: str | None = None
     control: ControlOwner = ControlOwner.none
     control_since: str | None = None
     control_pending: bool = False
@@ -1467,6 +1470,9 @@ class InstanceActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: bool = False
     app_id: str | None = None
+    #: Aparelho em quarentena (conta travada logada, ADR-055): só parar/hibernar passam sem isto. É a confirmação
+    #: EXPLÍCITA da pessoa — separada de `confirm`, que o pedido automático (`pedir_ciclo_de_vida`) sempre manda.
+    confirm_locked_account: bool = False
     # Reenviar a MESMA chave devolve o comando original em vez de agir de novo. Quem não manda chave aceita que
     # um reenvio por rede instável possa virar dois comandos — por isso o frontend manda.
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)

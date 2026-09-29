@@ -138,8 +138,11 @@ def pendentes_ao_ligar(state: AppState, rt: Any) -> list[tuple[str, str]]:
     Mesmas travas da porta: só versão ainda entregável (instalável E promovida), compatível, em estado de entrega
     automática e sem operação aberta. Falha não entra: a nova tentativa, no máximo uma por dia, é rearmada por
     `aplicar_versao_promovida`.
+
+    Aparelho em quarentena (conta travada logada, ADR-055) não recebe nada ao ligar: a entrega termina na prova de
+    ABERTURA do app, que abriria a conta travada.
     """
-    if rt.store:
+    if rt.store or state.quarentena(rt.id) is not None:
         return []
     principal = state._pacote_do_aparelho(rt.id)
     no_meio: bool | None = None
@@ -181,6 +184,9 @@ def trabalho_ao_ligar(state: AppState, rt: Any) -> Any:
     """
     from .devices.proxy import aplicar_no_aparelho, proxy_pendente  # noqa: PLC0415
 
+    if state.quarentena(rt.id) is not None:
+        # Quarentena (ADR-055): nem app nem proxy — trocar a rede por baixo de uma conta travada é mexer nela.
+        return None
     entregas = pendentes_ao_ligar(state, rt)
     proxy = proxy_pendente(state, rt)
     if not entregas and not proxy:
@@ -274,6 +280,8 @@ def _desfecho_da_convergencia(state: AppState, rt: Any, package: str, alvo: Any,
         return item("already", "já está nesta versão")
     if (porque := motivo_incompativel(requisitos_de_release(alvo), capacidades_de(rt), aparelho=rt.id)) is not None:
         return item("incompatible", porque)
+    if (quarentena := state.quarentena(rt.id)) is not None:
+        return item("kept", quarentena)
     if (fica := state.fora_da_convergencia(row, alvo)) is not None:
         instalada = state.release_no_aparelho(row)
         mesma = instalada is not None and int(instalada["version_code"]) == int(alvo["version_code"])

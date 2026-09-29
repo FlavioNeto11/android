@@ -26,7 +26,8 @@ $H = @{ Origin = $Base }
 $adb = 'C:\Android\Sdk\platform-tools\adb.exe'
 # O parque vem de GET /api/instances, não de `android-{0:d2}` de 1..N (achado #153): gerando por número, um
 # `-Accounts 10` arrastava para o rodízio os aparelhos de OUTRA máquina (android-09/10) e media a RAM errada.
-$todasAsInstancias = @(Invoke-RestMethod "$Base/api/instances" | Where-Object { $_.kind -ne 'store' })
+# Aparelho em quarentena (conta travada logada, ADR-055: `locked_account` no GET) fica fora, como a loja.
+$todasAsInstancias = @(Invoke-RestMethod "$Base/api/instances" | Where-Object { $_.kind -ne 'store' -and -not $_.locked_account })
 switch -Regex ($Onde) {
   '^local$' { $todasAsInstancias = @($todasAsInstancias | Where-Object { -not $_.worker_id }) }
   '^worker:(.+)$' { $w = $Matches[1]; $todasAsInstancias = @($todasAsInstancias | Where-Object { $_.worker_id -eq $w }) }

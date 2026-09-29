@@ -38,6 +38,12 @@ class AlvosDoParque(unittest.TestCase):
         for nome in ("scale-test.ps1", "rotation-test.ps1"):
             self.assertIn("$_.kind -ne 'store'", _texto(nome), nome)
 
+    def test_aparelho_em_quarentena_nunca_entra_num_teste_de_parque(self) -> None:
+        """ADR-055: aparelho com conta travada logada (o android-04 com o felipe no desafio) fica fora do teste de
+        escala e do rodízio — ligar e rodar a demonstração nele abriria o app de uma conta morta."""
+        for nome in ("scale-test.ps1", "rotation-test.ps1"):
+            self.assertIn("-not $_.locked_account", _texto(nome), nome)
+
     def test_start_liga_so_emulador_desta_maquina(self) -> None:
         self.assertIn("$_.kind -eq 'emulator'", _texto("start.ps1"))
 
