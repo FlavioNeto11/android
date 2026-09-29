@@ -11,13 +11,27 @@ O corpo veio literal; só ganhou tipos. `status` é texto: `models.SessionStatus
 """
 from __future__ import annotations
 
-from app.modules.identity.domain.resources import SessionStatus
+from app.modules.identity.domain.resources import CredentialState, SessionStatus
 
 from .ports import EventSink, ProfileStore, QuarentenaDeContas
 
 #: Estados de sessão que só uma pessoa resolve — os mesmos que `state.py` usa para bloquear o agendador automático.
 #: É o que decide quando o evento dedicado da fila "Aguardando intervenção" dispara.
 PRECISA_DE_PESSOA: frozenset[str] = frozenset({SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value})
+
+#: `account_credentials.status` depois de um envio de senha sem sucesso (ADR-055): o login AUTOMÁTICO para até uma
+#: pessoa olhar. A juliana recebeu seis envios em 4h25 em 18/09 — o freio de antes (3 falhas, 300 s de espera) se
+#: repetia a cada intervalo vencido. Ao lado de `active` e `invalid` (a coluna é texto, sem CHECK: nenhuma migração).
+#: Quem solta: a pessoa guardando a senha de novo (`set_account_credential` volta a `active`) ou um login que confirma
+#: a conta — o "Conectar" do painel, que é a pessoa olhando, pode tentar.
+CREDENCIAL_EM_REVISAO: str = CredentialState.review.value
+
+
+def motivo_do_login_parado(app_label: str) -> str:
+    """O que a pessoa lê no item bloqueado e na sessão quando o login automático parou (ADR-055)."""
+    return (f"o login automático no {app_label} está parado até uma pessoa olhar a conta no aparelho (um envio de "
+            "senha sem sucesso, ou o teto diário de logins); use Conectar no perfil para tentar de novo, ou guarde a "
+            "senha outra vez")
 
 
 def motivo_do_bloqueio_por_desafio(app_label: str) -> str:
@@ -48,6 +62,9 @@ def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str,
       uma leitura de tela.
     - Vale também para o pedido de código de dois fatores (a mesma `auth_challenge`): nenhuma conta do parque tem
       2FA configurado, e bloquear por engano custa um clique; não bloquear custa insistir numa conta travada.
+    - Ao virar `blocked`, o agendador para o objetivo em curso desta conta no ponto seguro seguinte e pausa as
+      execuções dela e das contas que agiram no mesmo alvo nas 48 h anteriores (`Scheduler`, disjuntor de conta,
+      ADR-055). Não é chamado daqui: o agendador enxerga QUALQUER caminho para `blocked` (este, o dono no painel).
     """
     if anterior_status == SessionStatus.auth_challenge.value:
         return False

@@ -534,8 +534,9 @@ class AjustesDeSessaoCfg(BaseModel):
     faixas são as de sempre (o antigo bloco `instagram:`), e os valores padrão e o porquê de cada um estão no
     `sessao.yaml` do app."""
 
-    max_auth_attempts: int | None = Field(None, ge=1, le=10)        # teto por perfil antes de exigir intervenção
+    max_auth_attempts: int | None = Field(None, ge=1, le=10)        # falhas antes do envio até o intervalo
     auth_cooldown_s: int | None = Field(None, ge=0, le=86400)       # intervalo mínimo entre tentativas do perfil
+    max_logins_per_day: int | None = Field(None, ge=1, le=10)       # envios de senha por conta em 24 h (ADR-055)
     open_timeout_s: float | None = Field(None, ge=5, le=300)        # teto para o app chegar ao primeiro plano
     settle_s: float | None = Field(None, ge=0.5, le=30)             # espera depois de o app aparecer
     submit_wait_s: float | None = Field(None, ge=5, le=120)         # quanto observar depois de Entrar (nunca reenvia)

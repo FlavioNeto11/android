@@ -14,8 +14,16 @@ rotulo: Instagram
 # (`AjustesDeSessaoCfg`, com as faixas aceitas; `Config.ajustes_de_sessao`). Eram os padrões do antigo bloco
 # `instagram:` do `config.yaml`, conferidos em `tests/test_sessao_declarada.py`.
 ajustes:
-  max_auth_attempts: 3          # teto por perfil antes de exigir intervenção
+  # Conduta do login (ADR-055, 29/09/2026). Estes dois valem só para falha ANTES do envio (campo de usuário que não
+  # ficou, canal da senha que falhou, toque em Entrar que comprovadamente não chegou): a senha não saiu da máquina.
+  # Depois do envio, UM desfecho sem sucesso já para o login automático até uma pessoa olhar — a juliana recebeu seis
+  # envios em 4h25 em 18/09 com "3 falhas e 300 s de espera", que se repetia a cada intervalo vencido.
+  max_auth_attempts: 3          # falhas antes do envio até exigir o intervalo
   auth_cooldown_s: 300          # intervalo mínimo entre tentativas do mesmo perfil
+  # Envios de senha por conta em 24 h, com sucesso ou não, automáticos ou pelo "Conectar". Conta que precisa entrar
+  # mais que isso num dia está perdendo a sessão, e insistir é o padrão que a plataforma pune. No automático, o teto
+  # também para o login até uma pessoa olhar.
+  max_logins_per_day: 3
   # Teto para o app chegar ao primeiro plano depois de aberto: a frio, ~8 s; na primeira abertura depois de instalar,
   # 25 s (medido). Classificar antes disso lê o launcher ou tela nenhuma.
   open_timeout_s: 60.0

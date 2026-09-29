@@ -57,8 +57,9 @@ class SessaoInvalida(ConhecimentoInvalido):
 class Ajustes:
     """Tetos e prazos do login. Os nomes são os da configuração por instalação, que pode sobrescrever cada um."""
 
-    max_auth_attempts: int       # teto de tentativas por perfil antes de exigir o intervalo
+    max_auth_attempts: int       # teto de falhas ANTES do envio (a senha não saiu) antes de exigir o intervalo
     auth_cooldown_s: int         # intervalo depois do teto
+    max_logins_per_day: int      # envios de senha por conta em 24 h, com sucesso ou não (ADR-055)
     open_timeout_s: float        # teto para o app chegar ao primeiro plano depois de aberto
     settle_s: float              # espera depois de o app aparecer (e de cada toque), antes de classificar
     submit_wait_s: float         # quanto observar depois do toque em entrar (só observa; nunca reenvia)
@@ -70,7 +71,7 @@ class Ajustes:
         return replace(self, **campos) if campos else self
 
 
-_CAMPOS_INTEIROS = frozenset({"max_auth_attempts", "auth_cooldown_s"})
+_CAMPOS_INTEIROS = frozenset({"max_auth_attempts", "auth_cooldown_s", "max_logins_per_day"})
 _CAMPOS_REAIS = frozenset({"open_timeout_s", "settle_s", "submit_wait_s", "verify_timeout_s"})
 
 
@@ -246,6 +247,7 @@ def _ajustes(valor: object) -> Ajustes:
     m = _mapa(valor, "ajustes", permitidos=frozenset(campos), obrigatorios=frozenset(campos))
     return Ajustes(max_auth_attempts=_inteiro(m["max_auth_attempts"], "ajustes.max_auth_attempts", minimo=1),
                    auth_cooldown_s=_inteiro(m["auth_cooldown_s"], "ajustes.auth_cooldown_s", minimo=0),
+                   max_logins_per_day=_inteiro(m["max_logins_per_day"], "ajustes.max_logins_per_day", minimo=1),
                    open_timeout_s=_real(m["open_timeout_s"], "ajustes.open_timeout_s"),
                    settle_s=_real(m["settle_s"], "ajustes.settle_s"),
                    submit_wait_s=_real(m["submit_wait_s"], "ajustes.submit_wait_s"),
