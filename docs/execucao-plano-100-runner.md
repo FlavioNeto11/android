@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-163 de 187 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+173 de 188 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -166,14 +166,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 19.10 | implemented | real | opus | — | Autorizado pelo dono em chat (28/09). r-20260928235215-6eb84c, central 93967d0, android-06, @andre.carvalho9543: 5/5 etapas comprovadas em 2 min 41 s, 13 chamadas; curtida (selector:desc==Liked sem IA) e comentário publ… |  |
 | 20.1 | implemented | simulated | opus | — | 3a124ed: ADR-054 em docs/decisoes.md (desenho de 3 propostas e 3 juízes), docs de banco/api/operação; docs-check 0 erros. |  |
 | 20.2 | implemented | real | opus | — | 94b00a1/55b7f7b/9c4fa4a (fundação A1, migração 055) implantada em c359f65 (29/09 ~03:55 UTC). real: GET /api/aprendizado 125 itens (81 receitas publicadas, 10 desativadas, 25 fluxos, 1 habilidade, 100 lembranças), /revi… |  |
-| 20.3 | pendente | — | — | — |  |  |
-| 20.4 | pendente | — | — | — |  |  |
-| 20.5 | pendente | — | — | — |  |  |
-| 20.6 | pendente | — | — | — |  |  |
-| 20.7 | pendente | — | — | — |  |  |
-| 20.8 | pendente | — | — | — |  |  |
-| 20.9 | pendente | — | — | — |  |  |
-| 20.10 | pendente | — | — | — |  |  |
+| 20.3 | implemented | simulated | opus | — | fa7349e (A2, costuras) implantado em f497075 (29/09 ~07:38 UTC): failure_kind gravado, fechamento da tentativa, lições do ator/planejador pela costura, sinais de gesto. Testes do pacote e suíte 3409 ok. Nenhuma execução… |  |
+| 20.4 | implemented | real | opus | — | a5d2e97 (A3) em f497075. real: GET /api/aprendizado/falhas sobre o banco do central: 35 grupos em 14 dias, 19 acima do mínimo, com camada e onde alterar (topo: interrompida QA 51; pos_condicao_nao_comprovada OPEN_PROFIL… |  |
+| 20.5 | implemented | simulated | opus | — | faf397e (A4, botão deu certo/deu errado + motivo, efeitos de rebaixar) em f497075; testes do pacote. Voto real: not_run. |  |
+| 20.6 | implemented | simulated | opus | — | aab27b8 (A5, D1 nos fluxos e receitas nativos, trilha, skill_validation_results) em f497075; livro real com 39 itens em Revisar. Promoção/rebaixamento real depois do deploy: not_run. |  |
+| 20.7 | implemented | real | opus | — | 86d9223 (A6, página Aprendizado) em f497075. real: painel do central em http://127.0.0.1:8000/#/aprendizado (29/09 ~07:50 UTC) mostra Para aprovar (vazio), Revisar com as receitas com efeito (ex.: like_post_1 5 a favor/… |  |
+| 20.8 | implemented | simulated | opus | — | 3cd1e9f (A7, lições por contraste com teto e braço de controle, nunca no verificador) em f497075; modo em prova. Efeito real de lição: not_run (precisa de execuções). |  |
+| 20.9 | implemented | simulated | opus | — | 476c3be (A8, telas aprendidas, modo observe) em f497075. Candidata real de tela: not_run (precisa de 24–48 h de execuções). |  |
+| 20.10 | implemented | simulated | opus | — | 0663738 (A9, voz pelas aprovações editadas sempre com o dono; preferências como sugestão) em f497075. Real: not_run. |  |
 | 21.1 | implemented | simulated | opus | — | 7a7b32b (detector de conta travada: união de idiomas, apóstrofo tipográfico, sem exigir campo, antes de ANR/receita/ator, auth_challenge com subtipo) em c359f65. tests/test_detector_conta_travada.py. Tela real de desafi… |  |
 | 21.2 | implemented | real | opus | — | ec8b630 + migração 054 em c359f65. real: POST /api/instances/android-04/actions/open_app recusado com 409 locked_account (marcador declarado do felipe.nogueira93762026 carregado pela 054; ensaio em cópia do backup 20260… |  |
 | 21.3 | implemented | simulated | opus | — | f71dfd9/38311db (counterparty do autor do post, uma conta por alvo, DM fria sempre com aprovação, redator sem atribuir fala a terceiros) em c359f65. real operacional: grupo Operação com SEND_MESSAGE e CREATE_COMMENT app… |  |
@@ -182,19 +182,20 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 21.6 | implemented | simulated | opus | — | e9da86e (reinício de saúde e reconciliação fora da escada, test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset) + quarentena (remediar nunca reseta aparelho com vínculo ou marcador). |  |
 | 21.7 | implemented | real | opus | — | b25957e scripts/sincronizar-relogio.ps1 + tarefa farm-relogio (15 min): w32time sem resposta (origem 123 bloqueada, evento 47); desvio medido +6,240 s → +0,004 s em 28/09 21:25 local; data/logs/relogio.log. |  |
 | 21.8 | implemented | real | opus | — | Decisão medida: manter hide_error_dialogs=1. Experimento real no android-17 (sem conta, QA Messenger, 28–29/09): com 0 o diálogo 'Process system isn't responding' não saiu sozinho (325 s; ~24 min no 1º boot), BACK não f… |  |
-| 21.9 | pendente | — | — | — |  |  |
+| 21.9 | implemented | simulated | opus | — | 2511b12 (aposentar apaga o AVD com arquivo somente-leitura) implantado desde 9348e9c; tests/test_provisionamento.py::test_apagar_avd_com_arquivo_somente_leitura. O caso real foi o android-17 em 29/09 (avd_nao_apagado po… |  |
 | 21.10 | implemented | simulated | opus | — | 6799867 (leitura por adb/captura não recria sessão; prova só local com card_guard; evidência cita a legenda) implantado em 7a02491. |  |
 | 21.11 | implemented | simulated | opus | — | caca1cd (aprovação acompanha a etapa revisada; Tentar novamente) implantado em 7a02491. |  |
 | 21.12 | implemented | simulated | opus | — | d63fcd9 (herança de binding declarada no catálogo; caption_contains herdado) implantado em 7a02491. |  |
 | 21.13 | implemented | real | opus | — | d121f76 implantado em 7a02491: GET /api/desempenho?irq_horas=6 devolve 674 medições persistidas (android-01 p50 1,9%, p95 14,5%, máx 21,6%). |  |
 | 21.14 | implemented | simulated | opus | — | 01c4dc1 (receita nasce candidate, promovida por 2 concordâncias em sombra, superseded gravado) implantado em 7a02491. |  |
-| 21.15 | pendente | — | — | — |  |  |
+| 21.15 | partial | real | opus | — | b5036ec (apps de segundo plano desativados no preparo, lista configurável e protegida) em f497075. real: evento 'apps de fundo — 11 desativado(s)' no android-01 (07:38:57Z) e android-06 (07:39:03Z); MemAvailable 974 MB… |  |
+| 21.16 | implemented | simulated | opus | — | 9348e9c (reparo espera 10 min com a CPU da máquina >= instances.remediation_host_cpu_max) implantado desde ~04:17Z de 29/09; tests/test_saude_do_convidado.py::test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (24): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 20.3, 20.4, 20.5, 20.6, 20.7, 20.8, 20.9, 20.10, 21.9, 21.15, T.2
+Pendentes (15): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 21.15, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
