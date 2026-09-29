@@ -20,7 +20,7 @@ from PIL import Image
 
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
-from ..automation.driver import DeviceIO, DriverError, DriverTimeout
+from ..automation.driver import DeviceIO, DriverError, DriverTimeout, FalhaDeLeitura
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import AndroidCfg, Config
 from ..db import INTEGRITY_ERRORS, Database, dumps, loads
@@ -1971,7 +1971,8 @@ class DeviceManager:
             midia, ms = await rt.executor.run(pedir, timeout=timeout, label=f"{label} (na origem)",
                                               previa=origem == "previa")
         except (ErroDeCaptura, SemCapturaNaOrigem) as exc:
-            raise DriverError(f"captura na origem falhou: {exc}", effect_possible=False) from exc
+            # `FalhaDeLeitura`: a imagem é do agente, não do Appium — a sessão do aparelho não se recria por ela.
+            raise FalhaDeLeitura(f"captura na origem falhou: {exc}") from exc
         if not so_dimensoes:
             metricas.observar("captura.ms", ms, origem=origem, via="worker", instancia=rt.id)
             metricas.observar("captura.bytes", midia.bytes_recebidos, origem=origem, via="worker")

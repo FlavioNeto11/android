@@ -67,6 +67,8 @@ class InstagramComPublicacoes(FakeInstagram):
     deslocamento: int = 0
     # Legenda da publicação de cada folha "Comments" aberta, na ordem: é o que diz em que post um comentário cairia.
     folhas_abertas: list[str] = field(default_factory=list)
+    # Convidado saturado: o toque no coração volta sem erro, mas o app não registra a curtida.
+    perde_curtida: bool = False
 
     def _build(self) -> list[Node]:
         if self.screen == "posts":
@@ -118,7 +120,8 @@ class InstagramComPublicacoes(FakeInstagram):
             self.calls.append(f"tap:{x},{y}")
             i = int(hit.action.split(":", 1)[1])
             self.coracoes_tocados.append(i)
-            self.curtidas[i] = not self.curtidas[i]
+            if not self.perde_curtida:
+                self.curtidas[i] = not self.curtidas[i]
             return
         super().tap(x, y)
 
@@ -526,6 +529,64 @@ async def test_sem_caption_contains_o_post_por_posicao_segue_como_hoje(por_posic
     fake = _aparelho(por_posicao)
     assert fake.coracoes_tocados == [0]                          # o primeiro coração, sem guarda nova
     assert "árvore local" in (_etapas(por_posicao, run.id)["curtir"]["status_detail"] or "")
+
+
+async def test_a_evidencia_da_pos_condicao_cita_a_legenda_conferida(com_legenda: Harness) -> None:
+    """A pós-condição de OPEN_POST é o seletor "Posts", e a evidência só dizia isso — parecia que a legenda não tinha
+    sido conferida. Ela foi (presente na tela; na curtida, no cartão do coração marcado), e a evidência passa a
+    dizer."""
+    run = com_legenda.run([IID], command=f"curta o post de @anarabottinipsicopedagoga com o texto \"{LEGENDA}\"")
+    detalhe = await com_legenda.wait_run(run.id, timeout=60)
+    assert detalhe.status == "completed", (detalhe.status, detalhe.status_detail)
+    passos = _etapas(com_legenda, run.id)
+    abrir = passos["abrir_post"]["status_detail"] or ""
+    assert "seletor id=action_bar_title|text==Posts: 1 elemento(s)" in abrir
+    assert f'legenda "{LEGENDA}" presente na tela' in abrir
+    assert f'no cartão da legenda "{LEGENDA}"' in (passos["curtir"]["status_detail"] or "")
+    notas = [r["note"] for r in _estado(com_legenda).db.query(
+        "SELECT note FROM evidence WHERE step_id=? AND note LIKE 'Pós-condição%'", (passos["abrir_post"]["id"],))]
+    assert notas and all(LEGENDA in n for n in notas)
+
+
+class AtorQueConfirmaQualquerCoracao(AtorDePublicacoes):
+    """O verificador perigoso: vê um coração marcado na tela "Posts" e diz "sim" — mesmo que seja o de OUTRA
+    publicação. A etapa de curtir tem prazo curto: sem prova, a verificação espera o prazo inteiro."""
+
+    name = "ator-que-confirma-qualquer-coracao"
+
+    async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        plano, uso = await super().plan(req)
+        etapas = [e.model_copy(update={"timeout_s": 10}) if e.key == "curtir" else e for e in plano.steps]
+        return plano.model_copy(update={"steps": etapas}), uso
+
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        return Verdict(satisfied="yes", evidence="[roteiro] o ícone de curtir aparece marcado"), Usage()
+
+
+@pytest_asyncio.fixture
+async def curtida_perdida(tmp_path: Path) -> AsyncIterator[Harness]:
+    # A publicação de CIMA (outra) já estava curtida; o toque no coração da publicação alvo não é registrado.
+    async for h in _parque(tmp_path, LEGENDA, AtorQueConfirmaQualquerCoracao(LEGENDA), curtidas=[True, False],
+                           perde_curtida=True):
+        yield h
+
+
+async def test_com_legenda_so_a_prova_local_fecha_a_curtida_e_o_modelo_nao_e_perguntado(
+        curtida_perdida: Harness) -> None:
+    """A prova local procura o coração marcado NO CARTÃO da legenda e não acha: a curtida não foi registrada. O modelo
+    veria o coração marcado da publicação de cima e diria "sim" — com a legenda de cartão ele não é perguntado, e a
+    curtida disparada sem prova fica incerta, nunca sucesso."""
+    h = curtida_perdida
+    run = h.run([IID], command=f"curta o post de @anarabottinipsicopedagoga com o texto \"{LEGENDA}\"")
+    detalhe = await h.wait_run(run.id, timeout=60)
+    fake = _aparelho(h)
+    assert fake.coracoes_tocados == [1] and fake.curtidas == [True, False]   # tocou o certo; não registrou
+    curtir = _etapas(h, run.id)["curtir"]
+    assert curtir["status"] == "uncertain", (curtir["status"], curtir["status_detail"])
+    assert h.ai.count("verify") == 0                             # o "sim" do modelo nunca foi pedido
+    motivo = curtir["status_detail"] or ""
+    assert LEGENDA in motivo and "modelo não é consultado" in motivo
+    assert detalhe.status == "completed_with_issues"
 
 
 # ==================================================================== a folha de comentários, de ponta a ponta

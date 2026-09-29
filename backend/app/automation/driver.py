@@ -30,6 +30,17 @@ class DriverUnavailable(DriverError):
         super().__init__(message, effect_possible=False)
 
 
+class FalhaDeLeitura(DriverError):
+    """Uma LEITURA feita fora da sessão do Appium falhou: o screencap ou o `dumpsys` pelo adb (`AdbError`), ou a
+    imagem pedida ao agente do worker ("captura na origem falhou"). Nada foi enviado ao aparelho.
+
+    A sessão do Appium nem participou — recriá-la (DELETE + POST /session e a reinstrumentação do UiAutomator2, 27–80 s
+    num convidado saturado) não conserta um screencap. É transitória como `DriverBusy`: relê-se com recuo."""
+
+    def __init__(self, message: str):
+        super().__init__(message, effect_possible=False)
+
+
 class DriverBusy(DriverError):
     """A interface do aparelho está OCUPADA: o UiAutomator2 respondeu (500) que não obteve a raiz de acessibilidade
     da janela ativa a tempo ("hogging the main UI thread", "no active window").
@@ -38,7 +49,36 @@ class DriverBusy(DriverError):
     sessão sobreviveu a esse 500 em 26/09), e não sessão morta: tratá-la como morta custou 5 recriações e 305,6 s de
     925 na execução r-20260928195344-02ee9e (4 e 214 s na r-20260928165254-e31953), cada uma reinstrumentando o
     UiAutomator2 no convidado já saturado. Numa LEITURA, relê-se com recuo; numa AÇÃO (`effect_possible=True`), o
-    gesto pode ter chegado ao app e não se repete às cegas."""
+    gesto pode ter chegado ao app e não se repete às cegas.
+
+    Nos logs reais (appium.log e backend.log do central, 24–28/09) só a forma "root AccessibilityNodeInfo … hogging
+    the main UI thread" apareceu; "no active window" nunca foi vista e segue reconhecida por ser a outra forma
+    documentada do mesmo 500 (`appium_driver._UI_OCUPADA`)."""
+
+
+#: O que o Appium diz quando a SESSÃO (ou a instrumentação do UiAutomator2 por trás dela) não existe mais, ou quando o
+#: servidor dele não aceita conexão. "session" é o critério de antes ("A session is either terminated or not
+#: started", e a URL `/session/<id>` do urllib3 quando o Appium recusa a conexão). A instrumentação morta não cita
+#: sessão: "'DELETE /' cannot be proxied to UiAutomator2 server because the instrumentation process is not running",
+#: no appium.log do central — numa ação, com o comando da vez no lugar do DELETE.
+_SESSAO_PERDIDA = ("session", "instrumentation process is not running", "econnrefused", "connection refused")
+
+
+def sessao_perdida(exc: DriverError) -> bool:
+    """O erro diz que a sessão do Appium morreu — e só recriá-la resolve? É o critério da AÇÃO que falhou: uma recusa
+    de elemento ou a UI ocupada vêm de uma sessão VIVA, e a leitura pelo adb nem passou por ela.
+
+    Confere a mensagem e a da causa encadeada: `AppiumSession._call` corta a sua em 300 caracteres da primeira linha, e
+    a parte útil pode vir depois. Da causa do Selenium vale só a mensagem (`msg`), sem a pilha Java do servidor — um
+    nome de classe com "Session" lá dentro recriaria a sessão por uma simples recusa de elemento."""
+    if isinstance(exc, DriverUnavailable):
+        return True
+    if isinstance(exc, (DriverBusy, FalhaDeLeitura)):
+        return False
+    causa = exc.__cause__
+    # Com `msg` (Selenium), só ela — mesmo vazia: cair no `str` traria a pilha de volta.
+    texto = f"{exc} {getattr(causa, 'msg', causa) or ''}".casefold()
+    return any(m in texto for m in _SESSAO_PERDIDA)
 
 
 class SemCampoEmFoco(DriverError):

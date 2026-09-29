@@ -11,7 +11,7 @@ from xml.sax.saxutils import quoteattr
 from PIL import Image
 
 from app.automation.driver import DriverBusy, DriverError
-from app.devices.adb import MorteDoApp
+from app.devices.adb import AdbError, MorteDoApp
 
 PKG = "com.pocqa.messenger"
 LAUNCHER = "com.android.launcher3"
@@ -21,6 +21,11 @@ UI_OCUPADA_500 = ("WebDriverException: Message: An unknown server-side error occ
                   "window. Make sure the active window is not constantly hogging the main UI thread")
 SESSAO_PERDIDA = ("InvalidSessionIdException: Message: A session is either terminated or not started "
                   "(session not found)")
+#: A instrumentação do UiAutomator2 morreu: o Appium responde, mas não tem a quem repassar o comando. É o texto do
+#: appium.log do central (lá, no `DELETE /` da recriação), com o comando da vez no lugar.
+INSTRUMENTACAO_MORTA = ("WebDriverException: Message: An unknown server-side error occurred while processing the "
+                        "command. Original error: 'GET /source' cannot be proxied to UiAutomator2 server because the "
+                        "instrumentation process is not running (probably crashed)")
 CONTACTS = ["Suporte QA", "QA-003", "QA-002", "QA-001", "Equipe Testes"]
 W, H = 720, 1280
 
@@ -32,6 +37,13 @@ def _png() -> bytes:
 
 
 PNG = _png()
+
+
+class _AdbSemScreencap:
+    """O `Adb` de um convidado saturado: o `exec-out screencap -p` volta sem PNG (é o `AdbError` de `screencap_png`)."""
+
+    def screencap_png(self, *, timeout: float = 20) -> bytes:
+        raise AdbError("screencap falhou em emulator-5640")
 
 
 @dataclass
@@ -89,6 +101,13 @@ class FakeQaDevice:
     busy_reads: int = 0
     # Sessão morta de verdade: as próximas N leituras devolvem o erro de sessão inexistente do Appium.
     session_lost_reads: int = 0
+    # Instrumentação morta: as próximas N leituras da hierarquia devolvem o erro do Appium sem UiAutomator2 vivo.
+    instrumentacao_morta_reads: int = 0
+    # Toque que volta com a instrumentação morta ANTES de chegar ao app (o Appium não teve a quem repassar).
+    tap_instrumentacao_morta: str | None = None     # texto do nó cujo toque devolve o erro
+    # Screencap pelo adb que falha (convidado saturado: "screencap falhou em emulator-…"): as próximas N capturas
+    # passam pela conversão DE VERDADE de `AndroidDeviceIO.screenshot_png` — é ela que dá o tipo do erro.
+    screenshot_falhas: int = 0
     # Toque que chega ao app e mesmo assim volta com o 500 de UI ocupada (o gesto aconteceu; a resposta, não).
     busy_after_tap: str | None = None           # texto do nó cujo toque devolve DriverBusy depois do efeito
     # Pacote "anr" (execuções reais r-20260928165254-e31953 e r-20260928195344-02ee9e, android-06): quantas das
@@ -161,6 +180,11 @@ class FakeQaDevice:
     def screenshot_png(self) -> bytes:
         self._enter("screenshot")
         try:
+            if self.screenshot_falhas > 0:
+                self.screenshot_falhas -= 1
+                from app.automation.appium_driver import AndroidDeviceIO
+
+                return AndroidDeviceIO(_AdbSemScreencap(), None).screenshot_png()  # type: ignore[arg-type]
             return PNG
         finally:
             self._leave()
@@ -210,6 +234,9 @@ class FakeQaDevice:
             if self.session_lost_reads > 0:
                 self.session_lost_reads -= 1
                 raise DriverError(SESSAO_PERDIDA, effect_possible=False)
+            if self.instrumentacao_morta_reads > 0:
+                self.instrumentacao_morta_reads -= 1
+                raise DriverError(INSTRUMENTACAO_MORTA, effect_possible=False)
             self._nodes = self._build()
             pkg = self.current_package()
             rows = "".join(
@@ -270,6 +297,10 @@ class FakeQaDevice:
                         and n.bounds[1] <= y <= n.bounds[3]), None)
             if hit is None or self.frozen:
                 return
+            if self.tap_instrumentacao_morta is not None and hit.text == self.tap_instrumentacao_morta:
+                self.tap_instrumentacao_morta = None
+                raise DriverError(INSTRUMENTACAO_MORTA.replace("'GET /source'", "'POST /appium/gestures/click'"),
+                                  effect_possible=True)
             act = hit.action
             if act == "open":
                 self._abrir()

@@ -11,7 +11,7 @@ from typing import Any
 
 from ..config import AppiumCfg
 from ..devices.adb import Adb, AdbError, MorteDoApp
-from .driver import DriverBusy, DriverError, DriverUnavailable, SemCampoEmFoco
+from .driver import DriverBusy, DriverError, DriverUnavailable, FalhaDeLeitura, SemCampoEmFoco
 from .hierarchy import eh_campo_de_texto
 
 log = logging.getLogger("poc.appium")
@@ -19,6 +19,9 @@ log = logging.getLogger("poc.appium")
 #: O que o UiAutomator2 responde quando a UI do app não entrega a raiz de acessibilidade a tempo (convidado com a CPU
 #: saturada, animação sem fim). A resposta vem DO servidor da sessão: ela está viva. Execuções
 #: r-20260928195344-02ee9e e r-20260928165254-e31953 recriavam a sessão a cada ocorrência (`DriverBusy`).
+#: Só "root AccessibilityNodeInfo" (com o "hogging…" na mesma frase) apareceu nos logs reais — appium.log e
+#: backend.log do central, 24–28/09. "no active window" NUNCA apareceu: fica porque é a outra forma documentada da
+#: mesma falta de janela ativa, e uma sessão que a devolvesse também estaria viva.
 _UI_OCUPADA = ("root accessibilitynodeinfo", "hogging the main ui thread", "no active window")
 
 
@@ -312,11 +315,14 @@ class AndroidDeviceIO:
     def connectivity_probe(self) -> dict[str, bool]:
         return self.adb.connectivity_probe()
 
+    # As leituras pelo adb que falham são `FalhaDeLeitura`, não um `DriverError` qualquer: a sessão do Appium não
+    # participou, e o executor recriava a sessão em todo `DriverError` da observação — 27–80 s num convidado saturado
+    # por causa de um screencap que só precisava ser refeito.
     def screenshot_png(self) -> bytes:
         try:
             return self.adb.screencap_png()
         except AdbError as exc:
-            raise DriverError(str(exc), effect_possible=False) from exc
+            raise FalhaDeLeitura(str(exc)) from exc
 
     def page_source(self) -> str:
         return self.session.page_source()
@@ -328,13 +334,13 @@ class AndroidDeviceIO:
         try:
             return self.adb.current_focus()
         except AdbError as exc:                   # só leitura: nada chegou a mudar no aparelho
-            raise DriverError(str(exc), effect_possible=False) from exc
+            raise FalhaDeLeitura(str(exc)) from exc
 
     def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
         try:
             return self.adb.app_deaths(package, within_s=within_s)
         except AdbError as exc:
-            raise DriverError(str(exc), effect_possible=False) from exc
+            raise FalhaDeLeitura(str(exc)) from exc
 
     def app_version(self, package: str) -> str:
         return self.adb.app_version(package)

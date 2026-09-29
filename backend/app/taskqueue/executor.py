@@ -20,7 +20,7 @@ from typing import Any, Awaitable, Callable, Sequence, TypeVar
 from PIL import Image
 
 from ..automation import tools as ferramentas
-from ..automation.driver import DriverBusy, DriverError, DriverTimeout, DriverUnavailable
+from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
                                 ToolValidationError, esperar_foco, execute_tool, looks_like_commit, resolve_point,
@@ -62,29 +62,33 @@ T = TypeVar("T")
 #: UI ocupada (`DriverBusy`) numa LEITURA: quantas releituras, e o recuo entre elas. A sessão está viva (quem
 #: respondeu o 500 foi ela); o convidado é que está saturado. Recriá-la era o que custava 27–80 s por vez e
 #: reinstrumentava o UiAutomator2 no convidado sem folga: 5 recriações = 305,6 s de 925 s na
-#: r-20260928195344-02ee9e, 4 = 214 s na r-20260928165254-e31953.
+#: r-20260928195344-02ee9e, 4 = 214 s na r-20260928165254-e31953. Vale igual para a leitura que falhou fora da
+#: sessão (`FalhaDeLeitura`: o screencap pelo adb, a captura na origem) — o mesmo convidado saturado.
 RELEITURAS_UI_OCUPADA = 3
 RECUO_UI_OCUPADA_S = 4.0
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
-    """Faz a leitura e, se a UI estiver ocupada, relê com recuo — sem tocar na sessão. O recuo sai do prazo da etapa
-    (`prazo`, relógio monotônico): sem tempo para esperar, o `DriverBusy` sobe na hora. Só LEITURA passa por aqui;
-    uma ação que volta ocupada pode ter chegado ao app e não se repete às cegas."""
-    releituras = 0
+    """Faz a leitura e, se a UI estiver ocupada ou a leitura tiver falhado fora da sessão, relê com recuo — sem tocar
+    na sessão. O recuo sai do prazo da etapa (`prazo`, relógio monotônico): sem tempo para esperar, o erro sobe na
+    hora. Só LEITURA passa por aqui; uma ação que volta ocupada pode ter chegado ao app e não se repete às cegas."""
+    releituras, metrica = 0, ""
     while True:
         try:
             valor = await ler()
-        except DriverBusy as exc:
+        except (DriverBusy, FalhaDeLeitura) as exc:
+            # Métricas separadas: UI ocupada é o app segurando a thread de interface; a outra é o adb ou o agente.
+            metrica = "automacao.ui_ocupada" if isinstance(exc, DriverBusy) else "automacao.leitura_falhou"
             releituras += 1
             if releituras > RELEITURAS_UI_OCUPADA or time.monotonic() + RECUO_UI_OCUPADA_S > prazo:
-                metricas.contar("automacao.ui_ocupada", resultado="persistiu")
+                metricas.contar(metrica, resultado="persistiu")
                 raise
-            log.info("%s: UI ocupada (%s); relendo em %.0f s sem recriar a sessão", quem, exc, RECUO_UI_OCUPADA_S)
+            log.info("%s: %s (%s); relendo em %.0f s sem recriar a sessão", quem,
+                     "UI ocupada" if isinstance(exc, DriverBusy) else "leitura falhou", exc, RECUO_UI_OCUPADA_S)
             await asyncio.sleep(RECUO_UI_OCUPADA_S)
             continue
         if releituras:
-            metricas.contar("automacao.ui_ocupada", resultado="relida")
+            metricas.contar(metrica, resultado="relida")
         return valor
 
 
@@ -963,14 +967,21 @@ class StepExecutor:
                     prazo=deadline, quem=iid)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
-            except DriverBusy as exc:
-                # A UI seguiu ocupada depois das releituras. A sessão continua viva — derrubá-la aqui é o que custava
-                # 27–80 s por vez nas execuções de 28/09. Conta como erro e volta a observar, até o limite de sempre.
+            except (DriverBusy, FalhaDeLeitura) as exc:
+                # A UI seguiu ocupada, ou a leitura pelo adb/agente seguiu falhando, depois das releituras. A sessão
+                # continua viva (ou nem participou) — derrubá-la aqui é o que custava 27–80 s por vez nas execuções de
+                # 28/09. Conta como erro e volta a observar, até o limite de sempre.
                 errors_in_row += 1
                 if errors_in_row >= 3:
-                    return await fail_or_retry(f"A interface do aparelho seguiu ocupada: {exc}")
+                    return await fail_or_retry(f"A interface do aparelho seguiu ocupada: {exc}"
+                                               if isinstance(exc, DriverBusy)
+                                               else f"A leitura da tela seguiu falhando: {exc}")
                 continue
             except DriverError as exc:
+                # O que sobra veio do Appium (a hierarquia) e não é UI ocupada: sessão ou instrumentação morta,
+                # conexão recusada, sessão indisponível — ou um erro dele que não se sabe ler. Recria em todos: nada
+                # mais confere se a sessão está viva (`ensure_automation` confia no "pronta"), e uma sessão morta que
+                # escapasse de uma lista de marcadores ("socket hang up" no backend.log de 18/09) nunca voltaria.
                 errors_in_row += 1
                 self.devices.invalidate_automation(rt, str(exc))
                 if errors_in_row >= 3 or not await self.devices.ensure_automation(rt):
@@ -1337,10 +1348,10 @@ class StepExecutor:
                 if isinstance(exc, DriverTimeout):
                     if not await rt.executor.drain(max_wait_s=120):
                         return await self._stuck(rt, step, fired, str(exc))
-                if not isinstance(exc, DriverBusy) and (isinstance(exc, DriverUnavailable)
-                                                        or "session" in str(exc).lower()):
-                    # Só sessão morta de verdade se recria. UI ocupada veio DA sessão: ela está viva (execuções
-                    # r-20260928195344-02ee9e e r-20260928165254-e31953).
+                if sessao_perdida(exc):
+                    # Só sessão morta de verdade se recria — e a instrumentação morta é isso, sem citar "session".
+                    # UI ocupada veio DA sessão: ela está viva (execuções r-20260928195344-02ee9e e
+                    # r-20260928165254-e31953).
                     self.devices.invalidate_automation(rt, str(exc))
                     await self.devices.ensure_automation(rt)
                 if incerta:
@@ -1534,6 +1545,7 @@ class StepExecutor:
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
             ausentes = textos_do_cartao_ausentes(cartao, obs.tree)
+            legendas = ", ".join(f'"{c}"' for c in cartao)
             if ausentes:
                 # A publicação ALVO não está na tela. O título "Posts" e um coração marcado valem para qualquer
                 # publicação (r-20260928195344-02ee9e), e o modelo julgaria justamente isso — então nem se pergunta a
@@ -1541,6 +1553,10 @@ class StepExecutor:
                 ok, judged = False, False
                 text = "; ".join(t for t in (text, "a publicação alvo não está na tela: "
                                              + ", ".join(f'"{a}"' for a in ausentes) + " não aparece") if t)
+            elif cartao and not judged:
+                # A evidência dizia só o seletor ("Posts"), como se a legenda não tivesse sido conferida. Foi: aqui
+                # é presença NA TELA (é o que `textos_do_cartao_ausentes` confere), não dentro de um cartão.
+                text = "; ".join(t for t in (text, f"legenda {legendas} presente na tela") if t)
             # Achado #102: antes de gastar uma chamada de modelo (que só via os 80 primeiros caracteres de cada
             # elemento), confere pela árvore local quando o catálogo declara uma prova determinística para esta
             # pós-condição julgada. `need` de nível de entrega exige o modelo mesmo assim — "enviado" não prova
@@ -1553,8 +1569,25 @@ class StepExecutor:
                 text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
                         if local_proof != "sent_text" else
                         "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita")
+                if cartao:
+                    # Com legenda, a prova só casa o elemento do CARTÃO dela (`proofs.local_proof_holds`); a evidência
+                    # diz, em vez de parecer que só o seletor foi conferido.
+                    text += f", no cartão da legenda {legendas}"
                 self.repo.decision(f"{rt.id} · {step.title}: pós-condição comprovada pela árvore local (sem IA)",
                                    run_id=run_id, instance_id=rt.id, step_id=step.id)
+            elif judged and cartao:
+                # Com a legenda da publicação alvo, SÓ a prova local fecha a etapa. O modelo olha a tela "Posts", que é
+                # um feed: veria o coração marcado de OUTRO cartão e diria "sim" — e uma curtida que o app não registrou
+                # viraria sucesso. A prova negativa (ou ausente) não é reprovação imediata: segue olhando até o fim do
+                # prazo desta verificação (o coração pode marcar depois), sem chamada de modelo; sem prova, a etapa
+                # falha — ou fica incerta, com o efeito disparado.
+                ok, judged = False, False
+                motivo = (f"a prova local ({local_proof}) não confirmou no cartão da legenda {legendas}"
+                          if local_proof and need is None else
+                          f"nenhuma prova local se aplica ao cartão da legenda {legendas}")
+                text = "; ".join(t for t in (text, f"{motivo}; com legenda de cartão só a prova local vale e o modelo "
+                                             "não é consultado (ele julgaria outra publicação da tela, como o coração "
+                                             "marcado de outro cartão)") if t)
             if judged:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
