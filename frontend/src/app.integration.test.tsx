@@ -282,17 +282,19 @@ describe('Central de Aparelhos — sessão completa', () => {
     backend.on('POST', /^\/api\/runs$/, () => json(makeRun()));
     await flush(2100); // o teste anterior termina com uma execução criada: espera o intervalo contra clique duplo
     await click(byRole('button', /Distribuir entre servidores/));
+    // Item 24.6: sem app escolhido, a distribuição sai dos apps que o COMANDO usa — a prévia só existe com o comando
+    // escrito, e o corpo leva só a quantidade (o backend deduz os apps do texto).
     await setValue(byRole('textbox', 'Aparelhos') as HTMLInputElement, '3');
+    await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'Abra o app distribuído');
     await waitFor(() => expect(text()).toContain('em Notebook da LAN'));
     expect(text()).toContain('1 precisa ligar');
-    await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'Abra o app distribuído');
     const antes = runPosts().length;
     await click(byRole('button', /^Executar/));
     await waitFor(() => expect(runPosts()).toHaveLength(antes + 1));
-    const corpo = runPosts()[antes]?.body as { instance_ids: string[]; distribute?: { count: number; app_id: string } };
+    const corpo = runPosts()[antes]?.body as { instance_ids: string[]; distribute?: { count: number; app_id?: string } };
     expect(corpo.instance_ids).toEqual([]);
     expect(corpo.distribute?.count).toBe(3);
-    expect(corpo.distribute?.app_id).toBeTruthy();
+    expect(corpo.distribute?.app_id).toBeUndefined();
     // Volta ao modo de seleção: a escolha fica guardada no navegador e os próximos testes marcam aparelhos.
     await click(byRole('button', /Aparelhos marcados/));
     await flush(2100);
