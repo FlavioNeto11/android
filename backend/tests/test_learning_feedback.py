@@ -52,6 +52,7 @@ from app.modules.learning.domain.vocabulario import (Braco, LivroKind, MotivoDoV
                                                      SourceKind, Veredito)
 from app.modules.learning.domain.voto import (AcaoDoEfeito, Conhecimento, Desfecho, ItemVotado, Uso, Verificador,
                                               desfecho, efeitos_do_voto, licao_refutada, reativar_desfaz)
+from app.modules.learning.infrastructure.aprendido_sql import LeituraDoAprendidoSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.montagem import GuardaDoFluxo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -740,6 +741,20 @@ async def test_bloco_da_execucao_simulada_e_da_vazia(mundo: Mundo, cliente: http
     vazia = await cliente.get("/api/runs/r-vazia/feedback")
     assert vazia.status_code == 200, vazia.text
     assert vazia.json()["aprendizado"] == {"receitas": [], "fluxos": [], "falhas": [], "candidatas": [], "licoes": []}
+
+
+async def test_leitura_do_bloco_que_quebra_nao_derruba_os_votos(mundo: Mundo, cliente: httpx.AsyncClient,
+                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """O bloco informa: uma linha legada estranha vira `aprendizado: null` (o painel diz que o servidor não informa),
+    e os votos e os sinais continuam saindo."""
+    def quebra(self: LeituraDoAprendidoSql, run_id: str) -> None:
+        raise TypeError("coluna estranha")
+
+    monkeypatch.setattr(LeituraDoAprendidoSql, "fatos", quebra)
+    assert (await cliente.post(f"/api/runs/{RUN}/feedback", json={"verdict": "certo"})).status_code == 201
+    r = await cliente.get(f"/api/runs/{RUN}/feedback")
+    assert r.status_code == 200, r.text
+    assert r.json()["aprendizado"] is None and [v["verdict"] for v in r.json()["votos"]] == ["certo"]
 
 
 async def test_sem_o_aprendizado_composto_o_voto_diz_503() -> None:
