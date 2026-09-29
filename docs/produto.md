@@ -126,6 +126,32 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   plano" (mediana–p90 de chamadas, US$ e tempo, e a janela efetiva). Na lista de fluxos, os status "Em prova" e
   "Esperando o dono" aparecem com nome (29/09). Prova: `simulated` (vitest de `features/aprendizado/`, `features/runs/`
   e `lib/status.test.ts`); conferência visual no navegador: `not_run`.
+- **Relatório da execução: "Resultado por instância" em cartões (29/09, pedido do dono: "muito ruim de ler").** A
+  tabela de ~15 colunas, que espremia etapas e efeitos em colunas estreitas e mostrava chaves em inglês ("Proven",
+  "Blocked reason"), virou um cartão por aparelho
+  (`frontend/src/features/runs/ResultadoPorInstancia.tsx`, leitura em `resultadoDaInstancia.ts`):
+  - **cabeçalho:** a situação, o selo de prova, a entrega e onde rodou (servidor · serial; "não registrado" quando não
+    houve fotografia). "Comprovado" só aparece com `proven: true`; sucesso com etapa confirmada à mão mostra "Com
+    etapa confirmada à mão", nunca "Comprovado";
+  - **corpo:** o detalhe, o motivo (só quando difere do detalhe), "O que falta" (`needs`) e as etapas em três grupos
+    que não se fundem: comprovadas (com a prova; "em qualquer versão do plano" quando houve replano), confirmadas à mão
+    e "em aberto no plano final (vN)". A mesma etapa pode estar comprovada numa versão antiga e em aberto na final;
+  - **efeitos externos** com o horário, e o rodapé com versões do plano, chamadas de IA e tokens. A borda do cartão
+    tem a cor da situação (aviso para sucesso sem prova completa);
+  - com mais de 3 aparelhos, os comprovados começam recolhidos ("Ver etapas e efeitos (…)") e o resto fica à vista;
+  - campo desconhecido aparece em chave/valor, e linha que não é objeto cai para a árvore genérica.
+- **Diagnóstico: "Outros dados" legível (29/09, mesmo pedido).** Era uma árvore aninhada sem fim, em que o teste de
+  escala repetia a lista de aparelhos em cada leva. Agora cada chave tem um bloco com título e explicação
+  (`frontend/src/features/diagnostics/OutrosDados.tsx`, leitura em `outros.ts`):
+  - **Onde foi medido;**
+  - **SDK do Android:** as imagens uma por linha e a imagem própria por aparelho em tabela;
+  - **Teste de escala:** uma tabela por leva (pedidos, no ar, tempo da leva, CPU, memória livre e usada, fora do ar,
+    IA, quando) e, recolhida, a tabela aparelho × leva com o boot e a RAM do emulador;
+  - **Imagens de sistema medidas:** RAM pedida, RAM que o Android vê, memória do emulador e primeiro boot;
+  - **Levantamento do host (script):** chave/valor em português, discos e processos em tabela, a saída do
+    `-accel-check` em bloco de código.
+
+  A chave desconhecida continua visível, uma linha por item ou pela árvore genérica.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade

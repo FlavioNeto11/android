@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-29 (tarde) — Painel: "Resultado por instância" em cartões e "Outros dados" do Diagnóstico legível
+
+Pedido do dono: os dois estavam "muito ruins de ler". Só painel; nenhuma mudança de API. Descrição em
+[produto.md §3](docs/produto.md).
+
+- **Relatório da execução.** Um cartão por aparelho no lugar da tabela de ~15 colunas. O cabeçalho mostra a situação,
+  o selo de prova, a entrega e onde rodou. O corpo traz as etapas em três grupos que não se fundem (comprovadas com a
+  prova, confirmadas à mão, em aberto no plano final) e os efeitos externos com o horário. "Comprovado" só aparece com
+  `proven: true`. Com mais de 3 aparelhos, os comprovados começam recolhidos.
+- **Diagnóstico › Outros dados.** Um bloco com título por chave: SDK, teste de escala (tabela por leva e tabela
+  aparelho × leva), imagens medidas e levantamento do host. A chave desconhecida continua visível.
+- **Prova.** `simulated`: typecheck e vitest 751/751. Os testes novos estão em `resultadoDaInstancia.test.ts`,
+  `ReportTab.test.tsx` (falha com a etapa comprovada e em aberto, sucesso com etapa à mão, recolhimento) e
+  `outros.test.ts`/`DiagnosticsPage.test.tsx`. Visual: Vite local com os dados reais do central, só leitura (6eb84c,
+  7cfa59 com 8 aparelhos, 02ee9e a 375 px). A implantação e a captura no painel do central vêm na entrada seguinte.
+
 ## 2026-09-29 (tarde) — O código em aberto: interruptor antigo pelo livro, bloco da execução, três sinais, dívida de import e irq medido (ADR-054)
 
 **Implantado** no central em 29/09 ~14:10 UTC: `c071341`, sem migração nova. `/api/health` com o commit e a 055; o

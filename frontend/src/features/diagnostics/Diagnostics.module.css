@@ -291,3 +291,92 @@
   color: var(--text-1);
   font-weight: 600;
 }
+
+/* ---- "Outros dados": um bloco por chave, tabelas para listas (antes, árvore aninhada sem fim) ---- */
+
+.outros {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding-top: var(--sp-2);
+}
+
+.outroBloco {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.outroBloco + .outroBloco {
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border-1);
+}
+
+.outroTitulo {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.outroEstruturado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.outroSub {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.outroSubTitulo {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.outroLista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.num {
+  text-align: right;
+}
+
+.outroAviso {
+  color: var(--warning-text);
+}
+
+.outroQuando {
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.outroAparelho {
+  padding: 8px 12px;
+  background: none;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  border-top: 1px solid var(--border-1);
+}
