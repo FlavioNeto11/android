@@ -453,11 +453,14 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   // invalid_output | error) — sem isto, saber por que uma chamada falhou exigia casar horário de log.
   errors_by_kind?: Record<string, number> }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
-  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+  // D1 (ADR-054): o fluxo aprendido de execução nasce `candidate` (inerte: o planejador segue sendo chamado) e a sombra
+  // no digest o publica sozinho quando não tem efeito externo; com efeito, para em `validated` e espera o dono.
+  status: 'candidate' | 'validated' | 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   // `candidate`: aprendida e ainda em prova — a IA conduz a etapa e a receita só é comparada (modo sombra); vira
   // `active` depois de `ai.recipes_promote_after` execuções seguidas em que a IA fez exatamente o caminho dela.
-  version: number; status: 'candidate' | 'active' | 'quarantined' | 'superseded';
+  // `validated` (D1, ADR-054): concordou, mas tem ação de efeito externo — inerte até o dono aprovar no livro.
+  version: number; status: 'candidate' | 'validated' | 'active' | 'quarantined' | 'superseded';
   actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
              selectors?: { kind: string; rid?: string; text?: string; desc?: string }[];
              scroll?: { direction: string; max: number } }[];

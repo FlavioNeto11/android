@@ -8,7 +8,8 @@ Agora:
   (sombra) — o mesmo custo de uma etapa sem receita;
 - a comparação vale por EXECUÇÃO da etapa (não por decisão): concordar é a IA ter feito exatamente o caminho da
   receita, até declarar a etapa pronta onde ela acaba, e a etapa ter sido comprovada;
-- `ai.recipes_promote_after` concordâncias seguidas promovem a `active`; uma divergência recomeça a prova;
+- `ai.recipes_promote_after` concordâncias seguidas promovem a `active`; uma divergência recomeça a prova. Com ação
+  de efeito externo (`commit`), a promoção para em `validated` e o dono aprova (D1, ADR-054);
 - a receita nova de uma chave marca a anterior (candidata que divergiu, ou em quarentena) como `superseded`;
 - receitas `active` que já existiam continuam ativas — o parque não regride.
 """
@@ -22,6 +23,8 @@ from typing import Any
 from app.automation.hierarchy import parse_hierarchy
 from app.db import dumps, loads
 from app.metricas import metricas
+from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.vocabulario import LivroKind
 from app.planning.provider import Decision
 from app.planning.simulated_provider import SimulatedProvider
 from app.taskqueue.executor import _RecipeRun
@@ -347,20 +350,41 @@ async def test_candidata_so_age_depois_de_concordar_com_a_ia_em_execucoes_seguid
                      " AND t.recipe_id IS NOT NULL", (r2.id,)) == 0
     assert metricas.total("receita.reproducao") == 0
 
-    # 3ª: segunda concordância seguida → ativa, e a linha do tempo diz por quê
+    # 3ª: segunda concordância seguida → ativa, e a linha do tempo diz por quê. D1 (ADR-054): a do ENVIO tem ação de
+    # efeito externo (`commit`) e para em `validated` — provou-se, mas quem a publica é o dono.
     r3 = await harness.wait_run(harness.run(["android-03"]).id)
     assert r3.status == "completed"
     receitas = _receitas(harness)
-    assert {receitas[k]["status"] for k in PASSOS} == {"active"}
-    assert sum("promovida" in m for m in _decisoes(harness, r3.id)) >= len(PASSOS)
+    sem_efeito = ("open_conversation", "compose_message")
+    assert {receitas[k]["status"] for k in sem_efeito} == {"active"}
+    assert receitas["send_message"]["status"] == "validated"
+    assert sum("promovida" in m for m in _decisoes(harness, r3.id)) >= len(sem_efeito)
+    envio = int(receitas["send_message"]["id"])
+    assert ("receita", str(envio)) in {(e.kind.value, e.ref) for e in harness.state.learning.pendentes()}  # type: ignore[union-attr]
 
-    # 4ª: agora sim, repete por seletores, sem IA nas etapas com receita
+    # 4ª: as etapas sem efeito repetem por seletores; o envio segue com a IA até o dono aprovar (e nada novo nasce)
     harness.ai.calls.clear()
     r4 = await harness.wait_run(harness.run(["android-01"]).id)
     assert r4.status == "completed"
+    for k in sem_efeito:
+        assert harness.ai.count("decide", step=k) == 0, k
+    assert harness.ai.count("decide", step="send_message") >= 1
+    driven = _driven(harness, r4.id)
+    assert {driven[k] for k in sem_efeito} == {"recipe"} and driven["send_message"] == "ai"
+    assert db.scalar("SELECT COUNT(*) FROM recipes WHERE step_key='send_message'") == 1
+
+    # o dono aprova pelo livro (Aprendizado › Para aprovar)
+    harness.state.learning.mudar_estado(LivroKind.RECEITA, str(envio), SkillState.PUBLISHED,  # type: ignore[union-attr]
+                                        by="painel:dono", reason="aprovada em lote")
+    assert db.scalar("SELECT status FROM recipes WHERE id=?", (envio,)) == "active"
+
+    # 5ª: agora sim, repete por seletores, sem IA nas etapas com receita
+    harness.ai.calls.clear()
+    r5 = await harness.wait_run(harness.run(["android-02"]).id)
+    assert r5.status == "completed"
     for k in PASSOS:
         assert harness.ai.count("decide", step=k) == 0, k
-    driven = _driven(harness, r4.id)
+    driven = _driven(harness, r5.id)
     assert {driven[k] for k in PASSOS} == {"recipe"}
     assert metricas.valor("receita.consulta", resultado="candidata") >= 2 * len(PASSOS)
     _rotulos_fechados()

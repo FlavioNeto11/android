@@ -64,6 +64,10 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # que ligam o valor de produção (2).
         "ai": {"effect_settle_s": 0, "action_settle_s": 0, "recipe_settle_s": 0, "judge_wait_s": 0.05,
                "recipes_promote_after": 0},
+        # O mesmo para o fluxo (ADR-054, D1): a suíte que prova o REAPROVEITAMENTO (aprende na 1ª execução, reaproveita
+        # na 2ª) segue com o fluxo nascendo ativo. O D1 de produção (nasce candidato, sombra no digest) tem os testes
+        # próprios (test_d1_fluxos), que ligam `com_prova`.
+        "aprendizado": {"fluxo": {"com_prova": False}},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
         # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que

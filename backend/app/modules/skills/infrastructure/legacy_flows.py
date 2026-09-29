@@ -5,7 +5,10 @@ Embrulha o `FlowStore` em vez de reimplementá-lo: a resolução DELEGA a `FlowS
 não é este fluxo" são exatamente os de hoje. Nada aqui escreve em `flows`.
 
 Como o fluxo vira versão:
-- estado `published` se `flows.status='active'`, senão `disabled`;
+- estado `published` se `flows.status='active'`; `candidate` e `validated` são os do D1 do livro de aprendizado
+  (ADR-054: o fluxo aprendido de execução nasce candidato e, com efeito externo, para validado esperando o dono) e
+  aparecem como tais — inertes, porque a resolução delega a `FlowStore.match`, que só casa o ativo; o resto é
+  `disabled`;
 - conteúdo `{schema_version: 0, command_template, plan, required_apps}`, com os apps de `flow_required_apps` (a
   tabela manda, como em `FlowStore.match`). O hash é calculado na leitura, nunca gravado: reflete o fluxo de agora;
 - proveniência `legacy_flow`, com `flows.source` e `flows.source_run_id` nas notas.
@@ -27,6 +30,11 @@ from app.modules.skills.domain.versions import (SCHEMA_LEGACY_PLAN, Provenance, 
                                                 SkillSummary, SkillVersion, SourceKind, legacy_plan_parameters)
 from app.modules.skills.infrastructure.rows import texto, texto_ou_nulo
 from app.taskqueue.flows import FlowStore
+
+
+#: `flows.status` → estado da versão legada. O que não está aqui é `disabled`.
+_ESTADO_DO_FLUXO = {"active": SkillState.PUBLISHED, "candidate": SkillState.CANDIDATE,
+                    "validated": SkillState.VALIDATED}
 
 
 def legacy_content(row: Row, required_apps: Sequence[str]) -> JsonObject:
@@ -111,7 +119,7 @@ class LegacyFlowAdapter:
     # ------------------------------------------------------------------ mapeamento
     def _version(self, row: Row) -> SkillVersion:
         apps = required_apps(self._db, texto(row, "id"))
-        estado = SkillState.PUBLISHED if texto(row, "status") == "active" else SkillState.DISABLED
+        estado = _ESTADO_DO_FLUXO.get(texto(row, "status"), SkillState.DISABLED)
         return SkillVersion.frozen(SkillRef.legacy(texto(row, "id")), legacy_content(row, apps), state=estado,
                                    schema_version=SCHEMA_LEGACY_PLAN,
                                    command_template=texto(row, "command_template"), app_ids=apps,

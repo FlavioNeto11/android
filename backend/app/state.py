@@ -393,10 +393,13 @@ class AppState:
         self.skill_planner = SkillRunPlanner(self.skill_registry, self._pacote_do_app_id, travas)
         # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
         # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
+        # As lojas do scheduler ganham o D1 (fluxo nasce candidato; receita com efeito para em `validated`) e a trilha.
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
-            precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo)
+            precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
+            receitas=self.scheduler.executor.recipes,
+            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).

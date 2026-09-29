@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RECIPE_STATUS, recipeToggleTarget, scrollText, selectorText, shadowText, splitTemplate } from './flowsRecipes';
+import { FLOW_STATUS, OWNER_QUEUE, RECIPE_STATUS, recipeToggleTarget, scrollText, selectorText, shadowText, splitTemplate } from './flowsRecipes';
 
 describe('splitTemplate — marcadores do comando-modelo', () => {
   it('separa texto e {marcadores} sem perder nenhum caractere', () => {
@@ -15,6 +15,19 @@ describe('splitTemplate — marcadores do comando-modelo', () => {
     ]);
     expect(splitTemplate('sem marcadores {} { solto')).toEqual([{ text: 'sem marcadores {} { solto', placeholder: false }]);
     expect(splitTemplate('')).toEqual([]);
+  });
+});
+
+describe('fluxos (D1)', () => {
+  it('em prova, esperando o dono, ativo e desligado têm rótulo próprio; só o ativo diz que dispensa o planejador', () => {
+    expect(FLOW_STATUS.candidate.label).toBe('Em prova');
+    expect(FLOW_STATUS.validated.label).toBe('Esperando o dono');
+    expect(FLOW_STATUS.validated.description).toContain(OWNER_QUEUE);
+    expect(FLOW_STATUS.active.label).toBe('Ativo');
+    expect(FLOW_STATUS.disabled.label).toBe('Desligado');
+    const semPlanejador = (Object.keys(FLOW_STATUS) as (keyof typeof FLOW_STATUS)[])
+      .filter((s) => /sem chamar o planejador/.test(FLOW_STATUS[s].description ?? ''));
+    expect(semPlanejador).toEqual(['active']);
   });
 });
 
@@ -35,6 +48,13 @@ describe('receitas', () => {
     expect(RECIPE_STATUS.candidate.label).toBe('Candidata');
     expect(RECIPE_STATUS.candidate.description).toMatch(/em prova/);
     expect(recipeToggleTarget('candidate')).toBe('quarantined');
+  });
+
+  it('D1: a que provou-se com efeito externo espera o dono; o botão só a põe de lado (aprovar é no livro)', () => {
+    expect(RECIPE_STATUS.validated.label).toBe('Esperando o dono');
+    expect(RECIPE_STATUS.validated.description).toContain(OWNER_QUEUE);
+    expect(RECIPE_STATUS.validated.description).toMatch(/efeito externo/);
+    expect(recipeToggleTarget('validated')).toBe('quarantined');
   });
 
   it('concordância em modo sombra só aparece com total > 0', () => {

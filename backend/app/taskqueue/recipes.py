@@ -8,7 +8,10 @@ Princípios:
 - nada sensível é aprendido: campo de senha nunca vira alvo e texto digitado precisa ser 100 % coberto por
   parâmetros da execução (o que sobra seria dado pessoal ou invenção do modelo);
 - a chave da receita é a etapa em forma de TEMPLATE (antes de resolver {instance_id}, {recipient}…) + app + versão
-  do app: atualização do app é só uma busca sem resultado, e a etapa é reaprendida.
+  do app: atualização do app é só uma busca sem resultado, e a etapa é reaprendida;
+- D1 (ADR-054): a candidata que concordou com a IA só passa a AGIR sozinha se não tiver ação de efeito externo
+  (`commit`). Com efeito, ela para em `validated` — inerte como a candidata — e quem a publica é o dono, pelo livro de
+  aprendizado. As ativas com efeito de antes do D1 não mudam (aparecem em "Revisar").
 """
 from __future__ import annotations
 
@@ -17,12 +20,13 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from ..automation.hierarchy import UiElement, UiTree
 from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import PlanStep
+from ..modules.learning.domain.livro import receita_tem_efeito
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
 
@@ -417,9 +421,54 @@ def _caminho(acoes: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
     return [{k: v for k, v in a.items() if k != "why"} for a in acoes]
 
 
+#: Quem decide quando a própria loja muda o status (aprendizado, prova em sombra, quarentena, substituição).
+SISTEMA = "sistema"
+
+
+@dataclass(frozen=True, slots=True)
+class ReceitaVista:
+    """A identidade e o caminho de uma receita: o que o veto do livro de aprendizado (ADR-054) confere."""
+
+    package: str
+    app_version: str
+    signature: str
+    variant: str
+    step_hash: str
+    #: As ações em JSON, como gravadas (a base do `content_hash`).
+    actions: str
+
+
+@dataclass(frozen=True, slots=True)
+class MudancaDaReceita:
+    """Uma mudança de status feita pela própria loja, para a trilha (`learning_transitions`)."""
+
+    recipe_id: int
+    de: str | None
+    para: str
+    motivo: str
+    por: str
+
+
+class OuvinteDasReceitas(Protocol):
+    """O livro de aprendizado do lado da loja. Chamado DENTRO da transação da escrita (mesma conexão): a trilha entra
+    junto com o status, ou nenhum dos dois."""
+
+    def vetada(self, receita: ReceitaVista) -> bool:
+        """O sistema não pode trazer de volta este caminho (uma pessoa o desligou)."""
+        ...
+
+    def mudou(self, mudanca: MudancaDaReceita) -> None: ...
+
+
 class RecipeStore:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, ouvinte: OuvinteDasReceitas | None = None):
         self.db = db
+        #: A trilha e o veto do livro de aprendizado (ADR-054); `None` = sem trilha (a loja crua dos testes).
+        self.ouvinte = ouvinte
+
+    def _avisar(self, recipe_id: int, de: str | None, para: str, motivo: str, por: str = SISTEMA) -> None:
+        if self.ouvinte is not None:
+            self.ouvinte.mudou(MudancaDaReceita(recipe_id=recipe_id, de=de, para=para, motivo=motivo, por=por))
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
              signature: str = "", variant: str = "") -> Row | None:
@@ -428,7 +477,8 @@ class RecipeStore:
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
         idioma e densidade mudam a tela. Receita aprendida numa combinação não vale para outra.
 
-        Devolve a ativa; sem ela, a candidata em prova (o executor a põe em sombra, nunca a reproduz).
+        Devolve a ativa; sem ela, a candidata em prova (o executor a põe em sombra, nunca a reproduz). A `validated`
+        (D1: concordou, tem efeito externo, espera o dono) nunca sai daqui — para a etapa ela ainda não existe.
 
         É a CONSULTA do funil (`receita.consulta`): o executor só chega aqui com uma etapa elegível (modo ligado, app
         conhecido, efeito ainda não disparado), então a soma dos resultados é o total de TENTATIVAS elegíveis (o
@@ -481,10 +531,18 @@ class RecipeStore:
         reescrevem a prova a cada execução, e uma cópia dela não vira versão nova. A versão gravada marca
         as anteriores ainda vivas da chave (candidata trocada, ativa que caiu em quarentena) como `superseded` — uma
         só receita viva por chave, e a substituída não volta pelo painel.
+
+        D1: a `validated` (concordou, tem efeito externo, espera o dono) segura a chave como a ativa — senão cada
+        execução da etapa deixaria mais uma validada na fila do dono. E o caminho que uma PESSOA desligou não volta
+        pelo sistema (`ouvinte.vetada`); o treino é da pessoa e não passa pelo veto.
         """
         chave = (package, app_version, signature, variant, step_hash)
+        treino = learned_from.startswith("training:")
         with self.db.tx():
             if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
+                return None
+            if self._com_status("validated", package, app_version, step_hash, signature=signature,
+                                variant=variant) is not None:
                 return None
             em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
@@ -495,17 +553,34 @@ class RecipeStore:
                 # guarda a última direção): a cópia não mudaria a reprodução, só deixaria uma `superseded` por
                 # execução. Fica a candidata, com a prova já recomeçada pela divergência.
                 return None
+            gravadas = dumps(actions)
+            if self.ouvinte is not None and not treino and self.ouvinte.vetada(ReceitaVista(
+                    package=package, app_version=app_version, signature=signature, variant=variant,
+                    step_hash=step_hash, actions=gravadas)):
+                return None
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
                 " app_signature=? AND variant=? AND step_hash=?", chave))
+            antigas = self.db.query("SELECT id, status FROM recipes WHERE app_package=? AND app_version=? AND"
+                                    " app_signature=? AND variant=? AND step_hash=?"
+                                    " AND status IN ('candidate','quarantined')", chave) if self.ouvinte else []
             self.db.execute("UPDATE recipes SET status='superseded' WHERE app_package=? AND app_version=? AND"
                             " app_signature=? AND variant=? AND step_hash=?"
                             " AND status IN ('candidate','quarantined')", chave)
-            return int(self.db.inserted_id(
+            status = "candidate" if candidate else "active"
+            novo = int(self.db.inserted_id(
                 "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
                 " status, actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (package, app_version, signature, variant, step_hash, step_key, ver,
-                 "candidate" if candidate else "active", dumps(actions), learned_from, now_iso())) or 0)
+                 status, gravadas, learned_from, now_iso())) or 0)
+            for antiga in antigas:
+                self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
+            if novo:
+                motivo = ("ensinada no modo treinamento" if treino else
+                          "aprendida da IA; em prova (sombra)" if candidate else
+                          "aprendida da IA já ativa (ai.recipes_promote_after: 0, o modo anterior)")
+                self._avisar(novo, None, status, motivo, por=learned_from if treino else SISTEMA)
+            return novo
 
     def result(self, recipe_id: int, ok: bool) -> bool:
         """Conta o uso. Devolve True se a receita entrou em quarentena agora.
@@ -521,12 +596,16 @@ class RecipeStore:
             self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, last_used_at=? WHERE id=?",
                             (now_iso(), recipe_id))
             return False
-        self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1, last_used_at=?"
-                        " WHERE id=?", (now_iso(), recipe_id))
-        row = self.db.one("SELECT consecutive_fail FROM recipes WHERE id=?", (recipe_id,))
-        if row and row["consecutive_fail"] >= QUARANTINE_AFTER:
-            self.db.execute("UPDATE recipes SET status='quarantined' WHERE id=?", (recipe_id,))
-            return True
+        with self.db.tx():
+            self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1,"
+                            " last_used_at=? WHERE id=?", (now_iso(), recipe_id))
+            row = self.db.one("SELECT consecutive_fail, status FROM recipes WHERE id=?", (recipe_id,))
+            if row and row["consecutive_fail"] >= QUARANTINE_AFTER:
+                self.db.execute("UPDATE recipes SET status='quarantined' WHERE id=?", (recipe_id,))
+                if row["status"] != "quarantined":           # rebaixar é automático (D1), e fica na trilha
+                    self._avisar(recipe_id, str(row["status"]), "quarantined",
+                                 f"{QUARANTINE_AFTER} falhas seguidas ao reproduzir")
+                return True
         return False
 
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int) -> bool:
@@ -537,6 +616,11 @@ class RecipeStore:
         sequência de concordâncias e `shadow_agree/shadow_total` continua uma taxa; na ativa (modo `shadow` global)
         a taxa só acumula. A promoção confere, na mesma transação, que ela ainda é a candidata e que a chave não
         ganhou uma ativa enquanto isso (outro aparelho, ou a pessoa pelo painel) — nunca duas ativas por chave.
+
+        D1 (ADR-054): a candidata com ação de efeito externo (`commit`) que concordou vai para `validated`, não para
+        `active` — o sistema não publica sozinho o que age fora da máquina; ela espera o dono em "Para aprovar", e
+        `find` não a devolve. Aí a resposta é False: a receita não passou a agir. O caminho que uma pessoa desligou
+        (`ouvinte.vetada`) fica candidato.
         """
         with self.db.tx():
             row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
@@ -552,11 +636,22 @@ class RecipeStore:
             seguidas = int(self.db.scalar("SELECT shadow_agree FROM recipes WHERE id=?", (recipe_id,)) or 0)
             if not (agreed and row["status"] == "candidate" and seguidas >= max(1, promote_after)):
                 return False
-            if self._ativa(row["app_package"], row["app_version"], row["step_hash"], signature=row["app_signature"],
-                           variant=row["variant"]) is not None:
+            for outra in ("active", "validated"):
+                if self._com_status(outra, row["app_package"], row["app_version"], row["step_hash"],
+                                    signature=row["app_signature"], variant=row["variant"]) is not None:
+                    return False
+            if self.ouvinte is not None and self.ouvinte.vetada(ReceitaVista(
+                    package=row["app_package"], app_version=row["app_version"], signature=row["app_signature"],
+                    variant=row["variant"], step_hash=row["step_hash"], actions=row["actions"])):
                 return False
-            self.db.execute("UPDATE recipes SET status='active' WHERE id=?", (recipe_id,))
-            return True
+            efeito = receita_tem_efeito(loads(row["actions"], []))
+            novo = "validated" if efeito else "active"
+            self.db.execute("UPDATE recipes SET status=? WHERE id=? AND status='candidate'", (novo, recipe_id))
+            self._avisar(recipe_id, "candidate", novo,
+                         f"concordou com a IA em {seguidas} execução(ões) seguidas"
+                         + ("; tem ação de efeito externo: publicar é do dono (D1)" if efeito else
+                            "; sem efeito externo: publicada pelo sistema (D1)"))
+            return not efeito
 
     def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)
