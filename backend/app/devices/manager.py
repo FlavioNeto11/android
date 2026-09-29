@@ -33,6 +33,8 @@ from ..taskqueue.costuras import SEM_COSTURAS, CosturaDeControle, TomadaDeContro
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
+from .apps_de_fundo import AjusteDosApps
+from .apps_de_fundo import validar_lista as validar_apps_de_fundo
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
@@ -810,10 +812,12 @@ class DeviceManager:
         """
         # Orçamento GLOBAL de quem chama: o que o preparo e a espera pelo zumbi gastarem sai da rodada nova.
         fim = None if restante_s is None else time.monotonic() + restante_s
-        try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
-            await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+        rt.adb.apps_de_fundo = self.apps_de_fundo_de(rt)
+        try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela, apps de fundo)
+            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
         except (DriverError, AdbError) as exc:
             return await self._revalidar_depois_de(rt, exc, "o preparo", fim)
+        self._registrar_apps_de_fundo(rt, ajuste)
         return anterior
 
     async def _aguardar_zumbi(self, rt: DeviceRuntime, exc: DriverTimeout, oque: str,
@@ -1890,6 +1894,43 @@ class DeviceManager:
             raise ValueError(f"sobreposição Android inválida: {exc}") from exc
         return limpa
 
+    def apps_de_fundo_de(self, rt: DeviceRuntime) -> tuple[str, ...] | None:
+        """A lista de apps de fundo que o preparo mantém desativados NESTE aparelho (`android.desativar_apps`, ver
+        `devices/apps_de_fundo.py`), ou `None` para o preparo não tocar em app nenhum.
+
+        O central é o único dono dela, inclusive nos aparelhos dos workers (preparados daqui, pelo túnel, na readoção
+        de `_adopt_external`): duas fontes para o mesmo aparelho — o `config.yaml` daqui e o `worker.yaml` de lá —
+        desativariam e reativariam o mesmo pacote a cada entrada no ar. O agente do worker não mexe em app.
+
+        - celular físico (`external` sem worker): `None`. O projeto só USA esse aparelho, nunca o reconfigura;
+        - a loja: `()`. Não é aparelho da automação: nada se desativa ali, e o que o preparo tinha desativado quando
+          ela era aparelho de tarefa volta;
+        - os outros: a lista MENOS os pacotes do catálogo de apps. O app alvo nunca é desativado — a carga já recusa o
+          que a configuração declara; o que foi cadastrado depois, no banco, sai aqui, e volta se estava desativado.
+
+        Catálogo ilegível (ou lista inválida): `None` — sem saber qual é o alvo, não se desativa nada.
+        """
+        if rt.external and not rt.worker_id:
+            return None
+        if rt.store:
+            return ()
+        try:
+            alvos = {str(r["package"]).strip() for r in self.db.query("SELECT package FROM apps")}
+            # De novo pelo validador: o override do YAML entra por `model_copy(update=)`, sem validar — a carga só
+            # conferiu uma CÓPIA dele, e um " com.google.android.gm" com espaço chegaria cru e viraria "recusado".
+            lista = validar_apps_de_fundo(self.android_de(rt).desativar_apps)
+        except Exception:  # noqa: BLE001 - sem o catálogo, o preparo segue sem mexer em app nenhum
+            log.exception("%s: não deu para montar a lista (catálogo de apps ou configuração); o preparo não mexe "
+                          "nos apps de fundo", rt.id)
+            return None
+        return tuple(p for p in lista if p not in alvos)
+
+    def _registrar_apps_de_fundo(self, rt: DeviceRuntime, ajuste: AjusteDosApps | None) -> None:
+        """O que o preparo desativou ou reativou vira evento do aparelho (o registro que o painel e o histórico
+        mostram). Passagem sem mudança não publica nada; falha e incerteza já foram ao log por `Adb`."""
+        if isinstance(ajuste, AjusteDosApps) and ajuste.mudou:
+            self.publish(rt, f"{rt.id}: {ajuste.resumo()}")
+
     def android_de(self, rt: DeviceRuntime) -> AndroidCfg:
         """Configuração Android EFETIVA deste aparelho: o padrão, o override do YAML e, por cima, o que foi pedido
         ao provisionar (`instances.android_overrides`, migração 050).
@@ -2363,8 +2404,9 @@ class DeviceManager:
         def fim_do_prazo() -> float:               # o prazo de boot/wake que já corre, com o mesmo piso da escada
             return time.monotonic() + max(RESPOSTA_MIN_S, timeout - (time.monotonic() - t0))
         p: prontidao.Prontidao | None = None
+        rt.adb.apps_de_fundo = self.apps_de_fundo_de(rt)
         try:
-            await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
         except (AdbTimeout, DriverTimeout) as exc:
             # Efeito incerto no aparelho (e, se foi o executor, a chamada ainda viva): nenhuma escada nesta tentativa
             # prova ser posterior a ele. Wake cai no boot a frio; a frio vira `error` com a escada de reparo.
@@ -2372,6 +2414,8 @@ class DeviceManager:
         except (DriverError, AdbError) as exc:
             # Erro rápido: retorno conhecido, e a escada abaixo, que decide, vem DEPOIS dele.
             log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
+        else:
+            self._registrar_apps_de_fundo(rt, ajuste)
         # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
         orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - t0)))
         if p is None:

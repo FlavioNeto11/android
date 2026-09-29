@@ -13,6 +13,10 @@ import yaml
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Só stdlib e sem import de `app` (vai ao agente do worker junto com este arquivo): não fecha ciclo.
+from .devices.apps_de_fundo import PADRAO as PADRAO_DE_APPS_DE_FUNDO
+from .devices.apps_de_fundo import validar_lista as validar_apps_de_fundo
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 #: Esforço aceito pela API. Fora desta lista é erro de configuração, não um 400 a ser "aprendido".
@@ -182,6 +186,15 @@ class AndroidCfg(BaseModel):
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
     # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
     window: bool = False
+    #: Apps de fundo que o preparo DESATIVA nos aparelhos da automação (`pm disable-user --user 0`), para caber nos
+    #: 2 GB do convidado — medido em 29/09/2026: app Google 101 MB, ASI 37 MB, Mensagens 22 MB no android-06; load
+    #: 14,7 e 82 MB livres no android-04, com YouTube e Gmail subindo sozinhos (`devices/apps_de_fundo.py`). O padrão é
+    #: o conservador de lá. Reversível: tirado da lista, o pacote volta (`pm enable`) no preparo seguinte — só o que o
+    #: próprio preparo desativou; `[]` devolve tudo. Pacote protegido (Play Store, GMS, GSF, WebView, teclado,
+    #: launcher, SystemUI, Chrome, `io.appium.*`) ou app alvo (declarado em `app/conhecimento/apps/`, em `apps` ou em
+    #: `contas.sessao`) é RECUSADO na carga. Vale para o que o CENTRAL prepara (os emuladores dele e os dos workers,
+    #: pelo túnel), menos a loja e o celular físico; no `worker.yaml` não tem efeito.
+    desativar_apps: list[str] = Field(default_factory=lambda: list(PADRAO_DE_APPS_DE_FUNDO))
 
     # ------------------------------------------------------------------ o que vale de fato
     # As três perguntas que o resto do código faz — quanto de RAM dar ao AVD, com que flags subir, quanto o host
@@ -199,6 +212,13 @@ class AndroidCfg(BaseModel):
         for x in limpos:
             ipaddress.ip_address(x)          # ValueError → erro de validação na carga da config, não no boot
         return limpos
+
+    @field_validator("desativar_apps", mode="before")
+    @classmethod
+    def _apps_desativaveis(cls, v: object) -> list[str]:
+        if not isinstance(v, (list, tuple)):
+            raise ValueError("desativar_apps: é uma lista de pacotes (ex.: [com.google.android.gm])")
+        return validar_apps_de_fundo(v)          # protegido ou nome inválido → erro na carga, com o pacote e o motivo
 
     def ram_efetiva(self) -> int:
         return int(self.ram_mb) if self.ram_mb else int(self.perfil().ram_mb)
@@ -773,6 +793,22 @@ class AppConfigFile(BaseModel):
         #
         # Texto pelo painel na loja: liberado pela decisão 4 do plano (dono, 24/09) — menos a SENHA da conta Google,
         # que continua sendo digitada na janela do emulador (`store_password_blocked`, `DeviceManager.manual_input`).
+        return self
+
+    @model_validator(mode="after")
+    def _app_alvo_nunca_desativado(self) -> "AppConfigFile":
+        """O app alvo não pode estar em `desativar_apps` — nem o do catálogo semeado aqui (`apps`), nem o de uma conta
+        gerenciada (`contas.sessao`): o preparo o desligaria e a automação não teria o que abrir. O catálogo do banco
+        é conferido pelo central a cada preparo (`DeviceManager.apps_de_fundo_de`)."""
+        alvos = {a.package for a in self.apps} | set(self.contas.sessao)
+        listas = [("android.desativar_apps", self.android.desativar_apps)]
+        listas += [(f"instances.overrides.{iid}.desativar_apps", list(over.get("desativar_apps") or []))
+                   for iid, over in self.instances.overrides.items()]
+        for onde, lista in listas:
+            conflito = sorted(alvos & {str(p).strip() for p in lista})
+            if conflito:
+                raise ValueError(f"{onde}: {', '.join(conflito)} é app alvo da automação (declarado em `apps` ou "
+                                 "`contas.sessao`) e nunca é desativado")
         return self
 
     @model_validator(mode="after")
