@@ -204,6 +204,21 @@ def licao_refutada(refutacoes: int) -> bool:
     return refutacoes >= REFUTACOES_PARA_DESLIGAR
 
 
+#: O começo do motivo que o voto grava na trilha ao desligar. O "Aprendizado desta execução" (`domain/aprendido.py`)
+#: reconhece por ele o desligamento que veio do voto de uma pessoa, e não da execução.
+_MOTIVO_DO_VOTO = "deu errado:"
+
+
+def motivo_do_desligamento(reason: MotivoDoVoto | None, fonte: str) -> str:
+    """O motivo, na trilha, do que o voto desligou: `deu errado: <motivo> (voto em <objective:…|run:…>)`."""
+    return f"{_MOTIVO_DO_VOTO} {reason.value if reason else 'sem motivo'} (voto em {fonte})"
+
+
+def veio_do_voto(motivo: str) -> bool:
+    """A transição foi gravada pelo voto (`motivo_do_desligamento`)?"""
+    return motivo.startswith(_MOTIVO_DO_VOTO)
+
+
 def reativar_desfaz(de: SkillState | None) -> bool:
     """O "reativar" (`disabled → published`, a única volta da tabela do D1) DESFAZ o desligamento de um item que
     estava `de`?
@@ -218,4 +233,4 @@ def reativar_desfaz(de: SkillState | None) -> bool:
 
 __all__ = ["DESLIGAVEIS", "REFUTACOES_PARA_DESLIGAR", "REF_NO_BACKLOG", "AcaoDoEfeito", "Conhecimento", "Desfecho",
            "Efeito", "ItemVotado", "PlanoDoVoto", "Uso", "Verificador", "conferir_voto", "desfecho",
-           "efeitos_do_voto", "licao_refutada", "reativar_desfaz"]
+           "efeitos_do_voto", "licao_refutada", "motivo_do_desligamento", "reativar_desfaz", "veio_do_voto"]

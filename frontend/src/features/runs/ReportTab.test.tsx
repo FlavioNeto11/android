@@ -74,4 +74,31 @@ describe('Aprendizado desta execução', () => {
     await act(async () => root.render(<ReportTab run={makeRun({ status: 'completed' })} />));
     await waitFor(() => expect(text(secao())).toContain('Nada aprendido, usado do livro ou sinalizado nesta execução.'));
   });
+
+  it('o bloco nulo (a leitura dele falhou) não vira "nada aprendido", mesmo sem votos nem sinais', async () => {
+    backend.on('GET', /^\/api\/runs\/[^/]+\/feedback$/, () => json({ ...FEEDBACK, aprendizado: null }));
+    await act(async () => root.render(<ReportTab run={makeRun({ status: 'completed' })} />));
+    await waitFor(() => expect(text(secao())).toContain(
+      'Não foi possível ler o que esta execução aprendeu ou usou do livro.'));
+    const t = text(secao());
+    expect(t).not.toContain('Nada aprendido');
+    expect(t).not.toContain('O servidor ainda não informa');
+  });
+
+  it('com o bloco nulo, os votos e os sinais continuam aparecendo', async () => {
+    backend.on('GET', /^\/api\/runs\/[^/]+\/feedback$/, () => json({
+      ...FEEDBACK, aprendizado: null,
+      votos: [{ id: 1, kind: 'feedback', polarity: 'positive', verdict: 'certo', reason: null, objective_id: null,
+                created_by: 'dono', source_ref: `run:${RUN_ID}` }],
+      sinais: [{ id: 2, kind: 'tomou_controle', polarity: 'negative', objective_id: null, created_by: 'dono',
+                 source_ref: `run:${RUN_ID}` }],
+    }));
+    await act(async () => root.render(<ReportTab run={makeRun({ status: 'completed' })} />));
+    await waitFor(() => expect(text(secao())).toContain('Votos'));
+    const t = text(secao());
+    expect(t).toContain('Não foi possível ler o que esta execução aprendeu ou usou do livro.');
+    expect(t).toContain('Execução inteira: deu certo — dono');
+    expect(t).toContain('Sinais implícitos');
+    expect(t).not.toContain('Nada aprendido');
+  });
 });

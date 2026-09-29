@@ -6,15 +6,22 @@ D2). Puro: recebe os fatos já lidos e devolve as linhas agrupadas como o painel
 | receita | a que a execução usou (`attempts.recipe_id`), a que aprendeu (`learned_from_step`), a que mudou de estado ou recebeu evidência por causa dela |
 | fluxo | o que usou (`runs.flow_id`), o que nasceu dela (`source_run_id`), o que mudou de estado ou recebeu evidência por causa dela |
 | falha | as tentativas que falharam, pelo tipo gravado (A2) ou, no legado, pelo mesmo classificador puro na leitura (retroativo) |
-| candidata | o item do livro (lição, tela, voz, preferência) que NASCEU desta execução (a transição de nascimento leva o `run_id`) |
+| candidata | o item do livro (lição, tela, voz, preferência) que NASCEU desta execução (a transição de nascimento leva o `run_id`), e a tela, a voz e a preferência que já existiam e mudaram de estado por causa dela (o papel diz "… que já existia" e o que mudou) |
 | licao | a lição que não nasceu aqui e foi exposta (por papel e braço), mudou de estado ou recebeu evidência por causa dela |
 
 Uma linha por item em cada grupo — o painel usa `grupo-ref` como chave —, e cada item num grupo só: a lição que nasceu
 desta execução e recebeu dela a primeira evidência é candidata, não "lição exposta". O que o painel não tem onde
 mostrar fica de fora: a versão de habilidade (a trilha dela é outra) e a tela, a voz e a preferência que a execução só
-reforçou (a página Aprendizado as mostra com a evidência).
+reforçou (a página Aprendizado as mostra com a evidência). Quem nasce com o `run_id`: a lição e a voz (mineradores do
+digest) e a tela (`telas.minerar(run_id)`); a preferência nasce na curadoria periódica, sem execução, e nunca aparece
+como nascida de uma.
 
-O `papel` é texto fechado, montado aqui: nenhum texto livre de tela, de nota ou de motivo sai por ele.
+A trilha diz QUEM decidiu (`decided_by`). Só a transição do sistema é "nesta execução"; a de uma pessoa que leva o
+`run_id` (hoje, o desligamento pelo voto "deu errado") diz que foi uma pessoa — "pelo voto de uma pessoa" quando o
+motivo é o do voto (`voto.veio_do_voto`), "por uma pessoa" nos demais —, porque a decisão humana posterior não é da
+execução.
+
+O `papel` é texto fechado, montado aqui: nenhum texto livre de tela, de nota, de motivo ou de quem decidiu sai por ele.
 """
 from __future__ import annotations
 
@@ -22,9 +29,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, SkillState
 from app.modules.learning.domain.falhas import classificar_falha
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, KINDS_NATIVOS, Braco, LivroKind, Papel, Posicao
+from app.modules.learning.domain.voto import veio_do_voto
 
 
 class Grupo(StrEnum):
@@ -44,12 +52,16 @@ CHAVE_DO_GRUPO: Mapping[Grupo, str] = {Grupo.RECEITA: "receitas", Grupo.FLUXO: "
 # ------------------------------------------------------------------ os fatos (o que a leitura entrega)
 @dataclass(frozen=True, slots=True)
 class TransicaoDaExecucao:
-    """Uma linha de `learning_transitions` com o `run_id` desta execução. `de=None` é o nascimento do item."""
+    """Uma linha de `learning_transitions` com o `run_id` desta execução. `de=None` é o nascimento do item. `por` é o
+    `decided_by` e `motivo` o `reason`: só servem para dizer se foi o sistema, o voto de uma pessoa ou uma pessoa —
+    nenhum dos dois sai no papel."""
 
     item_ref: str
     item_kind: str
     de: str | None
     para: str
+    por: str = SYSTEM_ACTOR
+    motivo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +137,17 @@ _ROTULO_DO_BRACO: Mapping[str, str] = {Braco.WITH.value: "exposta ao prompt", Br
 _POSICAO: Mapping[str, str] = {Posicao.FOR.value: "a favor", Posicao.AGAINST.value: "contra",
                                Posicao.CONFLICT.value: "em conflito"}
 
+#: Quem fez a transição, no fim do verbo: só a do sistema é da execução.
+_DA_EXECUCAO = "nesta execução"
+_PELO_VOTO = "pelo voto de uma pessoa"
+_POR_PESSOA = "por uma pessoa"
+
+
+def _autoria(t: TransicaoDaExecucao) -> str:
+    if t.por == SYSTEM_ACTOR:
+        return _DA_EXECUCAO
+    return _PELO_VOTO if veio_do_voto(t.motivo) else _POR_PESSOA
+
 
 def _verbo(kind: LivroKind, para: str) -> str:
     o = "o" if kind in _MASCULINOS else "a"
@@ -147,7 +170,7 @@ class _Marcas:
     nasceu: bool = False
     usos: list[str] = field(default_factory=list)
     exposicoes: list[tuple[str, str]] = field(default_factory=list)
-    transicoes: list[str] = field(default_factory=list)
+    transicoes: list[tuple[str, str]] = field(default_factory=list)     # (para, autoria), na ordem da trilha
     evidencias: dict[str, int] = field(default_factory=dict)
 
     def usar(self, texto: str) -> None:
@@ -158,14 +181,29 @@ class _Marcas:
         if (papel, braco) not in self.exposicoes:
             self.exposicoes.append((papel, braco))
 
+    def transitar(self, t: TransicaoDaExecucao) -> None:
+        if t.de is None:
+            self.nasceu = True
+            return
+        marca = (t.para, _autoria(t))
+        if not self.transicoes or self.transicoes[-1] != marca:
+            self.transicoes.append(marca)
+
     def papel(self) -> str | None:
         partes: list[str] = []
-        if self.nasceu and self.kind in _ROTULO_DO_KIND:
-            partes.append(_ROTULO_DO_KIND[self.kind])
+        if _grupo(self) is Grupo.CANDIDATA:
+            # Na candidata que já existia, o papel diz que ela não nasceu aqui: o grupo é "Candidatas geradas".
+            rotulo = _ROTULO_DO_KIND.get(self.kind, self.kind.value)
+            partes.append(rotulo if self.nasceu else f"{rotulo} que já existia")
         partes.extend(self.usos)
         partes.extend(f"{_ROTULO_DO_BRACO.get(b, b)} ({_ROTULO_DO_PAPEL.get(p, p)})" for p, b in self.exposicoes)
-        if self.transicoes:
-            partes.append(" e ".join(_verbo(self.kind, t) for t in self.transicoes) + " nesta execução")
+        blocos: list[tuple[str, list[str]]] = []       # as transições seguidas de um mesmo autor, num verbo só
+        for para, autoria in self.transicoes:
+            if blocos and blocos[-1][0] == autoria:
+                blocos[-1][1].append(_verbo(self.kind, para))
+            else:
+                blocos.append((autoria, [_verbo(self.kind, para)]))
+        partes.extend(f"{' e '.join(verbos)} {autoria}" for autoria, verbos in blocos)
         for posicao, n in self.evidencias.items():
             rotulo = _POSICAO.get(posicao, posicao)
             partes.append(f"evidência {rotulo}" if n == 1 else f"{n} evidências {rotulo}")
@@ -214,6 +252,8 @@ def _grupo(m: _Marcas) -> Grupo | None:
         return Grupo.CANDIDATA
     if m.kind is LivroKind.LICAO:
         return Grupo.LICAO
+    if m.kind in KINDS_DE_ITEM and m.transicoes:
+        return Grupo.CANDIDATA      # tela, voz ou preferência que já existia e mudou de estado por causa da execução
     return None                     # habilidade, e tela/voz/preferência só reforçadas: o painel não tem onde
 
 
@@ -256,11 +296,7 @@ def aprendido_na_execucao(fatos: FatosDaExecucao) -> tuple[ItemAprendido, ...]:
         alvo = _alvo(t.item_ref, t.item_kind)
         if alvo is None:
             continue
-        m = c.de(*alvo)
-        if t.de is None:
-            m.nasceu = True
-        elif not m.transicoes or m.transicoes[-1] != t.para:
-            m.transicoes.append(t.para)
+        c.de(*alvo).transitar(t)
     for e in fatos.evidencias:
         alvo = _alvo(e.item_ref, e.item_kind)
         if alvo is None:

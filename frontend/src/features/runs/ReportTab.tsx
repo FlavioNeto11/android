@@ -190,10 +190,12 @@ const GRUPO_DO_APRENDIZADO: Record<ItemAprendidoNaExecucao['grupo'], string> = {
 
 /**
  * "Aprendizado desta execução" (ADR-054, D2): o que ela ensinou ou usou do livro, os votos e os sinais implícitos
- * (confirmar à mão, repetir, abandonar, tomar o controle…). O detalhe por receita/fluxo/lição vem do bloco opcional
- * `aprendizado` de `GET /api/runs/{id}/feedback`; sem ele, ficam os votos e os sinais.
+ * (confirmar à mão, repetir, abandonar, tomar o controle…). O detalhe por receita/fluxo/lição vem do bloco
+ * `aprendizado` de `GET /api/runs/{id}/feedback`. `aprendizado: null` (a leitura do bloco falhou no servidor, ou um
+ * servidor antigo não o manda) NÃO é "nada aprendido": a seção diz que não conseguiu ler e mostra os votos e os sinais.
  */
 function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | null | undefined }) {
+  const semBloco = feedback?.aprendizado === null;
   const grupos = feedback?.aprendizado
     ? (Object.keys(GRUPO_DO_APRENDIZADO) as ItemAprendidoNaExecucao['grupo'][])
         .map((g) => ({ g, itens: feedback.aprendizado?.filter((i) => i.grupo === g) ?? [] }))
@@ -201,7 +203,7 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
     : [];
   const votos = feedback?.votos ?? [];
   const sinais = (feedback?.sinais ?? []).filter((s) => s.kind !== 'feedback');
-  const vazio = grupos.length === 0 && votos.length === 0 && sinais.length === 0;
+  const vazio = !semBloco && grupos.length === 0 && votos.length === 0 && sinais.length === 0;
   return (
     <section className={aprendizadoStyles.naExecucao} aria-labelledby="relatorio-aprendizado">
       <h3 id="relatorio-aprendizado" className={styles.subTitle}>Aprendizado desta execução</h3>
@@ -213,6 +215,9 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
         <p className={styles.muted}>Nada aprendido, usado do livro ou sinalizado nesta execução.</p>
       ) : (
         <>
+          {semBloco ? (
+            <p className={styles.muted}>Não foi possível ler o que esta execução aprendeu ou usou do livro.</p>
+          ) : null}
           {grupos.map(({ g, itens }) => (
             <div key={g}>
               <p className={styles.muted}>{GRUPO_DO_APRENDIZADO[g]}</p>

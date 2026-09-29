@@ -4,7 +4,9 @@ Só LEITURA, e só do que já é gravado: o que a execução usou e aprendeu sai
 (`runs.flow_id`, `flows.source_run_id`, `attempts.recipe_id`, `recipes.learned_from_step`); o que ela mudou no livro, da
 trilha e da evidência com o `run_id` dela (`learning_transitions`, `learning_evidence`); o que ela usou das lições, de
 `learning_exposures`; e a falha, de `attempts.failure_kind` (o legado sem tipo vai com o erro e o status para o domínio
-classificar na leitura, sem gravar). O erro não sai daqui para o painel: só o tipo.
+classificar na leitura, sem gravar). O erro não sai daqui para o painel: só o tipo. Da trilha vêm também o
+`decided_by` e o `reason`, só para o domínio dizer se a transição foi do sistema, do voto de uma pessoa ou de uma
+pessoa; nenhum dos dois sai no bloco.
 
 SQL portável (SQLite e PostgreSQL): agregados com todas as colunas não agregadas no `GROUP BY`, e o `IN (...)` das
 receitas aprendidas em lotes (`receitas_aprendidas`, o mesmo do voto).
@@ -47,9 +49,10 @@ class LeituraDoAprendidoSql:
             receitas_aprendidas=tuple(str(rid) for rid in receitas_aprendidas(self._db, etapas)),
             transicoes=tuple(TransicaoDaExecucao(
                 item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto(r, "item_kind"),
-                de=linhas.texto_ou_nulo(r, "from_state"), para=linhas.texto(r, "to_state"))
-                for r in self._db.query("SELECT item_ref, item_kind, from_state, to_state FROM learning_transitions"
-                                        " WHERE run_id=? ORDER BY id", (run_id,))),
+                de=linhas.texto_ou_nulo(r, "from_state"), para=linhas.texto(r, "to_state"),
+                por=linhas.texto(r, "decided_by"), motivo=linhas.texto(r, "reason"))
+                for r in self._db.query("SELECT item_ref, item_kind, from_state, to_state, decided_by, reason"
+                                        " FROM learning_transitions WHERE run_id=? ORDER BY id", (run_id,))),
             evidencias=tuple(EvidenciaDaExecucao(
                 item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto_ou_nulo(r, "item_kind"),
                 posicao=linhas.texto(r, "stance"), n=linhas.inteiro(r, "n"))
