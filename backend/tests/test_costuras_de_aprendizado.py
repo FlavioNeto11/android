@@ -908,6 +908,43 @@ async def test_correcao_de_ensino_vira_sinal_ligado_a_etapa_corrigida(harness: H
     assert [x["created_by"] for x in _sinais(harness, "correcao_de_ensino")] == [NOME, "panel"]
 
 
+async def test_correcao_com_credencial_e_recusada_antes_de_gravar_e_a_que_so_fala_dela_entra_sem_nota(
+        harness: Harness) -> None:
+    """Plano 22.7: a correção nasce na visão da execução (o painel manda o texto cru da pessoa). O texto vai à conversa
+    do ensino, ao prompt do generalizador e ao livro, e passa por DUAS triagens: a do ensino (`_person_text`), que
+    recusa o VALOR com 400 `credential_in_text` antes de qualquer escrita — nem turno, nem sinal, nem o valor na
+    resposta —; e a do livro, que olha também o ASSUNTO: a correção que só fala de senha vale no ensino, e o sinal é
+    gravado sem a nota (`note_refused`)."""
+    st = harness.state
+    assert st is not None
+    st.cfg.file.skills.enabled = True
+    habilidade = _habilidade(harness)
+    run = harness.run(["android-01"], mode="plan")
+    await harness.wait_run(run.id, statuses=("planned",))
+    etapa = _etapa_falhada(harness, run.id, "android-01")
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r = await c.post("/api/teaching-sessions", json={"instruction": f"Corrigir a habilidade {habilidade} (versão 1).",
+                                                         "skill_id": habilidade})
+        assert r.status_code == 201, r.text
+        tid = r.json()["id"]
+        for valor, texto in (("Abc12345", "a senha certa era Abc12345"), ("482913", "o código que chegou era 482913")):
+            r = await c.post(f"/api/teaching-sessions/{tid}/corrections",
+                             json={"body": texto, "run_id": run.id, "step_id": etapa})
+            assert r.status_code == 400 and r.json()["detail"]["code"] == "credential_in_text", r.text
+            assert valor not in r.text
+        assert st.db.scalar("SELECT COUNT(*) FROM teaching_turns WHERE teaching_id=? AND kind='correction'",
+                            (tid,)) == 0
+        assert _sinais(harness, "correcao_de_ensino") == []
+
+        r = await c.post(f"/api/teaching-sessions/{tid}/corrections",
+                         json={"body": "devia ter tocado em Esqueci a senha", "run_id": run.id, "step_id": etapa})
+    assert r.status_code == 200, r.text
+    assert [t["kind"] for t in r.json()["turns"]].count("correction") == 1
+    [s] = _sinais(harness, "correcao_de_ensino")
+    assert (s["note"], s["note_refused"], s["created_by"]) == (None, 1, NOME)
+
+
 async def test_costura_que_lanca_nao_derruba_nenhum_gesto(harness: Harness) -> None:
     st = harness.state
     assert st is not None

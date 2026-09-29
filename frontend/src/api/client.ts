@@ -88,6 +88,7 @@ import type {
   FlowConversionUndone,
   TeachingSessionSummary,
   TeachingSessionView,
+  TeachingStatus,
   AppDetail,
   PolicyGroupCreateRequest,
   PolicyGroupPatchRequest,
@@ -671,8 +672,16 @@ export const api = {
     request<FlowConversionUndone>('POST', `/flows/${enc(flowId)}/release`, { body }),
   teachingOfRecording: (trainingSessionId: string) =>
     request<TeachingSessionSummary[]>('GET', '/teaching-sessions', { query: { training_session_id: trainingSessionId } }),
-  startTeaching: (body: { instruction: string; app_id?: string | null; skill_id?: string | null }) =>
+  startTeaching: (body: { instruction: string; app_id?: string | null; skill_id?: string | null;
+                          base_version?: number | null; profile_id?: string | null }) =>
     request<TeachingSessionView>('POST', '/teaching-sessions', { body }),
+  /** Resumos (sem a conversa). O backend não busca por habilidade nem por execução: quem precisa filtra aqui. */
+  listTeaching: (query: { status?: TeachingStatus; limit?: number } = {}) =>
+    request<TeachingSessionSummary[]>('GET', '/teaching-sessions', { query }),
+  /** Correção de uma habilidade que errou (plano 22.7): a etapa `failed`/`uncertain` pela linha de `steps`
+   *  (`step_id` = `Step.id`, nunca a `key` do plano). O texto passa pela triagem de credencial do ensino. */
+  addCorrection: (id: string, body: { body: string; run_id: string; step_id: string }) =>
+    request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/corrections`, { body }),
   getTeaching: (id: string) => request<TeachingSessionView>('GET', `/teaching-sessions/${enc(id)}`),
   attachRecording: (id: string, trainingSessionId: string) =>
     request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/demonstrations`,
