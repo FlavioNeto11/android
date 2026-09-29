@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -26,13 +25,15 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       ObjectiveDTO, ObjectiveStatus, Plan, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
-from ..planning.capabilities import load_catalog
+from ..planning.apps_do_comando import apps_citados, pede_site
+from ..planning.capabilities import CapabilityCatalog, load_catalog
 from ..planning.catalog import capabilities_of, session_provider_of
+from ..planning.parsing import apps_do_plano
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from ..security.redaction import redact
 from ..shared.resources import Target
 from ..util import now_iso
-from .balanceamento import distribuir
+from .balanceamento import Candidato, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
 from .projecao import HistoricoDeAcoes, projetar, resumo
@@ -46,25 +47,11 @@ log = logging.getLogger("poc.runs")
 _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 
 
-#: Pedido de navegador no comando: o alvo não é o app da conta do aparelho.
-_PEDE_NAVEGADOR = re.compile(r"\b(chrome|navegador|browser)\b", re.IGNORECASE)
-#: Pedido de ABRIR um endereço: verbo de navegação e, logo adiante, URL, site ou portal. Uma URL solta não basta:
-#: "envie o link https://… para @fulano" continua sendo tarefa do Instagram. "Página" fica de fora: no Instagram ela
-#: é perfil ("curta o post da página X").
-_ABRIR_ENDERECO = re.compile(r"\b(abr\w*|acess\w*|entr\w*|naveg\w*|visit\w*|v[aá])\b[^.\n]{0,40}?"
-                             r"(https?://|\bsite\b|\bportal\b)", re.IGNORECASE)
-#: Texto citado é CONTEÚDO (a mensagem a enviar, o comentário a escrever), não o pedido.
-_CITACAO = re.compile(r"\"[^\"]*\"|“[^”]*”|'[^']*'")
-
-
 def pede_outro_alvo(command: str, apps: list[AppContext], pacotes_dos_aparelhos: set[str]) -> bool:
-    """O comando pede um site/navegador ou nomeia um app registrado que não é o da conta dos aparelhos?"""
-    pedido = _CITACAO.sub(" ", command)
-    if _PEDE_NAVEGADOR.search(pedido) or _ABRIR_ENDERECO.search(pedido):
-        return True
-    texto = pedido.casefold()
-    return any(a.package not in pacotes_dos_aparelhos and a.name
-               and re.search(rf"\b{re.escape(a.name.casefold())}\b", texto) for a in apps)
+    """O comando pede um site/navegador ou nomeia um app registrado que não é o da conta dos aparelhos?
+
+    Desde o 24.1 isto não derruba mais o catálogo: é o que põe o planejamento no modo ENTRE APPS (`_catalogos`)."""
+    return pede_site(command) or any(a.package not in pacotes_dos_aparelhos for a in apps_citados(command, apps))
 
 
 class RunError(Exception):
@@ -120,21 +107,26 @@ class RunService:
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
 
     # ------------------------------------------------------------------ criar + planejar
-    def create(self, req: RunCreate) -> RunSummary:
-        # ADR-025 (22d65f): senha escrita NO comando ia em claro para `runs.command`, para a API de execuções, para o
-        # prompt do planejador e para o histórico do navegador. Recusa antes de qualquer gravação, apontando o lugar
-        # certo (ADR-040: a conta da persona). A detecção é por formato (`senha: …`, `password=…`), a mesma da
-        # redação dos eventos.
-        if redact(req.command) != req.command:
+    @staticmethod
+    def _recusar_credencial(command: str) -> None:
+        """ADR-025 (22d65f): senha escrita NO comando ia em claro para `runs.command`, para a API de execuções, para o
+        prompt do planejador e para o histórico do navegador. Recusa antes de qualquer gravação, apontando o lugar
+        certo (ADR-040: a conta da persona). A detecção é por formato (`senha: …`, `password=…`), a mesma da
+        redação dos eventos. A prévia da distribuição pelo comando (24.6) passa por aqui também."""
+        if redact(command) != command:
             raise RunError("credencial_no_comando",
                            "O comando contém uma credencial (ex.: \"Senha: …\"). O texto do comando vai ao provedor de "
                            "IA e fica no histórico: tire a senha dele. A senha fica guardada na conta da persona (aba "
                            "Contas do perfil), com o seu consentimento, e a automação a digita de lá sem passar pela IA.",
                            409)
+
+    def create(self, req: RunCreate) -> RunSummary:
+        self._recusar_credencial(req.command)
         pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
                   "targets": [t.model_dump() for t in req.targets]}
         if req.distribute is not None:
-            req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready)})
+            req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready,
+                                                                          req.command)})
         # PARA QUEM e ONDE (onda C): a mesma resolução da prévia. A distribuição já escolheu os aparelhos, então o
         # texto não é lido como destino ali (e o comando segue inteiro).
         resolucao, comando = self._resolver(req.command, req.instance_ids, req.profile_ids, req.targets,
@@ -160,20 +152,23 @@ class RunService:
         if loja:
             raise RunError("store_instance", f"{', '.join(loja)} é a loja (Play Store): ela só guarda o aplicativo "
                                              "oficial e não executa tarefas. Escolha aparelhos do parque.", 400)
-        if (impedidos := self._incompativeis(req.instance_ids)):
+        # O CONJUNTO de apps do comando (item 24.5), o mesmo com que os alvos foram resolvidos: as checagens abaixo
+        # valem para cada app que a tarefa usa, não só para o app principal do aparelho.
+        apps = resolucao.app_ids
+        if (impedidos := self._incompativeis(req.instance_ids, apps)):
             # A regra do pedido: a limitação é explicada ANTES de agendar. Sem isto, o objetivo era despachado,
             # a versão do app não instalava (ou instalava e não abria) e o operador só descobria no meio, como
             # `INSTALL_FAILED_NO_MATCHING_ABIS` ou `app_incompatible` no fundo de uma etapa.
             raise RunError("app_incompativel",
                            "Estes aparelhos não conseguem rodar a versão destinada a eles: "
                            + "; ".join(impedidos) + ".", 409)
-        if (mistura := self._mistura_de_apps(req.instance_ids)) is not None:
+        if (mistura := self._mistura_de_apps(req.instance_ids, apps)) is not None:
             raise RunError(*mistura)
         self._exigir_apps_do_fluxo(req, comando)
         # PRÉ-VOO, antes de chamar o planejador: a recusa explicada já existia para o comando do painel e não
         # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
         # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
-        req = self._exigir_pre_voo(req, comando, perfis)
+        req = self._exigir_pre_voo(req, comando, perfis, apps)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
@@ -205,7 +200,7 @@ class RunService:
             avisos.append("Há destino tirado do texto do comando: confira antes de executar.")
         return RunTargetsPreview(
             targets=[ResolvedTargetDTO(instance_id=a.instance_id, profile_id=a.profile_id, app_id=a.app_id,
-                                       origem=a.origem) for a in resolucao.alvos],
+                                       app_ids=list(a.app_ids), origem=a.origem) for a in resolucao.alvos],
             questions=[p.as_dict() for p in resolucao.perguntas], command_sem_destinos=comando, warnings=avisos)
 
     def _resolver(self, command: str, instance_ids: Sequence[str], profile_ids: Sequence[str],
@@ -216,13 +211,13 @@ class RunService:
             raise RunError("profiles_unavailable", "Execução por perfil indisponível nesta instalação.", 400)
         destinos = (TargetExtractor(self._catalogo()).extrair(command) if com_texto
                     else DestinosNoTexto(DicasDoTexto(), command))
-        app = self._app_do_comando(destinos.command_sem_destinos, targets)
+        apps = self._app_do_comando(destinos.command_sem_destinos, targets)
         pedido = PedidoDeAlvos(
             tuple(instance_ids), tuple(profile_ids),
             tuple(AlvoPedido(t.profile_id, tuple(t.instance_ids), t.app_id) for t in targets),
-            "all" if politica == "all" else "primary" if politica == "primary" else "one", app)
+            "all" if politica == "all" else "primary" if politica == "primary" else "one", app_ids=tuple(apps))
         try:
-            return resolver_alvos(pedido, destinos.dicas, self._mundo(app)), destinos.command_sem_destinos
+            return resolver_alvos(pedido, destinos.dicas, self._mundo(apps)), destinos.command_sem_destinos
         except RecusaDeAlvo as exc:
             raise RunError(exc.code, exc.message, exc.status) from exc
 
@@ -231,13 +226,76 @@ class RunService:
         de casamento (`/flows/match`, `/skills/resolve`) passam por aqui para não casarem diferente da execução."""
         return TargetExtractor(self._catalogo()).extrair(command).command_sem_destinos
 
-    def _app_do_comando(self, comando: str, targets: Sequence[RunTarget]) -> str | None:
-        """O app que a tarefa usa: o dos alvos explícitos, quando é um só; senão o que a habilidade casada exige."""
-        dos_alvos = {t.app_id for t in targets if t.app_id}
-        if len(dos_alvos) == 1:
-            return dos_alvos.pop()
-        exigidos = self.apps_exigidos(comando)
-        return str(exigidos[0]["id"]) if len(exigidos) == 1 else None
+    def _app_do_comando(self, comando: str, targets: Sequence[RunTarget]) -> list[str]:
+        """O CONJUNTO de apps que a tarefa usa (item 24.5, ADR-058), na ordem; o primeiro é o `app_id` dos alvos.
+
+        1. os apps que a interface disse nos alvos explícitos (a conta que a tarefa usa);
+        2. a habilidade ou o fluxo casado: os apps do plano dele, o do plano primeiro e depois os das etapas, na ordem
+           do plano (não `apps_exigidos`, que ordena pelo nome e trocaria o principal);
+        3. sem nada casado, os apps que o comando CITA (`apps_citados`, a mesma leitura do 24.1): todos, quando cita
+           dois ou mais ("leia o e-mail no Outlook e curta o post no Instagram"); quando cita um só, ele entra se for
+           app de CONTA ("leia o e-mail no Outlook e curta o post de @x" diz a conta do Outlook, e o Instagram é o do
+           aparelho). Um app SEM conta citado sozinho ("abra o QA Messenger") não diz conta nenhuma: o comando é o de
+           um app de sempre, o app do aparelho decide, e a persona num aparelho com duas continua sendo pergunta.
+
+        Antes era UM app — o dos alvos, quando havia um só, ou o da habilidade que exigia um só — e o comando entre
+        apps, sem nenhum dos dois, roteava sem app: persona, sessão pronta e aparelho eram escolhidos às cegas (R5).
+        Vazio = não se sabe; o app do aparelho decide depois, como sempre.
+        """
+        dos_alvos = [t.app_id for t in targets if t.app_id]
+        casado = self.skills.for_command(comando, None)
+        if casado is not None and casado.plan is not None:
+            do_comando = [casado.plan.app_id, *casado.plan.required_apps]
+        else:
+            citados = [str(a.id) for a in apps_citados(comando, self._apps_configurados()) if a.id]
+            do_comando = citados if len(citados) > 1 else [a for a in citados if a in self._apps_de_conta(citados)]
+        return [a for a in dict.fromkeys([*dos_alvos, *do_comando]) if a]
+
+    def _apps_de_conta(self, app_ids: Sequence[str]) -> set[str]:
+        """Dos apps dados, os que usam a CONTA da persona: o manifesto pede perfil vinculado (`precisa_de_perfil`,
+        o Outlook) ou declara login gerenciado (provedor de sessão, o Instagram). Chrome e QA Messenger não usam."""
+        pacote = self._pacote_por_app(app_ids)
+        return {a for a in app_ids
+                if (d := capabilities_of(pacote.get(a))).needs_profile or d.session_provider}
+
+    def _apps_configurados(self) -> list[AppContext]:
+        """Os apps da instalação (`apps`), como o planejador e a leitura de apps citados os veem."""
+        return [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
+                for a in self.repo.db.query("SELECT * FROM apps ORDER BY name")]
+
+    def _pacote_por_app(self, app_ids: Sequence[str]) -> dict[str, str]:
+        """`{id do app: pacote}` dos apps cadastrados (a tabela `apps` é por instalação)."""
+        if not app_ids:
+            return {}
+        marcas = ",".join("?" for _ in app_ids)
+        return {str(r["id"]): str(r["package"]) for r in self.repo.db.query(
+            f"SELECT id, package FROM apps WHERE id IN ({marcas})", tuple(app_ids)) if r["package"]}
+
+    def _pacotes_dos_apps(self, app_ids: Sequence[str]) -> list[str]:
+        """Id de app → pacote, na ordem dos ids; id sem cadastro fica de fora."""
+        pacote = self._pacote_por_app(app_ids)
+        return [p for p in dict.fromkeys(pacote.get(a) for a in app_ids) if p]
+
+    def _fora_de_pronto(self, app_ids: Sequence[str]) -> dict[str, set[str]]:
+        """`{app: aparelhos em que ele se SABE fora de pronto}` (linha em `device_app_state` fora de pronto). O que
+        nunca foi observado não entra: é a mesma regra do pré-voo, e a mesma leitura do roteamento e da distribuição."""
+        pacote = self._pacote_por_app(app_ids)
+        fora: dict[str, set[str]] = {}
+        for a in dict.fromkeys(app_ids):
+            if (pkg := pacote.get(a)):
+                fora[a] = {str(r["instance_id"]) for r in self.repo.db.query(
+                    "SELECT instance_id FROM device_app_state WHERE package_name=? AND state NOT IN (?,?)",
+                    (pkg, *self._APP_PRONTO))}
+        return fora
+
+    def _nomes_dos_apps(self, app_ids: Sequence[str]) -> str:
+        """Os apps pelo nome do cadastro, na ordem dada ("QA Messenger, Notas"); id sem cadastro vai como está."""
+        if not app_ids:
+            return ""
+        marcas = ",".join("?" for _ in app_ids)
+        nome = {str(r["id"]): str(r["name"]) for r in self.repo.db.query(
+            f"SELECT id, name FROM apps WHERE id IN ({marcas})", tuple(app_ids)) if r["name"]}
+        return ", ".join(nome.get(a, a) for a in app_ids)
 
     def _catalogo(self) -> CatalogoDeDestinos:
         """Como cada persona pode ser citada (nomes e @ de todas as contas) e os ids dos aparelhos."""
@@ -253,11 +311,17 @@ class RunService:
             personas.append(PersonaNomeavel(str(r["id"]), nomes, arrobas))
         return CatalogoDeDestinos(tuple(personas), tuple(self.devices.devices))
 
-    def _mundo(self, app_id: str | None) -> Mundo:
+    def _mundo(self, app_ids: Sequence[str] = ()) -> Mundo:
         """O parque como `resolver_alvos` o vê: vínculos ativos (com os apps que cada um serve), os aparelhos aptos
-        agora (fora da loja, servidor disponível, app pronto quando se sabe o app) e as sessões `session_ready` por
-        (persona, aparelho) em `account_sessions`. Só leitura."""
+        agora (fora da loja, servidor disponível, apps prontos quando se sabem os apps) e as sessões `session_ready`
+        por (persona, aparelho) em `account_sessions`. Só leitura.
+
+        Item 24.5: por CONJUNTO de apps. Apto é o aparelho sem nenhum app do conjunto sabidamente fora de pronto; a
+        sessão pronta de um par é a de TODOS os apps de login gerenciado do conjunto, abertos naquele aparelho. App sem
+        conta (Chrome) vai em `Mundo.sem_conta`: não tem vínculo nem sessão, e não tira ninguém de `serve`.
+        """
         db = self.repo.db
+        apps = [a for a in dict.fromkeys(app_ids) if a]
         contas: dict[str, set[str]] = {}
         for r in db.query("SELECT profile_id, app_id FROM profile_accounts"):
             contas.setdefault(str(r["profile_id"]), set()).add(str(r["app_id"]))
@@ -267,29 +331,37 @@ class RunService:
                     bool(v["is_primary"]))
             for v in db.query("SELECT profile_id, instance_id, app_id, is_primary FROM device_profile_bindings"
                               " WHERE active=1 ORDER BY is_primary DESC, id"))
-        pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) if app_id else None
         # App que se SABE não pronto (linha em `device_app_state` fora de pronto) tira o aparelho dos aptos; o que
-        # nunca foi observado não fecha a porta (a mesma regra do pré-voo).
-        sem_app = {str(r["instance_id"]) for r in db.query(
-            "SELECT instance_id FROM device_app_state WHERE package_name=? AND state NOT IN (?,?)",
-            (pacote, *self._APP_PRONTO))} if pacote else set()
+        # nunca foi observado não fecha a porta (a mesma regra do pré-voo). Entre apps, basta UM dos apps fora.
+        pacote = self._pacote_por_app(apps)
+        sem_app: set[str] = set().union(*self._fora_de_pronto(apps).values())
         servidores = self.scheduler.servidores()
         aptos = frozenset(
             iid for iid, rt in self.devices.devices.items()
             if not rt.store and iid not in sem_app
             and (srv := servidores.get(self.scheduler.servidor_de(rt))) is not None and srv.disponivel)
+        de_conta = self._apps_de_conta(apps)
+        sem_conta = frozenset(a for a in apps if a not in de_conta)
+        # A sessão que conta é a dos apps de LOGIN GERENCIADO (provedor de sessão): só eles chegam a `session_ready`.
+        # Um app de conta sem login gerenciado (o Outlook antes do 23.8) nunca fica pronto e zeraria a interseção.
+        # Nenhum com login gerenciado: o próprio conjunto — a regra de antes para um app só, que filtrava por ele.
+        relevantes = [a for a in apps if capabilities_of(pacote.get(a)).session_provider] or apps
         sql = ("SELECT a.profile_id, s.instance_id FROM account_sessions s JOIN profile_accounts a ON a.id = s.account_id"
                " WHERE s.status=?")
-        params: tuple[object, ...] = (SessionStatus.session_ready.value,)
-        if app_id:
-            sql += " AND a.app_id=?"
-            params += (app_id,)
-        prontas = frozenset((str(r["profile_id"]), str(r["instance_id"])) for r in db.query(sql, params))
+        pares: list[frozenset[tuple[str, str]]] = []
+        for app_id in relevantes or [None]:
+            params: tuple[object, ...] = (SessionStatus.session_ready.value,)
+            filtro = ""
+            if app_id:
+                filtro, params = " AND a.app_id=?", params + (app_id,)
+            pares.append(frozenset((str(r["profile_id"]), str(r["instance_id"]))
+                                   for r in db.query(sql + filtro, params)))
+        prontas = frozenset.intersection(*pares)
         nomes = tuple(
             (str(r["id"]), str(r["display_name"] or " ".join(x for x in (r["first_name"], r["last_name"]) if x)
                                or (f"@{r['username']}" if r["username"] else r["id"])))
             for r in db.query("SELECT id, username, first_name, last_name, display_name FROM instagram_profiles"))
-        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes)
+        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes, sem_conta)
 
     def _desempatar(self, candidatos: Sequence[str]) -> str | None:
         """Entre aparelhos igualmente bons de uma persona: o balanceamento de sempre (carga do servidor, ligado
@@ -334,7 +406,7 @@ class RunService:
         ids = [str(i) for i in loads(str(run["instance_ids"]), [])]
         if not ids:
             return {}, str(run["command"]), []
-        resolucao = resolver_alvos(PedidoDeAlvos(instance_ids=tuple(ids)), DicasDoTexto(), self._mundo(None))
+        resolucao = resolver_alvos(PedidoDeAlvos(instance_ids=tuple(ids)), DicasDoTexto(), self._mundo())
         return ({a.instance_id: a.profile_id for a in resolucao.alvos}, str(run["command"]),
                 [p.as_dict() for p in resolucao.perguntas])
 
@@ -347,16 +419,86 @@ class RunService:
         return tuple(casado.secrets) if casado is not None else ()
 
     # ------------------------------------------------------------------ distribuir entre servidores
-    def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:
-        """Quem seria escolhido AGORA, sem criar nada — é o que o painel mostra antes de Executar."""
+    #: A recusa da distribuição cujo comando não diz app nenhum (item 24.6): sem app escolhido, é o texto que diz.
+    SEM_APP_NA_DISTRIBUICAO = ("o comando não diz o app: cite-o no texto (“… no <nome do app>”) ou escolha o app dos "
+                               "aparelhos a distribuir")
+
+    def _apps_da_distribuicao(self, spec: DistributeSpec, command: str | None,
+                              app_ids: Sequence[str] = ()) -> list[str]:
+        """Os apps cujos aparelhos a distribuição reparte (item 24.6, R9). O app escolhido pela pessoa, quando há;
+        senão o conjunto já resolvido por quem chama (o modo Automático); senão o do COMANDO, pela mesma leitura do
+        roteamento (`_app_do_comando`: habilidade casada, apps citados). Um app SEM conta citado sozinho ("abra o
+        QA Messenger") não entra no roteamento, que não precisa dele para achar persona, mas aqui é ele que diz de
+        quais aparelhos se trata: entra pela citação. Vazio = o comando não diz; quem chama explica."""
+        if spec.app_id:
+            return [spec.app_id]
+        if app_ids:
+            return [a for a in dict.fromkeys(app_ids) if a]
+        if not command:
+            return []
+        return self._app_do_comando(command, []) or [
+            str(a.id) for a in apps_citados(command, self._apps_configurados()) if a.id]
+
+    def _candidatos_dos_apps(self, apps: Sequence[str]) -> tuple[list[Candidato], list[str]]:
+        """Os candidatos do balanceamento para um CONJUNTO de apps, e o que cortou aparelho pelo caminho.
+
+        Um app só: exatamente `Scheduler.candidatos_do_app`, a regra de sempre. Vários (item 24.6): a UNIÃO dos
+        aparelhos cujo app principal é um deles — não os do primeiro citado, que dependeria da ordem do texto ("leia
+        no Outlook e curta no Instagram" ficaria só com aparelhos do Outlook) —, com duas cercas. Se algum app do
+        conjunto exige conta pela régua da distribuição (`app_exige_conta`, provedor de sessão), só aparelho com perfil
+        ATIVO vinculado; a consulta repete a de `candidatos_do_app`, que o agendador não expõe separada. E sai o
+        aparelho em que algum app do conjunto se SABE fora de pronto (`_fora_de_pronto`), dito app por app."""
+        if len(apps) == 1:
+            return self.scheduler.candidatos_do_app(apps[0]), []
+        db = self.repo.db
+        principal = {str(r["id"]): r["app_id"] for r in db.query("SELECT id, app_id FROM instances")}
+        exige_conta = any(self.scheduler.app_exige_conta(a) for a in apps)
+        com_perfil = {str(r["instance_id"]) for r in db.query(
+            "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
+            " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
+        fora = self._fora_de_pronto(apps)
+        cortados: dict[str, int] = {}
+        ids: list[str] = []
+        for rt in self.devices.devices.values():
+            if rt.store or principal.get(rt.id) not in apps or (exige_conta and rt.id not in com_perfil):
+                continue
+            sem = [a for a in apps if rt.id in fora.get(a, set())]
+            for a in sem:
+                cortados[a] = cortados.get(a, 0) + 1
+            if not sem:
+                ids.append(rt.id)
+        cortes = [f"{n} aparelho(s) com o app {self._nomes_dos_apps([a])} fora de pronto" for a, n in cortados.items()]
+        return self.scheduler.candidatos_de(ids), cortes
+
+    def previa_de_distribuicao(self, spec: DistributeSpec, command: str | None = None, *,
+                               app_ids: Sequence[str] = ()) -> DistributionPreview:
+        """Quem seria escolhido AGORA, sem criar nada — é o que o painel mostra antes de Executar.
+
+        Item 24.6: sem `spec.app_id`, os apps são os do comando (ou `app_ids`, já resolvidos por quem chama); o
+        painel deixou de escolher um app pela pessoa. Comando que não diz app nenhum: prévia vazia, com o motivo."""
         servidores = self.scheduler.servidores()
-        candidatos = self.scheduler.candidatos_do_app(spec.app_id)
+        apps = self._apps_da_distribuicao(spec, command, app_ids)
+        if not apps:
+            return DistributionPreview(requested=spec.count, picks=[], per_server={}, missing=spec.count,
+                                       reasons=[self.SEM_APP_NA_DISTRIBUICAO])
+        candidatos, cortes = self._candidatos_dos_apps(apps)
         d = distribuir(spec.count, candidatos, servidores)
         motivos = list(d.faltas)
-        if d.faltaram and self.scheduler.app_exige_conta(spec.app_id):
+        if len(apps) > 1:
+            # O balanceamento fala de "este app"; com vários, a frase diz quais — e o corte por app fora de pronto.
+            lista = self._nomes_dos_apps(apps)
+            motivos = [m.replace("vinculado a este app", f"vinculado a um dos apps do comando ({lista})")
+                        .replace("deste app", f"dos apps do comando ({lista})") for m in motivos]
+            if d.faltaram:
+                motivos.extend(cortes)
+        de_conta = [a for a in apps if self.scheduler.app_exige_conta(a)]
+        if d.faltaram and de_conta:
             # O filtro que mais corta num app com conta é o do perfil — dito primeiro, com o número.
             motivos = [m for m in motivos if not m.startswith("o parque só tem")]
-            motivos.insert(0, f"este app exige conta: só {len(candidatos)} aparelho(s) têm perfil ativo vinculado")
+            quem = "este app exige" if len(apps) == 1 else (
+                f"o app {self._nomes_dos_apps(de_conta)} exige" if len(de_conta) == 1
+                else f"os apps {self._nomes_dos_apps(de_conta)} exigem")
+            motivos.insert(0, f"{quem} conta: só {len(candidatos)} aparelho(s) têm perfil ativo vinculado")
         teto = int(self.scheduler.get_settings().max_active_devices)
         livres_no_geral = teto - len(self.scheduler.workers)
         if len(d.escolhidos) > livres_no_geral:
@@ -370,10 +512,13 @@ class RunService:
             per_server={servidores[k].nome: v for k, v in d.por_servidor().items()},
             missing=d.faltaram, reasons=motivos)
 
-    def _distribuir(self, spec: DistributeSpec, parcial_ok: bool) -> list[str]:
+    def _distribuir(self, spec: DistributeSpec, parcial_ok: bool, command: str) -> list[str]:
         """Os aparelhos da execução distribuída. Faltando aparelho, recusa com o motivo — a menos que a pessoa
         tenha pedido "seguir só com os aptos" (`only_ready`), que aqui quer dizer "com os que houver"."""
-        previa = self.previa_de_distribuicao(spec)
+        apps = self._apps_da_distribuicao(spec, command)
+        if not apps:
+            raise RunError("distribution_sem_app", f"Não dá para distribuir: {self.SEM_APP_NA_DISTRIBUICAO}.", 409)
+        previa = self.previa_de_distribuicao(spec, app_ids=apps)
         ids = [p.instance_id for p in previa.picks]
         detalhes = {"distribution": previa.model_dump()}
         if not ids:
@@ -396,7 +541,7 @@ class RunService:
             f" WHERE i.id IN ({marcas})", tuple(instance_ids))
         return {r["instance_id"]: r["package"] for r in linhas if r["package"]}
 
-    def _mistura_de_apps(self, instance_ids: list[str]) -> tuple[str, str, int] | None:
+    def _mistura_de_apps(self, instance_ids: list[str], app_ids: Sequence[str] = ()) -> tuple[str, str, int] | None:
         """Recusa, ANTES de planejar, a execução que mistura aparelhos de apps diferentes quando algum tem catálogo.
 
         O catálogo de capabilities era escolhido POR EXECUÇÃO (`load_catalog(pacotes.pop()) if len(pacotes) == 1`):
@@ -407,7 +552,16 @@ class RunService:
 
         A recusa acontece só quando ALGUM dos apps tem catálogo: misturar dois apps sem catálogo não perde nada,
         e recusar ali seria inventar limitação onde não há.
+
+        Item 24.5: quando o COMANDO diz os apps (`app_ids`: os alvos, a habilidade casada ou os apps citados), o app
+        principal de cada aparelho deixa de ser o app da tarefa. Todo aparelho roda as mesmas etapas, cada uma no app
+        dela, com o catálogo dele (24.1) e a porta de política pelo app da etapa (24.2): não há guarda a apagar, e
+        não é mistura. O que cada aparelho precisa ter, cada app do conjunto, é o pré-voo e a compatibilidade que
+        conferem (`_app_preflight`, `_incompativeis`). Sem conjunto, "o app" é o de cada aparelho, e aí sim a
+        seleção de apps diferentes é ambígua — a recusa de antes segue.
         """
+        if app_ids:
+            return None
         pacotes = self.pacotes_da_selecao(instance_ids)
         distintos = sorted(set(pacotes.values()))
         if len(distintos) < 2:
@@ -420,8 +574,9 @@ class RunService:
         return ("mixed_apps",
                 "Esta seleção mistura aparelhos de aplicativos diferentes, e pelo menos um deles "
                 f"({', '.join(capabilities_of(p).label for p in com_catalogo)}) tem catálogo de ações com "
-                "política, limite e aprovação. Planejar os dois juntos apagaria essas guardas. "
-                f"Refaça a execução com aparelhos de um app só — {detalhe}.", 409)
+                "política, limite e aprovação, e o comando não diz em que app a tarefa acontece. Refaça a execução "
+                "com aparelhos de um app só, ou cite no comando o app de cada parte da tarefa — "
+                f"{detalhe}.", 409)
 
     #: Estados em que o app já está NO aparelho e serve para trabalhar.
     _APP_PRONTO = ("ready", "installed")
@@ -484,7 +639,8 @@ class RunService:
 
     # ------------------------------------------------------------------ pré-voo
     def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False, secret_names: Sequence[str] = (),
-                perfis: Mapping[str, str | None] | None = None) -> dict[str, dict[str, str]]:
+                perfis: Mapping[str, str | None] | None = None,
+                app_ids: Sequence[str] = ()) -> dict[str, dict[str, str]]:
         """Por que a tarefa NÃO pode acontecer em cada um destes aparelhos, conferido antes de agendar.
 
         Uma pergunta, uma resposta, com três usos: a recusa de `create` (antes de gastar o planejador), o motivo
@@ -501,9 +657,13 @@ class RunService:
         `secret_names`: os `requires.secrets` da skill casada (ADR-040). A persona do aparelho precisa ter cada um
         como senha UTILIZÁVEL — guardada, consentida, não recusada, de app sem login gerenciado; o que falta em um
         aparelho recusa aquele aparelho, com o que fazer.
+
+        `app_ids` (item 24.5): os apps da tarefa — o conjunto do comando na criação, os `required_apps` do plano no
+        início. O pré-voo do aplicativo confere cada um deles, além do principal do aparelho.
         """
         impedidos: dict[str, dict[str, str]] = {}
         liga_sozinho = self.scheduler.get_settings().auto_start_devices
+        do_comando = self._pacotes_dos_apps(app_ids)
         for iid in instance_ids:
             rt = self.devices.devices.get(iid)
             if rt is None:
@@ -558,13 +718,15 @@ class RunService:
                                  "e repita.")}
                     continue
             if self.scheduler.app_preflight is not None:
-                if (recusa := self.scheduler.app_preflight(rt)) is not None:
+                if (recusa := self.scheduler.app_preflight(rt, do_comando)) is not None:
                     impedidos[iid] = recusa
         return impedidos
 
-    def _exigir_pre_voo(self, req: RunCreate, comando: str, perfis: Mapping[str, str | None]) -> RunCreate:
+    def _exigir_pre_voo(self, req: RunCreate, comando: str, perfis: Mapping[str, str | None],
+                        app_ids: Sequence[str] = ()) -> RunCreate:
         """Aplica o pré-voo: recusa com a lista por aparelho, ou segue só com os aptos quando foi isso que se pediu."""
-        impedidos = self.pre_voo(req.instance_ids, secret_names=self._segredos_exigidos(comando), perfis=perfis)
+        impedidos = self.pre_voo(req.instance_ids, secret_names=self._segredos_exigidos(comando), perfis=perfis,
+                                 app_ids=app_ids)
         if not impedidos:
             return req
         aptos = [i for i in req.instance_ids if i not in impedidos]
@@ -579,31 +741,46 @@ class RunService:
                        f"{len(impedidos)} de {len(req.instance_ids)} aparelhos não podem executar isto agora. "
                        f"{frases} Você pode seguir só com os aptos: {', '.join(aptos)}.", 409, detalhes)
 
-    def _incompativeis(self, instance_ids: list[str]) -> list[str]:
-        """Frases explicando quais aparelhos não rodam a versão DESEJADA do app deles, na ordem pedida.
+    def _pacotes_da_tarefa(self, instance_ids: list[str], app_ids: Sequence[str]) -> dict[str, list[str]]:
+        """`{aparelho: pacotes}` que a tarefa pode usar em cada aparelho (item 24.5): o app principal dele e cada app
+        do conjunto do comando, sem repetir.
+
+        O principal entra mesmo quando o comando cita outro app: ele é candidato do planejamento entre apps
+        (`_catalogos`) — "leia o e-mail no Outlook e curta o post de @x" não nomeia o Instagram do aparelho e precisa
+        dele. Sem conjunto, é só o principal, como antes.
+        """
+        principais = self.pacotes_da_selecao(instance_ids)
+        do_comando = self._pacotes_dos_apps(app_ids)
+        return {iid: [p for p in dict.fromkeys([principais.get(iid), *do_comando]) if p] for iid in instance_ids}
+
+    def _incompativeis(self, instance_ids: list[str], app_ids: Sequence[str] = ()) -> list[str]:
+        """Frases explicando quais aparelhos não rodam a versão DESEJADA dos apps da tarefa, na ordem pedida.
 
         A pergunta é feita sobre a versão que o parque mandou aquele aparelho ter (`device_app_state`), porque é
         ela que a execução vai instalar pela porta do app. Aparelho sem versão desejada não tem o que conferir —
         e capacidade desconhecida nunca vira recusa (ver `devices/compatibilidade.py`).
+
+        Item 24.5: cada app que a tarefa usa naquele aparelho (`_pacotes_da_tarefa`), não só o principal. Uma frase
+        por aparelho: a primeira impossibilidade já recusa.
         """
         motivos: list[str] = []
+        pacotes = self._pacotes_da_tarefa(instance_ids, app_ids)
         for iid in instance_ids:
             rt = self.devices.devices.get(iid)
             if rt is None:
                 continue
-            # Amarrado ao APP daquele aparelho: `device_app_state` guarda uma linha por PACOTE, e uma versão
-            # desejada de um pacote que não é o app da tarefa não tem por que impedir a execução.
-            linha = self.repo.db.one(
-                "SELECT r.* FROM device_app_state s"
-                " JOIN app_releases r ON r.id = s.desired_release_id"
-                " JOIN instances i ON i.id = s.instance_id"
-                " JOIN apps a ON a.id = i.app_id AND a.package = s.package_name"
-                " WHERE s.instance_id=?", (iid,))
-            if linha is None:
-                continue
-            if (porque := motivo_incompativel(requisitos_de_release(linha), capacidades_de(rt),
-                                              aparelho=iid)) is not None:
-                motivos.append(porque)
+            # Amarrado aos APPS da tarefa: `device_app_state` guarda uma linha por PACOTE, e uma versão desejada de
+            # um pacote que a tarefa não usa não tem por que impedir a execução.
+            for pacote in pacotes.get(iid, []):
+                linha = self.repo.db.one(
+                    "SELECT r.* FROM device_app_state s JOIN app_releases r ON r.id = s.desired_release_id"
+                    " WHERE s.instance_id=? AND s.package_name=?", (iid, pacote))
+                if linha is None:
+                    continue
+                if (porque := motivo_incompativel(requisitos_de_release(linha), capacidades_de(rt),
+                                                  aparelho=iid)) is not None:
+                    motivos.append(porque)
+                    break
         return motivos
 
     def _perfil_unico(self, instance_id: str) -> str | None:
@@ -634,6 +811,37 @@ class RunService:
                                level="warn", run_id=r["id"])
             self._spawn_planning(r["id"])
 
+    @staticmethod
+    def _catalogos(comando: str, apps: list[AppContext], instances: Sequence[Mapping[str, object]]
+                   ) -> tuple[CapabilityCatalog | None, dict[str, CapabilityCatalog], list[AppContext], str | None]:
+        """O que vai ao planejador (item 24.1, ADR-058): `(catalog, catalogs, apps, pacote_das_licoes)`.
+
+        Candidatos = os apps dos aparelhos mais os que o comando cita. Nenhum candidato com catálogo: plano livre, com
+        todos os apps. Um candidato só, com catálogo, e nenhum site pedido: o planejamento por catálogo de sempre.
+        Qualquer outro caso (o comando cita outro app ou pede um site, e algum candidato tem catálogo) é ENTRE APPS: os
+        catálogos de todos os candidatos que têm um vão juntos, e os apps sem catálogo entram como apps de etapa livre.
+
+        Antes, citar outro app ou um site punha o plano inteiro no caminho livre (22d65f: o Chrome num aparelho do
+        Instagram), e a etapa com efeito no Instagram ficava sem ação do catálogo — a porta de política a recusava.
+
+        O app do aparelho é candidato mesmo quando o comando cita outro: o comando que diz "leia o e-mail no Outlook e
+        curta o post de @x" não nomeia o Instagram e precisa dele. O modelo só usa o que o pedido pede; os apps
+        exigidos saem das etapas (`parsing.apps_do_plano`), não desta lista. App com catálogo que não é candidato
+        fica fora da lista de apps do modo entre apps, para não virar app de etapa livre.
+        """
+        do_aparelho = {i.get("app_id") for i in instances}
+        por_id = {a.id: a for a in apps if a.id}
+        candidatos = [por_id[i] for i in dict.fromkeys(
+            [a.id for a in apps_citados(comando, apps)] + [a.id for a in apps if a.id in do_aparelho]) if i in por_id]
+        catalogos = {a.id: c for a in candidatos if a.id and (c := load_catalog(a.package)) is not None}
+        if not catalogos:
+            return None, {}, apps, None
+        if len(candidatos) == 1 and not pede_site(comando):
+            unico = candidatos[0]
+            return catalogos[str(unico.id)], {}, apps, unico.package
+        ofertados = [a for a in apps if a.id in catalogos or load_catalog(a.package) is None]
+        return None, catalogos, ofertados, None
+
     async def _plan(self, run_id: str) -> None:
         repo = self.repo
         run = repo.run_row(run_id)
@@ -661,8 +869,7 @@ class RunService:
                               # muda de aparelho por configuração, e sem isto o relatório de amanhã fala de um
                               # "android-09" que ninguém consegue reencontrar. Re-fotografado no despacho.
                               **self.scheduler.onde_roda(rt)})
-        apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
-                for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
+        apps = self._apps_configurados()
         try:
             # RESOLVE + COMPILE (design §14.1): skill publicada → fluxo ativo → nada, cada backend atrás do seu
             # interruptor (`skills.enabled`, `ai.flows`). Casou: o plano já existe e o planejador não é chamado.
@@ -674,15 +881,9 @@ class RunService:
                 plan = known.plan
                 self._registrar_resolucao(run_id, known)
             else:
-                # App alvo conhecido e com catálogo: o planejador escolhe ações nomeadas em vez de escrever
-                # etapas livres. Aparelhos com apps diferentes (ou sem app definido) seguem no caminho livre.
-                pacotes = {a.package for a in apps if a.id in {i.get("app_id") for i in instances}}
-                # O app da CONTA do aparelho não é o alvo quando o comando pede outro app ou um site (22d65f: "abra o
-                # Chrome e entre no site…" num aparelho da conta Instagram recebeu só as ações do Instagram e
-                # voltou sem etapas). Nesse caso o plano é livre.
-                unico = len(pacotes) == 1 and not pede_outro_alvo(comando, apps, pacotes)
-                alvo = next(iter(pacotes)) if unico else None
-                catalog = load_catalog(alvo) if unico else None
+                # Livre, por catálogo ou ENTRE APPS (item 24.1): quem decide é `_catalogos`, pelo app dos aparelhos e
+                # pelos apps que o comando cita.
+                catalog, catalogos, ofertados, alvo = self._catalogos(comando, apps, instances)
                 # Lições medidas do planejador (ADR-054): só quando o planejador é de fato chamado (skill ou fluxo
                 # casados não pedem), uma vez por planejamento. Falha = nenhuma lição.
                 licoes = pedir_licoes(self.costuras, PedidoDeLicoes(
@@ -696,10 +897,15 @@ class RunService:
                     run_id, None,
                     # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
                     lambda: self.provider.plan(PlanRequest(
-                        command=comando, run_id=run_id, instances=instances, apps=apps, catalog=catalog,
+                        command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
+                        catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
                         lessons=list(licoes))),
                     role="plan")
+                # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
+                # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
+                if not plan.required_apps:
+                    plan.required_apps = apps_do_plano(plan, instances)
         except AIError as exc:
             if exc.kind == "refusal":
                 # Recusa do provedor não é falha da execução: repetir o MESMO comando tende a dar a mesma
@@ -882,9 +1088,12 @@ class RunService:
         # mandava o operador ligar um aparelho quando o problema era outro.
         alvos = list(self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,)))
         _perfis, comando, _perguntas = self._perfis_da_execucao(run)
+        # No início o plano existe: os apps da tarefa são os DELE (item 24.5), não uma leitura do texto.
+        plano = Plan.model_validate_json(run["plan"]) if run["plan"] else None
         impedidos = self.pre_voo([o["instance_id"] for o in alvos], ao_iniciar=True,
                                  secret_names=self._segredos_exigidos(comando),
-                                 perfis={o["instance_id"]: o["profile_id"] for o in alvos})
+                                 perfis={o["instance_id"]: o["profile_id"] for o in alvos},
+                                 app_ids=(plano.required_apps or apps_do_plano(plano)) if plano else ())
         for o in alvos:
             recusa = impedidos.get(o["instance_id"])
             if recusa is None:

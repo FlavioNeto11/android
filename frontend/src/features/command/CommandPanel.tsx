@@ -155,17 +155,10 @@ export function CommandPanel() {
     saveJson(CHAVE_DO_MODO, m);
   };
   const count = parseCount(distCount);
-  // Sem app escolhido ainda: o app mais comum entre os aparelhos do parque.
-  const appId = useMemo(() => {
-    if (distApp && apps.some((a) => a.id === distApp)) return distApp;
-    const cont = new Map<string, number>();
-    for (const id of order) {
-      const a = instancesMap[id]?.app_id;
-      if (a) cont.set(a, (cont.get(a) ?? 0) + 1);
-    }
-    return [...cont.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? apps[0]?.id ?? '';
-  }, [distApp, apps, order, instancesMap]);
-  const { preview, loading: previewLoading } = useDistributionPreview(distribuir, count, appId);
+  // Item 24.6 (R9): o Comando não escolhe mais "um app" pela pessoa. Antes, sem app escolhido, valia o app mais comum
+  // do parque, e o comando entre apps era repartido pelos aparelhos de um app que ninguém pediu. Agora, sem escolha,
+  // a distribuição é pelos apps que o COMANDO usa (o backend lê como na criação); escolher um app só restringe.
+  const appId = distApp && apps.some((a) => a.id === distApp) ? distApp : '';
 
   const [command, setCommand] = useState(() => {
     const rascunho = loadJson('commandDraft', isString) ?? '';
@@ -234,6 +227,9 @@ export function CommandPanel() {
 
   const trimmed = command.trim();
   const total = order.length;
+  // Texto com senha não vai à prévia da distribuição (nem a rota nenhuma): vai vazio, e a prévia espera.
+  const { preview, loading: previewLoading } = useDistributionPreview(
+    distribuir, count, appId, pareceCredencial(trimmed) ? '' : trimmed);
 
   // Persona apagada desde a última visita não fica "selecionada" invisível: some da seleção quando a lista chega.
   const selecionadas = useMemo(
@@ -273,8 +269,7 @@ export function CommandPanel() {
 
   const alvoInvalido: string | null = automatico ? null
     : distribuir
-    ? (!appId ? 'Escolha o app dos aparelhos a distribuir.'
-      : count === null ? 'Informe quantos aparelhos (de 1 a 64).'
+    ? (count === null ? 'Informe quantos aparelhos (de 1 a 64).'
       : preview && preview.picks.length === 0 ? `Nenhum aparelho disponível para distribuir${preview.reasons[0] ? `: ${preview.reasons[0]}` : ''}.`
       : null)
     : porPersona ? (selecionadas.length === 0 ? 'Escolha ao menos uma persona.' : null)
@@ -350,7 +345,7 @@ export function CommandPanel() {
     // A distribuição e o eco entram na intenção: mudar app, quantidade ou alvos é outro pedido, com outra chave.
     const intent = {
       command: trimmed, mode,
-      instanceIds: distribuir ? [`distribuir:${appId}:${count}`]
+      instanceIds: distribuir ? [`distribuir:${appId || 'comando'}:${count}`]
         : eco ? [`eco:${JSON.stringify(eco)}`, ...(porPersona ? [`politica:${politica}`] : [])]
         : selectedIds,
     };
@@ -363,7 +358,7 @@ export function CommandPanel() {
       if (distribuir && count !== null) {
         // Faltando aparelho, a prévia já disse quantos e por quê: executar segue com os disponíveis.
         corpo = { command: trimmed, instance_ids: [], idempotency_key: idempotencyKey, mode,
-                  distribute: { count, app_id: appId },
+                  distribute: appId ? { count, app_id: appId } : { count },
                   only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined };
       } else if (eco) {
         corpo = { command: trimmed, instance_ids: eco.instance_ids, idempotency_key: idempotencyKey, mode,
@@ -609,7 +604,7 @@ export function CommandPanel() {
             {pedidoDaPrevia || previaPersona.previa || previaPersona.recusa ? (
               <PreviaDosAlvos previa={previaPersona.previa} recusa={previaPersona.recusa}
                               carregando={previaPersona.carregando || !previaEmDia} comando={trimmed}
-                              nomeDe={nomeDaPersona} onResponder={responderPergunta} onSemDestinos={setCommand} />
+                              nomeDe={nomeDaPersona} apps={apps} onResponder={responderPergunta} onSemDestinos={setCommand} />
             ) : null}
           </>
         ) : null}
@@ -617,6 +612,7 @@ export function CommandPanel() {
           <DistributeTarget
             apps={apps.map((a) => ({ id: a.id, name: a.name }))}
             appId={appId}
+            temComando={trimmed.length > 0 && !pareceCredencial(trimmed)}
             countText={distCount}
             preview={preview}
             loading={previewLoading}
@@ -730,7 +726,7 @@ export function CommandPanel() {
               {confirmacao.mode === 'plan' ? ' planejar' : ' executar'}
             </p>
             <PreviaDosAlvos previa={confirmacao.previa} recusa={confirmacao.recusa} carregando={confirmacao.carregando}
-                            comando={trimmed} nomeDe={nomeDaPersona} onResponder={responderPergunta}
+                            comando={trimmed} nomeDe={nomeDaPersona} apps={apps} onResponder={responderPergunta}
                             onSemDestinos={setCommand} />
             <div className={styles.preflightActions}>
               <Button size="sm" variant="primary" loading={inFlight !== null} disabledReason={confirmacaoImpede}

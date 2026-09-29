@@ -136,6 +136,23 @@ describe('Comando "Por persona"', () => {
     expect(corpo).not.toHaveProperty('profile_ids');
   });
 
+  it('item 24.6: a prévia mostra o CONJUNTO de apps do alvo (contrato C5), não um só — pelo nome do catálogo', async () => {
+    backend.on('POST', /^\/api\/runs\/targets\/resolve$/, () => json(previa({
+      // 'qa' e 'notes' são os apps de makeSnapshot() (hidratados no beforeEach): resolve pelo nome, não pelo id.
+      targets: [{ instance_id: 'android-01', profile_id: 'ig-1', app_id: 'qa', app_ids: ['qa', 'notes'], origem: 'vinculo' }],
+    })));
+    await modoPorPersona();
+    await click(byRole('button', /Marina Costa/));
+    await click(byRole('button', /Todos os aparelhos dela/));
+    await setValue(campo(), 'leia a última nota e comente no QA Messenger');
+    const alvos = await waitFor(() => {
+      const p = byRole('region', 'Prévia dos alvos');
+      expect(text(p)).toContain('android-01');
+      return p;
+    });
+    expect(text(alvos)).toContain('QA Messenger + Notas');
+  });
+
   it('a prévia mostra a origem, o comando sem destinos e a pergunta; a opção clicada vira a seleção', async () => {
     backend.on('POST', /^\/api\/runs\/targets\/resolve$/, (c) => {
       const corpo = c.body as ResolveTargetsRequest;
@@ -214,5 +231,64 @@ describe('Comando "Por persona"', () => {
     expect(eco).toMatchObject({ instance_ids: [], targets: [{ profile_id: 'ig-1', instance_ids: ['android-03'], app_id: null }] });
     expect(eco).not.toHaveProperty('device_policy');
     await waitFor(() => expect(allByRole('alert', 'Confirmar os destinos do comando')).toHaveLength(0));
+  });
+});
+
+// ---------------------------------------------------------------- "Distribuir entre servidores" (item 24.6, R9)
+/**
+ * O Comando deixa de escolher "um app": sem app escolhido, a prévia e o envio vão pelo COMANDO (o backend lê os apps
+ * que ele usa, um ou vários), e o painel não preenche mais o app mais comum do parque. Escolher um app só restringe.
+ * Prova `simulated` (backend falso).
+ */
+describe('Comando "Distribuir entre servidores" (item 24.6)', () => {
+  const distribuicoes = () => backend.callsTo('GET', /^\/api\/runs\/distribution$/);
+  const PREVIA = { requested: 2, missing: 0, reasons: [], per_server: { central: 2 },
+                   picks: [{ instance_id: 'android-01', server_id: 'c', server_name: 'central', needs_start: false },
+                           { instance_id: 'android-02', server_id: 'c', server_name: 'central', needs_start: false }] };
+
+  async function modoDistribuir(): Promise<void> {
+    backend.on('GET', /^\/api\/runs\/distribution$/, () => json(PREVIA));
+    await click(byRole('button', /Distribuir entre servidores/));
+  }
+
+  it('sem app escolhido, a prévia e o envio vão pelo comando — sem app_id, sem pedir "escolha o app"', async () => {
+    await modoDistribuir();
+    // Sem comando e sem app, nada a prever: o painel diz que a distribuição sai do comando.
+    expect(text(container)).toContain('a distribuição sai dos apps que ele usa');
+    expect(text(container)).not.toContain('Escolha o app dos aparelhos');
+    expect((byRole('combobox', 'do app') as HTMLSelectElement).value).toBe('');
+    await setValue(campo(), 'leia a última nota e mande no QA Messenger');
+    await waitFor(() => expect(distribuicoes().length).toBeGreaterThan(0));
+    const q = distribuicoes().at(-1)!.query;
+    expect(q.get('command')).toBe('leia a última nota e mande no QA Messenger');
+    expect(q.has('app_id')).toBe(false);
+    await waitFor(() => expect(text(container)).toContain('em central'));
+
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(envios()).toHaveLength(1));
+    const corpo = envios()[0]!.body as Record<string, unknown>;
+    expect(corpo).toMatchObject({ command: 'leia a última nota e mande no QA Messenger', instance_ids: [],
+                                  distribute: { count: 2 } });
+    expect(corpo.distribute).not.toHaveProperty('app_id');
+  });
+
+  it('escolher um app restringe a ele: a prévia e o envio levam o app_id', async () => {
+    await modoDistribuir();
+    await setValue(byRole('combobox', 'do app') as HTMLSelectElement, 'notes');
+    await setValue(campo(), 'leia a última nota');
+    await waitFor(() => expect(distribuicoes().some((c) => c.query.get('app_id') === 'notes')).toBe(true));
+    expect(distribuicoes().every((c) => !c.query.has('command'))).toBe(true);
+    await waitFor(() => expect(text(container)).toContain('em central'));
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(envios()).toHaveLength(1));
+    expect((envios()[0]!.body as Record<string, unknown>).distribute).toEqual({ count: 2, app_id: 'notes' });
+  });
+
+  it('texto com senha não vai à prévia da distribuição', async () => {
+    await modoDistribuir();
+    await setValue(campo(), 'abra o QA Messenger com senha: hunter2');
+    await flush(600);
+    expect(distribuicoes()).toHaveLength(0);
+    expect(text(container)).toContain(SENHA_NO_COMANDO);
   });
 });

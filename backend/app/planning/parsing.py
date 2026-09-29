@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
 from ..models import (DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
-from .capabilities import CapabilityNode, compose
+from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
+                           montar_etapa)
 from .provider import AIError, PlanRequest, Verdict
 
 
@@ -81,6 +83,39 @@ class _CapPlanOut(BaseModel):
     missing: list[MissingInfo]
 
 
+# Formato do planejamento ENTRE APPS (item 24.1, ADR-058): cada etapa diz o app dela e é AÇÃO do catálogo (app com
+# catálogo) ou LIVRE (app sem catálogo). Um objeto aninhado e anulável para a parte livre, e não oito campos anuláveis
+# soltos: esquema estrito com menos uniões, e a etapa de catálogo gasta um `null` em vez de oito.
+class _LivreOut(BaseModel):
+    title: str
+    goal: str
+    side_effect: bool
+    commit_guard: list[str]
+    precondition: str | None
+    postcondition: _PostOut
+    timeout_s: int
+    max_attempts: int
+
+
+class _MultiStepOut(BaseModel):
+    key: str
+    app_id: str
+    capability: str | None
+    bindings: list[_BindingOut]
+    livre: _LivreOut | None
+    depends_on: list[str]
+    for_each: str | None
+
+
+class _MultiPlanOut(BaseModel):
+    summary: str
+    app_id: str | None
+    parameters: list[_ParamOut]
+    success_criteria: list[str]
+    steps: list[_MultiStepOut]
+    missing: list[MissingInfo]
+
+
 def norm_key(key: str) -> str:
     """O schema estrito não carrega o `pattern` da chave; normaliza 'Open-App' → 'open_app' em vez de rejeitar o plano."""
     k = re.sub(r"[^a-z0-9_]+", "_", key.strip().lower()).strip("_")[:40]
@@ -98,6 +133,31 @@ def loads_json(raw: str, what: str) -> Any:
         return json.loads(texto)
     except json.JSONDecodeError as exc:
         raise AIError(f"{what} inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+
+
+def apps_do_plano(plan: Plan, instances: Iterable[Mapping[str, object]] = ()) -> list[str]:
+    """`Plan.required_apps` (item 24.1): os apps em que as etapas RODAM, na ordem. É a mesma regra do compilador de
+    skills (todo app em que algum nó roda) e de `Repository.save_plan`: a lista de candidatos que foi ao planejador
+    não entra — o app que o modelo recebeu e não usou não é exigido.
+
+    Etapa sem app e plano sem app rodam no app do aparelho (`Scheduler._app_context`): aí o app é o dos aparelhos.
+    Plano sem etapa (pergunta em `missing`) fica com o app do plano, quando há."""
+    usados: list[str | None] = [s.app_id or plan.app_id for s in plan.steps] or [plan.app_id]
+    if plan.steps and None in usados:
+        usados += [str(a) for i in instances if (a := i.get("app_id"))]
+    return [a for a in dict.fromkeys(usados) if a]
+
+
+def _etapa_livre(key: str, e: _StepOut | _LivreOut, *, depends_on: list[str], for_each: str | None,
+                 app_id: str | None) -> PlanStep:
+    """A etapa escrita pelo modelo, com os limites do backend (prazo, uma tentativa no efeito externo). A mesma no
+    plano livre e na parte livre do plano entre apps."""
+    return PlanStep(key=norm_key(key), title=e.title, goal=e.goal, depends_on=[norm_key(d) for d in depends_on],
+                    side_effect=e.side_effect, commit_guard=e.commit_guard, precondition=e.precondition,
+                    postcondition=Postcondition(**e.postcondition.model_dump()),
+                    timeout_s=max(30, min(e.timeout_s, 600)),
+                    max_attempts=1 if e.side_effect else max(1, min(e.max_attempts, 5)),
+                    for_each=norm_key(for_each) if for_each else None, app_id=app_id)
 
 
 def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
@@ -118,14 +178,7 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
         plan = Plan(
             summary=out.summary, app_id=app.id if app else None, app_package=app.package if app else None,
             parameters={p.name: p.value for p in out.parameters}, success_criteria=out.success_criteria,
-            steps=[PlanStep(key=norm_key(s.key), title=s.title, goal=s.goal,
-                            depends_on=[norm_key(d) for d in s.depends_on],
-                            side_effect=s.side_effect, commit_guard=s.commit_guard, precondition=s.precondition,
-                            postcondition=Postcondition(**s.postcondition.model_dump()),
-                            timeout_s=max(30, min(s.timeout_s, 600)),
-                            max_attempts=1 if s.side_effect else max(1, min(s.max_attempts, 5)),
-                            for_each=norm_key(s.for_each) if s.for_each else None,
-                            app_id=app_da_etapa(s))
+            steps=[_etapa_livre(s.key, s, depends_on=s.depends_on, for_each=s.for_each, app_id=app_da_etapa(s))
                    for s in out.steps[:max_steps]],
             missing=out.missing, planner=PlannerInfo(provider=provider, model=model, simulated=False))
     except (ValidationError, ValueError) as exc:
@@ -136,11 +189,16 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     if out.app_id and app is None:
         plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
                                                               "Qual aplicativo configurado deve ser usado?"))
+    # R6: o plano livre também declara os apps de que precisa (antes, só a skill compilada declarava).
+    plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return plan
 
 
 def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
-    """Planejamento COM catálogo: o modelo escolhe ações e argumentos; o backend monta as etapas."""
+    """Planejamento COM catálogo: o modelo escolhe ações e argumentos; o backend monta as etapas. Com
+    `req.catalogs` (entre apps, item 24.1), cada etapa é montada pelo catálogo do app DELA."""
+    if getattr(req, "catalogs", None):
+        return _plano_entre_apps(raw, req, provider=provider, model=model, max_steps=max_steps)
     try:
         out = _CapPlanOut.model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
@@ -152,12 +210,101 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
                             for_each=norm_key(s.for_each) if s.for_each else None)
              for s in out.steps[:max_steps]]
     steps, missing = compose(req.catalog, nodes)
-    return Plan(summary=out.summary, app_id=app.id if app else None,
+    plan = Plan(summary=out.summary, app_id=app.id if app else None,
                 app_package=app.package if app else req.catalog.package,
                 parameters={p.name: p.value for p in out.parameters},
                 success_criteria=out.success_criteria, steps=[] if missing else steps,
                 missing=out.missing + missing,
                 planner=PlannerInfo(provider=provider, model=model, simulated=False))
+    plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
+    return plan
+
+
+def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
+    """Item 24.1 (ADR-058, decisão 1): o plano de um comando que atravessa apps, etapa por etapa pelo app dela.
+
+    Etapa num app com catálogo é AÇÃO dele, montada pelo catálogo desse app (texto, guardas, política e limite são do
+    backend, como no planejamento por catálogo); etapa num app sem catálogo é LIVRE, escrita pelo modelo. Etapa livre
+    num app com catálogo NÃO existe: passaria por fora da política e dos limites (a porta de política a recusaria no
+    efeito, T19), então vira pergunta, como a ação que não existe. Qualquer pergunta zera as etapas: um plano meio
+    montado seria pior que nenhum (a mesma regra do `compose`).
+    """
+    try:
+        out = _MultiPlanOut.model_validate(loads_json(raw, "Plano"))
+    except ValidationError as exc:
+        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+    conhecidos = {a.id: a for a in req.apps if a.id}
+    catalogos: Mapping[str, CapabilityCatalog] = req.catalogs
+    etapas = out.steps[:max_steps]
+    # Herança de argumento POR APP: `herdar_argumentos` anda na ordem do plano, e a legenda de uma publicação do
+    # Instagram não pode virar guarda de uma etapa do Outlook que por acaso declare um argumento de mesmo nome.
+    nos: dict[int, CapabilityNode] = {}
+    for app_id, catalogo in catalogos.items():
+        indices = [i for i, s in enumerate(etapas) if s.app_id == app_id and s.capability]
+        crus = [CapabilityNode(key=norm_key(etapas[i].key), capability=etapas[i].capability or "",
+                               depends_on=[norm_key(d) for d in etapas[i].depends_on],
+                               bindings={b.name: b.value for b in etapas[i].bindings},
+                               for_each=norm_key(etapas[i].for_each) if etapas[i].for_each else None)
+                for i in indices]
+        nos.update(zip(indices, herdar_argumentos(catalogo, crus), strict=True))
+    faltas: list[MissingInfo] = []
+    montadas: list[tuple[str, PlanStep]] = []
+    try:
+        for i, s in enumerate(etapas):
+            chave = norm_key(s.key)
+            app = conhecidos.get(s.app_id)
+            if app is None or app.id is None:
+                faltas.append(MissingInfo(field="app", question=f"O app '{s.app_id}' (etapa '{chave}') não está entre "
+                                                                "os apps deste comando. Qual aplicativo configurado "
+                                                                "deve ser usado?"))
+                continue
+            nome = app.name or app.id
+            catalogo = catalogos.get(app.id)
+            if catalogo is None and load_catalog(app.package) is not None:
+                # App com catálogo que não foi oferecido (quem chama filtra `apps`; isto é a segunda trava).
+                faltas.append(MissingInfo(field="app", question=f"A etapa '{chave}' usa o {nome}, que não está entre "
+                                                                "os apps deste comando. Cite o app no comando."))
+                continue
+            if catalogo is not None:
+                if i not in nos:
+                    disponiveis = ", ".join(c.key for c in catalogo.offered)
+                    faltas.append(MissingInfo(
+                        field="capability",
+                        question=(f"A etapa '{chave}' no {nome} precisa ser uma ação do catálogo dele. As disponíveis "
+                                  f"são: {disponiveis}. Como devo fazer isso?")))
+                    continue
+                etapa, falta = montar_etapa(catalogo, nos[i])
+                if falta is not None:
+                    faltas.append(MissingInfo(field=falta.field, question=f"No {nome}: {falta.question}"))
+                if etapa is None:
+                    continue
+            elif s.livre is None:
+                faltas.append(MissingInfo(field="step", question=f"A etapa '{chave}' no {nome} não tem ação de "
+                                                                 "catálogo: descreva o objetivo e como comprovar."))
+                continue
+            else:
+                etapa = _etapa_livre(chave, s.livre, depends_on=s.depends_on, for_each=s.for_each, app_id=None)
+            montadas.append((app.id, etapa))
+        usados = list(dict.fromkeys(app_id for app_id, _ in montadas))
+        # O app do PLANO é o principal que o modelo disse, se alguma etapa roda nele; senão o da primeira etapa. É o
+        # padrão de `_app_context` para etapa sem app, então tem de ser um app em que o plano de fato roda.
+        principal_id = (out.app_id if out.app_id in usados else usados[0] if usados
+                        else out.app_id if out.app_id in conhecidos else None)
+        principal = conhecidos.get(principal_id) if principal_id else None
+        for app_id, etapa in montadas:
+            # Igual ao do plano vira None, como no plano livre e no compilador: a identidade da receita não muda.
+            etapa.app_id = app_id if app_id != principal_id else None
+        plan = Plan(summary=out.summary, app_id=principal.id if principal else None,
+                    app_package=principal.package if principal else None,
+                    parameters={p.name: p.value for p in out.parameters},
+                    success_criteria=out.success_criteria,
+                    steps=[] if faltas else [etapa for _, etapa in montadas],
+                    missing=out.missing + faltas,
+                    planner=PlannerInfo(provider=provider, model=model, simulated=False))
+    except (ValidationError, ValueError) as exc:
+        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+    plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
+    return plan
 
 
 def verdict_from_json(raw: str) -> Verdict:

@@ -8,10 +8,13 @@ o mesmo caminho da prévia por persona (ADR-044).
 Caminhos, do mais barato ao pago:
 
 1. **o texto já diz quem ou onde** ("peça para o Lucas…", "no android-03"): a prévia de sempre, sem IA;
-2. **nenhuma persona serve ao app** (ex.: QA Messenger, que não usa conta): distribuição pela carga dos servidores
+2. **nenhuma persona serve aos apps** (ex.: QA Messenger, que não usa conta): distribuição pela carga dos servidores
    (`balanceamento`), sem IA;
 3. **há personas candidatas**: uma chamada do papel `plan` escolhe quais e quantas pelo perfil (orquestração, no
    domínio) e o `resolver_alvos` põe cada uma no aparelho dela (sessão pronta → principal → balanceamento).
+
+Os apps do pedido são um CONJUNTO (item 24.5): candidata é a persona que tem, no mesmo aparelho, conta em todos os
+apps de conta dele ("leia no Outlook e curta no Instagram" pede as duas contas).
 """
 from __future__ import annotations
 
@@ -118,21 +121,24 @@ class Orquestrador:
             previa = runs.previa_de_alvos(RunTargetsResolveBody(command=comando))
             return RunTargetsSuggestion(
                 modo="texto", targets=previa.targets, questions=previa.questions,
+                app_ids=list(dict.fromkeys(a for t in previa.targets for a in t.app_ids)),
                 command_sem_destinos=previa.command_sem_destinos,
                 warnings=[*previa.warnings, *self._avisos_de_saude(previa.targets)],
                 resumo="O próprio comando diz quem faz ou onde: confira os destinos antes de executar.",
                 escolhidas=self._escolhidas_do_resolvedor(previa.targets, "citada no comando"))
         texto = destinos.command_sem_destinos
-        app = runs._app_do_comando(texto, [])  # noqa: SLF001
-        mundo = runs._mundo(app)  # noqa: SLF001
-        candidatas = self._candidatas(mundo, app)
+        # O CONJUNTO de apps do pedido (item 24.5): candidata é a persona com conta em todos os apps de conta dele.
+        apps = runs._app_do_comando(texto, [])  # noqa: SLF001
+        mundo = runs._mundo(apps)  # noqa: SLF001
+        candidatas = self._candidatas(mundo, apps)
         if not candidatas:
-            return self._sem_persona(texto, app)
+            return self._sem_persona(texto, apps, mundo)
         status = runs.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
-        cartoes = self._cartoes(candidatas, mundo, app)
-        pedido = PedidoDeOrquestracao(command=texto, app=app, cartoes=cartoes, max_personas=body.max_personas)
+        cartoes = self._cartoes(candidatas, mundo, apps)
+        pedido = PedidoDeOrquestracao(command=texto, app=", ".join(apps) or None, cartoes=cartoes,
+                                      max_personas=body.max_personas)
         try:
             bruto, usage = await runs.provider.orchestrate_targets(pedido)  # type: ignore[attr-defined]
         except AIError as exc:
@@ -146,13 +152,13 @@ class Orquestrador:
             out = normalizar(bruto, pedido)
         except OrquestracaoInvalida as exc:
             raise RunError("ai_error", str(exc), 503, {"kind": "invalid_output", "retryable": True}) from exc
-        return self._montar(out, texto, app, mundo)
+        return self._montar(out, texto, apps, mundo)
 
     # ------------------------------------------------------------------ montagem
-    def _montar(self, out: OrquestracaoOut, texto: str, app: str | None, mundo: Mundo) -> RunTargetsSuggestion:
+    def _montar(self, out: OrquestracaoOut, texto: str, apps: list[str], mundo: Mundo) -> RunTargetsSuggestion:
         nome = mundo.nome
         base = RunTargetsSuggestion(
-            modo="ia", app_id=app, command_sem_destinos=texto, resumo=out.resumo, perguntas=out.perguntas,
+            modo="ia", app_ids=apps, command_sem_destinos=texto, resumo=out.resumo, perguntas=out.perguntas,
             alerta_conduta=out.alerta_conduta or None,
             descartadas=[PersonaDescartada(profile_id=d.profile_id, nome=nome(d.profile_id), motivo=d.motivo)
                          for d in out.descartadas],
@@ -165,7 +171,7 @@ class Orquestrador:
         resolucao, _ = self.runs._resolver(texto, [], ids, [], "one", com_texto=False)  # noqa: SLF001
         onde = self._onde(resolucao)
         base.targets = [ResolvedTargetDTO(instance_id=a.instance_id, profile_id=a.profile_id, app_id=a.app_id,
-                                          origem=a.origem) for a in resolucao.alvos]
+                                          app_ids=list(a.app_ids), origem=a.origem) for a in resolucao.alvos]
         base.questions = [p.as_dict() for p in resolucao.perguntas]
         base.escolhidas = [PersonaEscolhida(profile_id=e.profile_id, nome=nome(e.profile_id), motivo=e.motivo,
                                             aderencia=e.aderencia,  # type: ignore[arg-type]
@@ -191,7 +197,7 @@ class Orquestrador:
             if texto is None:
                 continue
             if nome is None:
-                nome = self.runs._mundo(None).nome  # noqa: SLF001 - só monta o mundo quando há aviso
+                nome = self.runs._mundo().nome  # noqa: SLF001 - só monta o mundo quando há aviso
             quem = f" ({nome(a.profile_id)})" if a.profile_id else ""
             aviso = f"{a.instance_id}{quem}: {texto}"
             if aviso not in avisos:
@@ -210,43 +216,58 @@ class Orquestrador:
         return saida
 
     def _escolhidas_do_resolvedor(self, alvos: Sequence[ResolvedTargetDTO], motivo: str) -> list[PersonaEscolhida]:
-        mundo_nomes = dict(self.runs._mundo(None).nomes)  # noqa: SLF001
+        mundo_nomes = dict(self.runs._mundo().nomes)  # noqa: SLF001
         return [PersonaEscolhida(profile_id=a.profile_id, nome=mundo_nomes.get(a.profile_id, a.profile_id),
                                  motivo=motivo, aderencia="media", instance_id=a.instance_id,
                                  atencao=self._atencao(a.instance_id))
                 for a in alvos if a.profile_id]
 
-    def _sem_persona(self, texto: str, app: str | None) -> RunTargetsSuggestion:
-        """2. Nenhuma persona serve: app sem conta vai pela carga dos servidores; o resto pede decisão."""
-        sched = self.runs.scheduler
-        if app and not sched.app_exige_conta(app):
+    def _sem_persona(self, texto: str, apps: list[str], mundo: Mundo) -> RunTargetsSuggestion:
+        """2. Nenhuma persona serve: tarefa só de apps sem conta vai pela carga dos servidores; o resto pede decisão.
+
+        Entre apps (item 24.5), "sem conta" é o conjunto inteiro: basta um app de conta (o Instagram ao lado do
+        Chrome) para a tarefa precisar de uma persona. A distribuição de apps sem conta é a do modo "Distribuir" do
+        painel pelo comando (item 24.6): pelos aparelhos de QUALQUER app do pedido, não só do primeiro citado (que
+        dependeria da ordem do texto); os alvos levam o conjunto."""
+        de_conta = [a for a in apps if a not in mundo.sem_conta]
+        if apps and not de_conta:
             m = _APARELHOS_NO_TEXTO.search(texto)
             quantos = max(1, min(64, int(m.group(1)))) if m else 1
-            previa = self.runs.previa_de_distribuicao(DistributeSpec(count=quantos, app_id=app))
-            alvos = [ResolvedTargetDTO(instance_id=p.instance_id, app_id=app, origem="balanceamento")
+            previa = self.runs.previa_de_distribuicao(DistributeSpec(count=quantos), app_ids=apps)
+            alvos = [ResolvedTargetDTO(instance_id=p.instance_id, app_ids=apps, origem="balanceamento")
                      for p in previa.picks]
             return RunTargetsSuggestion(
-                modo="distribuir", app_id=app, command_sem_destinos=texto, targets=alvos,
+                modo="distribuir", app_ids=apps, command_sem_destinos=texto, targets=alvos,
                 warnings=[*previa.reasons, *self._avisos_de_saude(alvos)],
                 resumo=(f"Tarefa sem conta: {len(previa.picks)} aparelho(s) escolhido(s) pela carga dos servidores "
                         f"({', '.join(f'{k}: {v}' for k, v in previa.per_server.items()) or 'nenhum disponível'})."))
-        if app is None:
+        if not apps:
             return RunTargetsSuggestion(
                 modo="nenhuma", command_sem_destinos=texto,
                 perguntas=["O sistema não identificou o app da tarefa e nenhuma persona tem aparelho disponível. Diga "
                            "o app no comando (ou use “Refinar com IA”), ou escolha manualmente."])
+        if len(de_conta) == 1:
+            aviso = (f"O app {de_conta[0]} exige conta, e nenhuma persona com conta nele tem aparelho disponível "
+                     "agora.")
+        else:
+            aviso = (f"Os apps {', '.join(de_conta)} exigem conta, e nenhuma persona com conta em todos eles tem "
+                     "aparelho disponível agora (o mesmo aparelho precisa servir às contas de todos).")
         return RunTargetsSuggestion(
-            modo="nenhuma", app_id=app, command_sem_destinos=texto,
-            warnings=[f"O app {app} exige conta, e nenhuma persona com conta nele tem aparelho disponível agora. "
-                      "Vincule uma persona a um aparelho (Personas → a pessoa → Aparelhos) ou aguarde liberar."])
+            modo="nenhuma", app_ids=apps, command_sem_destinos=texto,
+            warnings=[f"{aviso} Vincule uma persona a um aparelho (Personas → a pessoa → Aparelhos) ou aguarde "
+                      "liberar."])
 
     # ------------------------------------------------------------------ candidatas e cartões
     @staticmethod
-    def _candidatas(mundo: Mundo, app: str | None) -> dict[str, list[str]]:
-        """Persona → aparelhos APTOS dela que servem ao app (sem app identificado, todos os aptos dela)."""
+    def _candidatas(mundo: Mundo, apps: list[str]) -> dict[str, list[str]]:
+        """Persona → aparelhos APTOS dela que servem ao pedido (sem app identificado, todos os aptos dela).
+
+        Item 24.5: servir é ter, NAQUELE aparelho, conta em todos os apps de conta do pedido (`Mundo.serve`, pela
+        união dos vínculos do par). A persona só com Instagram não é candidata a "leia no Outlook e curta no
+        Instagram"; app sem conta (Chrome) não tira ninguém."""
         saida: dict[str, list[str]] = {}
         for v in mundo.vinculos:
-            if v.instance_id not in mundo.aptos or (app and app not in v.apps):
+            if v.instance_id not in mundo.aptos or (apps and not mundo.serve(v.profile_id, v.instance_id, apps)):
                 continue
             lista = saida.setdefault(v.profile_id, [])
             if v.instance_id not in lista:
@@ -262,7 +283,7 @@ class Orquestrador:
             " WHERE r.status IN ('running','paused') AND o.status IN ('pending','running')"
             " AND o.profile_id IS NOT NULL GROUP BY o.profile_id")}
 
-    def _cartoes(self, candidatas: dict[str, list[str]], mundo: Mundo, app: str | None) -> list[CartaoDePersona]:
+    def _cartoes(self, candidatas: dict[str, list[str]], mundo: Mundo, apps: list[str]) -> list[CartaoDePersona]:
         sched = self.runs.scheduler
         com_trabalho = self.runs.repo.instances_with_open_work() | set(sched.workers)
         fila = self._fila_por_persona()
@@ -294,7 +315,8 @@ class Orquestrador:
             # Saúde dos aparelhos aptos (o aviso do cartão: convidado sob pressão, sem internet…). A sugestão de
             # r-20260928165254-e31953 escolheu o android-06 saturado sem ver o aviso que o cartão dele já mostrava.
             atencoes = {iid: texto for iid in aparelhos if (texto := self._atencao(iid))}
-            partes = [f"{len(aparelhos)} aparelho(s) com o app" if app else f"{len(aparelhos)} aparelho(s)",
+            partes = [f"{len(aparelhos)} aparelho(s) com " + ("os apps" if len(apps) > 1 else "o app") if apps
+                      else f"{len(aparelhos)} aparelho(s)",
                       f"{ligados} ligado(s)", f"{prontas} com sessão pronta"]
             if atencoes:
                 partes.insert(0, f"atenção em {', '.join(atencoes)}")

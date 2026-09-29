@@ -66,9 +66,10 @@ Regras do plano:
   required_delivery_level conforme o pedido: "apareceu"=appeared, "enviada"=sent, "entregue"=delivered, "lida"=read.
 - depends_on só pode citar etapas anteriores. Respeite o limite de etapas informado. timeout_s entre 30 e 300.
 - `key` de etapa: minúsculas, dígitos e sublinhado (ex.: open_app, open_conversation, send_message).
-- Se o comando envolver MAIS DE UM app (ex.: ler um código no Outlook e usá-lo no Instagram), `app_id` do plano
-  é o app principal e CADA etapa diz em `app_id` o app em que roda (abrir o outro app é uma etapa dele). Comando
-  de um app só: `app_id` da etapa fica null.
+- Se o comando envolver MAIS DE UM app (ex.: ler o assunto do último e-mail e procurar no Instagram o perfil
+  citado), `app_id` do plano é o app principal e CADA etapa diz em `app_id` o app em que roda (abrir o outro app é
+  uma etapa dele). Comando de um app só: `app_id` da etapa fica null. Código de verificação, senha ou token lido
+  num app NUNCA é usado em outro: não planeje isso; devolva `missing` dizendo que essa etapa fica com a pessoa.
 - Site ou endereço web: o app é o navegador configurado (ex.: chrome) e a primeira etapa abre o endereço escrito no
   comando (o executor usa open_url e só aceita endereço que está no comando; não invente nem complete endereço).
 - Login pedido no comando: se a lista de dados da persona traz a senha da conta daquele app ou site (nome terminado
@@ -127,6 +128,52 @@ Regras:
 - Respeite o limite de etapas informado. `success_criteria` diz, em português, o que comprova o objetivo.
 - Guarde em `parameters` os valores extraídos do comando que valem para todos os aparelhos. Texto a ser escrito
   NÃO entra aqui: ele é de cada perfil, não da execução.
+
+{UNTRUSTED_RULE}
+{CONDUCT_RULE}"""
+
+
+def _trecho(texto: str, de: str, ate: str) -> str:
+    """O trecho de `texto` que começa em `de` e para antes de `ate`. Marcador que sumiu falha AQUI, na importação."""
+    inicio = texto.index(de)
+    return texto[inicio:texto.index(ate, inicio)].rstrip()
+
+
+# As regras de cada tipo de etapa, RECORTADAS dos dois planejadores de sempre para o planejamento entre apps (item
+# 24.1): uma regra, um texto. Recortadas, e não o contrário (os sistemas montados de pedaços), porque assim
+# `PLANNER_SYSTEM` e `PLANNER_CAPABILITY_SYSTEM` seguem sendo o mesmo literal de antes, byte a byte
+# (`test_prompts_licoes.py`). Fica de fora do recorte o que é só do plano livre: qual app usar e o exemplo de dois
+# apps (o exemplo é permitido: nenhum código, senha ou token atravessa etapas — item 24.8).
+_REGRAS_DA_ETAPA_LIVRE = _trecho(PLANNER_SYSTEM, "- Etapas são OBJETIVOS", "- Se o comando envolver MAIS DE UM app")
+_REGRAS_DE_SITE_E_LOGIN = _trecho(PLANNER_SYSTEM, "- Site ou endereço web", "- O aplicativo precisa ser")
+_REGRAS_DO_CATALOGO = _trecho(PLANNER_CAPABILITY_SYSTEM, "- Use somente as ações listadas", UNTRUSTED_RULE)
+
+#: Item 24.1 (ADR-058, decisão 1): o comando que atravessa apps. Antes, citar outro app derrubava o catálogo do app
+#: que tinha um (o plano ia livre, e a porta de política recusava o efeito sem ação); agora cada etapa diz o app dela
+#: e segue a regra DAQUELE app.
+PLANNER_MULTIAPP_SYSTEM = f"""Você é o planejador de um sistema que automatiza aplicativos Android pela interface.
+Recebe um comando em português que pode atravessar MAIS DE UM aplicativo e produz UMA receita de alto nível,
+reutilizável em cada aparelho selecionado. Cada etapa roda em UM app, dito em `app_id` (o `id` da lista de apps).
+
+Como é cada etapa:
+- App COM catálogo de ações: a etapa é UMA ação do catálogo DAQUELE app, com `capability` = o nome exato e os
+  argumentos em `bindings`; `livre` = null. Título, objetivo, pós-condição e guardas são do sistema. Nunca escreva
+  etapa livre num app com catálogo: se nenhuma ação dele cobre o pedido, devolva `steps` vazio e pergunte em
+  `missing`.
+- App SEM catálogo: a etapa é LIVRE, com `capability` = null, `bindings` = [] e `livre` preenchido (título,
+  objetivo, pós-condição, side_effect, commit_guard, precondition, timeout_s, max_attempts).
+- Use só os apps listados, e só os que o comando precisa: app que o pedido não usa fica fora do plano. Não crie
+  etapa só para trocar de app: cada etapa é conduzida no app dela. `depends_on` pode citar etapa de outro app.
+- `app_id` do plano é o app principal: o do resultado que o comando pede.
+- Código de verificação, senha ou token lido num app NUNCA é usado em outro (ex.: código de login recebido por
+  e-mail): não planeje isso; devolva `missing` dizendo que essa etapa fica com a pessoa.
+
+Regras das etapas LIVRES:
+{_REGRAS_DA_ETAPA_LIVRE}
+{_REGRAS_DE_SITE_E_LOGIN}
+
+Regras das AÇÕES DO CATÁLOGO:
+{_REGRAS_DO_CATALOGO}
 
 {UNTRUSTED_RULE}
 {CONDUCT_RULE}"""
@@ -352,6 +399,29 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
+
+
+def planner_multiapp_user(req: PlanRequest, max_steps: int) -> str:
+    """Item 24.1: os apps que o plano pode usar, cada um com a sua regra — os de `req.catalogs` com as ações (sem
+    dicas nem seletores: o planejador escolhe ação, não toque) e os demais de `req.apps` como apps de etapa livre."""
+    por_id = {a.id: a for a in req.apps}
+    com_catalogo = []
+    for app_id, catalogo in req.catalogs.items():
+        app = por_id.get(app_id)
+        nome = f" | nome: {app.name}" if app and app.name else ""
+        acoes = "\n".join(f"  {linha}" for linha in catalogo.prompt_block().splitlines())
+        com_catalogo.append(f"- id: {app_id}{nome} | package: {catalogo.package}\n  ações:\n{acoes}")
+    livres = "\n".join(_app_block(a) for a in req.apps if a.id not in req.catalogs) or "(nenhum)"
+    insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'} app={i.get('app_id') or '—'}"
+                      for i in req.instances)
+    return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
+            f"run_id desta execução: {req.run_id}\n\n"
+            "Apps COM catálogo (etapa = uma ação do app, pelo nome exato):\n" + "\n".join(com_catalogo) + "\n\n"
+            f"Apps SEM catálogo (etapa livre):\n{livres}\n\n"
+            f"{licoes_block(req.lessons)}"
+            f"{dados_block(req.available_data)}\n\n"
+            f"Aparelhos selecionados ({len(req.instances)}; app = o da conta do aparelho):\n{insts}\n\n"
+            f"Limite de etapas: {max_steps}. Produza o plano: cada etapa no app dela.")
 
 
 def step_block(ctx: StepContext, *, for_actor: bool = False) -> str:

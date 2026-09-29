@@ -31,16 +31,24 @@ Politica = Literal["one", "primary", "all"]
 
 @dataclass(frozen=True, slots=True)
 class AlvoResolvido:
-    """Um aparelho da execução, a persona que age nele e DE ONDE veio a escolha (a prévia mostra a origem)."""
+    """Um aparelho da execução, a persona que age nele e DE ONDE veio a escolha (a prévia mostra a origem).
+
+    `app_ids` é o CONJUNTO de apps que a tarefa usa naquele alvo (item 24.5, contrato C5); `app_id` é o primeiro.
+    """
 
     instance_id: str
     profile_id: str | None
     app_id: str | None = None
     origem: Origem = "ui"
+    app_ids: tuple[str, ...] = ()
 
-    def as_dict(self) -> dict[str, str | None]:
+    def as_dict(self) -> dict[str, object]:
         return {"instance_id": self.instance_id, "profile_id": self.profile_id, "app_id": self.app_id,
-                "origem": self.origem}
+                "app_ids": list(self.app_ids), "origem": self.origem}
+
+
+def _sem_repetir(ids: Iterable[str | None]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(i for i in ids if i))
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +93,13 @@ class PedidoDeAlvos:
     device_policy: Politica = "one"
     #: O app que o comando usa, quando se sabe (a habilidade casada declara); desempata personas num aparelho.
     app_id: str | None = None
+    #: Item 24.5: o CONJUNTO de apps do comando (entre apps: Outlook e Instagram). `app_id`, quando vem, é o primeiro.
+    app_ids: tuple[str, ...] = ()
+
+    @property
+    def apps(self) -> tuple[str, ...]:
+        """`app_id` e `app_ids` juntos, sem repetir: quem só passa um dos dois (o caminho de antes) segue valendo."""
+        return _sem_repetir((self.app_id, *self.app_ids))
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +147,10 @@ class Mundo:
     desempatar: Callable[[Sequence[str]], str | None] = _primeiro
     #: Nome para as perguntas (`profile_id` → nome da persona); sem ele, o id.
     nomes: tuple[tuple[str, str], ...] = ()
+    #: Item 24.5: apps do comando que NÃO usam conta (Chrome, QA Messenger): ninguém "serve" a eles por vínculo, então
+    #: num conjunto com um app de conta eles não contam em `serve` (ver `relevantes`). Vazio = todo app conta, que é
+    #: exatamente a regra de antes para um app só.
+    sem_conta: frozenset[str] = frozenset()
 
     def nome(self, profile_id: str) -> str:
         return dict(self.nomes).get(profile_id, profile_id)
@@ -148,9 +167,22 @@ class Mundo:
     def personas_em(self, instance_id: str) -> list[str]:
         return list(dict.fromkeys(v.profile_id for v in self.vinculos if v.instance_id == instance_id))
 
-    def serve(self, profile_id: str, instance_id: str, app_id: str) -> bool:
-        return any(v.profile_id == profile_id and v.instance_id == instance_id and app_id in v.apps
-                   for v in self.vinculos)
+    def relevantes(self, app_ids: str | Iterable[str]) -> tuple[str, ...]:
+        """Dos apps do comando, os que pedem conta da persona. Nenhum pede (o conjunto é só de apps sem conta): o
+        próprio conjunto, e aí a regra é a de antes (`app in v.apps`, que nesses apps quase nunca vale)."""
+        apps = _sem_repetir([app_ids] if isinstance(app_ids, str) else app_ids)
+        return tuple(a for a in apps if a not in self.sem_conta) or apps
+
+    def serve(self, profile_id: str, instance_id: str, app_ids: str | Iterable[str]) -> bool:
+        """A persona tem, NESTE aparelho, vínculo com todos os apps de conta do comando (item 24.5).
+
+        Os apps de um par são a UNIÃO dos vínculos dele: um vínculo por app (o do Instagram e o do Outlook no mesmo
+        aparelho) serve o comando entre os dois. Um app só (a chamada de antes, com `str`) é o caso de um elemento.
+        Conjunto vazio: basta o vínculo.
+        """
+        do_par = [v for v in self.vinculos if v.profile_id == profile_id and v.instance_id == instance_id]
+        servidos = {a for v in do_par for a in v.apps}
+        return bool(do_par) and all(a in servidos for a in self.relevantes(app_ids))
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +193,12 @@ class Resolucao:
     @property
     def instance_ids(self) -> list[str]:
         return [a.instance_id for a in self.alvos]
+
+    @property
+    def app_ids(self) -> list[str]:
+        """Os apps da execução (item 24.5): a união dos apps de cada alvo, na ordem. É o que o pré-voo, a mistura e a
+        compatibilidade conferem, sem repetir o casamento de habilidade que já produziu o conjunto."""
+        return list(_sem_repetir(a for alvo in self.alvos for a in alvo.app_ids))
 
 
 @dataclass(slots=True)
@@ -174,15 +212,16 @@ def _lista(ids: Iterable[str]) -> str:
 
 
 # ================================================================== persona dentro de um aparelho
-def _persona_no_aparelho(mundo: Mundo, instance_id: str, app_id: str | None,
+def _persona_no_aparelho(mundo: Mundo, instance_id: str, app_ids: tuple[str, ...],
                          estado: _Estado) -> str | None | Literal[False]:
     """Quem age no aparelho dado pela interface. 0 personas → nenhuma (QA, caminho antigo); 1 → ela (casos A e B);
-    2+ → a única que serve ao app do comando (caso C) ou PERGUNTA (caso D). `False` = virou pergunta."""
+    2+ → a única que serve aos apps do comando (caso C; entre apps, a TODOS os de conta) ou PERGUNTA (caso D).
+    `False` = virou pergunta."""
     personas = mundo.personas_em(instance_id)
     if len(personas) <= 1:
         return _primeiro(personas)
-    if app_id is not None:
-        servem = [p for p in personas if mundo.serve(p, instance_id, app_id)]
+    if app_ids:
+        servem = [p for p in personas if mundo.serve(p, instance_id, app_ids)]
         if len(servem) == 1:
             return servem[0]
     estado.perguntas.append(Pergunta(
@@ -307,6 +346,8 @@ def _por_persona(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo, estad
     usados_pelo_texto: set[str] = set()
     for t in base:
         p = t.profile_id
+        # Os apps DESTE alvo: o da conta que a interface disse (quando disse) à frente, e o conjunto do comando.
+        apps = _sem_repetir((t.app_id, *pedido.apps))
         candidatos = mundo.aparelhos_de(p)
         if not candidatos:
             raise RecusaDeAlvo("no_binding", f"{mundo.nome(p)} não está vinculada a nenhum aparelho.")
@@ -326,9 +367,10 @@ def _por_persona(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo, estad
                     raise RecusaDeAlvo("sem_intersecao",
                                        f"Nenhum dos aparelhos escolhidos ({_lista(pedido.instance_ids)}) é de "
                                        f"{mundo.nome(p)} (vinculada a {_lista(candidatos)}).")
-            app = t.app_id or pedido.app_id
-            if app is not None:
-                pool = [d for d in pool if mundo.serve(p, d, app)] or pool
+            if apps:
+                # Entre apps, o aparelho que serve a TODOS os apps de conta do comando (item 24.5); nenhum serve: a
+                # lista inteira, como antes — a porta de sessão de cada app diz o que falta, com o motivo.
+                pool = [d for d in pool if mundo.serve(p, d, apps)] or pool
         estreitou_aparelho = False
         if aparelhos_texto:
             citados = [d for d in aparelhos_texto if d in pool]
@@ -345,7 +387,7 @@ def _por_persona(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo, estad
         for d, origem in escolhas:
             if estreitou_persona or estreitou_aparelho:
                 origem = "texto"
-            estado.alvos.append(AlvoResolvido(d, p, t.app_id or pedido.app_id, origem))
+            estado.alvos.append(AlvoResolvido(d, p, _primeiro(apps), origem, apps))
     for d in aparelhos_texto:
         if d not in usados_pelo_texto:
             estado.perguntas.append(Pergunta(
@@ -381,8 +423,8 @@ def _por_aparelho(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo, esta
             pid: str | None = preferidas[0]
             origem_d: Origem = "texto" if len(mundo.personas_em(d)) > 1 else origem
         else:
-            escolhida = _persona_no_aparelho(mundo, d, pedido.app_id, estado)
+            escolhida = _persona_no_aparelho(mundo, d, pedido.apps, estado)
             if escolhida is False:
                 continue
             pid, origem_d = escolhida, origem
-        estado.alvos.append(AlvoResolvido(d, pid, pedido.app_id, origem_d))
+        estado.alvos.append(AlvoResolvido(d, pid, _primeiro(pedido.apps), origem_d, pedido.apps))

@@ -169,8 +169,9 @@ class Scheduler:
         self.app_resolver: Callable[[DeviceRuntime, str, Any], tuple[str, Callable[[], Any] | None] | None] | None = None
         # Pré-voo do APP, sem efeito nenhum: `{code, motivo, acao}` quando o aplicativo daquele aparelho impede a
         # tarefa e só uma pessoa resolve; `None` quando não impede — inclusive quando não se sabe. Serve à recusa
-        # explicada ANTES de planejar, e por isso é síncrona e não toca em aparelho. Injetado pelo AppState.
-        self.app_preflight: Callable[[DeviceRuntime], dict[str, str] | None] | None = None
+        # explicada ANTES de planejar, e por isso é síncrona e não toca em aparelho. Injetado pelo AppState. O segundo
+        # argumento são os pacotes da tarefa além do principal (item 24.5: o comando entre apps confere cada um).
+        self.app_preflight: Callable[[DeviceRuntime, Sequence[str]], dict[str, str] | None] | None = None
         # Entrega imediata ("instalar em todos agora"): [(aparelho, trabalho)] ainda por entregar. É uma SEGUNDA fonte
         # de demanda para o MESMO rodízio e o MESMO dono por aparelho — não um mecanismo paralelo. Injetado pelo AppState.
         self.rollout_source: Callable[[], list[tuple[str, Callable[[], Any]]]] | None = None
@@ -528,7 +529,9 @@ class Scheduler:
 
         - **Compatível** = mesmo app, e versão/assinatura/variante que não se contradizem (ver
           `_chave_de_compatibilidade`): um aparelho com OUTRA versão conhecida vira líder do próprio grupo, em vez de
-          esperar um caminho cuja receita não serviria para ele.
+          esperar um caminho cuja receita não serviria para ele. Num item que atravessa apps (item 24.5), a chave
+          é a de CADA app das etapas que faltam: outra versão do Outlook já separa os grupos, mesmo com o mesmo
+          Instagram — a receita do Outlook que o líder aprender não serviria.
         - **Caminho já aberto**: se toda etapa que falta deste objetivo já tem receita ativa para a chave dele, ninguém
           precisa esperar ninguém — nem vira líder. Esperar ali era só latência (antes: o parque inteiro em fila atrás
           do primeiro, em todo comando repetido).
@@ -543,12 +546,14 @@ class Scheduler:
             if oid in self._esperas:
                 self._fim_da_espera(oid, "liberado")
             return False
-        pacote = next(iter(pacotes or []), None)
-        chave = self._chave_de_compatibilidade(rt, pacote)
+        # Uma chave por app das etapas que faltam (antes, só a do primeiro pacote): compatível é compatível em todos.
+        do_item = list(pacotes or []) or [None]
+        chaves = [self._chave_de_compatibilidade(rt, p) for p in do_item]
         grupos = self._pathfinders.setdefault(obj["run_id"], [])
         if any(g.instance_id == rt.id for g in grupos):
             return False                                   # é o próprio desbravador do seu grupo
-        lider = next((g for g in grupos if _compativeis(chave, self._chave_do_lider(g, pacote))), None)
+        lider = next((g for g in grupos
+                      if all(_compativeis(c, self._chave_do_lider(g, p)) for c, p in zip(chaves, do_item))), None)
         if lider is None:
             if not self._caminho_ja_aberto(obj, rt):
                 self._candidatos[oid] = (obj["run_id"], _Desbravador(rt.id, oid, self.relogio()))

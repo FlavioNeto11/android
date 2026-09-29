@@ -48,7 +48,9 @@ SNAPSHOT = {
 }
 SISTEMAS = {
     "ACTOR_SYSTEM": "01213cab707733b586654caa1041e4ba4ee808952d4311482c73e52f59981261",
-    "PLANNER_SYSTEM": "343c599f7f4da264c5597e61e4a6d5e628850c59aac9322f758c597aacbbbbac",
+    # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
+    # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
+    "PLANNER_SYSTEM": "e0df6115069028bf91bf532de09f64ae50bf152fa484a4b498f4ac8d2a6a6cf3",
     "PLANNER_CAPABILITY_SYSTEM": "41bec0c6cc8a591ddf23bcfa28e9e6ba91074c6f05b0bbf1e7d7e1a9030c25cd",
     "VERIFIER_SYSTEM": "8f0add0bef48fb5853f5c02f8fe8debe825cc3fd7d080f59a30633dc7859aefe",
 }

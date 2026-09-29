@@ -4,8 +4,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Approval, Evidence, RunDetail, UsageReport } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
-import { ACTION, ATTEMPT, RUN_ID, makeRunDetail } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { useAppStore } from '../../store/app';
+import { ACTION, APPS, ATTEMPT, RUN_ID, makeRunDetail } from '../../test/fixtures';
+import {
+  FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, openDetails, setValue, text, waitFor,
+} from '../../test/harness';
 import { InstancesTab } from './InstancesTab';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
@@ -17,18 +20,6 @@ let backend: FakeBackend;
 async function render(node: ReactNode): Promise<HTMLElement> {
   await act(async () => root.render(node));
   return container;
-}
-
-/** jsdom não abre <details> com clique no <summary>: abre e avisa o React como o navegador faria. */
-async function openDetails(summaryText: RegExp, scope: ParentNode = document): Promise<HTMLDetailsElement> {
-  const summary = Array.from(scope.querySelectorAll('summary')).find((s) => summaryText.test(s.textContent ?? ''));
-  if (!summary) throw new Error(`Nenhum <summary> com ${String(summaryText)}`);
-  const details = summary.parentElement as HTMLDetailsElement;
-  await act(async () => {
-    details.open = true;
-    details.dispatchEvent(new Event('toggle'));
-  });
-  return details;
 }
 
 beforeAll(() => installBrowserStubs());
@@ -109,6 +100,44 @@ describe('Por aparelho — selos de receita e rodízio', () => {
     expect(text(actions[0]!)).toContain('Passo gravado na receita'); // sem rationale, mas veio da receita
     expect(text(actions[1]!)).toContain('Tocar em Enviar');
     expect(text(actions[1]!)).not.toMatch(/\breceita\b/);
+  });
+});
+
+describe('App de cada etapa — comando entre apps (item 24.6, ADR-058)', () => {
+  /** A etapa "send" de android-01 roda em outro app (`notes`) — o plano inteiro continua sendo `qa`. */
+  function detailComOutroApp(): RunDetail {
+    const base = makeRunDetail();
+    const [openApp, send, openApp2, send2] = base.steps;
+    return { ...base, steps: [openApp!, { ...send!, app_id: 'notes' }, openApp2!, send2!] };
+  }
+
+  it('cabeçalho da etapa em outro app ganha o selo "app: <nome>"; a do app do plano, não', async () => {
+    useAppStore.setState({ apps: APPS });
+    const el = await render(<InstancesTab detail={detailComOutroApp()} />);
+    await click(byRole('button', /android-01/, el));
+    const steps01 = allByRole('button', /.*/, el)
+      .filter((b) => b.getAttribute('aria-controls')?.startsWith(`step-body-${RUN_ID}:android-01:`));
+    expect(steps01).toHaveLength(2);
+    expect(text(steps01[0]!)).not.toContain('app:');            // open_app: sem app_id próprio, é o do plano
+    expect(text(steps01[1]!)).toContain('app: Notas');           // send: app_id = 'notes', diferente do plano ('qa')
+  });
+
+  it('"Detalhes técnicos" da etapa mostra o app resolvido — o da etapa quando há, senão o do plano', async () => {
+    useAppStore.setState({ apps: APPS });
+    const el = await render(<InstancesTab detail={detailComOutroApp()} />);
+    await click(byRole('button', /android-01/, el));
+    const sendBtn = allByRole('button', /.*/, el)
+      .find((b) => b.getAttribute('aria-controls') === `step-body-${RUN_ID}:android-01:v1:send`);
+    await click(sendBtn!);
+    const openBtn = allByRole('button', /.*/, el)
+      .find((b) => b.getAttribute('aria-controls') === `step-body-${RUN_ID}:android-01:v1:open_app`);
+    await click(openBtn!);
+    const corpoSend = document.getElementById(`step-body-${RUN_ID}:android-01:v1:send`)!;
+    const corpoOpen = document.getElementById(`step-body-${RUN_ID}:android-01:v1:open_app`)!;
+    await openDetails(/Detalhes técnicos/, corpoSend);
+    await openDetails(/Detalhes técnicos/, corpoOpen);
+    expect(text(corpoSend)).toContain('Notas');       // app da própria etapa
+    expect(text(corpoOpen)).toContain('QA Messenger'); // sem app_id: cai no app do plano
   });
 });
 

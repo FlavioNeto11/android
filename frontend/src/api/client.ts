@@ -445,8 +445,10 @@ export const api = {
   getServerLimits: () => request<ServerLimits[]>('GET', '/servers/limits'),
   putServerLimits: (workerId: string, patch: ServerLimitsPatch) =>
     request<ServerLimits>('PUT', `/servers/${enc(workerId)}/limits`, { body: patch }),
-  previewDistribution: (count: number, appId: string, signal?: AbortSignal) =>
-    request<DistributionPreview>('GET', '/runs/distribution', { query: { count, app_id: appId }, signal }),
+  /** Item 24.6: pelo app escolhido (`appId`) ou, sem ele, pelos apps que o `command` usa. */
+  previewDistribution: (count: number, alvo: { appId?: string; command?: string }, signal?: AbortSignal) =>
+    request<DistributionPreview>('GET', '/runs/distribution', {
+      query: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
   /** Saldo estimado das contas de IA (ADR-051) e os dois ajustes: nova leitura do console e limites. */

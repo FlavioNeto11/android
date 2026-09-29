@@ -1,7 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../api/client';
-import type { TargetQuestion } from '../../api/types';
-import { ecoDosAlvos, recusaDosAlvos, responder } from './alvos';
+import type { ResolvedTarget, TargetQuestion } from '../../api/types';
+import { appsDoAlvo, ecoDosAlvos, recusaDosAlvos, responder } from './alvos';
+
+const CATALOGO = [{ id: 'instagram', name: 'Instagram' }, { id: 'outlook', name: 'Outlook' }];
+
+function alvo(over: Partial<ResolvedTarget> = {}): ResolvedTarget {
+  return { instance_id: 'android-01', profile_id: null, app_id: null, origem: 'ui', ...over };
+}
+
+/** Item 24.6 (contrato C5): a prévia mostra o CONJUNTO de apps de um alvo, não um só. */
+describe('appsDoAlvo', () => {
+  it('nomeia pelo catálogo, na ordem de `app_ids`', () => {
+    expect(appsDoAlvo(alvo({ app_id: 'instagram', app_ids: ['instagram', 'outlook'] }), CATALOGO))
+      .toEqual(['Instagram', 'Outlook']);
+  });
+
+  it('sem `app_ids` (alvo do detail de uma recusa, ADR-058): cai no `app_id` sozinho', () => {
+    expect(appsDoAlvo(alvo({ app_id: 'instagram', app_ids: undefined }), CATALOGO)).toEqual(['Instagram']);
+  });
+
+  it('app fora do catálogo carregado: mostra o próprio id, nunca inventa nome', () => {
+    expect(appsDoAlvo(alvo({ app_id: 'tiktok', app_ids: ['tiktok'] }), CATALOGO)).toEqual(['tiktok']);
+  });
+
+  it('alvo sem app algum: lista vazia', () => {
+    expect(appsDoAlvo(alvo(), CATALOGO)).toEqual([]);
+  });
+});
 
 /** A regra do eco e das respostas, sem tela (adendo v0.29, ADR-044). Prova `simulated`. */
 describe('ecoDosAlvos', () => {

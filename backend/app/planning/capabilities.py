@@ -301,18 +301,28 @@ def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[li
     steps: list[PlanStep] = []
     missing: list[MissingInfo] = []
     for node in herdar_argumentos(catalog, nodes):
-        try:
-            steps.append(catalog.build_step(node))
-        except UnknownCapability:
-            disponiveis = ", ".join(c.key for c in catalog.offered)
-            missing.append(MissingInfo(
-                field="capability",
-                question=(f"A ação '{node.capability}' não existe para este aplicativo. "
-                          f"As disponíveis são: {disponiveis}. Como devo fazer isso?")))
-        except MissingBinding as exc:
-            missing.append(MissingInfo(field=node.capability.lower(),
-                                       question=f"Falta informação para a etapa '{node.key}': {exc}."))
+        step, falta = montar_etapa(catalog, node)
+        if step is not None:
+            steps.append(step)
+        if falta is not None:
+            missing.append(falta)
     return steps, missing
+
+
+def montar_etapa(catalog: CapabilityCatalog, node: CapabilityNode) -> tuple[PlanStep | None, MissingInfo | None]:
+    """Uma etapa do catálogo, ou a PERGUNTA que ela vira. O `compose` e o planejamento entre apps (item 24.1, que
+    monta cada etapa pelo catálogo do app dela) usam a mesma, para a pergunta ser a mesma nos dois caminhos."""
+    try:
+        return catalog.build_step(node), None
+    except UnknownCapability:
+        disponiveis = ", ".join(c.key for c in catalog.offered)
+        return None, MissingInfo(
+            field="capability",
+            question=(f"A ação '{node.capability}' não existe para este aplicativo. "
+                      f"As disponíveis são: {disponiveis}. Como devo fazer isso?"))
+    except MissingBinding as exc:
+        return None, MissingInfo(field=node.capability.lower(),
+                                 question=f"Falta informação para a etapa '{node.key}': {exc}.")
 
 
 def herdar_argumentos(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> list[CapabilityNode]:

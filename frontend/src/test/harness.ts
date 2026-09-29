@@ -193,6 +193,19 @@ export async function click(el: Element, init: MouseEventInit = {}): Promise<voi
   });
 }
 
+/** jsdom não abre `<details>` (o `Disclosure`) com clique no `<summary>`: abre e avisa o React como o navegador
+ *  faria. `scope` restringe quando a mesma legenda aparece em mais de um `Disclosure` na tela (ex.: uma por etapa). */
+export async function openDetails(summaryText: RegExp, scope: ParentNode = document): Promise<HTMLDetailsElement> {
+  const summary = Array.from(scope.querySelectorAll('summary')).find((s) => summaryText.test(s.textContent ?? ''));
+  if (!summary) throw new Error(`Nenhum <summary> com ${String(summaryText)}`);
+  const details = summary.parentElement as HTMLDetailsElement;
+  await act(async () => {
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  return details;
+}
+
 /** Define o valor de um <input>/<textarea>/<select> controlado pelo React. */
 export async function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): Promise<void> {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;

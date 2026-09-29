@@ -133,6 +133,130 @@ em vez de plano ([acima](#a-pergunta-da-resolve-needs_input)).
 - Skill que casa e não compila **não cai para o fluxo nem para o planejador**: vai a `needs_input`, com os
   `CompileIssue` no evento `log` (`data.issues`, via `as_dict()`).
 
+### O planejador: livre, por catálogo ou entre apps (item 24.1, ADR-058)
+
+Quando nada casa, `RunService._catalogos` escolhe o que vai ao planejador. Os **candidatos** são os apps dos aparelhos
+mais os apps que o comando cita fora das aspas, pelo nome do cadastro ou pelo rótulo do manifesto
+(`planning/apps_do_comando.py::apps_citados`). "No Outlook" acha o cadastro "Microsoft Outlook".
+
+| Situação | Planejador | O que recebe |
+|---|---|---|
+| nenhum candidato tem catálogo | livre (`PLANNER_SYSTEM`) | todos os apps; `catalog` e `catalogs` vazios |
+| um candidato só, com catálogo, sem site pedido | por catálogo (`PLANNER_CAPABILITY_SYSTEM`), como antes | `catalog` do app |
+| o comando cita outro app ou pede um site (`pede_site`), e algum candidato tem catálogo | **entre apps** (`PLANNER_MULTIAPP_SYSTEM`) | `catalogs = {app_id: catálogo}` de todos os candidatos com catálogo; `apps` com esses e os apps sem catálogo |
+
+- **Antes do 24.1**, citar outro app ou um site punha o plano inteiro no caminho livre: a etapa com efeito no
+  Instagram saía sem ação do catálogo, e a porta de política a recusava (R1, R2).
+- **O app do aparelho é candidato mesmo quando o comando cita outro.** "Leia o e-mail no Outlook e curta o post de
+  @x" não nomeia o Instagram e precisa dele.
+- **Um app com catálogo que não é candidato fica fora de `apps`**, para não virar app de etapa livre.
+- **No entre apps, cada etapa diz o seu `app_id`** (`parsing.py::_MultiPlanOut`), e `catalog_plan_from_json` a
+  monta pelo app dela:
+  - num app com catálogo, é **ação do catálogo daquele app** (`capabilities.py::montar_etapa`). A herança de
+    argumento (`herdar_argumentos`) roda por app, então a legenda de um post não passa para outro app;
+  - num app sem catálogo, é **etapa livre** (`livre`), com as mesmas regras e limites do plano livre (`_etapa_livre`);
+  - etapa livre num app com catálogo, app fora da lista, ação que não existe e etapa sem descrição viram
+    **pergunta** (`missing`) e zeram as etapas, como no `compose`. A regra da porta de política não muda (T19).
+- **O app do plano** é o principal que o modelo disse, se alguma etapa roda nele; senão, o da primeira etapa. Etapa
+  no app do plano fica com `app_id` nulo, como no plano livre e no compilador de skills.
+- **O prompt entre apps** reusa, recortados, os trechos de regra dos dois planejadores de sempre (`prompts.py::_trecho`).
+  `PLANNER_SYSTEM` e `PLANNER_CAPABILITY_SYSTEM` seguem iguais byte a byte, e o custo dos comandos de um app só não
+  muda. As ações vão sem dicas nem seletores. O prompt diz que código, senha ou token lido num app nunca é usado em
+  outro (D3).
+- **`Plan.required_apps` sempre preenchido** (R6), por `parsing.py::apps_do_plano`: os apps em que as etapas rodam,
+  não a lista de candidatos. Etapa sem app e plano sem app contam o app do aparelho. Vale para o livre, o por
+  catálogo, o entre apps e o simulado. `RunService._plan` completa a lista do provedor que não a preenche.
+- O provedor simulado planeja entre apps por regras (`SimulatedProvider._plan_multiapp`): o plano de cada app citado,
+  um depois do outro. Com um app só citado, sai o plano de antes.
+- **Prova.** `tests/test_planejador_entre_apps.py` é `simulated`, com provedor simulado e clientes falsos da Anthropic
+  e do OpenAI. Que a API real aceite o esquema estrito `_MultiPlanOut` está `not_run`, e fica para o 24.9. A porta de
+  política por etapa é o 24.2; o roteamento por conjunto de apps, o 24.5; a execução com troca de app, o 24.4.
+
+### A porta de política pelo app da etapa (item 24.2, ADR-058)
+
+`state.py::_policy_gate` julga cada etapa pelo **app dela**, resolvido pelo mesmo `Scheduler._app_context` da
+execução: o `app_id` da etapa, senão o do plano, senão o do aparelho. Num comando entre apps, a etapa do Outlook e a
+do Instagram passam cada uma pela pergunta do seu app. A regra não muda (T19); nenhum efeito novo é liberado.
+
+| App da etapa | Ação do catálogo do app da etapa | Efeito externo | Veredito |
+|---|---|---|---|
+| com catálogo | sim | qualquer | política, limite, frota, rascunho e aprovação da ação, como antes |
+| com catálogo | não (nenhuma, ou uma chave que esse catálogo não tem) | sim | recusa `manual_only`: "sem a ação do catálogo" |
+| com catálogo | não | não | segue |
+| sem catálogo | não se aplica | qualquer | segue pela IA livre, sozinho ou num comando entre apps |
+
+- **O que mudou no 24.2:** uma capability que o app da etapa não tem conta como nenhuma. Antes, `cap is None`
+  liberava a etapa com o efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora da
+  política. Agora cai na recusa do item 13.2, e o motivo cita a chave estranha.
+- A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram. No app da etapa ela não existe,
+  e o Outlook não tem catálogo: segue como etapa livre do Outlook.
+- Etapa com efeito num app sem catálogo, dentro de um comando que também usa um app com catálogo, segue livre. É o
+  decidido em `test_modo_treinamento.py::test_portao_recusa_efeito_sem_acao_num_app_com_catalogo`. Fechá-la exige
+  decisão (ADR novo), não este item.
+- **Prova.** `tests/test_porta_de_politica_por_app.py` é `simulated` (harness, banco de teste, sem aparelho nem IA).
+  Cobre a mistura Outlook (leitura) + Instagram (efeito sem capability), recusada na etapa de efeito.
+
+### Roteamento por conjunto de apps (item 24.5, ADR-058)
+
+Antes do 24.5, quem faz e onde era decidido por **um** app: o dos alvos, quando havia um só, ou o da habilidade que
+exigia um só. Um comando entre apps sem habilidade casada roteava sem app nenhum (R5), e as checagens antes de agendar
+olhavam só o app principal do aparelho (R7). Agora o comando tem um **conjunto** de apps, e cada peça pergunta por ele.
+
+**O conjunto** (`RunService._app_do_comando`, na ordem; o primeiro é o `app_id` dos alvos, contrato C5):
+
+1. os apps dos alvos da interface (`RunTarget.app_id`);
+2. a habilidade ou o fluxo casado: o app do plano dele e os `required_apps`, na ordem do plano;
+3. sem nada casado, os apps que o comando cita (`apps_citados`, a leitura do 24.1):
+   - dois ou mais citados: todos;
+   - um só citado: entra se for **app de conta** (o manifesto pede perfil, como o Outlook, ou declara login gerenciado,
+     como o Instagram). "Leia o e-mail no Outlook e curta o post de @x" dá `[outlook]`;
+   - um app sem conta citado sozinho ("abra o QA Messenger") não vira conjunto. O comando é o de um app de sempre, o
+     app do aparelho decide e a persona num aparelho com duas continua sendo pergunta.
+
+Vazio quer dizer que não se sabe, como antes.
+
+| Peça | Com o conjunto |
+|---|---|
+| `alvos.Mundo.serve(persona, aparelho, app_ids)` | a persona tem, **no mesmo aparelho**, vínculo com todos os apps de conta do conjunto (a união dos vínculos por app do par). App sem conta (`Mundo.sem_conta`: Chrome, QA) não conta. Conjunto só de apps sem conta: a regra de antes, app a app |
+| `resolver_alvos` | o pool da persona e o desempate entre personas de um aparelho usam `serve` com o conjunto; cada `AlvoResolvido` leva `app_ids`, com o app do alvo explícito à frente; `Resolucao.app_ids` é a união |
+| `RunService._mundo(app_ids)` | apto: nenhum app do conjunto sabidamente fora de pronto no aparelho. Sessão pronta: a de todos os apps de **login gerenciado** do conjunto; o Outlook antes do 23.8 não tem sessão e não zera a interseção |
+| `_mistura_de_apps(ids, app_ids)` | com o conjunto, aparelhos de apps principais diferentes **não** são mistura: todo aparelho roda as mesmas etapas, cada uma no app dela (24.1, 24.2). Sem conjunto, a recusa `mixed_apps` de antes, que agora sugere citar o app de cada parte |
+| `_incompativeis(ids, app_ids)` | a versão desejada do app principal **e** de cada app do conjunto (`_pacotes_da_tarefa`); uma frase por aparelho |
+| pré-voo (`pre_voo(..., app_ids)` → `state.py::_app_preflight(rt, pacotes)`) | o principal e cada pacote do conjunto, pela mesma regra. A recusa de um app que não é o principal leva o rótulo dele ("Outlook: o aplicativo não está pronto…"). Na criação vale o conjunto; no `start`, os `required_apps` do plano |
+| desbravador (`Scheduler._waits_for_pathfinder`) | a chave de compatibilidade é a de **cada** app das etapas que faltam: outra versão do Outlook separa os grupos mesmo com o mesmo QA ou Instagram |
+| modo Automático (`orquestrador.py`) | candidata é a persona que serve ao conjunto (`serve`). Nenhuma: conjunto só de apps sem conta distribui pela mesma regra do "Distribuir" (24.6: a união dos aparelhos dos apps do conjunto); senão `nenhuma`, dizendo quais apps pedem conta. A sugestão e cada alvo levam `app_ids` |
+
+- **O app principal entra nas checagens de aparelho** mesmo quando o comando cita outro. Ele é candidato do
+  planejamento entre apps (`_catalogos`), e "leia o e-mail no Outlook e curta o post de @x" usa o Instagram do
+  aparelho sem nomeá-lo.
+- **O que não muda:** `RunTarget` segue com um `app_id` (o eco da prévia não carrega o conjunto; a criação o recompõe
+  pelo comando). As portas do despacho a cada troca de app são do 24.4, e o painel com os apps de cada alvo é do 24.6.
+- **Prova.** `tests/test_roteamento_por_conjunto_de_apps.py` é `simulated`: resolvedor puro, harness na porta 5640,
+  planejador e orquestrador simulados. O roteamento com contas reais do Outlook e do Instagram está `not_run` e fica
+  para o 24.9.
+
+### O painel sem "um app" (item 24.6, R9)
+
+O painel mostra o app de **cada etapa** no Plano e na Execução (selo quando difere do app do plano; linha "App" nos
+detalhes técnicos), os apps exigidos do plano (`required_apps`) e, na prévia dos alvos, o **conjunto** de cada alvo
+pelo nome do catálogo ("QA Messenger + Notas", contrato C5).
+
+O Comando deixou de escolher "um app". No modo "Distribuir entre servidores", o painel preenchia o app mais comum do
+parque quando a pessoa não escolhia, e o comando entre apps era repartido pelos aparelhos de um app que ninguém pediu.
+
+| Peça | Agora |
+|---|---|
+| `DistributeSpec.app_id` | opcional. Sem ele, os apps são os que o **comando** usa; com ele, restringe a esse app, como antes |
+| `RunService._apps_da_distribuicao` | o app escolhido; senão o conjunto já resolvido (modo Automático); senão `_app_do_comando` e, para o app sem conta citado sozinho, a citação (`apps_citados`). Vazio: prévia vazia com o motivo, e a criação recusa com `distribution_sem_app` (409) |
+| `RunService._candidatos_dos_apps` | um app: `Scheduler.candidatos_do_app`, a regra de sempre. Vários: a **união** dos aparelhos cujo app principal é um deles (não os do primeiro citado, que dependeria da ordem do texto); se algum exige conta (provedor de sessão), só aparelho com perfil ativo vinculado; sai o aparelho em que algum app do conjunto se sabe fora de pronto, dito app por app |
+| `GET /runs/distribution` | `app_id` ou `command` (um dos dois; nenhum = 422 `distribution_sem_alvo`); comando com credencial recebe a recusa da criação (`credencial_no_comando`) |
+| painel (`DistributeTarget`, `CommandPanel`) | o padrão do seletor é "os que o comando usa"; a prévia vai pelo comando (com o atraso da digitação e nunca com texto que parece senha) e o envio manda `distribute: { count }`; escolher um app manda `app_id` |
+
+- **Prova.** `simulated`: `tests/test_distribuicao_pelo_comando.py` (harness na porta 5640, aparelhos falsos) e
+  `features/command/CommandPanel.test.tsx` "Distribuir entre servidores (item 24.6)", mais `PlanTab.test.tsx`,
+  `model.test.ts`, `execution.test.tsx` e `alvos.test.ts` para o app por etapa e o conjunto por alvo (backend falso).
+  O painel no ambiente central está `not_run`.
+
 ### Com as skills desligadas: o que ficou igual e o que não
 
 Igual ao de antes:

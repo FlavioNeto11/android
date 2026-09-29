@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -14,6 +14,9 @@ from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
 # provedor); reexportado daqui para os provedores o importarem como importam `SocialRequest`.
 from ..modules.identity.domain.persona_generation import PersonaGenerationRequest  # noqa: F401
 from ..modules.identity.domain.available_data import AvailableDatum
+
+if TYPE_CHECKING:
+    from .capabilities import CapabilityCatalog
 
 
 #: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
@@ -75,6 +78,11 @@ class PlanRequest:
     # Catálogo do app alvo, quando ele tem um (`CapabilityCatalog`). Com catálogo, o planejador escolhe AÇÕES
     # nomeadas e o backend monta as etapas; sem catálogo, o planejamento livre de sempre.
     catalog: Any = None
+    #: Planejamento ENTRE APPS (item 24.1, ADR-058): `{app_id: CapabilityCatalog}` dos apps candidatos que têm catálogo,
+    #: quando o comando pode atravessar apps (cita outro app ou pede um site). Preenchido, ele manda: cada etapa diz o
+    #: app dela, é AÇÃO do catálogo nos apps daqui e etapa LIVRE nos demais de `apps` (que então traz só os apps que
+    #: o plano pode usar). Vazio = `catalog` ou o livre, exatamente como antes.
+    catalogs: dict[str, CapabilityCatalog] = field(default_factory=dict)
     #: Dados da persona disponíveis ao plano (ADR-040): a LISTA (nome, rótulo, tipo, sigiloso, app) comum a todos os
     #: aparelhos da execução. Não sigiloso vira variável `{perfil_email}`; sigiloso só existe como nome para
     #: `type_secret` — o valor nunca vai ao modelo.
