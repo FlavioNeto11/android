@@ -375,10 +375,12 @@ class ServicoDeFalhas:
                                                corte_de_custo=corte)
 
     def _medir(self, chave: ChaveDoGrupo, desde: str, ate: str, agora: datetime) -> Medida:
-        """Tentativas reais elegíveis da mesma (app, ação) e ocorrências do grupo em [desde, ate)."""
+        """Tentativas reais elegíveis da mesma (app, ação) e ocorrências do grupo em [desde, ate). A linha sem tela
+        abrange a mesma falha em qualquer tela (`ChaveDoGrupo.abrange`, item 22.3) — na base e no depois, para as
+        duas medidas contarem a mesma coisa."""
         corte = self._corte_de_custo(agora, desde)
         ocorrencias = [o for o in self._fontes.ocorrencias(desde, ate, simulados=False, retroativo=True,
-                                                           corte_de_custo=corte) if o.chave == chave]
+                                                           corte_de_custo=corte) if chave.abrange(o.chave)]
         elegiveis = self._fontes.elegiveis(desde, ate, simulados=False).get(chave.app_e_acao, 0)
         ids = [o.attempt_id or o.run_id for o in ocorrencias]
         ids.extend(self._fontes.amostra_elegivel(chave.app, chave.capability, desde, ate, limite=IDS_DA_PROVA))

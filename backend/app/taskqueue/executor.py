@@ -188,6 +188,9 @@ class StepOutcome:
     #: ADR-055: a etapa parou numa tela de verificação da conta. Não é veredito sobre a receita nem sobre o plano — a
     #: conta travou, o caminho não errou; contar isso levaria à quarentena uma receita que funciona nas outras contas.
     trava_da_conta: bool = False
+    #: Item 22.3: a tela onde a tentativa parou (`tela_da_falha`), que vai para `attempts.failure_screen`. Quem preenche
+    #: é o scheduler (`_run_guarded`), o único que vê também o desfecho montado para a exceção.
+    tela_da_falha: str | None = None
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -240,6 +243,42 @@ def _perfil_do_objetivo(objective: Row) -> str | None:
     except (KeyError, IndexError, TypeError):
         return None
     return str(perfil) if perfil else None
+
+
+#: Telas gravadas pelo TIPO do motor, e não pelo nome que o app lhes dá: é o vocabulário que a exclusão das lições lê
+#: (`modules/learning/domain/licoes.TELAS_EXCLUIDAS`). Gravado como `challenge` (o nome do Instagram), o desafio
+#: passaria pela exclusão e uma falha nele poderia virar lição (ADR-009: desafio e código seguem com a pessoa).
+_TELA_PELO_TIPO = frozenset({*telas_do_app.TIPOS_DE_TRAVA, "login"})
+
+
+def tela_da_falha(arvore: object, pacote: str | None) -> str | None:
+    """`attempts.failure_screen` (item 22.3): a tela da última observação, pelo conhecimento DECLARADO do app da etapa
+    (`conhecimento/apps/<pacote>/telas.yaml`, o mesmo classificador do motor de sessão); `None` quando desconhecida.
+
+    Nunca texto da tela — só o nome de uma regra do repositório ou, nas telas de verificação e de login, o tipo do
+    motor (`_TELA_PELO_TIPO`). As aprendidas ficam de fora de propósito: dependem do modo do livro, e a tela de uma
+    falha mudaria de grupo no backlog ao ligar ou desligar o aprendizado. Outro app na frente, app sem conhecimento
+    ou conhecimento inválido: `None`. Registro nunca derruba a etapa já decidida."""
+    if not isinstance(arvore, UiTree) or not pacote or not pacote.replace(".", "").replace("_", "").isalnum():
+        return None
+    try:
+        k = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / pacote)
+        if k is None:
+            return None
+        # O pacote da frente pela mesma regra da observação (`DeviceManager.observe`).
+        frente = next((p for p in arvore.packages if p != "com.android.systemui"), None)
+        r = telas_do_app.classificar(k, arvore, package=frente)
+    except Exception:  # noqa: BLE001 - a tela da falha é registro: sem ela, a coluna fica nula
+        log.exception("tela da falha de %s não classificada", pacote)
+        return None
+    if r.tipo in _TELA_PELO_TIPO:
+        return r.tipo
+    if r.tela == telas_do_app.DESCONHECIDA:
+        # O formulário de login é geometria do motor de sessão, que a fila não importa: campo de senha no app da
+        # etapa é login — o mesmo critério do ciclo das telas (`ligar_telas.ObservadorDeTelas`).
+        return "login" if not r.outro_app and any(e.password for e in arvore.elements) else None
+    regra = k.regra(r.tela)
+    return r.tela if regra is not None and not regra.aprendida else None
 
 
 @dataclass(slots=True)

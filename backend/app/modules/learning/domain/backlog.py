@@ -5,7 +5,9 @@ da correção e propostas. Nunca chama IA, nunca grava nada.
 
 - **Grupo**: (app, ação, tipo, tela). A chave canônica sai de UMA função (`chave_do_grupo`) usada pelo relatório e
   pela gravação — o `fk-*` que a sessão lê no md é o mesmo da linha que ela altera. App é o PACOTE (`*` quando a
-  etapa não diz), ação é a `capability` (`*` = etapa livre), tela é a do pacote declarado ('' quando não há).
+  etapa não diz), ação é a `capability` (`*` = etapa livre), tela é a do pacote declarado ('' quando não há). A
+  MEDIDA de uma linha sem tela (prova e reincidência) abrange o mesmo (app, ação, tipo) em qualquer tela
+  (`ChaveDoGrupo.abrange`): ela só vira corrigida quando a falha para em TODAS.
 - **Tipo**: um `FailureKind` (a tentativa) ou um `TipoDeVerificacao` (o sinal de pessoa que desmente o verificador).
 - **Ordem**: custo total = US$ perdido + minutos × `aparelho_usd_min` + intervenções × `pessoa_usd`. As três colunas
   saem separadas; o total só ordena. O falso positivo do verificador fica SEMPRE no topo: é o sucesso mascarado.
@@ -146,6 +148,18 @@ class ChaveDoGrupo:
     @property
     def app_e_acao(self) -> tuple[str, str]:
         return self.app, self.capability
+
+    def abrange(self, outra: ChaveDoGrupo) -> bool:
+        """A ocorrência de chave `outra` conta na MEDIDA da linha desta chave (prova da correção e reincidência)?
+
+        Com tela, só a mesma chave. Sem tela, o mesmo (app, ação, tipo) em QUALQUER tela (item 22.3): antes do
+        escritor de `attempts.failure_screen` toda falha nascia sem tela, e depois dele as mesmas falhas caem no grupo
+        da tela nomeada. Medida só pela chave exata, a linha antiga "sem tela" veria zero ocorrência enquanto a falha
+        continua — e a prova a daria como corrigida (falha contada como sucesso). O agrupamento do relatório segue
+        exato: somar aqui lá contaria a mesma tentativa em dois grupos."""
+        if self.tela:
+            return outra == self
+        return (outra.app, outra.capability, outra.tipo) == (self.app, self.capability, self.tipo)
 
 
 def chave_do_grupo(app: str | None, capability: str | None, tipo: str, tela: str | None) -> ChaveDoGrupo:
