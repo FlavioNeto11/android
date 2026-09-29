@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-183 de 240 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+193 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -199,9 +199,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 22.7 | implemented | simulated | opus | — | Re-escopado para a visão da execução (o treinamento não tem etapa failed/uncertain nem sessão com habilidade). eadf0b5 + f545fa0 em b34e2f6: 'Corrigir esta etapa' na aba Por aparelho, marca 'corrigível' na linha, ensino… |  |
 | 22.8 | implemented | real | opus | — | Diagnóstico só de leitura: o 503 do relatório de uso da Anthropic começou às 14:04Z de 29/09 (4 falhas seguidas em data/logs/backend.log), sem mudança de código na cobrança; seguia às 14:35Z com refresh; status.claude.c… |  |
 | 22.9 | implemented | real | opus | — | 29/09 ~15:00Z: 28 worktrees da rodada removidos (todos com o branch na main e sem alteração), junções desfeitas antes com rmdir do link, venv e node_modules reais conferidos a cada passo, git worktree remove sem --force… |  |
-| 23.1 | pendente | — | — | — |  |  |
+| 23.1 | implemented | simulated |  | — | scripts/plano-100-pacotes.py AUTORIZACAO (itens 23.2, 23.7, 23.11–23.13, 24.9, 25.1, 25.7, 25.9, 25.10, 27.2, 28.12); pacote 25.9.md traz o aviso; commit aad3b0d |  |
 | 23.2 | pendente | — | — | — |  |  |
-| 23.3 | pendente | — | — | — |  |  |
+| 23.3 | implemented | simulated |  | — | backend/app/conhecimento/apps/com.microsoft.office.outlook/app.yaml (sem âncora, sem provedor); tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora; commit 45bd8ea |  |
 | 23.4 | pendente | — | — | — |  |  |
 | 23.5 | pendente | — | — | — |  |  |
 | 23.6 | pendente | — | — | — |  |  |
@@ -231,23 +231,36 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.8 | pendente | — | — | — |  |  |
 | 25.9 | pendente | — | — | — |  |  |
 | 25.10 | pendente | — | — | — |  |  |
-| 26.1 | pendente | — | — | — |  |  |
-| 26.2 | pendente | — | — | — |  |  |
-| 26.3 | pendente | — | — | — |  |  |
-| 26.4 | pendente | — | — | — |  |  |
-| 26.5 | pendente | — | — | — |  |  |
-| 26.6 | pendente | — | — | — |  |  |
-| 26.7 | pendente | — | — | — |  |  |
-| 26.8 | pendente | — | — | — |  |  |
+| 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
+| 26.4 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §8; pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.5 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §9 (papéis, dependências, limites de delegação, porta-voz único, sem apoio simulado); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.6 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §10; pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.7 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §11 (tela Pedidos, ações, caixa de avisos, API); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
+| 26.8 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §12 (três casos) e §13 (Fase 28 proposta, registrada no plano-100 com o bloco 28-pedidos-persistentes); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao… |  |
 | 27.1 | pendente | — | — | — |  |  |
 | 27.2 | pendente | — | — | — |  |  |
 | 27.3 | pendente | — | — | — |  |  |
+| 28.1 | pendente | — | — | — |  |  |
+| 28.2 | pendente | — | — | — |  |  |
+| 28.3 | pendente | — | — | — |  |  |
+| 28.4 | pendente | — | — | — |  |  |
+| 28.5 | pendente | — | — | — |  |  |
+| 28.6 | pendente | — | — | — |  |  |
+| 28.7 | pendente | — | — | — |  |  |
+| 28.8 | pendente | — | — | — |  |  |
+| 28.9 | pendente | — | — | — |  |  |
+| 28.10 | pendente | — | — | — |  |  |
+| 28.11 | pendente | — | — | — |  |  |
+| 28.12 | pendente | — | — | — |  |  |
+| 28.13 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (57): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.1, 23.2, 23.3, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 25.1, 25.2, 25.3, 25.4, 25.5, 25.6, 25.7, 25.8, 25.9, 25.10, 26.1, 26.2, 26.3, 26.4, 26.5, 26.6, 26.7, 26.8, 27.1, 27.2, 27.3, T.2
+Pendentes (60): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 25.1, 25.2, 25.3, 25.4, 25.5, 25.6, 25.7, 25.8, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

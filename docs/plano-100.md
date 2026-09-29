@@ -622,6 +622,33 @@ configuração só cadastrada não é funcionamento comprovado.
 **Fecha quando:** no mesmo aparelho, rede `trafego_verificado`, conta correta nos dois apps e comando entre apps
 concluído, com prova `real`, e o resumo real × simulado × não executado publicado.
 
+### Fase 28 — Pedidos persistentes: implementação · 13 itens (proposta do 26.8, 29/09/2026; ADR-059)
+
+Origem: o plano incremental do item 26.8, desenhado em [design/pedidos-persistentes.md](design/pedidos-persistentes.md)
+§13, com os aceites por item na §13 do mesmo documento. Recomendação de agendamento: laço próprio no backend, com
+tabelas de pedido e de ocorrência de chave única e trava de líder no relógio do banco (§7). Registrada para execução
+numa rodada própria; os números de migração (059 em diante) e de ADR se conferem em todos os branches antes de usar.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 28.1 | **Trava de líder**: tabela `travas` (migração 059), tomada e renovação por CAS no relógio do banco, token; aplicada a saldos, curadoria e retenção (`state.py`) | laços sem trava (§1); Kleppmann, Kubernetes | M |
+| 28.2 | **Modelo do pedido**: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias`, `runs.pedido_id`, `ocorrencia_id`, `prioridade` (migração 060); domínio puro de estados e transições (`modules/pedidos/domain/`), chave da ocorrência | §6 | G |
+| 28.3 | **Recorrência e fuso**: subconjunto da RRULE, `zoneinfo` + `tzdata` declarado em `requirements.in` (hoje indireto), desvio documentado para hora inexistente, `fold=0` na repetida; prévia das próximas datas | RFC 5545, PEP 495/615 | M |
+| 28.4 | **Laço de pedidos**: materializar, janela, coalescer, sobreposição, despacho idempotente por `RunService.create`, fechamento pelo gancho e pela varredura, retomada depois de reinício | §7.2–7.5, 7.9 | G |
+| 28.5 | **Tentativas e efeito**: nova tentativa só sem efeito possível; `incerta` para em `aguardando_pessoa`; pausa por falhas seguidas | §7.6 | M |
+| 28.6 | **Orçamento e prioridade**: orçamento por pedido e ocorrência, custo gravado antes da purga, saldo (ADR-051) adia, `runs.prioridade` no `dispatchable_objectives` | §10 | M |
+| 28.7 | **Memória, observações e relatório**: `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` (migração 061); relatório determinístico com observado/conclusão/não coberto; resumo por IA opcional | §6.6, §8 | G |
+| 28.8 | **Gatilhos de evento, condição e persona**: cursor com detecção de buraco da retenção; condição determinística; `proxima_visita` presa aos limites | §7.8 | M |
+| 28.9 | **API e tela Pedidos**: adendo do contrato, criação pelo Comando com prévia, lista, detalhe, ações, caixa de avisos no painel | §11 | G |
+| 28.10 | **Colaboração**: sub-pedidos, dependências (migração 062), papéis, limites de profundidade e linhagem, porta-voz único, proibição de apoio simulado | §9 | G |
+| 28.11 | **Aviso fora do painel** (decisão do dono: canal e conta) | §11 | P |
+| 28.12 | **Prova real** [A]: no central, um pedido de preço (`observar`, navegador, sem compra) com 3 ocorrências recorrentes, um reinício do backend no meio e uma ocorrência perdida de propósito; um pedido de políticos só de leitura com relatório determinístico. Chamada paga pontual autorizada | §12 | M |
+| 28.13 | **Fechamento**: seção no `relatorio-validacao.md`, ADR da implementação, CHANGELOG, handoff, estado pelo mecanismo | — | P |
+
+**Fecha quando:** um pedido recorrente real no central (28.12) atravessa um reinício do backend sem duplicar nem
+perder ocorrência, com orçamento respeitado e relatório que separa observado de conclusão, e as provas `simulated`
+de cada item registradas.
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

@@ -3518,6 +3518,176 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "26.1": {
+   "id": "26.1",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.2": {
+   "id": "26.2",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.3": {
+   "id": "26.3",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.4": {
+   "id": "26.4",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §8; pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.5": {
+   "id": "26.5",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §9 (papéis, dependências, limites de delegação, porta-voz único, sem apoio simulado); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.6": {
+   "id": "26.6",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §10; pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.7": {
+   "id": "26.7",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §11 (tela Pedidos, ações, caixa de avisos, API); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "26.8": {
+   "id": "26.8",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/design/pedidos-persistentes.md §12 (três casos) e §13 (Fase 28 proposta, registrada no plano-100 com o bloco 28-pedidos-persistentes); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09)",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/pedidos-persistentes.md"
+   ],
+   "testes": "python scripts/docs-check.py: 0 erros",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "23.1": {
+   "id": "23.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "scripts/plano-100-pacotes.py AUTORIZACAO (itens 23.2, 23.7, 23.11–23.13, 24.9, 25.1, 25.7, 25.9, 25.10, 27.2, 28.12); pacote 25.9.md traz o aviso; commit aad3b0d",
+   "blocker": "",
+   "arquivos": [
+    "scripts/plano-100-pacotes.py"
+   ],
+   "testes": "python scripts/plano-100-pacotes.py; grep do aviso em .claude/plano-100/pacotes/25.9.md",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "23.3": {
+   "id": "23.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/conhecimento/apps/com.microsoft.office.outlook/app.yaml (sem âncora, sem provedor); tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora; commit 45bd8ea",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/conhecimento/apps/com.microsoft.office.outlook/app.yaml"
+   ],
+   "testes": "pytest tests/test_pacote_declarado.py tests/test_registro_de_apps.py tests/test_apps_fora_do_nucleo.py: 37 passed",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T18:03:27+00:00"
   }
  },
  "rodadas": [
@@ -4050,6 +4220,24 @@
    ],
    "grupos": [
     "22-pendencias-da-rodada"
+   ]
+  },
+  {
+   "quando": "2026-09-29T18:03:27+00:00",
+   "itens": [
+    "26.1",
+    "26.2",
+    "26.3",
+    "26.4",
+    "26.5",
+    "26.6",
+    "26.7",
+    "26.8",
+    "23.1",
+    "23.3"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
    ]
   }
  ]

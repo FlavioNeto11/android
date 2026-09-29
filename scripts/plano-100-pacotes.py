@@ -67,6 +67,7 @@ AUTORIZACAO = {
     '25.10': 'adquirir o cliente VPN pela Play Store com a conta do dono, promover e distribuir ao parque',
     '27.2': ('chamada paga de IA e login/leitura em conta real (Outlook e Instagram no mesmo aparelho, rede '
              'trafego_verificado)'),
+    '28.12': 'prova real de um pedido recorrente no central, com chamada paga pontual de IA',
 }
 #: Teto de itens por agente. Não é estética: um agente com oito itens e vinte arquivos perde o fio, e quando erra
 #: leva junto tudo o que já tinha feito. Pedaços do mesmo grupo correm em SEQUÊNCIA, então não há conflito.
