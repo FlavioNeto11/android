@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-194 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+210 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -200,35 +200,35 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 22.8 | implemented | real | opus | — | Diagnóstico só de leitura: o 503 do relatório de uso da Anthropic começou às 14:04Z de 29/09 (4 falhas seguidas em data/logs/backend.log), sem mudança de código na cobrança; seguia às 14:35Z com refresh; status.claude.c… |  |
 | 22.9 | implemented | real | opus | — | 29/09 ~15:00Z: 28 worktrees da rodada removidos (todos com o branch na main e sem alteração), junções desfeitas antes com rmdir do link, venv e node_modules reais conferidos a cada passo, git worktree remove sem --force… |  |
 | 23.1 | implemented | simulated |  | — | scripts/plano-100-pacotes.py AUTORIZACAO (itens 23.2, 23.7, 23.11–23.13, 24.9, 25.1, 25.7, 25.9, 25.10, 27.2, 28.12); pacote 25.9.md traz o aviso; commit aad3b0d |  |
-| 23.2 | pendente | — | — | — |  |  |
+| 23.2 | blocked | real |  | — | Outlook 5.2635.3 importado da loja (c-20260929184859-0fe853, depois da correção do inspetor em 45bd8ea) e assinatura aprovada; canário no android-02 (c-20260929185249-440edc) e no android-09 (c-20260929194525-da36f8) fa… | P15: o Outlook não roda no parque emulado; saídas do dono: celular físico, Outlook web no Chrome ou versão nova do app |
 | 23.3 | implemented | simulated |  | — | backend/app/conhecimento/apps/com.microsoft.office.outlook/app.yaml (sem âncora, sem provedor); tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora; commit 45bd8ea |  |
-| 23.4 | pendente | — | — | — |  |  |
-| 23.5 | pendente | — | — | — |  |  |
-| 23.6 | pendente | — | — | — |  |  |
+| 23.4 | implemented | simulated |  | — | The reviewer raised two findings against 23.4. Both were real and are fixed. (a) The executor never passed the package. AoDesmentirSessao.__call__ (backend/app/taskqueue/executor.py) now takes `package: str \| None = No… |  |
+| 23.5 | implemented | simulated |  | — | The challenge rule itself (session_rules.aplicar_desafio, SocialRepository._trava_a_persona) is unchanged. The reviewer's defect was upstream of it: the executor dropped the screen's package, so in production aplicar_de… |  |
+| 23.6 | implemented | simulated |  | — | Two findings, both real and fixed. (1) password_step_missing (the password screen did not appear after 'avançar'). SessaoDeclarada._etapa_do_usuario used to count a failure (_count_failure) and return RETRYABLE. Each sc… |  |
 | 23.7 | pendente | — | — | — |  |  |
 | 23.8 | pendente | — | — | — |  |  |
-| 23.9 | pendente | — | — | — |  |  |
-| 23.10 | pendente | — | — | — |  |  |
-| 23.11 | pendente | — | — | — |  |  |
+| 23.9 | implemented | simulated |  | — | No change in this round; the reviewer raised nothing on 23.9. It stays as declared. SecretStore.clonar(ref, *, para=None) re-encrypts inside the vault with a fresh nonce and the new ref's AAD, and returns only the refer… |  |
+| 23.10 | implemented | simulated |  | — | The reviewer's three findings on 23.10 were all real and are fixed. Each has a test that failed before the fix and passes now.  (1) GuiaConfiguracoes.tsx could show the loading skeleton forever. The catalog is now `AppC… | Real proof needs a second app with catalog.yaml (Outlook does not have one yet) and a deploy; neither is authorized in this round. |
+| 23.11 | partial | real |  | — | 29/09 ~22:26Z, central 081d696: contas Outlook criadas para as 3 personas ativas (acc-gHP-beH2mr0Hm4f8 André, acc-e8DatK8Dk0lqHh8S Bruno, acc-F8QScZU_KN9qdjVt Lucas) com o e-mail outlook.com confirmado pelo dono como lo… | consentimento de cada conta Outlook é do dono no painel (P5); vínculo persona-aparelho-outlook espera o P15 (o Outlook não roda no parque emulado); 5 personas… |
 | 23.12 | pendente | — | — | — |  |  |
 | 23.13 | pendente | — | — | — |  |  |
-| 24.1 | pendente | — | — | — |  |  |
-| 24.2 | pendente | — | — | — |  |  |
-| 24.3 | pendente | — | — | — |  |  |
-| 24.4 | pendente | — | — | — |  |  |
-| 24.5 | pendente | — | — | — |  |  |
-| 24.6 | pendente | — | — | — |  |  |
-| 24.7 | pendente | — | — | — |  |  |
-| 24.8 | pendente | — | — | — |  |  |
+| 24.1 | implemented | simulated |  | — | No change since the previous declaration. Citing another app or asking for a site no longer drops the catalog. RunService._catalogos has three modes (free plan, per-catalog, cross-app); PLANNER_MULTIAPP_SYSTEM comes wit… |  |
+| 24.2 | implemented | simulated |  | — | No change since the previous declaration. state.py::_policy_gate judges each step by the step's own app (step app_id, else the plan's app, else the device's app, via Scheduler._app_context). A capability that the step's… |  |
+| 24.3 | implemented | simulated |  | — | backend/app/taskqueue/saidas.py, executor read_value, planning/prompts.py (saidas e {{saida:nome}}), parsing (referência sem leitura vira pergunta); tests/test_valor_entre_etapas.py, test_planejador_entre_apps.py::test_… |  |
+| 24.4 | implemented | simulated |  | — | Achado do revisor ('Conta: ' vazio comprovava a conferência): corrigido. - repository.py::conta_esperada tem três desfechos:   - a persona tem UMA conta ativa com nome no app: essa conta;   - senão (nenhuma conta, ou ma… | Nenhum no código. Outlook e Instagram num aparelho real, com conta indisponível, interrupção e retomada: not_run (fecha no 24.9). O aparelho falso encena um ap… |
+| 24.5 | implemented | simulated |  | — | Routing by the SET of apps, as declared before: _app_do_comando returns list[str]; alvos.py has PedidoDeAlvos.app_ids and Mundo.serve by set; _mundo(app_ids); _mistura_de_apps and _incompativeis by set; pre_voo goes thr… |  |
+| 24.6 | implemented | simulated |  | — | FIXED the unmet criterion: 'o Comando deixa de escolher um app'. Before, CommandPanel.tsx used an appId memo that picked the saved distApp or the fleet's most common app. The panel demanded 'Escolha o app dos aparelhos… |  |
+| 24.7 | implemented | simulated |  | — | tests/test_interrupcao_entre_apps.py (cancelar, reinício e sucessora; ::test_reinicio_retoma_no_segundo_app_de_outro_pacote com tests/fake_device.py pacotes_extras); parte com aparelho real é o 24.9. Integrado em claude… |  |
+| 24.8 | implemented | simulated |  | — | FIXED the proof level: it was declared 'real', but the only evidence is tests, so it is simulated. Content, unchanged: in models.py (the PlanStep.app_id comment) and in prompts.py::PLANNER_SYSTEM, the forbidden example… |  |
 | 24.9 | pendente | — | — | — |  |  |
 | 25.1 | implemented | real |  | — | 29/09 17:49–18:39Z, central (backend b34e2f6), android-05: WireGuard e sing-box instalados pela plataforma (c-20260929175405-31bf0d, c-20260929175430-c2940e), ACTIVATE_VPN por appops sem diálogo, always-on + lockdown va… |  |
-| 25.2 | pendente | — | — | — |  |  |
-| 25.3 | pendente | — | — | — |  |  |
+| 25.2 | implemented | simulated |  | — | backend/app/devices/rede.py, rotas /api/network/* em api.py, adendo v0.42 em docs/api-contract.md; tests/test_rede_por_aparelho.py. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29… |  |
+| 25.3 | implemented | simulated |  | — | Defeito confirmado e corrigido. Com o redaction.py ganhando `pre[_-]?shared[_-]?key\|psk`, tests/test_compilador_de_skills.py::test_nome_de_parametro_com_cara_de_credencial falhava com `AssertionError: psk` (reproduzido… |  |
 | 25.4 | pendente | — | — | — |  |  |
 | 25.5 | pendente | — | — | — |  |  |
 | 25.6 | pendente | — | — | — |  |  |
 | 25.7 | pendente | — | — | — |  |  |
-| 25.8 | pendente | — | — | — |  |  |
+| 25.8 | implemented | simulated |  | — | cd C:/git/android/.claude/worktrees/evo3-d3/frontend && npx vitest run src/features/rede src/features/loja src/features/apps/AppsPage.test.tsx -> 3 arquivos, 21 testes, todos passando; npm run typecheck -> limpo. Os 4 a… | Nada bloqueado no escopo D3 (só frontend). O pedido do revisor de 'testar a rota real com TestClient contra o painel' é integração backend+frontend, fora do es… |
 | 25.9 | pendente | — | — | — |  |  |
 | 25.10 | pendente | — | — | — |  |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
@@ -260,7 +260,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (59): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 25.2, 25.3, 25.4, 25.5, 25.6, 25.7, 25.8, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
+Pendentes (43): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.4, 25.5, 25.6, 25.7, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

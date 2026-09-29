@@ -218,6 +218,17 @@ v0.41), sobre `45bd8ea` (correção do inspetor, 23.3). Onda 1 lançada pelo wor
 branch `claude/evo3-<frente>` entra no `claude/evolucao3` na ordem contratos → B → C → D. Deploy depois da medição
 25.1 (que usa a API) e da integração. Retomada: `Workflow({scriptPath, resumeFromRunId: "wf_3f3d07a0-057"})`.
 
+**Checkpoint 3 (29/09 ~22:30Z).** Onda 1 integrada e implantada: o workflow `wf_3f3d07a0-057` (29 agentes)
+entregou as seis frentes, cada uma revisada por um revisor adversarial, com os achados graves corrigidos; merge das seis em
+`claude/evolucao3` (um conflito de tabela em `persona.md`, resolvido); correções da integração em `eb38139`
+(`get_secret`, catracas, achados menores, 24.3, 24.7, adendo v0.42) e em `99abe23` (regressões da suíte, etapa de
+outro app não conclui com o app errado na frente); teste de integração do painel em `081d696`. Suíte inteira do
+backend 3747 ok + 1 falha de ambiente (`test_backup`); vitest 830/830. **Implantado em `081d696`** (central e agente
+do notebook). Real depois do deploy: contas Outlook das 3 personas ativas criadas com a senha clonada no cofre (23.11,
+consentimento pendente P5). Estado registrado pelo `aplicar`: 23.4–23.6, 23.9, 23.10, 24.1–24.8, 25.2, 25.3, 25.8
+`implemented`/`simulated`; 23.11 `partial`/`real`; 23.2 `blocked` (P15). Em curso: Onda 2 da rede (25.4–25.7, workflow
+`wf_720c8ed8-d1a`, worktree `evo3-d1`).
+
 - **Ajuste de plano (25.5):** a sonda de saída mede por `nc` HTTP a um eco de IP e cobre por UID com `dumpsys
   netstats`, em vez de estender o app de QA, se a medição do 25.1 confirmar que basta. O motivo: a medição fica
   sem app novo a distribuir e a mesma em todos os aparelhos. O app de QA tem build no central (`qa-app/`, Gradle 9.7
