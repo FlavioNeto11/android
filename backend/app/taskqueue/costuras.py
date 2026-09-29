@@ -96,6 +96,8 @@ class ResolucaoDeItem:
     ordem: str
     nota: str | None                 # texto da pessoa; o livro redige e recusa o que parece credencial
     step_id: str | None              # a etapa que esperava a decisão (nula quando nenhuma esperava)
+    #: Quem decidiu (a rota passa `autor_do_gesto` da sessão); `None` = sem pessoa identificada (o livro grava `panel`).
+    quem: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +107,7 @@ class RepeticaoDeExecucao:
     run_id: str
     #: `<objective_id>@<plan_version nova>` de cada item retomado: a identidade do gesto.
     objetivos: tuple[str, ...]
+    quem: str | None = None          # como em `ResolucaoDeItem`
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +119,7 @@ class RespostaAPergunta:
     run_sucessora: str
     campos: tuple[str, ...]          # os campos perguntados, sem os de destino
     resposta_sha256: str
+    quem: str | None = None          # como em `ResolucaoDeItem`
 
 
 @dataclass(frozen=True, slots=True)

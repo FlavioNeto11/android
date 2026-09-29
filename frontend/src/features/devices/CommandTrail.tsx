@@ -211,8 +211,10 @@ export function CommandHistory({ instanceId, semTitulo = false }: {
     if (!confirmed) return;
     setOcupado(cmd.id);
     try {
-      const origem = `decidido no painel a partir de ${instanceId}`;
-      await api.resolveCommand(cmd.id, { outcome, note: note ? `${origem}: ${note}` : origem });
+      // Só o texto da pessoa vai na nota: o "de onde" (`origin`) o backend compõe no motivo. No prefixo, um id de
+      // aparelho fora do padrão fazia a triagem de credencial recusar a decisão inteira.
+      const texto = note?.trim();
+      await api.resolveCommand(cmd.id, { outcome, origin: 'panel', ...(texto ? { note: texto } : {}) });
       toast({ tone: 'info', title: `${verbo} em ${instanceId}: marcado como ${copy.feito}` });
       await carregar();
     } catch (e) {

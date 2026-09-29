@@ -3536,7 +3536,8 @@ class DeviceManager:
                       data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested})
         self.publish(rt)
 
-    def request_control(self, rt: DeviceRuntime) -> tuple[str, str]:
+    def request_control(self, rt: DeviceRuntime, *, por: str | None = None) -> tuple[str, str]:
+        """`por`: quem pediu (a rota passa o autor da sessão), levado ao sinal `tomou_controle` (ADR-054)."""
         if rt.control == ControlOwner.user and rt.lease_id:
             rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
             return "granted", rt.lease_id
@@ -3552,7 +3553,7 @@ class DeviceManager:
                 # Uma tomada, um aviso (o clique repetido enquanto a IA cede não é outra tomada); sem etapa em curso
                 # (trabalho exclusivo: instalar, autenticar) não há o que aprender.
                 avisar(self.costura_de_controle.tomou_controle,
-                       TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id))
+                       TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id, quem=por))
             return "pending", pendente
         lease = new_token()
         self._grant_user(rt, lease)

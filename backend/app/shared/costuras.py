@@ -53,6 +53,8 @@ class TomadaDeControle:
     run_id: str
     objective_id: str | None
     step_id: str
+    #: Quem pediu (a rota passa `autor_do_gesto` da sessão); `None` = sem pessoa identificada (o livro grava `panel`).
+    quem: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

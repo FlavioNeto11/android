@@ -87,10 +87,30 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     await setValue(dialogo.querySelector('textarea') as HTMLTextAreaElement, 'emulador não subiu, conferi na máquina');
     await click(byRole('button', /Sim, falhou/, dialogo));
     await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
-    const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { outcome: string; note?: string };
+    const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { outcome: string; note?: string; origin?: string };
     expect(corpo.outcome).toBe('failed');
-    expect(corpo.note).toContain('android-15');
-    expect(corpo.note).toContain('emulador não subiu');
+    // Só o texto da pessoa vai na nota (é ele que a triagem de credencial olha); o "de onde" vai em `origin` e o
+    // backend o compõe no motivo.
+    expect(corpo.note).toBe('emulador não subiu, conferi na máquina');
+    expect(corpo.origin).toBe('panel');
+  });
+
+  it('aparelho com id fora do padrão: a nota continua sendo só o texto da pessoa, sem o id', async () => {
+    // Um AVD como `Pixel_7a-Lab.02` tem cara de credencial para a triagem: no prefixo, recusava a decisão inteira.
+    const avd: Command = { ...incerto, id: 'c-20260929101010-bbbb22', instance_id: 'Pixel_7a-Lab.02' };
+    linhas = [avd];
+    backend.on('POST', /\/commands\/[^/]+\/resolve$/, () => json({ ...avd, state: 'succeeded' }));
+    await act(async () => {
+      root.render(<><CommandHistory instanceId="Pixel_7a-Lab.02" /><ConfirmHost /></>);
+    });
+    await waitFor(() => expect(text(container)).toContain('Desconhecido'));
+    await click(byRole('button', /Marcar como concluído/, container));
+    const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
+    await click(byRole('button', /Sim, está concluído/, dialogo));      // sem observação nenhuma
+    await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as Record<string, unknown>;
+    expect(corpo).toEqual({ outcome: 'succeeded', origin: 'panel' });
+    expect(JSON.stringify(corpo)).not.toContain('Pixel_7a-Lab.02');
   });
 
   it('desistir no diálogo NÃO grava desfecho nenhum', async () => {
@@ -124,8 +144,9 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     await waitFor(() => expect(text(el)).toContain('Executando'));
     await click(byRole('button', /Cancelar/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/cancel$/)).toHaveLength(1));
-    const corpo = backend.callsTo('POST', /\/cancel$/)[0]?.body as { note?: string };
-    expect(corpo.note).toContain('android-15');
+    // Sem nota: o id do aparelho não passa pela triagem de credencial; o backend compõe "no painel, a partir de…".
+    const corpo = backend.callsTo('POST', /\/cancel$/)[0]?.body as Record<string, unknown>;
+    expect(corpo).toEqual({ origin: 'panel' });
   });
 
   it('pedido já feito não oferece o botão de novo — “Cancelando” já conta o que está acontecendo', async () => {

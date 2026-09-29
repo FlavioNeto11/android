@@ -166,6 +166,38 @@ def _autor_do_sinal(request: Request) -> str:
 #: escreve numa rota daqui e que entraria crua no banco e no evento (segredo nunca em evento).
 _TRIAGEM_DE_NOTA = TriagemDeCredencial()
 
+#: O contexto que o painel punha NA NOTA até 29/09 ("decidido no painel a partir de <aparelho>: <texto>"). Com a
+#: triagem, um id de aparelho com maiúscula, dígito e símbolo (um AVD como `Pixel_7a-Lab.02`) recusava toda decisão
+#: pelo painel por causa do prefixo, não do texto da pessoa. Hoje o painel manda `origin=panel` e o backend compõe o
+#: contexto; a aba aberta antes do deploy ainda manda o prefixo, que só é reconhecido com o id do PRÓPRIO comando.
+_PREFIXO_ANTIGO_DO_PAINEL = {"resolve": "decidido no painel a partir de ", "cancel": "cancelado no painel a partir de "}
+
+
+def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None, origem: str | None,
+                           gesto: Literal["resolve", "cancel"], o_que: str) -> tuple[str | None, str]:
+    """O texto da pessoa (sem o contexto) e o contexto que o motivo do comando acrescenta (", no painel a partir de
+    <aparelho>" ou nada). Recusa com 409 `note_looks_secret` ANTES de qualquer escrita, pela triagem do voto do D2:
+
+    - a nota, só o texto da pessoa — o contexto é do backend e nunca passa pela triagem;
+    - o `requested_by` do corpo, sempre que vier: sem sessão ele é o autor gravado cru no motivo, em
+      `result.resolved_by` e no evento do comando; com sessão é ignorado, mas um rótulo com cara de credencial não
+      tem uso legítimo e a regra fica uma só."""
+    texto = (nota or "").strip()
+    antigo = f"{_PREFIXO_ANTIGO_DO_PAINEL[gesto]}{row['instance_id']}"
+    do_painel = origem == "panel"
+    if texto == antigo or texto.startswith(f"{antigo}:"):
+        texto, do_painel = texto[len(antigo) + 1:].strip(), True
+    if texto and _TRIAGEM_DE_NOTA.recusa(texto):
+        # A nota iria crua para `commands.reason` (e `result.note`), e dali para o evento do comando no bus. Nada é
+        # gravado, nem a decisão: o comando segue como estava até vir uma nota limpa.
+        raise err(409, "note_looks_secret", f"A nota tem formato ou assunto de credencial e não foi gravada, nem "
+                                            f"{o_que}. Reescreva a observação sem o segredo.")
+    rotulo = (requested_by or "").strip()
+    if rotulo and _TRIAGEM_DE_NOTA.recusa(rotulo):
+        raise err(409, "note_looks_secret", f"O requested_by tem formato ou assunto de credencial e não foi gravado, "
+                                            f"nem {o_que}. Use um rótulo sem o segredo, ou entre com uma sessão.")
+    return texto or None, (f", no painel a partir de {row['instance_id']}" if do_painel else "")
+
 
 # ====================================================================== sessão do painel
 #: Caminhos que o `main.guarda` deixa responder ANTES de haver credencial — senão a tela de login levaria 401 no
@@ -2465,8 +2497,9 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
     registrado — mentir sobre isso seria pior do que a espera.
 
     Repetir o pedido é seguro: o estado não muda de novo e o sinal é reenviado, que é o que alguém faz quando o
-    worker acabou de reconectar. A nota com cara de credencial é recusada (409 `note_looks_secret`) antes de
-    qualquer escrita.
+    worker acabou de reconectar. A nota ou o `requested_by` com cara de credencial é recusado (409
+    `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo
+    (`_decisao_sobre_comando`).
     """
     s = st(request)
     row = s.commands.get(command_id)
@@ -2475,14 +2508,12 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
     if CommandState(row["state"]) not in COMMAND_OPEN:
         raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
                                    "ser cancelado.")
-    if body and body.note and _TRIAGEM_DE_NOTA.recusa(body.note):
-        # Mesma regra da resolução à mão: a nota iria crua para `commands.reason` e dali para o evento do comando no
-        # bus. Nada é gravado, nem o pedido — o comando segue como estava até vir uma nota limpa.
-        raise err(409, "note_looks_secret", "A nota tem formato ou assunto de credencial e não foi gravada, nem o "
-                                            "pedido de cancelamento. Reescreva a observação sem o segredo.")
-    autor = quem(request, body.requested_by if body else None)
+    corpo = body or CommandCancelBody()
+    nota, contexto = _decisao_sobre_comando(row, corpo.note, corpo.requested_by, corpo.origin, "cancel",
+                                            "o pedido de cancelamento")
+    autor = quem(request, corpo.requested_by)
     if CommandState(row["state"]) is not CommandState.cancel_requested:
-        motivo = f"cancelamento pedido por {autor}" + (f": {body.note}" if body and body.note else "")
+        motivo = f"cancelamento pedido por {autor}{contexto}" + (f": {nota}" if nota else "")
         try:
             row = s.commands.transition(command_id, CommandState.cancel_requested, reason=motivo)
         except InvalidCommandTransition as exc:
@@ -2505,8 +2536,9 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
 
     Só `uncertain` é resolvível: comando terminal já tem desfecho, e reabrir seria apagar história. Quem
     resolveu e por quê ficam gravados no comando, porque "alguém decidiu" sem dizer quem é o mesmo tipo de
-    afirmação vaga que esta fase inteira existe para eliminar. A nota com cara de credencial é recusada (409
-    `note_looks_secret`) antes de qualquer escrita.
+    afirmação vaga que esta fase inteira existe para eliminar. A nota ou o `requested_by` com cara de credencial é
+    recusado (409 `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo, e
+    `result.note` guarda só o texto da pessoa (`_decisao_sobre_comando`).
     """
     s = st(request)
     row = s.commands.get(command_id)
@@ -2515,18 +2547,14 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     if CommandState(row["state"]) not in COMMAND_UNSETTLED:
         raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
                                         "'uncertain' é resolvido à mão.")
-    if body.note and _TRIAGEM_DE_NOTA.recusa(body.note):
-        # A nota iria crua para `commands.reason` e `result.note`, e dali para o evento do comando no bus. A recusa é
-        # a do voto do D2: nada é gravado, nem a resolução — o comando segue `uncertain` até vir uma nota limpa.
-        raise err(409, "note_looks_secret", "A nota tem formato ou assunto de credencial e não foi gravada, nem a "
-                                            "resolução. Reescreva a observação sem o segredo.")
+    nota, contexto = _decisao_sobre_comando(row, body.note, body.requested_by, body.origin, "resolve", "a resolução")
     alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
             "cancelled": CommandState.cancelled}[body.outcome]
     autor = quem(request, body.requested_by)
-    motivo = f"resolvido à mão por {autor}" + (f": {body.note}" if body.note else "")
+    motivo = f"resolvido à mão por {autor}{contexto}" + (f": {nota}" if nota else "")
     anterior = loads(row["result"], {}) if row["result"] else {}
     dados = {**(anterior or {}), "resolved_by": autor, "resolved_at": now_iso(), "resolution": body.outcome,
-             "note": body.note, "previous_reason": row["reason"]}
+             "note": nota, "previous_reason": row["reason"], **({"origin": "panel"} if contexto else {})}
     novo = s.commands.transition(command_id, alvo, reason=motivo, result=dados)
     _publish_command(s, novo)
     s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
@@ -2535,7 +2563,7 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     # Sinal `comando_incerto_resolvido` (ADR-054), só depois de a decisão valer. A falha do livro nunca desfaz nem
     # derruba a resolução (`avisar`).
     avisar(s.costuras.comando_incerto_resolvido, ResolucaoDeComando(
-        command_id=command_id, resolucao=body.outcome, nota=body.note, quem=_autor_do_sinal(request),
+        command_id=command_id, resolucao=body.outcome, nota=nota, quem=_autor_do_sinal(request),
         simulated=s.provider.simulated))
     return command_dto(novo)
 
@@ -2574,7 +2602,8 @@ async def hierarchy(request: Request, instance_id: str) -> Any:
 async def take_control(request: Request, instance_id: str) -> Any:
     s = st(request)
     rt = device(s, instance_id)
-    status, lease = s.devices.request_control(rt)
+    # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão.
+    status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request))
     return {"status": status, "lease_id": lease}
 
 
@@ -2737,7 +2766,7 @@ async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -
     """Responde a uma execução em `needs_input`: cria a execução com o comando respondido e o mesmo pedido de alvos
     e cancela a antiga, que aponta para a nova. Declarada antes de `/runs/{run_id}/{op}`."""
     try:
-        nova, _ = ComandoAssistido(st(request).runs).sucessora(run_id, body)
+        nova, _ = ComandoAssistido(st(request).runs).sucessora(run_id, body, por=_autor_do_sinal(request))
     except RunError as exc:
         raise _run_error(exc) from exc
     return nova
@@ -2747,8 +2776,10 @@ async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -
 async def run_op(request: Request, run_id: str, op: str) -> Any:
     runs = st(request).runs
     # Cancelar pela rota é o GESTO de uma pessoa (sinal `cancelou_execucao`); o cancelamento que a sucessora faz não é.
+    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal.
     ops = {"start": runs.start, "pause": runs.pause, "resume": runs.resume,
-           "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)), "retry_failed": runs.retry_failed}
+           "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)),
+           "retry_failed": lambda rid: runs.retry_failed(rid, por=_autor_do_sinal(request))}
     if op not in ops:
         raise err(404, "not_found", "Operação desconhecida.")
     try:
@@ -2760,7 +2791,7 @@ async def run_op(request: Request, run_id: str, op: str) -> Any:
 @router.post("/runs/{run_id}/objectives/{objective_id}/resolve")
 async def resolve(request: Request, run_id: str, objective_id: str, body: ResolveBody) -> Any:
     try:
-        return st(request).runs.resolve(run_id, objective_id, body)
+        return st(request).runs.resolve(run_id, objective_id, body, por=_autor_do_sinal(request))
     except RunError as exc:
         raise _run_error(exc) from exc
 

@@ -970,7 +970,8 @@ class RunService:
             rt.attention = None
             self.devices.publish(rt)
 
-    def retry_failed(self, run_id: str) -> dict[str, Any]:
+    def retry_failed(self, run_id: str, *, por: str | None = None) -> dict[str, Any]:
+        """`por`: quem fez o gesto (a rota passa o autor da sessão), levado ao sinal `repetiu_execucao`."""
         run = self._run(run_id)
         if run["cancel_requested"]:
             raise RunError("invalid_state", "Execução cancelada não pode ser retomada.")
@@ -1005,7 +1006,7 @@ class RunService:
                 f"SELECT id, plan_version FROM objectives WHERE id IN ({','.join('?' * len(retried))})",
                 tuple(retried))}
             avisar(self.costuras.ao_repetir,
-                   RepeticaoDeExecucao(run_id, tuple(f"{oid}@{versoes.get(oid, 0)}" for oid in retried)))
+                   RepeticaoDeExecucao(run_id, tuple(f"{oid}@{versoes.get(oid, 0)}" for oid in retried), quem=por))
         return {"retried": retried, "skipped": skipped}
 
     def _print_da_confirmacao(self, obj: Row, etapa: Row, evidence_id: int | None) -> Row | None:
@@ -1027,7 +1028,8 @@ class RunService:
                                                f"de {obj['instance_id']}, com imagem).", 422)
         return ev
 
-    def resolve(self, run_id: str, objective_id: str, body: ResolveBody) -> ObjectiveDTO:
+    def resolve(self, run_id: str, objective_id: str, body: ResolveBody, *, por: str | None = None) -> ObjectiveDTO:
+        """`por`: quem decidiu (a rota passa o autor da sessão), levado ao sinal do gesto (ADR-054)."""
         self._run(run_id)
         try:
             obj = self.repo.objective_row(objective_id)
@@ -1081,7 +1083,7 @@ class RunService:
         avisar(self.costuras.ao_resolver, ResolucaoDeItem(
             run_id=run_id, objective_id=objective_id, resolucao=body.resolution,
             ordem=f"{obj['plan_version']}.{blocking['seq'] if blocking is not None else 0}", nota=body.note,
-            step_id=str(blocking["id"]) if blocking is not None else None))
+            step_id=str(blocking["id"]) if blocking is not None else None, quem=por))
         return self.repo.objective_dto(self.repo.objective_row(objective_id))
 
     # ------------------------------------------------------------------ relatório

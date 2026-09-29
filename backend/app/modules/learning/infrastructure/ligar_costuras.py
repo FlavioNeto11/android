@@ -11,8 +11,10 @@ Duas partes:
   gerenciador de aparelhos: o objeto que cumpre `CosturasDeAprendizado` e `CosturaDeControle` e que o `AppState`
   pendura em cada um.
 
-O que este pacote grava por conta própria são SINAIS (`learning_signals`), idempotentes pela chave
-`(kind, source_ref, created_by)`, sem IA:
+O que este pacote grava por conta própria são SINAIS (`learning_signals`), sem IA, um por GESTO: o `source_ref` de
+cada um já é a identidade do evento (a tentativa tomada, o ponto de decisão do item, o episódio), e o sinal que já
+existe com aquele `(kind, source_ref)` não se grava de novo, qualquer que seja o autor (`_gesto`; o índice do livro,
+`(kind, source_ref, created_by)`, é o do voto do D2, em que duas pessoas são duas opiniões):
 
 - `confirmou_a_mao` (neutro: positivo para a ação e negativo para a verificação — nunca evidência a favor de
   aprendizado), `repetiu_item` (neutro) e `abandonou_item` (negativo), por `ao_resolver`, com a nota redigida (a que
@@ -31,13 +33,14 @@ O que este pacote grava por conta própria são SINAIS (`learning_signals`), ide
 - `correcao_de_ensino` (negativo: a pessoa diz que a habilidade errou naquela etapa), com o texto da correção como
   nota, ligada à execução e à etapa corrigidas.
 
-Quem faz o gesto é uma pessoa pelo painel. Os três últimos levam o operador da sessão (`autor_do_gesto`, a regra das
-rotas do livro: sem sessão, `panel`); os do A2 ainda saem como `panel`, porque o nome não chega a `resolve`,
-`retry_failed`, ao assistente nem ao gerenciador. Nunca como `sistema` — a régua diária só conta como negativo humano
-o que não é do sistema. O app e a ação do sinal saem da etapa pela mesma regra da régua diária (`app_da_etapa`, ação
-nula = `*`), para os dois agregarem na mesma chave; `simulated` vem de `runs.simulated` (no comando sem execução, do
-modo da instalação), e sinal de execução simulada nunca promove nada. Nenhum dos três novos conta como intervenção na
-régua diária (`SINAIS_DE_INTERVENCAO`): o ADR-054 não os lista.
+Quem faz o gesto é uma pessoa pelo painel, e todos levam o operador da sessão (`autor_do_gesto`, a regra das rotas
+do livro: sem sessão, `panel`): a rota o passa no `quem` de cada costura (`resolve`, `retry_failed`, a sucessora do
+assistente e o pedido de controle recebem `por=`). Nunca como `sistema` — a régua diária só conta como negativo
+humano o que não é do sistema. O app e a ação do sinal saem da etapa pela mesma regra da régua diária
+(`app_da_etapa`, ação nula = `*`), para os dois agregarem na mesma chave; `simulated` vem de `runs.simulated` (no
+comando sem execução, do modo da instalação), e sinal de execução simulada nunca promove nada. Nenhum dos três de
+29/09 (cancelar, comando incerto, correção) conta como intervenção na régua diária (`SINAIS_DE_INTERVENCAO`): o
+ADR-054 não os lista.
 
 `aprendizado.enabled: false` desliga tudo (lido a cada chamada); lições no modo `off` nem são pedidas.
 """
@@ -184,9 +187,10 @@ class CosturasDoLivro:
         if ctx is None:
             return
         kind, polaridade = _DO_GESTO[resolucao.resolucao]
-        self._servico.registrar_sinal(NovoSinal(
-            kind=kind, source_ref=f"resolve:{resolucao.objective_id}:{resolucao.ordem}", created_by=PAINEL,
-            polarity=polaridade, note=resolucao.nota, run_id=resolucao.run_id, objective_id=resolucao.objective_id,
+        self._gesto(NovoSinal(
+            kind=kind, source_ref=f"resolve:{resolucao.objective_id}:{resolucao.ordem}",
+            created_by=autor_do_gesto(resolucao.quem), polarity=polaridade, note=resolucao.nota,
+            run_id=resolucao.run_id, objective_id=resolucao.objective_id,
             step_id=resolucao.step_id, instance_id=ctx.instance_id, profile_id=ctx.profile_id,
             app_package=ctx.app_package, capability=ctx.capability, step_hash=ctx.step_hash,
             # A etapa que esperava a decisão estava parada (incerta, esperando, falhou): nunca comprovada.
@@ -200,9 +204,10 @@ class CosturasDoLivro:
         if ctx is None:
             return
         gesto = hashlib.sha1(",".join(sorted(repeticao.objetivos)).encode()).hexdigest()[:12]
-        self._servico.registrar_sinal(NovoSinal(
-            kind=SignalKind.REPETIU_EXECUCAO, source_ref=f"repeticao:{repeticao.run_id}:{gesto}", created_by=PAINEL,
-            polarity=Polaridade.NEUTRAL, run_id=repeticao.run_id, app_package=ctx.app_package,
+        self._gesto(NovoSinal(
+            kind=SignalKind.REPETIU_EXECUCAO, source_ref=f"repeticao:{repeticao.run_id}:{gesto}",
+            created_by=autor_do_gesto(repeticao.quem), polarity=Polaridade.NEUTRAL, run_id=repeticao.run_id,
+            app_package=ctx.app_package,
             data={"itens": len(repeticao.objetivos)}, simulated=ctx.simulated))
 
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
@@ -212,9 +217,10 @@ class CosturasDoLivro:
         if ctx is None:
             return
         for campo in dict.fromkeys(_campo(c) for c in (resposta.campos or ("",))):
-            self._servico.registrar_sinal(NovoSinal(
+            self._gesto(NovoSinal(
                 kind=SignalKind.RESPONDEU_PERGUNTA, source_ref=f"resposta:{resposta.run_id}:{campo}",
-                created_by=PAINEL, polarity=Polaridade.NEUTRAL, run_id=resposta.run_id, app_package=ctx.app_package,
+                created_by=autor_do_gesto(resposta.quem), polarity=Polaridade.NEUTRAL, run_id=resposta.run_id,
+                app_package=ctx.app_package,
                 data={"campo": campo, "resposta_sha256": resposta.resposta_sha256,
                       "run_sucessora": resposta.run_sucessora},
                 simulated=ctx.simulated))
@@ -226,8 +232,8 @@ class CosturasDoLivro:
         if ctx is None:
             return
         # Um sinal por EPISÓDIO: o clique repetido nem chega aqui (`RunService.cancel`), e a execução reaberta e
-        # cancelada de novo é outro episódio — a chave leva o instante da transição, senão o `ON CONFLICT` o engoliria.
-        self._servico.registrar_sinal(NovoSinal(
+        # cancelada de novo é outro episódio — a chave leva o instante da transição, senão `_gesto` o engoliria.
+        self._gesto(NovoSinal(
             kind=SignalKind.CANCELOU_EXECUCAO, source_ref=f"cancelamento:{cancelamento.run_id}:{cancelamento.em}",
             created_by=autor_do_gesto(cancelamento.quem),
             polarity=Polaridade.NEUTRAL if cancelamento.antes_de_iniciar else Polaridade.NEGATIVE,
@@ -249,7 +255,7 @@ class CosturasDoLivro:
         run_id = trilha.get("run_id")
         ctx = self._contexto(run_id, objective_id=trilha.get("objective_id")) if run_id else None
         pacote = trilha.get("package") or (self._pacote(trilha["app_id"]) if "app_id" in trilha else "")
-        self._servico.registrar_sinal(NovoSinal(
+        self._gesto(NovoSinal(
             kind=SignalKind.COMANDO_INCERTO_RESOLVIDO, source_ref=f"comando:{resolucao.command_id}",
             created_by=autor_do_gesto(resolucao.quem), polarity=_DO_DESFECHO[resolucao.resolucao],
             note=resolucao.nota, run_id=run_id if ctx is not None else None,
@@ -267,7 +273,7 @@ class CosturasDoLivro:
         ctx = self._contexto(correcao.run_id, step_id=correcao.step_id)
         if ctx is None:
             return
-        self._servico.registrar_sinal(NovoSinal(
+        self._gesto(NovoSinal(
             kind=SignalKind.CORRECAO_DE_ENSINO, source_ref=f"correcao:{correcao.teaching_id}:{correcao.turno}",
             created_by=autor_do_gesto(correcao.quem), polarity=Polaridade.NEGATIVE, note=correcao.nota,
             run_id=correcao.run_id, objective_id=ctx.objective_id, step_id=correcao.step_id,
@@ -286,12 +292,29 @@ class CosturasDoLivro:
         linha = self._db.one("SELECT id FROM attempts WHERE step_id=? AND status='running' ORDER BY number DESC"
                              " LIMIT 1", (tomada.step_id,))
         tentativa = linhas.texto(linha, "id") if linha is not None else None
-        self._servico.registrar_sinal(NovoSinal(
-            kind=SignalKind.TOMOU_CONTROLE, source_ref=f"takeover:{tentativa or tomada.step_id}", created_by=PAINEL,
-            polarity=Polaridade.NEGATIVE, run_id=tomada.run_id, objective_id=tomada.objective_id or ctx.objective_id,
+        self._gesto(NovoSinal(
+            kind=SignalKind.TOMOU_CONTROLE, source_ref=f"takeover:{tentativa or tomada.step_id}",
+            created_by=autor_do_gesto(tomada.quem), polarity=Polaridade.NEGATIVE, run_id=tomada.run_id,
+            objective_id=tomada.objective_id or ctx.objective_id,
             step_id=tomada.step_id, attempt_id=tentativa, instance_id=tomada.instance_id,
             profile_id=ctx.profile_id, app_package=ctx.app_package, capability=ctx.capability,
             step_hash=ctx.step_hash, step_verified=False, simulated=ctx.simulated))
+
+    # ---------------------------------------------------------------- escrita
+    def _gesto(self, sinal: NovoSinal) -> None:
+        """Grava o sinal de um gesto, UM por `(kind, source_ref)`, qualquer que seja o autor: o primeiro fica.
+
+        Enquanto os gestos do A2 saíam todos `panel`, o autor fixo fazia o `ON CONFLICT (kind, source_ref,
+        created_by)` engolir a repetição do mesmo evento. Com o operador da sessão, o mesmo evento feito de novo por
+        OUTRA pessoa viraria uma segunda linha — pedir o controle, desistir e outra pessoa pedir na mesma tentativa;
+        "abandonar" de novo o item que já falhou, na mesma etapa —, e a régua conta linhas (intervenção por tentativa,
+        negativo humano). A chave do gesto já é o evento, não a pessoa; o índice com o autor é o do voto do D2, em que
+        duas pessoas no mesmo item são duas opiniões, e continua valendo para ele. Leitura e escrita no mesmo laço (as
+        costuras rodam na rota ou no escalonador, sem `await` entre as duas)."""
+        if self._db.one("SELECT 1 FROM learning_signals WHERE kind=? AND source_ref=? LIMIT 1",
+                        (sinal.kind.value, sinal.source_ref)) is not None:
+            return
+        self._servico.registrar_sinal(sinal)
 
     # ---------------------------------------------------------------- leitura
     def _contexto(self, run_id: str, *, objective_id: str | None = None,

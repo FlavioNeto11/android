@@ -81,7 +81,9 @@ export function motivoBloqueado(id: string, action: InstanceAction): string | un
 export async function cancelarComando(cmd: Command): Promise<boolean> {
   const rotulo = ACTION_META[cmd.verb as InstanceAction]?.label ?? cmd.verb;
   try {
-    const r = await api.cancelCommand(cmd.id, { note: `cancelado no painel a partir de ${cmd.instance_id}` });
+    // Sem nota: o "de onde" (`origin`) o backend compõe no motivo — no texto, o id do aparelho passava pela triagem
+    // de credencial, e um id fora do padrão recusava o pedido.
+    const r = await api.cancelCommand(cmd.id, { origin: 'panel' });
     toast({
       tone: r.delivered ? 'info' : 'warning', key: `cancel-${cmd.id}`,
       title: `${rotulo} em ${cmd.instance_id}: cancelamento pedido`,

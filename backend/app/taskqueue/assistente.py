@@ -140,8 +140,10 @@ class ComandoAssistido:
         return refinado
 
     # ------------------------------------------------------------------ sucessora
-    def sucessora(self, run_id: str, body: RunSuccessorBody) -> tuple[RunSummary, bool]:
-        """Cria a execução respondida e cancela a antiga. Devolve (nova, criada_agora)."""
+    def sucessora(self, run_id: str, body: RunSuccessorBody, *,
+                  por: str | None = None) -> tuple[RunSummary, bool]:
+        """Cria a execução respondida e cancela a antiga. Devolve (nova, criada_agora). `por`: quem respondeu (a rota
+        passa o autor da sessão), levado ao sinal `respondeu_pergunta`."""
         runs = self.runs
         run = runs.repo.run_row(run_id)
         if run is None:
@@ -183,7 +185,7 @@ class ComandoAssistido:
             # (as preferências, ADR-054) o relê da sucessora.
             avisar(runs.costuras.respondeu_pergunta, RespostaAPergunta(
                 run_id=run_id, run_sucessora=nova.id, campos=campos,
-                resposta_sha256=hashlib.sha256(body.command.strip().encode()).hexdigest()))
+                resposta_sha256=hashlib.sha256(body.command.strip().encode()).hexdigest(), quem=por))
         return nova, not nova.deduplicated
 
     # ------------------------------------------------------------------ apoio
