@@ -8,8 +8,9 @@ reservados, ordem, dependências e pendências) está em [../handoffs/terceira-e
 e os itens nas Fases 23–27 de [../plano-100.md](../plano-100.md). Decisões: ADR-056 a ADR-059 em
 [../decisoes.md](../decisoes.md).
 
-O diagnóstico foi feito só por leitura (código em `a962edb`/`origin/main`, `GET` no central) em 29/09. Os números de
-linha envelhecem: confira no código antes de repetir um achado.
+O diagnóstico foi feito só por leitura (`GET` no central e código em `a962edb`) em 29/09. Os números de linha são
+daquele commit; a Fase 22 (`de03a4c`) já deslocou `taskqueue/{scheduler,executor,service,repository}.py`. Confira
+no código pelo nome da função antes de repetir um achado.
 
 ## 1. Decisões já tomadas
 

@@ -1,6 +1,7 @@
 # Roadmap — o que falta, por tipo de pendência
 
-Revisado em 24/09/2026 sobre `f443a90`. Os IDs são os do plano-100.
+Revisado em 24/09/2026 sobre `f443a90`; seções 1–3 atualizadas em 29/09 com a terceira evolução (Fases 23–27). Os
+IDs são os do plano-100.
 
 **Fontes.** Este arquivo diz **o que falta e qual é o próximo passo**. Ele não repete as outras fontes, que continuam
 sendo a referência de cada assunto:
@@ -15,8 +16,11 @@ sendo a referência de cada assunto:
 Quando um item daqui fecha, o registro muda **pelo mecanismo** (`scripts/claude-plan-100.py aplicar`). Depois
 atualize esta página e [`estado-atual.md`](estado-atual.md).
 
-**Retrato.** São 93 itens: 88 `implemented`, 3 `partial` (7.4, 8.3, T.2), 1 `blocked` (8.4) e 1 `pending` (12.3).
-"Implementado" não é "provado".
+**Retrato.** O retrato de 24/09 (93 itens) envelheceu: em 29/09 o plano tem 240 itens, 183 implementados e 57
+pendentes (os 43 das Fases 23–27 entre eles). A contagem viva é `python scripts/claude-plan-100.py check`, e o estado
+de cada item está em [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md). "Implementado" não é "provado".
+
+A tabela de provas abaixo é a de 24/09:
 
 | Prova | Itens |
 |---|---|
