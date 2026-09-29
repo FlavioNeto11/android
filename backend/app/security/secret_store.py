@@ -4,10 +4,16 @@ Desenho: `senha -> AES-256-GCM -> ciphertext no SQLite`. A chave que abre tudo *
 Windows ela é embrulhada por DPAPI e só o mesmo usuário na mesma máquina consegue desembrulhar. Copiar banco e
 arquivos juntos não basta para abrir as senhas.
 
-Quem chama nunca recebe o valor por acaso: `get_secret` existe e é usado em dois lugares, cada um no instante do
-uso — o canal de entrada sensível (`sensitive_input.py`, a senha de uma conta no login) e a provisão de rede
-(`segredo_de_rede.py`, a chave ou a senha do perfil de rede entregue ao aparelho; ADR-056 §5). Fora deles, só o
-`rekey`, que recifra o cofre inteiro. A lista é conferida por teste (`tests/test_segredo_de_rede.py`).
+Quem chama nunca recebe o valor por acaso: `get_secret` existe e só estes módulos o chamam, cada um no instante do
+uso:
+
+- `taskqueue/executor.py` e `integrations/app_declarado/sessao.py`: montam a função que o canal sensível
+  (`type_secret`) chama no instante da digitação da senha de uma conta (ADR-040). O valor não passa pela execução;
+- `security/segredo_de_rede.py`: a chave ou a senha do perfil de rede entregue ao aparelho (ADR-056 §5);
+- `security/rekey.py`: recifra o cofre inteiro.
+
+`clonar` (ADR-057) não entra na lista: decifra por `_decifrar`, privado, e o valor não sai deste módulo. A lista é
+conferida por teste (`tests/test_segredo_de_rede.py`); um consumidor novo muda o teste e este texto juntos.
 """
 from __future__ import annotations
 
@@ -272,8 +278,13 @@ class SecretStore:
         return ref
 
     def get_secret(self, ref: str) -> str:
-        """Único método que devolve o valor. Quem chama tem de usá-lo e soltar a referência imediatamente; os
+        """Único método PÚBLICO que devolve o valor. Quem chama tem de usá-lo e soltar a referência imediatamente; os
         consumidores permitidos estão no docstring do módulo."""
+        return self._decifrar(ref)
+
+    def _decifrar(self, ref: str) -> str:
+        """Decifra sem sair do cofre. Separado de `get_secret` para que operações internas (`clonar`) usem o valor
+        sem virar consumidor de `get_secret`: a lista de consumidores fica sendo quem recebe o valor FORA daqui."""
         row = self.db.one("SELECT key_id, nonce, ciphertext FROM secrets WHERE ref=?", (ref,))
         if row is None:
             raise KeyError(ref)
@@ -320,7 +331,7 @@ class SecretStore:
         if para is not None and para == ref:
             raise ValueError("clonar para a própria referência não cria entrada nova")
         # O valor vive só neste quadro, entre decifrar e cifrar de novo.
-        return self.store_secret(self.get_secret(ref), ref=para)
+        return self.store_secret(self._decifrar(ref), ref=para)
 
     def delete_secret(self, ref: str) -> None:
         self.db.execute("DELETE FROM secrets WHERE ref=?", (ref,))

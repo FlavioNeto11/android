@@ -17,26 +17,33 @@ porta da troca (rede do aparelho, contrato C4) — e em cada caso se prova:
   que a antiga leu é decisão de produto em aberto (ver `docs/dominios/execution.md`).
 
 Nível de prova: `simulated` (provedor por regras, aparelho falso de QA com dois registros de app no mesmo pacote,
-banco de teste; o "reinício" é `Harness.crash` + `Harness.boot` sobre o mesmo banco e o mesmo aparelho).
+banco de teste; o "reinício" é `Harness.crash` + `Harness.boot` sobre o mesmo banco e o mesmo aparelho). Um caso usa o
+dublê com DOIS pacotes (`FakeQaDevice.pacotes_extras`): a retomada depois do reinício abre o pacote do segundo app.
+Outlook para Instagram num aparelho real fica com o 24.9.
 """
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from dataclasses import replace
+from typing import Any, Iterator
 
 import pytest
 
 from app.models import PlanStep, Postcondition
+from app.modules.applications.domain.definition import AppDefinition
+from app.planning.catalog import register, unregister
 from app.planning.provider import Decision, Usage
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
 from app.taskqueue.service import RunError
 
 from .conftest import Harness
+from .fake_device import PKG as QA
 from .test_conta_do_app_da_etapa import CONTA_NO_SEGUNDO_APP, IID, _etapas, _objetivo, _persona, _segundo_app
 from .test_valor_entre_etapas import LIDO, _decide_leitura
 
 REF = "{{saida:contato}}"
+PKG_CONTAS = "com.pocqa.contas"          # o segundo app com pacote próprio (dublê de dois pacotes)
 
 
 def _post(kind: str, value: str, description: str = "d") -> Postcondition:
@@ -175,6 +182,66 @@ async def test_reinicio_com_a_troca_segurada_pela_porta_retoma_do_segundo_app(ha
     await harness.boot()
     assert (await harness.wait_run(run.id, timeout=90)).status == "completed"
     _concluido_sem_reler(harness, obj["id"])
+
+
+@pytest.fixture
+def contas_em_outro_pacote() -> Iterator[None]:
+    """O segundo app com PACOTE PRÓPRIO, declarando conta da persona (como o Outlook: `precisa_de_perfil`)."""
+    register(PKG_CONTAS, None, AppDefinition(package=PKG_CONTAS, name="QA Contas", needs_profile=True,
+                                             label="QA Contas"))
+    try:
+        yield
+    finally:
+        unregister(PKG_CONTAS)
+
+
+async def test_reinicio_retoma_no_segundo_app_de_outro_pacote(harness: Harness, contas_em_outro_pacote: None) -> None:
+    """O que ficou `not_run` com o dublê de um pacote só: depois do reinício, a etapa seguinte é de OUTRO app. A queda
+    vem com a primeira etapa do segundo app em curso e o PRIMEIRO app ainda à frente; o backend novo retoma a etapa com
+    o contexto do segundo app (é o pacote dele que o ator abre e que o foco confere), confere a conta da persona NELE
+    e termina lá, sem reler o valor do primeiro.
+
+    O ator por regras do provedor simulado só conhece as telas do QA; o segundo pacote encena as mesmas telas, e o
+    dublê abaixo faz o que o ator real faz com o app da etapa no contexto: abre-o quando a tela é de outro app."""
+    st = harness.state
+    assert st is not None
+    qa = st.db.one("SELECT activity FROM apps WHERE package=?", (QA,))
+    st.db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('qa-contas','QA Contas',?,?,0)",
+                  (PKG_CONTAS, qa["activity"]))
+    _persona(harness, contas={"qa-contas": CONTA_NO_SEGUNDO_APP})
+    fake = harness.fakes[IID]
+    fake.pacotes_extras = (PKG_CONTAS,)
+    inner = harness.ai.inner
+    inner.plan = _plano_que_troca_de_app(inner)
+    ler = _decide_leitura(inner, {"decisoes": 1})
+    na_troca = asyncio.Event()
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.app.package != PKG_CONTAS:
+            return await ler(req)
+        if req.ctx.step_key == "confirm_account" and not na_troca.is_set():
+            na_troca.set()
+            await asyncio.sleep(60)          # a etapa do 2º app fica em curso, com o 1º app à frente, até a queda
+        if req.screen.package != PKG_CONTAS:
+            return Decision(tool="open_app", args={"rationale": "abrir o app desta etapa", "package": None}), Usage()
+        return await ler(replace(req, screen=replace(req.screen, package=QA)))
+
+    inner.decide = decide
+    run = harness.run([IID])
+    await asyncio.wait_for(na_troca.wait(), 60)
+    obj = _objetivo(harness, run.id)
+    assert _etapas(harness, obj["id"])["v1:confirm_account"]["status"] == "running"
+    assert fake.foreground == QA and not any(c.startswith(f"open_app:{PKG_CONTAS}") for c in fake.calls)
+    await harness.crash()
+    antes = len(fake.calls)
+
+    await harness.boot()                                         # mesmo banco, mesmo aparelho (o QA ainda à frente)
+    assert (await harness.wait_run(run.id, timeout=90)).status == "completed"
+    _concluido_sem_reler(harness, obj["id"])
+    assert fake.calls[antes:].count(f"open_app:{PKG_CONTAS}") == 1   # o app da etapa, aberto uma vez, depois da queda
+    assert fake.foreground == PKG_CONTAS                             # a conversa e o envio foram no segundo app
+    confirma = _etapas(harness, obj["id"])["v1:confirm_account"]
+    assert confirma["status"] == "succeeded" and confirma["app_id"] == "qa-contas"
 
 
 # ================================================================== pausa no meio da troca

@@ -163,6 +163,20 @@ def parar_conta_por_desafio(repo: CredenciaisDaConta, bus: EventSink, *, profile
     return True
 
 
+def conta_para_conferir(*, handle: str | None, login_identifier: str | None, username: str | None,
+                        ancora: bool) -> str:
+    """O identificador de UMA conta: o @ dela; na conta âncora antiga (criada sem @), o @ de cadastro do perfil; senão
+    o identificador de login (o e-mail da conta Outlook). Vazio quando a conta não tem nenhum.
+
+    É o que o motor de sessão confere na tela e o `handle` da quarentena (`aplicar_desafio`): os dois chamadores da
+    regra do desafio tiram daqui, porque o marcador é único por (aparelho, conta) — com o @ da persona no lugar do
+    e-mail, a conta de outro app ocupava o marcador da âncora e a trava dela, depois, não era registrada."""
+    principal = (handle or "").strip()
+    if not principal and ancora:
+        principal = (username or "").strip()
+    return principal or (login_identifier or "").strip()
+
+
 def aplicar_desafio(repo: RepositorioDoDesafio, bus: EventSink, *, profile_id: str, account_id: str,
                     app_id: str | None, handle: str, ancora: bool, travada: bool, instance_id: str,
                     anterior_status: str | None, detail: str | None, evidencia: str, app_label: str,

@@ -35,7 +35,7 @@ from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.identity.application.ports import SessionProvider
-from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio,
+from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
@@ -850,11 +850,18 @@ class AppState:
             # desafio para só ela, e a trava vai à quarentena sem bloquear a persona (P9). A quarentena é protegida
             # por dentro: falhar não pode impedir o evento da fila logo abaixo (o `except` do executor engolia o erro,
             # e o dono não era avisado). A conta travada é a daquele app.
+            # O identificador da conta é o mesmo que o motor de sessão confere (`conta_para_conferir`): a conta do
+            # Outlook sem @ vai à quarentena pelo e-mail dela, não pelo @ de cadastro da persona.
             perfil = self.social_repo.profile_row(profile_id)
-            handle = str(conta["handle"] or (perfil["username"] if perfil is not None else "") or profile_id)
+            cred = self.social_repo.account_credential_row(profile_id, conta["id"])
+            ancora = self.social_repo.eh_pacote_ancora(profile_id, pacote)
+            handle = conta_para_conferir(handle=conta["handle"],
+                                         login_identifier=cred["login_identifier"] if cred is not None else None,
+                                         username=perfil["username"] if perfil is not None else None,
+                                         ancora=ancora) or profile_id
             aplicar_desafio(self.social_repo, self.bus, profile_id=profile_id, account_id=str(conta["id"]),
                             app_id=str(conta["app_id"]), handle=handle,
-                            ancora=self.social_repo.eh_pacote_ancora(profile_id, pacote), travada=travada,
+                            ancora=ancora, travada=travada,
                             instance_id=instance_id, anterior_status=anterior, detail=detail[:300],
                             evidencia=detail[:300], app_label=capabilities_of(pacote).label, visto_por="execução")
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão

@@ -478,7 +478,7 @@ class Scheduler:
         """
         return [p for p in dict.fromkeys(pacote for _, pacote in self._apps_do_objetivo(obj, rt)) if p]
 
-    def _apps_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> list[tuple[str | None, str | None]]:
+    def _apps_do_objetivo(self, obj: Row, rt: DeviceRuntime) -> list[tuple[str | None, str | None]]:
         """`(app_id, pacote)` de cada app que as etapas que FALTAM vão operar, na ordem em que aparecem.
 
         O id do app vai junto do pacote porque a conta da persona é por app (`profile_accounts.app_id`, item 24.4); o
@@ -501,10 +501,10 @@ class Scheduler:
         return apps
 
     # ------------------------------------------------------------------ conta da persona no app da etapa (24.4)
-    def _persona_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> str | None:
+    def _persona_do_objetivo(self, obj: Row, rt: DeviceRuntime) -> str | None:
         return self.repo.persona_do_objetivo(obj["profile_id"], rt.id)
 
-    def _conta_indisponivel(self, obj: Any, rt: DeviceRuntime, pacote: str | None, app_id: str | None) -> str | None:
+    def _conta_indisponivel(self, obj: Row, rt: DeviceRuntime, pacote: str | None, app_id: str | None) -> str | None:
         """Por que a conta da persona NESTE app não serve à etapa; `None` quando serve (ou o app não tem conta).
 
         Só vale para app que declara conta da persona (`needs_profile` ou provedor de sessão): Chrome ou QA sem
@@ -540,7 +540,7 @@ class Scheduler:
                     "desativada")
         return f"a pessoa vinculada ({quem}) não tem conta em {rotulo}; a etapa deste app precisa da conta dela"
 
-    def _conta_da_etapa(self, run: Any, obj: Any, rt: DeviceRuntime, srow: Row) -> Row | None:
+    def _conta_da_etapa(self, run: Row, obj: Row, rt: DeviceRuntime, srow: Row) -> Row | None:
         """A etapa que confere a conta (`{account_label}`) e ainda não sabe QUAL (item 24.4): a materialização não
         conhecia UMA conta da persona no app dela e deixou o molde sem resolver.
 
@@ -1378,7 +1378,7 @@ class Scheduler:
                            loads(row["known_selectors"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
 
-    def _app_da_linha(self, run: Any, rt: DeviceRuntime, srow: Any) -> tuple[str | None, str | None]:
+    def _app_da_linha(self, run: Row, rt: DeviceRuntime, srow: Row) -> tuple[str | None, str | None]:
         """`(app_id, pacote)` do app de uma etapa (linha do banco), como `_apps_do_objetivo` o conta."""
         try:
             app, _ = self._app_context(run, rt, srow["app_id"])
@@ -1386,7 +1386,7 @@ class Scheduler:
             return (None, None)
         return (app.id, app.package)
 
-    def _portas_na_troca(self, obj: Any, rt: DeviceRuntime, app_id: str | None, pacote: str | None) -> bool:
+    def _portas_na_troca(self, obj: Row, rt: DeviceRuntime, app_id: str | None, pacote: str | None) -> bool:
         """As portas do despacho repassadas para o app da etapa seguinte, de dentro do worker (item 24.4, R8).
 
         A mesma ordem do `_tick`: rede do aparelho (contrato C4, ADR-056) antes de tudo — a porta da sessão pode

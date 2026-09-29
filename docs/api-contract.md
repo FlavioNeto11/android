@@ -2735,3 +2735,92 @@ aceita um id e ainda o ignora. A resolução por conta é o 23.4. Nenhum corpo H
 - No painel, `ResolvedTarget.app_ids` é opcional: o alvo que vem no `detail` de uma recusa (409 da criação) sai do
   resolvedor, sem o campo.
 - Tirar a lista de `Plan.required_apps` é das frentes da Fase 24.
+
+## Adendo v0.42 (29/09/2026) — Onda 1 da terceira evolução: sessão por conta, contas por app, comando entre apps e rede por aparelho (ADR-056, ADR-057, ADR-058)
+
+Compatível para trás: quem não manda os campos novos tem o comportamento de antes. Prova: `simulated` (os testes da
+evolução em `backend/tests/`); Outlook e Instagram num aparelho real, a aplicação e a medição da rede no aparelho
+seguem `not_run` (24.9, 25.4, 25.5).
+
+**Rede por aparelho (25.2, ADR-056).** Rotas novas; nenhuma resposta ou evento traz segredo nem `secret_ref`.
+
+| Rota | Sucesso | Erros |
+|---|---|---|
+| `GET /api/network/profiles` | 200 `{profiles: [NetworkProfileDTO + in_use: string[]]}` | — |
+| `POST /api/network/profiles` | 201 `NetworkProfileDTO` (só `has_secret`) | 422 sem `input` nem `ctx` (`invalid_body`, `invalid_secret` ou a lista de erros); 409 `name_taken`; 503 `secret_store_unavailable` |
+| `DELETE /api/network/profiles/{id}` | 204 | 404 `not_found`; 409 `network_profile_in_use` com `instance_ids` |
+| `GET /api/network/devices` | 200 `{devices: [...]}` | — |
+| `POST /api/network/assign` | 200 `{accepted, dry_run, devices: [...]}` | ver abaixo |
+| `POST /api/network/devices/{iid}/verify` | 202 | 404 `not_found`; 409 `store_instance`, `aparelho_em_quarentena`, `nothing_requested` |
+| `POST /api/network/devices/{iid}/reapply` | 202 | os mesmos de `verify` |
+
+- **Cadastro:** `{name, kind: vpn|proxy, protocol, endpoint_host, endpoint_port, params?, secret?}`, campo desconhecido
+  recusado. O `secret` sai do corpo antes da validação e vai ao cofre. `params` com chave ou valor com cara de segredo
+  é recusado.
+- **Aparelhos:** cada item traz `instance_id`, `worker_id`, `external`, `device_state`, `network`
+  (`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy` (o proxy da 041, que vale `configurado` no
+  máximo), `restriction` (a quarentena), `real_account`, `required_apps` (pacotes que a medição tem de cobrir),
+  `pending` (`aplicar`, `verificar` ou `null`) e `last_measurement`. A loja fica de fora.
+- **Atribuição:** `{instance_ids (1–200), vpn_profile_id?, proxy_profile_id?, policy?, confirm_real_account: string[],
+  dry_run}`. Campo omitido fica como está; `null` num perfil o tira. O alvo é sempre a lista explícita.
+  - Cada item de `devices`: `{id, outcome: would_assign|assigned|unchanged|refused, code?, reason, from, to, reapply,
+    warnings}`.
+  - `dry_run` devolve só a prévia. Sem ele é tudo ou nada: com alguma recusa, 409 com o `code` da recusa (ou
+    `assign_refused` quando há mais de um) e `devices` com a prévia inteira, sem gravar nada.
+  - Recusas por item: `store_instance`, `aparelho_em_quarentena`, `policy_without_profile`, `policy_without_vpn` e
+    `real_account_confirm_required`. Esta última vale quando a saída de um aparelho com conta vinculada muda sem o id
+    dele em `confirm_real_account` (um a um, ADR-056 §7).
+  - Erros do lote: 400 `nothing_to_change`, `unknown_instance` e `wrong_profile_kind`; 404
+    `network_profile_not_found`.
+- **Verificar e reaplicar:** 202 `{accepted, instance_id, action: verify|reapply, pending, desired_rev, applied_rev,
+  state, executed: false, reason}`. O 202 é "pedido registrado", nunca "aplicado". `reapply` cria revisão nova e volta
+  o estado a `pendente`; `verify` não muda o estado.
+- **Evento `network.updated`:** `data` com `instance_id`, `acao` (`assign|verify|reapply|observado|medicao|
+  perfil_criado|perfil_apagado`) e, conforme a ação, `desired_rev`, `applied_rev`, `state`, `measurement_id`,
+  `profile_id` e a política e os perfis pedidos.
+- **Portão (C4):** `wait_reason = "rede"` também é gravado na troca de app entre etapas, antes da conta e da sessão do
+  app seguinte. A composição ainda não liga o portão ao estado da rede (25.6).
+
+**Conta e sessão por conta (23.4, 23.5, ADR-057).**
+- `POST …/accounts/{aid}/session/connect` e `…/session/verify` operam a CONTA do caminho (`ensure_session(…,
+  account_id=aid)`). Conta de site (com `host`) é recusada com 409 `conta_de_site`: o login gerenciado é o da conta do
+  app, sem site.
+- Desafio numa conta de outro app para só aquela conta (credencial em `review`), sem bloquear a persona; a conta
+  travada põe o aparelho em quarentena. O marcador da quarentena usa o @ da conta, ou o identificador de login quando
+  ela não tem @.
+- Trocar o servidor de um aparelho pede confirmação quando QUALQUER conta de uma persona vinculada tem sessão pronta
+  nele, não só a âncora.
+
+**Senha de outra conta da persona (ADR-057, D1).** O campo é `clonar_de` (um id de conta), não `credencial_de`: nome
+com "credencial" é tratado como segredo pela redação.
+- `POST /api/instagram/profiles/{pid}/accounts` aceita `clonar_de`. O cofre copia a senha para uma entrada própria da
+  conta nova, que nasce sem consentimento. Erros: 422 `clonar_de_com_senha` (com `password`) e
+  `consentimento_nao_clonado` (com `consent`).
+- `POST /api/instagram/profiles/{pid}/accounts/{aid}/credential/clone`, corpo `{clonar_de, login_identifier?}`:
+  200 `ProfileAccountDTO`. Troca a senha da conta existente; o consentimento dela, se já dado, fica.
+- Erros das duas rotas: 404 `not_found` (origem inexistente); 409 `credencial_de_outra_persona`,
+  `clonar_de_si_mesma` e `no_credential`; 503 `secret_store_unavailable`.
+- A trilha registra só ids. O identificador de login não é copiado da origem.
+
+**Política de ações por app (23.10).**
+- `GET|PUT /api/instagram/profiles/{pid}/policy` e `GET|POST|PUT /api/instagram/policy-groups[/{id}]` aceitam
+  `?package=`; sem ele, o app âncora.
+- `ProfilePolicyDTO.package` e `PolicyGroupDTO.package` dizem de que app é o recorte: `capabilities`, `loosened`,
+  `own`, `group` e `origin` são só desse app; `limits` valem para o perfil inteiro.
+- Gravado: a política dos apps que não são o âncora fica em `capabilities.por_app.<pacote>`, sem migração.
+- `GET /api/app-catalog` traz `profile_anchor` por app.
+
+**Comando entre apps (24.1–24.6, ADR-058).**
+- **Etapas e apps do plano:** `PlanStep.app_id` diz o app de cada etapa. Todo plano do planejador preenche
+  `Plan.required_apps`: os apps em que as etapas rodam, e o app dos aparelhos só quando todos estão no mesmo. No início
+  da execução, o pré-voo confere esses apps em cada aparelho.
+- **Distribuição:** `GET /api/runs/distribution` aceita `command` no lugar de `app_id` (422 `distribution_sem_alvo`
+  sem os dois); a criação distribuída sem app recusa com 409 `distribution_sem_app`.
+- **Saídas de etapa (C2):**
+  - A etapa que lê declara `saidas` e as seguintes citam `{{saida:<nome>}}`. O planejador declara e cita; citar um
+    nome que nenhuma etapa anterior lê vira `missing` com `field: "saida"`, e o plano sai sem etapas.
+  - O despacho troca a referência pelo valor na linha da etapa antes da porta de política. A ferramenta `read_value`
+    lê o valor do texto do elemento, e `step_done` sem a leitura é recusado.
+  - Código de verificação, senha e token nunca são saída.
+- **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
+  `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.

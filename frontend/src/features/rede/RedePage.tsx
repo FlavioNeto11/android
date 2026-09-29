@@ -13,10 +13,11 @@
  * bug não existe mais.
  */
 import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  NetworkAssignDevice, NetworkDeviceRow, NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol,
+  NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkPolicy, NetworkProfileKind, NetworkProfileListed,
+  NetworkProtocol,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -58,12 +59,17 @@ const PREVIA: Record<NetworkAssignDevice['outcome'], { rotulo: string; tom: Tone
   refused: { rotulo: 'recusado', tom: 'danger' },
 };
 
-/** IPs medidos que aparecem em mais de um aparelho — ADR-056 §1: "dois aparelhos com o mesmo IP geram aviso". */
+/** Os IPs de saída medidos de um aparelho: o IPv4 e o IPv6 (um aparelho pode sair só por um deles). */
+function ipsMedidos(a: NetworkDeviceRow): string[] {
+  return [a.network?.egress_ipv4, a.network?.egress_ipv6].filter((ip): ip is string => !!ip);
+}
+
+/** IPs medidos que aparecem em mais de um aparelho — ADR-056 §1: "dois aparelhos com o mesmo IP geram aviso". Os
+ *  dois protocolos contam: dois aparelhos que saem pelo mesmo IPv6 são o mesmo caso que pelo mesmo IPv4. */
 function ipsDuplicados(aparelhos: NetworkDeviceRow[]): Set<string> {
   const contagem = new Map<string, number>();
   for (const a of aparelhos) {
-    const ip = a.network?.egress_ipv4;
-    if (ip) contagem.set(ip, (contagem.get(ip) ?? 0) + 1);
+    for (const ip of new Set(ipsMedidos(a))) contagem.set(ip, (contagem.get(ip) ?? 0) + 1);
   }
   return new Set([...contagem].filter(([, n]) => n > 1).map(([ip]) => ip));
 }
@@ -201,7 +207,8 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
   const nomeDe = (id: string | null) => (id ? perfis.find((p) => p.id === id)?.name ?? id : '—');
   const meta = row.effective_state ? metaOf(NETWORK_STATE, row.effective_state) : null;
   const somenteLegado = !d && !!legado;
-  const dupe = !!d?.egress_ipv4 && dupeIps.has(d.egress_ipv4);
+  const ips = ipsMedidos(row);
+  const dupe = ips.some((ip) => dupeIps.has(ip));
   return (
     <tr>
       <td>
@@ -222,9 +229,9 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         {row.pending === 'verificar' ? <div className={s.rowNote}>aguardando verificação (25.5)</div> : null}
       </td>
       <td>
-        {d?.egress_ipv4 ? (
+        {ips.length ? (
           <>
-            <code className={dupe ? s.dupe : undefined}>{d.egress_ipv4}</code>
+            {ips.map((ip) => <code key={ip} className={dupeIps.has(ip) ? s.dupe : undefined}>{ip}</code>)}
             {dupe ? <span title="Outro aparelho mediu o mesmo IP agora."><ShieldAlert size={12} aria-hidden /></span> : null}
             {row.last_measurement ? <div className={s.rowNote}>método: {row.last_measurement.method}</div> : null}
           </>
@@ -337,10 +344,18 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
   // mandado, o que rebaixava silenciosamente um aparelho em política 'exigida' — achado do revisor no 25.8.
   const [policy, setPolicy] = useState<NetworkPolicy | typeof NAO_MUDAR>(NAO_MUDAR);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
-  const [previa, setPrevia] = useState<NetworkAssignDevice[] | null>(null);
+  // A prévia guarda o PEDIDO que ela mostrou: "Aplicar" manda exatamente esse, nunca a seleção de agora.
+  const [previa, setPrevia] = useState<{ devices: NetworkAssignDevice[]; pedido: NetworkAssignRequest } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  // Cada mudança de seleção invalida a prévia EM VOO também: a resposta que chega depois da mudança é de uma seleção
+  // que ninguém está vendo, e religaria "Aplicar" para mandar a seleção nova sem prévia (como a Loja, que confirma
+  // os MESMOS aparelhos da prévia).
+  const versaoDaSelecao = useRef(0);
 
-  useEffect(() => setPrevia(null), [vpnId, proxyId, policy, selecionados]);
+  useEffect(() => {
+    versaoDaSelecao.current += 1;
+    setPrevia(null);
+  }, [vpnId, proxyId, policy, selecionados]);
 
   const vpnOpts = perfis.filter((p) => p.kind === 'vpn');
   const proxyOpts = perfis.filter((p) => p.kind === 'proxy');
@@ -348,7 +363,7 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
   const semAlvo = !vpnId && !proxyId && !policy ? 'Escolha ao menos um perfil (ou "nenhum" para tirar) ou uma política.'
     : selecionados.size === 0 ? 'Selecione aparelhos.' : null;
 
-  const corpo = (dryRun: boolean, confirmados: string[] = []) => ({
+  const corpo = (dryRun: boolean, confirmados: string[] = []): NetworkAssignRequest => ({
     instance_ids: [...selecionados],
     vpn_profile_id: vpnId === '' ? undefined : vpnId === SEM_PERFIL ? null : vpnId,
     proxy_profile_id: proxyId === '' ? undefined : proxyId === SEM_PERFIL ? null : proxyId,
@@ -358,11 +373,15 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
   });
 
   async function verPrevia() {
+    const versao = versaoDaSelecao.current;
+    const pedido = corpo(true);
     setOcupado(true);
     try {
-      const r = await api.assignNetwork(corpo(true));
-      setPrevia(r.devices);
+      const r = await api.assignNetwork(pedido);
+      if (versao !== versaoDaSelecao.current) return;      // a seleção mudou durante o voo: prévia de outra seleção
+      setPrevia({ devices: r.devices, pedido });
     } catch (e) {
+      if (versao !== versaoDaSelecao.current) return;
       toastError('A prévia foi recusada', e);
     } finally {
       setOcupado(false);
@@ -374,7 +393,7 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
     // Só o backend sabe quem precisa de confirmação (409 `real_account_confirm_required` na prévia): nada de
     // heurística local. Um diálogo POR APARELHO (ADR-056 §7, T11) — recusar qualquer um aborta o lote inteiro,
     // porque `rede.atribuir` é tudo ou nada (um recusado devolve 409 e não grava nada).
-    const precisamConfirmar = previa.filter((d) => d.code === 'real_account_confirm_required');
+    const precisamConfirmar = previa.devices.filter((d) => d.code === 'real_account_confirm_required');
     const confirmados: string[] = [];
     for (const item of precisamConfirmar) {
       const conta = aparelhos.find((a) => a.instance_id === item.id)?.real_account ?? 'conta vinculada';
@@ -389,7 +408,7 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
     }
     setOcupado(true);
     try {
-      const r = await api.assignNetwork(corpo(false, confirmados));
+      const r = await api.assignNetwork({ ...previa.pedido, confirm_real_account: confirmados, dry_run: false });
       const n = (o: NetworkAssignDevice['outcome']) => r.devices.filter((x) => x.outcome === o).length;
       toast({ tone: 'info', title: 'Atribuição pedida',
               message: `${n('assigned')} pedido(s) (volta(m) a pendente até o aparelho confirmar) · ${n('unchanged')} já assim.` });
@@ -430,7 +449,7 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
         </div>
         {previa ? (
           <ul className={s.preview} aria-label="Prévia da atribuição de rede">
-            {previa.map((d) => (
+            {previa.devices.map((d) => (
               <li key={d.id}><strong>{d.id}</strong>
                 <Badge size="sm" tone={PREVIA[d.outcome]?.tom ?? 'neutral'}>{PREVIA[d.outcome]?.rotulo ?? d.outcome}</Badge>
                 <span className={s.muted}>{d.reason}</span>

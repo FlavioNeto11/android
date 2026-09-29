@@ -197,7 +197,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   }, [grupo, pronto, originais, chave, pacoteEfetivo]);
 
   async function partirDe(profileId: string) {
-    if (!profileId) return;
+    if (!profileId || !pronto) return;          // sem o catálogo, o rascunho ficaria sem app (chave '')
     try {
       // O que o perfil tem HOJE de diferente do padrão, em CADA app com catálogo: o grupo dele por baixo, as
       // escolhas dele por cima. SUBSTITUI o rascunho inteiro — escolher A e depois B é partir de B; mesclar
@@ -214,6 +214,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   }
 
   async function salvar() {
+    if (carregandoApp) return;
     if (!nome.trim()) {
       toast({ tone: 'warning', title: 'Dê um nome ao grupo' });
       return;
@@ -281,7 +282,11 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
             footer={
               <>
                 <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-                <Button loading={salvando} onClick={() => void salvar()}>{grupo ? 'Salvar grupo' : 'Criar grupo'}</Button>
+                {/* Antes do catálogo, o rascunho não tem app: o grupo nasceria vazio e só um segundo pedido o
+                    corrigiria — com os membros já dentro, herdando o padrão nesse intervalo. */}
+                <Button loading={salvando} disabled={carregandoApp} onClick={() => void salvar()}>
+                  {grupo ? 'Salvar grupo' : 'Criar grupo'}
+                </Button>
               </>
             }>
       <div className={styles.groupDialog}>
@@ -296,7 +301,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
           {grupo === null ? (
             <Field label="Começar a partir de" unit="opcional">
               {({ id }) => (
-                <Select id={id} defaultValue="" onChange={(e) => void partirDe(e.target.value)}>
+                <Select id={id} defaultValue="" disabled={!pronto} onChange={(e) => void partirDe(e.target.value)}>
                   <option value="">Padrão do catálogo</option>
                   {profiles.map((p) => <option key={p.id} value={p.id}>o acesso de hoje de @{p.username}</option>)}
                 </Select>

@@ -35,6 +35,8 @@ from app.planning.openai_provider import OpenAICompatProvider
 from app.planning.parsing import apps_do_plano, catalog_plan_from_json, plan_from_json
 from app.planning.provider import AIError, AppContext, PlanRequest
 from app.planning.simulated_provider import SimulatedProvider
+from app.taskqueue.repository import _dependencias_das_saidas
+from app.taskqueue.saidas import referencias, resolver
 from app.taskqueue.service import RunService
 
 from .conftest import Harness, make_config
@@ -283,6 +285,23 @@ def test_apps_do_plano_sem_etapa_fica_com_o_app_do_plano() -> None:
     assert apps_do_plano(Plan(summary="s", planner=info), NO_QA) == []
 
 
+def test_etapa_sem_app_em_aparelhos_de_apps_diferentes_nao_exige_o_app_do_outro() -> None:
+    """A etapa sem app roda no app DE CADA aparelho (`Scheduler._app_context`): numa seleção QA + Notas, cada aparelho
+    precisa só do seu. A união faria o pré-voo, o fluxo aprendido e as próximas execuções exigirem os dois apps em
+    todo aparelho — e recusar o do QA por não ter as Notas, que ele nunca vai abrir."""
+    from app.models import PlannerInfo, PlanStep, Postcondition
+    info = PlannerInfo(provider="p", model="m", simulated=True)
+    etapa = PlanStep(key="abrir", title="a", goal="a",
+                     postcondition=Postcondition(kind="model_judged", value="x", description="y"))
+    misto = [{"app_id": "qa-messenger"}, {"app_id": "notes"}]
+    assert apps_do_plano(Plan(summary="x", steps=[etapa], planner=info), misto) == []
+    # etapa com app explícito continua declarada; a sem app não acrescenta o de nenhum aparelho
+    outra = etapa.model_copy(update={"key": "usar", "app_id": "instagram"})
+    assert apps_do_plano(Plan(summary="x", steps=[etapa, outra], planner=info), misto) == ["instagram"]
+    # todos os aparelhos no MESMO app: aí é o app em que a etapa roda
+    assert apps_do_plano(Plan(summary="x", steps=[etapa], planner=info), [*NO_QA, *NO_QA]) == ["qa-messenger"]
+
+
 # ================================================================== prompt
 def test_prompt_entre_apps_traz_os_dois_tipos_de_app_e_as_regras_de_sempre() -> None:
     req = _pedido({"instagram": _catalogo_ig()}, apps=[INSTAGRAM, OUTLOOK_APP, CHROME])
@@ -343,6 +362,75 @@ async def test_anthropic_manda_o_sistema_e_o_esquema_entre_apps(tmp_path: Path) 
     assert "Apps COM catálogo" in chamada["messages"][0]["content"][0]["text"]
     assert [(s.app_id, s.capability) for s in plano.steps] == [("outlook", None), (None, "OPEN_PROFILE")]
     assert plano.app_id == "instagram" and plano.required_apps == ["outlook", "instagram"]
+
+
+# ================================================================== valor lido entre apps (24.3)
+def _ler_assunto(citada: str = "assunto") -> str:
+    """Outlook (sem catálogo): a etapa livre LÊ o assunto do último e-mail; Instagram (catálogo): abre o perfil citado."""
+    ler = {**_livre("Abrir o último e-mail e ler o assunto"), "saidas": ["Assunto"]}
+    return _bruto([_etapa("ler_email", "outlook", livre=ler),
+                   _etapa("perfil", "instagram", capability="OPEN_PROFILE",
+                          bindings={"username": "{{saida:" + citada + "}}"})])
+
+
+async def test_planejador_declara_a_saida_no_outlook_e_o_instagram_a_usa(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    cfg.env.ai_provider = "anthropic"
+    p = AnthropicProvider(cfg)
+    chamadas: list[dict[str, Any]] = []
+
+    async def criar(**kwargs: Any) -> Any:
+        chamadas.append(kwargs)
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=_ler_assunto())], stop_reason="end_turn",
+                               model="claude-opus-5",
+                               usage=SimpleNamespace(input_tokens=10, output_tokens=5, cache_read_input_tokens=0,
+                                                     cache_creation_input_tokens=0))
+    falso = SimpleNamespace(create=criar)
+    p.configured = True
+    p._client = SimpleNamespace(messages=falso, beta=SimpleNamespace(messages=falso))  # noqa: SLF001
+    plano, _ = await p.plan(_pedido({"instagram": _catalogo_ig()},
+                                    command="Leia o assunto do último e-mail no Outlook e abra no Instagram o perfil "
+                                            "citado nele"))
+    # o planejador aprende a declarar (`livre.saidas`) e a citar ({{saida:…}}, a chave DUPLA já renderizada)
+    sistema = chamadas[0]["system"][0]["text"]
+    assert "livre.saidas" in sistema and "{{saida:<nome>}}" in sistema and "{{saida:assunto}}" in sistema
+    livre = chamadas[0]["output_config"]["format"]["schema"]["properties"]["steps"]["items"]["properties"]["livre"]
+    assert "saidas" in next(o for o in livre["anyOf"] if o.get("type") == "object")["required"]
+
+    assert not plano.missing
+    ler, perfil = plano.steps
+    assert (ler.app_id, ler.saidas) == ("outlook", ["assunto"])          # nome normalizado
+    assert perfil.capability == "OPEN_PROFILE" and referencias(perfil) == ["assunto"]
+    # a referência liga a etapa do Instagram à leitura do Outlook e resolve pelo valor lido
+    ligada = {s.key: s for s in _dependencias_das_saidas(plano.steps)}["perfil"]
+    assert "ler_email" in ligada.depends_on
+    assert resolver(perfil.bindings["username"], {"assunto": "@ciclano"}) == ("@ciclano", [])
+    assert plano.required_apps == ["outlook", "instagram"]
+
+
+def test_referencia_sem_leitura_anterior_vira_pergunta_e_zera_as_etapas() -> None:
+    # entre apps: cita um nome que ninguém lê
+    plano = _montar(_ler_assunto(citada="outro"), _pedido({"instagram": _catalogo_ig()}))
+    assert plano.steps == [] and [m.field for m in plano.missing] == ["saida"]
+    assert "'perfil'" in plano.missing[0].question and "outro" in plano.missing[0].question
+    # plano livre: a leitura vem DEPOIS de quem usa (para a frente)
+    usa = {**_livre_de_sempre("abrir_perfil", None), "goal": "Abrir {{saida:perfil}}."}
+    le = {**_livre_de_sempre("ler_perfil", None), "saidas": ["perfil"]}
+    livre = {"summary": "s", "app_id": "qa-messenger", "parameters": [], "success_criteria": [], "missing": [],
+             "steps": [usa, le]}
+    req = PlanRequest(command="c", run_id="r", instances=NO_QA, apps=[QA_APP])
+    fora_de_ordem = plan_from_json(json.dumps(livre), req, provider="p", model="m", max_steps=5)
+    assert fora_de_ordem.steps == [] and [m.field for m in fora_de_ordem.missing] == ["saida"]
+    # na ordem certa passa, com a saída declarada
+    certo = plan_from_json(json.dumps({**livre, "steps": [le, usa]}), req, provider="p", model="m", max_steps=5)
+    assert [s.saidas for s in certo.steps] == [["perfil"], []] and not certo.missing
+
+
+def test_ator_sabe_quando_usar_read_value() -> None:
+    ator = prompts.ACTOR_SYSTEM
+    assert "read_value" in ator and "step_done não substitui a leitura" in ator
+    assert "antes de qualquer toque de efeito" in ator and "Código de verificação, senha e token nunca" in ator
+    assert "{{saida:assunto}}" in prompts.PLANNER_SYSTEM and "NUNCA são saída" in prompts.PLANNER_SYSTEM
 
 
 async def test_openai_manda_o_sistema_e_o_esquema_entre_apps(tmp_path: Path) -> None:

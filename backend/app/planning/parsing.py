@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ValidationError
 
 from ..models import (DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..taskqueue.saidas import referencias
 from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
                            montar_etapa)
 from .provider import AIError, PlanRequest, Verdict
@@ -49,6 +50,8 @@ class _StepOut(BaseModel):
     for_each: str | None
     # Item 12.1: app desta etapa quando o comando atravessa apps; null = o app do plano.
     app_id: str | None = None
+    # Item 24.3 (contrato C2): os nomes dos valores que esta etapa LÊ para as seguintes (`{{saida:<nome>}}`).
+    saidas: list[str] = []
 
 
 class _PlanOut(BaseModel):
@@ -95,6 +98,7 @@ class _LivreOut(BaseModel):
     postcondition: _PostOut
     timeout_s: int
     max_attempts: int
+    saidas: list[str] = []            # item 24.3: só etapa livre lê valor; ação de catálogo não
 
 
 class _MultiStepOut(BaseModel):
@@ -140,12 +144,22 @@ def apps_do_plano(plan: Plan, instances: Iterable[Mapping[str, object]] = ()) ->
     skills (todo app em que algum nó roda) e de `Repository.save_plan`: a lista de candidatos que foi ao planejador
     não entra — o app que o modelo recebeu e não usou não é exigido.
 
-    Etapa sem app e plano sem app rodam no app do aparelho (`Scheduler._app_context`): aí o app é o dos aparelhos.
+    Etapa sem app e plano sem app rodam no app do aparelho (`Scheduler._app_context`): aí o app é o dos aparelhos —
+    só quando TODOS estão no mesmo. A lista vale para cada aparelho (pré-voo, fluxo aprendido, conjunto do 24.5), e
+    numa seleção QA + Notas a etapa sem app roda no QA num e nas Notas no outro: a união exigiria das Notas no
+    aparelho do QA, que nunca as abre. Sem app comum, a etapa não declara nenhum; o app de cada aparelho decide.
     Plano sem etapa (pergunta em `missing`) fica com o app do plano, quando há."""
     usados: list[str | None] = [s.app_id or plan.app_id for s in plan.steps] or [plan.app_id]
     if plan.steps and None in usados:
-        usados += [str(a) for i in instances if (a := i.get("app_id"))]
+        dos_aparelhos = {str(i.get("app_id") or "") for i in instances}
+        if len(dos_aparelhos) == 1:
+            usados += list(dos_aparelhos)
     return [a for a in dict.fromkeys(usados) if a]
+
+
+def _norm_saida(nome: str) -> str:
+    """Como `norm_key`, sem inventar prefixo: um nome que não vira identificador válido reprova no `PlanStep`."""
+    return re.sub(r"[^a-z0-9_]+", "_", nome.strip().lower()).strip("_")[:40]
 
 
 def _etapa_livre(key: str, e: _StepOut | _LivreOut, *, depends_on: list[str], for_each: str | None,
@@ -157,7 +171,24 @@ def _etapa_livre(key: str, e: _StepOut | _LivreOut, *, depends_on: list[str], fo
                     postcondition=Postcondition(**e.postcondition.model_dump()),
                     timeout_s=max(30, min(e.timeout_s, 600)),
                     max_attempts=1 if e.side_effect else max(1, min(e.max_attempts, 5)),
-                    for_each=norm_key(for_each) if for_each else None, app_id=app_id)
+                    for_each=norm_key(for_each) if for_each else None, app_id=app_id,
+                    saidas=list(dict.fromkeys(n for n in map(_norm_saida, e.saidas) if n)))
+
+
+def saidas_sem_leitura(steps: Iterable[PlanStep]) -> list[MissingInfo]:
+    """Item 24.3: cada `{{saida:<nome>}}` citado tem de ser lido por uma etapa ANTERIOR (`saidas`). Sem isso o plano
+    chegaria ao despacho e pararia lá como defeito (`_dependencias_das_saidas` não liga referência para a frente) —
+    aqui vira pergunta, com as etapas zeradas, como a ação que não existe."""
+    lidas: set[str] = set()
+    faltas: list[MissingInfo] = []
+    for s in steps:
+        sem = [n for n in referencias(s) if n not in lidas]
+        if sem:
+            faltas.append(MissingInfo(field="saida", question=(
+                f"A etapa '{s.key}' usa {', '.join(sem)}, que nenhuma etapa anterior lê na tela. Qual etapa deve "
+                "ler esse valor, ou de onde ele vem?")))
+        lidas.update(s.saidas)
+    return faltas
 
 
 def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
@@ -189,6 +220,9 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     if out.app_id and app is None:
         plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
                                                               "Qual aplicativo configurado deve ser usado?"))
+    if faltas := saidas_sem_leitura(plan.steps):
+        plan.missing.extend(faltas)
+        plan.steps = []
     # R6: o plano livre também declara os apps de que precisa (antes, só a skill compilada declarava).
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return plan
@@ -285,6 +319,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
             else:
                 etapa = _etapa_livre(chave, s.livre, depends_on=s.depends_on, for_each=s.for_each, app_id=None)
             montadas.append((app.id, etapa))
+        faltas += saidas_sem_leitura(etapa for _, etapa in montadas)
         usados = list(dict.fromkeys(app_id for app_id, _ in montadas))
         # O app do PLANO é o principal que o modelo disse, se alguma etapa roda nele; senão o da primeira etapa. É o
         # padrão de `_app_context` para etapa sem app, então tem de ser um app em que o plano de fato roda.

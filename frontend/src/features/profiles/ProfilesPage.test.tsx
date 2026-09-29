@@ -543,6 +543,45 @@ describe('grupos de acesso', () => {
       .toEqual({});
   });
 
+  it('antes de o catálogo chegar, "começar a partir de" e salvar esperam: o grupo nasce com as escolhas do perfil', async () => {
+    // Revisão da 23.10: o rascunho feito antes do catálogo ficava sem app (chave ''), e o grupo era CRIADO com
+    // `capabilities: {}` no pacote âncora — os membros herdavam o padrão até um segundo pedido corrigir.
+    rotasBase([]);
+    let soltar: () => void = () => undefined;
+    const catalogoChega = new Promise<void>((r) => { soltar = r; });
+    backend.on('GET', /app-catalog/, async () => {
+      await catalogoChega;
+      return json([{ package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+                     session_provider: 'instagram', needs_profile: true, profile_anchor: true }]);
+    });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { LIKE_POST: 'manual_only' }, group: {},
+      own_limits: {}, group_limits: {},
+    }));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    backend.on('PUT', /\/instagram\/policy-groups\/grp-9$/,
+      () => json({ id: 'grp-9', name: 'Do Bruno', description: '', capabilities: {}, limits: {}, loosened: [],
+                   members: [], created_at: '', updated_at: '' }));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(text()).toContain('Novo grupo de acesso'));
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    expect((byRole('combobox', /Começar a partir de/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((byRole('button', /Criar grupo/i) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => { soltar(); });
+    await waitFor(() => expect((byRole('combobox', /Começar a partir de/i) as HTMLSelectElement).disabled).toBe(false));
+    await setValue(byRole('combobox', /Começar a partir de/i) as HTMLSelectElement, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    const post = backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!;
+    expect((post.body as { capabilities: unknown }).capabilities).toEqual({ LIKE_POST: 'manual_only' });
+    expect(post.query.get('package')).toBe('com.instagram.android');
+    expect(backend.callsTo('PUT', /policy-groups\/grp-9$/)).toHaveLength(0);
+  });
+
   it('grupo existente em dois apps: o outro app vem do servidor pelo pacote, e salvar grava cada app no seu', async () => {
     // A mesma chave de ação pode existir nos dois catálogos (SEND_MESSAGE): cada app é um recorte à parte do grupo.
     rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', package: 'com.instagram.android',

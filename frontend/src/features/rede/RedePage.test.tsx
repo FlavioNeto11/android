@@ -268,6 +268,57 @@ it('dois aparelhos com o mesmo IP medido mostram o aviso (ADR-056 §1)', async (
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(2);
 });
 
+it('o mesmo IPv6 medido em dois aparelhos também dá o aviso, e o IPv6 aparece na coluna', async () => {
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({ instance_id: 'android-01', network: rede({ vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv6: '2001:db8::1' }), effective_state: 'trafego_verificado' }),
+      linha({ instance_id: 'android-02', network: rede({ instance_id: 'android-02', vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv6: '2001:db8::1' }), effective_state: 'trafego_verificado' }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('2001:db8::1'));
+  expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(2);
+});
+
+it('prévia em voo quando a seleção muda: a resposta velha não liga "Aplicar", e aplicar manda a seleção da prévia', async () => {
+  // Revisão do 25.8: a resposta da seleção antiga chegava depois da limpeza, religava "Aplicar", e ele mandava a
+  // seleção ATUAL, que ninguém viu na prévia.
+  const respostas: (() => void)[] = [];
+  const envelope = (b: { dry_run?: boolean; instance_ids?: string[] }) => json({
+    accepted: !b.dry_run, dry_run: !!b.dry_run,
+    devices: (b.instance_ids ?? []).map((id) => ({
+      id, outcome: b.dry_run ? 'would_assign' : 'assigned', reason: 'configuração nova',
+      from: { vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' },
+      to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true, warnings: [],
+    })),
+  });
+  backend.on('POST', /\/network\/assign/, (call) => {
+    const b = call.body as { dry_run?: boolean; instance_ids?: string[] };
+    if (respostas.length === 0 && b.dry_run) return new Promise<Response>((r) => respostas.push(() => r(envelope(b))));
+    return envelope(b);
+  });
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-02'));
+  await click(byRole('checkbox', /Selecionar android-02/));
+  await setValue(byRole('combobox', /Perfil de VPN/) as HTMLSelectElement, 'vpn-1');
+  await click(byRole('button', /Ver prévia/));
+  await waitFor(() => respostas.length === 1);
+  await click(byRole('checkbox', /Selecionar android-01/));           // muda a seleção com a prévia em voo
+  await act(async () => { respostas[0]!(); });
+  await flush();
+  expect(text()).not.toContain('aplicaria agora');
+  expect(byRole('button', /^Aplicar/).getAttribute('aria-disabled')).toBe('true');
+
+  // Nova prévia, agora da seleção que está na tela; aplicar manda exatamente ela.
+  await click(byRole('button', /Ver prévia/));
+  await waitFor(() => text().includes('aplicaria agora'));
+  await click(byRole('button', /^Aplicar/));
+  await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 3);
+  const [, previa, final] = backend.callsTo('POST', /\/network\/assign/).map((c) => c.body as Record<string, unknown>);
+  expect(final).toEqual({ ...previa, dry_run: false });
+  expect((final!.instance_ids as string[]).slice().sort()).toEqual(['android-01', 'android-02']);
+});
+
 it('aparelho em quarentena mostra o motivo na coluna de erro/pendência', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
     devices: [linha({ instance_id: 'android-01', restriction: 'conta bloqueada: nada toca nela' })],

@@ -1,7 +1,7 @@
 """Consumidor restrito do cofre para a provisão de rede (ADR-056 §5, item 25.3): o segundo lugar que abre um segredo.
 
-O primeiro é o canal de entrada sensível (`sensitive_input.py`), que digita a senha de uma conta no instante do
-login. Este é o do mesmo molde, para a rede: a chave privada do WireGuard, a senha do proxy ou a configuração do
+O primeiro é o canal de entrada sensível (`type_secret`, em `sensitive_input.py`), que digita a senha de uma conta
+no instante do login pela função que o executor e a sessão declarada lhe entregam. Este é o do mesmo molde, para a rede: a chave privada do WireGuard, a senha do proxy ou a configuração do
 sing-box saem do cofre aqui, e só aqui, no instante de chegar ao aparelho. A lista de quem chama `get_secret` é
 conferida por teste (`tests/test_segredo_de_rede.py`): um terceiro consumidor é decisão, não descuido.
 

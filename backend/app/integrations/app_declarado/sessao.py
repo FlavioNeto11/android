@@ -58,7 +58,7 @@ from ...automation.hierarchy import SUBTIPO_CONTA_TRAVADA, ContaTravada, UiEleme
 from ...devices.adb import AVISO_DE_ANR, motivo_de_anr
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
-from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio,
+from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                            emit_needs_person_change, motivo_do_login_parado)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
@@ -542,18 +542,17 @@ class SessaoDeclarada:
                                   session_status=SessionStatus.auth_required)
         ancora = self.repo.eh_pacote_ancora(profile_id, self.package)
         cred = self.repo.account_credential_row(profile_id, linha["id"])
-        handle = str(linha["handle"] or "").strip()
-        if not handle and ancora:
-            handle = str(perfil["username"] or "").strip()    # conta âncora antiga, criada sem o @
         login = str(cred["login_identifier"] or "").strip() if cred is not None else ""
-        principal = handle or login
+        # O @ da conta (o de cadastro na âncora antiga, criada sem @), senão o login: a mesma regra da quarentena.
+        principal = conta_para_conferir(handle=linha["handle"], login_identifier=login, username=perfil["username"],
+                                        ancora=ancora)
         if not normalizar_conta(principal):
             # Sem um identificador, a leitura da tela não teria com o que comparar — e "qualquer conta serve" é
             # exatamente o que nunca pode acontecer.
             return AuthResult(Outcome.UNCERTAIN, f"a conta do {rotulo} desta persona não tem @ nem identificador de "
                                                  "login para conferir na tela; preencha-os na conta")
         return ContaDaSessao(profile_id=profile_id, id=str(linha["id"]), app_id=str(linha["app_id"]), handle=principal,
-                             aceitos=frozenset(n for n in (normalizar_conta(handle), normalizar_conta(login)) if n),
+                             aceitos=frozenset(n for n in (normalizar_conta(principal), normalizar_conta(login)) if n),
                              ancora=ancora)
 
     def _avisar_o_aprendizado(self, rt: DeviceRuntime, profile_id: str, visto: _Visto, resultado: AuthResult) -> None:

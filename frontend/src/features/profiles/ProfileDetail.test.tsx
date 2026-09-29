@@ -98,6 +98,11 @@ async function abrirContas(contas: ProfileAccount[], onChanged: () => Promise<vo
                            p: InstagramProfile = perfil()): Promise<void> {
   backend.on('GET', /\/accounts$/, () => json(contas));
   backend.on('GET', /auth-attempts$/, () => json([]));
+  // O formulário de conta espera o catálogo (a falha dele não vira "nenhum app é o âncora"): o registro de sempre.
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+  ]));
   await act(async () => {
     root.render(<ProfileDetail profile={p} onBack={() => {}} onChanged={onChanged} />);
   });
@@ -288,6 +293,38 @@ it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com 
   await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
   expect(backend.callsTo('POST', /^\/api\/instagram\/profiles$/)[0]?.body)
     .toEqual({ username: 'mariana.costa91182', persona_id: 'ig-1' });
+  expect(backend.callsTo('POST', /\/accounts$/)).toHaveLength(0);
+});
+
+it('catálogo de apps indisponível: o formulário espera o catálogo e não cria a conta solta no lugar da adoção', async () => {
+  // Revisão da 23.10: a falha virava catálogo vazio, nenhum app era o âncora, e o Instagram de uma persona sem @ saía
+  // por `POST …/accounts` (conta solta, sem @ de cadastro) em vez da adoção.
+  useAppStore.setState({ apps: [
+    { id: 'instagram', name: 'Instagram', package: 'com.instagram.android', activity: null, apk_path: null,
+      nav_hints: null, known_selectors: null, builtin: true },
+  ] });
+  backend.on('GET', /app-catalog/, () => apiError(500, 'internal', 'registro indisponível'));
+  backend.on('POST', /^\/api\/instagram\/profiles$/, () => json(perfil(), 201));
+  backend.on('POST', /\/accounts$/, () => json(conta(), 201));
+  backend.on('GET', /\/accounts$/, () => json([]));
+  const semConta = perfil({ username: '', persona_id: null, instance_id: null, locality: null });
+  await act(async () => {
+    root.render(<ProfileDetail profile={semConta} abaInicial="contas" onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('ainda não tem @ de cadastro'));
+  await click(byRole('button', /Adicionar conta/i));
+  await waitFor(() => text().includes('Não foi possível carregar os aplicativos'));
+  expect(container.querySelector('select')).toBeNull();
+
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+  ]));
+  await click(byRole('button', /Tentar de novo/));
+  await setValue(await waitFor(() => byRole('combobox', /Aplicativo/i)) as HTMLSelectElement, 'instagram');
+  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
+  await click(byRole('button', /^Adicionar$/i));
+  await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
   expect(backend.callsTo('POST', /\/accounts$/)).toHaveLength(0);
 });
 

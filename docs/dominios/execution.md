@@ -474,10 +474,16 @@ Regras:
 
 Prova: `simulated` (`test_valor_entre_etapas.py`: triagem, leitura, dependência, `for_each`, ponta a ponta no QA
 Messenger falso, código na tela, erro de chamada sem valor no registro, defeito do plano e recuperação). Outlook →
-Instagram num aparelho real: `not_run` (24.9). Falta para o item fechar: (a) com a frente do planejador, a regra do
-ator em `planning/prompts.py` sobre `read_value` e ensinar o planejador a declarar `saidas` e a citar
-`{{saida:<nome>}}` — sem isso, só um plano montado à mão chega a ler um valor; (b) na DSL, a leitura nomeada, que
-espera a decisão do dono de estender a v1alpha1 (proposta em [skill-dsl](../skill-dsl.md#saídas-e-casos-de-validação)).
+Instagram num aparelho real: `not_run` (24.9).
+
+O planejador declara e cita (`planning/prompts.py`, `planning/parsing.py`): a etapa livre que lê traz `saidas` (no plano
+entre apps, `livre.saidas`), e a seguinte, livre ou ação do catálogo, cita `{{saida:<nome>}}` no texto ou num
+argumento. O parser normaliza o nome, e um nome citado que nenhuma etapa ANTERIOR lê vira pergunta (`missing`,
+`field: "saida"`) com as etapas zeradas, em vez de chegar ao despacho como defeito. O prompt do ator diz quando usar
+`read_value`: antes de concluir e antes de qualquer toque de efeito; código, senha e token nunca são valor. Prova:
+`simulated` (`test_planejador_entre_apps.py`: Outlook lê o assunto, o Instagram abre o perfil citado, com a referência
+ligada à leitura e resolvida). Falta, na DSL, a leitura nomeada, que espera a decisão do dono de estender a v1alpha1
+(proposta em [skill-dsl](../skill-dsl.md#saídas-e-casos-de-validação)).
 
 ## Conta e portas do app da etapa (item 24.4)
 
@@ -553,9 +559,10 @@ Regras:
 
 Prova: `simulated` (`test_interrupcao_entre_apps.py`: reinício com a etapa do segundo app em curso, depois do efeito
 no segundo app e com a troca segurada pela rede; pausa e retomada; cancelamento em curso e na troca segurada; sucessora
-recusada no meio da troca e depois do cancelamento). O aparelho de teste encena um app só (o segundo app é outro
-registro no mesmo pacote), então "o app da etapa seguinte não está na frente depois do reinício" não é exercitado;
-Outlook → Instagram num aparelho real com interrupção e retomada: `not_run` (24.9).
+recusada no meio da troca e depois do cancelamento). Um caso usa o aparelho falso com DOIS pacotes
+(`FakeQaDevice.pacotes_extras`): a queda vem com a etapa do segundo app em curso e o primeiro app à frente, e o backend
+novo retoma com o contexto do segundo app, que é aberto uma vez e onde a conta é conferida e a mensagem sai. Outlook →
+Instagram num aparelho real com interrupção e retomada: `not_run` (24.9).
 
 ## Recursos declarativos (fase H, parte 1)
 

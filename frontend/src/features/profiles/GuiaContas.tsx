@@ -16,7 +16,7 @@ import { Disclosure } from '../../components/Disclosure';
 import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
-import { type LoadError, LoadErrorState } from '../../lib/loadError';
+import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -70,6 +70,10 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
   const [adicionando, setAdicionando] = useState(!!abrirFormulario);
   // De que app é a conta de cadastro (23.10): o registro decide, o formulário só pergunta (`GET /api/app-catalog`).
   const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
+  // A falha do catálogo NÃO vira catálogo vazio: sem ele nenhum app seria o âncora, o Instagram de uma persona sem @
+  // sairia pela rota da conta solta (`POST …/accounts`) e não pela adoção. O formulário espera o catálogo.
+  const [erroCatalogo, setErroCatalogo] = useState<LoadError | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     if (abrirFormulario) setAdicionando(true);
@@ -77,9 +81,12 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
 
   useEffect(() => {
     let vivo = true;
-    api.listAppCatalog().then((c) => { if (vivo) setCatalogo(c); }).catch(() => { if (vivo) setCatalogo([]); });
+    setErroCatalogo(null);
+    api.listAppCatalog()
+      .then((c) => { if (vivo) setCatalogo(c); })
+      .catch((e: unknown) => { if (vivo) setErroCatalogo(toLoadError(e)); });
     return () => { vivo = false; };
-  }, []);
+  }, [tentativa]);
 
   if (contas === null) {
     return erro
@@ -114,7 +121,10 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
             </p>
           ) : null}
           {adicionando ? (
-            catalogo === null ? (
+            erroCatalogo ? (
+              <LoadErrorState what="os aplicativos" error={erroCatalogo} compact
+                              onRetry={() => setTentativa((n) => n + 1)} />
+            ) : catalogo === null ? (
               <LoadingRegion label="Carregando os aplicativos…"><Skeleton height={80} /></LoadingRegion>
             ) : (
               <NovaConta profile={profile} contas={contas} catalogo={catalogo}

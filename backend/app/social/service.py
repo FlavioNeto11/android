@@ -28,7 +28,7 @@ from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idad
                                                separar_visual_legado)
 from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
-from ..modules.identity.presentation.schemas import PersonaGenerateBody
+from ..modules.identity.presentation.schemas import CredentialClone, PersonaGenerateBody
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of, pacote_ancora, session_provider_of
 from ..planning.provider import AIError, SocialRequest, Usage
@@ -1395,7 +1395,7 @@ class SocialService:
         "O consentimento não vem junto com a senha clonada: ele é desta conta, e a conta nova nasce sem ele. Depois "
         "de conferir a conta, autorize-a pela rota de consentimento (…/credential/consent).")
 
-    def clone_account_credential(self, profile_id: str, account_id: str, body: Any, *,
+    def clone_account_credential(self, profile_id: str, account_id: str, body: CredentialClone, *,
                                  by: str = "painel") -> ProfileAccountDTO:
         """"Usar a senha de outra conta" numa conta que já existe. Substitui a senha que ela tinha; o consentimento
         DESTA conta, se já dado, fica (é sobre a conta, como em `set_account_credential`); o da origem nunca vem."""

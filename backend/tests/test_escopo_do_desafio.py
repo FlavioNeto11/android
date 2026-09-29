@@ -89,6 +89,26 @@ async def test_conta_travada_no_outro_app_poe_o_aparelho_em_quarentena_sem_bloqu
         assert porta is not None and porta[1] is None
 
 
+async def test_trava_na_conta_sem_arroba_vai_a_quarentena_pelo_login_dela(harness: Harness,
+                                                                          correio_registrado: None) -> None:
+    """A conta do correio sem @, identificada só pelo e-mail de login: o marcador da quarentena leva o e-mail — a mesma
+    regra do motor de sessão (`SessaoDeclarada._resolver_conta`). Antes levava o @ de cadastro da persona, e como o
+    marcador é único por (aparelho, conta), a trava posterior da conta âncora no mesmo aparelho não era registrada."""
+    s = estado(harness)
+    pid, _, conta = persona_com_duas_contas(s)
+    s.db.execute("UPDATE profile_accounts SET handle='' WHERE id=?", (conta,))
+    cred = s.social_repo.account_credential_row(pid, conta)
+    s.social_repo.set_account_credential(pid, conta, login_identifier="ana@correio.com", secret_ref=cred["secret_ref"],
+                                         key_id=cred["key_id"])
+
+    s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada", package=CORREIO)
+
+    assert _marcadores(s) == [("ana@correio.com", "correio", pid)]
+    ancora_app = str(s.social_repo.conta_ancora(pid)["app_id"])
+    assert s.social_repo.marcar_conta_travada(IID, "ana.ancora", "confirm you're human", "observado", profile_id=pid,
+                                              app_id=ancora_app) is True
+
+
 async def test_no_app_ancora_o_comportamento_de_hoje_nao_muda(harness: Harness, correio_registrado: None) -> None:
     s = estado(harness)
     pid, ancora, conta = persona_com_duas_contas(s)

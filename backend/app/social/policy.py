@@ -25,6 +25,7 @@ sem chamar modelo. O tempo parado é descontado do prazo do objetivo — esperar
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Callable
@@ -32,6 +33,7 @@ from typing import Any, Callable
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
 from ..planning.capabilities import Capability, normalizar_alvo
+from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .repository import SocialRepository
 
@@ -123,35 +125,41 @@ CHAVE_POR_APP = "por_app"
 
 
 def _e_do_ancora(package: str | None) -> bool:
-    # Import tardio: o registro de apps carrega os catálogos, e este módulo é importado cedo pelo serviço social.
-    from ..planning.catalog import pacote_ancora
     return package is None or package == pacote_ancora()
 
 
-def politicas_do_app(caps: dict[str, Any] | None, package: str | None) -> dict[str, Any]:
+def _por_app(caps: Mapping[str, object]) -> dict[str, object]:
+    # O JSON gravado é do painel e de versões antigas: um `por_app` que não seja objeto vale como vazio.
+    bruto = caps.get(CHAVE_POR_APP)
+    return dict(bruto) if isinstance(bruto, Mapping) else {}
+
+
+def politicas_do_app(caps: Mapping[str, object] | None, package: str | None) -> dict[str, object]:
     """O recorte de um dicionário `capabilities` (perfil ou grupo) que vale para `package` (`None` = o âncora).
 
     Única porta de LEITURA: quem ler o dicionário cru mistura os apps de novo."""
     caps = caps or {}
-    if _e_do_ancora(package):
+    if package is None or _e_do_ancora(package):
         return {k: v for k, v in caps.items() if k != CHAVE_POR_APP}
-    return dict((caps.get(CHAVE_POR_APP) or {}).get(package) or {})
+    do_app = _por_app(caps).get(package)
+    return dict(do_app) if isinstance(do_app, Mapping) else {}
 
 
-def com_politicas_do_app(caps: dict[str, Any] | None, package: str | None, novas: dict[str, Any]) -> dict[str, Any]:
+def com_politicas_do_app(caps: Mapping[str, object] | None, package: str | None,
+                         novas: Mapping[str, object]) -> dict[str, object]:
     """`caps` com o recorte de `package` trocado por `novas`; o dos outros apps fica intacto. Única porta de ESCRITA."""
-    caps = dict(caps or {})
-    por_app = dict(caps.get(CHAVE_POR_APP) or {})
-    if _e_do_ancora(package):
-        caps = dict(novas)
+    resultado = dict(caps or {})
+    por_app = _por_app(resultado)
+    if package is None or _e_do_ancora(package):
+        resultado = dict(novas)
     elif novas:
-        por_app[package] = dict(novas)                    # type: ignore[index]
+        por_app[package] = dict(novas)
     else:
         por_app.pop(package, None)                        # app sem nenhuma escolha: não deixa `{}` para trás
-    caps.pop(CHAVE_POR_APP, None)
+    resultado.pop(CHAVE_POR_APP, None)
     if por_app:
-        caps[CHAVE_POR_APP] = por_app
-    return caps
+        resultado[CHAVE_POR_APP] = por_app
+    return resultado
 
 
 class PolicyEngine:

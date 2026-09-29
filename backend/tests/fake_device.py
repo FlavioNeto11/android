@@ -84,6 +84,10 @@ class FakeQaDevice:
     # Texto da barra de endereço do navegador (resource-id do Chrome), ou None = tela sem barra.
     barra_de_endereco: str | None = None
     version: str = "1.0(1)"             # versão do app instalada neste aparelho (chave das receitas)
+    # Outros pacotes instalados que encenam as MESMAS telas do QA (item 24.7): com eles, trocar de app entre etapas
+    # troca o pacote em primeiro plano, e é o pacote que o executor confere. `foreground` é o app aberto agora.
+    pacotes_extras: tuple[str, ...] = ()
+    foreground: str = PKG
     frozen: bool = False                # app travado: aceita toques mas a tela não muda (até ser encerrado)
     # Android do convidado morto por dentro (system_server caído): o adb responde, `boot_completed` é 1, e
     # `service check` diz `not found`. `guest_mudo` é o outro caso medido: o adb não responde a tempo.
@@ -190,11 +194,11 @@ class FakeQaDevice:
             self._leave()
 
     def current_package(self) -> str | None:
-        return LAUNCHER if self.screen == "launcher" else PKG
+        return LAUNCHER if self.screen == "launcher" else self.foreground
 
     def current_focus(self) -> tuple[str | None, str | None]:
         """Mesmo contrato do `Adb.current_focus` (a seção VIVA do `dumpsys window`): o launcher ou o app."""
-        return (LAUNCHER, ".Launcher") if self.screen == "launcher" else (PKG, ".MainActivity")
+        return (LAUNCHER, ".Launcher") if self.screen == "launcher" else (self.foreground, ".MainActivity")
 
     def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
         """Mesmo contrato do `Adb.app_deaths`: as mortes por ANR do app, com a idade medida agora."""
@@ -220,6 +224,8 @@ class FakeQaDevice:
     def force_stop(self, package: str) -> None:
         self._enter("force_stop")
         try:
+            if self.pacotes_extras and package != self.foreground:
+                return                      # encerrar o app que está no fundo não muda a tela
             self.screen, self.contact, self.input_text, self.frozen = "launcher", None, "", False
             self._nodes = []
         finally:
@@ -241,7 +247,7 @@ class FakeQaDevice:
             pkg = self.current_package()
             rows = "".join(
                 f"<node class={quoteattr(n.cls)} package={quoteattr(pkg)} text={quoteattr(n.text)} "
-                f"resource-id={quoteattr(n.rid if ':' in n.rid else (PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
+                f"resource-id={quoteattr(n.rid if ':' in n.rid else (self.foreground + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
                 f"clickable=\"{str(n.clickable).lower()}\" enabled=\"true\" focused=\"{str(n.rid == self.focused and bool(n.rid)).lower()}\" "
                 f"password=\"{str(n.password).lower()}\" scrollable=\"{str(n.scrollable).lower()}\" bounds=\"[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]\" />"
                 for n in self._nodes)
@@ -303,6 +309,7 @@ class FakeQaDevice:
                                   effect_possible=True)
             act = hit.action
             if act == "open":
+                self.foreground = PKG       # o ícone do launcher é o do QA
                 self._abrir()
             elif act == "dismiss":
                 self.interstitial = False
@@ -374,9 +381,14 @@ class FakeQaDevice:
             self._leave()
 
     def open_app(self, package: str, activity: str | None) -> None:
-        self._enter("open_app")
+        self._enter(f"open_app:{package}" if self.pacotes_extras else "open_app")
         try:
-            if self.screen == "launcher":
+            if self.pacotes_extras and package in (PKG, *self.pacotes_extras) and package != self.foreground:
+                # Outro app vem à frente na tela inicial dele; o que estava aberto fica no fundo.
+                self.foreground, self.screen, self.contact, self.input_text = package, "home", None, ""
+                if self.require_login:
+                    self.screen = "login"
+            elif self.screen == "launcher":
                 self._abrir()
         finally:
             self._leave()
