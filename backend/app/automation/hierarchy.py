@@ -9,12 +9,22 @@ from dataclasses import asdict, dataclass
 
 from ..util import norm_text
 
+#: Apóstrofos e aspas simples tipográficos → o apóstrofo simples. O Instagram desenha "Confirm you’re human" com o
+#: U+2019, e os padrões (`'?`) só conheciam o simples: a tela relatada pelo dono não casava em idioma nenhum e virava
+#: "desconhecida" — e tela desconhecida o motor de sessão dispensa e volta (ADR-055).
+_APOSTROFOS = str.maketrans({"\u2019": "'", "\u2018": "'", "\u02bc": "'", "\u00b4": "'", "\u0060": "'",
+                             "\u2032": "'", "\uff07": "'"})
 
-def _sem_acento(value: str | None) -> str:
-    """Minúsculas E sem acento. `norm_text` só tira espaço e caixa — e a tela de desafio chega escrita em
-    português, com acento, escolhido pelo idioma DO APARELHO. Comparar sem isto é acertar por sorte."""
-    base = norm_text(value)
+
+def normalizar_texto_de_tela(value: str | None) -> str:
+    """O texto de tela na forma em que os sinais são escritos: apóstrofo simples, minúsculas, espaços colapsados e
+    SEM acento. `norm_text` só tira espaço e caixa — e a tela de desafio chega escrita no idioma que o app escolheu,
+    com acento e com apóstrofo tipográfico. Comparar sem isto é acertar por sorte."""
+    base = norm_text((value or "").translate(_APOSTROFOS))
     return "".join(c for c in unicodedata.normalize("NFD", base) if unicodedata.category(c) != "Mn")
+
+
+_sem_acento = normalizar_texto_de_tela
 
 
 BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
@@ -27,26 +37,83 @@ PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {cont
 #: aqui o único critério de "tela sensível" era `password=true`, então uma tela de verificação (que não tem campo
 #: de senha nenhum) virava JPEG em disco e imagem no corpo da requisição ao provedor de IA.
 #:
-#: Casa contra o texto NORMALIZADO (`_sem_acento`: minúsculas, sem acento), por isso está escrito sem acento aqui.
+#: Casa contra o texto NORMALIZADO (`normalizar_texto_de_tela`: apóstrofo simples, minúsculas, sem acento), por isso
+#: está escrito assim aqui.
 #:
 #: As frases vêm dos sinais `two_factor` e `challenge` (en e pt) do `telas.yaml` do Instagram
-#: (`app/conhecimento/apps/com.instagram.android/`), o classificador que já sabia reconhecer essas telas — e que só era consultado DEPOIS de a imagem ter sido
-#: capturada e enviada. `test_sensitive_input` confere, string por string, que os dois concordam: dois
-#: classificadores discordando sobre a MESMA tela seria pior do que ter um só.
-_DESAFIO = re.compile(
+#: (`app/conhecimento/apps/com.instagram.android/`), o classificador que já sabia reconhecer essas telas — e que só
+#: era consultado DEPOIS de a imagem ter sido capturada e enviada. `test_sensitive_input` confere, string por string,
+#: que os dois concordam: dois classificadores discordando sobre a MESMA tela seria pior do que ter um só.
+#:
+#: Duas famílias, com consequências diferentes (ADR-055, decisão do dono de 29/09/2026):
+#:
+#: - `_CONTA_TRAVADA`: "confirme que você é humano", CAPTCHA, "detectamos uma atividade suspeita". É a tela que
+#:   denuncia a conta travada — cinco das oito contas do parque pararam nela e não voltaram. Vale SEM campo de texto:
+#:   a tela real ("Confirm you’re human to use your account, fulano") só tem botões ("Continue", "Get support"), e
+#:   exigir o campo deixava a receita e o ator decidirem sobre ela. Por isso as frases são FRASES: palavra solta
+#:   ("suspeito", "unusual", "detectamos") aparece em DM e legenda, e o detector roda no meio da execução — uma
+#:   conversa com "achei suspeito" bloquearia uma das três contas vivas.
+#: - `_CODIGO`: código de login por e-mail/SMS e 2FA. Precisa de pessoa, mas NÃO é conta travada (bruno e andre
+#:   passaram por ele em 18/09 e seguem vivos). Continua exigindo onde digitar: a linha "Autenticação de dois fatores"
+#:   do MENU de configurações não é pedido de código.
+_CONTA_TRAVADA = re.compile(
+    # português
+    r"(confirme que (?:voce )?e (?:um[ae]? pessoa|humano)|confirme que e voce|ajude a confirmar|verifique sua conta|"
+    r"detectamos (?:uma? |algum[ae]? )?(?:tentativa|atividade|acesso|login|comportamento)|"
+    r"(?:atividade|tentativa de login|login|acesso|comportamento) (?:suspeit|incomum)|comportamento automatizado|"
+    r"nao sou um rob|"
+    # inglês
+    r"confirm (?:that )?you(?:'?re| are) (?:a )?human|confirm it'?s you|help us confirm|verify your account|"
+    r"(?:we|we'?ve|we have) detected (?:an? |some )?(?:unusual|suspicious)|"
+    r"(?:suspicious|unusual) (?:login|activity|attempt|behavio)|automated behavio|"
+    r"captcha|i'?m not a robot)")
+_CODIGO = re.compile(
     # português
     r"(autenticacao de dois fatores|verificacao em duas etapas|"
-    r"codigo de (?:seguranca|verificacao|confirma|acesso|autenticacao|backup)|codigo de \d+ digitos|"
+    r"codigo de (?:seguranca|verificacao|confirma|acesso|autenticacao|backup|login)|codigo de \d+ digitos|"
     r"insira o codigo|digite o codigo|enviamos um codigo|"
-    r"confirme que (?:voce )?e (?:um[ae]? pessoa|humano|voce)|ajude a confirmar|verifique sua conta|"
-    r"detectamos|suspeit|nao sou um rob|"
     # inglês
-    r"two.?factor|two.?step verification|security code|confirmation code|verification code|"
-    r"one.?time (?:code|password)|backup code|\d.?digit|"
-    r"enter the code|we sent (?:you )?a code|"
-    r"confirm it.?s you|confirm you.?re human|help us confirm|verify your account|"
-    r"suspicious|unusual (?:login|activity|attempt)|we detected|"
-    r"captcha|i.?m not a robot)")
+    r"two.?factor|two.?step verification|security code|confirmation code|verification code|login code|"
+    r"one.?time (?:code|password)|backup code|\d.?digit(?: (?:security |login |confirmation )?code)?|"
+    r"enter the code|we sent (?:you )?a code)")
+
+#: Subtipos do desfecho `auth_challenge` (ADR-055). `conta_travada` bloqueia o perfil (ADR-029) e avisa o dono;
+#: `codigo` só pede uma pessoa. `verificacao`: o ATOR relatou uma tela de verificação que nenhum sinal conhece — é
+#: julgamento do modelo, não casamento determinístico, então pede uma pessoa sem bloquear; quem olhar decide.
+SUBTIPO_CONTA_TRAVADA = "conta_travada"
+SUBTIPO_CODIGO = "codigo"
+SUBTIPO_VERIFICACAO = "verificacao"
+#: Tipo de tela (vocabulário de `conhecimento_de_telas.TIPOS`) de cada subtipo detectado.
+TIPO_DO_SUBTIPO = {SUBTIPO_CONTA_TRAVADA: "desafio", SUBTIPO_CODIGO: "dois_fatores"}
+
+
+@dataclass(slots=True, frozen=True)
+class ContaTravada:
+    """O que o detector de conta travada achou na tela. `trecho` é o pedaço do texto (normalizado) que casou — vai
+    na tentativa, no evento e no aviso ao dono, para a pessoa saber POR QUE a automação parou. É a frase da tela de
+    segurança, nunca o código digitado: nenhum padrão casa só dígitos."""
+
+    subtipo: str             #: SUBTIPO_CONTA_TRAVADA | SUBTIPO_CODIGO (| SUBTIPO_VERIFICACAO, só no relato do ator)
+    trecho: str
+    origem: str = "generico"  #: "generico" (sinais deste módulo) ou o nome da tela declarada pelo app que casou
+
+    @property
+    def tipo(self) -> str:
+        return TIPO_DO_SUBTIPO.get(self.subtipo, "desafio")
+
+    def descrever(self) -> str:
+        return f"{self.subtipo}: “{self.trecho}”"
+
+
+def detectar_trava_generica(texto_normalizado: str, *, tem_onde_digitar: bool) -> ContaTravada | None:
+    """Os sinais que valem para QUALQUER app. Conta travada primeiro (é a mais grave, e a tela dela pode também citar
+    um código); código só com onde digitar."""
+    if m := _CONTA_TRAVADA.search(texto_normalizado):
+        return ContaTravada(SUBTIPO_CONTA_TRAVADA, m.group(0)[:80])
+    if tem_onde_digitar and (m := _CODIGO.search(texto_normalizado)):
+        return ContaTravada(SUBTIPO_CODIGO, m.group(0)[:80])
+    return None
+
 
 #: Numa tela de desafio, um texto que é SÓ dígitos é o código — inclusive o que o operador acabou de digitar no
 #: campo. Fora de uma tela de desafio este mesmo formato é preço, contador ou ano, e por isso a máscara depende
@@ -146,6 +213,10 @@ class UiTree:
     #: Existe porque o critério deixou de ser um só (achado #127) e "campo de senha" passou a ser mentira em
     #: metade dos casos — e a mensagem que o operador lê é a única coisa que explica por que a IA parou.
     sensitive_reason: str | None = None
+    #: A conta travada que os sinais GENÉRICOS acharam nesta tela, varrendo o documento inteiro (não só os elementos
+    #: que entram no corte). Quem decide com o conhecimento do app é `conhecimento_de_telas.detectar_conta_travada`,
+    #: que parte daqui (ADR-055).
+    conta_travada: ContaTravada | None = None
 
     def at(self, x: int, y: int) -> UiElement | None:
         """O elemento sob o ponto (x, y) em pixels do aparelho: o MENOR que o contém — o mesmo critério do toque
@@ -366,10 +437,11 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
     packages: list[str] = []
     sensitive = bool(sempre_sensivel)
     motivo: str | None = sempre_sensivel
-    # A tela de desafio só conta quando há ONDE digitar o código. Sem esta condição, a linha "Autenticação de dois
-    # fatores" do MENU de configurações marcaria a tela inteira como sensível — e o executor pararia a etapa
-    # pedindo intervenção humana no meio de uma navegação comum. Medido no desenho, não depois.
-    fala_de_desafio = False
+    # O pedido de CÓDIGO só conta quando há ONDE digitá-lo. Sem esta condição, a linha "Autenticação de dois fatores"
+    # do MENU de configurações marcaria a tela inteira como sensível — e o executor pararia a etapa pedindo
+    # intervenção humana no meio de uma navegação comum. Medido no desenho, não depois. A conta travada não tem essa
+    # condição (ADR-055): a tela dela só tem botões. Ver `detectar_trava_generica`.
+    textos_normalizados: list[str] = []
     tem_onde_digitar = False
     n = 0
     for node in root.iter():
@@ -395,8 +467,8 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
         cls_bruta = a.get("class", node.tag) or ""
         if eh_campo_de_texto(cls_bruta):
             tem_onde_digitar = True
-        if normalizado and _DESAFIO.search(normalizado):
-            fala_de_desafio = True
+        if normalizado:
+            textos_normalizados.append(normalizado)
         for regra in regras:                          # varre TODO o documento, não só os elementos que entram no corte
             if regra.package and pkg != regra.package:
                 continue
@@ -424,7 +496,8 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
             package=pkg, bounds=bounds,  # type: ignore[arg-type]
             clickable=clickable, enabled=a.get("enabled", "true") == "true", focused=a.get("focused") == "true",
             scrollable=scrollable, editable=editable, checked=a.get("checked") == "true", password=is_password))
-    if fala_de_desafio and tem_onde_digitar:
+    trava = detectar_trava_generica("\n".join(textos_normalizados), tem_onde_digitar=tem_onde_digitar)
+    if trava is not None:
         if not sensitive:
             sensitive, motivo = True, MOTIVO_DESAFIO
         # O código EM SI não pode ir ao modelo nem para o histórico. Só aqui, e só numa tela já classificada como
@@ -432,4 +505,5 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
         for e in elements:
             if _SO_DIGITOS.match(e.text):
                 e.text = MASK
-    return UiTree(elements=elements, packages=packages, sensitive=sensitive, sensitive_reason=motivo)
+    return UiTree(elements=elements, packages=packages, sensitive=sensitive, sensitive_reason=motivo,
+                  conta_travada=trava)

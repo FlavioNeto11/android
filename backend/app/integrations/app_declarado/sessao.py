@@ -32,11 +32,12 @@ from typing import TYPE_CHECKING
 from ...automation import conhecimento_de_telas as telas
 from ...automation.conhecimento_de_telas import TelaReconhecida
 from ...automation.driver import DriverError
-from ...automation.hierarchy import UiElement, UiTree
+from ...automation.hierarchy import SUBTIPO_CONTA_TRAVADA, ContaTravada, UiElement, UiTree
 from ...devices.adb import AVISO_DE_ANR, motivo_de_anr
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
-from ...modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
+from ...modules.identity.application.session_rules import (bloquear_por_desafio, emit_needs_person_change,
+                                                          registrar_conta_travada)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
 from .conhecimento import CONFERIR_CONTA, Ajustes, ConhecimentoDeSessao
@@ -88,6 +89,7 @@ class Verdict:
     observed_username: str | None = None
     tela: str = telas.DESCONHECIDA
     etapa: str = "classified"
+    trava: ContaTravada | None = None    #: desafio ou código depois do envio: subtipo e trecho (ADR-055)
 
 
 @dataclass(slots=True)
@@ -109,6 +111,7 @@ class AccountCheck:
     matches: bool
     detail: str
     outro_app: bool = False          # a leitura terminou com OUTRO app na frente (o nosso caiu ou não voltou)
+    trava: ContaTravada | None = None  # a leitura parou numa tela de verificação, sem tocar nela (ADR-055)
 
 
 @dataclass(slots=True)
@@ -137,6 +140,12 @@ def _texto_da_tela(tree: UiTree) -> str:
     return "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
 
 
+def _dados_da_trava(profile_id: str, trava: ContaTravada | None) -> dict[str, str | None]:
+    """O tipo e o trecho da tela de verificação no evento (ADR-055): antes eram calculados e descartados."""
+    return {"profile_id": profile_id, "subtipo": trava.subtipo if trava is not None else None,
+            "trecho": trava.trecho if trava is not None else None, "tela": trava.origem if trava is not None else None}
+
+
 # ---------------------------------------------------------------------------------------------------- desfechos
 def classificar_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, *, package: str | None,
                                 expected_username: str, locale: str | None = None) -> Verdict:
@@ -160,7 +169,7 @@ def classificar_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, *, packag
         if regra.desfecho == CONFERIR_CONTA:
             return _conferir_conta_depois_do_envio(k, tree, r, expected_username)
         detalhe = f"{regra.detalhe} (tela: {_nome_da_tela(r)})" if regra.anexar_tela else regra.detalhe
-        return Verdict(Outcome(regra.desfecho), detalhe, tela=r.tela, etapa=regra.etapa)
+        return Verdict(Outcome(regra.desfecho), detalhe, tela=r.tela, etapa=regra.etapa, trava=r.trava)
     return Verdict(Outcome.UNCERTAIN, f"não foi possível classificar a tela ({r.razao})", tela=r.tela)
 
 
@@ -192,11 +201,17 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
     # A identidade sai SÓ da tela de perfil declarada: numa tela de conteúdo, o mesmo campo de cabeçalho pode mostrar
     # o autor do que está em foco, e ler dali acusava "conta errada" na conta certa (caso real no `sessao.yaml` do
     # primeiro app).
+    #
+    # Antes de qualquer toque, a tela passa pelo detector de conta travada (ADR-055): a verificação que aparece no
+    # meio da leitura — ao abrir a aba de perfil, por exemplo — tem botões de recusa ("Not now"), e o laço os
+    # dispensava e seguia tocando. Quem ouve "trava" sai sem tocar em nada.
     tree: UiTree | None = None
     package: str | None = None
     espera = k.conta.espera_s
     for _ in range(k.conta.passos_max):
         tree, package = await observe()
+        if (trava := k.reconhecer(tree, package=package, locale=locale).trava) is not None:
+            return _travada(trava)
         dispensar = k.botao_de_nao_salvar_login(tree, locale) or k.botao_de_dispensa(tree)
         if dispensar is not None:
             await tap(*dispensar.center)
@@ -211,7 +226,10 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
         await tap(*alvo)
         await asyncio.sleep(espera)
         tree, package = await observe()
-        if k.reconhecer(tree, package=package, locale=locale).tela == k.conta.tela_de_perfil:
+        reconhecida = k.reconhecer(tree, package=package, locale=locale)
+        if reconhecida.trava is not None:
+            return _travada(reconhecida.trava)
+        if reconhecida.tela == k.conta.tela_de_perfil:
             achado = k.conta_no_cabecalho(tree)
             if achado:
                 return _check(achado, expected)
@@ -221,6 +239,11 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
         reconhecida = k.reconhecer(tree, package=package, locale=locale)
         motivo, outro_app = reconhecida.razao, reconhecida.outro_app
     return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})", outro_app)
+
+
+def _travada(trava: ContaTravada) -> AccountCheck:
+    return AccountCheck(None, False, f"a leitura da conta parou numa tela de verificação ({trava.descrever()})",
+                        trava=trava)
 
 
 def _check(observed: str, expected: str) -> AccountCheck:
@@ -298,6 +321,8 @@ class SessaoDeclarada:
         # Depois de entrar, o app pode intercalar dicas e passos de onboarding que o tapam. São benignas e o botão
         # usado (só de RECUSA, pelo dado) não concede nada — mas enquanto estiverem na frente, a tela não é
         # classificável e a conta não tem como ser lida. Dispensa no máximo algumas, para não virar laço.
+        # Só tela DESCONHECIDA é dispensada: a de verificação da conta (ADR-055) é reconhecida pelo detector antes de
+        # qualquer regra — em qualquer idioma, com o apóstrofo tipográfico — e sai deste laço sem toque nenhum.
         for _ in range(k.dispensa.intersticiais_max):
             if estado.tela != telas.DESCONHECIDA:
                 break
@@ -340,6 +365,9 @@ class SessaoDeclarada:
         if k.telas.autenticada(estado.tela) and not force_login:
             check = await ler_conta(k, lambda: self._observe(rt), lambda x, y: self._tap(rt, x, y),
                                     expected=username, locale=locale)
+            if check.trava is not None:
+                self._app_voltou_a_frente(rt)
+                return self._challenge(profile_id, rt.id, check.detail, check.trava)
             # Antes de conta certa/errada: `outro_app` só vem quando nada foi lido. E o aviso do cartão só sai DEPOIS
             # da leitura — tirá-lo ao ver o app e repô-lo quando ele cai publicaria "voltou / caiu" a cada tentativa.
             if check.outro_app:
@@ -359,7 +387,7 @@ class SessaoDeclarada:
             self._app_voltou_a_frente(rt)
 
         if estado.tipo in TIPOS_DE_DESAFIO:
-            return self._challenge(profile_id, rt.id, estado.razao)
+            return self._challenge(profile_id, rt.id, estado.razao, estado.trava)
 
         # 2) Deslogado: fazer login.
         if estado.tipo != "login":
@@ -502,17 +530,19 @@ class SessaoDeclarada:
                        username: str) -> None:
         textos = self.conhecimento.textos
         # A etapa nomeia o diálogo genérico de erro (declarada na regra): é o que a fase local filtra no histórico
-        # (sem senha, sem token).
-        self.repo.finish_auth_attempt(profile_id, attempt, outcome=verdict.outcome.value, detail=verdict.detail,
-                                      stage=verdict.etapa)
+        # (sem senha, sem token). O subtipo e o trecho do desafio vão no detalhe (ADR-055): a etapa fica a de sempre.
+        trava = f" [{verdict.trava.descrever()}]" if verdict.trava is not None else ""
+        self.repo.finish_auth_attempt(profile_id, attempt, outcome=verdict.outcome.value,
+                                      detail=verdict.detail + trava, stage=verdict.etapa)
         status = self._status_for(verdict.outcome)
-        detalhe = f"{textos.desafio} ({verdict.detail})" if verdict.outcome is Outcome.AUTH_CHALLENGE \
+        detalhe = f"{textos.desafio} ({verdict.detail}){trava}" if verdict.outcome is Outcome.AUTH_CHALLENGE \
             else verdict.detail
         self._save(profile_id, instance_id, status, observed=verdict.observed_username,
                    verified_at=now_iso() if verdict.outcome is Outcome.SESSION_READY else None,
-                   detail=detalhe)
+                   detail=detalhe, trava=verdict.trava)
         if verdict.outcome is Outcome.AUTH_CHALLENGE:
-            self.bus.emit("log", f"{instance_id}: {textos.desafio}", level="warn", instance_id=instance_id)
+            self.bus.emit("log", f"{instance_id}: {textos.desafio}{trava}", level="warn", instance_id=instance_id,
+                          data=_dados_da_trava(profile_id, verdict.trava))
         if verdict.outcome is Outcome.SESSION_READY:
             self.repo.mark_credential(profile_id, status="active", failed_attempts=0, blocked_until=None)
             self.repo.touch_credential(profile_id)
@@ -557,10 +587,14 @@ class SessaoDeclarada:
             return Outcome.WRONG_ACCOUNT, (sess["detail"] or "o aparelho está logado em outra conta")
         return None
 
-    def _challenge(self, profile_id: str, instance_id: str, motivo: str) -> AuthResult:
-        detail = self.conhecimento.textos.desafio
-        self._save(profile_id, instance_id, SessionStatus.auth_challenge, detail=detail)
-        self.bus.emit("log", f"{instance_id}: {detail} ({motivo})", level="warn", instance_id=instance_id)
+    def _challenge(self, profile_id: str, instance_id: str, motivo: str,
+                   trava: ContaTravada | None = None) -> AuthResult:
+        """Desafio na tela: nada é tocado, a sessão vai a `auth_challenge` e a pessoa é chamada. O subtipo decide o
+        destino do perfil (ADR-055, em `_save`) e vai, com o trecho que casou, na sessão e no evento."""
+        detail = self.conhecimento.textos.desafio + (f" [{trava.descrever()}]" if trava is not None else "")
+        self._save(profile_id, instance_id, SessionStatus.auth_challenge, detail=detail, trava=trava)
+        self.bus.emit("log", f"{instance_id}: {detail} ({motivo})", level="warn", instance_id=instance_id,
+                      data=_dados_da_trava(profile_id, trava))
         return AuthResult(Outcome.AUTH_CHALLENGE, detail, session_status=SessionStatus.auth_challenge)
 
     def _fora_do_primeiro_plano(self, rt: DeviceRuntime, profile_id: str, detail: str) -> AuthResult:
@@ -616,17 +650,28 @@ class SessaoDeclarada:
         return None
 
     def _save(self, profile_id: str, instance_id: str, status: SessionStatus, *, observed: str | None = None,
-              verified_at: str | None = None, detail: str | None = None, reobserved: bool = False) -> None:
+              verified_at: str | None = None, detail: str | None = None, reobserved: bool = False,
+              trava: ContaTravada | None = None) -> None:
         anterior = self.repo.session_row(profile_id, instance_id)
         self.repo.set_session(profile_id, status=status, instance_id=instance_id, observed_username=observed,
                               verified_at=verified_at, detail=detail, reobserved=reobserved)
         if status is SessionStatus.session_ready:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
-        if status is SessionStatus.auth_challenge:
-            # A regra do PERFIL (ADR-029), com o rótulo do app declarado nas mensagens.
-            bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                 anterior_status=anterior["status"] if anterior is not None else None, detail=detail,
-                                 app_label=self.conhecimento.rotulo)
+        if status is SessionStatus.auth_challenge and (trava is None or trava.subtipo == SUBTIPO_CONTA_TRAVADA):
+            # A regra do PERFIL (ADR-029), com o rótulo do app declarado nas mensagens. Só a conta TRAVADA (ADR-055):
+            # o código de login/2FA pede uma pessoa sem bloquear — bruno e andre passaram por ele em 18/09 e seguem
+            # vivos. Sem subtipo é regra declarada por sinal, fora do detector: vale o bloqueio de sempre.
+            # Sem o "anterior": uma sessão parada num código não pode impedir o bloqueio quando a trava aparece
+            # depois; quem impede o aviso repetido é o próprio perfil já `blocked`.
+            bloqueou = bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
+                                            anterior_status=None, detail=detail, app_label=self.conhecimento.rotulo)
+            if bloqueou or anterior is None or anterior["status"] != SessionStatus.auth_challenge.value:
+                # Protegida por dentro: a quarentena falhar não pode impedir o evento da fila logo abaixo.
+                perfil = self.repo.profile_row(profile_id)
+                registrar_conta_travada(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
+                                        handle=str(perfil["username"] if perfil is not None else profile_id),
+                                        evidencia=trava.trecho if trava is not None else (detail or "")[:300],
+                                        visto_por="motor de sessão")
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
                                  detail=detail)

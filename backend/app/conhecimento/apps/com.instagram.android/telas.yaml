@@ -5,8 +5,13 @@
 # PREFIXOS do final do resource-id e o atributo `password` do Android. Acrescentar idioma é acrescentar chave em
 # `sinais`, não espalhar texto pelo código. `en` é a variante do emulador do projeto.
 #
-# Desafio e 2FA daqui são conferidos contra `automation/hierarchy.py::_DESAFIO` por
+# Desafio e 2FA daqui são conferidos contra `automation/hierarchy.py` (`_CONTA_TRAVADA` e `_CODIGO`) por
 # `tests/test_sensitive_input.py`: segurança não se edita só aqui.
+#
+# ADR-055 (29/09/2026): `challenge` é a conta TRAVADA — perfil bloqueado, nada tocado, sem campo de texto exigido;
+# `two_factor` é o código de login/2FA — precisa de pessoa, sem bloquear. Os dois casam na UNIÃO dos idiomas, contra o
+# texto normalizado (apóstrofo simples, sem acento), por isso cada classe acentuada traz a forma sem acento. Só FRASES:
+# o detector roda no meio da execução, em DMs e legendas, onde "suspeito" ou "unusual" soltos são conversa comum.
 #
 # Desde a fatia 3, `login_button`, `facebook`, `save_dismiss`, `wrong_password`, `user_not_found` e `login_error`
 # são lidos pelo `sessao.yaml` desta pasta (login e desfechos depois do envio): cada um tem de existir em todo idioma.
@@ -18,10 +23,11 @@ sinais:
   en:
     login_button: '^\s*(log ?in|sign ?in)\s*$'
     facebook: 'facebook'
-    two_factor: '(two[- ]factor|security code|confirmation code|6[- ]digit)'
+    # "Enter the code we sent" é o código de login por e-mail: saiu de `challenge` (decisão b do ADR-055).
+    two_factor: '(two[- ]factor|security code|confirmation code|login code|6[- ]digit( (security |login |confirmation )?code)?|enter the code we sent|we sent (you )?a code)'
     # achado #104: "confirm you're human" (r-20260920143652-132c2e); nunca só "to use your account", que aparece em
-    # onboarding comum.
-    challenge: "(we detected|suspicious|unusual|confirm it'?s you|help us confirm|verify your account|enter the code we sent|captcha|i'?m not a robot|confirm you'?re human)"
+    # onboarding comum. "Confirm you are human", por extenso, é como o dono relatou a tela.
+    challenge: "(confirm (that )?you('?re| are) (a )?human|confirm it'?s you|help us confirm|verify your account|(we|we'?ve|we have) detected (an? |some )?(unusual|suspicious)|(suspicious|unusual) (login|activity|attempt|behavio)|automated behavio|captcha|i'?m not a robot)"
     save_login: 'save (your )?login info'
     save_dismiss: '^\s*not now\s*$'
     wrong_password: '(incorrect password|password (you )?entered .* incorrect|wrong password)'
@@ -33,9 +39,9 @@ sinais:
   pt:
     login_button: '^\s*(entrar|fazer login)\s*$'
     facebook: 'facebook'
-    two_factor: '(autentica[çc][ãa]o de dois fatores|c[óo]digo de seguran[çc]a|c[óo]digo de confirma)'
+    two_factor: '(autentica[çc][ãa]o de dois fatores|c[óo]digo de seguran[çc]a|c[óo]digo de confirma|c[óo]digo de login|insira o c[óo]digo|digite o c[óo]digo|enviamos um c[óo]digo)'
     # achado #104: "confirme que você é humano/uma pessoa" tem outra ordem de palavras.
-    challenge: '(detectamos|suspeit|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta|insira o c[óo]digo|captcha|n[ãa]o sou um rob[ôo]|confirme que (voc[êe] )?[ée] (um[ae]? pessoa|humano))'
+    challenge: '(confirme que (voc[êe] )?[ée] (um[ae]? pessoa|humano)|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta|detectamos (uma? |algum[ae]? )?(tentativa|atividade|acesso|login|comportamento)|(atividade|tentativa de login|login|acesso|comportamento) (suspeit|incomum)|comportamento automatizado|captcha|n[ãa]o sou um rob[ôo])'
     save_login: 'salvar (suas )?informa[çc][õo]es de login'
     save_dismiss: '^\s*agora n[ãa]o\s*$'
     wrong_password: '(senha incorreta|senha .* incorreta)'

@@ -15,14 +15,16 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Awaitable, Callable, Sequence, TypeVar
+from typing import Any, Awaitable, Callable, Protocol, Sequence, TypeVar
 
 from PIL import Image
 
+from ..automation import conhecimento_de_telas as telas_do_app
 from ..automation import tools as ferramentas
 from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
-from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
-from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
+from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA,
+                                    SUBTIPO_VERIFICACAO, ContaTravada, UiElement, UiTree)
+from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, TelaDeContaTravada, ToolContext,
                                 ToolValidationError, esperar_foco, execute_tool, looks_like_commit, resolve_point,
                                 urls_do_texto, validate_call)
 from ..config import Config
@@ -40,7 +42,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import capability_of, guardas_do_cartao
+from ..planning.capabilities import CONHECIMENTO_DE_APPS, capability_of, guardas_do_cartao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
@@ -130,6 +132,34 @@ def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bo
     return tree.sensitive and tree.sensitive_reason in (MOTIVO_SENHA, MOTIVO_DESAFIO)
 
 
+class AoDesmentirSessao(Protocol):
+    """`AppState._sessao_desmentida`: a tela contradisse o que a sessão do perfil afirmava. `subtipo` só acompanha
+    `auth_challenge` (ADR-055): `conta_travada` bloqueia o perfil; `codigo` e `verificacao` só pedem uma pessoa."""
+
+    def __call__(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None) -> None: ...
+
+
+def motivo_da_trava(trava: ContaTravada) -> str:
+    """O motivo gravado na tentativa, no objetivo e no evento: o desfecho, o subtipo e o trecho que casou. Antes o
+    tipo e o trecho eram calculados e descartados, e a pessoa lia só "o app pede autenticação"."""
+    o_que = {SUBTIPO_CONTA_TRAVADA: "a verificação de conta travada apareceu na tela",
+             SUBTIPO_CODIGO: "o app pede um código de login/2FA"}.get(
+        trava.subtipo, "a IA relatou uma tela de verificação que nenhum sinal conhece")
+    return f"auth_challenge ({trava.subtipo}): {o_que} — “{trava.trecho}”; nada foi tocado."
+
+
+#: O que a pessoa faz diante de cada subtipo. Conta travada não pede "resolva na tela": a regra do dono é que ela
+#: está perdida para a automação, e quem decide reativar é ele.
+_NECESSIDADE_DA_TRAVA = {
+    SUBTIPO_CONTA_TRAVADA: "A conta mostrou a verificação de segurança (conta travada): o perfil foi bloqueado e nada "
+                           "foi tocado. Veja o aparelho; reative o perfil só se a conta voltar a ser usável.",
+    SUBTIPO_CODIGO: "O app pede um código de login/2FA: assuma o controle, digite o código que chegou à pessoa e "
+                    "devolva o controle à IA.",
+    SUBTIPO_VERIFICACAO: "A IA viu uma tela de verificação: assuma o controle e veja o aparelho. Se for a verificação "
+                         "de conta travada, bloqueie o perfil; se não, resolva na tela e devolva o controle à IA.",
+}
+
+
 class Outcome(StrEnum):
     succeeded = "succeeded"
     retry = "retry"
@@ -153,6 +183,9 @@ class StepOutcome:
     # billing | refusal) — o scheduler grava isto em `objectives.blocked_kind='ai'` para a interface distinguir
     # "a IA está travando este item" de política/limite/aprovação, em vez de só um texto livre.
     ai_blocked: bool = False
+    #: ADR-055: a etapa parou numa tela de verificação da conta. Não é veredito sobre a receita nem sobre o plano — a
+    #: conta travou, o caminho não errou; contar isso levaria à quarentena uma receita que funciona nas outras contas.
+    trava_da_conta: bool = False
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -229,8 +262,8 @@ class StepExecutor:
         self.approvals: Any = None                          # idem: só para ligar a aprovação ao efeito que ela liberou
         #: Login ou desafio apareceu NO MEIO da execução. O estado de sessão é cache do que se observou, e o
         #: executor é quem está olhando a tela naquele instante — antes ele devolvia `waiting_user` e deixava o
-        #: perfil dizendo "Conectado". Injetado pelo AppState: (instance_id, kind, detail).
-        self.on_auth_needed: Callable[[str, str, str], None] | None = None
+        #: perfil dizendo "Conectado". Injetado pelo AppState: (instance_id, kind, detail, subtipo=).
+        self.on_auth_needed: AoDesmentirSessao | None = None
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
@@ -721,7 +754,7 @@ class StepExecutor:
         # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
         # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais. Defeito do
         # plano também não é veredito sobre ela.
-        veredito = not (outcome.plan_defect or outcome.outcome == Outcome.retry)
+        veredito = not (outcome.plan_defect or outcome.outcome == Outcome.retry or outcome.trava_da_conta)
         na_receita = rr.mode == "replay" and rr.row is not None and veredito and (replayed or rr.diverged)
         if rr.mode == "replay" and rr.row is not None and not na_receita:
             # Funil de receitas (C5) contado por TENTATIVA, nas três pontas: a consulta (`RecipeStore.find`) e o
@@ -812,7 +845,21 @@ class StepExecutor:
             "SELECT r.signature_sha256 FROM device_app_state d JOIN app_releases r ON r.id = d.installed_release_id"
             " WHERE d.instance_id=? AND d.package_name=?", (instance_id, package)) or ""
 
-    def _sessao_desmentida(self, instance_id: str, package: str | None, kind: str, detail: str) -> None:
+    def _trava_na_tela(self, tree: UiTree, pacote: str | None) -> ContaTravada | None:
+        """O detector único de conta travada (ADR-055), com o conhecimento de telas do app que está NA TELA (não o da
+        etapa: a verificação é desenhada pelo app da conta). Conhecimento inválido não derruba a etapa: fica com os
+        sinais genéricos, que cobrem as frases do Instagram (`test_sensitive_input` confere que concordam)."""
+        k: telas_do_app.ConhecimentoDeTelas | None = None
+        if pacote and pacote.replace(".", "").replace("_", "").isalnum():
+            try:
+                k = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / pacote)
+            except telas_do_app.ConhecimentoInvalido as exc:
+                log.warning("conhecimento de telas de %s inválido; só os sinais genéricos de conta travada: %s",
+                            pacote, exc)
+        return telas_do_app.detectar_conta_travada(tree, k)
+
+    def _sessao_desmentida(self, instance_id: str, package: str | None, kind: str, detail: str, *,
+                           subtipo: str | None = None) -> None:
         """A tela contradisse o que o painel afirmava sobre a sessão. O cache passa a dizer a verdade.
 
         O estado de sessão sempre foi um cache do que se observou uma vez — e que nunca era corrigido por quem
@@ -828,7 +875,10 @@ class StepExecutor:
             # `auth_required` gastaria, sozinha, uma das tentativas de autenticação automática daquele perfil.
             return
         try:
-            self.on_auth_needed(instance_id, kind, detail)
+            if subtipo is None:
+                self.on_auth_needed(instance_id, kind, detail)
+            else:
+                self.on_auth_needed(instance_id, kind, detail, subtipo=subtipo)
         except Exception:  # noqa: BLE001 - corrigir o cache nunca pode derrubar a etapa
             log.exception("%s: falha ao atualizar o estado de sessão do perfil", instance_id)
 
@@ -903,7 +953,14 @@ class StepExecutor:
             xml = await reler_se_ocupada(
                 lambda: rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia"),
                 prazo=deadline, quem=iid)
-            return self.devices.arvore(rt, xml)      # mesmos critérios de tela sensível da observação completa
+            tree = self.devices.arvore(rt, xml)      # mesmos critérios de tela sensível da observação completa
+            # ADR-055: a leitura DENTRO de uma ferramenta também passa pelo detector. A rolagem fecha com "voltar" a
+            # janela que entra por cima, e a coleta segue arrastando: sem isto, a verificação que aparecesse no meio
+            # delas levaria um gesto antes de o laço voltar a observar.
+            pacote = next((p for p in tree.packages if p != "com.android.systemui"), None)
+            if (trava := self._trava_na_tela(tree, pacote)) is not None:
+                raise TelaDeContaTravada(trava, pacote)
+            return tree
 
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
             # `add_evidence_async`: a ESCRITA do arquivo sai do laço de eventos (item 5.7). Em disco local isso
@@ -939,6 +996,24 @@ class StepExecutor:
             if step.side_effect and fired:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, detail)
+
+        async def parar_na_trava(trava: ContaTravada, pacote: str | None) -> StepOutcome:
+            """ADR-055: a tela de verificação encerra a etapa SEM tocar, teclar nem reabrir — nem a receita nem o ator
+            chegam a vê-la. O desfecho é `auth_challenge` com o subtipo e o trecho, na tentativa (o `detail`) e no
+            evento; `conta_travada` bloqueia o perfil (quem aplica é o AppState, pela regra do perfil)."""
+            motivo = motivo_da_trava(trava)
+            # Evidência em TEXTO: a imagem não ajuda ninguém a decidir, e quando só o conhecimento do app reconheceu a
+            # tela a árvore não é "sensível" — `imagem_tardia` fotografaria a verificação (com o nome da pessoa).
+            await evidence(None, f"Parada sem tocar: {motivo}")
+            texto = f"{iid} · {step.title}: {motivo}"
+            repo.bus.emit("decision", texto, level="warn", run_id=run_id, instance_id=iid, step_id=step.id,
+                          data={"text": texto, "kind": "auth_challenge", "subtipo": trava.subtipo,
+                                "trecho": trava.trecho, "tela": trava.origem, "package": pacote})
+            self._sessao_desmentida(iid, pacote or app.package, "auth_challenge", motivo, subtipo=trava.subtipo)
+            if step.side_effect and fired:
+                return StepOutcome(Outcome.uncertain, motivo, trava_da_conta=True)
+            return StepOutcome(Outcome.waiting_user, motivo, trava_da_conta=True,
+                               needs=_NECESSIDADE_DA_TRAVA.get(trava.subtipo, _needs_for("challenge")))
 
         for tries in range(3):                     # logo após ligar/acordar o Android às vezes recusa a 1ª sessão (visto:
             if await self.devices.ensure_automation(rt):   # `adb shell settings …` exit 20) e aceita segundos depois
@@ -1040,6 +1115,13 @@ class StepExecutor:
                 if errors_in_row >= 3 or not await self.devices.ensure_automation(rt):
                     return await fail_or_retry(f"Não foi possível observar a tela: {exc}")
                 continue
+            # ---------- conta travada? (ADR-055) ANTES da reabertura por ANR, da receita e do ator.
+            # "Confirm you’re human" só contava como desafio com campo de texto na tela; sem campo, decidiam a receita
+            # e o ator — instruído a dispensar "diálogos inesperados" (tocar em "Continue", "Get support", voltar).
+            # E quando contava, o executor gravava `auth_required`: o login automático reabria o app sobre a conta
+            # travada, e o bloqueio do perfil (ADR-029) nunca rodava por aqui. Cinco das oito contas se perderam assim.
+            if (trava := self._trava_na_tela(obs.tree, obs.package)) is not None:
+                return await parar_na_trava(trava, obs.package)
             # ---------- o app alvo morreu por ANR? (pacote "anr")
             # Com `hide_error_dialogs=1` o ANR não tem diálogo: o sistema fecha o app e o launcher volta. A IA só via
             # "launcher" e reabria; a partida a frio dava outro ANR (5 mortes do Instagram na 02ee9e, 6 na e31953 v3).
@@ -1097,6 +1179,12 @@ class StepExecutor:
             # campo de senha e o desafio de verificação pedem gente.
             if pede_intervencao_humana(obs.tree, tem_credencial=senha_do_app.secret is not None):
                 porque = obs.tree.sensitive_reason
+                if porque == MOTIVO_DESAFIO:
+                    # O desafio já saiu pelo detector, lá em cima: `MOTIVO_DESAFIO` só nasce quando ele acha a trava.
+                    # Se um caminho novo o fizer chegar aqui, a regra é a mesma — `auth_challenge`, nunca o
+                    # `auth_required` que devolvia a conta travada ao login automático.
+                    return await parar_na_trava(obs.tree.conta_travada or ContaTravada(SUBTIPO_CONTA_TRAVADA, porque),
+                                                obs.package)
                 await evidence(obs, f"Tela sensível detectada ({porque})")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
                 # `auth_required` aqui mesmo. É o que faz o autenticador automático (que tem a credencial no
@@ -1266,6 +1354,12 @@ class StepExecutor:
                 await evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {args.reason}")
                 repo.decision(f"{iid}: etapa '{step.title}' bloqueada — {args.reason}", run_id=run_id, instance_id=iid,
                               step_id=step.id)
+                if args.kind == "challenge":
+                    # A IA reconheceu uma verificação que o detector não conhece (ele já olhou ESTA tela antes de
+                    # perguntar a ela). É julgamento do modelo, não casamento determinístico: vira `auth_challenge`
+                    # e pede uma pessoa, sem bloquear o perfil — quem olhar decide se é a conta travada (ADR-055).
+                    return await parar_na_trava(ContaTravada(SUBTIPO_VERIFICACAO, args.reason[:80], origem="ator"),
+                                                obs.package)
                 if step.side_effect and fired:
                     return StepOutcome(Outcome.uncertain, args.reason)
                 if args.kind in ("auth_required", "wrong_account"):
@@ -1381,6 +1475,14 @@ class StepExecutor:
             agiu = True                # a próxima observação fora do app alvo reconfere as mortes (pacote "anr")
             try:
                 out = await execute_tool(tool_ctx, decision.tool, args)
+            except TelaDeContaTravada as exc:
+                # A verificação apareceu no meio da ferramenta (ADR-055): o gesto que a precedeu aconteceu, e nada
+                # depois dele. Com efeito externo possível, a regra de sempre: `fired` continua e o desfecho é incerto.
+                repo.finish_action(aid, ActionStatus.unknown if (is_commit and exc.effect_possible) else ActionStatus.done,
+                                   error=str(exc), effect_possible=exc.effect_possible)
+                if is_commit and not exc.effect_possible:
+                    fired = False
+                return await parar_na_trava(exc.trava, exc.pacote)
             except DriverError as exc:
                 possible = exc.effect_possible
                 # Sem resposta a tempo ou com a UI ocupada, o gesto pode ter chegado ao app: é INCERTO, não "falhou".
@@ -1859,6 +1961,7 @@ def _boost_terms(step: StepDTO, app: AppContext) -> tuple[str, ...]:
 def _needs_for(kind: str) -> str:
     return {
         "auth_required": "Assuma o controle, conclua a autenticação no app e devolva o controle à IA.",
+        "challenge": _NECESSIDADE_DA_TRAVA[SUBTIPO_VERIFICACAO],
         "wrong_account": "Conecte a conta esperada neste aparelho (ou ajuste o rótulo da conta) e retome o item.",
         "missing_info": "Revise o comando/configuração com a informação que falta e retome o item.",
         "app_incompatible": "O app não expõe uma tela automatizável neste emulador; veja as evidências.",

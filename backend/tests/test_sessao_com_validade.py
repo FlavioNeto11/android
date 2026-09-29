@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from app.models import SessionStatus
+from app.modules.identity.application.ports import QuarentenaDeContas
 from app.planning.catalog import pacote_ancora
 from app.util import now, to_iso
 from .conftest import Harness
@@ -79,9 +80,12 @@ async def test_desafio_e_conta_errada_passam_a_depender_de_pessoa(tmp_path: Path
         assert s.social_repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
         rt = s.devices.get("android-01")
         # Desde o ADR-029 (27/09) o desafio também BLOQUEIA o perfil: a porta recusa já pelo status do perfil, antes
-        # de olhar a sessão — nada de tentar sozinho, e agora nem depois de a sessão ser relida.
+        # de olhar a sessão — nada de tentar sozinho, e agora nem depois de a sessão ser relida. Com a quarentena do
+        # ADR-055 na árvore, a tela lida marca também o APARELHO, e a porta recusa antes, pela quarentena: o motivo
+        # é o dela (visto na árvore mesclada dos pacotes "detector" e "quarentena").
         motivo, trabalho = s._session_gate(rt)
-        assert trabalho is None and "'blocked'" in motivo
+        esperado = "em quarentena" if isinstance(s.social_repo, QuarentenaDeContas) else "'blocked'"
+        assert trabalho is None and esperado in motivo, motivo
         assert s.social_repo.profile_row(pid)["status"] == "blocked"
     finally:
         await h.state.stop()
