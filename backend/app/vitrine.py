@@ -110,7 +110,7 @@ def previa_de_entrega(state: AppState, rt: Any, row: Any, *, eager: bool) -> dic
 
 
 # ============================================================================ entrega sem tarefa (ao ligar e na varredura)
-def objetivo_em_andamento(state: AppState, instance_id: str) -> bool:
+def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espera_a_rede: bool = False) -> bool:
     """O aparelho tem um objetivo no meio (rodando, parado esperando uma pessoa ou com desfecho INCERTO) de uma
     execução não encerrada?
 
@@ -118,10 +118,16 @@ def objetivo_em_andamento(state: AppState, instance_id: str) -> bool:
     `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`. O
     `uncertain` entra pelo mesmo motivo (revisão do PR #13): a tela dele é a evidência de que o operador precisa para
     decidir se o efeito aconteceu, e instalar e abrir o app por cima a apagaria.
+
+    `exceto_quem_espera_a_rede`: o objetivo suspenso entre etapas pela porta da rede (`wait_reason='rede'`, item
+    25.6) continua `running`, mas está esperando justamente o reinício que a convergência da rede pede — contá-lo como
+    ocupado travaria os dois para sempre. Um objetivo que volta a rodar sai dessa espera (`set_objective` zera o
+    `wait_reason`), e o worker ocupado é conferido à parte por quem pergunta.
     """
     return state.db.one(
         "SELECT 1 FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
-        " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')",
+        " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')"
+        + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else ""),
         (instance_id,)) is not None
 
 
@@ -177,10 +183,13 @@ async def entregar_pendentes(state: AppState, rt: Any, pendentes: list[tuple[str
             log.info("%s: entrega de %s ao ligar não concluiu (%s)", rt.id, package, exc)
 
 
-def trabalho_ao_ligar(state: AppState, rt: Any) -> Any:
-    """O que o aparelho que acabou de ligar deve receber: as versões desejadas dos apps que ele tem e o proxy pedido.
+def trabalho_ao_ligar(state: AppState, rt: Any, *, motivo: str = "ligou") -> Any:
+    """O que o aparelho que acabou de ligar deve receber: a rede pedida (ADR-056, 25.4), as versões desejadas dos apps
+    que ele tem e o proxy legado pedido.
 
-    `None` = nada. Senão, uma corrotina-fábrica que roda dentro do trabalho de reobservação do aparelho.
+    `None` = nada. Senão, uma corrotina-fábrica que roda dentro do trabalho de reobservação do aparelho. `motivo` é
+    `ligou` (boot, wake, readoção depois de reinício do backend ou do worker: a rede é relida) ou `varredura` (a
+    passada de 60 s: a rede só é relida quando vence `rede.deriva_s`).
     """
     from .devices.proxy import aplicar_no_aparelho, proxy_pendente  # noqa: PLC0415
 
@@ -189,10 +198,18 @@ def trabalho_ao_ligar(state: AppState, rt: Any) -> Any:
         return None
     entregas = pendentes_ao_ligar(state, rt)
     proxy = proxy_pendente(state, rt)
-    if not entregas and not proxy:
+    rede = state.rede_convergencia.trabalho(rt, motivo=motivo)
+    if not entregas and not proxy and rede is None:
         return None
 
     async def trabalho() -> None:
+        if rede is not None:
+            # Primeiro a rede: a tarefa que espera por ela (política exigida) espera menos, e o reinício que ela pede
+            # só sai depois que este trabalho solta o aparelho.
+            try:
+                await rede()
+            except Exception as exc:  # noqa: BLE001 - a convergência grava a falha; os apps seguem
+                log.info("%s: rede ao ligar não concluiu (%s)", rt.id, exc)
         if proxy:
             try:
                 await aplicar_no_aparelho(state, rt)
@@ -226,7 +243,7 @@ def convergir_ligados(state: AppState) -> list[str]:
                 or rt.id in esperando_tarefa:
             continue
         state.adotar_promovidas(rt)
-        trabalho = trabalho_ao_ligar(state, rt)
+        trabalho = trabalho_ao_ligar(state, rt, motivo="varredura")
         if trabalho is not None and state.scheduler.run_device_job(rt, trabalho,
                                                                    label="entrega do que foi distribuído"):
             iniciados.append(rt.id)

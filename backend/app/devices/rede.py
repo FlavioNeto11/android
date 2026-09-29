@@ -14,15 +14,17 @@ O que mora aqui:
 - o **legado da 041** (`device_proxy_state`, proxy global do Android): lido como `configurado` no máximo, porque a
   releitura do `settings` prova a configuração, não o tráfego.
 
-O que NÃO mora aqui ainda, de propósito: aplicar no aparelho (25.4), a sonda (25.5), o portão do scheduler (25.6) e
-os aparelhos do worker (25.7). `verify` e `reapply` registram o pedido e respondem 202; quem executa é a convergência
-do 25.4, que consome `pendencias()`. Nada neste módulo finge aplicação: sem o executor, o estado não sai do lugar.
+O que NÃO mora aqui, de propósito: aplicar no aparelho (25.4: a receita em `rede_aplicacao.py`, o QUANDO em
+`rede_convergencia.py`, o servidor do central em `rede_servidor.py`), a sonda (25.5: `rede_medicao.py`, com os
+comandos em `sonda_rede.py`) e os aparelhos do worker (25.7). `verify` e `reapply` registram o pedido e respondem
+202; quem executa é a convergência, no próximo ponto seguro (ou já, por `POST …/apply`). Nada neste módulo finge aplicação: o estado só sai do lugar pela observação com evidência.
 """
 from __future__ import annotations
 
 import ipaddress
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -33,7 +35,7 @@ from ..models import (_CHAVE_DE_SEGREDO, DeviceNetworkDTO, NetworkMeasurementDTO
                       NetworkProfileKind, NetworkProtocol, NetworkState)
 from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
-from ..util import novo_id_de_app, now_iso
+from ..util import novo_id_de_app, now_iso, parse_iso
 from .proxy import _HOST
 
 if TYPE_CHECKING:
@@ -339,8 +341,8 @@ def apps_exigidos(st: AppState, instance_id: str) -> list[str]:
     ADR-056 §3 em forma de lista: medir o navegador não prova o Instagram nem o Outlook.
 
     Lista vazia (aparelho sem conta vinculada) cai na regra mínima de `_falta_para_verificar`: pelo menos um app
-    medido. O vínculo feito DEPOIS da verificação não desfaz o estado aqui; o portão do 25.6 confere o pacote da
-    tarefa contra o `per_app` da última medição (`listar_aparelhos` expõe os dois)."""
+    medido. O vínculo feito DEPOIS da verificação não desfaz o estado aqui; a porta da tarefa (25.6) confere a lista
+    de hoje contra o `per_app` da medição que verificou (`apps_sem_prova`) e manda medir de novo."""
     return [str(r["package"]) for r in st.db.query(
         "SELECT DISTINCT ap.package FROM device_profile_bindings b"
         " JOIN profile_accounts a ON a.profile_id = b.profile_id AND (b.app_id IS NULL OR a.app_id = b.app_id)"
@@ -385,10 +387,60 @@ def _legado(st: AppState, instance_id: str) -> _Legado | None:
                    observed_value=row["observed_value"], verified_at=row["verified_at"], detail=row["detail"])
 
 
-def _pendencia(row: Row | None) -> str | None:
+def idade_da_verificacao(row: Row, agora: float | None = None) -> float | None:
+    """Segundos desde a última medição que gravou a saída (`verified_at`); `None` quando não há data legível."""
+    if not row["verified_at"]:
+        return None
+    try:
+        quando = parse_iso(str(row["verified_at"])).timestamp()
+    except (ValueError, TypeError):
+        return None
+    return (time.time() if agora is None else agora) - quando
+
+
+def verificacao_vencida(row: Row, validade_s: float, agora: float | None = None) -> bool:
+    """Um `trafego_verificado` com política exigida que já não vale para a porta da tarefa (item 25.6): sem data da
+    medição, ou com ela mais velha que `rede.validade_verificacao_s`. Com política `livre` nada depende da rede, e
+    nada vence. Fora de `trafego_verificado` a pergunta não se aplica (o estado já diz o que falta)."""
+    if row["state"] != "trafego_verificado" or row["policy"] == "livre":
+        return False
+    idade = idade_da_verificacao(row, agora)
+    return idade is None or idade >= validade_s
+
+
+def apps_sem_prova(st: AppState, row: Row) -> list[str]:
+    """Apps exigidos HOJE (`apps_exigidos`) que a medição que verificou o aparelho não provou (`ok` no `per_app`).
+    É o vínculo feito depois da verificação: uma conta nova no aparelho não desfaz o `trafego_verificado` (o estado
+    é da medição), mas a porta da tarefa não o aceita para aquele app sem medir de novo (item 25.6).
+
+    A medição que verificou é a da data de `verified_at` (só medição com IP a grava, e uma com IP que não verificasse
+    teria levado a linha a `parcial`). Com política `livre`, fora de `trafego_verificado` ou sem app exigido: nada."""
+    if row["state"] != "trafego_verificado" or row["policy"] == "livre":
+        return []
+    exigidos = apps_exigidos(st, str(row["instance_id"]))
+    if not exigidos:
+        return []
+    m = st.db.one("SELECT per_app FROM network_measurements WHERE instance_id=? AND measured_at=?"
+                  " ORDER BY id DESC LIMIT 1", (row["instance_id"], row["verified_at"])) if row["verified_at"] else None
+    por_app = (loads(m["per_app"], {}) or {}) if m is not None else {}
+    return [app for app in exigidos if por_app.get(app) != "ok"]
+
+
+def verificacao_invalida(st: AppState, row: Row) -> str | None:
+    """Por que um `trafego_verificado` com política exigida não vale para a porta da tarefa (item 25.6): `vencida`
+    (`rede.validade_verificacao_s`) ou `apps` (`apps_sem_prova`). `None` = vale (ou a pergunta não se aplica)."""
+    if verificacao_vencida(row, _validade(st)):
+        return "vencida"
+    if apps_sem_prova(st, row):
+        return "apps"
+    return None
+
+
+def _pendencia(row: Row | None, st: AppState | None = None) -> str | None:
     """O que falta a este aparelho: `aplicar` (a revisão pedida não está no aparelho, ou regrediu a `pendente` por
-    falha ou deriva) ou `verificar` (está, mas o tráfego não foi medido por app). É o que a convergência do 25.4
-    consome, pela `pendencias()`."""
+    falha ou deriva) ou `verificar` (está, mas o tráfego não foi medido por app; ou, com política exigida, a medição
+    venceu ou não cobre um app exigido hoje). É a pendência que o painel mostra; a convergência do 25.4 decide pelo
+    `state` da linha (`configurado` ainda pede o reinício e a conexão)."""
     if row is None:
         return None
     if (row["applied_rev"] is None or int(row["applied_rev"]) < int(row["desired_rev"])
@@ -396,19 +448,25 @@ def _pendencia(row: Row | None) -> str | None:
         return "aplicar"
     if row["state"] != "trafego_verificado":
         return "verificar"
+    if st is not None and verificacao_invalida(st, row) is not None:
+        return "verificar"
     return None
 
 
+def _validade(st: AppState) -> float:
+    return float(st.cfg.file.rede.validade_verificacao_s)
+
+
 def pendencias(st: AppState) -> list[dict[str, object]]:
-    """Aparelhos com trabalho de rede a fazer, na ordem do id. PONTO DE EXTENSÃO do 25.4: a convergência (ao ligar,
-    ao acordar, na varredura) lê daqui e age pelo comando `device.network`; até lá ninguém lê, e nada é aplicado.
-    A loja e o aparelho em quarentena não aparecem: nada toca neles (ADR-055, ADR-056 §7)."""
+    """Aparelhos com trabalho de rede a fazer, na ordem do id: a visão de conjunto (painel, matriz do 25.9). A
+    convergência (`rede_convergencia.py`) decide aparelho a aparelho, pelo estado da linha, e age pelo comando
+    `device.network`. A loja e o aparelho em quarentena não aparecem: nada toca neles (ADR-055, ADR-056 §7)."""
     saida: list[dict[str, object]] = []
     for row in st.db.query("SELECT * FROM device_network ORDER BY instance_id"):
         rt = st.devices.devices.get(str(row["instance_id"]))
         if rt is None or rt.store or st.quarentena(rt.id) is not None:
             continue
-        falta = _pendencia(row)
+        falta = _pendencia(row, st)
         if falta is not None:
             saida.append({"instance_id": row["instance_id"], "falta": falta, "desired_rev": int(row["desired_rev"]),
                           "applied_rev": row["applied_rev"], "state": row["state"]})
@@ -430,6 +488,10 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
         rede = _aparelho_dto(row) if row is not None else None
         efetivo = rede.state if rede is not None else (legado.efetivo if legado is not None else None)
         medicao = ultimas.get(rt.id)
+        # A comparação entre aparelhos (ADR-056 §1): quem mais tem a MESMA última saída medida. Aviso, não bloqueio.
+        iguais = sorted(outro for outro, r in linhas.items() if outro != rt.id and row is not None and (
+            (row["egress_ipv4"] and r["egress_ipv4"] == row["egress_ipv4"])
+            or (row["egress_ipv6"] and r["egress_ipv6"] == row["egress_ipv6"])))
         aparelhos.append({
             "instance_id": rt.id, "worker_id": rt.worker_id, "external": rt.external,
             "device_state": rt.state.value,
@@ -439,8 +501,9 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
             "restriction": st.quarentena(rt.id),
             "real_account": _conta_real(st, rt.id),
             "required_apps": apps_exigidos(st, rt.id),
-            "pending": _pendencia(row),
+            "pending": _pendencia(row, st),
             "last_measurement": _medicao_dto(medicao).model_dump() if medicao is not None else None,
+            "egress_shared_with": iguais,
         })
     return {"devices": aparelhos}
 
@@ -644,15 +707,15 @@ def _alvo_de_pedido(st: AppState, instance_id: str) -> Row:
 
 def _resposta_de_pedido(st: AppState, instance_id: str, acao: str, motivo: str) -> dict[str, object]:
     row = _linha_certa(st, instance_id)
-    return {"accepted": True, "instance_id": instance_id, "action": acao, "pending": _pendencia(row),
+    return {"accepted": True, "instance_id": instance_id, "action": acao, "pending": _pendencia(row, st),
             "desired_rev": int(row["desired_rev"]), "applied_rev": row["applied_rev"], "state": row["state"],
             # Honesto sobre o que NÃO aconteceu: o 202 é "pedido registrado", nunca "aplicado".
             "executed": False, "reason": motivo}
 
 
 def pedir_reaplicacao(st: AppState, instance_id: str, quem: str | None) -> dict[str, object]:
-    """Revisão nova para a mesma configuração: `applied_rev < desired_rev` é a pendência durável que a convergência
-    do 25.4 lê (`pendencias()`), e sobrevive a reinício. O estado volta a `pendente` — regredir não precisa de prova;
+    """Revisão nova para a mesma configuração: `applied_rev < desired_rev` e `pendente` são a pendência durável que a
+    convergência do 25.4 aplica, e sobrevivem a reinício. O estado volta a `pendente` — regredir não precisa de prova;
     avançar sim."""
     _alvo_de_pedido(st, instance_id)
     with st.db.tx():
@@ -667,15 +730,16 @@ def pedir_reaplicacao(st: AppState, instance_id: str, quem: str | None) -> dict[
     _emitir(st, f"Rede de {instance_id}: reaplicação pedida (rev {rev})", instance_id=instance_id, acao="reapply",
             desired_rev=rev, state="pendente")
     return _resposta_de_pedido(st, instance_id, "reapply",
-                               "Reaplicação registrada como revisão nova. A aplicação no aparelho é do item 25.4 e "
-                               "ainda não roda: nada foi executado no aparelho.")
+                               "Reaplicação registrada como revisão nova; nada foi executado ainda. A convergência a "
+                               "aplica no próximo ponto seguro (antes da tarefa que dependa da rede, quando o aparelho "
+                               "ligar ou na varredura de 60 s, com ele livre); POST …/apply aplica já.")
 
 
 def pedir_verificacao(st: AppState, instance_id: str, quem: str | None) -> dict[str, object]:
     """Registra o pedido de medir de novo. O estado NÃO muda: pedir verificação não é evidência de nada, e desfazer
-    um `trafego_verificado` só porque alguém quer reconferir seguraria tarefa à toa. Aparelho aplicado e ainda não
-    verificado já está em `pendencias()` como `verificar`; o pedido sobre quem já está verificado fica no `detail` e
-    no evento — a fila durável de reverificação é decisão do 25.4/25.5."""
+    um `trafego_verificado` só porque alguém quer reconferir seguraria tarefa à toa. Quem mede é a sonda de saída
+    (25.5), pela convergência (`ConvergenciaDeRede.pedir_verificacao` marca o pedido para o próximo ponto seguro);
+    aparelho aplicado e ainda não verificado já está em `pendencias()` como `verificar` e é medido de qualquer jeito."""
     _alvo_de_pedido(st, instance_id)
     agora = now_iso()
     with st.db.tx():
@@ -689,8 +753,9 @@ def pedir_verificacao(st: AppState, instance_id: str, quem: str | None) -> dict[
     _emitir(st, f"Rede de {instance_id}: verificação pedida", instance_id=instance_id, acao="verify",
             desired_rev=int(row["desired_rev"]), state=row["state"])
     return _resposta_de_pedido(st, instance_id, "verify",
-                               "Verificação registrada. A medição de dentro do aparelho é do item 25.5 e ainda não "
-                               "roda: nada foi executado no aparelho, e o estado não mudou.")
+                               "Verificação registrada; nada foi executado no aparelho ainda, e o estado não mudou. A "
+                               "sonda de saída mede de dentro dele no próximo ponto seguro (varredura de 60 s com ele "
+                               "livre, ou antes da tarefa que dependa da rede); POST …/apply mede já.")
 
 
 # ============================================================================ observação: o único escritor do estado
@@ -776,7 +841,37 @@ def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasuremen
 
     Como em `registrar_observacao`, a decisão e a gravação ficam numa transação, e a gravação do estado exige a
     revisão, a aplicada e o estado lidos: uma reaplicação no meio faz a medição valer só como histórico, e o aparelho
-    fica em `pendente` com a revisão nova — nunca `trafego_verificado` com `applied_rev < desired_rev`."""
+    fica em `pendente` com a revisão nova — nunca `trafego_verificado` com `applied_rev < desired_rev`.
+
+    A saída medida é comparada com a dos outros aparelhos (ADR-056 §1, T7): o mesmo IP gera AVISO (no `detail` da
+    medição e num evento `warn`), não bloqueio — no piloto sem provedor, todos saem pelo IP do central, e isso é o
+    esperado; o aviso existe para ninguém ler "perfis diferentes" como "saídas diferentes"."""
+    iguais = saidas_compartilhadas(st, instance_id, medicao.egress_ipv4, medicao.egress_ipv6)
+    if iguais:
+        aviso = f"aviso: a mesma saída medida em {', '.join(iguais)}"
+        medicao = medicao.model_copy(update={"detail": (f"{aviso} | {medicao.detail}" if medicao.detail
+                                                        else aviso)[:500]})
+    mid, novo = _registrar_medicao(st, instance_id, medicao, rev=rev)
+    if iguais:
+        st.bus.emit("network.updated", f"Rede de {instance_id}: mesma saída medida que {', '.join(iguais)}",
+                    level="warn", instance_id=instance_id,
+                    data={"instance_id": instance_id, "acao": "saida_compartilhada", "measurement_id": mid,
+                          "egress_ipv4": medicao.egress_ipv4, "egress_ipv6": medicao.egress_ipv6, "shared_with": iguais})
+    return mid, novo
+
+
+def saidas_compartilhadas(st: AppState, instance_id: str, ipv4: str | None, ipv6: str | None) -> list[str]:
+    """Os OUTROS aparelhos cuja última saída medida (`device_network.egress_*`) é a mesma deste IP."""
+    if not (ipv4 or ipv6):
+        return []
+    return sorted(str(r["instance_id"]) for r in st.db.query(
+        "SELECT instance_id FROM device_network WHERE instance_id<>?"
+        " AND ((egress_ipv4 IS NOT NULL AND egress_ipv4=?) OR (egress_ipv6 IS NOT NULL AND egress_ipv6=?))",
+        (instance_id, ipv4, ipv6)))
+
+
+def _registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasurementInput, *,
+                       rev: int | None) -> tuple[int, DeviceNetworkDTO | None]:
     quando = medicao.measured_at or now_iso()
     with st.db.tx():
         mid = int(st.db.inserted_id(

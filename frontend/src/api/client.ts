@@ -27,7 +27,9 @@ import type {
   NetworkProfile,
   NetworkProfileCreateRequest,
   NetworkProfileList,
+  NetworkRemoteAccess,
   NetworkRequestAccepted,
+  NetworkServerStatus,
   ProxyList,
   ProxyProfile,
   ReleaseLifecycleBody,
@@ -823,6 +825,11 @@ export const api = {
   /** Registra o PEDIDO de reaplicar a configuração desejada (202): a aplicação (25.4) é quem executa. */
   reapplyNetworkDevice: (instanceId: string) =>
     request<NetworkRequestAccepted>('POST', `/network/devices/${enc(instanceId)}/reapply`),
+  /** O servidor sing-box do central e o `remote_access` (25.7): endpoint da LAN, aparelhos remotos e a última
+   *  leitura do firewall (cache; o GET não roda PowerShell). */
+  getNetworkServer: () => request<NetworkServerStatus>('GET', '/network/server'),
+  /** Relê o firewall do central JÁ (só leitura) e devolve o `remote_access` com o comando do dono. */
+  checkNetworkServerFirewall: () => request<NetworkRemoteAccess>('POST', '/network/server/firewall-check'),
 
   listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>
     request<Approval[]>('GET', '/approvals', {

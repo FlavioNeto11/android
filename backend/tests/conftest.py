@@ -70,6 +70,10 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # na 2ª) segue com o fluxo nascendo ativo. O D1 de produção (nasce candidato, sombra no digest) tem os testes
         # próprios (test_d1_fluxos), que ligam `com_prova`.
         "aprendizado": {"fluxo": {"com_prova": False}},
+        # Rede por aparelho (25.4): o executável do sing-box aponta para um caminho que NÃO existe. No checkout do
+        # ambiente central o binário de verdade está em `data/rede/`, e um teste que escapasse do dublê de processo
+        # subiria um servidor WireGuard na 51820 da máquina — em cima do que o parque usa. Assim, escapar é erro.
+        "rede": {"servidor": {"binario": str(tmp / "sing-box-de-teste-inexistente.exe")}},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
         # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que

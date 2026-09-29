@@ -167,8 +167,9 @@ def _publish_command(s: AppState, row: Row) -> None:
 #: versão, distribuir, verificar, buscar da loja e conectar/verificar/sair continuavam devolvendo
 #: `202 {"accepted": true}` sem id — não havia como distinguir criado/enviado/iniciado/concluído/falhou/
 #: desconhecido, nem estado `uncertain` para o timeout que não prova nada.
-#: `device.network` (contrato C3, ADR-056) é o verbo da rede por aparelho. Só o nome existe por enquanto: quem o despacha,
-#: com o trabalho real, é o 25.2 — o verbo não tem executor próprio, porque o trabalho vai como `factory` do despacho.
+#: `device.network` (contrato C3, ADR-056) é o verbo da rede por aparelho. Quem o abre é a convergência do 25.4
+#: (`devices/rede_convergencia.py`), por `comando_no_trabalho`: o verbo não tem executor próprio, o trabalho vai como
+#: `factory`.
 APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", "app.distribute", "store.sync",
                      "session.connect", "session.verify", "session.logout", "device.proxy", "device.network"}
 #: Na quarentena (ADR-055), os verbos de app e de sessão que continuam: ler o que está instalado (`app.verify` é
@@ -267,6 +268,32 @@ def pedir_trabalho_de_app(s: AppState, rt: DeviceRuntime, verb: str, factory: Ca
         raise ValueError(f"'{verb}' não é verbo de app nem de sessão")
     return _despachar_trabalho(s, rt, verb, factory, label=label, params=params, idempotency_key=idempotency_key,
                                requested_by=requested_by, recusar_ocupado=False)
+
+
+async def comando_no_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Callable[[], Awaitable[object]], *,
+                              params: dict[str, object], requested_by: str) -> object:
+    """Abre o comando e o conduz até o desfecho em volta de um trabalho que JÁ tem o aparelho.
+
+    `_despachar_trabalho` agenda pela fila do aparelho (`run_device_job`), e dentro de um trabalho em andamento isso
+    seria recusado como "ocupado": o aparelho é deste mesmo trabalho. É o caso da rede (25.4), que roda no trabalho de
+    reobservação de quando o aparelho liga, na varredura ou pela porta da rede antes da tarefa. O comando passa pelos
+    mesmos estados (`created` → `dispatched` → `running` → `succeeded`/`failed`) e fica no histórico do aparelho como
+    qualquer outro. A exceção do trabalho segue para quem chamou, depois de registrada."""
+    if verb not in APP_COMMAND_VERBS:
+        raise ValueError(f"'{verb}' não é verbo de app nem de sessão")
+    row, _ = _abrir_comando_de_app(s, rt.id, verb, params=params, requested_by=requested_by)
+    command_id = str(row["id"])
+    _publish_command(s, s.commands.transition(command_id, CommandState.dispatched))
+    _publish_command(s, s.commands.transition(command_id, CommandState.running))
+    try:
+        resultado = await factory()
+    except Exception as exc:
+        _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)[:500]))
+        raise
+    corpo = resultado if isinstance(resultado, dict) else None
+    _publish_command(s, s.commands.transition(command_id, CommandState.succeeded,
+                                              result={"outcome": corpo} if corpo else None))
+    return resultado
 
 
 def conferir_release_para(s: AppState, rt: DeviceRuntime, release_id: str) -> Row:

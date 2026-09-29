@@ -332,6 +332,33 @@ skills:                           # habilidades versionadas (docs/design/evoluca
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
 
+rede:                             # rede por aparelho (ADR-056): aplicação no aparelho e servidor do central (25.4)
+  cliente_pacote: io.nekohasekai.sfa   # cliente VPN no aparelho (sing-box), instalado pela versão promovida na loja
+  deriva_s: 900                   # releitura periódica da rede aplicada (settings, tun0); 0 desliga
+  validade_verificacao_s: 21600   # trafego_verificado vence depois disto (política exigida: a tarefa espera medir de novo)
+  espera_tun_s: 60                # espera pelo tun0 depois do boot (medido: ~40 s sob carga)
+  reinicios_max: 2                # reinícios por revisão antes de desistir (queda do cliente no boot)
+  dns: 1.1.1.1                    # DNS do cliente pelo túnel
+  servidor:                       # sing-box do central em modo usuário: sobe só com aparelho atribuído a perfil `servidor: central`
+    binario: data/rede/sing-box-1.14.2-windows-amd64/sing-box.exe   # fora do Git; a config vai em arquivo com ACL do usuário
+    porta_wireguard: 51820        # UDP, em todas as interfaces (o endpoint do sing-box não tem campo de escuta)
+    sub_rede: 10.66.0.0/24        # servidor no .1; um endereço por aparelho a partir do .2
+    porta_proxy: 18080            # proxy autenticado, só em 127.0.0.1, alcançado pelo túnel no endereço do servidor
+    mtu: 1408
+    log_max_mb: 20                # log de conexões (evidência); renomeado no início seguinte ao teto
+    endpoint_lan: ""              # IP do central NA LAN para aparelhos de outra máquina (notebook do worker); vazio = remoto recusado.
+                                  # O UDP da porta_wireguard precisa passar no Firewall do Windows daqui: a plataforma só LÊ e
+                                  # mostra o comando do dono em GET /api/network/server → remote_access (item 25.7)
+  sonda:                          # sonda de saída de dentro do aparelho, como uid 2000 (25.5)
+    hosts_ipv4: [api.ipify.org, ipv4.icanhazip.com]   # eco de IP por HTTP/1.0 na 80; só registro A
+    hosts_ipv6: [api6.ipify.org, ipv6.icanhazip.com]  # idem, só AAAA (com strict_route o IPv6 fica preso no túnel)
+    udp_dns: 8.8.4.4              # UDP de DNS de ida e volta (o cliente sequestra e resolve pelo túnel)
+    udp_ntp: time.google.com      # UDP que não é DNS (NTP); udp_ok só com os dois
+    reverificar_s: 600            # aparelho `parcial` é medido de novo depois disto (varredura ou porta da tarefa)
+    abrir_apps: false             # true = a sonda abre o app exigido sem tráfego na janela TAMBÉM sem tarefa esperando
+                                  # (com tarefa segurada pela porta, abre sempre: é o que a tarefa faria; é usar a conta)
+    espera_app_s: 15              # quanto o app aberto pela sonda fica na frente antes de voltar ao início
+
 aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, falha classificada; NENHUMA IA no pipeline
   enabled: true                   # digest a cada execução e curadoria periódica; false = só a leitura do livro
   curadoria_s: 900                # passo da curadoria (régua diária dos últimos dias e passos dos pacotes seguintes)

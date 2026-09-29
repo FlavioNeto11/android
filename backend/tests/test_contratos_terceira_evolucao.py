@@ -248,7 +248,10 @@ def test_device_network_e_verbo_de_app_recusado_na_quarentena() -> None:
 # ================================================================== C4 — portão de rede
 async def test_rede_gate_com_motivo_segura_o_objetivo_e_sem_motivo_libera(harness: Harness) -> None:
     st = harness.state
-    assert st is not None and st.scheduler.rede_gate is None                     # o padrão: sem efeito
+    # O padrão: sem efeito. Desde o 25.4 a porta está ligada (a da convergência de rede), e sem rede pedida para o
+    # aparelho ela não segura nada — o mesmo efeito do `None` da Onda 0.
+    assert st is not None and st.scheduler.rede_gate == st.rede_convergencia.motivo_de_espera
+    assert all(st.scheduler.rede_gate(i) is None for i in st.devices.devices)
     consultas: list[str] = []
     motivo = "aguardando a rede verificada do aparelho (política exigida)"
 

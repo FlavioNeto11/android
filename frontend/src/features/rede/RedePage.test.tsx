@@ -8,7 +8,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import type { NetworkDeviceRow, NetworkProfileListed } from '../../api/types';
+import type { NetworkDeviceRow, NetworkProfileListed, NetworkServerStatus } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
@@ -24,7 +24,7 @@ function linha(over: Partial<NetworkDeviceRow> = {}): NetworkDeviceRow {
   return {
     instance_id: 'android-01', worker_id: null, external: false, device_state: 'online',
     network: null, effective_state: null, legacy_proxy: null, restriction: null, real_account: null,
-    pending: null, last_measurement: null, ...over,
+    pending: null, last_measurement: null, egress_shared_with: [], ...over,
   };
 }
 
@@ -32,6 +32,18 @@ function rede(over: Partial<NonNullable<NetworkDeviceRow['network']>> = {}) {
   return { instance_id: 'android-01', vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' as const,
            desired_rev: 1, applied_rev: 1, state: 'pendente' as const, detail: null, error: null,
            egress_ipv4: null, egress_ipv6: null, verified_at: null, updated_at: '', updated_by: null, ...over };
+}
+
+/** `GET /network/server` no molde de `ServidorDeRede.status()` (25.4) com o `remote_access` do 25.7. */
+function servidor(over: Partial<NetworkServerStatus> = {}): NetworkServerStatus {
+  return {
+    binary_present: true, running: true, pid: 4242, started_at: '', signature: 'abc', in_sync: true,
+    server_address: '10.66.0.1', subnet: '10.66.0.0/24', wireguard_udp_port: 51820, proxy: null,
+    server_public_key: 'pub', proxy_users: [], detail: null,
+    peers: [{ instance_id: 'android-09', address: '10.66.0.2', public_key: 'p9', last_connection: null, remote: true }],
+    remote_access: { lan_endpoint: '192.168.1.81', wireguard_udp_port: 51820, remote_peers: ['android-09'], firewall: null },
+    ...over,
+  };
 }
 
 let root: Root;
@@ -51,6 +63,7 @@ beforeEach(() => {
       linha({ instance_id: 'android-02' }),
     ],
   }));
+  backend.on('GET', /\/network\/server$/, () => json(servidor()));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -268,6 +281,32 @@ it('dois aparelhos com o mesmo IP medido mostram o aviso (ADR-056 §1)', async (
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(2);
 });
 
+it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída repetida vinda do backend (25.5)', async () => {
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({
+        instance_id: 'android-01', effective_state: 'parcial', egress_shared_with: ['android-05'],
+        network: rede({ vpn_profile_id: 'vpn-1', policy: 'exigida_com_bloqueio', state: 'parcial', egress_ipv4: '198.51.100.7', verified_at: '2026-09-29T18:23:05Z' }),
+        last_measurement: {
+          id: 3, instance_id: 'android-01', measured_at: '2026-09-29T18:23:05Z', method: 'sonda nc http/1.0 + netstats por uid (uid 2000)',
+          egress_ipv4: '198.51.100.7', egress_ipv6: null, dns_resolver: '172.19.0.2', udp_ok: false,
+          per_app: { 'com.instagram.android': 'ok', 'com.microsoft.office.outlook': 'nao_medido', 'com.android.shell': 'ok' },
+          leak_blocked: null, detail: 'IPv4 198.51.100.7 (api.ipify.org) | vazamento não medido: servidor externo',
+        },
+      }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('198.51.100.7'));
+  expect(text()).toContain('mesma saída que android-05');
+  expect(text()).toContain('DNS 172.19.0.2');
+  expect(text()).toContain('UDP falhou');
+  expect(text()).toContain('vazamento não medido');                          // null nunca vira "bloqueado"
+  expect(text()).toContain('com.microsoft.office.outlook: sem tráfego medido');
+  expect(text()).toContain('com.instagram.android: pelo túnel');
+  expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(1);
+});
+
 it('aparelho em quarentena mostra o motivo na coluna de erro/pendência', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
     devices: [linha({ instance_id: 'android-01', restriction: 'conta bloqueada: nada toca nela' })],
@@ -285,4 +324,34 @@ it('a API caída mostra o erro com "Tentar de novo", não a tabela vazia', async
   backend.on('GET', /\/network\/devices/, () => json({ devices: [] }));
   await click(byRole('button', /Tentar de novo/));
   await waitFor(() => !text().includes('Não foi possível carregar'));
+});
+
+it('servidor do central: conferir o firewall só LÊ e mostra o comando do dono (25.7)', async () => {
+  const comando = "New-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)' "
+    + "-Direction Inbound -Action Allow -Protocol UDP -LocalPort 51820 -Program 'C:\\sing-box.exe' "
+    + '-RemoteAddress LocalSubnet -Profile Public';
+  backend.on('POST', /\/network\/server\/firewall-check$/, () => json({
+    lan_endpoint: '192.168.1.81', wireguard_udp_port: 51820, remote_peers: ['android-09'],
+    firewall: { state: 'sem_regra', detail: 'firewall ligado no perfil Public com entrada padrão Block',
+                endpoint: '192.168.1.81', profile: 'Public', interface: 'Wi-Fi', endpoint_is_local: true,
+                allowing_rules: [], blocking_rules: [], commands: [comando], checked_at: '2026-09-29T22:12:42Z' },
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('Endereço na LAN: 192.168.1.81'));
+  expect(text()).toContain('aparelhos de outra máquina: android-09');
+  expect(text()).toContain('firewall ainda não lido');                         // o GET não roda PowerShell
+  await click(byRole('button', /Conferir firewall/));
+  await waitFor(() => text().includes('firewall sem regra'));
+  expect(backend.callsTo('POST', /\/network\/server\/firewall-check$/)).toHaveLength(1);
+  expect(text()).toContain(comando);
+  expect(text()).toContain('a plataforma não mexe no firewall');
+});
+
+it('servidor do central sem endereço da LAN avisa que o remoto é recusado', async () => {
+  backend.on('GET', /\/network\/server$/, () => json(servidor({
+    remote_access: { lan_endpoint: null, wireguard_udp_port: 51820, remote_peers: [], firewall: null },
+  })));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('não configurado (rede.servidor.endpoint_lan)'));
+  expect(text()).toContain('aparelhos de outra máquina: nenhum');
 });
