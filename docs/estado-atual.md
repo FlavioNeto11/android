@@ -1,10 +1,30 @@
 # Estado atual — handoff
 
-**Revisado em 29/09/2026 (manhã), depois do deploy de `f497075`: aprendizado contínuo A2–A9, apps de segundo plano e a
-espera do reparo (ADR-054, ADR-055).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 29/09/2026 (tarde), depois do deploy de `c071341`: o código em aberto da rodada (interruptor antigo
+pelo livro, bloco da execução, três sinais, dívida de import, irq medido).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Código em aberto de 29/09 (tarde): IMPLANTADO em `c071341`** (~14:10Z; sem migração nova; agente do notebook em
+  `0.1.0+c071341`). [Relatório §24](relatorio-validacao.md), adendo v0.39 do contrato.
+  - **Real:**
+    - `PUT /api/flows` grava a trilha com a pessoa (fluxo de QA, `published → disabled → published`, 14:13Z);
+    - `GET /api/runs/{id}/feedback` traz o bloco `aprendizado` (a 6eb84c mostra as 2 receitas usadas e o fluxo);
+    - o painel mostra o bloco e "Normal medido para este plano" com a janela efetiva;
+    - a causa do irq ocioso foi medida (K-060): dois terços são o Instagram logado rodando, um terço o tempo no ar, e
+      não há mecanismo novo.
+  - **Simulado:**
+    - os três sinais (`cancelou_execucao` por episódio, `comando_incerto_resolvido`, `correcao_de_ensino`) com o
+      operador da sessão;
+    - a nota de comando triada (409 `note_looks_secret`);
+    - a dívida `devices` → `taskqueue` paga (`app/shared/costuras.py`).
+  - **CI de contêiner:** recusa de cobrança, não código (reteste na semanal de 05/10).
+  - **Para o dono:**
+    - ratificar as polaridades dos três sinais (ADR-054);
+    - a correção de ensino não tem tela no painel;
+    - o `/api/health` está `degraded` só por `ai_balance_stale` (o relatório de uso da Anthropic respondeu 503) e o
+      saldo estimado da Anthropic está em US$ 3,31.
 
 - **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e aprendizado contínuo (ADR-054, Fase 20): IMPLANTADA.**
   - **No ar:** `f497075` desde 29/09 ~07:38Z (sem migração nova; `/api/health` `ok`, `problems: []`; agente do
@@ -37,10 +57,11 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Próxima ação:** o `aplicar` das Fases 20 e 21 (estado do plano; o 21.16 é novo). Depois, como propostas ao dono:
     o 18.9 (nomes históricos: a tabela `instagram_profiles` e as rotas `/api/instagram/…`) e o 12.3 (apps novos
     operando de verdade: a persona com mais de um app com login gerenciado; qual app vem primeiro é do dono). Seguem
-    abertos: a causa do acúmulo de irq (21.15; coleta em `data\logs\irq_convidados.csv`), as pendências dos
-    revisores do ADR-055 e as de A2–A9 ([dominios/aprendizado.md](dominios/aprendizado.md#pendências-conhecidas)). As
-    que tocam invariante vêm primeiro: a trilha em `PUT /api/flows` e `PUT /api/recipes`, o texto de `_learn_flow` para
-    o candidato e o escritor de `failure_screen`.
+    abertos: as pendências dos revisores do ADR-055 e as de A2–A9
+    ([dominios/aprendizado.md](dominios/aprendizado.md#pendências-conhecidas)). As que tocam invariante vêm primeiro: o
+    escritor de `failure_screen`, a adoção de fluxo por habilidade sem trilha e a trilha dentro da transação das lojas
+    no PostgreSQL. A causa do irq (21.15), a trilha do interruptor antigo e o texto do `_learn_flow` foram fechados em
+    29/09 (tarde).
 
 - **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0` + `91f1aab`, central e agente do
   notebook).** Diagnóstico medido de e31953 e 02ee9e (a IA ocupou 4,5% do tempo; o resto era o convidado saturado e o

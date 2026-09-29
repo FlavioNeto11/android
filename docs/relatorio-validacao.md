@@ -1737,3 +1737,94 @@ android-04, no launcher, ficou em 2–3%. A causa não está provada (21.15). A 
   uma receita com efeito esperando o dono; a prova de correção do primeiro item do backlog.
 - O adiamento do reparo num episódio real de saturação.
 - A causa do acúmulo de irq (21.15).
+
+## 24. O código em aberto da rodada de 29/09: interruptor antigo pelo livro, bloco da execução, três sinais, dívida de import, irq medido e CI de contêiner (29/09/2026, tarde)
+
+**Origem.** O pedido do dono de 29/09: resolver todos os pontos do "código em aberto" do fechamento da rodada.
+
+- **Os cinco achados do aprendizado (ADR-054):**
+  - o interruptor antigo (`PUT /api/flows`, `PUT /api/recipes`) sem trilha;
+  - o texto do `_learn_flow` para o candidato;
+  - o bloco "Aprendizado desta execução" que nenhuma rota emitia;
+  - a projeção que o painel não lia;
+  - os três sinais sem escritor.
+- **A dívida de import** `devices` → `taskqueue`.
+- **A causa do acúmulo de irq** (21.15).
+- **O CI de contêiner** que falha desde 28/09.
+
+Máquina: o central WIN-7S2UASNLFOP.
+
+**Pacotes.** Três branches, cada um com revisão adversarial e uma rodada de correção dos achados menores (nenhum
+bloqueante).
+
+| Pacote | Commits | O que mudou | Teste (`simulated`) |
+|---|---|---|---|
+| trilha | `0f91fb3`, `5342743`, `c655495`, `a62311a` | o interruptor antigo chama `LearningService.mudar_status_nativo`: a pessoa entra na trilha, o veto dela vale e as guardas do livro também; o gesto de dois passos é atômico; um anúncio só por nascimento de fluxo candidato (a sombra, com o aprendizado ligado); `_learn_flow` num `try`; `FLOW_STATUS` com todos os status | `test_d1_fluxos.py`, `test_d1_receitas.py`, `test_learning_livro.py`; 6 mutantes mortos (tirar a transação, `quem` fixo, anúncio duplicado, `try` que não pega) |
+| painel | `a54735a`, `1d30d8d`, `d506337` | `GET /api/runs/{id}/feedback` emite `aprendizado` no formato que o painel já lia; decisão de pessoa não é atribuída à execução; a tela nascida no digest aparece; bloco nulo é diferente de vazio no painel; o cartão de custo lê a projeção | `test_learning_feedback.py`, `test_learning_telas.py`; vitest `ReportTab`, `projecao`, `execution`, `model` |
+| costuras | `2b0e5db`, `d33b8ab`, `61c3bad`, `c0905b2` | o contrato de gesto em `app/shared/costuras.py` (`test_aparelhos_nao_conhecem_a_fila`); escritores de `cancelou_execucao` (um por episódio), `comando_incerto_resolvido` (com `resolved_by` em `data`) e `correcao_de_ensino`, com o operador da sessão; nota da resolução de comando triada | `test_costuras_de_aprendizado.py`, `test_arquitetura.py` |
+| integração | `5595aea` | a nota do pedido de cancelamento de comando também passa pela triagem (409 `note_looks_secret`), achado do revisor das costuras | `test_cancelamento.py::test_nota_com_cara_de_credencial_recusa_o_pedido_sem_gravar_nada` |
+
+**Integração (`simulated`).** Branch `claude/aberto-integra`, fast-forward na `main` em `c071341`.
+
+- **Backend:** os 14 arquivos de teste tocados deram 226 ok. A suíte inteira em SQLite, em prioridade ociosa, deu
+  3437 ok e 2 falhas de ambiente:
+  - `test_backup` só passa no checkout com `config.yaml`;
+  - `test_instalacao_do_worker` falhou porque o `HEAD` mudou no meio da suíte, e deu 20 ok ao rodar de novo.
+- **mypy estrito:** `app.modules`, `app.shared` e `app.contracts`, sem erro em 168 arquivos.
+- **Frontend:** typecheck ok e 724 testes ok.
+
+**Implantação (`real`, 29/09 ~14:10Z).** `scripts/deploy.ps1` com o parque ocioso (`working` 0 nos dois servidores).
+
+- **Central:** `/api/health` com `commit c071341` e `migration 055_aprendizado_continuo`, sem migração nova. O status
+  saiu `degraded` só por `ai_balance_stale`: o relatório de uso da Anthropic respondeu 503, fora desta rodada.
+- **Agente do notebook:** `0.1.0+c071341`, pelo `worker-install.ps1 -Origem C:\farm\origem-c071341`, primeiro com
+  `-Simular`. Nenhuma entrada do manifesto mudou desde `f497075`; só a marca de versão. Conectado, sem
+  `agent_outdated`.
+
+**Provas `real` (central `c071341`).**
+
+- **Interruptor antigo pelo livro:** às 14:13:38Z, no fluxo do app de QA `abrir-o-qa-messenger-e-navegar-ate-a-tel`
+  (antes `published`/`active`, trilha vazia):
+  - `PUT {status: disabled}` gravou `published → disabled`, "desligado na lista de fluxos do painel", `decided_by
+    panel` (sem sessão);
+  - o segundo `PUT disabled` não gravou nada;
+  - `PUT {status: active}` gravou `disabled → published`, "ligado na lista de fluxos do painel";
+  - o fluxo terminou como começou, `published`/`active`.
+- **Bloco da execução:** `GET /api/runs/r-20260928235215-6eb84c/feedback` devolveu:
+  - `receitas`: `like_post_1 (v1)` #20 e `open_comments_1 (v1)` #91, "usada", `published`;
+  - `fluxos`: `abrir-o-perfil-anarabottinipsicopedagoga-3`, "aprendido nesta execução", `published`;
+  - `falhas`, `candidatas` e `licoes` vazias.
+- **Painel:** no relatório da mesma execução, conferido no navegador:
+  - "Aprendizado desta execução" mostra as duas receitas e o fluxo;
+  - o cartão "Custo de IA desta execução" mostra "Normal medido para este plano": 16–28 chamadas, US$ 0,3743–0,7394
+    e 3–6 min;
+  - o rótulo da janela: "Normal medido nos últimos 14 dias — a janela configurada é de 30 dias, limitada pela
+    retenção dos registros de IA".
+- **Causa do irq ocioso (21.15, K-060):** medida em 29/09, 12:2x–12:48Z, com o android-06 (andre) contra o android-01
+  (sem o Instagram).
+  - A tecla HOME às 12:27:12Z não mudou o irq: 5,8% em 1 min, 8,4% em 5 min.
+  - O `am force-stop` do Instagram às 12:40:59Z, com o aparelho ocioso e sem deslogar, deu 5,8% em 2 min e 4,6% em
+    6 min. O tempo de sistema foi de 7,7% a 2,0%, e as interrupções entre CPUs de 128/s a 43/s. O resto (~1,8
+    ponto, temporizador 1,6x) acompanha o tempo no ar.
+  - A CPU do emulador no host ficou igual: 148% antes e depois.
+  - Decisão: nenhum mecanismo novo; o reinício automático (≥15%) segue cobrindo a faixa que derruba tarefas.
+  - O Instagram do andre fica parado até a próxima execução reabri-lo.
+
+**CI de contêiner (`not_run`).** As 9 corridas desde 28/09 07:13Z (push e a semanal) foram recusadas pela cobrança
+("The job was not started because recent account payments have failed or your spending limit needs to be
+increased"), com 0 passos executados. Não é defeito do código.
+
+- Última verde: `578fe36` (27/09 15:28Z). Desde então, nos caminhos do gatilho, só o `backend/app/main.py` mudou (+5
+  linhas: a inclusão do roteador do aprendizado).
+- O `backend-postgres` do `ci.yml` fica `skipped` pelo mesmo motivo.
+- O reteste automático é a corrida semanal de segunda, 05/10 06:41Z, depois da virada do ciclo (1º/10, pela nota de
+  28/09); também dá para rodar `gh workflow run conteiner.yml`.
+
+**`not_run`.**
+
+- A suíte em PostgreSQL para o SQL novo (bloco da execução, trilha do interruptor).
+- Os três sinais gravados por um gesto real: nenhuma execução cancelada, nenhum comando incerto resolvido e nenhuma
+  correção de ensino no central depois do deploy.
+- A recusa `note_looks_secret` na resolução e no cancelamento de comando pelo ambiente real.
+- O interruptor com sessão de operador aberta (o `decided_by` com o nome).
+- O CI de contêiner.

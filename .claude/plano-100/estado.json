@@ -3283,13 +3283,13 @@
    "id": "20.3",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "fa7349e (A2, costuras) implantado em f497075 (29/09 ~07:38 UTC): failure_kind gravado, fechamento da tentativa, lições do ator/planejador pela costura, sinais de gesto. Testes do pacote e suíte 3409 ok. Nenhuma execução real depois do deploy ainda (failure_kind real: not_run).",
+   "evidence": "fa7349e (A2, costuras) implantado em f497075: failure_kind gravado, fechamento da tentativa, lições pela costura, sinais de gesto. 29/09 (tarde), implantado em c071341: dívida devices->taskqueue paga (2b0e5db, app/shared/costuras.py, test_aparelhos_nao_conhecem_a_fila) e escritores de cancelou_execucao (um por episódio), comando_incerto_resolvido e correcao_de_ensino com o operador da sessão (d33b8ab, 61c3bad); nota de comando triada (409 note_looks_secret, 61c3bad + 5595aea). simulated: tests/test_costuras_de_aprendizado.py, test_cancelamento.py, test_arquitetura.py; suíte 3437 ok. Sinal real e failure_kind real: not_run. Resta: failure_screen sem escritor, takeover_gravar, operador nos gestos do A2.",
    "grupo": "20-aprendizado",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T08:08:55+00:00"
+   "quando": "2026-09-29T14:16:40+00:00"
   },
   "20.4": {
    "id": "20.4",
@@ -3318,26 +3318,26 @@
   "20.6": {
    "id": "20.6",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "aab27b8 (A5, D1 nos fluxos e receitas nativos, trilha, skill_validation_results) em f497075; livro real com 39 itens em Revisar. Promoção/rebaixamento real depois do deploy: not_run.",
+   "proof": "real",
+   "evidence": "aab27b8 (A5, D1 nos nativos) em f497075. 29/09 (tarde), c071341: PUT /api/flows e PUT /api/recipes pelo livro (0f91fb3, c655495), com trilha da pessoa, veto e guardas; um anúncio só do fluxo candidato. real: 14:13:38Z, fluxo de QA abrir-o-qa-messenger-e-navegar-ate-a-tel: PUT disabled gravou published->disabled (decided_by panel, 'desligado na lista de fluxos do painel'), segundo PUT disabled sem transição, PUT active gravou disabled->published; terminou published/active. simulated: test_d1_fluxos.py, test_d1_receitas.py (operador da sessão, atomicidade, 6 mutantes mortos). PostgreSQL: not_run.",
    "grupo": "20-aprendizado",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T08:08:55+00:00"
+   "quando": "2026-09-29T14:16:40+00:00"
   },
   "20.7": {
    "id": "20.7",
    "status": "implemented",
    "proof": "real",
-   "evidence": "86d9223 (A6, página Aprendizado) em f497075. real: painel do central em http://127.0.0.1:8000/#/aprendizado (29/09 ~07:50 UTC) mostra Para aprovar (vazio), Revisar com as receitas com efeito (ex.: like_post_1 5 a favor/1 contra, send_message QA 33 a favor) e as abas Aprendido, O que mais falha e Sinais. simulated: 711 testes do frontend.",
+   "evidence": "86d9223 (A6, página Aprendizado) em f497075. 29/09 (tarde), c071341: bloco aprendizado emitido por GET /api/runs/{id}/feedback e projeção no cartão de custo (a54735a, 1d30d8d, d506337). real: GET .../r-20260928235215-6eb84c/feedback com receitas like_post_1 #20 e open_comments_1 #91 (usada, published) e o fluxo abrir-o-perfil-anarabottinipsicopedagoga-3 (aprendido nesta execução); no painel do central, o relatório da 6eb84c mostra o bloco e 'Normal medido para este plano' (16-28 chamadas, US$ 0,3743-0,7394, 3-6 min; 'últimos 14 dias — a janela configurada é de 30 dias, limitada pela retenção'). simulated: 724 testes do frontend, test_learning_feedback.py.",
    "grupo": "20-aprendizado",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T08:08:55+00:00"
+   "quando": "2026-09-29T14:16:40+00:00"
   },
   "20.8": {
    "id": "20.8",
@@ -3389,15 +3389,15 @@
   },
   "21.15": {
    "id": "21.15",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "b5036ec (apps de segundo plano desativados no preparo, lista configurável e protegida) em f497075. real: evento 'apps de fundo — 11 desativado(s)' no android-01 (07:38:57Z) e android-06 (07:39:03Z); MemAvailable 974 MB e 1054 MB (antes 670–960 MB); andre confirmado na tela depois (c-20260929074028-e124bc). A causa do acúmulo de irq segue sem prova (coleta em data/logs/irq_convidados.csv).",
+   "evidence": "Apps de segundo plano: b5036ec em f497075, real (11 desativados no android-01 e android-06, MemAvailable 974-1054 MB). Causa do irq MEDIDA em 29/09 (K-060, d4ab5cf): android-06 (andre) contra android-01 (sem Instagram). HOME às 12:27:12Z não mudou (5,8% em 1 min, 8,4% em 5 min); am force-stop do Instagram às 12:40:59Z (ocioso, sem deslogar): 5,8% em 2 min e 4,6% em 6 min, sys 7,7%->2,0%, CAL 128->43/s; resíduo ~1,8 ponto com temporizador 1,6x acompanha o tempo no ar. CPU do emulador no host 148% antes e depois: nenhum mecanismo novo; o reinício automático (>=15%) segue cobrindo a faixa que derruba tarefas. virtio23 = vmw_vsock_virtio_transport (adb).",
    "grupo": "21-protecao-de-contas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T08:08:55+00:00"
+   "quando": "2026-09-29T14:16:40+00:00"
   },
   "21.16": {
    "id": "21.16",
@@ -3908,6 +3908,19 @@
     "21.9",
     "21.15",
     "21.16"
+   ],
+   "grupos": [
+    "20-aprendizado",
+    "21-protecao-de-contas"
+   ]
+  },
+  {
+   "quando": "2026-09-29T14:16:40+00:00",
+   "itens": [
+    "20.3",
+    "20.6",
+    "20.7",
+    "21.15"
    ],
    "grupos": [
     "20-aprendizado",

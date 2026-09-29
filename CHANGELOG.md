@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-29 (tarde) — O código em aberto: interruptor antigo pelo livro, bloco da execução, três sinais, dívida de import e irq medido (ADR-054)
+
+**Implantado** no central em 29/09 ~14:10 UTC: `c071341`, sem migração nova. `/api/health` com o commit e a 055; o
+`degraded` é só o `ai_balance_stale` (relatório da Anthropic respondeu 503). Agente do notebook em `0.1.0+c071341`
+(nenhuma entrada do manifesto mudou). Três pacotes com revisão adversarial e correção dos achados menores
+([relatório §24](docs/relatorio-validacao.md)).
+
+- **Interruptor antigo pelo livro (`0f91fb3`, `5342743`, `c655495`).** `PUT /api/flows` e `PUT /api/recipes` gravam a
+  trilha com a pessoa e aplicam o veto e as guardas do livro. Recusas novas: receita inexistente 404, receita
+  substituída 409 `transition_forbidden`, segunda ativa na mesma chave 409 `state_conflict`. O fluxo candidato é
+  anunciado uma vez só, e a decisão do `_learn_flow` não derruba o fim da execução. O painel mostra "Em prova" e
+  "Esperando o dono". Real: trilha `published → disabled → published` pelo interruptor às 14:13Z.
+- **Bloco "Aprendizado desta execução" e projeção no painel (`a54735a`, `1d30d8d`, `d506337`).**
+  `GET /api/runs/{id}/feedback` traz `aprendizado` (receitas, fluxos, falhas, candidatas, lições), com a autoria de
+  pessoa separada da execução. O cartão de custo mostra "Normal medido para este plano" com a janela efetiva. Real: a
+  6eb84c mostra as duas receitas usadas e o fluxo aprendido.
+- **Dívida de import paga e três sinais com escritor (`2b0e5db`, `d33b8ab`, `61c3bad`).** O contrato de gesto foi para
+  `app/shared/costuras.py`, e os aparelhos deixam de importar a fila. `cancelou_execucao` (um por episódio),
+  `comando_incerto_resolvido` e `correcao_de_ensino` levam o operador da sessão. As polaridades esperam o dono.
+- **Nota triada no comando (`61c3bad`, `5595aea`).** A nota da resolução e do pedido de cancelamento de comando com cara
+  de credencial é recusada (409 `note_looks_secret`) antes de qualquer escrita; antes ia crua ao evento do comando.
+- **Causa do irq ocioso medida (K-060, 21.15, `d4ab5cf`).** Dois terços são o processo do Instagram logado rodando;
+  um terço, o tempo no ar. A CPU do emulador no host não muda com o app parado, então não há mecanismo novo.
+- **CI de contêiner.** As falhas desde 28/09 são recusa de cobrança do Actions (0 passos executados), não código. Reteste
+  na corrida semanal de 05/10.
+
 ## 2026-09-29 (manhã) — Aprendizado contínuo A2–A9, apps de segundo plano e a espera do reparo (ADR-054, ADR-055)
 
 **Implantado** no central em 29/09 ~07:38 UTC: `f497075`, sem migração nova (a 055 já estava aplicada); `/api/health`
