@@ -41,6 +41,7 @@ from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
+from .devices import rede  # rede por aparelho (ADR-056, 25.2): corpos e regras moram no módulo, como os do proxy
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
 from .models import (DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
@@ -2017,6 +2018,81 @@ async def apply_proxy(request: Request, body: ProxyApplyBody) -> Any:
     except ProxyError as exc:
         raise _proxy_error(exc) from exc
     return {"accepted": not body.dry_run, "dry_run": body.dry_run, "devices": devices}
+
+
+# ---------------------------------------------------------------------- rede por aparelho (ADR-056, item 25.2)
+def _rede_error(exc: rede.RedeError) -> HTTPException:
+    return err(exc.status, exc.code, exc.message, **exc.extra)
+
+
+@router.get("/network/profiles")
+async def list_network_profiles(request: Request) -> dict[str, list[dict[str, object]]]:
+    return rede.listar_perfis(st(request))
+
+
+@router.post("/network/profiles", status_code=201)
+async def create_network_profile(request: Request) -> rede.NetworkProfileDTO:
+    """Perfil de VPN ou de proxy. O segredo chega aqui UMA vez, vai ao cofre e nunca volta: a resposta diz só
+    `has_secret`. O corpo é lido à mão (`rede.ler_cadastro`) para o segredo sair antes da validação — o 422 padrão
+    devolveria o corpo inteiro como `input` num campo faltando. Os erros saem sem `input` nem `ctx`."""
+    try:
+        corpo = await request.json()
+    except ValueError:
+        raise err(422, "invalid_body", "O corpo precisa ser JSON.") from None
+    try:
+        body = rede.ler_cadastro(corpo)
+    except ValidationError as exc:
+        erros = [{"type": e["type"], "loc": ["body", *e["loc"]], "msg": e["msg"]} for e in exc.errors()]
+        raise HTTPException(status_code=422, detail=erros) from None
+    except ValueError as exc:
+        raise err(422, "invalid_secret" if "segredo" in str(exc) else "invalid_body", str(exc)) from None
+    try:
+        return rede.criar_perfil(st(request), body, quem(request))
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
+
+
+@router.delete("/network/profiles/{profile_id}", status_code=204)
+async def delete_network_profile(request: Request, profile_id: str) -> Response:
+    """409 `network_profile_in_use` com os aparelhos que o usam: troque ou tire o perfil deles antes."""
+    try:
+        rede.remover_perfil(st(request), profile_id)
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
+    return Response(status_code=204)
+
+
+@router.get("/network/devices")
+async def list_network_devices(request: Request) -> dict[str, list[dict[str, object]]]:
+    """Desejado × observado por aparelho, com o proxy legado da 041 rebaixado a `configurado` no máximo."""
+    return rede.listar_aparelhos(st(request))
+
+
+@router.post("/network/assign")
+async def assign_network(request: Request, body: rede.NetworkAssignBody) -> dict[str, object]:
+    """Atribui em lote (ou a um aparelho). `dry_run` = prévia, nada gravado; sem ele, tudo ou nada (409 com a prévia)."""
+    try:
+        return rede.atribuir(st(request), body, quem(request))
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
+
+
+@router.post("/network/devices/{instance_id}/verify", status_code=202)
+async def verify_network(request: Request, instance_id: str) -> dict[str, object]:
+    """Registra o pedido de medir de novo (202). A medição de dentro do aparelho é do 25.5: nada é executado aqui."""
+    try:
+        return rede.pedir_verificacao(st(request), instance_id, quem(request))
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
+
+
+@router.post("/network/devices/{instance_id}/reapply", status_code=202)
+async def reapply_network(request: Request, instance_id: str) -> dict[str, object]:
+    """Registra a reaplicação como revisão nova (202). A aplicação no aparelho é do 25.4: nada é executado aqui."""
+    try:
+        return rede.pedir_reaplicacao(st(request), instance_id, quem(request))
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
 
 
 @router.get("/app-state")

@@ -300,3 +300,100 @@ persona do aparelho serve, e duas sem escolha bloqueiam. O balanceamento (`Sched
 desempata os aparelhos de UMA persona (`resolver_alvos`, política `one`; ver
 [persona § Aparelhos e roteamento](persona.md#aparelhos-e-roteamento)). `GET /api/instances/{id}/personas` lista
 quem está no aparelho.
+
+## Rede por aparelho (ADR-056, Fase 25)
+
+[ADR-056](../decisoes.md#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055):
+a saída de rede é propriedade do aparelho, configurada pela plataforma e **medida**. Endpoint, configuração e IP de
+saída observado são campos distintos: configuração diferente não prova IP diferente. O modelo e as rotas (item
+25.2) moram em `backend/app/devices/rede.py`, sobre as tabelas da migração 057 (`network_profiles`,
+`device_network`, `network_measurements`).
+
+**Perfis.** `POST /api/network/profiles` recebe `name`, `kind` (`vpn`|`proxy`), `protocol` (`wireguard`|`singbox`
+para VPN, `http`|`socks5` para proxy; o par é conferido), `endpoint_host` (nome, IPv4 ou IPv6), `endpoint_port`,
+`params` (JSON sem segredo) e, opcional, `secret`. O segredo chega UMA vez, vai ao cofre na mesma transação do
+INSERT e não volta: a resposta é o `NetworkProfileDTO`, só com `has_secret`. O corpo é lido à mão
+(`rede.ler_cadastro`) para o segredo sair antes da validação, e o 422 sai sem `input`: o padrão devolveria o corpo
+inteiro num campo faltando. `params` com chave de segredo, ou com o que a redação por formato mascararia (URL com
+senha, par chave/valor aninhado), é recusado. Cofre fechado: 503 `secret_store_unavailable`, sem perfil gravado.
+`GET` lista com `in_use` (os aparelhos que pedem o perfil); `DELETE` responde 409 `network_profile_in_use` com os
+`instance_ids` e, sem uso, apaga a linha e o segredo juntos.
+
+**Atribuição.** `POST /api/network/assign` com `instance_ids` explícito (o parque inteiro nunca é inferido),
+`vpn_profile_id`, `proxy_profile_id` e `policy` (`livre`|`exigida`|`exigida_com_bloqueio`). Campo omitido fica como
+está em cada aparelho; `null` num perfil o tira. `dry_run` devolve a prévia por aparelho (`from`, `to`, `reapply`,
+`outcome`, `code`, `reason`, `warnings`) sem gravar; sem ele é **tudo ou nada**: qualquer recusa responde 409 com a
+prévia inteira. Recusas: a loja (`store_instance`), o aparelho em quarentena (`aparelho_em_quarentena`, ADR-055),
+política exigida sem perfil (`policy_without_profile`), bloqueio sem VPN (`policy_without_vpn`) e aparelho com conta
+real vinculada cuja **saída** muda sem estar em `confirm_real_account` (`real_account_confirm_required`). A
+confirmação é por aparelho (ADR-056 §7), não um booleano do lote. Trocar só `livre` ↔ `exigida` não muda o aparelho:
+nem pede confirmação, nem ganha revisão, nem desfaz a verificação. Mudar VPN, proxy ou o bloqueio incrementa
+`desired_rev` e volta o aparelho a `pendente`. Tirar tudo de um aparelho que nunca aplicou nada apaga a linha. A
+prévia avisa quando o proxy global da 041 está gravado no aparelho.
+
+**Estados, só com evidência.** `pendente`, `configurado`, `conectado`, `trafego_verificado`, `parcial`. Atribuir e
+reaplicar só regridem. `registrar_observacao(rev, estado, evidencia)` é o único caminho para `configurado` e
+`conectado` (evidência lida do aparelho obrigatória; grava `applied_rev`); observação de revisão que não é a pedida
+é descartada, como no `proxy._fechar`. `registrar_medicao(medicao, rev)` acrescenta ao histórico sempre, grava a
+última saída medida (`egress_ipv4`, `egress_ipv6`, `verified_at`) e decide: `trafego_verificado` só com a revisão
+pedida aplicada, IP de saída medido, cada app de `rede.apps_exigidos` medido `ok` (sem app exigido, ao menos um app,
+todos `ok`) e, na política com bloqueio, `leak_blocked` verdadeiro; IP medido com algo faltando é `parcial`, com o
+que falta no `detail`; sem IP, o estado fica. Vocabulário de `per_app`: `ok` (saiu pela rede pedida),
+`fora_da_rede` (vazou), `falhou`, `nao_medido`.
+
+- **IP de saída é o público.** `NetworkMeasurementInput` recusa endereço que não é global (`is_global`): o NAT do
+  emulador (10.0.2.15), a interface do túnel, loopback, rede local, CGNAT, link-local, ULA e as faixas de
+  documentação são interface ou configuração, não a saída vista de fora (ADR-056 §1, T7). A sonda do 25.5 trata a
+  recusa como medição que falhou.
+- **Apps exigidos.** `apps_exigidos(state, id)` são os pacotes das contas das personas com vínculo ativo no
+  aparelho (o vínculo com `app_id` restringe àquele app). Medir só o navegador num aparelho com conta do Instagram
+  dá `parcial` ("apps do aparelho não medidos"). A lista sai em `required_apps` na visão por aparelho. Vínculo
+  feito DEPOIS da verificação não desfaz o estado: o portão do 25.6 confere o pacote da tarefa contra o `per_app` da
+  `last_measurement`, e não só o `state`.
+- **Sem corrida com o pedido.** Observação e medição leem, decidem e gravam numa transação, e a gravação exige a
+  revisão lida (`AND desired_rev=?`, e na medição também `applied_rev` e `state`). Uma atribuição ou reaplicação que
+  chegue no meio deixa a observação descartada e a medição só no histórico; o aparelho fica `pendente` com a revisão
+  nova, nunca `trafego_verificado` com `applied_rev < desired_rev`. A reaplicação incrementa `desired_rev` no banco.
+
+**Verificar e reaplicar.** `POST /api/network/devices/{id}/verify` e `/reapply` respondem 202 com
+`executed: false`: registram o pedido e não fingem aplicação. Reaplicar é revisão nova (`applied_rev < desired_rev`,
+durável). Verificar não muda o estado; o pedido fica no `detail` e no evento. Loja, quarentena e aparelho sem rede
+pedida (`nothing_requested`) são recusados.
+
+**Visão por aparelho.** `GET /api/network/devices`: por aparelho do parque (a loja fica de fora), `network`
+(`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy`, `restriction` (a frase da quarentena),
+`real_account`, `required_apps`, `pending` (`aplicar`|`verificar`) e `last_measurement`. O proxy da 041 é lido
+como `configurado` **no máximo** (`applied` com proxy), `pendente` nos outros estados, e só vale quando não há
+linha em `device_network`.
+
+**Ponto de extensão.** `rede.pendencias(state)` lista os aparelhos com `falta: aplicar` (revisão pedida fora do
+aparelho, ou regressão a `pendente`) ou `falta: verificar` (aplicado, sem tráfego verificado), sem loja nem
+quarentena: é o que a convergência do 25.4 consome pelo comando `device.network`. A fila durável de reverificação
+de quem já está `trafego_verificado` é decisão do 25.4/25.5. Evento `network.updated` (persistido) a cada mudança,
+com ids, política, revisão e estado; nunca segredo nem `secret_ref`.
+
+**Segredos de rede (25.3, ADR-056 §5).** O segredo de um perfil sai do cofre num único ponto,
+`security/segredo_de_rede.py::segredo_no_convidado`, o segundo consumidor de `SecretStore.get_secret` depois do canal
+sensível (a lista de quem chama é conferida por `tests/test_segredo_de_rede.py`). Ele recebe o `profile_id`, nunca
+uma `secret_ref`: a referência vem da linha de `network_profiles`, então a senha de uma conta não sai por ali. É um
+bloco `with`: `montar(segredo)` monta o conteúdo do arquivo (a configuração do cliente com a chave dentro) ainda lá
+dentro; a entrega grava um arquivo 600 em `/data/local/tmp/rede/<nome>` (`adb.DIR_PRIVADO_NO_CONVIDADO`, nome em
+`NOME_PRIVADO_RE`) pelo stdin do `adb exec-in` (`Adb.gravar_arquivo_privado`, o padrão, em bytes: sem `\r\n`) ou por
+arquivo temporário do host empurrado (`Adb.enviar_arquivo_privado`, `chmod 600` em seguida; o temporário é apagado
+antes do bloco de quem chama começar). O tamanho gravado é relido (`exec-in` não devolve o código do `cat`), e o
+arquivo do convidado é apagado ao sair do bloco, com erro ou sem; se não sair, `SegredoDeRedeError` diz onde ficou.
+Quem chama recebe só `EntregaDeSegredo` (perfil, serial, caminho, modo), sem tamanho nem hash. Falha de montagem ou de
+transporte vira mensagem fixa, sem a exceção original encadeada. O log diz que houve entrega e limpeza; evento e
+evidência não recebem nada. Quem manda o cliente importar o arquivo é o 25.4, dentro do bloco; se o cliente só ler
+de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem chama.
+
+A redação por formato (`security/redaction.py`) cobre a rede: a senha em `socks5://`, `socks5h://` e `socks4://`
+(`usuario:***@`), `PrivateKey`/`private_key`, `PresharedKey`/`pre_shared_key`/`psk` e a chave de 44 caracteres
+solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do cliente). A chave **pública** fica visível
+(`PublicKey = `, `"peer_public_key": "`): é diagnóstico, e mascará-la faria o cadastro recusar um perfil legítimo.
+
+| Capacidade | Implementação | Validação |
+|---|---|---|
+| Perfis com segredo no cofre, atribuição em lote, estados por evidência, legado da 041 (25.2) | implementado | `simulated` (`tests/test_rede_por_aparelho.py`, 10 casos); PostgreSQL `not_run` |
+| Segredo de rede: consumidor restrito do cofre, entrega por stdin ou `push` com limpeza, redação de `socks5://` e chaves do WireGuard (25.3) | implementado | `simulated` (`tests/test_segredo_de_rede.py`, 19 casos, adb falso); entrega num aparelho real `not_run` (vem com o 25.4) |
+| Aplicação no aparelho, sonda de saída, portão, worker (25.4–25.7) | não feito | `not_run`: depende da medição do cliente VPN (25.1) |
