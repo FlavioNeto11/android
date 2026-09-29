@@ -781,9 +781,12 @@ def reconciliar_estado_desejado(s: AppState, worker_id: str, devices: Sequence[o
             continue
         if rt.desired_state != InstanceState.online.value:
             continue                     # ninguém pediu este aparelho no ar: ligá-lo seria decisão nossa
+        # `requested_by` próprio, e não `system`: `system` é a memória da escada de reparo
+        # (`CommandStore.remediacoes_recentes`), e um religar de reconciliação contado como degrau aproximaria o
+        # `reset` — que apaga a conta real logada no aparelho.
         if pedir_ciclo_de_vida(s, instance_id, "start", f"o worker {worker_id} voltou com o aparelho "
                                f"{getattr(d, 'state', '?')} e o estado desejado é online",
-                               requested_by="system", nivel="warn") is not None:
+                               requested_by=REQUESTED_BY_RECONCILIACAO, nivel="warn") is not None:
             pedidos.append(instance_id)
     return pedidos
 
@@ -802,6 +805,12 @@ def _reconciliar_uma_vez(s: AppState, worker_id: str, link: WorkerLink, devices:
         s.bus.emit("log", f"Worker {worker_id}: religando {len(voltando)} aparelho(s) pelo estado desejado "
                           f"({', '.join(voltando)}).", level="warn")
 
+
+#: `commands.requested_by` dos pedidos automáticos que NÃO são degrau da escada de reparo. Só a remediação usa
+#: `system` (`remediar`); o resto tem nome próprio, como os recursos (`shared/convergence.REQUESTED_BY`) e o rodízio
+#: (`scheduler`). Um reinício de saúde contado como degrau levaria, com mais dois defeitos, ao `reset`.
+REQUESTED_BY_RECONCILIACAO = "reconciliacao"
+REQUESTED_BY_SAUDE = "saude"
 
 #: A escada de reparo automático: quantos `restart` antes de `reset`, e quanto esperar depois de esgotar.
 DEGRAUS_DE_RESTART = 2

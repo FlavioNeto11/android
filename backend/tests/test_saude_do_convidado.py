@@ -453,7 +453,7 @@ async def test_interrupcao_com_alguem_no_controle_nao_reinicia(tmp_path: Path) -
 
 @pytest.mark.asyncio
 async def test_reinicio_por_saude_abre_restart_rastreavel_e_nunca_reset(tmp_path: Path) -> None:
-    """O gancho do AppState abre um comando `restart` com `requested_by='system'` — não a escada de reparo."""
+    """O gancho do AppState abre um comando `restart` com `requested_by='saude'` — não a escada de reparo."""
     h = Harness(tmp_path, 1)
     await h.boot()
     try:
@@ -502,5 +502,42 @@ async def test_interrupcao_do_boot_com_carga_alta_nao_conta_como_ocioso(tmp_path
             total, irq = total + 1000, irq + 200           # 20% em interrupção, mas com o convidado subindo
         assert rt.irq_frac is not None and rt.irq_frac >= 0.15 and rt.irq_strikes == 0
         assert pedidos == []
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset(tmp_path: Path) -> None:
+    """Rodada de 29/09: o reinício por interrupção abria o comando como `system`, a MESMA marca que a escada de reparo
+    conta. Um reinício de saúde seguido de dois defeitos comuns viraria `restart`, `reset` — e o reset apaga a conta
+    real logada no aparelho (android-06, andre). Agora o de saúde é `saude` e a escada não o vê."""
+    from app.commands.despacho import REQUESTED_BY_SAUDE, remediar
+
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        rt = s.devices.get("android-01")
+        rt.worker_verbs = ["restart", "reset", "start", "stop"]
+        import app.commands.despacho as despacho_mod
+
+        async def _falso(*args: Any, **_k: Any) -> None:
+            return None
+
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
+        try:
+            cid = s.devices.on_health_restart("android-01", "interrupções acumuladas (teste)")
+            assert cid is not None and s.commands.get(cid)["requested_by"] == REQUESTED_BY_SAUDE
+            _encerrar(s, cid)
+            assert s.commands.remediacoes_recentes("android-01") == []      # não é degrau
+            verbos = []
+            for _ in range(2):                                              # dois defeitos comuns depois
+                c = remediar(s, "android-01", "o system_server caiu")
+                assert c is not None
+                verbos.append(s.commands.get(c)["verb"])
+                _encerrar(s, c)
+            assert verbos == ["restart", "restart"]                         # nunca reset
+        finally:
+            despacho_mod._do_action = original
     finally:
         await h.state.stop()

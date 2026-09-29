@@ -656,8 +656,9 @@ class AppState:
         """`restart` rastreável pedido pela saúde do convidado ocioso (interrupções acumuladas). Só reinício: a
         escada de reparo chega a `reset`, que apagaria a conta real logada no aparelho."""
         try:
-            return despacho.pedir_ciclo_de_vida(self, instance_id, "restart", motivo, requested_by="system",
-                                                nivel="warn")
+            # `saude`, nunca `system`: `system` é degrau da escada de reparo, que chega a `reset`.
+            return despacho.pedir_ciclo_de_vida(self, instance_id, "restart", motivo,
+                                                requested_by=despacho.REQUESTED_BY_SAUDE, nivel="warn")
         except Exception:  # noqa: BLE001 - a sonda de saúde nunca pode derrubar o monitor de aparelhos
             log.exception("%s: falha ao pedir o reinício por interrupções acumuladas", instance_id)
             return None
