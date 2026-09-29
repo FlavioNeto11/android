@@ -17,7 +17,6 @@ from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
 from ..modules.learning.domain.falhas import FailureKind
-from ..modules.learning.domain.livro import fluxo_tem_efeito
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
 from ..planning.catalog import capabilities_of
@@ -92,18 +91,15 @@ _DESFECHO_DO_DESBRAVADOR = {
 }
 
 
-def _execucoes_reais(n: int) -> str:
-    return "1 execução real" if n == 1 else f"{n} execuções reais"
+def texto_do_fluxo_salvo(flow_id: str, status: str, *, aprendizado_ligado: bool) -> str | None:
+    """A decisão na linha do tempo quando a execução vira fluxo — verdadeira pelo status com que ele NASCEU —, ou
+    `None` quando o anúncio é de outro dono.
 
-
-def texto_do_fluxo_salvo(flow_id: str, status: str, *, efeito: bool, simulada: bool, concordancias: int,
-                         aprendizado_ligado: bool) -> str:
-    """A decisão na linha do tempo quando a execução vira fluxo — verdadeira pelo status com que ele NASCEU.
-
-    Só o ativo é reaproveitado. O candidato (D1, ADR-054) passa a valer pela sombra do digest, com a regra de
-    `SombraDosFluxos._avaliar`: `1 + aprendizado.fluxo.concordancias` execuções REAIS com o mesmo plano, e a que o
-    gerou conta se for real; com etapa de efeito externo, a prova só o deixa validado e quem publica é o dono. Com
-    `aprendizado.enabled: false` o digest não roda, e nenhuma execução o promove.
+    Só o ativo é reaproveitado. O candidato (D1, ADR-054) com o aprendizado ligado é anunciado pela sombra do digest
+    (`SombraDosFluxos._texto_do_nascimento`), que diz também quando ele passa a valer: um dono só para o anúncio e
+    para a regra `1 + aprendizado.fluxo.concordancias`, que não se repete aqui (antes as duas decisões saíam na mesma
+    execução, com frases diferentes). Com `aprendizado.enabled: false` o digest não roda: o anúncio fica aqui, e
+    nenhuma execução o promove — com ou sem efeito externo, simulada ou real, quem publica é uma pessoa.
     """
     if status == "active":
         return (f"Fluxo “{flow_id}” salvo: comandos iguais (com outros valores) reaproveitam este plano sem chamar o "
@@ -111,18 +107,11 @@ def texto_do_fluxo_salvo(flow_id: str, status: str, *, efeito: bool, simulada: b
     if status != "candidate":
         return (f"Fluxo “{flow_id}” salvo com o status “{status}”: comandos iguais não o reaproveitam enquanto ele "
                 "não estiver ativo")
-    inicio = (f"Fluxo “{flow_id}” aprendido como candidato (D1): comandos iguais ainda NÃO reaproveitam este plano — "
-              "o planejador segue sendo chamado, e o plano novo é comparado com ele")
-    if not aprendizado_ligado:
-        return inicio + (". Com o aprendizado desligado (aprendizado.enabled: false), nenhuma execução o promove: "
-                         "só uma pessoa o publica")
-    faltam = max(0, int(concordancias)) + (1 if simulada else 0)
-    quando = (f"depois de mais {_execucoes_reais(faltam)} com o mesmo plano" if faltam else
-              "já com esta execução, quando o aprendizado a digerir,")
-    frase = ("esta execução foi simulada e não conta como prova; " if simulada else "") + quando + (
-        " ele fica validado, e só o dono o publica (Aprendizado › Para aprovar): tem etapa de efeito externo"
-        if efeito else " o sistema o publica (sem efeito externo)")
-    return f"{inicio}. {frase[0].upper()}{frase[1:]}"
+    if aprendizado_ligado:
+        return None
+    return (f"Fluxo “{flow_id}” aprendido como candidato (D1): comandos iguais ainda NÃO reaproveitam este plano — o "
+            "planejador segue sendo chamado. Com o aprendizado desligado (aprendizado.enabled: false), nenhuma "
+            "execução o promove: só uma pessoa o publica")
 
 
 class Scheduler:
@@ -1182,14 +1171,16 @@ class Scheduler:
         if not flow_id:
             return
         # O texto segue o status REAL: com o D1 (ADR-054) o fluxo nasce candidato e inerte, e dizer "reaproveitam"
-        # ali era anunciar como feito o que só vale depois da prova.
-        linha = self.flows.db.one("SELECT status, plan FROM flows WHERE id=?", (flow_id,))
-        aprendizado = self.cfg.file.aprendizado
-        self.repo.decision(texto_do_fluxo_salvo(
-            flow_id, str(linha["status"]) if linha is not None else "?",
-            efeito=fluxo_tem_efeito(loads(linha["plan"], None) if linha is not None else None),
-            simulada=bool(run["simulated"]), concordancias=aprendizado.fluxo.concordancias,
-            aprendizado_ligado=aprendizado.enabled), run_id=run_id)
+        # ali era anunciar como feito o que só vale depois da prova. A leitura e a decisão ficam sob o mesmo `try` do
+        # aprendizado: roda no `finally` do worker, e uma falha aqui pularia o `wake()` de quem chama.
+        try:
+            linha = self.flows.db.one("SELECT status FROM flows WHERE id=?", (flow_id,))
+            texto = texto_do_fluxo_salvo(flow_id, str(linha["status"]) if linha is not None else "?",
+                                         aprendizado_ligado=self.cfg.file.aprendizado.enabled)
+            if texto is not None:
+                self.repo.decision(texto, run_id=run_id)
+        except Exception:  # noqa: BLE001 - a linha do tempo informa; nunca afeta o resultado da execução
+            log.exception("decisão do fluxo aprendido de %s", run_id)
 
     async def _run_guarded(self, run: Any, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime,
                            resumed: bool) -> StepOutcome:

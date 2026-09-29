@@ -11,7 +11,7 @@ aparelho falso e IA simulada).
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -36,11 +36,12 @@ from app.taskqueue.flows import FlowStore
 from app.taskqueue.scheduler import Scheduler, texto_do_fluxo_salvo
 from app.util import now, now_iso
 
-from .conftest import Harness
+from .conftest import COMMAND, Harness
 from .fake_skills import banco as banco_migrado
 
 S = SkillState
 DONO = "painel:dono"
+NOME = "Ana Ribeiro"                                                        # o operador que faz login no painel
 MODELO = "abrir o perfil de {username} no instagram"
 
 
@@ -225,7 +226,7 @@ def test_execucao_simulada_nao_conta(mundo: Mundo) -> None:
     assert mundo.status(flow_id) == "active"
 
 
-def test_candidato_nascido_de_execucao_simulada_nunca_e_publicado_pelo_sistema(mundo: Mundo) -> None:
+def test_candidato_nascido_de_execucao_simulada_nao_e_publicado_por_execucoes_simuladas(mundo: Mundo) -> None:
     flow_id = mundo.roda("r-1", "@nasa", simulada=True)
     assert flow_id and mundo.status(flow_id) == "candidate"
     assert any("simulada não é prova" in t for _, t in mundo.decisoes)
@@ -366,12 +367,13 @@ async def test_no_central_o_fluxo_nasce_candidato_e_a_ia_segue_planejando(harnes
     await harness.wait(lambda: not state._digestoes, 10, "digest encerrado")  # noqa: SLF001
     decisoes = [e["message"] or "" for e in state.db.query(
         "SELECT message FROM events WHERE run_id=? AND kind='decision'", (first.id,))]
-    assert any("candidato" in m for m in decisoes)
-    # A decisão do `_learn_flow` diz o status REAL: candidato e inerte, e o que falta (a execução do Harness é simulada)
-    # — nunca mais "reaproveitam este plano" para um fluxo que ainda não é reaproveitado.
+    # O nascimento é anunciado UMA vez, pela sombra (o `_learn_flow` se cala no candidato com o aprendizado ligado),
+    # e diz o status REAL: candidato e inerte, e o que falta (a execução do Harness é simulada) — nunca mais
+    # "reaproveitam este plano" para um fluxo que ainda não é reaproveitado.
     assert not any("reaproveitam este plano sem chamar o planejador" in m for m in decisoes)
-    assert any(f"Fluxo “{fluxo['id']}” aprendido como candidato" in m and "simulada e não conta como prova" in m
-               for m in decisoes)
+    [nascimento] = [m for m in decisoes if "aprendido como candidato" in m]
+    assert nascimento.startswith(f"Fluxo “{fluxo['id']}” aprendido como candidato (D1): ainda não é reaproveitado")
+    assert "Execução simulada não é prova (a que o gerou não conta)" in nascimento
     # 2ª execução do mesmo comando: o candidato não age (o planejador é chamado de novo), e a execução do Harness é
     # simulada: a concordância fica registrada, mas não publica nada
     second = await harness.wait_run(harness.run(["android-02"]).id)
@@ -384,69 +386,137 @@ async def test_no_central_o_fluxo_nasce_candidato_e_a_ia_segue_planejando(harnes
         (f"run:{first.id}", "for", 1), (f"run:{second.id}", "for", 1)}
 
 
+async def test_no_central_o_nascimento_e_anunciado_uma_vez_com_a_config_vigente(harness: Harness) -> None:
+    """A fiação real, da config ao texto: o `_learn_flow` do scheduler e a sombra que a montagem do central liga, os
+    dois lendo o bloco `aprendizado` VIGENTE (`concordancias`, `enabled`, `com_prova`) e o plano do fluxo (efeito
+    externo). Cada execução anuncia o nascimento UMA vez, com o texto do caso. As execuções do Harness são simuladas: a
+    que gerou o fluxo não conta, e faltam as `1 + concordancias` reais inteiras."""
+    state = harness.state
+    assert state is not None
+    aprendizado = harness.cfg.file.aprendizado
+    harness.cfg.file.ai.flows = True
+    aprendizado.fluxo.com_prova = True
+    aprendizado.fluxo.concordancias = 2
+
+    async def nascimento(comando: str, sinal: str) -> tuple[Any, list[str]]:
+        run = await harness.wait_run(harness.run(["android-01"], command=comando).id)
+        assert run.status == "completed", run.status
+
+        def decisoes() -> list[str]:
+            return [e["message"] or "" for e in state.db.query(
+                "SELECT message FROM events WHERE run_id=? AND kind='decision'", (run.id,))]
+
+        # O anúncio esperado saiu → o digest desta execução já foi encadeado (no mesmo `finally` do worker, antes do
+        # `_learn_flow`); esperá-lo terminar é o que prova que a outra metade não anunciou de novo.
+        await harness.wait(lambda: any(sinal in m for m in decisoes()), 10, f"decisão com “{sinal}”")
+        await harness.wait(lambda: not state._digestoes, 10, "digest encerrado")  # noqa: SLF001
+        fluxo = state.db.one("SELECT id, status FROM flows WHERE source_run_id=?", (run.id,))
+        assert fluxo is not None
+        return fluxo, [m for m in decisoes() if f"Fluxo “{fluxo['id']}”" in m]
+
+    # etapa de efeito externo (o envio do comando padrão), concordancias=2: só a sombra anuncia, e o dono publica
+    fluxo, [texto] = await nascimento(COMMAND, "aprendido como candidato")
+    assert fluxo["status"] == "candidate"
+    assert texto.startswith(f"Fluxo “{fluxo['id']}” aprendido como candidato (D1): ainda não é reaproveitado")
+    assert "Execução simulada não é prova (a que o gerou não conta)" in texto
+    assert texto.endswith("depois de mais 3 execução(ões) real(is) com o mesmo plano ele fica validado, e o dono o "
+                          "publica (tem etapa de efeito externo)")
+    # sem efeito externo: o sistema publica depois das reais
+    fluxo, [texto] = await nascimento("Abra o QA Messenger e confirme a conta conectada.", "aprendido como candidato")
+    assert fluxo["status"] == "candidate"
+    assert texto.endswith("depois de mais 3 execução(ões) real(is) com o mesmo plano o sistema o publica (sem efeito "
+                          "externo)")
+    # aprendizado desligado: o digest não roda (nenhuma evidência), e o anúncio é do `_learn_flow`
+    aprendizado.enabled = False
+    fluxo, [texto] = await nascimento("Abra o QA Messenger e confira a conta de teste.", "só uma pessoa o publica")
+    assert fluxo["status"] == "candidate"
+    assert texto.startswith(f"Fluxo “{fluxo['id']}” aprendido como candidato (D1): comandos iguais ainda NÃO")
+    assert state.db.scalar("SELECT COUNT(*) FROM learning_evidence WHERE item_ref=?", (f"fluxo:{fluxo['id']}",)) == 0
+    # o modo anterior (`com_prova: false`): nasce ativo, e só o `_learn_flow` fala (a sombra não o vê)
+    aprendizado.enabled, aprendizado.fluxo.com_prova = True, False
+    fluxo, [texto] = await nascimento("Abra o QA Messenger e verifique a conta.", "reaproveitam este plano")
+    assert fluxo["status"] == "active"
+    assert texto == (f"Fluxo “{fluxo['id']}” salvo: comandos iguais (com outros valores) reaproveitam este plano sem "
+                     "chamar o planejador")
+
+
 # ------------------------------------------------------------------ a decisão do `_learn_flow` (texto verdadeiro)
-def _learn_flow(mundo: Mundo, run_id: str, *, ligado: bool = True) -> list[str]:
+def _learn_flow(mundo: Mundo, run_id: str, *, ligado: bool = True,
+                decisao: Callable[[str, str], None] | None = None) -> list[str]:
     """`Scheduler._learn_flow` sobre a loja do mundo, sem subir o central: só o que ele lê (config, execução) e a
-    decisão que grava."""
+    decisão que grava (`decisao` troca quem grava — para provar que a falha dela não sobe)."""
     decisoes: list[str] = []
     aprendizado = SimpleNamespace(enabled=ligado, fluxo=SimpleNamespace(concordancias=mundo.config["concordancias"],
                                                                         com_prova=mundo.config["com_prova"]))
     falso = SimpleNamespace(
         cfg=SimpleNamespace(file=SimpleNamespace(ai=SimpleNamespace(flows=True), aprendizado=aprendizado)),
         repo=SimpleNamespace(run_row=lambda rid: mundo.db.one("SELECT * FROM runs WHERE id=?", (rid,)),
-                             decision=lambda texto, run_id: decisoes.append(texto)),
+                             decision=decisao or (lambda texto, run_id: decisoes.append(texto))),
         _pathfinders={}, flows=mundo.flows)
     Scheduler._learn_flow(falso, run_id)                                     # type: ignore[arg-type]
     return decisoes
 
 
-def test_learn_flow_diz_candidato_e_quando_passa_a_valer(mundo: Mundo) -> None:
+def test_learn_flow_anuncia_so_o_que_a_sombra_nao_anuncia(mundo: Mundo) -> None:
+    """Um dono só para o anúncio do nascimento: com o aprendizado ligado, o candidato é da sombra (o digest); o
+    `_learn_flow` fala do que nasce ativo e, com o aprendizado desligado (o digest não roda), do candidato."""
     mundo.execucao("r-1", _plano("@nasa"), _comando("@nasa"))
-    [texto] = _learn_flow(mundo, "r-1")
+    assert _learn_flow(mundo, "r-1") == []                                   # candidato, aprendizado ligado: calado
     [fluxo] = mundo.db.query("SELECT id, status FROM flows")
     assert fluxo["status"] == "candidate"
-    assert texto.startswith(f"Fluxo “{fluxo['id']}” aprendido como candidato (D1): comandos iguais ainda NÃO")
-    assert "sem chamar o planejador" not in texto
-    assert texto.endswith("Depois de mais 1 execução real com o mesmo plano o sistema o publica (sem efeito externo)")
-    # o modo anterior (`com_prova: false`): nasce ativo, e aí sim reaproveita
-    mundo.config["com_prova"] = False
+    mundo.servico.digerir_execucao("r-1")
+    [nascimento] = [t for r, t in mundo.decisoes if r == "r-1"]
+    assert nascimento.startswith(f"Fluxo “{fluxo['id']}” aprendido como candidato (D1): ainda não é reaproveitado")
+    assert "depois de mais 1 execução(ões) real(is) com o mesmo plano o sistema o publica" in nascimento
+    # aprendizado desligado: nenhuma execução o promove, e o anúncio fica com o `_learn_flow`
     mundo.execucao("r-2", _plano("@nasa"), "seguir o perfil de @nasa no instagram")
-    [ativo] = _learn_flow(mundo, "r-2")
+    [desligado] = _learn_flow(mundo, "r-2", ligado=False)
+    assert "aprendido como candidato (D1): comandos iguais ainda NÃO reaproveitam este plano" in desligado
+    assert desligado.endswith("nenhuma execução o promove: só uma pessoa o publica")
+    # o modo anterior (`com_prova: false`): nasce ativo, e aí sim reaproveita — a sombra não o vê (não está em prova)
+    mundo.config["com_prova"] = False
+    mundo.execucao("r-3", _plano("@nasa"), "curtir o perfil de @nasa no instagram")
+    [ativo] = _learn_flow(mundo, "r-3")
     assert "salvo: comandos iguais (com outros valores) reaproveitam este plano sem chamar o planejador" in ativo
+    mundo.servico.digerir_execucao("r-3")
+    assert [t for r, t in mundo.decisoes if r == "r-3"] == []
     # nada aprendido (o comando já tem fluxo): nada dito
     assert _learn_flow(mundo, "r-1") == []
 
 
-def test_texto_do_fluxo_salvo_segue_a_regra_da_sombra() -> None:
-    def texto(status: str = "candidate", *, efeito: bool = False, simulada: bool = False, concordancias: int = 1,
-              ligado: bool = True) -> str:
-        return texto_do_fluxo_salvo("f", status, efeito=efeito, simulada=simulada, concordancias=concordancias,
-                                    aprendizado_ligado=ligado)
+def test_learn_flow_que_falha_ao_anunciar_nao_derruba_o_fim_da_execucao(mundo: Mundo) -> None:
+    """Roda no `finally` do worker: a leitura do status e a decisão ficam sob o `try` do aprendizado (a exceção que
+    subisse dali pularia o `wake()`). O fluxo aprendido fica; só o anúncio se perde, com log."""
+    def explode(texto: str, run_id: str) -> None:
+        raise RuntimeError("linha do tempo fora do ar")
 
-    assert "reaproveitam este plano sem chamar o planejador" in texto("active")
-    assert "não o reaproveitam enquanto ele não estiver ativo" in texto("validated")
-    assert texto(concordancias=2).endswith("Depois de mais 2 execuções reais com o mesmo plano o sistema o publica "
-                                           "(sem efeito externo)")
-    assert texto(concordancias=0).endswith("Já com esta execução, quando o aprendizado a digerir, o sistema o publica "
-                                           "(sem efeito externo)")
-    # a execução simulada não conta: falta uma real a mais (`1 + concordancias` evidências reais)
-    assert texto(simulada=True).endswith("Esta execução foi simulada e não conta como prova; depois de mais 2 "
-                                         "execuções reais com o mesmo plano o sistema o publica (sem efeito externo)")
-    assert texto(efeito=True).endswith("ele fica validado, e só o dono o publica (Aprendizado › Para aprovar): tem "
-                                       "etapa de efeito externo")
-    # sem o digest, a sombra não roda: só uma pessoa o publica
-    assert texto(ligado=False).endswith("nenhuma execução o promove: só uma pessoa o publica")
-    for t in (texto(), texto(efeito=True), texto(simulada=True), texto(ligado=False)):
-        assert "sem chamar o planejador" not in t and "ainda NÃO reaproveitam" in t
+    mundo.config["com_prova"] = False
+    mundo.execucao("r-1", _plano("@nasa"), _comando("@nasa"))
+    assert _learn_flow(mundo, "r-1", decisao=explode) == []                  # não levanta
+    assert mundo.db.scalar("SELECT status FROM flows") == "active"
+
+
+def test_texto_do_fluxo_salvo_so_fala_do_que_a_sombra_nao_anuncia() -> None:
+    for ligado in (True, False):
+        ativo = texto_do_fluxo_salvo("f", "active", aprendizado_ligado=ligado)
+        assert ativo and "reaproveitam este plano sem chamar o planejador" in ativo
+        outro = texto_do_fluxo_salvo("f", "validated", aprendizado_ligado=ligado)
+        assert outro and "não o reaproveitam enquanto ele não estiver ativo" in outro
+    assert texto_do_fluxo_salvo("f", "candidate", aprendizado_ligado=True) is None      # é da sombra
+    desligado = texto_do_fluxo_salvo("f", "candidate", aprendizado_ligado=False)
+    assert desligado and desligado.endswith("nenhuma execução o promove: só uma pessoa o publica")
+    assert "sem chamar o planejador" not in desligado and "ainda NÃO reaproveitam" in desligado
 
 
 # ------------------------------------------------------------------ a rota antiga passa pelo livro (Harness)
-def _cliente(h: Harness) -> httpx.AsyncClient:
+def _cliente(h: Harness, *, base: str = "http://test") -> httpx.AsyncClient:
+    """`base="http://127.0.0.1"` para a sessão, como em `test_sessao_do_painel`: o login do loopback dispensa token,
+    e o jar do cliente devolve o cookie nas requisições seguintes."""
     from app.main import create_app
 
     app = create_app(h.cfg, state=h.state)
     app.state.poc = h.state
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base)
 
 
 async def test_pela_rota_antiga_a_pessoa_decide_com_trilha_e_o_sistema_nao_reaprende(tmp_path: Path) -> None:
@@ -478,6 +548,44 @@ async def test_pela_rota_antiga_a_pessoa_decide_com_trilha_e_o_sistema_nao_reapr
         # o próximo plano comprovado (outro caminho, o mesmo comando) não o faz renascer: quem desligou foi a pessoa
         assert mundo.roda("r-4", "@nasa", extra=True) is None
         assert mundo.status(flow_id) == "disabled"
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_pela_rota_antiga_a_trilha_diz_o_operador_e_o_gesto_recusado_no_meio_nao_deixa_nada(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com sessão aberta, quem decide na trilha é o nome do login (o `_quem` do livro), não `panel`. E ligar o fluxo em
+    prova são dois passos do livro (candidato → validado → publicado) num gesto só, na transação da rota: recusado o
+    segundo, o primeiro também não fica — nem o status, nem a linha na trilha."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        mundo = Mundo(s.db)
+        if s.db.one("SELECT id FROM apps WHERE id='instagram'") is None:
+            s.db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('instagram','Instagram',"
+                         "'com.instagram.android',0)")
+        flow_id = mundo.roda("r-1", "@nasa")
+        assert flow_id and mundo.status(flow_id) == "candidate"
+        nascimento = mundo.trilha(flow_id)
+        # A guarda do livro recusa o passo validado → publicado — o que faria uma habilidade publicada com o mesmo
+        # comando que chegasse depois da conferência da rota. O passo candidato → validado não a consulta.
+        monkeypatch.setattr(s.learning._repo, "_guarda_do_fluxo", lambda ref: "recusado pelo teste")  # noqa: SLF001
+        async with _cliente(h, base="http://127.0.0.1") as c:
+            entrada = await c.post("/api/login", json={"operator": NOME})
+            assert entrada.status_code == 200, entrada.text
+            recusa = await c.put(f"/api/flows/{flow_id}", json={"status": "active"})
+            assert recusa.status_code == 409, recusa.text
+            assert recusa.json()["detail"]["code"] == "state_conflict"
+            assert mundo.status(flow_id) == "candidate" and mundo.trilha(flow_id) == nascimento
+            monkeypatch.undo()
+            liga = await c.put(f"/api/flows/{flow_id}", json={"status": "active"})
+            assert liga.status_code == 200, liga.text
+        assert mundo.status(flow_id) == "active"
+        assert mundo.trilha(flow_id) == [*nascimento, ("candidate", "validated", NOME, None),
+                                         ("validated", "published", NOME, None)]
     finally:
         if h.state is not None:
             await h.state.stop()

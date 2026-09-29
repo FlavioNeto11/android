@@ -288,6 +288,8 @@ class SombraDosFluxos:
                                "comandos iguais passam a reaproveitar o plano sem chamar o planejador")
 
     def _texto_do_nascimento(self, fluxo: FluxoEmProva, simulada: bool) -> str:
+        """O anúncio do fluxo que nasce candidato, e o ÚNICO com o aprendizado ligado: o `_learn_flow` do scheduler
+        se cala nesse caso (`texto_do_fluxo_salvo`) e só fala do que nasce ativo ou quando o digest não roda."""
         inicio = (f"Fluxo “{fluxo.id}” aprendido como candidato (D1): ainda não é reaproveitado — a IA segue "
                   "planejando este comando e o plano novo é comparado com ele")
         # A simulada deixa evidência, mas `veredito_de_repeticao` só conta a real: a que o gerou não entra, e faltam
