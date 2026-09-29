@@ -110,13 +110,18 @@ class LeituraDeTelasSql:
             if r["scope_app"]})
 
     def usos(self, app: str, instance_id: str, *, desde: str) -> list[dominio.Uso]:
+        """O instante do uso é o da OBSERVAÇÃO (o sinal `tela_vista` da mesma origem), não o da linha de evidência:
+        a evidência que o digest grava ao fazer nascer a candidata tem a hora do digest, e a janela de conflito
+        acusaria um login de agora contra uma tela vista horas antes."""
         saida: list[dominio.Uso] = []
         for r in self._db.query(
-                "SELECT e.item_ref, e.instance_id, e.observed_at FROM learning_evidence e JOIN learning_items i"
-                " ON i.id = e.item_ref WHERE i.kind='tela' AND i.scope_app=? AND i.state IN (?,?,?)"
-                " AND e.stance='for' AND e.instance_id=? AND e.observed_at >= ?",
-                (app, *_VIVOS, instance_id, desde)):
-            quando = parse_iso(linhas.texto(r, "observed_at"))
+                "SELECT e.item_ref, e.instance_id, COALESCE(s.created_at, e.observed_at) AS quando"
+                " FROM learning_evidence e JOIN learning_items i ON i.id = e.item_ref"
+                " LEFT JOIN learning_signals s ON s.source_ref = e.origin_ref AND s.kind=?"
+                " WHERE i.kind='tela' AND i.scope_app=? AND i.state IN (?,?,?) AND e.stance='for'"
+                " AND e.instance_id=? AND COALESCE(s.created_at, e.observed_at) >= ?",
+                (SignalKind.TELA_VISTA.value, app, *_VIVOS, instance_id, desde)):
+            quando = parse_iso(linhas.texto(r, "quando"))
             if quando is not None:
                 saida.append(dominio.Uso(linhas.texto(r, "item_ref"), linhas.texto(r, "instance_id"), quando))
         return saida

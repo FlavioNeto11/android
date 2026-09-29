@@ -437,6 +437,23 @@ def test_o_primeiro_conflito_desliga(mundo: Mundo) -> None:
     assert conhecimento.regras_aprendidas(CORREIO) == ()                # a sessão para de consumir na hora
 
 
+def test_o_uso_e_o_instante_da_observacao_e_nao_o_do_digest(mundo: Mundo) -> None:
+    """A candidata nasce no digest, horas depois das observações: a evidência dela tem a hora do digest, mas o USO
+    foi quando a tela foi vista. Um login 60 s depois do digest não é conflito com uma tela vista 2 h antes."""
+    for run, n in (("r1", 1), ("r1", 2), ("r2", 3)):
+        mundo.fechar(_fechamento(_tela(*PASTA_NOVA), run=run, n=n))
+    mundo.fechar(_fechamento(_conta(), run="r1", n=9))
+    mundo.andar(hours=2)
+    mundo.livro.digerir_execucao("r2")
+    (item,) = mundo.itens()
+    assert item.state is SkillState.PUBLISHED
+    mundo.andar(seconds=60)
+    login = parse_hierarchy(FakeCorreio(tela="entrada").page_source())
+    mundo.fechar(_fechamento(login, run="r3", n=1, status="failed", verified=False))
+    assert mundo.repo.item(item.id).state is SkillState.PUBLISHED
+    assert not any(e.stance is Posicao.CONFLICT for e in mundo.repo.evidencias(item.id))
+
+
 def test_conta_errada_na_conferencia_depois_do_uso_desliga(mundo: Mundo) -> None:
     _aprender(mundo, PASTA_NOVA)
     (item,) = mundo.itens()
