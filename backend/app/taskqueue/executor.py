@@ -558,7 +558,8 @@ class StepExecutor:
         return max(1.0, max(obs.width, obs.height) / self.cfg.file.ai.screenshot_max_side)
 
     def _shadow_compare(self, rr: "_RecipeRun", obs: Observation, decision: Decision) -> None:
-        """Modo sombra: a receita diz o que FARIA; só a IA age. O veredito é da EXECUÇÃO da etapa (`_after_step`)."""
+        """Modo sombra: a receita diz o que FARIA; só a IA age. O veredito é da EXECUÇÃO da etapa (`_after_step`).
+        Compara-se só o que a receita grava: o que ela não guarda não pode separar o caminho dela do da IA."""
         assert rr.replayer is not None
         if decision.tool in READ_ONLY:
             return          # olhar a tela não é caminho: `distill` nunca grava leitura, então não há o que comparar
@@ -571,6 +572,11 @@ class StepExecutor:
             return
         if would is None:
             agreed = decision.tool == "step_done"                # a receita acabou: só falta declarar pronta
+        elif would.tool == "scroll":
+            # Da rolagem a receita grava só a DIREÇÃO (`distill`), nunca o contêiner: reproduzida, rola a tela
+            # (`element_id: None`), e a IA quase sempre rola a lista (158 de 174 rolagens da IA no central, 28/09).
+            # Comparar o contêiner marcava divergência justamente quando a IA fazia o caminho da receita.
+            agreed = decision.tool == "scroll" and decision.args.get("direction") == would.args.get("direction")
         else:
             # O texto entra na conta: com o mesmo campo e outro texto, a receita digitaria o que a IA não digitou.
             agreed = (would.tool == decision.tool and would.args.get("element_id") == decision.args.get("element_id")
@@ -765,6 +771,9 @@ class StepExecutor:
         elif rid:
             repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
                           "desta etapa dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+        elif substitui:
+            log.info("%s: etapa %s: candidata v%s não trocada (a IA comprovou o mesmo caminho, ou a chave já tem "
+                     "ativa); segue em prova", iid, step.key, rr.row["version"])
 
     def _veredito_da_sombra(self, rr: "_RecipeRun", ok: bool, run_id: str, iid: str, step: StepDTO) -> None:
         """Uma execução da etapa, um veredito sobre a receita comparada. Concordar = a IA fez, uma a uma, todas as

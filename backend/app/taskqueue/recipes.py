@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -411,6 +412,11 @@ class Replayer:
 
 
 # ------------------------------------------------------------------ persistência
+def _caminho(acoes: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    """O que a reprodução faz, sem o `why` — a justificativa da IA muda a cada execução e não muda o caminho."""
+    return [{k: v for k, v in a.items() if k != "why"} for a in acoes]
+
+
 class RecipeStore:
     def __init__(self, db: Database):
         self.db = db
@@ -470,8 +476,9 @@ class RecipeStore:
 
         `candidate`: a receita nasce em prova (`recipes_promote_after`, o caminho que a IA aprendeu); sem ele nasce
         ativa — o modo treinamento (a pessoa demonstrou) e o `recipes_promote_after: 0`.
-        Candidata em prova só é trocada por quem a viu divergir (`replaces` = o id dela): aparelhos aprendendo em
-        paralelo, sem nunca terem comparado com ela, não reescrevem a prova a cada execução. A versão gravada marca
+        Candidata em prova só é trocada por quem a viu divergir (`replaces` = o id dela), e só por um caminho que
+        reproduzido faria outra coisa: aparelhos aprendendo em paralelo, sem nunca terem comparado com ela, não
+        reescrevem a prova a cada execução, e uma cópia dela não vira versão nova. A versão gravada marca
         as anteriores ainda vivas da chave (candidata trocada, ativa que caiu em quarentena) como `superseded` — uma
         só receita viva por chave, e a substituída não volta pelo painel.
         """
@@ -481,6 +488,12 @@ class RecipeStore:
                 return None
             em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
+                return None
+            if (candidate and em_prova is not None
+                    and _caminho(loads(em_prova["actions"], [])) == _caminho(actions)):
+                # Divergência sem diferença no que a receita grava (ex.: a IA rolou para baixo e voltou; a receita só
+                # guarda a última direção): a cópia não mudaria a reprodução, só deixaria uma `superseded` por
+                # execução. Fica a candidata, com a prova já recomeçada pela divergência.
                 return None
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"

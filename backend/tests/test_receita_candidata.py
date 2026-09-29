@@ -14,6 +14,8 @@ Agora:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,10 +23,12 @@ from app.automation.hierarchy import parse_hierarchy
 from app.db import dumps, loads
 from app.metricas import metricas
 from app.planning.provider import Decision
+from app.planning.simulated_provider import SimulatedProvider
 from app.taskqueue.executor import _RecipeRun
 from app.taskqueue.recipes import RecipeStore, Replayer
 
-from .conftest import Harness
+from .conftest import CountingProvider, Harness
+from .fake_device import FakeQaDevice, Node
 from .test_desbravador import _decisoes
 from .test_recipes import XML
 from .test_revisao_receitas import _rotulos_fechados
@@ -124,6 +128,25 @@ async def test_receita_nova_da_mesma_chave_marca_a_antiga_como_substituida(harne
     assert statuses == ["superseded", "superseded", "candidate"]           # uma só receita viva por chave
 
 
+async def test_candidata_nao_e_trocada_por_uma_copia_do_mesmo_caminho(harness: Harness) -> None:
+    """A falsa divergência da rolagem trocava, a cada execução limpa, a candidata por uma cópia idêntica: uma linha
+    `superseded` por execução e por chave, sem fim. Se a comparação ainda vir divergência sem diferença no que a
+    receita grava (a IA que rola para baixo e volta para cima: a receita só guarda a última direção), a troca não muda
+    nada do que a reprodução faria — fica a candidata, com a prova já recomeçada pela divergência. O `why` é a
+    justificativa da IA, que muda a cada execução sem mudar o caminho."""
+    store = RecipeStore(harness.state.db)                                   # type: ignore[union-attr]
+    v1 = _salva(store, candidate=True)
+    assert v1
+    mesma = [{**a, "why": "a IA explicou de outro jeito"} for a in _acoes()]
+    assert _salva(store, candidate=True, learned_from="s2", replaces=v1, actions=mesma) is None
+    assert _linha(harness, v1)["status"] == "candidate"
+    assert harness.state.db.scalar("SELECT COUNT(*) FROM recipes") == 1   # type: ignore[union-attr]
+    # outro caminho de fato (outra rolagem) segue trocando
+    rolando = [{**a, "scroll": {"direction": "down", "max": 4}} for a in _acoes()]
+    v2 = _salva(store, candidate=True, learned_from="s3", replaces=v1, actions=rolando)
+    assert v2 and _linha(harness, v1)["status"] == "superseded"
+
+
 async def test_ativas_que_ja_existiam_continuam_ativas(harness: Harness) -> None:
     db = harness.state.db                                                   # type: ignore[union-attr]
     # receita gravada antes desta mudança: INSERT sem status (o padrão da tabela é 'active')
@@ -200,6 +223,59 @@ async def test_sombra_ignora_leitura_de_tela_e_confere_o_texto_digitado(harness:
     # aparelho já no estado final (K-004): pronta sem nenhuma ação — nem concorda nem diverge
     rr = _compara(harness, [_d("step_done")])
     assert rr.diverged is None and rr.replayer is not None and not rr.replayer.exhausted
+
+
+# Caixa de entrada que só mostra o contato depois de rolar: e1 = a lista rolável, e2 = "QA-003", e3 = "QA-009".
+_LISTA = ('<hierarchy>'
+          '<node class="android.widget.ListView" resource-id="app:id/conversation_list" scrollable="true" bounds="[0,180][720,1100]"/>'
+          '<node class="android.widget.TextView" text="QA-003" resource-id="app:id/conversation_name" clickable="true" bounds="[0,200][700,260]"/>'
+          '{mais}</hierarchy>')
+_NO_TOPO = _LISTA.format(mais="")
+_ROLADA = _LISTA.format(mais='<node class="android.widget.TextView" text="QA-009" resource-id="app:id/conversation_name"'
+                             ' clickable="true" bounds="[0,320][700,380]"/>')
+# O que `distill` grava de uma IA que rolou uma vez antes de tocar: só a direção e o teto, nunca o contêiner.
+_ACOES_COM_ROLAGEM = [{"tool": "tap", "commit": False, "why": "abrir", "args": {},
+                       "selectors": [{"kind": "rid+text", "rid": "app:id/conversation_name", "text": "{recipient}"}],
+                       "scroll": {"direction": "down", "max": 4}}]
+
+
+def _compara_em_telas(harness: Harness, acoes: list[dict[str, Any]], passos: list[tuple[str, Decision]]) -> _RecipeRun:
+    """Como `_compara`, mas cada decisão da IA vem com a tela em que ela foi tomada (a rolagem muda a tela)."""
+    ex = harness.state.scheduler.executor                                   # type: ignore[union-attr]
+    rr = _RecipeRun(mode="shadow", replayer=Replayer(recipe_id=1, version=1, actions=acoes,
+                                                     variables={"recipient": "QA-009"}))
+    for xml, d in passos:
+        if rr.diverged:
+            break
+        ex._shadow_compare(rr, SimpleNamespace(tree=parse_hierarchy(xml)), d)
+    return rr
+
+
+async def test_sombra_compara_a_rolagem_pela_direcao_e_nao_pelo_conteiner(harness: Harness) -> None:
+    """A receita grava da rolagem só a direção (`distill`) e, reproduzida, rola a tela (`element_id: None`); a IA
+    quase sempre rola a LISTA — 158 das 174 rolagens concluídas pela IA no banco central (28/09) têm element_id.
+    Comparar o element_id marcava divergência justamente quando a IA fazia o caminho da receita: a candidata com
+    rolagem nunca era promovida, e cada execução limpa a trocava por uma cópia idêntica. E a direção, que a receita
+    grava, não era comparada."""
+    lista = parse_hierarchy(_NO_TOPO).elements[0]
+    assert (lista.id, lista.scrollable) == ("e1", True)
+    # a IA rolou a lista e tocou no contato que apareceu: é exatamente o caminho da receita
+    for conteiner in ("e1", None):
+        rr = _compara_em_telas(harness, _ACOES_COM_ROLAGEM, [
+            (_NO_TOPO, _d("scroll", direction="down", element_id=conteiner, expect_done=False)),
+            (_ROLADA, _d("tap", element_id="e3", x=None, y=None, is_commit_action=False)),
+            (_ROLADA, _d("step_done", evidence="conversa aberta"))])
+        assert rr.diverged is None, conteiner
+        assert rr.replayer is not None and rr.replayer.exhausted
+    # para o outro lado: reproduzida, a receita rolaria para baixo
+    assert _compara_em_telas(harness, _ACOES_COM_ROLAGEM,
+                             [(_NO_TOPO, _d("scroll", direction="up", element_id=None))]).diverged
+    # rolar onde a receita não rola (ação gravada sem rolagem) continua divergência
+    sem_rolagem = [{k: v for k, v in _ACOES_COM_ROLAGEM[0].items() if k != "scroll"}]
+    assert _compara_em_telas(harness, sem_rolagem, [(_NO_TOPO, _d("scroll", direction="down", element_id="e1"))]).diverged
+    # rolar além do teto da receita também
+    assert _compara_em_telas(harness, _ACOES_COM_ROLAGEM,
+                             [(_NO_TOPO, _d("scroll", direction="down", element_id="e1"))] * 5).diverged
 
 
 async def test_veredito_por_execucao_comprovada_no_meio_da_receita_e_divergencia(harness: Harness) -> None:
@@ -330,3 +406,69 @@ async def test_com_promocao_ligada_as_ativas_de_antes_seguem_reproduzindo(harnes
     assert {r["status"] for r in _receitas(harness).values()} == {"active"}
     assert harness.state.db.scalar(                                         # type: ignore[union-attr]
         "SELECT COUNT(*) FROM recipes WHERE status IN ('candidate','superseded')") == 0
+
+
+# ================================================================== rolagem, de ponta a ponta
+@dataclass
+class _CaixaQueRola(FakeQaDevice):
+    """Caixa de entrada cheia: o contato da execução (QA-001) só entra na tela depois de rolar a lista."""
+    rolou: bool = False
+
+    def _build(self) -> list[Node]:
+        nodes = super()._build()
+        if self.screen == "home" and not self.rolou:
+            nodes = [n for n in nodes if n.text != "QA-001"]
+        return nodes
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int) -> None:
+        super().swipe(x1, y1, x2, y2, duration_ms)
+        self.rolou = True
+
+
+class _IaQueRolaALista(SimulatedProvider):
+    """Como a IA real, rola o CONTÊINER da lista (element_id). O simulado rola a tela (`element_id=None`), igual à
+    reprodução da receita — e por isso a suíte não via a falsa divergência."""
+
+    async def decide(self, req: Any) -> Any:
+        decisao, uso = await super().decide(req)
+        if decisao.tool == "scroll":
+            lista = next(e.id for e in req.screen.tree.elements if e.scrollable)
+            decisao = Decision(tool="scroll", args={**decisao.args, "element_id": lista})
+        return decisao, uso
+
+
+async def test_candidata_com_rolagem_e_promovida_quando_a_ia_rola_a_lista(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 4, factory=lambda rt: _CaixaQueRola(account=f"qa-user-{rt.index:02d}"))
+    h.ai = CountingProvider(_IaQueRolaALista())
+    await h.boot()
+    try:
+        h.cfg.file.ai.recipes = "replay"
+        h.cfg.file.ai.recipes_promote_after = 2
+        db = h.state.db                                                     # type: ignore[union-attr]
+        chave = "open_conversation"
+
+        assert (await h.wait_run(h.run(["android-01"]).id)).status == "completed"
+        v1 = db.one("SELECT * FROM recipes WHERE step_key=?", (chave,))
+        assert v1["status"] == "candidate"
+        assert loads(v1["actions"])[0]["scroll"]["direction"] == "down"      # a IA rolou antes de tocar no contato
+
+        # 2ª e 3ª: a IA rola a lista (com element_id) e toca no contato — o caminho da receita, duas vezes seguidas
+        for iid in ("android-02", "android-03"):
+            r = await h.wait_run(h.run([iid]).id)
+            assert r.status == "completed", iid
+            assert "swipe" in h.fakes[iid].calls, iid
+        linhas = db.query("SELECT id, version, status FROM recipes WHERE step_key=?", (chave,))
+        # promovida a MESMA receita, sem nenhuma cópia trocada no caminho
+        assert [(x["id"], x["version"], x["status"]) for x in linhas] == [(v1["id"], 1, "active")]
+        assert db.scalar("SELECT COUNT(*) FROM recipes WHERE status='superseded'") == 0
+
+        # 4ª: reproduzida sem IA — a receita rola a tela até o contato aparecer e toca nele
+        h.ai.calls.clear()
+        r4 = await h.wait_run(h.run(["android-04"]).id)
+        assert r4.status == "completed"
+        assert h.ai.count("decide", step=chave) == 0
+        assert _driven(h, r4.id)[chave] == "recipe"
+        assert "swipe" in h.fakes["android-04"].calls
+    finally:
+        if h.state is not None:
+            await h.state.stop()
