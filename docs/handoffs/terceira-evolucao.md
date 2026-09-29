@@ -16,8 +16,33 @@ mecanismo (`scripts/claude-plan-100.py`).
 - **Números reservados:** Fases 23–27; ADR-056 a ADR-059; K-062 em diante; migrações 056 (saídas de etapa), 057
   (rede por aparelho) e 058 (reserva); adendo do contrato v0.41 em diante. Antes de usar, confira em todos os
   branches (`git for-each-ref`): outras sessões numeram em paralelo.
-- **Estado desta etapa:** só planejamento. Nenhum código, nenhum aparelho tocado, nenhuma chamada paga. Todos os
-  itens das Fases 23–27 estão pendentes e `not_run`.
+- **Execução em andamento desde 29/09 ~17:30Z** (o planejamento foi `9c4a934`/`2a822b6`). Integração em
+  `claude/evolucao3` (worktree `.claude/worktrees/evo3`); a Fase 28 foi acrescentada pelo 26.8. O estado de cada
+  frente está na seção "Estado por frente", logo abaixo; o de cada item, só pelo mecanismo.
+
+## Estado por frente (atualizado em 29/09 ~19:40Z)
+
+| Frente | Itens | Estado real | Prova |
+|---|---|---|---|
+| Contratos (Onda 0) | C1–C5, 23.1 | commitado `aad3b0d`; **implantado** em `99fc90a` (central e agente do notebook em `0.1.0+99fc90a`, migração 057, `/api/health` ok) | `simulated` (297 testes); migrações ensaiadas numa cópia do banco real (`data/backups/20260929-154437`) e aplicadas no deploy: `real` |
+| A. Distribuição | 23.2, 23.3, 23.12, 25.10 | 23.3 feito (`45bd8ea`, registrado). 23.2 **bloqueado por defeito técnico em investigação**: Outlook 5.2635.3 importado (`c-20260929184859-0fe853`, depois da correção do inspetor implantada), assinatura aprovada; o canário no android-02 falhou e a versão foi para a **quarentena**: o processo `qemu-system-x86_64-headless.exe` do emulador cai com `0xc0000005` em código sem módulo ao abrir o Outlook (4 quedas: 15:56, 16:03, 16:10, 16:15 locais; convidado com 780–860 MB livres, então não é falta de RAM do convidado). `-feature -Vulkan` não pegou; `gpu_mode: angle_indirect` também caiu; o reparo levou o android-02 (QA) ao `reset`. `config.yaml` restaurado. Em teste: o binário COM janela (android-11). 25.10: WireGuard e sing-box no catálogo, `installable`, instalados no android-05; falta canário e promoção | 23.3 `simulated`; 23.2 `real` até o canário (falho) |
+| B1. Sessão por conta | 23.4, 23.5, 23.6 | em implementação (workflow `wf_3f3d07a0-057`, worktree `evo3-b1`) | — |
+| B2. Cofre e painel de contas | 23.9, 23.10 | em implementação (`evo3-b2`) | — |
+| Contas reais | 23.7, 23.8, 23.11, 23.13 | esperam 23.2 (o Outlook precisa abrir num aparelho) e a integração de B | — |
+| C1. Plano e roteamento | 24.1, 24.2, 24.5, 24.8, 24.6 | em implementação (`evo3-c1`) | — |
+| C2. Execução entre apps | 24.3, 24.4, 24.7 | em implementação (`evo3-c2`) | — |
+| Prova entre apps | 24.9 | espera C1, C2 e 23.13 | — |
+| D0. Medição do cliente | 25.1 | **feito** (17:49–18:39Z, android-05): sing-box recomendado (único que compõe VPN + proxy); receita automatizável e limitações em `data/rede/piloto/medicao-25.1.md` (fora do Git) | `real` |
+| D1. Rede, núcleo | 25.2, 25.3 | em implementação (`evo3-d1`); 25.4–25.7 na onda seguinte, com a receita do 25.1 | — |
+| D3. Painel Rede | 25.8 | em implementação (`evo3-d3`) | — |
+| D. Implantação em ondas | 25.9 | espera 25.4–25.8 | — |
+| E. Pedidos persistentes | 26.1–26.8 | **feito** (`ef99388`, registrado): desenho completo e Fase 28 (13 itens) no plano | `not_run` (pesquisa e desenho) |
+| V. Aceite | 27.1–27.3 | 27.1 depois da Onda 1; 27.2 espera rede, Outlook e comando no mesmo aparelho | — |
+
+Achados da medição 25.1 que o 25.4 tem de tratar: o servidor do piloto expõe o loopback do central a quem está no
+túnel (regras de rota têm de recusar loopback e faixas privadas); o `restart` da plataforma não faz `sync` e perdeu
+um perfil importado; uma queda do cliente gravou a chave privada do PILOTO num relatório de falha no armazenamento
+externo do android-05 (chaves do piloto descartáveis; apagar o arquivo na próxima provisão).
 
 ## Decisões do dono tomadas nesta etapa (29/09)
 
@@ -95,7 +120,7 @@ entrega (`resultado.json` do mecanismo).
 
 1. **Fase 22**: integrada em `origin/main` (`de03a4c`) e implantada (`b34e2f6`) enquanto este plano era feito. A
    dependência está resolvida; todas as frentes partem do SHA dos contratos (Onda 0).
-2. **Onda 0**: contratos C1–C5 e 23.1 num commit do coordenador.
+2. **Onda 0**: contratos C1–C5 e 23.1 num commit do coordenador — **feito** (`aad3b0d`, implantado em `99fc90a`).
 3. **Onda 1, em paralelo, prova `simulated`**: B (23.4–23.6, 23.9, 23.10), C (24.1–24.8), D1–D3 (25.2–25.6, 25.8),
    E (26.x), V (27.1). Em paralelo, com o dono: 23.2, 23.7, 25.1, 25.10.
 4. **Integração**: contratos → contas → comando entre apps → rede → painel. Suíte inteira uma vez, em segundo
@@ -199,6 +224,14 @@ branch `claude/evo3-<frente>` entra no `claude/evolucao3` na ordem contratos →
 
 ## Próxima ação
 
-1. Com o dono: P3 (Outlook e cliente VPN no android-11), P2 ou P1 (endpoint para o piloto de rede), P4 e P5.
-2. Onda 0 pelo coordenador: contratos C1–C5 e o item 23.1.
-3. Onda 1 pela esteira (`plano-100`), bloco a bloco, com os arquivos reservados acima.
+1. **Coordenador, agora:** fechar a causa da queda do emulador com o Outlook (23.2). Teste em curso: o binário com
+   janela (android-11). Se só o headless cai, o caminho é janela nos aparelhos que rodam o Outlook ou outra
+   solução medida; se todos caem, registrar o bloqueio com a evidência e seguir com o resto.
+2. **Onda 1 (em curso):** quando o workflow `wf_3f3d07a0-057` terminar, revisar o diff de cada frente, integrar em
+   `claude/evolucao3` na ordem B → C → D, rodar a suíte inteira uma vez em segundo plano e prioridade ociosa, e
+   registrar os itens pelo `aplicar`.
+3. **Onda 2:** 25.4–25.7 no `evo3-d1` com a receita do 25.1 e as três limitações acima; depois deploy, 25.9 em
+   ondas (android-05, android-02, um remoto; conta real só com a autorização P7 já dada, um por vez).
+4. **Contas reais, depois do 23.2 destravado:** 23.7 (observação), 23.8, 23.11 (contas das 3 ativas, clone da senha),
+   23.12, 23.13, 24.9 e 27.2, com a IA paga pontual autorizada (até US$ 1,50).
+5. **Registrar 25.1** pelo `aplicar` (`real`) e levar a medição para o relatório de validação.

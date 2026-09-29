@@ -6,7 +6,10 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
-- **Terceira evolução (29/09, noite): PLANEJADA, nada implementado.** Pedido do dono: Outlook em todos os perfis com
+- **Terceira evolução (29/09, noite): EM EXECUÇÃO.** Onda 0 implantada em `99fc90a` (central e agente do
+  notebook); 23.1, 23.3, 25.1 (real) e 26.1–26.8 feitos; Onda 1 (seis frentes) em implementação; 23.2 bloqueado por
+  queda do emulador ao abrir o Outlook, em investigação. Estado por frente em
+  [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md#estado-por-frente-atualizado-em-2909-1940z). Pedido do dono: Outlook em todos os perfis com
   as contas vinculadas, comando que atravessa vários apps, VPN e proxy por aparelho com IP de saída medido, e a
   pesquisa de pedidos persistentes. Diagnóstico e desenho em [design/terceira-evolucao.md](design/terceira-evolucao.md);
   coordenação, arquivos reservados, dependências e pendências em

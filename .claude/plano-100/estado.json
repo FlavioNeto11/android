@@ -3688,6 +3688,21 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T18:03:27+00:00"
+  },
+  "25.1": {
+   "id": "25.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "29/09 17:49–18:39Z, central (backend b34e2f6), android-05: WireGuard e sing-box instalados pela plataforma (c-20260929175405-31bf0d, c-20260929175430-c2940e), ACTIVATE_VPN por appops sem diálogo, always-on + lockdown valem após reboot (vazamento bloqueado como uid 2000), persistência em restart e hibernate/wake, adb e GET /hierarchy vivos, IP de saída = central (sem provedor), cobertura por UID via dumpsys netstats, UDP e DNS pelo túnel, composição VPN+proxy autenticado só no sing-box (log do servidor 18:31:20). Escolha: sing-box. Relatório data/rede/piloto/medicao-25.1.md (fora do Git)",
+   "blocker": "",
+   "arquivos": [],
+   "testes": "medição real no aparelho; sem teste automatizado (item de medição)",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T19:34:32+00:00"
   }
  },
  "rodadas": [
@@ -4235,6 +4250,15 @@
     "26.8",
     "23.1",
     "23.3"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
+   ]
+  },
+  {
+   "quando": "2026-09-29T19:34:32+00:00",
+   "itens": [
+    "25.1"
    ],
    "grupos": [
     "evolucao3-coordenador"

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-193 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+194 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -221,7 +221,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 24.7 | pendente | — | — | — |  |  |
 | 24.8 | pendente | — | — | — |  |  |
 | 24.9 | pendente | — | — | — |  |  |
-| 25.1 | pendente | — | — | — |  |  |
+| 25.1 | implemented | real |  | — | 29/09 17:49–18:39Z, central (backend b34e2f6), android-05: WireGuard e sing-box instalados pela plataforma (c-20260929175405-31bf0d, c-20260929175430-c2940e), ACTIVATE_VPN por appops sem diálogo, always-on + lockdown va… |  |
 | 25.2 | pendente | — | — | — |  |  |
 | 25.3 | pendente | — | — | — |  |  |
 | 25.4 | pendente | — | — | — |  |  |
@@ -260,7 +260,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (60): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 25.1, 25.2, 25.3, 25.4, 25.5, 25.6, 25.7, 25.8, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
+Pendentes (59): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 25.2, 25.3, 25.4, 25.5, 25.6, 25.7, 25.8, 25.9, 25.10, 27.1, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
