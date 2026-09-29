@@ -441,3 +441,30 @@ async def test_teto_de_aparelhos_entra_e_sai_pela_tela_limites_sem_ir_para_o_age
             assert (await c.put(f"/api/servers/{host}/limits", json={"max_devices": 0})).status_code == 422
     finally:
         await h.crash()
+
+
+
+def test_apagar_avd_com_arquivo_somente_leitura(tmp_path: Path) -> None:
+    """29/09, android-17: o `DELETE /api/instances/android-17` recusou com `avd_nao_apagado` (WinError 5) porque o
+    emulador deixou `data/misc/pstore/pstore.bin` somente-leitura. O apagar libera a escrita e termina."""
+    import os
+    import stat
+
+    from app.devices.avd import AvdManager
+
+    class _Cfg:
+        avd_home = tmp_path
+
+    pasta = tmp_path / "android-99.avd" / "data" / "misc" / "pstore"
+    pasta.mkdir(parents=True)
+    preso = pasta / "pstore.bin"
+    preso.write_bytes(b"x")
+    os.chmod(preso, stat.S_IREAD)
+    (tmp_path / "android-99.avd" / "config.ini").write_text("x", encoding="utf-8")
+    ini = tmp_path / "android-99.ini"
+    ini.write_text("x", encoding="utf-8")
+    os.chmod(ini, stat.S_IREAD)
+    gerente = AvdManager.__new__(AvdManager)
+    gerente.cfg = _Cfg()  # type: ignore[assignment]
+    assert gerente.delete("android-99") is True
+    assert not (tmp_path / "android-99.avd").exists() and not ini.exists()

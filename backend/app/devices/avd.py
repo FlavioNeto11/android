@@ -2,8 +2,11 @@
 esse diretório É o isolamento (dados de apps, contas e sessões) e persiste entre reinícios."""
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import stat
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -106,8 +109,9 @@ class AvdManager:
         havia = pasta.exists() or ini.exists()
         try:
             if pasta.exists():
-                shutil.rmtree(pasta)
+                _apagar_arvore(pasta)
             if ini.exists():
+                _liberar_escrita(ini)
                 ini.unlink()
         except OSError as exc:
             # Arquivo preso (emulador ainda com a partição aberta, antivírus): a instância NÃO pode ser dada como
@@ -168,3 +172,27 @@ class AvdManager:
                 out.append(ln)
         out.extend(f"{k}={v}" for k, v in overrides.items() if k not in seen)
         path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def _liberar_escrita(caminho: Path | str) -> None:
+    """Tira o somente-leitura de um arquivo. No Windows o emulador deixa arquivos assim na partição do AVD
+    (`data/misc/pstore/pstore.bin`, visto ao aposentar o android-17 em 29/09): `rmtree` falha com WinError 5 e a
+    instância não pode ser dada como aposentada com o AVD no disco."""
+    try:
+        os.chmod(caminho, stat.S_IWRITE | stat.S_IREAD)
+    except OSError:
+        pass
+
+
+def _apagar_arvore(pasta: Path) -> None:
+    """`shutil.rmtree` que, num arquivo somente-leitura, libera a escrita e tenta de novo uma vez. Só stdlib: este
+    módulo vai para o agente do notebook (`worker-manifest.txt`)."""
+    def _de_novo(funcao: object, caminho: str, _exc: object) -> None:
+        _liberar_escrita(caminho)
+        if callable(funcao):
+            funcao(caminho)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(pasta, onexc=_de_novo)
+    else:  # pragma: no cover - o agente do notebook pode estar num Python mais antigo
+        shutil.rmtree(pasta, onerror=_de_novo)
