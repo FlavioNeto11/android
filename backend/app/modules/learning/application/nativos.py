@@ -290,9 +290,11 @@ class SombraDosFluxos:
     def _texto_do_nascimento(self, fluxo: FluxoEmProva, simulada: bool) -> str:
         inicio = (f"Fluxo “{fluxo.id}” aprendido como candidato (D1): ainda não é reaproveitado — a IA segue "
                   "planejando este comando e o plano novo é comparado com ele")
+        # A simulada deixa evidência, mas `veredito_de_repeticao` só conta a real: a que o gerou não entra, e faltam
+        # as `1 + concordancias` reais inteiras (antes dizia "só uma pessoa o publica", e as reais o publicavam).
+        n = max(0, int(self._concordancias())) + (1 if simulada else 0)
         if simulada:
-            return inicio + ". Execução simulada não é prova: só uma pessoa o publica"
-        n = max(0, int(self._concordancias()))
+            inicio += ". Execução simulada não é prova (a que o gerou não conta)"
         quando = f"depois de mais {n} execução(ões) real(is) com o mesmo plano" if n else "já com esta execução"
         if fluxo.efeito:
             return inicio + f"; {quando} ele fica validado, e o dono o publica (tem etapa de efeito externo)"

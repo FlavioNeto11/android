@@ -233,6 +233,20 @@ def test_candidato_nascido_de_execucao_simulada_nunca_e_publicado_pelo_sistema(m
     assert mundo.status(flow_id) == "candidate"
 
 
+def test_candidato_nascido_de_execucao_simulada_vale_depois_das_reais_que_o_texto_promete(mundo: Mundo) -> None:
+    """A simulada não conta, nem a que o gerou: faltam as `1 + concordancias` reais inteiras — e é isso que a linha do
+    tempo diz (antes dizia "só uma pessoa o publica", e as execuções reais o publicavam)."""
+    flow_id = mundo.roda("r-1", "@nasa", simulada=True)
+    assert flow_id
+    [nascimento] = [t for r, t in mundo.decisoes if r == "r-1"]
+    assert "a que o gerou não conta" in nascimento and "depois de mais 2 execução(ões) real(is)" in nascimento
+    assert "só uma pessoa" not in nascimento
+    mundo.roda("r-2", "@spacex")
+    assert mundo.status(flow_id) == "candidate"                              # 1 real: falta outra
+    mundo.roda("r-3", "@esa", aparelho="android-02")
+    assert mundo.status(flow_id) == "active"
+
+
 def test_execucao_que_nao_serve_de_comparacao_nao_deixa_evidencia(mundo: Mundo) -> None:
     flow_id = mundo.roda("r-1", "@nasa")
     assert flow_id
