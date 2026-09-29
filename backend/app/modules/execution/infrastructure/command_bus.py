@@ -193,16 +193,26 @@ class DespachoCommandBus:
         provedor = s.sessoes.for_package(pacote_do_app)
         if provedor is None:                     # registrado no catálogo sem provedor montado nesta composição
             raise _Recusa(f"o app '{app_id}' não tem provedor de sessão nesta instalação")
+        # A conta da persona NAQUELE app (item 23.4): é a dela que o provedor abre e grava — a dita no pedido, se for
+        # daquele app, senão a do perfil no pacote. Sem conta ali, não há sessão a conectar nem a verificar.
+        conta_id = params.get("account_id")
+        if conta_id and s.social_repo.pacote_da_conta(perfil, conta_id) != pacote_do_app:
+            raise _Recusa(f"a conta '{conta_id}' não é da persona no app '{app_id}'")
+        if not conta_id:
+            conta = s.social_repo.conta_do_pacote(perfil, pacote_do_app)
+            if conta is None:
+                raise _Recusa(f"a persona não tem conta no app '{app_id}'; cadastre a conta antes de conectar")
+            conta_id = str(conta["id"])
         if verb == "session.verify":
-            return (lambda: provedor.ensure_session(rt, perfil, observe_only=True),
-                    "verificação da sessão (recurso)", {"profile_id": perfil, **trilha})
+            return (lambda: provedor.ensure_session(rt, perfil, account_id=conta_id, observe_only=True),
+                    "verificação da sessão (recurso)", {"profile_id": perfil, "account_id": conta_id, **trilha})
         if not s.sensitive_input.available():
             # A mesma recusa da porta de sessão (achado #105): sem o canal sensível comprovado, o login iria digitar o
             # usuário e parar na senha.
             raise _Recusa("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                           "não comprovado)")
-        return (lambda: provedor.ensure_session(rt, perfil, automatic=True), "conexão da sessão (recurso)",
-                {"profile_id": perfil, **trilha})
+        return (lambda: provedor.ensure_session(rt, perfil, account_id=conta_id, automatic=True),
+                "conexão da sessão (recurso)", {"profile_id": perfil, "account_id": conta_id, **trilha})
 
 
 

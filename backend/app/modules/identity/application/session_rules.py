@@ -8,12 +8,20 @@ aplicam a MESMA regra, daqui.
 
 O corpo veio literal; só ganhou tipos. `status` é texto: `models.SessionStatus` e o `SessionStatus` do domínio são
 `StrEnum`, então comparar e formatar pelo valor dá o mesmo resultado com qualquer um dos dois.
+
+Escopo do desafio (item 23.5, decisão do dono P9 de 29/09, ADR-057): `aplicar_desafio` é a porta única dos dois
+chamadores. No app ÂNCORA (o que provê a conta do perfil) nada mudou: a conta travada bloqueia a persona e põe o
+aparelho em quarentena, o código e a verificação só pedem uma pessoa. Em QUALQUER OUTRO app (o Outlook é o primeiro),
+o desafio para só a conta daquele app — a credencial dela vai a `review` — e a persona e a conta âncora seguem; a conta
+travada de verdade mantém a quarentena do aparelho (ADR-055), porque a conta morta continua logada na tela.
 """
 from __future__ import annotations
 
+from typing import Protocol
+
 from app.modules.identity.domain.resources import CredentialState, SessionStatus
 
-from .ports import EventSink, ProfileStore, QuarentenaDeContas
+from .ports import CredenciaisDaConta, EventSink, ProfileStore, QuarentenaDeContas
 
 #: Estados de sessão que só uma pessoa resolve — os mesmos que `state.py` usa para bloquear o agendador automático.
 #: É o que decide quando o evento dedicado da fila "Aguardando intervenção" dispara.
@@ -29,9 +37,11 @@ CREDENCIAL_EM_REVISAO: str = CredentialState.review.value
 
 def motivo_do_login_parado(app_label: str) -> str:
     """O que a pessoa lê no item bloqueado e na sessão quando o login automático parou (ADR-055)."""
+    # A verificação na lista: desde o 23.5 o desafio num app que não é o âncora também põe a credencial em `review`,
+    # e a porta de OUTRO aparelho mostra esta frase sem ter visto a tela.
     return (f"o login automático no {app_label} está parado até uma pessoa olhar a conta no aparelho (um envio de "
-            "senha sem sucesso, ou o teto diário de logins); use Conectar no perfil para tentar de novo, ou guarde a "
-            "senha outra vez")
+            "senha sem sucesso, uma verificação pedida na conta, ou o teto diário de logins); use Conectar no perfil "
+            "para tentar de novo, ou guarde a senha outra vez")
 
 
 def motivo_do_bloqueio_por_desafio(app_label: str) -> str:
@@ -45,7 +55,9 @@ def motivo_do_bloqueio_por_desafio(app_label: str) -> str:
 
 def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str, instance_id: str,
                          anterior_status: str | None, detail: str | None, app_label: str) -> bool:
-    """A conta caiu num desafio de segurança do app (hoje, o Instagram): o PERFIL passa a `blocked` sozinho (ADR-029).
+    """A conta do app ÂNCORA caiu num desafio de segurança: o PERFIL passa a `blocked` sozinho (ADR-029). Só para a
+    âncora (item 23.5): o desafio noutro app para só aquela conta (`parar_conta_por_desafio`); quem escolhe é
+    `aplicar_desafio`.
 
     Decisão do dono de 27/09/2026: o aviso de verificação na tela é a prova de que a conta travou — das oito contas
     reais, as cinco que mostraram o aviso não voltaram. Antes, o desafio só punha a sessão em "precisa de pessoa"
@@ -87,13 +99,15 @@ ORIGEM_OBSERVADA = "observado"
 
 
 def registrar_conta_travada(repo: object, bus: EventSink, *, profile_id: str, instance_id: str, handle: str,
-                            evidencia: str, visto_por: str) -> bool:
+                            evidencia: str, visto_por: str, app_id: str | None = None) -> bool:
     """Leva a conta travada à quarentena do repositório social, quando ele a tem (ADR-055). Devolve se o marcador
     nasceu agora.
 
     A quarentena (`QuarentenaDeContas`) é do pacote que chega em paralelo a este: sem ela, nada muda — o bloqueio do
     perfil (ADR-029) quem chama já aplicou. `evidencia` é o trecho da tela que casou (a frase de verificação, nunca um
-    código); `visto_por` diz quem leu a tela (o motor de sessão ou a execução).
+    código); `visto_por` diz quem leu a tela (o motor de sessão ou a execução). `handle` e `app_id` são os da CONTA
+    que travou (item 23.4): o @ daquele app e o app dele — sem `app_id`, a quarentena acha a conta pelo @. A conta
+    de outro app que não o âncora entra em quarentena sem bloquear a persona (item 23.5, `marcar_conta_travada`).
 
     Nunca levanta. Na revisão do pacote, a quarentena real recusou a origem (`ValueError`) e o erro subiu por
     `SessaoDeclarada._save` — o `ensure_session` estourava antes do evento da fila "Aguardando intervenção" e do aviso
@@ -103,7 +117,7 @@ def registrar_conta_travada(repo: object, bus: EventSink, *, profile_id: str, in
         return False
     try:
         return repo.marcar_conta_travada(instance_id, handle, evidencia, ORIGEM_OBSERVADA, visto_por=visto_por,
-                                         profile_id=profile_id)
+                                         profile_id=profile_id, app_id=app_id)
     except Exception as exc:  # noqa: BLE001 - a quarentena falhar não pode calar o desafio (ver acima)
         bus.emit("log", f"{instance_id}: a conta @{handle} está travada, mas o marcador de quarentena do aparelho "
                         f"não pôde ser gravado ({type(exc).__name__}: {exc}): o aparelho NÃO entrou em quarentena. "
@@ -113,24 +127,99 @@ def registrar_conta_travada(repo: object, bus: EventSink, *, profile_id: str, in
         return False
 
 
+class RepositorioDoDesafio(ProfileStore, CredenciaisDaConta, Protocol):
+    """O que `aplicar_desafio` usa do repositório: o perfil (âncora) e a credencial da conta (outro app)."""
+
+
+def motivo_do_desafio_na_conta(app_label: str) -> str:
+    """Por que o login automático de UMA conta parou num desafio de outro app que não o âncora (item 23.5). Não é o
+    `motivo_do_login_parado`: o desafio pode ter sido lido antes de qualquer envio de senha."""
+    return (f"o {app_label} pediu verificação de segurança (ou um código) nesta conta; o login automático dela está "
+            "parado até uma pessoa resolver a tela no aparelho — a persona e as contas dela nos outros apps seguem. "
+            "Use Conectar na conta depois de resolver, ou guarde a senha outra vez")
+
+
+def parar_conta_por_desafio(repo: CredenciaisDaConta, bus: EventSink, *, profile_id: str, account_id: str,
+                            instance_id: str, handle: str, detail: str | None, app_label: str) -> bool:
+    """O desafio num app que não é o âncora para SÓ a conta daquele app (item 23.5, P9): a credencial dela vai a
+    `review` (ADR-055), que a porta de sessão e o motor já respeitam em todos os aparelhos. Devolve se parou agora.
+
+    - O perfil (`blocked`) não é tocado: a persona e a conta âncora dela seguem trabalhando.
+    - Credencial já em `review` ou `invalid` fica como está: já não há login automático, e `invalid` (senha recusada)
+      diz mais que `review`. Sem credencial, não há login automático a parar — a sessão em `auth_challenge` e o
+      evento da fila já chamam a pessoa.
+    - Soltar é o de sempre da `review`: guardar a senha de novo ou um login que confirma a conta (o "Conectar").
+    - Limite conhecido, o mesmo do código no âncora: a sessão já pronta da conta noutro aparelho segue valendo;
+      `review` para o LOGIN, não a sessão aberta."""
+    cred = repo.account_credential_row(profile_id, account_id)
+    if cred is None or cred["status"] in (CREDENCIAL_EM_REVISAO, CredentialState.invalid.value):
+        return False
+    repo.mark_account_credential(profile_id, account_id, status=CREDENCIAL_EM_REVISAO)
+    conta = handle.strip().lstrip("@")
+    bus.emit("log", f"{instance_id}: conta {conta} — {motivo_do_desafio_na_conta(app_label)}", level="error",
+             instance_id=instance_id,
+             data={"profile_id": profile_id, "account_id": account_id, "reason": "desafio_na_conta",
+                   "detail": (detail or "")[:300]})
+    return True
+
+
+def aplicar_desafio(repo: RepositorioDoDesafio, bus: EventSink, *, profile_id: str, account_id: str,
+                    app_id: str | None, handle: str, ancora: bool, travada: bool, instance_id: str,
+                    anterior_status: str | None, detail: str | None, evidencia: str, app_label: str,
+                    visto_por: str) -> None:
+    """A regra única do desafio visto numa conta (item 23.5): o motor de sessão (`SessaoDeclarada._save`) e a tela
+    que desmente a sessão no meio de uma execução (`AppState._sessao_desmentida`) chamam daqui, e não divergem.
+
+    `travada` = conta travada (ADR-055) ou desafio sem subtipo (regra declarada por sinal, que sempre valeu como
+    trava); o contrário é o código de login/2FA ou a verificação relatada pela IA. `anterior_status` é o da sessão
+    desta conta neste aparelho ANTES da gravação.
+
+    - App âncora (comportamento de sempre): a trava bloqueia o perfil (ADR-029) e marca a quarentena na entrada do
+      estado ou quando o bloqueio acabou de acontecer; código e verificação só pedem uma pessoa.
+    - Outro app (P9): qualquer desafio para só a conta daquele app (`parar_conta_por_desafio`). A trava marca a
+      quarentena do aparelho sem bloquear a persona (`marcar_conta_travada` só bloqueia o perfil pela conta âncora),
+      e sempre: o marcador é idempotente, e um código visto antes (sessão já em `auth_challenge`) não pode impedir a
+      quarentena da trava que aparece depois."""
+    if ancora:
+        if not travada:
+            return
+        # Sem o "anterior" no bloqueio: uma sessão parada num código não pode impedir o bloqueio quando a trava
+        # aparece depois; quem impede o aviso repetido é o próprio perfil já `blocked`.
+        bloqueou = bloquear_por_desafio(repo, bus, profile_id=profile_id, instance_id=instance_id,
+                                        anterior_status=None, detail=detail, app_label=app_label)
+        if bloqueou or anterior_status != SessionStatus.auth_challenge.value:
+            registrar_conta_travada(repo, bus, profile_id=profile_id, instance_id=instance_id, handle=handle,
+                                    app_id=app_id, evidencia=evidencia, visto_por=visto_por)
+        return
+    parar_conta_por_desafio(repo, bus, profile_id=profile_id, account_id=account_id, instance_id=instance_id,
+                            handle=handle, detail=detail, app_label=app_label)
+    if travada:
+        registrar_conta_travada(repo, bus, profile_id=profile_id, instance_id=instance_id, handle=handle,
+                                app_id=app_id, evidencia=evidencia, visto_por=visto_por)
+
+
 def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: str, status: str,
-                             anterior_status: str | None, detail: str | None) -> None:
+                             anterior_status: str | None, detail: str | None, account_id: str | None = None) -> None:
     """Evento dedicado da fila "Aguardando intervenção" (achado #106) — em vez de só `log`.
 
     Dispara na ENTRADA e na SAÍDA de um estado de sessão que só uma pessoa resolve (`auth_challenge`,
     `wrong_account`), nunca a cada classificação que só confirma o mesmo estado: senão cada tentativa
     automática que topa a mesma conta travada reenviaria o mesmo alerta, e devolver o controle (que já
     dispara a reobservação) nunca tiraria o item da fila. `data.active` diz se o perfil ENTROU (True) ou
-    SAIU (False) — é o que deixa o painel manter a fila ao vivo sem recarregar a página.
+    SAIU (False) — é o que deixa o painel manter a fila ao vivo sem recarregar a página. `data.account_id`
+    (quando quem chama sabe) diz de QUAL conta da persona é a sessão (item 23.4): as de apps diferentes não se
+    confundem na fila.
     """
     valor = str(status)
     entrando = valor in PRECISA_DE_PESSOA
     estava = anterior_status in PRECISA_DE_PESSOA
     if entrando == estava:
         return
+    dados: dict[str, object] = {"profile_id": profile_id, "instance_id": instance_id, "status": valor,
+                                "detail": detail, "active": entrando}
+    if account_id is not None:
+        dados["account_id"] = account_id
     bus.emit("session.needs_person",
              f"{instance_id}: o perfil {'passou a precisar' if entrando else 'deixou de precisar'} de "
              f"intervenção humana ({valor}) — {detail or 'sem detalhe'}", level="warn",
-             instance_id=instance_id,
-             data={"profile_id": profile_id, "instance_id": instance_id, "status": valor,
-                   "detail": detail, "active": entrando})
+             instance_id=instance_id, data=dados)

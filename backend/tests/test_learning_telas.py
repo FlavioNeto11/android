@@ -32,6 +32,7 @@ import httpx
 import pytest
 import yaml
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from app.automation import conhecimento_de_telas as telas
 from app.automation.hierarchy import RegraDeTelaSensivel, UiTree, parse_hierarchy
@@ -40,6 +41,7 @@ from app.db import Database
 from app.events import EventBus
 from app.integrations.app_declarado import conhecimento
 from app.integrations.app_declarado.sessao import ConferenciaDaSessao, Outcome, SessaoDeclarada
+from app.models import ProfileAccountCreate
 from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
@@ -629,6 +631,15 @@ def sessao_do_correio(mundo: Mundo, tmp_path: Path) -> Iterator[tuple[SessaoDecl
                              SensitiveInputChannel(lambda: True), bus)
     sessao.focus_poll_s = 0.01
     pid = cadastrar(social, username=USUARIO_DO_CORREIO, senha=SENHA_DO_CORREIO)
+    # A sessão é da CONTA do app (item 23.4): o motor do correio abre e confere a conta DO CORREIO da persona, não a
+    # conta âncora do cadastro.
+    if mundo.db.scalar("SELECT id FROM apps WHERE package=?", (CORREIO,)) is None:
+        mundo.db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('correio', 'Correio de Exemplo', ?, 0)",
+                         (CORREIO,))
+    social.add_account(pid, ProfileAccountCreate(app_id=str(mundo.db.scalar("SELECT id FROM apps WHERE package=?",
+                                                                            (CORREIO,))),
+                                                 handle=USUARIO_DO_CORREIO, password=SecretStr(SENHA_DO_CORREIO),
+                                                 consent=True))
     yield sessao, repo, pid
 
 

@@ -35,9 +35,8 @@ from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.identity.application.ports import SessionProvider
-from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, bloquear_por_desafio,
-                                                         emit_needs_person_change, motivo_do_login_parado,
-                                                         registrar_conta_travada)
+from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio,
+                                                         emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning.infrastructure import ligar_voz
@@ -264,10 +263,10 @@ class AppState:
         self.social_repo.session_max_age_s = cfg.file.contas.session_max_age_s
         # Teto do `unknown_streak` na GRAVAÇÃO (o mesmo que a porta de sessão lê): nenhuma releitura soma acima dele.
         self.social_repo.teto_de_reobservacao = lambda: self.settings.get().session_unknown_retry_cap
-        #: (perfil, aparelho) → quando começou a última releitura que a porta de sessão pediu para um teto velho de
-        #: `unknown_streak`. É a trava de UMA releitura por janela (entrada no ar do aparelho, validade): a releitura
+        #: (perfil, aparelho, conta) → quando começou a última releitura que a porta de sessão pediu para um teto velho
+        #: de `unknown_streak`. É a trava de UMA releitura por janela (entrada no ar do aparelho, validade): a releitura
         #: que quebra não grava nada, e sem a trava o tick seguinte a reagendaria para sempre (achado #104).
-        self._releituras_do_teto: dict[tuple[str, str], str] = {}
+        self._releituras_do_teto: dict[tuple[str, str, str], str] = {}
         # O pacote da conta vem do REGISTRO de apps (o app âncora do perfil, ADR-052 fatia 4), como no logout: é por
         # ele que o perfil diz se o app está no aparelho antes de oferecer Conectar.
         ancora = pacote_ancora()
@@ -751,11 +750,19 @@ class AppState:
         sessão usa: trocar um método dele troca para todos."""
         return self.provedor_do_perfil()
 
-    def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
-        n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)
+    def _invalidate_sessions(self, instance_id: str, motivo: str, package: str | None = None) -> None:
+        """Sem `package` é o disco do APARELHO (reset, troca de máquina: o gancho do gerenciador): a sessão de toda
+        conta de todo app ali deixa de valer. Com ele, só as contas daquele app (item 23.4): antes esta função
+        ignorava o app e invalidava sempre a âncora — atualizar o segundo app derrubava a sessão do primeiro e
+        deixava a dele de pé."""
+        if package is None:
+            n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo, todos_os_apps=True)
+            quem = "das contas deste aparelho"
+        else:
+            n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo, package=package)
+            quem = f"do {capabilities_of(package).label}"
         if n:
-            rotulo = capabilities_of(self.social_repo.app_package).label
-            self.bus.emit("log", f"{instance_id}: sessão do {rotulo} invalidada — {motivo}", level="warn",
+            self.bus.emit("log", f"{instance_id}: sessão {quem} invalidada — {motivo}", level="warn",
                           instance_id=instance_id)
 
     def _sessao_apos_mudanca_de_app(self, instance_id: str, package: str, motivo: str) -> None:
@@ -769,7 +776,7 @@ class AppState:
         """
         if not self.sessoes.has(package):
             return
-        self._invalidate_sessions(instance_id, motivo)
+        self._invalidate_sessions(instance_id, motivo, package)
 
     # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
     _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
@@ -787,7 +794,8 @@ class AppState:
         "wrong_account": SessionStatus.wrong_account,
     }
 
-    def _sessao_desmentida(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None) -> None:
+    def _sessao_desmentida(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None,
+                           package: str | None = None) -> None:
         """A tela do aparelho contradisse o que a sessão afirmava. O cache é corrigido, com evento.
 
         Só mexe em perfil VINCULADO àquele aparelho: aparelho sem perfil (o QA Messenger, o caminho antigo) não
@@ -796,9 +804,15 @@ class AppState:
         Qual perfil: o do OBJETIVO em curso no aparelho (é a conta dele que a tela contradisse); sem objetivo, o
         único vinculado. Com duas personas e nenhum objetivo, nada é desmentido — escolher uma seria inventar.
 
+        Qual CONTA (item 23.4): a da persona no app da tela — `package` quando quem viu diz, senão o app da etapa em
+        curso no aparelho, senão o app âncora (o chamador antigo). A persona sem conta naquele app não tem sessão ali
+        para desmentir. Antes era sempre a conta âncora: uma tela de senha do segundo app punha o primeiro em
+        `auth_required`.
+
         `subtipo` (ADR-055) só acompanha `auth_challenge`: `conta_travada` bloqueia o perfil e vai à quarentena;
         `codigo` (código de login/2FA) e `verificacao` (relatada pela IA) só pedem uma pessoa. Sem subtipo é o
-        chamador antigo, para quem desafio sempre foi conta travada (ADR-029).
+        chamador antigo, para quem desafio sempre foi conta travada (ADR-029). Isso na conta ÂNCORA; na conta de
+        outro app, qualquer desafio para só ela e a trava vai à quarentena sem bloquear a persona (item 23.5).
         """
         status = self._SESSAO_PELO_QUE_A_TELA_VIU.get(kind)
         if status is None:
@@ -807,7 +821,16 @@ class AppState:
             instance_id)
         if profile_id is None:
             return
-        atual = self.social_repo.session_row(profile_id, instance_id)
+        pacote = package
+        if pacote is None:
+            # Deduzido só vale se for de app com login gerenciado: é só desses que o executor desmente a sessão
+            # (`StepExecutor._sessao_desmentida`), e uma etapa de outro app não diz nada sobre a conta de ninguém.
+            em_curso = self._pacote_em_curso(instance_id)
+            pacote = em_curso if em_curso is not None and self.sessoes.has(em_curso) else self.social_repo.app_package
+        conta = self.social_repo.conta_do_pacote(profile_id, pacote, criar=True)
+        if conta is None:
+            return
+        atual = self.social_repo.account_session_row(profile_id, conta["id"], instance_id)
         anterior = atual["status"] if atual is not None else None
         travada = status is SessionStatus.auth_challenge and subtipo in (None, SUBTIPO_CONTA_TRAVADA)
         # A sessão já no mesmo estado não é notícia — EXCETO a trava: uma sessão parada num código (sem bloqueio) não
@@ -815,31 +838,50 @@ class AppState:
         if anterior == status.value and not travada:
             return
         if anterior != status.value:
-            self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
-                                         verified_at=to_iso(now()), detail=detail[:300])
+            self.social_repo.set_account_session(profile_id, conta["id"], instance_id, status=status,
+                                                 verified_at=to_iso(now()), detail=detail[:300])
             self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
                           level="warn", instance_id=instance_id,
-                          data={"profile_id": profile_id, "status": status.value, "subtipo": subtipo})
-        if travada:
-            # O mesmo bloqueio que o provedor de sessão aplica ao gravar (ADR-029): desafio visto no meio de uma
-            # execução é o mesmo aviso de conta travada. Sem o "anterior": quem impede o aviso repetido é o próprio
-            # perfil já `blocked` (ver acima o caso do código seguido da trava).
-            bloqueou = bloquear_por_desafio(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                            anterior_status=None, detail=detail[:300],
-                                            app_label=capabilities_of(self.social_repo.app_package).label)
-            if bloqueou or anterior != status.value:
-                # Protegida por dentro: a quarentena falhar não pode impedir o evento da fila logo abaixo (o `except`
-                # do executor engolia o erro, e o dono não era avisado).
-                perfil = self.social_repo.profile_row(profile_id)
-                registrar_conta_travada(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                        handle=str(perfil["username"] if perfil is not None else profile_id),
-                                        evidencia=detail[:300], visto_por="execução")
+                          data={"profile_id": profile_id, "account_id": conta["id"], "status": status.value,
+                                "subtipo": subtipo})
+        if status is SessionStatus.auth_challenge:
+            # A MESMA regra que o provedor de sessão aplica ao gravar (item 23.5, `session_rules.aplicar_desafio`):
+            # na conta âncora, a trava bloqueia o perfil (ADR-029) e vai à quarentena; na conta de outro app, qualquer
+            # desafio para só ela, e a trava vai à quarentena sem bloquear a persona (P9). A quarentena é protegida
+            # por dentro: falhar não pode impedir o evento da fila logo abaixo (o `except` do executor engolia o erro,
+            # e o dono não era avisado). A conta travada é a daquele app.
+            perfil = self.social_repo.profile_row(profile_id)
+            handle = str(conta["handle"] or (perfil["username"] if perfil is not None else "") or profile_id)
+            aplicar_desafio(self.social_repo, self.bus, profile_id=profile_id, account_id=str(conta["id"]),
+                            app_id=str(conta["app_id"]), handle=handle,
+                            ancora=self.social_repo.eh_pacote_ancora(profile_id, pacote), travada=travada,
+                            instance_id=instance_id, anterior_status=anterior, detail=detail[:300],
+                            evidencia=detail[:300], app_label=capabilities_of(pacote).label, visto_por="execução")
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
-                                 detail=detail[:300])
+                                 detail=detail[:300], account_id=str(conta["id"]))
+
+    def _pacote_em_curso(self, instance_id: str) -> str | None:
+        """O pacote do app da etapa que o worker deste aparelho executa agora (o dela, senão o do plano, senão o do
+        aparelho: `Scheduler._app_context`). `None` sem objetivo em curso ou sem app que se saiba."""
+        oid = self.scheduler._objetivo_do_worker.get(instance_id)  # noqa: SLF001 - o AppState é quem compõe o scheduler
+        rt = self.devices.devices.get(instance_id)
+        if oid is None or rt is None:
+            return None
+        try:
+            obj = self.repo.objective_row(oid)
+            run = self.repo.run_row(str(obj["run_id"]))
+            passo = (self.repo.step_row(rt.current.step_id)
+                     if rt.current is not None and rt.current.step_id else None)
+            if run is None:
+                return None
+            app, _ = self.scheduler._app_context(run, rt, passo["app_id"] if passo else None)  # noqa: SLF001
+        except KeyError:
+            return None
+        return app.package or None
 
     def _controle_devolvido(self, rt: DeviceRuntime) -> None:
         """Devolver o controle encerra o treinamento que estava gravando e reobserva a sessão do perfil."""
@@ -859,24 +901,34 @@ class AppState:
         do worker) e nunca compete com uma tarefa já em andamento.
 
         Com mais de uma persona no aparelho (vínculo N:N), reobserva CADA uma que esperava uma pessoa — num só
-        trabalho, em sequência, porque `run_device_job` é um por aparelho.
+        trabalho, em sequência, porque `run_device_job` é um por aparelho. E cada CONTA de app com login gerenciado
+        (item 23.4): a pessoa pode ter resolvido a tela do segundo app, e é a sessão dele que precisa ser relida,
+        pelo provedor dele.
         """
         if self.quarentena(rt.id) is not None:
             # Quarentena (ADR-055): quem devolve o controle acabou de olhar o desafio de uma conta travada. Reler a
             # sessão abriria o app dela de novo, fora de qualquer porta; o aparelho espera a decisão do dono.
             return
-        provedor = self.provedor_do_perfil()
-        if provedor is None:
-            return
-        perfis = [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(rt.id)
-                  if (s := self.social_repo.session_row(str(v["profile_id"]), rt.id)) is not None
-                  and s["status"] in self._SESSAO_PARA_REOBSERVAR]
-        if not perfis:
+        pendentes: list[tuple[SessionProvider, str, str]] = []
+        vistos: set[str] = set()
+        for v in self.social_repo.profiles_of_instance(rt.id):
+            pid = str(v["profile_id"])
+            if pid in vistos:
+                continue
+            vistos.add(pid)
+            for conta in self.social_repo.list_accounts(pid):
+                provedor = self.sessoes.for_package(self.social_repo.pacote_da_conta(pid, str(conta["id"])))
+                if provedor is None:
+                    continue
+                s = self.social_repo.account_session_row(pid, str(conta["id"]), rt.id)
+                if s is not None and s["status"] in self._SESSAO_PARA_REOBSERVAR:
+                    pendentes.append((provedor, pid, str(conta["id"])))
+        if not pendentes:
             return
 
         async def reobservar_todas() -> None:
-            for pid in perfis:
-                await provedor.ensure_session(rt, pid, observe_only=True)
+            for provedor, pid, conta_id in pendentes:
+                await provedor.ensure_session(rt, pid, account_id=conta_id, observe_only=True)
 
         self.scheduler.run_device_job(rt, reobservar_todas, label="reobservação após devolver o controle")
 
@@ -900,7 +952,8 @@ class AppState:
         """
         return sessao_vencida(session, self.social_repo.session_max_age_s)
 
-    def _porta_da_localidade(self, rt: DeviceRuntime, profile_id: str) -> tuple[str, Any | None] | None:
+    def _porta_da_localidade(self, rt: DeviceRuntime, profile_id: str,
+                             conta_id: str | None = None) -> tuple[str, Any | None] | None:
         """Antes da porta de sessão: os dados deste perfil ainda vivem NESTE aparelho? (item 4.4 / E9)
 
         A sessão do Instagram mora na partição de dados do aparelho, no disco de uma máquina. O vínculo fotografa
@@ -908,6 +961,10 @@ class AppState:
         PUT em `instances.worker_id` ou uma linha nova em `instances.external` reaponta o id para outro
         computador — e até aqui a sessão seguia `session_ready` em cache e a tarefa era despachada para um
         aparelho onde aquela conta nunca fez login.
+
+        O disco é um só para todos os apps (item 23.4): a troca derruba a sessão da conta que a porta confere
+        (`conta_id`; sem ele, a âncora) e a de toda outra conta da persona que tinha sessão NESTE aparelho — senão,
+        com `reauth_elsewhere`, a localidade nova é registrada e a porta do outro app nunca mais veria a troca.
 
         Devolve `None` quando não há nada a dizer (inclusive depois de invalidar, quando a política do perfil
         manda reautenticar noutro lugar: aí quem resolve é a porta de sessão, com a credencial do cofre).
@@ -934,11 +991,22 @@ class AppState:
         # A porta é consultada a cada volta do agendador enquanto o item estiver bloqueado. Reescrever a sessão e
         # emitir o mesmo aviso a cada tick encheria o histórico do aparelho com a mesma linha — o mesmo cuidado
         # que `_sessao_desmentida` já toma. Só o que MUDA é registrado.
-        atual = self.social_repo.session_row(profile_id, rt.id)
-        novidade = atual is None or atual["status"] != SessionStatus.unknown.value or atual["detail"] != detalhe
-        if novidade:
-            self.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
-                                         detail=detalhe)
+        if conta_id is None:
+            ancora = self.social_repo.conta_ancora(profile_id, criar=True)
+            conta_id = str(ancora["id"]) if ancora is not None else None
+        contas = [str(c["id"]) for c in self.social_repo.list_accounts(profile_id)
+                  if str(c["id"]) == conta_id
+                  or self.social_repo.account_session_row(profile_id, str(c["id"]), rt.id) is not None]
+        novidade = False
+        for cid in contas:
+            atual = self.social_repo.account_session_row(profile_id, cid, rt.id)
+            if atual is None or atual["status"] != SessionStatus.unknown.value or atual["detail"] != detalhe:
+                novidade = True
+                self.social_repo.set_account_session(profile_id, cid, rt.id, status=SessionStatus.unknown,
+                                                     detail=detalhe)
+        if not contas:
+            # Persona sem conta nenhuma para gravar (não há o que desmentir): o aviso sai uma vez, como antes.
+            novidade = True
         linha = self.social_repo.profile_row(profile_id)
         politica = (linha["offline_policy"] if linha is not None else None) or OFFLINE_POLICY_PADRAO
         if politica != "reauth_elsewhere":
@@ -1013,17 +1081,32 @@ class AppState:
             rotulo = capabilities_of(pacote).label if pacote else "este app"
             return (f"a pessoa vinculada ({perfil['display_name'] or perfil['id']}) não tem conta em {rotulo}; "
                     "cadastre a conta na tela do perfil antes de despachar", None)
-        if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
+        # A conta da persona NESTE app (item 23.4): é a sessão, a credencial e o login DELA que a porta confere e
+        # pede ao provedor do pacote. Antes a porta lia sempre a conta âncora — a tarefa do segundo app passava pela
+        # sessão do primeiro, e o login que ela pedia gravava lá.
+        conta = self.social_repo.conta_do_pacote(profile_id, pacote)
+        conta_id = str(conta["id"]) if conta is not None else None
+        if conta_id is None and not self.social_repo.eh_pacote_ancora(profile_id, pacote):
+            # A pessoa só tem conta de SITE naquele app (`host`), e o login gerenciado abre a do app inteiro. Sem esta
+            # recusa, a localidade cairia na conta âncora e gravaria nela a sessão da porta de outro app.
+            rotulo = capabilities_of(pacote).label if pacote else "este app"
+            nome = (perfil["display_name"] or perfil["id"]) if perfil is not None else profile_id
+            return (f"a pessoa vinculada ({nome}) não tem conta em {rotulo}; cadastre a conta na tela do perfil antes "
+                    "de despachar", None)
+        if (recusa := self._porta_da_localidade(rt, profile_id, conta_id)) is not None:
             return recusa
+        if conta_id is None and (conta := self.social_repo.conta_do_pacote(profile_id, pacote)) is not None:
+            conta_id = str(conta["id"])       # a conta âncora que a localidade acabou de criar para gravar a sessão
         # A sessão é da conta NESTE aparelho (`account_sessions`, 049): lida pelo par, não "a do perfil".
-        session = self.social_repo.session_row(profile_id, rt.id)
+        session = (self.social_repo.account_session_row(profile_id, conta_id, rt.id)
+                   if conta_id is not None else None)
         if session and session["status"] == SessionStatus.session_ready.value and session["instance_id"] == rt.id:
             if not self.sessao_vencida(session):
                 return None
             # Vencida: NÃO é "deslogado". Antes da tarefa, relê a tela — `observe_only` nunca tenta autenticar, e
             # num aparelho ainda logado a conferência devolve `session_ready` com data nova e a tarefa segue.
             return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa",
-                    lambda: provedor.ensure_session(rt, profile_id, observe_only=True))
+                    lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True))
         motivo = (session["detail"] if session and session["detail"]
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
@@ -1035,11 +1118,12 @@ class AppState:
             # onboarding fora do mapa) reabria o app e reobservava a cada tick, sem parar e sem aviso. Depois de
             # `teto` reobservações seguidas com o mesmo resultado, para de insistir sozinho — vira caso de
             # pessoa, como um desafio.
-            if (releitura := self._releitura_do_teto(rt, profile_id, session, provedor)) is not None:
+            if (releitura := self._releitura_do_teto(rt, profile_id, session, provedor, conta_id)) is not None:
                 return releitura
             return (f"{motivo} (tela não reconhecida em {session['unknown_streak']} tentativas seguidas; "
                     "assuma o controle do aparelho para identificar a tela)"), None
-        cred = self.social_repo.credential_row(profile_id)
+        cred = (self.social_repo.account_credential_row(profile_id, conta_id)
+                if conta_id is not None else None)
         if cred is None or cred["status"] == "invalid":
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
                     if cred is None else motivo), None
@@ -1059,10 +1143,10 @@ class AppState:
             # bater na mesma parede a cada tick.
             return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                     "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
-        return motivo, (lambda: provedor.ensure_session(rt, profile_id, automatic=True))
+        return motivo, (lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id, automatic=True))
 
-    def _releitura_do_teto(self, rt: DeviceRuntime, profile_id: str, session: Row,
-                           provedor: SessionProvider) -> tuple[str, Callable[[], Awaitable[None]]] | None:
+    def _releitura_do_teto(self, rt: DeviceRuntime, profile_id: str, session: Row, provedor: SessionProvider,
+                           conta_id: str | None = None) -> tuple[str, Callable[[], Awaitable[None]]] | None:
         """O teto de `unknown_streak` é de uma leitura VELHA? Então relê a tela uma vez, em vez de bloquear.
 
         Causa C8 das execuções r-20260928165254-e31953 / r-20260928195344-02ee9e: a porta bloqueava sem olhar o
@@ -1083,7 +1167,8 @@ class AppState:
         gravada = session["updated_at"]
         if not ((entrou and (not gravada or gravada < entrou)) or (limite and (not gravada or gravada < limite))):
             return None
-        chave = (profile_id, rt.id)
+        # Por CONTA: a releitura de um app não gasta a janela do outro (item 23.4).
+        chave = (profile_id, rt.id, conta_id or "")
         ultima = self._releituras_do_teto.get(chave)
         if ultima is not None and not (entrou and ultima < entrou) and not (limite and ultima < limite):
             return None
@@ -1092,7 +1177,7 @@ class AppState:
             # Marca ao começar, não ao pedir: se o aparelho estiver ocupado, `run_device_job` recusa o trabalho e a
             # releitura continua devida no próximo tick.
             self._releituras_do_teto[chave] = now_iso()
-            await provedor.ensure_session(rt, profile_id, observe_only=True)
+            await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)
 
         return ("a tela não reconhecida foi registrada antes de o aparelho entrar no ar (ou passou da validade); o "
                 "aparelho vai ser relido antes da tarefa"), reler

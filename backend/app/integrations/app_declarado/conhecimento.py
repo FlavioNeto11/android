@@ -13,6 +13,11 @@ tela ou tipo inexistente, valor do tipo errado, texto com lacuna que o motor nã
 Nada aqui conhece app nenhum. A sobrescrita por instalação (`config.yaml`) não é lida aqui: quem a entrega é
 `Config.ajustes_de_sessao`, e o motor (`sessao.SessaoDeclarada`) aplica por cima destes padrões a cada uso.
 
+Item 23.6 (ADR-057, decisão 3), tudo opcional e sem mudar quem não declara: `formulario.etapa_do_usuario` (login em
+etapas: o identificador numa tela com "avançar", a senha na seguinte), `conta.acesso` no lugar de `conta.aba` (a conta
+aberta por um elemento fora da barra inferior, lida com um valor só) com `conta.ler_ao_entrar`, e `navegador` (a
+Custom Tab do login: os pacotes de navegador, a barra de endereço de cada um e os sites de login do app).
+
 Telas APRENDIDAS (ADR-054, fatia 5): o conhecimento da instalação entra por um fornecedor tipado
 (`definir_regras_aprendidas`), que o aprendizado liga na composição — este pacote não importa `app.modules`. O padrão
 não fornece nenhuma, e a sessão usa o conhecimento UNIDO (`com_as_aprendidas`) a cada chamada. O que o fornecedor
@@ -38,7 +43,7 @@ from ...automation.conhecimento_de_telas import ConhecimentoDeTelas, Conheciment
 from ...automation.hierarchy import UiElement, UiTree
 from ...planning.capabilities import CONHECIMENTO_DE_APPS
 from . import formulario as geometria
-from .formulario import LoginForm
+from .formulario import FormularioDoUsuario, LoginForm
 
 #: Onde mora o conhecimento de cada app: uma pasta por pacote Android, com `telas.yaml` e `sessao.yaml`. É a MESMA raiz
 #: do catálogo (`planning/capabilities.CONHECIMENTO_DE_APPS`) e da descoberta (`pacote.py`): uma só, para não divergir.
@@ -85,9 +90,28 @@ _CAMPOS_REAIS = frozenset({"open_timeout_s", "settle_s", "submit_wait_s", "verif
 
 
 @dataclass(frozen=True, slots=True)
+class RecusaDoIdentificador:
+    """O que a tela diz quando recusa o IDENTIFICADOR na etapa do usuário ("essa conta não existe"): a senha ainda
+    não saiu, então não é senha recusada — é o login que para até uma pessoa conferir o identificador."""
+
+    sinal: str
+    detalhe: str
+
+
+@dataclass(frozen=True, slots=True)
+class EtapaDoUsuario:
+    """Login em etapas (item 23.6): o identificador numa tela, a senha na seguinte."""
+
+    tela: str                    # a tela do `telas.yaml` (tipo `login`) em que só o identificador é pedido
+    sinal_do_botao: str          # o rótulo do botão que leva à tela da senha ("avançar"): nada secreto sai no toque
+    recusas: tuple[RecusaDoIdentificador, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Formulario:
     sinal_do_botao: str          # sinal que o rótulo do botão de entrar casa por inteiro
     sinal_de_exclusao: str       # sinal que desqualifica um candidato a botão de entrar
+    etapa_do_usuario: EtapaDoUsuario | None = None   # sem ela, usuário e senha na mesma tela (como sempre)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,12 +130,36 @@ class AbaDePerfil:
 
 
 @dataclass(frozen=True, slots=True)
+class AcessoAConta:
+    """A conta fora da barra inferior (item 23.6): o elemento que a abre, por prefixo de id ou por rótulo."""
+
+    ids: tuple[str, ...]                     # prefixos do final do resource-id, em minúsculas
+    rotulos: tuple[re.Pattern[str], ...]     # expressões no texto ou na descrição do elemento
+
+
+@dataclass(frozen=True, slots=True)
 class Conta:
     extracao: str                # a extração do `telas.yaml` que diz QUEM está logado
-    tela_de_perfil: str          # a tela de onde a conta é lida depois de tocar na aba
-    aba: AbaDePerfil
+    tela_de_perfil: str          # a tela de onde a conta é lida depois de tocar na aba (ou no acesso)
+    aba: AbaDePerfil | None      # a aba da barra inferior; exatamente um entre `aba` e `acesso`
     passos_max: int              # telas dispensadas/atravessadas até o perfil: abre caminho, sem laço
     espera_s: float              # espera depois de cada toque da leitura da conta
+    acesso: AcessoAConta | None = None
+    #: Logo depois do envio, numa tela de casa sem a conta à vista, a conta é lida pelo acesso declarado em vez de
+    #: esperar o prazo — para o app cuja tela inicial nunca mostra a conta. Sem isto, todo login bem-sucedido dele
+    #: terminaria incerto (e o login automático pararia).
+    ler_ao_entrar: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Navegador:
+    """Custom Tab (item 23.6): o login do app pode abrir no navegador. Só os pacotes daqui contam como navegador, com o
+    sufixo do id da barra de endereço de cada um, e o motor só segue num site declarado — os `hosts` daqui (o site de
+    login do app) e o `host` da própria conta; em qualquer outro, a pessoa assume. A senha segue a mesma regra, relida
+    no instante de digitar."""
+
+    pacotes: tuple[tuple[str, str], ...]     # (pacote do navegador, sufixo do id da barra de endereço)
+    hosts: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +196,7 @@ class ConhecimentoDeSessao:
     conta: Conta
     depois_do_envio: tuple[RegraDepoisDoEnvio, ...]
     textos: Textos
+    navegador: Navegador | None = None
 
     # ------------------------------------------------------------------ leituras de tela, pelo dado
     def reconhecer(self, tree: UiTree, *, package: str | None, locale: str | None = None) -> TelaReconhecida:
@@ -158,7 +207,35 @@ class ConhecimentoDeSessao:
     def formulario_de_login(self, tree: UiTree, locale: str | None) -> LoginForm | None:
         sig = self.telas.sinais_de(locale)
         return geometria.login_form(tree, entrar=sig[self.formulario.sinal_do_botao],
-                                    exclusao=sig[self.formulario.sinal_de_exclusao])
+                                    exclusao=sig[self.formulario.sinal_de_exclusao], ignorar=self._barras())
+
+    def _barras(self) -> geometria.Ignorados:
+        """A barra de endereço de cada navegador declarado: nunca é campo do formulário (item 23.6)."""
+        return self.navegador.pacotes if self.navegador is not None else ()
+
+    def formulario_de_usuario(self, tree: UiTree, locale: str | None) -> FormularioDoUsuario | None:
+        """A etapa do identificador (login em etapas), ou `None` — também quando o app não declara etapas."""
+        etapa = self.formulario.etapa_do_usuario
+        if etapa is None:
+            return None
+        sig = self.telas.sinais_de(locale)
+        return geometria.identifier_form(tree, avancar=sig[etapa.sinal_do_botao],
+                                         exclusao=sig[self.formulario.sinal_de_exclusao], ignorar=self._barras())
+
+    def recusa_do_identificador(self, tree: UiTree, locale: str | None) -> str | None:
+        """O detalhe da primeira recusa declarada cujo sinal está na tela depois do "avançar"."""
+        etapa = self.formulario.etapa_do_usuario
+        if etapa is None or not etapa.recusas:
+            return None
+        sig = self.telas.sinais_de(locale)
+        texto = "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
+        return next((r.detalhe for r in etapa.recusas if sig[r.sinal].search(texto)), None)
+
+    def barra_de_endereco(self, pacote: str | None) -> str | None:
+        """O sufixo do id da barra de endereço, quando `pacote` é um navegador declarado para a Custom Tab do login."""
+        if self.navegador is None or not pacote:
+            return None
+        return next((sufixo for p, sufixo in self.navegador.pacotes if p == pacote), None)
 
     def campo_de_senha(self, tree: UiTree) -> UiElement | None:
         return geometria.password_field(tree)
@@ -171,16 +248,33 @@ class ConhecimentoDeSessao:
             tree, agora_nao=self.telas.sinais_de(locale)[self.dispensa.sinal_de_salvar_login])
 
     def aba_de_perfil(self, tree: UiTree) -> tuple[int, int] | None:
-        aba = self.conta.aba
+        """Onde tocar para abrir a conta: a aba de perfil da barra inferior ou, no app que a declara fora dela, o
+        elemento de acesso (item 23.6). O aprendizado pergunta o mesmo ("desta tela a conta pode ser aberta?")."""
+        aba, acesso = self.conta.aba, self.conta.acesso
+        if acesso is not None:
+            return geometria.account_opener(tree, pacote=self.app, prefixos_de_id=acesso.ids, rotulos=acesso.rotulos)
+        assert aba is not None                     # a carga exige exatamente um dos dois
         return geometria.profile_tab(tree, prefixo_de_id=aba.prefixo_de_id, rotulos=aba.rotulos,
                                      faixa_inferior=aba.faixa_inferior)
 
+    def _conta_pelo_acesso(self, tree: UiTree) -> str | None:
+        """Fora da barra inferior, a conta é lida pela extração declarada, no texto ou na descrição, e só quando a tela
+        mostra UM valor: o menu de contas pode listar várias, e a primeira não é a aberta."""
+        ex = self.telas.extracoes[self.conta.extracao]
+        valores = geometria.valores_extraidos(tree, pacote=self.app, ids=ex.ids, padrao=ex.padrao)
+        return next(iter(valores)) if len(valores) == 1 else None
+
     def conta_no_cabecalho(self, tree: UiTree) -> str | None:
         """A conta lida SÓ pelos ids declarados — a fonte confiável de quem está logado (sem palpite pelo `@`)."""
+        if self.conta.acesso is not None:
+            return self._conta_pelo_acesso(tree)
         return self.telas.extrair(self.conta.extracao, tree, palpite=False)
 
     def conta_observada(self, tree: UiTree) -> str | None:
-        """A conta pelos ids declarados e, se a extração permitir, pelo primeiro `@texto` da tela."""
+        """A conta pelos ids declarados e, se a extração permitir, pelo primeiro `@texto` da tela. Com o acesso fora da
+        barra, sem palpite: só a leitura declarada, com um valor só."""
+        if self.conta.acesso is not None:
+            return self._conta_pelo_acesso(tree)
         return self.telas.extrair(self.conta.extracao, tree, palpite=True)
 
     def detalhe_da_etapa(self, etapa: str) -> str:
@@ -308,20 +402,109 @@ def _textos(valor: object) -> Textos:
     return Textos(**prontos)
 
 
+def _etapa_do_usuario(valor: object, telas: ConhecimentoDeTelas) -> EtapaDoUsuario:
+    """A tela da etapa tem de ser do tipo `login`: é o que a põe no caminho do login (e não no do "voltar ao estado
+    conhecido", que apertaria "voltar" numa tela de entrada)."""
+    onde = "formulario.etapa_do_usuario"
+    e = _mapa(valor, onde, permitidos=frozenset({"tela", "sinal_do_botao", "recusas"}),
+              obrigatorios=frozenset({"tela", "sinal_do_botao"}))
+    tela = _tela(e["tela"], f"{onde}.tela", telas)
+    regra = telas.regra(tela)
+    if regra is None or regra.tipo != "login":
+        raise SessaoInvalida(f"{onde}.tela: a tela {tela!r} precisa ser do tipo `login` no `telas.yaml`")
+    if regra.formulario_de_senha:
+        raise SessaoInvalida(f"{onde}.tela: a tela {tela!r} é a do campo de senha; a etapa do usuário é a de antes")
+    recusas = []
+    for i, bruto in enumerate(_lista(e.get("recusas", []), f"{onde}.recusas")):
+        r = _mapa(bruto, f"{onde}.recusas[{i}]", permitidos=frozenset({"sinal", "detalhe"}),
+                  obrigatorios=frozenset({"sinal", "detalhe"}))
+        recusas.append(RecusaDoIdentificador(sinal=_sinal(r["sinal"], f"{onde}.recusas[{i}].sinal", telas),
+                                             detalhe=_texto(r["detalhe"], f"{onde}.recusas[{i}].detalhe")))
+    return EtapaDoUsuario(tela=tela, sinal_do_botao=_sinal(e["sinal_do_botao"], f"{onde}.sinal_do_botao", telas),
+                          recusas=tuple(recusas))
+
+
+#: Um host como a barra de endereço mostra: letras, dígitos, hífen e ponto, com pelo menos um ponto; sem esquema,
+#: porta nem caminho (o `host` de uma conta segue a mesma forma).
+_HOST = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+_PACOTE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+
+
+def _navegador(valor: object, app: str) -> Navegador:
+    n = _mapa(valor, "navegador", permitidos=frozenset({"pacotes", "hosts"}), obrigatorios=frozenset({"pacotes"}))
+    brutos = n["pacotes"]
+    if not isinstance(brutos, dict) or not brutos:
+        raise SessaoInvalida("navegador.pacotes: esperava um mapa não vazio (pacote do navegador: id da barra)")
+    pacotes = []
+    for pacote, sufixo in brutos.items():
+        pacote = str(pacote).strip()
+        if not _PACOTE.match(pacote):
+            raise SessaoInvalida(f"navegador.pacotes: {pacote!r} não é um pacote Android")
+        if pacote == app:
+            raise SessaoInvalida("navegador.pacotes: o próprio app não é navegador (a tela dele já é dele)")
+        pacotes.append((pacote, _texto(sufixo, f"navegador.pacotes.{pacote}").strip().lower()))
+    hosts = []
+    for i, h in enumerate(_lista(n.get("hosts", []), "navegador.hosts")):
+        host = _texto(h, f"navegador.hosts[{i}]").strip().lower()
+        if not _HOST.match(host):
+            raise SessaoInvalida(f"navegador.hosts[{i}]: {host!r} não é um host (sem esquema, porta nem caminho)")
+        hosts.append(host)
+    return Navegador(pacotes=tuple(pacotes), hosts=tuple(hosts))
+
+
+def _conta(valor: object, telas: ConhecimentoDeTelas) -> Conta:
+    campos_c = frozenset({"extracao", "tela_de_perfil", "aba", "acesso", "passos_max", "espera_s", "ler_ao_entrar"})
+    c = _mapa(valor, "conta", permitidos=campos_c,
+              obrigatorios=frozenset({"extracao", "tela_de_perfil", "passos_max", "espera_s"}))
+    extracao = _texto(c["extracao"], "conta.extracao")
+    if extracao not in telas.extracoes:
+        raise SessaoInvalida(f"conta.extracao: extração {extracao!r} não declarada em `telas.yaml`")
+    if ("aba" in c) == ("acesso" in c):
+        raise SessaoInvalida("conta: declare exatamente um entre `aba` (barra inferior) e `acesso` (fora dela)")
+    aba = acesso = None
+    if "aba" in c:
+        campos_a = frozenset({"prefixo_de_id", "rotulos", "faixa_inferior"})
+        a = _mapa(c["aba"], "conta.aba", permitidos=campos_a, obrigatorios=campos_a)
+        faixa = _real(a["faixa_inferior"], "conta.aba.faixa_inferior")
+        if faixa > 1:
+            raise SessaoInvalida("conta.aba.faixa_inferior: é uma fração da altura, de 0 a 1")
+        aba = AbaDePerfil(prefixo_de_id=_texto(a["prefixo_de_id"], "conta.aba.prefixo_de_id").lower(),
+                          rotulos=tuple(_texto(r, "conta.aba.rotulos").lower()
+                                        for r in _lista(a["rotulos"], "conta.aba.rotulos")),
+                          faixa_inferior=faixa)
+    else:
+        a = _mapa(c["acesso"], "conta.acesso", permitidos=frozenset({"ids", "rotulos"}))
+        ids = tuple(_texto(i, "conta.acesso.ids").strip().lower() for i in _lista(a.get("ids", []), "conta.acesso.ids"))
+        rotulos = tuple(_regex(r, f"conta.acesso.rotulos[{i}]")
+                        for i, r in enumerate(_lista(a.get("rotulos", []), "conta.acesso.rotulos")))
+        if not ids and not rotulos:
+            raise SessaoInvalida("conta.acesso: declare `ids` ou `rotulos` do elemento que abre a conta")
+        acesso = AcessoAConta(ids=ids, rotulos=rotulos)
+    ler = c.get("ler_ao_entrar", False)
+    if not isinstance(ler, bool):
+        raise SessaoInvalida("conta.ler_ao_entrar: esperava true ou false")
+    return Conta(extracao=extracao, tela_de_perfil=_tela(c["tela_de_perfil"], "conta.tela_de_perfil", telas),
+                 aba=aba, acesso=acesso, passos_max=_inteiro(c["passos_max"], "conta.passos_max", minimo=1),
+                 espera_s=_real(c["espera_s"], "conta.espera_s"), ler_ao_entrar=ler)
+
+
 def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     """Valida e monta o conhecimento de sessão sobre o conhecimento de telas do MESMO app."""
     topo = frozenset({"app", "versao", "rotulo", "ajustes", "formulario", "dispensa", "conta", "depois_do_envio",
-                      "textos"})
-    raiz = _mapa(dados, "o arquivo", permitidos=topo, obrigatorios=topo - {"versao"})
+                      "textos", "navegador"})
+    raiz = _mapa(dados, "o arquivo", permitidos=topo, obrigatorios=topo - {"versao", "navegador"})
     app = _texto(raiz["app"], "app").strip()
     if app != telas.app:
         raise SessaoInvalida(f"`app` ({app!r}) difere do `telas.yaml` ({telas.app!r})")
     versao = _inteiro(raiz.get("versao", 1), "versao", minimo=1)
 
-    f = _mapa(raiz["formulario"], "formulario", permitidos=frozenset({"sinal_do_botao", "sinal_de_exclusao"}),
+    f = _mapa(raiz["formulario"], "formulario",
+              permitidos=frozenset({"sinal_do_botao", "sinal_de_exclusao", "etapa_do_usuario"}),
               obrigatorios=frozenset({"sinal_do_botao", "sinal_de_exclusao"}))
     form = Formulario(sinal_do_botao=_sinal(f["sinal_do_botao"], "formulario.sinal_do_botao", telas),
-                      sinal_de_exclusao=_sinal(f["sinal_de_exclusao"], "formulario.sinal_de_exclusao", telas))
+                      sinal_de_exclusao=_sinal(f["sinal_de_exclusao"], "formulario.sinal_de_exclusao", telas),
+                      etapa_do_usuario=_etapa_do_usuario(f["etapa_do_usuario"], telas)
+                      if "etapa_do_usuario" in f else None)
 
     campos_d = frozenset({"intersticiais_max", "rotulos", "ids", "sinal_de_salvar_login"})
     d = _mapa(raiz["dispensa"], "dispensa", permitidos=campos_d, obrigatorios=campos_d)
@@ -332,23 +515,7 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
         ids=tuple(_regex(r, f"dispensa.ids[{i}]") for i, r in enumerate(_lista(d["ids"], "dispensa.ids"))),
         sinal_de_salvar_login=_sinal(d["sinal_de_salvar_login"], "dispensa.sinal_de_salvar_login", telas))
 
-    campos_c = frozenset({"extracao", "tela_de_perfil", "aba", "passos_max", "espera_s"})
-    c = _mapa(raiz["conta"], "conta", permitidos=campos_c, obrigatorios=campos_c)
-    extracao = _texto(c["extracao"], "conta.extracao")
-    if extracao not in telas.extracoes:
-        raise SessaoInvalida(f"conta.extracao: extração {extracao!r} não declarada em `telas.yaml`")
-    campos_a = frozenset({"prefixo_de_id", "rotulos", "faixa_inferior"})
-    a = _mapa(c["aba"], "conta.aba", permitidos=campos_a, obrigatorios=campos_a)
-    faixa = _real(a["faixa_inferior"], "conta.aba.faixa_inferior")
-    if faixa > 1:
-        raise SessaoInvalida("conta.aba.faixa_inferior: é uma fração da altura, de 0 a 1")
-    conta = Conta(extracao=extracao, tela_de_perfil=_tela(c["tela_de_perfil"], "conta.tela_de_perfil", telas),
-                  aba=AbaDePerfil(prefixo_de_id=_texto(a["prefixo_de_id"], "conta.aba.prefixo_de_id").lower(),
-                                  rotulos=tuple(_texto(r, "conta.aba.rotulos").lower()
-                                                for r in _lista(a["rotulos"], "conta.aba.rotulos")),
-                                  faixa_inferior=faixa),
-                  passos_max=_inteiro(c["passos_max"], "conta.passos_max", minimo=1),
-                  espera_s=_real(c["espera_s"], "conta.espera_s"))
+    conta = _conta(raiz["conta"], telas)
 
     regras = tuple(_regra(r, f"depois_do_envio[{i}]", telas)
                    for i, r in enumerate(_lista(raiz["depois_do_envio"], "depois_do_envio")))
@@ -357,7 +524,8 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
 
     return ConhecimentoDeSessao(app=app, versao=versao, rotulo=_texto(raiz["rotulo"], "rotulo").strip(), telas=telas,
                                 ajustes=_ajustes(raiz["ajustes"]), formulario=form, dispensa=dispensa, conta=conta,
-                                depois_do_envio=regras, textos=_textos(raiz["textos"]))
+                                depois_do_envio=regras, textos=_textos(raiz["textos"]),
+                                navegador=_navegador(raiz["navegador"], app) if "navegador" in raiz else None)
 
 
 def carregar(pasta: Path) -> ConhecimentoDeSessao:

@@ -143,7 +143,8 @@ async def test_sessao_vencida_reobserva_antes_da_tarefa(tmp_path: Path) -> None:
 
         s.instagram.ensure_session = _ensure  # type: ignore[assignment]
         await s._session_gate(rt)[1]()
-        assert chamadas == [{"observe_only": True}]
+        # ...e da CONTA do app que a porta conferiu (item 23.4): a âncora, para quem não diz o app.
+        assert chamadas == [{"account_id": s.social_repo.conta_ancora(pid)["id"], "observe_only": True}]
     finally:
         await h.state.stop()
 

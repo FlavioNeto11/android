@@ -157,15 +157,61 @@ Caminhos relativos a `backend/app/`.
   `classificar_depois_do_envio` aplica a tabela declarada. `_wrong_account()` é **sempre** intervenção humana —
   comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito.
   `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho de
-  código que resolva desafio ou 2FA automaticamente.** `_needs_person(profile_id, instance_id)` impede o agendador de
-  sequer tentar de novo quando o estado já pede pessoa (desde a 049 lê a sessão da conta **neste** aparelho);
+  código que resolva desafio ou 2FA automaticamente.** `_needs_person(conta, instance_id)` impede o agendador de
+  sequer tentar de novo quando o estado já pede pessoa (lê a sessão da conta **deste app** neste aparelho, 23.4);
   `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são
   os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por cima (`contas.sessao.<pacote>.<ajuste>` no
   `config.yaml`, entregue por `Config.ajustes_de_sessao`), lidos a cada uso. `Outcome` (StrEnum: `SESSION_READY, INVALID_CREDENTIAL, AUTH_CHALLENGE, WRONG_ACCOUNT, RETRYABLE,
   UNCERTAIN`) mora no mesmo módulo; `Outcome.terminal` inclui `AUTH_CHALLENGE`.
 - **Conta aberta** — `sessao.py::ler_conta` lê a conta SÓ na tela de perfil declarada (`conta.tela_de_perfil`),
   depois de tocar na aba de perfil declarada (`conta.aba`), nunca pelo feed (bug histórico de confundir autor de
-  post com dono da conta, K-021).
+  post com dono da conta, K-021). A conta lida é comparada ao `handle` e ao `login_identifier` da **conta do app**
+  que a chamada abre (`ContaDaSessao.handle`/`aceitos`, sem maiúsculas nem o `@` do começo), não ao `@` de cadastro
+  do perfil (item 23.4).
+- **Login em etapas, conta fora da barra e Custom Tab (item 23.6, ADR-057 decisão 3)** — três blocos opcionais do
+  `sessao.yaml`, lidos pelo mesmo motor (quem não os declara segue igual, como o Instagram):
+  - `formulario.etapa_do_usuario: {tela, sinal_do_botao, recusas: [{sinal, detalhe}]}`: o identificador numa tela
+    (a `tela` do `telas.yaml` tem de ser do tipo `login` e não a do campo de senha) com um "avançar", a senha na
+    seguinte. A geometria (`formulario.py::identifier_form`) exige UM campo de texto, nenhum de senha e UM botão
+    abaixo que casa o sinal por inteiro. `SessaoDeclarada._etapa_do_usuario` preenche, confere, avança e espera a tela
+    da senha; o cabeçalho clicável com a conta, acima da senha, nunca é tomado por usuário (`LoginForm.usuario_editavel`).
+    **A senha só é digitada numa tela que mostra ESTE identificador**, como palavra inteira
+    (`formulario.py::mostra_o_identificador`): o app que lembrou outra conta e abriu direto na senha não recebe a
+    senha desta. Os desfechos antes da senha — desafio depois do "avançar", recusa declarada do identificador, tela
+    da senha sem a conta, tela da senha que não chegou, navegador fora do site — têm etapa própria na tentativa
+    (`ETAPA_*` em `sessao.py`), todas em `ETAPAS_ANTES_DO_ENVIO` (não gastam o teto diário). Recusa do identificador,
+    tela sem a conta e tela da senha que não chegou param o login em `review` (a credencial não vira `invalid`:
+    ninguém julgou a senha). O "avançar" já é efeito no servidor (o identificador saiu; o provedor pode mandar um
+    código ou um pedido de aprovação a cada vez): contar falha e esperar o intervalo repetiria esse toque sem fim.
+  - `conta.acesso: {ids, rotulos}` no lugar de `conta.aba` (exatamente um dos dois): a conta é aberta por um elemento
+    do app fora da barra inferior (avatar, menu), por prefixo de id ou rótulo, com **um candidato só**
+    (`formulario.py::account_opener`); a leitura usa a extração declarada, no texto ou na descrição, e só vale com
+    **um valor** na tela (`formulario.py::valores_extraidos`: um menu que lista duas contas não diz qual está aberta).
+    `conta.ler_ao_entrar: true` lê a conta pelo acesso logo depois do envio, numa tela de casa sem a conta à vista
+    (`_ler_ao_entrar`, uma vez por login; a tentativa que termina com outro pacote na frente — a Custom Tab ainda
+    fechando — não gasta essa vez): sem isso, o login bem-sucedido de um app cuja tela inicial não mostra a conta
+    terminaria incerto. `ler_conta` recebe o reconhecimento do provedor (`reconhecer=`), o mesmo da Custom Tab. `ConhecimentoDeSessao.aba_de_perfil` responde pelos dois (o aprendizado pergunta o
+    mesmo).
+  - `navegador: {pacotes: {<pacote do navegador>: <sufixo do id da barra de endereço>}, hosts: [...]}`: a Custom Tab
+    do login. O navegador declarado só é tela do app (`SessaoDeclarada._reconhecer`) num site de login que o app
+    declara (os `hosts`, igual ou subdomínio). O `host` de uma conta não soma: conta com `host` é de portal, pelo
+    navegador, e não tem login gerenciado — `_resolver_conta` a recusa sem tocar no aparelho e a rota
+    `…/accounts/{aid}/session/{connect|verify}` responde 409 `conta_de_site` (a porta e o despacho só acham a conta
+    do app inteiro, `conta_do_pacote`). Fora do site, ou
+    sem a barra à vista, a pessoa assume (`_navegador_fora_da_conta`: sessão `auth_required` com o que fazer, login em
+    `review`; a leitura só registra) — sem "voltar", sem reabrir, sem digitar; o desafio dentro da Custom Tab é visto
+    mesmo assim (o `classificar` devolve "outro app" antes do detector), e nem a recusa se toca numa página alheia.
+    A barra de endereço nunca é campo do formulário (`formulario.py::Ignorados`: numa página de senha sem o cabeçalho
+    da conta, a geometria a tomaria por usuário). A senha é conferida no instante de digitar,
+    na MESMA árvore do campo (`_fill_password`: o `locate` do canal sensível só acha campo no pacote da conta ou no
+    navegador no site permitido); fora disso o canal recusa com a mensagem fixa dele.
+
+  Prova `simulated`: `backend/tests/test_sessao_em_etapas.py` (um correio fictício, só em dado: etapas, acesso pela
+  gaveta, Custom Tab no site do app e num subdomínio; conta de site recusada; site não declarado; fora do site;
+  desafio na Custom Tab; site trocado entre achar o campo e digitar; tela da senha que não chega para o login
+  automático; carga recusada) e `backend/tests/test_contas_unificadas_api.py::test_conta_de_site_nao_conecta_pelo_login_gerenciado`. O `type_secret` do executor
+  (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da conta em primeiro plano):
+  só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook é o 23.8; aparelho real: `not_run`.
 - `emit_needs_person_change()` (`modules/identity/application/session_rules.py`, chamada por
   `SessaoDeclarada._save`) dispara o evento `session.needs_person` (fila "Aguardando intervenção");
   `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)` ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
@@ -174,7 +220,12 @@ Caminhos relativos a `backend/app/`.
 de `active` a `blocked` (`modules/identity/application/session_rules.py::bloquear_por_desafio`, chamado por
 `SessaoDeclarada._save` e por `AppState._sessao_desmentida`). A porta de sessão e a distribuição já recusam
 perfil fora de `active`. Pausa do dono (`disabled`) não é reescrita. Resolver a tela não reativa sozinho: quem
-reativa é a pessoa, na tela do perfil.
+reativa é a pessoa, na tela do perfil. **Só na conta âncora (item 23.5, decisão do dono P9 de 29/09):** o desafio
+num app que não é o âncora (o Outlook) para só a conta daquele app — credencial em `review`, sessão em
+`auth_challenge` — sem bloquear a persona nem o Instagram dela; a conta travada daquele app mantém a quarentena do
+aparelho, e o marcador (`marcar_conta_travada`) só bloqueia a persona pela conta âncora. A regra é uma só
+(`session_rules.py::aplicar_desafio`), para o motor de sessão e para a tela que desmente a sessão na execução; o
+detalhe está em [persona.md](persona.md).
 
 **Proteção de contas (ADR-055, 29/09; integrada em `c359f65`, a implantar).** A regra do dono: parar em "Confirm you're
 human" é sinal de conta perdida. O que muda no desafio e em volta dele:
@@ -239,8 +290,10 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 
 **A porta.** `modules/identity/application/ports.py::SessionProvider`:
 
-- `package` (propriedade) e `async ensure_session(rt, profile_id, *, force_login=False, automatic=False,
-  observe_only=False)`, que devolve um `SessionOutcome` (`ready`, `detail`);
+- `package` (propriedade) e `async ensure_session(rt, profile_id, *, account_id=None, force_login=False,
+  automatic=False, observe_only=False)`, que devolve um `SessionOutcome` (`ready`, `detail`). `account_id` (contrato
+  C1, item 23.4) é a conta que a chamada abre: do perfil e do pacote do provedor, senão recusa sem tocar no aparelho;
+  `None` é a conta do perfil no pacote do provedor (no provedor do app âncora, a conta âncora, como sempre);
 - `automatic=True` é a chamada do agendador; `observe_only=True` é "Verificar conta" e a reobservação (nunca
   autentica); `force_login=True` refaz o login;
 - as garantias continuam do provedor: nunca repete envio por timeout, nunca segue com conta errada, nunca resolve
@@ -264,11 +317,11 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 
 | Chamador | Pergunta |
 |---|---|
-| `AppState._session_gate(rt, package)` | o provedor do pacote do item; sem pacote (chamador antigo), `provedor_do_perfil()` |
-| `AppState._reobservar_apos_intervencao` | `provedor_do_perfil()`, com `observe_only=True` |
-| `AppState._sessao_apos_mudanca_de_app` | `sessoes.has(pacote)`: só app com provedor invalida sessão |
-| `api.py::_start_session_job` ("Conectar", "Verificar conta", por conta ou pelo apelido por perfil) | `sessoes.for_package(conta.package)` (onda B); sem provedor, 409 `no_session_provider`; sem consentimento na credencial, 409 `consentimento_de_credencial` |
-| `modules/execution/infrastructure/command_bus.py` (recursos, fase H) | `sessoes.for_package` pelo pacote do app; sem provedor, recusa |
+| `AppState._session_gate(rt, package)` | o provedor do pacote do item e a conta da persona NESSE pacote (`SocialRepository.conta_do_pacote`): sessão, credencial e `account_id` são dela; sem pacote (chamador antigo), `provedor_do_perfil()` e a conta âncora |
+| `AppState._reobservar_apos_intervencao` | cada conta da persona em app com provedor cuja sessão no aparelho pede releitura, pelo provedor DO APP dela, com `account_id` e `observe_only=True` |
+| `AppState._sessao_apos_mudanca_de_app` | `sessoes.has(pacote)`: só app com provedor invalida sessão, e só as contas daquele app (`_invalidate_sessions(…, package)`) |
+| `api.py::_start_session_job` ("Conectar", "Verificar conta", por conta ou pelo apelido por perfil) | `sessoes.for_package(conta.package)` (onda B), com `account_id=conta.id` (23.4); sem provedor, 409 `no_session_provider`; sem consentimento na credencial, 409 `consentimento_de_credencial` |
+| `modules/execution/infrastructure/command_bus.py` (recursos, fase H) | `sessoes.for_package` pelo pacote do app e a conta da persona nele (a do pedido, se for daquele app); sem provedor ou sem conta, recusa |
 
 - `AppState.provedor_do_perfil()` é o provedor do pacote de `social_repo.app_package`, que vem do app âncora do
   perfil no registro (`modules/applications/infrastructure/registry.py::pacote_ancora`: o app cujo `app.yaml` diz
@@ -279,27 +332,41 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 - O 409 `no_session_provider` passou a ser alcançável na onda B: `POST …/accounts/{aid}/session/connect` numa conta
   de app sem provedor o devolve ([contrato v0.28](../api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040)).
 
-**A sessão é da conta num aparelho (049).** `account_sessions(account_id, instance_id)` substitui a sessão única por
-perfil. O provedor continua sendo chamado por `profile_id` (`ensure_session(rt, profile_id, …)`, desvio anotado no
-ADR-040): `SocialRepository.session_row(profile_id, instance_id)` e `set_session(profile_id, instance_id=…)` resolvem a
-**conta âncora** do perfil (a do app que provê a conta dele) e gravam no par (conta, aparelho); `state.py` lê a
-sessão do aparelho do item. `invalidate_sessions_of_instance` invalida, por padrão, só as contas do app âncora
-naquele aparelho (com `package`, as do app dito). Consequências:
+**A sessão é da conta num aparelho (049), e o motor é por conta (23.4).** `account_sessions(account_id,
+instance_id)` substitui a sessão única por perfil. Desde o item 23.4 (ADR-057) o provedor recebe a conta
+(`ensure_session(rt, profile_id, account_id=…)`) e o motor genérico resolve, antes de tocar no aparelho, a
+`ContaDaSessao` da chamada (`SessaoDeclarada._resolver_conta`): tudo o que ele lê e grava é dela — credencial e
+consentimento (`account_credential_row`), marcação da credencial (`mark_account_credential`,
+`touch_account_credential`), tentativa (`start_auth_attempt(account_id=…)`), teto diário (`auth_attempts(account_id=…)`:
+os envios de um app não gastam o teto do outro), sessão no aparelho (`account_session_row`/`set_account_session`) e o
+marcador de conta travada (`registrar_conta_travada(handle=, app_id=)` com o `@` e o app da conta). O "verificado em"
+do cartão do perfil (`last_verified_at`) só muda com a conta âncora. O status do PERFIL (`blocked`/`disabled`) segue
+da persona, e só o desafio na conta âncora o muda (item 23.5, abaixo). `SocialRepository.session_row`/`set_session`/
+`credential_row` (por `profile_id`) ficam como leitura da conta âncora para o DTO do perfil e os chamadores antigos.
+Invalidação: `invalidate_sessions_of_instance(package=…)` só as contas daquele app; `todos_os_apps=True` (o gancho
+do aparelho, `AppState._invalidate_sessions` sem pacote: reset e troca de máquina) toda conta ali; sem nenhum dos
+dois, a âncora. A tela que desmente a sessão no meio da execução (`AppState._sessao_desmentida`) corrige a conta do
+app da tela: o `package=` de quem viu (o executor passa o pacote da tela em que viu a trava, `on_auth_needed`), senão
+o da etapa em curso no aparelho (`AppState._pacote_em_curso`), senão a âncora. Mover o aparelho ou a persona de máquina pede confirmação com a sessão pronta de QUALQUER conta dela ali
+(`api.py::_recusar_mudanca_de_servidor`, `SocialService._recusar_troca_de_servidor`). Consequências:
 
 - desde a 047 a pessoa vinculada a um aparelho pode **não ter conta** no app do item: `AppState._session_gate` recusa
   com "não tem conta em <app>" sem tocar o aparelho nem autenticar (`state.py::AppState._tem_conta_no_app`: a verdade
   é `profile_accounts`; o `username` de cadastro continua contando como a conta do Instagram para perfis anteriores
   à 037). Teste: `backend/tests/test_persona_unificada.py::test_porta_de_sessao_responde_sem_conta_para_a_pessoa_sem_conta_no_app`;
 
-- hoje, um app com login gerenciado por perfil: o Instagram. A sessão por (perfil, app, aparelho) que o ADR-039
-  propunha existe (`account_sessions`), mas `ensure_session` ainda acha a conta pelo perfil: dois apps com login
-  gerenciado **no mesmo perfil** pedem que o provedor receba a conta (pendente, com decisão do dono no item 12.3);
+- dois apps com login gerenciado **no mesmo perfil** convivem: nada do segundo escreve na conta do primeiro, nem no
+  sentido contrário (prova `simulated`: `backend/tests/test_sessao_declarada.py` com o correio fictício ao lado da
+  conta âncora, e `backend/tests/test_sessao_por_conta.py` na composição). Em produção ainda só o Instagram tem
+  provedor; o Outlook (ADR-057) ganha o dele no item 23.8. Prova `real` do login por conta: `not_run` (23.13);
 - a checagem "tela contradiz a sessão" (`taskqueue/executor.py::StepExecutor._sessao_desmentida`) vale para
   qualquer app com provedor (`session_provider_of(package) is not None`; antes, só o pacote do Instagram). Em
   produção é idêntico, porque o Instagram é o único com provedor.
 
 **As regras de sessão do perfil.** `modules/identity/application/session_rules.py`:
 
+- `aplicar_desafio` (item 23.5: âncora → `bloquear_por_desafio` e quarentena; outro app → `parar_conta_por_desafio`
+  e, na trava, quarentena sem bloquear a persona) é a porta dos dois chamadores.
 - `bloquear_por_desafio` (ADR-029) e `emit_needs_person_change` (achado #106), com o corpo literal que morava no
   autenticador do Instagram. São regras do perfil (design §6, raiz `Profile`), e o núcleo importava o autenticador
   só para aplicá-las. Hoje os dois chamadores são o motor de sessão (`SessaoDeclarada._save`) e
@@ -356,7 +423,7 @@ O dono pediu "zero Python por app", e o Instagram deixou de ter código: `integr
 | `app.yaml` | nome, rótulo, `provedor_de_sessao: instagram`, perfil e internet obrigatórios, `ancora_do_perfil: true`, `links_de_perfil` (hosts e caminhos reservados), `tipos_de_texto`, `leituras_de_conversa`, `leitura` (rascunho) | `integrations/app_declarado/pacote.py`, `automation/leitura_de_tela.py` |
 | `telas.yaml` (fatia 1) | sinais por idioma, regras de tela, extrações (conta no cabeçalho), estado conhecido | `automation/conhecimento_de_telas.py` |
 | `catalogo.yaml` (fatia 2) | as 23 ações, `contract_version: 1` | `planning/capabilities.py::carregar_catalogo` / `catalogo_do_pacote` |
-| `sessao.yaml` (fatia 3) | login: ajustes padrão, formulário, dispensa, aba de perfil, desfechos depois do envio, textos de ajuda | `integrations/app_declarado/conhecimento.py`, `sessao.py` |
+| `sessao.yaml` (fatia 3) | login: ajustes padrão, formulário (e, desde o 23.6, a etapa do usuário), dispensa, aba de perfil (ou o acesso à conta fora dela), navegador da Custom Tab, desfechos depois do envio, textos de ajuda | `integrations/app_declarado/conhecimento.py`, `sessao.py` |
 
 - **Fatia 1.** Entraram conversa, post, comentários e busca como telas autenticadas, e a checagem de sessão, fora do
   estado conhecido (feed ou perfil), volta até ele (voltar do Android, no máximo uma reabertura) antes de concluir —
@@ -389,10 +456,10 @@ pela PESSOA no Foco — sem `session_provider`, `ProfileAccountDTO.automated_log
 manualmente via `PATCH /api/instagram/profiles/{id}/accounts/{account_id}` (`session_status`). O ponto de
 extensão está pronto: desde o ADR-052, uma pasta de dado com `app.yaml`, `catalogo.yaml` e `telas.yaml` +
 `sessao.yaml`, sem Python e sem tocar no núcleo ([apps](apps-e-loja.md#manifesto-de-app-fase-k1)); `register_manifest()`
-continua para teste. Provado só com o QA e com o app de e-mail fictício em teste (`simulated`). Falta a
-decisão do dono sobre qual app ganha login determinístico/catálogo primeiro (plano-100 id 12.3, `status:
-pending`), e, se for no mesmo perfil do Instagram, a sessão por (perfil, app)
-([acima](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
+continua para teste. Provado só com o QA e com o app de e-mail fictício em teste (`simulated`). O primeiro app é o
+Outlook (ADR-057, Fase 23), e a sessão por conta que dois apps no mesmo perfil pediam foi feita no item 23.4
+([acima](#sessionprovider-e-o-registro-por-pacote-fase-k1)); o login em etapas, a conta fora da barra inferior e a
+Custom Tab com site declarado, no item 23.6 ([acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)).
 
 ## Capacidades — implementação e validação
 

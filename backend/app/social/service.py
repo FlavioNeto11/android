@@ -424,8 +424,11 @@ class SocialService:
         linha = self.repo.profile_row(profile_id)
         if (linha["offline_policy"] if linha is not None else None) == "reauth_elsewhere":
             return
-        sessao = self.repo.session_row(profile_id)
-        if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
+        # Sessão pronta de QUALQUER conta da persona (item 23.4): a do segundo app de login gerenciado fica no mesmo
+        # disco que a da âncora, e se perde do mesmo jeito.
+        if not any((sessao := self.repo.session_of_account(profile_id, str(c["id"]))) is not None
+                   and sessao["status"] == SessionStatus.session_ready.value
+                   for c in self.repo.list_accounts(profile_id)):
             return
         onde = atual["worker_id"] or "este servidor"
         para = destino_worker or "este servidor"

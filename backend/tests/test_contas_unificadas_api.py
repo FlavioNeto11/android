@@ -147,3 +147,19 @@ async def test_rotas_por_conta_e_apelidos_por_perfil(harness: Harness) -> None:
     for tabela in ("events", "profile_accounts", "account_credentials"):
         for linha in s.db.query(f"SELECT * FROM {tabela}"):                    # noqa: S608 - nome fixo do teste
             assert valor not in str(dict(linha)), tabela
+
+
+async def test_conta_de_site_nao_conecta_pelo_login_gerenciado(harness: Harness) -> None:
+    """Item 23.4/23.6: a conta com `host` é de portal, pelo navegador. A porta de sessão e o despacho nunca a acham
+    (a conta do app é a sem site), então conectar e verificar recusam já na rota (409 `conta_de_site`), sem trabalho
+    no aparelho — antes a rota abria o login gerenciado dela e a Custom Tab seguia o site dela."""
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    site = s.social.add_account(pid, ProfileAccountCreate(app_id="instagram", handle="conta.do.site",
+                                                          host="www.instagram.com", password=SecretStr(_valor()),
+                                                          consent=True))
+    async with _cliente(harness) as c:
+        for acao in ("connect", "verify"):
+            r = await c.post(f"/api/instagram/profiles/{pid}/accounts/{site.id}/session/{acao}")
+            assert r.status_code == 409 and _erro(r)["code"] == "conta_de_site", (acao, r.text)
+    assert s.social_repo.auth_attempts(pid, account_id=site.id) == []

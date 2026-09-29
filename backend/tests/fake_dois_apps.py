@@ -80,6 +80,7 @@ class SessaoDoQa:
     def __init__(self, deps: SessionDeps | None = None) -> None:
         self.deps = deps
         self.chamadas: list[tuple[str, str, bool, bool, bool]] = []
+        self.contas: list[str | None] = []           # o `account_id` de cada chamada, na ordem (item 23.4)
 
     @property
     def package(self) -> str:
@@ -88,12 +89,20 @@ class SessaoDoQa:
     async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
                              force_login: bool = False, automatic: bool = False, observe_only: bool = False) -> ResultadoDoQa:
         self.chamadas.append((rt.id, profile_id, force_login, automatic, observe_only))
+        self.contas.append(account_id)
         pronto = "login_account" not in rt.io.page_source()
         detalhe = "conta do QA Messenger aberta na tela" if pronto else "o QA Messenger pede login"
         if self.deps is not None:
-            self.deps.repo.set_session(profile_id, status=SessionStatus.session_ready if pronto
-                                       else SessionStatus.auth_required, instance_id=rt.id,
-                                       verified_at=now_iso() if pronto else None, detail=detalhe)
+            # Grava na conta DO QA (a dita, ou a da persona no pacote), como o motor genérico desde o 23.4 — nunca
+            # na conta âncora do perfil.
+            conta = account_id
+            if conta is None:
+                linha = self.deps.repo.conta_do_pacote(profile_id, QA)
+                conta = str(linha["id"]) if linha is not None else None
+            if conta is not None:
+                self.deps.repo.set_account_session(profile_id, conta, rt.id, status=SessionStatus.session_ready
+                                                   if pronto else SessionStatus.auth_required,
+                                                   verified_at=now_iso() if pronto else None, detail=detalhe)
         return ResultadoDoQa(pronto, detalhe)
 
 
