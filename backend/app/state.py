@@ -8,7 +8,7 @@ import socket
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Mapping, Sequence
 from typing import Any, Callable
 
 import psutil
@@ -1334,7 +1334,7 @@ class AppState:
                 log.exception("%s: falha ao adotar a versão promovida de %s", rt.id, package)
         return adotados
 
-    def _app_preflight(self, rt: DeviceRuntime) -> dict[str, str] | None:
+    def _app_preflight(self, rt: DeviceRuntime, pacotes: Sequence[str] = ()) -> dict[str, str] | None:
         """Pré-voo do aplicativo: motivo para a tarefa não poder acontecer neste aparelho, sem tocar em nada.
 
         `None` = não impede. Inclui o caso "não se sabe": aparelho cujo aplicativo nunca foi observado não vira
@@ -1343,10 +1343,22 @@ class AppState:
 
         Também não é recusa a entrega PENDENTE: versão promovida por instalar é resolvida pela porta do app,
         antes da tarefa. Recusa é só o que exige uma pessoa.
+
+        Item 24.5: `pacotes` são os apps da tarefa (o conjunto do comando, ou os do plano no início). Cada um é
+        conferido, depois do app principal do aparelho, pela MESMA regra; a primeira recusa vale, e a de um app que não
+        é o principal diz o nome dele. Sem `pacotes`, só o principal, como antes.
         """
-        package = self._pacote_do_aparelho(rt.id)
-        if not package:
-            return None
+        principal = self._pacote_do_aparelho(rt.id)
+        for package in dict.fromkeys(p for p in (principal, *pacotes) if p):
+            recusa = self._app_preflight_do_pacote(rt, package)
+            if recusa is not None:
+                if package != principal:
+                    recusa = {**recusa, "motivo": f"{capabilities_of(package).label}: {recusa['motivo']}"}
+                return recusa
+        return None
+
+    def _app_preflight_do_pacote(self, rt: DeviceRuntime, package: str) -> dict[str, str] | None:
+        """O pré-voo de UM aplicativo neste aparelho (a regra de `_app_preflight`)."""
         row = self.release_repo.app_state(rt.id, package)
         if row is None:
             return None
@@ -1652,30 +1664,33 @@ class AppState:
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
         """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.
 
-        Devolve `None` quando pode seguir. Etapa sem capability (app sem catálogo) nunca passa por aqui — o QA
-        Messenger e o caminho livre seguem exatamente como antes.
+        Devolve `None` quando pode seguir. Etapa sem ação do catálogo num app SEM catálogo segue livre — o QA
+        Messenger e o caminho livre seguem exatamente como antes, sozinhos ou num comando entre apps.
+
+        Tudo aqui é pelo app DA ETAPA (item 24.2, ADR-058 decisão 2), o mesmo que a execução usa
+        (`Scheduler._app_context`): num comando entre apps, a etapa do Outlook e a do Instagram são julgadas cada uma
+        pelo seu app. A regra não muda; a pergunta passa a ser feita ao app certo.
         """
         capability = srow["capability"] if "capability" in srow.keys() else None
-        if not capability:
-            # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
-            # política, aprovação, limite e coordenação de frota (uma habilidade treinada ou um plano livre que
-            # atravessa apps). Não passa: pede a ação do catálogo.
-            if srow["side_effect"]:
-                rt0 = self.devices.devices.get(obj["instance_id"])
-                app0 = self.scheduler._app_context(run, rt0, _col_app(srow))[0] if rt0 else None  # noqa: SLF001
-                if app0 is not None and app0.package and load_catalog(app0.package) is not None:
-                    return Verdict(allowed=False, policy="manual_only",
-                                   reason=f"etapa com efeito externo em {app0.name or app0.package} sem a ação do "
-                                          "catálogo — ela passaria por fora da política e dos limites do perfil",
-                                   hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje).")
-            return None
-        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
         rt = self.devices.devices.get(obj["instance_id"])
         app_da_etapa = self.scheduler._app_context(run, rt, _col_app(srow))[0] if rt else None  # noqa: SLF001
         pacote = app_da_etapa.package if app_da_etapa else None
-        cap = capability_of(pacote, capability)
+        # Uma capability que o app DA ETAPA não tem conta como nenhuma. Antes, `cap is None` liberava a etapa com o
+        # efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora de tudo abaixo.
+        cap = capability_of(pacote, capability) if capability else None
         if cap is None:
+            # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
+            # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo.
+            if srow["side_effect"] and pacote and load_catalog(pacote) is not None:
+                nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
+                estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
+                return Verdict(allowed=False, policy="manual_only",
+                               reason=f"etapa com efeito externo em {nome} sem a ação do catálogo{estranha} — ela "
+                                      "passaria por fora da política e dos limites do perfil",
+                               hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje).")
             return None
+        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
         if not profile_id:
             # Sem perfil não há voz para escrever nem política para aprovar. Deixar passar seria pior do que
             # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a

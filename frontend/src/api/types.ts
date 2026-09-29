@@ -172,6 +172,9 @@ interface PlanStep {
   postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged' | 'items_collected'; value: string; description: string };
   timeout_s: number;
   max_attempts: number;
+  /** Item 12.1/ADR-058: o app em que ESTA etapa roda — um comando pode atravessar apps. `null`/ausente = o app do
+   *  plano (`Plan.app_id`). */
+  app_id?: string | null;
   /** De que habilidade, versão e nó a etapa saiu, quando o plano foi compilado de uma habilidade (`StepOrigin`).
    *  Ausente no plano do planejador. É o que permite corrigir a etapa no ensino (plano 22.7). */
   origin?: StepOrigin;
@@ -191,6 +194,9 @@ interface Plan {
   summary: string;
   app_id: string | null;
   app_package: string | null;
+  /** ADR-058 (T18): os apps de que este plano PRECISA, por id — sempre preenchido quando o plano veio do planejador
+   *  com catálogo. Vazio (plano antigo, ou compilado de skill de um app só) = só `app_id`, como sempre foi. */
+  required_apps?: string[];
   parameters: Record<string, string>;            // ex.: { recipient: 'QA-001', message_template: 'Teste POC {instance_id} {run_id}' }
   success_criteria: string[];
   steps: PlanStep[];
@@ -234,6 +240,8 @@ interface Step {
   result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null } | null;
   claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | null;   // v0.2 — quem decidiu as ações da etapa
+  /** Item 12.1: app em que esta etapa roda. `null`/ausente = o app do plano (`Plan.app_id`). */
+  app_id?: string | null;
 }
 
 interface Action {
@@ -1438,9 +1446,10 @@ export interface CreateRunRequest {
   mode: RunMode;
   /** Resposta à recusa do pré-voo: criar a execução só com os aparelhos aptos. */
   only_ready?: boolean;
-  /** "Distribuir entre servidores": o backend escolhe `count` aparelhos do app pela carga de cada máquina.
-   *  Exclusivo com `instance_ids` (vai vazio). */
-  distribute?: { count: number; app_id: string };
+  /** "Distribuir entre servidores": o backend escolhe `count` aparelhos pela carga de cada máquina.
+   *  Exclusivo com `instance_ids` (vai vazio). Item 24.6: sem `app_id`, os apps são os que o COMANDO usa (o painel
+   *  não escolhe mais "um app"); com ele, restringe a esse app. */
+  distribute?: { count: number; app_id?: string };
   // v0.28 (ADR-040): `credentials`/`consent_credentials` SAÍRAM — a execução não carrega credencial (422 se vier).
   // A senha mora na conta da persona, com consentimento por conta.
   /** v0.29: com `instance_ids`, INTERSEÇÃO (antes substituía). */

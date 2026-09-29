@@ -1,12 +1,12 @@
 import { ArrowRight, CircleHelp, Eraser, Route, TriangleAlert } from 'lucide-react';
 import { profileAvatarUrl } from '../../api/client';
-import type { ResolveTargetsResponse, TargetQuestion } from '../../api/types';
+import type { AppConfig, ResolveTargetsResponse, TargetQuestion } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import ui from '../../components/ui.module.css';
 import { cx } from '../../lib/format';
-import { ORIGEM, type RecusaDeAlvo } from './alvos';
+import { appsDoAlvo, ORIGEM, type RecusaDeAlvo } from './alvos';
 import styles from './CommandPanel.module.css';
 
 /** Como mostrar uma persona pelo id: nome e @ quando a lista de personas já chegou; senão o próprio id. */
@@ -16,14 +16,18 @@ export type NomeDaPersona = (profileId: string) => { nome: string; handle: strin
  * A prévia dos alvos (`POST /runs/targets/resolve`): persona → aparelho com a ORIGEM de cada escolha, o comando que
  * a IA recebe quando o texto tinha destinos, os avisos e as perguntas, cada opção um botão que preenche a seleção.
  * Mostrada ANTES de executar (design §7.6): destino deduzido do texto nunca executa sem ter passado por aqui.
+ * Item 24.6: cada alvo mostra o CONJUNTO de apps exigidos (`app_ids`, contrato C5) — um comando entre apps não
+ * força mais "um app" por alvo na tela.
  */
-export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, onResponder, onSemDestinos }: {
+export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, apps, onResponder, onSemDestinos }: {
   previa: ResolveTargetsResponse | null;
   recusa: RecusaDeAlvo | null;
   carregando: boolean;
   /** O comando como está no campo, para saber se o texto tinha destinos. */
   comando: string;
   nomeDe: NomeDaPersona;
+  /** Catálogo de apps carregado, para nomear os `app_ids` do alvo. Vazio = mostra o próprio id. */
+  apps?: readonly Pick<AppConfig, 'id' | 'name'>[];
   onResponder: (q: TargetQuestion, opcao: string) => void;
   onSemDestinos: (comando: string) => void;
 }) {
@@ -58,6 +62,8 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, on
             {previa.targets.map((t) => {
               const quem = t.profile_id ? nomeDe(t.profile_id) : null;
               const origem = ORIGEM[t.origem] ?? { rotulo: t.origem, dica: '' };
+              // Item 24.6: o CONJUNTO de apps do alvo, não só o primeiro — um comando entre apps toca mais de um.
+              const nomesDosApps = appsDoAlvo(t, apps ?? []);
               return (
                 <li key={`${t.profile_id ?? '-'}:${t.instance_id}`} className={styles.previaAlvo}>
                   {quem ? (
@@ -72,7 +78,11 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, on
                          title={origem.dica}>
                     origem: {origem.rotulo}
                   </Badge>
-                  {t.app_id ? <span className={styles.previaNota}>{t.app_id}</span> : null}
+                  {nomesDosApps.length > 0 ? (
+                    <span className={styles.previaNota} title={nomesDosApps.length > 1 ? 'Apps exigidos por este comando' : undefined}>
+                      {nomesDosApps.join(' + ')}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}

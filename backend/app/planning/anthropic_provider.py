@@ -30,7 +30,7 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
                                                             PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
-from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
+from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
@@ -292,6 +292,8 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ plano
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        if req.catalogs:
+            return await self._plan_multiapp(req)
         if req.catalog is not None:
             return await self._plan_with_catalog(req)
         max_steps = self.cfg.file.limits.max_steps_per_objective
@@ -311,6 +313,19 @@ class AnthropicProvider:
             role="plan", model=self.models["plan"], system=prompts.PLANNER_CAPABILITY_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_capability_user(req, max_steps)}],
             effort=self.cfg.env.ai_effort_planner, max_tokens=8000, schema=strict_schema(_CapPlanOut))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
+        return plan, usage
+
+    async def _plan_multiapp(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        """Comando entre apps (item 24.1): ação do catálogo nos apps com catálogo, etapa livre nos demais. O teto de
+        saída é o do plano livre: as etapas livres são as longas."""
+        max_steps = self.cfg.file.limits.max_steps_per_objective
+        resp, usage = await self._create(
+            role="plan", model=self.models["plan"], system=prompts.PLANNER_MULTIAPP_SYSTEM,
+            content=[{"type": "text", "text": prompts.planner_multiapp_user(req, max_steps)}],
+            effort=self.cfg.env.ai_effort_planner, max_tokens=12000, schema=strict_schema(_MultiPlanOut))
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)

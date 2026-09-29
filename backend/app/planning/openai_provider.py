@@ -43,7 +43,7 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
                                                             PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
-from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
+from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
@@ -242,15 +242,24 @@ class OpenAICompatProvider:
     # ------------------------------------------------------------------ plano
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         max_steps = self.cfg.file.limits.max_steps_per_objective
-        com_catalogo = req.catalog is not None
+        # Três planejadores, na mesma ordem do Anthropic: entre apps (item 24.1) → por catálogo → livre.
+        entre_apps = bool(req.catalogs)
+        com_catalogo = entre_apps or req.catalog is not None
         modelo = self.models.get("plan", self.model)
-        esquema = strict_schema(_CapPlanOut if com_catalogo else _PlanOut)
-        texto = (prompts.planner_capability_user(req, max_steps) if com_catalogo
-                 else prompts.planner_user(req, max_steps)) + self._json_hint(modelo, esquema)
+        if entre_apps:
+            esquema, sistema = strict_schema(_MultiPlanOut), prompts.PLANNER_MULTIAPP_SYSTEM
+            texto = prompts.planner_multiapp_user(req, max_steps)
+        elif com_catalogo:
+            esquema, sistema = strict_schema(_CapPlanOut), prompts.PLANNER_CAPABILITY_SYSTEM
+            texto = prompts.planner_capability_user(req, max_steps)
+        else:
+            esquema, sistema = strict_schema(_PlanOut), prompts.PLANNER_SYSTEM
+            texto = prompts.planner_user(req, max_steps)
         msg, usage = await self._create(
-            role="plan", model=modelo,
-            system=prompts.PLANNER_CAPABILITY_SYSTEM if com_catalogo else prompts.PLANNER_SYSTEM,
-            content=[{"type": "text", "text": texto}], max_tokens=12000 if not com_catalogo else 8000,
+            role="plan", model=modelo, system=sistema,
+            content=[{"type": "text", "text": texto + self._json_hint(modelo, esquema)}],
+            # a etapa livre é a longa: o teto de 8000 é só do plano que é todo de ações do catálogo
+            max_tokens=8000 if com_catalogo and not entre_apps else 12000,
             schema=esquema, schema_name="plano")
         raw = self._texto(msg)
         converte = catalog_plan_from_json if com_catalogo else plan_from_json

@@ -199,8 +199,9 @@ class PlanStep(BaseModel):
     for_each: str | None = None               # etapa-MODELO: repetida para cada item da etapa de coleta com esta chave
     template_key: str | None = None           # interno: chave da etapa-modelo de onde esta cópia saiu (identidade da receita)
     variables: dict[str, str] = {}            # interno: variáveis próprias da cópia (item, item_index)
-    # Item 12.1: o app em que ESTA etapa roda — um comando pode atravessar apps (pegar um código no Outlook e
-    # usá-lo no Instagram). `None` = o app do plano. Receita, catálogo, sessão e memória da etapa seguem este app.
+    # Item 12.1: o app em que ESTA etapa roda — um comando pode atravessar apps (ler o assunto do último e-mail e
+    # procurar no Instagram o perfil citado). `None` = o app do plano. Receita, catálogo, sessão e memória da etapa
+    # seguem este app. Item 24.8: código de verificação, senha ou token nunca são lidos aqui para uso em outra etapa.
     app_id: str | None = None
     # Só em plano compilado de skill. Fora da serialização quando vazio: `runs.plan` e `plan_versions.steps` de
     # todo plano que não veio de skill continuam byte a byte iguais (e o painel ignora campo que não conhece).
@@ -1554,11 +1555,15 @@ class ManualInput(BaseModel):
 
 class DistributeSpec(BaseModel):
     """"Distribuir entre servidores": quantos aparelhos de um app, escolhidos pela carga de cada máquina
-    (`taskqueue/balanceamento.py`) em vez de marcados um por um. Para comando que não depende de conta."""
+    (`taskqueue/balanceamento.py`) em vez de marcados um por um. Para comando que não depende de conta.
+
+    Item 24.6 (R9): `app_id` virou opcional. Sem ele, os apps são os que o COMANDO usa (a mesma leitura do roteamento,
+    `RunService._app_do_comando`), e o painel deixou de escolher "um app" pela pessoa; com ele, restringe a esse app,
+    como antes."""
 
     model_config = ConfigDict(extra="forbid")
     count: int = Field(ge=1, le=64)
-    app_id: str = Field(min_length=1, max_length=80)
+    app_id: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class RunCreate(BaseModel):

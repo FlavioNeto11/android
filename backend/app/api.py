@@ -2717,9 +2717,21 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
 
 @router.get("/runs/distribution")
 async def preview_distribution(request: Request, count: int = Query(..., ge=1, le=64),
-                               app_id: str = Query(..., min_length=1, max_length=80)) -> Any:
-    """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada."""
-    return st(request).runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id))
+                               app_id: str | None = Query(None, min_length=1, max_length=80),
+                               command: str | None = Query(None, min_length=1, max_length=4000)) -> Any:
+    """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada.
+
+    Item 24.6: `app_id` ficou opcional. Sem ele, os apps são os que o `command` usa (a mesma leitura da criação);
+    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação."""
+    if app_id is None and command is None:
+        raise err(422, "distribution_sem_alvo", "Informe o app (`app_id`) ou o comando (`command`) da distribuição.")
+    s = st(request)
+    try:
+        if command is not None:
+            s.runs._recusar_credencial(command)
+        return s.runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id), command)
+    except RunError as exc:
+        raise _run_error(exc) from exc
 
 
 @router.get("/runs/{run_id}")

@@ -26,8 +26,11 @@ from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, I
                                                             preencher_vazios)
 from ..security.redaction import looks_secret
 from ..util import norm_text
-from .capabilities import CapabilityNode, compose
-from .provider import Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict, VerifyRequest
+from .apps_do_comando import apps_citados
+from .capabilities import CapabilityCatalog, CapabilityNode, compose
+from .parsing import apps_do_plano, norm_key
+from .provider import (AppContext, Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
+                       VerifyRequest)
 
 QA_PACKAGE = "com.pocqa.messenger"
 _HANDLE = re.compile(r"@([a-zA-Z0-9._]{2,30})")
@@ -89,8 +92,18 @@ class SimulatedProvider:
 
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         info = PlannerInfo(provider=self.name, model=self.model, simulated=True)
-        if req.catalog is not None:
-            return self._plan_with_catalog(req, info), Usage()
+        if req.catalogs:
+            plan = self._plan_multiapp(req, info)
+        elif req.catalog is not None:
+            plan = self._plan_with_catalog(req, info, req.catalog)
+        else:
+            plan, _ = self._plano_livre(req, info)
+        # R6 (item 24.1): o plano simulado também declara os apps em que roda, pela mesma regra dos reais.
+        plan.required_apps = apps_do_plano(plan, req.instances)
+        return plan, Usage()
+
+    def _plano_livre(self, req: PlanRequest, info: PlannerInfo) -> tuple[Plan, Usage]:
+        """O plano livre por regras: só o QA Messenger."""
         app = next((a for a in req.apps if a.package == QA_PACKAGE), None)
         cmd = req.command
         c = norm_text(cmd)
@@ -310,7 +323,58 @@ class SimulatedProvider:
                  reason=f"O modo simulado não sabe executar a etapa '{key}'.")
 
     # ------------------------------------------------------------------ verificação
-    def _plan_with_catalog(self, req: PlanRequest, info: PlannerInfo) -> Plan:
+    def _plan_multiapp(self, req: PlanRequest, info: PlannerInfo) -> Plan:
+        """Comando entre apps (item 24.1) por regras: o plano de cada app que o comando CITA, na ordem em que aparecem
+        (ou o do aparelho, quando não cita nenhum), um depois do outro, cada etapa no app dela. Com catálogo, as regras
+        de catálogo; o QA Messenger, o plano livre dele; outro app sem catálogo, uma etapa que o abre. Não interpreta
+        o comando de verdade: existe para exercitar composição por app, despacho e troca de app sem modelo nenhum.
+
+        Um app só citado dá exatamente o plano de antes (o QA pedido num aparelho do Instagram: 22d65f)."""
+        do_aparelho = {i.get("app_id") for i in req.instances}
+        alvos = apps_citados(req.command, req.apps) or [a for a in req.apps if a.id in do_aparelho]
+        partes: list[tuple[AppContext, Plan]] = []
+        for app in alvos:
+            catalogo = req.catalogs.get(app.id) if app.id else None
+            nome = app.name or app.package or "app"
+            if catalogo is not None:
+                partes.append((app, self._plan_with_catalog(req, info, catalogo)))
+            elif app.package == QA_PACKAGE:
+                partes.append((app, self._plano_livre(req, info)[0]))
+            else:
+                abrir = PlanStep(key=norm_key(f"abrir_{app.id or 'app'}"), title=f"Abrir o {nome}",
+                                 goal=f"Trazer o {nome} para o primeiro plano.", timeout_s=90,
+                                 postcondition=_post("app_foreground", app.package or "",
+                                                     f"O {nome} está em primeiro plano."))
+                partes.append((app, Plan(summary=f"Abrir o {nome}", app_id=app.id, app_package=app.package,
+                                         success_criteria=[f"{nome} aberto"], steps=[abrir], planner=info)))
+        if not partes:
+            return Plan(summary="Plano simulado indisponível", planner=info, missing=[MissingInfo(
+                field="app", question="O comando não cita nenhum app configurado e o aparelho não tem app.")])
+        if len(partes) == 1:
+            return partes[0][1]
+        principal = partes[0][0]
+        steps: list[PlanStep] = []
+        parametros: dict[str, str] = {}
+        criterios: list[str] = []
+        faltas: list[MissingInfo] = []
+        for app, parte in partes:
+            nomes = {s.key: s.key for s in parte.steps}
+            if {s.key for s in steps} & set(nomes):
+                # A mesma chave em dois apps (`send_message` no QA e no Instagram): a do segundo ganha o app na frente.
+                nomes = {k: norm_key(f"{app.id or 'app'}_{k}") for k in nomes}
+            for s in parte.steps:
+                s.key, s.depends_on = nomes[s.key], [nomes.get(d, d) for d in s.depends_on]
+                s.for_each = nomes.get(s.for_each, s.for_each) if s.for_each else None
+                s.app_id = app.id if app.id != principal.id else None
+                steps.append(s)
+            parametros.update(parte.parameters)
+            criterios += parte.success_criteria
+            faltas += parte.missing
+        return Plan(summary="[simulado] " + " → ".join(p.summary for _, p in partes), app_id=principal.id,
+                    app_package=principal.package, parameters=parametros, success_criteria=criterios,
+                    steps=[] if faltas else steps, missing=faltas, planner=info)
+
+    def _plan_with_catalog(self, req: PlanRequest, info: PlannerInfo, catalog: CapabilityCatalog) -> Plan:
         """Plano por regras usando o catálogo do app. Existe para exercitar composição, políticas e limites sem
         chamar modelo nenhum — não sabe interpretar comando de verdade, e não finge saber."""
         c = norm_text(req.command)
@@ -318,7 +382,7 @@ class SimulatedProvider:
         achado = _HANDLE.search(req.command)
         alvo = f"@{achado.group(1)}" if achado else ""
         texto = (QUOTED.findall(req.command) or [""])[0]
-        app = next((a for a in req.apps if a.package == req.catalog.package), None)
+        app = next((a for a in req.apps if a.package == catalog.package), None)
         faltando: list[MissingInfo] = []
         nodes: list[CapabilityNode] = []
         if ("mensagem" in c or "responda" in c or "envie" in c) and alvo:
@@ -338,9 +402,9 @@ class SimulatedProvider:
                                     bindings={"username": alvo})]
         else:
             nodes = [CapabilityNode(key="open_feed", capability="OPEN_FEED")]
-        steps, missing = compose(req.catalog, nodes)
+        steps, missing = compose(catalog, nodes)
         return Plan(summary=f"[simulado] {req.command[:80]}", app_id=app.id if app else None,
-                    app_package=req.catalog.package, success_criteria=["[simulado] ações do catálogo executadas"],
+                    app_package=catalog.package, success_criteria=["[simulado] ações do catálogo executadas"],
                     steps=steps, missing=faltando + missing, planner=info)
 
     # ------------------------------------------------------------------ geração social (por regras)

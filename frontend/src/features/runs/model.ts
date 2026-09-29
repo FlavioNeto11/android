@@ -1,6 +1,14 @@
-import type { Attempt, EventRecord, Evidence, Objective, RunDetail, RunSummary, Step } from '../../api/types';
+import type { AppConfig, Attempt, EventRecord, Evidence, Objective, RunDetail, RunSummary, Step } from '../../api/types';
 import type { StackedSegment } from '../../components/ProgressBar';
 import { isRecord } from '../../lib/format';
+
+/** O nome do app pelo id, como o catálogo o cadastrou (item 24.6: o Plano e a Execução mostram o app de CADA
+ *  etapa, não só o do plano inteiro). O próprio id quando o catálogo não tem esse app (removido, ou ainda não
+ *  carregado) — nunca inventa um nome. `null` sem id algum. */
+export function appLabel(apps: readonly Pick<AppConfig, 'id' | 'name'>[], appId: string | null | undefined): string | null {
+  if (!appId) return null;
+  return apps.find((a) => a.id === appId)?.name ?? appId;
+}
 
 /** Etapas da versão ATUAL do plano do objetivo (o RunDetail traz etapas de todas as versões). */
 export function currentSteps(detail: RunDetail, objective: Objective): Step[] {

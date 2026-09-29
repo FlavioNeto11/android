@@ -4,7 +4,8 @@
  * ser testado sem tela.
  */
 import { hintForError, type ApiError } from '../../api/client';
-import type { ResolvedTarget, RunTarget, TargetOrigin, TargetQuestion } from '../../api/types';
+import type { AppConfig, ResolvedTarget, RunTarget, TargetOrigin, TargetQuestion } from '../../api/types';
+import { appLabel } from '../runs/model';
 
 /** A origem de cada alvo, como a prévia mostra (o pedido do dono: interface / texto / vínculo / balanceamento). */
 export const ORIGEM: Record<TargetOrigin, { rotulo: string; dica: string }> = {
@@ -13,6 +14,16 @@ export const ORIGEM: Record<TargetOrigin, { rotulo: string; dica: string }> = {
   vinculo: { rotulo: 'vínculo', dica: 'Aparelho da persona: onde a sessão já está pronta, ou o principal.' },
   balanceamento: { rotulo: 'balanceamento', dica: 'Desempate pela carga dos servidores entre aparelhos igualmente bons.' },
 };
+
+/**
+ * Os apps que este alvo exige, pelo NOME do catálogo (contrato C5, `ResolvedTarget.app_ids`) — item 24.6: a prévia
+ * não mostra mais um app só por alvo, e sim o CONJUNTO que o comando atravessa. `app_id` é o de trás para quem
+ * ainda não populou `app_ids` (alvo que veio do `detail` de uma recusa, sem este campo). Vazio = alvo sem app.
+ */
+export function appsDoAlvo(t: Pick<ResolvedTarget, 'app_id' | 'app_ids'>, apps: readonly Pick<AppConfig, 'id' | 'name'>[]): string[] {
+  const ids = t.app_ids && t.app_ids.length > 0 ? t.app_ids : (t.app_id ? [t.app_id] : []);
+  return ids.map((id) => appLabel(apps, id) ?? id);
+}
 
 /** O que vai no corpo de `POST /runs` para confirmar a prévia: `targets` (com persona) ou `instance_ids` (sem). */
 export interface Eco {

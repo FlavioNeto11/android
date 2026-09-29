@@ -24,7 +24,10 @@ import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
 import { CorrigirEtapa, MarcaCorrigivel } from './CorrigirEtapa';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
-import { attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps, printParaConfirmar } from './model';
+import {
+  appLabel, attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps,
+  printParaConfirmar,
+} from './model';
 import { SideEffectFlag } from './PlanTab';
 import { type Confirmacao, resolveObjective } from './runActions';
 import styles from './Runs.module.css';
@@ -323,6 +326,8 @@ function OlderVersions({ detail, objective, attempts }: { detail: RunDetail; obj
 
 function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step[]; attempts: Map<string, Attempt[]> }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const apps = useAppStore((st) => st.apps);
+  const planAppId = detail.plan?.app_id ?? null;
   return (
     <div className={styles.stepTable}>
       {steps.map((s) => {
@@ -330,6 +335,9 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
         const bodyId = `step-body-${s.id}`;
         const meta = metaOf(STEP_STATUS, s.status);
         const list = attempts.get(s.id) ?? [];
+        // Item 24.6: etapa em app diferente do plano (comando entre apps, ADR-058) — visível já no cabeçalho, não
+        // só no detalhe, do mesmo jeito que o Plano mostra (`PlanStepList`).
+        const outroApp = s.app_id && s.app_id !== planAppId ? appLabel(apps, s.app_id) : null;
         return (
           <div key={s.id} className={styles.stepRow}>
             <button
@@ -351,6 +359,7 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
               <span className={styles.stepName}>
                 <span className="truncate">{s.title}</span>
                 <DrivenByBadge drivenBy={s.driven_by} />
+                {outroApp ? <Badge size="sm" tone="info" title="Esta etapa roda em outro app, não no app do plano.">app: {outroApp}</Badge> : null}
                 {s.side_effect ? <SideEffectFlag /> : null}
                 <MarcaCorrigivel detail={detail} step={s} />
               </span>
@@ -371,6 +380,8 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
 }
 
 function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: Step; attempts: Attempt[] }) {
+  const apps = useAppStore((st) => st.apps);
+  const appDaEtapa = appLabel(apps, s.app_id ?? detail.plan?.app_id ?? null);
   return (
     <>
       <dl className={styles.noteGrid}>
@@ -412,6 +423,7 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
       <Disclosure bare summary="Detalhes técnicos">
         <KvList>
           <KvRow label="Etapa"><span className="mono">{s.id}</span></KvRow>
+          <KvRow label="App">{appDaEtapa ?? '—'}</KvRow>
           <KvRow label="Depende de">{s.depends_on.length > 0 ? <span className="mono">{s.depends_on.join(', ')}</span> : '—'}</KvRow>
           <KvRow label="Pré-condição">{s.precondition ?? '—'}</KvRow>
           <KvRow label="Verificação de sucesso">
