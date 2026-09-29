@@ -24,6 +24,10 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     - trilha da adoção: registro do gesto (atual) ou acessória;
     - registrar a segunda pessoa que repete um gesto;
     - as polaridades dos três sinais.
+- **Painel: "Resultado por instância" em cartões e "Outros dados" do Diagnóstico legível (29/09, pedido do dono):
+  IMPLANTADO** (`13fb5c0`, no ar dentro de `b34e2f6`, deploy da Fase 22). Só painel. Prova `real`: capturas da 6eb84c ›
+  Relatório e do Diagnóstico › Outros dados no central (~17:10Z); `simulated`: vitest 751/751. Detalhe em
+  [produto.md §3](produto.md) e no CHANGELOG. Falta o olho do dono.
 
 - **Código em aberto de 29/09 (tarde): IMPLANTADO em `c071341`** (~14:10Z; sem migração nova; agente do notebook em
   `0.1.0+c071341`). [Relatório §24](relatorio-validacao.md), adendo v0.39 do contrato.
