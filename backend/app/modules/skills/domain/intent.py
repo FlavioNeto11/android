@@ -51,6 +51,9 @@ class ResolutionMethod(StrEnum):
     TEMPLATE = "template"
     TYPED = "typed"
     SEMANTIC = "semantic"
+    #: A escolha que a pessoa repetiu neste mesmo empate (ADR-054): só decide quando a habilidade escolhida não
+    #: tem etapa com efeito externo — com efeito, a pergunta continua, com a opção pré-selecionada.
+    PREFERENCE = "preference"
     LLM = "llm"
 
 
@@ -77,6 +80,8 @@ class StageOutcome(StrEnum):
     SKIPPED = "skipped"
     #: A etapa existe, mas o provedor dela é o nulo: nada foi perguntado a ninguém (prova `not_run`).
     NOT_RUN = "not_run"
+    #: A etapa não decidiu, mas deixou uma opção pré-selecionada na pergunta (a pessoa confirma).
+    SUGGESTED = "suggested"
 
 
 # ================================================================== value objects
@@ -131,11 +136,18 @@ class MissingInfo:
     received: str | None = None
     #: A habilidade a que a pergunta se refere, quando é uma só.
     skill: str | None = None
+    #: A opção PRÉ-SELECIONADA (uma de `options`): a escolha que a pessoa repetiu neste empate e que não pode decidir
+    #: sozinha (tem efeito externo). Só sugestão — a pessoa confirma. Sai no `as_dict` só quando existe.
+    suggested: str | None = None
 
     def as_dict(self) -> JsonObject:
         opcoes: list[JsonValue] = list(self.options)
-        return {"field": self.field, "question": self.question, "reason": self.reason.value,
-                "expected": self.expected, "options": opcoes, "received": self.received, "skill": self.skill}
+        saida: JsonObject = {"field": self.field, "question": self.question, "reason": self.reason.value,
+                             "expected": self.expected, "options": opcoes, "received": self.received,
+                             "skill": self.skill}
+        if self.suggested is not None:
+            saida["suggested"] = self.suggested
+        return saida
 
 
 @dataclass(frozen=True, slots=True)
@@ -472,9 +484,18 @@ def extract_typed(specs: Sequence[ParameterSpec] | None, captured: Mapping[str, 
     return ParameterExtraction(tuple(parametros), tuple(perguntas))
 
 
-def ambiguity_question(candidates: Sequence[ResolvedSkill]) -> MissingInfo:
-    """Dois ou mais candidatos com a mesma força e nada que os distinga: a pessoa escolhe reescrevendo o comando."""
+def ambiguity_question(candidates: Sequence[ResolvedSkill], suggested: SkillRef | None = None) -> MissingInfo:
+    """Dois ou mais candidatos com a mesma força e nada que os distinga: a pessoa escolhe reescrevendo o comando.
+
+    `suggested`: a escolha que a pessoa repetiu neste empate e que, por ter efeito externo, não decide sozinha — a
+    pergunta continua, com ela pré-selecionada. Fora dos candidatos, é ignorada."""
     nomes = "; ".join(f"“{c.definition.name}” ({c.ref})" for c in candidates)
-    return MissingInfo("skill", f"O comando casa com mais de uma habilidade e nada as distingue: {nomes}. Reescreva "
-                                "o comando com o texto de uma delas.", QuestionReason.AMBIGUOUS_INTENT,
-                       "o texto do comando de uma das habilidades", tuple(str(c.ref) for c in candidates))
+    texto = (f"O comando casa com mais de uma habilidade e nada as distingue: {nomes}. Reescreva o comando com o texto "
+             "de uma delas.")
+    sugerida = next((c for c in candidates if suggested is not None and c.ref == suggested), None)
+    if sugerida is not None:
+        texto += (f" Sugestão, pela sua escolha das últimas vezes: “{sugerida.definition.name}” ({sugerida.ref}) — "
+                  "confirme.")
+    return MissingInfo("skill", texto, QuestionReason.AMBIGUOUS_INTENT, "o texto do comando de uma das habilidades",
+                       tuple(str(c.ref) for c in candidates),
+                       suggested=str(sugerida.ref) if sugerida is not None else None)
