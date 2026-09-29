@@ -34,6 +34,7 @@ import type {
   ControlTakeResponse,
   CommandRefinement,
   CreateRunRequest,
+  CredentialCloneRequest,
   CredentialUpdateRequest,
   Diagnostics,
   EventRecord,
@@ -638,6 +639,9 @@ export const api = {
     request<ProfileAccount>('PUT', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`, { body }),
   deleteAccountCredential: (profileId: string, accountId: string) =>
     request<ProfileAccount>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`),
+  /** 23.9: o cofre clona a senha de outra conta DESTA persona para esta; o consentimento desta não muda. */
+  cloneAccountCredential: (profileId: string, accountId: string, body: CredentialCloneRequest) =>
+    request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential/clone`, { body }),
   /** Marca o consentimento sem redigitar a senha (v0.28). Sem senha guardada, 409 `no_credential`. */
   consentAccountCredential: (profileId: string, accountId: string) =>
     request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential/consent`),
@@ -704,16 +708,23 @@ export const api = {
     request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/auth-attempts`, { query: { limit } }),
   listProfileRuns: (profileId: string, limit = 20) =>
     request<RunSummary[]>('GET', `/instagram/profiles/${enc(profileId)}/runs`, { query: { limit } }),
-  getPolicy: (profileId: string) =>
-    request<ProfilePolicy>('GET', `/instagram/profiles/${enc(profileId)}/policy`),
-  setPolicy: (profileId: string, body: ProfilePolicyPatch) =>
-    request<ProfilePolicy>('PUT', `/instagram/profiles/${enc(profileId)}/policy`, { body }),
-  listPolicyGroups: () => request<PolicyGroup[]>('GET', '/instagram/policy-groups'),
+  /** `pkg` (23.10): sem ele, o app âncora, como sempre; com ele, o catálogo do app escolhido no painel. */
+  getPolicy: (profileId: string, pkg?: string | null) =>
+    request<ProfilePolicy>('GET', `/instagram/profiles/${enc(profileId)}/policy`, { query: { package: pkg ?? undefined } }),
+  setPolicy: (profileId: string, body: ProfilePolicyPatch, pkg?: string | null) =>
+    request<ProfilePolicy>('PUT', `/instagram/profiles/${enc(profileId)}/policy`,
+      { body, query: { package: pkg ?? undefined } }),
+  listPolicyGroups: (pkg?: string | null) =>
+    request<PolicyGroup[]>('GET', '/instagram/policy-groups', { query: { package: pkg ?? undefined } }),
   policyDefaults: () => request<{ limits: Record<string, number> }>('GET', '/instagram/policy-defaults'),
-  createPolicyGroup: (body: PolicyGroupCreateRequest) =>
-    request<PolicyGroup>('POST', '/instagram/policy-groups', { body }),
-  updatePolicyGroup: (id: string, body: PolicyGroupPatchRequest) =>
-    request<PolicyGroup>('PUT', `/instagram/policy-groups/${enc(id)}`, { body }),
+  createPolicyGroup: (body: PolicyGroupCreateRequest, pkg?: string | null) =>
+    request<PolicyGroup>('POST', '/instagram/policy-groups', { body, query: { package: pkg ?? undefined } }),
+  /** Um grupo visto por UM app (23.10): `capabilities`/`loosened` são o recorte do catálogo de `pkg` (sem ele, o
+   *  âncora) — a mesma chave em dois catálogos são duas escolhas do grupo. */
+  getPolicyGroup: (id: string, pkg?: string | null) =>
+    request<PolicyGroup>('GET', `/instagram/policy-groups/${enc(id)}`, { query: { package: pkg ?? undefined } }),
+  updatePolicyGroup: (id: string, body: PolicyGroupPatchRequest, pkg?: string | null) =>
+    request<PolicyGroup>('PUT', `/instagram/policy-groups/${enc(id)}`, { body, query: { package: pkg ?? undefined } }),
   deletePolicyGroup: (id: string) => request<void>('DELETE', `/instagram/policy-groups/${enc(id)}`),
   /** O pacote é obrigatório: com um padrão aqui, quem esquecia de dizer o app recebia o catálogo do Instagram
    *  como se fosse o dele. */

@@ -110,7 +110,8 @@ Fica guardado e **não** vai ao modelo: `tastes.interests` (já vai pela voz), `
   substituem inteiros. `name` grava `display_name` (e parte nome/sobrenome se ainda vazios); `null` em `name` ou
   `persona_prompt` é "não mexer". Nunca se substitui o JSON inteiro.
 - **Apagar** (`DELETE /api/personas/{id}`, `delete_persona`): é apagar a **pessoa**, com contas, credencial (e o
-  ciphertext no cofre), sessão, vínculo, memória e histórico (FKs em cascata; `delete_profile`). Recusa com 409
+  ciphertext no cofre de **toda** conta, não só da âncora: 23.9), sessão, vínculo, memória e histórico (FKs em
+  cascata; `delete_profile`). Recusa com 409
   `persona_in_use` enquanto houver vínculo com aparelho (`repository.binding_row`) ou execução em curso
   (`_execucao_em_curso`: objetivo fora de `OBJECTIVE_SETTLED`).
 - **Adoção e absorção pela rota de perfil.** `POST /api/instagram/profiles` com `persona_id` de uma pessoa sem conta
@@ -133,7 +134,7 @@ outras, a **conta âncora** do perfil (`social/repository.py::SocialRepository.c
 a conta do perfil, o app âncora do registro — `registry.py::pacote_ancora`, `ancora_do_perfil: true` no `app.yaml`,
 ADR-052; nasce no cadastro ou na primeira escrita de senha ou sessão, nunca numa leitura, e só para perfil
 com `@`). Criar: `POST /api/instagram/profiles/{id}/accounts` (`ProfileAccountCreate`: `app_id`, `handle`, `host?`,
-`password?`, `login_identifier?`, `consent`, `notes`); alterar: `PATCH …/accounts/{aid}` (`host`, `handle`, `status`,
+`password?`, `login_identifier?`, `consent`, `clonar_de?`, `notes`); alterar: `PATCH …/accounts/{aid}` (`host`, `handle`, `status`,
 `notes`, `session_status`); apagar: `DELETE …/accounts/{aid}` (a âncora não sai: `anchor_account`).
 
 **Credencial com estado e consentimento.** `account_credentials` (uma por conta): `login_identifier`, `secret_ref`
@@ -150,7 +151,55 @@ aceita) e em app comum o `handle`. Transitório: em app com provedor, `login_ide
 substitui o e-mail já gravado (a aba Contas do painel manda o `@`). A senha dada no cadastro do perfil
 (`ProfileCreate.password`) grava `consent_by = 'cadastro do perfil'` (`SocialService._store_password`): o formulário
 existe para o login automático. Apagar a credencial apaga o segredo do cofre, salvo enquanto a linha legada de
-`instagram_credentials` ainda referenciar a mesma `secret_ref` (`_apagar_credencial`).
+`instagram_credentials` ou outra linha de `account_credentials` ainda referenciar a mesma `secret_ref`
+(`_apagar_credencial`).
+
+**Credencial clonada de outra conta da persona** (23.9; ADR-057, decisão do dono D1: a conta Outlook recebe a senha
+do Instagram sem que o valor saia do cofre). `SecretStore.clonar(ref, para=None)` decifra e cifra de novo dentro do
+módulo e devolve só a referência: entrada **própria** (nonce novo, AAD da referência nova; com `para`, sobrescreve no
+lugar a entrada que a conta destino já tinha, para não deixar ciphertext órfão). Compartilhar a `secret_ref` foi
+descartado: trocar ou apagar uma conta mudaria a outra. Dois caminhos, uma regra (`SocialService._origem_do_clone` e
+`_clonar_credencial`):
+
+- ao criar: `ProfileAccountCreate.clonar_de = <account_id>`; exclui `password` (422 `clonar_de_com_senha`) e
+  `consent` (422 `consentimento_nao_clonado`), tudo conferido **antes** de criar a conta (recusa não deixa conta
+  solta);
+- numa conta existente: `POST …/accounts/{aid}/credential/clone` (`CredentialClone`: `clonar_de`,
+  `login_identifier?`).
+
+A origem tem de ser outra conta **da mesma persona** e com senha guardada: de outra persona, 409
+`credencial_de_outra_persona`; inexistente, 404; a própria conta, 409 `clonar_de_si_mesma`; sem senha, 409
+`no_credential`; cofre trancado ou chave de outro backend, 503 `secret_store_unavailable` (nada é gravado). O
+**consentimento nunca é clonado**: a conta nova nasce sem ele (`consent_by=None`), e nem `type_secret` nem o provedor
+de sessão a usam até a pessoa autorizar por `…/credential/consent`; a conta existente que já tinha consentimento
+mantém o seu. O `login_identifier` também não vem da origem (ADR-057 §5: o endereço é o dado conferido pelo dono):
+vale o informado, o gravado ou o padrão de `_login_da_conta`. A trilha é o evento "Senha de conta clonada…" com
+`profile_id`, `account_id`, `origem_account_id` e `by`, sem valor. O campo chama `clonar_de`, e não
+`credencial_de`, porque nome com "credencial" é mascarado pela redação e barrado pela guarda dos modelos
+(`test_social_profiles.py::test_nenhum_dto_de_resposta_tem_campo_de_credencial`). Painel: guia Contas e acesso,
+"Usar a senha de outra conta" no formulário de conta nova e no cartão de cada conta (`GuiaContas.tsx`).
+
+**Painel de contas por app** (23.10). A guia Contas e acesso não compara mais nome nem pacote (`ehInstagram` fixo em
+`com.instagram.android`) para saber qual app é a conta de cadastro: `GET /api/app-catalog` ganhou `profile_anchor`
+(espelha `AppDefinition.profile_anchor`/`ancora_do_perfil` do `app.yaml`), e o formulário de conta nova
+(`GuiaContas.tsx::ehAncora`) pergunta a ele — inclusive o rótulo "Usuário do X" e as mensagens de adoção vêm do
+`name` do catálogo, não de um literal. A política de ações (aba Configurações e Grupos de acesso) também deixou de
+pegar "o primeiro app com login gerenciado da lista": `GET/PUT …/policy`, `GET/POST/PUT …/policy-groups*` aceitam
+`?package=` (sem ele, o app âncora, como sempre); o painel escolhe entre os apps com `has_catalog: true` — o
+âncora por padrão, e um seletor "Aplicativo" quando há mais de um (`GuiaConfiguracoes.tsx`, `PolicyGroups.tsx`).
+A política é guardada **por app**: a mesma chave de ação existe em mais de um catálogo (o Instagram usa
+`SEND_MESSAGE`, e um catálogo do Outlook provavelmente também, T17), e desligá-la num app não pode desligá-la no
+outro. Sem migração: em `instagram_profiles.automation_policy.capabilities` e em `policy_groups.capabilities`, o
+nível de fora continua sendo o do app âncora (é o formato de todo dado gravado até aqui), e os demais apps ficam
+em `por_app.<pacote>` (`{"LIKE_POST": …, "por_app": {"<pacote>": {"SEND_MESSAGE": …}}}`). Quem lê ou grava passa
+por `social/policy.py::politicas_do_app` / `com_politicas_do_app`; `policy_for`, `origin_for` e `check` recebem o
+`package` da ação, e o despacho (`state.py::_policy_gate`) passa o pacote da etapa. Nas rotas, `?package=` escolhe
+o recorte que se lê E o que se grava: `capabilities`, `own`, `group`, `origin` e `loosened` do DTO são só daquele
+app; `limits` valem para o perfil inteiro. No diálogo de grupo, cada app é um rascunho à parte: o do app que a
+listagem não trouxe vem de `GET …/policy-groups/{id}?package=`, e salvar faz um pedido por app editado, cada um com
+o seu `package`; "Começar a partir de" um perfil SUBSTITUI o rascunho (de todos os apps com catálogo), nunca mescla.
+Sem um segundo app com catálogo em produção (o Outlook, 23.8, ainda não tem `catalogo.yaml`), o caminho de dois
+apps só está provado por `simulated` (catálogo falso nos testes).
 
 **Sessão por (conta, aparelho).** `account_sessions` tem chave `(account_id, instance_id)` e um só vocabulário
 (`models.SessionStatus`): `unknown`, `session_ready`, `auth_required` (o antigo `logged_out`), `auth_challenge`,
@@ -197,6 +246,7 @@ e `consent_credentials` saíram (422 por `extra="forbid"`), e `run_secrets` fico
 | `PUT …/accounts/{aid}/credential` | guarda a senha (`CredentialUpdate`: `password`, `login_identifier?`, `consent`); sem `consent` numa conta que nunca consentiu, 409 `consentimento_de_credencial` |
 | `DELETE …/accounts/{aid}/credential` | apaga a credencial (e o segredo, salvo referência legada) |
 | `POST …/accounts/{aid}/credential/consent` | marca o consentimento sem redigitar; sem senha guardada, 409 `no_credential` |
+| `POST …/accounts/{aid}/credential/clone` | usa a senha de outra conta da persona (`CredentialClone`: `clonar_de`, `login_identifier?`), clonada no cofre; outra persona 409 `credencial_de_outra_persona`; o consentimento desta conta não muda (23.9) |
 | `POST …/accounts/{aid}/session/connect` | 202; só app com provedor (`s.sessoes.for_package(conta.package)`; senão 409 `no_session_provider`); sem senha 409 `no_credential`; sem consentimento 409 `consentimento_de_credencial` |
 | `POST …/accounts/{aid}/session/verify` | 202; só observa, nunca digita |
 | `POST …/accounts/{aid}/session/logout` | 202; apaga os dados do app da conta naquele aparelho |

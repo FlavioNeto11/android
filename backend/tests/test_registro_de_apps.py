@@ -152,6 +152,10 @@ async def test_capacidades_e_loja_exigem_o_pacote(harness: Harness, app_falso: C
         assert catalogo[INSTAGRAM]["session_provider"] == "instagram"
         assert catalogo[PACOTE_FALSO]["has_catalog"] is True
         assert catalogo[PACOTE_FALSO]["session_provider"] is None
+        # 23.10: é o que o painel usa no lugar de comparar nome ou pacote ("ehInstagram" fixo) para achar o app da
+        # conta de cadastro da persona — só o Instagram (o fixture não registra um segundo âncora).
+        assert catalogo[INSTAGRAM]["profile_anchor"] is True
+        assert catalogo[PACOTE_FALSO]["profile_anchor"] is False
 
 
 # ==================================================================== execução que mistura apps

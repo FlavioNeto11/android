@@ -9,7 +9,7 @@
 import { Plus, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
-import type { Capability, InstagramProfile, PolicyGroup, PolicyName } from '../../api/types';
+import type { AppCatalogEntry, Capability, InstagramProfile, PolicyGroup, PolicyName } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -20,23 +20,42 @@ import { toast, toastError } from '../../store/toasts';
 import { LimitsEditor, PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
 import styles from './Profiles.module.css';
 
-/** Ações do app que provê a conta (o Instagram), pelo registro — o mesmo caminho da aba Configurações. */
-function useAcoesDoCatalogo(): Capability[] {
+/** Apps com catálogo de ações, o âncora primeiro (23.10). Antes o painel pegava "o primeiro app com login
+ *  gerenciado NA ORDEM DA LISTA" — só funcionava porque, até aqui, o Instagram era o único; um segundo app com
+ *  conta gerenciada (ex.: Outlook, quando ganhar catálogo) mudaria a resposta por acidente de ordem, não por
+ *  escolha. Aqui a escolha é deliberada: o âncora por padrão, ou a pessoa escolhe entre os que têm catálogo. */
+function appsComCatalogo(catalogo: readonly AppCatalogEntry[]): AppCatalogEntry[] {
+  return catalogo.filter((a) => a.has_catalog)
+    .slice()
+    .sort((a, b) => Number(b.profile_anchor) - Number(a.profile_anchor) || a.label.localeCompare(b.label));
+}
+
+/** Ações do app pedido (`pacote`; `null` = o âncora, ou o único com catálogo) — o mesmo caminho da aba
+ *  Configurações. Devolve também a lista de apps com catálogo, para o seletor aparecer quando há mais de um. */
+function useAcoesDoApp(pacote: string | null): {
+  acoes: Capability[]; apps: AppCatalogEntry[]; pacoteEfetivo: string | null; pronto: boolean;
+} {
+  // `null` = o catálogo ainda não chegou: até lá, `pacoteEfetivo` ainda não quer dizer "nenhum app".
+  const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
   useEffect(() => {
     let vivo = true;
-    api.listAppCatalog()
-      .then(async (apps) => {
-        const alvo = apps.find((a) => a.session_provider !== null);
-        const c = alvo ? await api.listCapabilities(alvo.package) : [];
-        if (vivo) setAcoes(c);
-      })
-      .catch(() => undefined);
-    return () => {
-      vivo = false;
-    };
+    // Sem o registro, a seção segue como antes (sem lista de ações), mas deixa de esperar por ele.
+    api.listAppCatalog().then((c) => { if (vivo) setCatalogo(c); }).catch(() => { if (vivo) setCatalogo([]); });
+    return () => { vivo = false; };
   }, []);
-  return acoes;
+  const apps = appsComCatalogo(catalogo ?? []);
+  const pacoteEfetivo = pacote ?? apps[0]?.package ?? null;
+  useEffect(() => {
+    let vivo = true;
+    if (!pacoteEfetivo) {
+      setAcoes([]);
+      return () => { vivo = false; };
+    }
+    api.listCapabilities(pacoteEfetivo).then((c) => { if (vivo) setAcoes(c); }).catch(() => undefined);
+    return () => { vivo = false; };
+  }, [pacoteEfetivo]);
+  return { acoes, apps, pacoteEfetivo, pronto: catalogo !== null };
 }
 
 export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
@@ -44,7 +63,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
   profiles: InstagramProfile[];
   onChanged: () => Promise<void>;
 }) {
-  const acoes = useAcoesDoCatalogo();
+  const { acoes } = useAcoesDoApp(null);
   const [editando, setEditando] = useState<PolicyGroup | 'novo' | null>(null);
 
   async function apagar(g: PolicyGroup) {
@@ -115,7 +134,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
         </div>
       )}
       {editando ? (
-        <PolicyGroupDialog grupo={editando === 'novo' ? null : editando} acoes={acoes} profiles={profiles}
+        <PolicyGroupDialog grupo={editando === 'novo' ? null : editando} profiles={profiles}
                            grupos={grupos}
                            onClose={() => setEditando(null)}
                            onSaved={async () => {
@@ -127,9 +146,8 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
   );
 }
 
-function PolicyGroupDialog({ grupo, acoes, profiles, grupos, onClose, onSaved }: {
+function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   grupo: PolicyGroup | null;
-  acoes: Capability[];
   profiles: InstagramProfile[];
   grupos: PolicyGroup[];
   onClose: () => void;
@@ -137,24 +155,59 @@ function PolicyGroupDialog({ grupo, acoes, profiles, grupos, onClose, onSaved }:
 }) {
   const [nome, setNome] = useState(grupo?.name ?? '');
   const [descricao, setDescricao] = useState(grupo?.description ?? '');
-  const [caps, setCaps] = useState<Record<string, PolicyName>>(grupo?.capabilities ?? {});
+  // O grupo guarda um recorte de política POR APP (23.10): a mesma chave de ação pode existir em dois catálogos
+  // (SEND_MESSAGE), e a escolha para um app não vale para o outro. `rascunhos` é o que está sendo editado, por
+  // pacote; `originais`, o que o servidor tem, para mandar `null` no que saiu. `grupo.capabilities` chega da
+  // listagem sem `?package=`, isto é, o recorte do âncora (`grupo.package`). Chave '' = nenhum app se resolveu.
+  const pacoteDaLista = grupo?.package ?? '';
+  const [originais, setOriginais] = useState<Record<string, Record<string, PolicyName>>>(
+    grupo ? { [pacoteDaLista]: grupo.capabilities } : {});
+  const [rascunhos, setRascunhos] = useState<Record<string, Record<string, PolicyName>>>(
+    grupo ? { [pacoteDaLista]: grupo.capabilities } : {});
   const [limites, setLimites] = useState<Record<string, number>>(grupo?.limits ?? {});
   const [membros, setMembros] = useState<Set<string>>(new Set(grupo?.members.map((m) => m.id) ?? []));
   const [padraoLimites, setPadraoLimites] = useState<Record<string, number>>({});
   const [salvando, setSalvando] = useState(false);
+  const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
+  const { acoes, apps, pacoteEfetivo, pronto } = useAcoesDoApp(pacoteEscolhido);
+  const chave = pacoteEfetivo ?? '';
+  const caps = rascunhos[chave] ?? {};
+  // Grupo existente, app que a listagem não trouxe: o recorte dele vem do servidor antes de editar — senão salvar
+  // mandaria `null` para o que o grupo já tinha nele sem a pessoa ter visto.
+  const carregandoApp = !pronto || (grupo !== null && !(chave in originais));
+  // O grupo já criado numa tentativa anterior de salvar (a gravação de um segundo app falhou): repetir não cria outro.
+  const [criado, setCriado] = useState<string | null>(null);
   const nomeDoGrupo = useMemo(() => new Map(grupos.map((g) => [g.id, g.name])), [grupos]);
 
   useEffect(() => {
     api.policyDefaults().then((d) => setPadraoLimites(d.limits)).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!grupo || !pronto || chave in originais) return undefined;
+    let vivo = true;
+    api.getPolicyGroup(grupo.id, pacoteEfetivo)
+      .then((g) => {
+        if (!vivo) return;
+        setOriginais((atual) => ({ ...atual, [chave]: g.capabilities }));
+        setRascunhos((atual) => (chave in atual ? atual : { ...atual, [chave]: g.capabilities }));
+      })
+      .catch((e) => toastError('Não foi possível ler o grupo neste aplicativo', e));
+    return () => { vivo = false; };
+  }, [grupo, pronto, originais, chave, pacoteEfetivo]);
+
   async function partirDe(profileId: string) {
     if (!profileId) return;
     try {
-      const p = await api.getPolicy(profileId);
-      // O que o perfil tem HOJE de diferente do padrão: o grupo dele por baixo, as escolhas dele por cima.
-      setCaps({ ...(p.group ?? {}), ...(p.own ?? {}) });
-      setLimites({ ...(p.group_limits ?? {}), ...(p.own_limits ?? {}) });
+      // O que o perfil tem HOJE de diferente do padrão, em CADA app com catálogo: o grupo dele por baixo, as
+      // escolhas dele por cima. SUBSTITUI o rascunho inteiro — escolher A e depois B é partir de B; mesclar
+      // levaria para o grupo uma ação de risco que só A afrouxou, sem aparecer como escolha de B.
+      const pacotes = apps.length ? apps.map((a) => a.package) : [pacoteEfetivo];
+      const politicas = await Promise.all(pacotes.map((pkg) => api.getPolicy(profileId, pkg)));
+      setRascunhos(Object.fromEntries(pacotes.map((pkg, i) =>
+        [pkg ?? '', { ...(politicas[i]!.group ?? {}), ...(politicas[i]!.own ?? {}) }])));
+      const base = politicas[0]!;
+      setLimites({ ...(base.group_limits ?? {}), ...(base.own_limits ?? {}) });
     } catch (e) {
       toastError('Não foi possível ler o acesso do perfil', e);
     }
@@ -168,15 +221,37 @@ function PolicyGroupDialog({ grupo, acoes, profiles, grupos, onClose, onSaved }:
     setSalvando(true);
     try {
       const profile_ids = [...membros];
-      if (grupo === null) {
-        await api.createPolicyGroup({ name: nome.trim(), description: descricao.trim(), capabilities: caps, limits: limites, profile_ids });
-      } else {
-        // Chave que saiu do rascunho vai como `null`: é assim que o grupo volta ao padrão naquela ação.
+      // Um pedido por app editado, cada um com o `package` dele (o servidor valida contra o catálogo certo e grava
+      // no recorte certo). O do app em tela vai primeiro, levando nome, descrição, limites e membros.
+      const pacotes = [...new Set([chave, ...Object.keys(rascunhos)])];
+      const pedido = (pkg: string) => (pkg === '' ? null : pkg);
+      const comum = { name: nome.trim(), description: descricao.trim() };
+      let id = grupo?.id ?? criado;
+      for (const [i, pkg] of pacotes.entries()) {
+        const rascunho = rascunhos[pkg] ?? {};
+        if (id === null) {
+          const novo = await api.createPolicyGroup({ ...comum, capabilities: rascunho, limits: limites, profile_ids },
+                                                   pedido(pkg));
+          id = novo.id;
+          setCriado(id);
+          continue;
+        }
+        // Chave que saiu do rascunho vai como `null`: é assim que o grupo volta ao padrão naquela ação. App que
+        // ninguém abriu nem editou não entra: o recorte dele no servidor fica como está.
+        if (i > 0 && !(pkg in rascunhos)) continue;
+        const original = grupo === null ? {} : (originais[pkg] ?? {});
         const capsPatch: Record<string, PolicyName | null> = {};
-        for (const k of new Set([...Object.keys(grupo.capabilities), ...Object.keys(caps)])) capsPatch[k] = caps[k] ?? null;
-        const limPatch: Record<string, number | null> = {};
-        for (const k of new Set([...Object.keys(grupo.limits), ...Object.keys(limites)])) limPatch[k] = limites[k] ?? null;
-        await api.updatePolicyGroup(grupo.id, { name: nome.trim(), description: descricao.trim(), capabilities: capsPatch, limits: limPatch, profile_ids });
+        for (const k of new Set([...Object.keys(original), ...Object.keys(rascunho)])) capsPatch[k] = rascunho[k] ?? null;
+        if (i === 0) {
+          const limPatch: Record<string, number | null> = {};
+          for (const k of new Set([...Object.keys(grupo?.limits ?? {}), ...Object.keys(limites)])) {
+            limPatch[k] = limites[k] ?? null;
+          }
+          await api.updatePolicyGroup(id, { ...comum, capabilities: capsPatch, limits: limPatch, profile_ids }, pedido(pkg));
+        } else if (Object.entries(capsPatch).some(([k, v]) => v !== (original[k] ?? null))) {
+          // Outro app: só se algo mudou nele (o do âncora vem aberto da listagem, e regravá-lo igual é ruído).
+          await api.updatePolicyGroup(id, { capabilities: capsPatch }, pedido(pkg));
+        }
       }
       toast({ tone: 'success', title: grupo ? `Grupo ${nome.trim()} salvo` : `Grupo ${nome.trim()} criado`,
               message: `${profile_ids.length} perfil(is) seguem este grupo.` });
@@ -228,6 +303,16 @@ function PolicyGroupDialog({ grupo, acoes, profiles, grupos, onClose, onSaved }:
               )}
             </Field>
           ) : null}
+          {apps.length > 1 ? (
+            <Field label="Aplicativo" hint="As ações abaixo são deste app; o grupo guarda a escolha de cada app à parte.">
+              {({ id, describedBy }) => (
+                <Select id={id} aria-describedby={describedBy} value={pacoteEfetivo ?? ''}
+                        onChange={(e) => setPacoteEscolhido(e.target.value)}>
+                  {apps.map((a) => <option key={a.package} value={a.package}>{a.label}</option>)}
+                </Select>
+              )}
+            </Field>
+          ) : null}
         </div>
 
         <fieldset className={styles.memberPick}>
@@ -249,20 +334,20 @@ function PolicyGroupDialog({ grupo, acoes, profiles, grupos, onClose, onSaved }:
           <div>
             <h4 className={styles.groupDialogSub}>O que os perfis do grupo podem fazer</h4>
             <PolicyActionsEditor
-              acoes={acoes} efetivo={efetivo} salvando={salvando}
+              acoes={acoes} efetivo={efetivo} salvando={salvando || carregandoApp}
               loosened={acoes.filter((c) => c.risk === 'high' && caps[c.key] && RANK[caps[c.key]!] > RANK[c.default_policy]).map((c) => c.key)}
               origem={(c) => (caps[c.key]
                 ? { propria: true, rotulo: 'definido no grupo', tone: 'info' }
                 : { propria: false, rotulo: 'padrão', tone: 'muted' })}
               herdaria={(c) => c.default_policy}
               nomeDaHeranca={() => 'do padrão do catálogo'}
-              onChange={(keys, valor) => setCaps((atual) => {
-                const novo = { ...atual };
+              onChange={(keys, valor) => setRascunhos((atual) => {
+                const novo = { ...(atual[chave] ?? {}) };
                 for (const k of keys) {
                   if (valor === null) delete novo[k];
                   else novo[k] = valor;
                 }
-                return novo;
+                return { ...atual, [chave]: novo };
               })} />
           </div>
           <div>

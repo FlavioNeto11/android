@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterator
 
 import httpx
 import pytest
 
 from app.models import PolicyGroupCreate, PolicyGroupPatch, ProfilePatch, ProfilePolicyPatch
-from app.planning.capabilities import capability_of
+from app.planning.capabilities import Capability, CapabilityCatalog, capability_of
+from app.planning.catalog import capabilities_of, register, unregister
 from app.social.policy import DEFAULT_LIMITS
 from app.social.service import SocialError
 
@@ -123,6 +125,12 @@ async def test_rotas_http_dos_grupos(tmp_path: Path) -> None:
                                                                     "limits": {"likes_per_hour": 3}})
             assert r.status_code == 201, r.text
             gid = r.json()["id"]
+            # 23.10: sem `?package=` nas rotas de grupo, o painel sempre editava o app âncora "por acaso" (o
+            # primeiro da lista com login gerenciado); agora é explícito, e a resposta diz contra qual catálogo
+            # `loosened` foi calculado.
+            assert r.json()["package"] == "com.instagram.android"
+            explicito = await c.get(f"/api/instagram/policy-groups/{gid}", params={"package": "com.instagram.android"})
+            assert explicito.json()["package"] == "com.instagram.android"
             assert (await c.get("/api/instagram/policy-groups")).json()[0]["members"][0]["id"] == pid
             pol = (await c.get(f"/api/instagram/profiles/{pid}/policy")).json()
             assert pol["limits"]["likes_per_hour"] == 3 and pol["limits_origin"]["likes_per_hour"] == "group"
@@ -135,3 +143,79 @@ async def test_rotas_http_dos_grupos(tmp_path: Path) -> None:
             assert (await c.get("/api/instagram/policy-defaults")).json()["limits"] == DEFAULT_LIMITS
     finally:
         await h.state.stop()
+
+
+# ==================================================================== política POR APP (23.10)
+PACOTE_OUTRO = "com.exemplo.correio"
+
+
+@pytest.fixture
+def outro_app_com_send_message() -> Iterator[None]:
+    """Um segundo app com catálogo que REPETE uma chave do Instagram (SEND_MESSAGE), como um catálogo do Outlook
+    provavelmente fará (T17). É o caso que um dicionário plano por `cap.key` não separa."""
+    enviar = Capability(
+        key="SEND_MESSAGE", title="Enviar e-mail", goal="Mandar um e-mail para {destinatario}.",
+        post_kind="model_judged", post_value="e-mail enviado", post_description="O e-mail aparece em Enviados.",
+        bindings=("destinatario",), side_effect=True, risk="high", default_policy="manual_only",
+        limit_bucket="dms", counterparty="destinatario")
+    register(PACOTE_OUTRO, CapabilityCatalog(PACOTE_OUTRO, [enviar]),
+             capabilities_of(PACOTE_OUTRO).__class__(package=PACOTE_OUTRO, name="Correio", session_provider=None,
+                                                     needs_profile=False))
+    try:
+        yield
+    finally:
+        unregister(PACOTE_OUTRO)
+
+
+def test_politica_do_perfil_e_por_app_mesmo_com_a_mesma_chave(tmp_path: Path, outro_app_com_send_message: None) -> None:
+    svc, _, policies, _ = build(tmp_path)
+    pid = perfil(svc)
+    dm_ig, email = capability_of(IG, "SEND_MESSAGE"), capability_of(PACOTE_OUTRO, "SEND_MESSAGE")
+    antes = svc.get_policy(pid, package=IG).capabilities["SEND_MESSAGE"]
+
+    dto = svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "disabled"}), package=PACOTE_OUTRO)
+    assert dto.package == PACOTE_OUTRO and dto.own == {"SEND_MESSAGE": "disabled"}
+
+    # o Instagram não mudou: nem a política efetiva, nem a origem, nem o que o perfil "escolheu" nele
+    ig = svc.get_policy(pid, package=IG)
+    assert ig.capabilities["SEND_MESSAGE"] == antes and ig.origin["SEND_MESSAGE"] == "default" and ig.own == {}
+    assert svc.get_policy(pid).capabilities["SEND_MESSAGE"] == antes                 # sem `package` = o âncora
+    # e o despacho (o que `_policy_gate` consulta, com o pacote da etapa) separa os dois
+    assert policies.policy_for(pid, dm_ig, IG) == antes and policies.origin_for(pid, dm_ig, IG) == "default"
+    assert policies.policy_for(pid, email, PACOTE_OUTRO) == "disabled"
+    assert not policies.check(pid, email, package=PACOTE_OUTRO).allowed
+    assert policies.check(pid, dm_ig, package=IG).policy != "disabled"
+
+    # o caminho inverso: mudar o Instagram não mexe no outro app, e herdar num não apaga o outro
+    svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "approval_required"}), package=IG)
+    assert svc.get_policy(pid, package=PACOTE_OUTRO).capabilities["SEND_MESSAGE"] == "disabled"
+    svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": None}), package=PACOTE_OUTRO)
+    assert svc.get_policy(pid, package=PACOTE_OUTRO).origin["SEND_MESSAGE"] == "default"
+    assert svc.get_policy(pid, package=IG).own == {"SEND_MESSAGE": "approval_required"}
+
+
+def test_grupo_de_acesso_e_por_app_mesmo_com_a_mesma_chave(tmp_path: Path, outro_app_com_send_message: None) -> None:
+    svc, _, policies, _ = build(tmp_path)
+    pid = perfil(svc)
+    dm_ig = capability_of(IG, "SEND_MESSAGE")
+    g = svc.create_policy_group(PolicyGroupCreate(name="Correio fechado", profile_ids=[pid]))
+    svc.update_policy_group(g.id, PolicyGroupPatch(capabilities={"SEND_MESSAGE": "autonomous"}), package=PACOTE_OUTRO)
+
+    assert svc.get_policy_group(g.id, package=PACOTE_OUTRO).capabilities == {"SEND_MESSAGE": "autonomous"}
+    # afrouxar no outro app aparece como afrouxado NELE, e o Instagram segue sem escolha nenhuma do grupo
+    assert svc.get_policy_group(g.id, package=PACOTE_OUTRO).loosened == ["SEND_MESSAGE"]
+    assert svc.get_policy_group(g.id, package=IG).capabilities == {} and svc.get_policy_group(g.id).loosened == []
+    assert svc.get_policy(pid, package=IG).group == {}
+    assert policies.origin_for(pid, dm_ig, IG) == "default"
+    assert policies.policy_for(pid, dm_ig, IG) == dm_ig.default_policy
+
+    # editar o grupo no Instagram preserva o outro app
+    svc.update_policy_group(g.id, PolicyGroupPatch(capabilities={"SEND_MESSAGE": "disabled"}), package=IG)
+    assert svc.get_policy_group(g.id, package=PACOTE_OUTRO).capabilities == {"SEND_MESSAGE": "autonomous"}
+    assert svc.get_policy_group(g.id, package=IG).capabilities == {"SEND_MESSAGE": "disabled"}
+
+    # "começar a partir de" um perfil copia o recorte do app pedido, não a mistura dos dois
+    svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "approval_required"}), package=PACOTE_OUTRO)
+    novo = svc.create_policy_group(PolicyGroupCreate(name="Copia do correio", from_profile_id=pid), package=IG)
+    assert novo.capabilities == {"SEND_MESSAGE": "disabled"}                         # o do grupo no Instagram
+    assert svc.get_policy_group(novo.id, package=PACOTE_OUTRO).capabilities == {}

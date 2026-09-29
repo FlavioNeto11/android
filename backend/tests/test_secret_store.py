@@ -95,6 +95,68 @@ def test_atualizar_e_apagar(tmp_path: Path) -> None:
         db.close()
 
 
+def test_clonar_cria_entrada_propria_sem_devolver_o_valor(tmp_path: Path) -> None:
+    """ADR-057 (D1): a cópia é um segredo independente — referência, nonce e texto cifrado próprios, com a AAD da
+    referência nova. `clonar` devolve só a referência; o valor igual aparece aqui porque o teste decifra pelo único
+    ponto que devolve valor (`get_secret`, o que o canal sensível usa)."""
+    cofre, db = store(tmp_path)
+    try:
+        origem = cofre.store_secret(SENHA)
+        copia = cofre.clonar(origem)
+        assert copia != origem and copia.startswith("sec-") and SENHA not in copia
+        assert cofre.get_secret(copia) == cofre.get_secret(origem) == SENHA
+        a = db.one("SELECT nonce, ciphertext FROM secrets WHERE ref=?", (origem,))
+        b = db.one("SELECT nonce, ciphertext FROM secrets WHERE ref=?", (copia,))
+        assert bytes(a["nonce"]) != bytes(b["nonce"]) and bytes(a["ciphertext"]) != bytes(b["ciphertext"])
+    finally:
+        db.close()
+
+
+def test_clone_e_origem_trocam_e_apagam_sem_afetar_um_ao_outro(tmp_path: Path) -> None:
+    cofre, db = store(tmp_path)
+    try:
+        origem = cofre.store_secret(SENHA)
+        copia = cofre.clonar(origem)
+        cofre.update_secret(origem, "trocada na origem")
+        assert cofre.get_secret(copia) == SENHA
+        cofre.update_secret(copia, "trocada na copia")
+        assert cofre.get_secret(origem) == "trocada na origem"
+        cofre.delete_secret(origem)
+        assert not cofre.exists(origem) and cofre.get_secret(copia) == "trocada na copia"
+    finally:
+        db.close()
+
+
+def test_clonar_para_referencia_existente_sobrescreve_no_lugar(tmp_path: Path) -> None:
+    """A conta destino que já tinha senha recebe a cópia na MESMA referência (nada órfão no cofre)."""
+    cofre, db = store(tmp_path)
+    try:
+        origem = cofre.store_secret(SENHA)
+        destino = cofre.store_secret("a senha antiga do destino")
+        assert cofre.clonar(origem, para=destino) == destino
+        assert cofre.get_secret(destino) == SENHA
+        assert db.scalar("SELECT COUNT(*) FROM secrets") == 2
+        with pytest.raises(ValueError):
+            cofre.clonar(origem, para=origem)                      # não é cópia: seria a mesma entrada
+        with pytest.raises(KeyError):
+            cofre.clonar("sec-nao-existe")
+        assert db.scalar("SELECT COUNT(*) FROM secrets") == 2
+    finally:
+        db.close()
+
+
+def test_clonar_com_chave_errada_trava_sem_gravar_nada(tmp_path: Path) -> None:
+    """Origem guardada com outra chave (achado #126): a cópia não vira lixo cifrado com a chave errada."""
+    cofre, db = store(tmp_path)
+    try:
+        origem = cofre.store_secret(SENHA)
+        with pytest.raises(SecretStoreLocked):
+            SecretStore(db, MemoryKeyProvider()).clonar(origem)
+        assert db.scalar("SELECT COUNT(*) FROM secrets") == 1
+    finally:
+        db.close()
+
+
 def test_chave_mestra_diferente_trava_sem_apagar_o_ciphertext(tmp_path: Path) -> None:
     """Máquina trocada: o estado é 'travado', e o texto cifrado é preservado para recadastro consciente."""
     provider = MemoryKeyProvider()

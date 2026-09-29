@@ -38,7 +38,7 @@ from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
 from .memory import MemoryRefused, MemoryStore
-from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
+from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
                          sessao_vencida)
 
@@ -257,6 +257,10 @@ class SocialService:
         ref = self.repo.delete_credential(profile_id)
         if ref:
             self.secrets.delete_secret(ref)
+        # As outras contas também: a linha de `account_credentials` cai em cascata com o perfil, mas o ciphertext no
+        # cofre, não — e a senha clonada para o Outlook (ADR-057) ficaria órfã para sempre.
+        for conta in self.repo.list_accounts(profile_id):
+            self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, conta["id"]))
         self.repo.delete_profile(profile_id)
         self.bus.emit("log", "Perfil removido, com a credencial apagada do cofre", data={"profile_id": profile_id})
 
@@ -287,6 +291,10 @@ class SocialService:
         if not ref:
             return
         if self.repo.db.scalar("SELECT COUNT(*) FROM instagram_credentials WHERE secret_ref=?", (ref,)):
+            return
+        # A mesma rede para outra CONTA com a mesma referência (dado antigo; a clonagem do ADR-057 sempre cria
+        # entrada própria): apagar a senha de uma conta nunca pode apagar a de outra.
+        if self.repo.db.scalar("SELECT COUNT(*) FROM account_credentials WHERE secret_ref=?", (ref,)):
             return
         self.secrets.delete_secret(ref)
 
@@ -1121,22 +1129,27 @@ class SocialService:
 
         `package` omitido resolve pelo REGISTRO de aplicativos (o app que provê a conta deste perfil), e não
         por um literal `com.instagram.android` na assinatura: assim um segundo app com conta gerenciada
-        entra sem editar esta função.
+        entra sem editar esta função. Com um app EXPLÍCITO (23.10: o painel deixa de assumir "o primeiro app
+        com login gerenciado da lista"), o catálogo é o dele — a pessoa escolhe qual app está configurando.
         """
         perfil = self.get_profile(profile_id)
-        catalogo = load_catalog(package or self._pacote_do_perfil())
+        pacote = package or self._pacote_do_perfil()
+        catalogo = load_catalog(pacote)
         acoes = catalogo.offered if catalogo else []
         engine = self.policies
-        efetivas = {c.key: engine.policy_for(profile_id, c) for c in acoes}
+        efetivas = {c.key: engine.policy_for(profile_id, c, pacote) for c in acoes}
         proprio, do_grupo = engine._own(profile_id), engine._group(profile_id)
         return ProfilePolicyDTO(
+            package=pacote,
             limits=engine.limits_for(profile_id),
             capabilities=efetivas,
             defaults={c.key: c.default_policy for c in acoes},
             loosened=[c.key for c in acoes if engine.is_loosened(c, efetivas[c.key])],
             group_id=perfil.policy_group_id, group_name=perfil.policy_group_name,
-            own=dict(proprio.get("capabilities") or {}), group=dict(do_grupo.get("capabilities") or {}),
-            origin={c.key: engine.origin_for(profile_id, c) for c in acoes},  # type: ignore[misc]
+            # Só o recorte DESTE app (23.10): a mesma chave em outro catálogo é outra escolha.
+            own=politicas_do_app(proprio.get("capabilities"), pacote),
+            group=politicas_do_app(do_grupo.get("capabilities"), pacote),
+            origin={c.key: engine.origin_for(profile_id, c, pacote) for c in acoes},  # type: ignore[misc]
             own_limits=dict(proprio.get("limits") or {}), group_limits=dict(do_grupo.get("limits") or {}),
             limits_origin=engine.limits_origin(profile_id))  # type: ignore[arg-type]
 
@@ -1166,7 +1179,8 @@ class SocialService:
             desconhecidas = [k for k in capabilities if not (catalogo and catalogo.has(k))]
             if desconhecidas:
                 raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
-            caps = dict(atual.get("capabilities") or {})
+            # Só o recorte do app pedido é lido e regravado (23.10); o dos outros apps passa intacto.
+            caps = politicas_do_app(atual.get("capabilities"), package)
             for chave, nova in capabilities.items():
                 if nova is None:
                     caps.pop(chave, None)
@@ -1177,7 +1191,7 @@ class SocialService:
                                          f"'{cap.default_policy}' do catálogo, em ação de risco alto",
                                   level="warn", data={**data, "capability": chave, "policy": nova})
                 caps[chave] = nova
-            atual["capabilities"] = caps
+            atual["capabilities"] = com_politicas_do_app(atual.get("capabilities"), package, caps)
         if limits is not None:
             invalidos = [k for k in limits if k not in DEFAULT_LIMITS]
             if invalidos:
@@ -1270,6 +1284,18 @@ class SocialService:
         if self.repo.account_by_app(profile_id, app["id"], host):
             onde = f"{app['name']} ({host})" if host else app["name"]
             raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {onde}.", 409)
+        clonar_de = getattr(body, "clonar_de", None)
+        if clonar_de:
+            # Tudo conferido ANTES de criar a conta, pela mesma razão do consentimento abaixo. A recusa é do serviço
+            # (e não um validador do corpo) porque o 422 do validador devolveria o corpo inteiro — com a senha.
+            if body.password:
+                raise SocialError("clonar_de_com_senha",
+                                  "Mande a senha OU a conta de onde clonar a senha, não as duas.", 422)
+            if getattr(body, "consent", False):
+                raise SocialError("consentimento_nao_clonado", self._MSG_CONSENTIMENTO_NAO_CLONADO, 422)
+            self._origem_do_clone(profile_id, clonar_de, destino_id=None)
+            if self.secrets.status() != "ready":
+                raise SocialError("secret_store_unavailable", self._vault_message(), 503)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
         if body.password and not getattr(body, "consent", False):
@@ -1285,6 +1311,15 @@ class SocialService:
             assert conta is not None
             self._gravar_credencial(profile_id, conta, password=body.password, login_identifier=body.login_identifier,
                                     consent=bool(body.consent), by=by)
+        elif clonar_de:
+            conta = self.repo.account_row(profile_id, account_id)
+            assert conta is not None
+            try:
+                self._clonar_credencial(profile_id, conta, clonar_de, login_identifier=body.login_identifier, by=by)
+            except SocialError:
+                # Cofre trancado entre a conferência e a cópia: a conta não fica sem a senha que a pessoa pediu.
+                self.repo.delete_account(profile_id, account_id)
+                raise
         self.bus.emit("log", f"Conta em {app['name']} adicionada ao perfil", data={"profile_id": profile_id})
         return self.get_account(profile_id, account_id)
 
@@ -1352,28 +1387,102 @@ class SocialService:
                       data={"profile_id": profile_id, "account_id": account_id, "by": by})
         return self.get_account(profile_id, account_id)
 
+    # ------------------------------------------------------------------ credencial clonada (ADR-057, D1)
+    _MSG_CONSENTIMENTO_NAO_CLONADO = (
+        "O consentimento não vem junto com a senha clonada: ele é desta conta, e a conta nova nasce sem ele. Depois "
+        "de conferir a conta, autorize-a pela rota de consentimento (…/credential/consent).")
+
+    def clone_account_credential(self, profile_id: str, account_id: str, body: Any, *,
+                                 by: str = "painel") -> ProfileAccountDTO:
+        """"Usar a senha de outra conta" numa conta que já existe. Substitui a senha que ela tinha; o consentimento
+        DESTA conta, se já dado, fica (é sobre a conta, como em `set_account_credential`); o da origem nunca vem."""
+        self.get_account(profile_id, account_id)
+        conta = self.repo.account_row(profile_id, account_id)
+        assert conta is not None
+        self._origem_do_clone(profile_id, body.clonar_de, destino_id=account_id)
+        if self.secrets.status() != "ready":
+            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        self._clonar_credencial(profile_id, conta, body.clonar_de, login_identifier=body.login_identifier, by=by)
+        return self.get_account(profile_id, account_id)
+
+    def _origem_do_clone(self, profile_id: str, origem_id: str, *, destino_id: str | None) -> Row:
+        """A conta de onde a senha vem: da MESMA persona, outra conta, com senha guardada.
+
+        Outra persona é 409 e não 404 — a conta existe, e a recusa é a regra (a senha de uma pessoa nunca vira a de
+        outra), não um erro de digitação. A mensagem não diz de quem ela é.
+        """
+        dona = self.repo.db.scalar("SELECT profile_id FROM profile_accounts WHERE id=?", (origem_id,))
+        if dona is None:
+            raise SocialError("not_found", "A conta de onde clonar a senha não existe.", 404)
+        if dona != profile_id:
+            raise SocialError("credencial_de_outra_persona", "Só dá para usar a senha de outra conta DESTA persona.",
+                              409)
+        if destino_id is not None and origem_id == destino_id:
+            raise SocialError("clonar_de_si_mesma", "A conta de origem é esta mesma conta.", 409)
+        origem = self.repo.account_credential_row(profile_id, origem_id)
+        if origem is None:
+            raise SocialError("no_credential", "A conta de origem não tem senha guardada para clonar.", 409)
+        return origem
+
+    def _clonar_credencial(self, profile_id: str, conta: Row, origem_id: str, *, login_identifier: str | None,
+                           by: str) -> None:
+        """O cofre copia; o domínio só vê referências. O identificador de login NÃO é copiado da origem: o endereço
+        da conta Outlook é o dado que o dono confirmou (ADR-057 §5), nunca derivado do login do Instagram — vale o
+        informado, o já gravado nesta conta ou o padrão do app (`_login_da_conta`).
+
+        `consent_by=None`: a conta sem consentimento continua sem (e o `type_secret` e o provedor não a usam até a
+        pessoa autorizar); a que já tinha mantém o seu. A contagem de falhas zera: é uma senha nova para esta conta.
+        """
+        origem = self._origem_do_clone(profile_id, origem_id, destino_id=conta["id"])
+        atual = self.repo.account_credential_row(profile_id, conta["id"])
+        ref_atual = atual["secret_ref"] if atual else None
+        # Referência compartilhada (hoje não acontece; seria resto de dado antigo): sobrescrever no lugar mudaria a
+        # origem, ou uma terceira conta, também. Aí a cópia vai para uma entrada nova, e a antiga fica com quem a usa.
+        if ref_atual is not None and (ref_atual == origem["secret_ref"] or self.repo.db.scalar(
+                "SELECT COUNT(*) FROM account_credentials WHERE secret_ref=?", (ref_atual,)) > 1):
+            ref_atual = None
+        try:
+            ref = self.secrets.clonar(origem["secret_ref"], para=ref_atual)
+        except KeyError:
+            raise SocialError("no_credential", "A senha da conta de origem não está mais no cofre; guarde-a de "
+                                               "novo antes de clonar.", 409) from None
+        except (SecretStoreLocked, SecretStoreUnavailable) as exc:
+            raise SocialError("secret_store_unavailable", str(exc), 503) from None
+        login = self._login_da_conta(profile_id, conta, login_identifier)
+        self.repo.set_account_credential(profile_id, conta["id"], login_identifier=login, secret_ref=ref,
+                                         key_id=self.secrets.provider.key_id, consent_by=None)
+        # Trilha: só ids. Nem o valor nem o identificador de login da origem entram no evento. Nenhuma chave aqui tem
+        # "credencial" ou "senha" no nome: a redação mascara esses nomes, e a trilha perderia de onde a senha veio.
+        self.bus.emit("log", "Senha de conta clonada de outra conta da persona",
+                      data={"profile_id": profile_id, "account_id": conta["id"], "origem_account_id": origem_id,
+                            "by": by})
+
     # ------------------------------------------------------------------ grupos de acesso (migração 036)
-    def _group_dto(self, row: Any) -> PolicyGroupDTO:
-        caps = loads(row["capabilities"], {}) or {}
-        catalogo = load_catalog(self._pacote_do_perfil())
+    def _group_dto(self, row: Any, *, package: str | None = None) -> PolicyGroupDTO:
+        """O grupo visto por UM app (23.10): `capabilities` e `loosened` são o recorte do catálogo pedido
+        (`politicas_do_app`; sem `package`, o âncora). A mesma chave de ação pode existir em dois catálogos, e a
+        escolha do grupo para um app não vale para o outro. `limits` são do perfil inteiro, não de um app."""
+        pacote = package or self._pacote_do_perfil()
+        caps = politicas_do_app(loads(row["capabilities"], {}) or {}, pacote)
+        catalogo = load_catalog(pacote)
         afrouxadas = [k for k, v in caps.items()
                       if catalogo and catalogo.has(k) and catalogo.get(k).risk == "high"
                       and self.policies.is_loosened(catalogo.get(k), v)]
         return PolicyGroupDTO(
-            id=row["id"], name=row["name"], description=row["description"] or "", capabilities=caps,
-            limits=loads(row["limits"], {}) or {}, loosened=afrouxadas,
+            id=row["id"], name=row["name"], description=row["description"] or "", package=pacote,
+            capabilities=caps, limits=loads(row["limits"], {}) or {}, loosened=afrouxadas,
             members=[PolicyGroupMember(id=m["id"], username=m["username"])
                      for m in self.repo.policy_group_members(row["id"])],
             created_at=row["created_at"], updated_at=row["updated_at"])
 
-    def list_policy_groups(self) -> list[PolicyGroupDTO]:
-        return [self._group_dto(r) for r in self.repo.list_policy_groups()]
+    def list_policy_groups(self, *, package: str | None = None) -> list[PolicyGroupDTO]:
+        return [self._group_dto(r, package=package) for r in self.repo.list_policy_groups()]
 
-    def get_policy_group(self, group_id: str) -> PolicyGroupDTO:
+    def get_policy_group(self, group_id: str, *, package: str | None = None) -> PolicyGroupDTO:
         row = self.repo.policy_group_row(group_id)
         if row is None:
             raise SocialError("not_found", "Grupo de acesso não encontrado.", 404)
-        return self._group_dto(row)
+        return self._group_dto(row, package=package)
 
     def _check_members(self, profile_ids: list[str]) -> list[str]:
         unicos = list(dict.fromkeys(profile_ids))
@@ -1382,22 +1491,27 @@ class SocialService:
             raise SocialError("unknown_profile", f"Perfil inexistente: {', '.join(faltando)}.", 400)
         return unicos
 
-    def create_policy_group(self, body: Any) -> PolicyGroupDTO:
+    def create_policy_group(self, body: Any, *, package: str | None = None) -> PolicyGroupDTO:
         nome = body.name.strip()
         if not nome:
             raise SocialError("invalid_name", "Dê um nome ao grupo.", 400)
         if self.repo.policy_group_by_name(nome):
             raise SocialError("duplicate_name", f"Já existe um grupo chamado {nome}.", 409)
+        pacote = package or self._pacote_do_perfil()
         base: dict[str, Any] = {}
         if body.from_profile_id:
             # Começa com o que o perfil tem HOJE de diferente do padrão: o grupo dele por baixo, as escolhas dele
             # por cima — é a "política efetiva menos o padrão", sem copiar o que já é padrão.
             self.get_profile(body.from_profile_id)
             do_grupo, proprio = self.policies._group(body.from_profile_id), self.policies._own(body.from_profile_id)
-            base = {"capabilities": {**(do_grupo.get("capabilities") or {}), **(proprio.get("capabilities") or {})},
+            # Só o recorte do app pedido (23.10): o grupo novo nasce com as escolhas do perfil NESTE app.
+            efetivo = {**politicas_do_app(do_grupo.get("capabilities"), pacote),
+                       **politicas_do_app(proprio.get("capabilities"), pacote)}
+            base = {"capabilities": com_politicas_do_app({}, pacote, efetivo),
                     "limits": {**(do_grupo.get("limits") or {}), **(proprio.get("limits") or {})}}
         membros = self._check_members(body.profile_ids)
-        config = self._aplicar_politica(base, body.capabilities, body.limits, package=self._pacote_do_perfil(),
+        # `capabilities` do corpo são do app PEDIDO (23.10): `_aplicar_politica` grava no recorte dele.
+        config = self._aplicar_politica(base, body.capabilities, body.limits, package=pacote,
                                         quem=f"grupo {nome}", data={"group": nome})
         group_id = self.repo.create_policy_group(name=nome, description=body.description.strip(),
                                                  capabilities=dumps(config.get("capabilities") or {}),
@@ -1406,12 +1520,13 @@ class SocialService:
             self.repo.set_policy_group_members(group_id, membros)
         self.bus.emit("log", f"Grupo de acesso {nome} criado" + (f" com {len(membros)} perfil(is)" if membros else ""),
                       data={"group_id": group_id})
-        return self.get_policy_group(group_id)
+        return self.get_policy_group(group_id, package=pacote)
 
-    def update_policy_group(self, group_id: str, body: Any) -> PolicyGroupDTO:
+    def update_policy_group(self, group_id: str, body: Any, *, package: str | None = None) -> PolicyGroupDTO:
         row = self.repo.policy_group_row(group_id)
         if row is None:
             raise SocialError("not_found", "Grupo de acesso não encontrado.", 404)
+        pacote = package or self._pacote_do_perfil()
         campos: dict[str, Any] = {}
         if body.name is not None:
             nome = body.name.strip()
@@ -1425,7 +1540,7 @@ class SocialService:
             campos["description"] = body.description.strip()
         if body.capabilities is not None or body.limits is not None:
             atual = {"capabilities": loads(row["capabilities"], {}) or {}, "limits": loads(row["limits"], {}) or {}}
-            novo = self._aplicar_politica(atual, body.capabilities, body.limits, package=self._pacote_do_perfil(),
+            novo = self._aplicar_politica(atual, body.capabilities, body.limits, package=pacote,
                                           quem=f"grupo {campos.get('name', row['name'])}", data={"group_id": group_id})
             campos["capabilities"] = dumps(novo.get("capabilities") or {})
             campos["limits"] = dumps(novo.get("limits") or {})
@@ -1433,7 +1548,7 @@ class SocialService:
         if body.profile_ids is not None:
             self.repo.set_policy_group_members(group_id, self._check_members(body.profile_ids))
         self.bus.emit("log", "Grupo de acesso atualizado", data={"group_id": group_id})
-        return self.get_policy_group(group_id)
+        return self.get_policy_group(group_id, package=pacote)
 
     def delete_policy_group(self, group_id: str) -> None:
         dto = self.get_policy_group(group_id)

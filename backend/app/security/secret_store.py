@@ -303,6 +303,22 @@ class SecretStore:
             raise KeyError(ref)
         return self.store_secret(plaintext, ref=ref)
 
+    def clonar(self, ref: str, *, para: str | None = None) -> str:
+        """Copia o valor de `ref` para uma entrada PRÓPRIA e devolve a referência dela — nunca o valor (ADR-057).
+
+        Decisão do dono (D1, 29/09): a conta Outlook da persona entra com a mesma senha do Instagram, sem que o
+        valor passe pelo painel, pela IA ou pelo domínio. Compartilhar a referência não serve: trocar ou apagar uma
+        conta mudaria a outra. Por isso nonce novo e AAD da referência nova — a cópia é um segredo independente.
+
+        `para` sobrescreve no lugar a entrada que a conta destino já tem (a mesma razão de `_guardar_senha` reusar
+        a referência: gerar outra deixaria o texto cifrado anterior órfão). Erros de chave (`SecretStoreLocked`)
+        sobem como em `get_secret`: clonar o que não se decifra não pode virar gravação de lixo.
+        """
+        if para is not None and para == ref:
+            raise ValueError("clonar para a própria referência não cria entrada nova")
+        # O valor vive só neste quadro, entre decifrar e cifrar de novo.
+        return self.store_secret(self.get_secret(ref), ref=para)
+
     def delete_secret(self, ref: str) -> None:
         self.db.execute("DELETE FROM secrets WHERE ref=?", (ref,))
 

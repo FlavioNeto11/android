@@ -1715,8 +1715,10 @@ class AppState:
             if self.approvals.for_step(srow["id"]) is None:        # uma vez por etapa, não a cada retomada
                 self.repo.decision(f"{obj['instance_id']}: {confirmacao}", run_id=obj["run_id"],
                                    instance_id=obj["instance_id"], step_id=srow["id"])
+        # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
+        # escolhas diferentes do perfil.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
-                                       app_id=app_da_etapa.id if app_da_etapa else None)
+                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote)
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —

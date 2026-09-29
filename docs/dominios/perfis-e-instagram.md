@@ -108,6 +108,8 @@ diz de onde veio o limite efetivo, para a UI mostrar a origem por ação.
 
 Migração `036_grupos_de_acesso.sql`: `policy_groups` (capabilities e limits em JSON — só o que DIFERE do
 padrão) e `instagram_profiles.policy_group_id` (um grupo por perfil, sem FK — desvínculo é manual no serviço).
+A política de ações é por app (23.10): o recorte do âncora no nível de fora, os outros em `por_app.<pacote>`
+(`policy.py::politicas_do_app`; detalhe em [persona](persona.md), "Painel de contas por app").
 `SocialService._aplicar_politica` avisa quando um afrouxamento atinge ação de risco alto, tanto para escolha
 própria quanto para grupo.
 

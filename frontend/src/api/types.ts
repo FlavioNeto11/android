@@ -849,6 +849,12 @@ export type ProfilePatchRequest = Partial<Omit<ProfileCreateRequest, 'username' 
   confirm_locality_change?: boolean;
 };
 
+/** 23.9 (ADR-057): usar a senha de outra conta da persona. Sem valor e sem consentimento: o da conta é dado à parte. */
+export interface CredentialCloneRequest {
+  clonar_de: string;
+  login_identifier?: string | null;
+}
+
 export interface CredentialUpdateRequest {
   login_identifier?: string | null;
   password: string;
@@ -1077,6 +1083,9 @@ export interface AppCatalogEntry {
   /** Quem provê a conta deste app (hoje só `instagram`). `null` = app sem conta gerenciada. */
   session_provider: string | null;
   needs_profile: boolean;
+  /** É o app da conta de CADASTRO da persona (o @ que a identifica). No máximo um app registrado é âncora (23.10:
+   *  é o que o painel usa no lugar de comparar nome ou pacote — "ehInstagram" fixo). */
+  profile_anchor: boolean;
 }
 
 /** `status` responde "dá para instalar este arquivo?"; `channel`, "esta versão já provou que funciona?". */
@@ -1150,6 +1159,8 @@ export interface Capability {
 export type PolicyName = 'autonomous' | 'approval_required' | 'manual_only' | 'disabled';
 
 export interface ProfilePolicy {
+  /** O app deste catálogo (23.10). `null` só quando nenhum app se resolveu (sem âncora e sem escolha explícita). */
+  package?: string | null;
   limits: Record<string, number>;
   capabilities: Record<string, PolicyName>;
   defaults: Record<string, PolicyName>;
@@ -1179,7 +1190,9 @@ export interface PolicyGroup {
   id: string;
   name: string;
   description: string;
-  /** Só o que o grupo muda em relação ao padrão do catálogo. */
+  /** O app deste recorte do grupo (23.10): `capabilities` e `loosened` são só dele. */
+  package?: string | null;
+  /** Só o que o grupo muda em relação ao padrão do catálogo DESTE app; `limits` valem para o perfil inteiro. */
   capabilities: Record<string, PolicyName>;
   limits: Record<string, number>;
   loosened: string[];
@@ -1730,6 +1743,12 @@ export interface ProfileAccountCreateRequest {
   password?: string | null;
   /** v0.28: com `password`, obrigatório — sem ele, 409 `consentimento_de_credencial`. */
   consent?: boolean;
+  /**
+   * 23.9 (ADR-057): id de outra conta DESTA persona cuja senha o cofre clona para a conta nova, sem o valor sair
+   * dele. Exclui `password` e `consent` (422); a conta nova nasce sem consentimento. Outra persona → 409
+   * `credencial_de_outra_persona`.
+   */
+  clonar_de?: string | null;
   notes?: string;
 }
 

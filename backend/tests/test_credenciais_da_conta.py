@@ -23,8 +23,8 @@ from pydantic import SecretStr
 from app.automation.driver import DriverError
 from app.automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, parse_hierarchy
 from app.automation.tools import OpenUrl, ToolContext, TypeSecret, execute_tool, urls_do_texto
-from app.models import (CredentialUpdate, Plan, PlannerInfo, PlanStep, Postcondition, ProfileAccountCreate,
-                        ProfileCreate, RunCreate)
+from app.models import (CredentialClone, CredentialUpdate, Plan, PlannerInfo, PlanStep, Postcondition,
+                        ProfileAccountCreate, ProfileCreate, RunCreate)
 from app.modules.identity.application.available_data import (available_data, common_data, profile_variables,
                                                               resolve_secret, typable_secret_for)
 from app.modules.identity.domain.available_data import account_name, slug
@@ -214,6 +214,182 @@ def test_login_identifier_igual_ao_handle_nao_substitui_o_email_gravado(harness:
     s.social.set_account_credential(pid, ig.id, CredentialUpdate(password=SecretStr(_valor()),
                                                                 login_identifier="outro@exemplo.test"), by=DONO)
     assert s.social_repo.credential_row(pid)["login_identifier"] == "outro@exemplo.test"   # explícito, muda
+
+
+# ---------------------------------------------------------------- 2b. senha clonada de outra conta (ADR-057, D1)
+# Duas contas de navegador em sites diferentes fazem o papel de "Instagram → Outlook" sem inventar app: o que se
+# prova é a regra do cofre e da conta, que não depende do pacote.
+HOST_2 = "correio.exemplo.test"
+SENHA_CHROME_2 = account_name("chrome", HOST_2, "senha")
+
+
+def _ref(harness: Harness, aid: str) -> str | None:
+    return harness.state.db.scalar("SELECT secret_ref FROM account_credentials WHERE account_id=?", (aid,))
+
+
+def _clone_nova(harness: Harness, pid: str, origem: str, **kw: Any) -> str:
+    _chrome(harness)
+    return harness.state.social.add_account(pid, ProfileAccountCreate(
+        app_id="chrome", handle="qa.correio", host=HOST_2, clonar_de=origem, **kw), by=DONO).id
+
+
+def test_conta_nova_recebe_a_senha_clonada_sem_consentimento_nem_login_da_origem(harness: Harness) -> None:
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    aid = _clone_nova(harness, pid, origem)
+    assert _ref(harness, aid) != _ref(harness, origem)                          # entrada própria, não referência
+    assert s.secrets.get_secret(_ref(harness, aid)) == valor                     # o mesmo valor, pelo cofre
+    linha = s.db.one("SELECT * FROM account_credentials WHERE account_id=?", (aid,))
+    assert linha["consent_at"] is None and linha["consent_by"] is None          # consentimento nunca é clonado
+    assert linha["login_identifier"] == "qa.correio"                            # o da conta nova, não o da origem
+    conta = s.social.get_account(pid, aid)
+    assert conta.credential_configured and conta.consent_at is None
+    # Sem consentimento, nada digita a senha clonada; com ele, a conta nova passa a tê-la.
+    assert resolve_secret(s.runs.dados, pid, SENHA_CHROME_2).pending_consent
+    s.social.consent_account_credential(pid, aid, by=DONO)
+    assert resolve_secret(s.runs.dados, pid, SENHA_CHROME_2).secret is not None
+    # Trilha: o evento diz de onde veio, com ids — nunca o valor.
+    trilha = s.db.one("SELECT data FROM events WHERE message LIKE '%clonada%' ORDER BY id DESC")
+    assert trilha is not None and origem in trilha["data"] and aid in trilha["data"]
+    _em_lugar_nenhum(harness, valor)
+
+
+def test_senha_clonada_e_independente_na_troca_e_no_apagar(harness: Harness) -> None:
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    aid = _clone_nova(harness, pid, origem)
+    s.social.consent_account_credential(pid, aid, by=DONO)
+    nova_origem, nova_copia = _valor(), _valor()
+    s.social.set_account_credential(pid, origem, CredentialUpdate(password=SecretStr(nova_origem)), by=DONO)
+    assert s.secrets.get_secret(_ref(harness, aid)) == valor                     # trocar a origem não muda a cópia
+    s.social.set_account_credential(pid, aid, CredentialUpdate(password=SecretStr(nova_copia)), by=DONO)
+    assert s.secrets.get_secret(_ref(harness, origem)) == nova_origem            # nem o contrário
+    ref_copia = _ref(harness, aid)
+    s.social.delete_account_credential(pid, origem)                             # apagar a origem...
+    assert s.secrets.exists(ref_copia) and s.secrets.get_secret(ref_copia) == nova_copia   # ...deixa a cópia
+    assert s.social.get_account(pid, aid).credential_configured
+    s.social.delete_account(pid, aid)
+    assert not s.secrets.exists(ref_copia)                                      # e a cópia sai com a conta dela
+    for v in (valor, nova_origem, nova_copia):
+        _em_lugar_nenhum(harness, v)
+
+
+def test_apagar_uma_conta_nunca_apaga_a_senha_que_outra_conta_referencia(harness: Harness) -> None:
+    """Rede do `_apagar_credencial`: referência compartilhada (dado antigo, não a clonagem) fica com quem a usa, e
+    clonar para a conta que a compartilha grava entrada nova em vez de mudar a da outra."""
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    _chrome(harness)
+    outra = s.social.add_account(pid, ProfileAccountCreate(app_id="chrome", handle="x", host=HOST_2), by=DONO).id
+    ref = _ref(harness, origem)
+    s.social_repo.set_account_credential(pid, outra, login_identifier="x", secret_ref=ref, key_id="k")
+    s.social.clone_account_credential(pid, outra, CredentialClone(clonar_de=origem), by=DONO)
+    assert _ref(harness, outra) != ref and s.secrets.get_secret(_ref(harness, origem)) == valor
+    s.social_repo.set_account_credential(pid, outra, login_identifier="x", secret_ref=ref, key_id="k")
+    s.social.delete_account_credential(pid, outra)
+    assert s.secrets.get_secret(ref) == valor
+    # Destino que divide a referência com uma TERCEIRA conta: a cópia não sobrescreve a senha da terceira.
+    terceira = s.social.add_account(pid, ProfileAccountCreate(app_id="chrome", handle="y", host="terceiro.test"),
+                                    by=DONO).id
+    da_terceira = _valor()
+    ref_3 = s.secrets.store_secret(da_terceira)
+    for aid in (outra, terceira):
+        s.social_repo.set_account_credential(pid, aid, login_identifier="x", secret_ref=ref_3, key_id="k")
+    s.social.clone_account_credential(pid, outra, CredentialClone(clonar_de=origem), by=DONO)
+    assert _ref(harness, outra) != ref_3 and s.secrets.get_secret(_ref(harness, outra)) == valor
+    assert s.secrets.get_secret(ref_3) == da_terceira
+
+
+def test_clonar_numa_conta_existente_reusa_a_referencia_e_mantem_o_consentimento_dela(harness: Harness) -> None:
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    _chrome(harness)
+    aid = s.social.add_account(pid, ProfileAccountCreate(app_id="chrome", handle="qa.correio", host=HOST_2,
+                                                         password=SecretStr(_valor()), consent=True), by=DONO).id
+    antes = s.db.one("SELECT * FROM account_credentials WHERE account_id=?", (aid,))
+    segredos = s.db.scalar("SELECT COUNT(*) FROM secrets")
+    s.social.clone_account_credential(pid, aid, CredentialClone(clonar_de=origem,
+                                                                login_identifier="qa@correio.test"), by=DONO)
+    depois = s.db.one("SELECT * FROM account_credentials WHERE account_id=?", (aid,))
+    assert depois["secret_ref"] == antes["secret_ref"] and s.db.scalar("SELECT COUNT(*) FROM secrets") == segredos
+    assert s.secrets.get_secret(depois["secret_ref"]) == valor
+    assert depois["consent_at"] == antes["consent_at"] and depois["login_identifier"] == "qa@correio.test"
+    _em_lugar_nenhum(harness, valor)
+
+
+def test_clonar_recusa_outra_persona_origem_sem_senha_e_combinacoes_invalidas(harness: Harness) -> None:
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    alheia = _perfil(harness, None)
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    contas, segredos = s.db.scalar("SELECT COUNT(*) FROM profile_accounts"), s.db.scalar("SELECT COUNT(*) FROM secrets")
+
+    def recusa(code: str, status: int, fn: Any) -> None:
+        with pytest.raises(SocialError) as e:
+            fn()
+        assert (e.value.code, e.value.status) == (code, status) and valor not in e.value.message
+        assert s.db.scalar("SELECT COUNT(*) FROM profile_accounts") == contas          # nenhuma conta ficou
+        assert s.db.scalar("SELECT COUNT(*) FROM secrets") == segredos                 # nenhum segredo novo
+
+    recusa("credencial_de_outra_persona", 409, lambda: _clone_nova(harness, alheia, origem))
+    recusa("not_found", 404, lambda: _clone_nova(harness, pid, "acc-nao-existe"))
+    ig = next(c.id for c in s.social.list_accounts(pid) if c.app_id == "instagram")
+    recusa("no_credential", 409, lambda: _clone_nova(harness, pid, ig))              # o Instagram sem senha
+    recusa("clonar_de_com_senha", 422, lambda: _clone_nova(harness, pid, origem, password=SecretStr(_valor())))
+    recusa("consentimento_nao_clonado", 422, lambda: _clone_nova(harness, pid, origem, consent=True))
+    recusa("clonar_de_si_mesma", 409,
+           lambda: s.social.clone_account_credential(pid, origem, CredentialClone(clonar_de=origem), by=DONO))
+    ig_alheia = next(c.id for c in s.social.list_accounts(alheia) if c.app_id == "instagram")
+    recusa("credencial_de_outra_persona", 409, lambda: s.social.clone_account_credential(
+        alheia, ig_alheia, CredentialClone(clonar_de=origem), by=DONO))
+    assert s.secrets.get_secret(_ref(harness, origem)) == valor
+
+
+async def test_rotas_de_clonagem_nao_devolvem_o_valor(harness: Harness) -> None:
+    s = harness.state
+    pid = _perfil(harness, "android-01")
+    alheia = _perfil(harness, None)
+    valor = _valor()
+    origem = _conta_chrome(harness, pid, senha=valor)
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/instagram/profiles/{pid}/accounts",
+                         json={"app_id": "chrome", "handle": "qa.correio", "host": HOST_2, "clonar_de": origem})
+        assert r.status_code == 201, r.text
+        corpo = r.json()
+        assert corpo["credential"]["configured"] and corpo["credential"]["consent_at"] is None and valor not in r.text
+        aid = corpo["id"]
+        r = await c.post(f"/api/instagram/profiles/{pid}/accounts",
+                         json={"app_id": "chrome", "host": "outro.exemplo.test", "clonar_de": origem,
+                               "password": valor})
+        assert r.status_code == 422 and valor not in r.text
+        r = await c.post(f"/api/instagram/profiles/{pid}/accounts/{aid}/credential/clone",
+                         json={"clonar_de": origem})
+        assert r.status_code == 200 and valor not in r.text, r.text
+        r = await c.post(f"/api/instagram/profiles/{alheia}/accounts",
+                         json={"app_id": "chrome", "host": HOST_2, "clonar_de": origem})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "credencial_de_outra_persona", r.text
+    assert s.secrets.get_secret(_ref(harness, aid)) == valor
+    _em_lugar_nenhum(harness, valor)
+
+
+def test_apagar_a_persona_tira_do_cofre_a_senha_de_toda_conta(harness: Harness) -> None:
+    """Antes só a senha da conta âncora saía do cofre; a de outra conta (e a clonada) ficava órfã."""
+    s = harness.state
+    pid = _perfil(harness, None)
+    origem = _conta_chrome(harness, pid, senha=_valor())
+    aid = _clone_nova(harness, pid, origem)
+    refs = [_ref(harness, origem), _ref(harness, aid)]
+    s.social.delete_persona(pid)
+    assert not any(s.secrets.exists(r) for r in refs if r)
 
 
 # ---------------------------------------------------------------- 3. o catálogo de dados: nomes, nunca valores
