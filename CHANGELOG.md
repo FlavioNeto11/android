@@ -52,7 +52,8 @@ sessão (`13fb5c0`). Cinco pacotes com revisão adversarial e correção ([relat
 - **Aviso de saldo (22.8).** O 503 do relatório de uso era o incidente da Anthropic de 29/09 (status público desde 14:21
   UTC); nada a mudar.
 - **Arrumação (22.9).** 28 worktrees da rodada removidos, com as junções desfeitas antes.
-- **PostgreSQL.** O subconjunto do SQL novo (34 arquivos) deu 656 ok em PostgreSQL 17; a suíte inteira roda em seguida.
+- **PostgreSQL.** O subconjunto do SQL novo (34 arquivos) deu 656 ok em PostgreSQL 17, e a suíte inteira 3497 ok (só a falha de
+  ambiente do `test_backup`).
 
 ## 2026-09-29 (tarde) — Painel: "Resultado por instância" em cartões e "Outros dados" do Diagnóstico legível
 
