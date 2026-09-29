@@ -1,6 +1,7 @@
 """Configuração central: config/config.yaml (estrutura) + .env (segredos e escolhas de ambiente)."""
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import socket
@@ -16,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Só stdlib e sem import de `app` (vai ao agente do worker junto com este arquivo): não fecha ciclo.
 from .devices.apps_de_fundo import PADRAO as PADRAO_DE_APPS_DE_FUNDO
 from .devices.apps_de_fundo import validar_lista as validar_apps_de_fundo
+from .devices.sonda_rede import host_valido
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -624,6 +626,127 @@ class ProvisioningCfg(BaseModel):
     min_free_disk_gb: float = Field(10, ge=0, le=100_000)
 
 
+def _ip_ou_none(texto: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    try:
+        return ipaddress.ip_address((texto or "").strip())
+    except ValueError:
+        return None
+
+
+class RedeServidorCfg(BaseModel):
+    """O servidor sing-box do central (ADR-056, item 25.4): processo do usuário gerenciado pela plataforma — nunca
+    serviço do Windows, sem driver, sem NAT e sem mexer na rede ou no firewall do sistema (decisão do dono P2).
+
+    Só sobe quando algum aparelho pede um perfil de VPN com `params.servidor: "central"`, e para quando ninguém
+    pede. A configuração (com a chave do servidor e as senhas do proxy) vai para um arquivo com ACL só do usuário em
+    `paths.data_dir/rede/servidor/`; o argumento do processo leva o caminho, nunca o conteúdo.
+    """
+
+    # O executável do sing-box oficial. Relativo à raiz do projeto, como os outros caminhos; fora do Git.
+    binario: str = "data/rede/sing-box-1.14.2-windows-amd64/sing-box.exe"
+    porta_wireguard: int = Field(51820, ge=1, le=65535)
+    # A sub-rede do túnel: o servidor fica no primeiro endereço (10.66.0.1), cada aparelho ganha o seu a partir do
+    # segundo. Mudar depois de haver aparelho atribuído troca o endereço de quem ainda não tem chave, só.
+    sub_rede: str = "10.66.0.0/24"
+    # O proxy autenticado do central (inbound `mixed`), alcançado pelo túnel em <servidor>:<porta>. Escuta só em
+    # 127.0.0.1: fora do túnel, ninguém chega nele.
+    porta_proxy: int = Field(18080, ge=1, le=65535)
+    mtu: int = Field(1408, ge=1280, le=1500)
+    # Teto do log de conexões (a evidência de que o par conectou). Passado o teto, o próximo início o renomeia.
+    log_max_mb: float = Field(20, ge=1, le=1024)
+    # O endereço deste central NA LAN, como um aparelho de OUTRA máquina (o notebook do worker, um celular) o alcança
+    # (item 25.7). O emulador local chega pelo 10.0.2.2 do perfil; o do notebook, não: lá o 10.0.2.2 é o próprio
+    # notebook. Vazio = aparelho remoto não recebe a VPN do central (a aplicação recusa dizendo esta chave). O UDP da
+    # porta_wireguard precisa passar pelo Firewall do Windows daqui — a plataforma só LÊ o firewall e mostra o comando
+    # que o dono roda (GET /api/network/server → remote_access).
+    endpoint_lan: str = ""
+
+    @field_validator("endpoint_lan")
+    @classmethod
+    def _endpoint_lan(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            return ""
+        v = host_valido(v)
+        ip = _ip_ou_none(v)
+        if ip is not None and (ip.is_loopback or ip.is_unspecified or ip.is_multicast or ip.is_link_local):
+            raise ValueError(f"rede.servidor.endpoint_lan: {v} não é alcançável de outra máquina")
+        if v == "10.0.2.2" or v.casefold() == "localhost":
+            # 10.0.2.2 é o host visto de dentro do emulador LOCAL; no notebook ele leva ao próprio notebook.
+            raise ValueError(f"rede.servidor.endpoint_lan: {v} é o endereço do host visto pelo emulador local, não "
+                             "o do central na LAN")
+        return v
+
+    @model_validator(mode="after")
+    def _endpoint_fora_do_tunel(self) -> RedeServidorCfg:
+        ip = _ip_ou_none(self.endpoint_lan)
+        if ip is not None and ip in ipaddress.ip_network(self.sub_rede, strict=False):
+            raise ValueError(f"rede.servidor.endpoint_lan: {self.endpoint_lan} está dentro da sub-rede do túnel "
+                             f"({self.sub_rede}); o aparelho precisa alcançá-lo ANTES do túnel existir")
+        return self
+
+
+class RedeSondaCfg(BaseModel):
+    """A sonda de saída (ADR-056, item 25.5): o que ela pergunta de dentro do aparelho, como o uid 2000.
+
+    Os ecos de IP respondem o IP de quem pediu em HTTP/1.0 na porta 80 (o `nc` do Android não tem TLS). A família
+    vem do host: o de IPv4 só tem registro A, o de IPv6 só AAAA. Tenta-se o primeiro e, sem IP, os seguintes.
+    """
+
+    hosts_ipv4: list[str] = Field(default_factory=lambda: ["api.ipify.org", "ipv4.icanhazip.com"], min_length=1)
+    hosts_ipv6: list[str] = Field(default_factory=lambda: ["api6.ipify.org", "ipv6.icanhazip.com"], min_length=1)
+    # UDP de ida e volta: DNS a um resolvedor explícito (o cliente o sequestra e resolve pelo túnel) e NTP, que é o
+    # UDP que NÃO é DNS (na cadeia com SOCKS5 do 25.1 o NTP se perdia e o DNS seguia).
+    udp_dns: str = "8.8.4.4"
+    udp_ntp: str = "time.google.com"
+    # Um aparelho `parcial` (app sem tráfego na janela, IP sem app) é medido de novo depois disto, na varredura ou
+    # pela porta da tarefa; a janela da cobertura por app vai da medição anterior até a nova.
+    reverificar_s: float = Field(600, ge=30, le=86_400)
+    # Abrir o app exigido (tela inicial dele, espera e volta ao início) quando ele não teve tráfego na janela, TAMBÉM
+    # sem tarefa esperando (varredura, ligou, pedido). Com uma tarefa segurada pela porta da rede, a sonda abre de
+    # qualquer jeito: a tarefa é o que faria o app usar a rede, e sem isso a política exigida travaria para sempre no
+    # app nunca aberto. Desligado por padrão: aparelho com app exigido é aparelho com conta real vinculada, e abrir o
+    # app sem ninguém ter pedido trabalho nele é usá-la por conta própria (ADR-056 §7, K-057).
+    abrir_apps: bool = False
+    espera_app_s: int = Field(15, ge=3, le=120)
+
+    @field_validator("hosts_ipv4", "hosts_ipv6")
+    @classmethod
+    def _hosts(cls, v: list[str]) -> list[str]:
+        return [host_valido(h) for h in v]
+
+    @field_validator("udp_dns", "udp_ntp")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        return host_valido(v)
+
+
+class RedeCfg(BaseModel):
+    """Aplicação e convergência da rede por aparelho (ADR-056, item 25.4), com o cliente escolhido pela medição 25.1."""
+
+    # O cliente VPN no aparelho: sing-box (SFA), instalado pelo fluxo de releases (a versão promovida na loja).
+    cliente_pacote: str = "io.nekohasekai.sfa"
+    # De quanto em quanto tempo um aparelho com a rede aplicada tem a configuração relida (deriva). A releitura é
+    # leitura por adb (settings, tun0, dumpsys), sem reinício; 0 desliga a conferência periódica.
+    deriva_s: float = Field(900, ge=0, le=86_400)
+    # Validade de um `trafego_verificado` para a porta da tarefa (item 25.6): passado isto desde a última medição
+    # (`verified_at`), a verificação conta como inválida — com política exigida a tarefa espera a sonda medir de novo.
+    # A deriva (acima) só relê configuração e túnel; o que ela não vê é a SAÍDA mudar com o túnel no ar (o IP público
+    # do servidor trocado pelo provedor, um app que passou a sair por fora). 6 h: a remedição é barata (sem abrir app,
+    # o teste de vazamento vale para a revisão) e a varredura a antecipa com o aparelho livre, então quase nunca é
+    # a tarefa que espera por ela. Sem 0: uma verificação que nunca vence seria o "confia" que o ADR-056 recusa.
+    validade_verificacao_s: float = Field(21_600, ge=300, le=604_800)
+    # Quanto esperar o `tun0` depois do boot. Medido em 29/09: o `startForeground` do SFA atrasou 13–30 s sob carga e
+    # o túnel apareceu cerca de 40 s depois do `succeeded` do restart.
+    espera_tun_s: float = Field(60, ge=5, le=600)
+    # Reinícios pedidos por revisão antes de desistir (1 em 3 boots a frio derrubou o SFA por FGS na medição).
+    reinicios_max: int = Field(2, ge=1, le=10)
+    # O DNS que o cliente usa pelo túnel (o `hijack-dns` do sing-box resolve por ele).
+    dns: str = "1.1.1.1"
+    servidor: RedeServidorCfg = RedeServidorCfg()
+    sonda: RedeSondaCfg = RedeSondaCfg()
+
+
 class SkillsCfg(BaseModel):
     """Habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1).
 
@@ -746,6 +869,7 @@ class AppConfigFile(BaseModel):
     releases: ReleasesCfg = ReleasesCfg()
     skills: SkillsCfg = SkillsCfg()
     provisioning: ProvisioningCfg = ProvisioningCfg()
+    rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []

@@ -1,0 +1,970 @@
+"""Rede por aparelho, item 25.4 (ADR-056): aplicação no aparelho, convergência e o servidor sing-box do central.
+
+O que se prova aqui (tudo `simulated`: aparelho falso no lugar do adb, processo falso no lugar do sing-box, nenhuma
+VPN, nenhum emulador; o único socket de verdade é o HTTP de uso único, em 127.0.0.1 e porta efêmera):
+- a configuração do servidor fecha o central e a rede local (limitação medida no 25.1): loopback (API 8000, adb
+  5037, consoles), a sub-rede do túnel, faixas privadas e link-local são recusados para o túnel E para o proxy; só a
+  porta do proxy do central passa, e só vinda do túnel — conferido por um avaliador das regras, na ordem;
+- o processo do servidor recebe só o CAMINHO da configuração (nunca segredo em argumento), a pasta e o arquivo são
+  restritos antes de o segredo sair do cofre, ele reinicia quando os pares mudam e para sem pares, e um órfão só é
+  adotado se for nosso;
+- a receita no aparelho segue a medição: appops, VPN desligada, perfil servido UMA vez (10.0.2.2 no local, `adb
+  reverse` no do worker), toques achados pelo TEXTO só no pacote do cliente, `sync`, always-on e bloqueio relidos,
+  relatórios de falha apagados, `sync`; a chave do aparelho só atravessa o HTTP de uso único;
+- a convergência aplica, pede o reinício depois de soltar o aparelho, conecta (uid 2000) e registra `conectado`;
+  túnel que não sobe reinicia até o teto e vira `pendente` com erro e espera; deriva regride; wipe invalida; desfazer
+  tira a rede e apaga a linha; loja e quarentena ficam fora; a porta da rede segura a tarefa com política exigida;
+- `stop_process` faz `sync` antes do `emu kill` (o perfil importado 26 s antes do `restart` se perdeu no 25.1).
+
+Nenhum valor de segredo mora no teste: chaves e senhas são geradas na hora (CLAUDE.md, invariante de segredo).
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import ipaddress
+import json
+import secrets as pysecrets
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterator
+
+import httpx
+import pytest
+import pytest_asyncio
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+from app.commands import despacho
+from app.config import RedeCfg, RedeServidorCfg
+from app.db import Database, dumps
+from app.devices import emulator as emu
+from app.devices import rede
+from app.devices.rede_aplicacao import (Elemento, Plano, ProxyDoCliente, RedeAplicacaoError, ServidorDeUmaVez,
+                                        TunelWg, comando_de_observacao, config_do_cliente, desfazer, ler_observacao,
+                                        observar, provisionar, tocar_importacao)
+from app.devices.rede_servidor import (FAIXAS_RECUSADAS, Par, ServidorDeRede, ServidorDeRedeError,
+                                       config_do_servidor, regras_de_rota)
+from app.main import create_app
+from app.security.secret_store import MemoryKeyProvider, SecretStore
+from app.security.segredo_de_rede import (Fonte, SegredoDeRedeError, apagar_chave_wireguard, gerar_chave_wireguard,
+                                          gravar_configuracao_do_servidor, segredos_entregues)
+from app.util import now_iso
+
+from .conftest import Harness, _dsn_de_teste
+
+PKG = "io.nekohasekai.sfa"
+CFG = RedeServidorCfg()
+
+
+# ============================================================================ avaliador das regras do servidor
+def _e_ip(x: str) -> bool:
+    try:
+        ipaddress.ip_address(x)
+        return True
+    except ValueError:
+        return False
+
+
+def _decidir(regras: list[dict[str, object]], *, entrada: str, destino: str, porta: int,
+             dns: dict[str, str] | None = None) -> str:
+    """A primeira regra que casa decide, como no sing-box; `resolve` troca o nome pelo IP e segue. Sem regra que
+    case, vale o `final` (`direct`). É a SEMÂNTICA que o teste confere; a do binário 1.14.2 é `not_run`."""
+    alvo = destino
+    for r in regras:
+        if entrada not in r.get("inbound", [entrada]):                     # type: ignore[operator]
+            continue
+        if r["action"] == "resolve":
+            if not _e_ip(alvo):
+                alvo = (dns or {})[alvo]
+            continue
+        if "domain_suffix" in r and (_e_ip(alvo) or not any(
+                alvo == s or alvo.endswith("." + s) for s in r["domain_suffix"])):          # type: ignore[union-attr]
+            continue
+        if "ip_cidr" in r and (not _e_ip(alvo) or not any(
+                ipaddress.ip_address(alvo) in ipaddress.ip_network(c) for c in r["ip_cidr"])):  # type: ignore[union-attr]
+            continue
+        if "port" in r and porta not in r["port"]:                          # type: ignore[operator]
+            continue
+        return "reject" if r["action"] == "reject" else str(r["outbound"])
+    return "final:direct"
+
+
+def _reescrita(destino: str) -> str:
+    """O endpoint WireGuard do sing-box reescreve o próprio endereço para o loopback (medido no 25.1, 18:26:59)."""
+    return "127.0.0.1" if destino == "10.66.0.1" else destino
+
+
+def test_regras_do_servidor_fecham_o_central_e_a_rede_local() -> None:
+    regras = regras_de_rota(CFG, com_proxy=True)
+    tunel = [
+        ("127.0.0.1", 8000, "reject"), ("127.0.0.1", 5037, "reject"), ("127.0.0.1", 5554, "reject"),
+        ("10.66.0.1", 8000, "reject"), ("10.66.0.1", 5037, "reject"),
+        ("127.0.0.1", 18080, "direct"), ("10.66.0.1", 18080, "direct"),         # só o proxy do central, pelo túnel
+        ("10.66.0.7", 80, "reject"),                                             # outro aparelho do túnel
+        ("192.168.1.19", 8000, "reject"), ("10.0.2.15", 5555, "reject"), ("172.20.0.1", 22, "reject"),
+        ("169.254.169.254", 80, "reject"), ("100.64.0.1", 443, "reject"), ("224.0.0.251", 5353, "reject"),
+        ("::1", 8000, "reject"), ("fe80::1", 80, "reject"), ("fd00::1", 80, "reject"), ("::ffff:127.0.0.1", 80, "reject"),
+        ("1.1.1.1", 53, "final:direct"), ("104.26.12.205", 80, "final:direct"), ("2606:4700::1111", 443, "final:direct"),
+    ]
+    for destino, porta, esperado in tunel:
+        for d in {destino, _reescrita(destino)}:
+            assert _decidir(regras, entrada="wg-srv", destino=d, porta=porta) == esperado, (d, porta)
+    # O proxy autenticado não é porta dos fundos: nada do central nem da rede local, nem por NOME.
+    dns = {"intranet.lan": "192.168.0.10", "api.ipify.org": "104.26.12.205", "rebind.test": "127.0.0.1"}
+    proxy = [("127.0.0.1", 8000, "reject"), ("127.0.0.1", 18080, "reject"), ("10.66.0.1", 18080, "reject"),
+             ("localhost", 8000, "reject"), ("api.localhost", 80, "reject"), ("intranet.lan", 80, "reject"),
+             ("rebind.test", 8000, "reject"), ("192.168.1.19", 8000, "reject"),
+             ("api.ipify.org", 80, "final:direct"), ("8.8.8.8", 53, "final:direct")]
+    for destino, porta, esperado in proxy:
+        assert _decidir(regras, entrada="proxy-in", destino=destino, porta=porta, dns=dns) == esperado, destino
+    # A sub-rede do túnel entra junto com as faixas fixas.
+    recusa = next(r for r in regras if r["action"] == "reject" and "ip_cidr" in r)
+    assert "10.66.0.0/24" in recusa["ip_cidr"] and set(FAIXAS_RECUSADAS) <= set(recusa["ip_cidr"])  # type: ignore[operator]
+    assert recusa["inbound"] == ["wg-srv", "proxy-in"]
+
+
+def test_sem_proxy_nem_a_porta_do_proxy_passa() -> None:
+    regras = regras_de_rota(CFG, com_proxy=False)
+    assert _decidir(regras, entrada="wg-srv", destino="127.0.0.1", porta=18080) == "reject"
+    assert all("proxy-in" not in r["inbound"] for r in regras)                   # type: ignore[operator]
+    conf = config_do_servidor(chave_privada="x", pares=[], usuarios={}, cfg=CFG, caminho_do_log=Path("s.log"))
+    assert conf["inbounds"] == []
+
+
+def test_um_par_por_aparelho_e_o_proxy_so_em_loopback() -> None:
+    pares = [Par("android-05", "pub-5", "10.66.0.2"), Par("android-02", "pub-2", "10.66.0.3")]
+    conf = config_do_servidor(chave_privada="k", pares=pares, usuarios={"piloto": "s"}, cfg=CFG,
+                              caminho_do_log=Path("C:/x/servidor.log"))
+    [ep] = conf["endpoints"]                                                     # type: ignore[misc]
+    assert ep["address"] == ["10.66.0.1/24"] and ep["listen_port"] == 51820 and ep["system"] is False
+    assert ep["peers"] == [{"public_key": "pub-5", "allowed_ips": ["10.66.0.2/32"]},
+                           {"public_key": "pub-2", "allowed_ips": ["10.66.0.3/32"]}]
+    [mixed] = conf["inbounds"]                                                   # type: ignore[misc]
+    assert mixed["listen"] == "127.0.0.1" and mixed["listen_port"] == 18080
+    assert conf["route"]["final"] == "direct" and conf["log"]["output"] == "C:/x/servidor.log"  # type: ignore[index]
+
+
+# ============================================================================ cofre e consumidor (25.3 estendido)
+@pytest.fixture
+def cofre(tmp_path: Path) -> Iterator[tuple[Database, SecretStore]]:
+    db = Database(_dsn_de_teste() or tmp_path / "rede.sqlite3")
+    db.migrate()
+    try:
+        yield db, SecretStore(db, MemoryKeyProvider())
+    finally:
+        db.close()
+
+
+def _perfil(db: Database, secrets: SecretStore, pid: str, *, kind: str = "vpn", protocol: str = "singbox",
+            params: dict[str, object] | None = None, segredo: str | None = None, host: str = "10.0.2.2",
+            porta: int = 51820) -> str:
+    ref = secrets.store_secret(segredo) if segredo is not None else None
+    db.execute("INSERT INTO network_profiles(id, name, kind, protocol, endpoint_host, endpoint_port, secret_ref,"
+               " params, created_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
+               (pid, pid, kind, protocol, host, porta, ref, dumps(params or {}), now_iso(), "teste"))
+    return pid
+
+
+def _pedir(db: Database, iid: str, *, vpn: str | None, proxy: str | None = None, policy: str = "exigida") -> None:
+    db.execute("INSERT INTO device_network(instance_id, vpn_profile_id, proxy_profile_id, policy, desired_rev, state,"
+               " updated_at) VALUES (?,?,?,?,1,'pendente',?)", (iid, vpn, proxy, policy, now_iso()))
+
+
+def test_chave_do_wireguard_nasce_no_cofre_e_so_a_publica_sai(cofre) -> None:
+    db, secrets = cofre
+    publica = gerar_chave_wireguard(db, secrets, "android-05", kind="aparelho", address="10.66.0.2")
+    assert gerar_chave_wireguard(db, secrets, "android-05", kind="aparelho", address="10.66.0.9") == publica
+    row = db.one("SELECT * FROM network_keys WHERE owner='android-05'")
+    assert row["public_key"] == publica and row["address"] == "10.66.0.2" and row["kind"] == "aparelho"
+    privada = base64.b64decode(secrets.get_secret(row["secret_ref"]))           # só o teste abre o cofre
+    assert len(privada) == 32
+    calculada = X25519PrivateKey.from_private_bytes(privada).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    assert base64.b64encode(calculada).decode() == publica                         # a pública é a da privada
+    assert secrets.get_secret(row["secret_ref"]) not in json.dumps(dict(row))
+    assert apagar_chave_wireguard(db, secrets, "android-05") and not secrets.exists(row["secret_ref"])
+    assert db.one("SELECT 1 FROM network_keys WHERE owner='android-05'") is None
+
+
+@dataclass
+class DestinoFalso:
+    serial: str = "destino-falso"
+    recebido: dict[str, bytes] = field(default_factory=dict)
+    apagados: list[str] = field(default_factory=list)
+
+    def gravar_arquivo_privado(self, nome: str, conteudo: bytes) -> str:
+        self.recebido[nome] = conteudo
+        return f"falso://{nome}"
+
+    def enviar_arquivo_privado(self, local: str, nome: str, *, tamanho: int) -> str:
+        raise NotImplementedError
+
+    def apagar_arquivo_privado(self, nome: str) -> None:
+        self.apagados.append(nome)
+
+
+def test_varias_fontes_num_arquivo_so_pela_linha(cofre) -> None:
+    db, secrets = cofre
+    senha = pysecrets.token_urlsafe(12)
+    proxy = _perfil(db, secrets, "proxy-a", kind="proxy", protocol="socks5", segredo=senha)
+    gerar_chave_wireguard(db, secrets, "android-02", kind="aparelho", address="10.66.0.4")
+    destino = DestinoFalso()
+    vistos: dict[str, str] = {}
+
+    def montar(v):
+        vistos.update(v)
+        return json.dumps({"k": v["chave"], "p": v["senha"]})
+
+    with segredos_entregues(db, secrets, {"chave": Fonte("chave", "android-02"), "senha": Fonte("perfil", proxy)},
+                            destino, nome_do_arquivo="perfil.json", montar=montar) as entrega:
+        assert entrega.caminho == "falso://perfil.json" and entrega.fontes == ("android-02", "proxy-a")
+        assert senha in destino.recebido["perfil.json"].decode() and senha not in repr(entrega)
+    assert destino.apagados == ["perfil.json"] and vistos["senha"] == senha
+    # Chave que não existe: recusada antes de abrir qualquer coisa do cofre.
+    with pytest.raises(SegredoDeRedeError, match="Não há chave"):
+        with segredos_entregues(db, secrets, {"chave": Fonte("chave", "android-99")}, DestinoFalso(),
+                                nome_do_arquivo="x.json", montar=lambda v: "x"):
+            pytest.fail("não podia entrar")
+
+
+def test_configuracao_do_servidor_so_e_escrita_depois_da_acl(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    gerar_chave_wireguard(db, secrets, "servidor", kind="servidor", address=None)
+    destino = tmp_path / "srv" / "servidor.json"
+    vistos: list[tuple[str, int]] = []
+
+    def restringir(p: Path) -> None:
+        vistos.append((p.name, p.stat().st_size))                              # vazio quando a ACL é posta
+
+    caminho = gravar_configuracao_do_servidor(db, secrets, {"servidor": Fonte("chave", "servidor")}, destino,
+                                              montar=lambda v: json.dumps({"k": v["servidor"]}), restringir=restringir)
+    assert caminho == destino and vistos == [("servidor.json.novo", 0)] and json.loads(destino.read_text())["k"]
+
+    def recusa(_p: Path) -> None:
+        raise OSError("icacls: acesso negado")
+
+    outro = tmp_path / "srv2" / "servidor.json"
+    with pytest.raises(SegredoDeRedeError, match="restrito"):
+        gravar_configuracao_do_servidor(db, secrets, {"servidor": Fonte("chave", "servidor")}, outro,
+                                        montar=lambda v: v["servidor"], restringir=recusa)
+    assert not outro.exists() and not list(outro.parent.iterdir())
+
+
+# ============================================================================ o servidor gerenciado
+@dataclass
+class ProcessosFalsos:
+    vivos: set[int] = field(default_factory=set)
+    lancados: list[list[str]] = field(default_factory=list)
+    encerrados: list[int] = field(default_factory=list)
+    proximo: int = 7000
+    morrer_ao_lancar: bool = False
+
+    def lancar(self, argv: list[str], *, cwd: Path, saida: Path) -> int:
+        self.lancados.append(list(argv))
+        self.proximo += 1
+        if self.morrer_ao_lancar:
+            saida.write_text("FATAL decode config: unknown field\n", encoding="utf-8")
+        else:
+            self.vivos.add(self.proximo)
+        return self.proximo
+
+    def vivo(self, pid: int, binario: Path, config: Path) -> bool:
+        return pid in self.vivos
+
+    def encerrar(self, pid: int) -> None:
+        self.encerrados.append(pid)
+        self.vivos.discard(pid)
+
+
+def _servidor(db: Database, secrets: SecretStore, tmp_path: Path, processos: ProcessosFalsos,
+              restritos: list[Path] | None = None) -> ServidorDeRede:
+    binario = tmp_path / "bin" / "sing-box.exe"
+    binario.parent.mkdir(exist_ok=True)
+    binario.write_bytes(b"")
+    s = ServidorDeRede(db, secrets, lambda: CFG, pasta=tmp_path / "rede" / "servidor", binario=lambda: binario,
+                       processos=processos, restringir=(restritos.append if restritos is not None else lambda p: None))
+    s.espera_de_subida_s = 0
+    return s
+
+
+async def test_servidor_sobe_com_o_primeiro_par_sem_segredo_no_argumento(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    procs, restritos = ProcessosFalsos(), []
+    srv = _servidor(db, secrets, tmp_path, procs, restritos)
+    senha = pysecrets.token_urlsafe(14)
+    vpn = _perfil(db, secrets, "vpn-central", params={"servidor": "central"})
+    proxy = _perfil(db, secrets, "proxy-central", kind="proxy", protocol="socks5", host="10.66.0.1", porta=18080,
+                    params={"servidor": "central", "username": "android"}, segredo=senha)
+    assert (await srv.garantir())["running"] is False and procs.lancados == []   # ninguém pede: nada roda
+    _pedir(db, "android-05", vpn=vpn, proxy=proxy)
+    par = srv.par_do_aparelho("android-05")
+    assert par.address == "10.66.0.2" and srv.par_do_aparelho("android-05") == par   # estável
+    estado = await srv.garantir()
+    assert estado["running"] is True and [p["address"] for p in estado["peers"]] == ["10.66.0.2"]
+    [argv] = procs.lancados
+    assert argv[1:] == ["run", "-c", str(srv.config)]                              # só o caminho
+    conf = json.loads(srv.config.read_text(encoding="utf-8"))
+    privada = conf["endpoints"][0]["private_key"]
+    assert privada and conf["inbounds"][0]["users"] == [{"username": "android", "password": senha}]
+    assert conf["endpoints"][0]["peers"] == [{"public_key": par.public_key, "allowed_ips": ["10.66.0.2/32"]}]
+    for segredo in (privada, senha):
+        assert all(segredo not in a for a in argv)
+        assert segredo not in json.dumps(estado) and segredo not in (srv.pasta / "servidor.pid").read_text()
+    assert srv.pasta in restritos and any(p.name == "servidor.json.novo" for p in restritos)
+    assert estado["in_sync"] is True and estado["proxy"] == "127.0.0.1:18080"
+
+
+async def test_servidor_reinicia_quando_os_pares_mudam_e_para_sem_pares(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    procs = ProcessosFalsos()
+    srv = _servidor(db, secrets, tmp_path, procs)
+    vpn = _perfil(db, secrets, "vpn-central", params={"servidor": "central"})
+    _perfil(db, secrets, "vpn-externa", protocol="wireguard", params={})
+    _pedir(db, "android-05", vpn=vpn)
+    srv.par_do_aparelho("android-05")
+    await srv.garantir()
+    await srv.garantir()                                                           # nada mudou: nada reinicia
+    assert len(procs.lancados) == 1 and procs.encerrados == []
+    _pedir(db, "android-02", vpn=vpn)
+    await srv.garantir()                                                           # sem chave ainda: não é par
+    assert len(procs.lancados) == 1
+    assert srv.par_do_aparelho("android-02").address == "10.66.0.3"
+    await srv.garantir()
+    assert len(procs.lancados) == 2 and len(procs.encerrados) == 1
+    # Aparelho que troca para um perfil de outro servidor sai do conjunto.
+    db.execute("UPDATE device_network SET vpn_profile_id='vpn-externa' WHERE instance_id='android-02'")
+    await srv.garantir()
+    assert len(procs.lancados) == 3
+    db.execute("DELETE FROM device_network")
+    estado = await srv.garantir()
+    assert estado["running"] is False and len(procs.encerrados) == 3
+    assert not srv.config.exists()                                                 # a chave não fica no disco
+
+
+async def test_orfao_so_e_adotado_se_for_nosso(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    procs = ProcessosFalsos()
+    srv = _servidor(db, secrets, tmp_path, procs)
+    vpn = _perfil(db, secrets, "vpn-central", params={"servidor": "central"})
+    _pedir(db, "android-05", vpn=vpn)
+    srv.par_do_aparelho("android-05")
+    await srv.garantir()
+    # O backend "caiu": um gerenciador novo encontra o PID e o processo vivo com a mesma assinatura — adota.
+    novo = _servidor(db, secrets, tmp_path, procs)
+    await novo.garantir()
+    assert len(procs.lancados) == 1 and novo.status()["running"] is True
+    # PID reciclado por outro processo (não é o nosso): não é adotado nem encerrado; sobe um novo.
+    procs.vivos.clear()
+    terceiro = _servidor(db, secrets, tmp_path, procs)
+    await terceiro.garantir()
+    assert len(procs.lancados) == 2 and procs.encerrados == []
+
+
+async def test_servidor_sem_binario_ou_que_cai_explica_sem_segredo(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    procs = ProcessosFalsos(morrer_ao_lancar=True)
+    srv = _servidor(db, secrets, tmp_path, procs)
+    vpn = _perfil(db, secrets, "vpn-central", params={"servidor": "central"})
+    _pedir(db, "android-05", vpn=vpn)
+    srv.par_do_aparelho("android-05")
+    with pytest.raises(ServidorDeRedeError, match="saiu logo depois de subir: FATAL decode config"):
+        await srv.garantir()
+    srv._binario = lambda: tmp_path / "nao-existe.exe"
+    with pytest.raises(ServidorDeRedeError, match="executável do sing-box não está"):
+        await srv.garantir()
+    assert "executável" in (srv.status()["detail"] or "")
+
+
+def test_ultima_conexao_vem_do_log_do_servidor(cofre, tmp_path: Path) -> None:
+    db, secrets = cofre
+    srv = _servidor(db, secrets, tmp_path, ProcessosFalsos())
+    srv.pasta.mkdir(parents=True)
+    srv.log.write_text(
+        "-0300 2026-09-29 14:56:31 INFO endpoint/wireguard[wg-srv]: inbound connection from 10.66.0.2:37428\n"
+        "-0300 2026-09-29 15:23:08 INFO endpoint/wireguard[wg-srv]: inbound connection from 10.66.0.3:40012\n"
+        "-0300 2026-09-29 15:31:03 INFO [2122822056 0ms] inbound/mixed[proxy-in]: inbound connection from "
+        "127.0.0.1:59440\n", encoding="utf-8")
+    assert srv.ultima_conexao("10.66.0.3") == "-0300 2026-09-29 15:23:08"
+    assert srv.ultima_conexao("10.66.0.2") == "-0300 2026-09-29 14:56:31"
+    assert srv.ultima_conexao("10.66.0.9") is None and srv.ultima_conexao("127.0.0.1") is None
+
+
+# ============================================================================ o perfil do cliente
+def _plano(**kw: object) -> Plano:
+    base: dict[str, object] = dict(instance_id="android-05", rev=1, policy="exigida_com_bloqueio",
+                                   vpn=TunelWg(Fonte("chave", "android-05"), "10.66.0.2/32", "10.0.2.2", 51820, "pub-srv"),
+                                   proxy=None, dns="1.1.1.1", gerenciado=True)
+    base.update(kw)
+    return Plano(**base)                                                          # type: ignore[arg-type]
+
+
+def test_perfil_do_cliente_compoe_vpn_e_proxy_como_no_piloto() -> None:
+    so_vpn = config_do_cliente(_plano(), {"chave": "PRIV"})
+    [ep] = so_vpn["endpoints"]                                                    # type: ignore[misc]
+    assert ep["private_key"] == "PRIV" and ep["peers"][0]["address"] == "10.0.2.2" and ep["address"] == ["10.66.0.2/32"]
+    assert so_vpn["route"]["final"] == "wg-out" and so_vpn["inbounds"][0]["strict_route"] is True  # type: ignore[index]
+    assert so_vpn["dns"]["servers"][0]["detour"] == "wg-out"                     # type: ignore[index]
+    socks = config_do_cliente(_plano(proxy=ProxyDoCliente("socks", "10.66.0.1", 18080, "android",
+                                                          Fonte("perfil", "p"))), {"chave": "PRIV", "senha_do_proxy": "S"})
+    saida = socks["outbounds"][0]                                                 # type: ignore[index]
+    assert saida == {"type": "socks", "tag": "proxy-out", "server": "10.66.0.1", "server_port": 18080, "version": "5",
+                     "username": "android", "password": "S", "detour": "wg-out"}
+    assert socks["route"]["final"] == "proxy-out"                                 # type: ignore[index]
+    assert {"network": "udp", "action": "reject"} not in socks["route"]["rules"]  # type: ignore[index]
+    http = config_do_cliente(_plano(proxy=ProxyDoCliente("http", "proxy.test", 3128, None, None)), {"chave": "PRIV"})
+    assert {"network": "udp", "action": "reject"} in http["route"]["rules"]      # type: ignore[index]  # T3
+    so_proxy = config_do_cliente(_plano(vpn=None, proxy=ProxyDoCliente("http", "proxy.test", 3128, None, None)), {})
+    assert so_proxy["endpoints"] == [] and so_proxy["dns"]["servers"][0] == {    # type: ignore[index]
+        "type": "tcp", "tag": "dns-remoto", "server": "1.1.1.1", "detour": "proxy-out"}
+
+
+# ============================================================================ o HTTP de uso único
+def _get(url: str) -> tuple[int, bytes]:
+    try:
+        with urllib.request.urlopen(url, timeout=5) as r:                         # noqa: S310 - 127.0.0.1 do teste
+            return r.status, r.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, b""
+
+
+def test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token() -> None:
+    srv = ServidorDeUmaVez(host_do_aparelho="10.0.2.2", serial="emulator-5640", prazo_s=10)
+    url = srv.gravar_arquivo_privado("perfil-abc.json", b'{"k": 1}')
+    assert url == f"http://10.0.2.2:{srv.porta}/perfil-abc.json"
+    local = url.replace("10.0.2.2", "127.0.0.1")
+    assert _get(local.replace("perfil-abc", "outro"))[0] == 404                   # caminho errado não conta
+    assert _get(local) == (200, b'{"k": 1}') and srv.entregues == 1
+    with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
+        _get(local)                                                                # depois do GET, fechou
+    srv.apagar_arquivo_privado("perfil-abc.json")
+    srv.apagar_arquivo_privado("perfil-abc.json")                                  # idempotente
+
+
+# ============================================================================ o aparelho falso da receita
+@dataclass
+class AparelhoFalso:
+    """O aparelho pela porta `AparelhoDaRede`: shell, árvore, toque e `adb reverse`, com o estado do Android."""
+
+    id: str = "android-05"
+    serial: str = "emulator-5640"
+    external: bool = False
+    comandos: list[str] = field(default_factory=list)
+    uid: int = 2000
+    instalado: bool = True
+    appops: bool = False
+    always_on: str = "null"
+    lockdown: str = "0"
+    tun: bool = False
+    vpn: bool = False
+    regras: bool = False
+    relatorios: int = 1
+    uptime: int = 500
+    primeira_execucao: bool = True
+    tela: list[str] = field(default_factory=list)
+    baixado: bytes | None = None
+    baixar: bool = True
+    dialogo_do_sistema: bool = False
+    reversos: list[tuple[str, int]] = field(default_factory=list)
+    toques: list[str] = field(default_factory=list)
+    _link: str = ""
+
+    async def shell(self, comando: str, *, timeout: float = 40) -> str:
+        self.comandos.append(comando)
+        if comando.startswith("echo U=$(id -u)"):
+            return (f"U={self.uid}\nA={self.always_on}\nL={self.lockdown}\nT={int(self.tun)}\nV={int(self.vpn)}\n"
+                    f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nS={self.uptime}\n")
+        if comando.startswith("echo A=$(settings get"):
+            return f"A={self.always_on}\nL={self.lockdown}\n"
+        if comando.startswith("pm path"):
+            return "package:/data/app/sfa/base.apk\n" if self.instalado else ""
+        if comando.startswith("cmd appops set"):
+            self.appops = True
+        elif comando.startswith("cmd appops get"):
+            return "ACTIVATE_VPN: allow; time=+1s\n" if self.appops else "ACTIVATE_VPN: ignore\n"
+        elif comando.startswith("am start"):
+            self._link = comando.split("-d '", 1)[1].rstrip("'")
+            self.tela = ["No, thanks"] if self.primeira_execucao else ["OK"]
+            return "Starting: Intent { act=android.intent.action.VIEW }\n"
+        elif comando.startswith("settings put secure always_on_vpn_app "):
+            self.always_on = comando.split()[-1]
+        elif comando.startswith("settings put secure always_on_vpn_lockdown "):
+            self.lockdown = comando.split()[-1]
+        elif comando == "settings delete secure always_on_vpn_app":
+            self.always_on = "null"
+        elif comando.startswith("rm -rf /sdcard/Android/data/"):
+            self.relatorios = 0
+        return ""
+
+    async def elementos(self) -> list[Elemento]:
+        els = [Elemento(t, PKG, (100 + 10 * i, 900)) for i, t in enumerate(self.tela)]
+        if self.dialogo_do_sistema:
+            els.insert(0, Elemento("OK", "com.android.systemui", (5, 5)))
+        return els
+
+    async def tocar(self, x: int, y: int) -> None:
+        alvo = next((e.texto for e in await self.elementos() if e.centro == (x, y)), None)
+        assert alvo is not None and (x, y) != (5, 5), "tocou fora do cliente"
+        self.toques.append(alvo)
+        if alvo == "No, thanks":
+            self.primeira_execucao, self.tela = False, ["OK"]
+        elif alvo == "OK":
+            self.tela = ["Create"]
+        elif alvo == "Create":
+            self.tela = []
+            if self.baixar:
+                url = urllib.parse.parse_qs(urllib.parse.urlsplit(self._link.split("#")[0]).query)["url"][0]
+                if not self.external:
+                    assert url.startswith("http://10.0.2.2:")
+                    url = url.replace("10.0.2.2", "127.0.0.1")                  # o NAT do emulador faz isto
+                else:
+                    assert url.startswith("http://127.0.0.1:")
+                self.baixado = (await asyncio.to_thread(_get, url))[1]
+
+    async def reverso(self, porta: int) -> None:
+        self.reversos.append(("reverse", porta))
+
+    async def desfazer_reverso(self, porta: int) -> None:
+        self.reversos.append(("remove", porta))
+
+    def depois_do_boot(self, *, uptime: int = 30, tun: bool = True) -> None:
+        self.uptime, self.tun, self.vpn = uptime, tun, tun
+        self.regras = self.lockdown == "1"
+
+
+def _indice(comandos: list[str], prefixo: str) -> int:
+    return next(i for i, c in enumerate(comandos) if c.startswith(prefixo))
+
+
+async def test_provisao_segue_a_receita_medida_e_a_chave_so_passa_pelo_http(cofre) -> None:
+    db, secrets = cofre
+    gerar_chave_wireguard(db, secrets, "android-05", kind="aparelho", address="10.66.0.2")
+    ref = db.one("SELECT secret_ref FROM network_keys WHERE owner='android-05'")["secret_ref"]
+    chave = secrets.get_secret(ref)
+    ap = AparelhoFalso()
+    evidencia = await provisionar(ap, db, secrets, _plano(), RedeCfg(), pausa_s=0.01)
+    c = ap.comandos
+    assert ap.toques == ["No, thanks", "OK", "Create"]
+    assert _indice(c, f"cmd appops set {PKG} ACTIVATE_VPN allow") < _indice(c, f"am force-stop {PKG}") \
+        < _indice(c, "am start") < c.index("sync") < _indice(c, "settings put secure always_on_vpn_app") \
+        < _indice(c, "rm -rf /sdcard/Android/data/io.nekohasekai.sfa/files/crash_reports") and c[-1] == "sync"
+    assert f"settings put secure always_on_vpn_app {PKG}" in c and "settings put secure always_on_vpn_lockdown 1" in c
+    assert "sing-box://import-remote-profile?url=http%3A%2F%2F10.0.2.2%3A" in next(x for x in c if x.startswith("am start"))
+    perfil = json.loads(ap.baixado or b"{}")
+    assert perfil["endpoints"][0]["private_key"] == chave                        # chegou, e só por aqui
+    assert all(chave not in x for x in c) and chave not in evidencia
+    assert "http://" not in evidencia and "10.0.2.2" in evidencia and "lockdown=1" in evidencia
+    assert ap.always_on == PKG and ap.relatorios == 0
+
+
+async def test_aparelho_do_worker_recebe_pelo_adb_reverse_e_o_mapa_sai(cofre) -> None:
+    db, secrets = cofre
+    gerar_chave_wireguard(db, secrets, "android-05", kind="aparelho", address="10.66.0.2")
+    ap = AparelhoFalso(external=True, primeira_execucao=False)
+    await provisionar(ap, db, secrets, _plano(policy="exigida"), RedeCfg(), pausa_s=0.01)
+    [(r1, p1), (r2, p2)] = ap.reversos
+    assert (r1, r2) == ("reverse", "remove") and p1 == p2 and ap.baixado
+    assert ap.toques == ["OK", "Create"] and "settings put secure always_on_vpn_lockdown 0" in ap.comandos
+
+
+async def test_toque_so_no_pacote_do_cliente_e_sem_download_falha(cofre) -> None:
+    db, secrets = cofre
+    gerar_chave_wireguard(db, secrets, "android-05", kind="aparelho", address="10.66.0.2")
+    ap = AparelhoFalso(dialogo_do_sistema=True, baixar=False)
+    with pytest.raises(RedeAplicacaoError, match="não baixou o perfil"):
+        await provisionar(ap, db, secrets, _plano(), RedeCfg(), pausa_s=0.01, prazo_do_download_s=0.3)
+    assert "Create" in ap.toques and "settings put secure always_on_vpn_app io.nekohasekai.sfa" not in ap.comandos
+    # A tela que nunca chega ao "Create" também para, com o que se viu nela.
+    parado = AparelhoFalso()
+    parado.tela = ["Loading"]
+
+    async def sem_tela() -> list[Elemento]:
+        return [Elemento("Loading", PKG, (1, 1))]
+
+    parado.elementos = sem_tela                                                    # type: ignore[method-assign]
+    with pytest.raises(RedeAplicacaoError, match="na tela: Loading"):
+        await tocar_importacao(parado, PKG, prazo_s=0.2, pausa_s=0.01)
+
+
+async def test_desfazer_e_a_leitura_como_uid_2000() -> None:
+    ap = AparelhoFalso(always_on=PKG, lockdown="1")
+    evidencia = await desfazer(ap, RedeCfg())
+    assert ap.always_on == "null" and ap.lockdown == "0" and f"am force-stop {PKG}" in ap.comandos
+    assert ap.comandos[-2:] == ["sync", "echo A=$(settings get secure always_on_vpn_app); "
+                                        "echo L=$(settings get secure always_on_vpn_lockdown)"]
+    assert "tirados" in evidencia
+    assert "id -u" in comando_de_observacao(PKG) and "ni[{]VPN CONNECTED" in comando_de_observacao(PKG)
+    obs = ler_observacao("U=2000\nA=io.nekohasekai.sfa\nL=1\nT=1\nV=1\nR=1\nC=0\nP=1\nS=42\n")
+    assert obs.configuracao_ok(PKG, True) and obs.conectada(True) and obs.uptime_s == 42
+    root = AparelhoFalso(uid=0)
+    with pytest.raises(RedeAplicacaoError, match="uid 0"):
+        await observar(root, PKG)
+    with pytest.raises(RedeAplicacaoError, match="incompleta"):
+        ler_observacao("U=2000\nA=null\n")
+
+
+# ============================================================================ a sincronização antes do desligamento
+def test_stop_process_sincroniza_antes_do_emu_kill() -> None:
+    ordem: list[str] = []
+
+    class AdbFalso:
+        def shell(self, comando: str, *, timeout: float = 30) -> str:
+            ordem.append(f"shell {comando}")
+            return ""
+
+        def emu_kill(self) -> None:
+            ordem.append("emu kill")
+
+    assert "não iniciado por este projeto" in emu.stop_process(AdbFalso(), None, "avd-x")        # type: ignore[arg-type]
+    assert ordem == ["shell sync", "emu kill"]
+
+    class AdbTravado(AdbFalso):
+        def shell(self, comando: str, *, timeout: float = 30) -> str:
+            ordem.append("shell travou")
+            raise TimeoutError("adb shell excedeu")
+
+    ordem.clear()
+    emu.stop_process(AdbTravado(), None, "avd-x")                                  # type: ignore[arg-type]
+    assert ordem == ["shell travou", "emu kill"]                                  # o desligamento segue
+
+
+# ============================================================================ convergência (harness)
+@pytest_asyncio.fixture
+async def parque(tmp_path: Path) -> Iterator[Harness]:
+    """android-01..03 de tarefa; android-04 é a loja. Servidor e aparelho de rede trocados por dublês."""
+    h = Harness(tmp_path, 4, store="android-04")
+    await h.boot()
+    st = h.state
+    assert st is not None
+    binario = tmp_path / "sing-box.exe"
+    binario.write_bytes(b"")
+    st.rede_servidor.processos = ProcessosFalsos()
+    st.rede_servidor._binario = lambda: binario
+    st.rede_servidor.restringir = lambda p: None
+    st.rede_servidor.espera_de_subida_s = 0
+    st.rede_convergencia.atraso_do_reinicio_s = 0.05
+    st.rede_convergencia.intervalo_do_reinicio_s = 0.05
+    st.rede_convergencia.pausa_da_tela_s = 0.01
+    try:
+        yield h
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+@dataclass
+class Reinicios:
+    pedidos: list[tuple[str, str]] = field(default_factory=list)
+    aceitar: bool = True
+
+    def __call__(self, s, instance_id: str, verb: str, motivo: str, *, requested_by: str, **_kw) -> str | None:
+        assert verb == "restart" and requested_by == "rede"
+        self.pedidos.append((instance_id, motivo))
+        return f"c-teste-{len(self.pedidos)}" if self.aceitar else None
+
+
+def _preparar(parque: Harness, monkeypatch: pytest.MonkeyPatch, *, policy: str = "exigida_com_bloqueio",
+              iid: str = "android-01") -> tuple[AparelhoFalso, Reinicios, str]:
+    st = parque.state
+    assert st is not None
+    ap = AparelhoFalso(id=iid)
+    st.rede_convergencia._aparelho = lambda _s, _rt: ap
+    reinicios = Reinicios()
+    monkeypatch.setattr(despacho, "pedir_ciclo_de_vida", reinicios)
+    perfil = rede.criar_perfil(st, rede.ler_cadastro({"name": "Central", "kind": "vpn", "protocol": "singbox",
+                                                      "endpoint_host": "10.0.2.2", "endpoint_port": 51820,
+                                                      "params": {"servidor": "central"}}), "teste")
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=[iid], vpn_profile_id=perfil.id, policy=policy), "teste")
+    return ap, reinicios, perfil.id
+
+
+def _linha(parque: Harness, iid: str = "android-01") -> dict[str, object] | None:
+    r = parque.state.db.one("SELECT * FROM device_network WHERE instance_id=?", (iid,))  # type: ignore[union-attr]
+    return dict(r) if r is not None else None
+
+
+async def _passo(parque: Harness, motivo: str = "ligou", iid: str = "android-01") -> bool:
+    st = parque.state
+    assert st is not None
+    trabalho = st.rede_convergencia.trabalho(st.devices.devices[iid], motivo=motivo)            # type: ignore[arg-type]
+    if trabalho is None:
+        return False
+    await trabalho()
+    return True
+
+
+def _envelhecer_configuracao(parque: Harness, iid: str = "android-01", s: float = 600) -> None:
+    parque.state.rede_convergencia.memoria(iid).configurado_em = time.time() - s  # type: ignore[union-attr]
+
+
+async def test_convergencia_aplica_pede_reinicio_e_conecta(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None and st.devices.devices["android-01"].state.value == "online"
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    # Política exigida: a porta segura a tarefa e dispara a aplicação antes dela.
+    assert "aplicando a rede pedida (rev 1)" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    await parque.wait(lambda: (_linha(parque) or {}).get("state") == "configurado", what="rede aplicada pela porta")
+    await asyncio.sleep(0.3)                                                       # o reinício sai depois do trabalho
+    assert [i for i, _ in reinicios.pedidos] == ["android-01"]
+    linha = _linha(parque)
+    assert linha["applied_rev"] == 1 and "reinício c-teste-1" in str(linha["detail"])
+    [cmd] = st.db.query("SELECT * FROM commands WHERE verb='device.network'")
+    assert cmd["state"] == "succeeded" and json.loads(cmd["params"])["acao"] == "aplicar"
+    assert cmd["requested_by"] == "rede"
+    servidor = st.rede_servidor.status()
+    assert servidor["running"] is True and [p["instance_id"] for p in servidor["peers"]] == ["android-01"]
+    assert "reinício" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    # O boot com o always-on: túnel no ar, lido como uid 2000 → conectado. Ainda não libera: falta a medição.
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45)
+    assert await _passo(parque, "ligou")
+    linha = _linha(parque)
+    assert linha["state"] == "conectado" and "uid 2000" in str(linha["detail"])
+    assert "medição do tráfego" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    rede.registrar_medicao(st, "android-01", rede.NetworkMeasurementInput(
+        method="app_qa", egress_ipv4="45.162.8.9", per_app={"com.pocqa.messenger": "ok"}, leak_blocked=True), rev=1)
+    assert _linha(parque)["state"] == "trafego_verificado"
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None
+    # Nenhum segredo nas tabelas de texto, nos comandos nem nos eventos.
+    ref = st.db.one("SELECT secret_ref FROM network_keys WHERE owner='android-01'")["secret_ref"]
+    chave = st.secrets.get_secret(ref)
+    for tabela in ("device_network", "commands", "events", "network_keys"):
+        for r in st.db.query(f"SELECT * FROM {tabela}"):                          # noqa: S608 - nome fixo
+            assert chave not in json.dumps(dict(r), default=str), tabela
+
+
+async def test_tunel_que_nao_sobe_reinicia_ate_o_teto_e_depois_espera(parque: Harness,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch, policy="exigida")
+    assert await _passo(parque, "varredura")                                       # aplicar
+    await asyncio.sleep(0.3)
+    for n in (2, 3):
+        _envelhecer_configuracao(parque)
+        ap.depois_do_boot(uptime=300, tun=False)                                   # reiniciou e o SFA caiu (FGS)
+        ap.relatorios = 1
+        assert await _passo(parque, "ligou")
+        assert ap.relatorios == 0                                                  # a queda grava a chave ali
+        if n == 2:
+            await asyncio.sleep(0.3)
+            assert len(reinicios.pedidos) == 2 and _linha(parque)["state"] == "configurado"
+    linha = _linha(parque)
+    assert linha["state"] == "pendente" and "o túnel não subiu depois de 2 reinício" in str(linha["error"])
+    assert await _passo(parque, "varredura") is False                             # espera antes de repetir
+    assert "falhou" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    [ultimo] = st.db.query("SELECT * FROM commands WHERE verb='device.network' ORDER BY created_at DESC LIMIT 1")
+    assert ultimo["state"] == "failed"
+
+
+async def test_falha_de_aplicacao_nao_se_repete_as_cegas(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch, policy="livre")
+    ap.instalado = False                                                           # sem SFA e sem versão promovida
+    assert await _passo(parque, "varredura")
+    linha = _linha(parque)
+    assert linha["state"] == "pendente" and "25.10" in str(linha["error"]) and reinicios.pedidos == []
+    assert await _passo(parque, "varredura") is False and await _passo(parque, "ligou") is False
+    assert await _passo(parque, "pedido")                                          # "Aplicar agora" passa por cima
+    # Com política livre, a tarefa não depende da rede: a porta não segura nada.
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None
+
+
+async def test_deriva_regride_e_wipe_invalida(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, _, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45)
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
+    # Varredura antes de vencer a deriva: nada a fazer; vencida, relê.
+    assert await _passo(parque, "varredura") is False
+    st.cfg.file.rede.deriva_s = 0.01
+    await asyncio.sleep(0.02)
+    ap.tun = ap.vpn = False                                                        # o túnel caiu, a config ficou
+    ap.uptime = 5000                                                               # (longe do boot: sem esperar o tun0)
+    assert await _passo(parque, "varredura")
+    assert _linha(parque)["state"] == "configurado" and "túnel caído" in str(_linha(parque)["detail"])
+    ap.depois_do_boot(uptime=45)
+    _envelhecer_configuracao(parque)
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
+    ap.always_on = "null"                                                          # alguém tirou o always-on
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "pendente"
+    # Wipe: a rede aplicada deixou de existir, e a linha regride (o gancho do gerenciador chega aqui).
+    rede.registrar_observacao(st, "android-01", rev=1, estado="conectado", evidencia="teste")
+    st.devices.on_device_wiped("android-01", "reset do aparelho")
+    linha = _linha(parque)
+    assert linha["state"] == "pendente" and "dados do aparelho apagados" in str(linha["detail"])
+
+
+async def test_desfazer_tira_a_rede_e_apaga_a_linha(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45)
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
+    await asyncio.sleep(0.3)
+    antes = len(reinicios.pedidos)
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=["android-01"], vpn_profile_id=None, policy="livre"), "teste")
+    assert _linha(parque)["desired_rev"] == 2
+    assert await _passo(parque, "varredura")                                       # desfazer
+    assert ap.always_on == "null" and ap.lockdown == "0" and _linha(parque)["state"] == "configurado"
+    assert st.rede_servidor.status()["running"] is False                          # o par saiu do servidor
+    await asyncio.sleep(0.3)
+    assert len(reinicios.pedidos) == antes + 1
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45, tun=False)
+    ap.regras = False
+    assert await _passo(parque, "ligou")
+    assert _linha(parque) is None                                                  # nada pedido, nada aplicado
+    acoes = [json.loads(c["params"])["acao"] for c in st.db.query(
+        "SELECT params FROM commands WHERE verb='device.network' ORDER BY created_at")]
+    assert acoes == ["aplicar", "conectar", "desfazer", "conectar"]
+
+
+async def test_loja_quarentena_e_ocupado_ficam_fora(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    _preparar(parque, monkeypatch, iid="android-02")
+    st.social_repo.marcar_conta_travada("android-02", "felipe.teste", "tela de desafio", "declarado", visto_por="dono")
+    assert st.rede_convergencia.trabalho(st.devices.devices["android-02"], motivo="pedido") is None
+    assert st.rede_convergencia.motivo_de_espera("android-02") is None           # a quarentena tem a porta dela
+    with pytest.raises(rede.RedeError) as exc:
+        st.rede_convergencia.aplicar_agora("android-02", "teste")
+    assert exc.value.code == "aparelho_em_quarentena"
+    with pytest.raises(rede.RedeError) as exc:
+        st.rede_convergencia.aplicar_agora("android-04", "teste")
+    assert exc.value.code == "store_instance"
+    assert st.db.one("SELECT id FROM commands WHERE verb='device.network'") is None
+
+
+async def test_rotas_apply_e_server_sem_segredo(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, _, _ = _preparar(parque, monkeypatch, policy="livre")
+    app = create_app(parque.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/network/devices/android-01/apply")
+        assert r.status_code == 202 and r.json()["executed"] is True, r.text
+        await parque.wait(lambda: (_linha(parque) or {}).get("state") == "configurado", what="apply pela rota")
+        assert (await c.post("/api/network/devices/android-03/apply")).json()["detail"]["code"] == "nothing_requested"
+        r = await c.get("/api/network/server")
+        assert r.status_code == 200 and r.json()["running"] is True
+        assert [p["address"] for p in r.json()["peers"]] == ["10.66.0.2"]
+    corpo = r.text
+    for dono in ("android-01", "servidor"):
+        ref = st.db.one("SELECT secret_ref FROM network_keys WHERE owner=?", (dono,))["secret_ref"]
+        assert st.secrets.get_secret(ref) not in corpo
+
+
+async def test_reinicio_so_no_ponto_seguro_e_recusa_nao_vira_comando_a_cada_passada(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.models import ControlOwner
+
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch, policy="livre")
+    rt = st.devices.devices["android-01"]
+    rt.control = ControlOwner.user                                                 # uma pessoa pegou o aparelho
+    try:
+        assert await _passo(parque, "pedido")                                      # aplicar (a pedido)
+        await asyncio.sleep(0.3)
+        assert reinicios.pedidos == []                                             # ocupado: não reinicia por baixo
+    finally:
+        rt.control = ControlOwner.none
+    await asyncio.sleep(0.3)
+    assert [i for i, _ in reinicios.pedidos] == ["android-01"]                     # livre: agora sim
+    # Reinício recusado (o worker não tem o verbo, manutenção): a varredura não abre um comando por passada.
+    reinicios.aceitar = False
+    assert await _passo(parque, "ligou")                                           # sem boot: pede de novo
+    await asyncio.sleep(0.3)
+    assert len(reinicios.pedidos) == 2
+    comandos = st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='device.network'")
+    assert await _passo(parque, "varredura") is False and await _passo(parque, "tarefa") is False
+    assert st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='device.network'") == comandos
+
+
+@pytest.mark.parametrize("uptime", [5000, None], ids=["boot_nunca_zera", "uptime_nao_lido"])
+async def test_reinicio_sem_boot_detectado_tem_teto(parque: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                    uptime: int | None) -> None:
+    """Revisão (25.4): o teto só contava reinício com boot DETECTADO. O celular sem worker (o `restart` só solta e
+    readota a sessão: o uptime nunca zera) ou uma leitura sem `S=` pediam um reinício novo a cada passada, para
+    sempre. Agora o teto conta os pedidos, e a linha vai a `pendente` com o porquê."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch, policy="livre")
+    ap.external = True
+    conv = st.rede_convergencia
+    agora = [1_000_000.0]
+    conv._agora = lambda: agora[0]
+    assert await _passo(parque, "varredura")                                       # aplicar: 1º reinício pedido
+    await asyncio.sleep(0.3)
+    ap.uptime = uptime                                                             # type: ignore[assignment]
+    for _ in range(8):                                                             # o "reinício" que nunca reinicia
+        if _linha(parque)["state"] == "pendente":
+            break
+        agora[0] += 301                                                            # passou a espera da releitura
+        await _passo(parque, "varredura")
+        await asyncio.sleep(0.2)
+    # Antes: um pedido novo a cada passada, sem fim. Agora: o teto, e a linha desiste com o porquê.
+    maximo = int(st.cfg.file.rede.reinicios_max)
+    assert len(reinicios.pedidos) == maximo
+    linha = _linha(parque)
+    assert linha["state"] == "pendente" and "nenhum boot foi detectado" in str(linha["error"])
+    assert "reinicie-o por fora" in str(linha["error"])
+    # Desistiu: a espera crescente das falhas vale (5, 15, 45, 60 min), e até ela a varredura não abre nada.
+    comandos = st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='device.network'")
+    for _ in range(4):
+        agora[0] += 60
+        assert await _passo(parque, "varredura") is False
+    assert st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='device.network'") == comandos
+    assert len(reinicios.pedidos) == maximo
+
+
+async def test_reinicio_recusado_tambem_conta_para_o_teto(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Um worker sem o verbo recusa o `restart` para sempre: sem contar a recusa, a varredura pediria de 5 em 5 min."""
+    st = parque.state
+    assert st is not None
+    _, reinicios, _ = _preparar(parque, monkeypatch, policy="livre")
+    reinicios.aceitar = False
+    conv = st.rede_convergencia
+    agora = [1_000_000.0]
+    conv._agora = lambda: agora[0]
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    for _ in range(8):
+        if _linha(parque)["state"] == "pendente":
+            break
+        agora[0] += 301
+        await _passo(parque, "varredura")
+        await asyncio.sleep(0.2)
+    assert len(reinicios.pedidos) == int(st.cfg.file.rede.reinicios_max)
+    assert _linha(parque)["state"] == "pendente" and "nenhum boot foi detectado" in str(_linha(parque)["error"])
+
+
+def test_adb_reverse_so_leva_a_porta_no_argumento(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+    from types import SimpleNamespace
+
+    from app.devices import adb as adb_mod
+
+    argvs: list[list[str]] = []
+
+    def run(cmd: list[str], **_kw: object) -> subprocess.CompletedProcess:
+        argvs.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(adb_mod.subprocess, "run", run)
+    a = adb_mod.Adb(SimpleNamespace(adb="adb", env=lambda: {}), "emulator-5640")  # type: ignore[arg-type]
+    a.reverse(18123)
+    a.remove_reverse(18123)
+    assert argvs == [["adb", "-s", "emulator-5640", "reverse", "tcp:18123", "tcp:18123"],
+                     ["adb", "-s", "emulator-5640", "reverse", "--remove", "tcp:18123"]]

@@ -30,6 +30,8 @@ from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
 from .db import Database, Row, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
+from .devices.rede_convergencia import ConvergenciaDeRede
+from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
@@ -314,6 +316,18 @@ class AppState:
         self.scheduler.app_preflight = self._app_preflight
         # Manutenção suspende novas atribuições: o scheduler pergunta ao registro antes de tirar um objetivo do lugar.
         self.scheduler.worker_gate = self.workers.aceita_trabalho
+        # Rede por aparelho (ADR-056, item 25.4): o servidor sing-box do central (processo do usuário, gerenciado
+        # aqui) e a convergência que aplica, confere e desfaz a rede de cada aparelho num ponto seguro. A porta da
+        # rede (contrato C4) é dela: com política exigida, a tarefa espera e o que falta é disparado antes.
+        self.rede_servidor = ServidorDeRede(
+            self.db, self.secrets, lambda: self.cfg.file.rede.servidor, pasta=self.cfg.data_dir / "rede" / "servidor",
+            binario=lambda: self.cfg.path(self.cfg.file.rede.servidor.binario))
+        # Aparelho de outra máquina (worker da LAN, celular): chega ao servidor pela LAN e depende do firewall (25.7).
+        self.rede_servidor.eh_remoto = lambda iid: bool(getattr(self.devices.devices.get(iid), "external", False))
+        self.rede_convergencia = ConvergenciaDeRede(self)
+        self.scheduler.rede_gate = self.rede_convergencia.motivo_de_espera
+        # A queda do túnel no meio de um objetivo (item 25.6): relida de dentro do worker, entre as etapas.
+        self.scheduler.rede_releitura = self.rede_convergencia.reler_entre_etapas
         # Vagas e recursos POR MÁQUINA entram na decisão do rodízio: o teto deixa de ser um número global.
         self.scheduler.worker_capacity = self._worker_capacity
         # "Instalar em todos agora": releases cuja entrega uma pessoa pediu para JÁ. Em memória de propósito — um
@@ -357,7 +371,7 @@ class AppState:
         self.skills = TrainingSkills(self)
         # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
         # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
-        self.devices.on_device_wiped = self._forget_app_state
+        self.devices.on_device_wiped = self._dados_do_aparelho_perdidos
         # Só o disco apagado DE FATO tira a conta travada do aparelho (ADR-055); a troca de identidade física não.
         self.devices.on_disk_erased = self._disco_apagado
         # Aparelho no ar e inútil (Android morto por dentro, sessão que não abre) com `desired_state=online`:
@@ -560,12 +574,29 @@ class AppState:
         # (`conferir_identidade`), sem disco apagado nem pessoa — e resolvia o marcador com "dados apagados", o que era
         # falso e devolvia o aparelho do desafio ao uso (revisão do pacote quarentena, 29/09). Ver `_disco_apagado`.
 
+    def _dados_do_aparelho_perdidos(self, instance_id: str, motivo: str) -> None:
+        """O gancho de wipe (`on_device_wiped`): o que estava no disco deixou de valer — o app instalado e, desde o
+        25.4, a rede aplicada (o cliente VPN e o always-on saíram junto; troca de identidade física também conta:
+        outro aparelho atrás do id não tem a nossa configuração). Um não impede o outro."""
+        try:
+            self._forget_app_state(instance_id, motivo)
+        finally:
+            try:
+                self.rede_convergencia.invalidar(instance_id, motivo)
+            except Exception:  # noqa: BLE001 - invalidar a rede nunca pode derrubar o ciclo do aparelho
+                log.exception("%s: falha ao invalidar a rede depois do wipe", instance_id)
+
     def _disco_apagado(self, instance_id: str, motivo: str) -> None:
         """O disco foi apagado de fato (boot com `-wipe-data` ou reset concluído pelo agente): a conta travada não está
         mais logada ali (ADR-055). Numa quarentena o reset só chega com a confirmação explícita da pessoa, e manter o
-        marcador travaria para sempre um aparelho já limpo. O PERFIL segue bloqueado: reativar é decisão de pessoa."""
+        marcador travaria para sempre um aparelho já limpo. O PERFIL segue bloqueado: reativar é decisão de pessoa.
+        A rede aplicada também saiu (idempotente com o `on_device_wiped` do mesmo reset)."""
         self.social_repo.resolver_conta_travada(instance_id, por="reset do aparelho",
                                                 nota=f"dados do aparelho apagados — {motivo}")
+        try:
+            self.rede_convergencia.invalidar(instance_id, motivo)
+        except Exception:  # noqa: BLE001 - invalidar a rede nunca pode derrubar o boot
+            log.exception("%s: falha ao invalidar a rede depois do disco apagado", instance_id)
 
     def _conta_travada_em(self, instance_id: str) -> str | None:
         """O @ da conta travada logada no aparelho (marcador aberto, 054), ou `None`."""
@@ -2191,8 +2222,11 @@ class AppState:
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
-            # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura.
+            # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura (e a rede de cada
+            # aparelho converge no mesmo trabalho: `vitrine.trabalho_ao_ligar`).
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
+            # O servidor sing-box do central acompanha o banco (sobe com o primeiro aparelho que o pede; ADR-056).
+            self._bg.append(asyncio.create_task(self.rede_convergencia.laco(), name="rede-servidor"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem
@@ -2311,6 +2345,14 @@ class AppState:
         except Exception:  # noqa: BLE001 - uma falha aqui não pode deixar o Appium órfão nem o banco aberto
             log.exception("encerramento: falha ao parar scheduler/aparelhos")
         finally:
+            try:
+                # O sing-box do central vive enquanto o backend HOSPEDEIRO vive: sem ele, ninguém reinicia o processo
+                # quando os pares mudam, e a configuração com a chave não fica no disco sem dono. A réplica de API não
+                # o toca (ela nunca o subiu, e o PID na pasta seria o do hospedeiro).
+                if self.cfg.roda_scheduler:
+                    await self.rede_servidor.parar()
+            except Exception:  # noqa: BLE001 - parar o servidor de rede nunca impede o resto do encerramento
+                log.exception("encerramento do servidor de rede")
             if self.manage_appium:
                 await asyncio.to_thread(self.appium.stop)
             if self._digestoes:

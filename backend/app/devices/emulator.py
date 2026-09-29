@@ -124,8 +124,24 @@ def process_usage(pid: int) -> tuple[float, float] | None:
         return None
 
 
+#: Teto do `sync` antes de desligar. Normalmente leva menos de 1 s; um convidado travado não pode segurar o
+#: desligamento além disso — ele segue para o `emu kill` do mesmo jeito.
+SYNC_ANTES_DE_DESLIGAR_S = 20.0
+
+
 def stop_process(adb: Adb, pid: int | None, avd_name: str, *, grace_s: float = 25) -> str:
-    """Pede desligamento pelo console (`emu kill`); só força o término do PID que nós iniciamos."""
+    """Pede desligamento pelo console (`emu kill`); só força o término do PID que nós iniciamos.
+
+    Antes, um `sync` no convidado. O `emu kill` é um corte de energia do Android: o que estava no cache de páginas do
+    convidado se perde. Medido em 29/09 (25.1, android-05): o perfil de VPN importado 26 s antes do `restart` sumiu
+    (`profiles.db` sem linhas, `configs/1.json` com 0 B). Vale para qualquer dado recém-gravado — sessão de app
+    logado, preferência, arquivo de configuração —, então o `sync` é de todo desligamento, e não só do da rede. O
+    `hibernate` já fazia (`Adb.snapshot_save`); este é o caminho do `stop`, do `restart` e do rodízio, local e no
+    agente do worker. Falha ou demora do `sync` não impede o desligamento."""
+    try:
+        adb.shell("sync", timeout=SYNC_ANTES_DE_DESLIGAR_S)
+    except Exception:  # noqa: BLE001 - o sync é proteção de dado, não condição para desligar
+        pass
     try:
         adb.emu_kill()
     except Exception:  # noqa: BLE001 - segue para a verificação por PID

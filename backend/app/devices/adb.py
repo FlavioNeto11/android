@@ -728,6 +728,19 @@ class Adb:
         A porta é exclusiva desta instância, então não há outro dono legítimo; ausência do forward não é erro."""
         self._run(["forward", "--remove", f"tcp:{int(port)}"], timeout=10)
 
+    def reverse(self, port: int, *, timeout: float = 15) -> None:
+        """`adb reverse tcp:P tcp:P`: o `127.0.0.1:P` DO CONVIDADO passa a chegar ao `127.0.0.1:P` da máquina do
+        servidor adb. É o caminho do perfil de rede (25.4) para o aparelho de outra máquina, que não tem o `10.0.2.2`
+        deste host: o túnel do adb já o alcança. Só a porta (inteiro) entra no argumento."""
+        porta = int(port)
+        res = self._run(["reverse", f"tcp:{porta}", f"tcp:{porta}"], timeout=timeout)
+        if res.returncode != 0:
+            raise AdbError(f"adb reverse falhou em {self.serial} ({res.returncode})")
+
+    def remove_reverse(self, port: int, *, timeout: float = 15) -> None:
+        """Desfaz o `reverse` da porta. Ausência do mapeamento não é erro (o aparelho pode ter reiniciado)."""
+        self._run(["reverse", "--remove", f"tcp:{int(port)}"], timeout=timeout)
+
     def abi_list(self) -> str:
         return self._run(["shell", "getprop ro.product.cpu.abilist"], timeout=8).stdout.strip()
 

@@ -2079,20 +2079,49 @@ async def assign_network(request: Request, body: rede.NetworkAssignBody) -> dict
 
 @router.post("/network/devices/{instance_id}/verify", status_code=202)
 async def verify_network(request: Request, instance_id: str) -> dict[str, object]:
-    """Registra o pedido de medir de novo (202). A medição de dentro do aparelho é do 25.5: nada é executado aqui."""
+    """Registra o pedido de medir de novo (202, `executed: false`): a sonda de saída (25.5) mede de dentro do
+    aparelho no próximo ponto seguro dele (varredura, porta da tarefa) ou já, por `POST …/apply`."""
     try:
-        return rede.pedir_verificacao(st(request), instance_id, quem(request))
+        return st(request).rede_convergencia.pedir_verificacao(instance_id, quem(request))
     except rede.RedeError as exc:
         raise _rede_error(exc) from exc
 
 
 @router.post("/network/devices/{instance_id}/reapply", status_code=202)
 async def reapply_network(request: Request, instance_id: str) -> dict[str, object]:
-    """Registra a reaplicação como revisão nova (202). A aplicação no aparelho é do 25.4: nada é executado aqui."""
+    """Registra a reaplicação como revisão nova (202). Quem aplica é a convergência (25.4), no próximo ponto seguro;
+    para aplicar já, `POST …/apply`."""
     try:
         return rede.pedir_reaplicacao(st(request), instance_id, quem(request))
     except rede.RedeError as exc:
         raise _rede_error(exc) from exc
+
+
+@router.post("/network/devices/{instance_id}/apply", status_code=202)
+async def apply_network(request: Request, instance_id: str) -> dict[str, object]:
+    """O passo que falta à rede deste aparelho (aplicar, reiniciar e conectar, medir, conferir ou desfazer), JÁ, pela fila
+    do aparelho e como comando `device.network` (25.4). Fora do ar: aplica quando ligar. Ocupado: 409 `device_busy`."""
+    try:
+        return st(request).rede_convergencia.aplicar_agora(instance_id, quem(request))
+    except rede.RedeError as exc:
+        raise _rede_error(exc) from exc
+
+
+@router.get("/network/server")
+async def network_server(request: Request) -> dict[str, object]:
+    """O servidor sing-box do central (25.4): se roda, os pares (aparelho, endereço no túnel, chave PÚBLICA, última
+    conexão no log) e os usuários do proxy. Sem segredo nenhum: nem chave privada, nem senha, nem a configuração."""
+    return st(request).rede_servidor.status()
+
+
+@router.post("/network/server/firewall-check")
+async def network_server_firewall_check(request: Request) -> dict[str, object]:
+    """Relê JÁ o Firewall do Windows do central para os aparelhos de outra máquina (25.7) e devolve o
+    `remote_access`: endpoint da LAN, aparelhos remotos, estado e o comando que o DONO roda. Só leitura — a plataforma
+    nunca cria, muda ou desliga regra."""
+    servidor = st(request).rede_servidor
+    await servidor.conferir_acesso_remoto(forcar=True)
+    return servidor.acesso_remoto()
 
 
 @router.get("/app-state")

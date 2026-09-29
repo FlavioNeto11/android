@@ -200,6 +200,11 @@ class Scheduler:
         # do motivo da espera. Mesma forma de `worker_gate`; quem liga ao estado da rede é o AppState (item 25.6).
         # `None` aqui (o padrão) = sem efeito nenhum.
         self.rede_gate: Callable[[str], str | None] | None = None
+        # Item 25.6: a releitura da rede do aparelho ENTRE AS ETAPAS de um objetivo em curso, de dentro do worker (o
+        # aparelho está ocupado, e nada mais o relê). A porta acima só lê a linha do banco; é isto que faz uma queda do
+        # túnel no meio do objetivo virar linha regredida — e a etapa seguinte, espera. Falha aqui nunca derruba o
+        # worker. `None` = sem releitura.
+        self.rede_releitura: Callable[[DeviceRuntime], Awaitable[None]] | None = None
         # Vagas e recursos DAQUELA máquina (`WorkerRegistry.capacidade`), para o rodízio decidir por worker em vez
         # de por um teto global que não crescia com worker novo nenhum. `None` quando o worker não está inscrito.
         self.worker_capacity: Callable[[str], Any] | None = None
@@ -1192,8 +1197,18 @@ class Scheduler:
                 # persona podem ter mudado. Segurada, a etapa não começa (nenhuma tentativa gasta) e o aparelho volta
                 # ao despacho, que instala, autentica ou espera com o motivo.
                 app_da_etapa = self._app_da_linha(run, rt, srow)
-                if app_anterior is not None and app_da_etapa != app_anterior \
-                        and self._portas_na_troca(obj, rt, *app_da_etapa):
+                if app_anterior is not None:
+                    await self._reler_a_rede(rt)
+                if app_anterior is not None and app_da_etapa != app_anterior:
+                    if self._portas_na_troca(obj, rt, *app_da_etapa):
+                        break
+                elif app_anterior is not None and self._porta_da_rede(obj, rt):
+                    # Item 25.6: no mesmo app, a rede do aparelho (contrato C4) ainda é perguntada a cada etapa. A
+                    # queda observada no meio (deriva que regrediu a linha, wipe, reatribuição) ou a validade vencida
+                    # da medição suspendem o objetivo AQUI, entre etapas — nenhuma tentativa gasta, o aparelho volta ao
+                    # despacho, que mede ou reaplica e o retoma quando a rede voltar a `trafego_verificado`. No meio
+                    # da etapa não: o ponto seguro de dentro dela (`_stop_reason`) é da pessoa (pausa, controle,
+                    # cancelamento) e da conta travada.
                     break
                 # Item 24.3: `{{saida:<nome>}}` vira o valor lido ANTES da porta de política — aprovação, limite por
                 # alvo, coordenação de frota e o ator veem o valor, não o molde. Sem o valor, a etapa não começa:
@@ -1217,6 +1232,11 @@ class Scheduler:
                     repo.set_objective(objective_id, ObjectiveStatus.running,
                                        message=f"{rt.id}: objetivo em execução")
                     repo.recompute_run(run_id)
+                elif obj["wait_reason"] == "rede":
+                    # Suspenso entre etapas pela porta da rede (25.6), o objetivo ficou `running`, e `set_objective`
+                    # (que zera a espera) não roda de novo. Sem isto, a espera "rede" ficaria escrita com a etapa já
+                    # na tela — e a convergência leria o objetivo como parado à espera do reinício dela.
+                    repo.clear_wait_reason(objective_id, restore_detail=f"{rt.id}: objetivo em execução")
                 step = repo.step_dto(repo.step_row(srow["id"]))
                 self._publish_current(rt, obj, step.id)
                 outcome = await self._run_guarded(run, obj, step, attempt["id"], rt, resumed)
@@ -1392,10 +1412,30 @@ class Scheduler:
         A mesma ordem do `_tick`: rede do aparelho (contrato C4, ADR-056) antes de tudo — a porta da sessão pode
         pedir um LOGIN, e autenticar por uma saída não verificada é o que a política exigida impede —; depois a conta
         da persona no app, o app, a internet e a sessão (`_portas_do_app`). `True` = a etapa não começa agora."""
+        if self._porta_da_rede(obj, rt):
+            return True
+        return self._portas_do_app(obj, rt, pacote, app_id)
+
+    async def _reler_a_rede(self, rt: DeviceRuntime) -> None:
+        """A releitura da rede entre etapas (item 25.6), antes das portas: uma queda observada aqui regride a linha, e
+        `_porta_da_rede` logo abaixo segura a etapa seguinte. Leitura de apoio: um adb que não respondeu não derruba o
+        objetivo (a porta segue valendo pelo que a linha diz)."""
+        if self.rede_releitura is None:
+            return
+        try:
+            await self.rede_releitura(rt)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.info("%s: releitura da rede entre etapas falhou — %s", rt.id, exc)
+
+    def _porta_da_rede(self, obj: Row, rt: DeviceRuntime) -> bool:
+        """A porta da rede (contrato C4) de dentro do worker: `True` = a etapa seguinte não começa, com o motivo
+        anotado como espera (`wait_reason='rede'`), nunca bloqueio — quem resolve é a convergência, sem pessoa."""
         if self.rede_gate is not None and (motivo_rede := self.rede_gate(rt.id)) is not None:
             self.repo.note_waiting(obj["id"], motivo_rede, wait_reason="rede")
             return True
-        return self._portas_do_app(obj, rt, pacote, app_id)
+        return False
 
     def _publish_current(self, rt: DeviceRuntime, obj: Any, step_id: str | None) -> None:
         o = self.repo.objective_row(obj["id"])

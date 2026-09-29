@@ -348,29 +348,35 @@ que falta no `detail`; sem IP, o estado fica. Vocabulário de `per_app`: `ok` (s
 - **Apps exigidos.** `apps_exigidos(state, id)` são os pacotes das contas das personas com vínculo ativo no
   aparelho (o vínculo com `app_id` restringe àquele app). Medir só o navegador num aparelho com conta do Instagram
   dá `parcial` ("apps do aparelho não medidos"). A lista sai em `required_apps` na visão por aparelho. Vínculo
-  feito DEPOIS da verificação não desfaz o estado: o portão do 25.6 confere o pacote da tarefa contra o `per_app` da
-  `last_measurement`, e não só o `state`.
+  feito DEPOIS da verificação não desfaz o estado: a porta da tarefa (25.6) confere a lista de hoje contra o
+  `per_app` da medição que verificou (`rede.apps_sem_prova`) e, faltando app, segura e manda medir de novo.
 - **Sem corrida com o pedido.** Observação e medição leem, decidem e gravam numa transação, e a gravação exige a
   revisão lida (`AND desired_rev=?`, e na medição também `applied_rev` e `state`). Uma atribuição ou reaplicação que
   chegue no meio deixa a observação descartada e a medição só no histórico; o aparelho fica `pendente` com a revisão
   nova, nunca `trafego_verificado` com `applied_rev < desired_rev`. A reaplicação incrementa `desired_rev` no banco.
 
 **Verificar e reaplicar.** `POST /api/network/devices/{id}/verify` e `/reapply` respondem 202 com
-`executed: false`: registram o pedido e não fingem aplicação. Reaplicar é revisão nova (`applied_rev < desired_rev`,
-durável). Verificar não muda o estado; o pedido fica no `detail` e no evento. Loja, quarentena e aparelho sem rede
-pedida (`nothing_requested`) são recusados.
+`executed: false`: registram o pedido e não fingem aplicação (quem aplica é a convergência do 25.4 e quem mede é a
+sonda do 25.5, no próximo ponto seguro; `…/apply` executa já). Reaplicar é revisão nova (`applied_rev <
+desired_rev`, durável). Verificar não muda o estado; o pedido fica no `detail`, no evento e na memória da
+convergência (`ConvergenciaDeRede.pedir_verificacao`), que roda a sonda na próxima varredura com o aparelho livre ou
+antes da tarefa, refazendo o teste de vazamento da revisão. Um reinício do backend perde o pedido em memória, mas a
+readoção (`ligou`) mede de novo quem ainda não está verificado. Loja, quarentena e aparelho sem rede pedida
+(`nothing_requested`) são recusados.
 
 **Visão por aparelho.** `GET /api/network/devices`: por aparelho do parque (a loja fica de fora), `network`
 (`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy`, `restriction` (a frase da quarentena),
-`real_account`, `required_apps`, `pending` (`aplicar`|`verificar`) e `last_measurement`. O proxy da 041 é lido
+`real_account`, `required_apps`, `pending` (`aplicar`|`verificar`), `last_measurement` e `egress_shared_with` (os
+outros aparelhos com a mesma última saída medida, v4 ou v6: aviso, não bloqueio). O proxy da 041 é lido
 como `configurado` **no máximo** (`applied` com proxy), `pendente` nos outros estados, e só vale quando não há
 linha em `device_network`.
 
 **Ponto de extensão.** `rede.pendencias(state)` lista os aparelhos com `falta: aplicar` (revisão pedida fora do
 aparelho, ou regressão a `pendente`) ou `falta: verificar` (aplicado, sem tráfego verificado), sem loja nem
-quarentena: é o que a convergência do 25.4 consome pelo comando `device.network`. A fila durável de reverificação
-de quem já está `trafego_verificado` é decisão do 25.4/25.5. Evento `network.updated` (persistido) a cada mudança,
-com ids, política, revisão e estado; nunca segredo nem `secret_ref`.
+quarentena: é a visão de conjunto (painel, matriz). A convergência do 25.4 decide aparelho a aparelho pelo `state`
+da linha (abaixo). A reverificação de quem já está `trafego_verificado` é a conferência periódica do 25.4 (só
+regride); medir o tráfego de novo é a sonda do 25.5, a pedido. Evento `network.updated` (persistido) a cada mudança, com ids, política,
+revisão e estado; nunca segredo nem `secret_ref`.
 
 **Segredos de rede (25.3, ADR-056 §5).** O segredo de um perfil sai do cofre num único ponto,
 `security/segredo_de_rede.py::segredo_no_convidado`, o segundo consumidor de `SecretStore.get_secret` depois do canal
@@ -387,6 +393,242 @@ transporte vira mensagem fixa, sem a exceção original encadeada. O log diz que
 evidência não recebem nada. Quem manda o cliente importar o arquivo é o 25.4, dentro do bloco; se o cliente só ler
 de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem chama.
 
+**Aplicação e convergência (25.4).** O cliente é o sing-box (SFA, `io.nekohasekai.sfa`), escolhido pela medição 25.1
+(o único que compõe VPN e proxy no mesmo `VpnService`). Três módulos:
+
+- `devices/rede_aplicacao.py` é a **receita medida** no android-05 em 29/09, pela porta `AparelhoDaRede` (shell, árvore
+  de tela, toque, `adb reverse`): `cmd appops set <pkg> ACTIVATE_VPN allow` (relido); `am force-stop` (a importação
+  precisa da VPN desligada); o perfil do aparelho servido **uma vez** por um HTTP efêmero em `127.0.0.1` do central
+  (`ServidorDeUmaVez`: os bytes ficam em memória, o caminho tem token, um GET e fecha), montado e entregue pelo
+  consumidor restrito (`segredo_de_rede.segredos_entregues`); o aparelho local chega por `10.0.2.2` (medido), o do
+  worker por `adb reverse tcp:P tcp:P` (desfeito ao fim; a prova é do 25.7); `am start …
+  sing-box://import-remote-profile?url=…#plataforma-<id>-r<rev>`; os toques achados pelo **texto** na árvore da
+  plataforma e só no pacote do cliente ("No, thanks" na primeira execução, "OK", "Create", nessa ordem); espera o GET;
+  `sync`; `settings put secure always_on_vpn_app <pkg>` e `always_on_vpn_lockdown` 1 só com `exigida_com_bloqueio`
+  (relidos); apaga `/sdcard/Android/data/<pkg>/files/crash_reports/` (a queda do cliente grava a configuração com a
+  chave ali); `sync`. A URL de uso único não entra em evidência, comando nem evento. O perfil do cliente
+  (`config_do_cliente`, o do piloto): `tun` com `strict_route` (IPv6 inalcançável em vez de vazar), DNS sequestrado e
+  resolvido pelo túnel, proxy com `detour: wg-out` quando há VPN; com proxy HTTP o UDP que não é DNS é recusado (T3).
+  O desfazer é o espelho (`settings delete`, lockdown 0, `force-stop`, relatórios apagados, `sync`). A leitura
+  (`observar`) é uma ida só ao aparelho, **como uid 2000** (`id -u`; root é recusado: o bloqueio não cobre o uid 0):
+  always-on, lockdown, `tun0`, `ni{VPN CONNECTED` e "Lockdown filtering rules" no `dumpsys connectivity`, relatórios de
+  falha, `pm path` e o `uptime`.
+- `devices/rede_convergencia.py` decide **quando**, sempre num ponto seguro (o aparelho livre, pela fila dele) e com
+  rastro: aplicar, desfazer e conectar são o comando `device.network` (`despacho.comando_no_trabalho`, que conduz o
+  comando dentro de um trabalho que já tem o aparelho); o reinício é um comando `restart` (`pedir_ciclo_de_vida`,
+  `requested_by: rede`), pedido depois que o trabalho solta o aparelho e sem objetivo no meio — exceto o objetivo
+  suspenso entre etapas pela própria porta da rede (`running` com `wait_reason='rede'`, item 25.6), que espera
+  justamente esse reinício (contá-lo como ocupado travava os dois: a rede esperava o objetivo e o objetivo, a rede);
+  o worker ocupado continua segurando. Por estado da linha:
+  `pendente` → aplicar (plano, chave do aparelho e par no servidor, cliente pela versão promovida na loja, receita) ou
+  desfazer (pedido vazio) → `configurado` e o reinício (always-on e bloqueio só valem no boot); `configurado` →
+  conectar (espera o `tun0` até `rede.espera_tun_s` contados do boot; no ar → `conectado` com a evidência lida e a
+  última conexão do par no log do servidor; sem boot desde a configuração → reinício; reiniciou e não subiu → novo
+  reinício; o teto `rede.reinicios_max` conta os reinícios PEDIDOS na revisão — aceitos ou recusados, com boot
+  detectado ou não —, e passado ele a linha vai a `pendente` com erro e entra na espera crescente das falhas. Sem
+  boot detectado, o erro diz isso e o que fazer: um aparelho que a plataforma não reinicia de verdade (o celular sem
+  worker, em que o `restart` só solta e readota a sessão, 25.7) ou cujo `uptime` não veio precisa ser reiniciado por
+  fora, e depois Reaplicar); `conectado`/`parcial` → verificar (a sonda de
+  saída do 25.5, abaixo: relê como o conferir e, com o túnel no ar, mede e grava); `trafego_verificado` → conferir (ao
+  ligar, ao acordar, na readoção depois do reinício do backend ou do worker, e a cada `rede.deriva_s` na varredura):
+  configuração que sumiu → `pendente` (reaplica), túnel caído com a configuração no lugar → `configurado`
+  (reinicia). Conferir só regride; `trafego_verificado` continua sendo só da medição. Falha não se repete às
+  cegas: espera em memória de 5, 15, 45 e 60 min (um reinício do backend dá mais uma chance); `POST …/apply` passa por
+  cima. Wipe, reset ou outro aparelho físico atrás do id (`on_device_wiped`, `on_disk_erased`) regridem a linha a
+  `pendente`; com o pedido vazio, a linha sai. Desfeito e conferido depois do reinício, a linha também sai (nada
+  pedido, nada aplicado). Quem chama: `vitrine.trabalho_ao_ligar` (a rede vai primeiro, no mesmo trabalho da
+  reobservação e da entrega dos apps; `motivo=ligou` ao entrar no ar e `varredura` na passada de 60 s) e a **porta da
+  rede** do scheduler (contrato C4, ligada em `state.py`; regras abaixo, em "Portão de rede"). Loja e quarentena
+  ficam fora (a quarentena tem a porta dela).
+- `devices/rede_servidor.py` é o **sing-box do central** (decisão P2): processo do usuário gerenciado pela plataforma
+  (sem serviço do Windows, sem driver, sem NAT, sem mexer em rede ou firewall), executável em `rede.servidor.binario`.
+  Sobe quando algum aparelho pede um perfil de VPN com `params.servidor: "central"` e para quando ninguém pede; morre
+  com o backend hospedeiro (a réplica de API não o toca) e um órfão de queda é adotado só se o PID, o executável e o
+  caminho da configuração forem os nossos. Um par por aparelho: chave X25519 gerada pela plataforma
+  (`segredo_de_rede.gerar_chave_wireguard`: a privada vai direto ao cofre, a pública e o endereço ficam em
+  `network_keys`, migração 058), estável, com o menor endereço livre de `rede.servidor.sub_rede` (o servidor é o
+  primeiro). A configuração (chave do servidor e senhas do proxy do central) é gravada por
+  `segredo_de_rede.gravar_configuracao_do_servidor` em `data_dir/rede/servidor/servidor.json`, numa pasta e num
+  arquivo com ACL só do usuário (`icacls` sem herança; sem ACL, nada é gravado), e o processo recebe só o caminho
+  (`run -c <arquivo>`). Reinicia quando a assinatura muda (pares, usuários do proxy, portas, sub-rede, chave pública;
+  sem segredo) e apaga a configuração ao parar. **Regras de rota** (a correção da medição, que mostrou o endpoint
+  reescrevendo `10.66.0.1:<p>` para `127.0.0.1:<p>`: qualquer par alcançava a API, o adb e os consoles):
+  `localhost` por nome é recusado; o destino pedido ao proxy é resolvido antes das faixas; do túnel só passa a porta do
+  proxy do central (em `127.0.0.1` ou no endereço do servidor); loopback, a sub-rede do túnel, RFC 1918, link-local,
+  CGNAT, multicast e as faixas reservadas (IPv4 e IPv6) são recusados para o túnel **e** para o proxy; o resto sai pelo
+  `direct`. O log em nível `info` é a evidência: `ultima_conexao(10.66.0.N)` lê `inbound connection from` na cauda,
+  e o log é renomeado no início seguinte a `rede.servidor.log_max_mb`.
+
+Rotas do 25.4: `POST /api/network/devices/{id}/apply` (202: o passo que falta, já, pela fila do aparelho; fora do ar
+responde `executed: false` e aplica quando ligar; ocupado ou com comando de ciclo de vida em voo, 409 `device_busy`;
+as recusas de `verify`/`reapply` valem igual) e `GET /api/network/server` (se roda, PID, assinatura, pares com endereço,
+chave **pública** e última conexão, usuários do proxy, `detail`; nenhum segredo). `reapply` e `assign` continuam só
+registrando: quem executa é a convergência. **Todo desligamento sincroniza**: `emulator.stop_process` roda `adb shell
+sync` (até 20 s, sem impedir o desligamento) antes do `emu kill` — o `restart` era um corte de energia e perdeu o
+perfil importado 26 s antes (25.1); vale para qualquer dado recém-gravado e para o agente do worker quando for
+atualizado. A provisão termina em `sync` de qualquer jeito.
+
+**Sonda de saída (25.5).** Mede de dentro do aparelho, **como uid 2000** (cada ida confere `id -u`; root é
+recusado), com o `nc` do Android — o ajuste do plano registrado no handoff troca o app de QA estendido pelo shell. Os
+comandos e as leituras são só stdlib, em `devices/sonda_rede.py` (vão no agente do worker); a orquestração é
+`devices/rede_medicao.medir`; quem decide quando é o passo `verificar` da convergência (comando `device.network`,
+`acao: verificar`), com `conectado` ou `parcial`: ao ligar, a pedido, pela porta da tarefa (no máximo a cada 30 s) e
+na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s` (padrão 600 s; depois de uma
+medição que não verificou, a porta também espera esse tanto). Antes de medir, relê como o conferir: deriva regride e
+nada é medido. O que se mede:
+
+- **IP de saída v4 e v6**: HTTP/1.0 a um eco de IP na porta 80 (`rede.sonda.hosts_ipv4`, padrão `api.ipify.org` e
+  `ipv4.icanhazip.com`; `hosts_ipv6`, `api6.ipify.org` e `ipv6.icanhazip.com`: a família vem do host), com o stdin
+  aberto por `sleep` (sem ele o `nc` fecha antes da resposta, medido). Vale o primeiro host que devolver HTTP 200 com
+  IP **público** da família; sem IP, o `detail` guarda o motivo de cada host (`Permission denied` do bloqueio,
+  `Timeout`, `No route to host` do IPv6 preso no túnel, que é o esperado com `strict_route`);
+- **DNS e UDP**: o resolvedor da rede VPN (`DnsAddresses` das `LinkProperties` do `tun0`; no SFA, 172.19.0.2, o
+  hijack), o DNS privado do Android, se um nome resolve, e dois datagramas de ida e volta pelo `nc -u`: DNS a
+  `rede.sonda.udp_dns` (8.8.4.4; o cliente o sequestra e resolve pelo túnel) e NTP a `rede.sonda.udp_ntp` (o UDP que
+  não é DNS — na cadeia com SOCKS5 o DNS seguia e o NTP se perdia). `udp_ok` só com os dois;
+- **cobertura por app** (`per_app`): `pm list packages -U` dá o UID de cada app de `apps_exigidos` (Instagram,
+  Outlook…), e `dumpsys netstats --poll` + `detail` (seção "UID stats", `tag=0x0`) dá os bytes por (tipo, uid). No
+  delta da janela, `ok` = o que saiu pela física também passou pela VPN (tipo 17 = tipo 1, como o Chrome no 25.1;
+  folga de 512 B ou 2%); `fora_da_rede` = saiu por fora (o uid 0 no 25.1: 868 B na física, 52 B na VPN); `nao_medido`
+  = sem tráfego na janela ou app não instalado. A janela dos apps é ACUMULADA desde que o túnel conectou nesta
+  revisão (a contabilidade é guardada no `conectar`; com o backend reiniciado depois disso, no primeiro `conferir`
+  da readoção que acha o túnel no ar, ou, sem ele, na primeira medição): um vazamento visto não some na medição seguinte, e um app parado desde a última sonda não derruba um
+  `trafego_verificado` a cada "Verificar". A do shell (`com.android.shell`, a própria sonda, sempre no `per_app`) é
+  só a passada, e sem IP nenhum ela é `falhou`;
+- **vazamento** (só com `exigida_com_bloqueio`; `rede_medicao.sondar_vazamento`): feito **antes** da medição e uma
+  vez por revisão, com a VPN derrubada DE VERDADE. A sonda de IPv4 precisa sair pelo túnel primeiro (sem isso, nada
+  é tocado e `leak_blocked` fica `None`: sonda que não funciona não prova bloqueio). Depois o **cliente VPN é
+  parado** (`am force-stop`, como uid 2000), a leitura confere que o `tun0` sumiu, e a sonda roda de novo: só o
+  `Permission denied` do Android prova o bloqueio (`leak_blocked` verdadeiro); um IP é vazamento (falso, "VAZOU" no
+  `detail`); qualquer outra coisa (`Timeout`, nome que não resolve, `tun0` que continuou no ar) fica `None` com o
+  motivo. Parar o SERVIDOR (o primeiro desenho) não serve: com o túnel no ar e o servidor fora, a sonda dá `Timeout`
+  com o bloqueio ligado ou desligado (25.1, 18:06:50), e o teste gravava "bloqueado" presumido. O always-on não religa
+  o cliente depois do `force-stop` (25.1, 18:07): sem o túnel de volta na releitura, a linha regride a `configurado`
+  com o desfecho do teste e a convergência pede o reinício (o boot religa o cliente com o perfil selecionado, 25.1
+  18:21); a medição vem depois do boot, com o teste guardado. Custo: **um reinício a mais por revisão**, além do da
+  aplicação (e de novo a cada `POST …/verify`, que refaz o teste — o 202 avisa — ou depois de cada reinício do
+  backend, porque o teste fica em memória: `network_measurements` não guarda a revisão). Sem o reinício garantido logo
+  depois, o teste nem começa (`leak_blocked` `None`, sem guardar, e a medição seguinte tenta de novo): com um objetivo
+  no meio do aparelho (rodando, esperando uma pessoa ou incerto — a mesma regra do reinício) e no celular sem worker,
+  que a plataforma não reinicia de verdade (25.7; lá, `exigida_com_bloqueio` fica em `parcial` — use `exigida`). O teste vale também com servidor externo (não depende de parar servidor nenhum), e o servidor do central
+  não é tocado: os outros pares não perdem a conexão. Depois do `force-stop`, nenhuma falha levanta erro: o desfecho
+  volta a quem religa o cliente, para o aparelho nunca ficar sem VPN (e, com bloqueio, sem rede) esquecido.
+
+A medição vai para `rede.registrar_medicao` (`method`: "sonda nc http/1.0 + netstats por uid (uid 2000)"), que decide
+`trafego_verificado`/`parcial` pelas regras acima. **Comparação entre aparelhos**: a mesma última saída medida (v4 ou
+v6) em outro aparelho entra no início do `detail` da medição ("aviso: a mesma saída medida em …"), num evento
+`network.updated` de nível `warn` (`acao: saida_compartilhada`, `shared_with`) e em `egress_shared_with`. É aviso,
+não bloqueio: sem provedor, todos saem pelo IP do central, e isso é o esperado; o aviso existe para ninguém ler
+"perfis diferentes" como "saídas diferentes" (ADR-056 §1).
+
+**Decisão: a sonda abre o app exigido só quando uma tarefa espera por ele** (substitui a de "não abre por padrão",
+que travava; para o dono ratificar). App exigido é app de conta vinculada, e abrir o app é usar a conta (ADR-056 §7,
+K-057). Sem tarefa esperando (varredura, `ligou`, pedido), com `rede.sonda.abrir_apps: false` (padrão), app parado
+na janela fica `nao_medido` e o aparelho `parcial`. Mas com política exigida a porta segura TODA tarefa fora de
+`trafego_verificado`, inclusive a que abriria o app: o app vinculado e nunca aberto depois do reinício que a própria
+aplicação pede travava o aparelho para sempre. Por isso, quando a medição é disparada pela porta (`motivo='tarefa'`,
+uma tarefa segurada no aparelho), a sonda abre o app sem tráfego na janela pela tela inicial dele, espera
+`espera_app_s` e volta ao início — o que a tarefa faria, e só abrir (nenhum toque, nada publicado, nada enviado). O
+`parcial` medido sem abrir não faz a tarefa esperar `reverificar_s`: a porta mede de novo já, abrindo, uma vez
+(`_Memoria.medida_sem_abrir`); medido assim e ainda `parcial` (o app aberto não usou a rede), a espera volta a valer
+e a frase da tarefa traz o porquê. `abrir_apps: true` abre também sem tarefa esperando. Resíduo conhecido: app
+exigido NÃO instalado também fica `nao_medido` (não há o que abrir), e a porta da rede vem antes da porta do app que
+o instalaria; só a entrega ao ligar (`vitrine.pendentes_ao_ligar`, quando o app está distribuído para o aparelho; o
+reinício da própria aplicação passa por ela) o instala sem tarefa — sem isso, a tarefa espera com o motivo na frase.
+
+**Portão de rede (25.6).** `Scheduler.rede_gate` (contrato C4) é `ConvergenciaDeRede.motivo_de_espera`, ligado em
+`state.py`. Com política `livre`, nenhum efeito (nem com medição velha: nada vence e a varredura não remede por
+isso). Com `exigida`/`exigida_com_bloqueio`, só libera `trafego_verificado` **que ainda vale**:
+
+- **validade** `rede.validade_verificacao_s` (padrão 21 600 s = 6 h, de 300 s a 7 dias; sem 0) contada de
+  `verified_at`, a data da medição que gravou a saída. Vencida, ou sem data, conta como inválida: a tarefa espera
+  com "a verificação do tráfego venceu (…)" e a porta dispara a sonda (`verificar`) com o aparelho livre. A deriva
+  (`rede.deriva_s`) relê configuração e túnel, mas não vê a saída mudar com o túnel no ar (IP público do servidor
+  trocado, app saindo por fora): é isso que a validade cobre. A varredura adianta a remedição para os últimos 10% da
+  validade, então a tarefa quase nunca espera por ela. Remedição sem IP deixa o estado como está (e o vencido,
+  vencido): a porta espera `rede.sonda.reverificar_s` antes de repetir, com o motivo na frase;
+- **apps**: a medição que verificou tem de ter `ok` para cada app de `apps_exigidos` de HOJE. A conta vinculada
+  depois da medição segura a tarefa ("a medição … não cobre <pacote>") até a sonda provar o app dela. O C4 recebe só
+  o aparelho: o "por app" é o das contas vinculadas a ele, não o pacote da tarefa;
+- **quando é perguntado**: no despacho (`_tick`, antes das portas de app e de sessão) e **entre as etapas** de um
+  objetivo em curso — na troca de app (`_portas_na_troca`, com as outras portas) e também entre etapas do MESMO app
+  (`_porta_da_rede` no laço de `_work`). A queda observada no meio (a deriva, o wipe ou a reatribuição regridem a
+  linha; a validade vence) suspende o objetivo antes da etapa seguinte: a etapa em curso termina, nenhuma tentativa
+  é gasta, o objetivo fica com `wait_reason='rede'` e o motivo da convergência, e o despacho o retoma quando a rede
+  volta. No meio da etapa não: o ponto seguro de dentro dela (`_stop_reason`) é da pessoa (pausa, controle,
+  cancelamento) e da conta travada. De dentro do worker a pergunta é só leitura (o aparelho está em `workers`, e
+  `run_device_job` não dispara nada); quem mede ou reaplica é o próximo `_tick`, com o aparelho devolvido. O objetivo
+  suspenso assim continua `running` com `wait_reason='rede'`: o reinício que a convergência pede para ele passa
+  (`vitrine.objetivo_em_andamento(..., exceto_quem_espera_a_rede=True)`), e, retomado, a espera é limpa;
+- `pending: verificar` na visão por aparelho e em `pendencias()` também para o verificado que não vale mais.
+
+- **releitura entre etapas** (`Scheduler.rede_releitura` = `ConvergenciaDeRede.reler_entre_etapas`, ligada em
+  `state.py`): com o aparelho ocupado nada mais o relê (a varredura e a porta só agem com ele livre), então o worker,
+  entre uma etapa e a seguinte e antes da porta, lê a rede do aparelho uma vez, como uid 2000, sem esperar o `tun0`
+  (política exigida, linha `conectado`/`parcial`/`trafego_verificado`; no máximo uma a cada 30 s). Túnel caído ou
+  configuração que sumiu regridem a linha como no conferir, e a porta logo abaixo segura a etapa seguinte. Falha na
+  leitura não derruba o objetivo (a porta segue pelo que a linha diz).
+
+Dentro de UMA etapa a queda não é vista: com `exigida_com_bloqueio` o próprio Android corta o tráfego fora da VPN
+nesse intervalo, com `exigida` os apps podem sair pela física até a etapa terminar.
+
+**Aparelhos do worker (25.7).** O aparelho de OUTRA máquina (o notebook `worker-lan-01`, ou um celular: o
+`external` do gerenciador) recebe a rede como o local, **pelo central, via adb** (T10): o agente do worker não ganha
+verbo, e nada muda na rota do host nem no túnel SSH. Duas diferenças, e só elas:
+
+- **o perfil chega por `adb reverse tcp:P tcp:P`** (o HTTP de uso único em 127.0.0.1 do central; o `127.0.0.1:P` do
+  convidado leva até ele pelo túnel do adb, que já alcança o aparelho) em vez do `10.0.2.2`, que no notebook é o
+  próprio notebook; o mapeamento sai ao fim (`rede_aplicacao.provisionar`);
+- **o cliente disca o servidor pela LAN**: `rede.servidor.endpoint_lan` (o IP do central na LAN, de config; vazio =
+  a aplicação no remoto é recusada dizendo a chave, antes de gerar par) e a porta em que o servidor escuta de fato
+  (`porta_wireguard`), nunca o `endpoint_host` do perfil (`rede_aplicacao.endpoint_do_central`). O endereço é
+  validado (nem 10.0.2.2, nem loopback, link-local, multicast ou dentro da sub-rede do túnel) e não entra na
+  assinatura do servidor: trocá-lo não reinicia o sing-box dos outros.
+
+O UDP do notebook chega ao sing-box do central só se o **Firewall do Windows daqui** deixar — mexer em firewall é
+proibido para a automação (P2). A plataforma só **lê** (`devices/rede_firewall.py`: um PowerShell sem nenhum verbo
+que escreva, no `ActiveStore`, ~3,5 s) os perfis, a rede em que o `endpoint_lan` está e as regras do executável ou
+da porta, e conclui na ordem do Windows: perfil desligado não filtra (`desligado`); regra de entrada habilitada que
+bloqueia vence a que permite (`bloqueado` — a que o Windows cria quando o aviso "permitir acesso" fica sem
+resposta); regra que permite UDP na porta ao executável (`liberado`); sem regra, vale a entrada padrão (`sem_regra`
+com Block); não leu (`desconhecido`: fora do Windows, erro, prazo). Cada leitura vem com o **comando exato do dono**:
+
+```powershell
+New-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 51820 -Program '<caminho absoluto do rede.servidor.binario>' -RemoteAddress LocalSubnet -Profile <perfil da rede do endpoint_lan>
+```
+
+(e `Disable-NetFirewallRule -Name '<regra>'` para cada regra que bloqueia; a de política de grupo é dita, porque o
+comando local não a desfaz). Na aplicação num remoto a convergência relê o firewall: `bloqueado`/`sem_regra`
+**recusam** (`pendente` com o comando no `error`: aplicar assim deixaria o túnel "no ar" sem handshake e, com
+bloqueio, o aparelho sem rede); `desconhecido` segue com a nota na evidência, e a conexão do par no log do servidor e
+a sonda decidem. O `conectado` de um remoto sem conexão no log diz o endpoint e o estado do firewall. Com par remoto
+no servidor, o laço de 60 s relê o firewall a cada 10 min (cache); sem par remoto, não lê.
+
+Rotas: `GET /api/network/server` ganha `remote_access` (`lan_endpoint`, `wireguard_udp_port`, `remote_peers`,
+`firewall` — a última leitura, `null` se ainda não lida: o GET não roda PowerShell) e `remote` em cada par;
+`POST /api/network/server/firewall-check` relê já e devolve o `remote_access`. No painel Rede, o cartão "Servidor do
+central" mostra o endereço da LAN, os aparelhos remotos, o estado do firewall e o comando, com "Conferir firewall".
+
+Leitura real do firewall (só leitura, 29/09 22:12 UTC, central, worktree `evo3-d1` sobre `3823f4b`): Wi-Fi
+192.168.1.81 no perfil **Public**, os três perfis ligados com entrada Block, nenhuma regra para o sing-box nem para a
+UDP 51820 → `sem_regra`. **Procedimento do dono** para a prova num remoto:
+
+1. `rede.servidor.endpoint_lan: 192.168.1.81` no `config/config.yaml` do central (confira o IP; DHCP muda) e reinicie
+   o backend;
+2. num PowerShell de administrador do central, o comando que `POST /api/network/server/firewall-check` devolve
+   (hoje, com `-Profile Public`); relido, o estado vira `liberado`;
+3. um aparelho do notebook (android-09…15), sem conta real ou com a autorização por aparelho (ADR-056 §7), com um
+   perfil de VPN `params.servidor: "central"` e `POST /api/network/devices/{id}/apply`;
+4. a prova: `inbound connection from 10.66.0.N` do endereço daquele aparelho no log do servidor
+   (`GET /api/network/server` → `peers[].last_connection`), `conectado` lido como uid 2000 e a sonda (25.5) com a
+   saída medida de dentro do aparelho; o túnel SSH e o adb seguem de pé (a árvore de tela responde).
+
+Limites conhecidos: o perfil antigo fica dentro do SFA a cada reaplicação (sem root não há como apagá-lo; o novo fica
+selecionado sozinho); o proxy SOCKS5 perde o UDP que não é DNS (medido); o servidor escuta a UDP 51820 em todas as
+interfaces (o endpoint não tem campo de escuta); um perfil `wireguard` externo leva UMA chave e serve a um aparelho
+por vez (P1); o aparelho do worker depende do `endpoint_lan` e da regra de firewall do dono (25.7), e uma regra com
+`-RemoteAddress LocalSubnet` só vale para o notebook na mesma sub-rede do central.
+
 A redação por formato (`security/redaction.py`) cobre a rede: a senha em `socks5://`, `socks5h://` e `socks4://`
 (`usuario:***@`), `PrivateKey`/`private_key`, `PresharedKey`/`pre_shared_key`/`psk` e a chave de 44 caracteres
 solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do cliente). A chave **pública** fica visível
@@ -396,4 +638,7 @@ solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do clien
 |---|---|---|
 | Perfis com segredo no cofre, atribuição em lote, estados por evidência, legado da 041 (25.2) | implementado | `simulated` (`tests/test_rede_por_aparelho.py`, 10 casos); PostgreSQL `not_run` |
 | Segredo de rede: consumidor restrito do cofre, entrega por stdin ou `push` com limpeza, redação de `socks5://` e chaves do WireGuard (25.3) | implementado | `simulated` (`tests/test_segredo_de_rede.py`, 19 casos, adb falso); entrega num aparelho real `not_run` (vem com o 25.4) |
-| Aplicação no aparelho, sonda de saída, portão, worker (25.4–25.7) | não feito | `not_run`: depende da medição do cliente VPN (25.1) |
+| Aplicação e convergência: receita do SFA, comando `device.network`, reinício, conexão como uid 2000, deriva, wipe, desfazer, porta da rede, servidor sing-box do central com regras que fecham o central, chaves por aparelho (058), `sync` antes de desligar, teto de reinícios pedidos (com ou sem boot detectado, recusa conta) (25.4) | implementado | `simulated` (`tests/test_rede_aplicacao.py`, 30 casos; o teto em `::test_reinicio_sem_boot_detectado_tem_teto` e `::test_reinicio_recusado_tambem_conta_para_o_teto`, que falham sem a correção: aparelho e processo falsos; o HTTP de uso único é o único socket real, em 127.0.0.1); num aparelho real `not_run`: depende da versão promovida do SFA (25.10), de subir o sing-box de verdade (ACL, regras e `resolve` do 1.14.2) e do tempo real do boot até o `tun0` |
+| Sonda de saída: IP v4/v6 por eco HTTP/1.0 como uid 2000, DNS da VPN, UDP (DNS e NTP), cobertura por UID pelo `dumpsys netstats`, vazamento com o cliente VPN parado (só `Permission denied` prova; religado pelo boot), abrir o app parado quando a tarefa espera, comparação entre aparelhos, passo `verificar` da convergência (25.5) | implementado | `simulated` (`tests/test_rede_sonda.py`, 17 casos; o vazamento em `::test_vazamento_so_com_o_cliente_parado_e_so_permission_denied_prova`: saídas remontadas no formato real com os números do 25.1, aparelho e processo falsos); num aparelho real `not_run`: depende do 25.4 real (SFA promovido, sing-box de verdade) e de um eco de IP alcançável; o `printf` com NUL do UDP e o formato do `netstats` do Android 14 só foram vistos no piloto, não por esta sonda |
+| Portão de rede no scheduler: validade de `trafego_verificado` (`rede.validade_verificacao_s`), app de conta vinculada depois da medição, remedição disparada pela porta e adiantada pela varredura, suspensão entre etapas do mesmo app e na troca de app, releitura do aparelho entre etapas, reinício que sai com o objetivo suspenso pela rede, app nunca aberto sem travar a tarefa (25.6) | implementado | `simulated` (`tests/test_rede_portao.py`, 12 casos: aparelho de rede e servidor falsos, provedor por regras e aparelho de QA falso; os casos do scheduler falham sem a porta entre etapas, `::test_queda_do_tunel_no_meio_e_vista_entre_etapas_e_o_reinicio_sai` falha sem a releitura e sem a exceção do reinício, `::test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida` falha sem abrir o app pela porta); num aparelho real `not_run`: depende do 25.4/25.5 reais |
+| Aparelhos do worker: perfil por `adb reverse`, endpoint da LAN (`rede.servidor.endpoint_lan`), leitura do firewall do central com o comando do dono, recusa com firewall fechado, `remote_access` e `POST …/firewall-check`, cartão no painel (25.7) | implementado | `simulated` (`tests/test_rede_worker.py`, 15 casos: aparelho remoto e leitura do firewall falsos; `RedePage.test.tsx`, 2 casos); a leitura do firewall rodou de verdade uma vez, só leitura (29/09, `sem_regra`); aplicação num aparelho do notebook `not_run`: depende de o dono configurar o `endpoint_lan` e criar a regra de firewall |

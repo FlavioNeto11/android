@@ -12,12 +12,12 @@
  * personas falhava (achado do revisor no 25.8): com o backend já resolvendo tudo numa chamada só, essa classe de
  * bug não existe mais.
  */
-import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
+import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkPolicy, NetworkProfileKind, NetworkProfileListed,
-  NetworkProtocol,
+  NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkFirewallState, NetworkMeasurement, NetworkPolicy,
+  NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -105,8 +105,9 @@ export function RedePage() {
   async function verificar(instanceId: string) {
     setOcupadoPorId((m) => ({ ...m, [instanceId]: 'verify' }));
     try {
-      // 202 = pedido REGISTRADO, não medido: a sonda (25.5) ainda não roda. Nunca tratar isso como resultado da
-      // medição (achado do revisor: "conta a incerteza como sucesso") — só relê a lista e mostra o motivo cru.
+      // 202 = pedido REGISTRADO, não medido: a sonda (25.5) mede no próximo ponto seguro do aparelho. Nunca tratar
+      // isso como resultado da medição (achado do revisor: "conta a incerteza como sucesso") — só relê a lista e
+      // mostra o motivo cru; a medição chega depois em `last_measurement`.
       const r = await api.verifyNetworkDevice(instanceId);
       toast({ tone: 'info', title: `${instanceId}: verificação pedida`, message: r.reason });
       await carregar();
@@ -159,8 +160,9 @@ export function RedePage() {
       <Banner tone="info" icon={ShieldCheck} compact title="O que cada estado prova">
         <strong>Configurado</strong> prova que o aparelho aceitou a configuração. <strong>Conectado</strong> prova
         que o cliente de VPN tem sessão ativa. Só <strong>tráfego verificado</strong> prova o IP de saída — medido
-        de dentro do aparelho. "Testar" e "Reaplicar" só REGISTRAM o pedido (202): a aplicação e a medição de
-        verdade são do item 25.4/25.5, que ainda não rodam. Nenhuma cor promete mais do que isso (ADR-056 §3).
+        de dentro do aparelho, por app. "Testar" e "Reaplicar" só REGISTRAM o pedido (202): a convergência aplica
+        e a sonda de saída mede no próximo ponto seguro do aparelho, e o resultado aparece nesta tabela. Nenhuma
+        cor promete mais do que isso (ADR-056 §3).
       </Banner>
 
       <PerfisCard perfis={perfis} onCriado={carregar} onApagar={apagarPerfil} />
@@ -195,6 +197,8 @@ export function RedePage() {
           </p>
         </CardBody>
       </Card>
+
+      <ServidorCard />
     </div>
   );
 }
@@ -207,8 +211,10 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
   const nomeDe = (id: string | null) => (id ? perfis.find((p) => p.id === id)?.name ?? id : '—');
   const meta = row.effective_state ? metaOf(NETWORK_STATE, row.effective_state) : null;
   const somenteLegado = !d && !!legado;
+  // Aviso de saída repetida: a contagem local (IPv4 e IPv6 da lista que acabou de chegar) ou o backend
+  // (`egress_shared_with`, que compara com todos os aparelhos).
   const ips = ipsMedidos(row);
-  const dupe = ips.some((ip) => dupeIps.has(ip));
+  const dupe = ips.some((ip) => dupeIps.has(ip)) || row.egress_shared_with.length > 0;
   return (
     <tr>
       <td>
@@ -226,16 +232,19 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         {meta ? <StatusBadge meta={somenteLegado ? { ...meta, description: 'Proxy legado (migração 041): prova a configuração, não o tráfego.' } : meta} size="sm" />
               : <span className={s.muted}>sem rede pedida</span>}
         {row.pending === 'aplicar' ? <div className={s.rowNote}>aguardando aplicação no aparelho (25.4)</div> : null}
-        {row.pending === 'verificar' ? <div className={s.rowNote}>aguardando verificação (25.5)</div> : null}
+        {row.pending === 'verificar' ? <div className={s.rowNote}>aguardando a medição de dentro do aparelho</div> : null}
       </td>
       <td>
         {ips.length ? (
           <>
             {ips.map((ip) => <code key={ip} className={dupeIps.has(ip) ? s.dupe : undefined}>{ip}</code>)}
             {dupe ? <span title="Outro aparelho mediu o mesmo IP agora."><ShieldAlert size={12} aria-hidden /></span> : null}
-            {row.last_measurement ? <div className={s.rowNote}>método: {row.last_measurement.method}</div> : null}
+            {row.egress_shared_with.length > 0 ? (
+              <div className={s.rowNote}>mesma saída que {row.egress_shared_with.join(', ')}</div>
+            ) : null}
           </>
         ) : <span className={s.muted}>não medido</span>}
+        {row.last_measurement ? <ResumoDaMedicao m={row.last_measurement} /> : null}
       </td>
       <td>{d?.verified_at ? new Date(d.verified_at).toLocaleString('pt-BR') : <span className={s.muted}>nunca</span>}</td>
       <td>
@@ -254,6 +263,34 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         </div>
       </td>
     </tr>
+  );
+}
+
+const RESULTADO_POR_APP: Record<string, string> = {
+  ok: 'pelo túnel', fora_da_rede: 'FORA da rede pedida', falhou: 'não conectou', nao_medido: 'sem tráfego medido',
+};
+
+function simNao(v: boolean | null, sim: string, nao: string): string {
+  return v === null ? 'não medido' : v ? sim : nao;
+}
+
+/** A última medição da sonda de saída (25.5), como o backend a gravou: por app (o navegador não prova os outros
+ *  apps), DNS, UDP e o teste de vazamento. `null` é "não medido" — nunca um "ok" presumido. */
+function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
+  const apps = Object.entries(m.per_app);
+  return (
+    <div className={s.rowNote} title={m.detail ?? undefined}>
+      <div>método: {m.method}</div>
+      <div>
+        DNS {m.dns_resolver ?? 'não lido'} · UDP {simNao(m.udp_ok, 'ok', 'falhou')} · vazamento{' '}
+        {simNao(m.leak_blocked, 'bloqueado', 'NÃO bloqueado')}
+      </div>
+      {apps.map(([pkg, r]) => (
+        <div key={pkg} className={r === 'ok' ? undefined : s.dupe}>
+          {pkg}: {RESULTADO_POR_APP[String(r)] ?? String(r)}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -484,6 +521,81 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
             </tbody>
           </table>
         </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+const FIREWALL: Record<NetworkFirewallState, { rotulo: string; tom: Tone }> = {
+  liberado: { rotulo: 'firewall liberado', tom: 'success' },
+  desligado: { rotulo: 'firewall desligado', tom: 'warning' },
+  bloqueado: { rotulo: 'firewall bloqueia', tom: 'danger' },
+  sem_regra: { rotulo: 'firewall sem regra', tom: 'danger' },
+  desconhecido: { rotulo: 'firewall não lido', tom: 'neutral' },
+};
+
+/** O servidor do central e o caminho dos aparelhos de OUTRA máquina até ele (25.7). Carrega à parte da tabela: uma
+ *  falha aqui não esconde os aparelhos. O firewall é só LIDO — o comando é do dono, nunca executado pelo painel. */
+function ServidorCard() {
+  const [status, setStatus] = useState<NetworkServerStatus | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [conferindo, setConferindo] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      setStatus(await api.getNetworkServer());
+      setErro(null);
+    } catch (e) {
+      setErro(toLoadError(e).message);
+    }
+  }, []);
+
+  useEffect(() => { void carregar(); }, [carregar]);
+
+  async function conferirFirewall() {
+    setConferindo(true);
+    try {
+      const acesso = await api.checkNetworkServerFirewall();
+      setStatus((atual) => (atual ? { ...atual, remote_access: acesso } : atual));
+      if (acesso.firewall) toast({ tone: 'info', title: FIREWALL[acesso.firewall.state].rotulo, message: acesso.firewall.detail });
+    } catch (e) {
+      toastError('Não foi possível ler o firewall do central', e);
+    } finally {
+      setConferindo(false);
+    }
+  }
+
+  const acesso = status?.remote_access;
+  const fw = acesso?.firewall ?? null;
+  return (
+    <Card>
+      <CardHeader title="Servidor do central" subtitle="O sing-box em modo usuário e o caminho dos aparelhos de outra máquina (worker da LAN) até ele."
+                  actions={<Button size="sm" variant="ghost" icon={ShieldCheck} loading={conferindo} onClick={() => void conferirFirewall()}>Conferir firewall</Button>} />
+      <CardBody>
+        {erro ? <p className={s.legend}>Servidor: {erro}</p> : null}
+        {status ? (
+          <div className={s.stack}>
+            <p className={s.legend}>
+              <span><Server size={12} aria-hidden /> {status.running ? `no ar (${status.peers.length} par(es))` : 'parado'}</span>
+              <span>WireGuard UDP {status.wireguard_udp_port}, túnel {status.subnet}</span>
+              <span>aparelhos de outra máquina: {acesso?.remote_peers.length ? acesso.remote_peers.join(', ') : 'nenhum'}</span>
+            </p>
+            <p className={s.legend}>
+              <span>Endereço na LAN: {acesso?.lan_endpoint ?? 'não configurado (rede.servidor.endpoint_lan) — aparelho de outra máquina é recusado'}</span>
+              {fw ? <Badge tone={FIREWALL[fw.state].tom} size="sm" title={fw.detail}>{FIREWALL[fw.state].rotulo}</Badge>
+                  : <Badge tone="neutral" size="sm">firewall ainda não lido</Badge>}
+            </p>
+            {fw ? <p className={s.legend}>{fw.detail} (lido em {fw.checked_at})</p> : null}
+            {fw && fw.commands.length > 0 ? (
+              <div>
+                <p className={s.legend}>O dono roda, num PowerShell de administrador do central (a plataforma não mexe no firewall), e depois pede Reaplicar:</p>
+                <pre aria-label="Comando do firewall" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 'var(--fs-xs)' }}>
+                  {fw.commands.join('\n')}
+                </pre>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </CardBody>
     </Card>
   );

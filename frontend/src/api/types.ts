@@ -2256,6 +2256,8 @@ export interface NetworkDeviceRow {
   real_account: string | null;
   pending: 'aplicar' | 'verificar' | null;
   last_measurement: NetworkMeasurement | null;
+  /** Os OUTROS aparelhos com a mesma última saída medida (v4 ou v6) — aviso, não bloqueio (ADR-056 §1, 25.5). */
+  egress_shared_with: string[];
 }
 
 /** `GET /api/network/devices`. */
@@ -2302,9 +2304,63 @@ export interface NetworkAssignResult {
   devices: NetworkAssignDevice[];
 }
 
+/** Leitura do Firewall do Windows do central para os aparelhos de OUTRA máquina (25.7, `rede_firewall.avaliar`).
+ *  Só leitura: `commands` é o que o DONO roda num PowerShell de administrador — a plataforma nunca mexe no firewall. */
+export type NetworkFirewallState = 'liberado' | 'bloqueado' | 'sem_regra' | 'desligado' | 'desconhecido';
+
+export interface NetworkFirewallReading {
+  state: NetworkFirewallState;
+  detail: string;
+  endpoint: string | null;
+  profile: string | null;
+  interface: string | null;
+  endpoint_is_local: boolean | null;
+  allowing_rules: string[];
+  blocking_rules: string[];
+  commands: string[];
+  checked_at: string;
+}
+
+/** `remote_access` de `GET /api/network/server` e corpo de `POST /api/network/server/firewall-check` (25.7). */
+export interface NetworkRemoteAccess {
+  lan_endpoint: string | null;
+  wireguard_udp_port: number;
+  remote_peers: string[];
+  /** `null` = ainda não lido (o GET não roda PowerShell; lê com par remoto ou pelo POST). */
+  firewall: NetworkFirewallReading | null;
+}
+
+export interface NetworkServerPeer {
+  instance_id: string;
+  address: string;
+  public_key: string;
+  last_connection: string | null;
+  remote: boolean;
+}
+
+/** `GET /api/network/server` — o sing-box do central (25.4), sem segredo nenhum. */
+export interface NetworkServerStatus {
+  binary_present: boolean;
+  running: boolean;
+  pid: number | null;
+  started_at: string | null;
+  signature: string | null;
+  in_sync: boolean;
+  server_address: string;
+  subnet: string;
+  wireguard_udp_port: number;
+  proxy: string | null;
+  server_public_key: string | null;
+  peers: NetworkServerPeer[];
+  proxy_users: string[];
+  remote_access: NetworkRemoteAccess;
+  detail: string | null;
+}
+
 /** `POST /api/network/devices/{iid}/verify` e `.../reapply` — os dois são 202 "pedido registrado" com o MESMO
- *  desenho (`rede._resposta_de_pedido`), nunca o aparelho medido: a aplicação e a medição são do item 25.4/25.5,
- *  que ainda não roda. `executed` é sempre `false`; ler isso como sucesso é o achado do revisor no 25.8. */
+ *  desenho (`rede._resposta_de_pedido`), nunca o aparelho medido: quem aplica (25.4) e mede (a sonda de saída,
+ *  25.5) é a convergência, no próximo ponto seguro do aparelho, e o resultado chega depois na lista de aparelhos.
+ *  `executed` é sempre `false`; ler isso como sucesso é o achado do revisor no 25.8. */
 export interface NetworkRequestAccepted {
   accepted: true;
   instance_id: string;
