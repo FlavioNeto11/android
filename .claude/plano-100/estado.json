@@ -3410,6 +3410,114 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T08:08:55+00:00"
+  },
+  "22.1": {
+   "id": "22.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "34976e8 + a15f864, implantado em b34e2f6 (29/09 ~17:05Z): resolver item, repetir, responder e tomar o controle gravam o operador da sessão (autor_do_gesto); sinal de gesto um por (kind, source_ref), primeiro autor fica, sob a trava. simulated: tests/test_costuras_de_aprendizado.py; suíte SQLite 3506 ok; PostgreSQL 17 (subconjunto) 656 ok. Gesto real com operador: not_run.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.2": {
+   "id": "22.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "34976e8 + a15f864 em b34e2f6: o painel manda só o texto da pessoa (origin panel), o backend compõe o contexto, requested_by triado (409 note_looks_secret). simulated: tests/test_cancelamento.py, test_costuras_de_aprendizado.py, vitest CommandTrail.test.tsx. Resolução real pelo painel: not_run.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.3": {
+   "id": "22.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "0820d5d + f4821fa em b34e2f6: attempts.failure_screen gravado (nome declarado ou tipo do motor, NULL se desconhecida); ChaveDoGrupo.abrange (linha sem tela mede o trio) e excesso_sem_tela (linha nomeada). simulated: tests/test_tela_da_falha.py, test_learning_backlog.py::test_linha_sem_tela_*; PostgreSQL 17 subconjunto ok. real só leitura: GET /api/aprendizado/falhas no b34e2f6 com 35 grupos. Falha real gravando a tela: not_run.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.4": {
+   "id": "22.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "8632821 + 4e52b15 em b34e2f6: adotar, devolver e publicar a versão de quem adotou gravam a trilha do fluxo com a pessoa; só pessoa adota. simulated: tests/test_d1_fluxos.py, test_conversao_de_fluxo.py; PostgreSQL 17 subconjunto ok. Adoção real: not_run.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.5": {
+   "id": "22.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "8632821 + 4e52b15 em b34e2f6: trilha e veto das lojas em db.savepoint() dentro do try; TransacaoAbortada no tx() de fora (K-061). simulated: tests/test_db.py, test_d1_receitas.py com o aborto do PostgreSQL imitado; e o subconjunto em PostgreSQL 17 real (contêiner) 656 ok, 6 pulados.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.6": {
+   "id": "22.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "f96d50e + 946894d em b34e2f6: a preferência nasce com o run_id da observação que fechou o limiar e aparece no bloco da execução ('entre N execuções'); transições do sistema com a evidência decisiva nova. simulated: tests/test_learning_preferencias.py, test_learning_feedback.py; PostgreSQL 17 subconjunto ok. Preferência real: not_run.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.7": {
+   "id": "22.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Re-escopado para a visão da execução (o treinamento não tem etapa failed/uncertain nem sessão com habilidade). eadf0b5 + f545fa0 em b34e2f6: 'Corrigir esta etapa' na aba Por aparelho, marca 'corrigível' na linha, ensino da mesma habilidade e versão, step_id = steps.id. simulated: vitest CorrigirEtapa.test.tsx (14), tests/test_fatia_abrir_conversa.py. real: not_run (o central não tem execução de habilidade com etapa failed/uncertain).",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.8": {
+   "id": "22.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Diagnóstico só de leitura: o 503 do relatório de uso da Anthropic começou às 14:04Z de 29/09 (4 falhas seguidas em data/logs/backend.log), sem mudança de código na cobrança; seguia às 14:35Z com refresh; status.claude.com registrava incidente na API e no Console desde 14:21 UTC. Às ~17:05Z o /api/health estava ok sem ai_balance_stale. Nada a mudar.",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
+  },
+  "22.9": {
+   "id": "22.9",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "29/09 ~15:00Z: 28 worktrees da rodada removidos (todos com o branch na main e sem alteração), junções desfeitas antes com rmdir do link, venv e node_modules reais conferidos a cada passo, git worktree remove sem --force (scratchpad limpar_worktrees.ps1, com ensaio antes).",
+   "grupo": "22-pendencias-da-rodada",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-29T17:08:56+00:00"
   }
  },
  "rodadas": [
@@ -3925,6 +4033,23 @@
    "grupos": [
     "20-aprendizado",
     "21-protecao-de-contas"
+   ]
+  },
+  {
+   "quando": "2026-09-29T17:08:56+00:00",
+   "itens": [
+    "22.1",
+    "22.2",
+    "22.3",
+    "22.4",
+    "22.5",
+    "22.6",
+    "22.7",
+    "22.8",
+    "22.9"
+   ],
+   "grupos": [
+    "22-pendencias-da-rodada"
    ]
   }
  ]

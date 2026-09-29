@@ -1,10 +1,29 @@
 # Estado atual — handoff
 
-**Revisado em 29/09/2026 (tarde), depois do deploy de `c071341`: o código em aberto da rodada (interruptor antigo
-pelo livro, bloco da execução, três sinais, dívida de import, irq medido).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 29/09/2026 (noite), depois do deploy de `b34e2f6`: Fase 22, as pendências da rodada.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Fase 22 (29/09, noite): IMPLANTADA em `b34e2f6`** (~17:05Z; sem migração nova; `/api/health` `ok`; agente do
+  notebook em `0.1.0+b34e2f6`; leva junto o layout da outra sessão, `13fb5c0`). [Relatório §25](relatorio-validacao.md),
+  adendo v0.40, K-061.
+  - **Feito:**
+    - operador da sessão nos gestos (22.1) e nota do comando triada só no texto da pessoa (22.2);
+    - `failure_screen` gravado sem falso corrigido no backlog (22.3);
+    - adoção de fluxo com trilha (22.4) e savepoint nas lojas com a defesa `TransacaoAbortada` (22.5);
+    - preferência no bloco da execução (22.6);
+    - "Corrigir esta etapa" na aba "Por aparelho" (22.7);
+    - o 503 do saldo era o incidente da Anthropic (22.8);
+    - 28 worktrees removidos com segurança (22.9).
+  - **Provas:** simuladas em quase tudo; nenhum gesto real foi fabricado. O SQL novo passou em PostgreSQL 17 real
+    (subconjunto, 656 ok). A suíte inteira em PostgreSQL roda depois da implantação (resultado no §25).
+  - **Docker/WSL:** ligados para a suíte em PostgreSQL, a desligar quando ela terminar. O contêiner rápido `farm-pg-rapido` (dados em
+    memória, só `127.0.0.1:55434`) é o jeito de rodar a suíte aqui; o `farm-pg` com disco faz ~7 testes/min.
+  - **Decisões do dono:**
+    - trilha da adoção: registro do gesto (atual) ou acessória;
+    - registrar a segunda pessoa que repete um gesto;
+    - as polaridades dos três sinais.
 
 - **Código em aberto de 29/09 (tarde): IMPLANTADO em `c071341`** (~14:10Z; sem migração nova; agente do notebook em
   `0.1.0+c071341`). [Relatório §24](relatorio-validacao.md), adendo v0.39 do contrato.

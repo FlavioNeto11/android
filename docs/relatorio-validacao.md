@@ -1828,3 +1828,70 @@ increased"), com 0 passos executados. Não é defeito do código.
 - A recusa `note_looks_secret` na resolução e no cancelamento de comando pelo ambiente real.
 - O interruptor com sessão de operador aberta (o `decided_by` com o nome).
 - O CI de contêiner.
+
+## 25. Fase 22: as pendências da rodada de 29/09 (29/09/2026, noite)
+
+**Origem.** O pedido do dono de 29/09 ("crie um plano para corrigir todas essas pendências e já pode atuar nelas") e a
+autorização de ligar o Docker/WSL ("autorizo tudo que precisar"). Plano: Fase 22 do plano-100 (`f6e13a7`), 9 itens.
+Máquina: o central WIN-7S2UASNLFOP. Em paralelo, a sessão do layout (`13fb5c0`), sem arquivo em comum.
+
+| Item | Commits | Revisão | Teste (`simulated`) |
+|---|---|---|---|
+| 22.1 operador nos gestos | `34976e8`, `a15f864` | 5 menores (a idempotência por evento foi para o repositório, sob a trava) | `test_costuras_de_aprendizado.py` (gestos com e sem sessão; mutação do `_gesto` morta) |
+| 22.2 nota do comando | `34976e8`, `a15f864` | idem | `test_cancelamento.py`, vitest `CommandTrail.test.tsx` |
+| 22.3 tela da falha | `0820d5d`, `f4821fa` | 7 menores (falso corrigido espelhado na linha nomeada; trava achada em ferramenta; escritor fora do `try`; 3 mutantes) | `test_tela_da_falha.py`, `test_learning_backlog.py::test_linha_sem_tela_*` |
+| 22.4 adoção com trilha, 22.5 savepoint | `8632821`, `4e52b15` | 8 menores (defesa `TransacaoAbortada` no `tx()`, só pessoa adota, 2 mutantes) | `test_d1_fluxos.py`, `test_d1_receitas.py`, `test_db.py` (aborto do PostgreSQL imitado) |
+| 22.6 preferência com a execução | `f96d50e`, `946894d` | 4 menores (run_id da decisão só pela evidência nova) | `test_learning_preferencias.py`, `test_learning_feedback.py` |
+| 22.7 correção de ensino pela execução | `eadf0b5`, `f545fa0` | 6 menores (marca na linha recolhida, foco, mensagens, mutações) | vitest `CorrigirEtapa.test.tsx` (14), `test_fatia_abrir_conversa.py` (rotas do painel) |
+
+O 22.7 foi re-escopado: o treinamento não tem etapa `failed`/`uncertain` nem sessão com habilidade, e a rota exige as
+duas. A ação foi para a aba "Por aparelho" da execução.
+
+**Integração (`simulated`).** Branch `claude/fase22`, fast-forward na `main` em `b34e2f6`.
+
+- Backend em SQLite: 323 ok nos arquivos tocados; a suíte inteira deu 3506 ok e 1 falha de ambiente (`test_backup`,
+  que só passa no checkout com `config.yaml`).
+- mypy estrito sem erro em 168 arquivos. Frontend: typecheck ok e 785 testes ok.
+- **PostgreSQL 17** (contêiner descartável, dados em memória, `fsync` desligado, só no `127.0.0.1:55434`): os 34
+  arquivos que exercitam o SQL novo do aprendizado (A1–A9 e Fase 22) deram 656 ok e 6 pulados, em 18 min 39 s.
+  - Antes, o contêiner com disco fazia ~7 testes por minuto: cada teste aplica as 55 migrações através do WSL.
+  - O Docker Desktop não subia: sockets velhos em `%LOCALAPPDATA%\Docker\run`, do desligamento brusco da
+    madrugada. A pasta foi renomeada para `run.velho-20260929-123638`, não apagada.
+
+**Implantação (`real`, 29/09 ~17:05Z).** `scripts/deploy.ps1` com o parque ocioso.
+
+- **Central:** `/api/health` com `commit b34e2f6`. Na subida apareceu um `appium_down` ("readotado") que sumiu sozinho
+  em menos de um minuto; depois `ok`, `problems: []`.
+- **Agente do notebook:** `0.1.0+b34e2f6` pelo `worker-install.ps1`, primeiro com `-Simular`. Nenhuma entrada do
+  manifesto mudou desde `c071341`. Conectado, sem `agent_outdated`.
+
+**Provas `real`.**
+
+- **22.8:** o 503 do relatório de uso da Anthropic começou às 14:04Z (4 falhas seguidas no log), antes da implantação
+  das 14:10Z e sem mudança de código na cobrança. Continuava às 14:35Z com a leitura forçada
+  (`GET /api/ai/balances?refresh=true`). A página de status pública registrava "Elevated errors on claude.ai, Claude
+  Code, Claude Cowork and the Claude API" desde 14:21 UTC, com o Console e a API degradados. Às ~17:05Z a saúde já não
+  trazia o `ai_balance_stale`.
+- **22.9:** 28 worktrees da rodada removidos, todos com o branch na `main` e sem alteração. As junções foram desfeitas
+  antes (`rmdir` do link), o `venv` e o `node_modules` reais foram conferidos a cada passo, e o `git worktree remove`
+  rodou sem `--force`.
+- **22.3, leitura:** `GET /api/aprendizado/falhas?dias=14` no `b34e2f6`: 35 grupos, 19 acima do mínimo, o legado com a
+  tela vazia.
+
+**`not_run`.**
+
+- Os gestos reais com o nome do operador (22.1).
+- Uma resolução real pelo painel num aparelho de id fora do padrão (22.2).
+- Uma falha real gravando `failure_screen` (22.3).
+- Uma adoção real (22.4).
+- Uma preferência nascida de execução real (22.6).
+- A correção de ensino real (22.7): o central não tem execução de habilidade com etapa `failed`/`uncertain` (as 3
+  execuções de habilidade terminaram bem).
+
+Nenhum desses gestos foi fabricado. A suíte inteira em PostgreSQL roda depois desta seção e é registrada no fechamento.
+
+**Decisões do dono que a Fase 22 abriu.**
+
+- A trilha da adoção é o registro do gesto (a falha dela desfaz a adoção) ou acessória, como a das lojas?
+- Registrar à parte, sem contar na régua, a segunda pessoa que repete o mesmo gesto?
+- As polaridades dos três sinais (continua).

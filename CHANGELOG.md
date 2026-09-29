@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-29 (noite) — Fase 22: as pendências da rodada (ADR-054)
+
+**Implantado** no central em 29/09 ~17:05 UTC: `b34e2f6`, sem migração nova; `/api/health` `ok`, `problems: []`
+(depois de um `appium_down` passageiro na subida); agente do notebook em `0.1.0+b34e2f6`. Leva junto o layout da outra
+sessão (`13fb5c0`). Cinco pacotes com revisão adversarial e correção ([relatório §25](docs/relatorio-validacao.md)).
+
+- **Operador nos gestos (22.1, `34976e8` + `a15f864`).** Resolver o item, repetir, responder e tomar o controle gravam o
+  operador da sessão. Sinal de gesto é um por evento (o primeiro autor fica).
+- **Nota do comando (22.2).** O painel manda só o texto da pessoa (`origin: 'panel'`); o backend compõe o contexto; o
+  `requested_by` passa pela triagem.
+- **Tela da falha (22.3, `0820d5d` + `f4821fa`).** `attempts.failure_screen` gravado (nome declarado ou tipo do motor;
+  NULL se desconhecida), e o backlog não dá como corrigida a linha sem tela nem a nomeada que deixou de ser reconhecida.
+- **Adoção de fluxo com trilha e savepoint nas lojas (22.4, 22.5, `8632821` + `4e52b15`).** A adoção grava quem
+  decidiu; a trilha das lojas não derruba mais o save no PostgreSQL, e a transação abortada vira erro em vez de perda
+  calada (`TransacaoAbortada`, K-061).
+- **Preferência com a execução (22.6, `f96d50e` + `946894d`).** Aparece no bloco "Aprendizado desta execução" da
+  execução que fechou o limiar ("entre N execuções").
+- **Correção de ensino pela execução (22.7, `eadf0b5` + `f545fa0`).** "Corrigir esta etapa" na aba "Por aparelho", para
+  etapa de habilidade que falhou ou ficou incerta.
+- **Aviso de saldo (22.8).** O 503 do relatório de uso era o incidente da Anthropic de 29/09 (status público desde 14:21
+  UTC); nada a mudar.
+- **Arrumação (22.9).** 28 worktrees da rodada removidos, com as junções desfeitas antes.
+- **PostgreSQL.** O subconjunto do SQL novo (34 arquivos) deu 656 ok em PostgreSQL 17; a suíte inteira roda em seguida.
+
 ## 2026-09-29 (tarde) — Painel: "Resultado por instância" em cartões e "Outros dados" do Diagnóstico legível
 
 Pedido do dono: os dois estavam "muito ruins de ler". Só painel; nenhuma mudança de API. Descrição em
