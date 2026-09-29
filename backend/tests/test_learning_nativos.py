@@ -3,6 +3,7 @@ habilidade vira observação no digest, pela porta das habilidades.
 
 - execução real grava `proof=real` num caso `device` da própria versão (`<skill>:execucao-real-v<n>`, faixa `n..n`,
   `source_kind='run'`), criado sozinho na primeira execução; simulada grava `proof=simulated`;
+- execução `completed` com etapa confirmada à mão (`verified=false`) grava `uncertain`, nunca `passed`, e não valida;
 - o sistema faz `candidate → validated` quando os casos da versão passam, e nunca publica (o ciclo das habilidades
   exige pessoa); publicada segue publicada, com o resultado gravado;
 - idempotente pela execução; cancelada não é veredito; fluxo legado (`flow:<id>`) e rascunho não recebem prova;
@@ -20,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from app.db import Database
+from app.models import StepResult
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.infrastructure import ligar_nativos
@@ -59,12 +61,26 @@ class Mundo:
             self.habilidades.transition(v.ref, SkillState.CANDIDATE, by=DONO, reason="submetida")
         return v.ref
 
-    def execucao(self, run_id: str, ref: SkillRef | str, *, status: str = "completed", simulada: bool = False) -> None:
+    def execucao(self, run_id: str, ref: SkillRef | str, *, status: str = "completed", simulada: bool = False,
+                 etapas: tuple[bool, ...] = ()) -> None:
+        """`etapas`: o `verified` de cada etapa `succeeded` gravada (`False` = "Confirmar concluído" da pessoa)."""
         skill_id, versao = (ref.skill_id, ref.version) if isinstance(ref, SkillRef) else (ref, 1)
         self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids,"
                         " created_at, skill_id, skill_version) VALUES (?,?,?,?,?,?,?,?,?,?)",
                         (run_id, f"k-{run_id}", "abrir o perfil de @nasa", "execute", status, int(simulada),
                          json.dumps(["android-06"]), now_iso(), skill_id, versao))
+        if etapas:
+            objetivo = f"{run_id}:android-06"
+            self.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
+                            (objetivo, run_id, "android-06", "succeeded", 1))
+            for seq, verificada in enumerate(etapas, start=1):
+                texto = "postcondição vista na tela" if verificada else "Confirmado manualmente"
+                self.db.execute(
+                    "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+                    " postcondition, timeout_s, max_attempts, status, result) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (f"{objetivo}:v1:e{seq}", run_id, objetivo, "android-06", 1, seq, f"e{seq}", "abrir", "abrir",
+                     "{}", 60, 3, "succeeded",
+                     StepResult(verified=verificada, evidence_text=texto).model_dump_json()))
         relatorio = self.servico.digerir_execucao(run_id)
         assert not relatorio.falhas, relatorio
 
@@ -122,6 +138,33 @@ def test_falha_grava_failed_e_cancelada_nao_e_veredito(mundo: Mundo) -> None:
     mundo.execucao("r-3", ref, status="completed_with_issues")
     assert [(r.run_id, r.outcome) for r in mundo.habilidades.results(ref)] == [
         ("r-1", Outcome.FAILED), ("r-3", Outcome.UNCERTAIN)]
+    assert mundo.estado(ref) is SkillState.CANDIDATE
+
+
+def test_etapa_confirmada_a_mao_nao_e_prova_positiva(mundo: Mundo) -> None:
+    """"Confirmar concluído" fecha a execução `completed` com a etapa `verified=false`: a pessoa decidiu, a tela não
+    comprovou. Incerteza nunca conta como sucesso — a observação real fica gravada como `uncertain` e a versão segue
+    candidata; só a execução seguinte, com toda etapa comprovada pela tela, a valida."""
+    ref = mundo.versao()
+    mundo.execucao("r-1", ref, etapas=(True, False))
+    [r] = mundo.habilidades.results(ref)
+    assert (r.proof, r.outcome, r.run_id) == (Proof.REAL, Outcome.UNCERTAIN, "r-1")
+    assert "confirmada à mão" in (r.detail or "")
+    assert mundo.estado(ref) is SkillState.CANDIDATE
+    assert not any("validada" in t for _, t in mundo.decisoes)
+    mundo.execucao("r-2", ref, etapas=(True, True))
+    assert [(r.run_id, r.outcome) for r in mundo.habilidades.results(ref)] == [
+        ("r-1", Outcome.UNCERTAIN), ("r-2", Outcome.PASSED)]
+    assert mundo.estado(ref) is SkillState.VALIDATED
+
+
+def test_etapa_confirmada_a_mao_nao_muda_falha_nem_prova_simulada(mundo: Mundo) -> None:
+    """A regra só tira o sucesso: falha com etapa confirmada à mão segue `failed`, e a simulada segue `simulated`."""
+    ref = mundo.versao()
+    mundo.execucao("r-1", ref, status="failed", etapas=(False,))
+    mundo.execucao("r-2", ref, simulada=True, etapas=(False,))
+    assert [(r.run_id, r.proof, r.outcome) for r in mundo.habilidades.results(ref)] == [
+        ("r-1", Proof.REAL, Outcome.FAILED), ("r-2", Proof.SIMULATED, Outcome.UNCERTAIN)]
     assert mundo.estado(ref) is SkillState.CANDIDATE
 
 

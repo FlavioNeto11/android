@@ -10,9 +10,10 @@ conteúdo; o livro decide quando o sistema pode publicar e guarda a trilha.
 - **Receita.** A promoção em sombra do `RecipeStore` para em `validated` quando há ação `commit` (lá mesmo, na loja);
   aqui ficam o veto (o caminho que uma PESSOA desligou não volta pelo sistema) e a trilha das mudanças da loja.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results` (043): toda execução de versão grava a
-  observação — `proof=real` só de execução real — num caso `device` da própria versão, criado sozinho. O sistema pode
-  fazer `candidate → validated` quando os casos passam; publicar continua sendo de uma pessoa (o ciclo das
-  habilidades é mais estrito que o D1).
+  observação — `proof=real` só de execução real — num caso `device` da própria versão, criado sozinho. A execução
+  `completed` com etapa confirmada à mão (`verified=false`) vira `uncertain`, nunca `passed`. O sistema pode fazer
+  `candidate → validated` quando os casos passam; publicar continua sendo de uma pessoa (o ciclo das habilidades é
+  mais estrito que o D1).
 
 Nenhuma IA em lugar nenhum daqui, e só evidência real (`runs.simulated=0`) conta para validar ou desligar: a execução
 simulada deixa a sua linha em `learning_evidence` (serve a teste) e não muda nada. As transições do sistema passam
@@ -125,6 +126,10 @@ class ExecucaoDeHabilidade:
     status: str
     simulada: bool
     aparelho: str | None
+    #: Execução `completed` com alguma etapa `succeeded` sem prova da tela ("Confirmar concluído", `verified=false`),
+    #: em qualquer versão do plano: a mesma regra que tira a execução da sombra dos fluxos (`flows.confirmada_a_mao`).
+    #: Sempre `False` fora de `completed` — só o sucesso depende disto.
+    confirmada_a_mao: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,10 +342,15 @@ class ValidacaoPorExecucao:
         desfecho = _DESFECHO.get(e.status)
         if desfecho is None:
             return 0
+        detalhe = f"execução {e.status} ({'simulada' if e.simulada else 'real'})"
+        if desfecho is Outcome.PASSED and e.confirmada_a_mao:
+            # "Confirmar concluído" fecha a execução `completed`, mas a tela não comprovou a etapa: é a decisão de uma
+            # pessoa, não prova do caminho. Incerteza nunca conta como sucesso — nem valida a versão.
+            desfecho = Outcome.UNCERTAIN
+            detalhe += " com etapa confirmada à mão (sem prova da tela)"
         observacao = ObservacaoDeHabilidade(
             skill_id=e.skill_id, versao=e.versao, run_id=run_id, prova=Proof.SIMULATED if e.simulada else Proof.REAL,
-            desfecho=desfecho, aparelho=e.aparelho,
-            detalhe=f"execução {e.status} ({'simulada' if e.simulada else 'real'}), gravada pelo digest do aprendizado")
+            desfecho=desfecho, aparelho=e.aparelho, detalhe=f"{detalhe}, gravada pelo digest do aprendizado")
         if not self._porta.registrar(observacao):
             return 0
         if desfecho is Outcome.PASSED and self._porta.validar(

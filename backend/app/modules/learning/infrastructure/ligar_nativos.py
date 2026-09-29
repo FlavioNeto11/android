@@ -113,9 +113,12 @@ class LeituraSql:
         skill_id, versao = linhas.texto_ou_nulo(row, "skill_id"), linhas.inteiro_ou_nulo(row, "skill_version")
         if skill_id is None or versao is None:
             return None
-        return ExecucaoDeHabilidade(run_id=run_id, skill_id=skill_id, versao=versao, status=linhas.texto(row, "status"),
+        status = linhas.texto(row, "status")
+        return ExecucaoDeHabilidade(run_id=run_id, skill_id=skill_id, versao=versao, status=status,
                                     simulada=bool(linhas.inteiro(row, "simulated")),
-                                    aparelho=_primeiro_aparelho(linhas.texto_ou_nulo(row, "instance_ids")))
+                                    aparelho=_primeiro_aparelho(linhas.texto_ou_nulo(row, "instance_ids")),
+                                    # só o sucesso depende disto: a falha segue falha, e a pergunta é a mesma do fluxo
+                                    confirmada_a_mao=status == "completed" and confirmada_a_mao(self._db, run_id))
 
 
 # ------------------------------------------------------------------ a trilha das mudanças feitas pelas lojas
