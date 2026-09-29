@@ -75,6 +75,8 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-023 | Ator declarado no Sonnet; modelo local fora do caminho principal | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-023` | 7.1, 7.8, 7.11 |
 | ADR-024 | Verificador barato com proteções, em vez de trocar o modelo | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-024` | 7.4, 7.10 |
 | ADR-053 | Falhas reiteradas do Instagram: UI ocupada relê, recuperação preserva o estado, ANR com sinal próprio, alvo pela legenda, reinício a frio por interrupção | execução/parque | decisão | 28/09 | vigente | `docs/decisoes.md#adr-053` | fase 19 |
+| ADR-054 | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas, backlog do que mais falha | aprendizado/IA | decisão | 29/09 | vigente (fundação integrada, a implantar) | `docs/decisoes.md#adr-054` | fase 20 |
+| ADR-055 | Proteção de contas: conta travada para sem ser tocada, quarentena do aparelho, uma conta por alvo, DM fria com aprovação, nenhum reset com conta | perfis/Instagram/parque | decisão | 29/09 | vigente (integrado, a implantar) | `docs/decisoes.md#adr-055` | fase 21, ADR-029 |
 | K-001 | Harness de teste usava as portas do parque real | testes | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-001` | `base_console_port` |
 | K-002 | Checkout apaga `config.yaml` não versionado | operação | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-002` | ADR-011 |
 | K-003 | "malformed database schema" após reboot | banco | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-003` | `restore.ps1` |
@@ -100,11 +102,16 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-023 | `Agent` com `isolation: remote` pode cair em worktree local | ferramentas | erro | 24/09 | vigente | `docs/conhecimento/aprendizados.md#k-023` | — |
 | K-024 | Caminho do Windows em string Python vira caractere de controle | ferramentas | erro | 25/09 | vigente | `docs/conhecimento/aprendizados.md#k-024` | T.4 |
 | K-047 | `dumpsys window` do Android 14 abre com a seção "LAST ANR": o primeiro `mCurrentFocus` é o congelado | automação/adb | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-047` | 19.2, ADR-053 |
-| K-048 | `hide_error_dialogs=1` transforma ANR em morte silenciosa do app (reason=6) | automação/adb | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-048` | 19.2, ADR-053 |
-| K-049 | O 500 "hogging the main UI thread" é UI ocupada, não sessão morta | automação/Appium | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-049` | 19.1, ADR-053 |
+| K-048 | `hide_error_dialogs=1` transforma ANR em morte silenciosa do app (reason=6) | automação/adb | erro | 28/09 | vigente (o experimento com 0 foi feito: K-054, manter 1) | `docs/conhecimento/aprendizados.md#k-048` | 19.2, ADR-053 |
+| K-049 | O 500 "hogging the main UI thread" é UI ocupada, não sessão morta | automação/Appium | erro | 28/09 | vigente (pendência do screencap resolvida em `6799867`) | `docs/conhecimento/aprendizados.md#k-049` | 19.1, ADR-053 |
 | K-050 | Interrupção acumulada no convidado com dias no ar; `restart` devolve ~2% | parque/emuladores | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-050` | 19.9, ADR-053 |
 | K-051 | `farm-ci-runner` em "Ready" não quer dizer runner parado | CI/operação | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-051` | 18.4 |
 | K-052 | A política própria do perfil prevalece sobre o `approval_required` do catálogo | perfis/política | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-052` | 19.10, ADR-053 |
+| K-053 | Conta logada sem persona: `account_label` e `/personas` não dizem se há conta no aparelho; confira a tela | parque/processo | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-053` | 21.2, ADR-055 |
+| K-054 | `hide_error_dialogs=0` trava o aparelho no ANR do `system_server`: manter 1 | emuladores/adb | erro | 28–29/09 | vigente | `docs/conhecimento/aprendizados.md#k-054` | 21.8, K-048 |
+| K-055 | NTP bloqueado com porta de origem 123: `w32time` não sincroniza, `stripchart` sim (`farm-relogio`) | operação/host | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-055` | 21.7, ADR-019 |
+| K-056 | Aposentar no Windows: arquivo somente-leitura do emulador (`pstore.bin`) faz o `rmtree` falhar | parque/provisionamento | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-056` | 21.9 |
+| K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios: conduta, não disfarce | perfis/Instagram/política | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055 |
 
 ## Como localizar
 

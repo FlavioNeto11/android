@@ -1508,3 +1508,120 @@ ok. Os testes de cada pacote estão na tabela das correções.
 - Pendências dos revisores: a aprovação de texto não acompanha a etapa revisada na recuperação (volta a pedir
   aprovação); o link "View all N comments" ainda sem guarda de cartão; erro de adb no screencap da observação ainda
   recria a sessão; a causa do acúmulo de irq.
+
+## 22. Rodada de 29/09 — proteção de contas, aprendizado (fundação), pendências e experimentos (ADR-054 e ADR-055)
+
+**Origem.** Em 28/09 à noite o dono pediu: "comece uma próxima rodada para resolver tudo o que ficou em aberto, eu
+autorizo tudo". Em 29/09 acrescentou a regra: "toda vez que para nessa tela de confirmar se você é humano é uma
+confirmação que a conta está bloqueada, essa é uma das formas de perder a conta". Três frentes: a leva "aberta" (as
+pendências dos revisores do ADR-053), a proteção das contas (ADR-055) e a fundação do aprendizado contínuo (ADR-054,
+pacote A1). Máquina: o central WIN-7S2UASNLFOP.
+
+**Diagnóstico das 5 contas bloqueadas** (`real`, 28/09; 65 agentes, só leitura de banco, backups, logs, git e código). O
+status `blocked` nasceu de um PATCH em lote em 23/09 21:10:42Z (as cinco em 74 ms), a partir da palavra do dono, e não
+do sistema; o bloqueio automático do ADR-029 nunca disparou. Janelas estimadas (UTC):
+
+| Conta | Aparelho | Janela do bloqueio | O sistema viu a tela? | Confiança |
+|---|---|---|---|---|
+| juliana.mendes9056 | android-05 | 19/09 22:10:13 – 20/09 14:36:52 | sim: relato do dono, `r-20260920143652-132c2e` | janela alta; gatilho baixa |
+| felipe.nogueira93762026 | android-04 | 19/09 22:10:08 – 23/09 19:39:54 (palavra do dono) ou 27/09 01:48:39 (1ª observação) | sim: `ChallengeActivity` em 27/09; o dono viu a tela em 29/09 00:36Z | média |
+| beatriz.rocha9276 | android-07 | 19/09 22:11:18 – 23/09 19:39:54 | não: status declarado | baixa |
+| thiago.moreira4827 | android-08 | 19/09 22:12:10 – 23/09 19:39:54 | não: status declarado | baixa |
+| mariana.costa91182 | android-02 | 20/09 21:28:10 – 23/09 19:39:54 | não: status declarado | janela média; gatilho baixa |
+
+- **Duas telas chamadas de "desafio":** o código por e-mail do 1º login (18/09; cinco contas o viram, todas resolveram,
+  bruno e andre estão vivos) e "Confirm you're human" (só juliana e felipe; nenhuma voltou).
+- **Fatores comuns:** frota nascida no mesmo dia e no mesmo host, com a mesma imagem e o mesmo `ro.serialno`, e três
+  ondas coordenadas sobre as mesmas pessoas (o mesmo comentário de 4 contas; 8 follows em 19m43s; 7 DMs em 8m40s com
+  "seu marido mandou um oi" e SEND_MESSAGE `autonomous`). Nada separa as vivas (DM 5/5 × 2/3, Fisher p = 0,375).
+  Detalhe, lacunas e buracos do código:
+  [ADR-055](decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta).
+
+**Correções.** Onze pacotes em branches próprios, cada um com testes que falhavam antes e revisão adversarial (cinco
+barrados pelo revisor e ajustados: detector, quarentena, disjuntor, receitas e a fundação), mais três commits do parque
+e do host. O commit é a ponta de cada branch.
+
+| Pacote | Commit | O que mudou | Teste |
+|---|---|---|---|
+| leitura (21.10) | `6799867` | `FalhaDeLeitura` (captura fora do Appium) relê sem recriar a sessão; `sessao_perdida()` reconhece a instrumentação morta; etapa com `card_guard` só fecha pela prova local; a evidência cita a legenda | `test_leitura_transitoria.py` |
+| aprovacao (21.11) | `caca1cd` | a aprovação dada é reapontada para a etapa revisada (`ApprovalStore.acompanhar_revisao`); "Tentar novamente" herda os textos (`herdar_textos`) | `test_aprovacao_acompanha_revisao.py` |
+| legenda (21.12) | `d63fcd9` | `inherited_bindings` no catálogo: LIKE_POST, OPEN_COMMENTS e CREATE_COMMENT herdam `caption_contains`; `card_control` vira lista | `test_heranca_de_bindings.py` |
+| irq (21.13) | `d121f76` | cada fração de irq da sonda vira `measurements(kind='irq')`; `GET /api/desempenho?irq_horas=` | `test_interrupcoes_persistidas.py` |
+| receitas (21.14) | `01c4dc1` | receita da IA nasce `candidate`, sombra por execução da etapa, promoção com 2 concordâncias (`ai.recipes_promote_after`) | `test_receita_candidata.py` |
+| detector (21.1) | `7a7b32b` | detector único de conta travada, sem campo e na união dos idiomas; desfecho `auth_challenge` com subtipo; nada toca | `test_detector_conta_travada.py` (62) |
+| quarentena (21.2) | `ec8b630` | migração 054; marcador por aparelho; só `stop`/`hibernate` sem confirmação; `locked_account_on_device` na saúde; nenhum reset com conta | `test_quarentena_de_conta.py` |
+| frota (21.3) | `38311db` | `post_author` e `counterparty`; uma conta por alvo, recusa em vez de espera; DM fria com aprovação; trava de fala atribuída a terceiro | `test_protecao_de_frota.py` (45) |
+| disjuntor (21.4) | `0d29994` | conta bloqueada para o objetivo em curso e pausa as contas do mesmo alvo (48 h); credencial em `review` depois de 1 envio sem sucesso; teto diário de logins | `test_disjuntor_de_conta.py`, `test_conduta_de_login.py` (12) |
+| dm-verificador (21.5) | `377ed25` | "Sending…" = pendente; bolha + compositor vazio = enviada; `confirm_done` com `evidence_id` | `test_dm_verificador.py` (22), vitest `execution.test.tsx` |
+| fundação do aprendizado (20.2) | `9c4fa4a` | migração 055; livro, D1, falha classificada, janela efetiva da projeção e régua diária | `test_learning_*.py`, `test_projecao.py` |
+| escada (21.6) | `e9da86e` | reinício por irq e religar da reconciliação não são degraus da escada (`saude`, `reconciliacao`) | `test_saude_do_convidado.py` |
+| relógio (21.7) | `b25957e` | `scripts/sincronizar-relogio.ps1` e a tarefa `farm-relogio` | — (script de operação) |
+| aposentar (21.9) | `2511b12` | `rmtree` que libera arquivo somente-leitura (`pstore.bin`) | `test_provisionamento.py` |
+
+**Implantação (`real`).** `e9da86e` implantado no central em 28/09. A leva aberta, integrada em `7a02491`, implantada:
+suíte do backend 2912 ok (só `test_backup` falha, como sempre fora do checkout com `config.yaml`); agente do notebook em
+`0.1.0+7a02491`. A integração proteção + fundação, `c359f65` (+ `2511b12`), está **a implantar**: migrações 054 e 055
+com ensaio (`deploy.ps1 -Ensaio`), frontend no mesmo deploy (`npm run build`, por causa do `evidence_id`).
+
+**Proteções operacionais** (`real`, 29/09, aplicadas pela IDE e reversíveis): no grupo "Operação" (lucas, bruno, andre),
+SEND_MESSAGE volta ao padrão `approval_required` (era `autonomous`) e os limites passam aos do grupo "Recuperação"
+(curtidas 10/h e 50/dia, comentários 3/h e 10/dia, follows 3/h e 10/dia, DMs 5/h e 20/dia, 8 ações por execução, 120 s
+entre ações externas); a política própria `CREATE_COMMENT = autonomous` do andre foi removida (volta a
+`approval_required`, K-052); o android-04, com o felipe logado em "Confirm you're human", foi desligado
+(`c-20260929013039-e1c891`).
+
+**Experimentos e medições (`real`).**
+
+- **`hide_error_dialogs`** (28–29/09, android-17, aparelho novo sem conta, só o QA Messenger de
+  `qa-app/dist/qa-messenger.apk`, saturado pelo hospedeiro com afinidade de 1 CPU no emulador). Com 0: o QA não teve ANR
+  em 3 janelas (a hipótese de o app sobreviver ficou sem teste), mas o `system_server` teve, e o diálogo "Process system
+  isn't responding" NÃO sumiu sozinho (325 s; no 1º boot, ~24 min); BACK não fecha e "Wait" volta em menos de 5 s; só
+  reiniciar resolve. Com 1: um ANR do QA virou morte silenciosa, detectável pelo `exit-info`. Afinidade 1 com prioridade
+  Idle derrubou o `system_server` (`am_crash`, "failed to set system property"). **Recomendação: manter 1** (K-054). O
+  android-17 foi aposentado (`retired_at` 00:29:05 de 29/09); o `DELETE` falhou com `avd_nao_apagado` por causa do
+  `pstore.bin` somente-leitura, corrigido em `2511b12` (K-056).
+- **Incidente no android-04** (28/09, 21:36–21:40, -03:00): o primeiro experimento partiu da premissa errada de
+  "aparelho sem conta" (`account_label` `qa-user-04`, `/personas` vazio) e mandou 10 entradas na tela de desafio do
+  felipe.nogueira93762026, abrindo "Get support" e o assistente da Meta; nada foi digitado nem enviado, e a tela foi
+  fechada com BACK. Resultado negativo, registrado como lição (K-053).
+- **Relógio do host.** O `w32time` não recebia resposta (a rede bloqueia NTP com porta de ORIGEM 123; evento 47, "No
+  valid response ... after 8 attempts"), enquanto o `w32tm /stripchart` por porta efêmera mede. Com
+  `scripts/sincronizar-relogio.ps1` e a tarefa `farm-relogio` (SYSTEM, 15 min; `w32time` com `syncfromflags:NO`), o
+  desvio foi de +6,240 s para +0,004 s (28/09 21:25, -03:00). Log em `data\logs\relogio.log` (K-055).
+- **Acúmulo de irq** (coleta a cada 10 min em `data\logs\irq_convidados.csv`, em andamento). No android-04, 2,7 h depois
+  do `restart`: load 14,7, 82 MB livres, swap zram de 500 MB, `kcompactd0` com 43% de CPU e apps do Google em segundo
+  plano (YouTube, YouTube Music, Gmail, Bem-estar digital). No android-06: Google app 101 MB, GMS persistente 74 MB,
+  Android System Intelligence 37 MB, Mensagens 22 MB. A causa do acúmulo **não está provada**: o swap é zram, não disco,
+  e o `virtio23` não é identificável sem root (item 21.15).
+
+**Aprendizado — fundação (`real`, só leitura; 29/09 02:23Z, reproduzido pelo revisor às 03:01Z; central em `7a02491`,
+banco `data/poc.sqlite3` em modo só leitura).** O classificador sobre 221 tentativas reais com falha deu `outro` = 4,5%
+(meta < 15%). O livro sobre as fontes reais: 81 receitas ativas e 10 em quarentena, 25 fluxos, 1 habilidade, memória
+como contagem (100); "Revisar" com as 22 receitas com commit e 17 fluxos com efeito; "Pendentes" vazio. O defeito da
+janela da projeção (`ai_calls` purgado em 14 dias sob uma janela de 30) foi corrigido; a projeção passa a mostrar a
+janela efetiva
+([ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)).
+
+**`simulated`.**
+
+- Integração `c359f65` (proteção + fundação): os arquivos de teste alterados (21) deram 493 ok em SQLite; em PostgreSQL
+  17 (contêiner `farm-pg`, porta 55433), 562 ok e 2 pulados; mypy estrito sem erro em 153 arquivos; frontend 660 ok.
+- Suíte inteira do backend em SQLite, na integração: [[SUITE-INTEIRA-SQLITE: em andamento]].
+- Cada pacote: os testes da tabela acima, que falhavam antes da correção (base `7a02491`, `git stash` da correção ou
+  mutação em cópia), mais os vizinhos afetados; as sondas dos revisores (segundo envio de senha pela tela de código sem
+  `EditText`, origem recusada pela quarentena, troca de identidade que resolvia o marcador, `review` apagado por falha
+  antes do envio, D1 no nascimento do item, chamada de IA contada duas vezes na meia-noite) rodadas de novo depois dos
+  ajustes.
+
+**`not_run`.**
+
+- Deploy da integração `c359f65` (054, 055, frontend) e as leituras no central depois dele (`GET /api/aprendizado`,
+  `/revisar`, `locked_account_on_device` com o android-04, `account_label` derivado).
+- O detector numa tela de trava real: a hierarquia e o apóstrofo da tela nunca foram gravados.
+- O planejador real preenchendo `post_author`; uma execução com várias contas no mesmo alvo; a DM fria e o verificador
+  de DM numa conta real (efeito em conta de terceiros, exige autorização); o "Enviando…" do Instagram em português; o
+  disjuntor com um bloqueio real.
+- Da leva aberta: um screencap falhando num convidado saturado sem recriar a sessão; uma curtida com `caption_contains`
+  e a guarda de cartão num aparelho real; a aprovação acompanhando a etapa revisada num CREATE_COMMENT real; a promoção
+  de uma receita candidata no central (várias execuções da mesma etapa).
+- A causa do acúmulo de irq (21.15).

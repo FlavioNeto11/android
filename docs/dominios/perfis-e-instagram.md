@@ -176,6 +176,35 @@ de `active` a `blocked` (`modules/identity/application/session_rules.py::bloquea
 perfil fora de `active`. Pausa do dono (`disabled`) não é reescrita. Resolver a tela não reativa sozinho: quem
 reativa é a pessoa, na tela do perfil.
 
+**Proteção de contas (ADR-055, 29/09; integrada em `c359f65`, a implantar).** A regra do dono: parar em "Confirm you're
+human" é sinal de conta perdida. O que muda no desafio e em volta dele:
+
+- **Conta travada = `blocked`.** Um detector único (`automation/hierarchy.py`,
+  `conhecimento_de_telas.py::detectar_conta_travada`) casa na união dos idiomas, com o texto normalizado (apóstrofo
+  tipográfico, acento), e roda depois de cada observação e na sessão, antes do ANR, da receita e do ator; sai sem tocar.
+  Subtipos do `auth_challenge`: `conta_travada` bloqueia o perfil sozinho; `codigo` (login por e-mail, 2FA) e
+  `verificacao` (o ator relatou com `step_blocked(kind="challenge")`) pedem pessoa SEM bloquear — o código de 18/09
+  teria bloqueado bruno e andre, que estão vivos. O bloqueio vale também com a sessão já em `auth_challenge`; reativar é
+  da pessoa. Todo status passa por `mudar_status` (`blocked_at`, `blocked_evidence`, `blocked_origin`, evento
+  `profile.status`).
+- **Quarentena do aparelho.** A conta travada logada vira marcador do APARELHO (`device_locked_accounts`, migração 054),
+  que sobrevive ao desvínculo: sem confirmação explícita (`confirm_locked_account`), só parar e hibernar; nenhuma outra
+  persona se vincula ali (409 `aparelho_em_quarentena`); nada de entrega, escada de reparo nem reinício por irq;
+  `/api/health` acusa `locked_account_on_device`. `account_label` passa a ser derivado do marcador ou do vínculo, e
+  antes de mexer num aparelho com Instagram confere-se a tela (K-053).
+- **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
+  excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
+  contas na mesma execução segue numa conta só, com aprovação. Quando uma conta cai, o disjuntor pausa as que agiram
+  sobre os mesmos alvos nas 48 h anteriores (K-057).
+- **DM fria com aprovação.** SEND_MESSAGE para quem nunca escreveu a esta conta é sempre `approval_required`, sem grupo
+  nem perfil que afrouxe; a persona não atribui fala a terceiros (`social/conteudo.py`). "Sending…" é pendente, nunca
+  enviada, e confirmar à mão uma etapa com efeito exige o print (`evidence_id`).
+- **Login com freio.** Perfil `blocked` ou `disabled` nunca recebe a senha; um envio sem sucesso põe a credencial em
+  `review` e o login automático para até a pessoa olhar; teto diário `max_logins_per_day` no `sessao.yaml` (3). Nenhum
+  reset automático em aparelho com conta (a escada para em "Precisa do dono" + `stop`).
+- **Conduta, não disfarce.** Nada de mascarar emulador ou rede, proxy, resolver CAPTCHA ou tocar em "Get support": é
+  evasão, proibida (ADR-009).
+
 **Garantia de "desafio sempre manual"**, com os pontos exatos. No motor, valendo para qualquer app, seja qual for o
 dado:
 

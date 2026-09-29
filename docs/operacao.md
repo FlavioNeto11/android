@@ -69,6 +69,11 @@ commit**, e roda **em segundo plano** — nunca ficar ocioso esperando. O harnes
 por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padrão de produção é 5554,
 `config.py:184`), então a suíte nunca endereça um emulador real do parque, mesmo rodando na mesma máquina.
 
+**PostgreSQL de teste.** O contêiner `farm-pg` (PostgreSQL 17 na porta 55433; receita em
+[banco.md](banco.md#rodar-a-suíte-contra-o-postgresql)) é o banco das corridas com `TEST_DATABASE_URL`; em 29/09 a
+integração `c359f65` rodou nele. Ligar o Docker Desktop mexe no WSL, que o `CLAUDE.md` põe sob autorização explícita do
+dono. Não aponte a variável para outro PostgreSQL da máquina: a credencial dele fica no `.env`, que não se lê.
+
 ## 5. CI
 
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
@@ -199,6 +204,15 @@ isso). Pontos que já causaram incidente:
   estado do túnel/worker.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
+- **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o
+  desvio pelo NTP.br com `w32tm /stripchart` e ajusta acima de 0,2 s; o `w32time` fica sem sincronização própria
+  (`syncfromflags:NO`), porque a rede bloqueia NTP com porta de origem 123 (K-055). Cada rodada vai para
+  `data\logs\relogio.log`; `-Simular` mede sem ajustar.
+- **Antes de qualquer experimento num aparelho** (agente, `adb input`, `settings put`, carga de CPU): tirar um screencap
+  e ler a conta logada, sem tocar. `account_label`, `/personas` e os vínculos não bastam: o android-04 tinha
+  `qa-user-04` e nenhuma persona, com o felipe travado em "Confirm you're human" (K-053). Aparelho com `locked_account`
+  está em quarentena e não se toca; experimento vai num aparelho novo e sem conta (provisionar e aposentar são
+  permitidos no ambiente central).
 
 ## 11. Segurança
 
@@ -246,7 +260,8 @@ isso). Pontos que já causaram incidente:
 | `probe-models.py --yes` | T | Sonda modelos configurados (poucos centavos) |
 | `probe-image.ps1` | S | AVD **temporário**, removido ao final; não toca instâncias do projeto |
 | `rotation-test.ps1` | P/T | Liga/hiberna instâncias reais; gasta IA se não estiver em modo simulado |
-| `scale-test.ps1` | P | Liga instâncias reais até o hardware não sustentar |
+| `scale-test.ps1` | P | Liga instâncias reais até o hardware não sustentar; pula aparelho em quarentena (`locked_account`) |
+| `sincronizar-relogio.ps1` | P | Mede o desvio do relógio do central pelo NTP.br e ajusta acima de 0,2 s (`-Simular` só mede); `-Instalar` registra a tarefa `farm-relogio` e tira a sincronização do `w32time`. Mexer no relógio exige autorização do dono (dada em 28/09) |
 | `recuperar-parque.ps1` | P | Reinicia aparelhos remotos pelo worker |
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
@@ -269,6 +284,8 @@ isso). Pontos que já causaram incidente:
 | Notebook do worker lento, emuladores com carga alta sem motivo aparente | Escalonador do Hyper-V no modo "core" em vez de "classic" | Conferir o evento `Hyper-V-Hypervisor` id 2 (precisa ser `0x2`, não `0x3`); `bcdedit /set hypervisorschedulertype classic` e reiniciar |
 | Conta do provedor de IA sem crédito, execuções travam sem aviso claro | Conta esgotada (HTTP 402/billing) | `/api/health` acusa `ai_billing`; o disjuntor (`executor.py`, §6 de `docs/ia.md`) represa sem gastar tentativa |
 | `decide` volta a usar Anthropic mesmo com Ollama configurado | Serviço Ollama fora do ar no host (sobe por login de usuário, não é tarefa de boot) | Conferir se o Ollama está no ar; sem ele, o fallback explícito assume — comportamento esperado, não bug |
+| Relógio do central com segundos de desvio; `w32time` com o evento 47 "No valid response" | A rede bloqueia NTP com porta de ORIGEM 123, a do `w32time` | `scripts/sincronizar-relogio.ps1` e a tarefa `farm-relogio`; conferir `data\logs\relogio.log` (K-055) |
+| Aposentar um aparelho no Windows falha com `avd_nao_apagado` | Arquivo somente-leitura que o emulador deixa no AVD (`pstore.bin`) | Corrigido em `2511b12` (`avd.py::_apagar_arvore`); noutro caso, procurar o atributo antes de suspeitar de processo segurando o arquivo (K-056) |
 
 ## 14. Contêineres: o central em desenvolvimento e validação
 

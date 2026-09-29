@@ -1,9 +1,36 @@
 # Estado atual — handoff
 
-**Revisado em 28/09/2026, depois da implantação das correções das falhas reiteradas (`93967d0`, ADR-053).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 29/09/2026, na rodada de proteção de contas e fundação do aprendizado (ADR-054, ADR-055).** Atualize este
+arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e fundação do aprendizado (ADR-054, Fase 20).**
+  - **Implantado:** `e9da86e` (reinício de saúde e religar da reconciliação fora da escada de reparo) e a leva aberta
+    `7a02491` (as pendências dos revisores do ADR-053; agente do notebook em `0.1.0+7a02491`); o relógio do host pela
+    tarefa `farm-relogio` (+0,004 s, K-055). Proteções operacionais da IDE em 29/09: DM do grupo "Operação" com
+    aprovação e os limites do grupo "Recuperação", o `CREATE_COMMENT` autônomo do andre removido e o android-04 (felipe
+    em "Confirm you're human") desligado.
+  - **A implantar:** a integração `c359f65` + `2511b12` — detector de conta travada, quarentena do aparelho (migração
+    054, com o marcador do android-04), uma conta por alvo e DM fria com aprovação, disjuntor e `review` da credencial,
+    verificador de DM com o print, e a fundação do aprendizado (migração 055, `GET /api/aprendizado`). Deploy com
+    `deploy.ps1 -Ensaio` primeiro e o frontend junto (`npm run build`: o `confirm_done` com efeito passa a exigir
+    `evidence_id`). Depois: conferir `/api/health` (`locked_account_on_device` só com o android-04 ligado), `GET
+    /api/aprendizado/revisar` (22 receitas e 17 fluxos) e o `account_label` derivado. Suíte inteira: [relatório
+    §22](relatorio-validacao.md).
+  - **Decisões do dono pendentes:** trocar as senhas das 3 contas vivas e apagar o transcrito local de 18/09 que as
+    guarda em texto puro
+    (`C:\Users\Administrator\.claude\projects\C--git-android\1a884c21-6b61-42ac-8c11-dfd781e97346.jsonl`, fora do
+    repositório); remover ou não do cofre as credenciais das 5 bloqueadas; as escolhas do pacote frota (ADR-055). A
+    divergência entre a "decisão de 23/09" (reset como 3º degrau) e a invariante do CLAUDE.md foi resolvida para o lado
+    seguro: nunca reset automático com conta vinculada ou travada.
+  - **Atenção:** antes de qualquer experimento num aparelho com Instagram, screencap e conta logada; `account_label` e
+    `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Não mirar de novo a mesma pessoa com mais de
+    uma conta (K-057).
+  - **Próxima ação:** o `aplicar` das Fases 20 e 21 (estado do plano), o deploy da integração e, na Fase 20, o A2
+    (costuras). Seguem abertos a causa do acúmulo de irq (21.15; coleta em `data\logs\irq_convidados.csv`) e as
+    pendências dos revisores listadas no ADR-055.
 
 - **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0` + `91f1aab`, central e agente do
   notebook).** Diagnóstico medido de e31953 e 02ee9e (a IA ocupou 4,5% do tempo; o resto era o convidado saturado e o
@@ -14,9 +41,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   `r-20260928235215-6eb84c` (2 min 41 s, 5/5, comentário inteiro); 0 recriação de sessão e 0 ANR novo nas duas
   ([relatório §21](relatorio-validacao.md)). **Atenção:** o post "Ainda sobre Setembro Amarelo 2024" está curtido
   pelo andre desde a e31953, e um LIKE repetido DESCURTE; antes de prometer aprovação de texto, confira a política do
-  perfil (o do andre publica comentário sem aprovação, K-052). **Próxima ação:** o estado do plano (`aplicar` da
-  Fase 19) e, com autorização do dono, o relógio do host em NTP; seguem abertos `hide_error_dialogs=0`, a guarda de
-  cartão num LIKE real e as pendências dos revisores (ADR-053).
+  perfil (o do andre publicava comentário sem aprovação até 29/09, K-052). O relógio do host, o `hide_error_dialogs`
+  (fica 1) e as pendências dos revisores foram tratados na rodada de 29/09 (Fase 21); segue aberta a guarda de
+  cartão num LIKE real.
 
 - **Fase 18 (ADR-052): fatias 1–4 IMPLANTADAS em 28/09 (`a7fe364`, central e agente do notebook); zero Python por
   app.** Prova `real`: "Verificar conta" pelo motor genérico confirmou lucas (android-01) e andre (android-06)

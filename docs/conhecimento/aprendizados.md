@@ -1114,7 +1114,8 @@ parou de responder (ANR) com o convidado sem CPU, e o aviso vai para o aparelho 
 continua 1. Prova `simulated`: `backend/tests/test_anr_sinal_proprio.py`.
 
 **Aplicabilidade.** Vigente enquanto o preparo gravar `hide_error_dialogs=1`; o experimento com 0 (diálogo visível)
-fica para outra rodada. "O app sumiu e voltou o launcher" num convidado lento: consulte o `exit-info` antes de reabrir.
+fica para outra rodada. Feito em 28–29/09 (K-054): com 0, o ANR do `system_server` prende o aparelho; decisão: manter 1.
+"O app sumiu e voltou o launcher" num convidado lento: consulte o `exit-info` antes de reabrir.
 
 ### K-049 — O 500 "root AccessibilityNodeInfo … hogging the main UI thread" é UI ocupada, não sessão morta
 
@@ -1134,7 +1135,8 @@ fica com efeito incerto e não é repetida pelo executor; só a sessão morta de
 (`r-20260928234657-bbdf3c` e `r-20260928235215-6eb84c`, android-06), a janela do `appium.log` teve 0 `POST /session`,
 0 `DELETE /session` e 0 linhas de UI ocupada. Prova `simulated`: `backend/tests/test_ui_ocupada.py`.
 
-**Aplicabilidade.** Vigente. Pendência: erro de adb no screencap da observação ainda recria a sessão.
+**Aplicabilidade.** Vigente. A pendência (erro de adb no screencap da observação ainda recriava a sessão) foi
+resolvida em `6799867`: `FalhaDeLeitura` relê sem recriar (item 21.10).
 
 ### K-050 — Interrupção acumulada no convidado com dias no ar (irq 21–90% ocioso) derruba as tarefas; `restart` devolve ~2%
 
@@ -1155,7 +1157,9 @@ sondas e, com o aparelho ocioso acima de 15% em 3 sondas seguidas, abre um `rest
 apagaria a conta real. Prova `simulated`: `backend/tests/test_saude_do_convidado.py`.
 
 **Aplicabilidade.** Vigente. Aparelho lento sem falta de RAM: meça o irq ocioso antes de pedir mais memória. Se o
-reinício de menos de 6 h não resolver, o aviso fica no cartão, e é outra doença.
+reinício de menos de 6 h não resolver, o aviso fica no cartão, e é outra doença. Desde `e9da86e` o reinício
+sai com `requested_by='saude'` e não conta como degrau da escada de reparo (ADR-055); a causa do acúmulo
+segue em aberto (item 21.15).
 
 ### K-051 — `farm-ci-runner` em "Ready" não quer dizer runner parado: o `Runner.Listener` segue no ar
 
@@ -1192,3 +1196,104 @@ configuração corretamente; a promessa é que foi feita sem conferir a polític
 
 **Aplicabilidade.** Vigente para toda prova com efeito em conta real: o pedido de autorização ao dono diz a política
 efetiva de cada ação, lida da API, e não a do catálogo.
+
+### K-053 — Conta logada sem persona: `account_label` e `/personas` não dizem se há conta no aparelho; confira a tela
+
+**Data:** 29/09/2026 · **Área:** parque, processo, Instagram (ADR-055)
+
+**Sintoma.** Em 28/09, das 21:36 às 21:40 (-03:00), um experimento de `hide_error_dialogs` escolheu o android-04 como
+"aparelho sem persona nem conta": `account_label` `qa-user-04` e `/personas` vazio. Mandou 10 entradas por adb (toques e
+arrastos) e aberturas a frio sobre a tela "Confirm you're human" do felipe.nogueira93762026, que abriram "Get support" e
+o assistente da Meta. Nada foi digitado nem enviado; a tela foi fechada com BACK.
+
+**Causa.** O rótulo era o da configuração (`qa-user-04`, do QA Messenger), não derivado de conta nenhuma. O perfil
+estava `blocked` pela declaração do dono (23/09; o bloqueio automático do ADR-029 nunca disparou) e o desvínculo de
+27/09 03:10Z tinha tirado a persona do aparelho, mas a sessão do Instagram continuava no disco e na tela. Nada no
+sistema dizia, por aparelho, que ali estava logada uma conta travada.
+
+**O que funcionou.** O marcador por aparelho (`device_locked_accounts`, migração 054), carregado com o android-04;
+`account_label` derivado do marcador ou do vínculo (`account_label_origin`); a quarentena (ADR-055). E a regra de
+processo: antes de qualquer experimento, agente ou `adb input` num aparelho com Instagram, tirar um screencap e ler a
+conta logada, sem tocar; aparelho de experimento é aparelho novo e sem conta (o android-17, só com o QA Messenger,
+K-054).
+
+**Aplicabilidade.** Vigente. `account_label`, `/personas` e os vínculos dizem o que o sistema acha; a tela diz o que
+está lá.
+
+### K-054 — `hide_error_dialogs=0` trava o aparelho no ANR do `system_server`: manter 1
+
+**Data:** 28–29/09/2026 · **Área:** emuladores, adb (ADR-055; completa o K-048)
+
+**Sintoma.** O K-048 deixou para outra rodada a pergunta: sem o diálogo (`hide_error_dialogs=1`), o ANR do app vira
+morte silenciosa; com o diálogo (0), talvez o app sobrevivesse à saturação.
+
+**Causa.** Medido (`real`, 28–29/09, central) num aparelho novo, o android-17, sem conta e só com o QA Messenger
+(`qa-app/dist/qa-messenger.apk`), saturado pelo hospedeiro (processo do emulador com afinidade de 1 CPU):
+
+- com 0, o QA não teve ANR em 3 janelas (a hipótese de o app sobreviver ficou sem teste), mas o `system_server` teve, e
+  o diálogo "Process system isn't responding" NÃO sumiu sozinho: 325 s, e ~24 min no 1º boot. BACK não fecha, "Wait"
+  volta em menos de 5 s; só reiniciar resolve. É uma tela do sistema que nenhuma automação dispensa sem tocar fora do
+  app;
+- com 1, um ANR do QA virou morte silenciosa, detectável pelo `exit-info` (K-048);
+- afinidade 1 com prioridade Idle derrubou o `system_server` (`am_crash`, "failed to set system property").
+
+**O que funcionou.** Manter `hide_error_dialogs=1`, que o preparo do aparelho continua gravando; o sinal de ANR vem do
+`exit-info`. O android-17 foi aposentado (`retired_at` 00:29:05 de 29/09; o `DELETE` esbarrou no K-056).
+
+**Aplicabilidade.** Vigente. Não rodar 0 em aparelho de uso. A pergunta "o app sobreviveria com o diálogo?" continua
+aberta e não vale o risco.
+
+### K-055 — NTP bloqueado com porta de origem 123: o `w32time` não sincroniza, o `stripchart` sim (`farm-relogio`)
+
+**Data:** 28/09/2026 · **Área:** operação, host (ADR-019, ADR-055)
+
+**Sintoma.** O relógio do central estava "Free-running", +6,2 s atrás do NTP.br (C12 do ADR-053). Configurar o `w32time`
+não resolvia: evento 47, "No valid response ... after 8 attempts".
+
+**Causa.** Os pedidos do `w32time` saem pela porta de ORIGEM 123, e a rede não devolve resposta. `w32tm /stripchart`,
+que sai por porta efêmera, mede normalmente.
+
+**O que funcionou.** `scripts/sincronizar-relogio.ps1` (`b25957e`): mede com o `stripchart` (`a`, `b` e `c.st1.ntp.br`,
+3 amostras cada, mediana) e, acima de 0,2 s, ajusta com `Set-Date -Adjust`. Com `-Instalar`, registra a tarefa
+`farm-relogio` (SYSTEM, a cada 15 min) e põe o `w32time` em `syncfromflags:NO`, para o relógio ter um dono só. Desvio de
++6,240 s para +0,004 s em 28/09 21:25 (-03:00); log em `data\logs\relogio.log`. Mexer no relógio exige autorização
+(CLAUDE.md): dada pelo dono em 28/09 ("eu autorizo tudo").
+
+**Aplicabilidade.** Vigente no central. Relógio errado de novo: olhe o `relogio.log` e a tarefa antes de mexer no
+`w32time`; `-Simular` mede sem ajustar.
+
+### K-056 — Aposentar no Windows: o emulador deixa arquivo somente-leitura no AVD, e o `rmtree` falha
+
+**Data:** 29/09/2026 · **Área:** parque, provisionamento (ADR-045)
+
+**Sintoma.** Ao aposentar o android-17, o `DELETE` falhou com `avd_nao_apagado`.
+
+**Causa.** O emulador deixa `data/misc/pstore/pstore.bin` somente-leitura na pasta do AVD; no Windows, `shutil.rmtree`
+falha nele com WinError 5.
+
+**O que funcionou.** `devices/avd.py::_apagar_arvore` (`2511b12`): `rmtree` com `onexc` (no Python abaixo de 3.12,
+`onerror`) que tira o somente-leitura e tenta de novo; `_liberar_escrita` também no `.ini`. Só biblioteca padrão, porque
+o módulo vai ao agente do notebook. Prova `simulated`: `backend/tests/test_provisionamento.py`.
+
+**Aplicabilidade.** Vigente. Outro `avd_nao_apagado` com o emulador parado: procure o atributo somente-leitura antes de
+suspeitar de processo segurando o arquivo.
+
+### K-057 — Frota coordenada sobre uma pessoa real precede os bloqueios: a resposta é conduta, não disfarce
+
+**Data:** 29/09/2026 · **Área:** perfis, Instagram, política (ADR-055)
+
+**Sintoma.** Cinco de oito contas do Instagram bloqueadas; em três delas o sistema nunca viu o desafio.
+
+**Causa.** Medida, sem prova do motivo do Instagram. As oito contas nasceram no mesmo dia, no mesmo host, com a mesma
+imagem e o mesmo `ro.serialno`, e agiram em três ondas coordenadas sobre as mesmas pessoas: o mesmo comentário de 4
+contas no mesmo post (18/09); 8 follows na mesma pessoa privada em 19m43s (19/09); 7 DMs à mesma pessoa em 8m40s com o
+recado "seu marido mandou um oi", com SEND_MESSAGE `autonomous` (19/09). Nada nos dados separa as vivas das bloqueadas
+(DM 5 de 5 contra 2 de 3, Fisher p = 0,375).
+
+**O que funcionou.** Conduta como regra de código: uma conta por alvo para seguir, DM e comentário, com o excedente
+recusado; DM fria sempre com aprovação; persona que não atribui fala a terceiros; o disjuntor que pausa as contas do
+mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" para as vivas. Nunca disfarce (mascarar
+emulador ou rede, proxy): é evasão, e é proibida.
+
+**Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
+uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias.

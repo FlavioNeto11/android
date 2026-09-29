@@ -2318,3 +2318,116 @@ origem do frame, o prazo e os textos.
 Provas: `simulated` (`backend/tests/test_previa_nao_disputa_com_a_ia.py`, `test_saude_do_convidado.py`,
 `test_digitacao_atomica.py`; vitest `DeviceCard.preview.test.tsx` e `FocusPanel.test.tsx`). `real` da digitação:
 `r-20260928235215-6eb84c`, comentário inteiro em 234 ms ([relatório §21](relatorio-validacao.md)).
+
+## Adendo v0.37 (29/09/2026) — aprendizado (fundação), proteção de contas e a leva aberta (ADR-054, ADR-055; Fases 20 e 21)
+
+[ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)
+e
+[ADR-055](decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta).
+A leva aberta (itens 21.10–21.14) está implantada desde `7a02491`; o aprendizado e a proteção de contas entram com a
+integração `c359f65` (migrações 054 e 055), e o painel vai no mesmo deploy.
+
+**Livro de aprendizado (item 20.2).** Corpos em `backend/app/modules/learning/presentation/livro.py`. Nenhuma rota chama
+IA.
+
+- `GET /api/aprendizado?kind=&state=&app=&origem=` → `{itens: [Entrada], total, contagem: {<kind>: {<estado>: n}}}`.
+  - `Entrada`: `{kind, ref, state, native_status, title, app, origin, side_effect, human_origin, requires_owner,
+    created_at, state_at, last_used_at, uses, evidence: {for, against}, count, detail}`.
+  - `kind`: `receita`, `fluxo`, `habilidade`, `memoria` (casa nativa; memória só como contagem) e `tela`, `licao`,
+    `voz`, `preferencia` (em `learning_items`). `state`: o `SkillState` (`draft`, `candidate`, `validated`, `published`,
+    `deprecated`, `disabled`). `origem`: `execucao`, `treino`, `pessoa`, `ensino`, `sistema`.
+- `GET /api/aprendizado/pendentes` → `{itens, total}`: a fila do D1 ("Para aprovar") e a contagem da barra do topo.
+- `GET /api/aprendizado/revisar` → `{itens, total}`: receitas e fluxos ATIVOS com efeito externo que nenhuma pessoa
+  decidiu pelo livro (o legado anterior ao D1).
+- `GET /api/aprendizado/{kind}/{ref}` → `{item: Entrada, evidencias: [{stance, origin_ref, run_id, instance_id,
+  app_version, simulated, detail, observed_at}], trilha: [{id, from, to, reason, decided_by, decided_at, run_id}],
+  exposicoes}`.
+- `POST /api/aprendizado/{kind}/{ref}/status {to, reason}` (`reason` com 1 a 500 caracteres, `extra=forbid`) → o mesmo
+  corpo do detalhe. Em receita e fluxo: CAS no status nativo e uma linha na trilha, com as guardas de antes (nunca duas
+  receitas ativas na mesma chave, fluxo adotado não religa, substituída não volta). Quem decide é o operador da sessão
+  (`panel` sem sessão), nunca `sistema`.
+- Erros `{code, message}`: 404 `not_found`; 422 `invalid`; 409 `transition_forbidden`, `owner_required` (D1: item com
+  efeito ou texto de pessoa só o dono publica), `state_conflict` (CAS), `vetoed` (conteúdo desligado por uma pessoa) e
+  `use_skills_route` (habilidade: o corpo traz `href` da rota das habilidades); 503 `not_ready` antes da composição.
+- Ainda não existem as rotas dos pacotes seguintes (`/api/aprendizado/falhas`, `/backlog/{id}`, `/sinais`,
+  `/licoes/previa`, `/export`, `/voz/previa` e `/api/runs/{id}/feedback`); `router.py` já as registra antes da rota
+  genérica `{kind}/{ref}`.
+- Configuração: bloco `aprendizado` do `config.example.yaml` (modos `off`/`shadow`/`on` entre aspas;
+  `ia_resumos_por_dia` só aceita 0).
+
+**Projeção (revê o v0.35).** Em `GET /api/runs/{run_id}/projection`, `janela_dias` passa a ser a janela EFETIVA,
+`min(ai.step_budget.window_days, log_retention_days)` — 14 no central, não 30 —, porque `ai_calls` é purgado na
+retenção; a etapa só entra se começou dentro dela. Campos novos: `janela_configurada` e `amostras_sem_custo`. A mensagem
+de orçamento do executor cita a janela efetiva.
+
+**Confirmação manual presa ao print (item 21.5).** `POST /api/runs/{run_id}/objectives/{objective_id}/resolve` aceita
+`{resolution, note?, evidence_id?}` (`ResolveBody`, `extra=forbid`).
+
+- Em `confirm_done` de etapa com efeito externo, `evidence_id` é obrigatório: sem ele, 422 `evidence_required`. A
+  evidência precisa existir e ser `screenshot` com imagem, desta execução e deste aparelho; senão, 422
+  `invalid_evidence`. Sem efeito externo, o print é opcional.
+- O id vai para `StepResult.evidence_id`, e "com base na evidência #N (print de …)" vai para o texto da evidência e para
+  o histórico do perfil.
+- O painel manda o último print com imagem da etapa parada e avisa quando não há. Painel e backend se implantam juntos:
+  com `extra=forbid`, cada lado antigo recusa o outro.
+- SEND_MESSAGE ganha `pending_marks` no catálogo ("Sending…", "Enviando…"): com a marca na tela, a verificação não chama
+  o modelo e a etapa não se comprova (`VerifyOutcome.pending`); a prova local nova `sent_text:<seletor>` exige a bolha
+  com o texto inteiro e o compositor vazio.
+
+**Conta travada e quarentena (itens 21.1–21.4).**
+
+- `/api/health`, `problems[]`: `locked_account_on_device` enquanto houver conta travada logada em aparelho `online`,
+  `booting` ou `error`.
+- `InstanceDTO.locked_account: string | null`, o @ do marcador aberto (os scripts `scale-test` e `rotation-test` pulam o
+  aparelho). `account_label` passa a ser derivado do marcador ou, sem ele, do vínculo do app do aparelho, quando há o
+  que derivar.
+- `POST /api/instances/{instance_id}/actions/{action}`: `InstanceActionBody` ganha `confirm_locked_account: bool =
+  false`, separado de `confirm`. Com marcador, só `stop` e `hibernate` passam sem ele; o resto → 409 `locked_account`, e
+  o comando fica `rejected` no histórico. O pedido automático (remediação, rodízio, saúde, reconciliação) nunca o manda;
+  `POST /api/instances/bulk` não o repassa, então em lote a quarentena sempre recusa. Os trabalhos de aparelho
+  `app.install`, `app.canary`, `app.rollback`, `app.distribute`, `device.proxy` e `session.*` também são recusados;
+  `app.verify` segue.
+- Vínculo (`POST /api/personas/{id}/devices`), troca de aparelho (`PATCH /api/instagram/profiles/{id}` com
+  `instance_id`) e cadastro (`POST /api/instagram/profiles`) num aparelho em quarentena → 409 `aparelho_em_quarentena`,
+  antes de criar qualquer linha.
+- O `PATCH` do status de um perfil grava a origem `declarado` com o operador como autor.
+- Eventos novos:
+  - `profile.status` em toda mudança de status: `{profile_id, anterior, status, origem: observado|declarado|regra,
+    autor, evidencia}`;
+  - `device.locked_account`: `{instance_id, handle, profile_id, app_id, origem, acao: marcado|resolvido, autor,
+    evidencia}`;
+  - `decision` do executor na trava: `data {kind: "auth_challenge", subtipo: conta_travada|codigo|verificacao, trecho,
+    tela, package}`; o motivo em `objectives.blocked_reason` e `attempts.error` é `auth_challenge (<subtipo>): …
+    "<trecho>"`;
+  - `log` com `data.reason = "disjuntor_de_conta"` (`{profile_id, related_profile_ids, run_ids}`) e com `data.reason =
+    "login_parado"`.
+- `StepBlocked.kind` ganha `challenge` (vira `auth_challenge`, subtipo `verificacao`, que pede pessoa sem bloquear).
+- Sessão: a credencial da conta ganha o estado `review` depois de um envio de senha sem sucesso; o login automático é
+  recusado sem tocar, e só o Conectar (a pessoa) tenta. Ajuste novo `max_logins_per_day` no `sessao.yaml` (3 no
+  Instagram), sobrescrevível em `contas.sessao.<pacote>.max_logins_per_day`.
+- Frota: a política recusa, com motivo e sem `retry_at`, a ação sobre um alvo em que outra conta já agiu dentro de
+  `limits.fleet_target_window_days` (30): uma conta por alvo em seguir, DM e comentário;
+  `limits.fleet_max_accounts_per_target` em curtida. OPEN_POST aceita `post_author` opcional, herdado por LIKE_POST,
+  UNLIKE_POST e CREATE_COMMENT; cada ação com balde declara `counterparty` no catálogo. SEND_MESSAGE para quem nunca
+  escreveu a esta conta é sempre `approval_required`.
+
+**Leva aberta (itens 21.10–21.14, implantada em `7a02491`).**
+
+- `GET /api/desempenho?irq_horas=0..336&irq_aparelho=`: com `irq_horas` 0 (padrão), a resposta é a de antes. Com mais
+  que 0, bloco `interrupcoes`: `{desde, aparelho, n, truncada, por_aparelho: {<id>: {ultimo, irq_frac: {n, p50, p95,
+  max, media}, serie: [{ts, irq_frac, load1, ocioso, controle, interesse}]}}}`, com teto de 20.000 linhas (ficam as mais
+  recentes). A fonte é `measurements(kind='irq')`, uma linha por sonda de saúde (30 s) por aparelho, com `instance_id`,
+  `irq_frac`, `load1`, `ncpu`, `ocioso`, `controle`, `interesse`, `cpu_total_ticks` e `cpu_irq_ticks`; o Diagnóstico
+  (`medicoes_recentes`) não as mostra.
+- `Recipe.status` ganha `candidate`: a receita aprendida pela IA nasce candidata (`ai.recipes_promote_after`, padrão 2;
+  0 é o modo antigo), a IA decide e a receita só é comparada; as concordâncias seguidas a promovem a `active`.
+  `shadow_agree` e `shadow_total` passam a contar por execução da etapa e zeram na divergência da candidata;
+  `superseded` passa a ser escrito. `PUT /api/recipes/{id}` segue aceitando `active` e `quarantined` (pendência: ainda
+  não recusa `active` para candidata ou substituída).
+- Métricas: `automacao.leitura_falhou{resultado=relida|persistiu}` e `receita.consulta{resultado=candidata}`.
+
+Provas: `simulated` (`backend/tests/test_learning_livro.py`, `test_projecao.py`, `test_dm_verificador.py`,
+`test_quarentena_de_conta.py`, `test_detector_conta_travada.py`, `test_protecao_de_frota.py`,
+`test_disjuntor_de_conta.py`, `test_conduta_de_login.py`, `test_interrupcoes_persistidas.py`,
+`test_receita_candidata.py`; vitest `execution.test.tsx`); `real` só de leitura no [relatório
+§22](relatorio-validacao.md); o resto `not_run` até o deploy.

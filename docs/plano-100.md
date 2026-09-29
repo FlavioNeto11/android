@@ -419,7 +419,7 @@ Design: [`design/conhecimento-de-app.md`](design/conhecimento-de-app.md). Origem
 | 18.5 | **Fatia 2: catálogo de ações como dado** (`catalogo.yaml`, carregador, `contract_version` real) e registro que descobre os pacotes em `app/conhecimento/apps/*/` (`integrations/app_declarado/pacote.py`) — some `planning/catalog/instagram.py` | pedido do dono (28/09) | G |
 | 18.6 | **Fatia 3: fluxo de sessão declarativo** (login, dispensa, observar depois de enviar, conta errada) com uma máquina de estados no núcleo (`SessaoDeclarada`) e o `sessao.yaml` do app — some `integrations/instagram/` | pedido do dono (28/09) | G |
 | 18.7 | **Fatia 4: app âncora do perfil pelo registro** (`ancora_do_perfil`, `pacote_ancora()` no lugar de `package_of_provider("instagram")`), bloco `contas:` no lugar de `instagram:` no `config.yaml`, links de perfil como dado; catraca do texto "instagram" no código de `app/` | pedido do dono (28/09) | M |
-| 18.8 | **Fatia 5: conhecimento aprendido** (tela ou ação nova vira candidata com proveniência, validada e publicada como as skills) | proposta ao dono | G |
+| 18.8 | **Fatia 5: conhecimento aprendido** (tela ou ação nova vira candidata com proveniência, validada e publicada como as skills; absorvido pelo 20.9, ADR-054) | proposta ao dono | G |
 | 18.9 | **Nomes históricos sem app**: a tabela `instagram_profiles`/`instagram_credentials`, o prefixo de rota `/api/instagram/…` e o painel que os usa passam a nomes do perfil (migração nova, versão de contrato com rota antiga como apelido); revisar se `dm_*`/`comment_*` e os baldes do núcleo social são vocabulário de app ou de rede social | integração das fatias 2–4 (28/09) | G |
 
 ### Fase 19 — Falhas reiteradas do Instagram: diagnóstico medido e correções · 10 itens (pedido do dono de 28/09/2026; ADR-053)
@@ -438,6 +438,53 @@ Origem: as execuções `r-20260928165254-e31953` e `r-20260928195344-02ee9e` e a
 | 19.8 | **Aprender só com prova e orquestrador**: `learn_from_run` só com todas as etapas `verified=true`, templatizando `bindings`, `band_guard` e `success_criteria`; fila do orquestrador só `running`/`paused`; saúde do aparelho nas sugestões | C12 | P |
 | 19.9 | **Reinício a frio por interrupção acumulada** (K-050): fração irq+softirq entre duas sondas de saúde; aparelho ocioso acima de 15% em 3 sondas seguidas → `restart` rastreável, no máximo 1 a cada 6 h, nunca a escada de reparo | C1 (medido em 28/09) | P |
 | 19.10 | **Prova com efeito (curtir e comentar)** num post que não seja o da e31953 (já curtido; repetir descurtiria). Dependia de autorização do dono, dada em chat em 28/09; feita em `r-20260928235215-6eb84c` (relatório §21) | pedido do dono (28/09) | P |
+
+### Fase 20 — Aprendizado contínuo · 10 itens (pedido do dono de 28/09/2026; ADR-054)
+
+Origem: o pedido do dono de 28/09 para o sistema aprender o tempo todo, com o que dá certo, o que dá errado e o feedback
+de quem monitora, e evoluir a plataforma pelos erros da própria IA. Desenho sintetizado de três propostas avaliadas por
+três juízes; D1 (publicação sozinha só sem efeito externo) e D2 (feedback implícito com botão opcional) adotadas pelas
+recomendações em 29/09. Os itens 20.1–20.10 são os pacotes A0–A9 do desenho; o 20.9 absorve o 18.8. Provas: [relatório
+§22](relatorio-validacao.md). Fundação (20.2) integrada em `c359f65`, a implantar.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 20.1 | **Documentação (A0)**: ADR-054, adendo v0.37 do contrato, banco (055) e esta fase (feitos em 29/09); faltam `docs/dominios/aprendizado.md`, `ia.md`, `produto.md` e a fatia 5 em `design/conhecimento-de-app.md` | desenho do ADR-054 | P |
+| 20.2 | **Fundação (A1)**: migração 055 (sete tabelas `learning_*`, `attempts.failure_kind`/`failure_screen`, `steps.failure_kind`); `app/modules/learning` com o ciclo D1 (`requires_owner = side_effect OR human_origin`, conferido no domínio e no `UPDATE`/`INSERT` do repositório), vocabulários fechados, classificador de falha com camada e "onde alterar", livro unido e promoção só por evidência real; `GET /api/aprendizado`, `/pendentes`, `/revisar`, `/{kind}/{ref}` e `POST …/status`; digest e curadoria sem IA; janela efetiva da projeção e régua diária durável. Integrado em `c359f65` | pedido do dono (28/09); `ai_calls` purgado em 14 dias sob janela de 30 | G |
+| 20.3 | **Costuras (A2)** nos arquivos quentes, com dono único: `failure_kind` gravado em `finish_attempt`, `ao_fechar_tentativa`, lições pedidas uma vez por tentativa, `ao_resolver`/`ao_repetir`, lições do planejador, tomada de controle e respostas do assistente como sinais | desenho | M |
+| 20.4 | **O que mais falha (A3)**: relatório e backlog por app, ação, tipo de falha e tela (US$ perdido + minutos + intervenções; falso positivo do verificador no topo), prova da correção (≥10 tentativas elegíveis com taxa ≤50% da base → `fixed`), `GET /api/aprendizado/falhas`, `scripts/aprendizado-backlog.py` e top 5 na skill `retomar` | desenho; e31953 e 02ee9e | M |
+| 20.5 | **Feedback D2 (A4)**: "deu certo / deu errado + motivo" sem modal e sem pergunta; "deu errado" por navegação rebaixa o que o item usou e aprendeu; nota com cara de credencial → 409 `note_looks_secret`; `POST` e `GET /api/runs/{id}/feedback` e `GET /api/aprendizado/sinais` | decisão D2 do dono | M |
+| 20.6 | **D1 nos conhecimentos nativos (A5)**: fluxo nasce `candidate` e é publicado por concordância (reaproveitando a linha não ativa da `match_key`); receita e fluxo com efeito param em `validated`; o legado com efeito fica em "Revisar", com um gesto "confirmado" que só grava na trilha; escritor real de `skill_validation_results` | decisão D1 do dono; revisão do A1 | G |
+| 20.7 | **Painel Aprendizado (A6)**: abas Para aprovar (com Revisar e aprovação em lote), Aprendido, O que mais falha e Sinais; botão D2 em cada item; "Aprendizado desta execução"; contagem na barra do topo; rótulo da janela efetiva da projeção | desenho | G |
+| 20.8 | **Lições medidas (A7)**: por contraste, com modelos fechados; `DecisionRequest.lessons` (120 tokens, 3 lições) e `PlanRequest.lessons` (150, 3), nunca no verificador; braço de controle por etapa, veredito com 8 unidades por braço, aposentadoria; nunca de autenticação, desafio, 2FA, CAPTCHA ou infraestrutura | desenho | G |
+| 20.9 | **Telas aprendidas, fatia 5 (A8; absorve o 18.8)**: tela desconhecida em etapa comprovada vira candidata com `ids_todos`; publicação sozinha com ≥3 observações em ≥2 execuções e prova local; `ConhecimentoDeTelas` unido na sessão (`com_aprendidas`, só `autenticada`, nunca em tela sensível); `GET /api/aprendizado/export` e absorção pelo YAML | 18.8; ADR-052 | G |
+| 20.10 | **Voz e preferências (A9, opcional)**: a voz da persona pelas aprovações editadas, sempre publicada pelo dono; preferência só como sugestão pré-preenchida, nunca resposta automática para ação com efeito | desenho | M |
+
+### Fase 21 — Proteção de contas e pendências da rodada · 15 itens (pedido do dono de 28–29/09/2026; ADR-055)
+
+Origem: cinco das oito contas do Instagram bloqueadas, a regra do dono de 29/09 ("toda vez que para nessa tela de
+confirmar se você é humano é uma confirmação que a conta está bloqueada") e o pedido de 28/09 de resolver tudo o que
+ficou em aberto (as pendências dos revisores do ADR-053). Diagnóstico, correções e provas: [relatório
+§22](relatorio-validacao.md). Implantados: 21.6 (a parte do `e9da86e`), 21.7 e 21.10–21.14 (`7a02491`); os demais
+integrados em `c359f65` (+ `2511b12`), a implantar.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 21.1 | **Detector único de conta travada** (`hierarchy.py`, `conhecimento_de_telas.py::detectar_conta_travada`): união dos idiomas, texto normalizado (apóstrofo tipográfico), conta travada sem exigir campo; roda depois de cada observação, antes do ANR, da receita e do ator, e na sessão; desfecho `auth_challenge` com subtipo (`conta_travada` bloqueia; `codigo` e `verificacao` pedem pessoa); `StepBlocked.kind="challenge"`; nada toca | contas bloqueadas (29/09), decisões (a) e (b) | M |
+| 21.2 | **Quarentena do aparelho e marcador do android-04** (migração 054): `device_locked_accounts` por aparelho, que sobrevive ao desvínculo; só `stop`/`hibernate` sem `confirm_locked_account`; 409 `aparelho_em_quarentena` no vínculo e no cadastro; fora de entrega, escada, irq e scale-test; `locked_account_on_device` na saúde; `blocked_at`/`blocked_origin` e evento `profile.status`; `account_label` derivado | android-04 com o felipe no desafio e sem vínculo | G |
+| 21.3 | **Frota por alvo**: `post_author`/`counterparty` em curtida e comentário; todos os baldes, janela de 30 dias e aprovações em aberto; uma conta por alvo em seguir, DM e comentário, com recusa; DM fria sempre com aprovação; mesmo pedido a várias contas só no objetivo de menor id; trava de fala atribuída a terceiro | ondas de 18–19/09, decisão (d) | M |
+| 21.4 | **Disjuntor e conduta de login**: `_stop_reason` lê o status do perfil e o marcador; perfil bloqueado pausa as contas do mesmo alvo (48 h); nunca senha para `blocked`/`disabled`; credencial em `review` depois de 1 envio sem sucesso; `max_logins_per_day` | juliana (6 envios em 4h25), decisão (e) | M |
+| 21.5 | **Verificador de DM**: `pending_marks` ("Sending…" = pendente), prova local `sent_text:<seletor>`, `confirm_done` com `evidence_id` (422 `evidence_required`/`invalid_evidence`) e o painel citando o print | evidências 942, 959–961, 968, 969 | M |
+| 21.6 | **Escada sem reset com conta**: reinício por irq e religar da reconciliação fora da contagem (`requested_by` `saude`/`reconciliacao`, `e9da86e`); com vínculo ou marcador, o 3º degrau é "Precisa do dono" + `stop` (quarentena) | reset do andre em 24/09, decisão (c) | P |
+| 21.7 | **Relógio do host** (K-055): `scripts/sincronizar-relogio.ps1` pelo `stripchart` e a tarefa `farm-relogio` (SYSTEM, 15 min), `w32time` sem sincronização própria; +6,240 s → +0,004 s | C12 do ADR-053 | P |
+| 21.8 | **`hide_error_dialogs`: experimento e decisão** (K-054): com 0, o ANR do `system_server` prende o aparelho num diálogo que não some; com 1, morte silenciosa detectável pelo `exit-info`. Decisão: manter 1 | C3 do ADR-053, K-048 | P |
+| 21.9 | **Aposentar com arquivo somente-leitura** (K-056): `rmtree` que libera o `pstore.bin` do emulador (`2511b12`) | android-17 (29/09) | P |
+| 21.10 | **Leitura robusta** (`6799867`): `FalhaDeLeitura` relê sem recriar a sessão; `sessao_perdida()` reconhece a instrumentação morta; `card_guard` só fecha pela prova local; a evidência cita a legenda; métrica `automacao.leitura_falhou` | pendências do ADR-053 | M |
+| 21.11 | **Aprovação acompanha a etapa revisada** (`caca1cd`): a decisão é reapontada para a etapa nova quando perfil, ação, alvo e texto são os mesmos e o efeito não disparou; "Tentar novamente" herda os textos | pendências do ADR-053 | M |
+| 21.12 | **Legenda herdada** (`d63fcd9`): `inherited_bindings` declarado no catálogo (`caption_contains` em LIKE_POST, OPEN_COMMENTS e CREATE_COMMENT); `card_control` como lista | pendências do ADR-053 | M |
+| 21.13 | **irq persistido** (`d121f76`): `measurements(kind='irq')` a cada sonda de saúde; `GET /api/desempenho?irq_horas=&irq_aparelho=` com o bloco `interrupcoes` | pendências do ADR-053 | P |
+| 21.14 | **Receitas candidatas** (`01c4dc1`): receita da IA nasce `candidate`, comparada em sombra por execução da etapa, promovida com `ai.recipes_promote_after` (2) concordâncias; painel "Candidata" | desenho do aprendizado | M |
+| 21.15 | **Causa do acúmulo de irq e apps em segundo plano** (pendente): coleta em `data\logs\irq_convidados.csv`; no android-04, `kcompactd0` a 43% e apps do Google em segundo plano 2,7 h depois do reinício; hipóteses a testar (memória e compactação, apps do Google, relógio); swap é zram, e `virtio23` não se identifica sem root | K-050 | M |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

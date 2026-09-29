@@ -41,7 +41,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-026](#adr-026--todos-os-aparelhos-sempre-na-versão-promovida) | Todos os aparelhos sempre na versão promovida | vigente | 26/09 |
 | [ADR-027](#adr-027--prévia-e-observação-sob-demanda-medição-agregada) | Prévia e observação sob demanda; medição agregada | vigente | 26/09 |
 | [ADR-028](#adr-028--runtimes-executores-e-orquestração-o-que-fica-como-está-e-o-que-reabre) | Runtimes, executores e orquestração: o que fica como está e o que reabre | vigente | 26/09 |
-| [ADR-029](#adr-029--desafio-de-segurança-do-instagram-bloqueia-o-perfil-sozinho) | Desafio de segurança do Instagram bloqueia o perfil sozinho | vigente | 27/09 |
+| [ADR-029](#adr-029--desafio-de-segurança-do-instagram-bloqueia-o-perfil-sozinho) | Desafio de segurança do Instagram bloqueia o perfil sozinho | vigente; substituída em parte por ADR-055 (só a conta travada bloqueia, o código de login pede pessoa, e o bloqueio vale também fora da entrada do estado) | 27/09 |
 | [ADR-030](#adr-030--monólito-modular-incremental-com-regras-de-dependência-verificadas) | Monólito modular incremental, com regras de dependência verificadas | vigente | 27/09 |
 | [ADR-031](#adr-031--contratos-compartilhados-do-worker-e-manifesto-único-do-agente) | Contratos compartilhados do worker e manifesto único do agente | vigente | 27/09 |
 | [ADR-032](#adr-032--capability-skill-e-process) | Capability, Skill e Process | vigente | 27/09 |
@@ -64,7 +64,9 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 | [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
 | [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
-| [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`) | 28/09 |
+| [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`); pendências dos revisores resolvidas em `7a02491` (itens 21.10–21.14) | 28/09 |
+| [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | aceito; fundação (A1, migração 055) integrada em `c359f65`, a implantar; A2–A9 pendentes | 29/09 |
+| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029 | 29/09 |
 
 ---
 
@@ -2854,3 +2856,456 @@ autorização); experimento com `hide_error_dialogs=0`; as pendências dos revis
 K-022 (receita só de execução comprovada); ADR-029 e ADR-040 (por que nada automático chega a `reset` num aparelho com
 conta real); ADR-019 (relógio); ADR-010 (o reinício é comando cercado); K-039 (Appium no deploy); K-047 a K-052;
 Fase 19 do plano-100.
+
+## ADR-054 — Aprendizado contínuo: livro de aprendizado com ciclo de vida, publicação sozinha só sem efeito externo (D1), feedback implícito com botão opcional (D2), lições medidas e backlog do que mais falha
+
+**Data:** 29/09/2026 · **Estado:** aceito; fundação (pacote A1, item 20.2) integrada em `c359f65`, a implantar; A2–A9
+pendentes (Fase 20 do plano-100, cujo 20.9 absorve o item 18.8) · **Decisão do dono** (pedido de 28/09; D1 e D2 adotadas
+em 29/09 pelas recomendações, quando ele autorizou resolver tudo o que ficou em aberto) e **decisão técnica** (o
+desenho, sintetizado de três propostas avaliadas por três juízes); completa o ADR-052 (fatia 5) e usa como régua as
+falhas medidas do ADR-053.
+
+**Contexto.**
+
+- Em 28/09 o dono pediu que o sistema aprenda o tempo todo, com as execuções que dão certo e as que dão errado e com o
+  feedback de quem monitora (ou sem ele). Pediu também que esse conhecimento fique estruturado para evoluir a plataforma
+  com os erros da própria IA, e não só o prompt.
+- O que já aprende sozinho:
+  - receitas (`taskqueue/recipes.py`); desde `7a02491` (implantado, item 21.14), a receita da IA nasce candidata e só
+    sobe por concordância em sombra;
+  - fluxos (`flows.learn_from_run`), só com todas as etapas `verified` desde o ADR-053;
+  - a projeção por ação (`projecao.py`);
+  - a memória da persona (`social/memory.py`).
+- O que não aprende:
+  - o erro não passa de uma execução para outra: o ator só vê a tentativa anterior da mesma etapa, e nenhuma lição entra
+    no prompt;
+  - o motivo da falha é texto livre (`attempts.error`);
+  - nada agrega o que mais falha.
+- Há feedback gravado que ninguém consome: aprovações editadas, notas de "resolver objetivo" e de comando incerto,
+  correções do ensino e `skill_validation_results` (043), que não tem escritor em produção. E há feedback que se perde:
+  a tomada manual fora do treino (vira só evento de log) e as respostas a perguntas.
+- A fatia 5 do ADR-052 (item 18.8) nunca foi implementada. No código, uma tela desconhecida já volta ao estado conhecido
+  (`sessao.py:318`, a correção da e31953). O que ainda chama pessoa é a tela de casa que mudou: dela, o "voltar" sai do
+  app.
+- Medido em 28/09 no banco do central (só leitura, `b25957e`):
+
+| Medida | Valor |
+|---|---|
+| execuções reais desde 17/09 | 226 |
+| tentativas | 1.157: 928 comprovadas, 146 falhas, 61 interrompidas, 14 incertas |
+| etapas com falha seguida de sucesso na mesma etapa | cerca de 30 |
+| receitas ativas | 81, das quais 22 com ação de commit (21 delas com o commit na primeira ação) |
+| fluxos ativos | 25 |
+| aprovações | 32, nenhuma editada |
+
+- Há um defeito latente, também medido. `HistoricoDeAcoes` lê 30 dias de etapas com `LEFT JOIN ai_calls`, mas `ai_calls`
+  é purgado em `log_retention_days=14` (`state.py:2096`). A partir de ~01/10, a projeção, o orçamento e qualquer régua
+  de efeito sairiam subestimados. Corrigido no A1 (decisão 8).
+- O saldo da API é pequeno (Anthropic, ~US$ 3), então o aprendizado não pode depender de chamada paga.
+
+**Alternativas.**
+
+- **Uma tabela física única com toda a carga, ou uma VIEW SQL:** descartada. Duplicaria receita e fluxo, que são donos
+  do caminho quente, e a VIEW não passa pelos placeholders de dialeto nem pela cópia entre bancos. O livro é uma união
+  em Python, com o mapeamento de estado testado no domínio.
+- **Lições escritas por IA a partir das falhas:** descartada como padrão, porque gasta saldo e abre injeção. Fica
+  desligada em `aprendizado.ia_resumos_por_dia: 0`.
+- **Lição também no verificador:** descartada. O verificador recebe o mesmo `StepContext` do ator (`prompts.py:380`), e
+  a lição empurraria o juiz a aceitar, contra "incerteza nunca conta como sucesso".
+- **Lição tirada de falha repetida sem contraste:** descartada. Repetir a falha não prova o que funciona; o caso vai
+  para o backlog.
+- **"D1 por partes" nas receitas (reproduzir o prefixo e entregar o commit à IA):** descartada. Em 21 das 22 receitas
+  com commit, o commit é a primeira ação: seria estado novo no Replayer sem ganho.
+- **Rebaixar no deploy as receitas e os fluxos ativos com efeito:** descartada. Cortaria a economia de hoje sem ganho
+  imediato; eles vão para a lista "Revisar" do dono.
+- **Apagar o fluxo refutado para a `match_key` UNIQUE não travar o comando:** descartada. `flow_scope` e `flow_apps`
+  cairiam em cascata. Em vez disso, `learn_from_run` passa a reaproveitar a linha não ativa.
+- **Catálogo de ações sobreposto no banco e publicado pelo sistema:** descartada. O catálogo é contrato versionado; ação
+  nova vira proposta (adoção como habilidade ou YAML commitado).
+- **Perguntar ao fim de toda execução:** descartada pelo dono (D2).
+- **Varredura periódica como único gatilho:** descartada. O digest em `on_run_settled` dá o sinal e o rebaixamento na
+  hora; a curadoria de 15 min fica para agregados, aposentadorias e a prova da correção.
+
+**Escolha.** Nove decisões:
+
+1. **D1 (do dono): o sistema publica sozinho só o que não tem efeito externo e se repetiu.**
+   - `requires_owner = side_effect OR human_origin`. O domínio calcula esse valor, e nenhuma rota o edita.
+   - A tabela de transições reaproveita `SkillState` e `SYSTEM_ACTOR` das skills.
+   - O repositório recusa, no próprio `UPDATE` com CAS e no `INSERT` de um item novo (`ciclo.conferir_nascimento`), que
+     o sistema publique item que exige o dono. `decided_by` nunca fica vazio.
+   - Treino é decisão de pessoa e continua publicando na hora.
+   - Rebaixar é automático; promover algo com efeito ou com texto de pessoa é do dono.
+   - Conteúdo desligado por uma pessoa não volta pelo sistema (veto por `content_hash`).
+   - Receita com commit e fluxo com etapa de efeito param em `validated` e vão para "Para aprovar". O que já está ativo
+     não muda sozinho e aparece em "Revisar".
+2. **D2 (do dono): feedback implícito mais um botão opcional.**
+   - Os gestos que a pessoa já faz viram sinais estruturados (`learning_signals`).
+   - O botão "Deu certo / Deu errado + motivo" fica em cada item e na execução, sem modal e sem pergunta.
+   - "Deu errado" por navegação rebaixa o que o item usou e o que ele aprendeu.
+   - "Deu certo" em item que falhou vai ao backlog e não muda o desfecho.
+   - Nota com cara de credencial é recusada (409).
+3. **Um livro único na leitura e no ciclo de vida, não na carga.**
+   - A migração **055** cria (a 054 ficou com a proteção de contas, ADR-055; os números se cruzam — este ADR usa a
+     migração 055, e o ADR-055 a 054):
+     - `learning_items` (tela, lição, voz, preferência);
+     - `learning_transitions` (trilha única, inclusive de receita e fluxo);
+     - `learning_signals`, `learning_evidence`, `learning_exposures`, `learning_daily` e `learning_backlog`;
+     - as colunas `failure_kind` em `attempts` e `steps` e `failure_screen` em `attempts`.
+   - Receita, fluxo, habilidade e memória continuam donos do próprio conteúdo; `GET /api/aprendizado` os reúne ([adendo
+     v0.37](api-contract.md)).
+   - Só evidência real (`runs.simulated=0`) promove algo, contada por execução e por aparelho distintos.
+4. **Falha em vocabulário fechado.**
+   - `repository.finish_attempt` classifica o erro final (`modules/learning/domain/falhas.py::FailureKind`).
+   - Uma catraca por AST exige que todo motivo do executor caia fora de `outro`.
+   - A camada e o "onde alterar" são derivados do tipo na hora da leitura.
+5. **Lições medidas, só para o ator e o planejador.**
+   - Origem: contraste, sem IA — falha seguida de sucesso na mesma etapa, ou defeito do plano seguido de plano que
+     comprovou.
+   - Texto: modelos fechados cujas lacunas só aceitam ação, tipo de falha, contagem, sufixo de id, `{parâmetro}` e
+     rótulo curto que se repetiu entre execuções.
+   - Entram em `DecisionRequest.lessons` e `PlanRequest.lessons`, nunca no verificador.
+   - Teto: ator com 120 tokens e 3 lições; planejador com 150 tokens e 3 lições.
+   - Publicada sem efeito, a lição entra "em prova", com braço de controle de 50% por etapa. O veredito exige 8 unidades
+     por braço: "atrapalha" desliga na hora, "neutra" aposenta.
+   - Nunca viram lição: autenticação, desafio, 2FA, CAPTCHA, conta de IA e falhas de infraestrutura.
+6. **Fatia 5 (18.8, agora 20.9): telas aprendidas como dado de instalação.**
+   - Nascimento: uma tela desconhecida, vista em etapa comprovada e sem árvore sensível, vira candidata.
+   - Publicação sozinha (D1) com ≥3 observações em ≥2 execuções, prova local de reclassificação e zero conflito.
+   - Uso:
+     - a regra aprendida exige todos os seus ids (`ids_todos`);
+     - entra depois das declaradas num `ConhecimentoDeTelas` unido (`com_aprendidas`), só como `autenticada`;
+     - é pulada em tela sensível, com senha ou com desafio;
+     - só entra no estado conhecido se mostrava a aba de perfil declarada.
+   - A conta continua lida só pelo que o YAML declara.
+   - O repositório segue como base curada: a regra aprendida exporta YAML e é aposentada quando o YAML a absorve.
+   - Ação nova não entra no catálogo pelo banco: vira proposta.
+7. **Backlog do que mais falha, com prova da correção.**
+   - Grupo: app, ação, tipo de falha e tela. Ordem: US$ perdido + minutos + intervenções humanas. O falso positivo do
+     verificador fica sempre no topo.
+   - Prova: depois do commit implantado, ≥10 tentativas elegíveis com taxa ≤50% da linha de base marcam `fixed`; acima
+     disso, `reopened`.
+   - Um script e a skill `retomar` mostram o top 5.
+8. **Régua durável.**
+   - A janela efetiva da projeção passa a ser `min(janela_dias, log_retention_days)`, e a etapa só entra se começou
+     dentro dela.
+   - `learning_daily` e o desfecho das exposições são gravados antes da purga de `ai_calls`; o dia que a purga pode ter
+     atingido nunca é recalculado.
+9. **Nenhuma IA no pipeline, com modos por tipo.**
+   - Digest por evento e curadoria determinística.
+   - Modos `off | shadow | on`, no molde de `ai.recipes`. De fábrica, lições em `shadow` e telas em `observe`, até a
+     primeira prova real (bloco `aprendizado` do `config.example.yaml`; os modos entre aspas, porque `off`/`on` sem
+     aspas viram booleano no YAML).
+
+**Consequências.**
+
+- Um comando novo sem efeito paga o planejador duas vezes antes de o fluxo ser publicado: a execução que o gerou e uma
+  que concorde com ela.
+- Fluxo e receita novos com efeito esperam o dono, e a automação fica com a IA até a aprovação.
+- O legado com efeito (as 22 receitas e os 17 fluxos com etapa de efeito) continua ativo até o dono revisar em lote. É
+  um desvio consciente do D1 para o que já existia, visível em "Revisar".
+- Um "deu errado" por navegação desliga na hora o fluxo e as receitas envolvidos. Reativar custa um clique, e tudo fica
+  na trilha.
+- Com o volume de hoje, o veredito de uma lição leva semanas. O painel mostra "faltam N", e o limiar não baixa.
+- A tela aprendida só muda algo quando a tela de casa do app mudar; até lá, a prova do consumo é simulada.
+- A voz não tem dado (nenhuma aprovação editada) e fica por último. Preferência é só sugestão, nunca resposta automática
+  para ação com efeito.
+- São sete tabelas e três colunas. O aprendizado só escreve em tabela legada o status de receita e fluxo, `failure_kind`
+  e `failure_screen`.
+- `GET /api/runs/{id}/projection` passa a devolver a janela efetiva (14 dias no central, não 30); o painel ainda não foi
+  ajustado e mostra "últimos 14 dias".
+- A fundação foi construída sobre a leva `aberto-*` (`7a02491`, implantada), que tocava os mesmos arquivos quentes. O A1
+  adiantou do A3 a correção da janela e a régua diária, e tocou `executor.py` e `service.py`, que são do A2: o A2 faz
+  rebase sobre essas linhas, e o A3 herda a régua pronta. Este desenho não toca `approvals.py`.
+- **Pendências do revisor (A1, não bloqueiam):** a retenção que AUMENTA (14 → 30) reabre o defeito da janela por até 16
+  dias, e só a régua o detecta; no PostgreSQL, a recusa do D1 em receita e fluxo é leitura seguida de CAS de status, e o
+  A5 deve fazer o CAS também pelo `content_hash`; "Revisar" não tem corte "anterior ao D1" nem gesto "confirmado" que só
+  grave na trilha (A5/A6); uma candidata levada a `validated` por pessoa faz a IA criar outra candidata na mesma chave
+  (A5); `SourceKind.DISAMBIGUATION` é origem de pessoa mas não está em `FONTES_HUMANAS` (A9); `criar_item(estado=DRAFT)`
+  ainda grava rascunho.
+
+**Evidências.**
+
+`real` (29/09/2026, máquina WIN-7S2UASNLFOP, central em `7a02491`, banco `data/poc.sqlite3` aberto só leitura; às
+02:23Z, e reproduzido pelo revisor às 03:01Z):
+
+- **classificador** sobre as tentativas reais: 221 com falha (20 simuladas ficaram fora); `outro` = 4,5% (meta < 15%).
+  Os 10 restantes são textos livres de `StepBlocked`, que o A2 marca como `ia_declarou_bloqueio`. Maiores grupos:
+  `pos_condicao_nao_comprovada` 75, `interrompida` 61, `ia_indisponivel` 26, `prazo_da_etapa` 15,
+  `efeito_nao_comprovado` 13;
+- **livro** sobre as fontes reais: 81 receitas ativas e 10 em quarentena, 25 fluxos, 1 habilidade publicada e a memória
+  como contagem (100 lembranças). "Revisar": as 22 receitas ativas com commit e 17 fluxos ativos com etapa de efeito.
+  "Pendentes": nenhum. Nenhum estado nativo desconhecido.
+
+`simulated`: `backend/tests/test_learning_ciclo.py` (a tabela D1 inteira contra uma reescrita independente),
+`test_learning_falhas.py` (46, com a catraca AST sobre `executor.py`), `test_learning_repositorio.py` (CAS, índice
+parcial vivo, sinais em upsert, a 055 nos dois dialetos; e os dois testes do ajuste `9c4fa4a`, que falhavam antes: o
+sistema não cria item já publicado que exige o dono, pela matriz estado × efeito × fonte × ator, e a chamada de IA da
+etapa que atravessa a meia-noite conta uma vez só na régua), `test_learning_livro.py` (rotas HTTP e digest no harness
+5640) e `test_projecao.py` (sem a correção, mediana 0; com ela, 6 amostras e p50 3); mypy estrito sem erro em 153
+arquivos. Na integração `c359f65`, os arquivos de teste alterados rodaram em SQLite e em PostgreSQL 17 (contêiner
+`farm-pg`) e a suíte inteira, em SQLite: números no [relatório §22](relatorio-validacao.md).
+
+`not_run`:
+
+- ensaio e deploy da 055 (vão com a integração), `GET /api/aprendizado` e `/revisar` no central, `failure_kind` gravado
+  (A2);
+- provas previstas dos pacotes seguintes: backlog mostrando a e31953 e a 02ee9e como ANR e prazo da etapa; voto numa
+  execução antiga, com rebaixamento e reativação; fluxo sem efeito publicado por concordância no android-06; fluxo e
+  receita com efeito aguardando o dono no QA Messenger; exposição de lição com o ator local; deixa-um-fora de telas
+  sobre observações reais;
+- mesmo depois da rodada: o veredito de efeito das lições (até juntar 8 unidades por braço), o consumo real da tela de
+  casa aprendida, a voz aprendida publicada e a prova de correção do primeiro item do backlog.
+
+**Relação.**
+
+- ADR-052: fatia 5 = 18.8, absorvida pelo 20.9; conhecimento como dado; repositório × instalação.
+- ADR-053: falhas medidas; fluxo só com prova; e31953 e 02ee9e como casos do backlog.
+- ADR-055: numeração cruzada (ADR-054 ↔ migração 055; ADR-055 ↔ migração 054), integrados juntos em `c359f65`.
+- ADR-007 e ADR-036: receitas e fluxos; a receita é só fonte de decisão.
+- ADR-037: fluxo legado como habilidade.
+- ADR-032 e ADR-034: capability, skill e o ciclo de vida reaproveitado.
+- ADR-024: o verificador fica fora das lições.
+- ADR-009 e ADR-040: desafio, 2FA, CAPTCHA e credencial ficam fora do aprendizado; nada de evasão.
+- ADR-030: o contexto novo `app/modules/learning`, com DAG e zero `Any`.
+- ADR-047: respostas do assistente como sinal.
+- ADR-016: quem decide é a sessão nominal.
+- ADR-049 e ADR-051: provedor por papel e saldo; nenhuma chamada paga no pipeline.
+- Fase 20 do plano-100; relatório §22.
+
+## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
+
+**Data:** 29/09/2026 · **Estado:** vigente (código); integrado em `c359f65` (+ `2511b12`), a implantar; `e9da86e`
+implantado em 28/09; prova `simulated` nos cinco pacotes e `real` no diagnóstico, nas proteções operacionais e nos
+experimentos · **Decisão do dono** (a regra de 29/09 e o "eu autorizo tudo" de 28/09, com as decisões (a)–(e) adotadas
+pela recomendação) e **decisão técnica** (cinco pacotes com revisão adversarial); substitui em parte o ADR-029 e
+completa o ADR-009.
+
+**Contexto.**
+
+- Regra do dono, 29/09: "toda vez que para nessa tela de confirmar se você é humano é uma confirmação que a conta está
+  bloqueada, essa é uma das formas de perder a conta". Cinco das oito contas do Instagram estão `blocked` (juliana,
+  felipe, beatriz, thiago e mariana); vivas: lucas, bruno e andre.
+- Investigação verificada por 65 agentes em 28/09 (só leitura de banco, backups, logs, git e código; nada escrito,
+  nenhum aparelho tocado, nenhum segredo lido). O que os dados **mostram**:
+  - o `blocked` não marca o instante do bloqueio. Houve três gravações: 23/09 21:10:42Z, as cinco em 74 ms, por um laço
+    de PATCH de uma sessão Claude a partir da frase do dono ("as que sobraram funcionando são andre, bruno e lucas, o
+    resto foi tudo bloqueada"); 24/09, a entrada no grupo "Recuperação"; 27/09, o desvínculo. O bloqueio automático do
+    ADR-029 nunca disparou (0 eventos);
+  - duas telas diferentes eram chamadas de "desafio": (i) o código por e-mail no 1º login, em 18/09 — cinco contas o
+    viram, todas resolveram, e bruno e andre estão vivos; (ii) "Confirm you're human" (`ChallengeActivity`), vista só na
+    juliana (relato do dono em 20/09 14:36Z) e no felipe (27/09 01:48Z; o dono a viu em 28/09 21:36, -03:00). Nenhuma
+    das duas contas voltou. A regra do dono é sobre (ii), e os dados são coerentes com ela, com n = 2;
+  - fatores comuns, de frota: as 8 contas cadastradas em 18/09 em 53 ms; 8 primeiros logins em 2h52 no mesmo host, com a
+    mesma imagem API 34, o mesmo `ro.serialno`, o mesmo Instagram 447 e sem proxy; três ondas coordenadas sobre as
+    mesmas pessoas — o mesmo comentário de 4 contas no mesmo post (18/09), 8 follows na mesma pessoa privada em 19m43s
+    (19/09) e, depois de o dono mudar SEND_MESSAGE para `autonomous` nos 8 perfis, 7 DMs à mesma pessoa em 8m40s com o
+    recado ditado "seu marido mandou um oi" (19/09, 22:03–22:11Z);
+  - depois disso os aparelhos 04, 05, 07 e 08 hibernaram, e quatro das cinco contas nunca mais agiram.
+- O que os dados **não mostram**:
+  - o instante do bloqueio de nenhuma conta: há só janelas, e só a da juliana é observada nas duas pontas. Para beatriz,
+    thiago e mariana o sistema nunca viu o desafio; o status é a palavra do dono;
+  - o que separa as vivas: nada registrado. juliana e andre fizeram as mesmas 12 ações com 14 s de diferença; DM 5 de 5
+    nas bloqueadas contra 2 de 3 nas vivas (Fisher p = 0,375); o lucas, vivo, é o 2º em volume;
+  - a idade e o histórico das contas antes de 18/09, denúncias da destinatária e o motivo do Instagram; a hierarquia e o
+    apóstrofo da tela real, nunca gravados.
+- Conclusão: o padrão é de frota — contas novas, ligáveis entre si, agindo em rajada sobre uma pessoa real com um
+  pretexto pessoal (K-057). É compatível com denúncia ou com detecção de coordenação, mas não explica a divisão 5 × 3.
+- Buracos no código (lidos em `b25957e`):
+  - sem campo de texto, "Confirm you're human" no meio da execução não contava como desafio, e o ator era instruído a
+    dispensar diálogos inesperados;
+  - quando visto, virava `auth_required` e voltava ao login automático; o padrão não casava com o apóstrofo tipográfico
+    (U+2019) e dependia do idioma;
+  - nada impedia comando, entrega, reset automático ou outra persona no aparelho de uma conta travada: o android-04
+    recebeu um `open_app` em 27/09 01:47Z com o felipe já `blocked` e ainda vinculado; depois do desvínculo (27/09
+    03:10Z), ficou no ar sem vínculo, com a sessão no disco e o desafio na tela;
+  - a escada de reparo chegava ao `reset` sozinha — foi o que apagou a sessão do andre em 24/09 23:25Z;
+  - o teto de frota não via curtida nem comentário (`counterparty` NULL), tinha janela de 1 h, só disparava com 3 outras
+    contas e adiava em vez de recusar;
+  - o grupo "Operação" dava SEND_MESSAGE `autonomous` às 3 vivas;
+  - o verificador de DM errava nos dois sentidos (5 falsos negativos em 19/09 e um "Sending…" dado por enviado);
+  - o objetivo em curso não parava quando o perfil virava `blocked`, e o login tentava de novo sem teto diário (juliana:
+    6 envios de senha em 4h25 em 18/09);
+  - mudar o status não deixava rastro, data nem origem.
+- Incidente de 28/09, 21:36–21:40 (-03:00, `real`, K-053): um experimento de `hide_error_dialogs` no android-04 partiu
+  da premissa de "aparelho sem conta" (`account_label` `qa-user-04`, `/personas` vazio) e mandou 10 entradas (toques e
+  arrastos por adb) e aberturas a frio na tela de desafio do felipe, abrindo "Get support" e o assistente da Meta. Nada
+  foi digitado nem enviado; a tela foi fechada com BACK.
+
+**Alternativas.**
+
+- **Disfarçar a frota** (mascarar `ro.serialno`, impressão digital, imagem ou rede do emulador; proxy ou IP rotativo
+  para esconder a origem comum; ritmo "humano" para passar despercebido): descartada e **proibida**. É evasão de
+  detecção de emulador e de antibot (CLAUDE.md, ADR-009). O diagnóstico registra a ligabilidade como fato, não como alvo
+  de correção.
+- **Resolver o desafio pela automação** (tocar "Continue" ou "Get support", CAPTCHA, o assistente da Meta): descartada e
+  proibida (ADR-009). O desafio é da pessoa.
+- **Bloquear toda tela de "desafio"**, como o ADR-029 fazia com todo tipo em `TIPOS_DE_DESAFIO`: descartada. O código de
+  login de 18/09 teria bloqueado bruno e andre, que estão vivos.
+- **Adiar o excedente de frota** (o teto antigo esperava 3600 s): descartada. Adiar só espaça a coordenação; recusar a
+  impede.
+- **Manter o `reset` como 3º degrau da escada** (a "decisão do dono de 23/09" citada no código): descartada. Conflitava
+  com a invariante do CLAUDE.md (resetar aparelho com conta real logada exige autorização em chat) e foi resolvida para
+  o lado seguro.
+- **Marcador de conta travada no vínculo ou no perfil:** descartada. O android-04 ficou sem vínculo depois de 27/09; o
+  marcador é do aparelho e sobrevive ao desvínculo e à remoção do perfil.
+- **Voltar `hide_error_dialogs` a 0**, para o ANR aparecer em vez de matar o app: descartada depois do experimento real
+  (K-054).
+
+**Escolha.** Cinco decisões do dono, de 29/09, adotadas pela recomendação:
+
+- **(a)** "Confirm you're human"/`ChallengeActivity` = conta BLOQUEADA: `blocked`, sem reativação automática, aviso ao
+  dono, nada toca.
+- **(b)** Código de login por e-mail ou 2FA = "precisa de pessoa", SEM `blocked`.
+- **(c)** Nunca reset automático de aparelho com conta vinculada ou travada.
+- **(d)** No máximo UMA conta por alvo (pessoa ou perfil) para seguir, DM e comentário; DM a quem não tem conversa
+  prévia sempre com aprovação; a persona nunca atribui fala ou intenção a terceiros reais.
+- **(e)** Depois de 1 envio de senha sem sucesso, o login automático para até uma pessoa olhar.
+
+Aplicadas por cinco pacotes, cada um com testes que falhavam antes e revisão adversarial (três barrados pelo revisor e
+ajustados), mais três correções do parque e do host:
+
+1. **Detector único de conta travada** (`detector`, `b185f0e` + `7a7b32b`; item 21.1).
+   - Casa na UNIÃO dos idiomas, sobre o texto normalizado (apóstrofos tipográficos viram `'`, sem acento, minúsculas). A
+     família `_CONTA_TRAVADA` (humano, robô, CAPTCHA, frases de checkpoint) vale SEM campo de texto; a `_CODIGO` (login
+     e 2FA) exige campo no meio da execução, por causa da linha "Autenticação de dois fatores" do menu. Palavras soltas
+     ("suspeito", "unusual") viraram frases, para uma DM com "achei suspeito" não bloquear conta viva.
+   - Roda depois de cada observação, ANTES da reabertura por ANR, da receita e do ator; também em `ler_conta` e na
+     dispensa do motor de sessão. Sai sem tocar, teclar nem reabrir.
+   - Desfecho `auth_challenge` com subtipo: `conta_travada` bloqueia o perfil e cria o marcador (origem `observado`);
+     `codigo` pede pessoa sem bloquear; `verificacao` — o ator relata `step_blocked(kind="challenge")`, julgamento do
+     modelo e não casamento determinístico — pede pessoa sem bloquear. O subtipo e o trecho que casou vão na tentativa,
+     no evento e em `blocked_reason`.
+   - No motor de sessão, a regra declarada `two_factor` casa só pelo texto, sem exigir campo: na revisão, a tela de
+     código com o campo num `android.view.View` virava "desconhecida", o motor voltava dela e ENVIAVA A SENHA DE NOVO
+     (contra (b) e (e)).
+2. **Quarentena do aparelho** (`quarentena`, `512e9bd` + `966f071` + `ec8b630`; migração 054; item 21.2).
+   - Marcador por aparelho (`device_locked_accounts`: o @, a origem `observado`/`declarado`/`regra`, quem viu, a
+     evidência e desde quando), que sobrevive ao desvínculo e à remoção do perfil. A migração carrega o do android-04
+     com o felipe, declarado pelo dono.
+   - Com marcador, só `stop` e `hibernate` passam sem `confirm_locked_account`, que o pedido automático nunca manda (409
+     `locked_account`); vínculo, troca de aparelho e cadastro dão 409 `aparelho_em_quarentena`; nada de entrega de
+     versão, proxy, reinício por irq, escada de reparo, prova de abertura nem scale-test; `/api/health` acusa
+     `locked_account_on_device` enquanto o aparelho estiver ligado. Devolver o controle não reabre a sessão da conta
+     travada.
+   - O marcador só sai por pessoa ou pelo disco apagado de fato (boot com `-wipe-data`, ou `reset` remoto `succeeded`).
+     Troca de identidade física NÃO o resolve: fica, com aviso no cartão (bloqueio do revisor).
+   - Todo status de perfil passa por `mudar_status`: `blocked_at`, `blocked_evidence` e `blocked_origin`, e o evento
+     `profile.status` com origem e autor. `account_label` é derivado do marcador ou do vínculo (`account_label_origin`).
+3. **Frota por alvo** (`frota`, `f71dfd9` + `38311db`; item 21.3).
+   - Curtida e comentário ganham contraparte: `post_author` nasce em OPEN_POST e é herdado por LIKE_POST, UNLIKE_POST e
+     CREATE_COMMENT; toda ação com balde declara `counterparty` no catálogo, e a carga recusa quem não declara.
+   - A porta conta todos os baldes, numa janela de 30 dias (`limits.fleet_target_window_days`), e os pedidos de
+     aprovação em aberto reservam o alvo. Seguir, DM e comentário: `UMA_CONTA_POR_ALVO`, regra no código, não
+     configuração. O excedente é recusado, não adiado.
+   - DM fria (a pessoa nunca escreveu a esta conta) é sempre `approval_required`; nenhum grupo nem perfil afrouxa. O
+     mesmo pedido a várias contas na mesma execução: só o objetivo de menor id segue, com aprovação forçada.
+   - A persona não atribui fala a terceiros: regra no prompt social e trava em código
+     (`social/conteudo.py::fala_atribuida_a_terceiro`), com uma reescrita e depois recusa.
+4. **Disjuntor e conduta de login** (`disjuntor`, `4cc640b` + `0d29994`; item 21.4).
+   - `_stop_reason` lê o status do perfil e o marcador: o objetivo em curso para no ponto seguro seguinte, em
+     `waiting_user`. O despacho recusa objetivo de conta que não está `active`, em qualquer app.
+   - Um perfil que passa a `blocked` pausa as execuções dele e das contas que agiram sobre os mesmos alvos nas 48 h
+     anteriores (evento `log` com `reason=disjuntor_de_conta`).
+   - Perfil `blocked` ou `disabled` nunca recebe a senha. Um envio sem sucesso põe a credencial em `review`: o login
+     automático para sem tocar (etapa `login_parado`), só a pessoa (Conectar) tenta, e só se sai de `review` guardando a
+     senha de novo ou com um login que confirma a conta; falha antes do envio não apaga o `review` (bloqueio do
+     revisor). Teto diário `max_logins_per_day` (3 no `sessao.yaml` do Instagram).
+5. **Verificador de DM** (`dm-verificador`, `377ed25`; item 21.5). "Sending…"/"Enviando…" (`pending_marks` no catálogo)
+   = pendente, nunca enviada, sem chamar o modelo; bolha com o texto inteiro e o compositor vazio = enviada
+   (`sent_text:id=row_thread_composer_edittext`). O "confirmar concluído" de etapa com efeito exige o print em que a
+   pessoa se baseou (`evidence_id`, 422 `evidence_required`/`invalid_evidence`).
+6. **Escada sem reset com conta** (`e9da86e`, implantado, e `quarentena`; item 21.6). O reinício por irq e o religar
+   da reconciliação passam a `requested_by='saude'` e `'reconciliacao'` e deixam de contar como degrau (antes eram
+   `system`, e dois deles abriam caminho ao `reset` com conta real). Com vínculo ativo, o 3º degrau é "Precisa do
+   dono" + `stop`; com marcador, isso vem direto, sem `restart`. `reset` automático só em aparelho sem conta nenhuma.
+7. **Parque e host** (itens 21.7–21.9): `hide_error_dialogs` continua 1 (K-054); o relógio do central passa a ser
+   mantido por `scripts/sincronizar-relogio.ps1` e pela tarefa `farm-relogio` (K-055; mexer no relógio foi autorizado
+   pelo dono em 28/09); aposentar apaga o AVD mesmo com arquivo somente-leitura do emulador (`2511b12`, K-056).
+
+**Conduta, não disfarce.** O que protege as contas é COMPORTAMENTO: uma conta por alvo, nenhuma rajada coordenada, DM
+fria com aprovação, persona que não fala por terceiros, volume baixo e espaçado, parar no primeiro sinal de trava, não
+insistir no login e não usar conta real como bancada (testes de navegação no QA Messenger). É evasão, e proibido:
+mascarar emulador, imagem, `ro.serialno` ou rede; proxy para esconder a origem; resolver CAPTCHA ou desafio; tocar "Get
+support"; qualquer artifício para o antibot não ver o que o sistema faz.
+
+**Proteções operacionais aplicadas pela IDE em 29/09** (`real`, reversíveis, até a implantação):
+
+- grupo "Operação" (lucas, bruno, andre): SEND_MESSAGE volta ao padrão `approval_required` (era `autonomous`), e os
+  limites passam aos do grupo "Recuperação" — curtidas 10/h e 50/dia, comentários 3/h e 10/dia, follows 3/h e 10/dia,
+  DMs 5/h e 20/dia, 8 ações por execução e 120 s entre ações externas;
+- andre: removida a política própria `CREATE_COMMENT = autonomous`, que volta a `approval_required` (K-052);
+- android-04, com o felipe logado em "Confirm you're human", desligado (`c-20260929013039-e1c891`).
+
+**Consequências.**
+
+- A tela de trava para tudo, sem toque, em qualquer caminho; a conta vira `blocked` e o aparelho entra em quarentena. O
+  dono fica sabendo pelo evento e pela saúde, não por olhar a tela.
+- O ADR-029 muda em dois pontos: só `conta_travada` bloqueia (código pede pessoa); e o bloqueio vale também com a sessão
+  já em `auth_challenge`, então um perfil reativado com a trava ainda na tela volta a `blocked` no próximo "Verificar
+  conta" ou na próxima execução.
+- Uma execução com várias contas no mesmo alvo deixa os objetivos recusados em `waiting_user` (não terminal) até alguém
+  cancelar. Curtida de feed sem autor conhecido é sempre recusada.
+- Uma conta logada que demore a mostrar tela reconhecível depois do envio (android-06 em 25/09, ~35 s) vai a `review` e
+  passa a pedir pessoa.
+- O painel antigo quebra o "Marcar como concluído" em etapa com efeito: o frontend vai no mesmo deploy (`npm run
+  build`).
+- `account_label` passa a ser o @ vinculado: um fluxo do QA Messenger que confira `Conta: {account_label}` no android-01
+  passa a esperar `lucas.almeida9484`.
+- **Pendências dos revisores:**
+  - o painel não manda `confirm_locked_account`, não mostra `locked_account` nem `review`, e não há rota para resolver o
+    marcador (hoje, só `curl` ou o banco); a rota em lote sempre recusa;
+  - `captcha` e `i'm not a robot` seguem como sinais soltos sem campo: uma legenda ou DM com essas palavras pode
+    bloquear uma conta viva;
+  - `_verify` e o `peek` de `expect_done` não passam pelo detector; `classificar` devolve `outro_app` antes dele (um
+    desafio num WebView de outro pacote não é visto pelo motor de sessão); o @ da tela de trava não é comparado com a
+    conta pedida;
+  - `post_author` vem do planejador e não é conferido na tela; a trava de atribuição deixa passar 7 de 20 variantes
+    testadas ("seu esposo…", "tá com saudade", o gerúndio, "a pedido do seu marido") e não se aplica ao
+    `content_verbatim`;
+  - a corrida de login entre dois aparelhos cobre `review`, não `invalid`; o disjuntor só dispara para bloqueios vistos
+    com o backend no ar; o planejamento pago ainda roda para perfil bloqueado; aparelho sem persona vinculada passa sem
+    política nem frota;
+  - `textos.desafio` do `sessao.yaml` ainda diz "resolva na tela e devolva o controle", texto errado para a conta
+    travada.
+- **Decisões do dono pendentes:**
+  - as senhas das contas estão em texto puro num transcrito local antigo, fora do repositório
+    (`C:\Users\Administrator\.claude\projects\C--git-android\1a884c21-6b61-42ac-8c11-dfd781e97346.jsonl`, 18/09): trocar
+    as das 3 vivas e apagar o arquivo. Daqui em diante, credencial só pelo cofre (ADR-040);
+  - remover ou não do cofre as credenciais das 5 bloqueadas (hoje `active`, com consentimento);
+  - as escolhas do pacote frota: a regra de uma conta vale para o balde inteiro (inclusive responder a quem escreveu e
+    aceitar pedido de seguir); aprovação dada que nunca chega ao efeito reserva o alvo por 30 dias; a mesma persona em
+    dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição.
+
+**Evidências.**
+
+`real`:
+
+- **diagnóstico das 5 contas** (28/09; banco, backups, logs e git do central, com o checkout em `b25957e` e o backend em
+  `e9da86e`): os números do Contexto;
+- **`e9da86e` implantado** no central em 28/09;
+- **relógio:** desvio de +6,240 s para +0,004 s em 28/09 21:25 (-03:00), `data\logs\relogio.log` (K-055);
+- **proteções operacionais** de 29/09, acima, e o android-04 desligado (`c-20260929013039-e1c891`);
+- **experimento `hide_error_dialogs`** no android-17 (K-054) e o **incidente** no android-04 (K-053), resultado negativo
+  registrado como lição;
+- **leituras GET** no central pelos pacotes: o incidente `r-20260919220216-7cfa59` (7 contas, a mesma pessoa,
+  22:03–22:11Z); todo `post_liked` e `comment_replied` com `counterparty` NULL; android-04 `stopped` com `account_label`
+  `qa-user-04` e o felipe `blocked` sem vínculo; a evidência #969 ("Sending…" dado por enviado) e #959, #961 e #968 com
+  `row_thread_composer_edittext`.
+
+`simulated`: `backend/tests/test_detector_conta_travada.py` (62), `test_quarentena_de_conta.py`,
+`test_protecao_de_frota.py` (45), `test_disjuntor_de_conta.py`, `test_conduta_de_login.py` (12),
+`test_dm_verificador.py` (22) e `test_provisionamento.py` (`2511b12`), cada um falhando antes da correção (base
+`7a02491` ou mutação), com as sondas dos revisores rodadas de novo depois dos ajustes. Árvore integrada `c359f65`:
+arquivos de teste alterados em SQLite e em PostgreSQL 17 (contêiner `farm-pg`), mypy estrito, frontend e a suíte inteira
+no [relatório §22](relatorio-validacao.md).
+
+`not_run`: deploy da integração (migrações 054 e 055 com ensaio); o detector numa tela de trava real (o apóstrofo e a
+hierarquia nunca foram gravados); o planejador real preenchendo `post_author`; uma execução com várias contas no mesmo
+alvo; DM fria e verificador de DM numa conta real (efeito em conta de terceiros, exige autorização); o disjuntor com
+bloqueio real; o "Enviando…" do Instagram em português.
+
+**Relação.** ADR-009 (desafio, 2FA e CAPTCHA são da pessoa; nada de evasão); ADR-029 (substituído em parte: só a conta
+travada bloqueia, e o bloqueio vale também fora da entrada do estado); ADR-040 (a credencial é da conta; `review` é
+estado dela); ADR-053 (o `restart` por irq deixa de ser `system`; `hide_error_dialogs` segue 1); ADR-052
+(`counterparty`, `pending_marks` e `sent_text` como dado no catálogo); ADR-054 (numeração cruzada: o ADR-054 usa a
+migração 055, e este a 054); ADR-019 (relógio); K-052 a K-057; Fase 21 do plano-100; relatório §22.

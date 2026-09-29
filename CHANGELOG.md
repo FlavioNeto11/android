@@ -19,6 +19,44 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-29 — Proteção de contas, fundação do aprendizado e as pendências da rodada (ADR-054, ADR-055)
+
+**Implantado** no central: `e9da86e` (28/09) e a leva aberta `7a02491` (suíte do backend 2912 ok, só `test_backup` fora
+do checkout com `config.yaml`; agente do notebook em `0.1.0+7a02491`). O relógio do host passou a ser mantido pela
+tarefa `farm-relogio` (`b25957e`). **Integrado, a implantar:** `c359f65` (proteção de contas + fundação do aprendizado,
+migrações 054 e 055) e `2511b12`, com o frontend no mesmo deploy ([relatório §22](docs/relatorio-validacao.md)).
+
+Origem: o dono pediu em 28/09 para "resolver tudo o que ficou em aberto" (autorizou tudo) e, em 29/09, deu a regra de
+que parar em "Confirm you're human" é conta perdida. Cinco das oito contas do Instagram estão bloqueadas; a investigação
+mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava a regra (Fases 20 e 21 do plano-100).
+
+- **Escada sem reset com conta (21.6, `e9da86e`).** O reinício por irq e o religar da reconciliação não contam mais como
+  degrau da escada de reparo (`requested_by` `saude` e `reconciliacao`); com vínculo ou conta travada, o 3º degrau é
+  "Precisa do dono" + `stop`, nunca `reset`.
+- **Relógio do host (21.7, `b25957e`).** A rede bloqueia NTP com porta de origem 123; `scripts/sincronizar-relogio.ps1`
+  mede pelo `stripchart` e ajusta, e a tarefa `farm-relogio` roda a cada 15 min: +6,240 s → +0,004 s (K-055).
+- **Leva aberta (21.10–21.14, `7a02491`).** Leitura que falha fora do Appium relê sem recriar a sessão; a aprovação
+  acompanha a etapa revisada e o "Tentar novamente" herda os textos; `caption_contains` herdado pelo catálogo; irq
+  persistido em `measurements` e `GET /api/desempenho?irq_horas=`; receita da IA nasce candidata e só age depois de 2
+  concordâncias.
+- **Proteção de contas (21.1–21.5, `c359f65`).** Detector único de conta travada, sem tocar, em qualquer idioma;
+  quarentena do aparelho com o marcador do android-04; uma conta por alvo, com recusa, e DM fria sempre com aprovação;
+  disjuntor que pausa as contas do mesmo alvo e credencial em `review` depois de 1 envio sem sucesso; verificador de DM
+  com "Sending…" pendente e confirmação manual presa ao print.
+- **Fundação do aprendizado (20.2, `c359f65`).** Migração 055, livro de aprendizado com o D1 no domínio e no
+  repositório, falha em vocabulário fechado, `GET /api/aprendizado`, `/pendentes` e `/revisar`, e a janela efetiva da
+  projeção (o `ai_calls` purgado em 14 dias subestimaria uma janela de 30).
+- **Parque (21.8, 21.9).** `hide_error_dialogs` continua 1 depois do experimento no android-17 (com 0, o ANR do
+  `system_server` prende o aparelho, K-054); aposentar apaga o AVD mesmo com o `pstore.bin` somente-leitura (`2511b12`,
+  K-056).
+- Operação (29/09, reversível): SEND_MESSAGE do grupo "Operação" de volta a `approval_required`, com os limites do grupo
+  "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desafio, desligado.
+- Prova: `real` no diagnóstico, nas proteções operacionais, no relógio e nos experimentos; `simulated` nos testes de
+  cada pacote e na integração (SQLite, PostgreSQL 17, mypy, frontend 660 ok); `not_run`: o deploy da integração e as
+  provas com efeito em conta real.
+- Documentação e processo: ADR-054 e ADR-055, K-053 a K-057, relatório §22, Fases 20 e 21 do plano-100, adendo v0.37,
+  banco (054 e 055).
+
 ## 2026-09-28 (noite) — Falhas reiteradas do Instagram: diagnóstico medido, 9 correções e prova real (ADR-053)
 
 **Implantado** no central em 28/09 ~23:40 UTC (`93967d0`; Appium reiniciado pelo procedimento do K-039; agente do
