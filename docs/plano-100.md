@@ -437,7 +437,7 @@ Origem: as execuções `r-20260928165254-e31953` e `r-20260928195344-02ee9e` e a
 | 19.7 | **Identidade do alvo pela legenda**: `caption_contains` em OPEN_POST (a pós-condição exige a legenda), `card_guard` em LIKE_POST, OPEN_COMMENTS e CREATE_COMMENT, `card_control` no balão dos comentários; sem a legenda na tela, `step_blocked`; tudo no `catalogo.yaml` | C10 | M |
 | 19.8 | **Aprender só com prova e orquestrador**: `learn_from_run` só com todas as etapas `verified=true`, templatizando `bindings`, `band_guard` e `success_criteria`; fila do orquestrador só `running`/`paused`; saúde do aparelho nas sugestões | C12 | P |
 | 19.9 | **Reinício a frio por interrupção acumulada** (K-050): fração irq+softirq entre duas sondas de saúde; aparelho ocioso acima de 15% em 3 sondas seguidas → `restart` rastreável, no máximo 1 a cada 6 h, nunca a escada de reparo | C1 (medido em 28/09) | P |
-| 19.10 | **Prova com efeito (curtir e comentar)** num post que não seja o da e31953 (já curtido; repetir descurtiria). Dependia de autorização do dono, dada em chat em 28/09; feita em `r-20260928235215-6eb84c` (relatório §21) | pedido do dono (28/09) | — |
+| 19.10 | **Prova com efeito (curtir e comentar)** num post que não seja o da e31953 (já curtido; repetir descurtiria). Dependia de autorização do dono, dada em chat em 28/09; feita em `r-20260928235215-6eb84c` (relatório §21) | pedido do dono (28/09) | P |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

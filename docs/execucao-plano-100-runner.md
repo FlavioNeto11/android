@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-138 de 152 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+148 de 162 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -154,6 +154,16 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 18.7 | implemented | simulated | opus | — | Fatia 4: AppDefinition.profile_anchor/profile_link_*, registry.pacote_ancora() no lugar de package_of_provider("instagram") (state.py, social/service.py, social/repository.py), bloco contas: no lugar de instagram: (conf… |  |
 | 18.8 | pendente | — | — | — |  |  |
 | 18.9 | pendente | — | — | — |  |  |
+| 19.1 | implemented | simulated | opus | — | 1a9c2ab (integrado em 93967d0, implantado 28/09): DriverBusy para o 500 'root AccessibilityNodeInfo', leitura relê sem recriar sessão, ação ocupada fica incerta, swipe sem pausa, scroll em faixa estreita. backend/tests/… |  |
+| 19.2 | implemented | simulated | opus | — | 11007f9: leitura de exit-info, foco pela seção viva (não LAST ANR), open_app com focused, 1 reabertura determinística e falha com motivo de ANR, prazo como step_deadline. backend/tests/test_anr_sinal_proprio.py. Real: 0… |  |
+| 19.3 | implemented | simulated | opus | — | c1df97a: prévia sem screencap próprio com a IA no controle (frame da observação da IA, limite de frame velho maior, frontend DeviceCard/streamState), drain só da etapa, sem acerto de relógio com objetivo, aviso de press… |  |
+| 19.4 | implemented | simulated | opus | — | fa64b43: recuperação não faz force-stop do app vivo, retoma da tela, reinclui navegação sem repetir o LIKE, preserva commit_guard/bindings, falha com motivo se não cabe na projeção. backend/tests/test_recuperacao_preser… |  |
+| 19.5 | implemented | real | opus | — | 5c90ded; real: central 93967d0, android-06, r-20260928235215-6eb84c (28/09 23:54:47Z): `mobile: replaceElementValue` em 234 ms, comentário publicado com o texto inteiro visto na lista, payload mascarado como **SECURE**… |  |
+| 19.6 | implemented | simulated | opus | — | 8691413: contador no teto com sessão anterior ao boot gera 1 releitura observe_only; launcher não soma unknown_streak; Verificar conta não soma acima do teto; sem migração. backend/tests/test_porta_de_sessao_no_teto.py.… |  |
+| 19.7 | implemented | real | opus | — | 60fdb65; real: r-20260928234657-bbdf3c (central 93967d0, android-06): planejador preencheu caption_contains em OPEN_POST e OPEN_COMMENTS; a pós-condição só passou com 'Ainda sobre Setembro Amarelo 2024' na tela (textos_… |  |
+| 19.8 | implemented | simulated | opus | — | c9d200e: learn_from_run só aprende com todas as etapas verified=true e templatiza bindings/band_guard/success_criteria; orquestrador conta fila só running/paused e mostra saúde do aparelho. backend/tests/test_aprendizad… |  |
+| 19.9 | implemented | simulated | opus | — | 93967d0: fração de irq entre sondas; ocioso acima de 15% em 3 sondas → restart rastreável (nunca reset), no máximo 1 a cada 6 h. backend/tests/test_saude_do_convidado.py (4). Base medida real (28/09): irq ocioso 21% and… |  |
+| 19.10 | implemented | real | opus | — | Autorizado pelo dono em chat (28/09). r-20260928235215-6eb84c, central 93967d0, android-06, @andre.carvalho9543: 5/5 etapas comprovadas em 2 min 41 s, 13 chamadas; curtida (selector:desc==Liked sem IA) e comentário publ… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
