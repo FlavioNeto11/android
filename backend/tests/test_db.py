@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from app import db as db_mod
-from app.db import OPERATIONAL_ERRORS, Database
+from app.db import INTEGRITY_ERRORS, OPERATIONAL_ERRORS, Database, TransacaoAbortada
 
 from .aborto_do_postgres import ABORTADA, embrulhar, savepoints
 from .conftest import _dsn_de_teste
@@ -310,8 +310,10 @@ def test_com_o_aborto_do_postgres_o_erro_engolido_so_nao_perde_a_escrita_com_o_s
         tmp_path: Path) -> None:
     """A regra do 22.5, sobre o SQLite com o aborto do PostgreSQL imitado (`aborto_do_postgres`).
 
-    1. Sem savepoint (o defeito do A5): a falha engolida aborta a transação, e o `COMMIT` vira `ROLLBACK` sem erro —
-       a escrita principal some, e quem chamou nem fica sabendo.
+    0. A regra crua do servidor (na conexão, sem o `tx()`): a falha engolida aborta a transação, e o `COMMIT` vira
+       `ROLLBACK` sem erro — a escrita principal some, e quem chamou nem fica sabendo. Era o defeito do A5.
+    1. O mesmo erro engolido sem savepoint, pelo `tx()`: a defesa de fora (`TransacaoAbortada`) derruba a escrita
+       ALTO, com `ROLLBACK`, sem mandar o `COMMIT` que viraria `ROLLBACK` calado.
     2. Savepoint FORA do `try` que engole: ele não vê a falha, tenta `RELEASE` numa transação abortada, e tudo cai.
     3. Savepoint DENTRO do `try`: `ROLLBACK TO SAVEPOINT` tira a transação do aborto, e a principal fica.
     """
@@ -319,16 +321,30 @@ def test_com_o_aborto_do_postgres_o_erro_engolido_so_nao_perde_a_escrita_com_o_s
     if db.dialect != "sqlite":
         db.close()
         pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite; no PostgreSQL real vale o teste acima")
+    if db_mod._TRANSACAO_EM_ERRO is None:
+        db.close()
+        pytest.skip("sem o psycopg não há estado de transação para a defesa do tx() ler")
     _tabela(db)
     pg = embrulhar(db)
     pg.falhar_em = "'acessoria'"
-    with db.tx():
-        db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
-        try:
-            db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
-        except OPERATIONAL_ERRORS:
-            pass
+    pg.execute("BEGIN")
+    pg.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+    with pytest.raises(OPERATIONAL_ERRORS):
+        pg.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+    pg.execute("COMMIT")
     assert pg.commits_perdidos == 1 and _linhas(db) == []
+    pg.instrucoes.clear()
+    with pytest.raises(TransacaoAbortada):
+        with db.tx():
+            db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+            try:
+                db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+            except OPERATIONAL_ERRORS:
+                pass
+    assert "COMMIT" not in pg.instrucoes and pg.instrucoes[-1] == "ROLLBACK"
+    assert pg.commits_perdidos == 1 and not pg.abortada and _linhas(db) == []
+    # Nenhum `except` de recurso ausente ou de chave repetida pode engolir a defesa.
+    assert not issubclass(TransacaoAbortada, OPERATIONAL_ERRORS + INTEGRITY_ERRORS)
     with pytest.raises(OPERATIONAL_ERRORS, match=ABORTADA):
         with db.tx():
             db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
@@ -346,8 +362,38 @@ def test_com_o_aborto_do_postgres_o_erro_engolido_so_nao_perde_a_escrita_com_o_s
                 db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
         except OPERATIONAL_ERRORS:
             pass
-    assert pg.commits_perdidos == 1 and _linhas(db) == ["principal"]
+    assert pg.commits_perdidos == 1 and _linhas(db) == ["principal"]                # nenhum COMMIT perdido a mais
     assert savepoints(pg) == ["SAVEPOINT sp_1", "ROLLBACK TO SAVEPOINT sp_1", "RELEASE SAVEPOINT sp_1"]
+    db.close()
+
+
+def test_savepoint_que_desfaz_com_a_conexao_viva_nao_a_deixa_suspeita(tmp_path: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisor do 22.5: no PostgreSQL, um deadlock ou um statement timeout é `psycopg.OperationalError` — está em
+    ERROS_DE_CONEXAO —, e `_com_reconexao` marca a conexão suspeita. Se o `ROLLBACK TO` e o `RELEASE` do savepoint
+    respondem, ela está viva: a primeira instrução de fora não pode reabri-la à toa. Se nem eles respondem, ela segue
+    suspeita (a mesma regra do `tx()`), e a de fora reabre."""
+    db = _banco(tmp_path)
+    monkeypatch.setattr(db_mod, "ERROS_DE_CONEXAO", (_ConexaoMorreu,))
+    db._conn = fragil = _ConexaoFragil(db._conn)
+    _tabela(db)
+    with db.tx():
+        db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+        with pytest.raises(_ConexaoMorreu):
+            with db.savepoint():
+                fragil.morre = 1                           # depois do SAVEPOINT: a falha é a instrução de dentro
+                db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+        assert db._suspeita is False
+    assert _linhas(db) == ["principal"] and db.reconexoes == 0
+    with pytest.raises(_ConexaoMorreu):
+        with db.tx():
+            with db.savepoint():
+                fragil.morre, fragil.rollback_falha = 1, True
+                db.execute("SELECT 1")
+    assert db._suspeita is True
+    fragil.rollback_falha = False
+    assert db.scalar("SELECT 1") == 1 and db.reconexoes == 1
+    db.execute("DROP TABLE t_savepoint")
     db.close()
 
 

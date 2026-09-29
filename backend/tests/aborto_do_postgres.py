@@ -7,14 +7,22 @@ falha não contamina nada — por isso a suíte, que roda nele, não via a trilh
 
 O que se embrulha é a conexão (como `_ConexaoFragil` em `test_db.py`): o SQLite não deixa trocar o `execute` dela,
 e provar com um PostgreSQL exigiria um de pé. Isto prova a REGRA do código (savepoint dentro do `try`), não o
-servidor: a conferência no PostgreSQL real é a suíte com `TEST_DATABASE_URL`.
+servidor: a conferência no PostgreSQL real é a suíte com `TEST_DATABASE_URL`. A conexão também responde
+`info.transaction_status` como o psycopg (`INERROR` enquanto abortada), para a defesa do `tx()` de fora
+(`db.TransacaoAbortada`) ser exercitada aqui.
 """
 from __future__ import annotations
 
 import sqlite3
+from types import SimpleNamespace
 from typing import Any
 
 from app.db import Database
+
+try:                                   # o mesmo enum que `Database._transacao_abortada` compara
+    from psycopg.pq import TransactionStatus as _Status
+except ImportError:                    # pragma: no cover - sem o driver, a defesa do `tx()` fica inerte
+    _Status = None
 
 ABORTADA = "current transaction is aborted, commands ignored until end of transaction block"
 
@@ -31,6 +39,16 @@ class ConexaoQueAbortaComoOPostgres:
         self.falhar_em: str | None = None
         #: Quantos `COMMIT` viraram `ROLLBACK` por encontrar a transação abortada (o que o PostgreSQL faz calado).
         self.commits_perdidos = 0
+
+    @property
+    def info(self) -> Any:
+        """O `conn.info.transaction_status` do psycopg: `INERROR` enquanto abortada, como o libpq informa. É o que a
+        defesa do `tx()` de fora lê antes do `COMMIT` (`Database._transacao_abortada`)."""
+        if _Status is None:
+            return None
+        if self.abortada:
+            return SimpleNamespace(transaction_status=_Status.INERROR)
+        return SimpleNamespace(transaction_status=_Status.INTRANS if self._real.in_transaction else _Status.IDLE)
 
     def execute(self, sql: str, params: Any = ()) -> Any:
         texto = " ".join(sql.split())

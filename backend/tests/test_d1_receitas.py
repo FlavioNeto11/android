@@ -254,6 +254,21 @@ def test_veto_que_falha_ao_ler_nao_derruba_a_receita(mundo: Mundo) -> None:
     assert "ROLLBACK TO SAVEPOINT sp_1" in savepoints(pg)
 
 
+def test_execucao_de_origem_que_falha_ao_ler_nao_derruba_a_receita(mundo: Mundo) -> None:
+    """Revisor do 22.5: a execução de origem da receita que nasce também é lida dentro da transação da loja, e tem de
+    ser lida SOB o savepoint da trilha — fora dele (mesmo dentro do `try`), a consulta que falha abortaria a transação
+    no PostgreSQL. Sem a origem não há trilha (a mesma falha), mas a receita nasce."""
+    if mundo.db.dialect != "sqlite":
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite")
+    pg = embrulhar(mundo.db)
+    pg.falhar_em = "JOIN steps s ON s.id = r.learned_from_step"                  # `_execucao_de_origem`
+    rid = mundo.salva(commit=False)
+    assert rid and mundo.status(rid) == "candidate" and pg.commits_perdidos == 0
+    assert mundo.trilha(rid) == []
+    assert savepoints(pg).count("ROLLBACK TO SAVEPOINT sp_1") == 1                # o do veto passou; o da trilha, não
+    assert not any("INSERT INTO learning_transitions" in i for i in pg.instrucoes)   # falhou antes da trilha
+
+
 # ------------------------------------------------------------------ a rota antiga passa pelo livro (Harness)
 def _cliente(h: Harness, *, base: str = "http://test") -> httpx.AsyncClient:
     """`base="http://127.0.0.1"` para a sessão, como em `test_sessao_do_painel`: o login do loopback dispensa token,

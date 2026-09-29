@@ -79,13 +79,23 @@ OPERATIONAL_ERRORS: tuple[type[BaseException], ...] = (sqlite3.OperationalError,
 #: Vazia quando o driver do PostgreSQL não está instalado: no SQLite o banco é um arquivo desta máquina, não há
 #: conexão para cair, e `sqlite3.OperationalError` quer dizer "banco travado", que reabrir não resolve.
 ERROS_DE_CONEXAO: tuple[type[BaseException], ...] = ()
+#: O estado "transação abortada" que o libpq informa (`psycopg.pq.TransactionStatus.INERROR`); `None` sem o driver.
+_TRANSACAO_EM_ERRO: object | None = None
 try:                                   # o driver do PostgreSQL é opcional: quem roda em SQLite não o instala
     import psycopg as _psycopg
     INTEGRITY_ERRORS = INTEGRITY_ERRORS + (_psycopg.errors.IntegrityError,)
     OPERATIONAL_ERRORS = OPERATIONAL_ERRORS + (_psycopg.errors.OperationalError, _psycopg.errors.ProgrammingError)
     ERROS_DE_CONEXAO = (_psycopg.OperationalError, _psycopg.InterfaceError)
+    _TRANSACAO_EM_ERRO = _psycopg.pq.TransactionStatus.INERROR
 except ImportError:                    # pragma: no cover
     pass
+
+
+class TransacaoAbortada(RuntimeError):
+    """O `tx()` de fora chegou ao fim com a transação ABORTADA no PostgreSQL: uma instrução falhou lá dentro e alguém
+    engoliu o erro sem `savepoint()`. O `COMMIT` viraria `ROLLBACK` sem aviso, e quem chamou seguiria achando que
+    gravou (22.5). Fora de `OPERATIONAL_ERRORS` e `INTEGRITY_ERRORS` de propósito: um `except` de recurso ausente ou de
+    chave repetida não pode engolir também esta."""
 
 
 def _e_postgres(dsn: str) -> bool:
@@ -328,6 +338,12 @@ class Database:
             try:
                 yield self._conn
                 if outer:
+                    if self._transacao_abortada():
+                        # Defesa em profundidade (22.5): os pontos conhecidos que engolem erro dentro de uma transação
+                        # alheia já usam `savepoint()`; o próximo que esquecer derruba a escrita aqui, alto, em vez de
+                        # o `COMMIT` virar `ROLLBACK` calado. O `except` abaixo faz o `ROLLBACK`.
+                        raise TransacaoAbortada("transação abortada por um erro engolido lá dentro (sem savepoint): "
+                                                "nada foi gravado")
                     self._conn.execute("COMMIT")
             except BaseException:
                 if outer:
@@ -342,6 +358,17 @@ class Database:
                 raise
             finally:
                 self._tx_depth -= 1
+
+    def _transacao_abortada(self) -> bool:
+        """A conexão diz que a transação aberta está abortada. Só o psycopg sabe dizer (`info.transaction_status`, lido
+        do libpq, sem ida ao servidor); o `sqlite3` não tem `info` e nunca aborta — ali a resposta é sempre não.
+
+        Pelo atributo, e não por `dialect == "postgres"`, de propósito: é o que deixa a imitação do aborto sobre o
+        SQLite (`tests/aborto_do_postgres.py`) exercitar esta defesa sem um PostgreSQL de pé."""
+        if _TRANSACAO_EM_ERRO is None:
+            return False
+        info = getattr(self._conn, "info", None)
+        return getattr(info, "transaction_status", None) == _TRANSACAO_EM_ERRO
 
     @contextmanager
     def savepoint(self) -> Iterator[None]:
@@ -366,6 +393,7 @@ class Database:
             nome = f"sp_{self._tx_depth}"
             self._conn.execute(f"SAVEPOINT {nome}")
             self._tx_depth += 1
+            suspeita_antes = self._suspeita
             try:
                 yield
             except BaseException:
@@ -374,6 +402,11 @@ class Database:
                     self._conn.execute(f"RELEASE SAVEPOINT {nome}")
                 except Exception:       # noqa: BLE001 - a conexão caiu: a exceção original é a que conta (ver tx())
                     self._suspeita = True
+                else:
+                    # A conexão respondeu ao ROLLBACK TO e ao RELEASE: está viva. Um deadlock ou um statement timeout
+                    # lá dentro é `psycopg.OperationalError` (em ERROS_DE_CONEXAO), e `_com_reconexao` já a tinha
+                    # marcado suspeita — sem isto, a primeira instrução de fora reabria uma conexão boa à toa.
+                    self._suspeita = suspeita_antes
                 raise
             else:
                 self._conn.execute(f"RELEASE SAVEPOINT {nome}")
