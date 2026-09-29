@@ -251,6 +251,14 @@ async def test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_err
             assert r.json()["draft"]["parent_version"] == 2
             r = await c.post(f"/api/skills/{SKILL}/versions/4/decompile")
             assert r.status_code == 422 and r.json()["detail"]["code"] == "invalid_document"
+        # 22.4, pela composição do central: cada mudança de status do fluxo feita pela rota está na trilha do livro,
+        # com quem decidiu (`_quem`: sem sessão, `panel`) e o motivo fixo. A adoção recusada não deixou linha.
+        assert [(r["from_state"], r["to_state"], r["decided_by"], r["reason"]) for r in s.db.query(
+            "SELECT from_state, to_state, decided_by, reason FROM learning_transitions WHERE item_ref=? ORDER BY id",
+            (f"fluxo:{flow_id}",))] == [
+            ("published", "disabled", "panel", f"adotado pela habilidade {SKILL}"),
+            ("disabled", "published", "panel", f"devolvido pela habilidade {SKILL}"),
+            ("published", "disabled", "panel", f"adotado pela habilidade {SKILL}")]
     finally:
         await h.state.stop()                                                    # type: ignore[union-attr]
 

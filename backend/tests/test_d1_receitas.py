@@ -2,7 +2,8 @@
 de efeito externo; com `commit`, ela para em `validated` e espera o dono. O legado ativo com efeito fica intacto e
 aparece em "Revisar". Toda mudança de status feita pela própria loja vai para `learning_transitions`, com o mesmo
 `content_hash` e escopo que o livro lê — é o que faz o veto funcionar: o caminho que uma PESSOA desligou não volta
-pelo sistema (a quarentena do sistema, não: a etapa sempre pôde ser reaprendida e provada de novo).
+pelo sistema (a quarentena do sistema, não: a etapa sempre pôde ser reaprendida e provada de novo). A trilha e o veto
+que falham no banco não derrubam a receita nem com o aborto de transação do PostgreSQL (22.5, imitado sobre o SQLite).
 
 Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; nenhum aparelho, nenhuma IA).
 """
@@ -29,6 +30,7 @@ from app.modules.learning.infrastructure.sql_repository import SqlLearningReposi
 from app.taskqueue.recipes import RecipeStore
 from app.util import now
 
+from .aborto_do_postgres import embrulhar, savepoints
 from .conftest import Harness
 from .fake_skills import TS
 from .fake_skills import banco as banco_migrado
@@ -217,6 +219,39 @@ def test_quarentena_do_sistema_nao_veta_o_reaprendizado(mundo: Mundo) -> None:
     # a etapa volta a ser aprendida com o mesmo caminho: nova candidata, que prova de novo em sombra antes de agir
     v2 = mundo.salva(commit=False, learned_from="s2")
     assert v2 and mundo.status(v2) == "candidate" and mundo.status(rid) == "superseded"
+
+
+# ------------------------------------------------------------------ a trilha e o veto não derrubam a loja (22.5)
+def test_trilha_que_falha_no_banco_nao_derruba_a_receita_nem_com_o_aborto_do_postgres(mundo: Mundo) -> None:
+    """O revisor do A5: o erro da trilha, engolido pelo ouvinte dentro da transação da loja, deixava a transação
+    abortada no PostgreSQL — `save` devolvia o id de uma receita que nunca existiu, e a promoção e a quarentena
+    sumiam caladas. Com o savepoint dentro do `try` do ouvinte, só a trilha sai."""
+    if mundo.db.dialect != "sqlite":
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite")
+    pg = embrulhar(mundo.db)
+    pg.falhar_em = "INSERT INTO learning_transitions"
+    rid = mundo.salva(commit=False)
+    assert rid and mundo.status(rid) == "candidate" and pg.commits_perdidos == 0
+    assert "ROLLBACK TO SAVEPOINT sp_1" in savepoints(pg)
+    assert mundo.store.shadow(rid, True, promote_after=1) is True and mundo.status(rid) == "active"
+    assert [mundo.store.result(rid, False) for _ in range(3)][-1] is True and mundo.status(rid) == "quarantined"
+    assert pg.commits_perdidos == 0 and mundo.trilha(rid) == []              # só a trilha saiu, três vezes
+    pg.falhar_em = None
+    v2 = mundo.salva(commit=False, learned_from="s2")                        # e a trilha volta a entrar junto
+    assert v2 and mundo.trilha(v2) == [(None, "candidate", "sistema")]
+
+
+def test_veto_que_falha_ao_ler_nao_derruba_a_receita(mundo: Mundo) -> None:
+    """O veto só LÊ, mas lê dentro da transação da loja: uma consulta que falha também abortaria a transação no
+    PostgreSQL. Ilegível não veta (o lado de sempre), e a receita e a trilha entram."""
+    if mundo.db.dialect != "sqlite":
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite")
+    pg = embrulhar(mundo.db)
+    pg.falhar_em = "FROM learning_transitions WHERE content_hash=?"
+    rid = mundo.salva(commit=False)
+    assert rid and mundo.status(rid) == "candidate" and pg.commits_perdidos == 0
+    assert mundo.trilha(rid) == [(None, "candidate", "sistema")]
+    assert "ROLLBACK TO SAVEPOINT sp_1" in savepoints(pg)
 
 
 # ------------------------------------------------------------------ a rota antiga passa pelo livro (Harness)

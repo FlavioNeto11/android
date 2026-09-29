@@ -55,7 +55,9 @@ class MudancaDoFluxo:
 
 class PoliticaDoFluxo(Protocol):
     """O livro de aprendizado (ADR-054) do lado da loja. Chamada DENTRO da transação da escrita: a trilha entra junto
-    com o status, ou nenhum dos dois."""
+    com o status, e o status nunca cai por causa dela. Quem implementa `mudou` e engole a própria falha a isola num
+    `db.savepoint()` (22.5) — no PostgreSQL, o erro engolido sem ele abortava a transação da loja e o `COMMIT` virava
+    `ROLLBACK` sem aviso."""
 
     def ao_nascer(self, nascimento: NascimentoDoFluxo) -> str | None:
         """O status com que o fluxo nasce (`candidate` no D1), ou `None`: não aprende (conteúdo vetado, linha que uma

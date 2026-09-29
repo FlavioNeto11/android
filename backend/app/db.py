@@ -343,6 +343,43 @@ class Database:
             finally:
                 self._tx_depth -= 1
 
+    @contextmanager
+    def savepoint(self) -> Iterator[None]:
+        """Sub-bloco de uma transação que pode falhar SOZINHO: o que ele gravou é desfeito, e a de fora segue.
+
+        Por que existe (22.5): no PostgreSQL, uma instrução que falha dentro de `tx()` ABORTA a transação inteira —
+        toda instrução seguinte é recusada ("current transaction is aborted") e o `COMMIT` do fim vira `ROLLBACK`
+        no servidor, sem erro para quem chamou. Quem ENGOLE a exceção de uma escrita acessória dentro da transação
+        alheia (a trilha do livro dentro de `FlowStore`/`RecipeStore`) tem de pôr o savepoint DENTRO do `try`, em
+        volta de tudo o que tocou: `ROLLBACK TO SAVEPOINT` tira a transação do estado abortado. O SQLite não aborta
+        a transação, então só lá o erro engolido não fazia estrago — e a suíte, que roda nele, não via.
+
+        Reentrante como `tx()`: dentro dele, `tx()` entra na transação e outro `savepoint()` ganha nome próprio.
+        Fora de transação é um `tx()` comum (cada instrução já seria a sua própria transação; assim o bloco ao menos
+        é atômico).
+        """
+        with self._lock:
+            if self._tx_depth == 0:
+                with self.tx():
+                    yield
+                return
+            nome = f"sp_{self._tx_depth}"
+            self._conn.execute(f"SAVEPOINT {nome}")
+            self._tx_depth += 1
+            try:
+                yield
+            except BaseException:
+                try:
+                    self._conn.execute(f"ROLLBACK TO SAVEPOINT {nome}")
+                    self._conn.execute(f"RELEASE SAVEPOINT {nome}")
+                except Exception:       # noqa: BLE001 - a conexão caiu: a exceção original é a que conta (ver tx())
+                    self._suspeita = True
+                raise
+            else:
+                self._conn.execute(f"RELEASE SAVEPOINT {nome}")
+            finally:
+                self._tx_depth -= 1
+
     def execute(self, sql: str, params: tuple | dict = ()) -> Any:
         return self._com_reconexao(lambda c: c.execute(self._sql(sql), params))
 

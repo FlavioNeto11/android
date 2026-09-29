@@ -451,7 +451,8 @@ class MudancaDaReceita:
 
 class OuvinteDasReceitas(Protocol):
     """O livro de aprendizado do lado da loja. Chamado DENTRO da transação da escrita (mesma conexão): a trilha entra
-    junto com o status, ou nenhum dos dois."""
+    junto com o status, e o status nunca cai por causa dela nem do veto. Quem implementa e engole a própria falha a
+    isola num `db.savepoint()` (22.5): no PostgreSQL, o erro engolido sem ele abortava a transação da loja."""
 
     def vetada(self, receita: ReceitaVista) -> bool:
         """O sistema não pode trazer de volta este caminho (uma pessoa o desligou)."""

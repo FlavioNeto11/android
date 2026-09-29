@@ -1,4 +1,5 @@
-"""A camada de banco, por ela mesma: divisor de instruções, tradutor de dialeto, reconexão e controle de migração.
+"""A camada de banco, por ela mesma: divisor de instruções, tradutor de dialeto, reconexão, savepoint e controle de
+migração.
 
 Por que este arquivo existe (achado #169): o divisor de SQL e o tradutor de marcas são um mini-parser escrito à
 mão, e até aqui só eram exercitados INDIRETAMENTE — pelas 27 migrações existentes, aplicadas num SQLite. Quer
@@ -19,8 +20,9 @@ from typing import Any
 import pytest
 
 from app import db as db_mod
-from app.db import Database
+from app.db import OPERATIONAL_ERRORS, Database
 
+from .aborto_do_postgres import ABORTADA, embrulhar, savepoints
 from .conftest import _dsn_de_teste
 
 
@@ -263,6 +265,89 @@ def test_dentro_de_transacao_o_erro_sobe_em_vez_de_repetir(tmp_path: Path, monke
     fragil.rollback_falha = False
     assert db.scalar("SELECT 1") == 1                   # a chamada seguinte reabre sozinha, antes de tentar
     assert db.reconexoes == 1
+    db.close()
+
+
+# --------------------------------------------------------------------- savepoint (22.5)
+def _tabela(db: Database) -> None:
+    db.execute("CREATE TABLE IF NOT EXISTS t_savepoint (x TEXT)")
+    db.execute("DELETE FROM t_savepoint")
+
+
+def _linhas(db: Database) -> list[str]:
+    return sorted(str(r["x"]) for r in db.query("SELECT x FROM t_savepoint"))
+
+
+def test_savepoint_desfaz_so_o_sub_bloco_e_a_transacao_segue(tmp_path: Path) -> None:
+    """Nos dois bancos. Com `TEST_DATABASE_URL` é a prova no PostgreSQL de verdade: sem o `ROLLBACK TO SAVEPOINT`,
+    o erro de dentro abortaria a transação, e o INSERT de depois seria recusado."""
+    db = _banco(tmp_path)
+    _tabela(db)
+    with db.tx():
+        db.execute("INSERT INTO t_savepoint(x) VALUES ('antes')")
+        with pytest.raises(OPERATIONAL_ERRORS):
+            with db.savepoint():
+                db.execute("INSERT INTO t_savepoint(x) VALUES ('dentro')")
+                db.execute("INSERT INTO tabela_que_nao_existe(x) VALUES ('x')")
+        db.execute("INSERT INTO t_savepoint(x) VALUES ('depois')")
+    assert _linhas(db) == ["antes", "depois"]            # o que o sub-bloco gravou antes de falhar também saiu
+    # Sem falha, o sub-bloco entra junto; o aninhado tem nome próprio; e fora de transação é um `tx()` (atômico).
+    with db.tx():
+        with db.savepoint():
+            db.execute("INSERT INTO t_savepoint(x) VALUES ('fora')")
+            with db.savepoint():
+                db.execute("INSERT INTO t_savepoint(x) VALUES ('aninhado')")
+    with pytest.raises(OPERATIONAL_ERRORS):
+        with db.savepoint():
+            db.execute("INSERT INTO t_savepoint(x) VALUES ('solto')")
+            db.execute("INSERT INTO tabela_que_nao_existe(x) VALUES ('x')")
+    assert _linhas(db) == ["aninhado", "antes", "depois", "fora"]
+    db.execute("DROP TABLE t_savepoint")
+    db.close()
+
+
+def test_com_o_aborto_do_postgres_o_erro_engolido_so_nao_perde_a_escrita_com_o_savepoint_dentro_do_try(
+        tmp_path: Path) -> None:
+    """A regra do 22.5, sobre o SQLite com o aborto do PostgreSQL imitado (`aborto_do_postgres`).
+
+    1. Sem savepoint (o defeito do A5): a falha engolida aborta a transação, e o `COMMIT` vira `ROLLBACK` sem erro —
+       a escrita principal some, e quem chamou nem fica sabendo.
+    2. Savepoint FORA do `try` que engole: ele não vê a falha, tenta `RELEASE` numa transação abortada, e tudo cai.
+    3. Savepoint DENTRO do `try`: `ROLLBACK TO SAVEPOINT` tira a transação do aborto, e a principal fica.
+    """
+    db = _banco(tmp_path)
+    if db.dialect != "sqlite":
+        db.close()
+        pytest.skip("o embrulho imita o PostgreSQL sobre o SQLite; no PostgreSQL real vale o teste acima")
+    _tabela(db)
+    pg = embrulhar(db)
+    pg.falhar_em = "'acessoria'"
+    with db.tx():
+        db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+        try:
+            db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+        except OPERATIONAL_ERRORS:
+            pass
+    assert pg.commits_perdidos == 1 and _linhas(db) == []
+    with pytest.raises(OPERATIONAL_ERRORS, match=ABORTADA):
+        with db.tx():
+            db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+            with db.savepoint():
+                try:
+                    db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+                except OPERATIONAL_ERRORS:
+                    pass
+    assert _linhas(db) == [] and not pg.abortada
+    pg.instrucoes.clear()
+    with db.tx():
+        db.execute("INSERT INTO t_savepoint(x) VALUES ('principal')")
+        try:
+            with db.savepoint():
+                db.execute("INSERT INTO t_savepoint(x) VALUES ('acessoria')")
+        except OPERATIONAL_ERRORS:
+            pass
+    assert pg.commits_perdidos == 1 and _linhas(db) == ["principal"]
+    assert savepoints(pg) == ["SAVEPOINT sp_1", "ROLLBACK TO SAVEPOINT sp_1", "RELEASE SAVEPOINT sp_1"]
     db.close()
 
 
