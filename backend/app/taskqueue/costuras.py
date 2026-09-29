@@ -1,0 +1,192 @@
+"""Costuras do aprendizado nos arquivos quentes (ADR-054, pacote A2).
+
+O executor, o serviço de execução, o assistente do comando e o gerenciador de aparelhos AVISAM o aprendizado do que
+acabou de acontecer — a tentativa que fechou, a decisão de uma pessoa sobre um item, a repetição de uma execução, a
+resposta a uma pergunta, a tomada de controle — e PEDEM as lições medidas antes de consultar o ator e o planejador.
+Nada além disso: o aprendizado é fonte de decisão ou texto de contexto, nunca desfecho, verificação, guarda, política
+ou custo máximo. A lição vai para `DecisionRequest.lessons` e `PlanRequest.lessons`; o verificador não tem campo para
+ela (ADR-024).
+
+Contrato tipado e no-op por padrão (`SEM_COSTURAS`): sem o `AppState` ligar o livro
+(`modules/learning/infrastructure/ligar_costuras.py`), tudo segue exatamente como antes. E toda chamada passa por
+`avisar` ou `pedir_licoes`, que engolem a exceção: o aprendizado nunca derruba uma etapa, um "resolver", uma
+retomada, uma sucessora nem uma tomada de controle.
+
+O que NUNCA passa por aqui: texto de tela, valor de resposta, coordenada, credencial. A árvore da tentativa vai inteira
+ao observador (é dele decidir o que aproveita, e a tela sensível ele pula); a resposta a uma pergunta vai só como
+sha256; a tomada de controle, só com os ids da etapa.
+
+Só stdlib e a árvore (`automation.hierarchy`): o gerenciador de aparelhos importa este módulo, e nada aqui pode puxar
+o resto da fila para dentro dele.
+"""
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal, Protocol, TypeVar
+
+from ..automation.hierarchy import UiTree
+
+log = logging.getLogger("poc.aprendizado")
+
+#: Quem recebe a lição. O verificador não está aqui de propósito: lição empurraria o juiz a aceitar.
+PapelDaLicao = Literal["actor", "planner"]
+#: As três decisões de uma pessoa sobre um item (`ResolveBody.resolution`).
+DecisaoSobreItem = Literal["confirm_done", "retry", "abandon"]
+#: O desfecho da tentativa quando ela saiu por exceção (o scheduler a transforma em falha: nunca é sucesso).
+SAIU_POR_EXCECAO = "erro"
+
+
+@dataclass(frozen=True, slots=True)
+class PedidoDeLicoes:
+    """Um pedido por tentativa (ator) ou por planejamento (planejador)."""
+
+    papel: PapelDaLicao
+    #: A unidade do braço de controle: `step:<step_id>` no ator (as repetições da etapa não trocam de braço),
+    #: `plan:<run_id>` no planejador.
+    unidade: str
+    run_id: str
+    app_package: str                 # '' = sem app definido
+    capability: str                  # '*' = etapa livre; '' no planejador
+    step_hash: str                   # `steps.template_hash`; '' no planejador
+    simulated: bool
+    objective_id: str | None = None
+    step_id: str | None = None
+    attempt_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FechamentoDeTentativa:
+    """A tentativa que o executor acabou de fechar, com o que já estava em memória (nenhuma leitura a mais).
+
+    Chega ANTES de o scheduler gravar o desfecho (`finish_attempt`): quem precisa do tipo da falha o tira de `status`
+    e do texto que o executor devolveu, nunca de `attempts.failure_kind`, ainda vazio neste instante."""
+
+    attempt_id: str
+    step_id: str
+    run_id: str
+    objective_id: str
+    instance_id: str
+    profile_id: str | None
+    app_package: str | None          # o app da etapa
+    capability: str | None
+    template_hash: str | None        # nulo com as receitas desligadas (quem precisar lê de `steps`)
+    #: O desfecho do executor (`succeeded`, `retry`, `failed`, `waiting_user`, `uncertain`, `yielded`, `cancelled`,
+    #: `device_stuck`) ou `SAIU_POR_EXCECAO`.
+    status: str
+    #: Comprovada pela verificação. A confirmação à mão (`confirm_done`) nunca passa por aqui.
+    verified: bool
+    arvore: UiTree | None            # a última observação da tentativa (`rt.last_tree`)
+    loja: bool                       # aparelho-loja: nada dele vira conhecimento
+    simulated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ResolucaoDeItem:
+    """Uma pessoa decidiu sobre um item parado (confirmar, repetir, abandonar)."""
+
+    run_id: str
+    objective_id: str
+    resolucao: DecisaoSobreItem
+    #: `<plan_version>.<seq>` da etapa que esperava a decisão: um gesto, uma chave — dois "repetir" no mesmo item
+    #: caem em versões de plano diferentes e não se engolem.
+    ordem: str
+    nota: str | None                 # texto da pessoa; o livro redige e recusa o que parece credencial
+    step_id: str | None              # a etapa que esperava a decisão (nula quando nenhuma esperava)
+
+
+@dataclass(frozen=True, slots=True)
+class RepeticaoDeExecucao:
+    """"Repetir itens elegíveis" de uma execução (`retry_failed`), com o que de fato foi retomado."""
+
+    run_id: str
+    #: `<objective_id>@<plan_version nova>` de cada item retomado: a identidade do gesto.
+    objetivos: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RespostaAPergunta:
+    """A execução em `needs_input` foi respondida pelo assistente do comando (ADR-047). O VALOR não vem: só o sha256
+    do comando respondido; quem precisar do texto o relê da sucessora."""
+
+    run_id: str                      # a que esperava a resposta
+    run_sucessora: str
+    campos: tuple[str, ...]          # os campos perguntados, sem os de destino
+    resposta_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class TomadaDeControle:
+    """Uma pessoa pediu o aparelho enquanto a IA conduzia uma etapa. Sem árvore, texto nem coordenada."""
+
+    instance_id: str
+    run_id: str
+    objective_id: str | None
+    step_id: str
+
+
+class CosturasDeAprendizado(Protocol):
+    """O que o executor, o serviço de execução e o assistente chamam."""
+
+    def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]: ...
+    def ao_fechar_tentativa(self, fechamento: FechamentoDeTentativa) -> None: ...
+    def ao_resolver(self, resolucao: ResolucaoDeItem) -> None: ...
+    def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None: ...
+    def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None: ...
+
+
+class CosturaDeControle(Protocol):
+    """O que o gerenciador de aparelhos chama (a porta é dele: o gerenciador não conhece a fila nem o livro)."""
+
+    def tomou_controle(self, tomada: TomadaDeControle) -> None: ...
+
+
+class SemCosturas:
+    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054."""
+
+    def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
+        return []
+
+    def ao_fechar_tentativa(self, fechamento: FechamentoDeTentativa) -> None:
+        return None
+
+    def ao_resolver(self, resolucao: ResolucaoDeItem) -> None:
+        return None
+
+    def ao_repetir(self, repeticao: RepeticaoDeExecucao) -> None:
+        return None
+
+    def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
+        return None
+
+    def tomou_controle(self, tomada: TomadaDeControle) -> None:
+        return None
+
+
+SEM_COSTURAS = SemCosturas()
+
+_T = TypeVar("_T")
+
+
+def avisar(aviso: Callable[[_T], None], dado: _T) -> None:
+    """Chama uma costura de aviso. A falha vira log: o aprendizado nunca derruba quem o avisou."""
+    try:
+        aviso(dado)
+    except Exception:  # noqa: BLE001 - aprendizado é registro: nunca derruba a etapa, o gesto nem a execução
+        log.exception("aprendizado: a costura %s falhou (a operação seguiu)", type(dado).__name__)
+
+
+def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> list[str]:
+    """As lições de um pedido; qualquer falha é "nenhuma lição" (o prompt sai como o de antes)."""
+    try:
+        licoes = costuras.licoes_para(pedido)
+    except Exception:  # noqa: BLE001 - lição é contexto opcional: sem ela o ator decide como sempre decidiu
+        log.exception("aprendizado: lições para %s indisponíveis (seguindo sem lição)", pedido.unidade)
+        return []
+    return [t for t in licoes if t.strip()]
+
+
+__all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CosturaDeControle", "CosturasDeAprendizado", "FechamentoDeTentativa",
+           "DecisaoSobreItem", "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeItem",
+           "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "avisar", "pedir_licoes"]

@@ -28,6 +28,7 @@ from ..modules.execution.domain.command_refinement import (AppResumo, CommandRef
                                                           RefineAnswer, RefineRequest, normalizar)
 from ..planning.provider import AIError
 from ..security.redaction import redact
+from .costuras import RespostaAPergunta, avisar
 from .service import RunError, RunService
 
 log = logging.getLogger(__name__)
@@ -161,6 +162,8 @@ class ComandoAssistido:
             if existente is not None:
                 return runs.repo.run_summary(runs.repo.run_row(existente["id"]), deduplicated=True), False
             raise RunError("invalid_state", "Só uma execução que espera resposta (needs_input) pode ser respondida.")
+        # O que foi perguntado, lido ANTES de a antiga sair do ar (sinal `respondeu_pergunta`, ADR-054).
+        campos = self._campos_perguntados(run)
         # Os alvos vêm da foto; um destino que sobrou no texto seria lido de novo (e recusado sem confirmação).
         texto = runs.sem_destinos(body.command.strip()) or body.command.strip()
         req = RunCreate(command=texto, instance_ids=instance_ids, profile_ids=profile_ids,
@@ -176,9 +179,25 @@ class ComandoAssistido:
             runs.repo.db.execute("UPDATE runs SET status_detail=? WHERE id=?", (texto, run_id))
             runs.repo.bus.emit("log", f"Execução {run_id}: {texto}", run_id=run_id,
                                data={"successor_run_id": nova.id})
+            # Um sinal por campo perguntado, com o sha256 do comando respondido — o valor nunca: quem precisar dele
+            # (as preferências, ADR-054) o relê da sucessora.
+            avisar(runs.costuras.respondeu_pergunta, RespostaAPergunta(
+                run_id=run_id, run_sucessora=nova.id, campos=campos,
+                resposta_sha256=hashlib.sha256(body.command.strip().encode()).hexdigest()))
         return nova, not nova.deduplicated
 
     # ------------------------------------------------------------------ apoio
+    def _campos_perguntados(self, run: Mapping[str, object]) -> tuple[str, ...]:
+        """Os campos das perguntas abertas, sem os de destino. Falha na leitura = nenhum campo: o aprendizado nunca
+        impede a resposta."""
+        try:
+            perguntas = perguntas_da_execucao(self.runs, run)
+        except Exception:  # noqa: BLE001 - registro do aprendizado; a sucessora segue
+            log.exception("perguntas da execução %s não lidas para o aprendizado", run.get("id"))
+            return ()
+        return tuple(dict.fromkeys(str(q.get("field") or "") for q in perguntas
+                                   if q.get("field") not in CAMPOS_DE_DESTINO))
+
     @staticmethod
     def _pedido(run: Mapping[str, object]) -> dict[str, object]:
         foto = loads(str(run["targets"]), None) if run["targets"] else None

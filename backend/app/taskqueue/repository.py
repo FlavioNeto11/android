@@ -20,6 +20,7 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
 from ..modules.execution.domain.states import ATTEMPT, OBJECTIVE, RUN, STEP, MaquinaDeEstados
 from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
+from ..modules.learning.domain.falhas import classificar_falha
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
@@ -36,6 +37,8 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 # Prefixo de `status_detail` das etapas canceladas por uma REJEIÇÃO. Vocabulário, não frase solta: `recovery_steps`
 # o lê para saber que aquela chave foi decidida por uma pessoa — e só essa origem de `cancelled` é definitiva.
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
+#: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
+_ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
 
 
 class Sentinel:
@@ -309,6 +312,12 @@ class Repository:
                           StepStatus.uncertain, StepStatus.waiting_user):
                 fields.append("finished_at=?")
                 params.append(now_iso())
+            # A falha classificada da ETAPA (ADR-054): o tipo do desfecho em que ela parou, pelo texto dele — o de
+            # `waiting_user` diz "autenticação" enquanto a tentativa, devolvida sem consumir, diz só "interrompida".
+            # Fora de um desfecho de falha o tipo não sobra (confirmada à mão, de volta à fila, comprovada depois).
+            tipo = classificar_falha(detail, target.value) if target in _ETAPA_EM_FALHA else None
+            fields.append("failure_kind=?")
+            params.append(tipo.value if tipo is not None else None)
             sql = f"UPDATE steps SET {', '.join(fields)} WHERE id=?"
             alvo: tuple[Any, ...] = (*params, step_id)
             if cercar:
@@ -449,13 +458,19 @@ class Repository:
         """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
         fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
         desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais."""
-        anterior = self.db.scalar("SELECT status FROM attempts WHERE id=?", (attempt_id,))
+        atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
+        anterior = atual["status"] if atual else None
+        erro = truncate(error, 800)
+        # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
+        # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
+        # legado: o gravado e o retroativo nunca discordam.
+        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value)
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result) WHERE id=? AND EXISTS"
+            " observed_result=COALESCE(?, observed_result), failure_kind=? WHERE id=? AND EXISTS"
             " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
-            (status.value, now_iso(), truncate(error, 800), truncate(recovery, 800), truncate(observed, 800),
-             attempt_id, self.owner_id))
+            (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
+             tipo.value if tipo is not None else None, attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
                                 " WHERE a.id=?", (attempt_id,))
