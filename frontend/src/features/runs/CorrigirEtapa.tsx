@@ -6,13 +6,15 @@
  *
  * Enviar faz dois pedidos: acha (ou abre) o ensino da habilidade e posta nele a correção com a execução e a LINHA de
  * `steps` (`Step.id`, nunca a `key` do plano). O texto passa pela triagem de credencial do ensino (400
- * `credential_in_text`, nada gravado) e depois pela do livro, que grava o sinal `correcao_de_ensino` sem a nota quando
- * ela só FALA de credencial. Em linha, nunca modal (o padrão do `FeedbackItem`).
+ * `credential_in_text`: nem turno, nem sinal) e depois pela do livro, que grava o sinal `correcao_de_ensino` sem a nota
+ * quando ela só FALA de credencial. Em linha, nunca modal (o padrão do `FeedbackItem`). A linha recolhida da etapa leva
+ * a marca "corrigível" pela mesma regra (`MarcaCorrigivel`).
  */
 import { GraduationCap, PencilLine } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type { RunDetail, Step, StepOrigin, StepStatus, TeachingSessionView } from '../../api/types';
+import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Field, TextArea } from '../../components/Field';
 import { useAppStore } from '../../store/app';
@@ -89,8 +91,10 @@ async function acharEnsinoAberto(runId: string, o: StepOrigin): Promise<string |
 
 type Fase = 'ensino' | 'correcao';
 
-const TEXTO_RECUSADO = 'A correção parece conter uma senha, um código ou uma chave e não foi gravada — nada foi '
-  + 'registrado. Tire esse trecho e envie de novo.';
+// Recusa na fase da correção: o ensino pode já ter sido aberto um pedido antes (fica aberto e vazio, e a próxima
+// correção desta habilidade o reaproveita). O que não foi gravado é a correção, não "nada".
+const TEXTO_RECUSADO = 'A correção parece conter uma senha, um código ou uma chave e não foi gravada. Tire esse '
+  + 'trecho e envie de novo.';
 
 function mensagemDeErro(e: unknown, fase: Fase, o: StepOrigin): string {
   const err = toApiError(e);
@@ -109,7 +113,7 @@ function mensagemDeErro(e: unknown, fase: Fase, o: StepOrigin): string {
     case 'unknown_app':
       return `O aplicativo da habilidade ${habilidade} não está cadastrado neste servidor: cadastre-o em Aplicativos e tente de novo.`;
     case 'teaching_state':
-      return 'O ensino desta habilidade seguiu adiante enquanto você escrevia e não aceita mais correção. Envie de novo: um ensino novo será aberto.';
+      return 'O ensino desta habilidade seguiu adiante enquanto você escrevia e não aceita mais correção. Envie de novo: a correção vai para outro ensino aberto desta habilidade, ou para um novo.';
     case 'validation':
       return `O texto da correção não foi aceito: escreva de 1 a ${CORRECAO_MAX} caracteres.`;
     default:
@@ -130,14 +134,38 @@ interface Feito {
   origem: StepOrigin;
 }
 
+type DetalheDaCorrecao = Pick<RunDetail, 'id' | 'plan' | 'plan_versions'>;
+
 /**
- * A ação em si. Devolve `null` quando não cabe: habilidades desligadas (`health.features.skills`), etapa que não
- * falhou nem ficou sem prova, ou etapa que não veio de habilidade.
+ * A origem da etapa quando ela se corrige aqui; `null` quando não cabe: habilidades desligadas
+ * (`health.features.skills`), etapa que não falhou nem ficou sem prova, ou etapa que não veio de habilidade. Uma só
+ * regra para a ação e para a marca da linha recolhida: marca "corrigível" sem a ação no detalhe seria pior que nada.
  */
-export function CorrigirEtapa({ detail, step }: { detail: Pick<RunDetail, 'id' | 'plan' | 'plan_versions'>; step: Step }) {
+function useOrigemCorrigivel(detail: DetalheDaCorrecao, step: Step): StepOrigin | null {
   const ligado = useAppStore((st) => st.health?.features?.skills === true);
-  const origem = origemDaEtapa(detail, step);
-  if (!ligado || !origem || !ETAPA_CORRIGIVEL.has(step.status)) return null;
+  if (!ligado || !ETAPA_CORRIGIVEL.has(step.status)) return null;
+  return origemDaEtapa(detail, step);
+}
+
+/**
+ * A marca na linha RECOLHIDA da etapa: a ação mora no detalhe, e o `StepTable` começa com tudo fechado. Sem ela, a
+ * etapa que a habilidade errou não daria sinal de que se corrige.
+ */
+export function MarcaCorrigivel({ detail, step }: { detail: DetalheDaCorrecao; step: Step }) {
+  const origem = useOrigemCorrigivel(detail, step);
+  if (!origem) return null;
+  return (
+    <Badge tone="info" icon={PencilLine} size="sm" className={styles.marca}
+           title={`Veio da habilidade ${origem.skill_id} (versão ${origem.skill_version}): abra a etapa para corrigir no ensino.`}>
+      corrigível<span className="sr-only"> no ensino da habilidade {origem.skill_id}</span>
+    </Badge>
+  );
+}
+
+/** A ação em si, no detalhe da etapa. Devolve `null` quando não cabe (a mesma regra da marca). */
+export function CorrigirEtapa({ detail, step }: { detail: DetalheDaCorrecao; step: Step }) {
+  const origem = useOrigemCorrigivel(detail, step);
+  if (!origem) return null;
   return <Formulario runId={detail.id} step={step} origem={origem} />;
 }
 
@@ -150,12 +178,25 @@ function Formulario({ runId, step, origem }: { runId: string; step: Step; origem
   // O ensino desta ação: entre os dois pedidos e entre um envio e outro, a correção recusada que volta corrigida
   // entra no MESMO ensino, em vez de deixar ensinos vazios para trás.
   const ensino = useRef<string | null>(null);
+  const formId = useId();
+  // Abrir leva o foco ao campo (`autoFocus`, só quando o formulário nasce); fechar, enviado ou cancelado, o devolve
+  // ao botão, e não ao `body`: o botão que tinha o foco (Enviar, Cancelar) sai da tela junto com o formulário. No
+  // manipulador, não num efeito: o `StrictMode` roda o efeito duas vezes na montagem e roubaria o foco da página.
+  const botao = useRef<HTMLButtonElement>(null);
+
+  const fechar = () => {
+    setAberto(false);
+    setErro(null);
+    botao.current?.focus();
+  };
 
   const enviar = async () => {
     const corpo = texto.trim();
     if (!corpo || enviando) return;
     setEnviando(true);
     setErro(null);
+    // O aviso de sucesso é do envio ANTERIOR: não pode ficar ao lado do erro deste.
+    setFeito(null);
     let fase: Fase = 'ensino';
     try {
       let id = ensino.current ?? await acharEnsinoAberto(runId, origem);
@@ -169,7 +210,7 @@ function Formulario({ runId, step, origem }: { runId: string; step: Step; origem
       const v = await api.addCorrection(id, { body: corpo, run_id: runId, step_id: step.id });
       setFeito({ teachingId: v.id, origem });
       setTexto('');
-      setAberto(false);
+      fechar();
     } catch (e) {
       const err = toApiError(e);
       // O ensino guardado não serve mais (seguiu adiante ou sumiu): o próximo envio procura ou abre outro.
@@ -184,7 +225,7 @@ function Formulario({ runId, step, origem }: { runId: string; step: Step; origem
   return (
     <div className={styles.corrigir} role="group" aria-label={`Corrigir a etapa ${step.title}`}>
       <div className={styles.linha}>
-        <Button size="sm" variant="secondary" icon={PencilLine} aria-expanded={aberto}
+        <Button ref={botao} size="sm" variant="secondary" icon={PencilLine} aria-expanded={aberto} aria-controls={formId}
                 onClick={() => {
                   setAberto((a) => !a);
                   setErro(null);
@@ -197,16 +238,16 @@ function Formulario({ runId, step, origem }: { runId: string; step: Step; origem
       </div>
 
       {aberto ? (
-        <form className={styles.form}
+        <form id={formId} className={styles.form}
               onSubmit={(e) => {
                 e.preventDefault();
                 void enviar();
               }}>
           <Field label="O que devia ter acontecido" unit={`${texto.length}/${CORRECAO_MAX}`} className={styles.texto}
-                 hint="A correção entra no ensino da habilidade e vai ao modelo quando ele gerar a versão corrigida. Não escreva senha nem código: o texto com cara de credencial é recusado e nada é gravado.">
+                 hint="A correção entra no ensino da habilidade e vai ao modelo quando ele gerar a versão corrigida. Não escreva senha nem código: o texto com cara de credencial é recusado e a correção não é gravada.">
             {({ id, describedBy }) => (
               <TextArea id={id} aria-describedby={describedBy} rows={3} maxLength={CORRECAO_MAX} value={texto}
-                        onChange={(e) => setTexto(e.target.value)} />
+                        autoFocus onChange={(e) => setTexto(e.target.value)} />
             )}
           </Field>
           <div className={styles.acoes}>
@@ -214,7 +255,7 @@ function Formulario({ runId, step, origem }: { runId: string; step: Step; origem
                     disabledReason={texto.trim() ? null : 'Escreva a correção.'}>
               Enviar correção
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => { setAberto(false); setErro(null); }}>Cancelar</Button>
+            <Button size="sm" variant="ghost" onClick={fechar}>Cancelar</Button>
           </div>
           {erro ? <p className={styles.erro} role="alert">{erro}</p> : null}
         </form>

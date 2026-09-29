@@ -22,7 +22,7 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
 import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
-import { CorrigirEtapa } from './CorrigirEtapa';
+import { CorrigirEtapa, MarcaCorrigivel } from './CorrigirEtapa';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import { attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps, printParaConfirmar } from './model';
 import { SideEffectFlag } from './PlanTab';
@@ -352,6 +352,7 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
                 <span className="truncate">{s.title}</span>
                 <DrivenByBadge drivenBy={s.driven_by} />
                 {s.side_effect ? <SideEffectFlag /> : null}
+                <MarcaCorrigivel detail={detail} step={s} />
               </span>
               <StatusBadge meta={meta} size="sm" plain />
               <span className={styles.stepCell} title="Tentativas usadas / máximo">{s.attempts}/{s.max_attempts} tent.</span>

@@ -319,3 +319,46 @@ async def test_rotas_de_fluxo_respeitam_a_skill(parque: Harness) -> None:
         r = await c.delete("/api/flows/curtir")
         assert r.status_code == 409 and r.json()["detail"]["code"] == "flow_adopted"
         assert s.db.scalar("SELECT COUNT(*) FROM flows WHERE id='curtir'") == 1
+
+
+# ==================================================================== correção pela visão da execução (plano 22.7)
+async def test_etapa_da_skill_se_corrige_no_ensino_da_mesma_versao_pelas_rotas_do_painel(parque: Harness) -> None:
+    """O contrato de que o painel depende, pelas rotas e com um plano COMPILADO da skill (não um `origin` escrito à
+    mão): `GET /api/runs/{id}` traz `origin` em `plan_versions[].steps` (é por ela que a etapa ganha "Corrigir esta
+    etapa"); o ensino abre com `base_version` (versão inexistente = 404); a lista de abertos traz `base_version` (é
+    por ele que o painel acha o ensino a reaproveitar); e a correção entra com a execução e a LINHA de `steps`."""
+    s = estado(parque)
+    ref = await publicar_abrir(s)
+    run = parque.run([IID], command=ABRA, mode="plan")
+    await parque.wait_run(run.id, statuses=("planned",))
+    assert Plan.model_validate_json(s.repo.run_row(run.id)["plan"]).planner.model == "skill:ig.abrir_conversa@1"
+    etapa = etapas(s, run.id)["abrir_conversa"]["id"]
+    s.db.execute("UPDATE steps SET status='failed' WHERE id=?", (etapa,))
+    instrucao = f"Corrigir a habilidade {ABRIR} (versão {ref.version})."
+    async with cliente(parque) as c:
+        detalhe = (await c.get(f"/api/runs/{run.id}")).json()
+        [versao] = detalhe["plan_versions"]
+        assert versao["objective_id"] == f"{run.id}:{IID}"
+        assert {p["key"]: p["origin"] for p in versao["steps"]} == {
+            chave: {"skill_id": ABRIR, "skill_version": 1, "node_id": chave, "strategies": ["recipe", "ai_actor"]}
+            for chave in ("abrir_inbox", "abrir_conversa")}
+        assert all(p["origin"]["skill_id"] == ABRIR for p in detalhe["plan"]["steps"])
+        linha = next(x for x in detalhe["steps"] if x["id"] == etapa)
+        assert (linha["key"], linha["status"], linha["plan_version"]) == ("abrir_conversa", "failed", 1)
+
+        r = await c.post("/api/teaching-sessions", json={"instruction": instrucao, "skill_id": ABRIR, "base_version": 2})
+        assert r.status_code == 404 and r.json()["detail"]["code"] == "not_found", r.text
+        r = await c.post("/api/teaching-sessions", json={"instruction": instrucao, "skill_id": ABRIR, "base_version": 1})
+        assert r.status_code == 201, r.text
+        ensino = r.json()
+        assert (ensino["skill_id"], ensino["base_version"], ensino["app_id"]) == (ABRIR, 1, "instagram")
+        abertos = (await c.get("/api/teaching-sessions", params={"status": "open", "limit": 200})).json()
+        assert [(a["id"], a["skill_id"], a["base_version"]) for a in abertos] == [(ensino["id"], ABRIR, 1)]
+
+        r = await c.post(f"/api/teaching-sessions/{ensino['id']}/corrections",
+                         json={"body": "devia abrir a conversa da @ana, não a primeira da lista", "run_id": run.id,
+                               "step_id": etapa})
+    assert r.status_code == 200, r.text
+    [turno] = [t for t in r.json()["turns"] if t["kind"] == "correction"]
+    assert turno["target"] == {"run_id": run.id, "step_id": etapa}
+    assert r.json()["source"] == "correction"

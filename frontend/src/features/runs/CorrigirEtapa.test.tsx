@@ -78,18 +78,37 @@ afterEach(async () => {
   container.remove();
 });
 
-/** Abre o objetivo do android-01 (o que falhou não abre sozinho: só o bloqueado) e as duas etapas dele. */
-async function abrir(d: RunDetail): Promise<void> {
+/** As linhas (recolhidas ou não) das etapas visíveis: o botão que abre o detalhe. */
+const cabecas = () => Array.from(container.querySelectorAll<HTMLElement>('[aria-controls^="step-body-"]'));
+
+/** Abre só o objetivo do android-01 (o que falhou não abre sozinho: só o bloqueado); as etapas ficam recolhidas. */
+async function abrirObjetivo(d: RunDetail): Promise<void> {
   await act(async () => root.render(<InstancesTab detail={d} />));
   await click(byRole('button', /android-01/, container));
-  for (const b of Array.from(container.querySelectorAll<HTMLElement>('[aria-controls^="step-body-"]'))) {
+}
+
+/** Abre o objetivo do android-01 e as duas etapas dele. */
+async function abrir(d: RunDetail): Promise<void> {
+  await abrirObjetivo(d);
+  for (const b of cabecas()) {
     if (b.getAttribute('aria-controls')?.includes(':android-01:')) await click(b);
   }
 }
 
+async function remontar(): Promise<void> {
+  await act(async () => root.unmount());
+  root = createRoot(container);
+}
+
 const botoes = () => allByRole('button', /^Corrigir esta etapa/, container);
+const marcadas = () => cabecas().filter((b) => text(b).includes('corrigível'));
+const buscas = () => backend.callsTo('GET', /^\/api\/teaching-sessions$/);
 const criacoes = () => backend.callsTo('POST', /^\/api\/teaching-sessions$/);
 const correcoes = () => backend.callsTo('POST', /\/corrections$/);
+
+/** Todo estado de etapa que NÃO se corrige (`teaching.py::CORRECTABLE_STEP` = failed, uncertain). */
+const NAO_CORRIGIVEIS: StepStatus[] = ['pending', 'ready', 'running', 'verifying', 'succeeded', 'retry_wait',
+                                       'waiting_user', 'cancelled', 'skipped'];
 
 async function escreverEEnviar(textoDaCorrecao: string): Promise<void> {
   if (!container.querySelector('form')) await click(byRole('button', /^Corrigir esta etapa/, container));
@@ -111,21 +130,56 @@ describe('Corrigir esta etapa (plano 22.7)', () => {
     expect(document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')).toBeNull();
   });
 
-  it('não aparece na etapa comprovada, na que não veio de habilidade, nem com as habilidades desligadas', async () => {
-    await abrir(detalhe('succeeded'));
+  it.each(NAO_CORRIGIVEIS)('não aparece na etapa %s, mesmo vinda de habilidade (nem a ação, nem a marca)', async (status) => {
+    await abrir(detalhe(status));
     expect(botoes()).toHaveLength(0);
-    await act(async () => root.unmount());
-    root = createRoot(container);
+    expect(marcadas()).toHaveLength(0);
+  });
 
+  it('não aparece na etapa que não veio de habilidade, nem com as habilidades desligadas', async () => {
     await abrir(detalhe('failed', false));
     expect(botoes()).toHaveLength(0);
-    await act(async () => root.unmount());
-    root = createRoot(container);
+    expect(marcadas()).toHaveLength(0);
+    await remontar();
 
     ligarHabilidades(false);
     await abrir(detalhe('failed'));
     expect(botoes()).toHaveLength(0);
+    expect(marcadas()).toHaveLength(0);
     expect(backend.calls.filter((c) => c.path.startsWith('/api/teaching-sessions'))).toHaveLength(0);
+  });
+
+  it('a linha recolhida da etapa corrigível leva a marca "corrigível" (a ação mora no detalhe, fechado de início)', async () => {
+    await abrirObjetivo(detalhe('failed'));
+    expect(botoes()).toHaveLength(0);                       // nenhuma etapa aberta
+    expect(marcadas().map((b) => b.getAttribute('aria-controls'))).toEqual([`step-body-${ETAPA}`]);
+    await click(marcadas()[0]!);
+    expect(botoes()).toHaveLength(1);                       // a marca promete o que o detalhe mostra
+  });
+
+  it('a origem é a do passo do MESMO objetivo e da MESMA versão, mesmo com outras versões antes na lista', async () => {
+    // Iscas antes da entrada certa: sem casar o objetivo, acharia a do obj-2; sem casar a versão, a v2 do obj-1.
+    const base = detalhe('failed');
+    const certa = base.plan_versions[0]!;
+    const comOrigem = (origem: typeof ORIGEM) => certa.steps.map((p) => (p.key === 'open_app' ? { ...p, origin: origem } : p));
+    const d: RunDetail = {
+      ...base,
+      plan_versions: [
+        { ...certa, objective_id: 'obj-2', steps: comOrigem({ skill_id: 'qa.do_outro_objetivo', skill_version: 7, node_id: 'open_app' }) },
+        { ...certa, version: 2, reason: 'Replanejado', steps: comOrigem({ ...ORIGEM, skill_version: 4 }) },
+        certa,
+      ],
+    };
+    expect(origemDaEtapa(d, d.steps.find((s) => s.id === ETAPA)!)).toEqual(ORIGEM);
+
+    await abrir(d);
+    expect(botoes()).toHaveLength(1);
+    expect(text(container)).toContain('Veio da habilidade qa.abrir_conversa (versão 3)');
+    expect(text(container)).not.toContain('versão 4');
+    expect(text(container)).not.toContain('qa.do_outro_objetivo');
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(correcoes()).toHaveLength(1));
+    expect(criacoes()[0]?.body).toEqual({ instruction: INSTRUCAO, skill_id: 'qa.abrir_conversa', base_version: 3 });
   });
 
   it('envia: abre o ensino da habilidade (versão base) e posta a correção com a execução e a linha de steps', async () => {
@@ -148,6 +202,37 @@ describe('Corrigir esta etapa (plano 22.7)', () => {
     expect(container.querySelector('form')).toBeNull();
   });
 
+  it('foco e ligação acessível: abrir leva ao campo; enviar e cancelar devolvem ao botão (nunca ao body)', async () => {
+    await abrir(detalhe('failed'));
+    const alternar = byRole('button', /^Corrigir esta etapa/, container);
+    await click(alternar);
+    const form = container.querySelector('form')!;
+    expect(form.id).not.toBe('');
+    expect(alternar.getAttribute('aria-controls')).toBe(form.id);
+    expect(alternar.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(byRole('textbox', /O que devia ter acontecido/, container));
+
+    await click(byRole('button', /^Cancelar/, container));
+    expect(container.querySelector('form')).toBeNull();
+    expect(document.activeElement).toBe(alternar);
+
+    await escreverEEnviar('o botão certo é Enviar');
+    await waitFor(() => expect(byRole('status', /Correção registrada/, container)).toBeTruthy());
+    expect(container.querySelector('form')).toBeNull();
+    expect(document.activeElement).toBe(alternar);
+  });
+
+  it('o aviso de sucesso do envio anterior some quando o envio seguinte falha', async () => {
+    await abrir(detalhe('failed'));
+    await escreverEEnviar('primeira correção');
+    await waitFor(() => expect(text(container)).toContain('Correção registrada'));
+
+    backend.on('POST', /\/corrections$/, () => apiError(400, 'step_not_correctable', "A etapa está 'succeeded'."));
+    await escreverEEnviar('segunda correção');
+    await waitFor(() => expect(byRole('alert', /só essas se corrigem/, container)).toBeTruthy());
+    expect(text(container)).not.toContain('Correção registrada');
+  });
+
   it('reaproveita o ensino aberto da mesma habilidade que já corrige esta execução', async () => {
     backend.on('GET', /^\/api\/teaching-sessions$/, () => json([
       resumo('ens-outra', 'qa.outra_coisa', 3), resumo('ens-v2', ORIGEM.skill_id, 2), resumo('ens-9', ORIGEM.skill_id, 3),
@@ -160,6 +245,41 @@ describe('Corrigir esta etapa (plano 22.7)', () => {
     expect(correcoes()[0]?.path).toBe('/api/teaching-sessions/ens-9/corrections');
     // outra habilidade e outra versão base nem são abertas
     expect(backend.callsTo('GET', /^\/api\/teaching-sessions\/ens-(outra|v2)$/)).toHaveLength(0);
+  });
+
+  it('reaproveita o ensino vazio que esta ação abriu (a correção falhou depois de abrir), sem abrir outro', async () => {
+    backend.on('GET', /^\/api\/teaching-sessions$/, () => json([resumo('ens-vazio', ORIGEM.skill_id, 3)]));
+    backend.on('GET', /^\/api\/teaching-sessions\/ens-vazio$/, () => json(visao('ens-vazio')));
+    await abrir(detalhe('failed'));
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(correcoes()).toHaveLength(1));
+    expect(criacoes()).toHaveLength(0);
+    expect(correcoes()[0]?.path).toBe('/api/teaching-sessions/ens-vazio/corrections');
+  });
+
+  it('o que já corrige esta execução vence o vazio desta ação, mesmo vindo depois na lista', async () => {
+    backend.on('GET', /^\/api\/teaching-sessions$/, () => json([resumo('ens-vazio', ORIGEM.skill_id, 3),
+                                                              resumo('ens-9', ORIGEM.skill_id, 3)]));
+    backend.on('GET', /^\/api\/teaching-sessions\/ens-vazio$/, () => json(visao('ens-vazio')));
+    backend.on('GET', /^\/api\/teaching-sessions\/ens-9$/, () => json(visao('ens-9', { turns: [correcao(RUN_ID, ETAPA)] })));
+    await abrir(detalhe('failed'));
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(correcoes()).toHaveLength(1));
+    expect(criacoes()).toHaveLength(0);
+    expect(correcoes()[0]?.path).toBe('/api/teaching-sessions/ens-9/corrections');
+  });
+
+  it.each<[string, Partial<TeachingSessionView>]>([
+    ['com outra instrução (um ensino da pessoa)', { instruction: 'Ensinar a abrir a conversa pelo contato certo' }],
+    ['com uma demonstração', { demonstrations: [{ id: 'dem-1', seq: 1, kind: 'recording', training_session_id: 'trn-1', run_id: null }] }],
+  ])('o ensino aberto sem correção mas %s não é o vazio desta ação: abre um novo', async (_caso, over) => {
+    backend.on('GET', /^\/api\/teaching-sessions$/, () => json([resumo('ens-alheio', ORIGEM.skill_id, 3)]));
+    backend.on('GET', /^\/api\/teaching-sessions\/ens-alheio$/, () => json(visao('ens-alheio', over)));
+    await abrir(detalhe('failed'));
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(correcoes()).toHaveLength(1));
+    expect(criacoes()).toHaveLength(1);
+    expect(correcoes()[0]?.path).toBe('/api/teaching-sessions/ens-1/corrections');
   });
 
   it('o ensino aberto de outra execução não serve: abre um novo', async () => {
@@ -176,21 +296,45 @@ describe('Corrigir esta etapa (plano 22.7)', () => {
     backend.on('POST', /\/corrections$/, () => apiError(400, 'credential_in_text', 'A correção contém uma credencial.'));
     await abrir(detalhe('failed'));
     await escreverEEnviar('texto que o servidor recusou');
-    await waitFor(() => expect(byRole('alert', /parece conter uma senha, um código ou uma chave/, container)).toBeTruthy());
+    const aviso = await waitFor(() => byRole('alert', /parece conter uma senha, um código ou uma chave/, container));
+    // O ensino já foi aberto um pedido antes: o que não foi gravado é a correção, não "nada".
+    expect(text(aviso)).toContain('não foi gravada');
+    expect(text(aviso)).not.toContain('nada foi registrado');
     expect((byRole('textbox', /O que devia ter acontecido/, container) as HTMLTextAreaElement).value).toBe('texto que o servidor recusou');
     expect(text(container)).not.toContain('Correção registrada');
 
     backend.on('POST', /\/corrections$/, () => json(visao('ens-1', { turns: [correcao(RUN_ID, ETAPA)] })));
     await escreverEEnviar('texto sem o segredo');
     await waitFor(() => expect(text(container)).toContain('Correção registrada'));
+    expect(buscas()).toHaveLength(1);                       // o reenvio nem procurou: usou o ensino guardado
     expect(criacoes()).toHaveLength(1);                     // não deixou um ensino vazio para trás
     expect(correcoes().map((c) => c.path)).toEqual(['/api/teaching-sessions/ens-1/corrections',
                                                    '/api/teaching-sessions/ens-1/corrections']);
   });
 
   it.each([
+    ['409 teaching_state', () => apiError(409, 'teaching_state', "O ensino está 'asking'."), 'seguiu adiante'],
+    ['404', () => apiError(404, 'not_found', 'Ensino não encontrado: ens-1.'), 'o ensino não existe mais'],
+  ] as const)('depois de %s na correção, o reenvio esquece o ensino guardado: procura e abre de novo', async (_caso, falha, aviso) => {
+    let n = 0;
+    backend.on('POST', /^\/api\/teaching-sessions$/, () => json(visao(`ens-${++n}`), 201));
+    backend.on('POST', /\/corrections$/, falha);
+    await abrir(detalhe('failed'));
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(allByRole('alert', /./, container).map((a) => text(a)).join(' | ')).toContain(aviso));
+    expect([buscas().length, criacoes().length]).toEqual([1, 1]);
+
+    backend.on('POST', /\/corrections$/, (c) => json(visao(c.path.split('/')[3]!, { turns: [correcao(RUN_ID, ETAPA)] })));
+    await escreverEEnviar('o contato certo é o QA-001');
+    await waitFor(() => expect(text(container)).toContain('Correção registrada'));
+    expect([buscas().length, criacoes().length]).toEqual([2, 2]);
+    expect(correcoes().map((c) => c.path)).toEqual(['/api/teaching-sessions/ens-1/corrections',
+                                                   '/api/teaching-sessions/ens-2/corrections']);
+  });
+
+  it.each([
     ['corrections', apiError(400, 'step_not_correctable', "A etapa está 'succeeded'."), 'só essas se corrigem'],
-    ['corrections', apiError(409, 'teaching_state', "O ensino está 'asking'."), 'um ensino novo será aberto'],
+    ['corrections', apiError(409, 'teaching_state', "O ensino está 'asking'."), 'outro ensino aberto desta habilidade, ou para um novo'],
     ['corrections', apiError(404, 'not_found', 'Etapa x não é da execução y.'), 'A etapa não foi encontrada nesta execução'],
     ['corrections', json({ detail: [{ loc: ['body', 'body'], msg: 'String should have at most 2000 characters' }] }, 422), 'de 1 a 2000 caracteres'],
     ['start', apiError(404, 'not_found', 'Habilidade não encontrada: qa.abrir_conversa.'), 'não existe mais neste servidor'],

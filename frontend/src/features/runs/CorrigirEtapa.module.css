@@ -18,6 +18,9 @@
 
 .rotulo { color: var(--text-3); font-size: var(--fs-sm); }
 
+/* A marca "corrigível" na linha recolhida da etapa, ao lado dos outros selos (mesmo alinhamento do `flagBadge`). */
+.marca { flex: none; vertical-align: middle; }
+
 /* Flex que quebra, não grade: o detalhe da etapa tem a largura do objetivo aberto, não a da página. */
 .form {
   display: flex;
