@@ -17,7 +17,7 @@ import functools
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, get_args
 
@@ -51,6 +51,11 @@ class Capability:
     post_description: str
     bindings: tuple[str, ...] = ()              # variáveis obrigatórias (o planejador precisa preencher)
     optional_bindings: tuple[str, ...] = ()
+    # Opcionais que, sem valor nesta etapa, vêm da etapa anterior mais próxima do MESMO plano que declara o argumento
+    # (`herdar_argumentos`). A guarda de cartão só agia se o planejador repetisse a legenda em cada etapa da
+    # publicação; com ela só na abertura, curtida, balão e comentário valiam em qualquer cartão. Quem declara é a
+    # ação que CONTINUA um alvo, não a que o começa (abrir outro post por posição não pode herdar a legenda).
+    inherited_bindings: tuple[str, ...] = ()
     precondition: str | None = None
     side_effect: bool = False
     risk: str = "low"                           # low | medium | high — orienta a política padrão
@@ -66,12 +71,13 @@ class Capability:
     # (`UiTree.text_in_card`) e a prova local por seletor só vale nesse cartão. Motivo: r-20260928165254-e31953 e
     # r-20260928195344-02ee9e, em que "Posts" e `desc==Liked` passavam com QUALQUER publicação.
     card_guard: tuple[str, ...] = ()
-    # O controle do CARTÃO que esta etapa toca SEM efeito externo (o balão de comentários): com `card_guard`
-    # resolvido, um toque que acerta esse controle só vale no cartão da legenda (`UiTree.text_in_card`). O toque de
+    # Os controles do CARTÃO que esta etapa toca SEM efeito externo (o balão de comentários): com `card_guard`
+    # resolvido, um toque que acerta um deles só vale no cartão da legenda (`UiTree.text_in_card`). O toque de
     # efeito já é conferido pelo `commit_selector`; este é o que abre a folha "Comments", igual para qualquer
     # publicação — e, com ela aberta, a legenda do fundo continua na árvore (r-20260928165254-e31953), então a
-    # pós-condição não distingue o balão do cartão vizinho. Só vale junto de `card_guard` (conferido na carga).
-    card_control: str | None = None
+    # pós-condição não distingue o balão do cartão vizinho. Lista: mais de um controle abre a mesma folha (o link
+    # "View all N comments"). Só vale junto de `card_guard` (conferido na carga).
+    card_control: tuple[str, ...] = ()
     reconciliation: str = ""                    # o que observar depois do efeito para saber se ele valeu
     default_policy: str = "autonomous"
     limit_bucket: str | None = None             # likes | comments | follows | dms — chave do limite por hora
@@ -152,12 +158,30 @@ def card_control_error(cap: Capability) -> str | None:
     """Motivo pelo qual o `card_control` de uma ação é inválido; `None` quando está bem formado ou ausente. Um seletor
     vazio casaria qualquer elemento (ou nenhum), e um controle sem `card_guard` nunca seria conferido — nos dois casos
     a guarda seria de mentira, e isso aparece na carga, não no primeiro comentário no post errado."""
-    if cap.card_control is None:
+    if not cap.card_control:
         return None
-    if not all(p.strip() for p in cap.card_control.split("|")):
+    if not all(p.strip() for seletor in cap.card_control for p in seletor.split("|")):
         return "seletor vazio"
     if not cap.card_guard:
         return "sem card_guard: sem a legenda a conferir, o toque no controle nunca seria conferido"
+    return None
+
+
+def inherited_bindings_error(cap: Capability) -> str | None:
+    """Motivo pelo qual a herança declarada por uma ação é inválida; `None` quando está bem formada ou ausente.
+
+    Só argumento OPCIONAL herda: o obrigatório o planejador preenche, e sem ele a etapa vira pergunta — herdá-lo
+    esconderia a pergunta. Texto a escrever nunca herda: o segundo comentário repetiria a intenção (ou as palavras) do
+    primeiro, e o texto nasce por perfil. Um nome fora de `optional_bindings` nunca seria herdado, em silêncio."""
+    vistos: set[str] = set()
+    for nome in cap.inherited_bindings:
+        if nome in vistos:
+            return f"{nome!r} repetido"
+        vistos.add(nome)
+        if nome not in cap.optional_bindings:
+            return f"{nome!r} não está em optional_bindings (só argumento opcional herda)"
+        if nome in (TEXTO, BRIEFING, VERBATIM):
+            return f"{nome!r} é texto a escrever: nasce por etapa e por perfil, nunca herdado"
     return None
 
 
@@ -174,6 +198,9 @@ class CapabilityCatalog:
             erro = card_control_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.card_control — {erro}")
+            erro = inherited_bindings_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.inherited_bindings — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
 
     @property
@@ -240,11 +267,12 @@ def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[li
     """Monta o plano a partir das ações escolhidas.
 
     Ação desconhecida ou argumento faltando NÃO derruba a execução: vira pergunta ao usuário, que é o que o motor
-    já sabe tratar (`needs_input`). Um plano meio montado seria pior que nenhum.
+    já sabe tratar (`needs_input`). Um plano meio montado seria pior que nenhum. Antes de montar, cada etapa recebe
+    os argumentos que a ação declara herdar das anteriores (`herdar_argumentos`).
     """
     steps: list[PlanStep] = []
     missing: list[MissingInfo] = []
-    for node in nodes:
+    for node in herdar_argumentos(catalog, nodes):
         try:
             steps.append(catalog.build_step(node))
         except UnknownCapability:
@@ -257,6 +285,38 @@ def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[li
             missing.append(MissingInfo(field=node.capability.lower(),
                                        question=f"Falta informação para a etapa '{node.key}': {exc}."))
     return steps, missing
+
+
+def herdar_argumentos(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> list[CapabilityNode]:
+    """Os nós com os argumentos que cada ação declara herdar (`inherited_bindings`) preenchidos pelo plano.
+
+    Um argumento herdável sem valor na etapa recebe o valor EFETIVO (já herdado, em cadeia) da etapa anterior mais
+    próxima que declara esse argumento, obrigatório ou opcional. "Anterior" é a ordem da lista, que é a ordem em que o
+    objetivo executa (`steps.seq`). Se essa etapa o deixou vazio — outra publicação aberta por posição —, nada é
+    herdado: ela começou outro alvo. Etapa que não declara o argumento (abrir um perfil) não corta a cadeia.
+
+    O valor de dentro de um bloco `for_each` não sai dele: `{item}` só é resolvido nas cópias do bloco, e fora dele
+    viraria o texto literal "{item}" numa guarda. O que a etapa trouxe sempre vence; ação desconhecida passa intacta
+    (o `compose` a transforma em pergunta). Herdar só acrescenta exigência à etapa (legenda na tela, toque no cartão
+    dela): o pior caso de uma herança indevida é a etapa parar, nunca agir no alvo errado."""
+    anteriores: dict[str, tuple[str, str | None]] = {}      # argumento → (valor, for_each) do último que o declarou
+    saida: list[CapabilityNode] = []
+    for node in nodes:
+        if not catalog.has(node.capability):
+            saida.append(node)
+            continue
+        cap = catalog.get(node.capability)
+        valores = dict(node.bindings)
+        for nome in cap.inherited_bindings:
+            if str(valores.get(nome) or "").strip():
+                continue
+            valor, bloco = anteriores.get(nome, ("", None))
+            if valor.strip() and bloco in (None, node.for_each):
+                valores[nome] = valor
+        for nome in (*cap.bindings, *cap.optional_bindings):
+            anteriores[nome] = (str(valores.get(nome) or ""), node.for_each)
+        saida.append(node if valores == node.bindings else replace(node, bindings=valores))
+    return saida
 
 
 def _variaveis(texto: str) -> set[str]:
