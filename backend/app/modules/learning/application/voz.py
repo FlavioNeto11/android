@@ -302,8 +302,10 @@ class ServicoDeVoz:
         return self._selecao(profile_id, capability)[0]
 
     def bloco(self, profile_id: str, capability: str) -> str:
-        """O que vai ao contexto social: só com o modo `voz: on`, só o perfil e a ação pedidos."""
-        if self._servico.ajustes.modo_voz is not Modo.ON or not profile_id or not capability:
+        """O que vai ao contexto social: só com o aprendizado ligado e o modo `voz: on`, só o perfil e a ação pedidos
+        (`aprendizado.enabled: false` desliga tudo, inclusive o consumo)."""
+        ajustes = self._servico.ajustes
+        if not ajustes.enabled or ajustes.modo_voz is not Modo.ON or not profile_id or not capability:
             return ""
         return renderizar(self.pares(profile_id, capability))
 

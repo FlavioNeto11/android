@@ -245,6 +245,9 @@ def test_bloco_so_do_mesmo_perfil_e_acao_com_ate_2_pares_e_150_tokens(mundo: Mun
     assert 1 <= len(pares) <= 2
     assert sum(estimar_tokens(p) for p in pares) <= 150
     assert "Bia" not in bloco and "Comentário" not in bloco        # nunca outro perfil, nunca outra ação
+    mundo.ajustes[0] = Ajustes(enabled=False, modo_voz=Modo.ON)     # `aprendizado.enabled: false` desliga tudo
+    assert mundo.voz.bloco(ANDRE, "send_dm") == ""
+    mundo.modo(Modo.ON)
     assert "Texto da Bia" in mundo.voz.bloco(BIA, "send_dm") and mundo.voz.bloco(BIA, "comment") == ""
     # Textos longos: o que não cabe fica de fora inteiro (nunca cortado no meio).
     longo = "palavra " * 90

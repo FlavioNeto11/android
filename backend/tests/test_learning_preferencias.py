@@ -240,6 +240,9 @@ async def test_so_pre_preenche(mundo: Mundo, cliente: httpx.AsyncClient) -> None
     # Nada respondeu por ela: a execução continua esperando, nenhuma sucessora nasceu, nada foi gravado.
     assert mundo.db.scalar("SELECT status FROM runs WHERE id=?", (espera,)) == "needs_input"
     assert mundo.db.scalar("SELECT COUNT(*) FROM runs") == execucoes
+    mundo.ajustes[0] = Ajustes(enabled=False, modo_preferencias=Modo.ON)     # `enabled: false` desliga o consumo
+    assert mundo.prefs.sugestoes(espera) == ()
+    mundo.modo(Modo.ON)
     # Outro perfil não herda a preferência; o modo shadow não sugere.
     de_outra = mundo.execucao(PERGUNTA, status="needs_input", plano=pergunta, perfis=(ANDRE, BIA))
     assert mundo.prefs.sugestoes(de_outra) == ()
@@ -323,6 +326,9 @@ def test_escolha_repetida_sem_efeito_decide_sozinha(mundo: Mundo) -> None:
     assert p.state is SkillState.PUBLISHED and p.state_by == "sistema"   # D1: sem efeito, com o modo em 'on'
     r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
     assert r.intent is not None and str(r.intent.ref) == "ig.b@1" and r.intent.method is ResolutionMethod.PREFERENCE
+    mundo.ajustes[0] = Ajustes(enabled=False, modo_preferencias=Modo.ON)     # `enabled: false` desliga o consumo
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).status is ResolutionStatus.NEEDS_INPUT
+    mundo.modo(Modo.ON)
     # Perfil sem a preferência (ou prévia sem aparelho): ninguém decide por ele.
     for perfis in ((ANDRE, BIA), (BIA,), None, ()):
         assert _empate(fonte).resolve(IntentRequest(AMBIGUO, perfis)).status is ResolutionStatus.NEEDS_INPUT

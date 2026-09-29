@@ -169,6 +169,10 @@ class ServicoDePreferencias:
     def modo(self) -> Modo:
         return self._servico.ajustes.modo_preferencias
 
+    def _consome(self) -> bool:
+        """Sugere e decide só com o aprendizado ligado e o modo em `on` (`enabled: false` desliga tudo)."""
+        return self._servico.ajustes.enabled and self.modo is Modo.ON
+
     # ---------------------------------------------------------------- curadoria
     def executar(self, agora: datetime) -> int:
         return self.minerar(agora)
@@ -300,7 +304,7 @@ class ServicoDePreferencias:
                   perfis: tuple[str | None, ...] | None) -> Preferida | None:
         """A escolha que vale para TODOS os perfis da execução neste empate, ou `None`. Perfil sem preferência (ou
         aparelho sem persona, ou prévia sem aparelho): ninguém decide por ele."""
-        if self.modo is not Modo.ON or not perfis or any(p is None for p in perfis):
+        if not self._consome() or not perfis or any(p is None for p in perfis):
             return None
         por_perfil = self._publicadas(CAMPO_DA_HABILIDADE, modelo_do_conjunto(candidatas))
         itens = [por_perfil.get(p) for p in dict.fromkeys(p for p in perfis if p)]
@@ -319,7 +323,7 @@ class ServicoDePreferencias:
         abertas = self._leitura.perguntas_abertas(run_id)
         if abertas is None:
             raise NaoEncontrado(f"Não há execução '{run_id}'.")
-        if (self.modo is not Modo.ON or abertas.status != "needs_input" or not abertas.perfis
+        if (not self._consome() or abertas.status != "needs_input" or not abertas.perfis
                 or any(p is None for p in abertas.perfis)):
             return ()
         modelo = modelo_do_comando(abertas.comando)
