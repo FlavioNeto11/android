@@ -172,6 +172,16 @@ interface PlanStep {
   postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged' | 'items_collected'; value: string; description: string };
   timeout_s: number;
   max_attempts: number;
+  /** De que habilidade, versão e nó a etapa saiu, quando o plano foi compilado de uma habilidade (`StepOrigin`).
+   *  Ausente no plano do planejador. É o que permite corrigir a etapa no ensino (plano 22.7). */
+  origin?: StepOrigin;
+}
+
+interface StepOrigin {
+  skill_id: string;
+  skill_version: number;
+  node_id: string;
+  strategies?: string[];
 }
 
 interface Plan {
@@ -469,7 +479,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
-  ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
+  ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, StepOrigin, Plan, RunSummary,
   Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus, AiImageStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
@@ -1934,6 +1944,8 @@ export interface TeachingTurn {
   kind: 'instruction' | 'question' | 'answer' | 'correction' | 'note';
   author: 'person' | 'ai' | 'compiler' | 'system';
   reply_to: number | null;
+  /** O alvo do turno: na correção, `{run_id, step_id}` da etapa corrigida. */
+  target?: Record<string, unknown> | null;
   body: string | null;
   candidate_id: string | null;
   created_by: string | null;
@@ -1944,6 +1956,8 @@ export interface TeachingSessionSummary {
   id: string;
   instruction: string;
   skill_id: string | null;
+  /** O ensino que melhora a versão N da habilidade. */
+  base_version?: number | null;
   app_id: string | null;
   status: TeachingStatus;
   validation_status: string;

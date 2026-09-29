@@ -22,6 +22,7 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
 import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
+import { CorrigirEtapa, MarcaCorrigivel } from './CorrigirEtapa';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import { attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps, printParaConfirmar } from './model';
 import { SideEffectFlag } from './PlanTab';
@@ -193,7 +194,7 @@ function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: 
 
           <div>
             <h4 className={styles.subTitle}>Etapas — plano v{o.plan_version}</h4>
-            {steps.length > 0 ? <StepTable steps={steps} attempts={attempts} /> : <p className={styles.muted}>Nenhuma etapa registrada para a versão atual do plano.</p>}
+            {steps.length > 0 ? <StepTable detail={detail} steps={steps} attempts={attempts} /> : <p className={styles.muted}>Nenhuma etapa registrada para a versão atual do plano.</p>}
           </div>
 
           <OlderVersions detail={detail} objective={o} attempts={attempts} />
@@ -311,7 +312,7 @@ function OlderVersions({ detail, objective, attempts }: { detail: RunDetail; obj
           {older.map((g) => (
             <div key={g.version}>
               <p className={styles.muted}>Plano v{g.version}{reasons.get(g.version) ? ` — ${reasons.get(g.version)}` : ''}</p>
-              <StepTable steps={g.steps} attempts={attempts} />
+              <StepTable detail={detail} steps={g.steps} attempts={attempts} />
             </div>
           ))}
         </div>
@@ -320,7 +321,7 @@ function OlderVersions({ detail, objective, attempts }: { detail: RunDetail; obj
   );
 }
 
-function StepTable({ steps, attempts }: { steps: Step[]; attempts: Map<string, Attempt[]> }) {
+function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step[]; attempts: Map<string, Attempt[]> }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   return (
     <div className={styles.stepTable}>
@@ -351,6 +352,7 @@ function StepTable({ steps, attempts }: { steps: Step[]; attempts: Map<string, A
                 <span className="truncate">{s.title}</span>
                 <DrivenByBadge drivenBy={s.driven_by} />
                 {s.side_effect ? <SideEffectFlag /> : null}
+                <MarcaCorrigivel detail={detail} step={s} />
               </span>
               <StatusBadge meta={meta} size="sm" plain />
               <span className={styles.stepCell} title="Tentativas usadas / máximo">{s.attempts}/{s.max_attempts} tent.</span>
@@ -358,7 +360,7 @@ function StepTable({ steps, attempts }: { steps: Step[]; attempts: Map<string, A
             </button>
             {isOpen ? (
               <div id={bodyId} className={styles.stepBody}>
-                <StepDetail step={s} attempts={list} />
+                <StepDetail detail={detail} step={s} attempts={list} />
               </div>
             ) : null}
           </div>
@@ -368,7 +370,7 @@ function StepTable({ steps, attempts }: { steps: Step[]; attempts: Map<string, A
   );
 }
 
-function StepDetail({ step: s, attempts }: { step: Step; attempts: Attempt[] }) {
+function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: Step; attempts: Attempt[] }) {
   return (
     <>
       <dl className={styles.noteGrid}>
@@ -397,6 +399,9 @@ function StepDetail({ step: s, attempts }: { step: Step; attempts: Attempt[] }) 
           </>
         ) : null}
       </dl>
+
+      {/* Plano 22.7: a etapa que a habilidade errou (falhou ou ficou sem prova) se corrige aqui, no ensino dela. */}
+      <CorrigirEtapa detail={detail} step={s} />
 
       {attempts.length === 0 ? (
         <p className={styles.muted}>Nenhuma tentativa registrada ainda.</p>
