@@ -22,7 +22,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-09-28 (noite) — Falhas reiteradas do Instagram: diagnóstico medido, 9 correções e prova real (ADR-053)
 
 **Implantado** no central em 28/09 ~23:40 UTC (`93967d0`; Appium reiniciado pelo procedimento do K-039; agente do
-notebook em `0.1.0+93967d0`). Prova real de navegação (`r-20260928234657-bbdf3c`) e com efeito, curtir e comentar,
+notebook em `0.1.0+93967d0`); em seguida `91f1aab` (só backend): o reinício por interrupção exige carga ≤ vCPU,
+para não confundir o boot com a doença. Prova real de navegação (`r-20260928234657-bbdf3c`) e com efeito, curtir e comentar,
 autorizada pelo dono (`r-20260928235215-6eb84c`): objetivos `succeeded`, 0 recriação de sessão, 0 ANR novo
 ([relatório §21](docs/relatorio-validacao.md)).
 

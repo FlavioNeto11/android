@@ -5,7 +5,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0`, central e agente do
+- **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0` + `91f1aab`, central e agente do
   notebook).** Diagnóstico medido de e31953 e 02ee9e (a IA ocupou 4,5% do tempo; o resto era o convidado saturado e o
   código transformando lentidão em falha) e 9 correções: UI ocupada relê sem recriar a sessão, ANR com sinal próprio,
   prévia fora da fila do aparelho, recuperação que preserva o estado, digitação atômica, porta de sessão, alvo pela
