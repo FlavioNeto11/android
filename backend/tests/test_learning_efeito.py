@@ -8,7 +8,8 @@ O que se prova:
 - a tentativa conduzida pela receita não gera exposição (harness: aparelho falso e IA simulada), e a lição chega ao
   `DecisionRequest` do ator no braço `with`; no `shadow` nada vai ao prompt nem é gravado;
 - o desfecho é preenchido no digest (status final, chamadas de IA pela tentativa, US$, segundos, replanejamento) —
-  só em execução real: a exposição simulada nunca entra em veredito;
+  só em execução real: a exposição simulada nunca entra em veredito; a etapa confirmada à mão (e a execução concluída
+  com ela) entra na amostra como NÃO sucesso;
 - os vereditos com amostras semeadas (ajuda por sucesso e por chamadas, atrapalha, neutra aos 20, "faltam N"
   abaixo de 8) e o efeito deles no livro, com a trilha que guarda os números;
 - as aposentadorias (sem exposição há 60 dias, 2 refutações humanas, absorvida pelo repositório), a versão nova do app
@@ -21,6 +22,7 @@ from __future__ import annotations
 import hashlib
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -29,8 +31,8 @@ import pytest
 
 from app.db import Database
 from app.modules.learning.domain.ciclo import SkillState
-from app.modules.learning.domain.efeito import (Amostra, Efeito, Exposicao, aposentadoria, braco, fracao,
-                                                propor_promocao, veredito_de_efeito, volta_a_prova)
+from app.modules.learning.domain.efeito import (NAO_COMPROVADA, SUCESSO, Amostra, Efeito, Exposicao, aposentadoria,
+                                                braco, fracao, propor_promocao, veredito_de_efeito, volta_a_prova)
 from app.modules.learning.domain.licoes import Pedido
 from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem
 from app.modules.learning.domain.vocabulario import Braco, LivroKind, Papel, SourceKind
@@ -40,7 +42,7 @@ from app.util import to_iso
 
 from .conftest import Harness
 from .fake_skills import banco as banco_migrado
-from .test_learning_licoes import AGORA, IG, Mundo, contraste_ciclo
+from .test_learning_licoes import AGORA, IG, Mundo, Tentativa, Toque, contraste_ciclo, rid, semear
 
 QA = "com.pocqa.messenger"
 
@@ -238,6 +240,47 @@ def test_desfecho_preenchido_no_digest_so_em_execucao_real(mundo: Mundo) -> None
     assert db.scalar("SELECT COUNT(*) FROM learning_exposures WHERE run_id='r-sim' AND filled_at IS NULL") == 1
     assert db.scalar("SELECT last_used_at FROM learning_items WHERE id=?", (item.id,)) in (
         None, to_iso(AGORA))                                                        # simulada não renova o uso
+
+
+def test_confirmacao_a_mao_nunca_conta_como_sucesso_no_desfecho(mundo: Mundo) -> None:
+    """`confirm_done` grava a etapa `succeeded` com `verified=false`, e o escalonador conclui a execução mesmo assim
+    (`completed`). A unidade entra na amostra como NÃO sucesso — nem como sucesso, nem fora da amostra: a lição que
+    empurra etapas para a pessoa confirmar ganharia sucessos no braço `with` e o "atrapalha" sumiria."""
+    db = mundo.db
+    sid = contraste_ciclo(db, "r1", comprovada=False)          # a 2ª tentativa "passou"; quem confirmou foi a pessoa
+    item = licao(mundo)
+    plano = licao(mundo, "Em com.instagram.android: p.", capability="", papel="planner")
+    assert db.scalar("SELECT status FROM runs WHERE id='r1'") == "completed"
+    mundo.licoes.licoes_para(Pedido(papel=Papel.ACTOR, unidade=f"step:{sid}", run_id="r1", app=IG,
+                                    capability="OPEN_POST", step_hash="h-abrir", simulated=False,
+                                    objective_id="r1:android-06", step_id=sid))
+    mundo.licoes.licoes_para(Pedido(papel=Papel.PLANNER, unidade="plan:r1", run_id="r1", app=IG, capability="",
+                                    step_hash="", simulated=False))
+    assert mundo.servico.digerir_execucao("r1").feito["licoes.exposicoes"] == 2
+    [ator] = mundo.repo.exposicoes(item.id)
+    [planejador] = mundo.repo.exposicoes(plano.id)
+    for e in (ator, planejador):
+        assert e.preenchida and e.outcome == NAO_COMPROVADA and e.outcome not in SUCESSO
+        assert e.failure_kind is None                          # não é falha de execução: é falta de comprovação
+
+    # uma etapa comprovada e outra confirmada à mão na MESMA execução: a comprovada é sucesso; o plano, não
+    comprovada = contraste_ciclo(db, "r2", instancia="android-07")
+    semear(db, "r2", [Tentativa("succeeded", toques=[Toque(rid("like_button"))])], instancia="android-07",
+           capability="LIKE_POST", chave="curtir", template_hash="h-curtir", comprovada=False)
+    mundo.licoes.licoes_para(Pedido(papel=Papel.ACTOR, unidade=f"step:{comprovada}", run_id="r2", app=IG,
+                                    capability="OPEN_POST", step_hash="h-abrir", simulated=False,
+                                    objective_id="r2:android-07", step_id=comprovada))
+    mundo.licoes.licoes_para(Pedido(papel=Papel.PLANNER, unidade="plan:r2", run_id="r2", app=IG, capability="",
+                                    step_hash="", simulated=False))
+    mundo.servico.digerir_execucao("r2")
+    por_unidade = {e.unit_id: e.outcome
+                   for e in (*mundo.repo.exposicoes(item.id), *mundo.repo.exposicoes(plano.id))}
+    assert por_unidade[f"step:{comprovada}"] == "succeeded" and por_unidade["plan:r2"] == NAO_COMPROVADA
+
+    # no veredito: 8 unidades `with` confirmadas à mão contra 8 `holdout` comprovadas → atrapalha (rebaixa sozinho)
+    confirmadas = [replace(e, outcome=NAO_COMPROVADA) for e in _unidades(Braco.WITH, 8, 8)]
+    v = veredito_de_efeito(confirmadas + _unidades(Braco.HOLDOUT, 8, 8))
+    assert v.efeito is Efeito.ATRAPALHA and (v.com.unidades, v.com.sucessos) == (8, 0)
 
 
 def test_a_curadoria_preenche_o_que_o_digest_perdeu(mundo: Mundo) -> None:

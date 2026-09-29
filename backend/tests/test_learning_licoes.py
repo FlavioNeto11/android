@@ -6,8 +6,9 @@ O que se prova:
 - recusa texto de tela (legenda longa), dígito, nome de terceiro (@, ponto, sublinhado, Nome Próprio, valor de
   parâmetro) e o valor de um parâmetro — o elemento cujo texto é o parâmetro entra pelo NOME;
 - o rótulo só entra quando o mesmo foi tocado em 2 execuções reais distintas;
-- a lista de exclusão: autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura, a etapa de sessão, a tela de
-  login ou desafio e a execução que digitou segredo;
+- a lista de exclusão: autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura, a etapa de sessão (pela ação
+  do catálogo e pela chave da etapa livre, também na nota de pessoa), a tela de login ou desafio e a execução que
+  digitou segredo;
 - o contraste falha→sucesso comprovado gera candidata; a falha sem contraste, a confirmação à mão e a execução
   simulada não geram;
 - a mesma impressão em 2 execuções valida; sem efeito e com o modo `on`, o sistema publica na fila de prova; com
@@ -314,6 +315,52 @@ def test_lista_de_exclusao_autenticacao_desafio_ia_e_infraestrutura(mundo: Mundo
     assert mundo.licoes_do_livro() == []
     assert mundo.recusas().count(MotivoDeRecusa.TELA_SENSIVEL.value) == 2
     assert MotivoDeRecusa.TIPO_EXCLUIDO.value in mundo.recusas()
+
+
+def test_etapa_livre_de_sessao_login_ou_desafio_nunca_vira_licao(mundo: Mundo) -> None:
+    """A etapa livre não tem ação do catálogo para a lista de sessão olhar: é a CHAVE dela (do planejador) que diz
+    que ela é de login ou de desafio — e o desafio segue com a pessoa (ADR-009). Sem rótulo no toque (só um id), a
+    barreira do texto de desafio não pega; a da chave, sim."""
+    base = Contraste(run_id="r1", instance_id="a1", step_id="s1", app=IG, capability="*", step_hash="h-des",
+                     side_effect=False, tipo=FailureKind.CICLO_SEM_PROGRESSO, tentativa_ruim="t1",
+                     tentativa_boa="t2", step_key="abrir_post",
+                     primeiro_alvo_bom=AlvoObservado(resource_id=rid("continue_button")))
+    assert isinstance(licao_de_contraste(base), NovoItem)                     # contraprova: a chave neutra passa
+    for chave in ("resolver_desafio", "fazer_login", "digitar_senha", "confirmar_2fa", "resolver_desafio_i2"):
+        assert licao_de_contraste(Contraste(**{**_campos(base), "step_key": chave})) == Recusa(
+            MotivoDeRecusa.ACAO_DE_SESSAO)
+    # a chave de sessão numa etapa com ação do catálogo também não ensina
+    assert licao_de_contraste(Contraste(**{**_campos(base), "capability": "OPEN_POST", "step_key": "fazer_login"})) \
+        == Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)
+
+    # no banco, o cenário que publicava: duas execuções reais, a etapa livre falha em ciclo e passa tocando num id
+    for chave, passo in (("resolver_desafio", "h-des"), ("fazer_login", "h-login")):
+        for run, instancia in ((f"r-{chave}-1", "android-06"), (f"r-{chave}-2", "android-07")):
+            semear(mundo.db, run, [
+                Tentativa("failed", "Ciclo sem progresso: a mesma ação não muda a tela.", "ciclo_sem_progresso",
+                          [Toque(rid("row_feed_photo"))]),
+                Tentativa("succeeded", toques=[Toque(rid("continue_button"))]),
+            ], instancia=instancia, capability=None, chave=chave, template_hash=passo)
+            mundo.servico.digerir_execucao(run)                               # pelo digest, como em produção
+    assert mundo.licoes_do_livro() == []
+    assert mundo.recusas().count(MotivoDeRecusa.ACAO_DE_SESSAO.value) == 4
+
+    # a nota de pessoa na etapa livre de login também não vira candidata
+    nota = NotaDeFeedback(signal_id=1, app=IG, capability="*", step_hash="h-login", nota="toque em continuar",
+                          side_effect=False, step_key="fazer_login")
+    assert licao_de_nota(nota) == Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)
+    assert isinstance(licao_de_nota(NotaDeFeedback(**{f: getattr(nota, f) for f in nota.__dataclass_fields__
+                                                      if f != "step_key"})), NovoItem)
+    sid = "r-fazer_login-1:android-06:v1:fazer_login"
+    mundo.db.execute(
+        "INSERT INTO learning_signals(kind, polarity, verdict, reason, note, source_ref, created_by, run_id, step_id,"
+        " app_package, capability, step_hash, data, simulated, created_at) VALUES"
+        " ('feedback','negative','errado','alvo_errado',?,?,?,?,?,?,?,?,'{}',0,?)",
+        ("Toque em continuar antes", "objective:r-fazer_login-1:android-06", "panel", "r-fazer_login-1", sid, IG,
+         "*", "h-login", to_iso(AGORA - timedelta(hours=1))))
+    mundo.servico.curar()
+    assert mundo.licoes_do_livro() == []
+    assert mundo.recusas().count(MotivoDeRecusa.ACAO_DE_SESSAO.value) == 5
 
 
 # ================================================================== contraste → candidata

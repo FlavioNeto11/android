@@ -5,13 +5,15 @@
   domínio aceita como lacuna: sufixo de resource-id, o rótulo (text ou content-desc) e em quantas execuções REAIS o
   mesmo rótulo foi tocado na mesma ação. O texto de erro nunca sai daqui; o tipo sai de `failure_kind` (ou do
   classificador puro, no legado). Execução simulada não é lida. A que digitou segredo (`type_secret`) ou tocou um
-  elemento com frase de desafio sai marcada `sensivel` — o domínio a recusa e a recusa é contada;
+  elemento com frase de desafio sai marcada `sensivel` — o domínio a recusa e a recusa é contada. A chave da etapa
+  sai só para a recusa da etapa de sessão, login ou desafio (a etapa livre não tem ação do catálogo);
 - DEFEITO DO PLANO: a etapa comprovada desta execução contra as etapas da MESMA ação (ou chave, na etapa livre) que
   falharam por defeito do plano nos últimos 30 dias, com outra pós-condição;
 - EXPOSIÇÃO: gravada no ato (`INSERT … ON CONFLICT DO NOTHING` na chave `(item, unidade, papel)`: as repetições da
   mesma etapa não trocam de braço) e preenchida no digest — SÓ em execução real — com o status final, as chamadas de IA
   pela tentativa (045; a chamada antiga só com `step_id` cai na etapa), o US$ (048, ou pelos tokens e a tabela de
-  preços), os segundos e se o plano foi revisto;
+  preços), os segundos e se o plano foi revisto. A etapa `succeeded` sem comprovação (confirmada à mão) e a execução
+  `completed` com alguma etapa assim ficam `NAO_COMPROVADA`: na amostra, e nunca como sucesso;
 - a versão do app no parque (`device_app_state`), a absorção pelo backlog e a proposta `promover_licao` (a mesma
   chave do A3: `promover_licao|<id>`, idempotente).
 """
@@ -25,7 +27,7 @@ from datetime import datetime, timedelta
 
 from app.automation.hierarchy import detectar_trava_generica, normalizar_texto_de_tela
 from app.db import Database, Row
-from app.modules.learning.domain.efeito import NovaExposicao
+from app.modules.learning.domain.efeito import NAO_COMPROVADA, NovaExposicao
 from app.modules.learning.domain.falhas import FailureKind, classificar_falha
 from app.modules.learning.domain.licoes import (AlvoObservado, Contraste, ContrasteDoPlano, DefeitoDoPlano,
                                                 NotaDeFeedback)
@@ -136,7 +138,7 @@ class SqlLicoesRepository:
             run_id=run_id, instance_id=linhas.texto(boa, "instance_id"), step_id=linhas.texto(boa, "step_id"),
             app=pacote, capability=capability, step_hash=passo, side_effect=bool(linhas.inteiro(boa, "side_effect")),
             tipo=tipo, tentativa_ruim=linhas.texto(ruim, "attempt_id"), tentativa_boa=linhas.texto(boa, "attempt_id"),
-            alvo_ruim=alvos[0], primeiro_alvo_bom=alvos[1], alvo_do_efeito=alvos[2],
+            step_key=linhas.texto(boa, "key"), alvo_ruim=alvos[0], primeiro_alvo_bom=alvos[1], alvo_do_efeito=alvos[2],
             recusas=sum(1 for a in da_ruim if linhas.texto(a, "status") == "rejected"), parametros=params,
             tela_ruim=linhas.texto_ou_nulo(ruim, "failure_screen"), sensivel=sensivel, simulated=False,
             app_version=self._versao(linhas.texto(boa, "instance_id"), pacote))
@@ -217,7 +219,8 @@ class SqlLicoesRepository:
         saida: list[NotaDeFeedback] = []
         for s in self._db.query(
                 "SELECT g.id, g.run_id, g.step_id, g.instance_id, g.app_package, g.capability, g.step_hash, g.note,"
-                " g.simulated, COALESCE(st.side_effect, 0) AS side_effect FROM learning_signals g"
+                " g.simulated, COALESCE(st.side_effect, 0) AS side_effect, COALESCE(st.key, '') AS step_key"
+                " FROM learning_signals g"
                 " LEFT JOIN steps st ON st.id = g.step_id"
                 " WHERE g.kind=? AND g.verdict='errado' AND g.note IS NOT NULL AND g.note_refused=0"
                 " AND g.created_by<>'sistema' AND g.created_at >= ? ORDER BY g.id",
@@ -227,7 +230,7 @@ class SqlLicoesRepository:
                 capability=linhas.texto(s, "capability"), step_hash=linhas.texto_ou_nulo(s, "step_hash") or "",
                 nota=linhas.texto(s, "note"), side_effect=bool(linhas.inteiro(s, "side_effect")),
                 run_id=linhas.texto_ou_nulo(s, "run_id"), instance_id=linhas.texto_ou_nulo(s, "instance_id"),
-                simulated=bool(linhas.inteiro(s, "simulated"))))
+                simulated=bool(linhas.inteiro(s, "simulated")), step_key=linhas.texto(s, "step_key")))
         return saida
 
     # ================================================================== consumo
@@ -287,22 +290,26 @@ class SqlLicoesRepository:
         return feitas
 
     def _desfecho_da_etapa(self, step_id: str, precos: dict[str, list[float]]) -> _Desfecho | None:
-        etapa = self._db.one("SELECT s.status, s.status_detail, s.failure_kind, s.plan_version,"
+        etapa = self._db.one("SELECT s.status, s.status_detail, s.failure_kind, s.plan_version, s.result,"
                              " o.plan_version AS versao_do_objetivo FROM steps s LEFT JOIN objectives o"
                              " ON o.id = s.objective_id WHERE s.id=?", (step_id,))
         if etapa is None or linhas.texto(etapa, "status") not in _ETAPA_FINAL:
             return None
         status = linhas.texto(etapa, "status")
+        if status == "succeeded" and not _comprovada(etapa):
+            status = NAO_COMPROVADA                     # confirmada à mão: na amostra, mas nunca como sucesso
         tentativas = self._db.query("SELECT id, started_at, finished_at FROM attempts WHERE step_id=?", (step_id,))
         ids = [linhas.texto(t, "id") for t in tentativas]
         marcas = ",".join("?" for _ in ids)
         filtro = f"attempt_id IN ({marcas}) OR (attempt_id IS NULL AND step_id=?)" if ids else "step_id=?"
         n, usd = self._chamadas(f"SELECT model, input_tokens, cache_read, cache_write, output_tokens, usd FROM ai_calls"
                                 f" WHERE {filtro}", (*ids, step_id), precos)
-        tipo = linhas.texto_ou_nulo(etapa, "failure_kind") or _valor(
-            classificar_falha(linhas.texto_ou_nulo(etapa, "status_detail"), status))
+        tipo = None
+        if status not in ("succeeded", NAO_COMPROVADA):
+            tipo = linhas.texto_ou_nulo(etapa, "failure_kind") or _valor(
+                classificar_falha(linhas.texto_ou_nulo(etapa, "status_detail"), status))
         versao = linhas.inteiro_ou_nulo(etapa, "versao_do_objetivo")
-        return _Desfecho(outcome=status, failure_kind=tipo if status != "succeeded" else None, ai_calls=n, usd=usd,
+        return _Desfecho(outcome=status, failure_kind=tipo, ai_calls=n, usd=usd,
                          seconds=sum(_duracao(linhas.texto_ou_nulo(t, "started_at"),
                                               linhas.texto_ou_nulo(t, "finished_at")) for t in tentativas),
                          replanned=versao is not None and versao > linhas.inteiro(etapa, "plan_version"))
@@ -311,12 +318,17 @@ class SqlLicoesRepository:
         status = linhas.texto(execucao, "status")
         if status not in _EXECUCAO_FINAL:
             return None
+        # O escalonador conclui o objetivo mesmo com etapa confirmada à mão (em qualquer versão do plano, como ele
+        # conta): a execução só é sucesso do planejador se TODA etapa `succeeded` foi comprovada.
+        if status == "completed" and any(not _comprovada(s) for s in self._db.query(
+                "SELECT status, result FROM steps WHERE run_id=? AND status='succeeded'", (run_id,))):
+            status = NAO_COMPROVADA
         n, usd = self._chamadas("SELECT model, input_tokens, cache_read, cache_write, output_tokens, usd FROM ai_calls"
                                 " WHERE run_id=?", (run_id,), precos)
         falha = self._db.one("SELECT failure_kind, status_detail, status FROM steps WHERE run_id=? AND status IN"
                              " ('failed', 'uncertain') ORDER BY finished_at LIMIT 1", (run_id,))
         tipo = None
-        if falha is not None and status != "completed":
+        if falha is not None and status not in ("completed", NAO_COMPROVADA):
             tipo = linhas.texto_ou_nulo(falha, "failure_kind") or _valor(classificar_falha(
                 linhas.texto_ou_nulo(falha, "status_detail"), linhas.texto(falha, "status")))
         revisto = self._db.one("SELECT 1 AS x FROM objectives WHERE run_id=? AND plan_version > 1 LIMIT 1", (run_id,))

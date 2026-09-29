@@ -37,6 +37,11 @@ from app.modules.skills.domain.document import JsonObject
 #: Desfechos que contam como sucesso da unidade: a etapa comprovada (ator) ou a execução concluída (planejador).
 #: `completed_with_issues` não é sucesso: incerteza nunca conta como sucesso.
 SUCESSO = frozenset({"succeeded", "completed"})
+#: O desfecho da unidade que terminou sem comprovação: a etapa `succeeded` por confirmação à mão (`confirm_done`,
+#: `verified=false`) e a execução `completed` com alguma etapa assim (o escalonador a conclui mesmo sem prova). Fica
+#: NA amostra como não sucesso: fora dela, ou como sucesso, a lição que empurra etapas para a pessoa confirmar
+#: esconderia o "atrapalha".
+NAO_COMPROVADA = "unverified"
 #: Fração do braço `with` enquanto a lição está em prova.
 BRACO_EM_PROVA = 0.5
 MINIMO_POR_BRACO = 8
@@ -263,7 +268,7 @@ def propor_promocao(detalhe: str | None, desde: datetime | None, agora: datetime
 
 
 __all__ = ["AJUDA_PARA_PROMOVER_DIAS", "BRACO_EM_PROVA", "DETALHE_DO_EFEITO", "EXPOSTAS", "MAXIMO_POR_BRACO",
-           "MINIMO_POR_BRACO", "NA_DISPUTA", "REFUTACOES_PARA_DESLIGAR", "SEM_EXPOSICAO_DIAS", "SUCESSO", "Amostra",
-           "Aposentadoria", "Efeito", "Exposicao", "NovaExposicao", "VereditoDeEfeito", "abrir_provas",
-           "aposentadoria", "braco", "exposicao_json", "fracao", "propor_promocao", "veredito_de_efeito",
-           "volta_a_prova"]
+           "MINIMO_POR_BRACO", "NAO_COMPROVADA", "NA_DISPUTA", "REFUTACOES_PARA_DESLIGAR", "SEM_EXPOSICAO_DIAS",
+           "SUCESSO", "Amostra", "Aposentadoria", "Efeito", "Exposicao", "NovaExposicao", "VereditoDeEfeito",
+           "abrir_provas", "aposentadoria", "braco", "exposicao_json", "fracao", "propor_promocao",
+           "veredito_de_efeito", "volta_a_prova"]

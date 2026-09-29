@@ -13,7 +13,8 @@ Três garantias, puras e testadas:
 - CONTRASTE, NÃO REPETIÇÃO. Só vira lição a falha seguida de sucesso COMPROVADO na mesma etapa (ou o defeito do plano
   seguido de um plano que comprovou a mesma ação). Falha repetida sem contraste não prova o que funciona e vai para o
   backlog. Nunca viram lição: autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura (`NUNCA_VIRA_LICAO`),
-  nem a etapa de sessão ou login (`ACAO_DE_SESSAO`), nem a tentativa que parou numa tela de login ou de desafio;
+  nem a etapa de sessão ou login (`ACAO_DE_SESSAO`, pela ação do catálogo e pela chave da etapa: a etapa livre
+  só tem a chave), nem a tentativa que parou numa tela de login ou de desafio;
 - ESCOPO E TETO. Etapa exata > ação do catálogo > app; dentro do nível, "ajuda" primeiro, depois a lição em prova,
   depois evidência e recência. O teto é por papel (`domain/tokens.py`) e vale para TODAS as elegíveis ANTES do braço:
   a lição sorteada para o controle ocupa o lugar dela — senão só o braço `with` sofreria corte, e a comparação entre
@@ -261,6 +262,10 @@ class Contraste:
     tipo: FailureKind
     tentativa_ruim: str
     tentativa_boa: str
+    #: A chave da etapa (escrita pelo planejador). Só para a recusa: na etapa livre não há ação do catálogo para
+    #: `ACAO_DE_SESSAO` olhar, e é a chave que diz que ela é de login ou de desafio. Nunca entra no texto nem no
+    #: conteúdo da lição (é texto livre).
+    step_key: str = ""
     alvo_ruim: AlvoObservado | None = None     # o último toque feito na tentativa que falhou
     primeiro_alvo_bom: AlvoObservado | None = None
     alvo_do_efeito: AlvoObservado | None = None
@@ -288,6 +293,8 @@ def licao_de_contraste(c: Contraste) -> NovoItem | Recusa:
     acao = _acao_do_catalogo(c.capability)
     if isinstance(acao, Recusa):
         return acao
+    if ACAO_DE_SESSAO.search(c.step_key):
+        return Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)       # etapa de sessão, login ou desafio, livre ou do catálogo
     if acao is None and not c.step_hash:
         return Recusa(MotivoDeRecusa.ACAO_INVALIDA)        # etapa livre sem modelo de etapa: não há escopo
     bom = alvo_seguro(c.alvo_do_efeito if c.tipo in _ALVO_DO_EFEITO and c.alvo_do_efeito else c.primeiro_alvo_bom,
@@ -396,6 +403,7 @@ class NotaDeFeedback:
     run_id: str | None = None
     instance_id: str | None = None
     simulated: bool = False
+    step_key: str = ""                         # a chave da etapa votada, só para a recusa (como em `Contraste`)
 
 
 def licao_de_nota(n: NotaDeFeedback) -> NovoItem | Recusa:
@@ -404,6 +412,8 @@ def licao_de_nota(n: NotaDeFeedback) -> NovoItem | Recusa:
         return Recusa(MotivoDeRecusa.SIMULADA)
     if not _PACOTE.match(n.app):
         return Recusa(MotivoDeRecusa.APP_INVALIDO)
+    if ACAO_DE_SESSAO.search(n.step_key):
+        return Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)       # nota na etapa de sessão, login ou desafio: nem candidata
     nota = " ".join(n.nota.translate(_FORA_DA_NOTA).split())
     if not nota or len(nota) > NOTA_NA_LICAO_MAX:
         return Recusa(MotivoDeRecusa.NOTA_INVALIDA)
