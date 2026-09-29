@@ -1171,7 +1171,7 @@ class Scheduler:
         if not flow_id:
             return
         # O texto segue o status REAL: com o D1 (ADR-054) o fluxo nasce candidato e inerte, e dizer "reaproveitam"
-        # ali era anunciar como feito o que só vale depois da prova. A leitura e a decisão ficam sob o mesmo `try` do
+        # ali era anunciar como feito o que só vale depois da prova. A leitura e a decisão ficam sob um `try` como o do
         # aprendizado: roda no `finally` do worker, e uma falha aqui pularia o `wake()` de quem chama.
         try:
             linha = self.flows.db.one("SELECT status FROM flows WHERE id=?", (flow_id,))
