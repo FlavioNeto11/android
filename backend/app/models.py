@@ -442,7 +442,7 @@ class CredentialInfo(BaseModel):
 
     configured: bool = False
     login_identifier: str | None = None
-    status: str | None = None              # active | invalid
+    status: str | None = None              # active | invalid | review (login automático parado, ADR-055)
     failed_attempts: int = 0
     blocked_until: str | None = None
     updated_at: str | None = None

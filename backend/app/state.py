@@ -34,7 +34,8 @@ from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.identity.application.ports import SessionProvider
-from .modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
+from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, bloquear_por_desafio,
+                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.skills.application.registry import CompositeSkillRegistry
@@ -949,6 +950,10 @@ class AppState:
         if cred is None or cred["status"] == "invalid":
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
                     if cred is None else motivo), None
+        if cred["status"] == CREDENCIAL_EM_REVISAO:
+            # ADR-055: o login automático parou (um envio sem sucesso ou o teto diário). Devolver o trabalho de login
+            # aqui faria o motor recusá-lo sem tocar no aparelho a cada volta do agendador, para sempre.
+            return motivo_do_login_parado(capabilities_of(pacote).label if pacote else "app"), None
         if cred["consent_at"] is None:
             # ADR-040: o consentimento é por conta e vale para o provedor de sessão como para o `type_secret`.
             return ("a senha guardada desta conta ainda não tem o consentimento para a automação digitá-la; "

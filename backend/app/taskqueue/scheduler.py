@@ -49,6 +49,11 @@ FALHAS_QUE_PRESERVAM_A_TELA: tuple[str, ...] = (
     "IA indisponível", "A IA insistiu em chamadas inválidas", "A etapa passou do orçamento",
     "Verificação não pôde ser feita", "Pré-condições do efeito externo não foram atendidas",
 )
+#: Disjuntor de conta (ADR-055): quanto para trás se olha quem agiu sobre os mesmos alvos da conta que foi bloqueada.
+JANELA_DO_DISJUNTOR_S = 48 * 3600
+#: O que a pessoa faz com um item parado pela conta (perfil `blocked`/`disabled`, ou conta travada no aparelho).
+AJUDA_DA_CONTA_PARADA = ("Confira a conta no aparelho. Se ela voltou, reative o perfil na tela dele e use “Tentar "
+                         "novamente” neste item; nada é feito por uma conta bloqueada.")
 
 
 @dataclass
@@ -170,6 +175,13 @@ class Scheduler:
         #: isto o rodízio ("aguardando vaga no worker X") e o despacho ("aguardando o worker X ligar") se
         #: sobrescreveriam um ao outro a cada segundo, e cada troca emite evento.
         self._explicado: set[str] = set()
+        # Porta do marcador de conta travada NO APARELHO (ADR-055): aparelho → motivo, ou None. Quem a liga é quem
+        # guarda o marcador (o pacote de quarentena); desligada, nada muda. Mesmo molde das outras portas: o
+        # scheduler não conhece a tabela, só a pergunta.
+        self.conta_travada_no_aparelho: Callable[[str], str | None] | None = None
+        # Disjuntor de conta (ADR-055): os perfis `blocked` já vistos. `None` até a primeira volta, que só tira a
+        # linha de base — o que já estava bloqueado ao subir não dispara de novo a cada reinício.
+        self._bloqueadas_vistas: set[str] | None = None
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -219,6 +231,8 @@ class Scheduler:
         self.ai_limiter.set_limit(s.max_ai_concurrency)
         self.devices.boot_limiter.set_limit(s.boot_parallelism)
         self._manter_posse()
+        # Antes de promover e despachar: uma execução que o disjuntor pausa agora não recebe trabalho nesta volta.
+        self._vigiar_contas_bloqueadas()
         for run in self.repo.active_runs():
             if run["cancel_requested"]:
                 self._finish_cancel(run)
@@ -241,6 +255,11 @@ class Scheduler:
                 continue
             taken.add(iid)                      # a execução mais antiga tem a vez naquele aparelho
             if iid in self.workers:
+                continue
+            if (motivo_conta := self._motivo_da_conta(obj.get("profile_id"), iid)) is not None:
+                # Conta bloqueada não recebe tarefa em app NENHUM. A porta de sessão já recusava, mas só existe para
+                # app com login gerenciado: um item de QA Messenger ou de Chrome da mesma pessoa passava direto.
+                self._block(obj, motivo_conta, AJUDA_DA_CONTA_PARADA)
                 continue
             if len(self.workers) >= s.max_active_devices:
                 break
@@ -898,8 +917,100 @@ class Scheduler:
                                 level="warn")
         self.repo.recompute_run(obj["run_id"])
 
+    # ------------------------------------------------------------------ disjuntor de conta (ADR-055)
+    def _motivo_da_conta(self, profile_id: str | None, instance_id: str) -> str | None:
+        """Por que nada pode ser feito por esta conta agora: o perfil não está `active` (a plataforma bloqueou, ou o
+        dono pausou), ou o aparelho tem o marcador de conta travada. `None` = pode seguir."""
+        if profile_id:
+            perfil = self.repo.db.one("SELECT username, display_name, status FROM instagram_profiles WHERE id=?",
+                                      (profile_id,))
+            status = (perfil["status"] or "active") if perfil is not None else "active"
+            if perfil is not None and status != "active":
+                arroba = perfil["username"] or perfil["display_name"] or profile_id
+                if status == "blocked":
+                    return (f"a conta @{arroba} foi bloqueada pela plataforma: nada mais é feito por ela até uma "
+                            "pessoa conferir a conta e reativar o perfil (ADR-055)")
+                return f"o perfil @{arroba} está '{status}': nada é feito por ele até uma pessoa reativá-lo"
+        if self.conta_travada_no_aparelho is not None:
+            return self.conta_travada_no_aparelho(instance_id)
+        return None
+
+    def _vigiar_contas_bloqueadas(self) -> None:
+        """Dispara o disjuntor para cada perfil que PASSOU a `blocked` desde a volta anterior.
+
+        Olhar o banco a cada volta, e não ser chamado por quem bloqueia: o perfil vira `blocked` por mais de um
+        caminho (o desafio visto no login, a tela desmentindo a sessão no meio de uma execução, o dono no painel), e
+        todos passam por esta tabela. É uma leitura de poucas linhas por volta."""
+        atuais = {str(r["id"]) for r in self.repo.db.query("SELECT id FROM instagram_profiles WHERE status='blocked'")}
+        if self._bloqueadas_vistas is None:
+            self._bloqueadas_vistas = atuais
+            return
+        for profile_id in sorted(atuais - self._bloqueadas_vistas):
+            self.disjuntor_de_conta(profile_id)
+            self._bloqueadas_vistas.add(profile_id)          # só depois de disparar: se falhar, tenta na próxima volta
+        # Reativado sai do conjunto: um NOVO bloqueio da mesma conta dispara de novo.
+        self._bloqueadas_vistas &= atuais
+
+    def disjuntor_de_conta(self, profile_id: str) -> list[str]:
+        """A conta foi bloqueada: pausa as execuções em curso dela e das contas que agiram sobre os MESMOS alvos nas
+        48 h anteriores (ADR-055). Devolve as execuções pausadas.
+
+        Por quê: cinco das oito contas do Instagram caíram (beatriz, felipe, juliana, mariana, thiago), e seguir com
+        a frota no mesmo ritmo, sobre as mesmas pessoas, é repetir o padrão que derrubou a primeira. Pausar é o
+        mecanismo de sempre (`Repository.request_pause`, o do disjuntor de conta de IA): o que está no meio para no
+        ponto seguro seguinte, nada novo é despachado, e quem retoma é uma pessoa, pelo painel, depois de conferir.
+
+        A consulta cruza perfis de propósito, e fica AQUI e não no repositório social (cuja regra é o isolamento entre
+        perfis): devolve só ids de perfil e os @ dos alvos em comum, para decidir o que pausar — conteúdo nenhum.
+        Recebida não é "agir no alvo" (só `outbound`); a cancelada não saiu da máquina (fica de fora); a falha e a
+        incerta contam — na dúvida, a ação pode ter acontecido."""
+        desde = iso_in(-JANELA_DO_DISJUNTOR_S)
+        comuns: dict[str, set[str]] = {}                     # outra conta → alvos em comum
+        for r in self.repo.db.query(
+                "SELECT DISTINCT b.profile_id AS perfil, a.counterparty AS alvo FROM social_interactions a"
+                " JOIN social_interactions b ON b.counterparty = a.counterparty AND b.profile_id <> a.profile_id"
+                " WHERE a.profile_id=? AND a.direction='outbound' AND a.status <> 'cancelled' AND a.occurred_at>=?"
+                " AND a.counterparty IS NOT NULL AND a.counterparty <> ''"
+                " AND b.direction='outbound' AND b.status <> 'cancelled' AND b.occurred_at>=?"
+                # @nasa no Instagram e no TikTok são alvos diferentes; interação sem app conta em qualquer um.
+                " AND (a.app_id IS NULL OR b.app_id IS NULL OR a.app_id = b.app_id)", (profile_id, desde, desde)):
+            comuns.setdefault(str(r["perfil"]), set()).add(str(r["alvo"]))
+        perfis = [profile_id, *sorted(comuns)]
+        marcas = ",".join("?" * len(perfis))
+        arroba = {str(r["id"]): str(r["username"] or r["display_name"] or r["id"]) for r in self.repo.db.query(
+            f"SELECT id, username, display_name FROM instagram_profiles WHERE id IN ({marcas})", tuple(perfis))}
+        donos_por_execucao: dict[str, set[str]] = {}
+        for r in self.repo.db.query(
+                "SELECT DISTINCT o.run_id, o.profile_id FROM objectives o JOIN runs r ON r.id = o.run_id"
+                " WHERE r.status='running' AND r.pause_requested=0 AND r.cancel_requested=0"
+                f" AND o.status IN ('pending','running') AND o.profile_id IN ({marcas})", tuple(perfis)):
+            donos_por_execucao.setdefault(str(r["run_id"]), set()).add(str(r["profile_id"]))
+        bloqueada = arroba.get(profile_id, profile_id)
+        for run_id, donos in sorted(donos_por_execucao.items()):
+            if profile_id in donos:
+                motivo = (f"a conta @{bloqueada} foi bloqueada pela plataforma e esta execução é dela; pausada para "
+                          "uma pessoa conferir antes de retomar (ADR-055)")
+            else:
+                quem = ", ".join(f"@{arroba.get(d, d)}" for d in sorted(donos))
+                alvos = sorted({a for d in donos for a in comuns.get(d, set())})
+                mostrados = ", ".join(f"@{a}" for a in alvos[:3]) + (f" e mais {len(alvos) - 3}" if len(alvos) > 3
+                                                                     else "")
+                motivo = (f"a conta @{bloqueada} foi bloqueada pela plataforma, e {quem} agiu sobre o mesmo alvo "
+                          f"({mostrados}) nas 48 h anteriores; execução pausada para uma pessoa conferir antes de "
+                          "retomar (ADR-055)")
+            self.repo.request_pause(run_id, motivo)
+        pausadas = sorted(donos_por_execucao)
+        relacionadas = ", ".join(f"@{arroba.get(d, d)}" for d in sorted(comuns)) or "nenhuma"
+        self.repo.bus.emit(
+            "log", f"Disjuntor de conta: @{bloqueada} bloqueada; contas que agiram sobre os mesmos alvos nas 48 h: "
+                   f"{relacionadas}; {len(pausadas)} execução(ões) pausada(s)",
+            level="error" if pausadas else "warn",
+            data={"reason": "disjuntor_de_conta", "profile_id": profile_id, "related_profile_ids": sorted(comuns),
+                  "run_ids": pausadas})
+        return pausadas
+
     # ------------------------------------------------------------------ worker por aparelho
-    def _stop_reason(self, run_id: str, rt: DeviceRuntime) -> str | None:
+    def _stop_reason(self, run_id: str, rt: DeviceRuntime, objective_id: str | None = None) -> str | None:
         run = self.repo.run_row(run_id)
         if run is None or run["cancel_requested"]:
             return "cancel"
@@ -907,7 +1018,20 @@ class Scheduler:
             return "pause"
         if rt.takeover_requested:
             return "takeover"
-        return None
+        # ADR-055: a conta do objetivo foi bloqueada (ou o aparelho tem conta travada) no meio do caminho. Antes o
+        # bloqueio só valia para o PRÓXIMO despacho, e o objetivo em curso seguia agindo pela conta travada.
+        perfil = self.repo.db.scalar("SELECT profile_id FROM objectives WHERE id=?", (objective_id,)) \
+            if objective_id is not None else None
+        return self._motivo_da_conta(str(perfil) if perfil else None, rt.id)
+
+    def _parar_pela_conta(self, objective_id: str, rt: DeviceRuntime) -> None:
+        """O worker largou o objetivo e ele segue em aberto: se foi pela conta, o item para com o motivo, para uma
+        pessoa — e não volta ao despacho (que o recusaria de novo a cada volta)."""
+        o = self.repo.objective_row(objective_id)
+        if o["status"] not in (ObjectiveStatus.running.value, ObjectiveStatus.pending.value):
+            return
+        if (motivo := self._motivo_da_conta(o["profile_id"], rt.id)) is not None:
+            self._block(o, motivo, AJUDA_DA_CONTA_PARADA)
 
     async def _work(self, objective_id: str, rt: DeviceRuntime) -> None:
         repo = self.repo
@@ -922,7 +1046,7 @@ class Scheduler:
             while True:
                 obj = repo.objective_row(objective_id)
                 run = repo.run_row(run_id)
-                if run is None or self._stop_reason(run_id, rt):
+                if run is None or self._stop_reason(run_id, rt, objective_id):
                     break
                 repo.promote(run_id)
                 srow = repo.next_ready_step(objective_id)
@@ -965,6 +1089,7 @@ class Scheduler:
                 if outcome.outcome != Outcome.succeeded and not da_tela_atual:
                     break
             self._maybe_complete(objective_id)
+            self._parar_pela_conta(objective_id, rt)
         except asyncio.CancelledError:
             raise
         except PosseDaEtapaPerdida as perda:
@@ -1032,7 +1157,7 @@ class Scheduler:
         try:
             return await self.executor.run_step(run=run, objective=obj, step=step, attempt_id=attempt_id, rt=rt, app=app,
                                                 account_label=account, remaining=later,
-                                                stop_reason=lambda: self._stop_reason(run["id"], rt),
+                                                stop_reason=lambda: self._stop_reason(run["id"], rt, obj["id"]),
                                                 resumed_after_manual=resumed)
         except asyncio.CancelledError:
             raise

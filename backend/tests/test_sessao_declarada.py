@@ -71,8 +71,10 @@ def test_o_login_do_instagram_nao_volta_a_ser_python() -> None:
 # ------------------------------------------------------------------ compatibilidade com o `config.yaml`
 #: Os padrões que o antigo `InstagramCfg` tinha, até a fatia 3. O `sessao.yaml` do Instagram precisa dizer os mesmos,
 #: do mesmo tipo (o log imprime o cooldown como veio: "300s", não "300.0s").
+#: `max_logins_per_day` não existia antes: é o teto diário do ADR-055 (29/09/2026), declarado no mesmo dado.
 PADROES_DE_ANTES: dict[str, int | float] = {"max_auth_attempts": 3, "auth_cooldown_s": 300, "open_timeout_s": 60.0,
-                                            "settle_s": 3.0, "submit_wait_s": 45.0, "verify_timeout_s": 45.0}
+                                            "settle_s": 3.0, "submit_wait_s": 45.0, "verify_timeout_s": 45.0,
+                                            "max_logins_per_day": 3}
 
 
 def test_ajustes_padrao_do_sessao_yaml_sao_os_de_antes() -> None:
@@ -190,7 +192,7 @@ TELAS_DO_CORREIO: dict[str, Any] = {
 SESSAO_DO_CORREIO: dict[str, Any] = {
     "app": CORREIO, "versao": 1, "rotulo": "Correio de Exemplo",
     "ajustes": {"max_auth_attempts": 3, "auth_cooldown_s": 0, "open_timeout_s": 0.5, "settle_s": 0.01,
-                "submit_wait_s": 6.0, "verify_timeout_s": 5.0},
+                "submit_wait_s": 6.0, "verify_timeout_s": 5.0, "max_logins_per_day": 3},
     "formulario": {"sinal_do_botao": "entrar", "sinal_de_exclusao": "outra_conta"},
     "dispensa": {"intersticiais_max": 2, "rotulos": [r"^\s*pular\s*$"], "ids": ["botao_negativo"],
                  "sinal_de_salvar_login": "agora_nao"},

@@ -201,6 +201,7 @@ class AppSessionProvider:
         cred = self._db.one("SELECT status, consent_at FROM account_credentials WHERE account_id=?", (conta_id,))
         credencial = (CredentialState.missing if cred is None
                       else CredentialState.invalid if cred["status"] == "invalid"
+                      else CredentialState.review if cred["status"] == CredentialState.review.value
                       else CredentialState.unconsented if cred["consent_at"] is None else CredentialState.usable)
         s = self._sessao(conta_id, instance_id)
         if s is None:

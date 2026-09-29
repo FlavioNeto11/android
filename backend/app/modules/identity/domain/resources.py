@@ -76,6 +76,9 @@ class CredentialState(StrEnum):
     invalid = "invalid"
     #: Guardada, mas a pessoa ainda não consentiu que a automação a digite (`consent_at` nulo; ADR-040).
     unconsented = "unconsented"
+    #: O login automático parou até uma pessoa olhar (`account_credentials.status = review`, ADR-055): um envio de senha
+    #: sem sucesso, ou o teto diário de logins da conta.
+    review = "review"
 
 
 class SessionVerb(StrEnum):
@@ -320,6 +323,11 @@ def _login(p: ProviderSession, code: SessionCode, drift: _FazDrift, motivo: str)
     if p.credential is CredentialState.invalid:
         return drift(DriftStatus.blocked, SessionCode.credential_invalid,
                      f"{motivo}, e a credencial guardada foi recusada; cadastre a senha de novo")
+    if p.credential is CredentialState.review:
+        # Convergir aqui pediria `session.connect` automático, que o motor de sessão recusa: é de pessoa (ADR-055).
+        return drift(DriftStatus.blocked, SessionCode.needs_person,
+                     f"{motivo}, e o login automático está parado até uma pessoa olhar (um envio de senha sem "
+                     "sucesso, ou o teto diário de logins); use Conectar no perfil")
     if p.credential is CredentialState.unconsented:
         return drift(DriftStatus.blocked, SessionCode.no_consent,
                      f"{motivo}, e a senha guardada ainda não tem o consentimento para a automação digitá-la; "
