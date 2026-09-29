@@ -188,12 +188,14 @@ async def test_tentativa_de_receita_sem_exposicao_e_licao_no_ator(harness: Harne
 
 def test_no_shadow_nada_vai_ao_prompt_nem_e_gravado(db: Database) -> None:
     sombra = Mundo(db, modo="shadow")
+    sombra.cfg.licoes.holdout_publicada = 0.0          # o id da lição é aleatório: sem controle, o braço é `with`
     item = licao(sombra, detalhe="medida:ajuda")
     assert sombra.licoes.licoes_para(pedido()) == []
     assert db.scalar("SELECT COUNT(*) FROM learning_exposures") == 0
-    assert ("licao.sombra", 1, {"papel": "actor"}) in sombra.metricas
+    assert ("licao.sombra", 1, {"papel": "actor"}) in sombra.metricas    # o que iria, sem ir
     ligado = Mundo(db)
-    assert ligado.licoes.licoes_para(pedido("step:s2")) in ([item.summary], [])
+    ligado.cfg.licoes.holdout_publicada = 0.0
+    assert ligado.licoes.licoes_para(pedido("step:s2")) == [item.summary]
     assert db.scalar("SELECT COUNT(*) FROM learning_exposures") == 1
 
 
