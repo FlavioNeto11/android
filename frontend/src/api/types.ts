@@ -2170,6 +2170,125 @@ export interface NetworkMeasurement {
   detail: string | null;
 }
 
+// ---- Rede por aparelho: envelope das rotas (25.8) ------------------------------------------------------------------
+// As entidades acima (NetworkProfile, DeviceNetwork, NetworkMeasurement) são o contrato C3; os tipos abaixo
+// embrulham cada rota EXATAMENTE como `backend/app/devices/rede.py` devolve (a frente D1: `listar_perfis`,
+// `listar_aparelhos`, `atribuir`, `_resposta_de_pedido`) — não são um desenho livre do painel. Achado do revisor
+// no 25.8: a versão anterior inventava envelopes soltos que o backend real nunca manda.
+
+/** `POST /api/network/profiles`: o segredo só entra aqui (canal sensível), nunca volta em nenhuma leitura. */
+export interface NetworkProfileCreateRequest {
+  name: string;
+  kind: NetworkProfileKind;
+  protocol: NetworkProtocol;
+  endpoint_host: string;
+  endpoint_port: number;
+  secret?: string;
+  params?: Record<string, unknown>;
+}
+
+/** Um perfil na listagem, com os aparelhos que o pedem hoje (`rede.listar_perfis` → `_em_uso`). */
+export interface NetworkProfileListed extends NetworkProfile {
+  in_use: string[];
+}
+
+/** `GET /api/network/profiles`. */
+export interface NetworkProfileList {
+  profiles: NetworkProfileListed[];
+}
+
+/** O proxy HTTP global legado (migração 041) rebaixado: `applied` vale `configurado` NO MÁXIMO (ADR-056 §2). */
+export interface LegacyProxyState {
+  proxy_id: string | null;
+  name: string | null;
+  value: string | null;
+  state: 'pending' | 'applying' | 'applied' | 'failed';
+  observed_value: string | null;
+  verified_at: string | null;
+  detail: string | null;
+  effective_state: NetworkState | null;
+}
+
+/** Uma linha de `GET /api/network/devices` (`rede.listar_aparelhos`): o aparelho, o desejado × observado novo
+ *  (`network`, `null` = nunca pedido nada), o legado da 041 e o que falta — tudo já resolvido pelo backend, nunca
+ *  recombinado no painel (o combinar client-side era a causa do achado do revisor: heurística de conta real que
+ *  ficava silenciosa quando a chamada separada falhava). */
+export interface NetworkDeviceRow {
+  instance_id: string;
+  worker_id: string | null;
+  external: boolean;
+  device_state: string;
+  network: DeviceNetwork | null;
+  effective_state: NetworkState | null;
+  legacy_proxy: LegacyProxyState | null;
+  /** Motivo de quarentena, se houver (`st.quarentena`); aparelho em quarentena não recebe rede (ADR-056 §7). */
+  restriction: string | null;
+  /** `null` = nenhuma persona vinculada; senão, os `@usuario` vinculados — já resolvido pelo backend
+   *  (`rede._conta_real`), nunca uma heurística do painel. */
+  real_account: string | null;
+  pending: 'aplicar' | 'verificar' | null;
+  last_measurement: NetworkMeasurement | null;
+}
+
+/** `GET /api/network/devices`. */
+export interface NetworkDeviceList {
+  devices: NetworkDeviceRow[];
+}
+
+/** `POST /api/network/assign`: perfis e política para os aparelhos escolhidos; `dry_run` = só prévia (sem gravar).
+ *  Campo omitido (não `null`) = fica como está — `policy` incluída só ganha valor quando a pessoa mexe nela.
+ *  `confirm_real_account`: os aparelhos com conta real que a pessoa autoriza a mudar de saída, UM A UM
+ *  (ADR-056 §7) — nunca um booleano para o lote inteiro. */
+export interface NetworkAssignRequest {
+  instance_ids: string[];
+  vpn_profile_id?: string | null;
+  proxy_profile_id?: string | null;
+  policy?: NetworkPolicy;
+  confirm_real_account?: string[];
+  dry_run?: boolean;
+}
+
+/** O desejado de um aparelho (`rede._Desejo.como_dict()`), no "de" e no "para" da prévia. */
+export interface NetworkDesejo {
+  vpn_profile_id: string | null;
+  proxy_profile_id: string | null;
+  policy: NetworkPolicy;
+}
+
+/** Um aparelho na prévia (`dry_run`) ou no resultado do lote (`rede._Item.como_dict()`). `code` só vem com
+ *  `outcome: 'refused'` — `real_account_confirm_required` é o que o painel usa para pedir a confirmação extra. */
+export interface NetworkAssignDevice {
+  id: string;
+  outcome: 'refused' | 'unchanged' | 'would_assign' | 'assigned';
+  code?: string;
+  reason: string;
+  from: NetworkDesejo;
+  to: NetworkDesejo;
+  reapply: boolean;
+  warnings: string[];
+}
+
+export interface NetworkAssignResult {
+  accepted: boolean;
+  dry_run: boolean;
+  devices: NetworkAssignDevice[];
+}
+
+/** `POST /api/network/devices/{iid}/verify` e `.../reapply` — os dois são 202 "pedido registrado" com o MESMO
+ *  desenho (`rede._resposta_de_pedido`), nunca o aparelho medido: a aplicação e a medição são do item 25.4/25.5,
+ *  que ainda não roda. `executed` é sempre `false`; ler isso como sucesso é o achado do revisor no 25.8. */
+export interface NetworkRequestAccepted {
+  accepted: true;
+  instance_id: string;
+  action: 'verify' | 'reapply';
+  pending: 'aplicar' | 'verificar' | null;
+  desired_rev: number;
+  applied_rev: number | null;
+  state: NetworkState;
+  executed: false;
+  reason: string;
+}
+
 // ---- Assistente do comando (ADR-047) -------------------------------------------------------------------------------
 // Bloco próprio, no fim do arquivo: não se mistura com os tipos de persona que outras ondas mexem.
 

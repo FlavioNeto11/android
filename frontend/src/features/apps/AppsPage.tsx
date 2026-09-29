@@ -11,7 +11,7 @@
  * Loja de apps (pedido do dono, 26/09): a aba "Loja" abre primeiro — vitrine no jeito da Play Store, cadastro de app
  * novo, distribuição com prévia e atualização de quem ficou para trás — e "Proxy" distribui o proxy do aparelho.
  */
-import { AppWindow, ArrowLeft, CircleDollarSign, Globe, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users } from 'lucide-react';
+import { AppWindow, ArrowLeft, CircleDollarSign, Globe, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppDetail, AppOverview } from '../../api/types';
@@ -29,11 +29,12 @@ import { formatAgo, useNow } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { LojaPage } from '../loja/LojaPage';
 import { ProxyPage } from '../loja/ProxyPage';
+import { RedePage } from '../rede/RedePage';
 import { ReleasesPage } from '../releases/ReleasesPage';
 import { RECIPE_STATUS } from '../settings/flowsRecipes';
 import styles from './Apps.module.css';
 
-type Aba = 'loja' | 'apps' | 'versoes' | 'proxy';
+type Aba = 'loja' | 'apps' | 'versoes' | 'rede' | 'proxy';
 
 const LEAD: Record<Aba, string> = {
   loja: 'Os aplicativos do parque no jeito de uma loja: a versão de cada um, quem está atrasado, e distribuir para '
@@ -41,7 +42,13 @@ const LEAD: Record<Aba, string> = {
   apps: 'Cada app com as contas dos perfis nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA '
     + 'e o quanto do trabalho já roda por receita, sem IA.',
   versoes: 'Todas as versões de todos os apps numa lista só, com a loja (Play Store) e o que cada aparelho tem.',
-  proxy: 'O proxy HTTP de cada aparelho, pedido como uma versão: ligado recebe agora, desligado quando ligar.',
+  // Item 25.8 (ADR-056): a aba principal passa a ser Rede — VPN e proxy por aparelho, com IP de saída medido e
+  // prova de tráfego. "Proxy (legado)" continua existindo à parte: é a única tela que ainda sabe TIRAR o proxy
+  // HTTP global da migração 041 do aparelho (RedePage só lê esse legado, nunca escreve nele — achado do revisor
+  // no 25.8). Some quando a 25.4 aposentar o proxy global de vez.
+  rede: 'VPN e proxy por aparelho: perfis, política, IP de saída medido e prova de tráfego — com prévia antes de confirmar.',
+  proxy: 'Legado da migração 041 (26/09): o proxy HTTP global do Android, pedido como uma versão. Use a aba Rede '
+    + 'para o que é novo; esta fica só para tirar um proxy legado ainda aplicado.',
 };
 
 const usd = (v: number) => (v >= 0.01 ? `US$ ${v.toFixed(2)}` : v > 0 ? '< US$ 0,01' : 'US$ 0');
@@ -53,7 +60,8 @@ export function AppsPage() {
     { id: 'loja', label: 'Loja', icon: Store },
     { id: 'apps', label: 'Por app', icon: AppWindow },
     { id: 'versoes', label: 'Versões e instalação', icon: Package },
-    { id: 'proxy', label: 'Proxy', icon: Globe },
+    { id: 'rede', label: 'Rede', icon: Wifi },
+    { id: 'proxy', label: 'Proxy (legado)', icon: Globe },
   ];
   return (
     <div className={appStyles.page}>
@@ -70,6 +78,7 @@ export function AppsPage() {
         {aba === 'apps' ? (aberto ? <AppDetailView appId={aberto} onBack={() => setAberto(null)} /> : <AppsGrid onOpen={setAberto} />) : null}
         {aba === 'versoes' ? <ReleasesPage embutida /> : null}
         {aba === 'loja' ? <LojaPage /> : null}
+        {aba === 'rede' ? <RedePage /> : null}
         {aba === 'proxy' ? <ProxyPage /> : null}
       </TabPanel>
     </div>

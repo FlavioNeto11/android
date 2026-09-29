@@ -1,0 +1,8 @@
+/* Painel Rede (ADR-056, 25.8): perfis de VPN/proxy e a rede de cada aparelho. Layout reaproveitado de
+   ../loja/Loja.module.css (stack, form, bulk, table, preview…): só o que é específico daqui entra abaixo. */
+.secretRow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(90px, 0.6fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+             gap: var(--sp-2); align-items: end; }
+@media (max-width: 720px) { .secretRow { grid-template-columns: minmax(0, 1fr); } }
+.dupe { color: var(--danger-text, var(--text-2)); font-weight: 600; }
+.rowNote { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-xs); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-xs); color: var(--text-3); }
