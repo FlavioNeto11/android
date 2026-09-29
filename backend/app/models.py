@@ -34,7 +34,7 @@ from .modules.fleet.presentation.schemas import (  # noqa: F401
     ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
-    CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
+    CredentialClone, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
     PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
@@ -1181,6 +1181,10 @@ class CapabilityDTO(BaseModel):
 
 
 class ProfilePolicyDTO(BaseModel):
+    #: O app deste catálogo (23.10): sem ele, o painel assumia sempre o app âncora. `None` só quando o pacote não
+    #: se resolveu (sem âncora registrada e sem `package` pedido). `capabilities`/`own`/`group`/`origin` são o
+    #: recorte deste app; `limits` valem para o perfil inteiro.
+    package: str | None = None
     limits: dict[str, int] = Field(default_factory=dict)
     capabilities: dict[str, str] = Field(default_factory=dict)      # política EFETIVA por ação
     defaults: dict[str, str] = Field(default_factory=dict)          # o que o catálogo propõe, para comparação
@@ -1265,6 +1269,9 @@ class PolicyGroupDTO(BaseModel):
     id: str
     name: str
     description: str = ""
+    #: O app deste recorte (23.10): `capabilities` e `loosened` são só dele — a mesma chave de ação em outro catálogo
+    #: é outra escolha do grupo (`social.policy.politicas_do_app`). `limits` valem para o perfil inteiro.
+    package: str | None = None
     capabilities: dict[str, str] = Field(default_factory=dict)      # só o que o grupo muda em relação ao padrão
     limits: dict[str, int] = Field(default_factory=dict)
     loosened: list[str] = Field(default_factory=list)               # ações de risco alto que o grupo afrouxa

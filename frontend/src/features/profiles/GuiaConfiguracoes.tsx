@@ -2,7 +2,8 @@ import { Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  Capability, PolicyGroup, PolicyName, PolicyOrigin, ProfilePolicy, ProfilePolicyPatch, SocialInteraction,
+  AppCatalogEntry, Capability, PolicyGroup, PolicyName, PolicyOrigin, ProfilePolicy, ProfilePolicyPatch,
+  SocialInteraction,
 } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -15,35 +16,61 @@ import { LimitsEditor, type Origem, PolicyActionsEditor } from './PolicyEditor';
 import { baldeDoLimite, contarUsoDeHoje } from './PolicyVisual';
 import styles from './Profiles.module.css';
 
+/** Apps com catálogo de ações, o âncora primeiro (23.10). Antes o efeito pegava "o primeiro app com login
+ *  gerenciado NA ORDEM DA LISTA" — só acertava por acidente, enquanto o Instagram era o único; com um segundo
+ *  app de catálogo, a escolha vira deliberada: o âncora por padrão, ou a pessoa escolhe no seletor. */
+function appsComCatalogo(catalogo: readonly AppCatalogEntry[]): AppCatalogEntry[] {
+  return catalogo.filter((a) => a.has_catalog)
+    .slice()
+    .sort((a, b) => Number(b.profile_anchor) - Number(a.profile_anchor) || a.label.localeCompare(b.label));
+}
+
 // ---------------------------------------------------------------- configurações
 export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onChanged: () => Promise<void> }) {
   const [politica, setPolitica] = useState<ProfilePolicy | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
   const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
+  // `null` = o catálogo ainda não chegou (ou falhou: aí o erro está em `erro`); `[]` = chegou, sem app nenhum.
+  const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
+  // `null` = o app âncora (ou o único com catálogo); a pessoa escolhe outro quando há mais de um (23.10).
+  const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [tentativa, setTentativa] = useState(0);
   // Mudou a política deste perfil (aqui, em outra aba ou pelo grupo): recarrega sozinha, como as demais abas.
   const versao = useVersaoAoVivo(profile);
 
+  // O REGISTRO de aplicativos diz quem tem catálogo e quem é o âncora; não é um padrão fixo no cliente. A falha
+  // dele é erro da aba, com "Tentar de novo" (que o busca de novo, por `tentativa`): engolida, o app nunca se
+  // resolvia e o esqueleto ficava para sempre.
   useEffect(() => {
     let vivo = true;
-    setErro(null);
-    // O pacote das capacidades vem do REGISTRO de aplicativos (qual app provê a conta deste perfil), e não de
-    // um padrão no cliente: com `listCapabilities()` sem argumento, qualquer chamador recebia o catálogo do
-    // Instagram como se fosse o do app dele.
     api.listAppCatalog()
-      .then(async (apps) => {
-        const alvo = apps.find((a) => a.session_provider !== null);
-        const [p, c, i, g] = await Promise.all([
-          api.getPolicy(profile.id),
-          alvo ? api.listCapabilities(alvo.package) : Promise.resolve([] as Capability[]),
-          // O medidor precisa do dia inteiro, não só das últimas dezenas — 200 é folga sobre qualquer teto
-          // razoável de "por hora" somado ao longo de um dia. Sem interações não há medidor, não tela quebrada.
-          api.listInteractions(profile.id, 200).catch(() => [] as SocialInteraction[]),
-          api.listPolicyGroups().catch(() => [] as PolicyGroup[]),
-        ]);
+      .then((c) => { if (vivo) setCatalogo(c); })
+      .catch((e) => { if (vivo) setErro(toLoadError(e)); });
+    return () => { vivo = false; };
+  }, [tentativa]);
+
+  const apps = appsComCatalogo(catalogo ?? []);
+  // Nenhum app com catálogo: `null`, e a política vem sem `?package=` (o servidor resolve o âncora) — a aba ainda
+  // mostra o grupo e os limites, só sem a lista de ações.
+  const pacoteEfetivo = pacoteEscolhido ?? apps[0]?.package ?? null;
+
+  useEffect(() => {
+    let vivo = true;
+    if (catalogo === null) return undefined;            // aguarda o catálogo (efeito acima) resolver o app
+    setErro(null);
+    Promise.all([
+      api.getPolicy(profile.id, pacoteEfetivo),
+      // `listCapabilities` exige o pacote: sem app com catálogo não há ações a listar, e não se pergunta.
+      pacoteEfetivo ? api.listCapabilities(pacoteEfetivo) : Promise.resolve([] as Capability[]),
+      // O medidor precisa do dia inteiro, não só das últimas dezenas — 200 é folga sobre qualquer teto
+      // razoável de "por hora" somado ao longo de um dia. Sem interações não há medidor, não tela quebrada.
+      api.listInteractions(profile.id, 200).catch(() => [] as SocialInteraction[]),
+      api.listPolicyGroups(pacoteEfetivo).catch(() => [] as PolicyGroup[]),
+    ])
+      .then(([p, c, i, g]) => {
         if (!vivo) return;
         setPolitica(p);
         setAcoes(c);
@@ -56,12 +83,12 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
     return () => {
       vivo = false;
     };
-  }, [profile.id, versao, tentativa]);
+  }, [profile.id, versao, tentativa, pacoteEfetivo, catalogo]);
 
   async function salvar(corpo: ProfilePolicyPatch, erro: string) {
     setSalvando(true);
     try {
-      setPolitica(await api.setPolicy(profile.id, corpo));
+      setPolitica(await api.setPolicy(profile.id, corpo, pacoteEfetivo));
     } catch (e) {
       toastError(erro, e);
     } finally {
@@ -73,7 +100,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
     setSalvando(true);
     try {
       await api.patchProfile(profile.id, { policy_group_id: groupId || null });
-      setPolitica(await api.getPolicy(profile.id));
+      setPolitica(await api.getPolicy(profile.id, pacoteEfetivo));
       await onChanged();
     } catch (e) {
       toastError('Não foi possível trocar o grupo de acesso', e);
@@ -147,6 +174,16 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
           <CardHeader title="O que este perfil pode fazer"
                       subtitle="Cada ação mostra de onde vem o valor: próprio, do grupo ou padrão. “Herdar” apaga a escolha deste perfil." />
           <CardBody>
+            {apps.length > 1 ? (
+              <Field label="Aplicativo" hint="Cada app tem o catálogo e a política dele; a pessoa escolhe qual está vendo.">
+                {({ id, describedBy }) => (
+                  <Select id={id} aria-describedby={describedBy} value={pacoteEfetivo ?? ''} disabled={salvando}
+                          onChange={(e) => setPacoteEscolhido(e.target.value)}>
+                    {apps.map((a) => <option key={a.package} value={a.package}>{a.label}</option>)}
+                  </Select>
+                )}
+              </Field>
+            ) : null}
             <PolicyActionsEditor
               acoes={acoes} efetivo={efetivo} origem={origem} loosened={politica.loosened ?? []} salvando={salvando}
               herdaria={(c) => doGrupo[c.key] ?? c.default_policy}

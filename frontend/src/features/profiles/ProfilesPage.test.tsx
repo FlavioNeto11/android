@@ -438,4 +438,154 @@ describe('grupos de acesso', () => {
       profile_ids: ['ig-2'],
     });
   });
+
+  it('mais de um app com catálogo: aparece o seletor, e a política salva vai com o pacote do app escolhido', async () => {
+    // 23.10: antes o editor sempre pegava "o primeiro app com login gerenciado da lista" — com dois apps de
+    // catálogo, o seletor deixa a escolha deliberada, e cada app grava com a chave e o pacote certos.
+    rotasBase([]);
+    backend.on('GET', /app-catalog/, () => json([
+      { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+        session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+      { package: 'com.exemplo.correio', name: 'Correio', label: 'Correio', has_catalog: true,
+        session_provider: 'correio', needs_profile: true, profile_anchor: false },
+    ]));
+    backend.on('GET', /capabilities/, (c) => json(
+      c.query.get('package') === 'com.exemplo.correio'
+        ? [{ key: 'LER_CAIXA', title: 'Ler a caixa de entrada', side_effect: false, risk: 'low',
+             default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] }]
+        : [{ key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+             default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] }],
+    ));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(text()).toContain('Novo grupo de acesso'));
+    // Por padrão vem o app âncora (Instagram): "Curtir a publicação" aparece sem escolher nada.
+    await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Correio piloto');
+    await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'com.exemplo.correio');
+    await waitFor(() => expect(byRole('radiogroup', /Política de Ler a caixa de entrada/i)).toBeTruthy());
+    expect(() => byRole('radiogroup', /Política de Curtir a publicação/i)).toThrow();     // trocou de app, trocou a lista
+    await click(byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Ler a caixa de entrada/i)));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    const chamada = backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!;
+    expect(chamada.body).toEqual({
+      name: 'Correio piloto', description: '', capabilities: { LER_CAIXA: 'manual_only' }, limits: {}, profile_ids: [],
+    });
+    expect(chamada.query.get('package')).toBe('com.exemplo.correio');
+  });
+
+  it('grupo novo editado em dois apps: cria com o app em tela e grava o outro no recorte dele', async () => {
+    rotasBase([]);
+    backend.on('GET', /app-catalog/, () => json([
+      { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+        session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+      { package: 'com.exemplo.correio', name: 'Correio', label: 'Correio', has_catalog: true,
+        session_provider: null, needs_profile: true, profile_anchor: false },
+    ]));
+    backend.on('GET', /capabilities/, (c) => json(
+      c.query.get('package') === 'com.exemplo.correio'
+        ? [{ key: 'LER_CAIXA', title: 'Ler a caixa de entrada', side_effect: false, risk: 'low',
+             default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] }]
+        : [{ key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+             default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] }],
+    ));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    backend.on('PUT', /\/instagram\/policy-groups\/grp-9$/,
+      () => json({ id: 'grp-9', name: 'Dois apps', description: '', capabilities: {}, limits: {}, loosened: [],
+                   members: [], created_at: '', updated_at: '' }));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Dois apps');
+    await click(byRole('radio', /Com aprovação/i, byRole('radiogroup', /Política de Curtir a publicação/i)));
+    await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'com.exemplo.correio');
+    await waitFor(() => expect(byRole('radiogroup', /Política de Ler a caixa de entrada/i)).toBeTruthy());
+    await click(byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Ler a caixa de entrada/i)));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-9$/)).toHaveLength(1));
+    const post = backend.callsTo('POST', /\/instagram\/policy-groups$/);
+    expect(post).toHaveLength(1);
+    expect(post[0]!.query.get('package')).toBe('com.exemplo.correio');
+    expect((post[0]!.body as { capabilities: unknown }).capabilities).toEqual({ LER_CAIXA: 'manual_only' });
+    const put = backend.callsTo('PUT', /policy-groups\/grp-9$/)[0]!;
+    expect(put.query.get('package')).toBe('com.instagram.android');
+    expect(put.body).toEqual({ capabilities: { LIKE_POST: 'approval_required' } });
+  });
+
+  it('"começar a partir de" SUBSTITUI o rascunho: escolher A e depois B não leva a escolha de A para o grupo', async () => {
+    // 23.10 (revisão): a mescla levava FOLLOW autônomo de A para um grupo "a partir de B", sem aparecer como de B.
+    rotasBase([]);
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { FOLLOW: 'autonomous' }, group: {},
+      own_limits: {}, group_limits: {},
+    }));
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: {}, group: {}, own_limits: {}, group_limits: {},
+    }));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Seguir/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await setValue(partir, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({});
+  });
+
+  it('grupo existente em dois apps: o outro app vem do servidor pelo pacote, e salvar grava cada app no seu', async () => {
+    // A mesma chave de ação pode existir nos dois catálogos (SEND_MESSAGE): cada app é um recorte à parte do grupo.
+    rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', package: 'com.instagram.android',
+                 capabilities: { SEND_MESSAGE: 'approval_required' }, limits: {}, loosened: [],
+                 members: [{ id: 'ig-1', username: 'andre.carvalho9543' }], created_at: '', updated_at: '' }]);
+    backend.on('GET', /app-catalog/, () => json([
+      { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+        session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+      { package: 'com.exemplo.correio', name: 'Correio', label: 'Correio', has_catalog: true,
+        session_provider: null, needs_profile: true, profile_anchor: false },
+    ]));
+    const enviar = (titulo: string) => [{ key: 'SEND_MESSAGE', title: titulo, side_effect: true, risk: 'high',
+      default_policy: 'manual_only', limit_bucket: 'dms', needs_draft: false, bindings: [] }];
+    backend.on('GET', /capabilities/, (c) => json(
+      enviar(c.query.get('package') === 'com.exemplo.correio' ? 'Enviar e-mail' : 'Enviar a mensagem')));
+    backend.on('GET', /\/instagram\/policy-groups\/grp-1$/, () => json({
+      id: 'grp-1', name: 'Cautelosos', description: '', package: 'com.exemplo.correio',
+      capabilities: { SEND_MESSAGE: 'disabled' }, limits: {}, loosened: [], members: [], created_at: '', updated_at: '',
+    }));
+    backend.on('PUT', /\/instagram\/policy-groups\/grp-1$/, () => json({
+      id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [],
+      created_at: '', updated_at: '',
+    }));
+    await render();
+    await waitFor(() => expect(text()).toContain('Cautelosos'));
+    await click(byRole('button', /^Editar$/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Enviar a mensagem/i)).toBeTruthy());
+    await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'com.exemplo.correio');
+    await waitFor(() => expect(byRole('radiogroup', /Política de Enviar e-mail/i)).toBeTruthy());
+    // (o efeito pode rodar duas vezes no modo estrito; o que importa é que toda leitura pede o recorte do Correio)
+    await waitFor(() => expect(backend.callsTo('GET', /policy-groups\/grp-1$/).length).toBeGreaterThan(0));
+    expect(backend.callsTo('GET', /policy-groups\/grp-1$/).map((c) => c.query.get('package')))
+      .toEqual(backend.callsTo('GET', /policy-groups\/grp-1$/).map(() => 'com.exemplo.correio'));
+    // o valor do Correio (desligado) é o do servidor, não o do Instagram (com aprovação)
+    await waitFor(() => expect(text()).toContain('definido no grupo'));
+    await click(byRole('radio', /Com aprovação/i, byRole('radiogroup', /Política de Enviar e-mail/i)));
+    await click(byRole('button', /Salvar grupo/i));
+    await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-1$/)).toHaveLength(1));
+    const put = backend.callsTo('PUT', /policy-groups\/grp-1$/)[0]!;
+    expect(put.query.get('package')).toBe('com.exemplo.correio');
+    expect(put.body).toMatchObject({ capabilities: { SEND_MESSAGE: 'approval_required' } });
+    // o Instagram não foi editado: nenhum PUT o regrava (a mesma chave nele continua "com aprovação" no servidor)
+    expect(backend.callsTo('PUT', /policy-groups\/grp-1$/).every((c) => c.query.get('package') !== 'com.instagram.android'))
+      .toBe(true);
+  });
 });

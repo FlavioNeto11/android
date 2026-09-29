@@ -58,6 +58,21 @@ class CredentialUpdate(BaseModel):
     consent: bool = False
 
 
+class CredentialClone(BaseModel):
+    """Usar a senha de OUTRA conta da mesma persona (ADR-057, D1): o cofre copia o valor para uma entrada própria
+    desta conta, sem que ele saia do módulo. Não há `password` nem `consent`: o valor não passa por aqui, e o
+    consentimento é desta conta, dado depois pela pessoa (`…/credential/consent`), nunca herdado da origem.
+
+    `login_identifier` também não é copiado da origem: o endereço da conta nova é o que o dono confirma (ADR-057
+    §5). O campo é `clonar_de` (id da conta de origem), e não `credencial_de`: nome com "credencial" é tratado como
+    valor secreto pela redação e pela guarda dos modelos, e aqui ele carrega só um id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    clonar_de: str = Field(min_length=1, max_length=120)
+    login_identifier: str | None = Field(default=None, max_length=200)
+
+
 class PersonaPreviewBody(BaseModel):
     """Testar a persona SEM publicar nada: nenhuma tela é tocada, nenhuma interação é gravada."""
 
@@ -114,6 +129,9 @@ class ProfileAccountCreate(BaseModel):
     password: SecretStr | None = None
     #: Com `password`: a pessoa autoriza a automação a digitá-la (ADR-040). Sem ele, 409.
     consent: bool = False
+    #: Id de outra conta DESTA persona cuja senha o cofre clona para a conta nova (ADR-057, D1). Exclui `password`
+    #: e `consent` (422): a conta nova nasce sem consentimento, que a pessoa dá depois. Outra persona: 409.
+    clonar_de: str | None = Field(default=None, min_length=1, max_length=120)
     notes: str = Field(default="", max_length=400)
 
 

@@ -111,6 +111,49 @@ def _limite_valido(valor: Any) -> bool:
     return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 0
 
 
+# ---------------------------------------------------------------- política POR APP (23.10)
+#: Onde mora, dentro de um dicionário `capabilities` (o do perfil em `automation_policy` e a coluna do grupo), a
+#: política dos apps que NÃO são o âncora: `{"LIKE_POST": …, "por_app": {"<pacote>": {"SEND_MESSAGE": …}}}`. As chaves
+#: de ação não têm namespace entre catálogos — o Instagram usa SEND_MESSAGE, e um catálogo do Outlook (T17: enviar
+#: e-mail `manual_only`) provavelmente também —, então um dicionário plano por `cap.key` faria "desligar mensagem no
+#: Outlook" desligar também a DM do Instagram. O nível de fora continua sendo o do âncora: é o formato de todo dado
+#: gravado até aqui (só o Instagram tinha catálogo), e por isso não há migração. Chave em minúsculas: ação de catálogo
+#: é sempre maiúscula (`CapabilityCatalog.get`), então as duas nunca colidem.
+CHAVE_POR_APP = "por_app"
+
+
+def _e_do_ancora(package: str | None) -> bool:
+    # Import tardio: o registro de apps carrega os catálogos, e este módulo é importado cedo pelo serviço social.
+    from ..planning.catalog import pacote_ancora
+    return package is None or package == pacote_ancora()
+
+
+def politicas_do_app(caps: dict[str, Any] | None, package: str | None) -> dict[str, Any]:
+    """O recorte de um dicionário `capabilities` (perfil ou grupo) que vale para `package` (`None` = o âncora).
+
+    Única porta de LEITURA: quem ler o dicionário cru mistura os apps de novo."""
+    caps = caps or {}
+    if _e_do_ancora(package):
+        return {k: v for k, v in caps.items() if k != CHAVE_POR_APP}
+    return dict((caps.get(CHAVE_POR_APP) or {}).get(package) or {})
+
+
+def com_politicas_do_app(caps: dict[str, Any] | None, package: str | None, novas: dict[str, Any]) -> dict[str, Any]:
+    """`caps` com o recorte de `package` trocado por `novas`; o dos outros apps fica intacto. Única porta de ESCRITA."""
+    caps = dict(caps or {})
+    por_app = dict(caps.get(CHAVE_POR_APP) or {})
+    if _e_do_ancora(package):
+        caps = dict(novas)
+    elif novas:
+        por_app[package] = dict(novas)                    # type: ignore[index]
+    else:
+        por_app.pop(package, None)                        # app sem nenhuma escolha: não deixa `{}` para trás
+    caps.pop(CHAVE_POR_APP, None)
+    if por_app:
+        caps[CHAVE_POR_APP] = por_app
+    return caps
+
+
 class PolicyEngine:
     def __init__(self, repo: SocialRepository, settings_getter: Callable[[], Any] | None = None, *,
                 jitter: Callable[[float, float], float] = random.uniform):
@@ -135,24 +178,26 @@ class PolicyEngine:
             return {}
         return {"capabilities": loads(grupo["capabilities"], {}) or {}, "limits": loads(grupo["limits"], {}) or {}}
 
-    def origin_for(self, profile_id: str, cap: Capability) -> str:
-        """De onde vem a política desta ação: `own` (o perfil mudou), `group` (herdada do grupo) ou `default`."""
-        if _valida((self._own(profile_id).get("capabilities") or {}).get(cap.key)):
+    def origin_for(self, profile_id: str, cap: Capability, package: str | None = None) -> str:
+        """De onde vem a política desta ação: `own` (o perfil mudou), `group` (herdada do grupo) ou `default`.
+
+        `package` é o app da ação (`None` = o âncora): a mesma chave em dois catálogos são duas escolhas."""
+        if _valida(politicas_do_app(self._own(profile_id).get("capabilities"), package).get(cap.key)):
             return "own"
-        if _valida((self._group(profile_id).get("capabilities") or {}).get(cap.key)):
+        if _valida(politicas_do_app(self._group(profile_id).get("capabilities"), package).get(cap.key)):
             return "group"
         return "default"
 
-    def policy_for(self, profile_id: str, cap: Capability) -> str:
+    def policy_for(self, profile_id: str, cap: Capability, package: str | None = None) -> str:
         """Política desta ação para este perfil: a escolha própria, senão a do grupo, senão o padrão do catálogo.
 
         O perfil (e o grupo) pode escolher QUALQUER política válida — inclusive uma mais FROUXA que o padrão do
         catálogo (achado #114). Para uma ação de risco alto (`cap.risk == "high"`), afrouxar abaixo do padrão fica
         marcado — ver `ProfilePolicyDTO.loosened` e os avisos de `SocialService.set_policy`/grupos — em vez de ser
-        silencioso.
+        silencioso. `package` escolhe o recorte do app (`politicas_do_app`); `None` é o âncora.
         """
         for camada in (self._own(profile_id), self._group(profile_id)):
-            escolhido = (camada.get("capabilities") or {}).get(cap.key)
+            escolhido = politicas_do_app(camada.get("capabilities"), package).get(cap.key)
             if _valida(escolhido):
                 return escolhido
         return cap.default_policy
@@ -254,8 +299,8 @@ class PolicyEngine:
 
     # ------------------------------------------------------------------ decisão
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
-              counterparty: str | None = None, app_id: str | None = None) -> Verdict:
-        politica = self.policy_for(profile_id, cap)
+              counterparty: str | None = None, app_id: str | None = None, package: str | None = None) -> Verdict:
+        politica = self.policy_for(profile_id, cap, package)
         if politica == "disabled":
             return Verdict(allowed=False, policy=politica,
                            reason=f"a ação {cap.key} está desligada para este perfil",

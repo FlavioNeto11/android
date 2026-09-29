@@ -49,7 +49,7 @@ from .models import (DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, S
                      InstancePatch, InstanceProvisionBody, InstanceState, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
-                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
+                     AppInstallBody, AppVerifyBody, CredentialClone, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
                      PersonaDeviceBody, PersonaImageDTO, PersonaOnDeviceDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
@@ -985,6 +985,18 @@ async def delete_account_credential(request: Request, profile_id: str, account_i
         raise _social_error(exc) from exc
 
 
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/clone")
+async def clone_account_credential(request: Request, profile_id: str, account_id: str,
+                                   body: CredentialClone) -> ProfileAccountDTO:
+    """Usar a senha de outra conta DESTA persona (ADR-057, D1): o cofre a copia para uma entrada própria desta
+    conta, sem o valor sair dele. Outra persona → 409 `credencial_de_outra_persona`; origem sem senha → 409
+    `no_credential`. O consentimento não é clonado: a conta que não tinha continua sem."""
+    try:
+        return st(request).social.clone_account_credential(profile_id, account_id, body, by=quem(request))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
 @router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/consent")
 async def consent_account_credential(request: Request, profile_id: str, account_id: str) -> ProfileAccountDTO:
     """Consentir sem redigitar: marca `consent_at`/`consent_by` numa senha já guardada."""
@@ -1492,11 +1504,13 @@ async def app_store(request: Request) -> Any:
 async def app_catalog(request: Request) -> Any:
     """Os aplicativos que o registro conhece: quem tem catálogo, quem provê conta, quem exige perfil.
 
-    É o que a interface usa para deixar de assumir um pacote por omissão — a loja e as capacidades passam a
-    perguntar "qual app?" em vez de cair no Instagram.
+    É o que a interface usa para deixar de assumir um pacote por omissão — a loja, as capacidades e o painel de
+    contas passam a perguntar "qual app?" em vez de cair no Instagram. `profile_anchor` (23.10) é o que o painel
+    usa para achar o app da conta de cadastro da persona sem comparar nome ou pacote (`ehInstagram` fixo).
     """
     return [{"package": c.package, "name": c.name, "label": c.label, "has_catalog": c.has_catalog,
-             "session_provider": c.session_provider, "needs_profile": c.needs_profile}
+             "session_provider": c.session_provider, "needs_profile": c.needs_profile,
+             "profile_anchor": c.profile_anchor}
             for c in registered()]
 
 
@@ -1517,17 +1531,19 @@ async def list_capabilities(request: Request, package: str = Query(..., min_leng
 
 
 @router.get("/instagram/profiles/{profile_id}/policy")
-async def get_policy(request: Request, profile_id: str) -> Any:
+async def get_policy(request: Request, profile_id: str, package: str | None = None) -> Any:
+    """`package` (23.10): sem ele, o app âncora, como sempre; com ele, o catálogo do app escolhido no painel —
+    quem decide qual app é o âncora não é mais o painel adivinhando "o primeiro com login gerenciado"."""
     try:
-        return st(request).social.get_policy(profile_id)
+        return st(request).social.get_policy(profile_id, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
 
 @router.put("/instagram/profiles/{profile_id}/policy")
-async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch) -> Any:
+async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch, package: str | None = None) -> Any:
     try:
-        return st(request).social.set_policy(profile_id, body)
+        return st(request).social.set_policy(profile_id, body, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -1567,8 +1583,9 @@ async def delete_profile_account(request: Request, profile_id: str, account_id: 
 
 # ---------------------------------------------------------------- grupos de acesso (migração 036)
 @router.get("/instagram/policy-groups")
-async def list_policy_groups(request: Request) -> Any:
-    return st(request).social.list_policy_groups()
+async def list_policy_groups(request: Request, package: str | None = None) -> Any:
+    """`package` (23.10): contra que catálogo `loosened` é calculado; `capabilities`/`limits` seguem completos."""
+    return st(request).social.list_policy_groups(package=package)
 
 
 @router.get("/instagram/policy-defaults")
@@ -1579,25 +1596,25 @@ async def policy_defaults(request: Request) -> Any:
 
 
 @router.post("/instagram/policy-groups", status_code=201)
-async def create_policy_group(request: Request, body: PolicyGroupCreate) -> Any:
+async def create_policy_group(request: Request, body: PolicyGroupCreate, package: str | None = None) -> Any:
     try:
-        return st(request).social.create_policy_group(body)
+        return st(request).social.create_policy_group(body, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
 
 @router.get("/instagram/policy-groups/{group_id}")
-async def get_policy_group(request: Request, group_id: str) -> Any:
+async def get_policy_group(request: Request, group_id: str, package: str | None = None) -> Any:
     try:
-        return st(request).social.get_policy_group(group_id)
+        return st(request).social.get_policy_group(group_id, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
 
 @router.put("/instagram/policy-groups/{group_id}")
-async def put_policy_group(request: Request, group_id: str, body: PolicyGroupPatch) -> Any:
+async def put_policy_group(request: Request, group_id: str, body: PolicyGroupPatch, package: str | None = None) -> Any:
     try:
-        return st(request).social.update_policy_group(group_id, body)
+        return st(request).social.update_policy_group(group_id, body, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
 

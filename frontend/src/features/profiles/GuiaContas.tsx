@@ -7,7 +7,7 @@
 import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
+import type { AppCatalogEntry, AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -26,11 +26,16 @@ import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
 import styles from './Profiles.module.css';
 
 const TEXTO_DO_CONSENTIMENTO = 'Autorizo a automação a digitar esta senha, só no app/site desta conta';
-const USUARIO_DO_INSTAGRAM = /^[A-Za-z0-9._]{1,30}$/;
+// Regra de usuário do app âncora (hoje sempre o Instagram: letras, números, ponto ou sublinhado, até 30). O NOME
+// do app não decide mais nada aqui (23.10): é `profile_anchor` (`GET /api/app-catalog`) que diz QUAL app é a
+// conta de cadastro da persona; a regra em si segue a do Instagram porque, por ora, é o único app que pode ser
+// âncora (`pacote_ancora()` recusa mais de um registrado).
+const USUARIO_DA_CONTA_ANCORA = /^[A-Za-z0-9._]{1,30}$/;
 
-/** O Instagram é o app cuja conta dá o @ de cadastro da persona (a conta âncora). */
-function ehInstagram(app: Pick<AppConfig, 'id' | 'package'>): boolean {
-  return app.package === 'com.instagram.android' || app.id === 'instagram';
+/** O app da conta de CADASTRO da persona: o que o registro do backend declara `profile_anchor` (23.10, sem
+ *  comparar nome ou pacote no cliente — antes era `ehInstagram` fixo em `com.instagram.android`). */
+function ehAncora(app: Pick<AppConfig, 'package'>, catalogo: readonly AppCatalogEntry[]): boolean {
+  return catalogo.some((c) => c.package === app.package && c.profile_anchor);
 }
 
 /** App de navegador: a conta é de um SITE (`host`), e a mesma pessoa pode ter várias, uma por site. */
@@ -42,6 +47,18 @@ function nomeDoApp(c: ProfileAccount): string {
   return c.app_name ?? c.app_id;
 }
 
+function temSenha(c: ProfileAccount): boolean {
+  return c.credential?.configured ?? c.credential_configured;
+}
+
+/** Como a conta de origem aparece na escolha "usar a senha de outra conta": app, site e usuário, nunca a senha. */
+function rotuloDaConta(c: ProfileAccount): string {
+  return `${nomeDoApp(c)}${c.host ? ` (${c.host})` : ''}${c.handle ? ` — ${c.handle}` : ''}`;
+}
+
+const AVISO_DO_CLONE = 'O cofre copia a senha para esta conta sem que ela passe pelo painel. A autorização para a '
+  + 'automação digitá-la não vem junto: dê a desta conta depois de conferir.';
+
 export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onChanged, abrirFormulario }: {
   profile: Pessoa;
   contas: ProfileAccount[] | null;
@@ -51,10 +68,18 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
   abrirFormulario?: boolean;
 }) {
   const [adicionando, setAdicionando] = useState(!!abrirFormulario);
+  // De que app é a conta de cadastro (23.10): o registro decide, o formulário só pergunta (`GET /api/app-catalog`).
+  const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
 
   useEffect(() => {
     if (abrirFormulario) setAdicionando(true);
   }, [abrirFormulario]);
+
+  useEffect(() => {
+    let vivo = true;
+    api.listAppCatalog().then((c) => { if (vivo) setCatalogo(c); }).catch(() => { if (vivo) setCatalogo([]); });
+    return () => { vivo = false; };
+  }, []);
 
   if (contas === null) {
     return erro
@@ -84,12 +109,17 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
         <CardBody>
           {semCadastro ? (
             <p className={styles.detail}>
-              Esta persona ainda não tem @ de cadastro. Para ganhar um, adicione a conta do Instagram dela.
+              Esta persona ainda não tem @ de cadastro. Para ganhar um, adicione a conta do
+              {' '}{catalogo?.find((c) => c.profile_anchor)?.name ?? 'app âncora'} dela.
             </p>
           ) : null}
           {adicionando ? (
-            <NovaConta profile={profile} contas={contas}
-                       onCriada={async () => { setAdicionando(false); await mudou(); }} />
+            catalogo === null ? (
+              <LoadingRegion label="Carregando os aplicativos…"><Skeleton height={80} /></LoadingRegion>
+            ) : (
+              <NovaConta profile={profile} contas={contas} catalogo={catalogo}
+                         onCriada={async () => { setAdicionando(false); await mudou(); }} />
+            )
           ) : null}
           {contas.length === 0 ? (
             <p className={styles.detail}>Nenhuma conta ainda.</p>
@@ -97,7 +127,8 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
             <ul className={styles.accountList}>
               {contas.map((c) => (
                 <CartaoConta key={c.id} profileId={profile.id} conta={c} onMudou={mudou}
-                             aparelhos={aparelhosDe(profile)} principal={profile.instance_id} />
+                             aparelhos={aparelhosDe(profile)} principal={profile.instance_id}
+                             origens={contas.filter((o) => o.id !== c.id && temSenha(o))} />
               ))}
             </ul>
           )}
@@ -112,9 +143,12 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
  * `persona_id`): é ela que ganha o @, na mesma linha e com o mesmo id; `POST …/accounts` criaria só uma conta solta,
  * sem @ de cadastro. A senha, quando vier, entra depois pela rota da conta, com o consentimento marcado aqui.
  */
-function NovaConta({ profile, contas, onCriada }: {
+function NovaConta({ profile, contas, catalogo, onCriada }: {
   profile: Pessoa;
   contas: ProfileAccount[];
+  /** `GET /api/app-catalog` (23.10): diz qual app é a conta de cadastro (`profile_anchor`), sem o formulário
+   *  precisar comparar nome ou pacote. */
+  catalogo: readonly AppCatalogEntry[];
   onCriada: () => Promise<void>;
 }) {
   const apps = useAppStore((s) => s.apps);
@@ -124,20 +158,27 @@ function NovaConta({ profile, contas, onCriada }: {
   const [login, setLogin] = useState('');
   const [senha, setSenha] = useState('');
   const [consentiu, setConsentiu] = useState(false);
+  // 23.9 (ADR-057): a senha pode vir de outra conta desta persona, clonada no cofre. É uma OU outra.
+  const [clonarDe, setClonarDe] = useState('');
   const [salvando, setSalvando] = useState(false);
 
   const temCadastro = !!handleDe(profile);
+  const origens = contas.filter(temSenha);
   const livres = apps.filter((a) => ehNavegador(a) || !contas.some((c) => c.app_id === a.id))
-    .filter((a) => !(ehInstagram(a) && temCadastro));
+    .filter((a) => !(ehAncora(a, catalogo) && temCadastro));
   const app = apps.find((a) => a.id === appId) ?? null;
-  const adocao = !!app && ehInstagram(app) && !temCadastro;
+  const adocao = !!app && ehAncora(app, catalogo) && !temCadastro;
   const navegador = !!app && ehNavegador(app);
+  // A adoção cria o @ de cadastro por outra rota; a clonagem fica para as contas comuns.
+  const clonando = !adocao && !!clonarDe;
+  // Nome do app âncora para as mensagens ("Usuário do X"): do catálogo, nunca um literal escrito aqui.
+  const nomeDaAncora = catalogo.find((c) => c.profile_anchor)?.name ?? app?.name ?? 'aplicativo';
 
   const motivo = !app ? 'Escolha o aplicativo.'
-    : adocao && !USUARIO_DO_INSTAGRAM.test(handle.trim().replace(/^@/, ''))
-      ? 'Usuário do Instagram: letras, números, ponto ou sublinhado (até 30).'
+    : adocao && !USUARIO_DA_CONTA_ANCORA.test(handle.trim().replace(/^@/, ''))
+      ? `Usuário do ${nomeDaAncora}: letras, números, ponto ou sublinhado (até 30).`
       : navegador && !host.trim() ? 'Diga o site desta conta (ex.: portal.exemplo.com.br).'
-        : senha && !consentiu ? 'Marque a autorização para a automação digitar esta senha.' : null;
+        : senha && !clonando && !consentiu ? 'Marque a autorização para a automação digitar esta senha.' : null;
 
   async function adicionar() {
     if (!app || motivo || salvando) return;
@@ -148,24 +189,25 @@ function NovaConta({ profile, contas, onCriada }: {
         if (senha) {
           try {
             const conta = (await api.listAccounts(criado.id)).find((c) => c.app_id === app.id);
-            if (!conta) throw new Error('A conta do Instagram não apareceu depois do cadastro.');
+            if (!conta) throw new Error(`A conta do ${nomeDaAncora} não apareceu depois do cadastro.`);
             await api.setAccountCredential(criado.id, conta.id,
               { password: senha, consent: true, login_identifier: login.trim() || null });
           } catch (e) {
             toastError(`@${criado.username} foi cadastrado, mas a senha não foi guardada`, e);
           }
         }
-        toast({ tone: 'success', title: `@${criado.username} é agora o Instagram desta persona` });
+        toast({ tone: 'success', title: `@${criado.username} é agora o ${nomeDaAncora} desta persona` });
       } else {
         await api.addAccount(profile.id, {
           app_id: app.id,
           handle: handle.trim(),
           host: navegador ? host.trim() : null,
           login_identifier: login.trim() || null,
-          password: senha || null,
-          ...(senha ? { consent: consentiu } : {}),
+          // Clonar exclui senha e consentimento: o servidor recusa a combinação (422), e a conta nasce sem autorização.
+          ...(clonando ? { clonar_de: clonarDe } : { password: senha || null, ...(senha ? { consent: consentiu } : {}) }),
         });
-        toast({ tone: 'success', title: `Conta em ${app.name} adicionada` });
+        toast({ tone: 'success', title: `Conta em ${app.name} adicionada`,
+                ...(clonando ? { message: 'Senha clonada no cofre. Autorize a automação a digitá-la no cartão da conta.' } : {}) });
       }
       await onCriada();
     } catch (e) {
@@ -187,7 +229,7 @@ function NovaConta({ profile, contas, onCriada }: {
           </Select>
         )}
       </Field>
-      <Field label={adocao ? 'Usuário do Instagram' : 'Usuário na conta'}
+      <Field label={adocao ? `Usuário do ${nomeDaAncora}` : 'Usuário na conta'}
              hint={adocao ? 'Sem o @; vira o @ de cadastro desta persona.' : undefined}>
         {({ id, describedBy }) => (
           <TextInput id={id} aria-describedby={describedBy} value={handle} onChange={(e) => setHandle(e.target.value)} />
@@ -207,13 +249,26 @@ function NovaConta({ profile, contas, onCriada }: {
           <TextInput id={id} aria-describedby={describedBy} value={login} onChange={(e) => setLogin(e.target.value)} />
         )}
       </Field>
-      <Field label="Senha" unit="opcional">
-        {({ id }) => (
-          <TextInput id={id} type="password" autoComplete="new-password" value={senha}
-                     onChange={(e) => setSenha(e.target.value)} />
-        )}
-      </Field>
-      {senha ? (
+      {!adocao && origens.length > 0 ? (
+        <Field label="Usar a senha de outra conta" unit="opcional" hint={AVISO_DO_CLONE}>
+          {({ id, describedBy }) => (
+            <Select id={id} aria-describedby={describedBy} value={clonarDe}
+                    onChange={(e) => { setClonarDe(e.target.value); setSenha(''); }}>
+              <option value="">Não: digitar a senha abaixo</option>
+              {origens.map((o) => <option key={o.id} value={o.id}>{rotuloDaConta(o)}</option>)}
+            </Select>
+          )}
+        </Field>
+      ) : null}
+      {clonando ? null : (
+        <Field label="Senha" unit="opcional">
+          {({ id }) => (
+            <TextInput id={id} type="password" autoComplete="new-password" value={senha}
+                       onChange={(e) => setSenha(e.target.value)} />
+          )}
+        </Field>
+      )}
+      {senha && !clonando ? (
         <Checkbox label={TEXTO_DO_CONSENTIMENTO} aria-label={TEXTO_DO_CONSENTIMENTO} checked={consentiu}
                   onChange={(e) => setConsentiu(e.target.checked)} />
       ) : null}
@@ -236,10 +291,12 @@ function aparelhosDaConta(c: ProfileAccount, aparelhos: readonly PersonaDevice[]
     .filter((d) => (vistos.has(d.instance_id) ? false : (vistos.add(d.instance_id), true)));
 }
 
-function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal = null }: {
+function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal = null, origens = [] }: {
   profileId: string;
   conta: ProfileAccount;
   onMudou: () => Promise<void>;
+  /** As OUTRAS contas desta persona com senha guardada: de onde esta pode clonar a sua (23.9). */
+  origens?: readonly ProfileAccount[];
   /** Os vínculos da persona (N:N): com mais de um que sirva a esta conta, a pessoa escolhe o aparelho. */
   aparelhos?: readonly PersonaDevice[];
   principal?: string | null;
@@ -373,7 +430,7 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
           </>
         )}
       </div>
-      <SenhaDaConta profileId={profileId} conta={c} onMudou={onMudou} />
+      <SenhaDaConta profileId={profileId} conta={c} onMudou={onMudou} origens={origens} />
       {c.automated_login ? (
         <div className={styles.accountWide}>
           <Disclosure bare summary="Tentativas de entrar">
@@ -390,17 +447,19 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
  * envio, dê certo ou não. O identificador mostra o que está GRAVADO — nunca o handle por padrão (o painel antigo
  * mandava o @ como login e o Instagram, que entra por e-mail, recusava).
  */
-function SenhaDaConta({ profileId, conta: c, onMudou }: {
+function SenhaDaConta({ profileId, conta: c, onMudou, origens = [] }: {
   profileId: string;
   conta: ProfileAccount;
   onMudou: () => Promise<void>;
+  origens?: readonly ProfileAccount[];
 }) {
   const gravado = c.credential?.login_identifier ?? c.login_identifier ?? null;
   const [login, setLogin] = useState(gravado ?? '');
   const [senha, setSenha] = useState('');
   const [consentiu, setConsentiu] = useState(false);
+  const [clonarDe, setClonarDe] = useState('');
   const [salvando, setSalvando] = useState(false);
-  const configurada = c.credential?.configured ?? c.credential_configured;
+  const configurada = temSenha(c);
   const consentidaEm = c.credential?.consent_at ?? c.consent_at ?? null;
   const app = nomeDoApp(c);
 
@@ -430,6 +489,34 @@ function SenhaDaConta({ profileId, conta: c, onMudou }: {
       toastError('Não foi possível guardar a senha', e);
     } finally {
       setSenha('');
+      setSalvando(false);
+    }
+  }
+
+  async function clonar() {
+    const origem = origens.find((o) => o.id === clonarDe);
+    if (!origem || salvando) return;
+    if (configurada && !(await confirm({
+      title: `Trocar a senha de ${app} pela de ${rotuloDaConta(origem)}?`,
+      body: 'A senha atual desta conta é substituída no cofre. As duas continuam independentes: trocar ou apagar uma '
+        + 'depois não mexe na outra.',
+      confirmLabel: 'Usar esta senha',
+    })).confirmed) return;
+    setSalvando(true);
+    try {
+      const identificador = login.trim();
+      await api.cloneAccountCredential(profileId, c.id, {
+        clonar_de: origem.id,
+        ...(identificador && identificador !== gravado ? { login_identifier: identificador } : {}),
+      });
+      toast({ tone: 'success', title: `Senha de ${rotuloDaConta(origem)} clonada`,
+              message: consentidaEm ? 'Cifrada no cofre, numa entrada só desta conta.'
+                : 'Cifrada no cofre, numa entrada só desta conta. Autorize a automação a digitá-la para usá-la.' });
+      setClonarDe('');
+      await onMudou();
+    } catch (e) {
+      toastError('Não foi possível usar a senha da outra conta', e);
+    } finally {
       setSalvando(false);
     }
   }
@@ -518,6 +605,25 @@ function SenhaDaConta({ profileId, conta: c, onMudou }: {
           <p className={styles.detail}>Senha guardada sem consentimento: ninguém a digita até você autorizar.</p>
         ) : null}
       </form>
+      {origens.length > 0 ? (
+        <div className={styles.accountPassword}>
+          <Field label="Usar a senha de outra conta desta persona" hint={AVISO_DO_CLONE}>
+            {({ id, describedBy }) => (
+              <Select id={id} aria-describedby={describedBy} value={clonarDe} onChange={(e) => setClonarDe(e.target.value)}>
+                <option value="">Escolha a conta…</option>
+                {origens.map((o) => <option key={o.id} value={o.id}>{rotuloDaConta(o)}</option>)}
+              </Select>
+            )}
+          </Field>
+          <div className={styles.accountFormActions}>
+            <Button size="sm" variant="secondary" icon={KeyRound} loading={salvando}
+                    disabledReason={clonarDe ? null : 'Escolha de qual conta usar a senha.'}
+                    onClick={() => void clonar()}>
+              Usar esta senha
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -143,6 +143,50 @@ it('conta que já consentiu mostra quando e por quem, e troca a senha sem remarc
   expect(backend.callsTo('PUT', /\/credential$/)[0]?.body).toEqual({ password: SENHA });
 });
 
+/** A conta Outlook da persona, sem senha e sem login automático (23.9). */
+const OUTLOOK: Partial<ProfileAccount> = {
+  id: 'acc-2', app_id: 'outlook', app_name: 'Outlook', package: 'com.microsoft.office.outlook',
+  handle: 'mariana@outlook.com', automated_login: false, ...CONTA_SEM_SENHA,
+};
+
+it('conta sem senha usa a senha de outra conta da persona: POST …/credential/clone só com o id, sem valor nem consent', async () => {
+  backend.on('POST', /\/accounts\/acc-2\/credential\/clone$/, () => json(conta({ ...OUTLOOK, credential_configured: true })));
+  await abrirContas([conta(), conta(OUTLOOK)]);
+  // Só a conta SEM senha oferece a de outra (a do Instagram não tem de onde clonar: a do Outlook está vazia).
+  const escolha = byRole('combobox', /Usar a senha de outra conta desta persona/i) as HTMLSelectElement;
+  expect(allByRole('combobox', /Usar a senha de outra conta desta persona/i)).toHaveLength(1);
+  expect(byRole('button', /Usar esta senha/i).getAttribute('aria-disabled')).toBe('true');
+  await setValue(escolha, 'acc-1');
+  expect(escolha.textContent).toContain('Instagram — mariana.costa91182');
+  await click(byRole('button', /Usar esta senha/i));
+  await waitFor(() => backend.callsTo('POST', /\/credential\/clone$/).length === 1);
+  expect(backend.callsTo('POST', /\/credential\/clone$/)[0]?.body).toEqual({ clonar_de: 'acc-1' });
+  expect(backend.callsTo('PUT', /\/credential$/)).toHaveLength(0);
+});
+
+it('adicionar conta com a senha de outra conta: o campo de senha some e o POST leva clonar_de, sem password nem consent', async () => {
+  useAppStore.setState({ apps: [
+    { id: 'instagram', name: 'Instagram', package: 'com.instagram.android', activity: null, apk_path: null,
+      nav_hints: null, known_selectors: null, builtin: true },
+    { id: 'outlook', name: 'Outlook', package: 'com.microsoft.office.outlook', activity: null, apk_path: null,
+      nav_hints: null, known_selectors: null, builtin: false },
+  ] });
+  backend.on('POST', /\/accounts$/, () => json(conta({ ...OUTLOOK, credential_configured: true }), 201));
+  await abrirContas([conta()]);
+  await click(byRole('button', /Adicionar conta/i));
+  await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'outlook');
+  await setValue(byRole('textbox', /Usuário na conta/i) as HTMLInputElement, 'mariana@outlook.com');
+  const senhas = container.querySelectorAll('input[type="password"]').length;
+  await setValue(byRole('combobox', /^Usar a senha de outra conta/i) as HTMLSelectElement, 'acc-1');
+  expect(container.querySelectorAll('input[type="password"]').length).toBe(senhas - 1);
+  expect(text()).toContain('A autorização para a automação digitá-la não vem junto');
+  await click(byRole('button', /^Adicionar$/i));
+  await waitFor(() => backend.callsTo('POST', /\/accounts$/).length === 1);
+  expect(backend.callsTo('POST', /\/accounts$/)[0]?.body).toEqual({
+    app_id: 'outlook', handle: 'mariana@outlook.com', host: null, login_identifier: null, clonar_de: 'acc-1',
+  });
+});
+
 it('o identificador de login mostra o valor GRAVADO, nunca o handle por padrão', async () => {
   await abrirContas([conta()]);
   const login = byRole('textbox', /Identificador de login/i) as HTMLInputElement;
@@ -224,6 +268,11 @@ it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com 
     { id: 'instagram', name: 'Instagram', package: 'com.instagram.android', activity: null, apk_path: null,
       nav_hints: null, known_selectors: null, builtin: true },
   ] });
+  // 23.10: quem decide se o app escolhido é a conta de cadastro é o catálogo (`profile_anchor`), não o nome dele.
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+  ]));
   backend.on('POST', /^\/api\/instagram\/profiles$/, () => json(perfil(), 201));
   const semConta = perfil({ username: '', persona_id: null, instance_id: null, locality: null });
   backend.on('GET', /\/accounts$/, () => json([]));
@@ -360,6 +409,48 @@ it('a política de cada ação é um controle segmentado de três botões, e tro
   // A diferença em relação ao catálogo fica visível: o botão de voltar a herdar diz o que passaria a valer. (O texto
   // antigo "padrão: Sozinho" não existia mais; o waitFor booleano passava sem afirmar nada até o harness mudar.)
   await waitFor(() => expect(text()).toContain('herdar (Sozinho)'));
+});
+
+it('mais de um app com catálogo: o seletor troca a política e a ação, e o PUT leva o pacote certo', async () => {
+  // 23.10: antes a aba sempre pegava "o primeiro app com login gerenciado da lista" — com um segundo app de
+  // catálogo, a escolha é deliberada (o âncora por padrão) e o PUT vai com o `package` do app em tela.
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+    { package: 'com.exemplo.correio', name: 'Correio', label: 'Correio', has_catalog: true,
+      session_provider: 'correio', needs_profile: true, profile_anchor: false },
+  ]));
+  backend.on('GET', /\/policy$/, (c) => json(
+    c.query.get('package') === 'com.exemplo.correio'
+      ? { package: 'com.exemplo.correio', limits: {}, capabilities: { LER_CAIXA: 'autonomous' },
+          defaults: { LER_CAIXA: 'autonomous' }, loosened: [] }
+      : { package: 'com.instagram.android', limits: { likes_per_hour: 30 }, capabilities: { LIKE_POST: 'autonomous' },
+          defaults: { LIKE_POST: 'autonomous' }, loosened: [] },
+  ));
+  backend.on('GET', /capabilities/, (c) => json(
+    c.query.get('package') === 'com.exemplo.correio'
+      ? [{ key: 'LER_CAIXA', title: 'Ler a caixa de entrada', side_effect: false, risk: 'low',
+           default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] }]
+      : [{ key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+           default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] }],
+  ));
+  backend.on('GET', /interactions/, () => json([]));
+  backend.on('PUT', /\/policy$/, () => json({
+    package: 'com.exemplo.correio', limits: {}, capabilities: { LER_CAIXA: 'manual_only' },
+    defaults: { LER_CAIXA: 'autonomous' }, loosened: [],
+  }));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  // Por padrão vem o app âncora.
+  await waitFor(() => text().includes('Curtir a publicação'));
+  await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'com.exemplo.correio');
+  await waitFor(() => text().includes('Ler a caixa de entrada'));
+  expect(text()).not.toContain('Curtir a publicação');
+  await click(byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Ler a caixa de entrada/i)));
+  await waitFor(() => backend.callsTo('PUT', /\/policy$/).length === 1);
+  const chamada = backend.calls.find((c) => c.method === 'PUT')!;
+  expect(chamada.body).toEqual({ capabilities: { LER_CAIXA: 'manual_only' } });
+  expect(chamada.query.get('package')).toBe('com.exemplo.correio');
 });
 
 it('uma ação em lote de grupo muda todas as ações do grupo em um único PUT', async () => {
@@ -832,6 +923,37 @@ it('aba Configurações com a política indisponível mostra o erro com "Tentar 
   await click(byRole('button', /Tentar de novo/));
   await waitFor(() => text().includes('Grupo de acesso'));
   expect(text()).not.toContain('Não foi possível carregar as políticas');
+});
+
+it('aba Configurações com o catálogo de apps indisponível mostra o erro com "Tentar de novo", e ele busca o catálogo de novo', async () => {
+  // 23.10 (revisão): a falha do catálogo era engolida, o app nunca se resolvia e o esqueleto ficava para sempre.
+  montarConfigBackend([], { limits: {}, capabilities: {}, defaults: {}, loosened: [] });
+  backend.on('GET', /app-catalog/, () => apiError(500, 'internal', 'registro indisponível'));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Não foi possível carregar as políticas'));
+  expect(text()).toContain('registro indisponível');
+  expect(backend.callsTo('GET', /\/policy$/)).toHaveLength(0);
+
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true, profile_anchor: true },
+  ]));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('Grupo de acesso'));
+  expect(text()).not.toContain('Não foi possível carregar as políticas');
+});
+
+it('aba Configurações sem nenhum app com catálogo ainda carrega a política e os limites (do app âncora)', async () => {
+  montarConfigBackend([], { limits: { likes_per_hour: 30 }, capabilities: {}, defaults: {}, loosened: [] });
+  backend.on('GET', /app-catalog/, () => json([]));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Limites'));
+  expect(text()).toContain('Grupo de acesso');
+  // sem app com catálogo, a política é a do âncora (sem `?package=`) e não se pede catálogo de ações nenhum
+  expect(backend.callsTo('GET', /\/policy$/)[0]?.query.get('package')).toBeNull();
+  expect(backend.callsTo('GET', /capabilities/)).toHaveLength(0);
 });
 
 it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", não "Carregando…" nem lista vazia', async () => {

@@ -1318,6 +1318,12 @@ async def test_rotas_de_catalogo_politica_e_auditoria(tmp_path: Path) -> None:
             politica = (await c.get(f"/api/instagram/profiles/{pid}/policy")).json()
             assert politica["capabilities"]["LIKE_POST"] == "autonomous"
             assert politica["limits"]["likes_per_hour"] == DEFAULT_LIMITS["likes_per_hour"]
+            # 23.10: sem `?package=`, o painel via `pacote_ancora()` — nunca mais um literal `com.instagram.android`
+            # nele; com o pacote explícito, a mesma resposta (é o mesmo app: hoje só o Instagram é âncora).
+            assert politica["package"] == "com.instagram.android"
+            explicita = (await c.get(f"/api/instagram/profiles/{pid}/policy",
+                                     params={"package": "com.instagram.android"})).json()
+            assert explicita["package"] == "com.instagram.android" and explicita["capabilities"] == politica["capabilities"]
 
             mudado = await c.put(f"/api/instagram/profiles/{pid}/policy",
                                  json={"capabilities": {"LIKE_POST": "approval_required"},
