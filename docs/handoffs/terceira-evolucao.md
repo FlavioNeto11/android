@@ -184,6 +184,14 @@ apagar recursivo).
   conferido com o `digest` publicado), fora do Git.
 - **Em curso (agentes):** Onda 0 (C1–C5, 23.1) no `evo3`; medição 25.1 no android-05 (relatório em
   `data/rede/piloto/medicao-25.1.md`); Fase 26 em `docs/design/pedidos-persistentes.md`.
+**Checkpoint 2 (29/09 ~18:35Z).** Onda 0 commitada em `aad3b0d` (C1–C5, 23.1; migrações 056 e 057; adendo
+v0.41), sobre `45bd8ea` (correção do inspetor, 23.3). Onda 1 lançada pelo workflow `evolucao3-onda` (run
+`wf_3f3d07a0-057`; script no scratchpad da sessão, cópia a registrar), seis frentes em worktrees próprios criados de
+`aad3b0d`, cada um com as junções: `evo3-b1` (23.4, 23.5, 23.6), `evo3-b2` (23.9, 23.10, 23.3), `evo3-c1` (24.1,
+24.2, 24.5, 24.8, 24.6), `evo3-c2` (24.3, 24.4, 24.7), `evo3-d1` (25.2, 25.3), `evo3-d3` (25.8). Integração: cada
+branch `claude/evo3-<frente>` entra no `claude/evolucao3` na ordem contratos → B → C → D. Deploy depois da medição
+25.1 (que usa a API) e da integração. Retomada: `Workflow({scriptPath, resumeFromRunId: "wf_3f3d07a0-057"})`.
+
 - **Ajuste de plano (25.5):** a sonda de saída mede por `nc` HTTP a um eco de IP e cobre por UID com `dumpsys
   netstats`, em vez de estender o app de QA, se a medição do 25.1 confirmar que basta. O motivo: a medição fica
   sem app novo a distribuir e a mesma em todos os aparelhos. O app de QA tem build no central (`qa-app/`, Gradle 9.7
