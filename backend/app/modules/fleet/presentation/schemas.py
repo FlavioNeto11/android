@@ -82,23 +82,36 @@ class InstanceProvisionBody(BaseModel):
         return {k: v for k, v in (("system_image", self.system_image), ("ram_mb", self.ram_mb)) if v is not None}
 
 
+#: De onde veio a decisão sobre um comando. `panel`: do cartão do próprio aparelho no painel — o backend acrescenta
+#: ", no painel a partir de <aparelho>" ao motivo, depois de "por <autor>" (só ", a partir de <aparelho>" quando o
+#: autor já é `panel`), e a nota continua sendo só o texto da pessoa (a triagem de credencial olha só ele: um id de
+#: aparelho fora do padrão `android-NN` não pode recusar a decisão).
+OrigemDaDecisao = Literal["panel"]
+
+
 class CommandResolveBody(BaseModel):
     """A decisão de uma pessoa sobre um comando `uncertain`. `note` é o que ela observou — o que separa
-    "marquei como sucesso" de "abri o aparelho, os dados estavam apagados, então o reset aconteceu"."""
+    "marquei como sucesso" de "abri o aparelho, os dados estavam apagados, então o reset aconteceu".
+
+    `note` e `requested_by` passam pela triagem de credencial (409 `note_looks_secret`): os dois vão crus para o
+    motivo do comando e para o evento dele."""
 
     model_config = ConfigDict(extra="forbid")
     outcome: Literal["succeeded", "failed", "cancelled"]
     note: str | None = Field(default=None, max_length=400)
     requested_by: str | None = Field(default=None, max_length=60)
+    origin: OrigemDaDecisao | None = None
 
 
 class CommandCancelBody(BaseModel):
     """O pedido de cancelamento de um comando ainda aberto. Pedir não é ter cancelado: o desfecho continua vindo
-    de quem executa, e por isso aqui não há `outcome` nenhum para escolher."""
+    de quem executa, e por isso aqui não há `outcome` nenhum para escolher. Mesma triagem e mesma `origin` da
+    resolução."""
 
     model_config = ConfigDict(extra="forbid")
     note: str | None = Field(default=None, max_length=400)
     requested_by: str | None = Field(default=None, max_length=60)
+    origin: OrigemDaDecisao | None = None
 
 
 class ReleaseBody(BaseModel):

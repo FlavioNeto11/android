@@ -14,6 +14,9 @@ O que se prova, com o harness (aparelhos falsos, provedor simulado: toda prova a
   respondida não conta), `comando_incerto_resolvido` pela rota dos comandos e `correcao_de_ensino` pelo ensino — com
   o operador da SESSÃO como autor (nunca o `requested_by` do corpo), a nota pela triagem de credencial e a falha do
   livro sem derrubar o gesto;
+- pela rota, os gestos do A2 (resolver o item, repetir, responder, tomar o controle) também levam o operador da sessão
+  (sem sessão, `panel`), e o mesmo evento feito de novo por outra pessoa não vira segunda linha (plano 22.1); a nota
+  da resolução pelo painel é só o texto da pessoa, e o `requested_by` passa pela triagem (plano 22.2);
 - `aprendizado.enabled: false` desliga tudo, e o modo `off` das lições não pede lição a ninguém.
 """
 from __future__ import annotations
@@ -487,10 +490,10 @@ def _cliente(h: Harness) -> httpx.AsyncClient:
                              base_url="http://127.0.0.1")
 
 
-def _comando_incerto(h: Harness, cid: str, **trilha: str) -> str:
+def _comando_incerto(h: Harness, cid: str, *, instance_id: str = "android-02", **trilha: str) -> str:
     """Um `reset` que terminou sem se saber o efeito (nenhuma sonda o fecha). Só linha no banco: nada é despachado."""
     assert h.state is not None
-    h.state.commands.create(command_id=cid, instance_id="android-02", verb="reset", idempotency_key=f"chave-{cid}",
+    h.state.commands.create(command_id=cid, instance_id=instance_id, verb="reset", idempotency_key=f"chave-{cid}",
                             params=dict(trilha) or None)
     h.state.commands.transition(cid, CommandState.dispatched)
     h.state.commands.transition(cid, CommandState.uncertain, reason="o canal caiu depois do envio")
@@ -596,6 +599,112 @@ async def test_cancelamento_e_um_sinal_por_episodio(harness: Harness) -> None:
     await assentar()
 
 
+async def _logado(c: httpx.AsyncClient, nome: str) -> httpx.AsyncClient:
+    assert (await c.post("/api/login", json={"operator": nome})).status_code == 200
+    return c
+
+
+async def test_gestos_do_a2_pela_rota_levam_o_operador_da_sessao_e_sem_sessao_panel(harness: Harness) -> None:
+    """Pendência do A2 (plano 22.1): resolver o item, repetir a execução e responder a pergunta saíam `panel` mesmo com
+    sessão — o nome não chegava a `resolve`, `retry_failed` nem ao assistente. Agora a rota o passa (`por=`)."""
+    st = harness.state
+    assert st is not None
+    harness.fakes["android-01"].require_login = True
+    harness.fakes["android-02"].require_login = True
+    parado = harness.run(["android-02"])
+    repetir = harness.run(["android-01"])
+    await harness.wait_run(parado.id)
+    await harness.wait_run(repetir.id)
+    item, item_r = f"{parado.id}:android-02", f"{repetir.id}:android-01"
+
+    def de_novo(oid: str) -> Any:
+        return harness.wait(lambda: st.repo.objective_row(oid)["status"] == "waiting_user", what="parar de novo")
+
+    async with _cliente(harness) as c:
+        await _logado(c, NOME)
+        r = await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
+                         json={"resolution": "retry", "note": "loguei no aparelho"})
+        assert r.status_code == 200, r.text
+        r = await c.post(f"/api/runs/{repetir.id}/retry_failed")
+        assert r.status_code == 200 and r.json()["retried"] == [item_r], r.text
+    await de_novo(item)
+    await de_novo(item_r)
+    async with _cliente(harness) as c:                                        # sem sessão: `panel`
+        assert (await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
+                             json={"resolution": "abandon"})).status_code == 200
+        assert (await c.post(f"/api/runs/{repetir.id}/retry_failed")).json()["retried"] == [item_r]
+    assert [s["created_by"] for s in _sinais(harness, "repetiu_item")] == [NOME]
+    assert [s["created_by"] for s in _sinais(harness, "abandonou_item")] == ["panel"]
+    assert [s["created_by"] for s in _sinais(harness, "repetiu_execucao")] == [NOME, "panel"]
+
+    # "abandonar" de novo o item que já falhou é o MESMO ponto de decisão para quem vier depois: a primeira pessoa
+    # grava, a segunda não vira outra linha (a régua conta linhas; a chave do gesto é o evento, não a pessoa)
+    async with _cliente(harness) as c:
+        await _logado(c, NOME)
+        assert (await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
+                             json={"resolution": "abandon"})).status_code == 200
+    async with _cliente(harness) as c:
+        await _logado(c, "Bruno Lima")
+        assert (await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
+                             json={"resolution": "abandon"})).status_code == 200
+    abandonos = _sinais(harness, "abandonou_item")
+    assert [s["created_by"] for s in abandonos] == ["panel", NOME]
+    assert len({s["source_ref"] for s in abandonos}) == 2
+
+    # responder a pergunta: com sessão, o nome; sem sessão, `panel`
+    com = harness.run(["android-03"], command=INCOMPLETO, mode="plan")
+    await harness.wait_run(com.id, ("needs_input",))
+    async with _cliente(harness) as c:
+        await _logado(c, NOME)
+        r = await c.post(f"/api/runs/{com.id}/successor", json={"command": COMMAND, "mode": "plan"})
+        assert r.status_code == 200, r.text
+    sem = harness.run(["android-03"], command=INCOMPLETO, mode="plan")
+    await harness.wait_run(sem.id, ("needs_input",))
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/runs/{sem.id}/successor", json={"command": COMMAND, "mode": "plan"})
+        assert r.status_code == 200, r.text
+    respostas = _sinais(harness, "respondeu_pergunta")
+    assert {s["created_by"] for s in respostas if s["run_id"] == com.id} == {NOME}
+    assert {s["created_by"] for s in respostas if s["run_id"] == sem.id} == {"panel"}
+
+
+async def test_tomada_de_controle_pela_rota_leva_o_operador_e_e_uma_por_tentativa(harness: Harness) -> None:
+    """Pendência do A2 (plano 22.1): o pedido de controle nasce na rota do aparelho e passa pelo gerenciador
+    (`request_control(por=)`) até a `TomadaDeControle`. Pedir, desistir e outra pessoa pedir na MESMA tentativa não
+    vira uma segunda intervenção: a régua conta intervenção por tentativa, e o primeiro autor fica."""
+    st = harness.state
+    assert st is not None
+    run = harness.run(["android-01"], mode="plan")
+    await harness.wait_run(run.id, statuses=("planned",))
+    etapa = f"{run.id}:android-01:v1:open_app"
+    st.db.execute("UPDATE steps SET status='running', attempts=1 WHERE id=?", (etapa,))
+    st.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
+                  (f"{etapa}:a1", etapa, 1, "running", "2026-09-29T10:00:00Z"))
+    rt = _ia_numa_etapa(harness, "android-01", run.id, etapa)
+    rota = "/api/instances/android-01/control"
+    async with _cliente(harness) as c:
+        await _logado(c, NOME)
+        pedido = (await c.post(f"{rota}/take")).json()
+        assert pedido["status"] == "pending"
+        assert (await c.post(f"{rota}/release", json={"lease_id": pedido["lease_id"]})).status_code == 200
+    async with _cliente(harness) as c:
+        await _logado(c, "Bruno Lima")
+        assert (await c.post(f"{rota}/take")).json()["status"] == "pending"
+    [s] = _sinais(harness, "tomou_controle")
+    assert (s["source_ref"], s["created_by"], s["polarity"]) == (f"takeover:{etapa}:a1", NOME, "negative")
+
+    # outra tentativa, pedida sem sessão: outro sinal, de `panel`
+    st.db.execute("UPDATE attempts SET status='failed' WHERE id=?", (f"{etapa}:a1",))
+    st.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
+                  (f"{etapa}:a2", etapa, 2, "running", "2026-09-29T10:05:00Z"))
+    rt.takeover_requested, rt.pending_lease_id = False, None
+    async with _cliente(harness) as c:
+        assert (await c.post(f"{rota}/take")).json()["status"] == "pending"
+    assert [(x["source_ref"], x["created_by"]) for x in _sinais(harness, "tomou_controle")] == [
+        (f"takeover:{etapa}:a1", NOME), (f"takeover:{etapa}:a2", "panel")]
+    rt.takeover_requested, rt.pending_lease_id, rt.control, rt.current = False, None, ControlOwner.none, None
+
+
 async def test_comando_incerto_resolvido_vira_sinal_do_operador_com_a_trilha_do_comando(harness: Harness) -> None:
     st = harness.state
     assert st is not None
@@ -653,6 +762,86 @@ async def test_comando_incerto_resolvido_vira_sinal_do_operador_com_a_trilha_do_
     st.costuras.comando_incerto_resolvido(ResolucaoDeComando(por_dentro, "failed", "senha: segredo123", NOME, True))
     s4 = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}[f"comando:{por_dentro}"]
     assert (s4["note"], s4["note_refused"], s4["created_by"]) == (None, 1, NOME)
+
+
+async def test_nota_da_resolucao_pelo_painel_e_so_o_texto_da_pessoa(harness: Harness) -> None:
+    """Pendência de 29/09 (plano 22.2): o painel prefixava a nota com "decidido no painel a partir de <aparelho>", e a
+    triagem de credencial recusava a decisão inteira quando o id do aparelho tinha cara de segredo (um AVD como
+    `Pixel_7a-Lab.02`). Agora o painel manda `origin=panel`, o backend compõe o contexto, e a triagem vê só o texto da
+    pessoa; o cliente antigo, com o prefixo, continua funcionando. O `requested_by` livre passa pela mesma triagem."""
+    st = harness.state
+    assert st is not None
+    avd = "Pixel_7a-Lab.02"
+    novo = _comando_incerto(harness, "c-teste-origem-1", instance_id=avd)
+    antigo = _comando_incerto(harness, "c-teste-origem-2", instance_id=avd)
+    so_prefixo = _comando_incerto(harness, "c-teste-origem-3", instance_id=avd)
+    outro_id = _comando_incerto(harness, "c-teste-origem-4", instance_id=avd)
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": NOME})).status_code == 200
+        r1 = await c.post(f"/api/commands/{novo}/resolve",
+                          json={"outcome": "succeeded", "origin": "panel", "note": "conferi na máquina"})
+        # a aba aberta antes do deploy ainda manda o prefixo: com o id do PRÓPRIO comando, ele sai da nota
+        r2 = await c.post(f"/api/commands/{antigo}/resolve",
+                          json={"outcome": "failed",
+                                "note": f"decidido no painel a partir de {avd}: vi o app sem dados"})
+        r3 = await c.post(f"/api/commands/{so_prefixo}/resolve",
+                          json={"outcome": "failed", "note": f"decidido no painel a partir de {avd}"})
+        # com OUTRO id, o texto inteiro é da pessoa — e é ele que a triagem olha
+        r4 = await c.post(f"/api/commands/{outro_id}/resolve",
+                          json={"outcome": "failed", "note": "decidido no painel a partir de Pixel_7a-Lab.03: x"})
+    assert (r1.status_code, r2.status_code, r3.status_code) == (200, 200, 200), (r1.text, r2.text, r3.text)
+    assert r4.status_code == 409 and r4.json()["detail"]["code"] == "note_looks_secret"
+
+    def registro(cid: str) -> tuple[str, dict[str, Any]]:
+        linha = st.commands.get(cid)
+        assert linha is not None
+        return linha["reason"], json.loads(linha["result"]) if linha["result"] else {}
+
+    motivo, dados = registro(novo)
+    assert motivo == f"resolvido à mão por {NOME}, no painel a partir de {avd}: conferi na máquina"
+    assert (dados["note"], dados["origin"], dados["resolved_by"]) == ("conferi na máquina", "panel", NOME)
+    motivo, dados = registro(antigo)
+    assert motivo == f"resolvido à mão por {NOME}, no painel a partir de {avd}: vi o app sem dados"
+    assert (dados["note"], dados["origin"]) == ("vi o app sem dados", "panel")
+    motivo, dados = registro(so_prefixo)
+    assert motivo == f"resolvido à mão por {NOME}, no painel a partir de {avd}" and dados["note"] is None
+    motivo, dados = registro(outro_id)
+    assert motivo == "o canal caiu depois do envio" and "resolved_by" not in dados      # recusado: intocado
+    # o sinal leva só o texto da pessoa como nota — o contexto é do comando, não dela
+    sinais = {s["source_ref"]: s for s in _sinais(harness, "comando_incerto_resolvido")}
+    assert (sinais[f"comando:{novo}"]["note"], sinais[f"comando:{antigo}"]["note"]) == ("conferi na máquina",
+                                                                                      "vi o app sem dados")
+    assert sinais[f"comando:{so_prefixo}"]["note"] is None and f"comando:{outro_id}" not in sinais
+
+    # `requested_by` (o autor sem sessão, gravado cru no motivo, em `resolved_by` e no evento): mesma triagem, mesma
+    # recusa, nada gravado — COM sessão também (ela o ignora como autor, mas a regra é uma só); o rótulo limpo
+    # continua valendo
+    for rotulo in ("senha: segredo123", "Xy9!abcdEF#2026"):
+        for com_sessao in (False, True):
+            async with _cliente(harness) as c:
+                if com_sessao:
+                    await _logado(c, NOME)
+                r = await c.post(f"/api/commands/{outro_id}/resolve",
+                                 json={"outcome": "failed", "requested_by": rotulo})
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "note_looks_secret", (rotulo, com_sessao)
+            linha = st.commands.get(outro_id)
+            assert linha is not None and linha["state"] == "uncertain"
+            assert rotulo not in json.dumps(dict(linha), default=str)
+    assert f"comando:{outro_id}" not in {s["source_ref"] for s in _sinais(harness, "comando_incerto_resolvido")}
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/commands/{outro_id}/resolve",
+                         json={"outcome": "failed", "requested_by": "script-de-carga", "origin": "panel"})
+    assert r.status_code == 200, r.text
+    assert registro(outro_id)[0] == f"resolvido à mão por script-de-carga, no painel a partir de {avd}"
+
+    # ninguém identificado: o autor já é `panel`, e o contexto não repete o painel
+    sem_ninguem = _comando_incerto(harness, "c-teste-origem-5", instance_id=avd)
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/commands/{sem_ninguem}/resolve", json={"outcome": "succeeded", "origin": "panel"})
+    assert r.status_code == 200, r.text
+    motivo, dados = registro(sem_ninguem)
+    assert motivo == f"resolvido à mão por panel, a partir de {avd}"
+    assert (dados["resolved_by"], dados["origin"], dados["note"]) == ("panel", "panel", None)
 
 
 async def test_comando_incerto_simulated_vem_da_execucao_senao_da_instalacao(harness: Harness,

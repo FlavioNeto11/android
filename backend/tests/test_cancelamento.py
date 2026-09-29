@@ -228,6 +228,52 @@ async def test_nota_com_cara_de_credencial_recusa_o_pedido_sem_gravar_nada(harne
                                                          CommandState.cancelled.value)
 
 
+async def test_pedido_do_painel_nao_poe_o_id_do_aparelho_na_triagem(harness: Harness) -> None:
+    """Pendência de 29/09 (plano 22.2): o painel mandava a nota "cancelado no painel a partir de <aparelho>", e um id
+    com cara de credencial (um AVD como `Pixel_7a-Lab.02`) fazia a triagem recusar o pedido. Agora vai `origin=panel`
+    e o backend compõe o contexto; o prefixo do cliente antigo, com o id do próprio comando, continua aceito. O
+    `requested_by` livre passa pela mesma triagem, COM ou sem sessão: recusado, nada é gravado. Sem ninguém
+    identificado o autor já é `panel`, e o contexto não repete o painel ("por panel, a partir de <aparelho>")."""
+    st = harness.state
+    assert st is not None
+    avd = "Pixel_7a-Lab.02"
+    for cid in ("c-teste-origem-novo", "c-teste-origem-antigo", "c-teste-origem-rotulo", "c-teste-origem-sessao",
+                "c-teste-origem-rotulo-sessao"):
+        st.commands.create(command_id=cid, instance_id=avd, verb="start", idempotency_key=f"chave-{cid}")
+        st.commands.transition(cid, CommandState.dispatched)
+    async with await _cliente(harness) as c:
+        novo = await c.post("/api/commands/c-teste-origem-novo/cancel", json={"origin": "panel"})
+        antigo = await c.post("/api/commands/c-teste-origem-antigo/cancel",
+                              json={"note": f"cancelado no painel a partir de {avd}"})
+        recusado = await c.post("/api/commands/c-teste-origem-rotulo/cancel",
+                                json={"requested_by": "senha: segredo123", "origin": "panel"})
+    assert (novo.status_code, antigo.status_code) == (200, 200), (novo.text, antigo.text)
+    for cid in ("c-teste-origem-novo", "c-teste-origem-antigo"):
+        registro = st.commands.get(cid)
+        assert registro is not None
+        assert registro["reason"] == f"cancelamento pedido por panel, a partir de {avd}"
+    assert recusado.status_code == 409 and recusado.json()["detail"]["code"] == "note_looks_secret"
+    registro = st.commands.get("c-teste-origem-rotulo")
+    assert registro is not None and registro["state"] == CommandState.dispatched.value
+    assert "segredo123" not in str(dict(registro))
+
+    # com sessão: o autor é o operador e o contexto diz o painel; o `requested_by` com cara de credencial é recusado
+    # do mesmo jeito, embora a sessão o ignore como autor (a regra é uma só)
+    async with await _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": "Ana Ribeiro"})).status_code == 200
+        com_sessao = await c.post("/api/commands/c-teste-origem-sessao/cancel", json={"origin": "panel"})
+        recusado = await c.post("/api/commands/c-teste-origem-rotulo-sessao/cancel",
+                                json={"requested_by": "senha: segredo123", "origin": "panel"})
+    assert com_sessao.status_code == 200, com_sessao.text
+    registro = st.commands.get("c-teste-origem-sessao")
+    assert registro is not None
+    assert registro["reason"] == f"cancelamento pedido por Ana Ribeiro, no painel a partir de {avd}"
+    assert recusado.status_code == 409 and recusado.json()["detail"]["code"] == "note_looks_secret"
+    registro = st.commands.get("c-teste-origem-rotulo-sessao")
+    assert registro is not None and registro["state"] == CommandState.dispatched.value
+    assert "segredo123" not in str(dict(registro))
+
+
 async def test_comando_ja_encerrado_nao_e_cancelavel(harness: Harness) -> None:
     """`cancelled` depois de `succeeded` apagaria história. Só comando ABERTO aceita o pedido."""
     async with await _cliente(harness) as c:

@@ -1360,11 +1360,21 @@ export interface CommandAccepted {
  *  aparelho ainda não comprova nada" — o comando segue incerto, esperando uma pessoa. */
 export interface CommandVerified { command: Command; changed: boolean; verifiable: boolean }
 
-/** A decisão humana sobre um comando incerto. `note` é o que a pessoa observou. */
-export interface CommandResolution { outcome: 'succeeded' | 'failed' | 'cancelled'; note?: string; requested_by?: string }
+/**
+ * De onde veio a decisão sobre um comando. `panel`: o backend acrescenta ", no painel a partir de <aparelho>" ao
+ * motivo, depois de "por <autor>" (só ", a partir de <aparelho>" quando o autor já é `panel`). O contexto não vai na
+ * nota: a nota passa pela triagem de credencial, e um id de aparelho fora do padrão (`Pixel_7a-Lab.02`) recusava a
+ * decisão inteira (409 `note_looks_secret`) por causa do prefixo.
+ */
+export type CommandDecisionOrigin = 'panel';
+
+/** A decisão humana sobre um comando incerto. `note` é só o que a pessoa observou. */
+export interface CommandResolution {
+  outcome: 'succeeded' | 'failed' | 'cancelled'; note?: string; requested_by?: string; origin?: CommandDecisionOrigin;
+}
 
 /** O pedido de cancelamento de um comando aberto: não há `outcome` a escolher — quem dá o desfecho é quem executa. */
-export interface CommandCancelRequest { note?: string; requested_by?: string }
+export interface CommandCancelRequest { note?: string; requested_by?: string; origin?: CommandDecisionOrigin }
 
 /**
  * Resposta de `POST /commands/{id}/cancel`. `delivered=false` NÃO é erro: significa que o pedido ficou
