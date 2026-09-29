@@ -249,6 +249,25 @@ it('ligado: a seção Habilidades lembra aberta/fechada entre visitas, como as v
   expect((document.getElementById('settings-habilidades') as HTMLDetailsElement).open).toBe(false);
 });
 
+it('receitas: a candidata aparece como Candidata, com a prova em sombra e sem botão de ativar', async () => {
+  comHabilidades(undefined);
+  const ativa = RECIPES[0];
+  const candidata = { ...ativa, id: 21, step_key: 'open_conversation', version: 1, status: 'candidate' as const,
+    replay_ok: 0, replay_fail: 0, shadow_agree: 1, shadow_total: 1, last_used_at: null };
+  const nova = { ...candidata, id: 22, step_key: 'compose_message', shadow_agree: 0, shadow_total: 0 };
+  backend.on('GET', /\/recipes$/, () => json([candidata, nova, ativa]));
+  await act(async () => root.render(<FlowsRecipesSection />));
+  await waitFor(() => expect(allByRole('button', /Excluir a receita/)).toHaveLength(3));
+  const linha = byRole('button', /Excluir a receita open_conversation v1/).closest('tr') as HTMLElement;
+  expect(text(linha)).toContain('Candidata');
+  expect(text(linha)).toContain('1/1 (100%)');
+  expect(text(byRole('button', /Excluir a receita compose_message v1/).closest('tr') as HTMLElement))
+    .toContain('em prova, sem comparação ainda');
+  expect(byRole('button', /Pôr em quarentena a receita open_conversation v1/)).toBeDefined();
+  expect(allByRole('button', /Reativar a receita open_conversation/)).toHaveLength(0);
+  expect(text(byRole('button', /Excluir a receita send v2/).closest('tr') as HTMLElement)).toContain('Ativa');
+});
+
 it('receitas: a coluna dos botões é fixa à direita da tabela (cabeçalho e células)', async () => {
   comHabilidades(undefined);
   backend.on('GET', /\/recipes$/, () => json(RECIPES));

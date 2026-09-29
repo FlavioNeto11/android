@@ -761,7 +761,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
                       <span className={styles.cellObservedTs}>último uso: {r.last_used_at ? formatDateTime(r.last_used_at) : 'nunca'}</span>
                     </td>
                     <td className={styles.nowrap}>
-                      {shadow ? <span title="Vezes em que a receita escolheu a mesma ação que a IA / comparações feitas">{shadow}</span> : <span className={styles.muted}>—</span>}
+                      {shadow ? <span title="Execuções da etapa em que a IA fez exatamente o caminho da receita / execuções comparadas (na candidata, uma divergência recomeça a contagem)">{shadow}</span> : <span className={styles.muted}>{r.status === 'candidate' ? 'em prova, sem comparação ainda' : '—'}</span>}
                     </td>
                     <td className={styles.recipeActionsCell}>
                       <RecipeActions recipe={r} />

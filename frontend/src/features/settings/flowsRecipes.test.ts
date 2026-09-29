@@ -31,6 +31,12 @@ describe('receitas', () => {
     expect(recipeToggleTarget('superseded')).toBeNull();
   });
 
+  it('candidata: status próprio, em prova; o botão só a põe de lado (ativa ela vira pela prova, não por clique)', () => {
+    expect(RECIPE_STATUS.candidate.label).toBe('Candidata');
+    expect(RECIPE_STATUS.candidate.description).toMatch(/em prova/);
+    expect(recipeToggleTarget('candidate')).toBe('quarantined');
+  });
+
   it('concordância em modo sombra só aparece com total > 0', () => {
     expect(shadowText({ shadow_agree: 12, shadow_total: 15 })).toBe('12/15 (80%)');
     expect(shadowText({ shadow_agree: 0, shadow_total: 4 })).toBe('0/4 (0%)');

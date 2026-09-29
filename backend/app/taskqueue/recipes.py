@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -411,6 +412,11 @@ class Replayer:
 
 
 # ------------------------------------------------------------------ persistência
+def _caminho(acoes: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    """O que a reprodução faz, sem o `why` — a justificativa da IA muda a cada execução e não muda o caminho."""
+    return [{k: v for k, v in a.items() if k != "why"} for a in acoes]
+
+
 class RecipeStore:
     def __init__(self, db: Database):
         self.db = db
@@ -422,8 +428,10 @@ class RecipeStore:
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
         idioma e densidade mudam a tela. Receita aprendida numa combinação não vale para outra.
 
+        Devolve a ativa; sem ela, a candidata em prova (o executor a põe em sombra, nunca a reproduz).
+
         É a CONSULTA do funil (`receita.consulta`): o executor só chega aqui com uma etapa elegível (modo ligado, app
-        conhecido, efeito ainda não disparado), então a soma dos três resultados é o total de TENTATIVAS elegíveis (o
+        conhecido, efeito ainda não disparado), então a soma dos resultados é o total de TENTATIVAS elegíveis (o
         funil conta por tentativa — revisão F8: é a única unidade em que consulta, reprodução e retorno fecham). Chave
         incompleta não é "ausente": a etapa nem era elegível, e não entra na conta.
         """
@@ -432,6 +440,11 @@ class RecipeStore:
         row = self._ativa(package, app_version, step_hash, signature=signature, variant=variant)
         if row is not None:
             resultado = "encontrada"
+        elif (row := self._candidata(package, app_version, step_hash, signature=signature,
+                                     variant=variant)) is not None:
+            # Candidata não reproduz (a IA decide e ela só é comparada): contá-la como "encontrada" quebraria a
+            # promessa do funil de que toda encontrada termina num veredito de `receita.reproducao`.
+            resultado = "candidata"
         else:
             # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
             # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
@@ -444,25 +457,55 @@ class RecipeStore:
 
     def _ativa(self, package: str, app_version: str, step_hash: str, *, signature: str, variant: str) -> Row | None:
         """A receita ativa da chave, sem medir nada — `save` também pergunta isto, e não é consulta de etapa."""
+        return self._com_status("active", package, app_version, step_hash, signature=signature, variant=variant)
+
+    def _candidata(self, package: str, app_version: str, step_hash: str, *, signature: str,
+                   variant: str) -> Row | None:
+        return self._com_status("candidate", package, app_version, step_hash, signature=signature, variant=variant)
+
+    def _com_status(self, status: str, package: str, app_version: str, step_hash: str, *, signature: str,
+                    variant: str) -> Row | None:
         return self.db.one("SELECT * FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
-                           " AND variant=? AND step_hash=? AND status='active' ORDER BY version DESC LIMIT 1",
-                           (package, app_version, signature, variant, step_hash))
+                           " AND variant=? AND step_hash=? AND status=? ORDER BY version DESC LIMIT 1",
+                           (package, app_version, signature, variant, step_hash, status))
 
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
-             learned_from: str, signature: str = "", variant: str = "") -> int | None:
-        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena)."""
+             learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
+             replaces: int | None = None) -> int | None:
+        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena).
+
+        `candidate`: a receita nasce em prova (`recipes_promote_after`, o caminho que a IA aprendeu); sem ele nasce
+        ativa — o modo treinamento (a pessoa demonstrou) e o `recipes_promote_after: 0`.
+        Candidata em prova só é trocada por quem a viu divergir (`replaces` = o id dela), e só por um caminho que
+        reproduzido faria outra coisa: aparelhos aprendendo em paralelo, sem nunca terem comparado com ela, não
+        reescrevem a prova a cada execução, e uma cópia dela não vira versão nova. A versão gravada marca
+        as anteriores ainda vivas da chave (candidata trocada, ativa que caiu em quarentena) como `superseded` — uma
+        só receita viva por chave, e a substituída não volta pelo painel.
+        """
+        chave = (package, app_version, signature, variant, step_hash)
         with self.db.tx():
             if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
                 return None
+            em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
+            if candidate and em_prova is not None and em_prova["id"] != replaces:
+                return None
+            if (candidate and em_prova is not None
+                    and _caminho(loads(em_prova["actions"], [])) == _caminho(actions)):
+                # Divergência sem diferença no que a receita grava (ex.: a IA rolou para baixo e voltou; a receita só
+                # guarda a última direção): a cópia não mudaria a reprodução, só deixaria uma `superseded` por
+                # execução. Fica a candidata, com a prova já recomeçada pela divergência.
+                return None
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
-                " app_signature=? AND variant=? AND step_hash=?",
-                (package, app_version, signature, variant, step_hash)))
+                " app_signature=? AND variant=? AND step_hash=?", chave))
+            self.db.execute("UPDATE recipes SET status='superseded' WHERE app_package=? AND app_version=? AND"
+                            " app_signature=? AND variant=? AND step_hash=?"
+                            " AND status IN ('candidate','quarantined')", chave)
             return int(self.db.inserted_id(
                 "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
-                " actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (package, app_version, signature, variant, step_hash, step_key, ver, dumps(actions), learned_from,
-                 now_iso())) or 0)
+                " status, actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (package, app_version, signature, variant, step_hash, step_key, ver,
+                 "candidate" if candidate else "active", dumps(actions), learned_from, now_iso())) or 0)
 
     def result(self, recipe_id: int, ok: bool) -> bool:
         """Conta o uso. Devolve True se a receita entrou em quarentena agora.
@@ -486,9 +529,34 @@ class RecipeStore:
             return True
         return False
 
-    def shadow(self, recipe_id: int, agreed: bool) -> None:
-        self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+? WHERE id=?",
-                        (int(agreed), recipe_id))
+    def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int) -> bool:
+        """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
+
+        A unidade é a execução, não a decisão: duas decisões concordantes numa mesma etapa não são repetição. Na
+        candidata, a divergência zera os DOIS contadores (a prova recomeça), de modo que `shadow_agree` é a
+        sequência de concordâncias e `shadow_agree/shadow_total` continua uma taxa; na ativa (modo `shadow` global)
+        a taxa só acumula. A promoção confere, na mesma transação, que ela ainda é a candidata e que a chave não
+        ganhou uma ativa enquanto isso (outro aparelho, ou a pessoa pelo painel) — nunca duas ativas por chave.
+        """
+        with self.db.tx():
+            row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+            if row is None:
+                return False
+            if agreed:
+                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1"
+                                " WHERE id=?", (recipe_id,))
+            elif row["status"] == "candidate":
+                self.db.execute("UPDATE recipes SET shadow_total=0, shadow_agree=0 WHERE id=?", (recipe_id,))
+            else:
+                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1 WHERE id=?", (recipe_id,))
+            seguidas = int(self.db.scalar("SELECT shadow_agree FROM recipes WHERE id=?", (recipe_id,)) or 0)
+            if not (agreed and row["status"] == "candidate" and seguidas >= max(1, promote_after)):
+                return False
+            if self._ativa(row["app_package"], row["app_version"], row["step_hash"], signature=row["app_signature"],
+                           variant=row["variant"]) is not None:
+                return False
+            self.db.execute("UPDATE recipes SET status='active' WHERE id=?", (recipe_id,))
+            return True
 
     def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)

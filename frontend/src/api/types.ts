@@ -454,7 +454,9 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
   status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
-  version: number; status: 'active' | 'quarantined' | 'superseded';
+  // `candidate`: aprendida e ainda em prova — a IA conduz a etapa e a receita só é comparada (modo sombra); vira
+  // `active` depois de `ai.recipes_promote_after` execuções seguidas em que a IA fez exatamente o caminho dela.
+  version: number; status: 'candidate' | 'active' | 'quarantined' | 'superseded';
   actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
              selectors?: { kind: string; rid?: string; text?: string; desc?: string }[];
              scroll?: { direction: string; max: number } }[];
