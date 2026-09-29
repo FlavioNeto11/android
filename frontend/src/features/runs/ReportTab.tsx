@@ -12,7 +12,11 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { copyText, humanizeKey, isRecord, scalarToText } from '../../lib/format';
 import { DELIVERY_LEVEL, OBJECTIVE_STATUS, isRunTerminal, metaOf } from '../../lib/status';
+import { useSessionStore } from '../../store/session';
 import { toast } from '../../store/toasts';
+import { type FeedbackDaExecucao, type ItemAprendidoNaExecucao, rotuloDoMotivo, rotuloDoSinal, votoDoItem } from '../aprendizado/model';
+import aprendizadoStyles from '../aprendizado/Aprendizado.module.css';
+import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import styles from './Runs.module.css';
 
 const TOTAL_LABELS: Record<string, string> = {
@@ -41,6 +45,9 @@ export function ReportTab({ run }: { run: RunSummary }) {
   const [copied, setCopied] = useState(false);
   const token = useRef(0);
   const terminal = isRunTerminal(run.status);
+  // D2 (ADR-054): o voto da execução inteira e o que ela ensinou; relido quando a situação muda (ex.: terminou).
+  const feedback = useFeedbackDaExecucao(run.id, run.status);
+  const operador = useSessionStore((s) => s.operator);
 
   const load = useCallback(async () => {
     const my = ++token.current;
@@ -124,6 +131,8 @@ export function ReportTab({ run }: { run: RunSummary }) {
         </div>
       </div>
 
+      <FeedbackItem runId={run.id} voto={votoDoItem(feedback, null, operador)} simulada={run.simulated} />
+
       <section>
         <h3 className={styles.subTitle}>Totais</h3>
         {isRecord(totals) ? <TotalsTiles totals={totals} /> : totals !== undefined ? <JsonTree value={totals} /> : <p className={styles.muted}>O relatório não trouxe totais.</p>}
@@ -150,6 +159,8 @@ export function ReportTab({ run }: { run: RunSummary }) {
         )}
       </section>
 
+      <AprendizadoDaExecucao feedback={feedback} />
+
       {markdown ? (
         <Disclosure summary="Ver Markdown">
           {() => <CodeBlock value={markdown} />}
@@ -161,6 +172,81 @@ export function ReportTab({ run }: { run: RunSummary }) {
         </Disclosure>
       ) : null}
     </div>
+  );
+}
+
+const GRUPO_DO_APRENDIZADO: Record<ItemAprendidoNaExecucao['grupo'], string> = {
+  receita: 'Receitas aprendidas ou usadas', fluxo: 'Fluxos criados, usados ou desligados', falha: 'Falhas classificadas',
+  candidata: 'Candidatas geradas', licao: 'Lições expostas (com o braço)',
+};
+
+/**
+ * "Aprendizado desta execução" (ADR-054, D2): o que ela ensinou ou usou do livro, os votos e os sinais implícitos
+ * (confirmar à mão, repetir, abandonar, tomar o controle…). O detalhe por receita/fluxo/lição vem do bloco opcional
+ * `aprendizado` de `GET /api/runs/{id}/feedback`; sem ele, ficam os votos e os sinais.
+ */
+function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | null | undefined }) {
+  const grupos = feedback?.aprendizado
+    ? (Object.keys(GRUPO_DO_APRENDIZADO) as ItemAprendidoNaExecucao['grupo'][])
+        .map((g) => ({ g, itens: feedback.aprendizado?.filter((i) => i.grupo === g) ?? [] }))
+        .filter((x) => x.itens.length > 0)
+    : [];
+  const votos = feedback?.votos ?? [];
+  const sinais = (feedback?.sinais ?? []).filter((s) => s.kind !== 'feedback');
+  const vazio = grupos.length === 0 && votos.length === 0 && sinais.length === 0;
+  return (
+    <section className={aprendizadoStyles.naExecucao} aria-labelledby="relatorio-aprendizado">
+      <h3 id="relatorio-aprendizado" className={styles.subTitle}>Aprendizado desta execução</h3>
+      {feedback === undefined ? (
+        <p className={styles.muted}>Lendo os votos e os sinais desta execução…</p>
+      ) : feedback === null ? (
+        <p className={styles.muted}>O servidor ainda não informa o aprendizado das execuções.</p>
+      ) : vazio ? (
+        <p className={styles.muted}>Nada aprendido, usado do livro ou sinalizado nesta execução.</p>
+      ) : (
+        <>
+          {grupos.map(({ g, itens }) => (
+            <div key={g}>
+              <p className={styles.muted}>{GRUPO_DO_APRENDIZADO[g]}</p>
+              <ul>
+                {itens.map((i, n) => (
+                  <li key={`${g}-${i.ref ?? n}`}>
+                    {i.texto}{i.ref && i.texto !== i.ref ? <span className="mono"> ({i.ref})</span> : null}
+                    {i.papel ? ` · ${i.papel}` : ''}{i.estado ? ` · ${i.estado}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {votos.length > 0 ? (
+            <div>
+              <p className={styles.muted}>Votos</p>
+              <ul>
+                {votos.map((v, n) => (
+                  <li key={`${v.objective_id ?? 'run'}-${n}`}>
+                    {v.objective_id ? <span className="mono">{v.objective_id}</span> : 'Execução inteira'}: deu {v.verdict}
+                    {v.reason ? ` (${rotuloDoMotivo(v.reason)})` : ''}{v.created_by ? ` — ${v.created_by}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {sinais.length > 0 ? (
+            <div>
+              <p className={styles.muted}>Sinais implícitos</p>
+              <ul>
+                {sinais.map((s, n) => (
+                  <li key={`${s.kind}-${s.source_ref}-${n}`}>
+                    {rotuloDoSinal(s.kind)}{s.objective_id ? <> em <span className="mono">{s.objective_id}</span></> : null}
+                    {s.created_by ? ` — ${s.created_by}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

@@ -81,6 +81,20 @@
   color: var(--text-1);
 }
 
+/* A contagem "Para aprovar" do Aprendizado (ADR-054): pede decisão do dono, então usa o tom de aviso. */
+.navCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--warning-solid);
+  color: var(--text-on-warning);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .navLink[aria-current="page"]::after {
   content: "";
   position: absolute;

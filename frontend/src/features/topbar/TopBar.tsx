@@ -5,6 +5,7 @@ import {
   Check,
   Cpu,
   FlaskConical,
+  GraduationCap,
   Hand,
   LayoutGrid,
   ListChecks,
@@ -37,11 +38,13 @@ import { toneClass } from '../../components/tone';
 import { Tooltip } from '../../components/Tooltip';
 import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
+import { intervaloVisivel } from '../../lib/polling';
 import { CONN_STATUS, HEALTH_STATUS, isRunActive, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore, type View } from '../../store/ui';
+import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import styles from './TopBar.module.css';
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
@@ -49,6 +52,7 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'perfis', label: 'Personas', icon: UserRound },
   { view: 'aplicativos', label: 'Aplicativos', icon: Package },
   { view: 'execucoes', label: 'Execuções', icon: ListChecks },
+  { view: 'aprendizado', label: 'Aprendizado', icon: GraduationCap },
   { view: 'infraestrutura', label: 'Infraestrutura', icon: Server },
   { view: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { view: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
@@ -89,10 +93,27 @@ function useTransbordoHorizontal(ref: RefObject<HTMLElement | null>): Transbordo
   return estado;
 }
 
+/** Releitura da contagem "Para aprovar" (ADR-054, D1). Só depois do login — sem sessão, a leitura só colheria 401 —
+ *  e só com a aba visível. Falha é silenciosa (o store explica por quê). */
+const CONTAGEM_A_CADA_MS = 60_000;
+
+function usePendentesDoAprendizado(): number | null {
+  const operator = useSessionStore((s) => s.operator);
+  const pendentes = useContagemDoAprendizado((s) => s.pendentes);
+  useEffect(() => {
+    if (!operator) return undefined;
+    const atualizar = () => void useContagemDoAprendizado.getState().atualizar();
+    atualizar();
+    return intervaloVisivel(atualizar, CONTAGEM_A_CADA_MS);
+  }, [operator]);
+  return operator ? pendentes : null;
+}
+
 export function TopBar() {
   const view = useUiStore((s) => s.view);
   const navRef = useRef<HTMLElement>(null);
   const transborda = useTransbordoHorizontal(navRef);
+  const paraAprovar = usePendentesDoAprendizado();
   return (
     <header className={styles.bar}>
       {/* Duas faixas de propósito: em cima, onde estou (marca, seções) e com quem (IA, conexão, operador); embaixo,
@@ -110,6 +131,13 @@ export function TopBar() {
               <a key={v} href={hashForView(v)} className={styles.navLink} aria-current={view === v ? 'page' : undefined}>
                 <Icon size={15} aria-hidden />
                 {label}
+                {/* A fila do D1: o que o sistema não publica sozinho e espera o dono. */}
+                {v === 'aprendizado' && paraAprovar !== null && paraAprovar > 0 ? (
+                  <span className={styles.navCount} title={`${paraAprovar} item(ns) para aprovar`}>
+                    <span aria-hidden>{formatInt(paraAprovar)}</span>
+                    <span className="sr-only"> ({formatInt(paraAprovar)} para aprovar)</span>
+                  </span>
+                ) : null}
               </a>
             ))}
           </nav>

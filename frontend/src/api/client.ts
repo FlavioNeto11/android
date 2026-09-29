@@ -829,6 +829,10 @@ export const api = {
   },
 };
 
+/** O mesmo `request` (erros no formato único, cookie de sessão, prazo) para as features que têm o próprio `api.ts`
+ *  (o aprendizado, ADR-054): as rotas delas não entram no objeto `api`, mexido por muitas frentes ao mesmo tempo. */
+export { request as apiRequest };
+
 /** URL do WebSocket derivada de `location` (nunca fixa a porta 8000: o proxy/servidor resolve). */
 export function wsUrl(lastEventId: number): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

@@ -5,8 +5,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Instance } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
+import { useSessionStore } from '../../store/session';
 import { makeInstance, makeSnapshot } from '../../test/fixtures';
-import { installBrowserStubs, text } from '../../test/harness';
+import { FakeBackend, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import { TopBar, transbordoDe } from './TopBar';
 
 // P2.5 da auditoria UX (27/09): o contador "online / total" tinha um 10 fixo (`Math.max(10, …)`) — um parque de
@@ -81,8 +83,37 @@ describe('TopBar — pista de rolagem da navegação', () => {
     const nav = el.querySelector('nav[aria-label="Seções"]');
     expect(nav).not.toBeNull();
     expect(nav?.parentElement?.hasAttribute('data-transborda')).toBe(false);
-    // as sete seções continuam todas na faixa: a pista é visual, nada some do DOM
-    expect(nav?.querySelectorAll('a')).toHaveLength(7);
+    // as oito seções (Aprendizado entrou com o ADR-054) continuam todas na faixa: a pista é visual, nada some do DOM
+    expect(nav?.querySelectorAll('a')).toHaveLength(8);
+  });
+});
+
+describe('TopBar — contagem "Para aprovar" do Aprendizado (ADR-054)', () => {
+  afterEach(() => {
+    useSessionStore.setState({ operator: null });
+    useContagemDoAprendizado.setState({ pendentes: null });
+  });
+
+  it('com sessão, lê a fila do D1 e mostra a contagem na seção Aprendizado', async () => {
+    const backend = new FakeBackend();
+    backend.install();
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [], total: 3 }));
+    useSessionStore.setState({ operator: 'ana' });
+    const el = await renderBar([]);
+    const link = () => el.querySelector('a[href="#/aprendizado"]') as HTMLElement;
+    await waitFor(() => expect(text(link())).toContain('3 para aprovar'));
+    expect(backend.callsTo('GET', /^\/api\/aprendizado\/pendentes$/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('sem sessão não pergunta nada, e zero não vira selo', async () => {
+    const backend = new FakeBackend();
+    backend.install();
+    const el = await renderBar([]);
+    expect(backend.callsTo('GET', /^\/api\/aprendizado\/pendentes$/)).toHaveLength(0);
+    await act(async () => {
+      useContagemDoAprendizado.setState({ pendentes: 0 });
+    });
+    expect(text(el.querySelector('a[href="#/aprendizado"]') as HTMLElement)).toBe('Aprendizado');
   });
 });
 

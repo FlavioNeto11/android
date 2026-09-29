@@ -1,0 +1,283 @@
+/* Aprendizado (ADR-054, pacote A6): a página de quatro abas e o botão "Deu certo / Deu errado" das execuções. */
+
+.tabBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-top: var(--sp-4);
+  min-width: 0;
+}
+
+.tabBody:focus-visible { outline: none; }
+
+.secao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.secaoTitulo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.secaoLead {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  max-width: 80ch;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.toolbarFim { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+
+.filtro { min-width: 150px; }
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+/* Uma linha do livro, uma falha ou um sinal: cartão baixo, quebra em telas estreitas. */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.itemSelecionado { border-color: var(--accent-border); }
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.itemTitulo {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--text-1);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.itemMeta strong { color: var(--text-2); font-weight: 500; }
+
+.itemAcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.aviso { color: var(--warning-text); }
+
+.mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+
+/* O motivo que toda decisão exige: em linha, nunca modal. */
+.decisao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.decisaoCampo { flex: 1 1 260px; min-width: 0; }
+
+.decisaoAcoes { display: flex; gap: var(--sp-2); }
+
+.erroInline { color: var(--danger-text); font-size: var(--fs-sm); }
+
+.resumo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.resumoChip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.resumoChip strong { color: var(--text-1); }
+
+/* O que mais falha: os três custos separados; o total só ordena. */
+.numeros {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
+  gap: var(--sp-2);
+}
+
+.numero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.numeroValor { color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.numeroRotulo { color: var(--text-3); font-size: var(--fs-xs); }
+
+.posicao {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-4);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.exemplos {
+  margin: 0;
+  padding-left: var(--sp-4);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.exemplos li { overflow-wrap: anywhere; }
+
+.linkBtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.trilha {
+  margin: 0;
+  padding-left: var(--sp-4);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* ---- Botão "Deu certo / Deu errado" (D2): nunca modal, nunca pergunta sozinho ---- */
+
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.feedbackLinha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.feedbackRotulo { color: var(--text-3); font-size: var(--fs-sm); }
+
+.votado[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.votadoErrado[aria-pressed="true"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+/* Flex que quebra, não grade: o botão mora em lugares de larguras diferentes (item da execução, cabeçalho do
+   relatório), e a largura que importa é a do próprio bloco, não a da página. */
+.feedbackForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.feedbackMotivo { flex: 1 1 180px; min-width: 0; }
+
+.feedbackNota { flex: 3 1 260px; min-width: 0; }
+
+.feedbackFormAcoes { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+
+.mudou {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--info-border);
+  background: var(--info-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.mudouEfeito {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* "Aprendizado desta execução" no relatório. */
+.naExecucao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.naExecucao ul {
+  margin: 0;
+  padding-left: var(--sp-4);
+  color: var(--text-2);
+}
