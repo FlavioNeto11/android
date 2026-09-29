@@ -178,7 +178,8 @@ class D1Nativo:
         """O status do fluxo que nasce de uma execução, ou `None` (não aprende).
 
         - reaproveitar a linha desligada só quando quem a desligou foi o SISTEMA (a sombra refutou): o que uma pessoa
-          desligou — pelo livro ou pela rota antiga, que não deixa trilha — fica desligado;
+          desligou — pelo livro, pela rota antiga (`PUT /api/flows`, que também grava a trilha) ou numa linha de antes
+          da trilha, sem linha nenhuma — fica desligado;
         - o conteúdo vetado (`motivo_do_veto`: desligado por pessoa, ou pelo sistema há menos de 90 dias) não volta;
         - `com_prova` desligado é o modo anterior: comando novo nasce ativo, e nada é reaprendido.
         """

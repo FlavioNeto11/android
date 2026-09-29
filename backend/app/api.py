@@ -64,6 +64,8 @@ from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
                                                      PersonaImagesBody)
+from .modules.learning.domain.vocabulario import LivroKind
+from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
@@ -723,7 +725,12 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
             raise err(409, "command_published", f"A habilidade {outra.ref} está publicada com o mesmo comando: "
                                                 "religar o fluxo deixaria o comando vivo nos dois lugares. Desabilite "
                                                 "a habilidade antes.")
-        s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
+        # ADR-054 (D1): pelo livro, na MESMA transação das guardas — status e trilha com a pessoa que decidiu, ou
+        # nenhum dos dois. Sem a trilha, o fluxo que ela desligou aqui podia renascer do próximo plano (a última
+        # linha da trilha seguia sendo a refutação do sistema) e o conteúdo não ficava vetado.
+        mudar_status_legado(request, LivroKind.FLUXO, flow_id, patch["status"],
+                            reason="ligado na lista de fluxos do painel" if patch["status"] == "active"
+                            else "desligado na lista de fluxos do painel")
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
 
 
@@ -750,7 +757,14 @@ async def update_recipe(request: Request, recipe_id: int, patch: dict[str, Any])
     s = st(request)
     if patch.get("status") not in ("active", "quarantined"):
         raise err(400, "invalid", "status deve ser 'active' ou 'quarantined'.")
-    s.db.execute("UPDATE recipes SET status=?, consecutive_fail=0 WHERE id=?", (patch["status"], recipe_id))
+    # ADR-054 (D1): pelo livro — trilha com a pessoa, veto do caminho que ela pôs em quarentena, nunca duas ativas na
+    # mesma chave, e a substituída não volta. Receita inexistente é 404 (antes, 200 sem tocar nada).
+    with s.db.tx():
+        mudar_status_legado(request, LivroKind.RECEITA, str(recipe_id), patch["status"],
+                            reason="reativada na lista de receitas do painel" if patch["status"] == "active"
+                            else "posta em quarentena na lista de receitas do painel")
+        # O que a rota sempre fez, e não é status: a pessoa que mexe na receita zera a sequência de falhas.
+        s.db.execute("UPDATE recipes SET consecutive_fail=0 WHERE id=?", (recipe_id,))
     return {"id": recipe_id, "status": patch["status"]}
 
 

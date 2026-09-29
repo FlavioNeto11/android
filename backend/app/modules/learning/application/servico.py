@@ -19,10 +19,11 @@ from app.modules.learning.application.ports import (Ajustes, FontesDoLivro, Mine
                                                     PassoDeCuradoria, RepositorioDeAprendizado, TriagemDeTexto)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
-                                               UseARotaDasHabilidades, Vetado, conferir_transicao, motivo_do_veto)
+                                               UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
+                                               motivo_do_veto)
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
-                                               contagem, entrada_do_item, para_aprovar, status_nativo)
+                                               contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem)
 from app.modules.skills.domain.document import JsonValue
@@ -204,6 +205,28 @@ class LearningService:
                                                     detalhe=detalhe))
         self._mover_nativo(self.entrada(kind, ref), para, by=by, reason=motivo, run_id=run_id)
         return self.entrada(kind, ref)
+
+    def mudar_status_nativo(self, kind: LivroKind, ref: str, status: str, *, by: str,
+                            reason: str) -> EntradaDoLivro:
+        """O status NATIVO pedido por uma rota legada (`PUT /api/flows/{id}` com `active|disabled`, `PUT
+        /api/recipes/{id}` com `active|quarantined`), levado pelo MESMO caminho do livro: trilha, veto e guardas.
+
+        O vocabulário da rota é o da fonte, e o mapa é o de sempre (`estado_nativo`: `active`→`published`,
+        `disabled`/`quarantined`→`disabled`). Já estar lá não é transição (nada na trilha); o fluxo em prova que a
+        pessoa liga passa por `validated` (`caminho_da_pessoa`). Cada passo é um `mudar_estado`: relê o item e confere
+        de novo, então quem chama dentro de uma transação tem os passos e as trilhas juntos, ou nenhum.
+        """
+        if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+            raise EntradaInvalida(f"{kind.value} não tem status nativo movido por rota legada.")
+        para = estado_nativo(kind, status)
+        if para is None:
+            raise EntradaInvalida(f"'{status}' não é um status de {kind.value}.")
+        atual = self.entrada(kind, ref)
+        if atual.state is None:
+            raise TransicaoProibida(f"O estado '{atual.native_status}' de {kind.value} {ref} não é do livro.")
+        for passo in caminho_da_pessoa(atual.state, para):
+            atual = self.mudar_estado(kind, ref, passo, by=by, reason=reason)
+        return atual
 
     def _mover_item(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str,
                     run_id: str | None, detalhe: str | None = None) -> ItemDeAprendizado:
