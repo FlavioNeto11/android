@@ -40,7 +40,10 @@ function Registrar([string]$texto) {
 }
 
 if ($Instalar) {
-  $acao = New-ScheduledTaskAction -Execute 'pwsh.exe' `
+  # Windows PowerShell do sistema, e não o `pwsh`: no central o pwsh é o da Microsoft Store (atalho em
+  # WindowsApps), que a conta SYSTEM não enxerga — a tarefa falhou com 0x80070002 a noite inteira de 28 para 29/09.
+  $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell1.0\powershell.exe'
+  $acao = New-ScheduledTaskAction -Execute $ps `
             -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
   $gatilho = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
