@@ -207,6 +207,27 @@ async def test_cancelar_boot_local_interrompe_a_tarefa_e_o_aparelho_nao_fica_lig
     assert rt.desired_state == InstanceState.stopped.value
 
 
+async def test_nota_com_cara_de_credencial_recusa_o_pedido_sem_gravar_nada(harness: Harness) -> None:
+    """A nota do cancelamento vai crua para `commands.reason` e dali para o evento do comando no bus. Com cara de
+    credencial, a rota recusa (409 `note_looks_secret`, a regra da resolução à mão e do voto do D2) antes de escrever:
+    o comando segue aberto, e a nota limpa depois é aceita."""
+    st = harness.state
+    assert st is not None
+    st.commands.create(command_id="c-teste-nota-secreta", instance_id="android-01", verb="start",
+                       idempotency_key="cancel-nota-secreta")
+    st.commands.transition("c-teste-nota-secreta", CommandState.dispatched)
+    async with await _cliente(harness) as c:
+        r = await c.post("/api/commands/c-teste-nota-secreta/cancel", json={"note": "senha: segredo123"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "note_looks_secret"
+        registro = st.commands.get("c-teste-nota-secreta")
+        assert registro is not None and registro["state"] == CommandState.dispatched.value
+        assert "segredo123" not in str(dict(registro))
+        limpa = await c.post("/api/commands/c-teste-nota-secreta/cancel", json={"note": "desisti do boot"})
+    assert limpa.status_code == 200, limpa.text
+    assert _estado(harness, "c-teste-nota-secreta") in (CommandState.cancel_requested.value,
+                                                         CommandState.cancelled.value)
+
+
 async def test_comando_ja_encerrado_nao_e_cancelavel(harness: Harness) -> None:
     """`cancelled` depois de `succeeded` apagaria história. Só comando ABERTO aceita o pedido."""
     async with await _cliente(harness) as c:

@@ -2465,7 +2465,8 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
     registrado — mentir sobre isso seria pior do que a espera.
 
     Repetir o pedido é seguro: o estado não muda de novo e o sinal é reenviado, que é o que alguém faz quando o
-    worker acabou de reconectar.
+    worker acabou de reconectar. A nota com cara de credencial é recusada (409 `note_looks_secret`) antes de
+    qualquer escrita.
     """
     s = st(request)
     row = s.commands.get(command_id)
@@ -2474,6 +2475,11 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
     if CommandState(row["state"]) not in COMMAND_OPEN:
         raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
                                    "ser cancelado.")
+    if body and body.note and _TRIAGEM_DE_NOTA.recusa(body.note):
+        # Mesma regra da resolução à mão: a nota iria crua para `commands.reason` e dali para o evento do comando no
+        # bus. Nada é gravado, nem o pedido — o comando segue como estava até vir uma nota limpa.
+        raise err(409, "note_looks_secret", "A nota tem formato ou assunto de credencial e não foi gravada, nem o "
+                                            "pedido de cancelamento. Reescreva a observação sem o segredo.")
     autor = quem(request, body.requested_by if body else None)
     if CommandState(row["state"]) is not CommandState.cancel_requested:
         motivo = f"cancelamento pedido por {autor}" + (f": {body.note}" if body and body.note else "")
