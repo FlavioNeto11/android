@@ -254,6 +254,39 @@ describe('leitura tolerante (contrato de A3/A4 ainda em implementação)', () =>
     expect(lerFeedbackDaExecucao(undefined).votos).toEqual([]);
   });
 
+  it('bloco de aprendizado no formato que o backend emite (presentation/feedback.py::_aprendido)', () => {
+    // O mesmo formato de `tests/test_learning_feedback.py::test_bloco_do_aprendizado_antes_e_depois_do_voto`.
+    const linha = (x: Record<string, unknown>) => ({ kind: null, ref: null, titulo: null, estado: null, papel: null,
+                                                     braco: null, failure_kind: null, n: null, ...x });
+    const f = lerFeedbackDaExecucao({
+      run_id: 'r-1', votos: [], sinais: [],
+      aprendizado: {
+        receitas: [linha({ kind: 'receita', ref: '12', titulo: 'abrir (v1)', estado: 'published', papel: 'usada' })],
+        fluxos: [linha({ kind: 'fluxo', ref: 'fluxo-usado', titulo: null, estado: 'disabled',
+                         papel: 'usado, desligado nesta execução, evidência contra' })],
+        falhas: [linha({ papel: 'classificada na leitura (retroativo)', failure_kind: 'pos_condicao_nao_comprovada', n: 1 })],
+        candidatas: [linha({ kind: 'licao', ref: 'li-nova', titulo: 'espere o perfil carregar', estado: 'candidate',
+                             papel: 'lição, evidência a favor' })],
+        licoes: [linha({ kind: 'licao', ref: 'li-2', titulo: 'role devagar', estado: 'published',
+                         papel: 'braço de controle (ator)', braco: 'holdout' })],
+      },
+    });
+    const a = f.aprendizado ?? [];
+    expect(a.map((i) => i.grupo)).toEqual(['receita', 'fluxo', 'falha', 'candidata', 'licao']);
+    expect(a[0]).toEqual({ grupo: 'receita', kind: 'receita', ref: '12', texto: 'abrir (v1)', estado: 'published', papel: 'usada' });
+    // Sem título (triado ou apagado), o ref é o texto; a falha ganha o rótulo pelo tipo e o × n.
+    expect(a[1]?.texto).toBe('fluxo-usado');
+    expect(a[2]?.texto).toBe(`${rotuloDaFalha('pos_condicao_nao_comprovada')} × 1`);
+    expect(a[2]?.kind).toBeNull();
+    expect(a[3]).toMatchObject({ kind: 'licao', papel: 'lição, evidência a favor' });
+    // O papel do backend vence o braço (que só serve de reserva).
+    expect(a[4]?.papel).toBe('braço de controle (ator)');
+    // As cinco listas vazias: nada aprendido (lista vazia), não "servidor sem o bloco" (null).
+    expect(lerFeedbackDaExecucao({ votos: [], sinais: [], aprendizado: { receitas: [], fluxos: [], falhas: [],
+                                                                      candidatas: [], licoes: [] } }).aprendizado).toEqual([]);
+    expect(lerFeedbackDaExecucao({ votos: [], sinais: [], aprendizado: null }).aprendizado).toBeNull();
+  });
+
   it('resposta do voto: efeitos e resumo', () => {
     const r = lerRespostaDoVoto({ signal: { id: 9 }, resumo: 'fluxo desligado',
                                   efeitos: [{ kind: 'fluxo', ref: 'f-1', de: 'active', para: 'disabled', desfazer: true }, 1] });

@@ -810,6 +810,9 @@ export const api = {
   runEvents: (id: string, after = 0, limit = 500, signal?: AbortSignal) =>
     request<EventRecord[]>('GET', `/runs/${enc(id)}/events`, { query: { after, limit }, signal }),
   runReport: (id: string) => request<RunReport>('GET', `/runs/${enc(id)}/report`),
+  /** Item 18.3: o normal medido de cada etapa do plano, com a janela efetiva. Não chama IA; 409 `no_plan` = ainda
+   *  sem plano. Lida por `features/runs/projecao.ts::lerProjecao` (tolerante). */
+  runProjection: (id: string, signal?: AbortSignal) => request<unknown>('GET', `/runs/${enc(id)}/projection`, { signal }),
   startRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/start`),
   pauseRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/pause`),
   resumeRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/resume`),

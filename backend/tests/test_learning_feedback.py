@@ -20,7 +20,11 @@ O que se prova:
 - execução simulada: o voto é gravado com `simulated=1` e nada é rebaixado;
 - a reativação em um clique pelo `POST /api/aprendizado/{kind}/{ref}/status`, com a trilha de volta — só para o que
   ESTAVA publicado: do `candidate`/`validated` o `desfazer` vem nulo, porque a única volta da tabela do D1
-  (`→ published`) promoveria o que nunca foi publicado nem aprovado, pulando a fila "Para aprovar".
+  (`→ published`) promoveria o que nunca foi publicado nem aprovado, pulando a fila "Para aprovar";
+- o bloco `aprendizado` do GET ("Aprendizado desta execução" no relatório), no formato que o painel lê
+  (`model.ts::lerAprendizado`): as cinco listas sempre presentes; uma linha por item em cada grupo; a lição que nasceu
+  da execução só como candidata; a falha legada classificada na leitura sem gravar e sem o texto do erro; o título com
+  cara de credencial fora; a habilidade e o que é de outra execução fora.
 
 Nível de prova: `simulated` (banco de teste; nenhum aparelho, nenhuma IA). O último teste usa o Harness da porta 5640.
 """
@@ -37,12 +41,15 @@ import pytest
 from fastapi import FastAPI, Request, Response
 
 from app.db import Database
-from app.modules.learning.application.ports import Ajustes, NovoSinal
+from app.modules.learning.application.ports import Ajustes, NovaEvidencia, NovoSinal
 from app.modules.learning.application.servico import LearningService
+from app.modules.learning.domain.aprendido import (CHAVE_DO_GRUPO, EvidenciaDaExecucao, ExposicaoDaExecucao,
+                                                   FatosDaExecucao, Grupo, TentativaDaExecucao, TransicaoDaExecucao,
+                                                   aprendido_na_execucao)
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, EntradaInvalida, SkillState
 from app.modules.learning.domain.livro import Escopo, NovoItem
-from app.modules.learning.domain.vocabulario import (LivroKind, MotivoDoVoto, Polaridade, SignalKind, SourceKind,
-                                                     Veredito)
+from app.modules.learning.domain.vocabulario import (Braco, LivroKind, MotivoDoVoto, Polaridade, Posicao, SignalKind,
+                                                     SourceKind, Veredito)
 from app.modules.learning.domain.voto import (AcaoDoEfeito, Conhecimento, Desfecho, ItemVotado, Uso, Verificador,
                                               desfecho, efeitos_do_voto, licao_refutada, reativar_desfaz)
 from app.modules.learning.infrastructure.fontes import FontesSql
@@ -584,6 +591,155 @@ async def test_sinais_por_dias_tipo_e_app(mundo: Mundo, cliente: httpx.AsyncClie
     da_execucao = (await cliente.get(f"/api/runs/{RUN}/feedback")).json()
     assert [v["kind"] for v in da_execucao["votos"]] == ["feedback"]
     assert [s["kind"] for s in da_execucao["sinais"]] == ["tomou_controle"]
+
+
+# ------------------------------------------------------------------ "Aprendizado desta execução" (o bloco do GET)
+def _linhas(corpo: dict[str, object], chave: str) -> list[dict[str, object]]:
+    bloco = corpo["aprendizado"]
+    assert isinstance(bloco, dict)
+    linhas = bloco[chave]
+    assert isinstance(linhas, list)
+    return linhas
+
+
+def _por_ref(corpo: dict[str, object], chave: str) -> dict[str, dict[str, object]]:
+    linhas = _linhas(corpo, chave)
+    refs = [str(x["ref"]) for x in linhas]
+    assert len(refs) == len(set(refs)), f"ref repetido em {chave}: {refs}"      # a chave do painel é grupo-ref
+    return {str(x["ref"]): x for x in linhas}
+
+
+def test_aprendido_na_execucao_puro() -> None:
+    """Uma linha por item em cada grupo, cada item num grupo só, e o papel em texto fechado."""
+    fatos = FatosDaExecucao(
+        fluxo_usado="f-usado", fluxos_aprendidos=("f-novo",), receitas_usadas=("7", "8"), receitas_aprendidas=("7",),
+        transicoes=(TransicaoDaExecucao("fluxo:f-usado", "fluxo", "published", "disabled"),
+                    TransicaoDaExecucao("receita:8", "receita", "published", "disabled"),
+                    TransicaoDaExecucao("li-nova", "licao", None, "candidate"),
+                    TransicaoDaExecucao("li-nova", "licao", "candidate", "validated"),
+                    TransicaoDaExecucao("li-tela", "tela", None, "candidate"),
+                    TransicaoDaExecucao("fluxo:f-novo", "fluxo", "candidate", "validated"),
+                    TransicaoDaExecucao("fluxo:f-novo", "fluxo", "validated", "published")),
+        evidencias=(EvidenciaDaExecucao("li-nova", "licao", "for", 1),          # nasceu aqui: fica candidata
+                    EvidenciaDaExecucao("li-velha", "licao", "against", 2),
+                    EvidenciaDaExecucao("li-voz", "voz", "for", 1),            # só reforçada: sem grupo no painel
+                    EvidenciaDaExecucao("habilidade:ig.x@1", None, "against", 1),
+                    EvidenciaDaExecucao("fluxo:f-usado", None, "against", 1)),
+        exposicoes=(ExposicaoDaExecucao("li-velha", "actor", "with"), ExposicaoDaExecucao("li-velha", "planner", "with"),
+                    ExposicaoDaExecucao("li-controle", "actor", "holdout")),
+        tentativas=(TentativaDaExecucao("alvo_ausente", "failed", None),
+                    TentativaDaExecucao(None, "failed", "Pós-condição não comprovada: o perfil não apareceu"),
+                    TentativaDaExecucao("alvo_ausente", "failed", None),
+                    TentativaDaExecucao(None, "succeeded", None)))
+    itens = aprendido_na_execucao(fatos)
+    com_ref = [i for i in itens if i.grupo is not Grupo.FALHA]
+    por = {(i.grupo, i.ref): i for i in com_ref}
+    assert len(por) == len(com_ref)
+    # A ordem dos grupos é a do painel.
+    ordem = [i.grupo for i in itens]
+    assert ordem == sorted(ordem, key=list(CHAVE_DO_GRUPO).index)
+    assert por[(Grupo.FLUXO, "f-usado")].papel == "usado, desligado nesta execução, evidência contra"
+    assert por[(Grupo.FLUXO, "f-novo")].papel == "aprendido nesta execução, validado e publicado nesta execução"
+    assert por[(Grupo.RECEITA, "7")].papel == "usada, aprendida nesta execução"
+    assert por[(Grupo.RECEITA, "8")].papel == "usada, posta em quarentena nesta execução"
+    # A lição que nasceu aqui é candidata (com a evidência e a validação dela), e não "lição exposta".
+    nova = por[(Grupo.CANDIDATA, "li-nova")]
+    assert (nova.kind, nova.papel) == (LivroKind.LICAO, "lição, validada nesta execução, evidência a favor")
+    assert (Grupo.LICAO, "li-nova") not in por
+    assert por[(Grupo.CANDIDATA, "li-tela")].papel == "tela"
+    velha = por[(Grupo.LICAO, "li-velha")]
+    assert velha.papel == "exposta ao prompt (ator), exposta ao prompt (planejador), 2 evidências contra"
+    assert velha.braco is Braco.WITH
+    assert por[(Grupo.LICAO, "li-controle")].papel == "braço de controle (ator)"
+    # Sem grupo no painel: a versão de habilidade e a voz só reforçada.
+    assert not any(i.ref in ("li-voz", "ig.x@1") for i in itens)
+    # A falha: o tipo gravado e o legado classificado na leitura, da mais frequente à menos; sucesso não conta.
+    falhas = [(i.failure_kind, i.n, i.papel) for i in itens if i.grupo is Grupo.FALHA]
+    assert falhas == [("alvo_ausente", 2, None),
+                      ("pos_condicao_nao_comprovada", 1, "classificada na leitura (retroativo)")]
+    assert aprendido_na_execucao(FatosDaExecucao()) == ()
+
+
+async def test_bloco_do_aprendizado_antes_e_depois_do_voto(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    antes = await cliente.get(f"/api/runs/{RUN}/feedback")
+    assert antes.status_code == 200, antes.text
+    corpo = antes.json()
+    assert set(corpo["aprendizado"]) == {"receitas", "fluxos", "falhas", "candidatas", "licoes"}
+    fluxos = _por_ref(corpo, "fluxos")
+    assert set(fluxos) == {"fluxo-usado", "fluxo-aprendido"}                     # o alheio fica de fora
+    usado = fluxos["fluxo-usado"]
+    assert (usado["kind"], usado["titulo"], usado["estado"], usado["papel"]) == (
+        "fluxo", "cmd fluxo-usado", "published", "usado")
+    assert (fluxos["fluxo-aprendido"]["estado"], fluxos["fluxo-aprendido"]["papel"]) == (
+        "candidate", "aprendido nesta execução")
+    receitas = _por_ref(corpo, "receitas")
+    assert set(receitas) == {str(mundo.receita_usada), str(mundo.receita_aprendida)}
+    assert (receitas[str(mundo.receita_usada)]["titulo"], receitas[str(mundo.receita_usada)]["papel"]) == (
+        "abrir (v1)", "usada")
+    assert receitas[str(mundo.receita_aprendida)]["papel"] == "aprendida nesta execução"
+    # A falha do android-07 não tinha tipo gravado (legado): classificada na leitura, sem gravar, e sem o texto do erro.
+    [falha] = _linhas(corpo, "falhas")
+    assert (falha["failure_kind"], falha["n"], falha["ref"], falha["titulo"]) == (
+        "pos_condicao_nao_comprovada", 1, None, None)
+    assert "retroativo" in str(falha["papel"]) and "perfil não apareceu" not in json.dumps(corpo["aprendizado"])
+    assert mundo.db.scalar("SELECT failure_kind FROM attempts WHERE step_id=?", (mundo.etapa_falha,)) is None
+    licoes = _por_ref(corpo, "licoes")
+    assert (licoes[mundo.licao]["papel"], licoes[mundo.licao]["braco"], licoes[mundo.licao]["titulo"],
+            licoes[mundo.licao]["estado"]) == ("exposta ao prompt (ator)", "with", "abra pelo atalho do perfil",
+                                               "published")
+    assert (licoes[mundo.licao_holdout]["papel"], licoes[mundo.licao_holdout]["braco"]) == (
+        "braço de controle (ator)", "holdout")
+    assert _linhas(corpo, "candidatas") == []
+
+    voto = await cliente.post(f"/api/runs/{RUN}/feedback",
+                              json={"objective_id": mundo.ok, "verdict": "errado", "reason": "alvo_errado"})
+    assert voto.status_code == 201, voto.text
+    depois = (await cliente.get(f"/api/runs/{RUN}/feedback")).json()
+    fluxos = _por_ref(depois, "fluxos")
+    assert fluxos["fluxo-usado"]["estado"] == "disabled"
+    assert fluxos["fluxo-usado"]["papel"] == "usado, desligado nesta execução, evidência contra"
+    receita = _por_ref(depois, "receitas")[str(mundo.receita_usada)]
+    assert (receita["estado"], receita["papel"]) == ("disabled", "usada, posta em quarentena nesta execução, "
+                                                                 "evidência contra")
+    assert _por_ref(depois, "licoes")[mundo.licao]["papel"] == "exposta ao prompt (ator), evidência contra"
+    # A versão de habilidade recebeu evidência contra, mas o painel não tem grupo para ela.
+    tudo = json.dumps(depois["aprendizado"])
+    assert "ig.abrir" not in tudo and "fluxo-alheio" not in tudo
+
+
+async def test_candidata_nascida_da_execucao_nao_repete_em_licoes(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    """O minerador de lições faz `propor(run_id=)` e logo a evidência da mesma execução: a lição é candidata dela."""
+    item = mundo.servico.propor(NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=PACOTE, capability="abrir_perfil",
+                                                                             role="actor"),
+                                         content={"texto": "espere o perfil carregar"},
+                                         summary="espere o perfil carregar", source_kind=SourceKind.RECOVERY,
+                                         side_effect=False), run_id=RUN)
+    mundo.repo.registrar_evidencia(NovaEvidencia(item_ref=item.id, stance=Posicao.FOR, origin_ref="step:s-1",
+                                                 simulated=False, run_id=RUN, detail="recuperou"))
+    corpo = (await cliente.get(f"/api/runs/{RUN}/feedback")).json()
+    candidata = _por_ref(corpo, "candidatas")[item.id]
+    assert (candidata["kind"], candidata["estado"], candidata["titulo"], candidata["papel"]) == (
+        "licao", "candidate", "espere o perfil carregar", "lição, evidência a favor")
+    assert item.id not in _por_ref(corpo, "licoes")
+
+
+async def test_titulo_com_cara_de_credencial_nao_sai_no_bloco(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    """O título do fluxo é o comando que a pessoa digitou: com cara de credencial, a linha sai só com o ref."""
+    mundo.db.execute("UPDATE flows SET command_template=? WHERE id='fluxo-usado'", (NOTA_COM_SENHA,))
+    corpo = (await cliente.get(f"/api/runs/{RUN}/feedback")).json()
+    usado = _por_ref(corpo, "fluxos")["fluxo-usado"]
+    assert usado["titulo"] is None and usado["papel"] == "usado"
+    assert "Hunter2" not in json.dumps(corpo)
+
+
+async def test_bloco_da_execucao_simulada_e_da_vazia(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    simulada = (await cliente.get(f"/api/runs/{SIM}/feedback")).json()
+    assert set(_por_ref(simulada, "fluxos")) == {"fluxo-simulado"}
+    assert set(_por_ref(simulada, "receitas")) == {str(mundo.receita_simulada)}
+    _execucao(mundo.db, "r-vazia")
+    vazia = await cliente.get("/api/runs/r-vazia/feedback")
+    assert vazia.status_code == 200, vazia.text
+    assert vazia.json()["aprendizado"] == {"receitas": [], "fluxos": [], "falhas": [], "candidatas": [], "licoes": []}
 
 
 async def test_sem_o_aprendizado_composto_o_voto_diz_503() -> None:

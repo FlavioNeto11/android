@@ -4,7 +4,10 @@
   Sem `objective_id` o voto vale para a execução (`run:<id>`); um voto por pessoa e por item (votar de novo troca o
   voto, sem reativar o que foi desligado). 404 execução ou objetivo inexistente; 422 fora do vocabulário ('errado'
   exige motivo; 'certo' não leva); 409 `note_looks_secret` — a nota com cara de credencial NÃO é gravada, nem o voto;
-- `GET /api/runs/{run_id}/feedback`: os votos por item e os sinais implícitos da execução;
+- `GET /api/runs/{run_id}/feedback`: os votos por item, os sinais implícitos da execução e o bloco `aprendizado` — o
+  que ela ensinou ao livro e o que usou dele, em cinco listas (`receitas`, `fluxos`, `falhas`, `candidatas`, `licoes`;
+  o formato que o painel lê em `model.ts::lerAprendizado`), vazias quando nada mudou; `null` só quando a leitura dele
+  falhou (os votos e os sinais saem mesmo assim);
 - `GET /api/aprendizado/sinais?dias=&kind=&app=`: a aba Sinais.
 
 Cada efeito diz o que mudou (`de` → `para`) e, quando o voto desligou algo que ESTAVA publicado, o `desfazer`: a
@@ -18,17 +21,23 @@ A ORDEM importa duas vezes: estas rotas entram antes do livro (`router.py`), cuj
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.feedback import (EfeitoAplicado, ServicoDeFeedback, SinalGravado, Voto)
 from app.modules.learning.application.servico import NOTA_MAX, LearningService
+from app.modules.learning.domain.aprendido import CHAVE_DO_GRUPO, ItemAprendido
 from app.modules.learning.domain.vocabulario import MotivoDoVoto, SignalKind, Veredito
+from app.modules.learning.infrastructure.aprendido_sql import montar_aprendizado
 from app.modules.learning.infrastructure.feedback_sql import montar_feedback
 from app.modules.learning.presentation.livro import _chamar, _quem
-from app.modules.skills.domain.document import JsonObject
+from app.modules.skills.domain.document import JsonObject, JsonValue
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("poc.aprendizado")
 
 
 def _feedback(request: Request) -> ServicoDeFeedback:
@@ -38,6 +47,12 @@ def _feedback(request: Request) -> ServicoDeFeedback:
     if feedback is None:
         raise HTTPException(503, detail={"code": "not_ready", "message": "O aprendizado ainda não foi composto."})
     return feedback
+
+
+def _aprendizado(request: Request) -> AprendizadoDaExecucao | None:
+    poc: object = getattr(request.app.state, "poc", None)
+    servico: object = getattr(poc, "learning", None)
+    return montar_aprendizado(getattr(poc, "db", None), servico) if isinstance(servico, LearningService) else None
 
 
 # ------------------------------------------------------------------ JSON
@@ -60,6 +75,21 @@ def _efeito(a: EfeitoAplicado) -> JsonObject:
     return {"acao": e.acao.value, "kind": e.kind, "ref": e.ref, "uso": e.uso.value if e.uso else None,
             "de": e.de.value if e.de else None, "para": e.para.value if e.para else None, "aplicado": a.aplicado,
             "erro": a.erro, "desfazer": desfazer}
+
+
+def _aprendido(i: ItemAprendido) -> JsonObject:
+    """Uma linha do bloco, com os nomes que `model.ts::lerAprendizado` lê. Sem `titulo`, o painel escreve o rótulo da
+    falha pelo `failure_kind` e pelo `n`, ou mostra o ref."""
+    return {"kind": i.kind.value if i.kind else None, "ref": i.ref, "titulo": i.titulo,
+            "estado": i.estado.value if i.estado else None, "papel": i.papel,
+            "braco": i.braco.value if i.braco else None, "failure_kind": i.failure_kind, "n": i.n}
+
+
+def _bloco(itens: tuple[ItemAprendido, ...]) -> JsonObject:
+    grupos: dict[str, list[JsonValue]] = {chave: [] for chave in CHAVE_DO_GRUPO.values()}
+    for i in itens:
+        grupos[CHAVE_DO_GRUPO[i.grupo]].append(_aprendido(i))
+    return {chave: lista for chave, lista in grupos.items()}
 
 
 class CorpoDoVoto(BaseModel):
@@ -86,7 +116,20 @@ async def votar(request: Request, run_id: str, corpo: CorpoDoVoto) -> JsonObject
 async def ler_votos(request: Request, run_id: str) -> JsonObject:
     feedback = _feedback(request)
     lidos = _chamar(lambda: feedback.da_execucao(run_id))
-    return {"run_id": run_id, "votos": [_sinal(s) for s in lidos.votos], "sinais": [_sinal(s) for s in lidos.sinais]}
+    return {"run_id": run_id, "votos": [_sinal(s) for s in lidos.votos], "sinais": [_sinal(s) for s in lidos.sinais],
+            "aprendizado": _aprendizado_da_execucao(request, run_id)}
+
+
+def _aprendizado_da_execucao(request: Request, run_id: str) -> JsonObject | None:
+    """O bloco informa: uma leitura que quebra (linha legada estranha) não derruba os votos nem os sinais."""
+    servico = _aprendizado(request)
+    if servico is None:
+        return None
+    try:
+        return _bloco(servico.da_execucao(run_id))
+    except Exception:  # noqa: BLE001 - o bloco é informativo; o voto e os sinais continuam saindo
+        log.exception("aprendizado da execução %s", run_id)
+        return None
 
 
 @router.get("/aprendizado/sinais", response_model=None)

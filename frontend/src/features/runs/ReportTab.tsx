@@ -14,7 +14,10 @@ import { copyText, humanizeKey, isRecord, scalarToText } from '../../lib/format'
 import { DELIVERY_LEVEL, OBJECTIVE_STATUS, isRunTerminal, metaOf } from '../../lib/status';
 import { useSessionStore } from '../../store/session';
 import { toast } from '../../store/toasts';
-import { type FeedbackDaExecucao, type ItemAprendidoNaExecucao, rotuloDoMotivo, rotuloDoSinal, votoDoItem } from '../aprendizado/model';
+import {
+  type FeedbackDaExecucao, type ItemAprendidoNaExecucao, isEstadoDoLivro, rotuloDoEstado, rotuloDoMotivo, rotuloDoSinal,
+  votoDoItem,
+} from '../aprendizado/model';
 import aprendizadoStyles from '../aprendizado/Aprendizado.module.css';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import styles from './Runs.module.css';
@@ -175,6 +178,11 @@ export function ReportTab({ run }: { run: RunSummary }) {
   );
 }
 
+/** O estado vem no vocabulário do livro (`published`…): na linha, o mesmo rótulo da página Aprendizado. */
+function estadoLegivel(estado: string): string {
+  return isEstadoDoLivro(estado) ? rotuloDoEstado(estado).toLowerCase() : estado;
+}
+
 const GRUPO_DO_APRENDIZADO: Record<ItemAprendidoNaExecucao['grupo'], string> = {
   receita: 'Receitas aprendidas ou usadas', fluxo: 'Fluxos criados, usados ou desligados', falha: 'Falhas classificadas',
   candidata: 'Candidatas geradas', licao: 'Lições expostas (com o braço)',
@@ -212,7 +220,7 @@ function AprendizadoDaExecucao({ feedback }: { feedback: FeedbackDaExecucao | nu
                 {itens.map((i, n) => (
                   <li key={`${g}-${i.ref ?? n}`}>
                     {i.texto}{i.ref && i.texto !== i.ref ? <span className="mono"> ({i.ref})</span> : null}
-                    {i.papel ? ` · ${i.papel}` : ''}{i.estado ? ` · ${i.estado}` : ''}
+                    {i.papel ? ` · ${i.papel}` : ''}{i.estado ? ` · ${estadoLegivel(i.estado)}` : ''}
                   </li>
                 ))}
               </ul>
