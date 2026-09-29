@@ -351,6 +351,8 @@ class AppState:
         # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
         # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
         self.devices.on_device_wiped = self._forget_app_state
+        # Só o disco apagado DE FATO tira a conta travada do aparelho (ADR-055); a troca de identidade física não.
+        self.devices.on_disk_erased = self._disco_apagado
         # Aparelho no ar e inútil (Android morto por dentro, sessão que não abre) com `desired_state=online`:
         # alguém pede o reinício. O gerenciador não conhece comandos; quem os abre é a camada da API.
         self.devices.on_remediation_needed = self._remediar_aparelho
@@ -524,8 +526,14 @@ class AppState:
         if linhas:
             self.bus.emit("log", f"{instance_id}: o app deixou de constar como instalado — {motivo}",
                           level="warn", instance_id=instance_id)
-        # Disco apagado: a conta travada não está mais logada ali (ADR-055). Numa quarentena o reset só chega com a
-        # confirmação explícita da pessoa; manter o marcador travaria para sempre um aparelho já limpo.
+        # O marcador de conta travada NÃO sai aqui: este gancho também dispara quando só a identidade física mudou
+        # (`conferir_identidade`), sem disco apagado nem pessoa — e resolvia o marcador com "dados apagados", o que era
+        # falso e devolvia o aparelho do desafio ao uso (revisão do pacote quarentena, 29/09). Ver `_disco_apagado`.
+
+    def _disco_apagado(self, instance_id: str, motivo: str) -> None:
+        """O disco foi apagado de fato (boot com `-wipe-data` ou reset concluído pelo agente): a conta travada não está
+        mais logada ali (ADR-055). Numa quarentena o reset só chega com a confirmação explícita da pessoa, e manter o
+        marcador travaria para sempre um aparelho já limpo. O PERFIL segue bloqueado: reativar é decisão de pessoa."""
         self.social_repo.resolver_conta_travada(instance_id, por="reset do aparelho",
                                                 nota=f"dados do aparelho apagados — {motivo}")
 

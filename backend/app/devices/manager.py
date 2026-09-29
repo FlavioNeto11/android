@@ -507,7 +507,14 @@ class DeviceManager:
         #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
+        #: Vale também para a troca do aparelho físico por trás do id (`conferir_identidade`): o que se sabia do disco
+        #: deixa de valer, mas NADA foi apagado — por isso este gancho não pode afirmar "disco apagado".
         self.on_device_wiped: Callable[[str, str], None] = lambda instance_id, motivo: None
+        #: O disco do aparelho FOI apagado de fato: o emulador desta máquina subiu com `-wipe-data`, ou o agente da
+        #: outra máquina respondeu `succeeded` a um `reset`. Só aqui a conta travada deixa de estar logada (ADR-055).
+        #: Separado de `on_device_wiped` porque a troca de identidade física passava pelo mesmo gancho e resolvia o
+        #: marcador com "dados do aparelho apagados" sem reset nem pessoa (revisão do pacote quarentena, 29/09).
+        self.on_disk_erased: Callable[[str, str], None] = lambda instance_id, motivo: None
         #: O aparelho degradou e o estado DESEJADO dele é `online`: alguém precisa tentar reiniciá-lo. Quem sabe
         #: abrir um comando rastreável é a camada da API, então ela se inscreve aqui — o gerenciador não conhece
         #: comandos. Sem isto, o convidado morto ficava morto até alguém olhar o painel.
@@ -1240,6 +1247,13 @@ class DeviceManager:
             rt, "o aparelho físico por trás deste id mudou; o que se sabia do disco anterior deixou de valer")
         self.bus.emit("log", f"{rt.id}: o aparelho por trás deste id mudou — estado do app, sessão e evidência de "
                              f"conta foram invalidados.", level="warn", instance_id=rt.id)
+        if (travada := self.conta_travada_em(rt.id)) is not None:
+            # Quarentena (ADR-055): trocar o aparelho por trás do id não é prova de que a conta travada saiu dali —
+            # nenhum disco foi apagado e nenhuma pessoa decidiu. O marcador fica (sem reativação automática, ADR-029)
+            # e o cartão diz por quê; quem confere o aparelho novo e resolve é o dono.
+            self.marcar_atencao(rt, f"Em quarentena: o aparelho físico por trás deste id mudou, mas o disco não foi "
+                                    f"apagado e a conta @{travada} segue registrada como travada e logada aqui. Nada "
+                                    "o toca até o dono conferir e resolver.")
         return True
 
     async def observar_identidade(self, rt: DeviceRuntime) -> str | None:
@@ -2220,6 +2234,8 @@ class DeviceManager:
                         # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
                         # (`rt.pid is not None`) exercitável pelo aparelho falso.
                         await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                        if wipe:
+                            self._disco_apagado(rt, "o emulador subiu com os dados apagados (reset)")
                         self.boots.append((rt.id, "warm" if warm else "cold"))
                         rt.automation = AutomationInfo(state="ready", detail="driver de teste")
                         self._set_state(rt, InstanceState.online, "pronto (teste)")
@@ -2253,6 +2269,8 @@ class DeviceManager:
                     log_path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
                     rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
                     await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                    if wipe:
+                        self._disco_apagado(rt, "o emulador subiu com os dados apagados (reset)")
                     self._prontidao(rt, "process_running", "emulador iniciado")
                     self._set_state(rt, InstanceState.booting, "acordando do snapshot…" if warm else
                                     "emulador iniciado" + (" (dados apagados)" if wipe else ""))
@@ -2694,6 +2712,17 @@ class DeviceManager:
         except Exception:  # noqa: BLE001 - esquecer o app nunca pode derrubar o ciclo do aparelho
             log.exception("%s: falha ao marcar o app como ausente depois do wipe", rt.id)
 
+    def _disco_apagado(self, rt: DeviceRuntime, motivo: str) -> None:
+        """O disco FOI apagado (não só "deixou de valer"): avisa quem precisa saber que a conta logada saiu dali.
+
+        Chamado depois do `_spawn` com `-wipe-data`, e não no `reset_instance`: `wipe_next_boot` só existe na
+        memória, e um backend reiniciado entre o reset e o boot subiria o disco ANTIGO — com a conta travada ainda
+        logada — sobre um marcador já dado por resolvido."""
+        try:
+            self.on_disk_erased(rt.id, motivo)
+        except Exception:  # noqa: BLE001 - registrar o wipe nunca pode derrubar o boot nem o desfecho do worker
+            log.exception("%s: falha ao registrar que o disco foi apagado", rt.id)
+
     async def _soltar_do_painel(self, rt: DeviceRuntime, detalhe: str,
                                 estado: InstanceState = InstanceState.stopped) -> None:
         """Solta o que o CENTRAL mantinha aberto no aparelho (captura e sessão de automação) e assume o estado
@@ -2766,6 +2795,7 @@ class DeviceManager:
             self._set_snapshot(rt, False)
             self._esquecer_o_que_o_disco_tinha(rt, "o aparelho foi resetado na máquina do worker; os dados do app "
                                                    "foram apagados")
+            self._disco_apagado(rt, "o agente da outra máquina concluiu o reset: os dados do aparelho foram apagados")
 
     async def readotar_depois_do_worker(self, rt: DeviceRuntime, verb: str, outcome: str) -> None:
         """A readoção fica SEPARADA de `aplicar_desfecho_remoto` porque ela fala com o aparelho (adb connect,

@@ -544,10 +544,69 @@ async def test_account_label_velho_e_corrigido_na_subida(h: Harness) -> None:
 
 async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> None:
     """O reset só chega a um aparelho em quarentena com a confirmação explícita da pessoa; depois dele, a conta não
-    está mais logada ali — afirmar o contrário travaria o aparelho limpo para sempre."""
+    está mais logada ali — afirmar o contrário travaria o aparelho limpo para sempre.
+
+    Mas só o disco apagado DE FATO resolve, pelo caminho real: o reset local apaga no boot seguinte (`-wipe-data`), e
+    até lá o marcador fica — `wipe_next_boot` mora só na memória, e um backend reiniciado no meio subiria o disco
+    antigo, com a conta travada, sobre um marcador já dado por resolvido. Religar sem apagar não resolve nada."""
+    s = h.state
+    assert s is not None
+    rt = s.devices.get("android-02")
+    await h.wait(lambda: rt.state == InstanceState.online, what="android-02 no ar")
+    felipe = s.social.create_profile(ProfileCreate(username=FELIPE)).id
+    _marcar(h, "android-02")
+
+    await s.devices.restart_instance(rt)                            # boot sem apagar: a conta segue logada
+    await h.wait(lambda: rt.state == InstanceState.online, what="android-02 religado")
+    assert s.social_repo.conta_travada_no_aparelho("android-02") is not None
+
+    await s.devices.reset_instance(rt)
+    assert s.social_repo.conta_travada_no_aparelho("android-02") is not None   # o boot com wipe só foi enfileirado
+    await h.wait(lambda: s.social_repo.conta_travada_no_aparelho("android-02") is None, what="marcador pelo wipe")
+    assert rt.fresh_data is True
+    linha = s.db.one("SELECT resolved_by, resolution FROM device_locked_accounts WHERE instance_id='android-02'")
+    assert linha["resolved_by"] == "reset do aparelho" and "dados apagados (reset)" in linha["resolution"]
+    assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado", "resolvido"]
+    # O perfil NÃO é reativado pelo wipe: reativar é decisão de pessoa.
+    assert s.social_repo.profile_row(felipe)["status"] == "blocked"
+
+
+async def test_reset_concluido_pelo_agente_resolve_o_marcador_e_o_incerto_nao(h: Harness) -> None:
+    """Aparelho de outra máquina: só o `succeeded` do agente afirma que o disco foi apagado. `failed`/`uncertain` não
+    autorizam afirmar nada sobre o aparelho — o marcador fica."""
+    s = h.state
+    assert s is not None
+    rt = s.devices.get("android-02")
+    _marcar(h, "android-02")
+    for desfecho in ("failed", "uncertain"):
+        await s.devices.aplicar_desfecho_remoto(rt, "reset", desfecho)
+        assert s.social_repo.conta_travada_no_aparelho("android-02") is not None, desfecho
+    await s.devices.aplicar_desfecho_remoto(rt, "reset", "succeeded")
+    assert s.social_repo.conta_travada_no_aparelho("android-02") is None
+    linha = s.db.one("SELECT resolved_by, resolution FROM device_locked_accounts WHERE instance_id='android-02'")
+    assert linha["resolved_by"] == "reset do aparelho" and "agente" in linha["resolution"]
+
+
+async def test_troca_de_identidade_do_aparelho_nao_resolve_o_marcador(h: Harness) -> None:
+    """Revisão do pacote (29/09): a troca da impressão digital física (`conferir_identidade`) passava pelo mesmo gancho
+    do wipe e resolvia o marcador sozinha, com `resolved_by='reset do aparelho'` e "dados do aparelho apagados" — sem
+    reset, sem pessoa, sem disco apagado. Resolvido o marcador, o aparelho voltava a ser livre e a tela de desafio podia
+    ser tocada de novo. Trocar o aparelho por trás do id não é prova de que a conta travada saiu dali: o marcador fica,
+    e o cartão diz que precisa do dono."""
     s = h.state
     assert s is not None
     _marcar(h, "android-02")
-    s.devices.on_device_wiped("android-02", "reset confirmado")
-    assert s.social_repo.conta_travada_no_aparelho("android-02") is None
-    assert s.db.scalar("SELECT resolved_by FROM device_locked_accounts WHERE instance_id='android-02'")
+    rt = s.devices.get("android-02")
+    assert s.devices.conferir_identidade(rt, "host-a|ro.boot.qemu.avd_name=android-02") is False
+    assert s.devices.conferir_identidade(rt, "host-b|ro.boot.qemu.avd_name=android-02") is True
+
+    marcador = s.social_repo.conta_travada_no_aparelho("android-02")
+    assert marcador is not None and marcador["handle"] == FELIPE
+    assert s.db.scalar("SELECT COUNT(*) FROM device_locked_accounts WHERE resolved_at IS NOT NULL") == 0
+    assert s.quarentena("android-02") is not None
+    assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado"]
+    # O cartão diz o que aconteceu (e o que NÃO aconteceu): o disco não foi apagado, e quem decide é o dono.
+    assert rt.attention is not None and FELIPE in rt.attention and "não foi apagado" in rt.attention
+    # E a porta segue fechada para o app da conta travada.
+    porta = s._app_resolver(rt, "com.instagram.android", {"status": "pending"})
+    assert porta is not None and porta[1] is None and FELIPE in porta[0]
