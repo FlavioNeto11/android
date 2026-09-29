@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ..models import DeliveryLevel
 from ..util import norm_text, url_abrivel
 from .driver import DeviceIO, DriverError, DriverTimeout, SemCampoEmFoco
-from .hierarchy import UiElement, UiTree
+from .hierarchy import ContaTravada, UiElement, UiTree
 
 #: Até quando se espera um app aberto chegar ao primeiro plano. A frio, no android-06 (2 vCPU saturadas), o Instagram
 #: levou 28–51 s (r-20260928195344-02ee9e) — e a janela de partida não tem forma `pacote/atividade`, então o foco lê
@@ -178,8 +178,13 @@ class StepDone(_Args):
 
 
 class StepBlocked(_Args):
-    """A etapa não pode prosseguir sem intervenção ou é impossível."""
-    kind: Literal["auth_required", "wrong_account", "missing_info", "app_incompatible", "unexpected_screen", "other"]
+    """A etapa não pode prosseguir sem intervenção ou é impossível.
+
+    `challenge` (ADR-055): tela de verificação — confirmar que é humano, CAPTCHA, código de login/2FA. Vira
+    `auth_challenge` (só uma pessoa resolve), nunca `auth_required`: este devolvia o caso ao login automático, que
+    voltava a abrir o app sobre uma conta travada."""
+    kind: Literal["auth_required", "challenge", "wrong_account", "missing_info", "app_incompatible",
+                  "unexpected_screen", "other"]
     reason: str
     needs_user: bool
 
@@ -198,6 +203,22 @@ STRICT_TOOLS = EFFECT_CAPABLE | CONTROL_TOOLS
 
 class ToolValidationError(ValueError):
     pass
+
+
+class TelaDeContaTravada(DriverError):
+    """Uma leitura da tela DENTRO de uma ferramenta (a rolagem que confere o conteúdo, a coleta que rola a lista, a
+    conferência da digitação) achou a tela de conta travada ou de código (ADR-055). A ferramenta para ali mesmo: a
+    rolagem fecharia com "voltar" a janela que entrou por cima, e a coleta seguiria arrastando. Quem levanta é a
+    observação rápida do executor; quem trata é o executor, com o mesmo desfecho da observação do laço.
+
+    `effect_possible` segue a regra de `DriverError`: a leitura em si não tem efeito, mas quem a pediu depois de um
+    gesto (`_ler_depois_do_gesto`) o marca como possível."""
+
+    def __init__(self, trava: ContaTravada, pacote: str | None) -> None:
+        super().__init__(f"tela de verificação da conta ({trava.descrever()}); nada mais foi tocado",
+                         effect_possible=False)
+        self.trava = trava
+        self.pacote = pacote
 
 
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)

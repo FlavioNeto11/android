@@ -15,6 +15,7 @@ import psutil
 
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
+from .automation.hierarchy import SUBTIPO_CONTA_TRAVADA
 from .commands import despacho
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
@@ -34,7 +35,8 @@ from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.identity.application.ports import SessionProvider
-from .modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
+from .modules.identity.application.session_rules import (bloquear_por_desafio, emit_needs_person_change,
+                                                         registrar_conta_travada)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.skills.application.registry import CompositeSkillRegistry
@@ -720,7 +722,7 @@ class AppState:
         "wrong_account": SessionStatus.wrong_account,
     }
 
-    def _sessao_desmentida(self, instance_id: str, kind: str, detail: str) -> None:
+    def _sessao_desmentida(self, instance_id: str, kind: str, detail: str, *, subtipo: str | None = None) -> None:
         """A tela do aparelho contradisse o que a sessão afirmava. O cache é corrigido, com evento.
 
         Só mexe em perfil VINCULADO àquele aparelho: aparelho sem perfil (o QA Messenger, o caminho antigo) não
@@ -728,6 +730,10 @@ class AppState:
 
         Qual perfil: o do OBJETIVO em curso no aparelho (é a conta dele que a tela contradisse); sem objetivo, o
         único vinculado. Com duas personas e nenhum objetivo, nada é desmentido — escolher uma seria inventar.
+
+        `subtipo` (ADR-055) só acompanha `auth_challenge`: `conta_travada` bloqueia o perfil e vai à quarentena;
+        `codigo` (código de login/2FA) e `verificacao` (relatada pela IA) só pedem uma pessoa. Sem subtipo é o
+        chamador antigo, para quem desafio sempre foi conta travada (ADR-029).
         """
         status = self._SESSAO_PELO_QUE_A_TELA_VIU.get(kind)
         if status is None:
@@ -737,18 +743,30 @@ class AppState:
         if profile_id is None:
             return
         atual = self.social_repo.session_row(profile_id, instance_id)
-        if atual is not None and atual["status"] == status.value:
+        anterior = atual["status"] if atual is not None else None
+        travada = status is SessionStatus.auth_challenge and subtipo in (None, SUBTIPO_CONTA_TRAVADA)
+        # A sessão já no mesmo estado não é notícia — EXCETO a trava: uma sessão parada num código (sem bloqueio) não
+        # pode impedir o bloqueio quando a verificação de conta travada aparece depois.
+        if anterior == status.value and not travada:
             return
-        self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
-                                     verified_at=to_iso(now()), detail=detail[:300])
-        self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
-                      level="warn", instance_id=instance_id)
-        if status is SessionStatus.auth_challenge:
+        if anterior != status.value:
+            self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
+                                         verified_at=to_iso(now()), detail=detail[:300])
+            self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
+                          level="warn", instance_id=instance_id,
+                          data={"profile_id": profile_id, "status": status.value, "subtipo": subtipo})
+        if travada:
             # O mesmo bloqueio que o provedor de sessão aplica ao gravar (ADR-029): desafio visto no meio de uma
-            # execução é o mesmo aviso de conta travada.
-            bloquear_por_desafio(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                 anterior_status=atual["status"] if atual is not None else None, detail=detail[:300],
-                                 app_label=capabilities_of(self.social_repo.app_package).label)
+            # execução é o mesmo aviso de conta travada. Sem o "anterior": quem impede o aviso repetido é o próprio
+            # perfil já `blocked` (ver acima o caso do código seguido da trava).
+            bloqueou = bloquear_por_desafio(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
+                                            anterior_status=None, detail=detail[:300],
+                                            app_label=capabilities_of(self.social_repo.app_package).label)
+            if bloqueou or anterior != status.value:
+                perfil = self.social_repo.profile_row(profile_id)
+                registrar_conta_travada(self.social_repo, instance_id=instance_id,
+                                        handle=str(perfil["username"] if perfil is not None else profile_id),
+                                        evidencia=detail[:300], origem="execucao")
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.

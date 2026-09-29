@@ -14,18 +14,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Awaitable, Callable
 
 import yaml
 
-from .hierarchy import UiTree
+from .hierarchy import (SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA, ContaTravada, UiTree, detectar_trava_generica,
+                        normalizar_texto_de_tela)
 
 #: Vocabulário dos motores. Quem trata cada tipo é o núcleo (sessão, executor), não o app.
 TIPOS = frozenset({"desafio", "dois_fatores", "intersticial", "login", "carregando", "autenticada"})
 #: Tipos de onde nunca se "volta": cada um tem tratamento próprio (pessoa, login, dispensa, espera).
 NAO_SE_VOLTA = frozenset({"desafio", "dois_fatores", "login", "intersticial", "carregando"})
 DESCONHECIDA = "desconhecida"
+#: Tipos que só o detector de conta travada decide (ADR-055), e o subtipo de cada um.
+TIPOS_DE_TRAVA = {"desafio": SUBTIPO_CONTA_TRAVADA, "dois_fatores": SUBTIPO_CODIGO}
 
 
 class ConhecimentoInvalido(ValueError):
@@ -74,6 +78,12 @@ class ConhecimentoDeTelas:
         codigo = (locale or "").split("-")[0].split("_")[0].lower()
         return self.sinais.get(codigo, self.sinais[self.idioma_padrao])
 
+    def sinal_em_qualquer_idioma(self, nome: str) -> tuple[re.Pattern[str], ...]:
+        """O sinal em TODOS os idiomas que o declaram. É o que vale para desafio e código (ADR-055): o idioma do
+        aparelho não diz o idioma da tela de verificação, e escolher uma tabela só por `ro.product.locale` deixava
+        "Confirm you’re human" desconhecida num aparelho em português."""
+        return tuple(tabela[nome] for tabela in self.sinais.values() if nome in tabela)
+
     def regra(self, tela: str) -> RegraDeTela | None:
         return next((r for r in self.telas if r.tela == tela), None)
 
@@ -106,6 +116,8 @@ class TelaReconhecida:
     evidencia: list[str] = field(default_factory=list)
     formulario: object | None = None
     outro_app: bool = False
+    #: Desafio ou código: o que o detector achou (subtipo e trecho), para quem grava a tentativa e avisa o dono.
+    trava: ContaTravada | None = None
 
 
 def _sufixo(resource_id: str) -> str:
@@ -120,18 +132,64 @@ def _texto_da_tela(tree: UiTree) -> str:
     return "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
 
 
-def _trechos(padrao: re.Pattern[str], texto: str) -> list[str]:
-    return [m.group(0)[:80] for m in list(padrao.finditer(texto))[:3]]
+def _trava_declarada(k: ConhecimentoDeTelas, tipo: str, normalizado: str, bruto: str) -> ContaTravada | None:
+    """A primeira regra do app daquele tipo cujo sinal casa, em QUALQUER idioma declarado. Casa contra o texto
+    normalizado (apóstrofo simples, sem acento — os sinais trazem a forma sem acento em cada classe `[ée]`) e, por
+    garantia, contra o texto como veio."""
+    for r in k.telas:
+        if r.tipo != tipo or r.sinal is None:
+            continue
+        for padrao in k.sinal_em_qualquer_idioma(r.sinal):
+            if m := (padrao.search(normalizado) or padrao.search(bruto)):
+                return ContaTravada(TIPOS_DE_TRAVA[tipo], m.group(0)[:80], origem=r.tela)
+    return None
+
+
+def detectar_conta_travada(tree: UiTree, k: ConhecimentoDeTelas | None = None) -> ContaTravada | None:
+    """O detector ÚNICO de conta travada (ADR-055). O executor (depois de cada observação, antes da reabertura por ANR,
+    da receita e do ator), a leitura da conta e a dispensa do motor de sessão perguntam a ele — e quem ouve "sim" sai
+    SEM tocar, teclar nem reabrir.
+
+    - Conta travada ("Confirm you’re human", CAPTCHA, atividade suspeita) vem primeiro e NÃO exige campo de texto: a
+      tela real só tem botões ("Continue", "Get support"), e era exatamente por não ter campo que ela passava.
+    - Código de login/2FA vem depois e exige onde digitar (a linha "Autenticação de dois fatores" do menu de
+      configurações não é pedido de código).
+    - Sinais genéricos (`hierarchy`, qualquer app) e os declarados pelo app (`telas.yaml`, tipos `desafio` e
+      `dois_fatores`), estes na UNIÃO dos idiomas.
+
+    `k=None` (app sem conhecimento declarado) usa só os genéricos."""
+    bruto = _texto_da_tela(tree)
+    normalizado = "\n".join(normalizar_texto_de_tela(f"{e.text} {e.desc}") for e in tree.elements if e.text or e.desc)
+    tem_onde_digitar = any(e.editable for e in tree.elements)
+    generica = tree.conta_travada or detectar_trava_generica(normalizado, tem_onde_digitar=tem_onde_digitar)
+    if k is not None and (declarada := _trava_declarada(k, "desafio", normalizado, bruto)) is not None:
+        return declarada
+    if generica is not None and generica.subtipo == SUBTIPO_CONTA_TRAVADA:
+        return generica
+    if tem_onde_digitar and k is not None and (declarada := _trava_declarada(k, "dois_fatores", normalizado, bruto)):
+        return declarada
+    return generica
 
 
 def classificar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None, locale: str | None = None,
                 formulario: Callable[[UiTree], object | None] | None = None) -> TelaReconhecida:
-    """A primeira regra declarada que casar vence. Outro app na frente não é classificado."""
+    """A primeira regra declarada que casar vence. Outro app na frente não é classificado.
+
+    Desafio e código não passam pelas regras: quem decide é `detectar_conta_travada`, antes de qualquer outra — o
+    mesmo veredito em todo lugar que olha a tela, e tela de verificação nunca cai em "desconhecida" (de onde o motor
+    de sessão voltava e dispensava)."""
     if package and package != k.app:
         return TelaReconhecida(DESCONHECIDA, DESCONHECIDA, f"outro app em primeiro plano ({package})", outro_app=True)
+    if (trava := detectar_conta_travada(tree, k)) is not None:
+        regra = k.regra(trava.origem) or next((r for r in k.telas if r.tipo == trava.tipo), None)
+        return TelaReconhecida(regra.tela if regra else trava.tipo, trava.tipo,
+                               regra.razao if regra else f"a tela pede verificação ({trava.subtipo})",
+                               [trava.trecho], trava=trava)
     texto = _texto_da_tela(tree)
     sinais = k.sinais_de(locale)
     for r in k.telas:
+        if r.tipo in TIPOS_DE_TRAVA:
+            continue
         if r.sinal is not None and not ((p := sinais.get(r.sinal)) and p.search(texto)):
             continue
         form = None
@@ -145,8 +203,7 @@ def classificar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None, lo
             continue
         if r.ids and not _tem_id(tree, r.ids):
             continue
-        evidencia = _trechos(sinais[r.sinal], texto) if r.sinal and r.tipo in ("desafio", "dois_fatores") else []
-        return TelaReconhecida(r.tela, r.tipo, r.razao, evidencia, form)
+        return TelaReconhecida(r.tela, r.tipo, r.razao, [], form)
     return TelaReconhecida(DESCONHECIDA, DESCONHECIDA, "nenhum sinal conhecido na tela")
 
 
@@ -280,3 +337,11 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
 
 def carregar(caminho: Path) -> ConhecimentoDeTelas:
     return de_dados(yaml.safe_load(caminho.read_text(encoding="utf-8")) or {})
+
+
+@lru_cache(maxsize=None)
+def da_pasta(pasta: Path) -> ConhecimentoDeTelas | None:
+    """O `telas.yaml` da pasta de um app, carregado uma vez por processo; `None` quando o app não declara telas (o
+    detector de conta travada fica com os sinais genéricos). Arquivo inválido levanta `ConhecimentoInvalido`."""
+    caminho = pasta / "telas.yaml"
+    return carregar(caminho) if caminho.is_file() else None

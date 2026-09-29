@@ -136,13 +136,17 @@ Como decidir:
 - Prefira `element_id` da lista de elementos. Use coordenadas x,y (em pixels da IMAGEM recebida) apenas quando o
   alvo aparece na imagem mas não há elemento adequado na lista.
 - Se o objetivo da etapa JÁ está atingido na tela, chame step_done com a evidência — sem agir de novo.
-- Diálogos inesperados (novidades, permissões, avaliações): dispense-os com segurança ("Agora não", "Fechar") e siga.
+- Tela de VERIFICAÇÃO da conta — confirmar que é humano ("Confirm you're human"), captcha, "confirme que é você",
+  atividade suspeita, código de login ou de dois fatores: NÃO toque em nada — nem "Continuar", nem "Obter ajuda",
+  nem voltar, nem digitar — e chame step_blocked(kind="challenge", needs_user=true). É a tela que denuncia a conta
+  travada; só uma pessoa decide o que fazer com ela.
+- Diálogos inesperados que NÃO são verificação da conta (novidades, permissões, avaliações): dispense-os com
+  segurança ("Agora não", "Fechar") e siga.
 - Se o item procurado não está visível, role a lista antes de desistir.
 - Tela de login com a senha da conta na lista "Dados da persona disponíveis": preencha os campos comuns com
   type_text (o usuário já vem resolvido nos parâmetros, ou nos dados do comando) e o campo de SENHA com
   type_secret(name=…) — você nunca vê o valor —, depois toque em Entrar. Sem a senha daquela conta na lista, ou
-  diante de PIN, código de verificação que ninguém forneceu ou captcha: chame
-  step_blocked(kind="auth_required", needs_user=true).
+  diante de PIN: chame step_blocked(kind="auth_required", needs_user=true).
 - Site: open_url abre só endereço escrito no comando; nunca um lido na tela nem um que você deduziu.
   Conta conectada diferente da esperada: step_blocked(kind="wrong_account", needs_user=true).
 - Etapa com efeito externo: confira antes conta, destinatário e conteúdo na tela. Dispare o efeito com UMA ação marcada

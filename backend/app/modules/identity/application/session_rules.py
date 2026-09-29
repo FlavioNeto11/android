@@ -64,6 +64,20 @@ def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str,
     return True
 
 
+def registrar_conta_travada(repo: object, *, instance_id: str, handle: str, evidencia: str, origem: str) -> bool:
+    """Leva a conta travada à quarentena do repositório social, quando ele a conhece (ADR-055).
+
+    `marcar_conta_travada(instance_id, handle, evidencia, origem)` é do pacote "quarentena", que chega em paralelo a
+    este: sem ela, nada muda — o bloqueio do perfil (ADR-029) quem chama já aplicou. `evidencia` é o trecho da tela
+    que casou (a frase de verificação, nunca um código); `origem` diz quem viu (`execucao` ou `sessao`). Devolve se
+    havia a quem avisar."""
+    marcar = getattr(repo, "marcar_conta_travada", None)
+    if not callable(marcar):
+        return False
+    marcar(instance_id, handle, evidencia, origem)
+    return True
+
+
 def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: str, status: str,
                              anterior_status: str | None, detail: str | None) -> None:
     """Evento dedicado da fila "Aguardando intervenção" (achado #106) — em vez de só `log`.
