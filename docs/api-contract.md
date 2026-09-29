@@ -2431,3 +2431,150 @@ Provas: `simulated` (`backend/tests/test_learning_livro.py`, `test_projecao.py`,
 `test_disjuntor_de_conta.py`, `test_conduta_de_login.py`, `test_interrupcoes_persistidas.py`,
 `test_receita_candidata.py`; vitest `execution.test.tsx`); `real` só de leitura no [relatório
 §22](relatorio-validacao.md); o resto `not_run` até o deploy.
+
+## Adendo v0.38 (29/09/2026) — aprendizado A2–A9, apps de segundo plano e a espera do reparo (ADR-054, ADR-055; itens 20.3–20.10, 21.15 e 21.16)
+
+[ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)
+e
+[ADR-055](decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta).
+Implantado com `f497075` em 29/09 ~07:38Z, sem migração nova: tudo cabe nas tabelas da 055 (a espera do reparo, 21.16,
+estava no ar desde `9348e9c`, ~04:17Z). Nenhuma rota abaixo chama IA. As rotas que o v0.37 anunciava como "ainda não
+existem" existem agora; `/api/aprendizado/backlog` tem só `GET` e `PATCH` por id. Domínio:
+[dominios/aprendizado.md](dominios/aprendizado.md).
+
+**Ordem de montagem.** As rotas específicas entram antes da genérica `GET /api/aprendizado/{kind}/{ref}`
+(`modules/learning/presentation/router.py`), que casaria com elas e recusaria o `kind` com 422. O roteador do
+aprendizado entra antes do `api.py` (`main.py`), cujo `POST /api/runs/{run_id}/{op}` casaria com `/feedback`.
+
+**O que mais falha e backlog (A3, item 20.4).** Corpos em `presentation/falhas.py`.
+
+- `GET /api/aprendizado/falhas?dias=14&app=&camada=&limite=20&simulados=false&retroativo=true&formato=json|md`
+  (`dias` 1–90, `limite` 1–200).
+  - JSON: `{gerado_em, commit, janela: {dias, desde, ate, corte_de_custo, custo_parcial}, filtros, regras, itens,
+    total_de_grupos, abaixo_do_minimo, verificacao, telas, propostas, outro: {ocorrencias, total, pct, alerta},
+    saude, em_andamento}`.
+  - Cada item: `{id: "fk-…", cluster_key, app, capability, tipo, tela, camada, titulo, ocorrencias, retroativas,
+    elegiveis, taxa, etapas, execucoes, aparelhos, usd_perdido, min_perdidos, intervencoes, custo_total,
+    custo_parcial, tendencia: {ultimos_7d, anteriores_7d, direcao}, exemplos, erros_de_ia, primeira, ultima,
+    onde_alterar: {arquivos, doc, prova}, estado, registrado, plan_item, licoes_ativas}`.
+  - `retroativo=true` (padrão) inclui o legado classificado NA LEITURA, nunca gravado; `retroativas` diz quantas
+    ocorrências vêm dele.
+  - `formato=md`: `text/markdown`, com a chave `fk-*` na primeira coluna do topo. É o que
+    `scripts/aprendizado-backlog.py` grava em `data/aprendizado/`.
+- `GET /api/aprendizado/backlog/{id}` → `{linha, registrado, grupo | null, proposta | null}`. A linha pode estar gravada
+  ou existir ainda só no relatório. `linha`: `{id, category: falha|proposta, cluster_key, title, state, app,
+  capability, tipo, tela, plan_item, fixed_in_commit, fixed_at, baseline, verification, reopened_count, first_seen,
+  last_seen, notes, updated_by, updated_at}`.
+  - `verification.reincidencia.janela_de_tentativas` diz quantas tentativas elegíveis a reincidência mede depois de
+    `fixed`: as últimas 2 × `prova_minimo`, nunca desde a prova.
+- `PATCH /api/aprendizado/backlog/{id} {state, plan_item?, fixed_in_commit?, notes?}` (`extra=forbid`; `plan_item` até
+  60, `fixed_in_commit` até 40, `notes` até 500) → o corpo do `GET`. `state` é um de `open`, `triaged`, `planned`,
+  `fixed_pending_proof`, `fixed`, `reopened` e `wontfix`. Erros:
+  - 409 `transition_forbidden` para `fixed` e `reopened`, que são medida, não declaração;
+  - 422 `invalid` para `fixed_pending_proof` sem o sha do commit (7 a 40 hexadecimais) ou numa proposta;
+  - 409 `note_looks_secret`: nada é gravado.
+  
+  A prova começa no `PATCH`, e o commit não é conferido contra o que está no ar (pendência): marque depois do deploy.
+
+**Feedback D2 (A4, item 20.5).** Corpos em `presentation/feedback.py`.
+
+- `POST /api/runs/{run_id}/feedback {objective_id?, verdict, reason?, note?}` (`extra=forbid`) → 201
+  `{signal, efeitos, resumo}`.
+  - `verdict`: `certo` | `errado`; `errado` exige `reason`, `certo` não leva.
+  - `reason`: `fez_outra_coisa`, `alvo_errado`, `nao_terminou` (os três de navegação rebaixam o que o item usou e o que
+    aprendeu), `texto_ruim`, `demorou_ou_gastou`, `pediu_ajuda_a_toa` e `outro`.
+  - `note` até 500 caracteres.
+  - Sem `objective_id`, o voto vale para a execução (`source_ref` `run:<id>`); com ele, `objective:<id>`. Há um voto
+    por pessoa e por item: votar de novo troca o voto, sem reativar nada.
+  - Cada efeito: `{acao, kind, ref, uso, de, para, aplicado, erro, desfazer}`. `desfazer` é
+    `{method: "POST", href: "/api/aprendizado/{kind}/{ref}/status", body: {to: "published", reason}}` só quando o voto
+    desligou algo que ESTAVA publicado. Do `candidate`/`validated`, vem `null`: aquela volta publicaria o que nunca
+    passou pelo D1.
+  - Erros: 404 execução inexistente ou objetivo de outra execução; 422 fora do vocabulário; 409 `note_looks_secret`
+    (nem o voto nem a nota são gravados); 409 `state_conflict`.
+- `GET /api/runs/{run_id}/feedback` → `{run_id, votos: [Sinal], sinais: [Sinal]}`. O painel lê também um bloco
+  opcional `aprendizado` (o que a execução ensinou ou usou do livro), que nenhuma rota emite ainda (pendência do A6).
+- `GET /api/aprendizado/sinais?dias=14&kind=&app=` (`dias` 1–400) → `{sinais: [Sinal], total, contagem: {<kind>: n},
+  dias}`. `total` e `contagem` contam as linhas devolvidas, que param em 500 (as mais recentes), não a janela inteira.
+- `Sinal`: `{id, kind, polarity, verdict, reason, note, note_refused, source_ref, created_by, run_id, objective_id,
+  step_id, attempt_id, instance_id, profile_id, app_package, capability, step_hash, failure_kind, step_verified, data,
+  simulated, created_at, updated_at}`.
+  - `kind`: `feedback`, `confirmou_a_mao`, `repetiu_item`, `abandonou_item`, `repetiu_execucao`, `tomou_controle`,
+    `respondeu_pergunta`, `escolheu_habilidade`, `aprovacao_decidida`, `tela_vista` e
+    `tela_desconhecida_chamou_pessoa`. `cancelou_execucao`, `comando_incerto_resolvido` e `correcao_de_ensino` estão no
+    vocabulário, ainda sem escritor.
+  - `source_ref` dos gestos (A2): `resolve:<objective_id>:<plan_version>.<seq>`, `repeticao:<run_id>:<sha12>`,
+    `resposta:<run_id>:<campo>` e `takeover:<attempt_id>`. O gesto sai com `created_by` `panel`: o nome do operador não
+    chega aos arquivos quentes.
+  - A resposta a uma pergunta guarda o campo e o sha256, nunca o valor; a tomada de controle, só ids (`data {}`).
+
+**Status de item.** `POST /api/aprendizado/{kind}/{ref}/status` (v0.37) é também o `desfazer` do voto e o caminho das
+lições, telas, vozes e preferências. A habilidade continua 409 `use_skills_route`; o painel a decide pela rota das
+habilidades (`POST /api/skills/{id}/versions/{n}/status`).
+
+**Lições (A7, item 20.8).** `GET /api/aprendizado/licoes/previa?app=&papel=actor|planner&acao=&etapa=` (`app` com 3 a
+200 caracteres) → `{app, papel, acao, etapa, modo, vai_ao_prompt, bloco, tokens: {bloco, licoes}, teto: {tokens,
+itens, caracteres_por_item}, licoes: [{id, texto, tokens, nivel, detalhe, escopo: {app, acao, etapa}, evidencia:
+{for, against, execucoes}, faltam}], cortadas}`.
+
+- `bloco` é o texto EXATO que iria ao prompt, com todas as publicadas que cabem no teto, como se estivessem no braço
+  `with`. Nada é gravado.
+- `vai_ao_prompt` só é `true` com o modo `on`. No `shadow` de fábrica, nada vai.
+- `faltam` é quantas unidades faltam no braço mais curto até o veredito.
+- O verificador não tem papel aqui. As lições entram só em `DecisionRequest.lessons` e `PlanRequest.lessons`, que são
+  contrato interno do provedor, não HTTP ([ia.md §15](ia.md)).
+
+**Telas aprendidas (A8, item 20.9).** `GET /api/aprendizado/export?app=<pacote>&kind=tela` → `text/yaml`: o fragmento
+das telas validadas e publicadas do app, com a proveniência em comentário e já conferido pelo carregador do motor. Outro
+`kind` → 422 `invalid`; telas não ligadas → 503 `not_ready`. Só leitura: a absorção pelo YAML é da curadoria, depois do
+commit implantado.
+
+**Voz e preferências (A9, item 20.10).**
+
+- `GET /api/aprendizado/voz/previa?profile_id=` → `{profile_id, modo, vai_ao_prompt, aprovacoes_editadas, candidatas,
+  publicadas, blocos: [{capability, tokens, texto, pares: [{gerado, editado}]}], mensagem}`. `texto` é o bloco
+  `<exemplos_de_voz origem="pessoa">` que iria ao contexto social daquele perfil e daquela ação. `tokens` conta os
+  pares, não o bloco inteiro (pendência). 404 perfil inexistente.
+- `GET /api/aprendizado/preferencias/sugestoes?run_id=` → `{run_id, modo, sugestoes: [{campo, valor, item_id}]}`: o
+  que PRÉ-PREENCHER nas perguntas de uma execução em `needs_input`. Nunca responde, nunca cria a sucessora, nunca grava.
+  404 execução inexistente. O painel ainda não a consome.
+
+**Estados novos nos conhecimentos nativos (A5, item 20.6).**
+
+- `GET /api/flows`: `status` ganha `candidate` (o fluxo aprendido de execução nasce assim, inerte) e `validated` (com
+  etapa de efeito, espera o dono).
+- `Recipe.status` ganha `validated`: a receita com ação `commit` para ali na promoção em sombra.
+- `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` seguem aceitando só `active`/`disabled` e `active`/`quarantined`, e
+  não gravam a trilha do livro (pendência: o que uma pessoa desliga por ali não veta). A transição com trilha e com o D1
+  é a do livro.
+
+**Aparelhos (itens 21.15 e 21.16).**
+
+- `instance.updated` com a mensagem `<id>: apps de fundo — N desativado(s): …` quando o preparo desativou ou reativou
+  algum pacote. O resumo cita também os já desativados, os ausentes na imagem, as falhas e o `incerto`. Passagem sem
+  mudança não publica, e o `incerto` sozinho (prazo de 12 s estourado) só vai ao log.
+- `InstanceDTO.attention` ganha "Reparo adiado: esta máquina está com N% de CPU; …": o reparo automático esperou a
+  máquina, e nenhum comando nem `instance.remediation` foi emitido.
+
+**Configuração nova** (`config.example.yaml`; os padrões do código são os mesmos):
+
+| Chave | Padrão | O que faz |
+|---|---|---|
+| `aprendizado.licoes.modo` | `"shadow"` | `off` não grava; `shadow` grava e mede sem ir ao prompt; `on` publica sem efeito e leva ao prompt, em prova |
+| `aprendizado.licoes.ator` / `.planejador` | `{tokens: 120, max: 3}` / `{tokens: 150, max: 3}` | teto por papel, sobre todas as elegíveis antes do braço |
+| `aprendizado.licoes.minimo_por_braco` / `maximo_por_braco` / `holdout_publicada` | 8 / 20 / 0.1 | veredito de efeito; controle depois de "ajuda" |
+| `aprendizado.telas` | `{modo: "observe", observacoes: 3, execucoes: 2}` | `observe` grava, minera e valida, e a sessão não consome |
+| `aprendizado.fluxo` | `{concordancias: 1, com_prova: true}` | `com_prova: false` volta ao modo sem D1 (só para a suíte) |
+| `aprendizado.voz.modo` / `aprendizado.preferencias.modo` | `"off"` | a voz é sempre publicada pelo dono; a preferência só sugere |
+| `aprendizado.backlog` | `{minimo_ocorrencias: 3, pessoa_usd: 0.25, aparelho_usd_min: 0, prova_minimo: 10, prova_fator: 0.5}` | ordem e prova da correção |
+| `aprendizado.takeover_gravar` | `false` | reservado: gravar as entradas manuais da tomada (não implementado) |
+| `aprendizado.retencao` | sinais 180 d, feedback 365 d, exposições 120 d, 200 evidências por item, diário 400 d, candidata sem evidência 90 d | purga do livro; publicados, desligados, a trilha e o backlog nunca são purgados |
+| `android.desativar_apps` | 13 apps do Google | lista desativada no preparo; `[]` devolve tudo; por aparelho em `instances.overrides.<id>.desativar_apps` |
+| `instances.remediation_host_cpu_max` | 90 (10–101) | CPU do central a partir da qual o reparo espera 10 min; 101 desliga |
+
+Provas: `simulated` (`backend/tests/test_learning_backlog.py`, `test_learning_rotas_falhas.py`,
+`test_learning_feedback.py`, `test_learning_licoes.py`, `test_prompts_licoes.py`, `test_learning_telas.py`,
+`test_learning_voz.py`, `test_learning_preferencias.py`, `test_d1_fluxos.py`, `test_d1_receitas.py`,
+`test_apps_de_fundo.py`, `test_saude_do_convidado.py`, `test_cobertura_de_rotas.py`); `real` só de leitura
+(`/api/aprendizado`, `/revisar`, `/pendentes`, `/falhas`) e o evento dos apps de fundo, no [relatório
+§23](relatorio-validacao.md); o resto `not_run`.

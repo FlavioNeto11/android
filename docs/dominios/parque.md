@@ -168,18 +168,33 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
 
 ## Reparo automático
 
-`despacho.remediar(s, instance_id, motivo)` (`commands/despacho.py:765`) decide o DEGRAU quando um aparelho com
-`desired_state=online` degrada, contando o histórico de comandos `requested_by='system'` das últimas 24 h
-(`DEGRAUS_DE_RESTART = 2`, `commands/despacho.py:760`):
+`despacho.remediar(s, instance_id, motivo)` (`commands/despacho.py`) decide o DEGRAU quando um aparelho com
+`desired_state=online` degrada. Conta o histórico de comandos `requested_by='system'` das últimas 24 h
+(`DEGRAUS_DE_RESTART = 2`). O reinício por irq (`saude`) e o religar da reconciliação (`reconciliacao`) não contam como
+degrau (ADR-055).
 
+0. **Máquina saturada: espera** (`9348e9c`, item 21.16). Com a CPU desta máquina em
+   `instances.remediation_host_cpu_max` (90%) ou mais, o aparelho local não sobe de degrau. Ganha o aviso "Reparo
+   adiado: esta máquina está com N% de CPU…" e é reconferido em 10 min (`ADIAMENTO_POR_HOSPEDEIRO_S`). O convidado
+   "degradou" porque a máquina não tem CPU, e reiniciar é o momento mais pesado dele. Foi o que levou o android-01 ao
+   `reset` em 29/09 ([K-058](../conhecimento/aprendizados.md#k-058)). Aparelho de worker não entra nessa conta; 101
+   desliga (a suíte usa 101).
 1. 1º e 2º degrau: `restart`.
-2. 3º degrau: `reset` (apaga os dados do AVD e sobe limpo) — só se o aparelho declarar o verbo e não for a loja.
+2. 3º degrau:
+   - **com conta vinculada:** "Precisa do dono" + `stop` (parar não apaga nada; o estado desejado vira `stopped`, e a
+     escada não volta sozinha);
+   - **com conta travada logada (quarentena):** "Precisa do dono" + `stop` direto, sem os `restart`;
+   - **sem conta nenhuma:** `reset` (apaga os dados do AVD e sobe limpo), só se o aparelho declarar o verbo e não for a
+     loja.
+
+   Nunca `reset` automático em aparelho com conta ([ADR-055](../decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta)).
 3. Escada esgotada: o aparelho ganha `attention` "precisa de gente" e uma nova tentativa (`restart`) é agendada
    em até 6 h (`RETENTATIVA_APOS_ESCADA_S`) — nunca fica esquecido, mas também nunca repete sozinho fora da
    janela.
 
 Cada degrau emite `instance.remediation` (evento, não efêmero) com `{degrau, verb, command_id, motivo}` — o que
-faz o relatório de uso e o painel não confundirem reparo automático com comando manual.
+faz o relatório de uso e o painel não confundirem reparo automático com comando manual. O adiamento por máquina
+saturada não emite nada além do aviso no cartão.
 
 ### Saúde do convidado: pressão e interrupção acumulada (ADR-053)
 
@@ -194,6 +209,36 @@ acima de 15% em 3 sondas seguidas (`IRQ_OCIOSO_MAX`, `IRQ_SONDAS`), a plataforma
 se não resolver, fica só o aviso "Convidado com interrupções acumuladas". É um caminho à parte da escada acima: nunca
 chega a `reset`, que apagaria a conta real logada. Medido em 28/09: irq ocioso de 21% (68 h no ar) e 90% (44 h) voltou a
 ~2% depois do `restart` ([K-050](../conhecimento/aprendizados.md), [relatório §21](../relatorio-validacao.md)).
+Desde 21.13 cada fração vira `measurements(kind='irq')` (série em `GET /api/desempenho?irq_horas=`). A causa do
+acúmulo segue aberta (item 21.15): em 29/09 o android-06, com o Instagram em primeiro plano, foi de ~4% (2,7 h no ar)
+a ~8% (6,4 h), e o android-04, no launcher, ficou em 2–3% (`data\logs\irq_convidados.csv`).
+
+### Apps de segundo plano (item 21.15)
+
+O preparo do aparelho da automação (`Adb.prepare_for_automation`, no boot, no wake e na readoção) desativa com `pm
+disable-user --user 0` os apps do Google que sobem sozinhos e não servem à automação (`devices/apps_de_fundo.py`,
+`e2b54a0` + `b5036ec`; [K-059](../conhecimento/aprendizados.md#k-059)). Num convidado de 2 GB eles tomavam cerca de
+200 MB e levavam à compactação de memória.
+
+- **A lista** é `android.desativar_apps`, com 13 pacotes de padrão (app Google, Android System Intelligence,
+  Mensagens, YouTube, YouTube Music, Gmail, Bem-estar digital, Fotos, Maps, Agenda, Drive, Google TV, Meet). Por
+  aparelho: `instances.overrides.<id>.desativar_apps`. Pacote que a imagem não tem é ignorado.
+- **Protegidos**, recusados na carga da configuração: Play Store, GMS, GSF, WebView, teclado, launcher, SystemUI,
+  Chrome, `io.appium.*`, Configurações, shell, provedores e instalador. Também o app alvo: o declarado em
+  `app/conhecimento/apps/` (o Instagram), o de `apps` e `contas.sessao`. O do catálogo do banco sai sozinho, por
+  aparelho.
+- **Idempotente e reversível.** Uma leitura primeiro, e `pm` só no que muda. O marcador
+  `/data/local/tmp/central-apps-desativados.txt` guarda o que o preparo desativou. Tirado da lista, o pacote volta com
+  `pm enable`; `[]` devolve tudo. O que a pessoa desativou à mão fora da lista fica como está.
+- **Dono único:** o central, inclusive nos aparelhos dos workers, que ele prepara pelo túnel. O agente do worker não
+  mexe em app. A loja recebe `[]`; o celular físico não é tocado.
+- **Sem derrubar o portão:** um `AdbTimeout` nesse passo (prazo de 12 s) vira `incerto` no log e não invalida a
+  prontidão (K-031). O preparo seguinte tenta de novo.
+- **Registro:** desativar ou reativar algo vira evento `instance.updated` "apps de fundo — N desativado(s): …".
+
+Real, 29/09 (depois do deploy de `f497075`): 11 desativados no android-01 e no android-06, nenhum rodando depois;
+`MemAvailable` de 670–960 MB para 974–1054 MB; "Verificar conta" do andre no android-06 ok
+([relatório §23](../relatorio-validacao.md)).
 
 ## Capacidades — implementação e validação
 

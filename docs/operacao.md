@@ -272,6 +272,8 @@ isso). Pontos que já causaram incidente:
 | `aceites-remotos.ps1 -Yes` | P | Despacha comandos reais no parque |
 | `test-restart-recovery.ps1` | P | Reinicia o backend com fila carregada, real |
 | `personas_criar.py` / `personas_completar.py` | P | Escreve personas no banco do ambiente central |
+| `aprendizado-backlog.py` | S | Só GET em `/api/aprendizado/falhas?formato=md`: grava o "o que mais falha" em `data/aprendizado/backlog-AAAA-MM-DD.md` e imprime o topo; `--retroativo` inclui o legado classificado na leitura. Sem IA; o `API_TOKEN` nunca é impresso (ADR-054) |
+| `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
 
 ## 13. Incidentes conhecidos → sintoma → causa → ação
 
@@ -286,6 +288,7 @@ isso). Pontos que já causaram incidente:
 | `decide` volta a usar Anthropic mesmo com Ollama configurado | Serviço Ollama fora do ar no host (sobe por login de usuário, não é tarefa de boot) | Conferir se o Ollama está no ar; sem ele, o fallback explícito assume — comportamento esperado, não bug |
 | Relógio do central com segundos de desvio; `w32time` com o evento 47 "No valid response" | A rede bloqueia NTP com porta de ORIGEM 123, a do `w32time` | `scripts/sincronizar-relogio.ps1` e a tarefa `farm-relogio`; conferir `data\logs\relogio.log` (K-055) |
 | Aposentar um aparelho no Windows falha com `avd_nao_apagado` | Arquivo somente-leitura que o emulador deixa no AVD (`pstore.bin`) | Corrigido em `2511b12` (`avd.py::_apagar_arvore`); noutro caso, procurar o atributo antes de suspeitar de processo segurando o arquivo (K-056) |
+| Aparelho local levado a `restart` e `reset` pela escada de reparo enquanto a máquina central estava saturada (29/09: a sessão do lucas apagada no android-01) | Suíte inteira, Docker com testes em PostgreSQL e boot de outro aparelho ao mesmo tempo: os convidados "não ficam prontos" por falta de CPU do host, não por doença | Desde `9348e9c`, com a CPU ≥ `instances.remediation_host_cpu_max` (90%) o reparo espera 10 min ("Reparo adiado" no cartão); desde `c359f65`, nunca `reset` com conta. Conduta: um trabalho pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL (K-058) |
 
 ## 14. Contêineres: o central em desenvolvimento e validação
 

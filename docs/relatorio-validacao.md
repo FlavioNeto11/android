@@ -1625,3 +1625,115 @@ janela efetiva
   e a guarda de cartão num aparelho real; a aprovação acompanhando a etapa revisada num CREATE_COMMENT real; a promoção
   de uma receita candidata no central (várias execuções da mesma etapa).
 - A causa do acúmulo de irq (21.15).
+
+## 23. Aprendizado contínuo (A2–A9), apps de segundo plano e o incidente do reset do android-01 (29/09/2026)
+
+**Origem.** A Fase 20 do plano-100: o pedido do dono de 28/09 para o sistema aprender o tempo todo, com D1 e D2 adotadas
+em 29/09 (ADR-054). A fundação (A1) foi implantada com `c359f65` (§22). Esta seção cobre os pacotes A2–A9, mais os
+apps de segundo plano (item 21.15), a espera do reparo com a máquina saturada (21.16) e o incidente que a motivou.
+Máquina: o central WIN-7S2UASNLFOP.
+
+**Pacotes.** Cada um num branch próprio, com revisão adversarial. Seis foram barrados pelo revisor e ajustados. O commit
+citado é a ponta de cada branch.
+
+| Pacote (item) | Commits | O que mudou | Revisão | Teste |
+|---|---|---|---|---|
+| A2 costuras (20.3) | `fa7349e` | `taskqueue/costuras.py` tipado e no-op por padrão; `failure_kind` gravado em `finish_attempt`, na reconciliação (`interrompida`) e na etapa; `ao_fechar_tentativa`; lições pedidas uma vez por tentativa e por planejamento (`licoes_para`); sinais `confirmou_a_mao`, `repetiu_item`, `abandonou_item`, `repetiu_execucao`, `respondeu_pergunta` (o campo e o sha256, nunca o valor) e `tomou_controle` (só ids) | aprovado de primeira; 14 mutações, todas mortas | `test_costuras_de_aprendizado.py`, `test_falha_classificada_gravada.py` |
+| A3 o que mais falha (20.4) | `2adae8c`, `a5d2e97` | `GET /api/aprendizado/falhas` (JSON e md), `GET`/`PATCH /api/aprendizado/backlog/{id}`, prova da correção, propostas, `scripts/aprendizado-backlog.py` | barrado: a reincidência depois de `fixed` era medida desde a prova, numa janela que só crescia (a falha que volta nunca reabria a linha); agora nas últimas 2 × `prova_minimo` tentativas elegíveis | `test_learning_backlog.py`, `test_learning_rotas_falhas.py`, `scripts/tests/test_aprendizado_backlog.py` |
+| A4 feedback D2 (20.5) | `9c40288`, `faf397e` | `POST`/`GET /api/runs/{id}/feedback`, `GET /api/aprendizado/sinais`; "deu errado" por navegação rebaixa o que o item usou e aprendeu | barrado: o `desfazer` publicava o que era candidato ou validado; agora só existe para o que estava publicado | `test_learning_feedback.py` |
+| A5 D1 nos nativos (20.6) | `48783e8`, `aab27b8` | fluxo aprendido nasce `candidate` e publica por concordância em sombra; receita com commit para em `validated`; primeiro escritor de `skill_validation_results` | barrado: a execução de habilidade com etapa confirmada à mão virava prova `passed`; agora `uncertain` | `test_d1_fluxos.py`, `test_d1_receitas.py`, `test_learning_nativos.py` |
+| A6 painel (20.7) | `c3c3760`, `86d9223` | página Aprendizado (4 abas), botão D2 em cada item e na execução, contagem na barra do topo | barrado: a habilidade validada ficava sem saída na fila; agora se decide pela rota das habilidades | vitest `features/aprendizado/*`, `FeedbackItem.test.tsx`, `TopBar.test.tsx` |
+| A7 lições (20.8) | `9c016bb`, `ebfc643`, `3cd1e9f` | lições por contraste com modelos fechados, braço de controle, veredito durável, aposentadoria, `GET /api/aprendizado/licoes/previa`, o bloco `<licoes_medidas>` no texto de usuário do ator e do planejador | barrado por dois motivos: a confirmação à mão contava como sucesso na medida (agora `unverified`), e a etapa livre de sessão ou desafio virava lição (agora recusada pela chave) | `test_learning_licoes.py`, `test_learning_efeito.py`, `test_prompts_licoes.py` |
+| A8 telas aprendidas (20.9) | `43600f1`, `476c3be` | coleta `tela_vista`, candidata com `ids_todos`, prova local, conflito, `GET /api/aprendizado/export`, `scripts/aprendizado-telas.py` | aprovado de primeira; o revisor achou 9 mutações sobreviventes (lacunas de teste, sem vazar segredo) | `test_learning_telas.py` (37) |
+| A9 voz e preferências (20.10) | `9607f4d`, `0e971b9`, `0663738` | voz pelas aprovações editadas (sempre publicada pelo dono), `GET /api/aprendizado/voz/previa`; preferências como sugestão, `GET /api/aprendizado/preferencias/sugestoes` | barrado: a preferência decidia sozinha numa versão nova da habilidade; agora só nas versões conferidas | `test_learning_voz.py`, `test_learning_preferencias.py` |
+| apps de segundo plano (21.15) | `e2b54a0`, `b5036ec` | `android.desativar_apps`: o preparo desativa 13 apps do Google (reversível, idempotente, protegidos recusados na carga) | aprovado de primeira; 12 mutações, todas mortas | `test_apps_de_fundo.py` |
+| reparo espera (21.16) | `9348e9c` | com a CPU da máquina ≥ `instances.remediation_host_cpu_max` (90), o reparo adia 10 min em vez de subir de degrau | — (commit direto na `main` e no ar às ~04:17Z, depois do incidente) | `test_saude_do_convidado.py::test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir_de_degrau` |
+
+**Integração e implantação (`real`).** `claude/rodada-aprendizado` → `main` `f497075`: os nove merges e o ajuste de tipo
+do lease pendente em `devices/manager.py` (o pedido de controle perdia o estreitamento de tipo; achado da revisão do
+A2). Implantado em 29/09 ~07:38 UTC, sem migração nova (a 055 já estava aplicada). `/api/health` `ok`, `problems: []`.
+O agente do notebook foi para `0.1.0+f497075`, porque `config.py` e `devices/adb.py` estão no manifesto dele. Nota de
+convenção aceita como dívida: `devices/manager.py` passou a importar `taskqueue.costuras`, o primeiro import
+`devices` → `taskqueue`; não há ciclo, e as catracas passam.
+
+**Prova depois do deploy (`real`, 29/09, só leitura, sem custo e sem efeito externo).**
+
+- **Livro:** `GET /api/aprendizado` com 125 itens, `/revisar` com 39, `/pendentes` com 0.
+- **O que mais falha** (A3), `GET /api/aprendizado/falhas` às 07:49Z, com os padrões (14 dias, legado classificado na
+  leitura):
+  - 35 grupos, 19 acima do mínimo de 3 ocorrências, cada um com camada e "onde alterar"; `outro` = 10 de 221
+    tentativas com falha (4,5%); 25 propostas; nenhum sinal de pessoa desmentindo o verificador;
+  - todas as ocorrências são retroativas: nenhuma tentativa da janela tinha `failure_kind` gravado pela execução;
+  - os maiores grupos:
+
+    | Grupo | Ocorrências | Camada | Onde alterar |
+    |---|---|---|---|
+    | QA Messenger, etapa livre, `interrompida` | 51 | execução | `scheduler._reconciliar` |
+    | Instagram, OPEN_PROFILE, `pos_condicao_nao_comprovada` | 36 | verificação | `executor._postcondition_holds`, `VERIFIER_SYSTEM` |
+    | QA Messenger, etapa livre, `pos_condicao_nao_comprovada` | 25 | verificação | idem |
+    | Instagram, SEND_MESSAGE, `efeito_nao_comprovado` | 8 | verificação | idem |
+    | Instagram, OPEN_PROFILE, `prazo_da_etapa` | 5 | aparelho | `devices/manager.py` |
+    | Instagram, OPEN_POST, `prazo_da_etapa` | 4 | aparelho | `devices/manager.py` |
+    | Instagram, OPEN_POST, `ciclo_sem_progresso` | 3 | `ia_ator` | `planning/prompts.py`, lições |
+    | Instagram, CREATE_COMMENT, `efeito_alvo_errado` | 3 | `ia_ator` | `planning/prompts.py`, lições |
+
+- **Apps de segundo plano** ([K-059](conhecimento/aprendizados.md#k-059)):
+  - evento "apps de fundo — 11 desativado(s)" às 07:38:57Z (android-01) e às 07:39:03Z (android-06): o app Google
+    (`googlequicksearchbox`), `com.google.android.as`, `apps.messaging`, `youtube`, `apps.youtube.music`, `gm`,
+    `wellbeing`, `photos`, `maps`, `calendar` e `docs`;
+  - nenhum deles rodando depois;
+  - `MemAvailable` do android-06: 974 MB (antes, 670–830 MB); do android-01: 1054 MB (antes, 730–960 MB);
+  - "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @andre.carvalho9543 (`c-20260929074028-e124bc`):
+    o Instagram segue ok sem os apps.
+- **Lições (A7) e telas aprendidas (A8)** rodam nos modos de fábrica (`shadow` e `observe`). A prova delas depende de
+  execuções reais acumularem dados (`not_run`, abaixo).
+
+**Incidente: o reset do android-01 (`real`, 29/09; [K-058](conhecimento/aprendizados.md#k-058), ADR-055).**
+
+- 02:05:31Z: a escada de reparo pediu `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu").
+- 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo).
+- 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z). Apagou o
+  Instagram e a sessão do lucas.almeida9484, uma das três contas vivas.
+- Fonte: os eventos `instance.remediation` e `command.updated` em `data\logs\backend.log.2026-09-28` (hora local,
+  -03:00) e `GET /api/commands/c-20260929021534-6d15cd`.
+- Causa assumida: a máquina central estava saturada pelo trabalho da IDE em paralelo — a suíte inteira, o Docker Desktop
+  com os testes em PostgreSQL e o boot do android-17 do experimento de ANR. Os convidados chegaram a load 40–57 em
+  2 vCPU (eventos das 01:56 às 02:00Z). O backend estava em `7a02491` desde 01:42Z, e ali o 3º degrau com conta
+  vinculada era o `reset`.
+- Depois: nenhuma tentativa de login do lucas (a conta não foi tocada); o android-01 segue sem o app.
+- Proteções, na ordem em que entraram no ar: `c359f65` às 03:55Z (nunca `reset` automático com conta vinculada ou
+  travada); `9348e9c` às ~04:17Z (o reparo espera a máquina aliviar; `backend.log`: "este servidor roda
+  0.1.0+9348e9c" às 04:18:21Z).
+- Conduta da IDE no central: Docker e WSL desligados depois dos testes em PostgreSQL (mexer no WSL continua exigindo
+  autorização em chat); processos de teste em prioridade ociosa, postos assim por um vigia da sessão; um trabalho
+  pesado por vez.
+- Decisão do dono pendente: quando e como reativar o lucas. Recomendação: um único login, acompanhado por ele, pelo
+  Conectar do painel, num horário calmo da máquina.
+
+**Coleta de irq (`real`, em andamento).** `data\logs\irq_convidados.csv`, a cada 10 min, desde 28/09 21:26 (-03:00). No
+android-06, com o Instagram em primeiro plano, o irq ocioso subiu de ~4% (2,7 h no ar) para ~8% (6,4 h). No
+android-04, no launcher, ficou em 2–3%. A causa não está provada (21.15). A medida persistida (21.13,
+`GET /api/desempenho?irq_horas=`) dá a série no painel.
+
+**`simulated`.**
+
+- Cada pacote: os testes da tabela, que falhavam antes da correção ou sob as mutações dos revisores (A2: 14 mortas;
+  apps de segundo plano: 12 mortas; A4: 11 de 13; A8: 4 de 13, com as sobreviventes listadas como pendência).
+- Integração `f497075`, em SQLite: os 17 arquivos de teste alterados deram 263 ok. A suíte inteira do backend deu
+  3409 ok e 1 falha de ambiente (`test_backup`, que só passa no checkout com `config.yaml`). mypy estrito sem erro em
+  164 arquivos. Frontend: typecheck ok e 711 testes ok.
+
+**`not_run`.**
+
+- A suíte em PostgreSQL para o SQL novo de A2–A9. Nenhum revisor a rodou, e o PostgreSQL da §22 é anterior a estes
+  pacotes.
+- `failure_kind` e `tomou_controle` gravados por uma execução real; o relatório de 07:49Z ainda era todo retroativo.
+- Lições: a exposição no prompt (modo `on`), o veredito de efeito (8 unidades por braço) e a aposentadoria.
+- Telas: o deixa-um-fora sobre observações reais, depois de 24 a 48 h em `observe`
+  (`scripts/aprendizado-telas.py --dry-run --sem-regra thread --sem-regra feed`); o export que carrega; o consumo real
+  da tela de casa, que só acontece quando um app mudar.
+- A voz publicada numa conta real e a preferência pré-preenchendo uma pergunta real.
+- O voto numa execução real, com rebaixamento e reativação; um fluxo sem efeito publicado por concordância; um fluxo e
+  uma receita com efeito esperando o dono; a prova de correção do primeiro item do backlog.
+- O adiamento do reparo num episódio real de saturação.
+- A causa do acúmulo de irq (21.15).

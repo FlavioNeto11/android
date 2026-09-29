@@ -1,36 +1,46 @@
 # Estado atual — handoff
 
-**Revisado em 29/09/2026, na rodada de proteção de contas e fundação do aprendizado (ADR-054, ADR-055).** Atualize este
-arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
-o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
+**Revisado em 29/09/2026 (manhã), depois do deploy de `f497075`: aprendizado contínuo A2–A9, apps de segundo plano e a
+espera do reparo (ADR-054, ADR-055).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e fundação do aprendizado (ADR-054, Fase 20).**
-  - **Implantado:** `e9da86e` (reinício de saúde e religar da reconciliação fora da escada de reparo) e a leva aberta
-    `7a02491` (as pendências dos revisores do ADR-053; agente do notebook em `0.1.0+7a02491`); o relógio do host pela
-    tarefa `farm-relogio` (+0,004 s, K-055). Proteções operacionais da IDE em 29/09: DM do grupo "Operação" com
-    aprovação e os limites do grupo "Recuperação", o `CREATE_COMMENT` autônomo do andre removido e o android-04 (felipe
-    em "Confirm you're human") desligado.
-  - **A implantar:** a integração `c359f65` + `2511b12` — detector de conta travada, quarentena do aparelho (migração
-    054, com o marcador do android-04), uma conta por alvo e DM fria com aprovação, disjuntor e `review` da credencial,
-    verificador de DM com o print, e a fundação do aprendizado (migração 055, `GET /api/aprendizado`). Deploy com
-    `deploy.ps1 -Ensaio` primeiro e o frontend junto (`npm run build`: o `confirm_done` com efeito passa a exigir
-    `evidence_id`). Depois: conferir `/api/health` (`locked_account_on_device` só com o android-04 ligado), `GET
-    /api/aprendizado/revisar` (22 receitas e 17 fluxos) e o `account_label` derivado. Suíte inteira: [relatório
-    §22](relatorio-validacao.md).
-  - **Decisões do dono pendentes:** trocar as senhas das 3 contas vivas e apagar o transcrito local de 18/09 que as
-    guarda em texto puro
-    (`C:\Users\Administrator\.claude\projects\C--git-android\1a884c21-6b61-42ac-8c11-dfd781e97346.jsonl`, fora do
-    repositório); remover ou não do cofre as credenciais das 5 bloqueadas; as escolhas do pacote frota (ADR-055). A
-    divergência entre a "decisão de 23/09" (reset como 3º degrau) e a invariante do CLAUDE.md foi resolvida para o lado
-    seguro: nunca reset automático com conta vinculada ou travada.
+- **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e aprendizado contínuo (ADR-054, Fase 20): IMPLANTADA.**
+  - **No ar:** `f497075` desde 29/09 ~07:38Z (sem migração nova; `/api/health` `ok`, `problems: []`; agente do
+    notebook em `0.1.0+f497075`). Antes: `9348e9c` às ~04:17Z (o reparo espera a máquina aliviar); `c359f65` +
+    `2511b12` às ~03:55Z (migrações 054 e 055; detector de conta travada, quarentena, uma conta por alvo, disjuntor,
+    verificador de DM, fundação do aprendizado); a leva aberta `7a02491` e `e9da86e`.
+  - **Aprendizado (20.3–20.10):** costuras e `failure_kind` gravado, "o que mais falha" com backlog, botão "Deu certo /
+    Deu errado", D1 no fluxo e na receita, página Aprendizado, lições medidas (`shadow`), telas aprendidas (`observe`),
+    voz e preferências (`off`). Real só de leitura: livro com 125 itens, `/revisar` 39, `/pendentes` 0; "o que mais
+    falha" com 19 grupos acima do mínimo, todos do legado classificado na leitura. Lições, telas, voz e preferências
+    reais: `not_run` até as execuções acumularem dados. Domínio: [dominios/aprendizado.md](dominios/aprendizado.md);
+    provas: [relatório §23](relatorio-validacao.md).
+  - **Parque:** apps do Google desativados no preparo (21.15, K-059; `MemAvailable` de 670–960 para 974–1054 MB) e o
+    reparo que espera a máquina aliviar (21.16, `9348e9c`, K-058).
+  - **Incidente (29/09, 02:05–02:15Z):** com a máquina saturada pela IDE, a escada de reparo do central (ainda em
+    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão do lucas.almeida9484
+    (`c-20260929021534-6d15cd`). A conta não foi tocada desde então; o android-01 está sem o app. Conduta: um trabalho
+    pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL.
+  - **Decisões do dono pendentes:**
+    - quando e como reativar o lucas. Recomendação: um único login acompanhado por ele, pelo Conectar do painel, num
+      horário calmo da máquina;
+    - trocar as senhas das 3 contas vivas e apagar o transcrito local de 18/09 que as guarda em texto puro
+      (`C:\Users\Administrator\.claude\projects\C--git-android\1a884c21-6b61-42ac-8c11-dfd781e97346.jsonl`, fora do
+      repositório);
+    - remover ou não do cofre as credenciais das 5 contas bloqueadas;
+    - as escolhas do pacote frota (ADR-055).
   - **Atenção:** antes de qualquer experimento num aparelho com Instagram, screencap e conta logada; `account_label` e
     `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Não mirar de novo a mesma pessoa com mais de
-    uma conta (K-057).
-  - **Próxima ação:** o `aplicar` das Fases 20 e 21 (estado do plano), o deploy da integração e, na Fase 20, o A2
-    (costuras). Seguem abertos a causa do acúmulo de irq (21.15; coleta em `data\logs\irq_convidados.csv`) e as
-    pendências dos revisores listadas no ADR-055.
+    uma conta (K-057). Um trabalho pesado por vez no central (K-058).
+  - **Próxima ação:** o `aplicar` das Fases 20 e 21 (estado do plano; o 21.16 é novo). Depois, como propostas ao dono:
+    o 18.9 (nomes históricos: a tabela `instagram_profiles` e as rotas `/api/instagram/…`) e o 12.3 (apps novos
+    operando de verdade: a persona com mais de um app com login gerenciado; qual app vem primeiro é do dono). Seguem
+    abertos: a causa do acúmulo de irq (21.15; coleta em `data\logs\irq_convidados.csv`), as pendências dos
+    revisores do ADR-055 e as de A2–A9 ([dominios/aprendizado.md](dominios/aprendizado.md#pendências-conhecidas)). As
+    que tocam invariante vêm primeiro: a trilha em `PUT /api/flows` e `PUT /api/recipes`, o texto de `_learn_flow` para
+    o candidato e o escritor de `failure_screen`.
 
 - **Falhas reiteradas do Instagram (ADR-053, Fase 19): IMPLANTADO em 28/09 (`93967d0` + `91f1aab`, central e agente do
   notebook).** Diagnóstico medido de e31953 e 02ee9e (a IA ocupou 4,5% do tempo; o resto era o convidado saturado e o
@@ -50,8 +60,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   ([relatório §20](relatorio-validacao.md)); login digitando senha e volta ao estado conhecido reais: `not_run`. As fatias 2–4 tiraram o Instagram do código: ele é
   a pasta `backend/app/conhecimento/apps/com.instagram.android/`, descoberta pelo registro; `integrations/instagram/`
   e `planning/catalog/instagram.py` não existem mais. O bloco `instagram:` do `config.yaml` virou `contas:`.
-  Pendências: a fatia 5 (aprendizado) e o 12.3 seguem com o dono; os nomes históricos (tabela e rotas) são o 18.9
-  ([design](design/conhecimento-de-app.md)).
+  Pendências: a fatia 5 virou o 20.9 (telas aprendidas, no ar com `f497075`, em `observe`); o 12.3 segue com o
+  dono; os nomes históricos (tabela e rotas) são o 18.9 ([design](design/conhecimento-de-app.md)).
 
 - **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
   modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").

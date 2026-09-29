@@ -56,7 +56,7 @@ Um pacote de conhecimento por app (arquivos de dado), lido por motores do núcle
 | 2 | Catálogo de ações como dado (`catalogo.yaml`, carregador, versão de contrato) e registro que descobre os pacotes | 18.5 | **feito** (`simulated`) |
 | 3 | Fluxo de sessão declarativo: o login do Instagram vira `sessao.yaml`, e o motor passa a ser um só (`SessaoDeclarada`) | 18.6 | **feito** (`simulated`) |
 | 4 | App âncora do perfil pelo registro, bloco `contas:` no `config.yaml`, links de perfil como dado; texto "instagram" no código com catraca | 18.7 | **feito** (`simulated`) |
-| 5 | Aprendizado de telas e ações como candidatas validadas | 18.8 | proposto |
+| 5 | Aprendizado de telas e ações como candidatas validadas | 18.8 → 20.9 | **feito** (`43600f1` + `476c3be`, no ar com `f497075`; `simulated`, em `observe` até a prova real; §7) |
 | 6 | Persona com mais de um app com login gerenciado | 12.3 | decisão do dono |
 
 Cada fatia amplia a catraca: o que sai do Python não pode voltar (`tests/test_apps_fora_do_nucleo.py`:
@@ -119,3 +119,26 @@ modelo nos prompts e a tabela de blocos que saíram do `config.yaml`.
 
 **A prova de "zero Python por app".** `tests/test_pacote_declarado.py`: um cliente de e-mail declarado só em quatro
 arquivos entra no registro com catálogo, leitura de tela e login, sem uma linha de Python e sem tocar no registro.
+
+## 7. Fatia 5, como ficou (item 20.9, pacote A8 do ADR-054)
+
+A fatia 5 virou parte do aprendizado contínuo ([ADR-054](../decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha),
+decisão 6). O ciclo inteiro está em [dominios/aprendizado.md](../dominios/aprendizado.md#telas-aprendidas-a8-fatia-5).
+O que ela muda no conhecimento de app:
+
+- **A tela aprendida é dado de instalação, não do repositório.** Mora em `learning_items` (`kind='tela'`), com a
+  evidência e a trilha; o `telas.yaml` commitado continua a base curada. A ponte é
+  `GET /api/aprendizado/export?kind=tela&app=<pacote>`: o fragmento YAML sai conferido pelo mesmo carregador
+  (`automation/conhecimento_de_telas.py`), para uma sessão de desenvolvimento commitar. Quando o YAML implantado
+  reconhece todas as amostras da aprendida, ela se aposenta como `absorvida:<commit>`.
+- **Na sessão**, o motor consulta um `ConhecimentoDeTelas` unido (`com_aprendidas`): as regras declaradas primeiro e,
+  depois, as aprendidas publicadas, só como `autenticada`, exigindo todos os seus ids (`ids_todos`) e puladas em tela
+  sensível, com senha ou com desafio. A conta continua lida só pela tela de perfil declarada. O detector de conta
+  travada roda antes de qualquer regra.
+- **Ação nova não entra no catálogo pelo banco.** Vira a proposta `acao_de_catalogo` no backlog "o que mais falha"
+  (A3), decisão de pessoa: adoção como habilidade ou YAML commitado.
+- **De fábrica, `aprendizado.telas.modo: "observe"`:** grava, minera e valida, e a sessão não consome. O consumo real
+  da tela de casa aprendida só acontece quando a tela de casa de um app mudar (`not_run`).
+
+Desafio, 2FA e senha continuam fora do alcance do aprendizado: a coleta pula a árvore protegida, e a tela aprendida
+nunca é de desafio nem de login.

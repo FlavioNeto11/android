@@ -54,7 +54,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
   Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
-- **Cabeçalho (duas faixas).** Em cima, a marca, as sete seções e, à direita, o chip do modelo de IA (abre os modelos
+- **Cabeçalho (duas faixas).** Em cima, a marca, as oito seções (Aprendizado entrou em 29/09, com a contagem de "Para
+  aprovar") e, à direita, o chip do modelo de IA (abre os modelos
   por função), o aviso de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque: a saúde
   do ambiente (abre os problemas) e os indicadores numa linha só — aparelhos online/cadastrados (com as vagas do
   rodízio), execuções ativas, bloqueadas, CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
@@ -102,6 +103,25 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   criado pela plataforma ([ADR-045](decisoes.md#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois)).
 - **Aprovar ação.** Uma ação de política "com aprovação" fica pendente até alguém decidir (aprovar/rejeitar) pela
   aba Aprovações do perfil.
+- **Aprendizado** ([ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
+  [domínio](dominios/aprendizado.md); `frontend/src/features/aprendizado/`). O que o sistema aprendeu com as execuções e
+  com quem monitora. Sem efeito externo e com repetição, ele publica sozinho; com efeito ou texto de pessoa, espera o
+  dono; rebaixar é sempre automático. A seção tem quatro abas:
+  - **Para aprovar:** a fila do D1 (receita com commit, fluxo com efeito, texto de pessoa, habilidade validada), com a
+    evidência ao lado, motivo obrigatório e aprovação em lote ("Selecionar todos", "Aprovar selecionados"). A
+    habilidade se decide ali pela rota das habilidades. Embaixo, **Revisar**: receitas e fluxos ativos com efeito,
+    anteriores ao D1, que só se rebaixam;
+  - **Aprendido:** o catálogo unificado (receitas, fluxos, habilidades, memória em contagem, telas, lições, vozes,
+    preferências), por tipo e estado, com desligar, aposentar e reativar;
+  - **O que mais falha:** grupos por app, ação, tipo de falha e tela, com US$, minutos e intervenções separados, a
+    camada, "onde alterar" e o estado no backlog. O falso positivo do verificador fica no topo;
+  - **Sinais:** os votos e os gestos que viram evidência.
+
+  Na execução, cada objetivo (aba "Por aparelho") e a execução inteira (aba "Relatório") têm o botão **"Deu certo /
+  Deu errado"**: sem modal e sem pergunta, com o motivo em linha. "Deu errado" por navegação desliga o fluxo e as
+  receitas envolvidos, e "Reativar" aparece quando o que foi desligado estava publicado. Nota com cara de senha é
+  recusada. "Aprendizado desta execução", no Relatório, mostra os votos e os sinais. Prova: `simulated` (vitest de
+  `features/aprendizado/` e `FeedbackItem.test.tsx`); conferência visual no navegador: `not_run`.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade

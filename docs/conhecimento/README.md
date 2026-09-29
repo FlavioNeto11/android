@@ -112,6 +112,8 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-055 | NTP bloqueado com porta de origem 123: `w32time` não sincroniza, `stripchart` sim (`farm-relogio`) | operação/host | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-055` | 21.7, ADR-019 |
 | K-056 | Aposentar no Windows: arquivo somente-leitura do emulador (`pstore.bin`) faz o `rmtree` falhar | parque/provisionamento | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-056` | 21.9 |
 | K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios: conduta, não disfarce | perfis/Instagram/política | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055 |
+| K-058 | Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez | parque/operação/processo | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-058` | 21.16, ADR-055 |
+| K-059 | Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável | parque/emuladores | erro | 29/09 | vigente (a relação com o irq segue aberta) | `docs/conhecimento/aprendizados.md#k-059` | 21.15, K-050 |
 
 ## Como localizar
 

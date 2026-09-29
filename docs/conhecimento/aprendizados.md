@@ -1297,3 +1297,75 @@ emulador ou rede, proxy): é evasão, e é proibida.
 
 **Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
 uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias.
+
+### K-058 — Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez
+
+**Data:** 29/09/2026 · **Área:** parque, operação, processo (ADR-055)
+
+**Sintoma.** Em 29/09, às 02:05:31Z, a escada de reparo pediu `restart` do android-01 (2º degrau; "o `system_server`
+caiu"). Às 02:10:14Z ele falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo). Às
+02:15:34Z veio o `reset` (3º degrau, `c-20260929021534-6d15cd`, `requested_by` `system`), que apagou o Instagram e a
+sessão do lucas.almeida9484, uma das três contas vivas.
+
+**Causa.** Assumida pela coincidência medida: a máquina central estava saturada pelo trabalho da própria IDE em
+paralelo — a suíte inteira do backend, o Docker Desktop com os testes em PostgreSQL e o boot do android-17 do
+experimento de ANR (K-054). Os convidados chegaram a load 40–57 em 2 vCPU (eventos das 01:56 às 02:00Z). A sonda de
+saúde não distingue convidado doente de hospedeiro sem CPU: o Android "não fica pronto" nos dois casos, e a escada
+sobe de degrau. Reiniciar é o momento mais pesado de um convidado, então cada degrau piorava a máquina. O backend
+estava em `7a02491` desde 01:42Z (`data\logs\backend.log.2026-09-28`, em hora local), e ali o 3º degrau com conta
+vinculada ainda era o `reset`.
+
+**O que funcionou.**
+
+- `c359f65` (no ar às 03:55Z): nunca `reset` automático em aparelho com conta vinculada ou travada (ADR-055, item 21.6).
+- `9348e9c` (no ar desde 04:17Z): com a CPU da máquina em `instances.remediation_host_cpu_max` (90%) ou mais,
+  o reparo de aparelho local espera 10 min, com o aviso "Reparo adiado" no cartão, em vez de subir de degrau. A suíte
+  usa 101 (desliga). Item 21.16.
+- Conduta no central: um trabalho pesado por vez (suíte inteira, suíte em PostgreSQL, boot de aparelho de experimento);
+  processos de teste em prioridade ociosa (um vigia da sessão os põe assim); Docker Desktop e WSL só enquanto a suíte em
+  PostgreSQL roda, desligados depois. Mexer no WSL continua exigindo autorização em chat (CLAUDE.md): isto não é
+  permissão permanente.
+
+**Aplicabilidade.** Vigente. O central é, ao mesmo tempo, a bancada da IDE e o hospedeiro do parque com contas reais.
+Antes de trabalho pesado nele, olhe a CPU e os aparelhos ligados com conta. Aviso "Reparo adiado" no cartão quer dizer
+máquina saturada, não aparelho doente. Reativar a conta do lucas é decisão do dono (ADR-055).
+
+### K-059 — Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável
+
+**Data:** 29/09/2026 · **Área:** parque, emuladores (ADR-055; K-050)
+
+**Sintoma.** No android-04, 2,7 h depois de um `restart`: load 14,7, 82 MB livres, 500 MB de swap zram e `kcompactd0`
+com 43% de CPU, com YouTube, YouTube Music, Gmail e Bem-estar digital subindo sozinhos. No android-06: app Google
+101 MB, GMS persistente 74 MB, Android System Intelligence 37 MB, Mensagens 22 MB.
+
+**Causa.** A imagem `google_apis` traz apps do Google que sobem em segundo plano, mesmo sem uso. Num convidado de 2 GB
+eles tomam cerca de 200 MB e empurram o kernel para a compactação de memória (`kcompactd0`), que disputa CPU com o app
+alvo.
+
+**O que funcionou.** `android.desativar_apps` (`e2b54a0` + `b5036ec`): o preparo do aparelho (`prepare_for_automation`,
+no boot, no wake e na readoção) roda `pm disable-user --user 0` numa lista conservadora de 13 pacotes, com as regras:
+
+- idempotente (uma leitura primeiro; na segunda passagem, nenhuma escrita);
+- reversível: o marcador `/data/local/tmp/central-apps-desativados.txt` guarda o que o preparo desativou, e o que sai
+  da lista volta com `pm enable`;
+- a carga recusa os protegidos (Play Store, GMS, GSF, WebView, teclado, launcher, SystemUI, Chrome, `io.appium.*`) e o
+  app alvo;
+- o central é o único dono da lista, inclusive nos aparelhos dos workers, preparados pelo túnel;
+- a loja e o celular físico ficam fora;
+- por aparelho: `instances.overrides.<id>.desativar_apps`.
+
+Um `AdbTimeout` nesse passo não derruba a prontidão (K-031): um `pm disable-user` atrasado só deixa um app da lista
+ligado. Real, 29/09, depois do deploy de `f497075`:
+
+- evento "apps de fundo — 11 desativado(s)" no android-01 (07:38:57Z) e no android-06 (07:39:03Z): o app Google, o
+  Android System Intelligence, Mensagens, YouTube, YouTube Music, Gmail, Bem-estar digital, Fotos, Maps, Agenda e Drive;
+- nenhum deles rodando depois;
+- `MemAvailable` do android-06 foi a 974 MB (antes, 670–830 MB) e o do android-01 a 1054 MB (antes, 730–960 MB);
+- o Instagram seguiu ok: "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @andre.carvalho9543
+  (`c-20260929074028-e124bc`).
+
+**Aplicabilidade.** Vigente. Aparelho lento com pouca RAM livre: confira os apps em segundo plano antes de pedir mais
+memória. A relação com o acúmulo de irq (K-050) NÃO está provada. A memória liberada foi medida, mas a coleta
+`data\logs\irq_convidados.csv` mostra o irq ocioso do android-06, com o Instagram em primeiro plano, subindo de ~4%
+(2,7 h no ar) para ~8% (6,4 h), enquanto o android-04 no launcher ficou em 2–3%. A causa segue aberta (item 21.15). O
+passo dos apps só vai ao log quando fica `incerto` sob carga (prazo de 12 s): no painel não aparece.

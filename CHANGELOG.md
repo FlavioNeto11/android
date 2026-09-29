@@ -19,12 +19,56 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-29 (manhã) — Aprendizado contínuo A2–A9, apps de segundo plano e a espera do reparo (ADR-054, ADR-055)
+
+**Implantado** no central em 29/09 ~07:38 UTC: `f497075`, sem migração nova (a 055 já estava aplicada); `/api/health`
+`ok`, `problems: []`; agente do notebook em `0.1.0+f497075`. A integração `claude/rodada-aprendizado` junta nove
+pacotes, cada um com revisão adversarial (seis barrados e ajustados), e o ajuste de tipo do lease em
+`devices/manager.py` ([relatório §23](docs/relatorio-validacao.md)).
+
+- **Costuras (20.3, `fa7349e`).** `taskqueue/costuras.py`, tipado e no-op sem o livro. `failure_kind` passa a ser
+  gravado na tentativa, na reconciliação e na etapa. Confirmar à mão, repetir, abandonar, repetir a execução, responder
+  (só o sha256) e tomar o controle (só ids) viram sinais.
+- **O que mais falha (20.4, `2adae8c` + `a5d2e97`).** `GET /api/aprendizado/falhas` e o backlog com prova da correção.
+  A reincidência depois de `fixed` é medida numa janela que anda. `scripts/aprendizado-backlog.py`.
+- **Botão D2 (20.5, `9c40288` + `faf397e`).** "Deu certo / Deu errado + motivo" por objetivo e por execução. "Deu
+  errado" por navegação desliga o que o item usou e aprendeu. O "desfazer" só existe para o que estava publicado.
+- **D1 nos nativos (20.6, `48783e8` + `aab27b8`).** O fluxo aprendido nasce candidato e é publicado por concordância em
+  sombra; o fluxo e a receita com efeito esperam o dono. A execução de habilidade grava `skill_validation_results`, e a
+  confirmada à mão vale como `uncertain`.
+- **Página Aprendizado (20.7, `c3c3760` + `86d9223`).** Abas Para aprovar (com Revisar), Aprendido, O que mais falha e
+  Sinais, e a contagem na barra do topo.
+- **Lições medidas (20.8, `9c016bb` + `ebfc643` + `3cd1e9f`).** Nascem por contraste, com texto fechado e braço de
+  controle, e vão ao ator e ao planejador, nunca ao verificador. Ficam em `shadow` de fábrica.
+- **Telas aprendidas (20.9, `43600f1` + `476c3be`).** A fatia 5 do ADR-052, com export para o YAML. Ficam em `observe`
+  de fábrica.
+- **Voz e preferências (20.10, `9607f4d` + `0e971b9` + `0663738`).** A voz vem das aprovações editadas e é sempre
+  publicada pelo dono. A preferência só sugere, e só decide sozinha nas versões conferidas, sem efeito.
+- **Apps de segundo plano (21.15, `e2b54a0` + `b5036ec`).** `android.desativar_apps` desativa 13 apps do Google no
+  preparo, reversível. Real: 11 desativados no android-01 e no android-06; `MemAvailable` de 670–960 para
+  974–1054 MB; o Instagram segue ok (K-059).
+- **O reparo espera a máquina aliviar (21.16, `9348e9c`, no ar desde ~04:17Z).** Com a CPU do central ≥ 90%
+  (`instances.remediation_host_cpu_max`), o reparo adia 10 min em vez de subir de degrau. É a resposta ao `reset` das
+  02:15Z, que apagou a sessão do lucas no android-01 com a máquina saturada pela IDE (K-058). A conta não foi tocada
+  desde então; reativá-la é decisão do dono.
+- Prova: `real` só de leitura depois do deploy (livro 125 itens, `/revisar` 39, `/pendentes` 0; "o que mais falha"
+  com 19 grupos acima do mínimo, todos retroativos; o evento dos apps de fundo) e o incidente;
+  `simulated` na integração (17 arquivos alterados 263 ok; suíte inteira em SQLite 3409 ok e 1 falha de ambiente,
+  `test_backup`; mypy estrito 164 arquivos; frontend 711 ok); `not_run`: PostgreSQL para A2–A9, lições, telas, voz e
+  preferências reais, o voto numa execução real e o adiamento do reparo num episódio real.
+- Dívida aceita: `devices/manager.py` importa `taskqueue.costuras` (o primeiro `devices` → `taskqueue`; sem ciclo).
+- Documentação e processo: `docs/dominios/aprendizado.md` (novo), evidências e regras da revisão no ADR-054, incidente
+  e a espera do reparo no ADR-055, K-058 e K-059, relatório §23, adendo v0.38, `ia.md` §15, `produto.md`, fatia 5 no
+  design do conhecimento de app, `parque.md` (reparo e apps de segundo plano), `operacao.md`, plano-100 (20.x
+  atualizados e o 21.16 novo).
+
 ## 2026-09-29 — Proteção de contas, fundação do aprendizado e as pendências da rodada (ADR-054, ADR-055)
 
 **Implantado** no central: `e9da86e` (28/09) e a leva aberta `7a02491` (suíte do backend 2912 ok, só `test_backup` fora
 do checkout com `config.yaml`; agente do notebook em `0.1.0+7a02491`). O relógio do host passou a ser mantido pela
-tarefa `farm-relogio` (`b25957e`). **Integrado, a implantar:** `c359f65` (proteção de contas + fundação do aprendizado,
-migrações 054 e 055) e `2511b12`, com o frontend no mesmo deploy ([relatório §22](docs/relatorio-validacao.md)).
+tarefa `farm-relogio` (`b25957e`). **Implantado em 29/09 ~03:55Z:** `c359f65` (proteção de contas + fundação do
+aprendizado, migrações 054 e 055 ensaiadas antes) e `2511b12`, com o frontend no mesmo deploy
+([relatório §22](docs/relatorio-validacao.md)).
 
 Origem: o dono pediu em 28/09 para "resolver tudo o que ficou em aberto" (autorizou tudo) e, em 29/09, deu a regra de
 que parar em "Confirm you're human" é conta perdida. Cinco das oito contas do Instagram estão bloqueadas; a investigação
@@ -52,8 +96,8 @@ mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava 
 - Operação (29/09, reversível): SEND_MESSAGE do grupo "Operação" de volta a `approval_required`, com os limites do grupo
   "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desafio, desligado.
 - Prova: `real` no diagnóstico, nas proteções operacionais, no relógio e nos experimentos; `simulated` nos testes de
-  cada pacote e na integração (SQLite, PostgreSQL 17, mypy, frontend 660 ok); `not_run`: o deploy da integração e as
-  provas com efeito em conta real.
+  cada pacote e na integração (SQLite, PostgreSQL 17, mypy, frontend 660 ok); `not_run`: as provas com efeito em conta
+  real (o deploy da integração veio depois, às 03:55Z).
 - Documentação e processo: ADR-054 e ADR-055, K-053 a K-057, relatório §22, Fases 20 e 21 do plano-100, adendo v0.37,
   banco (054 e 055).
 

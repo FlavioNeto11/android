@@ -2859,11 +2859,12 @@ Fase 19 do plano-100.
 
 ## ADR-054 — Aprendizado contínuo: livro de aprendizado com ciclo de vida, publicação sozinha só sem efeito externo (D1), feedback implícito com botão opcional (D2), lições medidas e backlog do que mais falha
 
-**Data:** 29/09/2026 · **Estado:** aceito; fundação (pacote A1, item 20.2) integrada em `c359f65`, a implantar; A2–A9
-pendentes (Fase 20 do plano-100, cujo 20.9 absorve o item 18.8) · **Decisão do dono** (pedido de 28/09; D1 e D2 adotadas
-em 29/09 pelas recomendações, quando ele autorizou resolver tudo o que ficou em aberto) e **decisão técnica** (o
-desenho, sintetizado de três propostas avaliadas por três juízes); completa o ADR-052 (fatia 5) e usa como régua as
-falhas medidas do ADR-053.
+**Data:** 29/09/2026 · **Estado:** aceito; fundação (pacote A1, item 20.2) implantada com `c359f65` (29/09 ~03:55Z);
+A2–A9 integrados na `main` em `f497075` e implantados em 29/09 ~07:38Z, sem migração nova; lições em `shadow` e telas
+em `observe` até a primeira prova real (Fase 20 do plano-100, cujo 20.9 absorve o item 18.8) · **Decisão do dono**
+(pedido de 28/09; D1 e D2 adotadas em 29/09 pelas recomendações, quando ele autorizou resolver tudo o que ficou em
+aberto) e **decisão técnica** (o desenho, sintetizado de três propostas avaliadas por três juízes); completa o ADR-052
+(fatia 5) e usa como régua as falhas medidas do ADR-053.
 
 **Contexto.**
 
@@ -3003,8 +3004,9 @@ falhas medidas do ADR-053.
 - Fluxo e receita novos com efeito esperam o dono, e a automação fica com a IA até a aprovação.
 - O legado com efeito (as 22 receitas e os 17 fluxos com etapa de efeito) continua ativo até o dono revisar em lote. É
   um desvio consciente do D1 para o que já existia, visível em "Revisar".
-- Um "deu errado" por navegação desliga na hora o fluxo e as receitas envolvidos. Reativar custa um clique, e tudo fica
-  na trilha.
+- Um "deu errado" por navegação desliga na hora o fluxo e as receitas envolvidos. Reativar o que ESTAVA publicado custa
+  um clique (o `desfazer` da resposta do voto). O que era candidato ou validado sai sem `desfazer`: aquela volta
+  publicaria o que nunca passou pelo D1. Uma pessoa o publica pelo catálogo (revisão do A4). Tudo fica na trilha.
 - Com o volume de hoje, o veredito de uma lição leva semanas. O painel mostra "faltam N", e o limiar não baixa.
 - A tela aprendida só muda algo quando a tela de casa do app mudar; até lá, a prova do consumo é simulada.
 - A voz não tem dado (nenhuma aprovação editada) e fica por último. Preferência é só sugestão, nunca resposta automática
@@ -3022,11 +3024,36 @@ falhas medidas do ADR-053.
   grave na trilha (A5/A6); uma candidata levada a `validated` por pessoa faz a IA criar outra candidata na mesma chave
   (A5); `SourceKind.DISAMBIGUATION` é origem de pessoa mas não está em `FONTES_HUMANAS` (A9); `criar_item(estado=DRAFT)`
   ainda grava rascunho.
+- **Regras que a revisão de A2–A9 fixou** (seis dos oito pacotes foram barrados pelo revisor e ajustados):
+  - A3: a reincidência depois de `fixed` é medida nas últimas 2 × `prova_minimo` tentativas elegíveis
+    (`JANELA_DA_REINCIDENCIA`), não desde a prova. Medida desde a prova, a janela só cresceria, e as tentativas boas de
+    semanas diluiriam a volta da falha: a linha nunca reabriria.
+  - A4: o `desfazer` do voto só existe para o que estava `published` (`reativar_desfaz`). Do `candidate`/`validated`,
+    ele publicaria o que nunca passou pelo D1.
+  - A5: a execução de habilidade com etapa confirmada à mão (`verified=false`) grava `uncertain`, nunca `passed`.
+  - A6: a habilidade validada decide-se na fila "Para aprovar" pela rota das habilidades.
+  - A7: a etapa confirmada à mão entra na medida de efeito como `unverified`, nunca como sucesso; a etapa livre de
+    sessão, login ou desafio é recusada pela chave da etapa (`ACAO_DE_SESSAO`).
+  - A9: a preferência de desambiguação só decide sozinha nas versões da habilidade que foram conferidas
+    (`provenance.versoes`, fora do conteúdo para o veto por `content_hash` valer); numa versão nova, volta a pergunta
+    com a opção pré-selecionada.
+- **Pendências dos revisores (A2–A9, não bloquearam o merge):** lista por pacote em
+  [dominios/aprendizado.md](dominios/aprendizado.md#pendências-conhecidas). As que tocam invariante:
+  - `PUT /api/flows` e `PUT /api/recipes` não gravam a trilha: o que uma pessoa desliga por ali não veta, e o sistema
+    pode reaprender o mesmo fluxo;
+  - `scheduler._learn_flow` ainda grava "Fluxo salvo: … reaproveitam este plano" para um candidato inerte;
+  - `aprendizado.fluxo.com_prova: false` e `ai.recipes_promote_after: 0` levam o sistema a publicar o que tem efeito. Os
+    padrões são seguros, e o `config.yaml` do central não os muda;
+  - `failure_screen` continua sem escritor. Quando passar a ser gravado, a linha do backlog aberta com a tela vazia pode
+    cair a zero e parecer corrigida.
+- **Dívida aceita na integração:** `devices/manager.py` passou a importar `taskqueue.costuras`, o primeiro import
+  `devices` → `taskqueue`. Não há ciclo, e as catracas passam. A saída é mover `CosturaDeControle` para `devices/` ou
+  `app/shared` e reexportá-la em `taskqueue.costuras`.
 
 **Evidências.**
 
-`real` (29/09/2026, máquina WIN-7S2UASNLFOP, central em `7a02491`, banco `data/poc.sqlite3` aberto só leitura; às
-02:23Z, e reproduzido pelo revisor às 03:01Z):
+**Fundação (A1).** `real` (29/09/2026, máquina WIN-7S2UASNLFOP, central em `7a02491`, banco `data/poc.sqlite3` aberto
+só leitura; às 02:23Z, e reproduzido pelo revisor às 03:01Z):
 
 - **classificador** sobre as tentativas reais: 221 com falha (20 simuladas ficaram fora); `outro` = 4,5% (meta < 15%).
   Os 10 restantes são textos livres de `StepBlocked`, que o A2 marca como `ia_declarou_bloqueio`. Maiores grupos:
@@ -3045,16 +3072,52 @@ etapa que atravessa a meia-noite conta uma vez só na régua), `test_learning_li
 arquivos. Na integração `c359f65`, os arquivos de teste alterados rodaram em SQLite e em PostgreSQL 17 (contêiner
 `farm-pg`) e a suíte inteira, em SQLite: números no [relatório §22](relatorio-validacao.md).
 
+Na data da fundação ficaram `not_run` o ensaio e o deploy da 055 e as leituras do livro no central. Os três viraram
+`real` com o deploy de `c359f65` (29/09 ~03:55Z; [relatório §22](relatorio-validacao.md)).
+
+**Entrega A2–A9 (item 20.3–20.10).** Oito pacotes em branches próprios, cada um com revisão adversarial, mais o dos apps
+de segundo plano (item 21.15, no ADR-055). A integração `claude/rodada-aprendizado` → `main` é `f497075`: os nove merges
+e o ajuste de tipo do lease em `devices/manager.py` pedido na revisão do A2. Tabela dos pacotes, commits e ajustes no
+[relatório §23](relatorio-validacao.md).
+
+`real` (29/09/2026, central WIN-7S2UASNLFOP em `f497075`, implantado às ~07:38Z sem migração nova; a 055 já estava
+aplicada. `/api/health` `ok`, `problems: []`; agente do notebook em `0.1.0+f497075`. Só leitura, sem custo e sem efeito
+externo):
+
+- `GET /api/aprendizado`: 125 itens; `/revisar` 39; `/pendentes` 0.
+- `GET /api/aprendizado/falhas` (A3), lida às 07:49Z com os padrões (14 dias, legado classificado na leitura):
+  - 35 grupos, 19 acima do mínimo de 3 ocorrências, cada um com camada e "onde alterar"; `outro` = 10 de 221 (4,5%); 25
+    propostas; nenhum sinal de pessoa desmentindo o verificador;
+  - todas as ocorrências são retroativas: ainda nenhuma tentativa da janela tem `failure_kind` gravado pela execução;
+  - maiores grupos: `interrompida` no QA Messenger (51, camada execução, `scheduler._reconciliar`);
+    `pos_condicao_nao_comprovada` em OPEN_PROFILE do Instagram (36) e no QA Messenger (25), camada verificação;
+    `efeito_nao_comprovado` em SEND_MESSAGE (8, verificação); `prazo_da_etapa` em OPEN_POST (4, aparelho);
+    `ciclo_sem_progresso` em OPEN_POST (3, `ia_ator`); `efeito_alvo_errado` em CREATE_COMMENT (3, `ia_ator`).
+- Lições (A7) e telas aprendidas (A8) rodam nos modos de fábrica (`shadow` e `observe`): nada vai ao prompt nem à
+  sessão. A prova delas depende de as execuções reais acumularem dados.
+
+`simulated`: os testes novos de cada pacote, que falhavam antes da correção ou sob as mutações dos revisores —
+`backend/tests/test_costuras_de_aprendizado.py` e `test_falha_classificada_gravada.py` (A2, 14 mutações, todas
+mortas), `test_learning_backlog.py`, `test_learning_rotas_falhas.py` e `scripts/tests/test_aprendizado_backlog.py`
+(A3), `test_learning_feedback.py` (A4), `test_d1_fluxos.py`, `test_d1_receitas.py` e `test_learning_nativos.py` (A5),
+`test_learning_licoes.py`, `test_learning_efeito.py` e `test_prompts_licoes.py` (A7), `test_learning_telas.py` (A8),
+`test_learning_voz.py` e `test_learning_preferencias.py` (A9); no painel, o vitest de `features/aprendizado/` e
+`FeedbackItem.test.tsx` (A6). Na integração `f497075`, em SQLite: os 17 arquivos de teste alterados deram 263 ok, e a
+suíte inteira do backend, 3409 ok e 1 falha de ambiente (`test_backup`, que só passa no checkout com `config.yaml`).
+Mais o mypy estrito sem erro em 164 arquivos e, no frontend, o typecheck e 711 testes ok.
+
 `not_run`:
 
-- ensaio e deploy da 055 (vão com a integração), `GET /api/aprendizado` e `/revisar` no central, `failure_kind` gravado
-  (A2);
-- provas previstas dos pacotes seguintes: backlog mostrando a e31953 e a 02ee9e como ANR e prazo da etapa; voto numa
-  execução antiga, com rebaixamento e reativação; fluxo sem efeito publicado por concordância no android-06; fluxo e
-  receita com efeito aguardando o dono no QA Messenger; exposição de lição com o ator local; deixa-um-fora de telas
-  sobre observações reais;
-- mesmo depois da rodada: o veredito de efeito das lições (até juntar 8 unidades por braço), o consumo real da tela de
-  casa aprendida, a voz aprendida publicada e a prova de correção do primeiro item do backlog.
+- a suíte em PostgreSQL para o SQL novo de A2–A9 (`ON CONFLICT … RETURNING`, `LIKE` parametrizado, lotes com
+  `LIMIT/OFFSET`);
+- `failure_kind` e `tomou_controle` gravados por uma execução real;
+- lições: a exposição no prompt (modo `on`), o veredito de efeito (8 unidades por braço) e a aposentadoria;
+- telas: o deixa-um-fora sobre observações reais (`scripts/aprendizado-telas.py --sem-regra thread --sem-regra feed`,
+  depois de 24 a 48 h em `observe`), o export que carrega e o consumo real da tela de casa (só quando um app mudar);
+- a voz publicada numa conta real e a preferência pré-preenchendo uma pergunta real;
+- o voto numa execução real, com rebaixamento e reativação; um fluxo sem efeito publicado por concordância; um fluxo e
+  uma receita com efeito esperando o dono;
+- a prova de correção do primeiro item do backlog.
 
 **Relação.**
 
@@ -3070,15 +3133,18 @@ arquivos. Na integração `c359f65`, os arquivos de teste alterados rodaram em S
 - ADR-047: respostas do assistente como sinal.
 - ADR-016: quem decide é a sessão nominal.
 - ADR-049 e ADR-051: provedor por papel e saldo; nenhuma chamada paga no pipeline.
-- Fase 20 do plano-100; relatório §22.
+- Fase 20 do plano-100; relatório §22 (fundação) e §23 (A2–A9); domínio em
+  [dominios/aprendizado.md](dominios/aprendizado.md).
 
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
-**Data:** 29/09/2026 · **Estado:** vigente (código); integrado em `c359f65` (+ `2511b12`), a implantar; `e9da86e`
-implantado em 28/09; prova `simulated` nos cinco pacotes e `real` no diagnóstico, nas proteções operacionais e nos
-experimentos · **Decisão do dono** (a regra de 29/09 e o "eu autorizo tudo" de 28/09, com as decisões (a)–(e) adotadas
-pela recomendação) e **decisão técnica** (cinco pacotes com revisão adversarial); substitui em parte o ADR-029 e
-completa o ADR-009.
+**Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09
+~03:55Z, com as migrações 054 e 055 ensaiadas; `9348e9c` (o reparo espera a máquina aliviar) no ar desde 29/09
+~04:17Z; os apps de segundo plano com `f497075` (~07:38Z); prova `simulated` nos pacotes e `real` no diagnóstico, nas
+proteções operacionais,
+nos experimentos, nas leituras depois do deploy e no incidente do android-01 · **Decisão do dono** (a regra de 29/09
+e o "eu autorizo tudo" de 28/09, com as decisões (a)–(e) adotadas pela recomendação) e **decisão técnica** (cinco
+pacotes com revisão adversarial); substitui em parte o ADR-029 e completa o ADR-009.
 
 **Contexto.**
 
@@ -3130,6 +3196,18 @@ completa o ADR-009.
   da premissa de "aparelho sem conta" (`account_label` `qa-user-04`, `/personas` vazio) e mandou 10 entradas (toques e
   arrastos por adb) e aberturas a frio na tela de desafio do felipe, abrindo "Get support" e o assistente da Meta. Nada
   foi digitado nem enviado; a tela foi fechada com BACK.
+- Incidente de 29/09, 02:05–02:15Z (`real`, K-058). O backend estava em `7a02491` desde 01:42Z
+  (`data\logs\backend.log.2026-09-28`, em hora local), antes da regra "nenhum reset com conta", e a escada de reparo
+  apagou a sessão do lucas.almeida9484, conta viva:
+  - 02:05:31Z: `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu");
+  - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo);
+  - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z), que
+    apagou o Instagram e a sessão.
+
+  Causa assumida: a máquina central estava saturada pelo trabalho da IDE em paralelo — a suíte inteira, o Docker
+  Desktop com os testes em PostgreSQL e o boot do android-17 do experimento de ANR. Os convidados chegaram a load 40–57
+  em 2 vCPU (eventos das 01:56 às 02:00Z). O aparelho não tinha adoecido; faltava CPU à máquina. Desde então ninguém
+  tentou o login do lucas (a conta não foi tocada), e o android-01 segue sem o app.
 
 **Alternativas.**
 
@@ -3218,9 +3296,19 @@ ajustados), mais três correções do parque e do host:
    da reconciliação passam a `requested_by='saude'` e `'reconciliacao'` e deixam de contar como degrau (antes eram
    `system`, e dois deles abriam caminho ao `reset` com conta real). Com vínculo ativo, o 3º degrau é "Precisa do
    dono" + `stop`; com marcador, isso vem direto, sem `restart`. `reset` automático só em aparelho sem conta nenhuma.
+   Essa parte entrou no ar com `c359f65` às 03:55Z de 29/09, 1h40 depois do `reset` do android-01 (Contexto), que
+   aconteceu com o backend em `7a02491`.
 7. **Parque e host** (itens 21.7–21.9): `hide_error_dialogs` continua 1 (K-054); o relógio do central passa a ser
    mantido por `scripts/sincronizar-relogio.ps1` e pela tarefa `farm-relogio` (K-055; mexer no relógio foi autorizado
-   pelo dono em 28/09); aposentar apaga o AVD mesmo com arquivo somente-leitura do emulador (`2511b12`, K-056).
+   pelo dono em 28/09); aposentar apaga o AVD mesmo com arquivo somente-leitura do emulador (`2511b12`, K-056). Os apps
+   do Google que sobem sozinhos nos convidados de 2 GB passam a ser desativados pelo preparo (`android.desativar_apps`,
+   `e2b54a0` + `b5036ec`; item 21.15, K-059).
+8. **O reparo espera a máquina aliviar** (`9348e9c`, item 21.16; resposta ao incidente de 29/09). Em
+   `despacho.remediar`, com a CPU desta máquina em `instances.remediation_host_cpu_max` (90%) ou mais, o aparelho local
+   não sobe de degrau: ganha o aviso "Reparo adiado: esta máquina está com N% de CPU…" no cartão, e a conferência volta
+   em 10 min (`ADIAMENTO_POR_HOSPEDEIRO_S`). Reiniciar é o momento mais pesado de um convidado, e com a escada o passo
+   seguinte era o `reset`. Aparelho de worker não entra nessa conta (a CPU medida é a do central). 101 desliga a espera;
+   a suíte de testes usa 101.
 
 **Conduta, não disfarce.** O que protege as contas é COMPORTAMENTO: uma conta por alvo, nenhuma rajada coordenada, DM
 fria com aprovação, persona que não fala por terceiros, volume baixo e espaçado, parar no primeiro sinal de trava, não
@@ -3235,6 +3323,11 @@ support"; qualquer artifício para o antibot não ver o que o sistema faz.
   DMs 5/h e 20/dia, 8 ações por execução e 120 s entre ações externas;
 - andre: removida a política própria `CREATE_COMMENT = autonomous`, que volta a `approval_required` (K-052);
 - android-04, com o felipe logado em "Confirm you're human", desligado (`c-20260929013039-e1c891`).
+
+**Conduta da IDE no central, depois do incidente de 29/09** (K-058): um trabalho pesado por vez na máquina central (a
+suíte inteira, a suíte em PostgreSQL, o boot de um aparelho de experimento); processos de teste em prioridade ociosa,
+postos assim por um vigia da sessão; o Docker Desktop e o WSL ligados só enquanto a suíte em PostgreSQL roda e
+desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.md).
 
 **Consequências.**
 
@@ -3251,6 +3344,8 @@ support"; qualquer artifício para o antibot não ver o que o sistema faz.
   build`).
 - `account_label` passa a ser o @ vinculado: um fluxo do QA Messenger que confira `Conta: {account_label}` no android-01
   passa a esperar `lucas.almeida9484`.
+- Com a máquina central a 90% de CPU ou mais, um aparelho local doente de verdade espera: a cada 10 min o reparo
+  reconfere e só sobe de degrau quando a máquina aliviar. O aviso no cartão diz por quê.
 - **Pendências dos revisores:**
   - o painel não manda `confirm_locked_account`, não mostra `locked_account` nem `review`, e não há rota para resolver o
     marcador (hoje, só `curl` ou o banco); a rota em lote sempre recusa;
@@ -3274,7 +3369,10 @@ support"; qualquer artifício para o antibot não ver o que o sistema faz.
   - remover ou não do cofre as credenciais das 5 bloqueadas (hoje `active`, com consentimento);
   - as escolhas do pacote frota: a regra de uma conta vale para o balde inteiro (inclusive responder a quem escreveu e
     aceitar pedido de seguir); aprovação dada que nunca chega ao efeito reserva o alvo por 30 dias; a mesma persona em
-    dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição.
+    dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição;
+  - quando e como reativar o lucas.almeida9484, cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
+    acompanhado pelo dono, pelo Conectar do painel, num horário calmo da máquina. Até lá, nada toca a conta (a conduta
+    de login (e) vale: depois de 1 envio sem sucesso, o login automático para).
 
 **Evidências.**
 
@@ -3290,16 +3388,29 @@ support"; qualquer artifício para o antibot não ver o que o sistema faz.
 - **leituras GET** no central pelos pacotes: o incidente `r-20260919220216-7cfa59` (7 contas, a mesma pessoa,
   22:03–22:11Z); todo `post_liked` e `comment_replied` com `counterparty` NULL; android-04 `stopped` com `account_label`
   `qa-user-04` e o felipe `blocked` sem vínculo; a evidência #969 ("Sending…" dado por enviado) e #959, #961 e #968 com
-  `row_thread_composer_edittext`.
+  `row_thread_composer_edittext`;
+- **deploy de `c359f65`** em 29/09 ~03:55Z (054 e 055 ensaiadas numa cópia restaurada do backup
+  `data/backups/20260929-005459`): `POST /api/instances/android-04/actions/open_app` recusado com 409 `locked_account`
+  ([relatório §22](relatorio-validacao.md));
+- **incidente do android-01** (29/09, central em `7a02491`): `restart` às 02:05:31Z (2º degrau), falho às 02:10:14Z,
+  e `reset` `c-20260929021534-6d15cd` às 02:15:34Z (3º degrau, `requested_by` `system`), com os convidados a load
+  40–57 em 2 vCPU nos eventos das 01:56 às 02:00Z; nenhuma tentativa de login do lucas depois disso
+  ([relatório §23](relatorio-validacao.md));
+- **`9348e9c` no ar** às ~04:17Z (o backend reiniciado; `backend.log`: "este servidor roda 0.1.0+9348e9c" às
+  04:18:21Z), e segue no ar com `f497075` (~07:38Z; `/api/health` `ok`, `problems: []`). O adiamento ainda não foi
+  visto num episódio real de saturação.
 
 `simulated`: `backend/tests/test_detector_conta_travada.py` (62), `test_quarentena_de_conta.py`,
 `test_protecao_de_frota.py` (45), `test_disjuntor_de_conta.py`, `test_conduta_de_login.py` (12),
 `test_dm_verificador.py` (22) e `test_provisionamento.py` (`2511b12`), cada um falhando antes da correção (base
 `7a02491` ou mutação), com as sondas dos revisores rodadas de novo depois dos ajustes. Árvore integrada `c359f65`:
 arquivos de teste alterados em SQLite e em PostgreSQL 17 (contêiner `farm-pg`), mypy estrito, frontend e a suíte inteira
-no [relatório §22](relatorio-validacao.md).
+no [relatório §22](relatorio-validacao.md). O adiamento do reparo (`9348e9c`):
+`backend/tests/test_saude_do_convidado.py::test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir_de_degrau`
+(95% de CPU: nenhum comando e o aviso "Reparo adiado"; 30%: `restart`). Os apps de segundo plano:
+`backend/tests/test_apps_de_fundo.py` (12 mutações do revisor, todas mortas).
 
-`not_run`: deploy da integração (migrações 054 e 055 com ensaio); o detector numa tela de trava real (o apóstrofo e a
+`not_run`: o adiamento do reparo num episódio real de saturação; o detector numa tela de trava real (o apóstrofo e a
 hierarquia nunca foram gravados); o planejador real preenchendo `post_author`; uma execução com várias contas no mesmo
 alvo; DM fria e verificador de DM numa conta real (efeito em conta de terceiros, exige autorização); o disjuntor com
 bloqueio real; o "Enviando…" do Instagram em português.
@@ -3308,4 +3419,4 @@ bloqueio real; o "Enviando…" do Instagram em português.
 travada bloqueia, e o bloqueio vale também fora da entrada do estado); ADR-040 (a credencial é da conta; `review` é
 estado dela); ADR-053 (o `restart` por irq deixa de ser `system`; `hide_error_dialogs` segue 1); ADR-052
 (`counterparty`, `pending_marks` e `sent_text` como dado no catálogo); ADR-054 (numeração cruzada: o ADR-054 usa a
-migração 055, e este a 054); ADR-019 (relógio); K-052 a K-057; Fase 21 do plano-100; relatório §22.
+migração 055, e este a 054); ADR-019 (relógio); K-052 a K-059; Fase 21 do plano-100; relatório §22 e §23.
