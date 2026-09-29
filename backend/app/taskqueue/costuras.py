@@ -16,17 +16,18 @@ O que NUNCA passa por aqui: texto de tela, valor de resposta, coordenada, creden
 ao observador (é dele decidir o que aproveita, e a tela sensível ele pula); a resposta a uma pergunta vai só como
 sha256; a tomada de controle, só com os ids da etapa.
 
-Só stdlib e a árvore (`automation.hierarchy`): o gerenciador de aparelhos importa este módulo, e nada aqui pode puxar
-o resto da fila para dentro dele.
+As costuras de gesto que moram fora da fila (a tomada de controle, o `avisar` e o no-op delas) estão no kernel
+(`app/shared/costuras.py`), para o gerenciador de aparelhos avisar sem importar `taskqueue`; este módulo as reexporta
+e o `SemCosturas` daqui as herda.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol
 
 from ..automation.hierarchy import UiTree
+from ..shared.costuras import CosturaDeControle, SemCosturasDeGesto, TomadaDeControle, avisar
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -116,16 +117,6 @@ class RespostaAPergunta:
     resposta_sha256: str
 
 
-@dataclass(frozen=True, slots=True)
-class TomadaDeControle:
-    """Uma pessoa pediu o aparelho enquanto a IA conduzia uma etapa. Sem árvore, texto nem coordenada."""
-
-    instance_id: str
-    run_id: str
-    objective_id: str | None
-    step_id: str
-
-
 class CosturasDeAprendizado(Protocol):
     """O que o executor, o serviço de execução e o assistente chamam."""
 
@@ -136,14 +127,9 @@ class CosturasDeAprendizado(Protocol):
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None: ...
 
 
-class CosturaDeControle(Protocol):
-    """O que o gerenciador de aparelhos chama (a porta é dele: o gerenciador não conhece a fila nem o livro)."""
-
-    def tomou_controle(self, tomada: TomadaDeControle) -> None: ...
-
-
-class SemCosturas:
-    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054."""
+class SemCosturas(SemCosturasDeGesto):
+    """O padrão: nenhuma lição, nenhum aviso — o comportamento de antes do ADR-054. As costuras de gesto (a tomada de
+    controle) vêm no-op do kernel."""
 
     def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
         return []
@@ -160,21 +146,8 @@ class SemCosturas:
     def respondeu_pergunta(self, resposta: RespostaAPergunta) -> None:
         return None
 
-    def tomou_controle(self, tomada: TomadaDeControle) -> None:
-        return None
-
 
 SEM_COSTURAS = SemCosturas()
-
-_T = TypeVar("_T")
-
-
-def avisar(aviso: Callable[[_T], None], dado: _T) -> None:
-    """Chama uma costura de aviso. A falha vira log: o aprendizado nunca derruba quem o avisou."""
-    try:
-        aviso(dado)
-    except Exception:  # noqa: BLE001 - aprendizado é registro: nunca derruba a etapa, o gesto nem a execução
-        log.exception("aprendizado: a costura %s falhou (a operação seguiu)", type(dado).__name__)
 
 
 def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> list[str]:
@@ -187,6 +160,7 @@ def pedir_licoes(costuras: CosturasDeAprendizado, pedido: PedidoDeLicoes) -> lis
     return [t for t in licoes if t.strip()]
 
 
+# `CosturaDeControle`, `TomadaDeControle` e `avisar` moram no kernel e seguem exportados daqui (compatibilidade).
 __all__ = ["SAIU_POR_EXCECAO", "SEM_COSTURAS", "CosturaDeControle", "CosturasDeAprendizado", "FechamentoDeTentativa",
            "DecisaoSobreItem", "PapelDaLicao", "PedidoDeLicoes", "RepeticaoDeExecucao", "ResolucaoDeItem",
            "RespostaAPergunta", "SemCosturas", "TomadaDeControle", "avisar", "pedir_licoes"]

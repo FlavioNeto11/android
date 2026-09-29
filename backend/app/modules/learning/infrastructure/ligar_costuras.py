@@ -1,4 +1,5 @@
-"""Pacote A2 do ADR-054: liga as costuras tipadas dos arquivos quentes (`app/taskqueue/costuras.py`) ao livro.
+"""Pacote A2 do ADR-054: liga as costuras tipadas dos arquivos quentes (`app/taskqueue/costuras.py`, e as de gesto
+fora da fila em `app/shared/costuras.py`) ao livro.
 
 Duas partes:
 
@@ -42,8 +43,9 @@ from app.modules.learning.application.ports import NovoSinal
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.vocabulario import Modo, Polaridade, SignalKind
 from app.modules.learning.infrastructure import linhas
+from app.shared.costuras import TomadaDeControle
 from app.taskqueue.costuras import (DecisaoSobreItem, FechamentoDeTentativa, PedidoDeLicoes, RepeticaoDeExecucao,
-                                    ResolucaoDeItem, RespostaAPergunta, TomadaDeControle)
+                                    ResolucaoDeItem, RespostaAPergunta)
 from app.taskqueue.projecao import QUALQUER, app_da_etapa
 
 log = logging.getLogger("poc.aprendizado")
@@ -126,8 +128,8 @@ class _Contexto:
 
 
 class CosturasDoLivro:
-    """Cumpre `CosturasDeAprendizado` e `CosturaDeControle` (`app/taskqueue/costuras.py`). Toda exceção daqui é
-    engolida por quem chama (`avisar`, `pedir_licoes`): o gesto e a etapa seguem."""
+    """Cumpre `CosturasDeAprendizado` (`app/taskqueue/costuras.py`) e `CosturaDeControle` (`app/shared/costuras.py`).
+    Toda exceção daqui é engolida por quem chama (`avisar`, `pedir_licoes`): o gesto e a etapa seguem."""
 
     def __init__(self, servico: LearningService, db: Database, ext: Extensoes) -> None:
         self._servico = servico
