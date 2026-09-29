@@ -1899,3 +1899,58 @@ Depois, o Docker Desktop foi fechado e o WSL desligado (`wsl --shutdown`).
 - A trilha da adoção é o registro do gesto (a falha dela desfaz a adoção) ou acessória, como a das lojas?
 - Registrar à parte, sem contar na régua, a segunda pessoa que repete o mesmo gesto?
 - As polaridades dos três sinais (continua).
+
+## 26. Terceira evolução: Outlook, comando entre apps, rede por aparelho (29/09/2026)
+
+Pedido do dono de 29/09; itens nas Fases 23–27 de [plano-100.md](plano-100.md); coordenação e estado por frente em
+[handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md). Esta seção guarda as provas; o registro de cada item é
+o do `aplicar`.
+
+### 26.1 Implantações
+
+| Quando (UTC) | Commit | O que | Prova |
+|---|---|---|---|
+| 29/09 ~18:45 | `99fc90a` | Onda 0 (contratos C1–C5, migrações 056 e 057, correção do inspetor de APK) | `real`: migrações ensaiadas numa cópia do banco (`data/backups/20260929-154437`, integridade e FK ok, 2287 etapas com `saidas` nulo), `/api/health` ok, agente do notebook `0.1.0+99fc90a` |
+| 29/09 ~22:23 | `081d696` | Onda 1 (sessão por conta, cofre e painel de contas, comando entre apps, rede: modelo, segredos e painel) | `real`: `/api/health` ok, agente `0.1.0+081d696`; `simulated`: suíte do backend 3747 ok + 1 falha de ambiente (`test_backup`), vitest 830/830 |
+
+### 26.2 Provas reais por item
+
+- **25.1 (medição do cliente VPN, android-05, 17:49–18:39Z):** sing-box escolhido, único que compõe VPN e proxy;
+  permissão de VPN por `appops` sem diálogo; always-on e bloqueio valem depois de reboot (vazamento bloqueado como uid
+  2000); persistência em restart e em hibernar/acordar; adb e leitura de tela vivos; IP de saída igual ao do central
+  (sem provedor); cobertura por UID pelo `dumpsys netstats`; UDP e DNS pelo túnel. Relatório completo fora do Git em
+  `data/rede/piloto/medicao-25.1.md`.
+- **25.10:** sing-box e WireGuard pela Play Store do android-11 com a conta do dono; canário do sing-box no android-05
+  (`c-20260929222844-0a5046`) e promoção.
+- **23.11 (parcial):** contas Outlook das 3 personas ativas com o login `outlook.com` confirmado pelo dono e a senha
+  clonada no cofre (`credential.configured=true`); consentimento pendente do dono.
+- **23.2 (bloqueado, P15):** Outlook 5.2635.3 importado (`c-20260929184859-0fe853`) depois da correção do inspetor
+  (split sem esquema v1); os canários no android-02 e no android-09 falharam na abertura. Diagnóstico: o emulador
+  37.1.11 (estável) e o 37.2.11 (beta) caem com `0xc0000005` (9 quedas, nas duas máquinas, com e sem janela, SwiftShader
+  e ANGLE, Vulkan do convidado escondido, memória folgada). No 37.3.2 (canary), num AVD de diagnóstico, o emulador
+  aguenta e o Outlook morre numa armadilha proposital (`UD2`) em `libhxcomm.so`, thread `Hx-Storage`. O app recusa o
+  ambiente emulado.
+
+### 26.3 Revisão (27.1)
+
+Cada frente da Onda 1 passou por um revisor adversarial (Opus) que leu o diff contra o pacote e as decisões T1–T24;
+os achados graves foram corrigidos na própria frente com teste que falhava antes (B1: 3, B2: 4, C1: 2, C2: 3, D1: 5,
+D3: 4); os menores e as pendências, na correção da integração (`eb38139`). A suíte inteira achou mais 5 regressões e
+uma incerteza que contava como sucesso (etapa de outro app concluída com o app errado na frente), corrigidas em
+`99abe23`.
+
+### 26.4 Cenários do aceite integrado (27.2)
+
+No MESMO aparelho, nesta ordem, com prova `real` de cada passo:
+
+1. Rede: perfil VPN (e proxy, se houver) atribuído; estado `trafego_verificado` com IP de saída medido de dentro do
+   aparelho, cobertura do Outlook e do Instagram por UID, vazamento bloqueado com o servidor parado.
+2. Conta: Outlook instalado pelo fluxo de releases; conta Outlook da persona com consentimento; login pelo canal
+   sensível; caixa de entrada comprovada; fechar e reabrir mantém a sessão. Instagram com a conta certa.
+3. Comando entre apps só de leitura: ler o assunto do último e-mail no Outlook e procurar no Instagram o perfil citado;
+   valor lido aparece no relatório com a origem.
+4. Interrupção: cancelar no meio da troca de app e criar a sucessora; reiniciar o backend no meio; nenhuma etapa
+   concluída se repete.
+5. Conta indisponível: sem consentimento da conta Outlook, a etapa espera a pessoa sem digitar nada.
+
+Estado em 29/09: 1 depende da Onda 2 (25.4–25.9); 2–5 dependem do P15 (o Outlook precisa abrir num aparelho).
