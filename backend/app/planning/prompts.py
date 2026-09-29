@@ -3,6 +3,7 @@ tudo o que vem das telas é dado não confiável do aplicativo."""
 from __future__ import annotations
 
 from ..modules.identity.domain.available_data import AvailableDatum
+from ..modules.learning.domain.licoes import bloco_de_licoes
 from ..util import sem_marcacao
 from .provider import AppContext, DecisionRequest, PlanRequest, SocialRequest, StepContext
 
@@ -320,12 +321,21 @@ def dados_block(dados: list[AvailableDatum]) -> str:
             f"type_secret, pelo nome; nenhum valor de segredo vem aqui):\n{linhas}")
 
 
+def licoes_block(lessons: list[str]) -> str:
+    """As lições medidas (ADR-054, decisão 5) seguidas de linha em branco, ou nada: sem lição, o texto de usuário sai
+    idêntico ao de antes. Sempre no texto de USUÁRIO — `ACTOR_SYSTEM` e `PLANNER_*` ficam iguais byte a byte e o cache
+    do sistema vale. O verificador não chama isto (o `StepContext` dele nem tem o campo: ADR-024)."""
+    bloco = bloco_de_licoes(lessons)
+    return f"{bloco}\n\n" if bloco else ""
+
+
 def planner_user(req: PlanRequest, max_steps: int) -> str:
     apps = "\n".join(_app_block(a) for a in req.apps) or "(nenhum app configurado)"
     insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'} app={i.get('app_id') or '—'}"
                       for i in req.instances)
     return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
             f"run_id desta execução: {req.run_id}\n\nApps configurados:\n{apps}\n\n"
+            f"{licoes_block(req.lessons)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano.")
@@ -338,6 +348,7 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
             f"run_id desta execução: {req.run_id}\n"
             f"Aplicativo: {app.name if app else req.catalog.package} ({req.catalog.package})\n\n"
             f"Ações disponíveis:\n{req.catalog.prompt_block()}\n\n"
+            f"{licoes_block(req.lessons)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
@@ -390,7 +401,8 @@ def actor_user_text(req: DecisionRequest) -> str:
                   f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
                   "peça a imagem com observe_screen(need_image=true).")
     elements = "\n".join(s.elements) or "(hierarquia vazia)"
-    return (f"{step_block(req.ctx, for_actor=True)}\n\nHistórico desta tentativa:\n{hist}\n\n"
+    return (f"{step_block(req.ctx, for_actor=True)}\n\n{licoes_block(req.lessons)}"
+            f"Histórico desta tentativa:\n{hist}\n\n"
             f"OBSERVAÇÃO ATUAL — app em primeiro plano: {s.package or 'desconhecido'}. {screen}\n"
             f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\nEscolha UMA ferramenta.")
 

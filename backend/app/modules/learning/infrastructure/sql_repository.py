@@ -27,11 +27,12 @@ from app.modules.learning.application.ports import (MudancaNativa, NovaEvidencia
                                                     Retencao)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, Desligamento, EntradaInvalida,
                                                ExigeODono, NaoEncontrado, SkillState, conferir_nascimento)
+from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.falhas import classificar_falha
 from app.modules.learning.domain.livro import (Escopo, ItemDeAprendizado, NovoItem, Transicao, fluxo_tem_efeito,
                                                receita_tem_efeito, ref_da_trilha)
 from app.modules.learning.domain.promocao import Evidencia
-from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, LivroKind, Polaridade, Posicao,
+from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, Braco, LivroKind, Polaridade, Posicao,
                                                      SignalKind, SourceKind)
 from app.modules.learning.infrastructure import linhas
 from app.modules.skills.domain.document import canonical_json
@@ -129,6 +130,29 @@ class SqlLearningRepository:
                                 item.app_version, item.state, para, reason, by, agora, run_id)
         except INTEGRITY_ERRORS as exc:
             raise ConflitoDeEstado(f"{item.id}: já há um item vivo com o mesmo conteúdo neste escopo.") from exc
+        movido = self.item(item.id)
+        assert movido is not None
+        return movido
+
+    def mudar_detalhe(self, item: ItemDeAprendizado, detalhe: str, *, by: str, reason: str,
+                      app_version: str | None = None, run_id: str | None = None) -> ItemDeAprendizado:
+        """Muda só o `state_detail` (em prova, fila, medida…), sem mudar o estado — CAS no estado E no detalhe lido,
+        com a trilha (`de = para`, o motivo carrega o detalhe). `state_at` passa a ser este instante: é o começo da
+        prova (as exposições de antes não entram no veredito) e o "há quantos dias" da medida. `app_version`, quando
+        vem, é a versão observada que abriu a prova de novo."""
+        if not by.strip() or not reason.strip():
+            raise EntradaInvalida("Mudança de detalhe sem quem decidiu ou sem motivo não entra na trilha.")
+        agora = self._clock()
+        with self._db.tx():
+            cur = self._db.execute(
+                "UPDATE learning_items SET state_detail=?, state_at=?, state_by=?, updated_at=?,"
+                " app_version=COALESCE(?, app_version) WHERE id=? AND state=? AND COALESCE(state_detail, '')=?",
+                (detalhe, agora, by, agora, app_version, item.id, item.state.value, item.state_detail or ""))
+            if int(cur.rowcount or 0) != 1:
+                raise ConflitoDeEstado(f"{item.id} mudou durante a mudança de detalhe; releia e tente de novo.")
+            self._registrar(item.id, item.kind, item.content_hash, item.escopo.chave(item.kind),
+                            app_version or item.app_version, item.state, item.state, f"{detalhe}: {reason.strip()}",
+                            by, agora, run_id)
         movido = self.item(item.id)
         assert movido is not None
         return movido
@@ -252,6 +276,16 @@ class SqlLearningRepository:
                     " distinct_runs=distinct_runs+?, distinct_devices=distinct_devices+?, updated_at=? WHERE id=?",
                     (favor, 1 - favor, int(novo_run), int(novo_aparelho), agora, nova.item_ref))
         return True
+
+    # ================================================================== exposições (lições, A7)
+    def exposicoes(self, item_id: str, *, desde: str | None = None, limite: int = 500) -> list[Exposicao]:
+        """As exposições de uma lição, as mais antigas primeiro (a ordem do veredito); `desde`: o começo da prova."""
+        sql, params = "SELECT * FROM learning_exposures WHERE item_id=?", [item_id]
+        if desde is not None:
+            sql += " AND created_at >= ?"
+            params.append(desde)
+        return [exposicao_da_linha(r) for r in self._db.query(sql + " ORDER BY created_at, unit_id LIMIT ?",
+                                                                (*params, int(limite)))]
 
     # ================================================================== sinais
     def registrar_sinal(self, sinal: NovoSinal, *, substituir: bool = False) -> int | None:
@@ -468,6 +502,27 @@ def _item(row: Row) -> ItemDeAprendizado:
         state_by=linhas.texto_ou_nulo(row, "state_by"), last_used_at=linhas.texto_ou_nulo(row, "last_used_at"))
 
 
+#: O mapeamento de linha de `learning_items`, para os repositórios dos pacotes (A7) que consultam a mesma tabela.
+item_da_linha = _item
+
+
+def exposicao_da_linha(row: Row) -> Exposicao:
+    replanejou = linhas.inteiro_ou_nulo(row, "replanned")
+    return Exposicao(item_id=linhas.texto(row, "item_id"), unit_id=linhas.texto(row, "unit_id"),
+                     role=linhas.texto(row, "role"), arm=Braco(linhas.texto(row, "arm")),
+                     tokens=linhas.inteiro(row, "tokens"), run_id=linhas.texto_ou_nulo(row, "run_id"),
+                     objective_id=linhas.texto_ou_nulo(row, "objective_id"),
+                     app_package=linhas.texto_ou_nulo(row, "app_package"),
+                     capability=linhas.texto_ou_nulo(row, "capability"), created_at=linhas.texto(row, "created_at"),
+                     outcome=linhas.texto_ou_nulo(row, "outcome"),
+                     failure_kind=linhas.texto_ou_nulo(row, "failure_kind"),
+                     ai_calls=linhas.inteiro_ou_nulo(row, "ai_calls"),
+                     usd=None if row["usd"] is None else linhas.real(row, "usd"),
+                     seconds=None if row["seconds"] is None else linhas.real(row, "seconds"),
+                     replanned=None if replanejou is None else bool(replanejou),
+                     filled_at=linhas.texto_ou_nulo(row, "filled_at"))
+
+
 def _transicao(row: Row) -> Transicao:
     de = linhas.texto_ou_nulo(row, "from_state")
     return Transicao(id=linhas.inteiro(row, "id"), item_ref=linhas.texto(row, "item_ref"),
@@ -488,4 +543,4 @@ def _evidencia(row: Row) -> Evidencia:
                      observed_at=linhas.texto(row, "observed_at"))
 
 
-__all__ = ["SqlLearningRepository"]
+__all__ = ["SqlLearningRepository", "exposicao_da_linha", "item_da_linha"]
