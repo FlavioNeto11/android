@@ -54,7 +54,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Atenção:** antes de qualquer experimento num aparelho com Instagram, screencap e conta logada; `account_label` e
     `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Não mirar de novo a mesma pessoa com mais de
     uma conta (K-057). Um trabalho pesado por vez no central (K-058).
-  - **Próxima ação:** o `aplicar` das Fases 20 e 21 (estado do plano; o 21.16 é novo). Depois, como propostas ao dono:
+  - **Próxima ação:** as propostas ao dono (as Fases 20 e 21 já estão no estado do plano, `b70fba0` e `a98044c`):
     o 18.9 (nomes históricos: a tabela `instagram_profiles` e as rotas `/api/instagram/…`) e o 12.3 (apps novos
     operando de verdade: a persona com mais de um app com login gerenciado; qual app vem primeiro é do dono). Seguem
     abertos: as pendências dos revisores do ADR-055 e as de A2–A9
