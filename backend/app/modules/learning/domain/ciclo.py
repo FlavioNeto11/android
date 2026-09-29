@@ -8,7 +8,8 @@ side_effect × human_origin — o que não está nele é proibido.
 
 Três regras em volta da tabela:
 - `requires_owner = side_effect OR human_origin` é DERIVADO (nunca gravado nem editado por rota): o sistema nunca
-  publica o que exige o dono. O repositório confere de novo no próprio `UPDATE` (segunda camada);
+  publica o que exige o dono. O repositório confere de novo no próprio `UPDATE` e, com `conferir_nascimento`, no
+  item que já nasce num estado (segunda camada);
 - rebaixar é automático; promover algo com efeito ou com texto de pessoa é do dono;
 - conteúdo desligado por uma PESSOA não volta pelo sistema (veto por `content_hash` no mesmo escopo). Desligado pelo
   sistema, fica vetado por `VETO_DO_SISTEMA_DIAS` ou até mudar a versão do app. A pessoa sempre pode reativar.
@@ -23,7 +24,7 @@ from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR, Actor, SkillState,
 from app.util import parse_iso
 
 __all__ = ["SYSTEM_ACTOR", "Actor", "SkillState", "actor_of", "ESTADOS", "TRANSICOES", "VETO_DO_SISTEMA_DIAS",
-           "Desligamento", "conferir_transicao", "exige_o_dono", "motivo_do_veto", "permitido"]
+           "Desligamento", "conferir_nascimento", "conferir_transicao", "exige_o_dono", "motivo_do_veto", "permitido"]
 
 #: O livro não tem rascunho: o item nasce congelado (mudar é criar outro com `parent_id`).
 ESTADOS = frozenset(s for s in SkillState if s is not SkillState.DRAFT)
@@ -146,6 +147,23 @@ def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect:
     if actor is Actor.SYSTEM and to is SkillState.VALIDATED and human_origin:
         raise ExigeODono("Texto de pessoa é validado pela pessoa (D1), não pela repetição.")
     return actor
+
+
+def conferir_nascimento(estado: SkillState, by: str, *, side_effect: bool, human_origin: bool) -> None:
+    """O D1 no item que já NASCE num estado: o sistema não cria direto o que não alcançaria por transição.
+
+    Sem isto, `criar_item(by='sistema', estado=published)` pulava a tabela inteira — um minerador que chamasse o
+    repositório publicaria com efeito ou com texto de pessoa sem nenhum `UPDATE` para recusar. As recusas são as
+    mesmas de `conferir_transicao` (publicar o que exige o dono; validar texto de pessoa); o modo do tipo não entra
+    aqui, porque quem confere o modo é o serviço, e o serviço só cria `candidate`.
+    """
+    if actor_of(by) is not Actor.SYSTEM:
+        return
+    if estado is SkillState.PUBLISHED and exige_o_dono(side_effect, human_origin):
+        motivo = "tem efeito externo" if side_effect else "tem texto de pessoa"
+        raise ExigeODono(f"O item {motivo}: nascer publicado é decisão do dono (D1); o sistema não publica.")
+    if estado is SkillState.VALIDATED and human_origin:
+        raise ExigeODono("Texto de pessoa nasce validado só pela pessoa (D1), não pelo sistema.")
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.modules.learning.domain.ciclo import (ESTADOS, SYSTEM_ACTOR, TRANSICOES, Actor, Desligamento, ExigeODono,
-                                               SkillState, TransicaoProibida, conferir_transicao, exige_o_dono,
-                                               motivo_do_veto, permitido)
+                                               SkillState, TransicaoProibida, conferir_nascimento, conferir_transicao,
+                                               exige_o_dono, motivo_do_veto, permitido)
 from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, contadores, veredito_de_repeticao
 from app.modules.learning.domain.tokens import TETOS_DE_FABRICA, Teto, caber, estimar_tokens
 from app.modules.learning.domain.vocabulario import Papel, Posicao
@@ -70,6 +70,32 @@ def test_o_sistema_nunca_publica_o_que_exige_o_dono() -> None:
     # A PESSOA publica o mesmo item: o D1 é sobre quem decide, não sobre o conteúdo.
     assert conferir_transicao(S.VALIDATED, S.PUBLISHED, "painel:flavio", side_effect=True, human_origin=True,
                               modo_publica=False) is Actor.PERSON
+
+
+def test_o_sistema_nao_nasce_num_estado_que_so_o_dono_alcanca() -> None:
+    """`conferir_nascimento` (a segunda camada de `criar_item`): o item criado já num estado segue o mesmo D1 da
+    tabela. Percorre estado × ator × side_effect × human_origin, e o que o sistema pode criar publicado é exatamente o
+    que ele publicaria a partir de `validated` com o modo em `on`."""
+    divergencias = []
+    for estado, actor, se, ho in itertools.product(SkillState, Actor, (False, True), (False, True)):
+        by = SYSTEM_ACTOR if actor is Actor.SYSTEM else "painel:flavio"
+        esperado = actor is Actor.PERSON or not ((estado is S.PUBLISHED and (se or ho))
+                                                 or (estado is S.VALIDATED and ho))
+        try:
+            conferir_nascimento(estado, by, side_effect=se, human_origin=ho)
+            obtido = True
+        except ExigeODono:
+            obtido = False
+        if obtido != esperado:
+            divergencias.append((estado.value, actor.value, se, ho, obtido))
+        if estado is S.PUBLISHED and actor is Actor.SYSTEM:
+            assert obtido == permitido(S.VALIDATED, S.PUBLISHED, Actor.SYSTEM, side_effect=se, human_origin=ho,
+                                       modo_publica=True)
+    assert divergencias == []
+    with pytest.raises(ExigeODono, match="efeito externo"):
+        conferir_nascimento(S.PUBLISHED, SYSTEM_ACTOR, side_effect=True, human_origin=True)
+    with pytest.raises(ExigeODono, match="texto de pessoa"):
+        conferir_nascimento(S.PUBLISHED, SYSTEM_ACTOR, side_effect=False, human_origin=True)
 
 
 def test_sem_efeito_o_sistema_publica_so_com_o_modo_em_on() -> None:

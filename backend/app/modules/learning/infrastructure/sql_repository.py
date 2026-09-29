@@ -1,9 +1,11 @@
 """`SqlLearningRepository`: as tabelas da 055 (ADR-054), nos dois dialetos.
 
 Toda mudança de estado é UMA transação com CAS no estado (`UPDATE … WHERE id=? AND state=?`), como no
-`SqlSkillRepository`: duas sessões decidindo ao mesmo tempo não decidem as duas. E o D1 tem aqui a segunda camada:
-quando quem decide é o sistema e o destino é `published`, o próprio `UPDATE` exige `side_effect=0 AND
-human_origin=0` — mesmo que o domínio deixasse passar, o banco não publica o que só o dono publica.
+`SqlSkillRepository`: duas sessões decidindo ao mesmo tempo não decidem as duas. E o D1 tem aqui a segunda camada,
+nas duas portas por onde um estado entra: quando quem decide é o sistema e o destino é `published`, o próprio `UPDATE`
+exige `side_effect=0 AND human_origin=0`; e o item que o sistema CRIA já num estado passa por `conferir_nascimento`
+antes do `INSERT` (nem publicado com efeito ou texto de pessoa, nem validado com texto de pessoa) — mesmo que o
+domínio deixasse passar, o banco não publica o que só o dono publica.
 
 Receita e fluxo só têm o `status` tocado (o precedente é a adoção das habilidades), sempre com a trilha na mesma
 transação. As guardas que valiam na rota antiga continuam valendo aqui: nunca duas receitas ativas na mesma chave,
@@ -24,7 +26,7 @@ from app.db import INTEGRITY_ERRORS, Database, Row
 from app.modules.learning.application.ports import (MudancaNativa, NovaEvidencia, NovoSinal, PrimeiraChamada,
                                                     Retencao)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, Desligamento, EntradaInvalida,
-                                               ExigeODono, NaoEncontrado, SkillState)
+                                               ExigeODono, NaoEncontrado, SkillState, conferir_nascimento)
 from app.modules.learning.domain.falhas import classificar_falha
 from app.modules.learning.domain.livro import (Escopo, ItemDeAprendizado, NovoItem, Transicao, fluxo_tem_efeito,
                                                receita_tem_efeito, ref_da_trilha)
@@ -81,6 +83,8 @@ class SqlLearningRepository:
                    run_id: str | None = None) -> ItemDeAprendizado:
         if not by.strip():
             raise EntradaInvalida("O item precisa dizer quem o criou ('sistema' ou a pessoa).")
+        # D1, segunda camada no nascimento: a porta expõe `estado`, e um minerador não publica passando por aqui.
+        conferir_nascimento(estado, by, side_effect=novo.side_effect, human_origin=novo.human_origin)
         agora = self._clock()
         item_id = f"li-{secrets.token_hex(8)}"
         e = novo.escopo
@@ -352,14 +356,17 @@ class SqlLearningRepository:
         return dict(grupos)
 
     def _chamadas(self, tentativas: list[Row], desde: str, ate: str) -> dict[str, tuple[int, float]]:
-        """Chamadas de IA por tentativa (`ai_calls.attempt_id`, 045). Chamada antiga só com `step_id` vai para a última
-        tentativa daquela etapa na janela. US$ gravado (048) quando há; senão, pelos tokens e a tabela de preços."""
-        ultima_da_etapa: dict[str, tuple[int, str]] = {}
-        for t in tentativas:
-            numero, sid = linhas.inteiro(t, "number"), linhas.texto(t, "step_id")
-            if sid not in ultima_da_etapa or numero > ultima_da_etapa[sid][0]:
-                ultima_da_etapa[sid] = (numero, linhas.texto(t, "id"))
+        """Chamadas de IA por tentativa. A dona de cada chamada é a MESMA qualquer que seja o intervalo calculado, e
+        ela só conta se terminou neste intervalo — senão o dia recalculado em separado do vizinho somava de novo a
+        chamada de uma tentativa que terminou no dia anterior (etapa atravessando 00:00 UTC), e `learning_daily` não
+        se corrige depois que `ai_calls` é purgado:
+        - com `ai_calls.attempt_id` (045): aquela tentativa, e nunca a etapa;
+        - chamada antiga, só com `step_id` (anterior à 045): a ÚLTIMA tentativa da etapa (`MAX(number)` de todas, não
+          a última da janela, que muda com o intervalo).
+        US$ gravado (048) quando há; senão, pelos tokens e a tabela de preços."""
         ids = {linhas.texto(t, "id") for t in tentativas}
+        ultima_da_etapa = {linhas.texto(t, "step_id"): linhas.texto(t, "id") for t in tentativas
+                           if linhas.inteiro(t, "number") == linhas.inteiro_ou_nulo(t, "ultima")}
         inicio = (datetime.strptime(desde, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
         precos = self._precos()
         saida: dict[str, tuple[int, float]] = {}
@@ -367,11 +374,11 @@ class SqlLearningRepository:
                 "SELECT attempt_id, step_id, model, input_tokens, cache_read, cache_write, output_tokens, usd"
                 " FROM ai_calls WHERE ts >= ? AND ts < ?", (inicio, ate)):
             dona = linhas.texto_ou_nulo(c, "attempt_id")
-            if dona is None or dona not in ids:
+            if dona is None:                            # só a chamada anterior à 045 cai na etapa
                 etapa = linhas.texto_ou_nulo(c, "step_id")
-                dona = ultima_da_etapa[etapa][1] if etapa is not None and etapa in ultima_da_etapa else None
-            if dona is None:
-                continue
+                dona = ultima_da_etapa.get(etapa) if etapa is not None else None
+            if dona is None or dona not in ids:
+                continue                                # a tentativa é de outro intervalo: conta lá, não aqui também
             if c["usd"] is not None:
                 usd = linhas.real(c, "usd")
             else:

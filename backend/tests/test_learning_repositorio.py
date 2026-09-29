@@ -4,13 +4,15 @@ O que se prova:
 - ATUALIZAÇÃO de um banco na última migração anterior à 055 (calculada, não escrita: outras frentes numeram em
   paralelo), com dados: aplica só a 055, não toca o legado, e as colunas novas nascem NULAS; o esquema de um banco
   novo e de um atualizado é o mesmo; a 055 renderiza sem marca sobrando; a cópia entre bancos acha ordem por FK;
-- CAS em toda transição (`ConflitoDeEstado`), e o D1 no próprio `UPDATE`: o sistema não publica item com efeito
-  ou texto de pessoa nem chamando o repositório direto;
+- CAS em toda transição (`ConflitoDeEstado`), e o D1 nas duas portas do repositório: o sistema não publica item com
+  efeito ou texto de pessoa nem chamando o repositório direto — nem por `transicionar_item` (o próprio `UPDATE`
+  recusa) nem CRIANDO o item já publicado (`criar_item`, percorrido estado × efeito × texto de pessoa × ator);
 - o índice PARCIAL de item vivo (o mesmo conteúdo vivo não duplica; desligado, pode ser reaprendido);
 - sinal idempotente por `(kind, source_ref, created_by)` e voto como upsert; evidência que deduplica pela origem não
   nula; `decided_by` nunca vazio;
 - a régua diária durável (`learning_daily`): recalculada por inteiro e idempotente, só execução real, legado
-  classificado na leitura; e a guarda que nunca reescreve um dia já mordido pela purga de `ai_calls`;
+  classificado na leitura; a chamada de IA contada uma vez só quando a etapa atravessa a meia-noite e os dias são
+  calculados em intervalos separados; e a guarda que nunca reescreve um dia já mordido pela purga de `ai_calls`;
 - a retenção de `aprendizado.retencao` (e o que nunca é purgado).
 
 Nível de prova: `simulated` (banco de teste; nenhum aparelho).
@@ -18,6 +20,7 @@ Nível de prova: `simulated` (banco de teste; nenhum aparelho).
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import shutil
 from datetime import UTC, datetime, timedelta
@@ -29,7 +32,7 @@ from app import db as db_mod
 from app.db import INTEGRITY_ERRORS, Database
 from app.modules.learning.application.ports import Ajustes, NovaEvidencia, NovoSinal, Retencao
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, ExigeODono,
+from app.modules.learning.domain.ciclo import (ESTADOS, SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, ExigeODono,
                                                NotaComCaraDeSegredo, SkillState, Vetado)
 from app.modules.learning.domain.livro import Escopo, NovoItem
 from app.modules.learning.domain.vocabulario import LivroKind, Polaridade, Posicao, SignalKind, SourceKind
@@ -213,14 +216,62 @@ def test_o_banco_nao_publica_pelo_sistema_o_que_exige_o_dono(db: Database) -> No
     """Segunda camada do D1: chamando o repositório DIRETO (sem o domínio), o `UPDATE` recusa."""
     r = repo(db)
     for efeito, fonte in ((True, SourceKind.RECOVERY), (False, SourceKind.FEEDBACK_NOTE)):
-        item = r.criar_item(novo_item(f"alvo {efeito}", efeito=efeito, fonte=fonte), by=SYSTEM_ACTOR,
-                            estado=SkillState.VALIDATED, detalhe=None, reason="teste")
+        novo = novo_item(f"alvo {efeito}", efeito=efeito, fonte=fonte)
+        # Texto de pessoa só nasce validado pela pessoa (D1, `conferir_nascimento`); aqui o que se prova é a
+        # publicação pelo sistema a partir de `validated`.
+        criador = "painel:flavio" if novo.human_origin else SYSTEM_ACTOR
+        item = r.criar_item(novo, by=criador, estado=SkillState.VALIDATED, detalhe=None, reason="teste")
         assert item.requires_owner
         with pytest.raises(ExigeODono):
             r.transicionar_item(item, SkillState.PUBLISHED, by=SYSTEM_ACTOR, reason="tentativa do sistema")
         assert db.scalar("SELECT state FROM learning_items WHERE id=?", (item.id,)) == "validated"
         assert r.transicionar_item(item, SkillState.PUBLISHED, by="painel:flavio",
                                    reason="aprovado pelo dono").state is SkillState.PUBLISHED
+
+
+def _nasce(estado: SkillState, *, sistema: bool, efeito: bool, humano: bool) -> bool:
+    """A regra do dono para o item que já NASCE num estado, reescrita sem olhar a implementação: o sistema não cria
+    publicado o que tem efeito ou texto de pessoa, nem validado o que tem texto de pessoa; a pessoa cria em qualquer
+    estado do livro."""
+    if not sistema:
+        return True
+    if estado is SkillState.PUBLISHED:
+        return not (efeito or humano)
+    if estado is SkillState.VALIDATED:
+        return not humano
+    return True
+
+
+def test_o_sistema_nao_cria_item_ja_publicado_que_exige_o_dono(db: Database) -> None:
+    """Segunda camada do D1 no NASCIMENTO: a porta `criar_item` expõe `estado`, e um minerador que a chame direto não
+    publica sem o dono. Percorre estado × efeito × texto de pessoa × ator; recusado, nada fica gravado (nem a linha nem
+    a trilha); aceito, nasce no estado pedido com a trilha de quem decidiu."""
+    r = repo(db)
+    fontes = (SourceKind.RECOVERY, SourceKind.FEEDBACK_NOTE, SourceKind.MANUAL)
+    assert {novo_item(fonte=f).human_origin for f in fontes} == {False, True}
+    divergencias = []
+    for estado, efeito, fonte, by in itertools.product([s for s in SkillState if s in ESTADOS], (False, True), fontes,
+                                                       (SYSTEM_ACTOR, "painel:flavio")):
+        novo = novo_item(f"{estado.value} {efeito} {fonte.value} {by}", efeito=efeito, fonte=fonte)
+        antes = (db.scalar("SELECT COUNT(*) FROM learning_items"),
+                 db.scalar("SELECT COUNT(*) FROM learning_transitions"))
+        try:
+            criado = r.criar_item(novo, by=by, estado=estado, detalhe=None, reason="matriz do nascimento")
+        except ExigeODono:
+            aceito = False
+            assert (db.scalar("SELECT COUNT(*) FROM learning_items"),
+                    db.scalar("SELECT COUNT(*) FROM learning_transitions")) == antes
+        else:
+            aceito = True
+            assert criado.state is estado and criado.state_by == by
+            assert [(t.from_state, t.to_state, t.decided_by) for t in r.trilha(criado.id)] == [(None, estado, by)]
+        if aceito != _nasce(estado, sistema=by == SYSTEM_ACTOR, efeito=efeito, humano=novo.human_origin):
+            divergencias.append((estado.value, efeito, fonte.value, by, aceito))
+    assert divergencias == []
+    assert db.scalar("SELECT COUNT(*) FROM learning_items WHERE state_by=? AND (side_effect<>0 OR human_origin<>0)"
+                     " AND state='published'", (SYSTEM_ACTOR,)) == 0
+    assert db.scalar("SELECT COUNT(*) FROM learning_items WHERE state_by=? AND human_origin<>0 AND state='validated'",
+                     (SYSTEM_ACTOR,)) == 0
 
 
 def test_decided_by_nunca_vazio(db: Database) -> None:
@@ -343,6 +394,72 @@ def test_regua_diaria_recalculada_por_inteiro_e_idempotente(db: Database) -> Non
     assert linhas[("LIKE_POST", "autenticacao")]["interventions"] == 1
     assert db.scalar("SELECT SUM(attempts) FROM learning_daily") == 3
     assert db.scalar("SELECT failure_kind FROM attempts WHERE id LIKE '%curtir:a1'") is None   # nada gravado
+
+
+def _etapa_na_meia_noite(db: Database, run_id: str, chave: str, acao: str,
+                         tentativas: list[tuple[str, str, str, str | None]],
+                         chamadas: list[tuple[str, str | None]]) -> None:
+    """Uma etapa com horários FIXOS. `tentativas` = (status, início, fim, erro); `chamadas` = (ts, tentativa ou `None`
+    para a chamada antiga, sem `attempt_id`, anterior à 045)."""
+    if db.one("SELECT id FROM apps WHERE id='instagram'") is None:
+        db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('instagram','instagram',"
+                   "'com.instagram.android',0)")
+    if db.one("SELECT id FROM runs WHERE id=?", (run_id,)) is None:
+        db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
+                   " app_ids) VALUES (?,?,?,?,?,?,?,?,?)", (run_id, run_id, "abrir o perfil", "execute", "completed",
+                                                            0, '["android-06"]', tentativas[0][1], '["instagram"]'))
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES (?,?,?,?)",
+                   (f"{run_id}:o", run_id, "android-06", "succeeded"))
+    sid = f"{run_id}:{chave}"
+    db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+               " postcondition, timeout_s, max_attempts, status, capability, app_id, driven_by, started_at,"
+               " finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (sid, run_id, f"{run_id}:o", "android-06", 1, 0, chave, chave, chave, "{}", 60, 3, "succeeded", acao,
+                None, "ai", tentativas[0][1], tentativas[-1][2]))
+    for n, (status, inicio, fim, erro) in enumerate(tentativas, start=1):
+        db.execute("INSERT INTO attempts(id, step_id, number, status, started_at, finished_at, error)"
+                   " VALUES (?,?,?,?,?,?,?)", (f"{sid}:a{n}", sid, n, status, inicio, fim, erro))
+    for ts, tentativa in chamadas:
+        db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens,"
+                   " output_tokens, attempt_id, usd) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (ts, run_id, f"{run_id}:o", sid, "decide", "modelo-x", 0, 1000, 100,
+                    None if tentativa is None else f"{sid}:{tentativa}", 0.01))
+
+
+def test_a_chamada_da_etapa_que_atravessa_a_meia_noite_conta_uma_vez_so(db: Database) -> None:
+    """A régua é durável e não se recalcula depois que `ai_calls` é purgado: uma chamada somada duas vezes fica somada
+    para sempre. No regime normal cada dia é calculado num intervalo SEPARADO (a última linha de um dia é a de quando
+    ele era o mais recente), e a etapa que atravessa 00:00 UTC tem tentativas nos dois. A chamada da tentativa que
+    terminou em D-1 conta em D-1 e não é somada de novo à tentativa seguinte, em D; a chamada antiga (sem
+    `attempt_id`) vai para a última tentativa da etapa, a mesma em qualquer intervalo."""
+    r = repo(db)
+    erro = "Pós-condição não comprovada: x"
+    # A sonda do revisor: a1 termina 23:55Z em D-1 (chamada 23:50Z), a2 termina 00:10Z em D (chamada 00:05Z).
+    _etapa_na_meia_noite(db, "r-meia-noite", "abrir", "OPEN_POST",
+                         [("failed", "2026-09-20T23:40:00.000Z", "2026-09-20T23:55:00.000Z", erro),
+                          ("succeeded", "2026-09-21T00:00:00.000Z", "2026-09-21T00:10:00.000Z", None)],
+                         [("2026-09-20T23:50:00.000Z", "a1"), ("2026-09-21T00:05:00.000Z", "a2")])
+    # A mesma forma com uma chamada anterior à 045 (só `step_id`), feita durante a1.
+    _etapa_na_meia_noite(db, "r-meia-noite", "curtir", "LIKE_POST",
+                         [("failed", "2026-09-20T23:41:00.000Z", "2026-09-20T23:56:00.000Z", erro),
+                          ("succeeded", "2026-09-21T00:01:00.000Z", "2026-09-21T00:11:00.000Z", None)],
+                         [("2026-09-20T23:51:00.000Z", None)])
+
+    def por_dia() -> dict[tuple[str, str], int]:
+        return {(x["day"], x["capability"]): int(x["n"]) for x in db.query(
+            "SELECT day, capability, SUM(ai_calls) AS n FROM learning_daily GROUP BY day, capability")}
+
+    esperado = {("2026-09-20", "OPEN_POST"): 1, ("2026-09-21", "OPEN_POST"): 1,
+                ("2026-09-20", "LIKE_POST"): 0, ("2026-09-21", "LIKE_POST"): 1}
+    r.recalcular_diario("2026-09-20", "2026-09-21")
+    r.recalcular_diario("2026-09-21", "2026-09-22")
+    assert por_dia() == esperado                                     # dias em intervalos separados
+    assert db.scalar("SELECT SUM(ai_calls) FROM learning_daily") == 3 == db.scalar("SELECT COUNT(*) FROM ai_calls")
+    r.recalcular_diario("2026-09-21", "2026-09-22")                  # D recalculado de novo, sozinho
+    assert por_dia() == esperado
+    r.recalcular_diario("2026-09-20", "2026-09-22")                  # os dois num intervalo só: o mesmo número
+    assert por_dia() == esperado
+    assert abs(float(db.scalar("SELECT SUM(usd) FROM learning_daily")) - 0.03) < 1e-9
 
 
 def test_a_regua_nunca_reescreve_um_dia_ja_mordido_pela_purga(db: Database) -> None:
