@@ -379,8 +379,8 @@ def test_leitura_de_pressao_traz_os_ticks_de_cpu(monkeypatch: pytest.MonkeyPatch
     assert p["cpu_total_ticks"] == 1000.0 and p["cpu_irq_ticks"] == 40.0
 
 
-def _ticks(total: float, irq: float) -> dict[str, float]:
-    return {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0,
+def _ticks(total: float, irq: float, load1: float = 0.5) -> dict[str, float]:
+    return {"load1": load1, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0,
             "cpu_total_ticks": total, "cpu_irq_ticks": irq}
 
 
@@ -479,5 +479,28 @@ async def test_reinicio_por_saude_abre_restart_rastreavel_e_nunca_reset(tmp_path
             assert verbos and set(verbos) == {"restart"}
         finally:
             despacho_mod._do_action = original
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_interrupcao_do_boot_com_carga_alta_nao_conta_como_ocioso(tmp_path: Path) -> None:
+    """Logo depois do reinício a frio (28/09, ~100 s no ar): 15% em irq com load 25–27. É o trabalho de subir, não a
+    doença — sem esta regra o reinício automático pediria outro reinício a cada boot."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention, rt.control = InstanceState.online, None, ControlOwner.none
+        pedidos: list[str] = []
+        d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None
+        total, irq = 1000.0, 0.0
+        for _ in range(5):
+            rt.io.pressure = _ticks(total, irq, load1=25.0)
+            await d.conferir_saude(rt)
+            total, irq = total + 1000, irq + 200           # 20% em interrupção, mas com o convidado subindo
+        assert rt.irq_frac is not None and rt.irq_frac >= 0.15 and rt.irq_strikes == 0
+        assert pedidos == []
     finally:
         await h.state.stop()

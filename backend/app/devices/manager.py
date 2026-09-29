@@ -953,7 +953,11 @@ class DeviceManager:
         if anterior is None or total - anterior[0] <= 0 or irq < anterior[1]:
             return                              # primeira leitura, ou o convidado reiniciou entre as duas
         rt.irq_frac = (irq - anterior[1]) / (total - anterior[0])
-        ocioso = rt.control == ControlOwner.none and rt.state == InstanceState.online
+        # Ocioso de verdade: ninguém no controle E a carga baixa. Logo depois do boot o convidado passa de 15% em irq
+        # com load 25–27 (medido às 18:47 de 28/09, ~100 s no ar) — é o trabalho de subir, não a doença; com a regra
+        # só por controle, o reinício automático pediria outro reinício (ou diria que "não resolveu") a cada boot.
+        carga, ncpu = float(p.get("load1") or 0), max(1.0, float(p.get("ncpu") or 1))
+        ocioso = rt.control == ControlOwner.none and rt.state == InstanceState.online and carga <= ncpu
         rt.irq_strikes = rt.irq_strikes + 1 if (ocioso and rt.irq_frac >= IRQ_OCIOSO_MAX) else 0
         if rt.irq_strikes < IRQ_SONDAS:
             return
