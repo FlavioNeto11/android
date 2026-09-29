@@ -167,8 +167,10 @@ def _publish_command(s: AppState, row: Row) -> None:
 #: versão, distribuir, verificar, buscar da loja e conectar/verificar/sair continuavam devolvendo
 #: `202 {"accepted": true}` sem id — não havia como distinguir criado/enviado/iniciado/concluído/falhou/
 #: desconhecido, nem estado `uncertain` para o timeout que não prova nada.
+#: `device.network` (contrato C3, ADR-056) é o verbo da rede por aparelho. Só o nome existe por enquanto: quem o despacha,
+#: com o trabalho real, é o 25.2 — o verbo não tem executor próprio, porque o trabalho vai como `factory` do despacho.
 APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", "app.distribute", "store.sync",
-                     "session.connect", "session.verify", "session.logout", "device.proxy"}
+                     "session.connect", "session.verify", "session.logout", "device.proxy", "device.network"}
 #: Na quarentena (ADR-055), os verbos de app e de sessão que continuam: ler o que está instalado (`app.verify` é
 #: inspeção por adb, não abre o app) e a cópia da loja (a loja nunca tem conta de tarefa). Instalar, provar e voltar
 #: de versão terminam na prova de ABERTURA do app; os de sessão abrem a conta travada.

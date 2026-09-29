@@ -349,8 +349,9 @@ class SessaoDeclarada:
         return self.conhecimento.ajustes.com(self.cfg.ajustes_de_sessao(self.package))
 
     # ------------------------------------------------------------------ entrada principal
-    async def ensure_session(self, rt: DeviceRuntime, profile_id: str, *, force_login: bool = False,
-                             automatic: bool = False, observe_only: bool = False) -> AuthResult:
+    async def ensure_session(self, rt: DeviceRuntime, profile_id: str, *, account_id: str | None = None,
+                             force_login: bool = False, automatic: bool = False,
+                             observe_only: bool = False) -> AuthResult:
         """Garante que a conta do perfil está aberta neste aparelho. Reaproveita sessão sempre que possível.
 
         `automatic=True` é a chamada do agendador: nela, estado que depende de pessoa (desafio de segurança, conta
@@ -359,6 +360,10 @@ class SessaoDeclarada:
 
         `observe_only=True` é "Verificar conta": lê a tela e nada mais. Num aparelho deslogado ele PARA na tela de
         login em vez de autenticar — antes, quem apertava "Verificar" gastava uma tentativa de login real sem saber.
+
+        `account_id` (contrato C1, ADR-057) é aceito e ainda não muda nada: este motor abre a conta do perfil no app
+        âncora, que é o comportamento de `account_id=None`. Escolher a conta pelo id (perfil com duas contas no mesmo
+        app, ou a conta do Outlook) é o item 23.4, e até lá nenhuma conta é inventada a partir dele.
         """
         visto = _Visto()
         resultado = await self._garantir(rt, profile_id, visto, force_login=force_login, automatic=automatic,

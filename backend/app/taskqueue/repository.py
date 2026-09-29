@@ -16,7 +16,8 @@ from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
 from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
-                      RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
+                      RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, SAIDA_NOME_RE, SAIDA_VALOR_MAX,
+                      SAIDA_VALUE_KINDS, StepDTO, StepResult, StepStatus)
 from ..modules.execution.domain.states import ATTEMPT, OBJECTIVE, RUN, STEP, MaquinaDeEstados
 from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
@@ -273,8 +274,8 @@ class Repository:
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
                 " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id,"
-                " skill_id, skill_version, node_id, strategy)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " skill_id, skill_version, node_id, strategy, saidas)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
@@ -282,7 +283,7 @@ class Repository:
                  s.capability, s.template_key, s.commit_selector, dumps(s.band_guard) if s.band_guard else None,
                  dumps(s.bindings) if s.bindings else None, s.app_id,
                  o.skill_id if o else None, o.skill_version if o else None, o.node_id if o else None,
-                 ">".join(o.strategies) if o and o.strategies else None))
+                 ">".join(o.strategies) if o and o.strategies else None, dumps(s.saidas) if s.saidas else None))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> Row:
@@ -290,6 +291,36 @@ class Repository:
         if row is None:
             raise KeyError(step_id)
         return row
+
+    # ================================================================== saídas de etapa (contrato C2, ADR-058)
+    def save_step_output(self, step_id: str, name: str, value: str, *, value_kind: str = "text",
+                         app_id: str | None = None) -> None:
+        """Grava o valor `name` que a etapa leu, para as etapas seguintes do MESMO objetivo (migração 056).
+
+        O nome é único no objetivo e a última escrita vence: a etapa repetida depois de uma falha reescreve. Nome fora
+        de `SAIDA_NOME_RE`, valor acima de `SAIDA_VALOR_MAX` ou tipo fora do vocabulário é `ValueError` — o valor vem
+        da tela, e cortar calado entregaria à etapa seguinte um código pela metade. Etapa inexistente: `KeyError`.
+        """
+        if not SAIDA_NOME_RE.fullmatch(name or ""):
+            raise ValueError(f"nome de saída inválido: {name!r}")
+        if not isinstance(value, str) or len(value) > SAIDA_VALOR_MAX:
+            raise ValueError(f"valor da saída '{name}' precisa ser texto de até {SAIDA_VALOR_MAX} caracteres")
+        if value_kind not in SAIDA_VALUE_KINDS:
+            raise ValueError(f"tipo de saída inválido: {value_kind!r}")
+        step = self.step_row(step_id)
+        oid = step["objective_id"]
+        self.db.execute(
+            "INSERT INTO step_outputs(id, run_id, objective_id, step_id, name, value, value_kind, app_id, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT (objective_id, name) DO UPDATE SET run_id=excluded.run_id, step_id=excluded.step_id,"
+            " value=excluded.value, value_kind=excluded.value_kind, app_id=excluded.app_id,"
+            " created_at=excluded.created_at",
+            (f"{oid}:{name}", step["run_id"], oid, step_id, name, value, value_kind, app_id, now_iso()))
+
+    def step_outputs(self, objective_id: str) -> dict[str, str]:
+        """As saídas já gravadas no objetivo, por nome (vazio quando nenhuma etapa produziu nada)."""
+        return {str(r["name"]): str(r["value"]) for r in self.db.query(
+            "SELECT name, value FROM step_outputs WHERE objective_id=? ORDER BY name", (objective_id,))}
 
     def transition_step(self, step_id: str, target: StepStatus, *, detail: str | None = None,
                         result: StepResult | None = None, next_retry_at: str | None = None,

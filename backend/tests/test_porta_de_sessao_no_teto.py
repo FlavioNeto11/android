@@ -49,8 +49,8 @@ class Espiao:
         self.falha = falha
         self.chamadas: list[tuple[str, str, bool, bool]] = []
 
-    async def ensure_session(self, rt: Any, profile_id: str, *, force_login: bool = False,
-                             automatic: bool = False, observe_only: bool = False) -> AuthResult:
+    async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
+                             force_login: bool = False, automatic: bool = False, observe_only: bool = False) -> AuthResult:
         self.chamadas.append((rt.id, profile_id, automatic, observe_only))
         if self.falha is not None:
             raise self.falha

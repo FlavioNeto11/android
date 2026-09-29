@@ -51,6 +51,22 @@ AUTORIZACAO = {
     '8.4': 'operar contas reais do Instagram em aparelho remoto',
     '10.3': 'alterar o teto de memória do WSL desta máquina',
     'T.1': 'executar as provas de aceite em infraestrutura real',
+    # Terceira evolução (Fases 23–27, item 23.1): os itens [A] do plano, com o ato real que cada um exige.
+    '23.2': ('instalar o Outlook pela Play Store no aparelho-loja (login Google e "Instalar" são do dono), rodar o '
+             'canário num aparelho de QA e promover a versão'),
+    '23.7': 'observar as telas do Outlook no canário com a pessoa no Foco (sem digitar)',
+    '23.11': ('cadastrar as contas Outlook reais com o endereço conferido pelo dono, vincular, clonar a credencial no '
+              'cofre e registrar o consentimento'),
+    '23.12': 'distribuir o Outlook aos aparelhos do parque, locais e remotos, em lotes',
+    '23.13': ('login e leitura da caixa de entrada em conta real do Outlook, só em aparelho com a rede validada; '
+              'chamada paga de IA pontual'),
+    '24.9': 'chamada paga de IA e login/leitura em conta real (comando Outlook → Instagram só de leitura)',
+    '25.1': 'instalar e medir o cliente VPN (WireGuard e sing-box) num aparelho de QA do parque',
+    '25.7': 'aplicar a rede nos aparelhos do worker pelo túnel, sem mudar a rota do host nem o túnel',
+    '25.9': 'trocar a rede de aparelhos do parque; conta real só com autorização por aparelho',
+    '25.10': 'adquirir o cliente VPN pela Play Store com a conta do dono, promover e distribuir ao parque',
+    '27.2': ('chamada paga de IA e login/leitura em conta real (Outlook e Instagram no mesmo aparelho, rede '
+             'trafego_verificado)'),
 }
 #: Teto de itens por agente. Não é estética: um agente com oito itens e vinte arquivos perde o fio, e quando erra
 #: leva junto tudo o que já tinha feito. Pedaços do mesmo grupo correm em SEQUÊNCIA, então não há conflito.

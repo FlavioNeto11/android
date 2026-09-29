@@ -15,6 +15,7 @@ também os importa (`InstanceActionBody` no despacho, `ManualInput` no gerenciad
 """
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -152,6 +153,13 @@ DELIVERY_ORDER = {DeliveryLevel.none: 0, DeliveryLevel.appeared: 1, DeliveryLeve
 
 
 # ---------------------------------------------------------------- plano
+#: Contrato C2 (ADR-058): nome de uma saída de etapa e teto do valor. O repositório confere os dois de novo ao gravar
+#: (`Repository.save_step_output`): o nome vem do plano, mas o valor vem da tela.
+SAIDA_NOME_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+SAIDA_VALOR_MAX = 2000
+SAIDA_VALUE_KINDS = ("text", "number", "url", "list")
+
+
 class Postcondition(BaseModel):
     # items_collected: etapa de COLETA — comprovada pelo executor quando `collect_list` leu a lista até o fim
     kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
@@ -197,6 +205,19 @@ class PlanStep(BaseModel):
     # Só em plano compilado de skill. Fora da serialização quando vazio: `runs.plan` e `plan_versions.steps` de
     # todo plano que não veio de skill continuam byte a byte iguais (e o painel ignora campo que não conhece).
     origin: StepOrigin | None = Field(default=None, exclude_if=lambda v: v is None)
+    # Contrato C2 (ADR-058): os NOMES dos valores que esta etapa lê e deixa para as seguintes (`step_outputs`),
+    # referidos no texto como `{{saida:<nome>}}`. Fora da serialização quando vazia, pelo mesmo motivo de `origin`.
+    saidas: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
+
+    @field_validator("saidas")
+    @classmethod
+    def _nomes_de_saida(cls, saidas: list[str]) -> list[str]:
+        for nome in saidas:
+            if not SAIDA_NOME_RE.fullmatch(nome):
+                raise ValueError(f"nome de saída inválido: {nome!r} (use {SAIDA_NOME_RE.pattern})")
+        if len(set(saidas)) != len(saidas):
+            raise ValueError("nomes de saída repetidos na etapa")
+        return saidas
 
 
 class MissingInfo(BaseModel):
@@ -1591,6 +1612,21 @@ class ResolvedTargetDTO(BaseModel):
     profile_id: str | None = None
     app_id: str | None = None
     origem: Literal["ui", "texto", "vinculo", "balanceamento"]
+    #: Contrato C5: o CONJUNTO de apps do alvo (comando entre apps). `app_id` segue sendo o primeiro; vazio quando não
+    #: há app. Quem só passa `app_id` recebe `[app_id]` (`alinhar_app_ids`).
+    app_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _app_ids(self) -> "ResolvedTargetDTO":
+        self.app_id, self.app_ids = alinhar_app_ids(self.app_id, self.app_ids)
+        return self
+
+
+def alinhar_app_ids(app_id: str | None, app_ids: list[str]) -> tuple[str | None, list[str]]:
+    """Contrato C5: `app_id` é sempre o primeiro de `app_ids`. Só um dos dois preenchido completa o outro; os dois
+    preenchidos põem `app_id` à frente, sem repetir."""
+    ids = list(dict.fromkeys([a for a in (app_id, *app_ids) if a]))
+    return (ids[0] if ids else None), ids
 
 
 class RunTargetsPreview(BaseModel):
@@ -1983,3 +2019,81 @@ class Metrics(BaseModel):
     mem_available_gb: float
     mem_used_percent: float
     emulators: list[EmulatorMetric] = []
+
+
+# ---------------------------------------------------------------- rede por aparelho (contrato C3, ADR-056)
+# Só a FORMA (migração 057). Aplicar, medir e liberar tarefa é da Fase 25; as rotas são do 25.2/25.8.
+NetworkProfileKind = Literal["vpn", "proxy"]
+NetworkProtocol = Literal["wireguard", "singbox", "http", "socks5"]
+#: `livre` = sem exigência (o padrão: nada muda para quem não pediu); `exigida` = tarefa só com a rede verificada;
+#: `exigida_com_bloqueio` = idem, e o aparelho bloqueia o tráfego fora da VPN.
+NetworkPolicy = Literal["livre", "exigida", "exigida_com_bloqueio"]
+#: Só `trafego_verificado` libera tarefa com política exigida, e só com medição de dentro do aparelho (ADR-056 §3).
+NetworkState = Literal["pendente", "configurado", "conectado", "trafego_verificado", "parcial"]
+#: Chave de `params` com cara de segredo. O segredo vai ao cofre por `secret_ref`; em `params` ele é recusado.
+_CHAVE_DE_SEGREDO = re.compile(r"secret|senha|password|passwd|private|preshared|psk|token|credential|credencial",
+                               re.IGNORECASE)
+
+
+class NetworkProfileDTO(BaseModel):
+    """Um perfil de VPN ou de proxy. Sem segredo: a referência do cofre nem sai daqui, só `has_secret`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    kind: NetworkProfileKind
+    protocol: NetworkProtocol
+    endpoint_host: str
+    endpoint_port: int = Field(ge=1, le=65535)
+    has_secret: bool = False
+    params: dict[str, object] = Field(default_factory=dict)
+    created_at: str
+    created_by: str | None = None
+
+    @field_validator("params")
+    @classmethod
+    def _params_sem_segredo(cls, params: dict[str, object]) -> dict[str, object]:
+        suspeitas = sorted(k for k in params if _CHAVE_DE_SEGREDO.search(k))
+        if suspeitas:
+            raise ValueError(f"params não guarda segredo ({', '.join(suspeitas)}): use o cofre (secret_ref)")
+        return params
+
+
+class DeviceNetworkDTO(BaseModel):
+    """Desejado × observado da rede de um aparelho (`device_network`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    instance_id: str
+    vpn_profile_id: str | None = None
+    proxy_profile_id: str | None = None
+    policy: NetworkPolicy = "livre"
+    desired_rev: int = 0
+    applied_rev: int | None = None
+    state: NetworkState = "pendente"
+    detail: str | None = None
+    error: str | None = None
+    egress_ipv4: str | None = None
+    egress_ipv6: str | None = None
+    verified_at: str | None = None
+    updated_at: str
+    updated_by: str | None = None
+
+
+class NetworkMeasurementDTO(BaseModel):
+    """Uma medição da saída feita de dentro do aparelho. `None` nos booleanos = não medido."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    instance_id: str
+    measured_at: str
+    method: str
+    egress_ipv4: str | None = None
+    egress_ipv6: str | None = None
+    dns_resolver: str | None = None
+    udp_ok: bool | None = None
+    per_app: dict[str, object] = Field(default_factory=dict)
+    leak_blocked: bool | None = None
+    detail: str | None = None

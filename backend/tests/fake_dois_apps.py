@@ -85,8 +85,8 @@ class SessaoDoQa:
     def package(self) -> str:
         return QA
 
-    async def ensure_session(self, rt: Any, profile_id: str, *, force_login: bool = False,
-                             automatic: bool = False, observe_only: bool = False) -> ResultadoDoQa:
+    async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
+                             force_login: bool = False, automatic: bool = False, observe_only: bool = False) -> ResultadoDoQa:
         self.chamadas.append((rt.id, profile_id, force_login, automatic, observe_only))
         pronto = "login_account" not in rt.io.page_source()
         detalhe = "conta do QA Messenger aberta na tela" if pronto else "o QA Messenger pede login"

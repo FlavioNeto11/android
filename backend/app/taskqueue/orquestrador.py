@@ -20,9 +20,9 @@ import re
 from collections.abc import Callable, Sequence
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..models import DistributeSpec, ResolvedTargetDTO, RunTargetsResolveBody
+from ..models import DistributeSpec, ResolvedTargetDTO, RunTargetsResolveBody, alinhar_app_ids
 from ..modules.execution.application.alvos import Mundo, Resolucao
 from ..modules.execution.application.target_extractor import TargetExtractor
 from ..modules.execution.domain.orquestracao import (MAX_CANDIDATAS, CartaoDePersona, OrquestracaoInvalida,
@@ -82,6 +82,8 @@ class RunTargetsSuggestion(BaseModel):
     (app sem conta, pela carga) ou `nenhuma` (não há o que sugerir — ver `perguntas`/`warnings`)."""
     modo: Literal["ia", "texto", "distribuir", "nenhuma"]
     app_id: str | None = None
+    #: Contrato C5: o conjunto de apps do comando; `app_id` segue sendo o primeiro (`alinhar_app_ids`).
+    app_ids: list[str] = Field(default_factory=list)
     targets: list[ResolvedTargetDTO] = Field(default_factory=list)
     escolhidas: list[PersonaEscolhida] = Field(default_factory=list)
     descartadas: list[PersonaDescartada] = Field(default_factory=list)
@@ -93,6 +95,11 @@ class RunTargetsSuggestion(BaseModel):
     command_sem_destinos: str = ""
     resumo: str = ""
     warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _app_ids(self) -> "RunTargetsSuggestion":
+        self.app_id, self.app_ids = alinhar_app_ids(self.app_id, self.app_ids)
+        return self
 
 
 class Orquestrador:

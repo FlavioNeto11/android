@@ -175,6 +175,9 @@ interface PlanStep {
   /** De que habilidade, versão e nó a etapa saiu, quando o plano foi compilado de uma habilidade (`StepOrigin`).
    *  Ausente no plano do planejador. É o que permite corrigir a etapa no ensino (plano 22.7). */
   origin?: StepOrigin;
+  /** Contrato C2 (ADR-058): os nomes dos valores que a etapa lê e deixa para as seguintes (`{{saida:<nome>}}`).
+   *  Ausente quando a etapa não produz nada. */
+  saidas?: string[];
 }
 
 interface StepOrigin {
@@ -1469,6 +1472,9 @@ export interface ResolvedTarget {
   profile_id: string | null;
   app_id: string | null;
   origem: TargetOrigin;
+  /** Contrato C5: o conjunto de apps do alvo; `app_id` é o primeiro. Vazio quando não há app. Opcional porque o
+   *  alvo que chega no `detail` de uma recusa (409 da criação) vem do resolvedor, sem este campo. */
+  app_ids?: string[];
 }
 
 /**
@@ -2106,6 +2112,64 @@ export interface ProxyList {
   devices: ProxyDeviceState[];
 }
 
+// ---- Rede por aparelho (contrato C3, ADR-056) ----------------------------------------------------------------------
+// Só os tipos: as rotas `/api/network/*` são do 25.2/25.8. O proxy acima é o legado da 041.
+
+export type NetworkProfileKind = 'vpn' | 'proxy';
+export type NetworkProtocol = 'wireguard' | 'singbox' | 'http' | 'socks5';
+/** `livre` = sem exigência (padrão); `exigida` = tarefa só com a rede verificada; `exigida_com_bloqueio` = idem, e o
+ *  aparelho bloqueia o tráfego fora da VPN. */
+export type NetworkPolicy = 'livre' | 'exigida' | 'exigida_com_bloqueio';
+/** Só `trafego_verificado` libera tarefa com política exigida (ADR-056 §3). */
+export type NetworkState = 'pendente' | 'configurado' | 'conectado' | 'trafego_verificado' | 'parcial';
+
+/** Perfil de VPN ou de proxy. Nunca traz segredo: só `has_secret`. */
+export interface NetworkProfile {
+  id: string;
+  name: string;
+  kind: NetworkProfileKind;
+  protocol: NetworkProtocol;
+  endpoint_host: string;
+  endpoint_port: number;
+  has_secret: boolean;
+  params: Record<string, unknown>;
+  created_at: string;
+  created_by: string | null;
+}
+
+/** Desejado × observado da rede de um aparelho. */
+export interface DeviceNetwork {
+  instance_id: string;
+  vpn_profile_id: string | null;
+  proxy_profile_id: string | null;
+  policy: NetworkPolicy;
+  desired_rev: number;
+  applied_rev: number | null;
+  state: NetworkState;
+  detail: string | null;
+  error: string | null;
+  egress_ipv4: string | null;
+  egress_ipv6: string | null;
+  verified_at: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Uma medição da saída feita de dentro do aparelho; `null` nos booleanos = não medido. */
+export interface NetworkMeasurement {
+  id: number;
+  instance_id: string;
+  measured_at: string;
+  method: string;
+  egress_ipv4: string | null;
+  egress_ipv6: string | null;
+  dns_resolver: string | null;
+  udp_ok: boolean | null;
+  per_app: Record<string, unknown>;
+  leak_blocked: boolean | null;
+  detail: string | null;
+}
+
 // ---- Assistente do comando (ADR-047) -------------------------------------------------------------------------------
 // Bloco próprio, no fim do arquivo: não se mistura com os tipos de persona que outras ondas mexem.
 
@@ -2245,6 +2309,8 @@ export interface PersonaNaoAvaliavel {
 export interface RunTargetsSuggestion {
   modo: 'ia' | 'texto' | 'distribuir' | 'nenhuma';
   app_id: string | null;
+  /** Contrato C5: o conjunto de apps do comando; `app_id` é o primeiro. */
+  app_ids: string[];
   targets: ResolvedTarget[];
   escolhidas: PersonaEscolhida[];
   descartadas: PersonaDescartada[];

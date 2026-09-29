@@ -20,8 +20,9 @@ let container: HTMLElement;
 let backend: FakeBackend;
 
 const SUGESTAO: RunTargetsSuggestion = {
-  modo: 'ia', app_id: 'instagram',
-  targets: [{ instance_id: 'android-02', profile_id: 'p-marina', app_id: 'instagram', origem: 'vinculo' }],
+  modo: 'ia', app_id: 'instagram', app_ids: ['instagram'],
+  targets: [{ instance_id: 'android-02', profile_id: 'p-marina', app_id: 'instagram', origem: 'vinculo',
+              app_ids: ['instagram'] }],
   escolhidas: [{ profile_id: 'p-marina', nome: 'Marina', motivo: 'católica devota, fala de fé com naturalidade',
                  aderencia: 'alta', instance_id: 'android-02', servidor: 'Central' }],
   descartadas: [{ profile_id: 'p-rafael', nome: 'Rafael', motivo: 'ateu: o pedido exige falar como fiel' }],

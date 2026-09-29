@@ -26,6 +26,23 @@ mecanismo (`scripts/claude-plan-100.py`).
 - **Senha do Outlook:** clonar dentro do cofre, com consentimento por conta (ADR-057).
 - **12.3:** o Outlook é o primeiro app novo (o próprio pedido).
 
+## Decisões e autorizações do dono na execução (29/09, ~17:40Z)
+
+- **P3:** a IDE toca em "Instalar" na Play Store do android-11 (Outlook, WireGuard, sing-box; gratuitos), só com a
+  conta Google já logada; login, senha ou verificação voltam ao dono.
+- **P4:** o e-mail `outlook.com` cadastrado na persona é o endereço do Outlook, com a mesma senha do Instagram; só
+  as 3 ativas (André, Bruno, Lucas). As 5 bloqueadas ficam pendentes; as 6 personas sem e-mail recebem o app sem conta.
+- **P2:** servidor WireGuard no central autorizado. Escolha técnica: sing-box oficial em modo usuário (WireGuard
+  sem driver, sem NAT e sem mudar a rede do sistema), com um proxy autenticado no mesmo processo para provar a
+  composição. O IP de saída do piloto é o do central, e isso fica registrado.
+- **P8:** IA paga pontual até US$ 1,50 nas provas 23.13, 24.9 e 27.2.
+- **P7:** rede nova em android-03 e android-06 depois de validada nos de QA, um por vez, fora de uso, conta
+  conferida antes e depois.
+- **Login no Outlook** das 3 ativas autorizado (só leitura da caixa; verificação da Microsoft volta ao dono).
+- **P9:** desafio ou código no Outlook para só a conta Outlook; `conta_travada` mantém a quarentena do aparelho.
+- **Ainda pendentes:** P1 (provedor, para IP distinto), P5 (consentimento de cada conta Outlook, no painel), P10
+  (bloqueadas e lucas no Instagram), P12, P13.
+
 ## Frentes, contratos e arquivos reservados
 
 Coordenador único (esta sessão) escreve o handoff, os contratos, `docs/estado-atual.md`, `CHANGELOG.md`, o plano e
@@ -107,9 +124,70 @@ entrega (`resultado.json` do mecanismo).
 | P13 | Janela de deploy combinada com as outras sessões | passo 4 |
 | P14 | Créditos da IDE: a única medição é ~US$ 8 por item médio em Opus (n=3, `docs/claude-plano-100.md`). Com ~30 itens de código, a faixa é de US$ 200 a 400, contra US$ 250 de crédito registrado em 28/09 | ritmo da Onda 1 |
 
+## Contratos da Onda 0 (especificação; escritor: o coordenador)
+
+Todos compatíveis para trás: o padrão reproduz o comportamento de hoje. As frentes implementam o comportamento;
+a Onda 0 só cria a forma, com teste de contrato.
+
+- **C1 — sessão por conta.** `SessionProvider.ensure_session(rt, profile_id, *, account_id: str | None = None,
+  force_login=False, automatic=False, observe_only=False)` em `modules/identity/application/ports.py` e em quem a
+  implementa (`integrations/app_declarado/sessao.py`) e nos dublês (`test_dubles_cumprem_as_portas.py`).
+  `account_id=None` = a conta do app âncora, como hoje. A resolução por conta é o 23.4.
+- **C2 — saídas de etapa.** Migração `056_saidas_de_etapa.sql`: tabela `step_outputs` (`id` TEXT PK, `run_id`,
+  `objective_id`, `step_id` com FK e `ON DELETE CASCADE` como `steps`, `name` TEXT, `value` TEXT, `value_kind` TEXT
+  `text|number|url|list`, `app_id` TEXT NULL, `created_at`; `UNIQUE(objective_id, name)`: o nome é único no
+  objetivo, a última escrita vence). `PlanStep.saidas: list[str] = []` (nomes que a etapa produz) e
+  `StepOutcome.outputs: dict[str, str] | None = None`. Referência no texto e nas variáveis da etapa:
+  `{{saida:<nome>}}`, resolvida pelo executor antes da etapa (24.3). Repositório: `Repository.save_step_output`,
+  `Repository.step_outputs(objective_id) -> dict[str, str]`. Nome: `^[a-z][a-z0-9_]{0,39}$`; valor até 2000
+  caracteres.
+- **C3 — rede por aparelho.** Migração `057_rede_por_aparelho.sql`:
+  - `network_profiles` (`id`, `name` único, `kind` `vpn|proxy`, `protocol` `wireguard|singbox|http|socks5`,
+    `endpoint_host`, `endpoint_port`, `secret_ref` NULL, `params` JSON sem segredo, `created_at`, `created_by`);
+  - `device_network` (`instance_id` PK, `vpn_profile_id` NULL, `proxy_profile_id` NULL, `policy`
+    `livre|exigida|exigida_com_bloqueio` padrão `livre`, `desired_rev` INT, `applied_rev` INT NULL, `state`
+    `pendente|configurado|conectado|trafego_verificado|parcial`, `detail`, `error`, `egress_ipv4`, `egress_ipv6`,
+    `verified_at`, `updated_at`, `updated_by`);
+  - `network_measurements` (`id`, `instance_id`, `measured_at`, `method`, `egress_ipv4`, `egress_ipv6`,
+    `dns_resolver`, `udp_ok` INT NULL, `per_app` JSON, `leak_blocked` INT NULL, `detail`).
+  DTOs em `models.py` (`NetworkProfileDTO` sem segredo, só `has_secret: bool`; `DeviceNetworkDTO`;
+  `NetworkMeasurementDTO`; `NetworkState` e `NetworkPolicy` como `Literal`) e em `frontend/src/api/types.ts`. Verbo
+  de comando `device.network` em `commands/despacho.py::APP_COMMAND_VERBS`. Rotas (25.2/25.8): `GET/POST
+  /api/network/profiles`, `DELETE /api/network/profiles/{id}`, `GET /api/network/devices`, `POST
+  /api/network/assign` (lote com `dry_run`), `POST /api/network/devices/{iid}/verify`, `POST
+  /api/network/devices/{iid}/reapply`. As tabelas da 041 ficam; o proxy legado é lido como `configurado` no máximo.
+- **C4 — portão de rede.** `Scheduler.rede_gate: Callable[[str], str | None] | None = None` (recebe o
+  `instance_id`, devolve o motivo da espera ou `None`), no molde de `worker_gate`; o `_tick` chama e faz
+  `note_waiting` com `wait_reason="rede"`. Ligado em `state.py` pelo 25.6.
+- **C5 — conjunto de apps.** `RunTargetsSuggestion.app_ids: list[str] = []` ao lado de `app_id` (que segue sendo o
+  primeiro); `ResolvedTargetDTO.app_ids` idem; `Plan.required_apps` já existe e passa a ser a fonte. Frontend:
+  os tipos espelham.
+- **Números:** adendo do contrato **v0.41** (Onda 0) e seguintes; migrações 056 e 057 citadas em `docs/banco.md`.
+
 ## Registro da integração
 
-Vazio. Cada lote integrado entra aqui com o SHA, a frente, o que entrou e a prova (`simulated`, `real` ou `not_run`).
+Cada lote integrado entra aqui com o SHA, a frente, o que entrou e a prova (`simulated`, `real` ou `not_run`).
+
+**Checkpoint 1 (29/09 ~17:55Z).** Integração no worktree `.claude/worktrees/evo3`, branch `claude/evolucao3`, a
+partir de `2a822b6`, com junções `backend/.venv` e `frontend/node_modules` (desfazer com `rmdir` do link; nunca
+apagar recursivo).
+- **Real, sem código novo:** android-11 ligado (`c-20260929173711-9e0446`); a Play Store já tinha o Outlook
+  5.2635.3; a IDE instalou WireGuard 1.0.20260315 e sing-box 1.14.2 (autorização P3); `store/sync` importou os dois
+  clientes (`c-20260929174417-3303c9`, `c-20260929174423-bdc392`) e a assinatura deles foi aprovada (releases
+  `com.wireguard.android-519-e2ae03cae9df`, `io.nekohasekai.sfa-739-5535a350073a`, `installable`).
+- **Defeito achado no 23.2:** o `store/sync` do Outlook (`c-20260929174407-153853`) recusou a importação:
+  `split_config.en.apk` sem esquema v1 ("Missing META-INF/MANIFEST.MF"). Corrigido em `releases/inspector.py`
+  (`_signature` repete com `--min-sdk-version 24`), teste
+  `tests/test_app_releases.py::test_split_sem_esquema_v1_le_a_assinatura_pelo_v2_e_v3`; prova com os 4 APKs reais
+  do Outlook (mesmo assinante; base 159 MB, minSdk 30). A importação real espera o deploy.
+- **Servidor do piloto:** `data/rede/sing-box-1.14.2-windows-amd64/sing-box.exe` (GitHub SagerNet, SHA-256
+  conferido com o `digest` publicado), fora do Git.
+- **Em curso (agentes):** Onda 0 (C1–C5, 23.1) no `evo3`; medição 25.1 no android-05 (relatório em
+  `data/rede/piloto/medicao-25.1.md`); Fase 26 em `docs/design/pedidos-persistentes.md`.
+- **Ajuste de plano (25.5):** a sonda de saída mede por `nc` HTTP a um eco de IP e cobre por UID com `dumpsys
+  netstats`, em vez de estender o app de QA, se a medição do 25.1 confirmar que basta. O motivo: a medição fica
+  sem app novo a distribuir e a mesma em todos os aparelhos. O app de QA tem build no central (`qa-app/`, Gradle 9.7
+  e JDK 21), e estendê-lo segue como alternativa se o `nc` do convidado não bastar.
 
 ## Próxima ação
 

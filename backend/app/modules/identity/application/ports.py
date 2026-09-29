@@ -42,7 +42,9 @@ class SessionProvider(Protocol):
     - `automatic=True` é a chamada do agendador: estado que só uma pessoa resolve (desafio, conta errada) nem toca o
       aparelho;
     - `observe_only=True` é "Verificar conta": lê a tela e nunca autentica;
-    - `force_login=True` refaz o login mesmo com a sessão aberta (pedido explícito do painel).
+    - `force_login=True` refaz o login mesmo com a sessão aberta (pedido explícito do painel);
+    - `account_id` (contrato C1, ADR-057) é a conta do perfil NESTE app. `None` = a conta do app âncora, como sempre
+      foi; a resolução por conta (um perfil com mais de uma conta) é o item 23.4.
 
     O provedor nunca repete envio por timeout, nunca segue com conta errada e nunca tenta resolver desafio de
     segurança (ADR-009); a senha só passa pelo canal sensível (ADR-025). O que ele observa ele grava na sessão do
@@ -55,8 +57,9 @@ class SessionProvider(Protocol):
     @property
     def package(self) -> str: ...
 
-    async def ensure_session(self, rt: DeviceRef, profile_id: str, *, force_login: bool = False,
-                             automatic: bool = False, observe_only: bool = False) -> SessionOutcome: ...
+    async def ensure_session(self, rt: DeviceRef, profile_id: str, *, account_id: str | None = None,
+                             force_login: bool = False, automatic: bool = False,
+                             observe_only: bool = False) -> SessionOutcome: ...
 
 
 class ProfileStore(Protocol):

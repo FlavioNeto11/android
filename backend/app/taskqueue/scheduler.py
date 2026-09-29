@@ -192,6 +192,10 @@ class Scheduler:
         # Manutenção do worker: `None` quando aceita; senão a frase do motivo. Injetado pelo AppState a partir de
         # WorkerRegistry.aceita_trabalho — o scheduler não conhece o registro de workers, só a forma da porta.
         self.worker_gate: Callable[[str], str | None] | None = None
+        # Contrato C4 (ADR-056): a rede do aparelho. Recebe o `instance_id`; `None` quando pode seguir, senão a frase
+        # do motivo da espera. Mesma forma de `worker_gate`; quem liga ao estado da rede é o AppState (item 25.6).
+        # `None` aqui (o padrão) = sem efeito nenhum.
+        self.rede_gate: Callable[[str], str | None] | None = None
         # Vagas e recursos DAQUELA máquina (`WorkerRegistry.capacidade`), para o rodízio decidir por worker em vez
         # de por um teto global que não crescia com worker novo nenhum. `None` quando o worker não está inscrito.
         self.worker_capacity: Callable[[str], Any] | None = None
@@ -317,6 +321,12 @@ class Scheduler:
                         self._block(obj, *bloqueio)
                     elif obj["id"] not in self._explicado:
                         self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar", wait_reason="device_slot")
+                continue
+            if self.rede_gate is not None and (motivo_rede := self.rede_gate(iid)) is not None:
+                # Rede exigida e ainda não verificada (ADR-056): espera, sem virar waiting_user. ANTES das portas do
+                # app e da sessão, e não ao lado de `worker_gate`: a porta da sessão pode despachar um LOGIN, e
+                # autenticar uma conta real por uma saída não verificada é justamente o que a política exigida impede.
+                self.repo.note_waiting(obj["id"], motivo_rede, wait_reason="rede")
                 continue
             # Item 12.1: um item pode atravessar apps. As portas (app instalado, sessão entrada) valem para CADA app
             # das etapas que faltam, na ordem em que aparecem; o primeiro app que não está pronto segura o item.

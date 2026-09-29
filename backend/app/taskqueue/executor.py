@@ -193,6 +193,9 @@ class StepOutcome:
     #: já sabe e a última árvore não diz: a verificação achada DENTRO de uma ferramenta (`quick_tree` não atualiza
     #: `rt.last_tree`) sai com o tipo da trava daqui, e o scheduler o respeita.
     tela_da_falha: str | None = None
+    #: Contrato C2 (ADR-058): os valores que a etapa leu, por nome (`PlanStep.saidas`), para as etapas seguintes do
+    #: objetivo (`Repository.save_step_output`). `None` = a etapa não produziu saída; quem preenche é a Fase 24.
+    outputs: dict[str, str] | None = None
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova

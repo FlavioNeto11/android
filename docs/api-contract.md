@@ -2683,3 +2683,55 @@ calado: o `tx()` confere a transação antes do COMMIT e responde 500 (`Transaca
 **Preferência no bloco da execução (22.6).** Novo `papel` no grupo `candidatas` para `kind=preferencia`: "preferência
 que nasceu com a evidência desta execução, entre N execuções", ou "… e de outras" quando o número não vem. O formato
 não muda.
+
+## Adendo v0.41 (29/09/2026) — Onda 0 da terceira evolução: contratos C1–C5 (ADR-056, ADR-057, ADR-058)
+
+Só forma, compatível para trás: com os valores padrão, nada muda no comportamento. Nenhuma rota nova; as rotas de rede
+(`/api/network/*`) são do 25.2 e do 25.8. Prova: `simulated` (`backend/tests/test_contratos_terceira_evolucao.py`).
+
+**Sessão por conta (C1, ADR-057).** `SessionProvider.ensure_session(rt, profile_id, *, account_id=None, force_login,
+automatic, observe_only)`: o parâmetro novo vem antes dos outros nomeados, na porta, no motor
+`integrations/app_declarado/sessao.py` e nos dublês. `account_id=None` é a conta do app âncora, como hoje; o motor
+aceita um id e ainda o ignora. A resolução por conta é o 23.4. Nenhum corpo HTTP mudou.
+
+**Saídas de etapa (C2, ADR-058).** Migração 056.
+- `PlanStep.saidas: string[]`: os nomes que a etapa produz, cada um em `^[a-z][a-z0-9_]{0,39}$` e sem repetir; fora disso,
+  a validação do `PlanStep` recusa. Fica fora do JSON quando vazia: `runs.plan` e `plan_versions[].steps` dos planos de hoje não mudam. No
+  painel, `saidas?: string[]`.
+- `steps.saidas` guarda a mesma lista na linha da etapa. `StepDTO` não mudou.
+- `Repository.save_step_output(step_id, name, value, *, value_kind='text', app_id=None)` recusa nome inválido, valor
+  acima de 2000 caracteres e `value_kind` fora de `text|number|url|list`. O nome é único no objetivo e a última escrita
+  vence. `Repository.step_outputs(objective_id) -> {nome: valor}`.
+- `StepOutcome.outputs: dict[str, str] | None` existe no executor e ainda não é preenchido.
+- A referência `{{saida:<nome>}}` ainda não é resolvida: é o 24.3.
+
+**Rede por aparelho (C3, ADR-056).** Migração 057: `network_profiles`, `device_network` e `network_measurements`.
+- Tipos em `models.py` e em `frontend/src/api/types.ts`:
+  - `NetworkProfileKind` (`vpn|proxy`) e `NetworkProtocol` (`wireguard|singbox|http|socks5`);
+  - `NetworkPolicy` (`livre|exigida|exigida_com_bloqueio`, padrão `livre`);
+  - `NetworkState` (`pendente|configurado|conectado|trafego_verificado|parcial`, padrão `pendente`).
+- `NetworkProfileDTO` não tem campo de segredo nem o `secret_ref`, só `has_secret: bool`. `params` recusa chave com cara
+  de segredo (senha, token, chave privada, pre-shared, credencial).
+- `DeviceNetworkDTO` e `NetworkMeasurementDTO` espelham as colunas. Nos booleanos da medição, `null` quer dizer "não
+  medido".
+- Os três DTOs recusam campo desconhecido (`extra="forbid"`).
+- O verbo `device.network` entra em `APP_COMMAND_VERBS`, sem executor: ninguém o despacha ainda.
+  - Por estar nesse conjunto, ele ocupa o aparelho enquanto estiver em voo, como os outros verbos de app.
+  - Na quarentena do ADR-055 é recusado, porque não está em `VERBOS_DE_APP_NA_QUARENTENA` (ADR-056 §7).
+- As tabelas da 041 (`proxy_profiles`, `device_proxy_state`) e as rotas `/api/proxies` ficam como estão.
+
+**Portão de rede (C4).**
+- `Scheduler.rede_gate: Callable[[instance_id], motivo | None] | None`, padrão `None`, sem efeito.
+- Com o portão ligado, o motivo devolvido faz o objetivo esperar em `pending`, sem virar `waiting_user`, com
+  `status_detail` = o motivo e `wait_reason = "rede"`, um valor novo no vocabulário de `wait_reason`.
+- O portão é consultado com o aparelho online e antes das portas do app e da sessão, para um login não sair por uma
+  rede ainda não verificada.
+- Quem liga o portão ao estado da rede, e o tratamento de `rede` no painel, é o 25.6.
+
+**Conjunto de apps (C5).**
+- `RunTargetsSuggestion.app_ids: string[]` (`POST /runs/targets/suggest`) e `ResolvedTargetDTO.app_ids: string[]` (em
+  `targets` da prévia e da sugestão) passam a vir sempre.
+- `app_id` segue sendo o primeiro da lista. Com só `app_id`, a lista é `[app_id]`; sem app, `[]`.
+- No painel, `ResolvedTarget.app_ids` é opcional: o alvo que vem no `detail` de uma recusa (409 da criação) sai do
+  resolvedor, sem o campo.
+- Tirar a lista de `Plan.required_apps` é das frentes da Fase 24.
