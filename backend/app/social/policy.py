@@ -6,13 +6,21 @@ Duas perguntas, respondidas antes de a etapa ser assumida:
    aprovar o conteúdo; `MANUAL_ONLY` e `DISABLED` não rodam por automação de jeito nenhum.
 2. **Ela cabe agora?** Curtir, comentar, seguir e mandar mensagem têm teto por hora E por dia, mais aquecimento
    para conta recém-cadastrada; e um alvo (`@fulano`) só recebe ações de um número limitado de contas da frota
-   numa janela, espaçadas entre si (achado #114) — sem isto, 8 perfis seguindo ou mandando DM à mesma pessoa em
-   poucos minutos é exatamente o padrão coordenado que faz o Instagram pedir verificação humana. O limite não
-   existe para contornar nada do Instagram: existe para o sistema não agir como robô e derrubar a própria conta
-   (nem a de ninguém que ela mexa).
+   (achado #114, endurecido pelo ADR-055) — sem isto, 8 perfis seguindo ou mandando DM à mesma pessoa em poucos
+   minutos é exatamente o padrão coordenado que faz o Instagram pedir verificação humana. O limite não existe para
+   contornar nada do Instagram: existe para o sistema não agir como robô e derrubar a própria conta (nem a de
+   ninguém que ela mexa).
 
-Represar NÃO é falhar: a etapa volta para `retry_wait` com hora marcada, sem gastar tentativa e sem chamar modelo.
-O tempo parado é descontado do prazo do objetivo — esperar não é demorar.
+**Uma conta por alvo (ADR-055, 29/09).** Em 19/09 (r-20260919220216-7cfa59) sete contas mandaram DM à mesma pessoa
+em oito minutos; cinco das oito contas estão bloqueadas hoje. A regra do dono: seguir, mandar mensagem e comentar são
+de NO MÁXIMO UMA conta por alvo; curtir tem teto configurável (`LimitsCfg.fleet_max_accounts_per_target`). Conta-se
+QUALQUER ação de saída das outras contas sobre o alvo (todos os baldes), numa janela de DIAS, mais os pedidos de
+aprovação ainda em aberto delas. O excedente é RECUSADO, com o motivo — não adiado: esperar uma hora e mandar a
+segunda DM era só o mesmo padrão, mais devagar. E mensagem para quem nunca escreveu a esta conta ("DM fria") sempre
+passa por aprovação, seja qual for a política do perfil ou do grupo.
+
+Represar por limite de hora/dia NÃO é falhar: a etapa volta para `retry_wait` com hora marcada, sem gastar tentativa e
+sem chamar modelo. O tempo parado é descontado do prazo do objetivo — esperar não é demorar.
 """
 from __future__ import annotations
 
@@ -23,7 +31,7 @@ from typing import Any, Callable
 
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
-from ..planning.capabilities import Capability
+from ..planning.capabilities import Capability, normalizar_alvo
 from ..util import now, parse_iso, to_iso
 from .repository import SocialRepository
 
@@ -61,6 +69,18 @@ BUCKET_TYPES: dict[str, tuple[str, ...]] = {
 
 # Tentativa e efeito confirmado contam igual: uma ação que talvez tenha saído já mexeu com a conta.
 CONTAM = (InteractionStatus.pending.value, InteractionStatus.confirmed.value, InteractionStatus.uncertain.value)
+
+#: Toda ação de saída sobre uma pessoa, de qualquer balde: é o que diz que uma conta "já mexeu" com ela (ADR-055). Antes
+#: a coordenação contava só o balde da própria ação, e a conta que curtiu a publicação não contava para quem seguia.
+TODOS_OS_BALDES: tuple[str, ...] = tuple(dict.fromkeys(t for tipos in BUCKET_TYPES.values() for t in tipos))
+
+#: Baldes em que o alvo é de UMA conta só (ADR-055, decisão do dono em 29/09). É regra, não configuração: nem o
+#: `LimitsCfg` afrouxa. Curtir fica de fora: o teto dela é `LimitsCfg.fleet_max_accounts_per_target`.
+UMA_CONTA_POR_ALVO: frozenset[str] = frozenset({"follows", "dms", "comments"})
+_ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "comentário", "likes": "curtida"}
+
+#: A interação que diz que a pessoa JÁ conversa com esta conta: ela escreveu a esta conta por mensagem direta.
+_FALA_DELA_NA_DM = (InteractionType.dm_received.value,)
 
 
 @dataclass(slots=True)
@@ -170,40 +190,67 @@ class PolicyEngine:
         pct = max(1, min(100, limites.get("warmup_percent", 100)))
         return max(1, teto * pct // 100)
 
-    # ------------------------------------------------------------------ coordenação de frota (achado #114)
-    def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
-                    agora: Any, app_id: str | None = None) -> tuple[str, str] | None:
-        """Quantas OUTRAS contas da frota mexeram com este mesmo alvo, e há pouco? `None` libera.
+    # ------------------------------------------------------------------ coordenação de frota (achado #114, ADR-055)
+    @staticmethod
+    def teto_de_contas(cap: Capability, settings: object) -> int:
+        """Quantas contas da frota podem mexer com a mesma pessoa nesta ação: 1 em seguir, mensagem e comentário
+        (regra do dono, ADR-055); o teto configurado nas curtidas."""
+        if cap.limit_bucket in UMA_CONTA_POR_ALVO:
+            return 1
+        return max(1, int(getattr(settings, "fleet_max_accounts_per_target", 1) or 1))
 
-        Sem `settings_getter` (a instância de `SocialService` que só monta o DTO) ou sem alvo conhecido, não há
-        o que coordenar — devolve `None` como sempre. Os tetos vêm de `LimitsCfg`, não do perfil: é regra da
-        operação, não algo que uma conta afrouxa para si.
+    def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
+                    agora: Any, app_id: str | None = None) -> tuple[str, str | None, str] | None:
+        """Esta conta pode mexer com este alvo, dado o que as OUTRAS contas da frota já fizeram com ele?
+
+        `None` libera. Senão `(motivo, retry_at, dica)`: `retry_at=None` é RECUSA (o teto de contas por alvo foi
+        atingido, ou não se sabe quem é o alvo); com hora, é só o espaçamento entre contas abaixo do teto (curtidas).
+
+        Sem `settings_getter` (a instância de `SocialService` que só monta o DTO) não há o que coordenar. Os tetos vêm
+        de `LimitsCfg` e da regra do dono, não do perfil: nenhuma conta afrouxa para si o que protege as outras.
         """
-        if self._settings is None or not counterparty or not cap.limit_bucket:
+        if self._settings is None or not cap.side_effect or not cap.limit_bucket:
             return None
+        alvo = normalizar_alvo(counterparty)
+        if alvo is None:
+            if not cap.counterparty:
+                return None                  # ação sem alvo declarado (catálogo de outro app): nada a coordenar
+            # Sem saber quem recebe a ação, a regra de uma conta por alvo não tem o que conferir — e agir assim é
+            # exatamente o buraco medido no central (curtidas e comentários com `counterparty` NULL). Não se age.
+            return (f"não se sabe quem é o alvo desta ação ({cap.counterparty} vazio): sem ele, a regra de uma conta "
+                    "por alvo não tem como ser conferida", None,
+                    f"Diga no comando quem recebe a ação (o @ em `{cap.counterparty}`, por exemplo o de quem publicou) "
+                    "e refaça o plano.")
         s = self._settings()
-        janela_s = int(getattr(s, "fleet_target_window_s", 0) or 0)
-        max_contas = int(getattr(s, "fleet_max_accounts_per_target", 0) or 0)
+        dias = max(1, int(getattr(s, "fleet_target_window_days", 30) or 30))
+        teto = self.teto_de_contas(cap, s)
         espaco_s = int(getattr(s, "fleet_min_spacing_between_accounts_s", 0) or 0)
         jitter_s = int(getattr(s, "fleet_spacing_jitter_s", 0) or 0)
-        if not janela_s or not max_contas:
-            return None
-        tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
-        since = to_iso(agora - timedelta(seconds=janela_s))
-        outras, ultima = self.repo.fleet_targeting(counterparty, since, types=tipos, statuses=CONTAM, app_id=app_id,
-                                                    exclude_profile_id=profile_id)
-        if outras >= max_contas:
-            libera = to_iso(agora + timedelta(seconds=janela_s))
-            return (f"{outras} outra(s) conta(s) da frota já mexeram com @{counterparty} na última "
-                    f"{janela_s // 60} min (teto {max_contas}); coordenação entre contas sobre o mesmo alvo",
-                    libera)
+        since = to_iso(agora - timedelta(days=dias))
+        outras, ultima = self.repo.fleet_targeting(alvo, since, types=TODOS_OS_BALDES, statuses=CONTAM,
+                                                    app_id=app_id, exclude_profile_id=profile_id)
+        if outras >= teto:
+            regra = ("uma conta por alvo" if teto == 1 else f"no máximo {teto} contas por alvo")
+            return (f"{outras} outra(s) conta(s) da frota já mexeram com {alvo} nos últimos {dias} dias ou têm pedido "
+                    f"em aberto para ele; em {_ROTULO_DO_BALDE.get(cap.limit_bucket, cap.limit_bucket)} vale {regra} "
+                    "(ADR-055) — recusado, não adiado", None,
+                    "Este alvo fica com a conta que já mexeu com ele. Não repita o pedido por outra conta; se for "
+                    "mesmo o caso, uma pessoa faz à mão, fora da automação.")
         if ultima and (espaco_s or jitter_s):
             espera = espaco_s + (self._jitter(0, jitter_s) if jitter_s else 0)
             livre = parse_iso(ultima) + timedelta(seconds=espera)
             if livre > agora:
-                return (f"outra conta da frota mexeu com @{counterparty} há pouco; espaçando ações entre "
-                        "contas sobre o mesmo alvo", to_iso(livre))
+                return (f"outra conta da frota mexeu com {alvo} há pouco; espaçando ações entre contas sobre o "
+                        "mesmo alvo", to_iso(livre), "")
         return None
+
+    def tem_conversa(self, profile_id: str, counterparty: str | None, app_id: str | None = None) -> bool:
+        """A pessoa já escreveu a ESTA conta por mensagem direta? É o que separa responder de puxar conversa (DM fria).
+
+        Uma DM que esta conta mandou e ficou sem resposta não conta: senão a primeira mensagem fria, uma vez aprovada,
+        liberaria as seguintes sem ninguém olhar."""
+        alvo = normalizar_alvo(counterparty)
+        return bool(alvo) and self.repo.has_inbound_from(profile_id, alvo, types=_FALA_DELA_NA_DM, app_id=app_id)
 
     # ------------------------------------------------------------------ decisão
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
@@ -217,8 +264,18 @@ class PolicyEngine:
             return Verdict(allowed=False, policy=politica,
                            reason=f"a ação {cap.key} é manual neste perfil",
                            hint="Faça esta ação pelo controle manual do aparelho, ou mude a política do perfil.")
+        # DM fria (ADR-055): mensagem para quem nunca escreveu a esta conta passa SEMPRE por uma pessoa, seja qual for
+        # a política do perfil ou do grupo. Em 29/09 o grupo "Operação" deixava SEND_MESSAGE autônomo — foi revertido
+        # no banco, mas um grupo não pode ter esse poder. Só endurece: `disabled`/`manual_only` já pararam acima.
+        nota = ""
+        if (cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value) \
+                and politica == "autonomous" and not self.tem_conversa(profile_id, counterparty, app_id):
+            politica = "approval_required"
+            alvo = normalizar_alvo(counterparty) or "esta pessoa"
+            nota = (f"mensagem para {alvo}, que ainda não conversa com esta conta: DM sem conversa prévia sempre "
+                    "passa por aprovação (ADR-055)")
         if not cap.side_effect or not cap.limit_bucket:
-            return Verdict(policy=politica, needs_approval=politica == "approval_required")
+            return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
 
         limites = self.limits_for(profile_id)
         agora = now()
@@ -246,7 +303,7 @@ class PolicyEngine:
 
         if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id)) is not None:
             return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=parado[1],
-                           reason=parado[0])
+                           reason=parado[0], hint=parado[2])
 
         por_execucao = limites.get("actions_per_run", 0)
         if run_id and por_execucao:
@@ -265,4 +322,6 @@ class PolicyEngine:
             if livre > agora:
                 return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=to_iso(livre),
                                reason=f"intervalo mínimo de {espera}s entre ações com efeito ainda não passou")
-        return Verdict(policy=politica, needs_approval=politica == "approval_required", counts=contagem)
+        # `reason` num veredito que LIBERA é o porquê da aprovação exigida (a DM fria): quem abre o pedido o mostra.
+        return Verdict(policy=politica, needs_approval=politica == "approval_required", counts=contagem,
+                       reason=nota)

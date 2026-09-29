@@ -40,7 +40,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import capability_of, guardas_do_cartao
+from ..planning.capabilities import capability_of, contraparte, guardas_do_cartao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
@@ -690,7 +690,10 @@ class StepExecutor:
             interaction_id = self.social.open_effect(
                 profile_id, capability=cap.key, interaction_type=cap.interaction_type, bindings=step.bindings,
                 run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id,
-                draft_meta=ler_rascunho(self.repo.db, step.id), app_id=app_id)
+                draft_meta=ler_rascunho(self.repo.db, step.id), app_id=app_id,
+                # O alvo que a AÇÃO declara (ADR-055): em curtir e comentar, o autor da publicação. Sem isto o
+                # histórico adivinhava por `username` e gravava `counterparty` NULL em toda curtida e comentário.
+                counterparty=contraparte(cap, step.bindings))
             self._effects[step.id] = (profile_id, interaction_id)
             if self.approvals is not None:
                 self.approvals.link_interaction(step.id, interaction_id)

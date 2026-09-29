@@ -47,8 +47,9 @@ def test_legenda_so_no_open_post_e_herdada_por_curtir_comentarios_e_comentar() -
 def test_as_acoes_que_herdam_a_legenda_estao_declaradas_no_catalogo() -> None:
     """O dado é quem decide: OPEN_POST começa um alvo novo (não herda), as etapas seguintes da publicação herdam."""
     herdam = {c.key: c.inherited_bindings for c in _instagram().capabilities if c.inherited_bindings}
-    assert herdam == {"OPEN_COMMENTS": ("caption_contains",), "LIKE_POST": ("caption_contains",),
-                      "CREATE_COMMENT": ("caption_contains",)}
+    # ADR-055: o autor da publicação (`post_author`) nasce em OPEN_POST e segue para curtir, descurtir e comentar.
+    assert herdam == {"OPEN_COMMENTS": ("caption_contains",), "LIKE_POST": ("caption_contains", "post_author"),
+                      "UNLIKE_POST": ("post_author",), "CREATE_COMMENT": ("caption_contains", "post_author")}
 
 
 def test_valor_da_propria_etapa_vence_o_herdado() -> None:

@@ -104,6 +104,8 @@ class Governance:
     risk: Risk = Risk.low
     default_policy: DefaultPolicy = DefaultPolicy.autonomous
     limit_bucket: str | None = None
+    #: O parâmetro que diz quem é a pessoa do outro lado do efeito: o alvo da regra de uma conta por alvo (ADR-055).
+    counterparty: str | None = None
     #: Exige conteúdo gerado (e aprovado, se a política pedir) antes de agir.
     needs_draft: bool = False
 

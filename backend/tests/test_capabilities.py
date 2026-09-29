@@ -380,7 +380,8 @@ def test_aquecimento_reduz_o_teto_de_conta_nova(tmp_path: Path) -> None:
 class _FleetSettings:
     def __init__(self, **over: Any):
         self.fleet_max_accounts_per_target = over.get("max_contas", 2)
-        self.fleet_target_window_s = over.get("janela_s", 3600)
+        self.fleet_target_window_days = over.get("janela_dias", 30)
+        self.fleet_target_window_s = 3600
         self.fleet_min_spacing_between_accounts_s = over.get("espaco_s", 0)
         self.fleet_spacing_jitter_s = over.get("jitter_s", 0)
 
@@ -394,9 +395,10 @@ def test_frota_bloqueia_a_conta_seguinte_apos_o_teto_de_contas_no_mesmo_alvo(tmp
     policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=1))
     svc.record_interaction(lucas, type=InteractionType.followed.value, direction="outbound",
                            status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
-    # lucas seguiu @alvo.comum: mariana (outra conta) tentando o MESMO alvo esbarra no teto de frota (1 conta)
+    # lucas seguiu @alvo.comum: mariana (outra conta) tentando o MESMO alvo esbarra no teto de frota (1 conta).
+    # Desde o ADR-055 o excedente é RECUSADO, não adiado: esperar a janela e seguir depois era o mesmo padrão.
     veredito = policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@alvo.comum")
-    assert veredito.is_wait
+    assert not veredito.allowed and veredito.retry_at is None and not veredito.is_wait
     assert "outra(s) conta(s) da frota" in veredito.reason
     # um alvo DIFERENTE não é afetado pelo que aconteceu com @alvo.comum
     assert policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@outra.pessoa").allowed
@@ -408,11 +410,13 @@ def test_frota_espaca_acoes_de_contas_diferentes_sobre_o_mesmo_alvo(tmp_path: Pa
     mariana = perfil(svc)
     for pid in (lucas, mariana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
-    # teto de contas alto (5): o que bloqueia aqui é só o espaçamento, sem jitter (determinístico)
+    # teto de contas alto (5): o que bloqueia aqui é só o espaçamento, sem jitter (determinístico). Curtida, porque
+    # desde o ADR-055 seguir, mensagem e comentário são de uma conta por alvo — lá a segunda conta é recusada, e o
+    # espaçamento só existe onde cabe mais de uma conta.
     policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=5, espaco_s=600, jitter_s=0))
-    svc.record_interaction(lucas, type=InteractionType.dm_sent.value, direction="outbound",
+    svc.record_interaction(lucas, type=InteractionType.post_liked.value, direction="outbound",
                            status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
-    veredito = policies.check(mariana, capability_of(IG, "SEND_MESSAGE"), run_id="run-2", counterparty="@alvo.comum")
+    veredito = policies.check(mariana, capability_of(IG, "LIKE_POST"), run_id="run-2", counterparty="@alvo.comum")
     assert veredito.is_wait and veredito.retry_at
     assert "espaçando ações" in veredito.reason
 
@@ -925,13 +929,17 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
         oid = f"run-p:{iid}"
         db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
                    " VALUES (?,'run-p',?,'running',1,'{}',?)", (oid, iid, pid))
+        # Cada aparelho comenta a publicação de um autor DIFERENTE: desde o ADR-055, duas contas comentando no mesmo
+        # alvo numa execução é recusado (uma conta por alvo). O que se mede aqui — mesmo briefing, um texto por
+        # perfil — não depende do alvo.
         db.execute(
             "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
             " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability,"
             " commit_selector, bindings) VALUES (?,'run-p',?,?,1,1,'c1','Comentar','comentar','[]',1,'[]',"
             "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','CREATE_COMMENT',"
-            "'id=post','{\"content_brief\": \"elogiar o trabalho do secretario\"}')",
-            (f"{oid}:v1:c1", oid, iid))
+            "'id=post',?)",
+            (f"{oid}:v1:c1", oid, iid,
+             json.dumps({"content_brief": "elogiar o trabalho do secretario", "post_author": f"@autor.{iid}"})))
         obj = db.one("SELECT * FROM objectives WHERE id=?", (oid,))
         srow = db.one("SELECT * FROM steps WHERE id=?", (f"{oid}:v1:c1",))
         run = db.one("SELECT * FROM runs WHERE id='run-p'")
@@ -998,13 +1006,16 @@ async def test_dois_aparelhos_escrevendo_juntos_ainda_enxergam_o_texto_um_do_out
         oid = f"run-c:{iid}"
         db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
                    " VALUES (?,'run-c',?,'running',1,'{}',?)", (oid, iid, pid))
+        # Autores diferentes por aparelho: o mesmo alvo em duas contas seria recusado (ADR-055, uma conta por alvo);
+        # a lista de "não repita" é da execução, não do alvo, e é ela que se mede aqui.
         db.execute(
             "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
             " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability,"
             " commit_selector, bindings) VALUES (?,'run-c',?,?,1,1,'c1','Comentar','comentar','[]',1,'[]',"
             "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','CREATE_COMMENT',"
-            "'id=post','{\"content_brief\": \"elogiar o trabalho\"}')",
-            (f"{oid}:v1:c1", oid, iid))
+            "'id=post',?)",
+            (f"{oid}:v1:c1", oid, iid,
+             json.dumps({"content_brief": "elogiar o trabalho", "post_author": f"@autor.{iid}"})))
         portas.append((db.one("SELECT * FROM objectives WHERE id=?", (oid,)),
                        db.one("SELECT * FROM steps WHERE id=?", (f"{oid}:v1:c1",))))
 
@@ -1048,7 +1059,7 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
         " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
         " bindings) VALUES ('run-a:android-01:v1:c1','run-a','run-a:android-01','android-01',1,1,'c1','Comentar',"
         "'comentar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready',"
-        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\"}')")
+        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\", \"post_author\": \"@autora\"}')")
     obj = db.one("SELECT * FROM objectives WHERE id='run-a:android-01'")
     srow = db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:c1'")
     run = db.one("SELECT * FROM runs WHERE id='run-a'")
@@ -1158,7 +1169,7 @@ async def test_orcamento_de_ia_esgotado_diz_o_que_fazer_e_nao_gasta_nada(harness
         " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
         " bindings) VALUES ('run-o:android-01:v1:c1','run-o','run-o:android-01','android-01',1,1,'c1','Comentar',"
         "'comentar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready',"
-        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\"}')")
+        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\", \"post_author\": \"@autora\"}')")
     # Orçamento de uma chamada, já gasta pelo planejamento: é assim que ele acaba de verdade, no meio da execução.
     state.settings.update({"ai_max_calls_per_objective": 1})
     db.execute("UPDATE objectives SET ai_calls=1 WHERE id='run-o:android-01'")

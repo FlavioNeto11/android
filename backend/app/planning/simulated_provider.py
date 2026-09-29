@@ -328,8 +328,10 @@ class SimulatedProvider:
                      CapabilityNode(key="send_message", capability="SEND_MESSAGE", depends_on=["open_thread"],
                                     bindings={"username": alvo, "content": texto})]
         elif "curtir" in c and alvo:
+            # O autor da publicação é o perfil aberto: é o alvo da regra de uma conta por alvo (ADR-055).
             nodes = [CapabilityNode(key="open_profile", capability="OPEN_PROFILE", bindings={"username": alvo}),
-                     CapabilityNode(key="like_post", capability="LIKE_POST", depends_on=["open_profile"])]
+                     CapabilityNode(key="like_post", capability="LIKE_POST", depends_on=["open_profile"],
+                                    bindings={"post_author": alvo})]
         elif "seguir" in c and alvo:
             nodes = [CapabilityNode(key="open_profile", capability="OPEN_PROFILE", bindings={"username": alvo}),
                      CapabilityNode(key="follow", capability="FOLLOW", depends_on=["open_profile"],

@@ -48,7 +48,8 @@ async def _comentario_aprovado(harness: Harness, *, verbo: str = "approve", text
     plano = Plan(summary="comentar", app_id="ig", planner=PlannerInfo(provider="fake", model="t", simulated=True),
                  steps=[PlanStep(key="c1", title="Comentar", goal="comentar", side_effect=True, postcondition=post,
                                  max_attempts=1, capability="CREATE_COMMENT", commit_selector="id=post",
-                                 bindings={"content_brief": "elogiar o post"})])
+                                 # o autor da publicação: sem ele a porta de frota recusa (ADR-055)
+                                 bindings={"content_brief": "elogiar o post", "post_author": "@autora"})])
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
                " plan, pause_requested) VALUES ('run-v','kv','comentar','execute','running',1,'[\"android-01\"]',"
                "'2026-09-28T16:52:54Z',?,1)", (plano.model_dump_json(),))
@@ -59,7 +60,7 @@ async def _comentario_aprovado(harness: Harness, *, verbo: str = "approve", text
         " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
         " bindings) VALUES (?,'run-v',?,'android-01',1,1,'c1','Comentar','comentar','[]',1,'[]',"
         "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','CREATE_COMMENT',"
-        "'id=post','{\"content_brief\": \"elogiar o post\"}')", (V1, OID))
+        "'id=post','{\"content_brief\": \"elogiar o post\", \"post_author\": \"@autora\"}')", (V1, OID))
     run = state.repo.run_row("run-v")
 
     veredito = await state._policy_gate(state.repo.objective_row(OID), state.repo.step_row(V1), run)

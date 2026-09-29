@@ -34,7 +34,9 @@ def _catalogo_de_mentira() -> CapabilityCatalog:
         key="ENVIAR_RECADO", title="Enviar recado", goal="Mandar um recado para {destinatario}.",
         post_kind="model_judged", post_value="recado enviado",
         post_description="O recado aparece na conversa.", bindings=("destinatario",),
-        side_effect=True, risk="medium", default_policy="approval_required", limit_bucket="dms")
+        # ação com limite declara quem é o alvo (ADR-055): é por ele que a frota conta contas por pessoa
+        side_effect=True, risk="medium", default_policy="approval_required", limit_bucket="dms",
+        counterparty="destinatario")
     return CapabilityCatalog(PACOTE_FALSO, [enviar])
 
 

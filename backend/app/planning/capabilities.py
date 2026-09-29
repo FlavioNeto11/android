@@ -81,6 +81,11 @@ class Capability:
     reconciliation: str = ""                    # o que observar depois do efeito para saber se ele valeu
     default_policy: str = "autonomous"
     limit_bucket: str | None = None             # likes | comments | follows | dms — chave do limite por hora
+    # O argumento que diz QUEM é a pessoa do outro lado do efeito (ADR-055): o alvo da regra de uma conta por alvo e a
+    # contraparte gravada no histórico. Obrigatório em toda ação com `limit_bucket` (conferido na carga). Antes o alvo
+    # era adivinhado por `username or target`, e curtir e comentar, que não têm `username`, gravavam `counterparty`
+    # NULL em todo `post_liked`/`comment_replied` do central — a coordenação de frota nem chegava a ser consultada.
+    counterparty: str | None = None
     needs_draft: bool = False                   # exige conteúdo gerado (e aprovado, se a política pedir) antes
     interaction_type: str | None = None         # que interação isto vira no histórico do perfil (dm_sent, followed…)
     internal: bool = False                      # resolvida por código determinístico; não é oferecida ao planejador
@@ -185,6 +190,20 @@ def inherited_bindings_error(cap: Capability) -> str | None:
     return None
 
 
+def counterparty_error(cap: Capability) -> str | None:
+    """Motivo pelo qual o alvo declarado de uma ação é inválido; `None` quando está bem formado.
+
+    Toda ação com `limit_bucket` mexe com uma pessoa e precisa dizer QUAL argumento a identifica: sem isso a regra de
+    uma conta por alvo (ADR-055) não tem o que conferir e a próxima ação com efeito escaparia dela calada. O nome
+    precisa ser um argumento da própria ação — um nome solto nunca teria valor."""
+    if cap.counterparty is None:
+        return "ação com limit_bucket precisa declarar counterparty (o argumento que diz quem é o alvo)" \
+            if cap.limit_bucket else None
+    if cap.counterparty not in (*cap.bindings, *cap.optional_bindings):
+        return f"counterparty {cap.counterparty!r} não é argumento da ação (bindings/optional_bindings)"
+    return None
+
+
 class CapabilityCatalog:
     def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
         self.package = package
@@ -201,6 +220,9 @@ class CapabilityCatalog:
             erro = inherited_bindings_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.inherited_bindings — {erro}")
+            erro = counterparty_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.counterparty — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
 
     @property
@@ -339,6 +361,39 @@ def texto_a_gerar(bindings: dict[str, Any] | None) -> str | None:
         return None
     briefing = str(valores.get(BRIEFING) or "").strip()
     return briefing or str(valores.get(TEXTO) or "").strip() or None
+
+
+def normalizar_alvo(valor: object) -> str | None:
+    """Uma pessoa sempre no mesmo formato: `@nome` em minúsculas — o mesmo de `SocialService.record_interaction`.
+
+    A porta de frota recebia o argumento CRU do plano (`@Ana`, `ana`) e o histórico guarda `@ana`: a contagem por alvo
+    nunca casava quando a caixa ou a arroba diferiam. Argumento ainda com variável (`{item}` de um bloco que não foi
+    expandido) não é alvo de ninguém: `None`."""
+    texto = str(valor or "").strip()
+    if not texto or _VARIAVEL.search(texto):
+        return None
+    limpo = texto.lower().lstrip("@").strip()
+    return f"@{limpo}" if limpo else None
+
+
+def alvo_da_acao(cap: Capability | None, bindings: Mapping[str, object] | None) -> str | None:
+    """O valor CRU do argumento que a ação declara como a pessoa do outro lado (`Capability.counterparty`).
+
+    Ação sem declaração (app sem limite por alvo) cai no palpite antigo, `username` e depois `target`, para nada
+    mudar fora do que o catálogo declara."""
+    valores = bindings or {}
+    nomes = (cap.counterparty,) if cap is not None and cap.counterparty else ("username", "target")
+    for nome in nomes:
+        valor = str(valores.get(nome) or "").strip()
+        if valor:
+            return valor
+    return None
+
+
+def contraparte(cap: Capability | None, bindings: Mapping[str, object] | None) -> str | None:
+    """A pessoa do outro lado desta etapa, normalizada (`@nome`): a mesma chave na porta de frota, na aprovação e no
+    histórico. `None` quando o plano não disse (ou disse só com variável ainda não resolvida)."""
+    return normalizar_alvo(alvo_da_acao(cap, bindings))
 
 
 def guardas_do_cartao(modelos: Iterable[str], bindings: Mapping[str, object] | None) -> tuple[str, ...]:
