@@ -7,11 +7,9 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { CodeBlock, JsonTree } from '../../components/JsonTree';
-import { RecordTable } from '../../components/RecordTable';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { StatusBadge } from '../../components/StatusBadge';
 import { copyText, humanizeKey, isRecord, scalarToText } from '../../lib/format';
-import { DELIVERY_LEVEL, OBJECTIVE_STATUS, isRunTerminal, metaOf } from '../../lib/status';
+import { isRunTerminal } from '../../lib/status';
 import { useSessionStore } from '../../store/session';
 import { toast } from '../../store/toasts';
 import {
@@ -20,6 +18,7 @@ import {
 } from '../aprendizado/model';
 import aprendizadoStyles from '../aprendizado/Aprendizado.module.css';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
+import { ResultadoPorInstancia } from './ResultadoPorInstancia';
 import styles from './Runs.module.css';
 
 const TOTAL_LABELS: Record<string, string> = {
@@ -28,18 +27,6 @@ const TOTAL_LABELS: Record<string, string> = {
   running: 'Em andamento', pending: 'Pendente', duration_s: 'Duração (s)', ai_calls: 'Chamadas de IA',
   ai_input_tokens: 'Tokens de entrada', ai_output_tokens: 'Tokens de saída',
 };
-
-const COLUMN_LABELS: Record<string, string> = {
-  instance_id: 'Instância', worker_id: 'Servidor', device_serial: 'Serial',
-  status: 'Situação', result: 'Resultado', summary: 'Resumo', detail: 'Detalhe', status_detail: 'Detalhe',
-  delivery_level: 'Entrega', steps_done: 'Etapas concluídas', steps_total: 'Etapas', duration_s: 'Duração (s)', error: 'Erro',
-  attempts: 'Tentativas', needs: 'Pendência', effects: 'Efeitos externos', account: 'Conta', evidence: 'Evidência',
-};
-
-// Servidor e serial logo depois da instância: o id lógico sozinho não identifica aparelho nenhum depois que o
-// vínculo muda de máquina, e era essa a pergunta sem resposta no relatório antigo (#176).
-const COLUMN_PRIORITY = ['instance_id', 'worker_id', 'device_serial', 'status', 'result', 'summary', 'delivery_level',
-                         'detail', 'status_detail', 'error', 'needs'];
 
 export function ReportTab({ run }: { run: RunSummary }) {
   const [report, setReport] = useState<RunReport | null>(null);
@@ -143,7 +130,7 @@ export function ReportTab({ run }: { run: RunSummary }) {
 
       <section>
         <h3 className={styles.subTitle}>Resultado por instância</h3>
-        {perInstance && perInstance.length > 0 ? <PerInstanceTable rows={perInstance} /> : <p className={styles.muted}>Nenhum resultado por instância no relatório.</p>}
+        {perInstance && perInstance.length > 0 ? <ResultadoPorInstancia rows={perInstance} /> : <p className={styles.muted}>Nenhum resultado por instância no relatório.</p>}
       </section>
 
       <section>
@@ -282,26 +269,5 @@ function TotalsTiles({ totals }: { totals: Record<string, unknown> }) {
         </div>
       ) : null}
     </>
-  );
-}
-
-function PerInstanceTable({ rows }: { rows: unknown[] }) {
-  return (
-    <RecordTable
-      rows={rows}
-      labels={COLUMN_LABELS}
-      priority={COLUMN_PRIORITY}
-      rowKey="instance_id"
-      caption="Resultado por instância"
-      renderCell={(column, value) => {
-        if (column === 'status' && typeof value === 'string') return <StatusBadge meta={metaOf(OBJECTIVE_STATUS, value)} size="sm" />;
-        if (column === 'delivery_level' && typeof value === 'string') return <StatusBadge meta={metaOf(DELIVERY_LEVEL, value)} size="sm" plain />;
-        if (column === 'instance_id' && typeof value === 'string') return <span className="mono">{value}</span>;
-        // Onde rodou: sem fotografia, "não registrado" — nunca a máquina local por omissão.
-        if ((column === 'worker_id' || column === 'device_serial') && value == null) return <span className={styles.muted}>não registrado</span>;
-        if ((column === 'worker_id' || column === 'device_serial') && typeof value === 'string') return <span className="mono">{value}</span>;
-        return undefined;
-      }}
-    />
   );
 }

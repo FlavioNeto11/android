@@ -155,3 +155,86 @@ describe('eventos recentes', () => {
     expect(text(container)).toContain('11 evento(s)'); // 55/5 = 11 eventos de erro
   });
 });
+
+/**
+ * "Outros dados" (29/09): cada chave conhecida vira um bloco com título em português e tabela para o que é lista; a
+ * desconhecida continua visível pela renderização genérica. Formato do `GET /api/diagnostics` real, encurtado.
+ */
+describe('outros dados', () => {
+  const EXTRAS = {
+    measured_on: 'este host (o backend roda na mesma máquina dos emuladores)',
+    sdk: {
+      root: 'C:\Android\Sdk', found: true, configured_image: 'system-images;android-34;google_apis;x86_64',
+      configured_image_installed: true,
+      system_images: ['system-images;android-28;default;x86_64', 'system-images;android-34;google_apis;x86_64'],
+      override_images: [{ instance_id: 'android-11', image: 'system-images;android-34;google_apis_playstore;x86_64', installed: true }],
+    },
+    scale_test: [
+      { target: 2, online: 2, ts: '2026-09-24T12:17:59', boot_wall_seconds: 65.0,
+        boot_seconds_each: [{ id: 'android-01', boot_seconds: 24.2 }, { id: 'android-02', boot_seconds: 63.5 }], not_online: [],
+        host_cpu_percent: 12.3, mem_available_gb: 28.4, mem_used_percent: 55.2,
+        emulator_rss_mb: [{ id: 'android-01', rss_mb: 587.2, cpu: 0.0 }, { id: 'android-02', rss_mb: 2468.8, cpu: 0.0 }],
+        ai_provider: 'anthropic', ai_simulated: false },
+    ],
+    image_probes: [{ image: 'system-images;android-34;aosp_atd;x86_64', android_release: '14', requested_ram_mb: 1536,
+                     guest_memtotal: 'MemTotal:        2534552 kB', qemu_ws_gb: 2.78, qemu_private_gb: 3.32, first_boot_s: 68.0 }],
+    host_script: {
+      collected_at: '2026-09-17T11:51:35Z', measured_on: 'WIN-7S2UASNLFOP', cpu: 'Intel(R) Core(TM) Ultra 9 185H', cores: 16,
+      disks: [{ drive: 'C', free_gb: 451.3, used_gb: 501.5 }],
+      top_memory_processes: [{ name: 'python', pid: 5392, ws_gb: 13.09 }],
+      accel_check: 'accel:\r\n0\r\nWHPX(10.0.26100) is installed and usable.\r\naccel',
+      estimate: { per_instance_gb: 3.3, note: 'imagem Android 34', fits_now: 1 },
+    },
+  };
+
+  async function abrirOutros(): Promise<HTMLDetailsElement> {
+    backend.on('GET', /^\/api\/diagnostics$/, () => json({ ...DIAGNOSTICS, ...EXTRAS }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Coletado em'));
+    const outros = document.getElementById('diag-outros') as HTMLDetailsElement;
+    await click(outros.querySelector('summary') as HTMLElement);
+    return outros;
+  }
+
+  it('um bloco por chave, com título em português e a contagem de seções no resumo', async () => {
+    const outros = await abrirOutros();
+    expect(text(outros.querySelector('summary') as HTMLElement)).toContain('6 seções'); // 5 conhecidas + surprise_field
+    const titulos = Array.from(outros.querySelectorAll('h4')).map((h) => h.textContent);
+    expect(titulos).toEqual(['Surprise field', 'Onde foi medido', 'SDK do Android', 'Teste de escala',
+                             'Imagens de sistema medidas', 'Levantamento do host (script)']);
+    // A chave desconhecida continua visível: um item por linha.
+    const surpresa = document.getElementById('diag-outros-surprise_field')?.closest('section') as HTMLElement;
+    expect(Array.from(surpresa.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['a', 'b']);
+  });
+
+  it('SDK: imagens uma por linha e a imagem própria do aparelho em tabela', async () => {
+    const outros = await abrirOutros();
+    const sdk = outros.querySelector('[aria-labelledby="diag-outros-sdk"]') as HTMLElement;
+    expect(Array.from(sdk.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      'system-images;android-28;default;x86_64', 'system-images;android-34;google_apis;x86_64']);
+    expect(text(sdk)).toContain('Pasta do SDKC:\Android\Sdk');
+    expect(text(sdk.querySelector('table') as HTMLElement)).toContain('android-11');
+  });
+
+  it('teste de escala e imagens medidas viram tabelas legíveis, sem a árvore aninhada', async () => {
+    const outros = await abrirOutros();
+    const escala = outros.querySelector('[aria-labelledby="diag-outros-scale_test"]') as HTMLElement;
+    const linha = escala.querySelector('tbody tr') as HTMLElement;
+    expect(Array.from(linha.querySelectorAll('td')).slice(0, 6).map((td) => td.textContent)).toEqual(['2', '2', '65', '12,3', '28,4', '55,2']);
+    expect(text(escala)).toContain('Por aparelho: boot e RAM do emulador em cada leva (2 aparelhos)');
+    expect(text(escala)).not.toContain('Emulator rss mb');
+    const imagens = outros.querySelector('[aria-labelledby="diag-outros-image_probes"]') as HTMLElement;
+    expect(text(imagens)).toContain('android-34 · aosp_atd · x86_64');
+    expect(text(imagens)).toContain('2,4'); // MemTotal 2534552 kB
+  });
+
+  it('script do host: chave/valor, tabelas, PID sem separador de milhar e a saída de várias linhas em bloco', async () => {
+    const outros = await abrirOutros();
+    const host = outros.querySelector('[aria-labelledby="diag-outros-host_script"]') as HTMLElement;
+    expect(text(host)).toContain('Máquina medidaWIN-7S2UASNLFOP');
+    expect(text(host)).toContain('Processos que mais usam memória');
+    expect(text(host.querySelectorAll('table')[1] as HTMLElement)).toContain('5392');
+    expect(host.querySelector('pre')?.textContent).toBe('accel:\n0\nWHPX(10.0.26100) is installed and usable.\naccel');
+    expect(text(host)).toContain('Cabem agora1');
+  });
+});

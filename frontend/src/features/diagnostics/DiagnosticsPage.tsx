@@ -26,6 +26,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useUsage } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
 import { MeasurementsChart } from './MeasurementsChart';
+import { OutrosDados } from './OutrosDados';
 import { accelerationOk, diskFreeGb, estimatedMaxDevices, parseBootMeasurements, parseTools } from './parse';
 import { buildDecisionTiles, type DecisionTile, type DecisionTileKey } from './tiles';
 import { UsageWeekCard } from './UsageWeekCard';
@@ -352,8 +353,8 @@ export function DiagnosticsPage() {
               </Disclosure>
 
               {extras.length > 0 ? (
-                <Disclosure id="diag-outros" summary="Outros dados" meta={`${extras.length} campo(s)`} defaultOpen={openExtras} onToggle={setOpenExtras}>
-                  {() => <JsonTree value={Object.fromEntries(extras.map((k) => [k, data[k]]))} labels={LABELS} />}
+                <Disclosure id="diag-outros" summary="Outros dados" meta={`${extras.length} ${extras.length === 1 ? 'seção' : 'seções'}`} defaultOpen={openExtras} onToggle={setOpenExtras}>
+                  {() => <OutrosDados data={data} chaves={extras} labels={LABELS} />}
                 </Disclosure>
               ) : null}
             </div>
