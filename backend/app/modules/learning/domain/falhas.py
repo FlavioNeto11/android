@@ -74,8 +74,8 @@ def _normal(texto: str) -> str:
 
 
 #: (tipo, trechos) em ORDEM: a primeira regra com um trecho contido no texto normalizado ganha. A ordem importa onde
-#: um texto carrega dois motivos: o prazo que vence depois de um ANR diz o ANR ("…esgotado (180s); o Instagram parou
-#: de responder (ANR)…", r-20260928165254-e31953), e o prazo vencido DURANTE a chamada de IA é prazo, não IA.
+#: um texto carrega dois motivos: o prazo que vence depois de um ANR diz o ANR ("…esgotado (180s); o <app> parou de
+#: responder (ANR)…", r-20260928165254-e31953), e o prazo vencido DURANTE a chamada de IA é prazo, não IA.
 REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.APP_ANR, ("parou de responder (anr)",)),
     (_F.INTERROMPIDA, ("tentativa interrompida",)),
@@ -217,7 +217,7 @@ ONDE_ALTERAR: Mapping[Camada, OndeAlterar] = {
     _C.AUTOMACAO: OndeAlterar(("backend/app/automation/appium_driver.py", "backend/app/automation/driver.py"),
                               "docs/arquitetura.md", "a ação no aparelho real, com a conferência do driver"),
     _C.CONTA_SESSAO: OndeAlterar(("backend/app/integrations/app_declarado/sessao.py",),
-                                 "docs/dominios/perfis-e-instagram.md",
+                                 "docs/design/conhecimento-de-app.md",
                                  "a checagem de sessão na conta real (desafio e 2FA seguem com a pessoa)"),
     _C.PROVEDOR_IA: OndeAlterar(("backend/app/planning/*_provider.py", "backend/app/planning/routing.py"),
                                 "docs/ia.md", "GET /api/ai e uma chamada pontual ao provedor (ADR-049)"),

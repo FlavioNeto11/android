@@ -294,7 +294,11 @@ class SqlLearningRepository:
 
     def primeira_chamada(self) -> PrimeiraChamada | None:
         """A chamada de IA mais antiga que sobrou, e se há sinal de purga antes dela: uma tentativa REAL que terminou
-        antes dela. Sem esse sinal, nada foi purgado ainda (a primeira chamada é a primeira de verdade)."""
+        antes dela. Sem esse sinal, nada foi purgado ainda (a primeira chamada é a primeira de verdade).
+
+        Heurística conservadora: num banco nunca purgado cuja primeira tentativa real terminou SEM chamada de IA (ex.:
+        sessão de automação indisponível no primeiro dia), o dia da primeira chamada fica de fora da régua — no máximo
+        um dia, e só até ele sair da janela de retenção."""
         row = self._db.one("SELECT MIN(ts) AS primeira FROM ai_calls")
         bruto = linhas.texto_ou_nulo(row, "primeira") if row else None
         quando = parse_iso(bruto) if bruto else None
