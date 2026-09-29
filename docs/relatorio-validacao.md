@@ -1654,7 +1654,7 @@ do lease pendente em `devices/manager.py` (o pedido de controle perdia o estreit
 A2). Implantado em 29/09 ~07:38 UTC, sem migração nova (a 055 já estava aplicada). `/api/health` `ok`, `problems: []`.
 O agente do notebook foi para `0.1.0+f497075`, porque `config.py` e `devices/adb.py` estão no manifesto dele. Nota de
 convenção aceita como dívida: `devices/manager.py` passou a importar `taskqueue.costuras`, o primeiro import
-`devices` → `taskqueue`; não há ciclo, e as catracas passam.
+`devices` → `taskqueue`; não há ciclo, e as catracas passam. Paga em 29/09 (`2b0e5db`, §24).
 
 **Prova depois do deploy (`real`, 29/09, só leitura, sem custo e sem efeito externo).**
 

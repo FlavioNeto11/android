@@ -120,8 +120,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   Na execução, cada objetivo (aba "Por aparelho") e a execução inteira (aba "Relatório") têm o botão **"Deu certo /
   Deu errado"**: sem modal e sem pergunta, com o motivo em linha. "Deu errado" por navegação desliga o fluxo e as
   receitas envolvidos, e "Reativar" aparece quando o que foi desligado estava publicado. Nota com cara de senha é
-  recusada. "Aprendizado desta execução", no Relatório, mostra os votos e os sinais. Prova: `simulated` (vitest de
-  `features/aprendizado/` e `FeedbackItem.test.tsx`); conferência visual no navegador: `not_run`.
+  recusada. "Aprendizado desta execução", no Relatório, mostra o que a execução ensinou ou usou do livro (receitas,
+  fluxos, falhas, candidatas e lições, com quem decidiu), os votos e os sinais. Se a leitura falhar, diz que não foi
+  possível ler, em vez de "nada aprendido". O cartão "Custo de IA desta execução" mostra "Normal medido para este
+  plano" (mediana–p90 de chamadas, US$ e tempo, e a janela efetiva). Na lista de fluxos, os status "Em prova" e
+  "Esperando o dono" aparecem com nome (29/09). Prova: `simulated` (vitest de `features/aprendizado/`, `features/runs/`
+  e `lib/status.test.ts`); conferência visual no navegador: `not_run`.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade

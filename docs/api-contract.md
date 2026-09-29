@@ -2492,8 +2492,8 @@ aprendizado entra antes do `api.py` (`main.py`), cujo `POST /api/runs/{run_id}/{
     passou pelo D1.
   - Erros: 404 execução inexistente ou objetivo de outra execução; 422 fora do vocabulário; 409 `note_looks_secret`
     (nem o voto nem a nota são gravados); 409 `state_conflict`.
-- `GET /api/runs/{run_id}/feedback` → `{run_id, votos: [Sinal], sinais: [Sinal]}`. O painel lê também um bloco
-  opcional `aprendizado` (o que a execução ensinou ou usou do livro), que nenhuma rota emite ainda (pendência do A6).
+- `GET /api/runs/{run_id}/feedback` → `{run_id, votos: [Sinal], sinais: [Sinal]}`. O bloco `aprendizado` (o que a
+  execução ensinou ou usou do livro) é emitido desde o adendo v0.39.
 - `GET /api/aprendizado/sinais?dias=14&kind=&app=` (`dias` 1–400) → `{sinais: [Sinal], total, contagem: {<kind>: n},
   dias}`. `total` e `contagem` contam as linhas devolvidas, que param em 500 (as mais recentes), não a janela inteira.
 - `Sinal`: `{id, kind, polarity, verdict, reason, note, note_refused, source_ref, created_by, run_id, objective_id,
@@ -2501,8 +2501,8 @@ aprendizado entra antes do `api.py` (`main.py`), cujo `POST /api/runs/{run_id}/{
   simulated, created_at, updated_at}`.
   - `kind`: `feedback`, `confirmou_a_mao`, `repetiu_item`, `abandonou_item`, `repetiu_execucao`, `tomou_controle`,
     `respondeu_pergunta`, `escolheu_habilidade`, `aprovacao_decidida`, `tela_vista` e
-    `tela_desconhecida_chamou_pessoa`. `cancelou_execucao`, `comando_incerto_resolvido` e `correcao_de_ensino` estão no
-    vocabulário, ainda sem escritor.
+    `tela_desconhecida_chamou_pessoa`. `cancelou_execucao`, `comando_incerto_resolvido` e `correcao_de_ensino` têm
+    escritor desde o adendo v0.39.
   - `source_ref` dos gestos (A2): `resolve:<objective_id>:<plan_version>.<seq>`, `repeticao:<run_id>:<sha12>`,
     `resposta:<run_id>:<campo>` e `takeover:<attempt_id>`. O gesto sai com `created_by` `panel`: o nome do operador não
     chega aos arquivos quentes.
@@ -2544,9 +2544,8 @@ commit implantado.
 - `GET /api/flows`: `status` ganha `candidate` (o fluxo aprendido de execução nasce assim, inerte) e `validated` (com
   etapa de efeito, espera o dono).
 - `Recipe.status` ganha `validated`: a receita com ação `commit` para ali na promoção em sombra.
-- `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` seguem aceitando só `active`/`disabled` e `active`/`quarantined`, e
-  não gravam a trilha do livro (pendência: o que uma pessoa desliga por ali não veta). A transição com trilha e com o D1
-  é a do livro.
+- `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` seguem aceitando só `active`/`disabled` e `active`/`quarantined`.
+  Desde o adendo v0.39 elas passam pela trilha e pelo veto do livro.
 
 **Aparelhos (itens 21.15 e 21.16).**
 
@@ -2578,3 +2577,59 @@ Provas: `simulated` (`backend/tests/test_learning_backlog.py`, `test_learning_ro
 `test_apps_de_fundo.py`, `test_saude_do_convidado.py`, `test_cobertura_de_rotas.py`); `real` só de leitura
 (`/api/aprendizado`, `/revisar`, `/pendentes`, `/falhas`) e o evento dos apps de fundo, no [relatório
 §23](relatorio-validacao.md); o resto `not_run`.
+
+## Adendo v0.39 (29/09/2026) — o código em aberto do aprendizado: interruptor antigo pelo livro, bloco da execução, três sinais e nota triada (ADR-054)
+
+**`PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo livro** (`api.py::update_flow`/`update_recipe` →
+`livro.py::mudar_status_legado` → `LearningService.mudar_status_nativo`, o mesmo serviço de
+`POST /api/aprendizado/{kind}/{ref}/status`).
+
+- **Contrato:** corpo e resposta iguais. `active` vira `published`; `disabled` e `quarantined` viram `disabled`. A
+  rota de receita continua zerando `consecutive_fail`.
+- **Trilha:** `learning_transitions` grava `decided_by` = operador da sessão (sem sessão, `panel`), com motivo fixo
+  ("ligado/desligado na lista de fluxos do painel", "reativada/posta em quarentena na lista de receitas do painel"). O
+  que a pessoa desliga por ali passa a vetar: o sistema não reaprende nem repromove.
+- **Sem mudança:** pedir o status em que o item já está devolve 200 e não gera transição.
+- **Fluxo em prova com `active`:** dois passos na trilha (`candidate → validated → published`), atômicos na
+  transação da rota. Se o segundo for recusado, nada fica: nem status, nem linha da trilha, nem o `consecutive_fail`
+  da receita.
+- **Recusas novas:**
+  - receita inexistente: 404 `not_found` (antes, 200 sem mexer em nada);
+  - receita `superseded`: 409 `transition_forbidden`;
+  - segunda receita ativa na mesma chave: 409 `state_conflict`;
+  - a guarda do livro: 409 `state_conflict`.
+- **Recusas que continuam:** 409 `flow_adopted` e `command_published`, conferidas na mesma transação da mudança.
+
+**`GET /api/runs/{run_id}/feedback` traz `aprendizado`**:
+`{receitas, fluxos, falhas, candidatas, licoes}`, cada um uma lista de
+`{kind, ref, titulo, estado, papel, braco, failure_kind, n}`.
+
+- `estado` é o vocabulário do livro (`candidate|validated|published|deprecated|disabled`), o ATUAL do item.
+- `braco` é `with|holdout|null`.
+- `papel` é texto fechado em português. A autoria vem no final: "nesta execução" (sistema), "pelo voto de uma pessoa"
+  ou "por uma pessoa". `decided_by` e motivo nunca saem.
+- A linha de falha vem com `kind`, `ref` e `titulo` nulos, mais `failure_kind` e `n`.
+- Item apagado depois da execução: a linha fica, com o `ref` e sem título nem estado.
+- O título passa pela triagem de credencial (recusado sai `null`) e é cortado em 160 caracteres.
+- As listas vêm sempre, vazias quando nada mudou. `aprendizado: null` só quando a leitura falhou; votos e sinais saem
+  mesmo assim.
+- Regras dos grupos em [dominios/aprendizado.md](dominios/aprendizado.md).
+
+`GET /api/runs/{run_id}/projection` não mudou; o painel passou a consumi-la no cartão de custo da execução (409
+`no_plan` é "ainda sem plano", 404 esconde a seção).
+
+**Três escritores de sinal.**
+
+| `kind` | Rota do gesto | `source_ref` | `data` |
+|---|---|---|---|
+| `cancelou_execucao` | `POST /api/runs/{id}/cancel` | `cancelamento:<run_id>:<instante da transição>` (um por episódio) | `{status_anterior}` |
+| `comando_incerto_resolvido` | `POST /api/commands/{id}/resolve` | `comando:<command_id>` | `{verbo, resolucao, resolved_by}` |
+| `correcao_de_ensino` | `POST /api/teaching-sessions/{id}/corrections` | `correcao:<teaching_id>:<turn_id>` | `{teaching_id, skill_id}` |
+
+`created_by` é o operador da sessão (sem sessão, `panel`); o `requested_by` do corpo não entra. As rotas não mudaram
+de contrato; só gravam o sinal, e a falha do escritor não derruba o gesto. Polaridades em
+[dominios/aprendizado.md](dominios/aprendizado.md#sinais-o-que-a-pessoa-já-faz-e-o-botão-opcional-d2).
+
+**Nota triada no comando.** `POST /api/commands/{id}/resolve` e `POST /api/commands/{id}/cancel` recusam a nota com
+formato ou assunto de credencial (o critério do voto do D2): 409 `note_looks_secret` antes de qualquer escrita. Nada
+é gravado, nem a resolução nem o pedido, e o comando segue como estava.

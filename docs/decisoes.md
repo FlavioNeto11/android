@@ -3039,16 +3039,28 @@ aberto) e **decisão técnica** (o desenho, sintetizado de três propostas avali
     com a opção pré-selecionada.
 - **Pendências dos revisores (A2–A9, não bloquearam o merge):** lista por pacote em
   [dominios/aprendizado.md](dominios/aprendizado.md#pendências-conhecidas). As que tocam invariante:
-  - `PUT /api/flows` e `PUT /api/recipes` não gravam a trilha: o que uma pessoa desliga por ali não veta, e o sistema
-    pode reaprender o mesmo fluxo;
-  - `scheduler._learn_flow` ainda grava "Fluxo salvo: … reaproveitam este plano" para um candidato inerte;
+  - ~~`PUT /api/flows` e `PUT /api/recipes` não gravam a trilha~~: fechado em 29/09 (`0f91fb3`, `c655495`). O
+    interruptor antigo passa pelo mesmo serviço do livro, com a pessoa na trilha e o veto;
+  - ~~`scheduler._learn_flow` grava "reaproveitam este plano" para um candidato inerte~~: fechado em 29/09. Com o
+    aprendizado ligado, só a sombra do digest anuncia o candidato;
   - `aprendizado.fluxo.com_prova: false` e `ai.recipes_promote_after: 0` levam o sistema a publicar o que tem efeito. Os
     padrões são seguros, e o `config.yaml` do central não os muda;
   - `failure_screen` continua sem escritor. Quando passar a ser gravado, a linha do backlog aberta com a tela vazia pode
     cair a zero e parecer corrigida.
-- **Dívida aceita na integração:** `devices/manager.py` passou a importar `taskqueue.costuras`, o primeiro import
-  `devices` → `taskqueue`. Não há ciclo, e as catracas passam. A saída é mover `CosturaDeControle` para `devices/` ou
-  `app/shared` e reexportá-la em `taskqueue.costuras`.
+- **Dívida aceita na integração, PAGA em 29/09 (`2b0e5db`):** `devices/manager.py` importava `taskqueue.costuras`, o
+  primeiro import `devices` → `taskqueue`. O contrato de gesto foi para `app/shared/costuras.py`, reexportado em
+  `taskqueue.costuras`, e `test_aparelhos_nao_conhecem_a_fila` impede a volta.
+- **Código em aberto fechado em 29/09 (tarde; [relatório §24](relatorio-validacao.md)):**
+  - o bloco "Aprendizado desta execução" é emitido por `GET /api/runs/{id}/feedback`, e o painel lê a projeção;
+  - os três sinais sem escritor ganharam escritor (`cancelou_execucao`, `comando_incerto_resolvido`,
+    `correcao_de_ensino`), com o operador da sessão;
+  - a nota da resolução e do cancelamento de comando passa pela triagem de credencial.
+
+  **As polaridades dos três sinais são escolha do pacote e esperam a ratificação do dono.** Hoje o único consumidor é
+  o negativo humano da régua diária:
+  - `cancelou_execucao`: neutro antes de rodar, negativo depois;
+  - `comando_incerto_resolvido`: `succeeded` neutro, `failed` negativo, `cancelled` neutro;
+  - `correcao_de_ensino`: negativo.
 
 **Evidências.**
 

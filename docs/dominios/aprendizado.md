@@ -91,8 +91,9 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
 executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
 
-**Dívida aceita:** `devices/manager.py` importa `taskqueue.costuras`, o primeiro import `devices` → `taskqueue`. Sem
-ciclo, e as catracas passam. A saída é mover `CosturaDeControle` para `devices/` ou `app/shared`.
+**Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
+`CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
+e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta do import `devices` → `taskqueue`.
 
 ## Sinais: o que a pessoa já faz e o botão opcional (D2)
 
@@ -110,10 +111,31 @@ promove nada. Nota com cara de credencial não é gravada (`note_refused=1`, ou 
 | `aprovacao_decidida` | varredura das aprovações (A9) | aprovada +, editada neutra, rejeitada − |
 | `escolheu_habilidade` | varredura do desambiguador (A9) | neutro |
 | `tela_vista` / `tela_desconhecida_chamou_pessoa` | observador de telas (A8) | — |
-| `cancelou_execucao`, `comando_incerto_resolvido`, `correcao_de_ensino` | vocabulário, ainda sem escritor | — |
+| `cancelou_execucao` | `POST /api/runs/{id}/cancel` (`RunService.cancel` com `por`); a sucessora que cancela a execução respondida não conta | neutro antes de rodar (`planning`, `needs_input`, `planned`); negativo depois (`running`, `paused`, `completed_with_issues`) |
+| `comando_incerto_resolvido` | `POST /api/commands/{id}/resolve` | `succeeded` neutro (é confirmar à mão: nunca evidência a favor); `failed` negativo; `cancelled` neutro |
+| `correcao_de_ensino` | `TeachingService.add_correction` (`POST /api/teaching-sessions/{id}/corrections`) | negativo, ligado à etapa corrigida |
 
 `tomou_controle`, `confirmou_a_mao` e `tela_desconhecida_chamou_pessoa` contam como intervenção humana na régua
 diária.
+
+**Os três escritores de 29/09 (`d33b8ab`, `61c3bad`).**
+
+- **Autor.** O `created_by` é o operador da SESSÃO (`autor_do_gesto`: sem sessão, `panel`; nunca `sistema`). Os
+  gestos do A2 ainda saem `panel`.
+- **Cancelamento.** É um sinal por episódio: só o gesto que abre o cancelamento grava. O clique repetido, da mesma
+  pessoa ou de outra, não grava enquanto o cancelamento já vale (`cancelling`, ou `completed_with_issues` com
+  `cancel_requested=1`). A execução reaberta e cancelada de novo é outro episódio: `source_ref =
+  cancelamento:<run_id>:<instante da transição>`, `data {status_anterior}`.
+- **Comando incerto.** `source_ref = comando:<command_id>`, `data {verbo, resolucao, resolved_by}`. O `resolved_by` é o
+  autor que o COMANDO gravou, só para cruzar os dois. Ele pode diferir do `created_by`: sem sessão, o comando aceita o
+  `requested_by` do corpo, e o sinal fica `panel`. Sem execução no `params`, `simulated` vem do modo da instalação.
+- **Correção de ensino.** `source_ref = correcao:<teaching_id>:<teaching_turns.id>`, `data {teaching_id, skill_id}`.
+  O painel ainda não chama a rota de correção: o sinal só nasce por chamada direta à API.
+- **Régua.** O único consumidor é o `human_negative` da régua diária. Cancelar uma execução pausada, fechar o pendente
+  de uma `completed_with_issues` ou marcar como falho um comando incerto conta como negativo humano na chave
+  `(app, '*')`. As polaridades são escolha do pacote e esperam a ratificação do dono (ADR-054).
+- **Nota.** A nota da resolução de comando (e a do pedido de cancelamento de comando) passa pela mesma triagem do voto
+  antes de qualquer escrita: com cara de credencial, 409 `note_looks_secret`, e nada é gravado.
 
 **O voto (A4).** "Deu certo / Deu errado + motivo", sem modal e sem pergunta, em cada objetivo e na execução
 (`POST /api/runs/{id}/feedback`).
@@ -138,6 +160,18 @@ diária.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.
+- **O interruptor antigo passa pelo livro (29/09, `0f91fb3`, `c655495`).** `PUT /api/flows/{id}` e
+  `PUT /api/recipes/{id}` chamam o mesmo serviço de `POST /api/aprendizado/{kind}/{ref}/status`
+  (`LearningService.mudar_status_nativo`): trilha com a pessoa (o operador da sessão, ou `panel`), veto do que ela
+  desligou e as guardas do livro. `active` vira `published`; `disabled` e `quarantined` viram `disabled`. Pedir o
+  status atual não gera transição. O fluxo em prova ligado pelo interruptor passa por `validated`, com as duas decisões
+  na trilha (`ciclo.py::caminho_da_pessoa`), e o gesto de dois passos é atômico na transação da rota.
+- **Um anúncio por nascimento.** Com o aprendizado ligado, só a sombra do digest anuncia o fluxo candidato, e diz
+  quando ele passa a valer: `1 + concordancias` execuções reais, sem contar as simuladas, inclusive a que o gerou; com
+  efeito externo, o dono publica. O `_learn_flow` do scheduler anuncia só o fluxo que nasce ativo
+  (`com_prova: false`) e o candidato com o aprendizado desligado ("só uma pessoa o publica"). A leitura e a decisão dele
+  ficam num `try` com log: não derrubam o fim da execução. Se o digest falhar, o nascimento não é anunciado (fica o
+  log).
 
 ## Lições medidas (A7)
 
@@ -228,7 +262,42 @@ com o banco aberto só para leitura.
   - **Sinais:** os votos e os gestos.
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
-  desta execução" mostra os votos e os sinais.
+  desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra
+  "Normal medido para este plano" (`GET /api/runs/{id}/projection`, item 18.3), com o rótulo da janela efetiva.
+
+## O bloco "Aprendizado desta execução" (29/09, `a54735a`, `d506337`)
+
+`GET /api/runs/{id}/feedback` traz `aprendizado: {receitas, fluxos, falhas, candidatas, licoes}`. Cada grupo é uma
+lista de linhas `{kind, ref, titulo, estado, papel, braco, failure_kind, n}`. O código está em `domain/aprendido.py`,
+`application/aprendido.py`, `infrastructure/aprendido_sql.py` e `presentation/feedback.py::_bloco`.
+
+- **Fontes:**
+  - `runs.flow_id`, `flows.source_run_id`, `attempts.recipe_id` e `recipes.learned_from_step`;
+  - `learning_transitions`, `learning_evidence` e `learning_exposures` com o `run_id`;
+  - a falha vem de `attempts.failure_kind` (o legado é classificado na leitura); sai só o tipo, nunca o texto do erro.
+- **Grupos:**
+  - uma linha por item em cada grupo;
+  - o item que NASCEU da execução vai só para `candidatas`: a lição, a voz e a tela (`telas.minerar(run_id)` passa o
+    `run_id` ao nascimento);
+  - a tela, a voz e a preferência que já existiam e mudaram de estado com o `run_id` também entram em `candidatas`
+    ("tela que já existia, desligada nesta execução…");
+  - a lição tocada que não nasceu ali vai para `licoes` ("exposta ao prompt", "braço de controle").
+- **Fora do bloco:** o só reforçado (só evidência) e a versão de habilidade; a página Aprendizado os mostra.
+- **Autoria no `papel`:** transições seguidas de um mesmo autor viram um verbo só, com três finais.
+  - "nesta execução": o sistema decidiu.
+  - "pelo voto de uma pessoa": decisão humana com o motivo do voto.
+  - "por uma pessoa": qualquer outra decisão humana com o `run_id`.
+
+  O `decided_by` e o motivo servem só para classificar a autoria e nunca saem no bloco.
+- **Estado:** o `estado` é o ATUAL do item no livro, não o da hora da execução.
+- **Título:** passa de novo pela triagem de credencial (recusado sai `null`) e é cortado em 160 caracteres.
+- **Item apagado depois:** a linha fica, com o `ref` e sem título nem estado.
+- **Listas e falha de leitura:** as listas vêm sempre, vazias quando nada mudou. `aprendizado: null` só quando a
+  leitura falhou (log `poc.aprendizado`); votos e sinais saem mesmo assim.
+- **O painel tem três estados:**
+  - "Não foi possível ler o que esta execução aprendeu ou usou do livro." com o bloco nulo;
+  - "Nada aprendido, usado do livro ou sinalizado nesta execução." só com tudo vazio;
+  - "O servidor ainda não informa…" quando o GET inteiro falha.
 
 ## Configuração
 
@@ -241,9 +310,9 @@ decisão do dono.
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
 
 - **A2:** `failure_screen` sem escritor (quando for gravado, a linha do backlog aberta com a tela vazia pode cair a zero
-  e parecer corrigida); o operador não chega ao sinal (todo gesto sai `panel`); `takeover_gravar` e
-  `cancelou_execucao` não implementados; `revise_plan` pula a etapa sem limpar `failure_kind`; `respondeu_pergunta`
-  grava o sha256 do comando inteiro da sucessora em cada campo.
+  e parecer corrigida); os gestos do A2 (resolver item, repetir, responder, tomar o controle) ainda saem `panel` (os
+  três escritores de 29/09 já levam o operador); `takeover_gravar` não implementado; `revise_plan` pula a etapa sem
+  limpar `failure_kind`; `respondeu_pergunta` grava o sha256 do comando inteiro da sucessora em cada campo.
 - **A3:** `PATCH … fixed_pending_proof` aceita commit que não está no ar; falso zero de custo quando não há `ai_calls`
   nem régua diária na janela; o CAS do backlog só confere o estado; reabrir só vai ao log; a seção de saúde não traz
   "chamadas por etapa antes e depois de cada publicação"; o top 5 na skill `retomar` não foi feito; a e31953 sai como
@@ -252,16 +321,20 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
 - **A4:** o voto trocado continua contando como refutação; o `total` de `/sinais` é o das linhas devolvidas (até 500);
   os efeitos rodam fora de uma transação única; o voto da execução pode trazer efeito com `ref` vazio; duas lacunas de
   teste (mutações sobreviventes: voto "errado" em item que falhou; filtro por objetivo).
-- **A5:** `PUT /api/flows` e `PUT /api/recipes` não gravam a trilha (o que uma pessoa desliga por ali não veta);
-  `scheduler._learn_flow` ainda escreve "Fluxo salvo: … reaproveitam este plano" para um candidato inerte;
-  `aprendizado.fluxo.com_prova: false` e `ai.recipes_promote_after: 0` levam o sistema a publicar o que tem efeito;
-  o veto das receitas falha aberto; no PostgreSQL, a trilha dentro da transação da loja derrubaria o save; o
-  `FLOW_STATUS` de `frontend/src/lib/status.ts` só conhece `active`/`disabled`, e o candidato aparece cru em
-  Aplicativos e na guia Habilidades.
-- **A6:** "Aprendizado desta execução" lê um bloco `aprendizado` de `GET /api/runs/{id}/feedback` que nenhum pacote
-  emite; "Revisar" só rebaixa (manter o legado pede um verbo novo no backend); a página lê `/pendentes` duas vezes; o
-  limite de "outro" está fixo em 15% no painel; o painel não lê `GET /api/runs/{id}/projection`, então o rótulo da
-  janela efetiva não tem onde aparecer.
+- **A5:** `aprendizado.fluxo.com_prova: false` e `ai.recipes_promote_after: 0` levam o sistema a publicar o que tem
+  efeito; o veto das receitas falha aberto; no PostgreSQL, a trilha dentro da transação da loja
+  (`FlowStore`/`RecipeStore`) derrubaria o save; a adoção e o desfazer de adoção de fluxo por habilidade
+  (`modules/skills/infrastructure/sql_repository.py`) mudam `flows.status` sem trilha. Fechados em 29/09: o
+  interruptor antigo sem trilha, o texto do `_learn_flow` para o candidato e o `FLOW_STATUS` cru.
+- **A6:** "Revisar" só rebaixa (manter o legado pede um verbo novo no backend); a página lê `/pendentes` duas vezes; o
+  limite de "outro" está fixo em 15% no painel. Do bloco da execução: a preferência nasce na curadoria periódica, sem
+  execução que a dispare, e nunca aparece como candidata de uma execução; a lição desligada por refutação (dois votos
+  "deu errado") é gravada pelo sistema e aparece como "desligada nesta execução". Fechados em 29/09: o bloco não
+  emitido e a projeção fora do painel.
+- **Sinais de 29/09:** as polaridades dos três escritores esperam a ratificação do dono; a correção de ensino não tem
+  tela; o `requested_by` livre (sem sessão) segue cru em `commands.reason`; o painel prefixa a nota da resolução com
+  "decidido no painel a partir de <instance_id>", o que passa na triagem com os ids `android-NN`, mas um id com
+  maiúscula, dígito e símbolo e 8 ou mais caracteres faria a resolução pelo painel ser recusada.
 - **A7:** depois de "ajuda", o controle de 10% é gravado, mas nada o reavalia; a aposentadoria conta toda evidência
   contra de voto, sem olhar o braço; a exposição guarda o desfecho do primeiro assentamento; todas as lições de etapa
   livre dividem a chave `(app, '*', papel)`; o SQL novo só rodou em SQLite.
