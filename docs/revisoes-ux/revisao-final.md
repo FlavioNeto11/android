@@ -1,275 +1,285 @@
-# Tarefa 09: revisão final, regressão e testes de responsividade (relatório parcial, FASE A)
+# Tarefa 09: revisão final, regressão e testes de responsividade (relatório final)
 
-Branch `ux/09-revisao-final`, que sai de `claude/ux-portal` `5da4cfc` (tarefas 01 a 08 integradas, mais
-`scripts/ui-verificar.mjs` e `scripts/ui-auditoria.js`). Base de comparação: `origin/main` `beb8056`. Data: 30/09/2026,
-cerca de 21:05Z a 21:25Z. Máquina: central (Windows Server 2025). Modelo: Opus 5.5, esforço high. Revisor independente:
-não participei das tarefas 01 a 08.
+Branch `ux/09-revisao-final`. Revisor independente (Opus 5.5, esforço high): não participei das tarefas 01 a 08 nem da 10.
+Máquina: central (Windows Server 2025), 30/09/2026.
 
-**Este relatório é parcial.** A FASE A é só leitura de código e de relatórios: a coordenação do ambiente pediu pausa de
-carga (21:30Z a ~23:00Z) e há um aparelho com conta real sendo reiniciado. Nada foi executado: nem vitest, nem
-typecheck, nem vite, nem navegador. A FASE B (portal rodando, 9 telas x 6 larguras, fluxos, axe, teclado) vem depois,
-quando o orquestrador reativar esta tarefa.
+- **FASE A** (estática, cerca de 21:05Z a 21:25Z, commit `5da4cfc`): leitura dos diffs das tarefas 01 a 08, com 29 achados
+  (RF-01 a RF-29). O texto completo da FASE A está no commit `6fb6749` deste branch, no mesmo arquivo.
+- **Tarefa 10** (`ux/10-correcoes`, integrada em `claude/ux-portal` `58d67f5`): corrigiu RF-01, 02, 03, 05, 06, 07, 09,
+  13, 20, 24 e 29, e documentou RF-10 (`10-correcoes.md`).
+- **FASE B** (em execução, 30/09, cerca de 23:34Z a 23:56Z, commit `58d67f5`): portal do branch no vite da porta 5199
+  (`VITE_API_TARGET=http://127.0.0.1:8000`, prioridade baixa), numa aba do navegador da IDE que **já tinha sessão**.
+  **Não entrei com conta**; o cookie existente no perfil do navegador valeu para a porta 5199. Foi um trabalho pesado
+  por vez: um vite e uma aba, com o host em 2 a 48 % de CPU e 31 GB livres.
 
-## Escopo
+## Veredito
 
-- Os diffs de `beb8056..5da4cfc` em `frontend/`, `scripts/ui-auditoria.js`, `scripts/ui-verificar.mjs` e
-  `docs/produto.md`: 110 arquivos, +7.735/−1.291. As tarefas ficam delimitadas pelos merges `--first-parent`: 02
-  `351d5b2`, 01 `c2c26cb`, 03 `65a1a0e`, 05 `16a45ce`, 04 `e0b4636`, 06 `98d247e`, 08 `1e93294`, o script `e12c72e`
-  e 07 `5da4cfc`.
-- Os relatórios `01-rotas-menu.md` a `08-revisao-textos.md`, conferidos contra o código em vez de aceitos.
-- Os critérios de aceite de cada briefing (`briefings/01` a `08`), um a um.
-- A avaliação original (`00-avaliacao-original.txt`), para o que nenhum briefing cobriu.
+**Pronto com ressalvas.**
 
-## Método
+- Nenhuma regressão de gravidade Alta ficou aberta. RF-01 e RF-02, as duas Altas da FASE A, estão corrigidas e
+  provadas no navegador.
+- As 54 células (9 telas x 6 larguras) não têm rolagem horizontal, menu inalcançável, transbordo nem sobreposição no
+  topo.
+- Os números da fonte única batem entre topo, Painel, Infraestrutura, Diagnóstico, semáforo e API na mesma leitura.
+- O axe não acusa nenhuma falha de contraste nas 54 células. As violações restantes são de estrutura (moderate/minor).
 
-1. Li os arquivos centrais inteiros (`lib/rotas.ts`, `store/ui.ts`, `store/metricas.ts`, `App.tsx`, `MenuLateral`,
-   `TopBar`, `SaudeAmbiente`, `Drawer`, `BarraDeSelecao`, `DeviceGrid`, `DeviceList`, `features/pendencias/*`,
-   `BarraListagem`, `ProfilesPage`, `lib/rotulos.ts`). Dos demais, li o diff por tarefa: `RunsPage`/`RunView`,
-   `AppsPage`, `SettingsPage`, `AppsSection`, `Aprendizado*`, `Infra*`, `Diagnostics*`, `CommandPanel`,
-   `FocusPanel`/`Focus.module.css` e os CSS de tokens e base.
-2. Fiz buscas dirigidas por texto: rotas antigas (`#/perfis`, `personaRequest`, `settingsSection`), fontes de número
-   fora de `store/metricas.ts`, formatadores de tempo, seletores `data-instance-*`, `aria-modal`, `aria-current`,
-   `aria-label`, `role="radio"`, termos fora do glossário, tokens e classes sem uso, e `<button>` sem classe (por causa
-   da regra global da 07).
-3. Cruzei o que cada tarefa diz ter feito com o código. Nos pontos de costura entre tarefas (03×04, 02×05×06, 04×05)
-   procurei contradições.
-4. **Toda alegação de `npm test`, `typecheck` ou medida em navegador dos relatórios 01 a 08 fica `not_run` nesta
-   fase.** Não reexecutei nenhuma. Os números citados (873 → 991 testes, 733 → 3 fontes, 394 → 0 alvos) são dos
-   autores, não meus.
-5. Não corrigi nada. Cada achado é para uma correção pequena aberta depois, em separado.
+**Ressalvas que o dono precisa ver antes da `main`:**
 
-**Escala de gravidade.** **Alta**: perda de função, ou risco de ação com efeito sobre algo que a pessoa não está
-vendo. **Média**: critério de aceite não atendido, contradição visível entre tarefas ou bloqueio de prova. **Baixa**:
-texto, código morto, polimento, divergência documentada.
-
-**Divergências registradas.**
-
-- O briefing 09 pede o relatório em `docs/revisao-final.md`. Sigo o orquestrador: `docs/revisoes-ux/revisao-final.md`.
-- As regras pedem o trailer `Co-Authored-By: Claude Sonnet 5.5`. Os relatórios 01 e 02 usaram `Claude Opus 5.5` e
-  registraram isso. Aqui uso exatamente a linha pedida pelo orquestrador.
-- O relatório 08 diz "Modelo: Haiku 4.5", mas o plano previa Haiku com esforço medium. É só registro, sem efeito.
-
-## Achados estáticos
-
-Na coluna "FASE B?", "sim" quer dizer que o achado precisa ser confirmado ou medido com o portal rodando. O "como
-reproduzir" traz o caminho no código e, quando cabe, os passos no navegador (só leitura).
-
-### Alta
-
-| ID | Onde (arquivo:linha) | Achado e como reproduzir | Origem | FASE B? |
-|---|---|---|---|---|
-| RF-01 | `features/devices/DeviceGrid.tsx:179` (Selecionar todas usa `taskOrder` inteiro), `:189-200` (a barra recebe `selectedIds` cru), `store/ui.ts:170` (seleção persistida em `localStorage` `selectedInstances`), `features/painel/BarraDeSelecao.tsx:83,136` (`runBulkAction(ids, …)`) | **Ação em lote sobre aparelhos que a pessoa não está vendo.** O filtro `?estado=` (04) esconde cartões, mas a seleção não é filtrada. Além disso, a seleção sobrevive à recarga, e não há o aviso "(N fora do filtro atual)" que a 05 pôs em Personas. Passos: abrir `#/painel?estado=stopped` (7 visíveis de 14) e clicar "Selecionar todas". A barra diz "14 selecionados". Iniciar, Parar, Reiniciar e Hibernar agem nos 14 **na hora, sem confirmação** (`actions.ts::runBulkAction` só confirma o `reset`). Resetar dados mostra a lista dos 14 só no diálogo de confirmação. **Não clicar em ação.** Variante: marcar aparelhos, recarregar com um link filtrado e ver a barra contar marcados invisíveis. | integração 01×03×04 | sim (contar, sem acionar) |
-| RF-02 | `features/focus/Drawer.tsx:37-38,69-70` (a exceção do "clique fora" é só `[data-instance-card]`), `features/devices/DeviceList.tsx:60` (a linha da Lista usa `data-instance-row`), `features/focus/FocusPanel.tsx:55` (seletor de devolução do foco só para cartão) | **Na visão Lista, com o Foco aberto, as linhas contam como "fora" do drawer.** Clicar em "Abrir android-02" ou na caixa de seleção de outra linha fecha o drawer e o clique é engolido: não troca de aparelho nem marca. Nos Cards, o mesmo gesto troca de aparelho, como a 03 prometeu. Ao fechar, o `restoreSelector` não acha nada na Lista (só vale o elemento de origem). Passos: Painel → Lista → abrir android-01 → clicar o "Abrir" de outra linha. | integração 03×04 | sim |
-
-### Média
-
-| ID | Onde | Achado e como reproduzir | Origem | FASE B? |
-|---|---|---|---|---|
-| RF-03 | `features/profiles/ProfilesPage.tsx:293-368` (fila "Aguardando intervenção": login, desafio, conta errada, `needs_person`), `features/pendencias/modelo.ts:5-8,22,102-109` (só três origens) | **A caixa "única" de Pendências deixa de fora as sessões que só uma pessoa resolve.** O lead da página diz "tudo o que espera uma decisão sua" (`PendenciasPage.tsx:54`), mas quem tem desafio de login só aparece em Personas. **Critério 06 "todos os itens pendentes aparecem na caixa única": não atendido.** | 06 (×05) | sim, se houver sessão `needs_person` viva (não provocar) |
-| RF-04 | `features/topbar/TopBar.tsx:174-186` ("aguardando você" = objetivos → `abrirExecucao(primeira)`), `features/topbar/SaudeAmbiente.tsx:99-101` ("objetivos aguardando você" → `#/execucoes`), `features/topbar/MenuLateral.tsx:101-103` (Pendências = linhas, legenda "esperando você"), `features/runs/filtroExecucoes.ts:31-35` ("Com pendência" = `completed_with_issues` + `needs_input`) | **"O que espera você" tem quatro definições, três números e três destinos.** O chip do topo conta objetivos e abre só a execução mais recente. O semáforo abre Execuções sem filtro. O menu conta linhas da caixa. O chip "Com pendência" da 05 conta outro conjunto (115 contra 4 no ambiente medido pela 05/06). Existem dois destinos já filtrados (`#/pendencias?origem=execucao` e `#/execucoes?status=pendencia`), e nenhum contador os usa. **Critério 02 "contadores clicáveis levam à lista filtrada correspondente": não atendido na integração.** O glossário fixa "Pendência" como termo único. | integração 02×05×06 | sim (comparar os números na mesma hora) |
-| RF-05 | `features/topbar/TopBar.tsx:140,166-171` (`isRunActive`: planning, running, paused, cancelling) × `features/runs/filtroExecucoes.ts:31-38` ("Em andamento" inclui `planned`) | **O número de execuções ativas é calculado fora da fonte única**, com uma regra diferente da do chip "Em andamento" de Execuções. Com uma execução `planned`, o topo diz N e o chip diz N+1. Clicar no contador do topo abre Execuções sem `?status=andamento`. | 02×05 | sim |
-| RF-06 | `lib/time.ts:81-113` (`formatAgo`/`formatAgoCoarse`: "há 1 min 14 s", "há 6 d"; cerca de 22 usos, entre eles `features/focus/Screen.tsx:63,419,424,436`, `PendenciasPage.tsx:109`, `RunsPage.tsx:232`, `InfraPage`, `AppsPage` e as guias da persona) × `lib/rotulos.ts:97-116` (`tempoRelativo`: "há 1 min", "há 6 dias"; só `DeviceCard.tsx:93` e `CommandTrail`) | **Dois formatadores de tempo.** O mesmo quadro aparece como "há 1 min" no cartão e "há 1 min 14 s" na legenda do Foco, e esse é o exemplo literal da avaliação original ("Prévia suspensa — último frame há 1 min 1…"). **Critério 04 item 2 (tempo relativo humano): parcial**, e a lógica está duplicada. | 04 | sim (ver as duas legendas lado a lado) |
-| RF-07 | ver a lista abaixo | **A varredura de textos da 08 está incompleta**, e a frase do relatório "Varredura completa: nenhum outro texto visível não-conforme" é falsa. O que continua visível: `perfil(is)` em `features/profiles/PolicyGroups.tsx:73,93,125,212,258` (seção "Grupos de acesso" da própria tela Personas) e `GuiaConfiguracoes.tsx:150`; "Instâncias e contas" em `SettingsPage.tsx:20` (e `?aba=instancias`) e "instância(s)" em `AppsSection.tsx:91`; "as contas dos perfis" em `AppsPage.tsx:44`; "worker(s)" em `InfraPage.tsx:121,146-147`; "frame" em `Screen.tsx:403,419,424,436,438` ("Atualizar frame") e `DeviceCard.tsx:93,179,187`; "backend" e "snapshot" em `App.tsx:51`, `DeviceGrid.tsx:220-233`, `FocusPanel.tsx:160-161`, `DiagnosticsPage.tsx:209,222,286`, `CommandPanel.tsx:288-289,428`, `LoginPage.tsx:66,81`; "Screenshots" em `TopBar.tsx:43`; "WebSocket" e "host" em `TopBar.tsx:188,368`; "Logs" em `InfraPage.tsx:717`; "Status" em `FlowsRecipesSection.tsx:736`; "prompt" em `ProfilesPage.tsx:146` e `NovaPersona.tsx:224`; "Cards" em `DeviceGrid.tsx:166`; "sem AVD" em `store/metricas.ts:47` (rótulo **novo**, da 02); "Selecionar todas" e "Paradas" no feminino para aparelhos em `DeviceGrid.tsx:180,279`. Também ficou o `PlanTab.tsx:137` (chaves cruas), que a própria 08 listou. | 08 (e 02 no "sem AVD") | não (texto) |
-| RF-08 | `features/devices/DeviceGrid.tsx:73-75,164-171` (visão Cards/Lista em `localStorage` `cda.painel.visao`) × `features/profiles/filtroPersonas.ts` (`visao=tabela` na URL) e `components/BarraListagem.tsx:84-94` ("Cartões / Tabela"); `features/topbar/MenuLateral.tsx:108` (o link do menu não leva a query da tela) | **O mesmo controle segue duas regras.** Rótulos: Painel "Cards / Lista", Personas "Cartões / Tabela". Persistência: Painel no navegador, Personas no link. Os filtros de Personas e Execuções moram só na URL: quem sai pelo menu e volta pelo menu perde busca, filtro e visão (recarregar preserva, trocar de tela não). O Painel também não usa a `BarraListagem` (pendência registrada pela 05). | 04×05 (×01) | sim (sair e voltar pelo menu) |
-| RF-09 | `features/pendencias/modelo.ts:86` (`run.command.split('\n')` cru) × `features/runs/filtroExecucoes.ts` (`tituloCurto`) | **O título da execução em Pendências é a primeira linha crua do comando**, com o prefixo repetido que a 05 removeu em Execuções ("No QA Messenger, leia o nome do…"). É lógica duplicada, e a mesma execução aparece com dois títulos. | 05×06 | sim |
-| RF-10 | `scripts/ui-verificar.mjs:46` (`--url` padrão `http://127.0.0.1:8000`), `:104-109` (aborta todo POST, então não há login), `:117` (espera `<header>`) | **O verificador de acessibilidade não alcança as telas autenticadas.** Um Chrome sem cabeça cai na tela de entrada (a 07 relatou isso), onde não há `<header>`. Resultado: erro ou axe da tela de entrada nas 54 células, sem prova das 9 telas. O padrão 8000 serve o `dist` da `main`, **não este branch**. Sem passar `--url` do dev server e sem uma sessão, o script não prova nada. | script `e12c72e` | sim (bloqueio: ver a FASE B) |
-
-### Baixa
-
-| ID | Onde | Achado | Origem | FASE B? |
-|---|---|---|---|---|
-| RF-11 | `features/focus/Drawer.tsx:127-133` | O drawer declara `aria-modal="true"`, mas menu, topo e cartões seguem clicáveis pelo ponteiro. É contradição semântica documentada pela 03 como escolha. Com leitor de tela (VoiceOver trata o fora como inerte), o comportamento fica diferente do ponteiro. Pede decisão do dono. | 03 | sim (leitor de tela, se houver) |
-| RF-12 | `features/devices/DeviceGrid.tsx:174-178,189` | A barra de seleção entra no fluxo ao marcar o primeiro aparelho: a grade desce cerca de 52 px sob o cursor e o cabeçalho perde "0 de 14 selecionados". É deslocamento de layout na seleção (o critério da 03 só falava de abrir o drawer). | 03 | sim (medir) |
-| RF-13 | `features/painel/BarraDeSelecao.tsx:66` × `:70` | O nome da barra ("Ação em N aparelhos") usa `ids.length` cru, e o texto visível usa `selecionados` (`contarSelecao`). Divergem num id que sumiu entre dois snapshots (`live.ts:85` poda a cada snapshot). | 03 | não |
-| RF-14 | `features/devices/deviceState.ts:342-360` (`countByState`, `STATE_SUMMARY_LABEL`, usados só em teste); `styles/base.css:258-292` (`.t-titulo-pagina` … `.t-legenda`, sem uso); `styles/tokens.css:120` (`--hit-touch`, sem uso); `features/focus/Focus.module.css:31,739-743` (comentários ainda citam `--focus-panel-w`, e o de 739 descreve a regra antiga de "painel com no mínimo 600 px"); `store/ui.ts:25` (`viewFromHash`) e `lib/rotulos.ts:73` (`rotuloConhecidoDoComando`) exportados sem uso fora de teste; `features/settings/AppsSection.tsx:151` (título "Novo aplicativo", ramo que nenhum botão alcança mais) | Código morto. `countByState` é uma **segunda função de contagem** ainda exportada, contra a fonte única da 02. | 02, 03, 06, 07 | não |
-| RF-15 | `features/topbar/TopBar.tsx:66` (marca → `hashForView('painel')`), `features/topbar/SaudeAmbiente.tsx:66,96,100,109-110` | Links sem `foco`: clicar na marca ou num link do semáforo fecha o Foco, enquanto o menu e a caixa de Pendências levam o `?foco=` junto. É inconsistência de navegação. | 01×02 | não |
-| RF-16 | `features/settings/AppsSection.tsx:94-100` | Configuração > Aplicativos ainda edita dicas e seletores e **exclui** app. O cadastro está num lugar só (um botão "Novo aplicativo", conferido por busca), mas a gestão não. Divergência documentada pela 06. | 06 | não |
-| RF-17 | `features/command/CommandPanel.tsx` (grupo `etapas`, cerca de 660-700) | As etapas numeradas 1 → 2 → 3 sugerem sequência obrigatória, mas Executar não exige Planejar. A ambiguidade "etapas ou alternativas" da avaliação só mudou de lado. | 03 | não |
-| RF-18 | `TopBar.tsx:183`, `CommandPanel.tsx:574`, `features/focus/FocusActions.tsx:168`, `ProfilesPage.tsx:354` | O ícone `Hand` tem três sentidos: "aguardando você", "Manual" (quem escolhe os aparelhos) e "Controle manual"/"Assumir controle". "Manual" do Comando e "controle manual" do Foco são coisas diferentes com a mesma palavra. | 02, 03 | não |
-| RF-19 | `features/pendencias/PendenciasPage.tsx:62-73` | Os chips de origem usam `role="radio"` sem navegação por setas nem tabindex móvel. A `BarraListagem` usa `aria-pressed` para o mesmo controle: dois padrões. | 06×05 | sim (teclado) |
-| RF-20 | `features/pendencias/PendenciasPage.tsx:108` | O tooltip da idade mostra o ISO cru (`2026-09-30T…Z`), fora do `dd/mm/aaaa` da 08. | 06 | não |
-| RF-21 | `lib/aiBalance.ts:88` (`estimated_balance / (units_per_usd \|\| 1)`) | Sem câmbio informado, a conta em R$ aparece como "US$" com o mesmo número. A regra é anterior, mas a 07 passou a expô-la no topo. Configuração › IA continua na moeda original (documentado pela 07). | 07 | sim (conta em R$) |
-| RF-22 | `features/pendencias/store.ts:38-40` × `modelo.ts:49-61` | O selo "Aprendizado" do menu usa `fila.total` do servidor, e o chip "Aprendizado (n)" da caixa usa `itens.length`. Divergem se a API paginar. O mesmo item também conta em dois selos do menu (Aprendizado e Pendências). | 06 | sim |
-| RF-23 | `store/metricas.ts:241-244` | `reconnecting` já vira **Ambiente crítico**: uma reconexão normal pisca o semáforo em vermelho. | 02 | sim |
-| RF-24 | `features/devices/OperationalContextCard.tsx:125-127` | Depois da troca da 08, a linha diz "Persona: Nome (@x) · persona Y" (redundante). | 08 | não |
-| RF-25 | `features/runs/PlanTab.tsx:123` | A 08 mudou uma expressão (`appLabel(apps, plan.app_id) ?? …`), não só texto. É inofensivo, mas fere o critério "diff contém só strings". | 08 | não |
-| RF-26 | `features/topbar/MenuLateral.tsx:78-142` | A gaveta (abaixo de 1024 px) não prende o Tab: ele sai para o conteúdo escurecido atrás. | 01 | sim (teclado) |
-| RF-27 | `components/Toasts.tsx:83` (região fora de marco), `features/profiles/PolicyGroups.tsx:91` (`h3` fora de ordem), `figure` com papel no Diagnóstico; `DeviceGrid.tsx:119,143` (`aria-label` em `<span>` sem papel) | As violações do axe que a 07 mediu e passou para a 08 ou a 09 (`region`, `heading-order`, `aria-allowed-role`) **não foram tratadas**. O `aria-label` em `span` pode aparecer como `aria-prohibited-attr`. | 07 → 08/09 | sim (axe) |
-| RF-28 | `features/login/LoginPage.tsx:80` | Texto de 13 px com `opacity: 0.7` na tela de entrada. A 07 não auditou essa tela, que fica fora da sessão. | 07 | sim (axe na tela de entrada) |
-| RF-29 | `lib/rotas.ts:8` | O comentário diz `#/aplicativos/<pacote>`, mas o segmento é o `app_id` (a 01 registrou isso). É documentação. | 01 | não |
-
-**Conferido e sem achado (estático).**
-
-- `#/perfis[...]` → `#/personas[...]` por `replaceState` (`store/ui.ts:349`, `lib/rotas.ts:47`), inclusive o valor
-  `'perfis'` salvo no navegador (`ui.ts:120-125`).
-- `personaRequest`, `consumePersonaRequest`, `settingsSection`, `aprendizado.aba`, `HealthPill` e `BulkBar` não restam
-  no código.
-- `#/configuracao` sem `aba` abre Aplicativos (`SettingsPage.tsx:32-34`). `#/aplicativos?aba=proxy` abre a Rede com o
-  trecho antigo aberto (`AppsPage.tsx:67-69`).
-- `aria-current="page"` só no item do menu da tela atual (`MenuLateral.tsx:110`).
-- Regra global de botão da 07: todo `<button>` tem classe de componente (conferido um a um: `Button`, `Popover`,
-  `Switch`, `Tabs`, `CommandPanel` e os chips da Loja e do Diagnóstico). A exceção é o de envio oculto de
-  `CriarAparelho.tsx:160`. O visual continua para a FASE B.
-- `noUnusedLocals`/`noUnusedParameters` estão ligados no `tsconfig`: import morto seria barrado pelo typecheck, que
-  nesta fase não rodei.
-- `situacao=bloqueada` (05) usa `status === 'blocked'` (`filtroPersonas.ts:103,133`), o mesmo critério de
-  `personasBloqueadas` (02).
-- As vagas por servidor (`ocupacaoDoServidor`) têm a mesma regra do backend: o `max_slots` do worker local é
-  sobrescrito por `max_online_devices` (`backend/app/state.py:741`). A Infraestrutura e o semáforo repartem os
-  aparelhos do central igual (`InfraPage.tsx:97` e `metricas.ts:154`).
-- Nenhum `font-size` em px abaixo de 13 nos CSS. O único token de 12 px (`--fs-2xs`) é usado só no gráfico do
-  Diagnóstico.
-- `docs/produto.md` (diff de 9 linhas, da 03): descreve o controle Automático | Manual, as etapas numeradas, a barra
-  presa ao topo e o drawer sobreposto conforme o código. Não cita o caso da Lista (RF-02) nem o filtro × seleção
-  (RF-01). Sem outro achado.
-
-## Critérios de aceite por tarefa
-
-Legenda: **atendido** (no código, conferido estaticamente), **parcial**, **não atendido**, **não verificável sem rodar**
-(fica para a FASE B). Nada aqui é prova de execução: `not_run` para tudo o que dependa de rodar.
-
-| Tarefa | Critério | Situação | Base |
-|---|---|---|---|
-| 01 | As 8 telas (hoje 9, com Pendências) alcançáveis pelo menu de 390 a 1920 px | atendido no código; visual não verificável sem rodar | lista vertical e gaveta sem medir largura (`MenuLateral.tsx`, CSS 159-247) |
-| 01 | Abrir persona, aparelho ou execução muda a URL; colar abre o mesmo objeto | atendido no código | `ProfilesPage.tsx:100-102`, `ui.ts:282-291`, `ui.ts:272-280` |
-| 01 | Voltar fecha o detalhe e volta à lista | atendido no código; não verificável sem rodar | `voltarPara`/`podeVoltarPara` (`ui.ts:52-58,189-205`) |
-| 01 | `#/perfis` redireciona para `#/personas` | atendido | `ui.ts:349` |
-| 01 | Nenhuma regressão nas rotas existentes | parcial | RF-08 (filtros somem ao trocar de tela pelo menu), RF-15 (links que fecham o Foco) |
-| 02 | Uma métrica tem o mesmo valor em todas as telas (LAN fora do ar) | parcial | RF-04, RF-05; aparelhos, vagas e bloqueadas vêm da fonte única |
-| 02 | "Ambiente" em Atenção com motivo quando o notebook está fora do ar | atendido no código; prova real `not_run` (a 02 só provou `simulated`) | `metricas.ts:263-266` |
-| 02 | Contadores clicáveis levam à lista filtrada | parcial / não atendido na integração | bloqueadas e desconhecidos sim; "aguardando você" e "execuções" não (RF-04, RF-05); "online" não é clicável |
-| 02 | Testes dos cálculos (servidor fora do ar, acima da capacidade, seleção parcial) | existem (`metricas.test.ts`, 20); execução `not_run` | — |
-| 03 | A barra não cobre card em 390, 768, 1024 e 1440 px | atendido no código (sticky na fila, não flutuante); ao rolar, os cartões passam por baixo; não verificável sem rodar | `BarraDeSelecao.module.css:3-7` |
-| 03 | Nenhuma ação aparece duas vezes (barra + drawer) | atendido | `BarraDeSelecao.tsx:72-110` (`emFoco`) |
-| 03 | Abrir o drawer não altera o layout da grade | atendido no código; não verificável sem rodar | `Focus.module.css` (`.panel` absoluto), `App.module.css:22-24` |
-| 03 | Legendas do preview sem truncamento | atendido no código (`nowrap` saiu); não verificável sem rodar | `Focus.module.css` 286-352 |
-| 03 | Executar desabilitado mostra o motivo no mouse ou no foco | atendido no código | `disabledReason` no próprio botão |
-| 03 | (implícito) drawer funcional em todas as visões | **não atendido na visão Lista** | RF-02 |
-| 04 | Nenhum identificador cru por padrão em cards, execuções e logs | parcial | chaves do plano (`PlanTab.tsx:137`), "frame", "sem AVD" (RF-07) |
-| 04 | Aparelho parado com no máximo metade da altura | não verificável sem rodar (a 04 mediu 79 a 125 px contra 426 a 478) | — |
-| 04 | A Lista mostra os 15 sem rolar mais de uma tela a 1440x900 | não verificável sem rodar | — |
-| 04 | Texto novo em pt-BR | parcial | "Cards" (RF-07, RF-08) |
-| 05 | Achar persona pelo @ em menos de 3 s | atendido no código (busca por nome e @ sem acento); tempo não verificável sem rodar | `filtroPersonas.ts` |
-| 05 | Filtros combinados funcionam e persistem ao recarregar | atendido no código (URL); ressalva: somem ao sair e voltar pelo menu (RF-08) | — |
-| 05 | Cartões de persona com altura uniforme, sem corte sem tooltip | não verificável sem rodar | — |
-| 05 | Alternar cartões/tabela não perde seleção | atendido no código (a seleção é estado da página) | `ProfilesPage.tsx:70` |
-| 05 | Testes da lógica de filtro e ordem | existem (`filtroPersonas.test.ts`, `filtroExecucoes.test.ts`); execução `not_run` | — |
-| 06 | Existe só um botão "Novo aplicativo" | atendido | busca: só `LojaPage.tsx:75`; `AppsSection.tsx:151` é título de diálogo inalcançável (RF-14) |
-| 06 | Todos os pendentes na caixa única; o contador do menu bate com a lista | contador = lista: atendido (mesma função); "todos": **não atendido** | RF-03 |
-| 06 | Nenhum termo de loja sem explicação acessível | parcial / não verificável sem rodar | a legenda cobre; `ReleasesPage` sem `Termo` por selo (a 06 registrou) |
-| 06 | Links antigos (`#/configuracao`, aba Aplicativos) continuam | atendido | `SettingsPage.tsx:32-34` |
-| 07 | Nenhum texto de interface abaixo de 13 px (exceto gráfico) | atendido nos tokens e CSS; RF-28 na tela de entrada; visual não verificável sem rodar | busca por `font-size` em px |
-| 07 | axe sem falha de contraste AA nas 8 telas | não verificável sem rodar (a 07 mediu só a 1440 px, sem Pendências) | RF-27, RF-28 |
-| 07 | Alvos abaixo de 32 px caem a zero na tela principal | não verificável sem rodar | `--hit-min` aplicado |
-| 07 | Navegação completa por teclado em Painel e Personas | não verificável sem rodar | — |
-| 08 | Tabela de achados entregue | parcial: a tabela tem 6 linhas e a varredura está incompleta, com a alegação falsa de "varredura completa". O caminho `docs/revisoes-ux/08-revisao-textos.md` segue o orquestrador e não conta contra a tarefa. | RF-07 |
-| 08 | Nenhuma alteração de lógica; diff só com strings | quase: uma expressão em `PlanTab.tsx:123` | RF-25 |
-
-## Pendências da avaliação original que nenhum briefing cobriu
-
-Não são regressões: ficaram fora do escopo das tarefas 01 a 08.
-
-- Detalhe da persona com 11 guias numa faixa (foto, nome e @ repetidos três vezes). A 01 só pôs a guia na URL.
-- Detalhe da execução com 7 guias, sem resumo acima e sem "Relatório" como padrão. A diferença entre "1 de 1 com
-  sucesso comprovado" e "1 Sucesso" continua sem explicação.
-- Infraestrutura sem a hierarquia servidor > aparelho > persona, e com as guias abaixo da dobra.
-- Busca global, paleta de comandos (Ctrl+K) e notificações persistentes.
-- Exibição consciente de campos sensíveis (religião, política) na persona.
-- Item 8 do backlog: decisão documentada sobre o escopo mobile (monitoramento ou uso completo).
-- Estados vazios com a próxima ação sugerida: foram tratados só nas listas da 05 e em Pendências.
-- A barra de listagem na grade de Aparelhos (a 05 registrou) e o editor de dicas e seletores dentro da página do app
-  (a 06 registrou).
-- API: busca de execuções no servidor (`GET /runs?q=&status=&since=`), `last_activity_at` vazio nas personas e um
-  endpoint de contagem estável de "objetivos esperando pessoa" (registrados pela 02 e pela 05).
-
-## O que a FASE B precisa provar
-
-### Bloqueios que o orquestrador precisa decidir antes
-
-1. **Sessão para as telas autenticadas** (RF-10). O `ui-verificar.mjs` não faz login e aborta todo POST. Opções:
-   - (a) usar o painel do navegador da IDE, que já tem sessão, e injetar o axe à mão, como a 07 fez;
-   - (b) subir um backend simulado do próprio worktree em `127.0.0.1:8765` (SQLite de rascunho,
-     `AI_PROVIDER=simulated`, `base_console_port: 5640`, sem SDK) e rodar `npx vite --mode simulado --port 5199`.
-     Há precedente em `docs/auditoria-ux-2026-09-27/evo2-aceite.md`. Ali o login e os fluxos de escrita são
-     inofensivos, e um worker inscrito e nunca conectado simula "servidor fora do ar". Ressalvas: a 8765 pode estar
-     ocupada por outra sessão (`docs/conhecimento/aprendizados.md:1014`), e é mais um processo no host.
-   - (c) dar ao script um `storageState` com cookie de sessão. Isso é mudança de código que não cabe à 09.
-
-   Em qualquer caso, `--url` precisa ser a do dev server deste branch, não a 8000.
-2. **O canal ao vivo pelo vite.** Nas tarefas 01, 02, 05 e 06, o WebSocket pela porta do vite caiu com 1006. Com isso,
-   o semáforo mostra **Crítico** por definição (`metricas.ts:241`) e a faixa "Desconectado do backend" ocupa o topo do
-   conteúdo. A FASE B vai separar: lógica do semáforo por `vitest` (`SaudeAmbiente.test.tsx`, `metricas.test.ts`,
-   `simulated`), e visual e números no navegador, registrando que o nível mostrado é o do canal caído. Com o backend
-   simulado da opção (b), o canal sobe e o semáforo pode ser provado de verdade.
-3. **Carga.** Uma aba, um vite, nada em paralelo. O axe em 54 células roda uma célula por vez. O `npm test` inteiro
-   roda uma vez, no fim, em prioridade baixa.
-
-### Provas pedidas
-
-1. **RF-01**: em `#/painel?estado=stopped`, "Selecionar todas" e ler o que a barra conta. Também recarregar com a
-   seleção salva e um filtro. **Sem acionar nenhuma ação.**
-2. **RF-02**: visão Lista com o Foco aberto; clicar "Abrir" e a caixa de outra linha. Comparar com os Cards.
-3. **Tela x largura**: 9 telas (Painel, Personas, Aplicativos, Execuções, Pendências, Aprendizado, Infraestrutura,
-   Configuração, Diagnóstico) x 1920, 1440, 1280, 1024, 768 e 390 px. Em cada uma: menu alcançável, `scrollWidth` =
-   largura, sem sobreposição, barra sem cobrir conteúdo, drawer funcional, texto sem corte indevido. Captura só do que
-   tiver problema.
-4. **Fluxos**:
-   - persona por URL direta (`#/personas/<id>/memoria`) e Voltar;
-   - `#/perfis/...` redirecionado;
-   - filtro de Personas e de Execuções depois de recarregar **e depois de sair e voltar pelo menu** (RF-08);
-   - seleção e barra, incluindo o salto da grade ao marcar o primeiro aparelho (RF-12);
-   - drawer do Foco (Esc, clique fora, Tab preso, foco devolvido) em Cards **e** Lista;
-   - caixa de Pendências: contador do menu = linhas; comparar com "aguardando você", com o semáforo e com "Com
-     pendência" de Execuções no mesmo instante (RF-04, RF-09, RF-22);
-   - contador "execuções" do topo × chip "Em andamento" (RF-05);
-   - semáforo com servidor fora do ar: real só pela opção (b); senão `simulated` pelos testes.
-5. **Tabela de métricas da 02**: online, total, paradas, desconhecidos, vagas por servidor, bloqueadas e aguardando
-   você no topo, no Painel, na Infraestrutura, no Diagnóstico e no semáforo, lidos na mesma hora.
-6. **Tempo relativo**: o mesmo aparelho no cartão e na legenda do Foco (RF-06).
-7. **axe** nas 54 células (mais a tela de entrada, RF-28), com atenção a `region`, `heading-order`,
-   `aria-allowed-role`, `aria-prohibited-attr` (RF-27) e contraste. Lighthouse de acessibilidade em pelo menos
-   Painel e Personas a 1440 e 390 px (a 07 não rodou nenhum).
-8. **Teclado**: Painel e Personas completos; gaveta do menu (RF-26); chips de Pendências (RF-19); anel de foco no
-   `<main>` depois de navegar pela gaveta.
-9. **Visual da regra global `button { border: 0; background: transparent }`** nas telas novas da 06 (Pendências,
-   Aprendizado com "Saiba mais", Rede com o Proxy antigo) e nas guias da persona.
-10. **Saldos no topo a 390 px** e conta em R$ convertida (RF-21).
-11. **Suíte**: `npm run typecheck` e `npm test` uma vez, para registrar o número (`simulated`), já que nesta fase
-    nenhuma alegação de teste foi reexecutada.
-
-## Veredito parcial (FASE A)
-
-**Como está, não pronto para a `main`.** Com as correções pequenas de RF-01 e RF-02, passa a pronto com ressalvas,
-sujeito à FASE B. A base de rotas (01), a fonte única de números (02), o drawer
-sobreposto (03), a tradução dos cartões (04), a busca e os filtros (05), a caixa de Pendências (06) e os tokens de
-tipografia e alvo (07) estão no código e são coerentes no geral. Duas costuras entre tarefas, porém, não podem ir
-para a `main` sem correção pequena antes:
-
-- RF-01: ação em lote sobre aparelhos escondidos pelo filtro;
-- RF-02: drawer quebrado na visão Lista.
-
-Há também quatro critérios de aceite não atendidos ou parciais que o dono deveria ver:
-
-- RF-03: caixa "única" sem as sessões que pedem pessoa;
-- RF-04 e RF-05: contadores de "o que espera você" e de execuções com definições diferentes;
-- RF-07: varredura de textos incompleta.
-
-Mesmo com RF-01 e RF-02 corrigidos, fica "não pronto" se a FASE B mostrar, em alguma das 54 células, rolagem
-horizontal, sobreposição, menu inalcançável ou contraste AA falhando. Se as correções entrarem e o resto se
-confirmar, vira "pronto com ressalvas" (RF-03 a RF-10 como ressalvas).
+- RF-05 **reaberto**: o contador "execuções" do topo ainda muda conforme a tela visitada e diverge de "Em andamento".
+  Em 23:40Z o topo dizia 0 ou 1, e o chip dizia 3.
+- RF-26: o Tab escapa da gaveta do menu, abaixo de 1024 px, e dali o Esc deixa de fechá-la.
+- RF-04 e RF-08: decisões de produto pendentes (definição de "pendência"; filtros que se perdem ao sair pelo menu).
+- O semáforo com servidor fora do ar **não foi provado em execução**. Pelo vite, o canal ao vivo cai (código 1006) e o
+  semáforo mostra "Crítico" por construção. A lógica está provada só por teste (`simulated`).
 
 ## Provas
 
-- **real**: nenhuma nesta fase.
-- **simulated**: nenhuma reexecutada nesta fase.
-- **not_run**: tudo o que depende de rodar. Isso inclui as suítes e os typechecks alegados pelos relatórios 01 a 08,
-  todas as medidas em navegador, o axe, o Lighthouse e o `python scripts/docs-check.py`. Este relatório cita de
-  propósito termos fora do vocabulário ("backend", "worker", "frame"), e a checagem de vocabulário pode apontá-los. É
-  para a consolidação do orquestrador.
-- **estático** (o que esta fase fez): leitura de código e busca dirigida no commit `5da4cfc`, com as referências
-  `arquivo:linha` acima.
+**real** (30/09, máquina central, commit `58d67f5`, vite 5199 com backend vivo em leitura, aba `tab-10` do navegador da
+IDE). Foi só navegação, seleção, abrir e fechar o Foco, filtros e teclado. **Nenhuma** ação com efeito foi disparada:
+Iniciar, Parar, Reiniciar, Resetar, Instalar, Executar, Assumir controle, aprovar e login ficaram intocados.
+
+- Varredura automática por célula com um script próprio, injetado junto com o axe-core 4.13 (tags `wcag2a`, `wcag2aa`,
+  `wcag21a`, `wcag21aa`, `wcag22aa`, `best-practice`) e o `scripts/ui-auditoria.js`. Para cada célula ela mede:
+  `scrollWidth` contra a largura, as 9 seções do menu alcançáveis (visíveis, ou botão da gaveta visível), elementos do
+  `main` que passam da borda fora de rolador, sobreposição de controles no topo, texto cortado com reticências sem
+  dica, fonte abaixo de 13 px, contraste abaixo de AA, alvos abaixo de 32 px e botão sem nome.
+  - Os arquivos `axe.min.js`, `ui-auditoria.js` e o medidor ficaram em `frontend/public/__rev09/` só durante a
+    medição, foram apagados depois, e nada foi comitado.
+  - Mais 26 visões internas a 1440 px: guias de Aplicativos, Execuções, Aprendizado e Configuração, o detalhe de app,
+    o Foco de dois aparelhos e as 11 guias de uma persona.
+- Fluxos medidos um a um, descritos abaixo, com cliques e teclas reais do painel (`computer`) onde isso importava:
+  caixa de seleção, Tab, Shift+Tab, Enter e Esc.
+- `node scripts/ui-verificar.mjs --url http://127.0.0.1:5199 --telas painel --larguras 1440`: **caiu na tela de
+  entrada** ("waiting for locator('header')"). Isso confirma o RF-10: sem sessão, o script não alcança as telas.
+
+**simulated**:
+
+- `npm run typecheck`: verde.
+- `npm test`: **84 arquivos, 1000 testes, todos verdes** (vitest, 30/09 ~23:55Z, prioridade baixa, 17,6 s). Entre eles
+  estão `features/topbar/SaudeAmbiente.test.tsx` e `store/metricas.test.ts`, que provam o semáforo com o servidor da LAN
+  fora do ar ("Atenção" com o motivo e o link).
+
+**not_run**:
+
+- Lighthouse. Ele sobe um Chrome próprio sem a sessão e cairia na tela de entrada, e entrar é proibido.
+- axe na tela de entrada (RF-28): exigiria sair da sessão.
+- Semáforo com o servidor realmente fora do ar (a lógica fica só por teste).
+- Drawer em 1920, 1280 e 1024 px (medido em 1440, 768 e 390).
+- Leitor de tela e toque real.
+- O build da `main` servido na 8000. Só abri a 8000 uma vez, para saber se um defeito é anterior (RF-35).
+- `python scripts/docs-check.py`.
+
+## Tabela tela x largura (9 x 6)
+
+Legenda: **OK** = sem rolagem horizontal, menu alcançável, sem transbordo, sem sobreposição no topo, sem corte sem dica,
+0 contraste abaixo de AA e 0 alvo abaixo de 32 px. Em todas as células há duas violações do axe que não quebram a
+célula: `region` (moderate), da região de avisos (toast) fora de marco, e a faixa "Desconectado do servidor", do canal
+caído pelo vite. Abaixo de 1024 px o menu é a gaveta, pelo botão "Menu".
+
+| Tela | 1920 | 1440 | 1280 | 1024 | 768 | 390 |
+|---|---|---|---|---|---|---|
+| Painel | OK | OK | OK | OK | OK | OK (a barra de seleção rola de lado, RF-37) |
+| Personas | OK · axe `heading-order` | OK · `heading-order` | OK · `heading-order` | OK · `heading-order` | OK · `heading-order` | OK · `heading-order` |
+| Aplicativos | problema, Baixa (pacote `com.microsoft.office.outlook` cortado sem dica) | OK | problema, Baixa (idem) | problema, Baixa (idem) | OK | OK |
+| Execuções | OK | OK | OK | OK | OK | OK |
+| Pendências | OK | OK | OK | OK | OK | OK |
+| Aprendizado | problema, Baixa (alvo de 29 px, RF-31) | idem | idem | idem | idem | OK |
+| Infraestrutura | OK | OK | OK | OK | problema, Baixa (linha de hardware cortada sem dica, RF-34) | idem |
+| Configuração | OK | OK | OK | OK | OK | OK |
+| Diagnóstico | OK · 3 rótulos de gráfico a 12 px (exceção documentada) · axe `aria-allowed-role` (minor) | idem | idem | idem | idem | idem |
+
+Visões internas a 1440 px: 26 medidas. Todas estão sem rolagem horizontal e sem transbordo, com 0 contraste abaixo de
+AA. Os problemas foram estes:
+
+- `#/aplicativos?aba=versoes`: selo "copiado da loja (Play Store)" cortado sem dica, e axe `page-has-heading-one`.
+- `#/aplicativos/chrome`: comando cru "No QA Messenger, leia o nome do primeiro…" cortado sem dica (RF-33), e axe
+  `heading-order` e `page-has-heading-one`.
+- Foco (`?foco=`): axe `aria-allowed-role`, porque o `aside` tem `role="dialog"` (RF-27).
+- Persona: `heading-order` nas guias Visão geral, Persona, Contas e Interações; `aria-allowed-role` em Persona e
+  Aparelhos; alvo de 17 px em Aprovações (RF-31).
+
+Capturas, só dos problemas (`docs/revisoes-ux/capturas/`):
+
+- `rf05-topo-1-execucao-x-em-andamento-3-1440.jpg`: o topo diz "1 execução", o chip diz "Em andamento 3", e o detalhe
+  aberto é de uma execução fora do filtro (RF-05, RF-32).
+- `rf30-lista-drawer-cobre-abrir-1440.jpg`: na visão Lista, a coluna do "Abrir" fica sob o drawer (RF-30).
+
+## Fluxos (real, salvo quando dito)
+
+| Fluxo | Resultado |
+|---|---|
+| Persona por URL direta | `#/perfis/<id>/memoria?q=x` virou `#/personas/<id>/memoria?q=x`, com a persona certa na guia Memória e "Personas" como item atual. Voltar levou à entrada anterior do histórico (o Painel), como se espera de um link colado. |
+| Abrir persona pela lista e Voltar | A partir de `#/personas?situacao=bloqueada&visao=tabela` (5 linhas, "5 de 14 personas"): "Abrir Beatriz Rocha" empilhou `#/personas/<id>`; a guia Memória **substituiu** (`/memoria`); um Voltar retornou à lista **com os filtros**. |
+| Filtro persistente após recarregar | Personas `?q=%40lucas&situacao=ativa&visao=tabela`: depois de `location.reload()` (tipo `reload`), a busca "@lucas", o chip "Ativas", a Tabela e 1 linha voltaram. Execuções `?periodo=30d&q=nasa&status=concluida`: a busca, o período e o chip voltaram, com "15 de 247". |
+| Filtro ao sair e voltar pelo menu | **Perdido** (RF-08 confirmado): menu Painel → menu Personas deu `#/personas`, sem filtro. Com dois Voltar, o link filtrado reaparece. |
+| Seleção x filtro (RF-01) | **Corrigido.** Com `#/painel?estado=stopped` (4 visíveis), marcar os 6 online deu "0 selecionados (6 fora do filtro atual)", o aviso "Nenhum aparelho marcado aparece neste filtro…", só o botão "Limpar seleção" e nenhuma `toolbar`. "Selecionar todos" **substituiu** pela seleção dos 4 visíveis, com a barra "4 selecionados" e `aria-label` "Ação em 4 aparelhos" (RF-13 corrigido). Nenhuma ação foi clicada. |
+| Barra de seleção | Fica presa ao topo da grade: nenhum cartão sob ela a 390 px. Ao marcar o primeiro aparelho, a grade **desce 58 px** (RF-12 confirmado). A 390 px a linha rola (637 px de conteúdo em 364 visíveis), e "Mais ações" e "Limpar seleção" ficam fora da vista (RF-37). |
+| Drawer do Foco | Aberto pelo "Abrir android-03" com **Enter real**: o foco entra no painel. Tab real no último controle ("Hierarquia") foi ao primeiro ("Fechar"); Shift+Tab voltou ao último; Esc real fechou (`#/painel`) e devolveu o foco a "Abrir android-03". Os retângulos dos 15 cartões e a largura do `main` ficaram iguais com o drawer aberto e fechado (1440: `main` 1228 px; 768: `main` 768 px, drawer 720 px). A 390 px é tela cheia (390x844), com "Voltar" e sem corte nem transbordo. As legendas do preview não têm corte. |
+| Drawer na visão Lista (RF-02) | **Corrigido.** Com o Foco de android-01 aberto, o clique real na caixa de android-02 marcou a caixa e o drawer continuou aberto. "Abrir android-02" (clique por script) trocou para `?foco=android-02`. Novo: a coluna "Abrir" fica **sob** o drawer em qualquer largura (RF-30). |
+| Caixa de Pendências | Menu "Pendências 4 (4 esperando você)" = 4 linhas = chip "Todas (4)" (Aprendizado 0, Persona 0, Execução 4, **Intervenção 0**: a origem nova do RF-03 aparece). Os títulos são curtos, sem "Nas instâncias selecionadas, no QA Messenger," (RF-09 corrigido). A dica da idade é "28/09, 12:12:00" (RF-20 corrigido). |
+| Contadores que "esperam você" (RF-04) | Na mesma leitura: topo "4 aguardando você", semáforo "4 objetivos aguardando você nas execuções", Pendências 4, Execuções "Com pendência 115". Hoje os três primeiros coincidem só porque cada execução tem um objetivo. Os destinos seguem diferentes. É decisão do dono. |
+| Execuções ativas (RF-05) | **Reaberto.** O topo mostrou "0 execuções" ao abrir o portal e "1 execução" depois de visitar Execuções (o histórico carregado entra no store). O chip "Em andamento" mostrou **3**. A API tem 3 execuções `planned` (19/09, 22/09 e 27/09), que o snapshot não conta como ativas. |
+| Tempo relativo (RF-06) | **Corrigido.** A legenda do preview do Foco diz "Prévia suspensa — última imagem há 1 min", e o rodapé "última imagem há 1 min". O cartão e a trilha do Foco dizem "há 3 dias" para o mesmo comando. Não aparece mais "há 1 min 14 s". |
+| Semáforo (RF-23 e prova do 02) | Pelo vite, "Ambiente crítico, 2 motivos": "painel sem conexão com o servidor central" (canal caído, código 1006) e "Servidor Notebook da LAN degradado — relógio desalinhado: +6.1 s". Em "Também": 5 personas bloqueadas e 4 objetivos. O nível mostrado é o do canal caído, não o do ambiente. Com o servidor fora do ar: só `simulated` (testes acima). |
+| Gaveta do menu, teclado (RF-26) | A 768 px, Enter no "Menu" abre a gaveta com o foco no item atual. Depois de 9 Tabs, o foco saiu da gaveta para "Reconectar agora", atrás do fundo escurecido. Esc com o foco fora da gaveta **não** a fecha. Escolher uma seção pela gaveta leva o foco ao `<main>` (sem anel) e fecha a gaveta: isso funciona. |
+| Chips de Pendências (RF-19) | `role="radio"`, todos com `tabindex=0`; seta para a direita não move o foco. Confirmado. |
+| Teclado em Painel e Personas | 115 e 106 controles tabuláveis, nenhum `tabindex` positivo, todos com anel de foco (medido por `focus()` em cada um, além dos Tabs reais acima). |
+
+## Tabela de métricas da tarefa 02 (real, 30/09 ~23:43Z, mesma leitura)
+
+| Métrica | API (`/api/snapshot`, `/api/workers`, `/api/personas`) | Topo | Painel | Infraestrutura | Diagnóstico | Semáforo, Personas e Pendências |
+|---|---|---|---|---|---|---|
+| Aparelhos de tarefa | 15 instâncias, 1 é a loja → 14 | "6/**14**" | "0 de 14 selecionados" | — | "6 de **14** online" | — |
+| Online | 6 | 6 | "6 online" | vagas 3 (central) + 3 (notebook) = 6 | 6 | — |
+| Parados / hibernados | 4 / 4, loja parada | — | "4 hibernados · 4 parados · aparelho-loja parado" | — | — | — |
+| Desconhecidos | 0 (notebook conectado, `degraded`) | — | nenhum grupo | — | — | sem motivo de desconhecidos |
+| Vagas | central `max_slots` 4, notebook 6 | — | — | "3 de 4" e "3 de 6", sem alerta | "cabem até 15 neste servidor (estimado)" | — |
+| Personas bloqueadas | 5 de 14 | — | — | — | — | "5 personas bloqueadas pela plataforma" = `#/personas?situacao=bloqueada` com 5 linhas |
+| Aguardando você | 4 objetivos (snapshot) | 4 | — | — | — | semáforo 4; Pendências 4 linhas |
+| Execuções ativas | 3 `planned` no histórico, 0 ativas no snapshot | **0 → 1** | — | — | — | Execuções "Em andamento **3**" (RF-05) |
+
+Tudo bate, exceto as execuções ativas (RF-05).
+
+## Regressões e achados
+
+Escala: **Alta** = perda de função ou ação sobre o que não se vê; **Média** = critério não atendido, contradição visível
+ou acessibilidade de teclado quebrada; **Baixa** = texto, polimento, código morto, estrutura para o axe.
+
+### Situação dos achados da FASE A (depois da tarefa 10 e da FASE B)
+
+| ID | Situação agora | Prova |
+|---|---|---|
+| RF-01 ação em lote fora do filtro (Alta) | **corrigido** | real (fluxo acima) |
+| RF-02 drawer na Lista (Alta) | **corrigido**; efeito colateral vira RF-30 | real (clique na caixa) + `Drawer.test.tsx` |
+| RF-03 intervenções fora de Pendências | **corrigido** (origem "Intervenção" visível; 0 casos vivos) | real parcial + `PendenciasPage.test.tsx` |
+| RF-04 quatro definições de "pendência" | aberto, **decisão do dono** (Média) | real (contadores acima) |
+| RF-05 execuções ativas fora da fonte única | **reaberto** (Média): regra unificada, base ainda variável | real + captura |
+| RF-06 dois formatadores de tempo | **corrigido** | real |
+| RF-07 jargão e inglês visíveis | **parcial** (agora Baixa): restam os textos listados em RF-07r | real (varredura de texto) |
+| RF-08 persistência de visão e filtros | aberto, **decisão do dono** (Média) | real |
+| RF-09 título cru em Pendências | **corrigido** | real |
+| RF-10 verificador sem sessão | documentado; limitação confirmada (Baixa, ferramenta) | real (execução do script) |
+| RF-11 `aria-modal` com o fora clicável | aberto, decisão do dono (Baixa) | not_run (leitor de tela) |
+| RF-12 grade desce ao marcar | **confirmado**, 58 px (Baixa) | real |
+| RF-13 nome da barra × contador | **corrigido** | real |
+| RF-14 código morto | aberto (Baixa) | estático |
+| RF-15 links que fecham o Foco | aberto (Baixa) | estático |
+| RF-16 gestão de app em Configuração | aberto, decisão (Baixa) | estático |
+| RF-17 etapas 1 → 2 → 3 | aberto, decisão (Baixa) | estático |
+| RF-18 ícone `Hand` com três sentidos | aberto (Baixa) | estático |
+| RF-19 chips `role="radio"` sem setas | **confirmado** (Baixa) | real |
+| RF-20 dica em ISO cru | **corrigido** | real |
+| RF-21 R$ mostrado como US$ sem câmbio | aberto (Baixa); com as contas de hoje (Anthropic e OpenAI em US$) não se manifesta | real (topo e Diagnóstico em US$) |
+| RF-22 selo Aprendizado × chip | aberto (Baixa); hoje 0 = 0 | real |
+| RF-23 `reconnecting` já é Crítico | aberto, decisão (Baixa) | real (o semáforo fica Crítico pelo canal) |
+| RF-24 "Persona: … · persona Y" | corrigido | estático (`10-correcoes.md`) |
+| RF-25 expressão da 08 em `PlanTab` | encerrado (sem ação) | — |
+| RF-26 Tab escapa da gaveta | **confirmado**, e o Esc para de funcionar: sobe para **Média** | real |
+| RF-27 violações do axe | **confirmado**: `region` (54 células), `heading-order` (Personas, guias da persona, detalhe de app), `aria-allowed-role` (figure do Diagnóstico, `aside role=dialog` do Foco, article e listitem na persona), `page-has-heading-one` (Aplicativos: versões e detalhe) (Baixa) | real (axe) |
+| RF-28 texto a 70 % na entrada | not_run (exigiria sair da sessão) | — |
+| RF-29 comentário `<pacote>` | corrigido | estático |
+
+### Novos na FASE B
+
+| ID | Grav. | Onde | Achado e passos para reproduzir | Prova |
+|---|---|---|---|---|
+| RF-07r | Baixa | `RunView` (Painel e Execuções), `InfraPage`, `SettingsPage` (lead), `FocusPanel`/`FocusInfoSections`, textos vindos do servidor | Restos visíveis do RF-07: "Status: Precisa de informações" e "Nenhuma instância precisou revisar o plano" (detalhe da execução); "processo: running/stopped", "worker.yaml" e "GPU do host" (Infraestrutura); "associação de instâncias e contas, status da IA" (lead de Configuração); "para os perfis que você escolher" (Modo treinamento no Foco); "readotado após reinício do backend" e "hibernado (snapshot salvo)" (Foco; parecem vir do servidor); selo "Parada" ao lado do resumo "parados". Passos: abrir cada tela e buscar os termos. | real |
+| RF-30 | Baixa | `DeviceList` × `Drawer` | Na visão Lista, a coluna de ações (o "Abrir") fica à direita e o drawer a cobre em qualquer largura. Para trocar de aparelho pela Lista é preciso fechar o Foco; nos Cartões, os da esquerda ficam à vista. Passos: Painel → Lista → abrir android-01 → o "Abrir" das outras linhas fica sob o painel. | real + captura |
+| RF-31 | Baixa | `ParaAprovarTab.tsx` ("Ver todas as suas pendências", 29 px), `GuiaAprovacoes.tsx` ("Ver todas as pendências", 17 px) | Os links que a 06 acrescentou ficam abaixo de 32 px de alvo: é regressão do critério da 07, que mediu antes da integração da 06. Passos: `#/aprendizado` e `#/personas/<id>/aprovacoes`, auditor de alvos. | real |
+| RF-32 | Baixa | `RunsPage` | Com um filtro ativo, o detalhe continua mostrando a execução selecionada antes, mesmo fora do recorte. Em `?status=andamento` e em `?status=concluida&q=nasa` o detalhe era `f55c04`, "Precisa de informações". Passos: abrir Execuções, filtrar por uma situação que não inclua a aberta. | real + captura |
+| RF-33 | Baixa | detalhe do app (`#/aplicativos/chrome`) | As execuções recentes do app mostram o comando cru ("No QA Messenger, leia o nome do primeiro…"), cortado sem dica. Não usa o `tituloCurto` da 05 (o RF-09 corrigiu só Pendências). | real |
+| RF-34 | Baixa | `InfraPage` (lista de aparelhos) | A 768 e 390 px, a linha "processo: running · API 34 · x86_64 · Play Services · renderizador…" é cortada com reticências sem dica. | real |
+| RF-35 | Baixa, **pré-existente** | `components/Tabs` (faixas de guias) | Toda faixa de guias tem `scrollHeight` 41 > `clientHeight` 40 com `overflow: auto`, e aparece uma barra de rolagem vertical minúscula à direita (Aprendizado, Configuração, Aplicativos, Infraestrutura). O mesmo acontece no build da `main` (8000), então não foi introduzido pela revisão. | real |
+| RF-37 | Baixa | `BarraDeSelecao` a 390 px | A barra rola de lado, e "Mais ações" e "Limpar seleção" nascem fora da vista (637 px de conteúdo em 364), sem pista de que há mais. Foi escolha da 03; sai do RF-12 visto no celular. | real |
+| RF-38 | Baixa | cartão do aparelho (evidência) | A evidência escrita pela IA aparece com referências de elemento cruas: "…o título 'Inbox' (e6), a lista de e-mails visível (e18, e19, e20, e21…)". O texto vem do servidor. | real |
+
+(RF-36 foi absorvido pelo RF-07r.)
+
+### Contagem de achados abertos depois da FASE B
+
+- **Alta: 0.**
+- **Média: 4**: RF-04 (decisão), RF-05 (reaberto), RF-08 (decisão), RF-26.
+- **Baixa: 24**:
+  - da FASE A: RF-07r, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 23, 27, 28;
+  - novos: RF-30, 31, 32, 33, 34, 35 (pré-existente), 37, 38.
+- **Corrigidos e verificados**: RF-01, 02, 03, 06, 09, 13 e 20 (real); RF-24 e 29 (estático). **Encerrado**: RF-25.
+
+## Critérios de aceite por tarefa (depois da FASE B)
+
+| Tarefa | Critério | Situação |
+|---|---|---|
+| 01 | As telas alcançáveis pelo menu de 390 a 1920 px | **atendido** (real: 9/9 visíveis de 1024 a 1920 px, gaveta a 768 e 390) |
+| 01 | Abrir persona, aparelho ou execução muda a URL; colar abre | **atendido** (real) |
+| 01 | Voltar fecha o detalhe e volta à lista | **atendido** (real, com os filtros preservados) |
+| 01 | `#/perfis` → `#/personas` | **atendido** (real) |
+| 01 | Nenhuma regressão de rota | atendido com ressalvas: RF-08 (filtro some pelo menu), RF-15 |
+| 02 | Uma métrica, um valor em todas as telas | **parcial**: aparelhos, online, vagas, bloqueadas e aguardando batem (real); execuções ativas não (RF-05) |
+| 02 | "Ambiente" em Atenção com motivo quando a LAN está fora do ar | `simulated` (testes); real `not_run` (canal caído pelo vite; notebook no ar) |
+| 02 | Contadores levam à lista filtrada | parcial: bloqueadas e desconhecidos sim; "execuções" sim (`?status=andamento`); "aguardando você" não (RF-04) |
+| 02 | Testes dos cálculos | **atendido** (`metricas.test.ts`, suíte verde) |
+| 03 | A barra não cobre cartão em 390, 768, 1024 e 1440 px | **atendido** (real a 390 e 1440; nas demais o layout é igual, fluxo normal) |
+| 03 | Nenhuma ação duas vezes | **atendido** (código + teste; com o Foco aberto, a barra fica sem botões) |
+| 03 | Abrir o drawer não altera a grade | **atendido** (real: retângulos idênticos a 1440 e 768) |
+| 03 | Legendas do preview sem corte | **atendido** (real a 768, 390 e 1440) |
+| 03 | Executar desabilitado mostra o motivo | atendido (código e teste); not_run no navegador (não havia Executar desabilitado com motivo à vista) |
+| 04 | Nenhum identificador técnico cru por padrão | **parcial** (RF-07r, RF-38, chaves de `PlanTab`) |
+| 04 | Parado com no máximo metade da altura | atendido (cartões compactos à vista; não remedi em px) |
+| 04 | A Lista mostra os 15 numa tela a 1440x900 | not_run (não remedi) |
+| 04 | Texto novo em pt-BR | atendido após o RF-07 ("Cartões", "sem emulador") |
+| 05 | Achar persona pelo @ | **atendido** (real: "@lucas" filtra na hora) |
+| 05 | Filtros combinados persistem ao recarregar | **atendido** (real: Personas e Execuções); RF-08 fora do recarregamento |
+| 05 | Cartões de altura uniforme, sem corte sem dica | **atendido** (real: 0 cortes sem dica em Personas nas 6 larguras) |
+| 05 | Cartões/tabela não perde seleção | atendido (código e teste); not_run no navegador |
+| 05 | Testes | **atendido** (suíte verde) |
+| 06 | Um só "Novo aplicativo" | **atendido** |
+| 06 | Todos os pendentes na caixa; contador = lista | **atendido** (real: 4 = 4; a origem Intervenção existe) |
+| 06 | Termos da loja explicados | atendido (legenda à vista); o tooltip por foco só em jsdom |
+| 06 | Links antigos | **atendido** |
+| 07 | Nenhum texto abaixo de 13 px (exceto gráfico) | **atendido** (real: 0 nas 54 células e nas 26 visões internas; 3 rótulos de gráfico) |
+| 07 | axe sem falha de contraste AA | **atendido** (real: 0 `color-contrast` nas 54 células) |
+| 07 | Alvos abaixo de 32 px = 0 na tela principal | **atendido** no Painel (0 nas 6 larguras); regressão fora dela em RF-31 |
+| 07 | Teclado completo em Painel e Personas | **atendido** (real: 115 e 106 controles, anel em todos, sem `tabindex` positivo) |
+| 08 | Tabela de achados / só strings | parcial (a varredura da 08 deixou restos, completados pela 10 e ainda com RF-07r) |
+
+## Pendências e recomendação
+
+**Antes de ir para a `main`** (correções pequenas, uma por commit, como a 10):
+
+1. **RF-05**: contar as execuções em andamento sobre uma base fixa, a mesma janela do snapshot, como já se faz com
+   "aguardando você". Outra saída é o backend informar o total. A opção mais honesta é o topo dizer o que conta
+   ("ativas agora") e a Execuções mostrar à parte as `planned` antigas, que parecem execuções paradas desde 19/09. Vale
+   o dono olhar essas 3.
+2. **RF-26**: prender o Tab na gaveta aberta (como o drawer faz) ou fechá-la quando o foco sai. O Esc deve valer com o
+   foco em qualquer lugar enquanto ela estiver aberta.
+3. **RF-31**: alvo de 32 px nos dois links "Ver todas… pendências" (padding e margem negativa, como a 07 fez nos
+   `linkBtn`).
+
+**Decisões do dono** (sem código até decidir): RF-04 (qual número é "a pendência" e para onde o contador leva), RF-08
+(filtros e visão na URL ou no navegador, e se o menu leva a última busca), RF-11, RF-16, RF-17 e RF-23.
+
+**Limpeza depois**: RF-07r (termos restantes; parte vem do servidor), RF-14 (código morto), RF-27 (estrutura de
+títulos e papéis para o axe), RF-30, RF-32, RF-33, RF-34, RF-35 (pré-existente), RF-37 e RF-38.
+
+**Da avaliação original, fora do escopo das tarefas 01 a 08**:
+
+- detalhe da persona com 11 guias;
+- detalhe da execução com 7 guias, sem "Relatório" como padrão;
+- hierarquia da Infraestrutura;
+- Ctrl+K e notificações persistentes;
+- campos sensíveis da persona;
+- a decisão sobre o escopo mobile. A 390 px o cabeçalho ocupa cerca de 300 px, um terço da tela, antes do conteúdo, e
+  o campo de comando segue com 3 linhas.
+
+**Para provar o que ficou `not_run`**: um backend simulado do próprio worktree na 8765 (`vite --mode simulado`), onde
+entrar é inofensivo. Ele permitiria o Lighthouse, o axe da tela de entrada e o semáforo com um servidor inscrito e
+nunca conectado. É outro processo no host, e fica a critério da coordenação.
 
 ## Arquivos
 
-- Criado: `docs/revisoes-ux/revisao-final.md` (este). Nenhum arquivo de código foi tocado. `CHANGELOG.md` e
-  `docs/estado-atual.md` não foram alterados: o orquestrador consolida.
+- `docs/revisoes-ux/revisao-final.md` (este relatório);
+- `docs/revisoes-ux/capturas/rf05-topo-1-execucao-x-em-andamento-3-1440.jpg`;
+- `docs/revisoes-ux/capturas/rf30-lista-drawer-cobre-abrir-1440.jpg`.
+
+Nenhum código foi alterado. Os arquivos temporários de medição (`frontend/public/__rev09/`) foram apagados. O vite da
+5199 foi parado e a aba do navegador fechada. As preferências que a medição gravou no navegador (`cda.painel.visao`,
+`cda.selectedInstances`) foram apagadas, e o perfil voltou às chaves de antes.
