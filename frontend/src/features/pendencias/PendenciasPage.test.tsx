@@ -11,6 +11,7 @@ import { makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import type { EntradaDoLivro } from '../aprendizado/model';
+import { tituloCurto } from '../runs/filtroExecucoes';
 import { MenuLateral } from '../topbar/MenuLateral';
 import { montarPendencias } from './modelo';
 import { PendenciasPage } from './PendenciasPage';
@@ -53,6 +54,13 @@ describe('montarPendencias (puro)', () => {
     const exec = lista.find((p) => p.origem === 'execucao');
     expect(exec?.detalhe).toContain('3 objetivos');
     expect(exec?.destino).toEqual({ tela: 'execucoes', segmentos: ['r-espera'] });
+  });
+
+  it('RF-09: o título da execução é o título curto de Execuções, sem a abertura repetida', () => {
+    const run = makeRun({ ...EXECUCAO, id: 'r-curto', command: 'Nas instâncias selecionadas, no QA Messenger, leia o nome do contato. Confirme na tela.' });
+    const [linha] = montarPendencias({ aprendizado: [], aprovacoes: [], execucoes: [run] });
+    expect(linha?.titulo).toBe(tituloCurto(run.command).titulo);
+    expect(linha?.titulo).not.toMatch(/^Nas instâncias/);
   });
 
   it('fontes ainda não lidas (null) não quebram nem inventam linhas', () => {

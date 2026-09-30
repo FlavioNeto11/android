@@ -18,6 +18,7 @@ import type { Approval, RunSummary } from '../../api/types';
 import type { Destino } from '../../store/ui';
 import { execucoesAguardando } from '../../store/metricas';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
+import { tituloCurto } from '../runs/filtroExecucoes';
 
 export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao';
 
@@ -80,15 +81,20 @@ export function pendenciasDeAprovacoes(
 }
 
 export function pendenciasDeExecucoes(runs: readonly RunSummary[]): Pendencia[] {
-  return execucoesAguardando(runs).map(({ run, objetivos }) => ({
-    chave: `execucao:${run.id}`,
-    origem: 'execucao',
-    titulo: run.command.split('\n').find((l) => l.trim())?.trim() ?? run.short_id,
-    detalhe: `${objetivos} ${objetivos === 1 ? 'objetivo aguarda' : 'objetivos aguardam'} você ou ${objetivos === 1 ? 'tem' : 'têm'} resultado incerto`,
-    desde: run.created_at,
-    acao: 'Abrir execução',
-    destino: { tela: 'execucoes', segmentos: [run.id] },
-  }));
+  return execucoesAguardando(runs).map(({ run, objetivos }) => {
+    // O MESMO título da lista de Execuções (RF-09): a primeira linha crua repetia "Nas instâncias selecionadas, No
+    // QA Messenger, …" e a mesma execução aparecia com dois títulos. O app citado vai para o detalhe, como lá.
+    const { titulo, app } = tituloCurto(run.command);
+    return {
+      chave: `execucao:${run.id}`,
+      origem: 'execucao',
+      titulo,
+      detalhe: `${app ? `${app} · ` : ''}${objetivos} ${objetivos === 1 ? 'objetivo aguarda' : 'objetivos aguardam'} você ou ${objetivos === 1 ? 'tem' : 'têm'} resultado incerto`,
+      desde: run.created_at,
+      acao: 'Abrir execução',
+      destino: { tela: 'execucoes', segmentos: [run.id] },
+    };
+  });
 }
 
 export interface EntradasDaCaixa {
