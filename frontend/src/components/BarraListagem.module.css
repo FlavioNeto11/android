@@ -1,0 +1,47 @@
+/* Barra de listagem (tarefa UX 05): busca, filtros, ordem e visão, a mesma em Personas e Execuções. */
+.barra { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.linha { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; }
+
+.busca { position: relative; flex: 1 1 16rem; min-width: min(100%, 12rem); display: flex; align-items: center; }
+.buscaIcone { position: absolute; left: 9px; color: var(--text-3); pointer-events: none; }
+.buscaCampo { width: 100%; padding-left: 30px; }
+
+.lista { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.lista select { max-width: 100%; }
+
+.visao { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius-md); overflow: hidden; flex: none; }
+.visaoBotao {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 var(--sp-3);
+  background: transparent; color: var(--text-2); border: 0; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.visaoBotao + .visaoBotao { border-left: 1px solid var(--border-2); }
+.visaoBotao:hover { background: var(--surface-3); color: var(--text-1); }
+.visaoBotao[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 var(--sp-3);
+  border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-2);
+  color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap;
+}
+.chip:hover { border-color: var(--border-3); color: var(--text-1); }
+.chip[aria-pressed="true"] { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-text); }
+.chipContagem {
+  min-width: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--surface-4);
+  color: var(--text-1); font-size: var(--fs-xs); text-align: center; font-variant-numeric: tabular-nums;
+}
+
+.rodape { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--text-2); }
+.resumo { font-variant-numeric: tabular-nums; }
+.limpar {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--accent-text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.limpar:hover { background: var(--accent-soft); }
+
+/* Tela estreita: a busca ocupa a linha; os botões de visão ficam só com ícone. */
+@media (max-width: 560px) {
+  .busca { flex-basis: 100%; }
+  .visaoBotao span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+}

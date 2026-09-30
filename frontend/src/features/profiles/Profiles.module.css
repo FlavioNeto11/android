@@ -863,9 +863,62 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .selecaoTopo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); min-width: 0; font-size: var(--fs-sm); }
 .cartaoSelecionado { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border); }
 /* A caixa de seleção no canto do cartão, fora do cabeçalho; o cabeçalho reserva a faixa dela à direita. */
-.cartaoPessoa { position: relative; }
-.cartaoPessoa > header { padding-right: calc(var(--sp-5) + 28px); }
-.cartaoSelecao { position: absolute; top: calc(var(--sp-4) + 10px); right: var(--sp-4); z-index: 1; line-height: 0; }
+/* Cartão de layout fixo (tarefa UX 05): as mesmas linhas em todo cartão, uma linha de texto cada, e as ações presas
+   ao pé. A grade estica os cartões da mesma fileira; o conteúdo fixo iguala as fileiras entre si. */
+.cartaoPessoa { position: relative; display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.cartaoTopo {
+  display: flex; align-items: center; gap: var(--sp-3); min-width: 0;
+  padding: var(--sp-4) var(--sp-5) 0;
+}
+.cartaoIdentidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cartaoNome { margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); min-width: 0; }
+.cartaoHandle { color: var(--text-2); font-size: var(--fs-sm); }
+.cartaoCorpo { flex: 1; display: flex; flex-direction: column; min-width: 0; padding-top: var(--sp-3); }
+.cartaoCorpo .cardResumo { min-height: 1.5em; }
+.cartaoAviso {
+  margin: var(--sp-2) 0 0; min-height: 1.5em; color: var(--warning-text); font-size: var(--fs-sm); min-width: 0;
+}
+.truncado { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linhaUnica { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.linhaUnica > * { flex: none; }
+.linhaUnica > .truncado { flex: 0 1 auto; }
+.seloEstado { display: inline-flex; min-width: 0; max-width: 100%; border-radius: var(--radius-pill); }
+.seloEstado > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cartaoCorpo .actions { margin-top: auto; padding-top: var(--sp-4); align-items: center; }
+.actionsFim { margin-left: auto; }
+
+/* Menu "⋯": as ações que não são "Abrir". O vermelho de Remover mora só aqui dentro. */
+.menuGatilho {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 1px solid var(--border-2); border-radius: var(--radius-md); background: transparent; color: var(--text-2);
+  cursor: pointer;
+}
+.menuGatilho:hover, .menuGatilho[aria-expanded="true"] { background: var(--surface-3); color: var(--text-1); }
+.menuAcoes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 12rem; }
+.menuItem {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: 8px 10px; border: 0;
+  border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font: inherit;
+  font-size: var(--fs-sm); text-align: left; cursor: pointer;
+}
+.menuItem:hover { background: var(--surface-3); }
+.menuItem:disabled { opacity: 0.6; cursor: default; }
+.menuItemPerigo { color: var(--danger-text); }
+.menuItemPerigo:hover { background: var(--danger-soft); }
+
+/* Visão em tabela das personas. Rola na horizontal dentro da própria caixa em tela estreita (a página não). */
+.tabelaHost { overflow-x: auto; border: 1px solid var(--border-1); border-radius: var(--radius-lg); background: var(--surface-1); }
+.tabela { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: auto; }
+.tabela th {
+  text-align: left; font-weight: 600; color: var(--text-2); padding: 10px 12px; border-bottom: 1px solid var(--border-2);
+  white-space: nowrap; background: var(--surface-2);
+}
+.tabela td { padding: 8px 12px; border-bottom: 1px solid var(--border-1); vertical-align: middle; max-width: 16rem; }
+.tabela tbody tr:last-child td { border-bottom: 0; }
+.tabela tbody tr:hover { background: var(--surface-2); }
+.tabela .num { text-align: right; font-variant-numeric: tabular-nums; }
+.linhaSelecionada { background: var(--accent-soft); }
+.tabelaPessoa { display: flex; align-items: center; gap: var(--sp-2); min-width: 10rem; font-weight: 600; }
+.tabelaAcoes { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
 .loteDock {
   position: sticky; bottom: 14px; z-index: var(--z-sticky);
   display: flex; justify-content: center; pointer-events: none; margin-top: 2px; min-width: 0;

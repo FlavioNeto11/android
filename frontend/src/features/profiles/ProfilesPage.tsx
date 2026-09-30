@@ -1,13 +1,13 @@
-import { AtSign, Hand, PenLine, Server, ShieldAlert, ShieldCheck, Smartphone, Trash2, UserRound, Wand2 } from 'lucide-react';
+import { Hand, PenLine, SearchX, ShieldAlert, Smartphone, UserRound, Wand2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type { Instance, InstagramProfile, PersonaDTO, PolicyGroup, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Banner } from '../../components/Banner';
 import { Badge } from '../../components/Badge';
+import { BarraListagem } from '../../components/BarraListagem';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
-import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox } from '../../components/Field';
 import { AutoGrid, Page } from '../../components/Page';
@@ -15,11 +15,10 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
-import { toastError, toast } from '../../store/toasts';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { formatAgoCoarse, useNow } from '../../lib/time';
-import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
@@ -27,9 +26,13 @@ import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
+import {
+  appsDe, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
+  ordenarPersonas, queryDoFiltro, ROTULO_SITUACAO, SITUACOES, textoSemResultado,
+  type FiltroPersonas, type OrdemPersona, type Situacao,
+} from './filtroPersonas';
+import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
 import { ProfileDetail } from './ProfileDetail';
-import { handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
-import { SESSION_PHASE_LABEL } from './sessionGate';
 import styles from './Profiles.module.css';
 
 /** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
@@ -55,6 +58,7 @@ export function ProfilesPage() {
   // A persona aberta e a guia vêm do link (`#/personas/<id>/<guia>`): Voltar do navegador fecha, recarregar reabre.
   const rota = useUiStore((s) => s.rota);
   const navegar = useUiStore((s) => s.navegar);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
   const voltarPara = useUiStore((s) => s.voltarPara);
   const idAberto = rota.tela === 'personas' ? rota.segmentos[0] ?? null : null;
   const abaAberta = abaDoPedido(rota.segmentos[1]);
@@ -157,10 +161,29 @@ export function ProfilesPage() {
     abrir(id);
   }
 
-  const todas = pessoas.length > 0 && pessoas.every((p) => selecionadas.has(p.id));
-  const algumas = !todas && pessoas.some((p) => selecionadas.has(p.id));
+  // Busca, filtros, ordem e visão vêm do link (`#/personas?situacao=bloqueada&q=ana&visao=tabela`): recarregar e
+  // colar o link mostram o mesmo recorte. Gravar substitui a entrada (digitar não empilha uma entrada por tecla).
+  const filtro = lerFiltroPersonas(rota.query);
+  const mudarFiltro = (parcial: Partial<FiltroPersonas>) => trocarQuery(queryDoFiltro(parcial), 'replace');
+  const visiveis = ordenarPersonas(filtrarPersonas(pessoas, filtro), filtro.ordem);
+  const contagem = contagemPorSituacao(pessoas, filtro);
+  const escondeAlguem = filtroAtivo(filtro);
+  const appsConhecidos = [...new Set(pessoas.flatMap(appsDe))].sort();
+  // Selecionadas que o filtro escondeu continuam no lote: a barra diz quantas, para ninguém agir sem ver.
+  const selecionadasForaDoFiltro = [...selecionadas].filter((id) => !visiveis.some((p) => p.id === id)).length;
+
+  // "Selecionar todas" vale para o que está à vista, não para quem o filtro escondeu.
+  const todas = visiveis.length > 0 && visiveis.every((p) => selecionadas.has(p.id));
+  const algumas = !todas && visiveis.some((p) => selecionadas.has(p.id));
   function alternarTodas() {
-    setSelecionadas(todas ? new Set() : new Set(pessoas!.map((p) => p.id)));
+    setSelecionadas((atual) => {
+      const nova = new Set(atual);
+      for (const p of visiveis) {
+        if (todas) nova.delete(p.id);
+        else nova.add(p.id);
+      }
+      return nova;
+    });
   }
 
   return (
@@ -195,20 +218,58 @@ export function ProfilesPage() {
         </EmptyState>
       ) : (
         <>
+          <BarraListagem
+            nome="personas"
+            busca={{ valor: filtro.q, onChange: (q) => mudarFiltro({ q }), placeholder: 'Buscar por nome ou @' }}
+            filtros={[
+              { chave: 'situacao', rotulo: 'Situação', tipo: 'chips', rotuloTodos: 'Todas', contagemTodos: contagem.todas,
+                valor: filtro.situacao ?? '', onChange: (v) => mudarFiltro({ situacao: (v || null) as Situacao | null }),
+                opcoes: SITUACOES.map((s) => ({ valor: s, rotulo: ROTULO_SITUACAO[s], contagem: contagem[s] })) },
+              { chave: 'vinculo', rotulo: 'Aparelho vinculado', tipo: 'lista', rotuloTodos: 'Com e sem aparelho',
+                valor: filtro.vinculo ?? '', onChange: (v) => mudarFiltro({ vinculo: (v || null) as 'com' | 'sem' | null }),
+                opcoes: [{ valor: 'com', rotulo: 'Com aparelho' }, { valor: 'sem', rotulo: 'Sem aparelho' }] },
+              { chave: 'grupo', rotulo: 'Grupo de acesso', tipo: 'lista', rotuloTodos: 'Todos os grupos',
+                valor: filtro.grupo ?? '', onChange: (v) => mudarFiltro({ grupo: v || null }),
+                opcoes: [{ valor: 'nenhum', rotulo: 'Sem grupo' }, ...grupos.map((g) => ({ valor: g.id, rotulo: g.name }))] },
+              ...(appsConhecidos.length > 0 ? [{
+                chave: 'app', rotulo: 'Aplicativo', tipo: 'lista' as const, rotuloTodos: 'Todos os aplicativos',
+                valor: filtro.app ?? '', onChange: (v: string) => mudarFiltro({ app: v || null }),
+                opcoes: appsConhecidos.map((a) => ({ valor: a, rotulo: nomeDoApp(a) })),
+              }] : []),
+            ]}
+            ordem={{ valor: filtro.ordem, onChange: (v) => mudarFiltro({ ordem: v as OrdemPersona }),
+                     opcoes: [{ valor: 'nome', rotulo: 'Ordem: nome' }, { valor: 'situacao', rotulo: 'Ordem: situação' },
+                              { valor: 'atividade', rotulo: 'Ordem: última atividade' }] }}
+            visao={{ valor: filtro.visao, onChange: (visao) => mudarFiltro({ visao }) }}
+            resumo={escondeAlguem ? `${visiveis.length} de ${pessoas.length} personas` : `${pessoas.length} personas`}
+            onLimpar={escondeAlguem ? () => trocarQuery(LIMPAR_FILTROS, 'replace') : undefined}
+          />
           <div className={styles.selecaoTopo}>
-            <Checkbox label={`Selecionar todas (${pessoas.length})`} aria-label={`Selecionar todas as ${pessoas.length} personas`}
-                      checked={todas} indeterminate={algumas} onChange={alternarTodas} />
+            <Checkbox label={`Selecionar todas (${visiveis.length})`} aria-label={`Selecionar todas as ${visiveis.length} personas`}
+                      checked={todas} indeterminate={algumas} onChange={alternarTodas} disabled={visiveis.length === 0} />
             {selecionadas.size > 0 ? (
-              <span className={styles.muted}>{selecionadas.size} de {pessoas.length} para as ações em lote</span>
+              <span className={styles.muted}>
+                {selecionadas.size} de {pessoas.length} para as ações em lote
+                {selecionadasForaDoFiltro > 0 ? ` (${selecionadasForaDoFiltro} fora do filtro atual)` : ''}
+              </span>
             ) : null}
           </div>
-          <AutoGrid min="320px">
-            {pessoas.map((p) => (
-              <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
-                           onSelecionar={() => alternarSelecao(p.id)}
-                           onOpen={() => abrir(p.id)} />
-            ))}
-          </AutoGrid>
+          {visiveis.length === 0 ? (
+            <EmptyState icon={SearchX} compact title={textoSemResultado(filtro)}
+                        hint="Os filtros escondem todas as personas. Limpe os filtros para ver a lista inteira."
+                        actions={<Button variant="outline" onClick={() => trocarQuery(LIMPAR_FILTROS, 'replace')}>Limpar filtros</Button>} />
+          ) : filtro.visao === 'tabela' ? (
+            <TabelaPersonas pessoas={visiveis} selecionadas={selecionadas} onSelecionar={alternarSelecao}
+                            onOpen={abrir} onChanged={load} />
+          ) : (
+            <AutoGrid min="320px">
+              {visiveis.map((p) => (
+                <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
+                             onSelecionar={() => alternarSelecao(p.id)}
+                             onOpen={(aba) => abrir(p.id, aba)} />
+              ))}
+            </AutoGrid>
+          )}
         </>
       )}
 
@@ -306,146 +367,3 @@ function InterventionQueue({ profiles, instances, workers }: {
   );
 }
 
-/**
- * O cartão é a PESSOA: nome, @ (se houver), idade/cidade/profissão, quantas contas, o aparelho e a situação. Senha,
- * sessão e Conectar moram na guia Contas e acesso de cada conta — o cartão antigo misturava conta, aparelho e
- * credencial num lugar só, e uma pessoa sem conta nem aparecia.
- */
-function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar }: {
-  pessoa: PersonaDTO;
-  onChanged: () => Promise<void>;
-  onOpen: () => void;
-  selecionada: boolean;
-  onSelecionar: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const nome = nomeDe(pessoa);
-  const handle = handleDe(pessoa);
-  const resumo = resumoDe(pessoa);
-  const loc = pessoa.locality;
-  const fase = pessoa.session_actions ? SESSION_PHASE_LABEL[pessoa.session_actions.phase] : null;
-  // N:N (v0.29): todos os aparelhos dela, o principal primeiro e marcado quando há mais de um.
-  const aparelhos = idsDosAparelhos(pessoa);
-
-  async function remover() {
-    // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar a persona e a
-    // credencial do mesmo jeito. Quem decide é `confirmed`.
-    const { confirmed } = await confirm({
-      title: `Remover ${nome}?`,
-      body: 'É apagar a pessoa: as contas e as senhas guardadas no cofre vão junto, com memória, fotos e histórico. '
-        + 'Persona vinculada a aparelho ou com execução em andamento não sai.',
-      confirmLabel: 'Remover',
-      danger: true,
-    });
-    if (!confirmed) return;
-    setBusy(true);
-    try {
-      await api.deletePersona(pessoa.id);
-      toast({ tone: 'success', title: `${nome} removida` });
-      await onChanged();
-    } catch (e) {
-      toastError('Não foi possível remover a persona', e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function mudarStatus(status: 'active' | 'blocked') {
-    setBusy(true);
-    try {
-      await api.patchProfile(pessoa.id, { status });
-      toast({
-        tone: 'success',
-        title: status === 'blocked' ? `${nome} marcada como bloqueada` : `${nome} reativada`,
-        message: status === 'blocked' ? 'Nenhuma tarefa será despachada para esta persona.' : 'A persona volta a receber tarefas.',
-      });
-      await onChanged();
-    } catch (e) {
-      toastError('Não foi possível mudar a situação da persona', e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className={`${styles.cartaoPessoa}${selecionada ? ` ${styles.cartaoSelecionado}` : ''}`}>
-      {/* A caixa mora no canto, FORA das ações do cabeçalho: ali, em tela estreita (≤ 720 px), as ações ganham metade
-          da linha e o nome caía para 88 px ("Otávio Nu…", aceite do lote em 375 px). Pelo NOME, não pelo @: pessoa
-          sem conta também entra no lote, e o leitor de tela distingue os cartões. */}
-      <div className={styles.cartaoSelecao}>
-        <Checkbox aria-label={`Selecionar ${nome}`} checked={selecionada} onChange={onSelecionar} />
-      </div>
-      <CardHeader
-        title={
-          <span className={styles.identidade}>
-            <Avatar src={profileAvatarUrl(pessoa.id)} name={nome} size={40} />
-            <span className={styles.identidadeNome}>{nome}</span>
-          </span>
-        }
-        subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
-      />
-      <CardBody>
-        {resumo.length ? <p className={styles.cardResumo}>{resumo.join(' · ')}</p> : null}
-        <dl className={`${styles.rows} ${styles.rowsCartao}`}>
-          <div className={styles.row}>
-            <dt><AtSign size={14} aria-hidden /> Contas</dt>
-            <dd>{pessoa.accounts_count ?? 0}</dd>
-          </div>
-          <div className={styles.row}>
-            <dt><Smartphone size={14} aria-hidden /> {aparelhos.length > 1 ? 'Aparelhos' : 'Aparelho'}</dt>
-            <dd>
-              {aparelhos.length === 0 ? <span className={styles.muted}>não vinculado</span>
-                : aparelhos.map((id, k) => (
-                  <span key={id}>
-                    {k > 0 ? ' · ' : ''}{id}
-                    {aparelhos.length > 1 && id === pessoa.instance_id ? <span className={styles.muted}> (principal)</span> : null}
-                  </span>
-                ))}
-            </dd>
-          </div>
-          {/* Onde os DADOS vivem (E9). "Perfil armazenado num servidor não está automaticamente disponível em
-              outro": sem esta linha, uma persona cujo servidor está fora aparecia igual às demais. */}
-          {loc ? (
-            <div className={styles.row}>
-              <dt><Server size={14} aria-hidden /> Servidor</dt>
-              <dd>
-                {loc.worker_name ?? loc.worker_id ?? 'este servidor'}
-                {loc.moved ? <> <Badge tone="warning">mudou de servidor</Badge></> : null}
-                {!loc.available ? <> <Badge tone="warning">indisponível</Badge></> : null}
-                {!loc.known ? <> <Badge tone="neutral">localidade não registrada</Badge></> : null}
-              </dd>
-            </div>
-          ) : null}
-          <div className={styles.row}>
-            <dt>Situação</dt>
-            <dd className={styles.badgeRow}>
-              <StatusBadge meta={metaOf(PROFILE_STATUS, pessoa.status)} />
-              {fase ? <Badge tone={fase.tone}>{fase.label}</Badge> : null}
-            </dd>
-          </div>
-          <div className={styles.row}>
-            <dt><ShieldCheck size={14} aria-hidden /> Grupo de acesso</dt>
-            <dd>{pessoa.policy_group_name
-              ? <Badge tone="info">{pessoa.policy_group_name}</Badge>
-              : <span className={styles.muted}>nenhum — padrão do catálogo</span>}</dd>
-          </div>
-        </dl>
-        {loc?.detail && (loc.moved || !loc.available) ? <p className={styles.detail}>{loc.detail}</p> : null}
-        {/* As ações no pé do cartão, não no cabeçalho: ali elas comiam a linha do nome ("Ma…" num cartão de 360 px,
-            medido no aceite visual da E1). */}
-        <div className={styles.actions}>
-          {/* Nome no rótulo: a lista tem um "Abrir" por pessoa, e o leitor de tela precisa distinguir. */}
-          <Button size="sm" variant="outline" onClick={onOpen} aria-label={`Abrir ${nome}`}>Abrir</Button>
-          {/* Conta bloqueada pela plataforma: registrar aqui é o que tira a persona do despacho. Reativar é
-              decisão de pessoa, depois de a conta voltar de verdade. */}
-          <Button size="sm" variant="ghost" loading={busy}
-                  onClick={() => void mudarStatus(pessoa.status === 'active' ? 'blocked' : 'active')}>
-            {pessoa.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
-          </Button>
-          <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover persona"
-                  loading={busy} onClick={remover} />
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
