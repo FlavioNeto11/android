@@ -2878,3 +2878,23 @@ e não recusam (a confirmação por aparelho com conta real não muda).
 
 **Configuração.** `rede.cliente_tile` (tile do cliente VPN usado para religar o túnel sem reinício; vazio desliga) e
 `rede.espera_tun_s` com padrão 180 (era 60), contados do boot.
+
+**Renderizador do emulador (29.11).** Compatível para trás: campos novos com padrão e um código de recusa novo. Prova:
+`simulated` (`backend/tests/test_renderizador.py`, `test_contratos_do_worker.py`); a configuração por aparelho e por
+worker é `real` (android-07 e android-09, 30/09); a leitura pela API no ambiente central é `not_run` até a segunda
+implantação.
+
+- `InstanceDTO.renderer`: `{configured, gles, vulkan, fallback}` ou nulo. `configured` é o `gpu_mode` pedido (o
+  `instances.overrides.<id>.gpu_mode` ou o padrão do `config.yaml`; num aparelho de worker, o `android.gpu_mode` do
+  `worker.yaml`). `gles` e `vulkan` são o que o emulador **selecionou**, lidos da última linha `emuglConfig_init` do
+  log a cada entrada no ar; nulos fora do ar ou sem a linha. `fallback: true` quando o selecionado não é o pedido — e
+  aí o aparelho ganha um aviso em `attention` com o pedido, o selecionado e o caminho do log. Nulo no DTO = não é
+  emulador conhecido (aparelho físico, ou worker com agente anterior a esta versão).
+- Recusa `409 app_incompativel`: o app declarou, no `app.yaml` (`renderizador_recusado: [swiftshader]`), o
+  renderizador do emulador em que não roda, e o deste aparelho é esse, ou não se sabe qual é (o que não se sabe
+  recusa: abrir o app derrubaria o emulador). Vale para os verbos `install_apk` e `open_app` do aparelho, para a
+  instalação por destino (`POST /api/instances/{id}/app/install`), para o canário e a volta de uma release, para a
+  distribuição (o aparelho fica fora do lote, com o motivo) e para o pré-voo do comando. Aparelho físico não é
+  recusado.
+- Protocolo do worker (`DeclaredDevice`): `gpu_mode`, `gpu_gles`, `gpu_vulkan`, todos com padrão nulo. Agente antigo
+  não os manda, e o central trata o renderizador daquele aparelho como desconhecido.

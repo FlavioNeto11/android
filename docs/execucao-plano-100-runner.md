@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-224 de 271 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+226 de 271 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -265,20 +265,20 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.8 | implemented | simulated | opus | — | backend/app/devices/rede_firewall.py: a leitura confere, por regra de entrada habilitada, porta UDP, perfil efetivo da interface do endpoint_lan, interface, origem (tem de conter a sub-rede IPv4 da interface) e programa… |  |
 | 29.9 | pendente | — | — | — |  |  |
 | 29.10 | implemented | real | opus | — | Real, 30/09/2026, central (0d70882) e notebook, emulador 37.1.11, Outlook 5.2635.3. E3 (14:08–14:36Z, AVD diag-outlook, um fator por vez): controle com -gpu swiftshader_indirect seleciona gles_mode_selected:swiftshader… |  |
-| 29.11 | pendente | — | — | — |  |  |
+| 29.11 | implemented | simulated | opus | — | backend/tests/test_renderizador.py (leitura da linha emuglConfig_init, fallback silencioso como aviso no aparelho, renderizador_recusado no app.yaml, recusa app_incompativel em instalar, abrir, canário, distribuição e p… | A leitura do renderizador pela API e a recusa no ambiente central esperam a segunda implantação, depois da janela do P16 (21:30Z); até lá a prova do código nov… |
 | 29.12 | pendente | — | — | — |  |  |
 | 29.13 | pendente | — | — | — |  |  |
 | 29.14 | pendente | — | — | — |  |  |
-| 29.15 | partial | simulated | opus | — | Painel: coluna Proxy distingue 'sem proxy (legado conferido)' do traço de nunca conferido; identificador de e-mail sem o arroba de nome de usuário (pessoa.ts::ehEndereco/rotuloDoIdentificador, GuiaContas, GuiaVisaoGeral… | Falta a inspeção visual a 800 px e a 375 px com o dado real depois do deploy e a dos estados que o dado real não mostra (configurado, erro, pendente, remoto) e… |
+| 29.15 | implemented | real | opus | — | Real, 30/09 ~16:00Z, central 0d70882, painel servido pelo backend com o dado do parque: android-01 mostra 'sem proxy (legado conferido)'; aparelhos com bloqueio mostram 'bloqueio fora da VPN: provado em … (rev 1, client… | None |
 | 29.16 | pendente | — | — | — |  |  |
-| 29.17 | pendente | — | — | — |  |  |
+| 29.17 | partial | real | opus | — | Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Android\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arqui… | Restam os worktrees das frentes (p3-firewall, p3-medicao, p3-renderizador) e seus branches, que saem depois da segunda implantação; a exclusão definitiva dos a… |
 | 29.18 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (47): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.4, 29.7, 29.9, 29.11, 29.12, 29.13, 29.14, 29.15, 29.16, 29.17, 29.18, T.2
+Pendentes (45): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.4, 29.7, 29.9, 29.12, 29.13, 29.14, 29.16, 29.17, 29.18, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

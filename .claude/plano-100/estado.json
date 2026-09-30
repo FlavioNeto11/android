@@ -4336,16 +4336,16 @@
   },
   "29.15": {
    "id": "29.15",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "Painel: coluna Proxy distingue 'sem proxy (legado conferido)' do traço de nunca conferido; identificador de e-mail sem o arroba de nome de usuário (pessoa.ts::ehEndereco/rotuloDoIdentificador, GuiaContas, GuiaVisaoGeral); tabela de aparelhos da rede com largura mínima e rolagem dentro do cartão, IP e pacote sem quebra; prova de vazamento por aparelho. Simulado: frontend/src/features/rede/RedePage.test.tsx (20 casos) e features/profiles/pessoa.test.ts; tsc e vitest verdes.",
-   "blocker": "Falta a inspeção visual a 800 px e a 375 px com o dado real depois do deploy e a dos estados que o dado real não mostra (configurado, erro, pendente, remoto) em ambiente simulado isolado.",
-   "grupo": "29-p16-e-rede",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 30/09 ~16:00Z, central 0d70882, painel servido pelo backend com o dado do parque: android-01 mostra 'sem proxy (legado conferido)'; aparelhos com bloqueio mostram 'bloqueio fora da VPN: provado em … (rev 1, cliente 1.14.2 (739))' e 'UDP: DNS ok · NTP ok'; a 800 px e a 375 px a página não rola para o lado e a tabela rola dentro do cartão; no cartão de contas o Outlook mostra o endereço com o ícone de carta. Console sem erro. Os estados que o dado real não mostra (regra_obsoleta, vazou, inconclusiva, saída divergente) só em jsdom: frontend/src/features/rede/RedePage.test.tsx.",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T14:09:27+00:00"
+   "quando": "2026-09-30T16:56:15+00:00"
   },
   "29.5": {
    "id": "29.5",
@@ -4382,6 +4382,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T16:06:53+00:00"
+  },
+  "29.11": {
+   "id": "29.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/tests/test_renderizador.py (leitura da linha emuglConfig_init, fallback silencioso como aviso no aparelho, renderizador_recusado no app.yaml, recusa app_incompativel em instalar, abrir, canário, distribuição e pré-voo, aparelho de worker pela batida), test_contratos_do_worker.py (campos gpu_mode/gpu_gles/gpu_vulkan com padrão), frontend InfraPage.test.tsx e infraState.test.ts. Real, 30/09, central 0d70882: a configuração por aparelho (instances.overrides.android-07.gpu_mode: host) e por worker (worker.yaml do notebook, android-09) selecionou gles_mode_selected:host em boot a frio, reinício, hibernar e acordar (android-07, 16:03–16:06Z).",
+   "blocker": "A leitura do renderizador pela API e a recusa no ambiente central esperam a segunda implantação, depois da janela do P16 (21:30Z); até lá a prova do código novo é simulada.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T16:56:15+00:00"
+  },
+  "29.17": {
+   "id": "29.17",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arquivo/; as seis junções dos SDKs extras desfeitas só como atalho, sem seguir o destino. Nada foi apagado.",
+   "blocker": "Restam os worktrees das frentes (p3-firewall, p3-medicao, p3-renderizador) e seus branches, que saem depois da segunda implantação; a exclusão definitiva dos arquivos é do dono.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T16:56:15+00:00"
   }
  },
  "rodadas": [
@@ -5117,6 +5143,17 @@
    ],
    "grupos": [
     "29-registros-p15"
+   ]
+  },
+  {
+   "quando": "2026-09-30T16:56:15+00:00",
+   "itens": [
+    "29.11",
+    "29.15",
+    "29.17"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
    ]
   }
  ]

@@ -62,6 +62,15 @@ do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShade
   a regra criada e o aparelho do notebook com rede seguem `not_run` (29.9).
 - **Painel:** a prova de vazamento por aparelho (revisão, data e cliente) e o estado novo do firewall, com os comandos
   de inspeção e reversão.
+- **Renderizador do emulador por aparelho e por worker (29.10, 29.11):** medido em 30/09 — o Outlook derruba o
+  emulador com o SwiftShader-GL do host e roda com a GPU do host, inclusive pelo serviço (sessão 0), no central
+  (android-07, canário oficial aprovado) e no notebook (android-09); `skiavk` foi refutado. O `gpu_mode` por aparelho
+  (`instances.overrides`) e por worker (`worker.yaml`) já existia e vale em toda subida. Novo: o renderizador
+  **selecionado** é lido do log do emulador (`InstanceDTO.renderer`), o fallback silencioso vira aviso no aparelho, e
+  um app declara em `app.yaml` o renderizador que recusa (`renderizador_recusado`) — instalar, abrir, distribuir e o
+  pré-voo recusam com `app_incompativel` em vez de derrubar o emulador. O agente do worker declara o renderizador na
+  batida. Prova: `simulated` (`tests/test_renderizador.py`); `real` para a configuração e o canário; a leitura pela
+  API espera a segunda implantação, depois da janela do P16.
 - **Plano:** Fase 29 (18 itens) e handoff; 12.3 sai de `pending` para `partial/real` pelo mecanismo.
 
 ## 2026-09-30 (madrugada) — Terceira evolução: rede por aparelho real, comando entre apps real, contas por app; Outlook bloqueado pelo emulador
