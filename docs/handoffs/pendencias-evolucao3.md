@@ -53,11 +53,11 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
-| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
+| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | D1 e D2 **feitos** pelo dono; W0 `real` (`liberado`); W1–W8 no android-09 depois das 21:30Z (cadastrar o par reinicia o servidor VPN) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **integrado** na `main` (`a89cf0d`…`bb9b8e5`), `simulated`; configuração `real` (boot, reinício, hibernar e acordar no android-07); implanta no segundo deploy, depois da janela, com o agente do notebook |
-| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário **passou** no android-07 (`real`); D9 decidido (QA): depois do segundo deploy, promover e distribuir só para android-07, 10 e 12 |
-| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | D9 decidido; falta D4 (consentimento) e D6 (e-mail); o recorte Outlook → Instagram no mesmo aparelho fica fora pela decisão (ver D9) |
+| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário **passou** no android-07 (15:37Z), no android-10 (19:09Z, `c-20260930190806-9eed42`) e no android-12 (19:14Z, `c-20260930190947-b165db`), com a GPU do host do notebook; promoção depois do deploy (o android-02 tem o Outlook como desejado desde 29/09 e o abriria no SwiftShader) |
+| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | D4 feito; vínculos Bruno→android-10 e André→android-12 (outlook) feitos às 19:15Z; telas do login observadas até a senha (sem digitar a senha); YAML de login em escrita (23.8); o e-mail de teste foi enviado pelo dono |
 | 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
 | 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **implantado**; inspeção `real` a 800 e 375 px com o dado do central; estados que o dado real não mostra: só jsdom |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
@@ -384,6 +384,22 @@ diário (05:17Z) no commit da `main`, que já tem a 063: a prova vem do run de 0
 Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/relatorio-validacao.md`.
 
 ## Checkpoints
+
+### Checkpoint 8 — 30/09 ~19:25Z — Outlook no notebook antes do deploy, telas do login
+
+- Canário oficial do Outlook, **por aparelho** (sem promover), no android-10 e no android-12 (notebook, `gpu_mode:
+  host`; `emuglConfig_init: gles_mode_selected:host` nos dois): `ready`, "app chegou ao primeiro plano em 3 s / 11 s e
+  permaneceu". Não promovi: o android-02 (SwiftShader, na janela do P16) tem o Outlook como desejado desde 29/09.
+- Vínculos (persona, aparelho, `outlook`): Bruno → android-10, André → android-12; o Instagram segue principal.
+- **Telas do login observadas** (android-10, conta do Bruno, `real`): "Add account" → identificador → "Continue" → WebView
+  da Microsoft `common_auth_webview` com o conteúdo acessível na árvore → "Verify your email" (código por padrão, com
+  "Use your password") → "Enter your password" (`passwordEntry`, "Next"). Parei na senha, sem digitar, e voltei ao
+  início. Nenhum código foi pedido.
+- `sessao.yaml`/`telas.yaml`/`catalogo.yaml` do Outlook (23.8) em escrita por um agente em worktree, a partir dessas
+  telas; entram no segundo deploy.
+- "Antes" dos aparelhos com conta (só leitura): android-03 Instagram 447 `ready`, sessão `session_ready` (verificada às
+  02:33Z, velha); android-06 Instagram 447 `ready`; android-01 **sem o Instagram** (o reset de 29/09 apagou o app): o
+  Lucas precisa do Instagram reinstalado e do login antes do C1 no aparelho dele.
 
 ### Checkpoint 7 — 30/09 ~18:35Z — firewall, DHCP e consentimento prontos
 
