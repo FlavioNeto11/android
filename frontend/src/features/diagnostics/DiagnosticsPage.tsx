@@ -22,6 +22,7 @@ import { EVENT_LEVEL, HEALTH_STATUS, metaOf } from '../../lib/status';
 import { isBoolean, loadJson, saveJson } from '../../lib/storage';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
+import { contarAparelhos, ocupacoesDoParque } from '../../store/metricas';
 import { toast, toastError } from '../../store/toasts';
 import { useUsage } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
@@ -152,7 +153,12 @@ export function DiagnosticsPage() {
   const extras = data ? Object.keys(data).filter((k) => !(KNOWN_KEYS as readonly string[]).includes(k)) : [];
   const problems = health?.problems ?? [];
 
-  const onlineDevices = instances.filter((i) => i.state === 'online').length;
+  // Mesma conta do cabeçalho e da grade (`store/metricas`): sem a loja, desconhecido à parte, vagas por servidor.
+  const workers = useAppStore((s) => s.workers);
+  const contagem = useMemo(() => contarAparelhos({ instances: instancesMap, instanceOrder }, workers),
+    [instancesMap, instanceOrder, workers]);
+  const acimaDasVagas = useMemo(() => ocupacoesDoParque(instances, workers).filter((o) => o.acima).length,
+    [instances, workers]);
   const spendToday = usage.report?.spend_today_usd ?? health?.ai?.spend_today_usd ?? null;
   const dailyLimit = settings?.ai_max_usd_per_day ?? null;
 
@@ -163,8 +169,10 @@ export function DiagnosticsPage() {
     problemsCount: problems.length,
     spendTodayUsd: spendToday,
     dailyLimitUsd: dailyLimit,
-    onlineDevices,
-    maxOnlineDevices: settings?.max_online_devices ?? null,
+    onlineDevices: contagem.online,
+    totalDevices: contagem.total,
+    unknownDevices: contagem.desconhecidos,
+    serversOverCapacity: acimaDasVagas,
     estimatedMaxDevices: data ? estimatedMaxDevices(data.capacity) : null,
     cpuPercent: metrics?.cpu_percent ?? null,
     memAvailableGb: metrics?.mem_available_gb ?? null,
@@ -173,7 +181,7 @@ export function DiagnosticsPage() {
     diskTotalGb: disk?.totalGb ?? null,
     accelOk,
     balances: health?.ai?.balances ?? null,
-  }), [health, problems.length, spendToday, dailyLimit, onlineDevices, settings, data, metrics, disk, accelOk]);
+  }), [health, problems.length, spendToday, dailyLimit, contagem, acimaDasVagas, data, metrics, disk, accelOk]);
 
   const filteredEvents = useMemo(() => {
     const list: EventRecord[] = eventLevel === 'all' ? recentEvents.slice() : recentEvents.filter((e) => e.level === eventLevel);

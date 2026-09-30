@@ -8,6 +8,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
 import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/app';
+import { ROTULO_DO_ESTADO, contarSelecao, useContagemDeAparelhos } from '../../store/metricas';
 import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
@@ -15,7 +16,7 @@ import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { DeviceCard } from './DeviceCard';
 import {
-  QUICK_VERBS, STATE_SUMMARY_LABEL, bulkActionsFor, bulkBlockersFor, countByServer, countByState, type BulkContext,
+  QUICK_VERBS, bulkActionsFor, bulkBlockersFor, countByServer, type BulkContext,
 } from './deviceState';
 import styles from './Devices.module.css';
 
@@ -42,7 +43,9 @@ export function DeviceGrid() {
   const porAparelho = useMemo(() => personasPorAparelho(pessoas ?? []), [pessoas]);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const stateCounts = useMemo(() => countByState(instances), [instances]);
+  // Fonte única (`store/metricas`): o resumo conta o MESMO conjunto que o botão seleciona — antes o texto dizia
+  // "10 paradas" (com a loja) e o clique selecionava 9. A loja e o aparelho de servidor fora do ar ficam à parte.
+  const contagem = useContagemDeAparelhos();
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
 
   // Seleção é escolha de ALVO de comando: a loja aparece na grade, mas nunca é alvo.
@@ -54,8 +57,8 @@ export function DeviceGrid() {
     () => countByServer(taskOrder.map((id) => ({ id, worker_id: instancesMap[id]?.worker_id ?? null })), workersMap),
     [taskOrder, instancesMap, workersMap]);
 
-  const total = taskOrder.length;
-  const allSelected = total > 0 && selectedIds.length === total;
+  const { selecionados, total } = contarSelecao(selectedIds, taskOrder);
+  const allSelected = total > 0 && selecionados === total;
 
   return (
     <section className={styles.section} aria-labelledby="devices-title">
@@ -65,21 +68,24 @@ export function DeviceGrid() {
           <span className={styles.stateSummary} aria-label="Aparelhos por estado">
             {/* 11.5: cada contador seleciona os aparelhos daquele estado (ex.: "3 parados" → liga os três de uma vez),
                 em vez de marcar cartão por cartão. A loja nunca entra: seleção é alvo de comando. */}
-            {stateCounts.map(({ state, count }, i) => {
-              const alvos = taskOrder.filter((id) => instancesMap[id]?.state === state);
-              const rotulo = STATE_SUMMARY_LABEL[state][count === 1 ? 0 : 1];
+            {contagem.porEstado.map(({ estado, ids }, i) => {
+              const rotulo = ROTULO_DO_ESTADO[estado][ids.length === 1 ? 0 : 1];
               return (
-                <span key={state}>
+                <span key={estado}>
                   {i > 0 ? ' · ' : ''}
-                  {alvos.length > 0 ? (
-                    <button type="button" className={styles.stateQuick} onClick={() => setSelection(alvos)}
-                            title={`Selecionar ${alvos.length} aparelho(s): ${rotulo}`}>
-                      <b>{count}</b> {rotulo}
-                    </button>
-                  ) : <><b>{count}</b> {rotulo}</>}
+                  <button type="button" className={styles.stateQuick} onClick={() => setSelection(ids)}
+                          title={`Selecionar ${plural(ids.length, 'aparelho', 'aparelhos')}: ${rotulo}`}>
+                    <b>{ids.length}</b> {rotulo}
+                  </button>
                 </span>
               );
             })}
+            {contagem.loja ? (
+              <span title="A loja (Play Store) não recebe tarefa: fica fora da contagem e da seleção.">
+                {contagem.porEstado.length > 0 ? ' · ' : ''}
+                loja {ROTULO_DO_ESTADO[contagem.loja.estado][0]}
+              </span>
+            ) : null}
           </span>
         ) : null}
         {hydrated && serverBuckets.length > 1 ? (
@@ -100,7 +106,7 @@ export function DeviceGrid() {
         </span>
         <div className={styles.sectionActions}>
           <span className={styles.selSummary} aria-live="polite">
-            {hydrated ? `${selectedIds.length} de ${total} selecionados` : ''}
+            {hydrated ? `${selecionados} de ${total} selecionados` : ''}
           </span>
           <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(taskOrder)}>
             Selecionar todas

@@ -8,7 +8,9 @@ const BASE = {
   spendTodayUsd: 1.2,
   dailyLimitUsd: 5,
   onlineDevices: 3,
-  maxOnlineDevices: 10,
+  totalDevices: 10,
+  unknownDevices: 0,
+  serversOverCapacity: 0,
   estimatedMaxDevices: 10,
   cpuPercent: 37,
   memAvailableGb: 40.5,
@@ -22,7 +24,7 @@ describe('buildDecisionTiles', () => {
     expect(tiles.map((t) => t.key)).toEqual(['health', 'cost', 'balance', 'devices', 'machine', 'acceleration']);
     expect(tiles[0]).toMatchObject({ value: 'OK', sub: 'Nenhum problema', tone: 'success', anchor: 'diag-problemas' });
     expect(tiles[2]).toMatchObject({ value: '—', sub: 'nenhuma conta paga em uso', tone: 'muted' });
-    expect(tiles[3]).toMatchObject({ value: '3 online', tone: 'info', anchor: 'diag-capacidade' });
+    expect(tiles[3]).toMatchObject({ value: '3 de 10 online', tone: 'info', anchor: 'diag-capacidade' });
     expect(tiles[5]).toMatchObject({ value: 'Disponível', tone: 'success', anchor: 'diag-aceleracao' });
   });
 
@@ -52,8 +54,12 @@ describe('buildDecisionTiles', () => {
     expect(buildDecisionTiles({ ...BASE, spendTodayUsd: 1, dailyLimitUsd: 0 })[1]).toMatchObject({ tone: 'muted', sub: 'sem teto diário configurado' });
   });
 
-  it('aparelhos ficam em aviso quando não há mais vaga', () => {
-    expect(buildDecisionTiles({ ...BASE, onlineDevices: 10, maxOnlineDevices: 10 })[3]).toMatchObject({ tone: 'warning' });
+  it('aparelhos: mesma conta do cabeçalho, e aviso quando um servidor passa das vagas ou há desconhecidos', () => {
+    expect(buildDecisionTiles(BASE)[3]).toMatchObject({ value: '3 de 10 online', tone: 'info' });
+    expect(buildDecisionTiles({ ...BASE, serversOverCapacity: 1 })[3])
+      .toMatchObject({ tone: 'warning', sub: expect.stringContaining('1 servidor acima das vagas') });
+    expect(buildDecisionTiles({ ...BASE, unknownDevices: 6 })[3])
+      .toMatchObject({ tone: 'warning', sub: expect.stringContaining('6 em estado desconhecido') });
   });
 
   it('máquina vira perigo com pouca RAM livre, mesmo com CPU tranquila', () => {

@@ -1,0 +1,135 @@
+/* Semáforo do ambiente (revisão de UX, tarefa 02). Estilos próprios: o TopBar.module.css é de outra tarefa e pode
+   mudar; o gatilho repete a forma da pílula de antes para não destoar da faixa. */
+
+.gatilho {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 9px;
+  border: 1px solid var(--tone-border);
+  border-radius: var(--radius-pill);
+  background: var(--tone-soft);
+  color: var(--tone-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gatilho:hover {
+  border-color: var(--tone-text);
+}
+
+.gatilho:focus-visible {
+  border-radius: var(--radius-pill);
+}
+
+.contagem {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--tone-text);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.painel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.resumo {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.motivo {
+  padding: 9px 10px;
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--warning-text);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.motivo[data-nivel='critico'] {
+  border-left-color: var(--danger-text);
+}
+
+.motivoTexto {
+  margin: 0;
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.motivoDica {
+  margin: 3px 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.motivoNivel {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.link {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent-text, var(--text-1));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.subtitulo {
+  margin: var(--sp-2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.avisos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+
+.rodape {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.rodapeLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
