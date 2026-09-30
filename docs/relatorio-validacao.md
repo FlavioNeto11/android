@@ -2002,3 +2002,98 @@ No MESMO aparelho, nesta ordem, com prova `real` de cada passo:
 5. Conta indisponível: sem consentimento da conta Outlook, a etapa espera a pessoa sem digitar nada.
 
 Estado em 29/09: 1 depende da Onda 2 (25.4–25.9); 2–5 dependem do P15 (o Outlook precisa abrir num aparelho).
+
+## 27. Fase 29: pendências da terceira evolução (30/09/2026)
+
+Pedido do dono de 30/09: transformar a pesquisa das pendências em plano e executar. Itens na Fase 29 de
+[plano-100.md](plano-100.md); coordenação, estado por tarefa e pedidos ao dono em
+[handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md). Esta seção guarda as provas; o registro de cada
+item é o do `aplicar`. Horas em UTC.
+
+### 27.1 Implantações e CI
+
+| Quando | Commit | O que | Prova |
+|---|---|---|---|
+| 30/09 12:19 | `9428a6a` | CI: dependência empacotada do Appium (29.1) | `real`: run 36713946044 verde (13:03), job `dependências` com `npm ci`, conferência do disco e testes do corretor |
+| 30/09 14:37 | `0d70882` | P16 (migração 063), túnel no boot, UDP, saída esperada, firewall, painel (29.2, 29.3, 29.5, 29.6, 29.8, 29.15) | `real`: run 36730509649 verde (pytest SQLite 36m39s); suíte local 3860 passed e 1 failed (`test_backup`, ambiente do worktree) no commit do P16 |
+| 30/09 15:24 | `0d70882` | deploy no central (`scripts/deploy.ps1`): backup, painel, `npm ci` do Appium com o disco em 5.0.12, migração 063 | `real`: `/api/health` `ok`, commit e migração conferidos pelo script; agente do notebook `0.1.0+0d70882` (15:29) |
+
+PostgreSQL: `not_run` nesta data. O job `backend-postgres` só roda no cron (05:17); o de 30/09 não iniciou por limite
+de gasto, liberado pelo dono às 12:10. A prova é a do run de 01/10 (29.14).
+
+### 27.2 Prova durável de vazamento (29.2) e a subida (29.4)
+
+Antes (o defeito, `real`, banco do central): um reinício do backend às 02:40 de 30/09 → entre 06:52 e 07:59, um teste
+de vazamento refeito em android-02, 06 e 03, seguido de 11 reinícios pedidos pela rede (o `scripts/rede-observacao.py`
+sobre a cópia do banco classifica: 1 de teste em cada aparelho, mais 5 de túnel e 3 de reaplicação).
+
+Ensaio (`real`, 15:22): a 063 numa cópia fresca do banco, `['063_prova_de_vazamento']` aplicada, sem divergência;
+decisão de adoção calculada com os aparelhos lidos como uid 2000.
+
+Subida (`real`, banco do central, comandos e eventos):
+
+| Aparelho | Conta real | 15:25–15:27 | Cliente VPN parado | Reinício |
+|---|---|---|---|---|
+| android-02 | não | prova anterior adotada (teste a partir de 01:22:29, `c-20260930012229-187ca4`; APK do cliente de 01:07:36); medição #59, `leak_blocked=1` | não | nenhum |
+| android-03 | sim | adotada (teste a partir de 02:29:45, `c-20260930022945-fd0d76`; APK de 01:48:46); medição #58 | não | nenhum |
+| android-06 | sim | adotada (teste a partir de 01:38:43, `c-20260930013843-6b8340`; APK de 01:32:45); medição #60 | não | nenhum |
+| android-05 | não | não adota (a última medição não provava). Com o objetivo parado, "medição dispensada". Depois de abandonado o objetivo: `c-20260930152637-06956a` — teste às 15:26:50 com `Permission denied`, gravado na linha; túnel religado pelo tile às 15:26:59; medição #61 às 15:27:22, `trafego_verificado` | uma vez (o teste) | nenhum |
+
+Revisão independente (agente em modo leitura, antes da publicação): nenhum caminho para parar o cliente duas vezes sem
+`verify`; quatro achados corrigidos com teste que falhava antes (falha antes da adoção; `verify` e wipe na linha
+antiga; linha recriada; laço de medição sem IP).
+
+### 27.3 Túnel que não sobe no boot (29.3)
+
+Medição (`real`, android-05, 12:28–13:17, 7 reinícios pela API): o always-on tenta uma vez por boot; a primeira
+tentativa falhou em 5 de 7 (3 por ANR de início do serviço com o convidado sem CPU, 2 com o serviço parando sozinho);
+quando sobe, entre 92 e 176 s de ligado; `am force-stop` não religa (0 de 4); o tile do cliente religa (5 de 5 com o
+SystemUI estável). Gesto pelo código (`real`, 13:30, android-05, duas vezes): cliente parado, sonda fora da VPN
+recusada, túnel de volta em ~9 s, always-on e bloqueio intactos. Pela convergência (`real`, 15:26:59, comando acima):
+túnel religado pelo tile depois do teste de vazamento, sem reinício. `not_run`: o gesto pela convergência depois de um
+boot falho, com app em primeiro plano, e nos aparelhos do notebook.
+
+### 27.4 Janela de observação do P16 (29.4)
+
+Início 15:24 (a subida do backend em `0d70882`), fim previsto 21:30; laço `scripts/rede-observacao.py` a cada 10 min em
+`data/rede/observacao-p16/janela-20260930.md`. Critério: nenhum teste de vazamento e nenhum reinício classificado como
+teste de vazamento em android-02, 03 e 06, com a remedição a 90% da validade (por volta de 20:50) trazendo
+`leak_blocked=1` da prova da linha. **Resultado: em curso** (validação pendente; o desfecho entra aqui ao fim da janela).
+
+### 27.5 UDP por perna (29.5) e saída esperada (29.6)
+
+`real` (13:44, só leitura): o comando novo de UDP como uid 2000 em android-05 e android-02, duas vezes cada — 83 B e
+48 B na 1ª de 3 tentativas, 2,0–2,1 s por perna, 4,4 s a ida (antes ~10 s). Pela plataforma (15:26): medições #58 a
+#61 com `UDP DNS 83 B (1ª de 3, 2,0 s), NTP 48 B (1ª de 3, 2,0 s)`. Saída esperada: `simulated`
+(`tests/test_rede_por_aparelho.py`, `tests/test_rede_sonda.py`); com servidor externo, `not_run` (29.7).
+
+### 27.6 Renderizador do emulador e o Outlook (29.10)
+
+| Experimento | Onde | Selecionado de fato | Resultado |
+|---|---|---|---|
+| E3 controle | AVD `diag-outlook`, 37.1.11, `-gpu swiftshader_indirect` | `gles_mode_selected:swiftshader`, `skiagl` | emulador cai ~31 s depois de abrir o Outlook |
+| E3 `-prop` | idem + `-prop debug.hwui.renderer=skiavk` | a propriedade não muda | emulador cai em ~57 s |
+| E3 `setprop` | idem + `setprop` como o shell | `skiavk` | o convidado quebra (`VulkanManager` aborta em todo processo com interface) |
+| E3 lavapipe | `-gpu lavapipe` + `setprop` | `vulkan_mode_selected:lavapipe` | o convidado trava |
+| E4 central | android-07 pelo serviço (sessão 0), `instances.overrides.android-07.gpu_mode: host` | `gles_mode_selected:host`, NVIDIA RTX 2000 | canário oficial aprovado (`c-20260930153719-d11a00`); 5 min no onboarding, sem queda; ~200 MB de VRAM |
+| E4 notebook | android-09 pelo agente (sessão 0), `gpu_mode: host` no `worker.yaml` | `gles_mode_selected:host`, Quadro T1000 | 5 min no onboarding depois de `pm clear`, sem queda |
+| E7 | dump do emulador no notebook (29/09 19:45) | — | `gles_swiftshader\libGLESv2.dll` na pilha, como no central |
+| persistência | android-07: boot, reinício, hibernar e acordar | `host` nas quatro subidas | a configuração vale em toda subida |
+
+Telas observadas sem digitar (android-07): onboarding e `AddAccountActivity`. `not_run`: E5 e E6 (a causa da `UD2` do
+Hx, que não bloqueia o app com a GPU do host), E8, o login (consentimento) e a distribuição (decisão D9).
+
+### 27.7 Firewall, painel e registros
+
+- Firewall (29.8): leitura nova `real` no central (16:10): `sem_regra`, perfil Public, interface Wi-Fi, sub-rede
+  192.168.1.0/24; o comando sai sem `-Program`. A regra criada e o aparelho do notebook com rede: `not_run` (29.9).
+- Painel (29.15): inspeção `real` (~16:00) com o dado do central a 800 px e a 375 px, console sem erro; os estados que
+  o dado real não mostra, só em jsdom.
+- Registros (29.16): 12.3 `partial/real`; 23.2 e 23.7 `partial/real`; os demais itens do Outlook sem o bloqueio "o app
+  não roda no emulador"; K-062 reescrito; não havia bloqueio por assinatura (era o 23.2 contado duas vezes).
+- Limpeza (29.17): artefatos do diagnóstico movidos para `C:\Android\arquivo-diagnostico-20260930` e
+  `data/arquivo/` (11,3 GB), sem apagar nada; as seis junções dos SDKs extras foram desfeitas antes (só o atalho).
+
+### 27.8 Custos
+
+Nenhuma chamada paga de IA nesta fase. GitHub Actions: jobs no runner do central. Provedores: nada contratado.
