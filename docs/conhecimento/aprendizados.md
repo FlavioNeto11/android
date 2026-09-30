@@ -1442,23 +1442,48 @@ desfaz o estado do servidor. No SQLite, a transação segue viva, e a suíte pas
 **Aplicabilidade.** Vigente. Todo `except` que engole erro de SQL dentro de uma transação alheia precisa do savepoint.
 Candidatos conhecidos em [banco.md](../banco.md).
 
-### K-062 — O Outlook derruba o emulador; o canary mostra que é o app que se recusa a rodar ali
+### K-062 — O Outlook não recusa o emulador: quem cai é o renderizador SwiftShader-GL do host (diagnóstico de 29/09 corrigido)
 
-**Data:** 29/09/2026 · **Área:** apps, emuladores (ADR-057, item 23.2, P15)
+**Data:** 29/09/2026, corrigido em 30/09/2026 · **Área:** apps, emuladores (ADR-057, itens 23.2 e 29.10, P15)
 
 **Sintoma.** Ao abrir o Outlook 5.2635.3, o processo `qemu-system-x86_64[-headless].exe` cai com `0xc0000005` em código
-sem módulo, 10 a 30 s depois da tela inicial, no central e no notebook, com e sem janela, com SwiftShader e ANGLE e com
-o driver Vulkan do convidado escondido; o convidado tinha memória folgada.
+sem módulo, 10 a 60 s depois da tela inicial, no central e no notebook. No emulador canary o app também morreu, numa
+`UD2` da `libhxcomm.so`.
 
-**Causa.** No emulador 37.3.2 (canary), o processo aguenta e aparece o que houve: a thread `Hx-Storage` da
-`libhxcomm.so` do Outlook executa `UD2` (bytes `0f 0b`), uma armadilha proposital, logo depois de iniciar o
-armazenamento. Nas versões 37.1.11 (estável) e 37.2.11 (beta), essa armadilha no convidado derrubava o emulador inteiro.
+**O que eu concluí em 29/09, e estava errado.** "O app se recusa a rodar em ambiente emulado", com os seis itens do
+Outlook bloqueados à espera de uma decisão de produto (celular físico, Outlook web ou versão nova). A conclusão saiu
+de um sintoma que não tinha sido isolado: não li os minidumps do host nem conferi qual renderizador o emulador tinha
+selecionado de fato.
 
-**O que não funcionou.** `-feature -Vulkan` (o `ro.hardware.vulkan` segue `ranchu`), `gpu_mode: angle_indirect`,
-esconder o `vulkan.ranchu.so` por bind-mount, a imagem android-36 com o canary.
+**Causa medida (30/09).**
 
-**Aplicabilidade.** Vigente para o Outlook 5.2635.3. Antes de culpar a RAM ou o renderizador numa queda do emulador,
-leia o evento 1000 do Windows (código e deslocamento) e repita no emulador canary, que entrega o sinal ao convidado.
+- **A queda do host é do renderizador.** Os 8 minidumps do central e o único do notebook têm
+  `gles_swiftshader\libGLESv2.dll` na pilha; as quedas com logcat casado aconteceram na tela de abertura (a animação
+  do onboarding), não no armazenamento. Reproduzido em 30/09 no AVD `diag-outlook` com o emulador 37.1.11:
+  `gles_mode_selected:swiftshader`, `debug.hwui.renderer=skiagl`, queda ~31 s depois de abrir o app.
+- **Com `-gpu host` o Outlook abre**: chegou à tela "Add account" e ficou estável (30/09, mesmo AVD, sessão
+  interativa, `gles_mode_selected:host`).
+- **A `UD2` é um fail-fast do próprio app** (motor Hx) depois de um assert sobre `sortdefault.nls`: condição de estado e
+  de tempo na primeira abertura, vista em 2 de 6, e que não se repetiu sobre o mesmo armazenamento. A biblioteca não
+  tem nenhuma cadeia de detecção de emulador.
+
+**O que não funcionou (medido, um fator por vez).**
+
+- `-gpu angle_indirect` e `-gpu swangle`: o 37.1.11 recusa o primeiro ("not valid, switching to 'auto'") e os dois
+  acabam em `gles_mode_selected:swiftshader`. O ANGLE **nunca** foi testado em 29/09: argumento aceito não é
+  renderizador usado.
+- `-prop debug.hwui.renderer=skiavk`: o emulador aceita o argumento e a propriedade **não** muda (segue `skiagl`).
+- `setprop debug.hwui.renderer skiavk` como o shell: muda, e o convidado quebra — todo processo com interface aborta
+  em `VulkanManager: Assertion failed: !grExtensions.hasExtension(VK_KHR_EXTERNAL_SEMAPHORE_FD…)`, com o Vulkan do
+  SwiftShader; com o do lavapipe o convidado trava. O emulador "não cai" porque nada chega a desenhar: cinco aberturas
+  "sem queda" eram o convidado em laço. O relato externo de que `skiavk` resolve não vale para esta imagem.
+- Esconder o driver Vulkan do convidado: irrelevante, a queda está no caminho GLES.
+
+**Aplicabilidade.** Vigente para o Outlook 5.2635.3 com o emulador 37.1.11 e a imagem `android-34;google_apis`. Antes
+de declarar que um app não roda no parque: leia o dump do processo que caiu (os módulos na pilha dizem de quem é a
+queda), confira no log o que foi SELECIONADO (`emuglConfig_init: … gles_mode_selected`), e confira o estado do app
+depois do experimento, não só se o emulador está vivo. O renderizador por aparelho é `instances.overrides.<id>.gpu_mode`
+no `config.yaml` (e `gpu_mode` no `worker.yaml` do notebook).
 
 ### K-063 — Com always-on e bloqueio, o cliente VPN volta em menos de um segundo: o teste de vazamento é uma ida só
 

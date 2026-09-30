@@ -18,12 +18,13 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Real:** rede por aparelho em `trafego_verificado` no android-05, 02, 06 (André) e 03 (Bruno), com o bloqueio fora
     da VPN provado; comando entre apps (QA Messenger → Chrome) com saída reaproveitada, conta indisponível e reinício no
     meio; contas Outlook das 3 ativas com a senha clonada no cofre.
-  - **Bloqueado (P15):** o Outlook 5.2635.3 não roda no parque emulado (derruba o emulador estável; no canary, o app
-    morre numa armadilha da `libhxcomm.so`). Travados por isso: 23.2, 23.7, 23.8, 23.12, 23.13, 24.9 (recorte Outlook),
-    27.2.
-  - **Para o dono:** saída do P15 (celular físico, Outlook web ou versão nova); consentimento das 3 contas Outlook (P5);
-    regra de firewall do UDP 51820 para os aparelhos do notebook (25.7); provedor para IP distinto (P1); ratificar a
-    abertura do app pela sonda (25.6). Saldo estimado da Anthropic: US$ 2,56.
+  - **Pendente (P15), diagnóstico corrigido em 30/09:** o Outlook 5.2635.3 derruba o emulador quando o GLES é o
+    SwiftShader do host; com `-gpu host` ele abre (K-062). Não é recusa do app nem decisão de produto: falta levar a
+    GPU do host aos aparelhos (Fase 29, itens 29.10 a 29.12). Seguem sem prova por isso: 23.2, 23.7, 23.8, 23.12,
+    23.13, 24.9 (recorte Outlook), 27.2.
+  - **Para o dono:** a lista atual está em [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md)
+    ("Pedidos ao dono"): regra de firewall e reserva DHCP para os aparelhos do notebook, servidores para o piloto de
+    saída distinta, consentimento das 3 contas Outlook e o e-mail de teste.
 
 - **Fase 22 (29/09, noite): IMPLANTADA em `b34e2f6`** (~17:05Z; sem migração nova; `/api/health` `ok`; agente do
   notebook em `0.1.0+b34e2f6`; leva junto o layout da outra sessão, `13fb5c0`). [Relatório §25](relatorio-validacao.md),
