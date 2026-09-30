@@ -4408,6 +4408,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T16:56:15+00:00"
+  },
+  "29.7": {
+   "id": "29.7",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Pronto para quando o dono quiser: scripts/rede-saida-externa.sh (Ubuntu/Debian e Oracle Linux; um ou N pares, SNAT por origem, recusa dois pares no mesmo IP de saída; conferido com bash -n e com a leitura dos pares) e o roteiro D3 em docs/handoffs/pendencias-evolucao3.md (Lightsail São Paulo US$ 5/mês por servidor, conferido na documentação da AWS em 30/09; Oracle Cloud Always Free). A comparação saída medida × esperada (29.6) está implantada desde 0d70882.",
+   "blocker": "ADIADO POR DECISÃO DO DONO em 30/09 ~19:15Z (\"pode ser feita depois\"): não é pendência aberta. Retomar = criar os servidores pelo bloco D3 e rodar o V1 no android-08 e no android-02.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T18:16:30+00:00"
+  },
+  "29.19": {
+   "id": "29.19",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Objetivo do dono de 30/09 (~19:00Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script com N pares pronto; o modelo de perfis aceita vários perfis no mesmo endpoint com egress_esperado próprio.",
+   "blocker": "ADIADO POR DECISÃO DO DONO em 30/09 ~19:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem com ele.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T18:16:30+00:00"
   }
  },
  "rodadas": [
@@ -5163,6 +5189,16 @@
     "23.13",
     "24.9",
     "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T18:16:30+00:00",
+   "itens": [
+    "29.7",
+    "29.19"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
