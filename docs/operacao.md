@@ -61,7 +61,15 @@ cd backend; .venv\Scripts\python.exe -m pytest -q          # SQLite (padrão), ~
 # com TEST_DATABASE_URL=postgresql://...  , a mesma suíte roda contra PostgreSQL, ~14 min
 cd frontend; npm run typecheck && npm test
 cd backend; .venv\Scripts\python.exe -m pytest -q ..\scripts\tests   # lógica pura dos scripts, sem tocar o parque
+python scripts\testes-afetados.py --run --ocioso    # só os testes que a mudança atinge (segundos, não ~35 min)
 ```
+
+`testes-afetados.py` (30/09) lê o diff contra `origin/main` mais a árvore de trabalho, segue os imports do backend
+sem atravessar os módulos-hub (`main`, `state`, `api`, `config`...) e junta os testes do mesmo assunto pelo nome; os
+guardas `test_arquitetura.py` e `test_pacote_do_agente.py` entram sempre. Avisa "AMPLO" quando a mudança atinge
+metade ou mais dos testes (aí vale a suíte inteira, uma vez, em segundo plano). Não vê importação dinâmica nem dado
+lido em tempo de execução: é o laço rápido do trabalho, não a prova de entrega de um contrato compartilhado ou de
+migração.
 
 Regras de ritmo (pedidas explicitamente pelo dono; ver ADR-021 em `docs/decisoes.md` e `CLAUDE.md` §
 Convenções): durante o trabalho, rodar só o arquivo ou o `-k` afetado; a suíte inteira fica **só para antes do
@@ -254,6 +262,7 @@ isso). Pontos que já causaram incidente:
 | `install-prereqs.ps1` | P | Instala Android SDK + Appium; aceita licenças em nome do usuário |
 | `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
+| `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |
