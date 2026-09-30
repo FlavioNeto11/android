@@ -73,6 +73,15 @@ class WorkerDevice(BaseModel):
     api_level: int | None = None
     abis: list[str] = []
     play_store: bool | None = None
+    # ---------------------------------------------------------------- renderizador do emulador (29.11)
+    # O log do emulador mora na máquina do worker, então só o agente sabe o que o emulador SELECIONOU — e argumento
+    # aceito não é renderizador usado: `gpu_mode` é o pedido (o `android.gpu_mode` do `worker.yaml`), `gpu_gles` e
+    # `gpu_vulkan` são a última linha `emuglConfig_init` do log, só com o emulador no ar. Todos com padrão, pela
+    # regra deste arquivo: agente antigo não declara, e o central fica com "não se sabe". Sem teto de tamanho de
+    # propósito: um texto estranho vindo do log não pode reprovar a BATIDA inteira, que é o que diz que o worker vive.
+    gpu_mode: str | None = None
+    gpu_gles: str | None = None
+    gpu_vulkan: str | None = None
 
 
 class WorkerResources(BaseModel):

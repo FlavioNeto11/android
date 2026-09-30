@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -170,6 +171,81 @@ def read_log_tail(path: Path, max_bytes: int = 4000) -> str:
         return data.decode("utf-8", errors="replace")
     except OSError:
         return ""
+
+
+# ---------------------------------------------------------------------- renderizador selecionado (29.11)
+#: Os renderizadores que o emulador 37.1.11 SELECIONA de fato, pelo nome canônico. Medido em 30/09/2026: `-gpu host`
+#: e `-gpu swiftshader_indirect` (ou `swiftshader`) chegam ao que pedem; `-gpu angle_indirect` é recusado ("not
+#: valid, switching to 'auto'") e `-gpu swangle` é aceito e acaba em `gles_mode_selected:swiftshader`. É o conjunto
+#: que o `renderizador_recusado` de um `app.yaml` pode citar.
+RENDERIZADORES = ("host", "swiftshader")
+
+#: Como cada um aparece numa frase para a pessoa.
+NOME_DO_RENDERIZADOR = {"host": "da GPU do host", "swiftshader": "SwiftShader"}
+
+#: A linha que o emulador escreve a cada subida. **Argumento aceito não é renderizador usado**: o `-gpu` que foi
+#: passado só diz o que se PEDIU; o que ele selecionou está aqui, e em nenhum outro lugar.
+_EMUGL = re.compile(rb"emuglConfig_init:\s*vulkan_mode_selected:(\S+)\s+gles_mode_selected:(\S+)")
+
+
+@dataclass(frozen=True, slots=True)
+class Renderizador:
+    """O que o emulador SELECIONOU, como ele escreveu. `vulkan` nulo = quem declarou só sabia do GLES."""
+
+    gles: str
+    vulkan: str | None = None
+
+
+def normalizar_renderizador(modo: str | None) -> str | None:
+    """O nome canônico de um modo de GPU: `swiftshader_indirect` e `swiftshader` são o mesmo renderizador (o
+    sufixo diz só como o convidado fala com ele). Vazio vira `None`, que é "não se sabe"."""
+    limpo = (modo or "").strip().lower()
+    return limpo.removesuffix("_indirect") or None
+
+
+def houve_fallback(configurado: str | None, gles: str | None) -> bool:
+    """O emulador selecionou outro renderizador que não o pedido? Sem selecionado não há o que comparar, e `auto`
+    é pedir "o que houver" — nenhum dos dois é fallback."""
+    pedido, usado = normalizar_renderizador(configurado), normalizar_renderizador(gles)
+    return pedido is not None and usado is not None and pedido != "auto" and pedido != usado
+
+
+def _renderizador_da_linha(achado: re.Match[bytes] | None) -> Renderizador | None:
+    if achado is None:
+        return None
+    return Renderizador(gles=achado.group(2).decode("utf-8", "replace"),
+                        vulkan=achado.group(1).decode("utf-8", "replace"))
+
+
+def renderizador_do_log(texto: str) -> Renderizador | None:
+    """O renderizador da ÚLTIMA subida registrada em `texto`, ou `None` quando a linha não está lá.
+
+    O log é aberto em append (`start_process`): cada subida escreve a sua linha, e as anteriores descrevem processos
+    que já morreram. Ausência da linha é "não se sabe" — nunca "o que foi pedido".
+    """
+    ultimo: re.Match[bytes] | None = None
+    for ultimo in _EMUGL.finditer(texto.encode("utf-8", "replace")):
+        pass
+    return _renderizador_da_linha(ultimo)
+
+
+def ler_renderizador(logs_dir: Path, avd_name: str) -> Renderizador | None:
+    """`renderizador_do_log` sobre o `emulator-<avd>.log` daquela pasta, do começo ao fim.
+
+    A linha fica no INÍCIO de cada subida, então a cauda não serve; e o arquivo só é cortado na subida seguinte
+    (`_rotate_log`), então num aparelho de longa duração ele passa dos 8 MB. Por isso é lido linha a linha, em
+    bytes, sem carregar nem decodificar o arquivo inteiro. Quem chama faz isto uma vez por subida, fora do laço de
+    eventos. Arquivo ausente ou ilegível é "não se sabe".
+    """
+    ultimo: re.Match[bytes] | None = None
+    try:
+        with (logs_dir / f"emulator-{avd_name}.log").open("rb") as fh:
+            for linha in fh:
+                if b"emuglConfig_init" in linha:
+                    ultimo = _EMUGL.search(linha) or ultimo
+    except OSError:
+        return None
+    return _renderizador_da_linha(ultimo)
 
 
 #: Quanto do log viaja no desfecho de um comando. A cauda é o que interessa (a falha está no fim) e o teto existe

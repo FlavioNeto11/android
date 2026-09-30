@@ -24,7 +24,8 @@ from .storage import DISK, DiskStorage, build_storage
 
 from .commands.store import CommandStore, command_dto
 from .commands.transport import build_transport
-from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from .devices.compatibilidade import (capacidades_de, motivo_do_renderizador, motivo_incompativel,
+                                      requisitos_de_release, requisitos_do_app)
 from .workers.local import LocalWorker
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
@@ -1480,8 +1481,20 @@ class AppState:
                 return recusa
         return None
 
+    @staticmethod
+    def _recusa_do_renderizador(rt: DeviceRuntime, package: str) -> str | None:
+        """O app declarou que não roda no renderizador DESTE aparelho (`renderizador_recusado`, 29.11)? A frase, ou
+        `None`. Uma pergunta só para o pré-voo, a porta do app e a entrega: abrir o app aqui derruba o emulador."""
+        porque = motivo_do_renderizador(requisitos_do_app(package), capacidades_de(rt), aparelho=rt.id)
+        return None if porque is None else f"{porque[:1].upper()}{porque[1:]}."
+
     def _app_preflight_do_pacote(self, rt: DeviceRuntime, package: str) -> dict[str, str] | None:
         """O pré-voo de UM aplicativo neste aparelho (a regra de `_app_preflight`)."""
+        # Antes de "tem linha?": o app pode já estar no aparelho (instalado quando ele era `host`, ou à mão), e a
+        # tarefa o ABRIRIA. O requisito é do app naquele aparelho, com ou sem versão distribuída.
+        if (renderizador := self._recusa_do_renderizador(rt, package)) is not None:
+            return {"code": "app_incompativel", "motivo": renderizador,
+                    "acao": "Troque o `gpu_mode` deste aparelho (e reinicie-o) ou escolha outro aparelho."}
         row = self.release_repo.app_state(rt.id, package)
         if row is None:
             return None
@@ -1549,6 +1562,10 @@ class AppState:
         # instalar aqui abriria o app da conta travada. Bloqueia para uma pessoa, sem gravar versão desejada.
         if (quarentena := self.quarentena(rt.id)) is not None:
             return quarentena, None
+        # Renderizador recusado pelo app (29.11): a tarefa abriria o app e derrubaria o emulador — com a versão já
+        # instalada ou depois de instalá-la aqui. Bloqueia para uma pessoa, que troca o `gpu_mode` ou o aparelho.
+        if (renderizador := self._recusa_do_renderizador(rt, package)) is not None:
+            return renderizador, None
         row = self.release_repo.app_state(rt.id, package)
         if row is None or not row["desired_release_id"] or not self._entregavel(row["desired_release_id"]):
             # Aparelho que nunca recebeu distribuição daquele app: se existe versão promovida e este aparelho é
@@ -1601,6 +1618,10 @@ class AppState:
             # Última linha da quarentena (ADR-055): quem chega aqui por um caminho que não conferiu antes não
             # instala nem abre o app. Levanta ANTES do `try`: não é falha de entrega, e não vira `install_failed`.
             raise ReleaseValidationError(quarentena + ".")
+        if (renderizador := self._recusa_do_renderizador(rt, package)) is not None:
+            # Mesmo molde (29.11): recusa, e não falha de entrega. Como `install_failed`, ela ficaria pegajosa até
+            # alguém pedir "Distribuir de novo" — e o que resolve é trocar o `gpu_mode` do aparelho, não repetir.
+            raise ReleaseValidationError(renderizador)
         inicio = parse_iso(to_iso(now()))       # na resolução do banco (ms): comparável com `observed_at`
         rebaixar =self._rebaixa_do_parque(rt.id, package, release_id)
         try:

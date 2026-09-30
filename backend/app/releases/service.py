@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ..config import Config
+from ..devices.compatibilidade import capacidades_de, motivo_do_renderizador, requisitos_do_app
 from ..events import EventBus
 from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
 from ..modules.applications.infrastructure.app_repository import AppRepository
@@ -348,6 +349,20 @@ class ReleaseService:
         log.info("catálogo compartilhado: %s baixado para o cache local", file_name)
 
     # ------------------------------------------------------------------ instalação com estado observado
+    @staticmethod
+    def _recusar_renderizador(rt: object, package: str) -> None:
+        """Última linha do requisito de renderizador (29.11): nenhum caminho instala — e abre, na prova de abertura —
+        um app no aparelho cujo renderizador ele declarou recusar (`renderizador_recusado` no `app.yaml`).
+
+        As rotas e a distribuição já recusam antes, com a mesma frase (`motivo_incompativel`); isto é para quem chega
+        por outro caminho. Levanta ANTES de tocar em estado ou no aparelho: a consequência de errar não é uma
+        instalação que falha, é o processo do emulador caindo com a conta que estiver logada nele.
+        """
+        porque = motivo_do_renderizador(requisitos_do_app(package), capacidades_de(rt),
+                                        aparelho=getattr(rt, "id", None))
+        if porque is not None:
+            raise ReleaseValidationError(f"{porque[:1].upper()}{porque[1:]}.")
+
     async def install_on(self, rt: Any, release_id: str, installer: Any, *, allow_downgrade: bool = False,
                          select_for_device: bool = True, operation: str | None = None,
                          session_reason: str | None = None) -> dict:
@@ -374,6 +389,7 @@ class ReleaseService:
                 f"{dto.channel_detail or ''} Para tentar de novo, coloque-a em canário de propósito.".strip())
 
         package = dto.package_name
+        self._recusar_renderizador(rt, package)
         try:
             profile = await installer.profile(rt)
         except Exception as exc:  # noqa: BLE001 - ler o perfil é o PRIMEIRO passo: aqui nada tocou o disco ainda
@@ -776,6 +792,9 @@ class ReleaseService:
             raise ReleaseValidationError(
                 "Esta versão já foi promovida: instale-a normalmente. Para prová-la outra vez, coloque-a em "
                 "quarentena antes — assim a decisão de desfazer a promoção fica explícita.")
+        # Antes de mexer no canal: a prova que não pode acontecer neste aparelho não tira a versão da quarentena nem
+        # a marca como "em prova" num lugar onde ela nunca vai rodar.
+        self._recusar_renderizador(rt, row["package_name"])
         self.repo.set_channel(release_id, ReleaseChannel.canary, canary_instance_id=rt.id,
                               detail=(f"em prova em {rt.id}" if antes is not ReleaseChannel.quarantined else
                                       f"nova prova em {rt.id}, de propósito, depois da quarentena"))

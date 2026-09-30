@@ -27,7 +27,7 @@ from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from .observacao import FEATURES_DE_OBSERVACAO, ObservacaoNaOrigem
-from .settings import KVM, WorkerSettings, aceleracao_do_host, host_os
+from .settings import KVM, DeviceSpec, WorkerSettings, aceleracao_do_host, host_os
 
 #: Comando que a TAREFA atual está executando. ContextVar e não atributo: `_executar` roda como tarefa própria e
 #: cada tarefa recebe uma cópia do contexto, então o progresso de um comando nunca é atribuído a outro. Com um
@@ -115,7 +115,20 @@ class Agent:
     def _declarados(self) -> list[WorkerDevice]:
         """Só o que está na configuração e no disco: nenhuma sondagem, nenhum `adb`, nenhum tempo imprevisível."""
         return [WorkerDevice(serial=d.serial, avd_name=d.avd_name, state="unknown", adb_port=d.adb_port,
-                             instance_id=d.instance_id, **self._capacidades(d)) for d in self.settings.devices]
+                             instance_id=d.instance_id, **self._capacidades(d), **self._renderizador(d, no_ar=False))
+                for d in self.settings.devices]
+
+    def _renderizador(self, spec: DeviceSpec, *, no_ar: bool) -> dict[str, str | None]:
+        """O renderizador do emulador deste aparelho (29.11): o `gpu_mode` pedido e, com ele no ar, o que o emulador
+        SELECIONOU — lido do log desta máquina, que o central não alcança. No `hello` vai só o pedido (`no_ar=False`:
+        nenhuma sondagem ali); o selecionado chega na batida. Aparelho não gerido não é emulador deste agente."""
+        if not spec.managed:
+            return {}
+        try:
+            return self.executor.renderizador(spec, self.executor.pid_do_avd(spec.avd_name) if no_ar else None)
+        except Exception:  # noqa: BLE001 - declarar o renderizador nunca pode derrubar o `hello` nem a batida
+            log.exception("renderizador do AVD %s", spec.avd_name)
+            return {}
 
     def _capacidades(self, spec: Any) -> dict[str, Any]:
         """Imagem, nível de API, ABI e GMS — lidos do `config.ini` do AVD, que é arquivo local e barato.
@@ -148,7 +161,8 @@ class Agent:
                     estado, detalhe = "unknown", f"falha ao sondar: {exc}"
                 saida.append(WorkerDevice(serial=spec.serial, avd_name=spec.avd_name, state=estado,
                                           detail=detalhe, adb_port=spec.adb_port, instance_id=spec.instance_id,
-                                          **self._capacidades(spec)))
+                                          **self._capacidades(spec),
+                                          **self._renderizador(spec, no_ar=estado == "running")))
             return saida
 
         return await asyncio.to_thread(sondar)

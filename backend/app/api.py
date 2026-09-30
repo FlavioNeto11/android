@@ -39,7 +39,8 @@ from .devices.adb import AdbError
 from .devices.avd import AvdError
 from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
-from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from .devices.compatibilidade import (capacidades_de, motivo_do_renderizador, motivo_incompativel,
+                                      requisitos_de_release)
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
 from .devices import rede  # rede por aparelho (ADR-056, 25.2): corpos e regras moram no módulo, como os do proxy
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
@@ -1874,6 +1875,10 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
     if rt.state != InstanceState.online:
         raise err(409, "not_online", "O aparelho precisa estar online.")
     package = release["package_name"]
+    # Requisito de renderizador do app (29.11), para o canário e para a volta: os dois instalam e ABREM o app, e o
+    # trabalho roda em segundo plano — a recusa do serviço viraria um 202 sem motivo. Mesmo código da instalação.
+    if (porque := motivo_do_renderizador(requisitos_de_release(release), capacidades_de(rt), aparelho=rt.id)):
+        raise err(409, "app_incompativel", f"{porque[:1].upper()}{porque[1:]}.")
 
     if body.verb == "canary":
         # A mesma regra do serviço, conferida aqui: o trabalho roda em segundo plano, então uma recusa lá dentro

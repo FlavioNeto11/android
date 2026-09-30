@@ -49,6 +49,11 @@ class AppDefinition:
     #: que NÃO são perfil (post, reel...). Vazio = link deste app não vira nome de usuário, vira pergunta.
     profile_link_hosts: tuple[str, ...] = ()
     profile_link_reserved: tuple[str, ...] = ()
+    #: Renderizadores do EMULADOR em que este app não roda (`renderizador_recusado` no `app.yaml`, 29.11), pelo nome
+    #: canônico (`swiftshader`, `host`). Não é preferência: é o app que derruba o processo do emulador naquele
+    #: renderizador. A plataforma recusa instalar e abrir o app num aparelho que o usa (`devices/compatibilidade.py`).
+    #: Vazio = o app não declarou nada, e nada muda para ele.
+    refused_renderers: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:

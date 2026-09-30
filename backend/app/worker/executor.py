@@ -249,6 +249,10 @@ class WorkerExecutor:
         #: não chega a lugar nenhum (só o central grava janela e serve /api/desempenho): é a batida que a leva
         #: (`Heartbeat.metricas`), e isto é o que ela ainda não levou.
         self._contagens: dict[tuple[str, str | None], int] = {}
+        #: Renderizador lido do log, por AVD: `(pid, leituras, lido)`. A linha é escrita uma vez por subida, então o
+        #: processo é a chave — reler megabytes de log de cada aparelho a cada batida seria pagar dez vezes por
+        #: minuto por um fato que não muda.
+        self._renderizadores: dict[str, tuple[int, int, emu.Renderizador | None]] = {}
 
     async def aplicar_limites(self, max_slots: int | None, boot_parallelism: int | None,
                               min_free_ram_mb: int | None) -> dict[str, int]:
@@ -286,6 +290,32 @@ class WorkerExecutor:
             ("system_image", spec.system_image), ("ram_mb", spec.ram_mb), ("window", spec.window),
         ) if valor is not None}
         return self._android().model_copy(update=mudancas) if mudancas else self._android()
+
+    #: Quantas batidas seguidas o log é relido sem achar a linha, para o mesmo processo. Logo depois do `start` ela
+    #: ainda não foi escrita; se depois disto continua ausente, o emulador não a escreve e insistir é só custo.
+    LEITURAS_DO_RENDERIZADOR = 6
+
+    def renderizador(self, spec: DeviceSpec, pid: int | None) -> dict[str, str | None]:
+        """O renderizador deste aparelho, para a declaração ao central (`WorkerDevice`, 29.11).
+
+        `gpu_mode` é o PEDIDO: o `android.gpu_mode` do `worker.yaml`, o mesmo que `build_args` passa em `-gpu`.
+        `gpu_gles`/`gpu_vulkan` são o que o emulador SELECIONOU, da última linha `emuglConfig_init` do log dele — só
+        com o processo no ar (`pid`), porque fora dele a linha descreve um processo que já morreu. O central não
+        tem como ler este arquivo: ele mora aqui.
+        """
+        saida: dict[str, str | None] = {"gpu_mode": self._android_de(spec).gpu_mode, "gpu_gles": None,
+                                        "gpu_vulkan": None}
+        if pid is None:
+            return saida
+        de_quem, leituras, lido = self._renderizadores.get(spec.avd_name, (pid, 0, None))
+        if de_quem != pid:
+            leituras, lido = 0, None
+        if lido is None and leituras < self.LEITURAS_DO_RENDERIZADOR:
+            lido = emu.ler_renderizador(self.cfg.logs_dir, spec.avd_name)
+            self._renderizadores[spec.avd_name] = (pid, leituras + 1, lido)
+        if lido is not None:
+            saida.update(gpu_gles=lido.gles[:60], gpu_vulkan=(lido.vulkan or "")[:60] or None)
+        return saida
 
     # ------------------------------------------------------------------ métrica da reserva
     def _contar_reserva(self, resultado: str, motivo: str | None = None) -> None:

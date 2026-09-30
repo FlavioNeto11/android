@@ -379,6 +379,20 @@ class ReadinessInfo(BaseModel):
     since: str | None = None
 
 
+class RendererInfo(BaseModel):
+    """O renderizador gráfico do EMULADOR deste aparelho (29.11): o que foi pedido e o que ele selecionou.
+
+    São dois fatos diferentes, e é por isso que são dois campos: o emulador aceita um `-gpu` e usa outro sem reclamar
+    (medido em 30/09/2026). `gles`/`vulkan` vêm da linha `emuglConfig_init` do log do emulador, lida a cada entrada no
+    ar; nulos = fora do ar, ou a linha não estava lá. `fallback` = o selecionado não é o pedido.
+    """
+
+    configured: str | None = None             # o `gpu_mode` pedido (config.yaml daqui ou worker.yaml de lá)
+    gles: str | None = None
+    vulkan: str | None = None
+    fallback: bool = False
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -422,6 +436,9 @@ class InstanceDTO(BaseModel):
     api_level: int | None = None
     abis: list[str] = []
     play_store: bool | None = None            # tem Google Play Services? nulo = não se sabe
+    # Renderizador do emulador (29.11). Nulo = não é emulador que se conheça: aparelho físico, ou de um worker cujo
+    # agente ainda não declara isto. O fallback também sai em `attention`, com o pedido, o selecionado e o log.
+    renderer: RendererInfo | None = None
     # Inventário conferido contra o que o worker DECLARA hospedar (item 4.5; achado #47). `divergent` quer dizer
     # que as fontes discordam — e aí verbo destrutivo é recusado, porque `reset` agiria num aparelho e a tela em
     # outro. Nulo = conferido, ou worker desconectado (declaração de quem não está lá não confirma nada).

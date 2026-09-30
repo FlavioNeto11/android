@@ -50,6 +50,12 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                       "remediation_host_cpu_max": 101,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
+        # 29.11: o aparelho do harness declara `gpu_mode: host`. O padrão do produto é `swiftshader_indirect`, e o
+        # Outlook — o segundo app de dezenas de testes (loja de apps, "sempre na promovida", entre apps) — recusa o
+        # SwiftShader no `app.yaml`: com o padrão, todo teste que o distribui passaria a provar a recusa em vez do que
+        # ele existe para provar. A recusa tem os testes dela (`test_renderizador.py`), que pedem o SwiftShader por
+        # `overrides` ou escolhem o que o emulador seleciona (`harness.emulator.gles`).
+        "android": {"gpu_mode": "host"},
         # Achado #164: a suíte pagava em tempo REAL assentamentos pensados para um emulador de verdade — o recuo
         # entre tentativas, o tick do despacho, a espera da sessão, o assentamento entre ações e os 4 s de
         # `effect_settle_s`, que era configurável e nenhum teste reduzia. Aqui todos caem juntos. O tick NÃO vai a

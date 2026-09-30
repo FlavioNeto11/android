@@ -27,7 +27,7 @@ from ..db import INTEGRITY_ERRORS, Database, dumps, loads
 from ..events import EventBus
 from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
-                      InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
+                      InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics, RendererInfo)
 # A porta do aprendizado (ADR-054): só o contrato, do kernel — `devices` não conhece a fila nem o livro.
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now_iso
@@ -121,6 +121,9 @@ IRQ_SONDAS = 3
 IRQ_REINICIO_INTERVALO_S = 6 * 3600
 IRQ_PREFIXO = "Convidado com interrupções acumuladas"
 PRESSAO_PREFIXO = "Convidado sob pressão"
+#: Fallback silencioso do renderizador (29.11): pedido `host`, selecionado `swiftshader`. O emulador não reclama, e o
+#: app que não roda no SwiftShader (o Outlook, medido em 30/09/2026) derrubaria o processo do emulador.
+RENDERIZADOR_PREFIXO = "Renderizador trocado pelo emulador"
 # Remediação automática: intervalo mínimo entre pedidos. A ESCADA (quantos restarts, quando resetar, quando voltar
 # a tentar) mora em `despacho.remediar`, contada no histórico de comandos — sobrevive a reinício do backend.
 MAX_REINICIOS_DE_REMEDIACAO = 2
@@ -427,6 +430,13 @@ class DeviceRuntime:
         self.attention: str | None = None
         self.current: InstanceCurrent | None = None
         self.resources: InstanceResources | None = None
+        #: Renderizador do emulador (29.11). `renderer_configured` é o `gpu_mode` PEDIDO: o daqui (`android_de`) ou o
+        #: que o agente da outra máquina declarou. `renderer` é o que o emulador SELECIONOU, lido do log a cada entrada
+        #: no ar (ou declarado na batida do worker); `renderer_log` diz onde esse log mora. Em memória de propósito:
+        #: tudo é rederivado da configuração, do log e da batida, e nada disto descreve um processo que já morreu.
+        self.renderer_configured: str | None = None
+        self.renderer: emu.Renderizador | None = None
+        self.renderer_log: str | None = None
         self.wipe_next_boot = False
         # rodízio (ligar sob demanda / ceder vaga)
         self.online_since_mono: float = time.monotonic()
@@ -456,6 +466,20 @@ class DeviceRuntime:
         """Alguém está com ESTE aparelho aberto em foco (`focus` antigo ou `watch.focus`). É o que o rodízio e a
         hibernação respeitam; interesse de grade fica de fora de propósito (contrato C2)."""
         return time.monotonic() < self.focus_until_mono or self.foco_por_interesse()
+
+    @property
+    def renderizador_pedido(self) -> str | None:
+        """O `gpu_mode` pedido, pelo nome canônico (`swiftshader_indirect` → `swiftshader`)."""
+        return emu.normalizar_renderizador(self.renderer_configured)
+
+    @property
+    def renderizador_efetivo(self) -> str | None:
+        """O renderizador que vale para decidir se um app roda aqui (`devices/compatibilidade.py`): o SELECIONADO
+        quando conhecido; senão o PEDIDO. `auto` sem selecionado é "não se sabe": é pedir "o que houver"."""
+        if self.renderer is not None:
+            return emu.normalizar_renderizador(self.renderer.gles)
+        pedido = self.renderizador_pedido
+        return None if pedido == "auto" else pedido
 
 
 class DeviceManager:
@@ -718,7 +742,12 @@ class DeviceManager:
             connectivity=rt.connectivity if rt.state == InstanceState.online else ConnectivityInfo(
                 detail=f"Aparelho em '{rt.state.value}': a internet só é verificada com ele no ar."),
             current=rt.current,
-            attention=rt.attention, resources=rt.resources,
+            # O aviso do renderizador é DERIVADO, e não gravado em `rt.attention`: aquele campo é de quem chegar por
+            # último (o despacho escreve "Bloqueado: …" e depois o zera; o controle manual também), e um fato que vale
+            # enquanto o processo do emulador viver sumiria no primeiro desses. Assim ele cede a vez a qualquer outro
+            # assunto do cartão e volta sozinho.
+            attention=rt.attention or self._aviso_do_renderizador(rt), resources=rt.resources,
+            renderer=self._renderizador_dto(rt),
             kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,
             # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
             # aparelho de outra máquina oferecia Parar, Hibernar e "Resetar dados…" com a mesma aparência de um
@@ -758,6 +787,8 @@ class DeviceManager:
             # Também na SAÍDA do ar: a readoção (`_adopt`, inclusive a imediata depois de um `start`/`wake` remoto)
             # põe o aparelho `online` sem passar por aqui, e herdaria o que se sabia da tela do Android de antes.
             self._nova_geracao(rt)
+            # O renderizador selecionado era o DAQUELE processo. O pedido fica: é configuração, não observação.
+            rt.renderer = None
         if state == InstanceState.online:
             # `ready` herda o detalhe da escada que acabou de passar (`android_responsive`: "servicemanager,
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
@@ -1303,6 +1334,7 @@ class DeviceManager:
             # aparelho falso do harness — todos "adotados" ao subir — chegava a ver a elegibilidade de
             # hibernação de `stop_instance` (que exige `rt.pid is not None`). A mesma `_spawn` do boot real.
             self._spawn(rt, self.android_de(rt), wipe=False, from_snapshot=False)
+            await self._registrar_renderizador(rt)
             rt.state = InstanceState.online
             rt.automation = AutomationInfo(state="ready", detail="driver de teste")
             return
@@ -1342,6 +1374,7 @@ class DeviceManager:
                                        "aparelho.")
                     return
             if booted and estado == "ok":
+                await self._registrar_renderizador(rt)      # readoção: o processo é o de antes, e o log dele também
                 rt.state = InstanceState.online
                 self._prontidao(rt, "ready", "readotado: servicemanager, system_server e display responderam")
                 rt.automation_failures = rt.health_failures = 0      # readoção é uma entrada no ar como outra
@@ -1660,6 +1693,79 @@ class DeviceManager:
                 "kind": getattr(d, "kind", None), "system_image": getattr(d, "system_image", None),
                 "api_level": getattr(d, "api_level", None), "abis": list(getattr(d, "abis", None) or []),
                 "play_store": getattr(d, "play_store", None)}, fonte=f"declaração do worker {worker_id}")
+            self._renderizador_declarado(rt, worker_id, d)
+
+    # ------------------------------------------------------------------ renderizador do emulador (29.11)
+    async def _registrar_renderizador(self, rt: DeviceRuntime) -> None:
+        """Lê do log do emulador o renderizador que ele SELECIONOU nesta subida e o guarda no aparelho.
+
+        Chamado a cada entrada no ar (boot, reinício, acordar, readoção), ANTES de declarar `online`, quando a linha
+        já foi escrita há muito. Só para emulador DESTA máquina: o log do aparelho de um worker mora lá, e quem o lê
+        é o agente (`_renderizador_declarado`). Argumento aceito não é renderizador usado (medido em 30/09/2026): o
+        `-gpu` diz o que se pediu, e só o log diz o que o emulador fez com o pedido.
+        """
+        if rt.external:
+            return
+        try:
+            rt.renderer_configured = self.android_de(rt).gpu_mode
+            rt.renderer_log = str(self.cfg.logs_dir / f"emulator-{rt.avd_name}.log")
+            rt.renderer = await asyncio.to_thread(emu.ler_renderizador, self.cfg.logs_dir, rt.avd_name)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - saber o renderizador nunca pode impedir o aparelho de entrar no ar
+            log.exception("%s: falha ao ler o renderizador selecionado pelo emulador", rt.id)
+            rt.renderer = None
+            return
+        self._anunciar_fallback(rt)
+
+    def _renderizador_declarado(self, rt: DeviceRuntime, worker_id: str, d: object) -> None:
+        """O renderizador de um aparelho de OUTRA máquina, como o agente dela o declarou no `hello` ou na batida.
+
+        Diferente das capacidades (`registrar_capacidades`), o SELECIONADO é substituído pelo que veio, inclusive
+        por nada: ele descreve o processo que está no ar lá, e com o emulador desligado não há o que afirmar. O
+        PEDIDO só muda quando vem com valor — agente antigo não declara, e isso não apaga o que já se sabia.
+        """
+        if not rt.external:
+            return                              # emulador daqui: quem sabe é o log desta máquina
+        antes = (rt.renderer_configured, rt.renderer)
+        pedido, gles = getattr(d, "gpu_mode", None), getattr(d, "gpu_gles", None)
+        if pedido:
+            rt.renderer_configured = str(pedido)
+        rt.renderer = emu.Renderizador(gles=str(gles), vulkan=getattr(d, "gpu_vulkan", None) or None) if gles else None
+        avd = getattr(d, "avd_name", None) or rt.avd_name
+        rt.renderer_log = f"logs/emulator-{avd}.log, na pasta de trabalho do worker {worker_id}"
+        if (rt.renderer_configured, rt.renderer) != antes:
+            self._anunciar_fallback(rt)
+            self.publish(rt)
+
+    @staticmethod
+    def _texto_do_fallback(rt: DeviceRuntime) -> str | None:
+        if rt.renderer is None or not emu.houve_fallback(rt.renderer_configured, rt.renderer.gles):
+            return None
+        vulkan = f" (Vulkan: `{rt.renderer.vulkan}`)" if rt.renderer.vulkan else ""
+        return (f"{RENDERIZADOR_PREFIXO}: este aparelho pediu `{rt.renderer_configured}` (gpu_mode) e o emulador "
+                f"selecionou `{rt.renderer.gles}`{vulkan}, sem avisar. App que não roda nesse renderizador não é "
+                f"instalado nem aberto aqui. Veja a linha `emuglConfig_init` em {rt.renderer_log}.")
+
+    def _aviso_do_renderizador(self, rt: DeviceRuntime) -> str | None:
+        """O fallback silencioso como atenção do aparelho — só com ele no ar: fora dele não há emulador selecionando
+        nada, e o aviso ficaria no cartão de um aparelho parado."""
+        return self._texto_do_fallback(rt) if rt.state == InstanceState.online else None
+
+    def _anunciar_fallback(self, rt: DeviceRuntime) -> None:
+        """Uma linha no histórico quando o fallback é DESCOBERTO. O cartão o mostra enquanto durar (`dto`)."""
+        if (texto := self._texto_do_fallback(rt)) is not None:
+            log.warning("%s: %s", rt.id, texto)
+            self.bus.emit("log", f"{rt.id}: {texto}", level="warn", instance_id=rt.id)
+
+    @staticmethod
+    def _renderizador_dto(rt: DeviceRuntime) -> RendererInfo | None:
+        if rt.renderer_configured is None and rt.renderer is None:
+            return None                         # não é emulador que se conheça: nada a afirmar
+        gles = rt.renderer.gles if rt.renderer else None
+        return RendererInfo(configured=rt.renderer_configured, gles=gles,
+                            vulkan=rt.renderer.vulkan if rt.renderer else None,
+                            fallback=emu.houve_fallback(rt.renderer_configured, gles))
 
     # ------------------------------------------------------------------ inventário aparelho ↔ worker
     def conferir_inventario(self, worker_id: str, devices: list[Any]) -> list[str]:
@@ -1983,6 +2089,9 @@ class DeviceManager:
         """
         if rt.external:
             return
+        # O renderizador PEDIDO também se sabe sem ligar nada (29.11): é o que a recusa de um app que não roda no
+        # SwiftShader usa enquanto o emulador não disse o que selecionou.
+        rt.renderer_configured = self.android_de(rt).gpu_mode
         campos: dict[str, Any] = dict(capacidades_do_avd(self.cfg.avd_home, rt.avd_name))
         if not campos.get("system_image"):
             # AVD ainda não criado: vale a imagem que a configuração MANDA usar. É declaração, não observação —
@@ -2284,6 +2393,7 @@ class DeviceManager:
                         if wipe:
                             self._disco_apagado(rt, "o emulador subiu com os dados apagados (reset)")
                         self.boots.append((rt.id, "warm" if warm else "cold"))
+                        await self._registrar_renderizador(rt)
                         rt.automation = AutomationInfo(state="ready", detail="driver de teste")
                         self._set_state(rt, InstanceState.online, "pronto (teste)")
                         self.on_device_free()
@@ -2447,6 +2557,8 @@ class DeviceManager:
                 "instance_id": rt.id, "boot_seconds": rt.boot_seconds, "kind": "warm" if warm else "cold",
                 "online_after": sum(1 for d in self.devices.values() if d.state == InstanceState.online) + 1,
                 "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image})))
+        # Antes de declarar `online`: o DTO que anuncia a entrada no ar já sai com o renderizador (e com o aviso).
+        await self._registrar_renderizador(rt)
         self._set_state(rt, InstanceState.online, f"{'acordou' if warm else 'pronto'} em {rt.boot_seconds:.0f}s")
         self._start_online_tasks(rt)
         self.on_device_free()

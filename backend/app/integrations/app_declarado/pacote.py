@@ -21,6 +21,7 @@ from pathlib import Path
 import yaml
 
 from ...automation import leitura_de_tela
+from ...devices.emulator import RENDERIZADORES, normalizar_renderizador
 from ...modules.applications.domain.definition import AppDefinition
 from ...modules.applications.infrastructure.registry import AppManifest
 from ...modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
@@ -34,7 +35,8 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 
 #: Os campos que o `app.yaml` aceita. Campo fora daqui é erro de digitação que seria ignorado em silêncio.
 _CAMPOS = frozenset({"app", "nome", "rotulo", "provedor_de_sessao", "precisa_de_perfil", "precisa_de_internet",
-                     "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura"})
+                     "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura",
+                     "renderizador_recusado"})
 _PACOTE_ANDROID = re.compile(r"^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$")
 
 
@@ -92,6 +94,29 @@ def _links(bruto: object, onde: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return hosts, _textos(bruto.get("reservados"), f"{onde}.reservados")
 
 
+def _renderizadores(bruto: object, onde: str) -> tuple[str, ...]:
+    """`renderizador_recusado`: os renderizadores do emulador em que o app NÃO roda, pelo nome canônico (29.11).
+
+    Só os que o emulador seleciona de fato (`devices.emulator.RENDERIZADORES`); o apelido `swiftshader_indirect` vale
+    por `swiftshader`. Valor fora disso é recusado na carga: um nome escrito errado viraria um requisito que nunca
+    casa com aparelho nenhum, e o app seria instalado justamente onde ele derruba o emulador. Recusar TODOS também é
+    erro: isso é dizer que o app não roda em emulador, e não um requisito de renderizador.
+    """
+    if bruto is None:
+        return ()
+    conhecidos = ", ".join(RENDERIZADORES)
+    if not isinstance(bruto, list) or not all(isinstance(r, str) for r in bruto):
+        raise PacoteInvalido(f"{onde}: lista de renderizadores ({conhecidos})")
+    nomes = tuple(dict.fromkeys(normalizar_renderizador(r) or "" for r in bruto))
+    estranhos = [r for r in nomes if r not in RENDERIZADORES]
+    if estranhos:
+        raise PacoteInvalido(f"{onde}: renderizador desconhecido {', '.join(repr(r) for r in estranhos)}"
+                             f" (conhecidos: {conhecidos})")
+    if set(nomes) == set(RENDERIZADORES):
+        raise PacoteInvalido(f"{onde}: recusa todos os renderizadores ({conhecidos}); sobra nenhum para o app rodar")
+    return nomes
+
+
 def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
     """A `AppDefinition` de um `app.yaml` já lido."""
     if not isinstance(dados, dict):
@@ -114,7 +139,9 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
                          text_kinds=_pares(dados.get("tipos_de_texto"), f"{onde}: tipos_de_texto"),
                          conversation_reads=_pares(dados.get("leituras_de_conversa"), f"{onde}: leituras_de_conversa"),
                          profile_anchor=_booleano(dados.get("ancora_do_perfil"), f"{onde}: ancora_do_perfil"),
-                         profile_link_hosts=hosts, profile_link_reserved=reservados)
+                         profile_link_hosts=hosts, profile_link_reserved=reservados,
+                         refused_renderers=_renderizadores(dados.get("renderizador_recusado"),
+                                                           f"{onde}: renderizador_recusado"))
 
 
 def _ler(caminho: Path) -> object:

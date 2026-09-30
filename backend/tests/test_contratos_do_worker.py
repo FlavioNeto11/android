@@ -25,14 +25,21 @@ import app.workers.protocol as protocolo_antigo
 #: Receita do relatório 04 §2.2, medida em 82b1057 (pydantic 2.13.5): esquema das 13 mensagens de
 #: `UPSTREAM`/`DOWNSTREAM`, por chave de tipo, mais `EnvioDeMidia` (o canal de mídia, que não tem `type`). O mesmo
 #: valor antes e depois de o protocolo mudar de `app/workers/` para `app/contracts/worker/`.
-ESQUEMA_CONGELADO = "18285a7c65c51551"
+#:
+#: 29.11 (30/09/2026): `hello` e `heartbeat` mudaram de propósito — `WorkerDevice` ganhou `gpu_mode`, `gpu_gles` e
+#: `gpu_vulkan` (o renderizador do emulador, que só o agente lê do log dele). Checklist: (1) aditivo, os três com
+#: padrão `None`, e o que o agente de campo RECEBE não mudou; (2) nenhuma restrição afrouxada, os campos não têm
+#: nenhuma; (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo ignora (`extra="ignore"`),
+#: agente antigo não manda e o central fica com "não se sabe"; (5) não é mudança de forma do pydantic. Eram
+#: `18285a7c65c51551`, `04c2ae7aaf3a47f9` (heartbeat) e `9b76556e5c2ac878` (hello).
+ESQUEMA_CONGELADO = "074980b4f9d7d9df"
 HASH_POR_TIPO = {
     "EnvioDeMidia": "fdb1207c5b4f42e4",
     "ack": "33e561638726df19",
     "cancel": "4b3f1e8c98e90ec3",
     "dispatch": "51d36366c2fd424c",
-    "heartbeat": "04c2ae7aaf3a47f9",
-    "hello": "9b76556e5c2ac878",
+    "heartbeat": "a4445ce3107bff89",
+    "hello": "e83b5bba0247b782",
     "limits": "6d4b495c5750b4bc",
     "observe_image": "26eb5e83e5a347f4",
     "observe_result": "34513cb6edfbd781",

@@ -103,6 +103,11 @@ class FakeEmulatorBackend:
         # valor aqui, todo PID que o dublê inventa pareceria "morto" para o SO de verdade, e o monitor declararia
         # perda em massa. Por padrão nada morre sozinho; quem quer provar a queda soma o AVD aqui.
         self.dead: set[str] = set()
+        # 29.11: o renderizador que ESTA máquina seleciona, seja qual for o `-gpu` pedido — é a máquina, e não o
+        # pedido, que decide (o emulador real cai para o SwiftShader sem reclamar). `None` = a subida não escreve a
+        # linha `emuglConfig_init`, e o selecionado fica "não se sabe". Quem quer provar o fallback escolhe aqui.
+        self.gles: str | None = None
+        self.vulkan: str | None = None
 
     def free_ram_mb(self) -> float:
         return self.free_mb
@@ -110,6 +115,12 @@ class FakeEmulatorBackend:
     def start_process(self, cfg: Any, tools: Any, avd_name: str, console_port: int, android: Any, *,
                       wipe_data: bool, from_snapshot: bool) -> int:
         self.started.append((avd_name, wipe_data, from_snapshot))
+        if self.gles is not None:
+            # No MESMO arquivo e em append, como `emu.start_process`: é de lá que o gerenciador lê.
+            cfg.logs_dir.mkdir(parents=True, exist_ok=True)
+            with (cfg.logs_dir / f"emulator-{avd_name}.log").open("ab") as fh:
+                fh.write(f"INFO         | emuglConfig_init: vulkan_mode_selected:{self.vulkan or self.gles} "
+                         f"gles_mode_selected:{self.gles}\n".encode())
         self.next_pid += 1
         return self.next_pid
 

@@ -12,3 +12,9 @@ precisa_de_internet: true
 # NÃO é âncora: a conta da persona que carrega o "Conectado" do perfil segue sendo a do Instagram. Dois apps âncora
 # derrubam o registro inteiro (`pacote_ancora()`).
 ancora_do_perfil: false
+# O Outlook DERRUBA o processo do emulador quando o GLES do host é o SwiftShader. Medido em 30/09/2026, Outlook
+# 5.2635.3 no emulador 37.1.11: `0xc0000005` com `gles_swiftshader\libGLESv2.dll` na pilha, na tela de onboarding,
+# ~31 s depois de abrir o app. Com `gpu_mode: host` ele abre e fica estável (android-07 no central e android-09 no
+# notebook, 5 min no onboarding sem queda). A plataforma não instala nem abre este app num aparelho cujo renderizador
+# é o recusado: a queda leva junto a sessão de quem estiver logado naquele aparelho (K-062, docs/dominios/parque.md).
+renderizador_recusado: [swiftshader]
