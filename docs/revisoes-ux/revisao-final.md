@@ -2,7 +2,7 @@
 
 Branch `ux/09-revisao-final`, que sai de `claude/ux-portal` `5da4cfc` (tarefas 01 a 08 integradas, mais
 `scripts/ui-verificar.mjs` e `scripts/ui-auditoria.js`). Base de comparação: `origin/main` `beb8056`. Data: 30/09/2026,
-cerca de 21:05Z a 21:40Z. Máquina: central (Windows Server 2025). Modelo: Opus 5.5, esforço high. Revisor independente:
+cerca de 21:05Z a 21:25Z. Máquina: central (Windows Server 2025). Modelo: Opus 5.5, esforço high. Revisor independente:
 não participei das tarefas 01 a 08.
 
 **Este relatório é parcial.** A FASE A é só leitura de código e de relatórios: a coordenação do ambiente pediu pausa de
@@ -58,7 +58,7 @@ reproduzir" traz o caminho no código e, quando cabe, os passos no navegador (s�
 
 | ID | Onde (arquivo:linha) | Achado e como reproduzir | Origem | FASE B? |
 |---|---|---|---|---|
-| RF-01 | `features/devices/DeviceGrid.tsx:179` (Selecionar todas usa `taskOrder` inteiro), `:189-200` (a barra recebe `selectedIds` cru), `store/ui.ts:170` (seleção persistida em `localStorage` `selectedInstances`), `features/painel/BarraDeSelecao.tsx:83,136` (`runBulkAction(ids, …)`) | **Ação em lote sobre aparelhos que a pessoa não está vendo.** O filtro `?estado=` (04) esconde cartões, mas a seleção não é filtrada. Além disso, a seleção sobrevive à recarga, e não há o aviso "(N fora do filtro atual)" que a 05 pôs em Personas. Passos: abrir `#/painel?estado=stopped` (7 visíveis de 14) e clicar "Selecionar todas". A barra diz "14 selecionados", e Parar, Reiniciar ou Resetar dados valeriam para os 14. **Não clicar em ação.** Variante: marcar aparelhos, recarregar com um link filtrado e ver a barra contar marcados invisíveis. | integração 01×03×04 | sim (contar, sem acionar) |
+| RF-01 | `features/devices/DeviceGrid.tsx:179` (Selecionar todas usa `taskOrder` inteiro), `:189-200` (a barra recebe `selectedIds` cru), `store/ui.ts:170` (seleção persistida em `localStorage` `selectedInstances`), `features/painel/BarraDeSelecao.tsx:83,136` (`runBulkAction(ids, …)`) | **Ação em lote sobre aparelhos que a pessoa não está vendo.** O filtro `?estado=` (04) esconde cartões, mas a seleção não é filtrada. Além disso, a seleção sobrevive à recarga, e não há o aviso "(N fora do filtro atual)" que a 05 pôs em Personas. Passos: abrir `#/painel?estado=stopped` (7 visíveis de 14) e clicar "Selecionar todas". A barra diz "14 selecionados". Iniciar, Parar, Reiniciar e Hibernar agem nos 14 **na hora, sem confirmação** (`actions.ts::runBulkAction` só confirma o `reset`). Resetar dados mostra a lista dos 14 só no diálogo de confirmação. **Não clicar em ação.** Variante: marcar aparelhos, recarregar com um link filtrado e ver a barra contar marcados invisíveis. | integração 01×03×04 | sim (contar, sem acionar) |
 | RF-02 | `features/focus/Drawer.tsx:37-38,69-70` (a exceção do "clique fora" é só `[data-instance-card]`), `features/devices/DeviceList.tsx:60` (a linha da Lista usa `data-instance-row`), `features/focus/FocusPanel.tsx:55` (seletor de devolução do foco só para cartão) | **Na visão Lista, com o Foco aberto, as linhas contam como "fora" do drawer.** Clicar em "Abrir android-02" ou na caixa de seleção de outra linha fecha o drawer e o clique é engolido: não troca de aparelho nem marca. Nos Cards, o mesmo gesto troca de aparelho, como a 03 prometeu. Ao fechar, o `restoreSelector` não acha nada na Lista (só vale o elemento de origem). Passos: Painel → Lista → abrir android-01 → clicar o "Abrir" de outra linha. | integração 03×04 | sim |
 
 ### Média
@@ -119,6 +119,9 @@ reproduzir" traz o caminho no código e, quando cabe, os passos no navegador (s�
   aparelhos do central igual (`InfraPage.tsx:97` e `metricas.ts:154`).
 - Nenhum `font-size` em px abaixo de 13 nos CSS. O único token de 12 px (`--fs-2xs`) é usado só no gráfico do
   Diagnóstico.
+- `docs/produto.md` (diff de 9 linhas, da 03): descreve o controle Automático | Manual, as etapas numeradas, a barra
+  presa ao topo e o drawer sobreposto conforme o código. Não cita o caso da Lista (RF-02) nem o filtro × seleção
+  (RF-01). Sem outro achado.
 
 ## Critérios de aceite por tarefa
 
@@ -159,7 +162,7 @@ Legenda: **atendido** (no código, conferido estaticamente), **parcial**, **não
 | 07 | axe sem falha de contraste AA nas 8 telas | não verificável sem rodar (a 07 mediu só a 1440 px, sem Pendências) | RF-27, RF-28 |
 | 07 | Alvos abaixo de 32 px caem a zero na tela principal | não verificável sem rodar | `--hit-min` aplicado |
 | 07 | Navegação completa por teclado em Painel e Personas | não verificável sem rodar | — |
-| 08 | Tabela de achados entregue | parcial: 6 linhas, em `docs/revisoes-ux/08-revisao-textos.md` (não em `docs/revisao-textos.md`), varredura incompleta | RF-07 |
+| 08 | Tabela de achados entregue | parcial: a tabela tem 6 linhas e a varredura está incompleta, com a alegação falsa de "varredura completa". O caminho `docs/revisoes-ux/08-revisao-textos.md` segue o orquestrador e não conta contra a tarefa. | RF-07 |
 | 08 | Nenhuma alteração de lógica; diff só com strings | quase: uma expressão em `PlanTab.tsx:123` | RF-25 |
 
 ## Pendências da avaliação original que nenhum briefing cobriu
@@ -236,7 +239,8 @@ Não são regressões: ficaram fora do escopo das tarefas 01 a 08.
 
 ## Veredito parcial (FASE A)
 
-**Pronto com ressalvas, condicionado à FASE B.** A base de rotas (01), a fonte única de números (02), o drawer
+**Como está, não pronto para a `main`.** Com as correções pequenas de RF-01 e RF-02, passa a pronto com ressalvas,
+sujeito à FASE B. A base de rotas (01), a fonte única de números (02), o drawer
 sobreposto (03), a tradução dos cartões (04), a busca e os filtros (05), a caixa de Pendências (06) e os tokens de
 tipografia e alvo (07) estão no código e são coerentes no geral. Duas costuras entre tarefas, porém, não podem ir
 para a `main` sem correção pequena antes:
@@ -250,16 +254,18 @@ Há também quatro critérios de aceite não atendidos ou parciais que o dono de
 - RF-04 e RF-05: contadores de "o que espera você" e de execuções com definições diferentes;
 - RF-07: varredura de textos incompleta.
 
-O veredito muda para "não pronto" se a FASE B mostrar rolagem horizontal, sobreposição ou menu inalcançável em
-alguma das 54 células, ou contraste AA falhando. Muda para "pronto com ressalvas" sem condição se RF-01 e RF-02
-forem corrigidos e o resto se confirmar.
+Mesmo com RF-01 e RF-02 corrigidos, fica "não pronto" se a FASE B mostrar, em alguma das 54 células, rolagem
+horizontal, sobreposição, menu inalcançável ou contraste AA falhando. Se as correções entrarem e o resto se
+confirmar, vira "pronto com ressalvas" (RF-03 a RF-10 como ressalvas).
 
 ## Provas
 
 - **real**: nenhuma nesta fase.
 - **simulated**: nenhuma reexecutada nesta fase.
 - **not_run**: tudo o que depende de rodar. Isso inclui as suítes e os typechecks alegados pelos relatórios 01 a 08,
-  todas as medidas em navegador, o axe e o Lighthouse.
+  todas as medidas em navegador, o axe, o Lighthouse e o `python scripts/docs-check.py`. Este relatório cita de
+  propósito termos fora do vocabulário ("backend", "worker", "frame"), e a checagem de vocabulário pode apontá-los. É
+  para a consolidação do orquestrador.
 - **estático** (o que esta fase fez): leitura de código e busca dirigida no commit `5da4cfc`, com as referências
   `arquivo:linha` acima.
 
