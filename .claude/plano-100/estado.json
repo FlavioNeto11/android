@@ -4313,6 +4313,79 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T13:03:45+00:00"
+  },
+  "29.2": {
+   "id": "29.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_provado, marcar/gravar/desmarcar/fechar/apagar, prova_anterior, adotar_prova_de_vazamento; verificacao_invalida → 'bloqueio'; _falta_para_verificar decide pela prova da linha), rede_convergencia.py (_prova_conferida, _adotar_prova_anterior, _prova_ou_ensaio, _acao sem laço), rede_aplicacao.py (identidade_do_cliente, instalado_em), models.py e painel (RedePage). Simulado: tests/test_rede_sonda.py::test_reinicio_do_backend_com_prova_valida_nao_para_o_cliente_nem_reinicia_o_aparelho (no código de 6997091 o mesmo cenário dá paradas == 2), ::test_cliente_vpn_de_outra_instalacao_invalida_a_prova, ::test_wipe_apaga_a_prova, ::test_verify_apaga_a_prova_e_o_pedido_sobrevive_ao_reinicio_do_backend, ::test_tunel_caido_mantem_a_prova_e_o_bloqueio, ::test_inconclusivo_nunca_aprova_e_nao_se_repete, ::test_intencao_gravada_antes_do_force_stop_e_ensaio_interrompido_nao_se_repete, ::test_vazou_fica_parcial_e_a_tarefa_espera, ::test_desfecho_de_revisao_antiga_nao_vira_prova_da_nova, ::test_prova_anterior_a_migracao_e_adotada_sem_parar_o_cliente, ::test_prova_anterior_que_nao_se_demonstra_nao_e_adotada (4 casos); achados da revisão independente com teste que falhava antes: ::test_falha_antes_da_adocao_nao_vira_teste_destrutivo_na_passada_seguinte (3 casos), ::test_pedido_de_refazer_e_wipe_valem_tambem_na_linha_de_antes_da_063, ::test_linha_apagada_e_recriada_nao_adota_a_prova_da_anterior, ::test_desfecho_que_nao_aprova_com_a_sonda_sem_ip_nao_mede_a_cada_passada; tests/test_db.py::test_migracao_063_acrescenta_a_prova_de_vazamento_sem_mexer_na_linha_que_ja_existe e ::test_migracao_de_numero_menor_criada_depois_ainda_e_aplicada. Leituras reais de apoio (30/09, só leitura): identidade do cliente e data do APK em android-02, 03 e 06 como uid 2000; 063 aplicada numa cópia do banco do central com a decisão de adoção (02, 03 e 06 adotam; 05 não). A prova real do item é o 29.4 (reinício do backend sem reinício de aparelho por 6 h); PostgreSQL é o 29.14. ADR-061, K-065, adendo v0.43.",
+   "grupo": "29-p16-e-rede",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
+  },
+  "29.3": {
+   "id": "29.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e para em 2); quando sobe, entre 92 e 176 s de ligado; force-stop não religa (0 de 4); o tile do cliente religa 5 de 5 com o SystemUI estável. Correção: rede.espera_tun_s 60 → 180 s contados do boot (config.py), rede.cliente_tile e rede_aplicacao.religar_pelo_tile (só clica com SystemUI estável, tile na barra e sem tun0), tentado antes do reinício em rede_convergencia._conectar e depois do teste de vazamento em _prova_ou_ensaio. Simulado: tests/test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio, ::test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue, ::test_comando_do_tile_so_clica_sem_tun0_com_o_systemui_estavel_e_o_tile_na_barra, tests/test_rede_sonda.py::test_cliente_parado_pelo_teste_e_religado_pelo_tile_sem_reiniciar_o_aparelho. Real do gesto, 30/09 13:30Z, android-05: religar_pelo_tile chamado pelo adb duas vezes — cliente parado, sonda fora da VPN recusada (Permission denied), túnel de volta em ~9 s, always-on, lockdown e regras intactos, tile fora da barra. Não executado: o gesto disparado pela convergência no central depois de um boot falho, com app em primeiro plano, e nos aparelhos do notebook. K-066.",
+   "grupo": "29-p16-e-rede",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
+  },
+  "29.8": {
+   "id": "29.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/devices/rede_firewall.py: a leitura confere, por regra de entrada habilitada, porta UDP, perfil efetivo da interface do endpoint_lan, interface, origem (tem de conter a sub-rede IPv4 da interface) e programa; estado novo regra_obsoleta (fechado) para -Program de outro executável; origem Any libera com aviso; comando proposto sem -Program, com -RemoteAddress e -InterfaceAlias lidos do sistema, -Profile Any, idempotente, com inspect_command e revert_command; marcador explícito quando o sistema não informa. Simulado: tests/test_rede_worker.py (24 casos, 9 novos; ::test_regra_de_outra_interface_ou_de_outra_sub_rede_e_fechado falhava em feb82fd: regra presa a outra interface era lida como liberado). Leitura real, só leitura, central, 30/09 12:45–12:48Z: sem_regra, perfil Public, interface Wi-Fi, sub-rede 192.168.1.0/24; sintaxe dos três comandos conferida pelo Parser do PowerShell sem executar. Não executado: a regra criada (é do dono) e lida como liberado; o aparelho do notebook com rede (29.9). Painel com o estado novo e os comandos de inspeção e reversão.",
+   "grupo": "29-p16-e-rede",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
+  },
+  "29.15": {
+   "id": "29.15",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Painel: coluna Proxy distingue 'sem proxy (legado conferido)' do traço de nunca conferido; identificador de e-mail sem o arroba de nome de usuário (pessoa.ts::ehEndereco/rotuloDoIdentificador, GuiaContas, GuiaVisaoGeral); tabela de aparelhos da rede com largura mínima e rolagem dentro do cartão, IP e pacote sem quebra; prova de vazamento por aparelho. Simulado: frontend/src/features/rede/RedePage.test.tsx (20 casos) e features/profiles/pessoa.test.ts; tsc e vitest verdes.",
+   "blocker": "Falta a inspeção visual a 800 px e a 375 px com o dado real depois do deploy e a dos estados que o dado real não mostra (configurado, erro, pendente, remoto) em ambiente simulado isolado.",
+   "grupo": "29-p16-e-rede",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
+  },
+  "29.5": {
+   "id": "29.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/devices/sonda_rede.py::comando_dns_e_udp (até 3 datagramas de 2 s por perna, parando no primeiro com resposta, numa ida só como uid 2000; TDNS/TNTP e SDNS/SNTP por perna), ler_dns_e_udp (lê também a saída antiga), pernas_udp; rede_medicao.medir (detail `UDP DNS 83 B (1ª de 3, 2,0 s), NTP 0 B (0 de 3, 6,1 s)`; udp_ok segue o E das duas; prazo da ida 62 s); rede.listar_aparelhos (last_measurement.udp_dns_ok/udp_ntp_ok derivados); painel por perna. A regra que libera tarefa não mudou (UDP não é critério). Real, 30/09 ~13:44Z, só leitura, o comando novo rodado como uid 2000 em android-05 e android-02 (mksh/toybox do Android 14), duas vezes cada: 83 B e 48 B na 1ª de 3, 2,0–2,1 s por perna, ida de 4,4 s (antes ~10 s). Simulado: tests/test_rede_sonda.py::test_comando_de_udp_repete_o_datagrama_numa_ida_so_e_diz_tentativa_e_tempo, ::test_leitura_de_udp_por_perna_e_a_saida_antiga_ainda_e_lida, ::test_falha_transitoria_de_udp_nao_derruba_a_perna_e_a_persistente_fica_registrada (reproduzia o falso negativo das medições #6 e #21), ::test_perna_de_udp_falha_nao_segura_a_tarefa_e_aparece_por_perna; RedePage.test.tsx. O agente do worker não precisa de atualização (usa só comando_sonda, ler_sonda e host_valido, intactos; tests/test_pacote_do_agente.py verde). Não executado: a falha transitória provocada num aparelho real (exigiria gerar carga) e a medição pela convergência no central (vem com o deploy).",
+   "grupo": "29-medicao",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
+  },
+  "29.6": {
+   "id": "29.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/devices/rede.py: params.egress_esperado e egress_esperado_ipv6 validados como endereço público (422 com o campo), saida_esperada (o perfil da saída final: o proxy, se houver; senão a VPN), saida_divergente somada ao que falta em _registrar_medicao (medida diferente da esperada vira parcial com `saída medida X, esperada Y do perfil P`), evento warn saida_divergente, listar_aparelhos com egress_expected e egress_matches, prévia do assign com egress_warnings (saida_dedicada_compartilhada, saida_dedicada_trocada_por_compartilhada). Painel: esperada junto do IP medido, campo no cadastro do perfil, avisos na prévia. Sem migração. Simulado: tests/test_rede_por_aparelho.py::test_cadastro_valida_a_saida_esperada_como_endereco_publico, ::test_saida_medida_diferente_da_esperada_vira_parcial_e_a_igual_verifica, ::test_proxy_encadeado_decide_a_saida_esperada, ::test_politica_livre_com_saida_diferente_mostra_o_estado_e_nao_segura_tarefa, ::test_previa_avisa_saida_dedicada_compartilhada_e_troca_por_compartilhada; tests/test_rede_sonda.py::test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera; RedePage.test.tsx (3 casos). Não executado: perfil externo com saída esperada num aparelho real (é o piloto do 29.7, que depende dos servidores do dono). Reversão do piloto descrita em docs/dominios/parque.md.",
+   "grupo": "29-medicao",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T14:09:27+00:00"
   }
  },
  "rodadas": [
@@ -5002,6 +5075,28 @@
    ],
    "grupos": [
     "29-ci"
+   ]
+  },
+  {
+   "quando": "2026-09-30T14:09:27+00:00",
+   "itens": [
+    "29.2",
+    "29.3",
+    "29.8",
+    "29.15"
+   ],
+   "grupos": [
+    "29-p16-e-rede"
+   ]
+  },
+  {
+   "quando": "2026-09-30T14:09:27+00:00",
+   "itens": [
+    "29.5",
+    "29.6"
+   ],
+   "grupos": [
+    "29-medicao"
    ]
   }
  ]

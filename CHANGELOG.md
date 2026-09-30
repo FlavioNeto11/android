@@ -47,6 +47,14 @@ do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShade
   marca na linha antiga (a prova era readotada); linha recriada adotava a prova da anterior; e o desfecho que não
   aprova media a cada passada quando a sonda não trazia IP.
 - **Deploy:** `deploy.ps1` passa a instalar as dependências do Appium quando o lock muda e a conferir o disco.
+- **Sonda UDP com repetição (29.5):** até 3 datagramas de 2 s por perna, parando no primeiro com resposta; o `detail`
+  diz bytes, tentativa e tempo por perna (DNS e NTP), e a listagem ganha `udp_dns_ok`/`udp_ntp_ok`. UDP segue fora do
+  critério de `trafego_verificado`. Prova `real`: o comando novo em android-05 e android-02 (83/48 B na 1ª, ~2 s por
+  perna; a ida caiu de ~10 s para 4,4 s).
+- **Saída esperada por aparelho (29.6, P1):** `params.egress_esperado` no perfil, comparada com a saída medida
+  (diferente vira `parcial` com o motivo), `egress_expected`/`egress_matches` na listagem e avisos na prévia da
+  atribuição quando uma saída dedicada vai a mais de um aparelho ou é trocada por compartilhada. Prova `simulated`; o
+  piloto com dois servidores (29.7) depende do dono.
 - **Firewall do central para a LAN (29.8):** a leitura passa a conferir porta, perfil efetivo, interface, origem e
   programa de cada regra; estado novo `regra_obsoleta`; o comando proposto sai sem `-Program`, restrito à sub-rede e à
   interface lidas do sistema, idempotente, com inspeção e reversão. Uma regra presa a outra interface era lida como

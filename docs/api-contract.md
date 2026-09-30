@@ -2861,3 +2861,20 @@ Campos novos na leitura: `lan_subnet`, `warnings`, `stale_rules`, `ignored_rules
 `revert_command`. `commands` passa a trazer a regra sem `-Program`, restrita à sub-rede IPv4 e à interface lidas do
 sistema, idempotente; o que o sistema não informou vem como marcador (`<SUB-REDE-IPV4-DA-LAN>`), e `missing` diz o que
 faltou. A plataforma continua só lendo o firewall.
+
+**Medição por perna de UDP (29.5).** `GET /api/network/devices` → `devices[].last_measurement` ganha `udp_dns_ok` e
+`udp_ntp_ok` (booleano, ou nulo quando o `detail` não diz), derivados do `detail` da medição, que passa a trazer
+`UDP DNS <bytes> B (<n>ª de 3, <s> s), NTP <bytes> B (0 de 3, <s> s)`. `udp_ok` continua o E das duas pernas e **não**
+entra na regra de `trafego_verificado`.
+
+**Saída esperada (29.6).** `POST /api/network/profiles` aceita `params.egress_esperado` (IPv4 público) e
+`params.egress_esperado_ipv6`; endereço não público responde 422 com o campo no texto. `GET /api/network/devices`
+ganha, por aparelho, `egress_expected: {ipv4, ipv6, profile_id, profile_name}` ou nulo (a do perfil que dá a saída
+final: o proxy, se atribuído; senão a VPN) e `egress_matches` (nulo até a revisão pedida ser medida). Medida diferente
+da esperada leva a `parcial`, com o motivo no `detail`, e emite `network.updated` de nível `warn` com
+`data.acao: "saida_divergente"`. `POST /api/network/assign` devolve, por item, `egress_warnings: [{code, message,
+profile_id, shared_with?}]` com `saida_dedicada_compartilhada` e `saida_dedicada_trocada_por_compartilhada`; são avisos
+e não recusam (a confirmação por aparelho com conta real não muda).
+
+**Configuração.** `rede.cliente_tile` (tile do cliente VPN usado para religar o túnel sem reinício; vazio desliga) e
+`rede.espera_tun_s` com padrão 180 (era 60), contados do boot.
