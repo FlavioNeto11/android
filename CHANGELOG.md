@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-30 (noite) — item 23.8: o Outlook como dado
+
+Feito num branch de worktree; entra na `main` pela sessão que coordena a onda. Prova `simulated`; aparelho e conta
+Microsoft reais, `not_run` (29.12, 23.13).
+
+- **Login gerenciado do Outlook** (`app/conhecimento/apps/com.microsoft.office.outlook/`): `telas.yaml` e
+  `sessao.yaml` com o login em etapas observado no android-10 (boas-vindas → "Add account" → e-mail → "Continue" →
+  WebView da Microsoft → "Use your password" → senha pelo canal sensível → "Next"); tudo depois da senha e os
+  desafios da Microsoft são suposição marcada nos arquivos e terminam incertos quando não casam. `app.yaml` ganha
+  `provedor_de_sessao: microsoft` (segue sem ser âncora).
+- **Catálogo só de leitura** (`catalogo.yaml`, commit `806eed9`): abrir a caixa, levantar remetente e assunto,
+  buscar. Enviar e abrir mensagem ficam fora (T17 do ADR-057). **Decisão do dono pendente:** com catálogo, o Outlook
+  deixa de ser app de etapa livre no plano entre apps (ADR-058) e não lê valor para outra etapa (24.3); 16 testes do
+  plano entre apps ficam vermelhos. Reverter `806eed9` devolve o caminho livre e mantém o login gerenciado.
+- **Remover conta** recusa só a do app âncora (`SocialService.delete_account`), não toda conta com login automático.
+- **Motor genérico** (`integrations/app_declarado/`): `etapa_do_usuario.entrada` (a tela do app deslogado e o botão
+  que abre a do identificador) e `etapa_do_usuario.alternativas` (escolher a senha na tela que propõe código; nunca
+  em conta travada), com `formulario.py::botao_unico`. `automation/hierarchy.py` reconhece "Help us protect your
+  account" como conta travada em qualquer app.
+- Testes: `backend/tests/test_outlook_declarado.py`; `test_perfil_multiapp.py`,
+  `test_roteamento_por_conjunto_de_apps.py` e `test_pacote_declarado.py` passam a esperar o login gerenciado (e o
+  catálogo) do Outlook; `test_sensitive_input.py` ganha a página da Microsoft.
+
 ## 2026-09-30 (tarde) — Fase 29: pendências da terceira evolução (CI, prova durável de vazamento, firewall)
 
 **Integrado** na `main`; a implantação e a observação de 6 h são o item 29.4 (o estado fica em

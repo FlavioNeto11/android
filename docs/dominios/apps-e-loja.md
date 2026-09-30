@@ -116,6 +116,18 @@ sessão, que perguntam a este registro (ciclo).
 - sessão: `telas.yaml` + `sessao.yaml`, por `pacote.py::fabrica_de_sessao`, que monta o motor genérico
   `integrations/app_declarado/sessao.py::SessaoDeclarada` com o conhecimento do app.
 
+**O Outlook é o segundo pacote de dado** (`app/conhecimento/apps/com.microsoft.office.outlook/`, item 23.8,
+[perfis](perfis-e-instagram.md#o-outlook-como-dado-item-238)): `provedor_de_sessao: microsoft` sem ser âncora,
+`telas.yaml` + `sessao.yaml` com o login em etapas da conta Microsoft, e um `catalogo.yaml` só de leitura (abrir a
+caixa, levantar remetente e assunto, buscar). Enviar, responder e abrir uma mensagem (que a marca como lida) ficam
+fora: com o catálogo, uma etapa com efeito no Outlook sem ação dele é recusada pela porta de política (item 13.2), e o
+Outlook deixa de ser app de etapa livre no plano entre apps — e ação de catálogo não lê valor para outra etapa (item
+24.3), então "ler no Outlook e usar no Instagram" vira pergunta. **Decisão do dono pendente:** o catálogo está num
+commit só (`806eed9`); revertê-lo devolve o Outlook ao caminho livre com o login gerenciado mantido; com ele ficam
+vermelhos 16 testes do plano entre apps que usam o Outlook como o app sem catálogo
+(`test_planejador_entre_apps.py`, `test_porta_de_politica_por_app.py`). O que ele declara depois da senha é
+suposição, marcada nos arquivos.
+
 **O QA Messenger é a prova de extensibilidade, e só em teste.** `backend/tests/fake_dois_apps.py::manifesto_do_qa`
 registra o QA por `register_manifest()` com três capabilities (`QA_OPEN_CHAT`, `QA_COMPOSE`, `QA_SEND_MESSAGE`) e um
 provedor de sessão (`SessaoDoQa`), e o tira no fim. Não é embutido de propósito: com catálogo, o QA mudaria
@@ -138,7 +150,8 @@ Provas (`simulated`, harness na porta 5640, sem aparelho, conta ou IA real):
 - `backend/tests/test_dubles_cumprem_as_portas.py`: o `SessaoDoQa` e o `SessaoDeclarada` com o conhecimento do
   Instagram contra `SessionProvider`.
 
-Um app real novo pelo manifesto: `not_run` (o item 12.3 do plano-100 espera a escolha do dono).
+O Outlook pela pasta real: `simulated` (`backend/tests/test_outlook_declarado.py`); no aparelho, `not_run` (29.12).
+Um app real novo pelo manifesto além desses: `not_run` (o item 12.3 do plano-100 espera a escolha do dono).
 
 ## Releases: ciclo de vida
 

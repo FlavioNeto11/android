@@ -213,7 +213,26 @@ Caminhos relativos a `backend/app/`.
   desafio na Custom Tab; site trocado entre achar o campo e digitar; tela da senha que não chega para o login
   automático; carga recusada) e `backend/tests/test_contas_unificadas_api.py::test_conta_de_site_nao_conecta_pelo_login_gerenciado`. O `type_secret` do executor
   (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da conta em primeiro plano):
-  só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook é o 23.8; aparelho real: `not_run`.
+  só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8
+  ([abaixo](#o-outlook-como-dado-item-238)); aparelho real: `not_run`.
+- **Entrada e alternativa do login em etapas (item 23.8)** — mais dois blocos opcionais em
+  `formulario.etapa_do_usuario`, para o que o Outlook mostrou e o motor ainda não sabia fazer:
+  - `entrada: {tela, sinal_do_botao}`: a tela do app deslogado (tipo `login`, sem campo de senha, diferente da do
+    identificador) e o botão que abre a tela do identificador. `SessaoDeclarada._abrir_a_etapa_do_usuario` toca o
+    botão (um candidato só, `formulario.py::botao_unico`, sem casar a exclusão) e espera a tela do identificador até
+    `submit_wait_s`. É navegação: nenhuma tentativa começa, nada conta falha nem gasta o teto; desafio no caminho vai
+    para a pessoa; sem o botão único, ou sem a tela seguinte, incerto e nada digitado.
+  - `alternativas: [{tela, sinal_do_botao}]`: telas entre o "avançar" e a senha em que o provedor propõe um código e
+    oferece a senha. No laço de `_etapa_do_usuario`, ANTES do desvio de desafio, com o botão declarado na tela (um só,
+    no destino permitido, nunca numa tela de conta travada — `ConhecimentoDeSessao.botao_da_alternativa`), escolhe-se
+    a senha uma vez por tela e o prazo recomeça; enquanto a mesma tela segue com o botão, espera-se a troca (o WebView
+    demora) sem julgá-la desafio nem tocar de novo. Sem o botão, a tela segue o tipo dela: a de código vai para a
+    pessoa (`challenge_before_password`). A carga recusa alternativa em tela de tipo `desafio` (ADR-055: nada se toca
+    em conta travada), na tela da senha, repetida ou na do identificador. Escolher a senha é o método de entrada do
+    titular, não resolver desafio (ADR-009 segue valendo para código, aprovação e CAPTCHA).
+
+  Prova `simulated`: `backend/tests/test_outlook_declarado.py` (os dois blocos na pasta real do Outlook e a carga
+  recusada); quem não os declara segue igual (`::test_quem_nao_declara_entrada_nem_alternativa_segue_como_antes`).
 - `emit_needs_person_change()` (`modules/identity/application/session_rules.py`, chamada por
   `SessaoDeclarada._save`) dispara o evento `session.needs_person` (fila "Aguardando intervenção");
   `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)` ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
@@ -359,11 +378,12 @@ o da etapa em curso no aparelho (`AppState._pacote_em_curso`), senão a âncora.
 
 - dois apps com login gerenciado **no mesmo perfil** convivem: nada do segundo escreve na conta do primeiro, nem no
   sentido contrário (prova `simulated`: `backend/tests/test_sessao_declarada.py` com o correio fictício ao lado da
-  conta âncora, e `backend/tests/test_sessao_por_conta.py` na composição). Em produção ainda só o Instagram tem
-  provedor; o Outlook (ADR-057) ganha o dele no item 23.8. Prova `real` do login por conta: `not_run` (23.13);
+  conta âncora, e `backend/tests/test_sessao_por_conta.py` na composição). Desde o item 23.8 o Outlook (ADR-057) tem
+  o dele (`provedor_de_sessao: microsoft`, [abaixo](#o-outlook-como-dado-item-238)). Prova `real` do login por
+  conta: `not_run` (23.13);
 - a checagem "tela contradiz a sessão" (`taskqueue/executor.py::StepExecutor._sessao_desmentida`) vale para
-  qualquer app com provedor (`session_provider_of(package) is not None`; antes, só o pacote do Instagram). Em
-  produção é idêntico, porque o Instagram é o único com provedor.
+  qualquer app com provedor (`session_provider_of(package) is not None`; antes, só o pacote do Instagram). Desde o
+  23.8 vale também para o Outlook.
 
 **As regras de sessão do perfil.** `modules/identity/application/session_rules.py`:
 
@@ -448,12 +468,72 @@ históricos como a tabela `instagram_profiles` e o prefixo `/api/instagram/`), `
 só em dado, entra no registro com catálogo, leitura e login). Os testes leem o Instagram por
 `backend/tests/pacote_instagram.py`. Aparelho e conta reais depois da troca: `not_run`.
 
+## O Outlook como dado (item 23.8)
+
+`backend/app/conhecimento/apps/com.microsoft.office.outlook/`, lido pelos mesmos motores, sem Python do Outlook:
+
+| Arquivo | O que declara |
+|---|---|
+| `app.yaml` | `provedor_de_sessao: microsoft`, perfil e internet obrigatórios, `ancora_do_perfil: false` (desafio para só a conta Outlook, item 23.5), `renderizador_recusado: [swiftshader]` (29.11) |
+| `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", gaveta e caixa; extração do e-mail da conta |
+| `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensa só por recusa, conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
+| `catalogo.yaml` | só leitura: `OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS`, `SEARCH_MAIL`; nenhuma ação com efeito |
+
+O caminho do login: boas-vindas → "Add account" → e-mail no `auto_complete_input_email` → "Continue" → ~10 s de
+`common_auth_webview_progressbar` → WebView `common_auth_webview`; em "Verify your email" com "Use your password",
+escolhe a senha; sem essa oferta, é código e vai para a pessoa → senha no `passwordEntry` só pelo canal sensível, numa
+página cujo `bannerText` mostra ESTE e-mail → "Next" → "Stay signed in?" recusado com "No" → caixa → gaveta pelo
+botão do canto → o e-mail da conta, com um valor só.
+
+**Observado × suposto.** Observado (android-10, Outlook 5.2635.3, UiAutomator2, 30/09/2026, em inglês): as telas até
+a página da senha, com os ids e textos que os testes usam. Suposição, marcada linha a linha nos YAML:
+
+- tudo depois do "Next": o "Stay signed in?" ("No"/"Yes"), as telas do Outlook depois de entrar (dispensa por
+  "Skip", "Not now", "Maybe later", "Don't allow"), a caixa ("Inbox"), o botão da gaveta (`account_button`,
+  "Open navigation drawer") e o e-mail na gaveta (`account_email` e vizinhos);
+- os textos de desafio da Microsoft ("Help us protect your account", "Your account has been locked", "Enter code",
+  "Approve sign in request", "Verify your identity") e de recusa ("Your account or password is incorrect", "That
+  Microsoft account doesn't exist");
+- a tabela `pt` inteira (o aparelho observado roda em inglês) e o prazo de 60 s depois do "Next".
+
+O que a suposição errar termina incerto, com o login automático parado até uma pessoa olhar — nunca sucesso: a
+extração do e-mail não inclui os ids do WebView (`bannerText`), então nem o "Stay signed in?" nem a senha confirmam a
+conta, e um remetente da caixa não é lido como a conta. Os sinais de desafio e código são títulos de página ancorados
+na linha (`(?m)`), e o "Verify your email" exige também a linha "Send code" da mesma página: o detector roda sobre a
+caixa no meio da execução, e um assunto de e-mail solto não pode parar a etapa. Só "Help us protect your account"
+entrou no detector genérico (`automation/hierarchy.py::_CONTA_TRAVADA`, que omite a captura antes de ela sair): as
+outras frases, soltas ali, pegariam DM de golpe no Instagram ("your account has been locked").
+
+Consequências do login gerenciado: a conta Outlook nasce com `automated_login` (a sessão deixa de ser marcada à mão;
+é Conectar/Verificar conta), a sessão pronta de um comando Outlook + Instagram exige as duas contas prontas no
+aparelho (`RunService._mundo`), e remover a conta recusa só a do app âncora (`SocialService.delete_account`; antes
+recusava toda conta com login automático). O painel ainda esconde o botão de remover para conta com login automático
+(`GuiaContas.tsx`): a do Outlook sai pela API.
+
+**Catálogo: decisão do dono pendente.** Com `catalogo.yaml`, o Outlook deixa de ser app de etapa livre no plano
+entre apps (ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3): "ler o código no e-mail do Outlook
+e usar no Instagram" vira pergunta. O catálogo está num commit só (`806eed9`): mantê-lo deixa vermelhos 16 testes
+que provam esse fluxo com o Outlook como o app sem catálogo (`test_planejador_entre_apps.py`: 13;
+`test_porta_de_politica_por_app.py`: 3); revertê-lo devolve o caminho livre e mantém o login gerenciado.
+
+Riscos conhecidos, para a observação real (29.12): os sinais genéricos que já existiam ("verify your account",
+"security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista
+pode parar a etapa como desafio; e o rótulo do "Next" que venha repetido no texto e na descrição não seria achado
+pela geometria de sempre (o login pararia incerto, sem digitar).
+
+Prova `simulated`: `backend/tests/test_outlook_declarado.py` (a pasta real carrega; o login percorre as telas
+observadas com os ids e textos delas; código sem a oferta da senha, conta segurada e código depois da senha vão para a
+pessoa sem bloquear a persona; o `passwordEntry` só recebe a senha, pelo canal sensível; tela desconhecida não é
+sucesso; a caixa não é desafio nem mostra a conta; carga recusada) e
+`backend/tests/test_sensitive_input.py::test_pagina_da_microsoft_que_segura_a_conta_e_sensivel_mesmo_sem_campo`.
+Aparelho e conta Microsoft reais: `not_run` (29.12 e 23.13).
+
 ## Extensão para outros apps (item 12.3 — pendente)
 
-Hoje só o Instagram tem `session_provider` (a única pasta em `app/conhecimento/apps/`, descoberta por
-`integrations/app_declarado/pacote.py::descobrir`, o descobridor em
+O Instagram e, desde o item 23.8, o Outlook ([acima](#o-outlook-como-dado-item-238)) têm `session_provider` (pastas
+em `app/conhecimento/apps/`, descobertas por `integrations/app_declarado/pacote.py::descobrir`, o descobridor em
 `modules/applications/infrastructure/registry.py::_BUILTINS`) e, portanto, login determinístico e catálogo de ações.
-Outlook, TikTok e Facebook operam pela IA livre, com login feito
+TikTok e Facebook operam pela IA livre, com login feito
 pela PESSOA no Foco — sem `session_provider`, `ProfileAccountDTO.automated_login` fica `False` e a sessão é marcada
 manualmente via `PATCH /api/instagram/profiles/{id}/accounts/{account_id}` (`session_status`). O ponto de
 extensão está pronto: desde o ADR-052, uma pasta de dado com `app.yaml`, `catalogo.yaml` e `telas.yaml` +
