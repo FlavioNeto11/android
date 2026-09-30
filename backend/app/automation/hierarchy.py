@@ -61,9 +61,13 @@ _CONTA_TRAVADA = re.compile(
     r"(confirme que (?:voce )?e (?:um[ae]? pessoa|humano)|confirme que e voce|ajude a confirmar|verifique sua conta|"
     r"detectamos (?:uma? |algum[ae]? )?(?:tentativa|atividade|acesso|login|comportamento)|"
     r"(?:atividade|tentativa de login|login|acesso|comportamento) (?:suspeit|incomum)|comportamento automatizado|"
-    r"nao sou um rob|"
-    # inglês
+    r"nao sou um rob|ajude-nos a proteger (?:a )?sua conta|"
+    # inglês. "Help us protect your account" é o título da página da Microsoft que segura a conta até a pessoa
+    # comprovar um contato (item 23.8). As outras frases de desafio da Microsoft ("your account has been locked",
+    # "enter code") ficam só no `telas.yaml` do Outlook, ancoradas na linha: soltas aqui, um DM de golpe com "your
+    # account has been locked" travaria uma conta viva do Instagram.
     r"confirm (?:that )?you(?:'?re| are) (?:a )?human|confirm it'?s you|help us confirm|verify your account|"
+    r"help us protect your account|"
     r"(?:we|we'?ve|we have) detected (?:an? |some )?(?:unusual|suspicious)|"
     r"(?:suspicious|unusual) (?:login|activity|attempt|behavio)|automated behavio|"
     r"captcha|i'?m not a robot)")

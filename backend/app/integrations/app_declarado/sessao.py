@@ -34,6 +34,10 @@ envio. A Custom Tab do navegador declarado é tela do app só num site de login 
 fora dele a pessoa assume, o desafio continua visto, e a senha — conferida no instante de digitar, na mesma árvore do
 campo — nunca cai lá. Conta com `host` (de portal, no navegador) não tem login gerenciado.
 
+Item 23.8, também declarado: a tela do app deslogado com o botão que abre a do identificador (`entrada`) e, entre o
+"avançar" e a senha, a tela que propõe um código e oferece a senha (`alternativas`) — escolher a senha é o método de
+entrada do titular, não resolver desafio; sem a oferta na tela, a mesma tela vai para a pessoa.
+
 Telas aprendidas (ADR-054, fatia 5): cada chamada usa o conhecimento UNIDO (`conhecimento.com_as_aprendidas`) — a tela
 de casa que mudou numa atualização do app, aprendida com a aba de perfil declarada, entra no estado conhecido, e a
 conferência para nela em vez de voltar para fora do app. A conta continua lida só pela tela de perfil DECLARADA. E cada
@@ -748,6 +752,12 @@ class SessaoDeclarada:
             return AuthResult(Outcome.INVALID_CREDENTIAL, teto, session_status=SessionStatus.auth_required)
 
         etapa = k.formulario.etapa_do_usuario
+        if etapa is not None and etapa.entrada is not None and estado.tela == etapa.entrada.tela:
+            # A tela do app deslogado ("adicionar conta", item 23.8): um toque sem segredo abre a do identificador.
+            aberta = await self._abrir_a_etapa_do_usuario(rt, k, conta, tree, locale)
+            if isinstance(aberta, AuthResult):
+                return aberta
+            estado, tree = aberta
         form = estado.formulario if isinstance(estado.formulario, LoginForm) else None
         do_usuario = k.formulario_de_usuario(tree, locale) if etapa is not None and estado.tela == etapa.tela \
             else None
@@ -855,6 +865,39 @@ class SessaoDeclarada:
                           self._status_for(verdict.outcome), attempted_login=True)
 
     # ------------------------------------------------------------------ login em etapas (item 23.6)
+    async def _abrir_a_etapa_do_usuario(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                                        tree: UiTree, locale: str | None) -> tuple[TelaReconhecida, UiTree] | AuthResult:
+        """Da tela de entrada declarada até a do identificador (item 23.8): toca o botão declarado (um candidato só) e
+        espera a tela do identificador. É navegação: nada foi digitado e nenhuma tentativa começa, então nada aqui
+        conta falha nem gasta o teto diário. Um desafio no caminho vai para a pessoa como em qualquer outra tela."""
+        etapa = k.formulario.etapa_do_usuario
+        assert etapa is not None and etapa.entrada is not None
+        botao = k.botao_da_entrada(tree, locale)
+        if botao is None:
+            detail = (f"a tela de entrada do {self.conhecimento.rotulo} não mostra um botão único para começar o "
+                      "login; nada foi tocado")
+            self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+            return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+        await self._tap(rt, *botao.center)
+        prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
+        ultima = "nenhuma leitura"
+        while now().timestamp() < prazo:
+            await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
+            try:
+                tree, package = await self._observe(rt)
+            except DriverError:
+                continue
+            r = self._reconhecer(k, tree, package, locale)
+            if r.trava is not None or r.tipo in TIPOS_DE_DESAFIO:
+                return self._challenge(conta, rt.id, r.razao, r.trava)
+            if r.tela == etapa.tela:
+                return r, tree
+            ultima = r.razao
+        detail = (f"a tela do identificador do {self.conhecimento.rotulo} não apareceu depois da tela de entrada "
+                  f"({ultima}); nada foi digitado")
+        self._save(conta, rt.id, SessionStatus.auth_required, detail=detail)
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
+
     async def _etapa_do_usuario(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
                                 attempt: int, form_u: FormularioDoUsuario, identificador: str,
                                 locale: str | None) -> LoginForm | AuthResult:
@@ -881,6 +924,7 @@ class SessaoDeclarada:
 
         prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
         sem_a_conta = False
+        escolhidas: set[str] = set()
         while now().timestamp() < prazo:
             await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
             try:
@@ -888,6 +932,20 @@ class SessaoDeclarada:
             except DriverError:
                 continue
             r = self._reconhecer(k, tree, package, locale)
+            # Item 23.8: ANTES do desafio. A tela declarada como alternativa (o provedor propõe um código e oferece a
+            # senha) é, pelo tipo, de código — e iria para a pessoa sem que o titular tivesse escolhido o código. Com o
+            # botão declarado na tela (um só, fora de conta travada, no destino permitido), escolhe-se a senha, uma vez
+            # por tela; enquanto a mesma tela seguir com o botão, espera a troca (o WebView demora um instante) em vez
+            # de julgá-la desafio. Sem o botão, cai no desafio logo abaixo.
+            alternativa = k.botao_da_alternativa(tree, r, locale)
+            if alternativa is not None and self._destino(k, tree, package).permitido:
+                if r.tela not in escolhidas:
+                    escolhidas.add(r.tela)
+                    log.info("%s: %s ofereceu entrar com a senha (%s); escolhida", rt.id, self.conhecimento.rotulo,
+                             r.tela)
+                    await self._tap(rt, *alternativa.center)
+                    prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
+                continue
             if r.trava is not None or r.tipo in TIPOS_DE_DESAFIO:
                 trava = f" [{r.trava.descrever()}]" if r.trava is not None else ""
                 self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.AUTH_CHALLENGE.value,

@@ -18,6 +18,10 @@ etapas: o identificador numa tela com "avançar", a senha na seguinte), `conta.a
 aberta por um elemento fora da barra inferior, lida com um valor só) com `conta.ler_ao_entrar`, e `navegador` (a
 Custom Tab do login: os pacotes de navegador, a barra de endereço de cada um e os sites de login do app).
 
+Item 23.8, também opcional: `etapa_do_usuario.entrada` (a tela do app deslogado e o botão que abre a do identificador)
+e `etapa_do_usuario.alternativas` (a tela entre o "avançar" e a senha que oferece entrar com a senha no lugar do código
+— nunca uma de conta travada). São toques sem segredo, com um candidato só, validados aqui como o resto.
+
 Telas APRENDIDAS (ADR-054, fatia 5): o conhecimento da instalação entra por um fornecedor tipado
 (`definir_regras_aprendidas`), que o aprendizado liga na composição — este pacote não importa `app.modules`. O padrão
 não fornece nenhuma, e a sessão usa o conhecimento UNIDO (`com_as_aprendidas`) a cada chamada. O que o fornecedor
@@ -40,7 +44,7 @@ import yaml
 
 from ...automation import conhecimento_de_telas as telas_
 from ...automation.conhecimento_de_telas import ConhecimentoDeTelas, ConhecimentoInvalido, RegraDeTela, TelaReconhecida
-from ...automation.hierarchy import UiElement, UiTree
+from ...automation.hierarchy import SUBTIPO_CONTA_TRAVADA, UiElement, UiTree
 from ...planning.capabilities import CONHECIMENTO_DE_APPS
 from . import formulario as geometria
 from .formulario import FormularioDoUsuario, LoginForm
@@ -99,12 +103,29 @@ class RecusaDoIdentificador:
 
 
 @dataclass(frozen=True, slots=True)
+class PassoDeNavegacao:
+    """Um toque SEM segredo que o login em etapas dá numa tela declarada (item 23.8): o botão é achado pelo rótulo,
+    com um candidato só, e nada do que a conta guarda sai nele."""
+
+    tela: str                    # a tela do `telas.yaml` em que o botão aparece
+    sinal_do_botao: str          # o sinal que o rótulo do botão casa por inteiro
+
+
+@dataclass(frozen=True, slots=True)
 class EtapaDoUsuario:
     """Login em etapas (item 23.6): o identificador numa tela, a senha na seguinte."""
 
     tela: str                    # a tela do `telas.yaml` (tipo `login`) em que só o identificador é pedido
     sinal_do_botao: str          # o rótulo do botão que leva à tela da senha ("avançar"): nada secreto sai no toque
     recusas: tuple[RecusaDoIdentificador, ...] = ()
+    #: Item 23.8: a tela de ENTRADA do app deslogado ("adicionar conta") e o botão que abre a etapa do identificador.
+    #: Sem ela, o login só começa numa tela que já tem o campo.
+    entrada: PassoDeNavegacao | None = None
+    #: Item 23.8: telas que podem vir entre o "avançar" e a senha e que oferecem ENTRAR COM A SENHA como alternativa
+    #: (o provedor de contas propõe um código por padrão e deixa o titular escolher a senha). O toque é a escolha do
+    #: método de entrada que o próprio titular usa — nada é resolvido nem digitado nele. Sem o botão na tela, a mesma
+    #: tela segue o caminho que o tipo dela manda (a de código vai para a pessoa).
+    alternativas: tuple[PassoDeNavegacao, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +242,30 @@ class ConhecimentoDeSessao:
         sig = self.telas.sinais_de(locale)
         return geometria.identifier_form(tree, avancar=sig[etapa.sinal_do_botao],
                                          exclusao=sig[self.formulario.sinal_de_exclusao], ignorar=self._barras())
+
+    def botao_da_entrada(self, tree: UiTree, locale: str | None) -> UiElement | None:
+        """O botão da tela de entrada que abre a etapa do identificador (item 23.8), com um candidato só."""
+        etapa = self.formulario.etapa_do_usuario
+        if etapa is None or etapa.entrada is None:
+            return None
+        sig = self.telas.sinais_de(locale)
+        return geometria.botao_unico(tree, pacote=self.app, rotulo=sig[etapa.entrada.sinal_do_botao],
+                                     exclusao=sig[self.formulario.sinal_de_exclusao])
+
+    def botao_da_alternativa(self, tree: UiTree, r: TelaReconhecida, locale: str | None) -> UiElement | None:
+        """O botão da alternativa declarada para a tela `r` (item 23.8), ou `None`.
+
+        Nunca numa tela de conta travada (ADR-055: nada se toca nela), qualquer que seja o nome que a regra do app
+        lhe dê; e só com UM candidato — dois botões parecidos numa página de verificação é incerteza, não escolha."""
+        etapa = self.formulario.etapa_do_usuario
+        if etapa is None or (r.trava is not None and r.trava.subtipo == SUBTIPO_CONTA_TRAVADA):
+            return None
+        passo = next((a for a in etapa.alternativas if a.tela == r.tela), None)
+        if passo is None:
+            return None
+        sig = self.telas.sinais_de(locale)
+        return geometria.botao_unico(tree, pacote=self.app, rotulo=sig[passo.sinal_do_botao],
+                                     exclusao=sig[self.formulario.sinal_de_exclusao])
 
     def recusa_do_identificador(self, tree: UiTree, locale: str | None) -> str | None:
         """O detalhe da primeira recusa declarada cujo sinal está na tela depois do "avançar"."""
@@ -406,7 +451,7 @@ def _etapa_do_usuario(valor: object, telas: ConhecimentoDeTelas) -> EtapaDoUsuar
     """A tela da etapa tem de ser do tipo `login`: é o que a põe no caminho do login (e não no do "voltar ao estado
     conhecido", que apertaria "voltar" numa tela de entrada)."""
     onde = "formulario.etapa_do_usuario"
-    e = _mapa(valor, onde, permitidos=frozenset({"tela", "sinal_do_botao", "recusas"}),
+    e = _mapa(valor, onde, permitidos=frozenset({"tela", "sinal_do_botao", "recusas", "entrada", "alternativas"}),
               obrigatorios=frozenset({"tela", "sinal_do_botao"}))
     tela = _tela(e["tela"], f"{onde}.tela", telas)
     regra = telas.regra(tela)
@@ -420,8 +465,34 @@ def _etapa_do_usuario(valor: object, telas: ConhecimentoDeTelas) -> EtapaDoUsuar
                   obrigatorios=frozenset({"sinal", "detalhe"}))
         recusas.append(RecusaDoIdentificador(sinal=_sinal(r["sinal"], f"{onde}.recusas[{i}].sinal", telas),
                                              detalhe=_texto(r["detalhe"], f"{onde}.recusas[{i}].detalhe")))
+    entrada = _passo(e["entrada"], f"{onde}.entrada", telas, tipos=frozenset({"login"})) if "entrada" in e else None
+    if entrada is not None and entrada.tela == tela:
+        raise SessaoInvalida(f"{onde}.entrada.tela: a entrada é a tela de ANTES do identificador, não a dele")
+    alternativas: list[PassoDeNavegacao] = []
+    for i, bruto in enumerate(_lista(e.get("alternativas", []), f"{onde}.alternativas")):
+        # Conta travada (tipo `desafio`) nunca: nada se toca nela (ADR-055). Código (`dois_fatores`) sim — é a tela em
+        # que o provedor propõe o código e oferece a senha; a de login é a que pede escolher o método.
+        passo = _passo(bruto, f"{onde}.alternativas[{i}]", telas, tipos=frozenset({"login", "dois_fatores"}))
+        if passo.tela == tela or any(a.tela == passo.tela for a in alternativas):
+            raise SessaoInvalida(f"{onde}.alternativas[{i}].tela: {passo.tela!r} repetida ou é a do identificador")
+        alternativas.append(passo)
     return EtapaDoUsuario(tela=tela, sinal_do_botao=_sinal(e["sinal_do_botao"], f"{onde}.sinal_do_botao", telas),
-                          recusas=tuple(recusas))
+                          recusas=tuple(recusas), entrada=entrada, alternativas=tuple(alternativas))
+
+
+def _passo(valor: object, onde: str, telas: ConhecimentoDeTelas, *, tipos: frozenset[str]) -> PassoDeNavegacao:
+    """Um toque de navegação do login em etapas: a tela (de um dos `tipos`, nunca a do campo de senha) e o sinal do
+    rótulo do botão, presente em todo idioma."""
+    p = _mapa(valor, onde, permitidos=frozenset({"tela", "sinal_do_botao"}),
+              obrigatorios=frozenset({"tela", "sinal_do_botao"}))
+    tela = _tela(p["tela"], f"{onde}.tela", telas)
+    regra = telas.regra(tela)
+    if regra is None or regra.tipo not in tipos:
+        raise SessaoInvalida(f"{onde}.tela: a tela {tela!r} precisa ser do tipo {' ou '.join(sorted(tipos))} no "
+                             "`telas.yaml`")
+    if regra.formulario_de_senha:
+        raise SessaoInvalida(f"{onde}.tela: a tela {tela!r} é a do campo de senha; nela não há passo a dar")
+    return PassoDeNavegacao(tela=tela, sinal_do_botao=_sinal(p["sinal_do_botao"], f"{onde}.sinal_do_botao", telas))
 
 
 #: Um host como a barra de endereço mostra: letras, dígitos, hífen e ponto, com pelo menos um ponto; sem esquema,

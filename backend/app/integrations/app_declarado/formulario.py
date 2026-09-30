@@ -145,6 +145,27 @@ def identifier_form(tree: UiTree, *, avancar: re.Pattern[str], exclusao: re.Patt
     return FormularioDoUsuario(campo=campo, botao=botoes[0]) if len(botoes) == 1 else None
 
 
+def botao_unico(tree: UiTree, *, pacote: str, rotulo: re.Pattern[str], exclusao: re.Pattern[str]) -> UiElement | None:
+    """UM clicável habilitado do app cujo rótulo casa `rotulo` por inteiro, sem casar a `exclusao` (item 23.8).
+
+    É o toque de navegação do login em etapas (abrir a etapa do identificador, escolher entrar com a senha). Nenhuma
+    posição conta — a página muda de lugar com o teclado —, mas o candidato tem de ser um só: dois botões com o mesmo
+    rótulo, ou o de "entrar com outra conta", é incerteza, e o toque não acontece.
+
+    O rótulo vale pelo texto, pela descrição ou pelos dois juntos: num WebView o mesmo botão às vezes traz o texto
+    repetido na descrição, e "Use your password Use your password" não casaria por inteiro."""
+
+    def casa(e: UiElement) -> bool:
+        junto = _rotulo(e)
+        if not junto or exclusao.search(junto):
+            return False
+        return any(rotulo.match(t.strip()) for t in {e.text or "", e.desc or "", junto} if t.strip())
+
+    candidatos = [e for e in tree.elements
+                  if e.clickable and e.enabled and not e.editable and (not e.package or e.package == pacote) and casa(e)]
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
 def mostra_o_identificador(tree: UiTree, identificador: str) -> bool:
     """A tela MOSTRA este identificador (o que a etapa anterior digitou), como palavra inteira, fora de campo de texto?
 

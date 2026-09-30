@@ -362,6 +362,15 @@ def test_concorda_com_o_classificador_de_desafio_do_instagram(frase: str) -> Non
     assert tela.sensitive_reason and "desafio" in tela.sensitive_reason
 
 
+@pytest.mark.parametrize("frase", ["Help us protect your account", "Ajude-nos a proteger sua conta"])
+def test_pagina_da_microsoft_que_segura_a_conta_e_sensivel_mesmo_sem_campo(frase: str) -> None:
+    """Item 23.8: a página da Microsoft que segura a conta até a pessoa comprovar um contato é conta travada em
+    qualquer app (a captura é omitida antes de sair), como "Confirm you're human" — e sem exigir campo de texto."""
+    tela = parse_hierarchy(_tela(_no(text=frase), _no("android.widget.Button", text="Next")))
+    assert tela.sensitive is True, frase
+    assert tela.conta_travada is not None and tela.conta_travada.subtipo == "conta_travada"
+
+
 def test_toda_tela_da_vm_loja_e_sensivel() -> None:
     """Na loja, a conta Google do parque está em toda tela — não há critério de conteúdo que valha a discussão."""
     tela = parse_hierarchy(_tela(_no(text="Play Store")), sempre_sensivel=MOTIVO_LOJA)
