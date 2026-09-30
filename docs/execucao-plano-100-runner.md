@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-223 de 271 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+224 de 271 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -264,7 +264,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.7 | pendente | — | — | — |  |  |
 | 29.8 | implemented | simulated | opus | — | backend/app/devices/rede_firewall.py: a leitura confere, por regra de entrada habilitada, porta UDP, perfil efetivo da interface do endpoint_lan, interface, origem (tem de conter a sub-rede IPv4 da interface) e programa… |  |
 | 29.9 | pendente | — | — | — |  |  |
-| 29.10 | pendente | — | — | — |  |  |
+| 29.10 | implemented | real | opus | — | Real, 30/09/2026, central (0d70882) e notebook, emulador 37.1.11, Outlook 5.2635.3. E3 (14:08–14:36Z, AVD diag-outlook, um fator por vez): controle com -gpu swiftshader_indirect seleciona gles_mode_selected:swiftshader… |  |
 | 29.11 | pendente | — | — | — |  |  |
 | 29.12 | pendente | — | — | — |  |  |
 | 29.13 | pendente | — | — | — |  |  |
@@ -278,7 +278,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (48): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.4, 29.7, 29.9, 29.10, 29.11, 29.12, 29.13, 29.14, 29.15, 29.16, 29.17, 29.18, T.2
+Pendentes (47): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.4, 29.7, 29.9, 29.11, 29.12, 29.13, 29.14, 29.15, 29.16, 29.17, 29.18, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

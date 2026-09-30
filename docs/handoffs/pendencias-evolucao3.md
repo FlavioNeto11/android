@@ -54,12 +54,12 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | bloqueado (externo) |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
-| 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | E7 e E3 **executados** (`real`): `skiavk` refutado; falta E4 (GPU do host pelo serviço, android-07) depois do deploy |
-| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | não iniciado |
-| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | não iniciado |
+| 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
+| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | configuração por aparelho e por worker provada (`real`: boot, reinício, hibernar e acordar no android-07); leitura do renderizador selecionado e recusa por app em implementação (agente) |
+| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário do Outlook **passou** no android-07 (`real`); promoção e distribuição esperam o fim da janela e a decisão D9 |
 | 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | bloqueado (externo) |
 | 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
-| 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **parcial**, `simulated`; falta a inspeção visual depois do deploy |
+| 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **implantado**; inspeção `real` a 800 e 375 px com o dado do central; estados que o dado real não mostra: só jsdom |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | não iniciado |
 | 29.18 | fechamento | relatório §27, CHANGELOG, estado pelo mecanismo | tudo acima | C | não iniciado |
@@ -172,8 +172,45 @@ ociosos e avisar que os testes serão refeitos.
 | D6 | E-mail de teste com assunto inofensivo para a caixa da persona escolhida | conta do dono | 29.13 (C1) | 0 |
 | D7 | Autorizar Docker/WSL no central, ou esperar o job do CI | central | 29.14 (P17) | 0 |
 | D8 | Perfil Public do firewall do **notebook** está desligado (achado, fora do escopo) | notebook | segurança do notebook | 0 |
+| D9 | **Decidir o renderizador dos aparelhos com conta real** (android-01, 03 e 06) para receberem o Outlook: `gpu_mode: host` muda o que os apps enxergam do aparelho (o `GL_RENDERER` deixa de ser o SwiftShader e passa a dizer o nome da placa do host) e exige um reinício de cada aparelho. Alternativa: manter esses aparelhos como estão e pôr a conta Outlook da persona num aparelho de QA com GPU do host | central | 29.12 (23.12), 29.13 | 0 |
 
 ## Checkpoints
+
+### Checkpoint 5 — 30/09 ~16:10Z — E4 (GPU do host pelo serviço), canário do Outlook e painel
+
+Tudo dentro da janela do P16, sem reiniciar o backend; a leitura de 15:46Z e as seguintes seguem sem teste de
+vazamento e sem reinício pedido pela rede em android-02, 03 e 06.
+
+- **E4 no central** (`real`, 15:30–15:50Z, android-07, QA sem conta, ligado pela plataforma: tarefa `farm-central`,
+  sessão 0): com `instances.overrides.android-07.gpu_mode: host` o log do emulador diz
+  `emuglConfig_init: vulkan_mode_selected:host gles_mode_selected:host` e seleciona a NVIDIA RTX 2000. **O canário
+  oficial do Outlook passou** (`c-20260930153719-d11a00`: 4 splits instalados, "app chegou ao primeiro plano em 7 s e
+  permaneceu"; a release saiu da quarentena para `canary` em android-07, de propósito). Cinco minutos no onboarding — a
+  tela que derrubava o emulador — sem queda, sem sinal fatal, carga do convidado 0,12, ~200 MB de VRAM, captura de
+  tela funcionando. CPU do host 29–33% durante o experimento.
+- **E4 no notebook** (`real`, 15:51–15:58Z, android-09, QA): `gpu_mode: host` no `worker.yaml` (cópia em
+  `C:\farm\worker.yaml.antes-gpu-host-20260930`), agente religado; emulador na sessão 0 com
+  `gles_mode_selected:host` na Quadro T1000; o Outlook, que em 29/09 derrubou este mesmo emulador, ficou 5 min no
+  onboarding depois de `pm clear`, sem queda (177 MB de VRAM). O `worker.yaml` fica com `host`: os aparelhos do
+  notebook são todos de QA.
+- **Persistência da configuração** (`real`, android-07, 16:03–16:06Z): boot a frio, reinício pela plataforma, hibernar
+  e acordar (17 s, do snapshot) mantêm `gles_mode_selected:host`. É argumento de subida do emulador, então vale em
+  toda subida; mudar o renderizador muda a assinatura de hardware e descarta o snapshot antigo.
+- **O que o convidado enxerga** (`real`): com a GPU do host, o `GLES` do SurfaceFlinger é "Android Emulator OpenGL ES
+  Translator (NVIDIA RTX 2000 Ada …)". É o que um app lê como `GL_RENDERER`. Por isso a troca nos aparelhos com conta
+  real é decisão do dono (D9): é configuração declarada, mas muda o que o Instagram vê do aparelho.
+- **Telas do Outlook observadas sem digitar** (`real`, android-07, pela árvore de tela da plataforma): onboarding
+  (`SplashActivity`: `btn_primary_button` "Add account", `btn_secondary_button` "Create new account") e
+  `AddAccountActivity` (`auto_complete_input_email` "Enter your email", `btn_primary_button` "Continue",
+  `btn_add_google_account`, `menu_qr_code`). A tela da senha só aparece depois do e-mail: depende do consentimento (D4).
+- **Painel com o dado do central** (`real`, ~16:00Z, navegador embutido, só leitura além do nome do operador):
+  android-01 mostra "sem proxy (legado conferido)"; cada aparelho com bloqueio mostra "bloqueio fora da VPN: provado
+  em … (rev 1, cliente 1.14.2 (739))" e "UDP: DNS ok · NTP ok"; a 800 px e a 375 px a página não rola para o lado
+  (`scrollWidth` igual à janela) e a tabela rola dentro do cartão, com IP e pacote inteiros; no cartão de contas o
+  Outlook mostra o endereço com o ícone de carta e o Instagram o usuário com o arroba. Console sem erro.
+- **Não promovi o Outlook**: promover faz o parque perseguir a versão, e abrir o app num aparelho ainda em
+  SwiftShader derruba o emulador. A recusa por app (renderizador) está em implementação (29.11) e entra antes da
+  promoção.
 
 ### Checkpoint 4 — 30/09 ~15:35Z — primeiro deploy e início da janela do P16
 
