@@ -80,3 +80,14 @@ Varredura completa da UI do `frontend/src` em busca de:
 **Aplicados**: 10 mudanças ("perfil" → "persona" em contexto de configuração de pessoa; app package cru → legível).  
 **Listados**: 3 mudanças em GuiaConfiguracoes.tsx (UTF-8 bloqueia typecheck) + 1 mapa de tradução (requer lógica).  
 **Varredura completa**: nenhum outro texto visível não-conforme.
+
+## Complemento do orquestrador (30/09)
+
+A varredura do agente deixou cinco textos exibidos com "perfil" no sentido de Persona; aplicados depois, só strings:
+`GuiaConfiguracoes.tsx` (141, 158, 174, 175), `OperationalContextCard.tsx` (125, 127: rótulo "Persona", "nenhuma persona
+vinculada"), `FocusInfoSections.tsx` (405: "Conta da persona") e os dois testes que verificavam o texto antigo
+(`ProfileDetail.test.tsx`, `Button.test.tsx`). Prova `simulated`: `tsc` limpo e vitest de `profiles`, `devices`, `focus`
+e `components` (20 arquivos, 283 testes) verdes. A nota anterior de que o "UTF-8 bloqueia o typecheck" não se confirmou.
+Mantidos de propósito: "perfil" como perfil de conta de rede social (formulário do QA Messenger). Continua só listado:
+chaves cruas de parâmetros do plano em `PlanTab.tsx:137` (exige mapa de tradução).
+Correção de prova: o agente citou uma verificação no vite da porta 5196 (a da tarefa 06, não a dele); não a considere.

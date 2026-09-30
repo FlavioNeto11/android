@@ -915,7 +915,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   expect(text()).toContain('do grupo Cautelosos');                 // Curtir vem do grupo
   expect(text()).toContain('próprio · sobrepõe o grupo');          // DM foi mudada no perfil e o grupo diz outra coisa
   expect(text()).toContain('padrão');                              // Abrir o feed é o padrão do catálogo
-  expect(text()).toContain('1 ação(ões) e 0 limite(s) escolhidos neste perfil — sobrepõem o grupo');
+  expect(text()).toContain('1 ação(ões) e 0 limite(s) escolhidos nesta persona — sobrepõem o grupo');
 
   // "herdar" manda null — nunca uma cópia do valor do grupo, que prenderia o perfil contra o grupo
   await click(byRole('button', /herdar \(Só manual\)/i));

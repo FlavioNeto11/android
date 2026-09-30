@@ -402,7 +402,7 @@ export function AccountsSection({ contexto, instance }: { contexto: ContextoLido
             {!p.accounts ? (
               // Backend anterior ao v0.28: só a conta do Instagram do perfil, sem a lista.
               <p className={styles.groupHint}>
-                {arroba(p.username) ?? 'Conta do perfil'} · senha {p.credential_configured ? 'guardada' : 'não guardada'}
+                {arroba(p.username) ?? 'Conta da persona'} · senha {p.credential_configured ? 'guardada' : 'não guardada'}
                 {' '}— o servidor não informou as contas desta persona.
               </p>
             ) : p.accounts.length === 0 ? (

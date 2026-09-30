@@ -138,7 +138,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
       {erro ? <LoadErrorBanner error={erro} onRetry={() => setTentativa((t) => t + 1)} /> : null}
       <Card>
         <CardHeader title="Grupo de acesso"
-                    subtitle="O perfil herda as políticas e os limites do grupo. O que você mudar aqui é deste perfil e sobrepõe o grupo." />
+                    subtitle="A persona herda as políticas e os limites do grupo. O que você mudar aqui é desta persona e sobrepõe o grupo." />
         <CardBody>
           <div className={styles.groupPicker}>
             <Field label="Grupo">
@@ -155,7 +155,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
             <p className={styles.detail}>
               {proprias.length + limitesProprios.length === 0
                 ? 'Nenhuma escolha própria: tudo vem do grupo ou do padrão.'
-                : `${proprias.length} ação(ões) e ${limitesProprios.length} limite(s) escolhidos neste perfil${grupoNome ? ' — sobrepõem o grupo' : ''}.`}
+                : `${proprias.length} ação(ões) e ${limitesProprios.length} limite(s) escolhidos nesta persona${grupoNome ? ' — sobrepõem o grupo' : ''}.`}
             </p>
             {proprias.length + limitesProprios.length ? (
               <Button size="sm" variant="ghost" icon={Undo2} disabled={salvando}
@@ -171,8 +171,8 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
       </Card>
       <div className={styles.personaLayout}>
         <Card>
-          <CardHeader title="O que este perfil pode fazer"
-                      subtitle="Cada ação mostra de onde vem o valor: próprio, do grupo ou padrão. “Herdar” apaga a escolha deste perfil." />
+          <CardHeader title="O que esta persona pode fazer"
+                      subtitle="Cada ação mostra de onde vem o valor: próprio, do grupo ou padrão. “Herdar” apaga a escolha desta persona." />
           <CardBody>
             {apps.length > 1 ? (
               <Field label="Aplicativo" hint="Cada app tem o catálogo e a política dele; a pessoa escolhe qual está vendo.">
