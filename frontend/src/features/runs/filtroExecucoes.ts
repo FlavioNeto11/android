@@ -158,3 +158,16 @@ export function tituloCurto(command: string, max = 72): Titulo {
   const titulo = encurtar(maiuscula(curto.trim()), max);
   return { titulo: titulo || 'Execução sem objetivo escrito', app };
 }
+
+/**
+ * O histórico que a tela mostra: o que ela paginou do servidor mais o que o store tem ao vivo (a versão do store
+ * ganha, é a mais nova), da mais recente para a mais antiga. A tela guarda as páginas por conta própria porque o
+ * store só segura as 100 execuções mais recentes (`MAX_RUNS`): sem isto, "Carregar mais" passava de 100 e as
+ * antigas sumiam de novo, e a busca nunca achava uma execução além da centésima.
+ */
+export function unirExecucoes(aoVivo: readonly RunSummary[], paginadas: readonly RunSummary[]): RunSummary[] {
+  const porId = new Map<string, RunSummary>();
+  for (const r of paginadas) porId.set(r.id, r);
+  for (const r of aoVivo) porId.set(r.id, r);
+  return [...porId.values()].sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : a.id.localeCompare(b.id)));
+}

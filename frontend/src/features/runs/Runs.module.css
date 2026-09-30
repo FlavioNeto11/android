@@ -1244,12 +1244,33 @@ button.evTile:hover {
 
 .runItemCmd {
   color: var(--text-1);
+  font-weight: 500;
   font-size: var(--fs-sm);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
+}
+
+/* Tarefa UX 05: a barra de busca e filtros no topo da coluna, e o "Mostrar mais" no fim da lista. */
+.runBarra {
+  padding: 8px 8px 4px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.runListMais {
+  padding-top: 4px;
+}
+
+/* O app citado na abertura do objetivo, à parte do título (antes todo título começava com "No QA Messenger, …"). */
+.runItemApp {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
 }
 
 .runItemMeta {

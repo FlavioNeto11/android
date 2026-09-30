@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunSummary } from '../../api/types';
 import {
-  contagemPorGrupo, encurtar, filtrarExecucoes, filtroLocalAtivo, grupoDoStatus, lerFiltroExecucoes, tituloCurto,
+  contagemPorGrupo, encurtar, unirExecucoes, filtrarExecucoes, filtroLocalAtivo, grupoDoStatus, lerFiltroExecucoes, tituloCurto,
 } from './filtroExecucoes';
 
 function run(id: string, over: Partial<RunSummary> = {}): RunSummary {
@@ -98,5 +98,16 @@ describe('filtros de execuções', () => {
     ];
     const c = contagemPorGrupo(runs, lerFiltroExecucoes({ status: 'concluida', periodo: '7d' }), AGORA);
     expect(c).toMatchObject({ todas: 2, concluida: 1, falha: 1, pendencia: 0 });
+  });
+});
+
+describe('histórico da tela', () => {
+  it('une o que foi paginado com o que chegou ao vivo, sem repetir, a versão ao vivo ganhando, mais nova primeiro', () => {
+    const antiga = run('r-1', { created_at: '2026-09-01T00:00:00Z', status: 'running' });
+    const nova = run('r-2', { created_at: '2026-09-30T00:00:00Z' });
+    const atualizada = run('r-1', { created_at: '2026-09-01T00:00:00Z', status: 'completed' });
+    const u = unirExecucoes([nova, atualizada], [antiga, run('r-0', { created_at: '2026-08-01T00:00:00Z' })]);
+    expect(u.map((r) => r.id)).toEqual(['r-2', 'r-1', 'r-0']);
+    expect(u[1]!.status).toBe('completed');
   });
 });
