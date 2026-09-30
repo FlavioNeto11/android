@@ -1,7 +1,12 @@
 #!/bin/bash
 # Servidor WireGuard de UMA saída dedicada (piloto V1, item 29.7; ADR-056). Roda num servidor Linux novo (Ubuntu
-# 22.04+/Debian 12), como root: colado como "user data"/cloud-init na criação, ou por SSH (`sudo bash` com este
-# arquivo). Aceita UM par — o aparelho do perfil — e nada além do UDP do túnel (e do SSH, se ABRIR_SSH=1).
+# 22.04+/Debian 12, ou Oracle Linux 8/9), como root: colado como "user data"/cloud-init na criação (Lightsail:
+# "launch script"; Oracle Cloud: "Show advanced options › Management › cloud-init script"), ou por SSH (`sudo bash`
+# com este arquivo). Aceita UM par — o aparelho do perfil — e nada além do UDP do túnel (e do SSH, se ABRIR_SSH=1).
+#
+# O provedor tem um firewall próprio NA FRENTE do servidor, e ele também precisa deixar passar o UDP da porta:
+# Lightsail, aba Networking (regra UDP 51820); Oracle Cloud, a Security List (ou NSG) da sub-rede, regra de entrada
+# stateful UDP 51820 de 0.0.0.0/0. Sem ela, o script roda certo e o túnel não chega.
 #
 # Por que assim:
 # - a chave privada do CLIENTE nunca passa por aqui: quem a gera é o dono, no central (`sing-box generate
@@ -33,9 +38,33 @@ if ! [[ "$CHAVE_PUBLICA_DO_CLIENTE" =~ ^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$ ]]
   echo "ERRO: CHAVE_PUBLICA_DO_CLIENTE não tem a forma de uma chave WireGuard (44 caracteres base64)." >&2; exit 2
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq wireguard-tools nftables >/dev/null
+# Pacotes e o dono do filtro de pacotes, por família. Um filtro só manda aqui: num gancho do netfilter, um `drop`
+# de QUALQUER tabela vence, então o REJECT final que a imagem Ubuntu da Oracle Cloud carrega do `iptables`
+# (netfilter-persistent, /etc/iptables/rules.v4) ou o firewalld do Oracle Linux derrubariam o UDP do túnel mesmo com
+# a regra abaixo. Os dois são desligados, e as regras antigas ficam guardadas ao lado (desfazer = religar).
+if command -v apt-get >/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq wireguard-tools nftables >/dev/null
+  if systemctl list-unit-files netfilter-persistent.service >/dev/null 2>&1; then
+    systemctl disable --now -q netfilter-persistent || true
+    for f in /etc/iptables/rules.v4 /etc/iptables/rules.v6; do
+      [ -f "$f" ] && mv "$f" "$f.antes-saida-dedicada"
+    done
+  fi
+  REGRAS=/etc/nftables.conf
+elif command -v dnf >/dev/null; then
+  # Oracle Linux 8/9 (e família RHEL): wireguard-tools vem do repositório da distribuição; o módulo, do kernel UEK.
+  dnf install -y -q wireguard-tools nftables
+  if systemctl is-enabled -q firewalld 2>/dev/null; then
+    systemctl disable --now -q firewalld
+  fi
+  mkdir -p /etc/nftables
+  REGRAS=/etc/nftables/saida-dedicada.nft
+  grep -qF "$REGRAS" /etc/sysconfig/nftables.conf 2>/dev/null || echo "include \"$REGRAS\"" >> /etc/sysconfig/nftables.conf
+else
+  echo "ERRO: sem apt-get nem dnf. Use Ubuntu 22.04+/Debian 12 ou Oracle Linux 8/9." >&2; exit 1
+fi
 
 umask 077
 mkdir -p /etc/wireguard
@@ -65,7 +94,7 @@ sysctl -q -p /etc/sysctl.d/90-saida-dedicada.conf
 
 SSH_REGRA=""
 [ "$ABRIR_SSH" = "1" ] && SSH_REGRA="tcp dport 22 accept"
-cat > /etc/nftables.conf <<NFT
+cat > "$REGRAS" <<NFT
 #!/usr/sbin/nft -f
 flush ruleset
 table inet filtro {

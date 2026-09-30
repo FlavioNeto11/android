@@ -169,11 +169,11 @@ A janela do P16 vai até 21:30Z (18:30 em Brasília). Nada abaixo reinicia o bac
 
 | # | Quando | O quê | Onde | Custo | Libera |
 |---|---|---|---|---|---|
-| 1 | já | Regra de firewall (bloco D1 abaixo), num PowerShell **de administrador** | central | 0 | W0–W8 (29.9) depois das 21:30Z |
-| 2 | já | Reserva DHCP do central no **mesmo** `192.168.1.81` (MAC da Wi-Fi); se o roteador pedir reinício, só depois das 21:30Z | roteador | 0 | 29.9 estável |
-| 3 | já | Consentimento nos 3 cartões do Outlook (Lucas, Bruno, André) | painel › Persona › Contas | 0 | login (29.13) depois do segundo deploy |
-| 4 | quando quiser | Dois servidores e dois perfis (bloco D3: 5 passos cada) | Lightsail + painel | US$ 10/mês | V1 (29.7) |
-| 5 | depois do 3 | E-mail de teste para o Outlook do Lucas (texto no bloco D9) | conta do dono | 0 | C1 (29.13) |
+| 1 | ~~já~~ **feito 17:20Z** | Regra de firewall (bloco D1 abaixo), num PowerShell **de administrador** | central | 0 | W0 `real` (`liberado`); W1–W8 depois das 21:30Z |
+| 2 | ~~já~~ **feito 18:30Z** | Reserva DHCP do central no **mesmo** `192.168.1.81` (MAC da Wi-Fi); sem reinício do roteador | roteador | 0 | 29.9 estável |
+| 3 | ~~já~~ **feito 17:55–17:57Z** | Consentimento nos 3 cartões do Outlook (Lucas, Bruno, André) | painel › Persona › Contas | 0 | login (29.13) depois do segundo deploy |
+| 4 | quando quiser | Dois servidores e dois perfis (bloco D3: 5 passos cada; Oracle Cloud gratuito ou Lightsail) | provedor + painel | 0 (Oracle Always Free) ou US$ 10/mês | V1 (29.7) |
+| 5 | depois do 3 | E-mail de teste para o Outlook do Lucas (texto no bloco D9); rascunho já no Gmail do dono, o envio é dele | conta do dono | 0 | C1 (29.13) |
 | 6 | ~22:00Z em diante | Ficar à mão para um desafio da Microsoft no login | celular do dono | 0 | 23.13 |
 
 Depois das 21:30Z a IDE registra o 29.4, faz o segundo deploy (29.11 e agente do notebook), promove e distribui o
@@ -238,6 +238,16 @@ Dois servidores: **US$ 10/mês**; apagar o servidor encerra a cobrança. Outro p
 comum); a Vultr não abriu a página de preços para leitura (403), e as fontes de terceiros citam US$ 5/mês com IPv4.
 Nada é contratado pela IDE.
 
+**Caminho gratuito** (achado da sessão "Github" em 30/09, documentação oficial da Oracle): o Always Free da Oracle
+Cloud dá até duas VMs AMD Micro (`VM.Standard.E2.1.Micro`, 1/8 de OCPU, 1 GB, um IP público cada, 50 Mbps) na região
+de origem da conta. Riscos: a Oracle recupera instância ociosa (CPU e rede abaixo de 20% por 7 dias) e há relatos de
+falta de capacidade em São Paulo e Vinhedo. Para o piloto V1 (aparelhos de QA, sem conta) serve, e o país da saída
+não importa; para conta real, a saída deveria ser do Brasil e estável — aí o Lightsail (IP estático) é o caminho.
+Na Oracle: imagem **Canonical Ubuntu 24.04** (o script também aceita Oracle Linux 8/9), o script em "cloud-init
+script", e na Security List da sub-rede uma regra de entrada stateful **UDP 51820** de `0.0.0.0/0`. O script desliga
+o `iptables` que a imagem Ubuntu da Oracle carrega no boot (o REJECT final dele derrubaria o túnel) e guarda as regras
+ao lado. O IP público efêmero serve para o piloto; se a instância for recriada, o perfil muda.
+
 **Ação do dono, por servidor (A e B):**
 
 1. No central, num terminal: `C:\git\android\data\rede\sing-box-1.14.2-windows-amd64\sing-box.exe generate wg-keypair`.
@@ -246,10 +256,11 @@ Nada é contratado pela IDE.
 2. No Lightsail: criar a instância (Linux, Ubuntu 24.04, São Paulo, Nano com IPv4). Em "launch script", colar
    [`scripts/rede-saida-externa.sh`](../../scripts/rede-saida-externa.sh) com a `PublicKey` do passo 1 em
    `CHAVE_PUBLICA_DO_CLIENTE`.
-3. Na aba **Networking** da instância: anexar um **IP estático** (gratuito enquanto anexado; sem ele o IP muda ao
+3. Na aba **Networking** da instância (Lightsail; na Oracle, a Security List acima): anexar um **IP estático** (gratuito enquanto anexado; sem ele o IP muda ao
    parar e ligar); na lista de portas IPv4, **acrescentar UDP 51820** e tirar a HTTP 80. O firewall do Lightsail fica
    na frente do servidor: sem a regra UDP, o túnel não chega.
-4. Ler a chave pública do servidor: "Connect using SSH" do Lightsail e `sudo wg show wg0 public-key`.
+4. Ler a chave pública do servidor: `sudo wg show wg0 public-key` pelo SSH do console (Lightsail: "Connect using
+   SSH"; Oracle: "Cloud Shell" ou o console serial), ou no `/etc/issue`, que o script preenche.
 5. No painel, Aplicativos › Rede › Perfis › novo: nome `saida-a` (ou `-b`), tipo `vpn`, protocolo `wireguard`,
    endpoint = o IP estático, porta 51820, segredo = a `PrivateKey` do passo 1, e `params`:
    `{"peer_public_key": "<passo 4>", "address": "10.77.0.2/32", "egress_esperado": "<o IP estático>", "dns": "1.1.1.1", "mtu": 1420}`.
@@ -297,6 +308,21 @@ diário (05:17Z) no commit da `main`, que já tem a 063: a prova vem do run de 0
 Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/relatorio-validacao.md`.
 
 ## Checkpoints
+
+### Checkpoint 7 — 30/09 ~18:35Z — firewall, DHCP e consentimento prontos
+
+- **D1 feito pelo dono** (~17:20Z) e **W0 `real`** (17:5xZ, `POST /api/network/server/firewall-check`, só leitura):
+  `liberado`, perfil Public, interface Wi-Fi, sub-rede 192.168.1.0/24, sem aviso, sem regra obsoleta.
+- **D2 feito** (~18:30Z) pela sessão "Github" no Chrome do dono, com a sessão dele: reserva DHCP do MAC da Wi-Fi do
+  central no mesmo `192.168.1.81`, sem reinício do roteador.
+- **D4 feito** (17:55–17:57Z) pela sessão "Github" no painel, por delegação do dono e com a sessão dele, sem digitar
+  senha: as três contas Outlook com `consent_at` preenchido.
+- **D6**: rascunho no Gmail do dono; o envio é dele. A IDE confere a chegada na caixa antes do C1.
+- **CI**: o run 36747845045 (29.11) passou em pytest SQLite, mypy e painel e reprovou só no `npm audit`: sete avisos
+  novos da `axios` 1.19.0, publicados à tarde. Corrigido em `d197fec` (overrides na raiz, troca das duas cópias
+  empacotadas, disco conferido; K-064).
+- **D3**: o script passa a servir também na Oracle Cloud (Ubuntu com o `iptables` da imagem, e Oracle Linux com
+  firewalld); caminho gratuito no bloco D3.
 
 ### Checkpoint 6 — 30/09 ~17:15Z — D9 decidido, checklist do dono, entrega do D3
 
@@ -456,4 +482,5 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
    android-02, 03, 05 e 06. Ler `data/rede/observacao-p16/janela-20260930.md` no fim e registrar o 29.4.
 2. Depois da janela: segundo deploy (29.11) e atualização do agente do notebook; promover e distribuir o Outlook para
    android-07, 10 e 12; vincular as contas (Lucas 07, Bruno 10, André 12); com o D4, login e telas (23.7, 23.8, 23.13).
-3. Com o D1: W0–W8 no android-09. Com o D3: V1 no android-08 e no 02. Com o D6: C1 Outlook → Chrome no android-07.
+3. W1–W8 no android-09 (D1 e D2 feitos). Com o D3: V1 no android-08 e no 02. Com o e-mail do D6 na caixa: C1
+   Outlook → Chrome no android-07.
