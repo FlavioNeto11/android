@@ -4180,16 +4180,16 @@
   },
   "24.9": {
    "id": "24.9",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (r-20260930023442-bd5c5a), conta indisponível (r-20260930023809-12d329) e reinício no meio (r-20260930023901-13ec70); custo ~US$ 0,56.",
-   "blocker": "O dono reviu o D9 em 30/09 ~18:17Z (tudo em todos os aparelhos): o Outlook vai ao aparelho do Instagram de cada persona, e o recorte Outlook → Instagram volta ao escopo. Falta o segundo deploy (depois da janela do P16), o renderizador host no aparelho da persona, o login do Outlook (23.13) e a chamada paga dentro da autorização de 29/09. O e-mail de teste do dono foi enviado.",
+   "evidence": "Real, 30/09, central 9ff427c, android-01 (Lucas, conta real, só leitura): r-20260930230500-f52eec — etapa no Outlook leu o assunto 'Perfil para conferir: natgeo' (e-mail de teste do dono), etapa no Instagram abriu o perfil @natgeo; 1 de 1 com sucesso comprovado; custo estimado ~US$ 0,38 (saldo estimado da Anthropic 22,46 → 22,09), dentro da autorização de 29/09 (US$ 1,50; usado ~US$ 0,94 no total). Conta indisponível e reinício no meio provados antes com apps de QA (r-20260930023809-12d329, r-20260930023901-13ec70).",
+   "blocker": null,
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T18:18:47+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "25.9": {
    "id": "25.9",
@@ -4208,68 +4208,68 @@
   },
   "23.7": {
    "id": "23.7",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 30/09 15:44–15:50Z, android-07 (QA, sem conta), sem digitar, pela árvore de tela da plataforma (GET /api/instances/android-07/hierarchy): onboarding (SplashActivity; btn_primary_button 'Add account', btn_secondary_button 'Create new account') e AddAccountActivity (auto_complete_input_email 'Enter your email', btn_primary_button 'Continue', btn_add_google_account, menu_qr_code, btn_privacy_terms). O UiAutomator2 lê o Outlook em primeiro plano.",
-   "blocker": "As telas de senha e de desafio só aparecem depois de informar o e-mail: dependem do consentimento por conta (D4 do handoff pendencias-evolucao3.md) para saber se o login é WebView ou Custom Tab e quantas etapas tem.",
-   "grupo": "29-registros-p15",
+   "evidence": "Real, 30/09, android-10 e android-06: boas-vindas (carrossel outlook_stories), Add account (Continue desabilitado até o e-mail e com o texto repetido na descrição), WebView da Microsoft acessível na árvore, 'Verify your email' com 'Use your password', 'Enter your password' (passwordEntry, Next), e depois da senha: 'Microsoft account notice' (OK), diálogo de passkey do com.android.credentialmanager (recusado com Voltar), 'Authentication in progress', 'Add another account' (MAYBE LATER), privacidade (NEXT), diagnóstico (Decline), experiências (CONTINUE TO OUTLOOK), caixa e gaveta com o e-mail da conta.",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "23.8": {
    "id": "23.8",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "As duas telas observadas no 23.7 (onboarding e AddAccountActivity) já dão os sinais do começo do login; o motor de formulário em etapas (23.6) está pronto.",
-   "blocker": "O P15 NÃO é recusa do app ao emulador (corrigido em 30/09): o Outlook abre com a GPU do host. O sessao.yaml depende das telas de senha e de desafio, que só se observam com o consentimento da conta (D4). telas.yaml e catalogo.yaml de leitura dependem do app logado.",
-   "grupo": "29-registros-p15",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "telas.yaml e sessao.yaml do Outlook com a sequência observada (9ff427c) e o motor genérico com entrada, alternativas, dispensa por tela, dispensa por Voltar em outro pacote e extração da conta dentro de um painel. Real, 30/09: os logins do Bruno (android-03, 23:00Z) e do Lucas (android-01, 23:03Z) percorreram sozinhos todas as telas declaradas até a caixa. catalogo.yaml preparado e mantido fora da main (806eed9 no branch do agente): com ele o Outlook deixaria de ser etapa livre com read_value.",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "23.12": {
    "id": "23.12",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Canário aprovado no android-07 com a GPU do host (30/09, c-20260930153719-d11a00); o app também abre no android-09 (notebook) com gpu_mode: host. Decisão do dono de 30/09 (D9, alternativa conservadora): o gpu_mode dos aparelhos com conta real (android-01, 03, 06) não muda; o Outlook vai para aparelhos de QA com GPU do host — android-07 (central), android-10 e android-12 (notebook), um por conta, porque a plataforma aceita uma conta de cada app por aparelho.",
-   "blocker": "Promover e distribuir esperam o segundo deploy (29.11: a recusa por renderizador e o agente do notebook que declara o renderizador), depois da janela do P16 (21:30Z de 30/09). Não depende mais do dono.",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 30/09: release promovida (21:42Z) e distribuída; 'ready' em android-01, 02, 03, 06, 07, 08, 10 e 12, com o renderizador host lido de cada aparelho.",
+   "blocker": null,
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T17:04:12+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "23.13": {
    "id": "23.13",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "As 3 contas Outlook (Lucas, Bruno, André) estão ativas com a senha clonada no cofre (23.9, 23.11), conferido pela API em 30/09 17:00Z; o app abre e chega à tela de e-mail num aparelho com a GPU do host. Mapa decidido (D9): Lucas → android-07, Bruno → android-10, André → android-12.",
-   "blocker": "Falta o consentimento por conta (D4, do dono, no painel; as três com consent_at vazio) e a distribuição (23.12). Desafio da Microsoft no login fica com o dono (ADR-009).",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Microsoft.",
+   "blocker": "Persistência (fechar e reabrir o app e o aparelho mantendo a sessão) not_run. Achado: depois de abrir a gaveta, a dica 'Now your folders on mobile match…' (janela fora da árvore) deixou os logins do Bruno e do Lucas em 'incerto' até um Voltar; a verificação seguinte confirmou a conta.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T17:04:12+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "27.2": {
    "id": "27.2",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Rede trafego_verificado nos aparelhos das personas Bruno e André (com a prova de vazamento na linha, Fase 29); comando entre apps provado com apps de QA; Outlook abrindo com a GPU do host.",
-   "blocker": "Volta ao escopo com o D9 revisto (30/09 ~18:17Z): depende do 23.13 e do 24.9 no mesmo aparelho de conta real, com o gpu_mode host aplicado nele um por vez e a sessão do Instagram conferida antes e depois.",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09: android-03 e android-06 com rede trafego_verificado ('saída e apps provados', medições #67 e #70, prova de vazamento preservada), Instagram e Outlook logados na conta certa no mesmo aparelho; C1 provado no android-01 (sem rede gerenciada).",
+   "blocker": "Falta o C1 num aparelho com a rede verificada: precisa de um e-mail de teste do dono na caixa do Bruno ou do André (o de 30/09 foi só para o Lucas). Custo estimado ~US$ 0,38, dentro do que resta da autorização.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T18:18:47+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "27.3": {
    "id": "27.3",
@@ -4386,15 +4386,15 @@
   "29.11": {
    "id": "29.11",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "backend/tests/test_renderizador.py (leitura da linha emuglConfig_init, fallback silencioso como aviso no aparelho, renderizador_recusado no app.yaml, recusa app_incompativel em instalar, abrir, canário, distribuição e pré-voo, aparelho de worker pela batida), test_contratos_do_worker.py (campos gpu_mode/gpu_gles/gpu_vulkan com padrão), frontend InfraPage.test.tsx e infraState.test.ts. Real, 30/09, central 0d70882: a configuração por aparelho (instances.overrides.android-07.gpu_mode: host) e por worker (worker.yaml do notebook, android-09) selecionou gles_mode_selected:host em boot a frio, reinício, hibernar e acordar (android-07, 16:03–16:06Z).",
-   "blocker": "A leitura do renderizador pela API e a recusa no ambiente central esperam a segunda implantação, depois da janela do P16 (21:30Z); até lá a prova do código novo é simulada.",
+   "proof": "real",
+   "evidence": "Real, 30/09, central f6c7df2 em diante (deploy 21:33Z) e agente do notebook 0.1.0+f6c7df2: GET /api/instances devolve renderer {configured, gles, vulkan, fallback} lido do log (android-10 e 12: host/host). Com android.gpu_mode: host no config.yaml, os aparelhos que ainda rodavam o boot antigo mostraram configured=host, gles=swiftshader, fallback=true, e a distribuição do Outlook os RECUSOU (dry_run 21:44Z: 'Outlook derruba o emulador com o renderizador SwiftShader, e foi esse que o emulador deste aparelho selecionou') em android-01, 03 e 06; depois do reinício de cada um, gles=host e a instalação passou. Todos os aparelhos ligados do parque em host (01, 02, 03, 05, 06, 07, 08 no central; 09, 10, 12 no notebook). Achado: o aviso diz 'sem avisar' também quando a configuração mudou e o reinício ainda não aconteceu.",
+   "blocker": null,
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:56:15+00:00"
+   "quando": "2026-09-30T23:08:34+00:00"
   },
   "29.17": {
    "id": "29.17",
@@ -4447,6 +4447,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T21:31:37+00:00"
+  },
+  "29.9": {
+   "id": "29.9",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09, central 48efc82, android-09 (QA, notebook): W0 firewall-check 'liberado' (regra do dono, perfil Public, Wi-Fi, 192.168.1.0/24); W1 ligado com a GPU do host (22:34Z); W2 perfil vpn-central-wireguard, política exigida (22:35Z); W3 'configurado' (perfil importado, 22:37Z).",
+   "blocker": "W4 falhou: depois do reinício pedido pela rede o túnel não subiu (tun0 ausente, lockdown=0) e o adbd do convidado ficou offline também no adb do próprio notebook; a rede pediu um segundo reinício às 22:47Z. Rollback às 22:48Z (sem VPN, política livre); o aparelho voltou online às 22:53Z. Hipótese a medir: o caminho do túnel remoto e o ADB dependem um do outro quando a VPN sobe no convidado. W5–W8 not_run.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T23:08:34+00:00"
+  },
+  "29.12": {
+   "id": "29.12",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 30/09: canários por aparelho em android-10 (c-20260930190806-9eed42) e android-12 (c-20260930190947-b165db); promoção 21:42Z; distribuição com a recusa por renderizador ativa; Outlook 5.2635.3 'ready' (instalado, aberto e estável) em android-01, 02, 03, 06, 07, 08, 10 e 12. Correção medida no caminho: o GMS dos emuladores do central era lido como ausente (ro.com.google.gmsversion não existe na imagem google_apis) e bloqueava a distribuição (da62dd7). Telas do login observadas e declaradas (23.7, 23.8).",
+   "blocker": "android-05 ficou 'missing' depois de um timeout de adb na instalação (hibernado; instala ao acordar); android-09 e 13–15 (notebook) instalam quando ligados.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T23:08:34+00:00"
+  },
+  "29.13": {
+   "id": "29.13",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09, com o dono decidindo o renderizador host em todos (chat, ~18:20Z) e o consentimento das 3 contas: Outlook logado no aparelho do Instagram de cada persona — André em android-06 (senha pelo canal sensível; telas depois da senha passadas à mão e declaradas; session_ready 22:56Z), Bruno em android-03 (login automático de ponta a ponta pelas telas declaradas; session_ready 23:01Z) e Lucas em android-01 (idem; session_ready 23:04Z). Instagram das três contas conferido depois da troca de renderizador (06 21:58Z, 03 22:25Z) e o do Lucas reinstalado e logado de novo (22:32Z). C1 Outlook → Instagram só de leitura em android-01: r-20260930230500-f52eec, 'Perfil para conferir: natgeo' lido no Outlook e o perfil @natgeo aberto no Instagram, 1 de 1 com sucesso comprovado.",
+   "blocker": "O aceite no mesmo aparelho COM rede trafego_verificado (27.2) precisa do C1 em android-03 ou 06 (têm a rede), e o e-mail de teste foi só para o Lucas: falta um e-mail igual para a caixa do Bruno ou do André (ação do dono).",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T23:08:34+00:00"
   }
  },
  "rodadas": [
@@ -5251,6 +5290,24 @@
    "quando": "2026-09-30T21:31:37+00:00",
    "itens": [
     "29.4"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T23:08:34+00:00",
+   "itens": [
+    "29.9",
+    "29.11",
+    "29.12",
+    "29.13",
+    "23.7",
+    "23.8",
+    "23.12",
+    "23.13",
+    "24.9",
+    "27.2"
    ],
    "grupos": [
     "29-pendencias-evolucao3"

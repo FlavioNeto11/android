@@ -2103,6 +2103,23 @@ Hx, que não bloqueia o app com a GPU do host), E8, o login (consentimento) e a 
 - Limpeza (29.17): artefatos do diagnóstico movidos para `C:\Android\arquivo-diagnostico-20260930` e
   `data/arquivo/` (11,3 GB), sem apagar nada; as seis junções dos SDKs extras foram desfeitas antes (só o atalho).
 
+### 27.9 Depois da janela: renderizador em todos, Outlook logado e C1 (30/09, 21:30–23:10)
+
+| Aparelho | Conta | Renderizador | Instagram | Outlook | Rede | Observação |
+|---|---|---|---|---|---|---|
+| android-01 | Lucas | host | reinstalado e logado, `session_ready` 22:32 | `ready`, logado sozinho, `session_ready` 23:04 | sem rede gerenciada | C1 `r-20260930230500-f52eec` |
+| android-03 | Bruno | host | `session_ready` 22:25 (depois da troca) | `ready`, logado sozinho, `session_ready` 23:01 | `trafego_verificado` #70 | — |
+| android-06 | André | host | `session_ready` 21:58 (depois da troca) | `ready`, logado (telas pós-senha à mão), `session_ready` 22:56 | `trafego_verificado` #67 | — |
+| android-02, 07, 08 | QA | host | — | `ready` | 02: central | — |
+| android-05 | QA | host | — | `missing` (timeout de adb) | central | instala ao acordar |
+| android-09 | QA | host | — | (instala ao ligar) | W0–W3; W4 falhou; rollback | 29.9 |
+| android-10, 12 | QA | host (notebook) | — | `ready` (canário) | — | — |
+| android-04, 11, 13–15 | quarentena, loja, QA | host ao ligar | — | — | — | desligados |
+
+`real` salvo onde a tabela diz o contrário. Correções medidas no aparelho e implantadas no caminho: GMS pelo pacote
+(`da62dd7`), "Continue" desabilitado até o identificador (`43db7a6`), rótulo repetido na descrição (`9f7b18b`),
+releitura do campo sensível no WebView (`48efc82`), telas depois da senha (`9ff427c`). Custo: C1 ~US$ 0,38.
+
 ### 27.8 Custos
 
 Nenhuma chamada paga de IA nesta fase. GitHub Actions: jobs no runner do central. Provedores: nada contratado.

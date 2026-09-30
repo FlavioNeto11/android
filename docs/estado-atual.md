@@ -1,22 +1,20 @@
 # Estado atual — handoff
 
-**Revisado em 30/09/2026 (tarde): Fase 29 no ar em `0d70882` (migração 063); janela do P16 até 21:30Z.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 30/09/2026 (noite): Fase 29 no ar em `9ff427c` (migração 063); P16 provado em 6 h; Outlook logado nas 3 contas.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Pendências da terceira evolução (30/09, em curso): Fase 29. IMPLANTADO `0d70882`, migração 063, às 15:24Z.**
-  Coordenação, estado por tarefa, reservas de aparelho e pedidos ao dono em
-  [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md).
-  - **No ar:** prova durável de vazamento (P16, ADR-061), túnel religado pelo tile em vez de reinício em cadeia, UDP
-    por perna, saída esperada por aparelho, leitura do firewall por interface, correções do painel, CI de
-    dependências.
-  - **Real na subida:** a prova anterior foi adotada em android-02, 03 e 06 sem parar o cliente e sem reinício; no
-    android-05 o teste rodou, foi gravado e o túnel voltou pelo tile, sem reinício.
-  - **Janela de observação do P16 até 21:30Z de 30/09:** não reiniciar o backend nem implantar até lá (o laço de
-    observação grava em `data/rede/observacao-p16/`).
-  - **Outlook (P15):** o app não recusa o emulador; cai o SwiftShader-GL do host, e `skiavk` não serve. Falta medir a
-    GPU do host pelo serviço (android-07) e levá-la aos aparelhos.
+- **Pendências da terceira evolução (30/09): Fase 29. No ar em `9ff427c`** (primeiro deploy `0d70882` às 15:24Z,
+  segundo `f6c7df2` às 21:33Z e correções medidas até 22:56Z). Estado por tarefa, pedidos ao dono e checkpoints em
+  [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md); provas no [relatório §27](relatorio-validacao.md).
+  - **Real:** CI verde; P16 (6 h sem reinício de aparelho pela rede, remedição com a prova da linha); renderizador
+    `host` em todo o parque, lido do log e com recusa por app; Outlook promovido e `ready` em 8 aparelhos; as três
+    contas Outlook logadas no aparelho do Instagram de cada persona (01, 03, 06), Instagram conferido depois da troca;
+    C1 Outlook → Instagram só de leitura no android-01.
+  - **Falta:** C1 num aparelho com rede verificada (27.2: e-mail de teste do dono para o Bruno ou o André); W4 da rede
+    no notebook falhou e foi revertido (29.9); persistência da sessão do Outlook; PostgreSQL no cron de 01/10 (29.14).
+    Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
 
 - **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
   do notebook), migração 058. Estado por frente, pendências P1–P15 e próxima ação em

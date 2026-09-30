@@ -53,11 +53,11 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
-| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | D1 e D2 **feitos** pelo dono; W0 `real` (`liberado`); W1–W8 no android-09 depois das 21:30Z (cadastrar o par reinicia o servidor VPN) |
+| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | W0–W3 `real`; **W4 falhou** no android-09 (túnel não subiu e o adbd ficou offline; 2 reinícios pela rede); rollback 22:48Z; W5–W8 `not_run` |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
-| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **integrado** na `main` (`a89cf0d`…`bb9b8e5`), `simulated`; configuração `real` (boot, reinício, hibernar e acordar no android-07); implanta no segundo deploy, depois da janela, com o agente do notebook |
-| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário **passou** no android-07 (15:37Z), no android-10 (19:09Z, `c-20260930190806-9eed42`) e no android-12 (19:14Z, `c-20260930190947-b165db`), com a GPU do host do notebook; promoção depois do deploy (o android-02 tem o Outlook como desejado desde 29/09 e o abriria no SwiftShader) |
-| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | D4 feito; vínculos Bruno→android-10 e André→android-12 (outlook) feitos às 19:15Z; telas do login observadas até a senha (sem digitar a senha); YAML de login em escrita (23.8); o e-mail de teste foi enviado pelo dono |
+| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **implantado**, `real`: renderizador lido pela API; recusa real em 01/03/06 antes do reinício; parque ligado todo em `host` |
+| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | **feito**, `real`: promovido 21:42Z; `ready` em 01, 02, 03, 06, 07, 08, 10, 12; 05, 09, 13–15 instalam ao ligar |
+| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | **Outlook das 3 contas logado** no aparelho do Instagram de cada uma (01, 03, 06); **C1 real** no 01 (`r-20260930230500-f52eec`); falta o C1 num aparelho com rede verificada (e-mail de teste para Bruno ou André) |
 | 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
 | 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **implantado**; inspeção `real` a 800 e 375 px com o dado do central; estados que o dado real não mostra: só jsdom |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
@@ -385,6 +385,33 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 9 — 30/09 ~23:10Z — depois da janela: deploy, renderizador em todos, Outlook logado e C1
+
+- **29.4 fechado** (`real`): 6 h 05 min sem reinício de aparelho pela rede, remedição com a prova da linha.
+- **Deploys:** `f6c7df2` às 21:33Z (29.11, correção da axios, login gerenciado do Outlook) e o agente do notebook em
+  `0.1.0+f6c7df2`; depois, correções medidas no aparelho, cada uma com teste que falhava antes: GMS pelo pacote
+  (`da62dd7`), "Continue" desabilitado até o e-mail (`43db7a6`), rótulo repetido na descrição (`9f7b18b`), releitura
+  do campo sensível no WebView (`48efc82`), telas depois da senha (`9ff427c`). Cinco reinícios do backend, nenhum
+  reinício de aparelho pedido por prova de vazamento perdida. `2e29350` (boas-vindas pelo carrossel) ainda
+  não implantado.
+- **Renderizador `host` em todos** (confirmação do dono no chat, ~18:20Z): `android.gpu_mode: host` no `config.yaml`
+  (cópia `data/backups/config.yaml.antes-gpu-host-todos-20260930-213144`). QA primeiro (02, 05, 07, 08), depois as
+  contas reais uma por vez, cada uma com o Instagram conferido depois: 06 (21:58Z), 03 (22:25Z), 01 (reinstalado e
+  logado de novo, 22:32Z). Nenhuma tela "Confirm you're human". Efeito colateral: com `limits.max_online_devices: 4`,
+  a distribuição que ligou o 08 fez o rodízio hibernar 01, 03 e 06 juntos (snapshot, sem apagar nada); acordados um
+  por vez.
+- **Outlook:** promovido e `ready` em 01, 02, 03, 06, 07, 08, 10, 12. Vínculos Lucas→01, Bruno→03, André→06 (os de 10
+  e 12 desfeitos). Logins: André (android-06) com as telas depois da senha passadas à mão — "OK" no aviso da conta,
+  passkey recusada com Voltar, "Maybe later", "Decline" no diagnóstico opcional — e declaradas; Bruno (03) e Lucas (01)
+  **sozinhos** pelas telas declaradas. As três contas `session_ready`. Nenhum desafio da Microsoft.
+- **C1 real** (android-01, Lucas): `r-20260930230500-f52eec` leu "Perfil para conferir: natgeo" no Outlook e abriu
+  @natgeo no Instagram, só leitura; ~US$ 0,38 (autorização de 29/09: ~US$ 0,94 usados de 1,50).
+- **W4 falhou** no android-09 (notebook): depois de aplicar a VPN, o túnel não subiu e o adbd do convidado ficou
+  offline; a rede pediu 2 reinícios; rollback às 22:48Z e o aparelho voltou. Fica para investigar.
+- Achados registrados: dica "Now your folders…" depois da gaveta (fora da árvore; deixa o login incerto até um
+  Voltar); "Save your login info?" do Instagram em Views não clicáveis (o login do Lucas parou nela; "Not now" à mão);
+  o aviso de fallback do renderizador diz "sem avisar" também quando a configuração mudou e falta o reinício.
+
 ### Checkpoint 8 — 30/09 ~19:25Z — Outlook no notebook antes do deploy, telas do login
 
 - Canário oficial do Outlook, **por aparelho** (sem promover), no android-10 e no android-12 (notebook, `gpu_mode:
@@ -570,9 +597,9 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
 
 ## Próxima ação
 
-1. Janela do P16 em curso até 21:30Z: não reiniciar o backend, não implantar, não pedir `verify` nem reatribuir rede em
-   android-02, 03, 05 e 06. Ler `data/rede/observacao-p16/janela-20260930.md` no fim e registrar o 29.4.
-2. Depois da janela: segundo deploy (29.11) e atualização do agente do notebook; promover e distribuir o Outlook para
-   android-07, 10 e 12; vincular as contas (Lucas 07, Bruno 10, André 12); com o D4, login e telas (23.7, 23.8, 23.13).
-3. W1–W8 no android-09 (D1 e D2 feitos). Com o D3: V1 no android-08 e no 02. Com o e-mail do D6 na caixa: C1
-   Outlook → Chrome no android-07.
+1. Pedido ao dono (uma linha): um e-mail de teste igual ao do Lucas para a caixa do Bruno ou do André — fecha o 27.2
+   (C1 num aparelho com a rede verificada).
+2. Implantar o que está na `main` e ainda não subiu (boas-vindas pelo carrossel) junto com a próxima correção.
+3. Investigar o W4 (29.9) no android-09 antes de repetir: o túnel remoto e o ADB do convidado.
+4. Persistência do Outlook (23.13): fechar e reabrir o app e o aparelho e verificar a sessão.
+5. Fechamento (29.18): §27 com a matriz por aparelho e o resumo real × simulado × não executado.

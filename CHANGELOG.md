@@ -78,6 +78,12 @@ do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShade
   1.20.0 por `overrides`; as duas cópias empacotadas no driver entram no mesmo corretor do 29.1, agora com caminho
   aninhado. Conferido numa instalação limpa (audit alto sem achado, disco em 1.20.0, Appium no ar com o driver). K-064.
 - **Deploy:** `deploy.ps1` passa a instalar as dependências do Appium quando o lock muda e a conferir o disco.
+- **Depois da janela (30/09, 21:30–23:10Z):** renderizador `host` em todo o parque (decisão do dono), contas reais
+  uma por vez com o Instagram conferido; Outlook promovido e distribuído; as três contas Outlook logadas no aparelho do
+  Instagram de cada persona (duas sozinhas, pelas telas declaradas); C1 Outlook → Instagram real e só de leitura no
+  android-01. Correções medidas no caminho: GMS da imagem `google_apis` lido pelo pacote; botão de avançar
+  desabilitado até o identificador; rótulo repetido na descrição; releitura do campo sensível num WebView. W4 da rede no
+  notebook falhou (túnel e ADB) e foi revertido.
 - **Sonda UDP com repetição (29.5):** até 3 datagramas de 2 s por perna, parando no primeiro com resposta; o `detail`
   diz bytes, tentativa e tempo por perna (DNS e NTP), e a listagem ganha `udp_dns_ok`/`udp_ntp_ok`. UDP segue fora do
   critério de `trafego_verificado`. Prova `real`: o comando novo em android-05 e android-02 (83/48 B na 1ª, ~2 s por
