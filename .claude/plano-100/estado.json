@@ -4183,13 +4183,13 @@
    "status": "partial",
    "proof": "real",
    "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (r-20260930023442-bd5c5a), conta indisponível (r-20260930023809-12d329) e reinício no meio (r-20260930023901-13ec70); custo ~US$ 0,56.",
-   "blocker": "O recorte Outlook → Instagram depende do login do Outlook (23.13: consentimento D4 e renderizador D9), do e-mail de teste do dono (D6) e de chamada paga dentro da autorização de 29/09. O Outlook abrir deixou de ser o impedimento.",
-   "grupo": "29-registros-p15",
+   "blocker": "Pela decisão do dono de 30/09 (D9), o Outlook fica em aparelhos de QA, e a execução entre apps roda num aparelho só: o recorte Outlook → Instagram na conta real fica fora por decisão. O recorte que resta é Outlook → Chrome no android-07 (C1), que depende do login do Outlook (23.13: consentimento D4), do e-mail de teste do dono (D6) e de chamada paga dentro da autorização de 29/09.",
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T17:04:12+00:00"
   },
   "25.9": {
    "id": "25.9",
@@ -4236,40 +4236,40 @@
    "id": "23.12",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "Canário aprovado no android-07 com a GPU do host (30/09, c-20260930153719-d11a00); o app também abre no android-09 (notebook) com gpu_mode: host.",
-   "blocker": "Distribuir exige o renderizador do host nos aparelhos de destino (com SwiftShader o Outlook derruba o emulador). Os aparelhos das personas têm conta real: a troca do renderizador neles é decisão do dono (D9 do handoff pendencias-evolucao3.md). Os de QA podem receber depois da janela do P16.",
-   "grupo": "29-registros-p15",
+   "evidence": "Canário aprovado no android-07 com a GPU do host (30/09, c-20260930153719-d11a00); o app também abre no android-09 (notebook) com gpu_mode: host. Decisão do dono de 30/09 (D9, alternativa conservadora): o gpu_mode dos aparelhos com conta real (android-01, 03, 06) não muda; o Outlook vai para aparelhos de QA com GPU do host — android-07 (central), android-10 e android-12 (notebook), um por conta, porque a plataforma aceita uma conta de cada app por aparelho.",
+   "blocker": "Promover e distribuir esperam o segundo deploy (29.11: a recusa por renderizador e o agente do notebook que declara o renderizador), depois da janela do P16 (21:30Z de 30/09). Não depende mais do dono.",
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T17:04:12+00:00"
   },
   "23.13": {
    "id": "23.13",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "As 3 contas Outlook estão cadastradas com a senha clonada no cofre (23.9, 23.11); o app abre e chega à tela de e-mail num aparelho com a GPU do host.",
-   "blocker": "Falta o consentimento por conta (D4), a decisão do renderizador nos aparelhos com conta real ou o aparelho de QA para a conta (D9) e a distribuição (23.12). Não é mais bloqueio técnico do app.",
-   "grupo": "29-registros-p15",
+   "evidence": "As 3 contas Outlook (Lucas, Bruno, André) estão ativas com a senha clonada no cofre (23.9, 23.11), conferido pela API em 30/09 17:00Z; o app abre e chega à tela de e-mail num aparelho com a GPU do host. Mapa decidido (D9): Lucas → android-07, Bruno → android-10, André → android-12.",
+   "blocker": "Falta o consentimento por conta (D4, do dono, no painel; as três com consent_at vazio) e a distribuição (23.12). Desafio da Microsoft no login fica com o dono (ADR-009).",
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T17:04:12+00:00"
   },
   "27.2": {
    "id": "27.2",
    "status": "blocked",
    "proof": "not_run",
    "evidence": "Rede trafego_verificado nos aparelhos das personas Bruno e André (com a prova de vazamento na linha, Fase 29); comando entre apps provado com apps de QA; Outlook abrindo com a GPU do host.",
-   "blocker": "Depende do 23.13 e do 24.9 no mesmo aparelho: consentimento (D4), renderizador do aparelho da persona (D9), e-mail de teste (D6).",
-   "grupo": "29-registros-p15",
+   "blocker": "Fora por decisão do dono de 30/09 (D9): o Outlook não vai aos aparelhos com conta real do Instagram, e o aceite exige os dois apps logados no mesmo aparelho. Reabre se o dono trocar o gpu_mode de um aparelho com conta real (uma linha de configuração e um reinício).",
+   "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-09-30T17:04:12+00:00"
   },
   "27.3": {
    "id": "27.3",
@@ -5151,6 +5151,18 @@
     "29.11",
     "29.15",
     "29.17"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T17:04:12+00:00",
+   "itens": [
+    "23.12",
+    "23.13",
+    "24.9",
+    "27.2"
    ],
    "grupos": [
     "29-pendencias-evolucao3"

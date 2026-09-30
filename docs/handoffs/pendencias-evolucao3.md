@@ -55,13 +55,13 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
-| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | configuração por aparelho e por worker provada (`real`: boot, reinício, hibernar e acordar no android-07); leitura do renderizador selecionado e recusa por app em implementação (agente) |
-| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário do Outlook **passou** no android-07 (`real`); promoção e distribuição esperam o fim da janela e a decisão D9 |
-| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | bloqueado (externo) |
+| 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **integrado** na `main` (`a89cf0d`…`bb9b8e5`), `simulated`; configuração `real` (boot, reinício, hibernar e acordar no android-07); implanta no segundo deploy, depois da janela, com o agente do notebook |
+| 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | canário **passou** no android-07 (`real`); D9 decidido (QA): depois do segundo deploy, promover e distribuir só para android-07, 10 e 12 |
+| 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | D9 decidido; falta D4 (consentimento) e D6 (e-mail); o recorte Outlook → Instagram no mesmo aparelho fica fora pela decisão (ver D9) |
 | 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
 | 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **implantado**; inspeção `real` a 800 e 375 px com o dado do central; estados que o dado real não mostra: só jsdom |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
-| 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | não iniciado |
+| 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | arquivado (movido, 11,3 GB, nada apagado); restam os worktrees das frentes, depois do segundo deploy |
 | 29.18 | fechamento | relatório §27, CHANGELOG, estado pelo mecanismo | tudo acima | C | não iniciado |
 
 ## Frentes, arquivos e quem escreve
@@ -95,6 +95,9 @@ inteira, Docker/WSL e emulador de diagnóstico **não** se sobrepõem.
 | android-03, android-06 | **sim** (Bruno, André) | só observação (29.4): nenhuma ação, nenhum experimento | `trafego_verificado` | — |
 | android-01 | **sim** (Lucas) | nada | sem rede gerenciada | — |
 | android-09 (notebook) | não (QA) | W0–W8 (29.9), depois da regra de firewall | `stopped` | desatribuir a rede, `stop` |
+| android-07 | passa a ter (Outlook do Lucas) | Outlook com GPU do host (D9); canário já aprovado aqui | `stopped`, `gpu_mode: host` | desvincular a conta e desinstalar |
+| android-10, android-12 (notebook) | passam a ter (Outlook do Bruno e do André) | Outlook com GPU do host (D9; o `worker.yaml` já é `host`) | `stopped` | desvincular e desinstalar |
+| android-02, android-08 | não (QA) | piloto V1 (29.7), depois da janela e do D3 | 02 com a rede do central; 08 sem linha | voltar ao perfil do central (02) ou desatribuir (08) |
 | android-11 (loja) | conta Google do dono | nada (a atualização do Outlook, E8, é opcional e do dono) | `stopped` | — |
 
 ## Contrato do P16 (29.2 a 29.4)
@@ -160,6 +163,22 @@ ociosos e avisar que os testes serão refeitos.
 6. Fim da janela: segundo deploy com 29.5, 29.6, 29.8, 29.15 e o renderizador (29.11); depois 29.12.
 7. 29.7, 29.9, 29.13 e 29.14 quando a dependência externa de cada um chegar.
 
+## Checklist do dono (30/09, em ordem)
+
+A janela do P16 vai até 21:30Z (18:30 em Brasília). Nada abaixo reinicia o backend nem toca android-02, 03, 05 e 06.
+
+| # | Quando | O quê | Onde | Custo | Libera |
+|---|---|---|---|---|---|
+| 1 | já | Regra de firewall (bloco D1 abaixo), num PowerShell **de administrador** | central | 0 | W0–W8 (29.9) depois das 21:30Z |
+| 2 | já | Reserva DHCP do central no **mesmo** `192.168.1.81` (MAC da Wi-Fi); se o roteador pedir reinício, só depois das 21:30Z | roteador | 0 | 29.9 estável |
+| 3 | já | Consentimento nos 3 cartões do Outlook (Lucas, Bruno, André) | painel › Persona › Contas | 0 | login (29.13) depois do segundo deploy |
+| 4 | quando quiser | Dois servidores e dois perfis (bloco D3: 5 passos cada) | Lightsail + painel | US$ 10/mês | V1 (29.7) |
+| 5 | depois do 3 | E-mail de teste para o Outlook do Lucas (texto no bloco D9) | conta do dono | 0 | C1 (29.13) |
+| 6 | ~22:00Z em diante | Ficar à mão para um desafio da Microsoft no login | celular do dono | 0 | 23.13 |
+
+Depois das 21:30Z a IDE registra o 29.4, faz o segundo deploy (29.11 e agente do notebook), promove e distribui o
+Outlook (07, 10, 12), vincula as contas e, com o que estiver pronto, roda W0–W8 e V1 — um trabalho pesado por vez.
+
 ## Pedidos ao dono
 
 | # | Ação | Onde | Desbloqueia | Custo |
@@ -168,11 +187,11 @@ ociosos e avisar que os testes serão refeitos.
 | D2 | Reserva DHCP do central (MAC da Wi-Fi → `192.168.1.81`) | roteador | 29.9 estável | 0 |
 | D3 | Dois servidores pequenos com IPv4 próprio e as chaves dos clientes | provedor à escolha | 29.7 (P1) | ~US$ 14/mês (referência da pesquisa; conferir antes) |
 | D4 | Consentimento das 3 contas Outlook (Persona › Contas), **depois** do 29.12 | painel | 29.13 (23.13) | 0 |
-| D5 | Recarga da conta Anthropic e autorização das provas pagas | console do provedor | 29.13 (23.13, 24.9, 27.2) | US$ 2,8–4,5 estimados |
+| D5 | ~~Recarga da conta Anthropic~~ **feita** em 30/09 (saldo estimado US$ 22,46); vale a autorização de 29/09 (até US$ 1,50, usados ~US$ 0,56) | — | — | — |
 | D6 | E-mail de teste com assunto inofensivo para a caixa da persona escolhida | conta do dono | 29.13 (C1) | 0 |
-| D7 | Autorizar Docker/WSL no central, ou esperar o job do CI | central | 29.14 (P17) | 0 |
+| D7 | ~~Docker/WSL~~ **resolvido pelo CI**: o cron de 01/10 05:17Z roda a suíte em PostgreSQL | — | 29.14 | 0 |
 | D8 | Perfil Public do firewall do **notebook** está desligado (achado, fora do escopo) | notebook | segurança do notebook | 0 |
-| D9 | **Decidir o renderizador dos aparelhos com conta real** (android-01, 03 e 06) para receberem o Outlook: `gpu_mode: host` muda o que os apps enxergam do aparelho (o `GL_RENDERER` deixa de ser o SwiftShader e passa a dizer o nome da placa do host) e exige um reinício de cada aparelho. Alternativa: manter esses aparelhos como estão e pôr a conta Outlook da persona num aparelho de QA com GPU do host | central | 29.12 (23.12), 29.13 | 0 |
+| D9 | **Decidido pelo dono em 30/09 (~17:00Z, transmitido pela sessão "Github")**: a alternativa conservadora. O `gpu_mode` de android-01, 03 e 06 (contas reais) **não muda**; a conta Outlook de cada persona (as mesmas contas do Instagram: Lucas, Bruno, André) roda num aparelho de QA com GPU do host. Consequências abaixo, em "D4, D6 e D9" | — | 29.12, 29.13 | 0 |
 
 ## Entregas prontas, à espera da ação do dono
 
@@ -211,36 +230,65 @@ segundos o túnel de android-02, 03, 05 e 06; com a prova de vazamento na linha,
 
 ### D3 → piloto de saída distinta (29.7; fecha o P1 no que é piloto)
 
-**Ação do dono:** dois servidores pequenos com IPv4 público próprio, cada um com um WireGuard (ou sing-box) aceitando
-UM par; as chaves dos clientes geradas por ele; os dados entram pelo painel (Aplicativos › Rede › Perfis), um perfil
-por servidor. A referência de preço da pesquisa (dois servidores em São Paulo a US$ 7/mês cada) é de 30/09 e precisa
-ser conferida na contratação; nada é contratado pela IDE.
+**Provedor sugerido** (conferido em 30/09/2026 na documentação oficial): Amazon Lightsail, região São Paulo
+(`sa-east-1`), plano "Nano-0.5GB Linux with public IPv4" a **US$ 5,00/mês** cada, cobrado por hora até o teto mensal
+([bundles](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-bundles.html),
+[regiões](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-regions-and-availability-zones-in-amazon-lightsail.html)).
+Dois servidores: **US$ 10/mês**; apagar o servidor encerra a cobrança. Outro provedor serve igual (o script é Linux
+comum); a Vultr não abriu a página de preços para leitura (403), e as fontes de terceiros citam US$ 5/mês com IPv4.
+Nada é contratado pela IDE.
 
-Por perfil: tipo `vpn`, protocolo `wireguard`, `endpoint_host` e `endpoint_port` do servidor, o segredo (a chave
-privada do cliente, que vai ao cofre) e `params` com `peer_public_key`, `address` (o endereço do cliente no túnel),
-`egress_esperado` (o IPv4 público do servidor) e, se houver, `dns` e `mtu`.
+**Ação do dono, por servidor (A e B):**
 
-**Roteiro da IDE (V1):** atribuir um perfil a cada um de dois aparelhos de QA sem conta real (android-07 e android-08),
-política `exigida_com_bloqueio`; conferir em cada um `trafego_verificado`, `egress_matches: true`,
-`egress_shared_with: []`, `leak_result: 1`, UDP por perna; reiniciar, hibernar e acordar; parar o serviço num dos
-servidores e ver o aparelho ficar sem saída (falha fechada), sem cair para a saída do central. A reversão que **não**
-se faz num aparelho com conta real está em `docs/dominios/parque.md` ("Reversão do piloto de saída distinta").
+1. No central, num terminal: `C:\git\android\data\rede\sing-box-1.14.2-windows-amd64\sing-box.exe generate wg-keypair`.
+   Sai `PrivateKey` e `PublicKey`. A privada só vai ao formulário do painel (passo 5); não a cole em chat, arquivo
+   ou chamado.
+2. No Lightsail: criar a instância (Linux, Ubuntu 24.04, São Paulo, Nano com IPv4). Em "launch script", colar
+   [`scripts/rede-saida-externa.sh`](../../scripts/rede-saida-externa.sh) com a `PublicKey` do passo 1 em
+   `CHAVE_PUBLICA_DO_CLIENTE`.
+3. Na aba **Networking** da instância: anexar um **IP estático** (gratuito enquanto anexado; sem ele o IP muda ao
+   parar e ligar); na lista de portas IPv4, **acrescentar UDP 51820** e tirar a HTTP 80. O firewall do Lightsail fica
+   na frente do servidor: sem a regra UDP, o túnel não chega.
+4. Ler a chave pública do servidor: "Connect using SSH" do Lightsail e `sudo wg show wg0 public-key`.
+5. No painel, Aplicativos › Rede › Perfis › novo: nome `saida-a` (ou `-b`), tipo `vpn`, protocolo `wireguard`,
+   endpoint = o IP estático, porta 51820, segredo = a `PrivateKey` do passo 1, e `params`:
+   `{"peer_public_key": "<passo 4>", "address": "10.77.0.2/32", "egress_esperado": "<o IP estático>", "dns": "1.1.1.1", "mtu": 1420}`.
+   Criar o perfil não toca aparelho nenhum.
 
-### D4, D5, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9, 27.2)
+**Roteiro da IDE (V1), depois das 21:30Z:** atribuir `saida-a` ao android-08 e `saida-b` ao android-02 (QA, sem conta
+real), política `exigida_com_bloqueio`; conferir em cada um `trafego_verificado`, `egress_matches: true`,
+`egress_shared_with: []`, `leak_result: 1`, UDP por perna; reiniciar, hibernar e acordar; parar o `wg-quick@wg0` num
+servidor e ver o aparelho ficar sem saída (falha fechada), sem cair para a saída do central. A reversão que **não**
+se faz num aparelho com conta real está em `docs/dominios/parque.md` ("Reversão do piloto de saída distinta"). Prova
+do script: sintaxe conferida (`bash -n`); a execução num servidor real é `not_run` até o passo 2.
 
-1. **D9** (renderizador nos aparelhos com conta real, ou a conta Outlook num aparelho de QA com GPU do host): sem ela
-   o Outlook não pode ser aberto no aparelho da persona (com SwiftShader ele derruba o emulador).
-2. **D4** (consentimento por conta, em Persona › Contas e acesso › cartão do Outlook): sem ele a senha não entra no
-   canal sensível.
-3. Com as duas: promover a release (já em `canary`, aprovada no android-07), distribuir só para os aparelhos com GPU
-   do host, `inspect_app`, observar as telas de senha e de desafio (23.7), escrever `sessao.yaml`/`telas.yaml`/
-   `catalogo.yaml` (23.8), login e persistência por perfil (23.13). Desafio, código e CAPTCHA ficam com a pessoa
-   (ADR-009).
-4. **D6** (um e-mail de teste do dono para a caixa da persona, assunto inofensivo com um perfil público, sem dígitos
-   que pareçam código) e chamada paga dentro da autorização de 29/09 (até US$ 1,50; usados ~US$ 0,56; saldo estimado
-   US$ 22,46 depois da recarga de 30/09): cenário C1 — ler o assunto no Outlook, buscar o perfil no Instagram só de
-   leitura, com retomada, cancelamento e a negativa sem consentimento. Se o custo estimado passar do que resta da
-   autorização, a IDE pede antes.
+### D4, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9)
+
+**D9, decidido** (dono, 30/09): contas reais não mudam de renderizador. O que decorre, escolhido pelo caminho mais
+conservador, sem nova pergunta:
+
+- **Um aparelho de QA por conta Outlook.** A plataforma aceita uma conta de cada app por aparelho (409
+  `conta_do_app_ja_no_aparelho`, D2-a), então as três contas não cabem no android-07. Mapa: **Lucas → android-07**
+  (central; canário aprovado ali), **Bruno → android-10** e **André → android-12** (notebook; o `worker.yaml` já pede
+  a GPU do host, e os aparelhos de lá são todos de QA). Nenhuma troca de `gpu_mode` é necessária. O android-09 fica
+  para o W0–W8, e o android-08 e o 02 para o V1, para que nenhum experimento de rede aconteça num aparelho com conta.
+- O vínculo (persona, aparelho, `outlook`) entra pela IDE **depois** da instalação (29.12), pela rota do vínculo N:N;
+  a conta do Instagram de cada persona continua onde está.
+- **Comando entre apps:** a execução roda todas as etapas no mesmo aparelho, e cada aparelho precisa ter cada app do
+  comando. Com o Outlook fora dos aparelhos do Instagram, o recorte **Outlook → Instagram na mesma conta** (24.9) e o
+  aceite integrado **no mesmo aparelho** (27.2) ficam fora por decisão — pôr o Instagram real num aparelho de QA não se
+  propõe (ADR-055; risco de desafio). O C1 vira **Outlook → Chrome** no android-07: ler no Outlook o nome de um perfil
+  público e abri-lo no navegador, só leitura. Voltar atrás é reversível: trocar o `gpu_mode` de um aparelho com conta
+  real é uma linha de configuração e um reinício.
+
+**D4** (consentimento por conta, Persona › Contas e acesso › cartão do Outlook, nas três personas): sem ele a senha não
+entra no canal sensível. Pode ser dado a qualquer hora; só é usado no login, depois do segundo deploy. No login, um
+desafio da Microsoft (código, aprovação no celular) vai para o dono (ADR-009).
+
+**D6** (e-mail de teste, depois do D4): de uma conta do dono para a caixa Outlook do **Lucas**, assunto
+`Perfil para conferir: natgeo` e corpo `Oi! Quando puder, dá uma olhada no perfil público natgeo.` — sem dígitos,
+sem link, sem nada que pareça código. A prova C1 usa chamada paga dentro da autorização de 29/09 (resta ~US$ 0,94); se
+a estimativa passar disso, a IDE pede antes.
 
 ### D7 → PostgreSQL (29.14; fecha o P17)
 
@@ -249,6 +297,21 @@ diário (05:17Z) no commit da `main`, que já tem a 063: a prova vem do run de 0
 Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/relatorio-validacao.md`.
 
 ## Checkpoints
+
+### Checkpoint 6 — 30/09 ~17:15Z — D9 decidido, checklist do dono, entrega do D3
+
+- **29.11 integrado** na `main` (`a89cf0d`, `c45da93`, `c38c7fb`, `9367aef` da frente do renderizador, e `bb9b8e5`
+  com contrato, CHANGELOG e livro). Testes direcionados (renderizador, contratos do worker, pacote do agente,
+  arquitetura, rede, loja) e o painel (73 arquivos, 844 testes) verdes na árvore integrada; CI em curso
+  (run 36747845045). Não implantado: a janela segue.
+- **D9 decidido** pelo dono (transmitido pela sessão "Github"): contas reais não mudam de renderizador. Mapa de
+  aparelhos e consequências no bloco "D4, D6 e D9" (C1 vira Outlook → Chrome; Outlook → Instagram no mesmo aparelho e
+  o 27.2 ficam fora por decisão).
+- **D3 preparado:** `scripts/rede-saida-externa.sh` (um par, só UDP e SSH, chave privada do servidor não sai dele,
+  IPv4 só) e o passo a passo com o Lightsail São Paulo (US$ 5/mês por servidor, fonte oficial conferida em 30/09).
+  A chave do cliente é gerada pelo dono com o `sing-box` do central e vai só ao cofre.
+- Contas conferidas pela API (sem imprimir endereço): as três personas vivas têm a conta Outlook ativa, com a senha
+  clonada e **sem consentimento** (`consent_at` vazio).
 
 ### Checkpoint 5 — 30/09 ~16:10Z — E4 (GPU do host pelo serviço), canário do Outlook e painel
 
@@ -391,7 +454,6 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
 
 1. Janela do P16 em curso até 21:30Z: não reiniciar o backend, não implantar, não pedir `verify` nem reatribuir rede em
    android-02, 03, 05 e 06. Ler `data/rede/observacao-p16/janela-20260930.md` no fim e registrar o 29.4.
-2. Dentro da janela: E4 no android-07 (GPU do host pelo serviço) e canário do Outlook nele; inspeção visual do painel
-   (29.15).
-3. Depois da janela: `gpu_mode: host` nos aparelhos que vão receber o Outlook (exige reinício do backend), promoção e
-   distribuição (29.12), observação das telas e YAML do Outlook.
+2. Depois da janela: segundo deploy (29.11) e atualização do agente do notebook; promover e distribuir o Outlook para
+   android-07, 10 e 12; vincular as contas (Lucas 07, Bruno 10, André 12); com o D4, login e telas (23.7, 23.8, 23.13).
+3. Com o D1: W0–W8 no android-09. Com o D3: V1 no android-08 e no 02. Com o D6: C1 Outlook → Chrome no android-07.
