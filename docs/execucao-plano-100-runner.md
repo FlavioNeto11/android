@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-232 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+233 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -211,7 +211,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 23.10 | implemented | simulated |  | — | The reviewer's three findings on 23.10 were all real and are fixed. Each has a test that failed before the fix and passes now.  (1) GuiaConfiguracoes.tsx could show the loading skeleton forever. The catalog is now `AppC… | Real proof needs a second app with catalog.yaml (Outlook does not have one yet) and a deploy; neither is authorized in this round. |
 | 23.11 | partial | real |  | — | 29/09 ~22:26Z, central 081d696: contas Outlook criadas para as 3 personas ativas (acc-gHP-beH2mr0Hm4f8 André, acc-e8DatK8Dk0lqHh8S Bruno, acc-F8QScZU_KN9qdjVt Lucas) com o e-mail outlook.com confirmado pelo dono como lo… | consentimento de cada conta Outlook é do dono no painel (P5); vínculo persona-aparelho-outlook espera o P15 (o Outlook não roda no parque emulado); 5 personas… |
 | 23.12 | implemented | real | opus | — | Real, 30/09: release promovida (21:42Z) e distribuída; 'ready' em android-01, 02, 03, 06, 07, 08, 10 e 12, com o renderizador host lido de cada aparelho. | None |
-| 23.13 | partial | real | opus | — | Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Mic… | Persistência (fechar e reabrir o app e o aparelho mantendo a sessão) not_run. Achado: depois de abrir a gaveta, a dica 'Now your folders on mobile match…' (jan… |
+| 23.13 | implemented | real | opus | — | Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Mic… | Reinício do aparelho com o Outlook logado not_run. Achado: a dica 'Now your folders on mobile match…' depois de abrir a gaveta (janela fora da árvore) deixa o… |
 | 24.1 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: planejador de verdade (Opus) montou planos com required_apps [qa-messenger, chrome], app por etapa e saídas declaradas (r-20260930023442-bd5c5a… |  |
 | 24.2 | implemented | simulated |  | — | No change since the previous declaration. state.py::_policy_gate judges each step by the step's own app (step app_id, else the plan's app, else the device's app, via Scheduler._app_context). A capability that the step's… |  |
 | 24.3 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023442-bd5c5a concluída 4/4: a etapa do QA Messenger gravou primeiro_contato="Suporte QA" (step_outputs, app qa-messenger), a do Chro… |  |
@@ -280,7 +280,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (41): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 23.13, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.14, 29.16, 29.17, 29.18, 29.19, 29.20, T.2
+Pendentes (40): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.14, 29.16, 29.17, 29.18, 29.19, 29.20, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

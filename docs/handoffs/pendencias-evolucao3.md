@@ -601,5 +601,5 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
    (C1 num aparelho com a rede verificada).
 2. Implantar o que está na `main` e ainda não subiu (boas-vindas pelo carrossel) junto com a próxima correção.
 3. Investigar o W4 (29.9) no android-09 antes de repetir: o túnel remoto e o ADB do convidado.
-4. Persistência do Outlook (23.13): fechar e reabrir o app e o aparelho e verificar a sessão.
+4. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
 5. Fechamento (29.18): §27 com a matriz por aparelho e o resumo real × simulado × não executado.

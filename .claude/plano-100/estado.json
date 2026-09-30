@@ -4247,16 +4247,16 @@
   },
   "23.13": {
    "id": "23.13",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Microsoft.",
-   "blocker": "Persistência (fechar e reabrir o app e o aparelho mantendo a sessão) not_run. Achado: depois de abrir a gaveta, a dica 'Now your folders on mobile match…' (janela fora da árvore) deixou os logins do Bruno e do Lucas em 'incerto' até um Voltar; a verificação seguinte confirmou a conta.",
+   "evidence": "Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Microsoft. Persistência: Outlook fechado (am force-stop) e reaberto pela verificação da plataforma, sessão mantida (android-03 23:09:55Z, android-06 23:10:30Z).",
+   "blocker": "Reinício do aparelho com o Outlook logado not_run. Achado: a dica 'Now your folders on mobile match…' depois de abrir a gaveta (janela fora da árvore) deixa o login em 'incerto' até um Voltar.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T23:08:34+00:00"
+   "quando": "2026-09-30T23:10:46+00:00"
   },
   "27.2": {
    "id": "27.2",
@@ -5308,6 +5308,15 @@
     "23.13",
     "24.9",
     "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T23:10:46+00:00",
+   "itens": [
+    "23.13"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
