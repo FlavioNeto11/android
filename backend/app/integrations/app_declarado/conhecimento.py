@@ -141,6 +141,32 @@ class Dispensa:
     rotulos: tuple[re.Pattern[str], ...]     # rótulos de RECUSA ("pular", "agora não")
     ids: tuple[re.Pattern[str], ...]         # ids de recusa (o lado de um diálogo que não concede nada)
     sinal_de_salvar_login: str               # o "agora não" do "salvar dados de login?"
+    #: Item 23.8: o botão que fecha UMA tela intermediária declarada (tipo `intersticial`), só nela. É para o botão que
+    #: não é recusa em lugar nenhum além daquela tela ("OK" de um aviso, "Next" de um informativo): como rótulo
+    #: global, ele seria tocado em qualquer tela.
+    por_tela: tuple[PassoDeNavegacao, ...] = ()
+    #: Item 23.8: diálogo de OUTRO pacote (o sistema oferecendo algo) recusado pela tecla Voltar, sem tocar nele.
+    voltar: tuple[DispensaPorVoltar, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DispensaPorVoltar:
+    """O diálogo do pacote `pacote` com o `sinal` na tela: a tecla Voltar o fecha sem aceitar nada (item 23.8)."""
+
+    pacote: str
+    sinal: str
+
+
+@dataclass(frozen=True, slots=True)
+class Dispensar:
+    """Uma dispensa declarada que vale para a tela de agora: tocar `botao` ou apertar Voltar. `onde` vai ao log."""
+
+    onde: str
+    botao: UiElement | None = None
+
+    @property
+    def voltar(self) -> bool:
+        return self.botao is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +311,33 @@ class ConhecimentoDeSessao:
     def campo_de_senha(self, tree: UiTree) -> UiElement | None:
         return geometria.password_field(tree)
 
+    def dispensa_declarada(self, tree: UiTree, r: TelaReconhecida, package: str | None,
+                           locale: str | None) -> Dispensar | None:
+        """A dispensa declarada (item 23.8) que vale para esta tela, ou `None`.
+
+        - Outro pacote na frente, declarado em `dispensa.voltar`, com o sinal dele na tela e nenhuma verificação à
+          vista: a tecla Voltar (o diálogo do sistema fica sem resposta, nada é aceito).
+        - Uma tela do app em `dispensa.por_tela` (sempre `intersticial`, conferido na carga), sem trava: o botão
+          declarado, com um candidato só, do próprio app.
+        """
+        d = self.dispensa
+        if package and package != self.app:
+            texto = "\n".join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
+            for v in d.voltar:
+                if v.pacote == package and any(p.search(texto) for p in self.telas.sinal_em_qualquer_idioma(v.sinal)) \
+                        and telas_.detectar_conta_travada(tree, self.telas) is None:
+                    return Dispensar(onde=f"{package} ({v.sinal})")
+            return None
+        if r.trava is not None:
+            return None
+        passo = next((p for p in d.por_tela if p.tela == r.tela), None)
+        if passo is None:
+            return None
+        sig = self.telas.sinais_de(locale)
+        botao = geometria.botao_unico(tree, pacote=self.app, rotulo=sig[passo.sinal_do_botao],
+                                      exclusao=sig[self.formulario.sinal_de_exclusao])
+        return Dispensar(onde=r.tela, botao=botao) if botao is not None else None
+
     def botao_de_dispensa(self, tree: UiTree) -> UiElement | None:
         return geometria.dismiss_button(tree, rotulos=self.dispensa.rotulos, ids=self.dispensa.ids)
 
@@ -306,7 +359,8 @@ class ConhecimentoDeSessao:
         """Fora da barra inferior, a conta é lida pela extração declarada, no texto ou na descrição, e só quando a tela
         mostra UM valor: o menu de contas pode listar várias, e a primeira não é a aberta."""
         ex = self.telas.extracoes[self.conta.extracao]
-        valores = geometria.valores_extraidos(tree, pacote=self.app, ids=ex.ids, padrao=ex.padrao)
+        valores = geometria.valores_extraidos(tree, pacote=self.app, ids=ex.ids, padrao=ex.padrao,
+                                              cabe=lambda e: ex.cabe(tree, e))
         return next(iter(valores)) if len(valores) == 1 else None
 
     def conta_no_cabecalho(self, tree: UiTree) -> str | None:
@@ -578,8 +632,27 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
                       if "etapa_do_usuario" in f else None)
 
     campos_d = frozenset({"intersticiais_max", "rotulos", "ids", "sinal_de_salvar_login"})
-    d = _mapa(raiz["dispensa"], "dispensa", permitidos=campos_d, obrigatorios=campos_d)
+    d = _mapa(raiz["dispensa"], "dispensa", permitidos=campos_d | {"por_tela", "voltar"}, obrigatorios=campos_d)
+    por_tela: list[PassoDeNavegacao] = []
+    for i, bruto in enumerate(_lista(d.get("por_tela", []), "dispensa.por_tela")):
+        # Só `intersticial`: desafio, código e conta travada nunca se dispensam; login e casa não são "de passagem".
+        passo = _passo(bruto, f"dispensa.por_tela[{i}]", telas, tipos=frozenset({"intersticial"}))
+        if any(p.tela == passo.tela for p in por_tela):
+            raise SessaoInvalida(f"dispensa.por_tela[{i}].tela: {passo.tela!r} repetida")
+        por_tela.append(passo)
+    voltar: list[DispensaPorVoltar] = []
+    for i, bruto in enumerate(_lista(d.get("voltar", []), "dispensa.voltar")):
+        onde = f"dispensa.voltar[{i}]"
+        v = _mapa(bruto, onde, permitidos=frozenset({"pacote", "sinal"}), obrigatorios=frozenset({"pacote", "sinal"}))
+        pacote = _texto(v["pacote"], f"{onde}.pacote").strip()
+        if not _PACOTE.match(pacote):
+            raise SessaoInvalida(f"{onde}.pacote: {pacote!r} não é um pacote Android")
+        if pacote == telas.app:
+            raise SessaoInvalida(f"{onde}.pacote: a tela do próprio app se dispensa pelo botão (`por_tela`), não pelo "
+                                 "Voltar")
+        voltar.append(DispensaPorVoltar(pacote=pacote, sinal=_sinal(v["sinal"], f"{onde}.sinal", telas)))
     dispensa = Dispensa(
+        por_tela=tuple(por_tela), voltar=tuple(voltar),
         intersticiais_max=_inteiro(d["intersticiais_max"], "dispensa.intersticiais_max", minimo=0),
         rotulos=tuple(_regex(r, f"dispensa.rotulos[{i}]") for i, r in enumerate(_lista(d["rotulos"],
                                                                                       "dispensa.rotulos"))),

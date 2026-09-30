@@ -83,6 +83,19 @@ class Extracao:
     ids: tuple[str, ...]
     padrao: re.Pattern[str]
     arroba_solto: bool = False
+    #: Item 23.8: só elementos DENTRO de um destes (sufixo exato do id do contêiner). Para o valor que o app mostra
+    #: num texto sem id, dentro de um painel com id (a gaveta do Outlook: o e-mail da conta num TextView sem id, e à
+    #: esquerda a lista de contas, que não conta).
+    dentro_de: tuple[str, ...] = ()
+
+    def cabe(self, tree: UiTree, e: object) -> bool:
+        """O elemento está dentro de um dos contêineres declarados (sempre, quando não há contêiner declarado)."""
+        if not self.dentro_de:
+            return True
+        x1, y1, x2, y2 = e.bounds  # type: ignore[attr-defined]
+        return any(_sufixo(c.resource_id) in self.dentro_de and c is not e
+                   and c.bounds[0] <= x1 and c.bounds[1] <= y1 and x2 <= c.bounds[2] and y2 <= c.bounds[3]
+                   for c in tree.elements)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +140,8 @@ class ConhecimentoDeTelas:
         """Valor de uma extração declarada: primeiro pelos ids; com `palpite`, pelo primeiro `@texto` da tela."""
         ex = self.extracoes[nome]
         for e in tree.elements:
-            if _sufixo(e.resource_id) in ex.ids and (m := ex.padrao.match((e.text or "").strip())):
+            if ((_sufixo(e.resource_id) in ex.ids or (not ex.ids and ex.dentro_de)) and ex.cabe(tree, e)
+                    and (m := ex.padrao.match((e.text or "").strip()))):
                 return m.group(1).lower()
         if palpite and ex.arroba_solto:
             for e in tree.elements:
@@ -367,7 +381,8 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
         ex = _mapa(bruto, f"extracoes.{nome}")
         extracoes[nome] = Extracao(ids=_textos(ex.get("ids"), f"extracoes.{nome}.ids"),
                                    padrao=_regex(ex.get("padrao"), f"extracoes.{nome}.padrao"),
-                                   arroba_solto=bool(ex.get("arroba_solto", False)))
+                                   arroba_solto=bool(ex.get("arroba_solto", False)),
+                                   dentro_de=_textos(ex.get("dentro_de"), f"extracoes.{nome}.dentro_de"))
     regras: list[RegraDeTela] = []
     for i, bruto in enumerate(_lista(raiz.get("telas"), "telas")):
         onde = f"telas[{i}]"

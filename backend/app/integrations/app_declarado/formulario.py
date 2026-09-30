@@ -13,7 +13,7 @@ leitura do site na barra de endereço de uma Custom Tab do navegador declarado.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from ...automation.hierarchy import UiElement, UiTree
@@ -265,13 +265,17 @@ def account_opener(tree: UiTree, *, pacote: str, prefixos_de_id: tuple[str, ...]
     return candidatos[0].center if len(candidatos) == 1 else None
 
 
-def valores_extraidos(tree: UiTree, *, pacote: str, ids: tuple[str, ...], padrao: re.Pattern[str]) -> set[str]:
+def valores_extraidos(tree: UiTree, *, pacote: str, ids: tuple[str, ...], padrao: re.Pattern[str],
+                      cabe: Callable[[UiElement], bool] | None = None) -> set[str]:
     """Todos os valores que a extração declarada acha na tela: pelo texto e, sem texto que case, pela descrição, dos
-    elementos do app com um dos `ids` (sufixo exato); sem `ids`, de qualquer elemento do app. Quem lê exige UM valor:
-    uma lista de contas mostra várias, e a primeira não é a aberta."""
+    elementos do app com um dos `ids` (sufixo exato); sem `ids`, de qualquer elemento do app. `cabe` restringe aos
+    elementos dentro do contêiner declarado (item 23.8). Quem lê exige UM valor: uma lista de contas mostra várias, e
+    a primeira não é a aberta."""
     valores: set[str] = set()
     for e in tree.elements:
         if e.password or (e.package and e.package != pacote) or (ids and _sufixo(e.resource_id) not in ids):
+            continue
+        if cabe is not None and not cabe(e):
             continue
         for bruto in (e.text, e.desc):
             if m := padrao.match((bruto or "").strip()):

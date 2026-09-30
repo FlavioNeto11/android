@@ -349,14 +349,16 @@ def _conferir_conta_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, r: Te
 # ---------------------------------------------------------------------------------------------------- conta aberta
 async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, expected: str,
                     locale: str | None, aceitos: Iterable[str] = (),
-                    reconhecer: Reconhecer | None = None) -> AccountCheck:
+                    reconhecer: Reconhecer | None = None,
+                    voltar: Callable[[], Awaitable[None]] | None = None) -> AccountCheck:
     """Tenta ler a conta; abre a aba de perfil declarada (ou o acesso à conta fora da barra, item 23.6) e lê de lá.
 
     `observe` devolve `(UiTree, package)`; `tap` recebe (x, y). Nada aqui digita nem toca em nada além de dispensas
     de recusa e da aba de perfil (ou do acesso), que é navegação sem efeito externo. `expected` e `aceitos` são da
     conta do app que esta chamada abre (o @ e o login dela), nunca o @ de cadastro do perfil. `reconhecer` é o do
     provedor (`SessaoDeclarada._reconhecer`): a Custom Tab no site da conta é tela do app, e o desafio dentro dela é
-    visto; o padrão é o conhecimento puro.
+    visto; o padrão é o conhecimento puro. `voltar` aperta a tecla Voltar: é como sai o diálogo de outro pacote que o
+    app declara em `dispensa.voltar` (item 23.8); sem ele, esse diálogo não é dispensado aqui.
     """
     def ver(t: UiTree, p: str | None) -> TelaReconhecida:
         return reconhecer(t, p) if reconhecer is not None else k.reconhecer(t, package=p, locale=locale)
@@ -380,6 +382,13 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
         agora = ver(tree, package)
         if agora.trava is not None:
             return _travada(agora.trava)
+        # As dispensas declaradas pelo app (item 23.8) vêm antes: o botão de UMA tela intermediária ("OK" de um
+        # aviso) e o Voltar num diálogo de outro pacote (o sistema oferecendo uma chave de acesso).
+        declarada = k.dispensa_declarada(tree, agora, package, locale)
+        if declarada is not None and (declarada.botao is not None or voltar is not None):
+            await (tap(*declarada.botao.center) if declarada.botao is not None else voltar())  # type: ignore[misc]
+            await asyncio.sleep(espera)
+            continue
         if agora.outro_app and k.barra_de_endereco(package) is not None:
             break               # o navegador declarado fora do site da conta: nem a recusa se toca numa página alheia
         dispensar = k.botao_de_nao_salvar_login(tree, locale) or k.botao_de_dispensa(tree)
@@ -620,12 +629,20 @@ class SessaoDeclarada:
         # app deixou uma Custom Tab aberta num site que ninguém declarou, e nem a recusa se toca numa página alheia.
         fora = self._no_navegador_fora_do_site(k, tree, package, estado)
         for _ in range(k.dispensa.intersticiais_max):
-            if fora is not None or estado.tela != telas.DESCONHECIDA:
+            if fora is not None:
                 break
-            botao = k.botao_de_dispensa(tree)
-            if botao is None:
-                break
-            await self._tap(rt, *botao.center)
+            # A dispensa DECLARADA (item 23.8) vale também aqui: o app reaberto no meio do primeiro uso, ou com o
+            # diálogo do sistema por cima (outro pacote, que o reconhecimento só chama de "outro app").
+            declarada = k.dispensa_declarada(tree, estado, package, locale)
+            if declarada is not None and declarada.voltar:
+                await self._voltar(rt)
+            else:
+                if declarada is None and estado.tela != telas.DESCONHECIDA:
+                    break
+                botao = declarada.botao if declarada is not None else k.botao_de_dispensa(tree)
+                if botao is None:
+                    break
+                await self._tap(rt, *botao.center)
             await asyncio.sleep(float(self.ajustes.settle_s))
             tree, package = await self._observe(rt)
             estado = visto.anotar(tree, self._reconhecer(k, tree, package, locale))
@@ -672,7 +689,8 @@ class SessaoDeclarada:
         if k.telas.autenticada(estado.tela) and not force_login:
             check = await ler_conta(k, lambda: self._observe(rt), lambda x, y: self._tap(rt, x, y),
                                     expected=conta.handle, locale=locale, aceitos=conta.aceitos,
-                                    reconhecer=lambda t, p: self._reconhecer(k, t, p, locale))
+                                    reconhecer=lambda t, p: self._reconhecer(k, t, p, locale),
+                                    voltar=lambda: self._voltar(rt))
             if check.trava is not None:
                 self._app_voltou_a_frente(rt)
                 return self._challenge(conta, rt.id, check.detail, check.trava)
@@ -1037,12 +1055,28 @@ class SessaoDeclarada:
         prazo = now().timestamp() + float(self.ajustes.submit_wait_s)
         ultimo = Verdict(Outcome.UNCERTAIN, "a tela não mudou depois do envio")
         leu = False
+        dispensas = 0
         while now().timestamp() < prazo:
             await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
             try:
                 tree, package = await self._observe(rt)
             except DriverError:
                 continue
+            # Item 23.8: o que o app DECLARA dispensar depois de entrar (o aviso da conta, o diálogo de chave de acesso
+            # do sistema, os informativos do primeiro uso) sai daqui mesmo, sem esperar a tela de casa — a Microsoft
+            # empilha meia dúzia deles antes da caixa. Só o declarado (quem não declara segue igual), até o teto de
+            # dispensas, e cada uma renova o prazo: é a tela mudando, não o envio sem resposta.
+            if dispensas < k.dispensa.intersticiais_max:
+                declarada = k.dispensa_declarada(tree, self._reconhecer(k, tree, package, locale), package, locale)
+                if declarada is not None:
+                    dispensas += 1
+                    log.info("%s: %s — dispensa declarada (%s)", rt.id, self.conhecimento.rotulo, declarada.onde)
+                    if declarada.botao is not None:
+                        await self._tap(rt, *declarada.botao.center)
+                    else:
+                        await self._voltar(rt)
+                    prazo = max(prazo, now().timestamp() + float(self.ajustes.submit_wait_s))
+                    continue
             destino = self._destino(k, tree, package)
             ultimo = classificar_depois_do_envio(k, tree, package=k.app if destino.navegador else package,
                                                  expected_username=conta.handle, locale=locale,
@@ -1076,7 +1110,8 @@ class SessaoDeclarada:
 
         check = await ler_conta(k, observar, lambda x, y: self._tap(rt, x, y),
                                 expected=conta.handle, locale=locale, aceitos=conta.aceitos,
-                                reconhecer=lambda t, p: self._reconhecer(k, t, p, locale))
+                                reconhecer=lambda t, p: self._reconhecer(k, t, p, locale),
+                                voltar=lambda: self._voltar(rt))
         if check.trava is not None:
             return Verdict(Outcome.AUTH_CHALLENGE, check.detail, tela=check.trava.origem or telas.DESCONHECIDA,
                            trava=check.trava), False
@@ -1450,6 +1485,10 @@ class SessaoDeclarada:
 
     async def _tap(self, rt: DeviceRuntime, x: int, y: int) -> None:
         await rt.executor.run(rt.io.tap, x, y, timeout=30, label="toque")
+
+    async def _voltar(self, rt: DeviceRuntime) -> None:
+        """A tecla Voltar: a recusa de um diálogo de outro pacote declarado em `dispensa.voltar` (item 23.8)."""
+        await rt.executor.run(rt.io.press_key, "back", timeout=30, label="voltar")
 
     async def _fill_username(self, rt: DeviceRuntime, campo: UiElement, valor: str,
                              reler: Callable[[UiTree], UiElement | None]) -> bool:
