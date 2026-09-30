@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { isBoolean, isString, loadJson } from '../../lib/storage';
+import { isBoolean, loadJson } from '../../lib/storage';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
@@ -84,7 +84,7 @@ beforeEach(() => {
     state: (c.body as { to: string }).to, history: [],
   }));
   useToastStore.setState({ toasts: [] });
-  useUiStore.setState({ view: 'aprendizado' });
+  useUiStore.getState().navegar({ tela: 'aprendizado' }, 'replace');
   clipboard = vi.fn(async () => undefined);
   Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: clipboard }, configurable: true });
@@ -225,7 +225,7 @@ describe('página Aprendizado', () => {
     await waitFor(() => expect(item(HAB)).toBeTruthy());
     await click(byRole('button', /Configuração → Fluxos e receitas → Habilidades/, item(HAB)));
     expect(useUiStore.getState().view).toBe('configuracao');
-    expect(loadJson('settingsSection', isString)).toBe('fluxos');
+    expect(useUiStore.getState().rota.query.aba).toBe('fluxos');
     expect(loadJson('settings.section.habilidades', isBoolean)).toBe(true);
   });
 
@@ -242,15 +242,15 @@ describe('página Aprendizado', () => {
     expect(useUiStore.getState().view).toBe('configuracao');
   });
 
-  it('"Revisar" mostra o legado ativo com efeito, que só a pessoa rebaixa', async () => {
+  it('"Revisar" mostra o legado ativo com efeito, que só a pessoa desliga', async () => {
     await montar();
     await waitFor(() => expect(item('receita:40')).toBeTruthy());
     const legado = item('receita:40');
     expect(text(legado)).toContain('Curtir a última foto');
     expect(text(legado)).toContain('tem efeito externo');
-    await click(byRole('button', /^Rebaixar$/, legado));
+    await click(byRole('button', /^Desligar$/, legado));
     await setValue(byRole('textbox', /Motivo/, legado) as HTMLInputElement, 'comentário automático não');
-    await click(byRole('button', /^Confirmar rebaixamento/, legado));
+    await click(byRole('button', /^Confirmar desligamento/, legado));
     await waitFor(() => expect(statusCalls()).toHaveLength(1));
     expect(statusCalls()[0]?.body).toEqual({ to: 'disabled', reason: 'comentário automático não' });
   });

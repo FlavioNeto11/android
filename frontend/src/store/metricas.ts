@@ -172,17 +172,21 @@ export const JANELA_DE_EXECUCOES = 20;
  * CRESCE quando a tela Execuções carrega mais histórico — contar sobre ela inteira fazia o número mudar conforme a
  * tela visitada. Fixar a janela (ativas + as 20 mais recentes) deixa o valor igual em qualquer tela.
  */
-export function objetivosAguardando(runs: readonly RunSummary[]): { total: number; primeiraExecucao: string | null } {
+export function execucoesAguardando(runs: readonly RunSummary[]): { run: RunSummary; objetivos: number }[] {
   const recentes = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  let total = 0;
-  let primeira: string | null = null;
+  const saida: { run: RunSummary; objetivos: number }[] = [];
   recentes.forEach((r, i) => {
     if (i >= JANELA_DE_EXECUCOES && !isRunActive(r.status)) return;
     const n = (r.counts?.waiting_user ?? 0) + (r.counts?.uncertain ?? 0);
-    if (n > 0 && !primeira) primeira = r.id;
-    total += n;
+    if (n > 0) saida.push({ run: r, objetivos: n });
   });
-  return { total, primeiraExecucao: primeira };
+  return saida;
+}
+
+/** Soma dos objetivos das execuções de `execucoesAguardando` (a caixa de Pendências lista uma linha por execução). */
+export function objetivosAguardando(runs: readonly RunSummary[]): { total: number; primeiraExecucao: string | null } {
+  const lista = execucoesAguardando(runs);
+  return { total: lista.reduce((s, x) => s + x.objetivos, 0), primeiraExecucao: lista[0]?.run.id ?? null };
 }
 
 /** Personas bloqueadas pela plataforma. `null` enquanto a lista não chegou. */

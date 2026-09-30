@@ -2,10 +2,13 @@ import { CheckCheck, History, Inbox, ShieldAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
+import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { hashDe } from '../../lib/rotas';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { toast } from '../../store/toasts';
+import { usePendenciasStore } from '../pendencias/store';
 import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
 import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
@@ -14,8 +17,9 @@ import {
 } from './model';
 import styles from './Aprendizado.module.css';
 
-/** "Revisar": o legado ativo com efeito só pode ser rebaixado pela pessoa (published → disabled). */
-const REBAIXAR: AcaoDoItem = { to: 'disabled', label: 'Rebaixar', confirmar: 'Confirmar rebaixamento', perigo: true };
+/** "Revisar": o legado ativo com efeito só pode ser desligado pela pessoa (published → disabled). Na tela, "desligar";
+ *  o nome interno da transição ("rebaixar") era jargão. */
+const REBAIXAR: AcaoDoItem = { to: 'disabled', label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true };
 
 interface Leitura {
   itens: EntradaDoLivro[] | null;
@@ -47,6 +51,7 @@ export function ParaAprovarTab() {
       ? { itens: Array.isArray(r.value?.itens) ? r.value.itens : [], erro: null }
       : { itens: antes.itens, erro: toLoadError(r.reason) }));
     void useContagemDoAprendizado.getState().atualizar();
+    void usePendenciasStore.getState().atualizar();
   }, []);
 
   useEffect(() => {
@@ -111,9 +116,16 @@ export function ParaAprovarTab() {
       <section className={styles.secao} aria-labelledby="aprendizado-fila">
         <h2 id="aprendizado-fila" className={styles.secaoTitulo}><Inbox size={16} aria-hidden /> Para aprovar</h2>
         <p className={styles.secaoLead}>
-          O sistema publica sozinho só o que não tem efeito externo e se repetiu. O que tem efeito (mensagem, publicação)
-          ou texto escrito por uma pessoa para aqui, validado, esperando você. Rebaixar é sempre automático.
+          Itens com efeito fora do sistema (mensagem, publicação) ou com texto de pessoa esperam a sua aprovação.{' '}
+          <a className={styles.linkBtn} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
         </p>
+        <Disclosure summary="Saiba mais" bare>
+          <p className={styles.secaoLead}>
+            O sistema publica sozinho só o que não tem efeito externo e já se repetiu com sucesso. O que tem efeito ou
+            texto escrito por uma pessoa para aqui, já validado, esperando você. Quando um item publicado passa a
+            falhar, o sistema o desliga sozinho.
+          </p>
+        </Disclosure>
         {fila.erro ? <LoadErrorBanner error={fila.erro} onRetry={() => void carregar()} /> : null}
         {itensFila.length > 0 ? (
           <div className={styles.toolbar}>
@@ -160,9 +172,15 @@ export function ParaAprovarTab() {
       <section className={styles.secao} aria-labelledby="aprendizado-revisar">
         <h2 id="aprendizado-revisar" className={styles.secaoTitulo}><History size={16} aria-hidden /> Revisar</h2>
         <Banner tone="warning" icon={ShieldAlert} compact role="note">
-          Receitas e fluxos com efeito externo que já estavam ativos antes do D1. Eles continuam valendo como antes até
-          você decidir; rebaixar os desliga (com trilha) e a automação volta a pedir a IA nesses passos.
+          Itens antigos com efeito externo, ainda ativos. Você decide se continuam valendo.
         </Banner>
+        <Disclosure summary="Saiba mais" bare>
+          <p className={styles.secaoLead}>
+            São receitas e fluxos com efeito externo que já estavam ativos antes desta aprovação existir. Eles continuam
+            valendo como antes até você decidir. Desligar um item o tira de uso (a decisão fica registrada) e a automação
+            volta a pedir a IA nesses passos.
+          </p>
+        </Disclosure>
         {legado.erro ? <LoadErrorBanner error={legado.erro} onRetry={() => void carregar()} /> : null}
         {itensLegado.length > 0 ? (
           <div className={styles.toolbar}>
@@ -172,15 +190,15 @@ export function ParaAprovarTab() {
               <Button size="sm" variant="dangerGhost"
                       disabledReason={escolhidosLegado.length === 0 ? 'Selecione ao menos um item.' : null}
                       onClick={() => setLote('rebaixar')}>
-                Rebaixar selecionados ({escolhidosLegado.length})
+                Desligar selecionados ({escolhidosLegado.length})
               </Button>
             </div>
           </div>
         ) : null}
         {lote === 'rebaixar' && escolhidosLegado.length > 0 ? (
           <DecisaoInline
-            rotulo="Motivo do rebaixamento em lote"
-            acao={{ confirmar: `Confirmar rebaixamento de ${escolhidosLegado.length}`, perigo: true }}
+            rotulo="Motivo do desligamento em lote"
+            acao={{ confirmar: `Confirmar desligamento de ${escolhidosLegado.length}`, perigo: true }}
             onCancelar={() => setLote(null)}
             onConfirmar={(motivo) => aplicarEmLote(escolhidosLegado, () => REBAIXAR, motivo)}
           />

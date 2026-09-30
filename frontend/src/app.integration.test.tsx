@@ -505,7 +505,7 @@ describe('Central de Aparelhos — sessão completa', () => {
 
   it('Configuração, Diagnóstico e Execuções renderizam com os dados do backend', async () => {
     await goTo('#/configuracao');
-    await waitFor(() => expect(text()).toContain('Novo aplicativo'));
+    await waitFor(() => expect(text()).toContain('Gerenciar em Aplicativos'));
     expect(text()).toContain('com.poc.qamessenger');
     expect(text()).toContain('embutido');
     const builtinDelete = allByRole('button', /^Excluir/)[0] as HTMLElement;
@@ -645,21 +645,20 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('PUT', /android-07$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /android-07$/)[0]?.body).toEqual({ account_label: 'qa-novo-07' });
 
-    // --- Aplicativos: valida e cria ---
-    backend.on('POST', /^\/api\/apps$/, (c) => json({ id: 'novo', builtin: false, ...(c.body as object) }));
+    // --- Aplicativos: o cadastro novo mora só em Aplicativos (tarefa 06); aqui se edita dicas e seletores ---
+    backend.on('PUT', /^\/api\/apps\/[^/]+$/, (c) => json({ id: 'notes', builtin: false, ...(c.body as object) }));
     await click(byRole('tab', /^Aplicativos/));
-    await click(byRole('button', /^Novo aplicativo/));
-    const editor = await waitFor(() => byRole('dialog', /Novo aplicativo/));
+    expect(allByRole('button', /Novo aplicativo/)).toHaveLength(0);
+    await click(allByRole('button', /^Editar dicas e seletores/)[1] as HTMLElement);
+    const editor = await waitFor(() => byRole('dialog', /Editar Notas/));
+    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, '');
     await click(byRole('button', /^Salvar/, editor));
     await waitFor(() => expect(text(editor)).toContain('Dê um nome ao aplicativo.'));
-    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, 'Loja');
-    await setValue(byRole('textbox', 'Pacote Android', editor) as HTMLInputElement, 'com.poc.loja');
+    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, 'Notas 2');
     await click(byRole('button', /^Salvar/, editor));
-    await waitFor(() => expect(backend.callsTo('POST', /apps$/)).toHaveLength(1));
-    expect(backend.callsTo('POST', /apps$/)[0]?.body).toEqual({
-      name: 'Loja', package: 'com.poc.loja', activity: null, apk_path: null, nav_hints: null, known_selectors: null,
-    });
-    await waitFor(() => expect(text()).toContain('com.poc.loja'));
+    await waitFor(() => expect(backend.callsTo('PUT', /\/apps\/[^/]+$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /\/apps\/[^/]+$/)[0]?.body).toMatchObject({ name: 'Notas 2', package: 'com.poc.notes' });
+    await waitFor(() => expect(text()).toContain('Notas 2'));
 
     await goTo('#/diagnostico');
     await waitFor(() => expect(text()).toContain('Reexecutar diagnóstico'));
@@ -705,10 +704,10 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
   };
 
-  it('o menu lateral tem as oito seções e marca a atual', async () => {
+  it('o menu lateral tem as nove seções e marca a atual', async () => {
     await goTo('#/painel');
     const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
-    expect(nav.querySelectorAll('a')).toHaveLength(8);
+    expect(nav.querySelectorAll('a')).toHaveLength(9);
     expect(atual()).toEqual(['Painel']);
   });
 

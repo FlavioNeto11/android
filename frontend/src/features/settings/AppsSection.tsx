@@ -1,4 +1,4 @@
-import { AppWindow, Lock, PackageSearch, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { AppWindow, ArrowUpRight, Lock, PackageSearch, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type { AppConfig } from '../../api/types';
@@ -11,6 +11,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { PageSection } from '../../components/Page';
 import { localId } from '../../lib/ids';
+import { hashDe } from '../../lib/rotas';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Settings.module.css';
@@ -67,11 +68,12 @@ export function AppsSection() {
   return (
     <PageSection
       title="Aplicativos cadastrados"
-      subtitle="Aplicativos que a IA sabe abrir e operar. As dicas de navegação e os seletores conhecidos ajudam o agente a acertar de primeira."
-      actions={<Button variant="primary" icon={Plus} onClick={() => setEditing({ app: null })}>Novo aplicativo</Button>}
+      subtitle="Aplicativos que a IA sabe abrir e operar. Aqui você ajusta as dicas de navegação e os seletores conhecidos, que ajudam o agente a acertar de primeira. Cadastrar um aplicativo novo, distribuir versões e ver o uso ficam em Aplicativos."
+      actions={<a className={styles.linkGerenciar} href={hashDe('aplicativos')}>Gerenciar em Aplicativos <ArrowUpRight size={14} aria-hidden /></a>}
     >
       {apps.length === 0 ? (
-        <EmptyState icon={AppWindow} title="Nenhum aplicativo cadastrado" hint="Cadastre o app que será testado: basta o nome e o pacote Android." actions={<Button variant="outline" icon={Plus} onClick={() => setEditing({ app: null })}>Cadastrar aplicativo</Button>} />
+        <EmptyState icon={AppWindow} title="Nenhum aplicativo cadastrado" hint="O cadastro de um aplicativo novo fica em Aplicativos, na aba Loja."
+                    actions={<a className={styles.linkGerenciar} href={hashDe('aplicativos')}>Ir para Aplicativos <ArrowUpRight size={14} aria-hidden /></a>} />
       ) : (
         <ul className={styles.appList}>
           {apps.map((app) => {
@@ -89,7 +91,7 @@ export function AppsSection() {
                   {used} instância(s) · {selectors} seletor(es) · {app.apk_path ? 'APK configurado' : 'sem APK'} · {app.nav_hints ? 'com dicas de navegação' : 'sem dicas'}
                 </span>
                 <div className={styles.appActions}>
-                  <Button size="sm" icon={Pencil} onClick={() => setEditing({ app })}>Editar</Button>
+                  <Button size="sm" icon={Pencil} onClick={() => setEditing({ app })}>Editar dicas e seletores</Button>
                   <Button
                     size="sm"
                     variant="dangerGhost"

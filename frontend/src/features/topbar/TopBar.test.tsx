@@ -71,7 +71,7 @@ describe('TopBar — contador de aparelhos', () => {
   });
 });
 
-describe('Menu lateral — as oito seções sempre alcançáveis', () => {
+describe('Menu lateral — as nove seções sempre alcançáveis', () => {
   beforeEach(() => {
     useUiStore.getState().navegar({ tela: 'painel', query: { foco: undefined } }, 'replace');
     useUiStore.setState({ menuAberto: false, menuRecolhido: false });
@@ -79,11 +79,11 @@ describe('Menu lateral — as oito seções sempre alcançáveis', () => {
 
   const menu = (el: HTMLElement) => el.querySelector('nav[aria-label="Seções"]') as HTMLElement;
 
-  it('lista as oito seções como links canônicos, com aria-current só na atual', async () => {
+  it('lista as nove seções como links canônicos, com aria-current só na atual', async () => {
     const el = await renderBar([]);
     const links = Array.from(menu(el).querySelectorAll('a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/aprendizado', '#/infraestrutura', '#/configuracao',
+      '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/pendencias', '#/aprendizado', '#/infraestrutura', '#/configuracao',
       '#/diagnostico',
     ]);
     expect(links.map((a) => text(a))).toContain('Personas');
