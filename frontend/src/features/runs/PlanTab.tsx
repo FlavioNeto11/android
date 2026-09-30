@@ -120,7 +120,7 @@ export function PlanTab({ detail }: { detail: RunDetail }) {
         <p className={styles.muted} style={{ marginTop: 6 }}>
           Planejado por {plan.planner?.provider ?? '—'}{plan.planner?.model ? ` · ${plan.planner.model}` : ''}
           {plan.planner?.simulated ? ' · simulado' : ''}
-          {plan.app_package ? <> · app <span className="mono">{plan.app_package}</span></> : null}
+          {plan.app_package ? <> · app <span className="mono" title={`Identificador: ${plan.app_package}`}>{appLabel(apps, plan.app_id) ?? plan.app_package}</span></> : null}
           {/* ADR-058 (T18): comando que atravessa apps — a lista de etapas abaixo mostra qual roda em qual. */}
           {plan.required_apps && plan.required_apps.length > 1 ? (
             <> · apps exigidos: {plan.required_apps.map((id) => appLabel(apps, id) ?? id).join(', ')}</>
