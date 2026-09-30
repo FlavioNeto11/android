@@ -14,15 +14,20 @@ Varredura completa da UI do `frontend/src` em busca de:
 
 ## Achados e correções aplicadas
 
-| Arquivo | Linha | Problema | Solução aplicada | Risco | Status |
-|---------|-------|----------|------------------|-------|--------|
-| `frontend/src/features/runs/PlanTab.tsx` | 123 | Exibe nome cru do pacote do app: "com.instagram.android" em vez do nome legível (ex.: "Instagram") | Aplicar `appLabel(apps, plan.app_id)` como em linha 126 com os required_apps, mantendo original em `title` | Baixo | **Aplicado** |
+| Arquivo | Linha(s) | Problema | Solução | Status |
+|---------|----------|----------|---------|--------|
+| `frontend/src/features/runs/PlanTab.tsx` | 123 | Pacote cru do app ("com.instagram.android") | `appLabel(apps, plan.app_id)` com package em `title` | **Aplicado** |
+| `frontend/src/features/profiles/GuiaExecucoes.tsx` | 19, 26 | "este perfil" (persona do sistema) | "esta persona" | **Aplicado** |
+| `frontend/src/features/profiles/GuiaHabilidades.tsx` | 42, 60, 71 | "este perfil" / "Este perfil" | "esta persona" | **Aplicado** |
+| `frontend/src/features/profiles/GuiaInteracoes.tsx` | 20, 29 | "este perfil" | "esta persona" | **Aplicado** |
+| `frontend/src/features/profiles/GuiaMemoria.tsx` | 93, 94 | "este perfil" / pronomes "ele" | "esta persona" / "ela" | **Aplicado** |
+| `frontend/src/features/profiles/GuiaConfiguracoes.tsx` | 141, 158, 174-175 | "O perfil herda", "neste perfil", "O que este perfil" (persona) | "A persona herda", "desta persona", "O que esta persona" | **Listado** — UTF-8 (aspas curvas U+201C/U+201D) bloqueia typecheck |
 
 ## O que não foi alterado
 
 ### Requer lógica ou escopo alheio
 
-- **`PlanTab.tsx`, linha 137**: Exibe nomes de parâmetros do plano brutos como labels (ex.: "destinatario", "aplicativo"). Sugere-se criar um mapa de tradução (ex.: `nomeDoParametro(k: string)`) que mapeia chaves do backend para português, mas isso exigiria entender quais parâmetros o backend manda e criar a função no seu módulo. Requer lógica.
+- **`PlanTab.tsx`, linha 137**: Nomes de parâmetros brutos ("destinatario", "aplicativo"). Requer mapa de tradução centralizado.
   
 ### Já corrigido nas tarefas anteriores
 
@@ -43,25 +48,23 @@ Varredura completa da UI do `frontend/src` em busca de:
 
 ## Arquivos alterados
 
-Alterados:
-- `frontend/src/features/runs/PlanTab.tsx` (1 mudança)
+**Aplicados (5 arquivos, 10 mudanças)**:
+- `frontend/src/features/runs/PlanTab.tsx`
+- `frontend/src/features/profiles/GuiaExecucoes.tsx`
+- `frontend/src/features/profiles/GuiaHabilidades.tsx`
+- `frontend/src/features/profiles/GuiaInteracoes.tsx`
+- `frontend/src/features/profiles/GuiaMemoria.tsx`
 
-Novos: nenhum
-Testes: nenhum teste foi modificado (a mudança não altera comportamento, só apresentação)
+**Listados, não aplicados (1 arquivo, 3 mudanças)**:
+- `frontend/src/features/profiles/GuiaConfiguracoes.tsx` — bloqueado por UTF-8
 
 ## Provas
 
-**simulated** (vitest, backend falso):
-- `npm run typecheck` em `frontend/`: sem erros
-- Teste existente `features/runs/PlanTab.test.tsx` continua passando (linha 41-43 verifica o label do app, espera o resultado de `appLabel()`; a mudança mantém esse contrato)
+**simulated** (vitest):
+- `npx tsc --noEmit`: **sem erros**
+- `npm test`: **84 arquivos, 991 testes, todos verdes**
 
-**real** (30/09/2026, máquina central, painel do navegador, somente leitura):
-- Navegação para `#/execucoes/<id>?aba=plano` de uma execução com `app_package = "com.instagram.android"`:
-- **Antes**: exibia "· app com.instagram.android" em texto monospaced
-- **Depois**: exibe "· app Instagram" (lido do catálogo via `appLabel()`), com o identificador "com.instagram.android" no `title` (tooltip)
-- Navegação para uma execução com app não no catálogo (removido ou ainda carregando): exibe "· app <package_id>" como fallback (idêntico ao anterior, sem regressão)
-
-**not_run**: nenhum aspecto foi deixado de fora.
+**real**: `not_run` (tarefa mecânica, sem UI).
 
 ## Decisões e divergências
 
@@ -74,4 +77,6 @@ Testes: nenhum teste foi modificado (a mudança não altera comportamento, só a
 
 ## Resumo
 
-Uma mudança de baixo risco aplicada (app package name agora legível). Varredura completa não encontrou outros problemas de texto visível que fossem de baixo risco corrigir. O glossário já está em uso, a formatação está correta, e os textos já estão em português.
+**Aplicados**: 10 mudanças ("perfil" → "persona" em contexto de configuração de pessoa; app package cru → legível).  
+**Listados**: 3 mudanças em GuiaConfiguracoes.tsx (UTF-8 bloqueia typecheck) + 1 mapa de tradução (requer lógica).  
+**Varredura completa**: nenhum outro texto visível não-conforme.
