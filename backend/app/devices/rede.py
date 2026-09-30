@@ -50,6 +50,8 @@ PROTOCOLOS_POR_TIPO: dict[str, frozenset[str]] = {"vpn": frozenset({"wireguard",
                                                   "proxy": frozenset({"http", "socks5"})}
 #: Estados em que o aparelho tem a revisão pedida aplicada. `pendente` é o único que diz "ainda não".
 _APLICADOS: tuple[str, ...] = ("configurado", "conectado", "trafego_verificado", "parcial")
+#: Estados que só nascem de uma medição, com IP de saída, da revisão pedida: a saída gravada na linha é a DESTA revisão.
+_MEDIDOS: tuple[str, ...] = ("trafego_verificado", "parcial")
 #: Resultado de uma medição por app (`network_measurements.per_app`): `ok` = o app saiu pela rede pedida;
 #: `fora_da_rede` = saiu por outro caminho (vazamento); `falhou` = não conectou; `nao_medido` = a sonda não conseguiu
 #: medir aquele app. Só `ok` conta para `trafego_verificado`: o navegador não prova os outros apps (ADR-056 §3).
@@ -141,7 +143,7 @@ class NetworkProfileInput(BaseModel):
         if redact(texto) != texto:
             raise ValueError("params parece conter um segredo (credencial em URL ou par chave/valor): mande-o em "
                              "`secret`, que vai ao cofre")
-        return params
+        return _saida_esperada_valida(params)
 
     @model_validator(mode="after")
     def _par_tipo_protocolo(self) -> NetworkProfileInput:
@@ -227,6 +229,99 @@ def _saida_publica(v: str | None, tipo: type[ipaddress.IPv4Address] | type[ipadd
     if not ip.is_global:
         raise ValueError(f"{campo} não é endereço público ({ip}): interface, NAT ou túnel não são a saída medida")
     return str(ip)
+
+
+# ============================================================================ saída esperada por aparelho (item 29.6)
+# O objetivo é uma saída pública distinta e estável por aparelho (ADR-056 §1). O caminho já existia (um perfil
+# `vpn/wireguard` com servidor externo, ou um proxy dedicado encadeado); faltava a plataforma saber QUAL saída o perfil
+# deveria dar, para comparar com a medida. `params.egress_esperado` (IPv4) e `params.egress_esperado_ipv6` a declaram:
+# é configuração (sem migração: `params` é JSON), validada pela mesma regra de endereço público da medição.
+_CHAVES_DA_SAIDA_ESPERADA: tuple[tuple[str, type[ipaddress.IPv4Address] | type[ipaddress.IPv6Address]], ...] = (
+    ("egress_esperado", ipaddress.IPv4Address), ("egress_esperado_ipv6", ipaddress.IPv6Address))
+
+
+def _saida_esperada_valida(params: dict[str, object]) -> dict[str, object]:
+    """`params` com a saída esperada conferida e na forma canônica (é com ela que a medição compara). Chave ausente =
+    perfil sem saída esperada, e nada muda para ele."""
+    saida = dict(params)
+    for chave, tipo in _CHAVES_DA_SAIDA_ESPERADA:
+        if chave not in params:
+            continue
+        valor, campo = params[chave], f"params.{chave}"
+        familia = "IPv4" if tipo is ipaddress.IPv4Address else "IPv6"
+        if not isinstance(valor, str) or not valor.strip():
+            raise ValueError(f"{campo} precisa ser um endereço {familia} público, em texto (omita a chave no perfil "
+                             "sem saída esperada)")
+        try:
+            ipaddress.ip_address(valor.strip())
+        except ValueError:
+            raise ValueError(f"{campo} não é um endereço IP ({valor.strip()[:60]!r}): é o {familia} público pelo qual "
+                             "o aparelho deve sair, não um nome de host") from None
+        saida[chave] = _saida_publica(valor, tipo, campo)
+    return saida
+
+
+@dataclass(frozen=True)
+class SaidaEsperada:
+    """A saída que o perfil de um aparelho declara (`params.egress_esperado*`), com o perfil que a declarou."""
+
+    ipv4: str | None
+    ipv6: str | None
+    profile_id: str
+    profile_name: str
+
+    def descrever(self) -> str:
+        return " e ".join(ip for ip in (self.ipv4, self.ipv6) if ip)
+
+    def como_dict(self) -> dict[str, object]:
+        return {"ipv4": self.ipv4, "ipv6": self.ipv6, "profile_id": self.profile_id, "profile_name": self.profile_name}
+
+
+def perfil_da_saida(vpn_profile_id: str | None, proxy_profile_id: str | None) -> str | None:
+    """O perfil que dá a saída FINAL do aparelho: o proxy, se há um (o tráfego sai do túnel e ainda passa por ele —
+    `rede_aplicacao.montar_plano` o encadeia depois da VPN); senão a VPN. Sem fallback: com um proxy SEM saída
+    esperada por cima de uma VPN que a tem, a esperada da VPN não é a saída do aparelho, e compará-la o deixaria
+    `parcial` para sempre."""
+    return proxy_profile_id or vpn_profile_id
+
+
+def _esperada_do_perfil(perfil: Row | None) -> SaidaEsperada | None:
+    if perfil is None:
+        return None
+    params = loads(perfil["params"], {}) or {}
+    v4, v6 = params.get("egress_esperado"), params.get("egress_esperado_ipv6")
+    if not (v4 or v6):
+        return None
+    return SaidaEsperada(ipv4=str(v4) if v4 else None, ipv6=str(v6) if v6 else None, profile_id=str(perfil["id"]),
+                         profile_name=str(perfil["name"]))
+
+
+def saida_esperada(st: AppState, vpn_profile_id: str | None, proxy_profile_id: str | None) -> SaidaEsperada | None:
+    """A saída esperada de um aparelho com estes perfis, ou `None` (o perfil da saída final não a declara)."""
+    pid = perfil_da_saida(vpn_profile_id, proxy_profile_id)
+    if pid is None:
+        return None
+    return _esperada_do_perfil(st.db.one("SELECT id, name, params FROM network_profiles WHERE id=?", (pid,)))
+
+
+def saida_divergente(esperada: SaidaEsperada | None, ipv4: str | None, ipv6: str | None) -> list[str]:
+    """O que a saída MEDIDA tem de diferente da esperada, por família declarada. Família declarada e não medida também
+    conta: a saída esperada não foi vista, e incerteza não verifica. Sem esperada, nada (a regra de antes)."""
+    if esperada is None:
+        return []
+    falta = []
+    for familia, quer, medida in (("IPv4", esperada.ipv4, ipv4), ("IPv6", esperada.ipv6, ipv6)):
+        if quer and medida != quer:
+            falta.append((f"saída medida {medida}" if medida else f"saída {familia} não medida")
+                         + f", esperada {quer} do perfil {esperada.profile_name}")
+    return falta
+
+
+def saida_confere(esperada: SaidaEsperada | None, ipv4: str | None, ipv6: str | None) -> bool | None:
+    """`None` = não há o que comparar (perfil sem saída esperada, ou nenhuma saída medida ainda)."""
+    if esperada is None or not (ipv4 or ipv6):
+        return None
+    return not saida_divergente(esperada, ipv4, ipv6)
 
 
 # ============================================================================ linhas → DTOs
@@ -493,6 +588,7 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
     ultimas: dict[str, Row] = {}
     for m in st.db.query("SELECT * FROM network_measurements ORDER BY measured_at, id"):
         ultimas[str(m["instance_id"])] = m                              # a última de cada aparelho fica
+    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, params FROM network_profiles")}
     aparelhos: list[dict[str, object]] = []
     for rt in sorted(st.devices.devices.values(), key=lambda r: r.id):
         if rt.store:
@@ -506,6 +602,10 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
         iguais = sorted(outro for outro, r in linhas.items() if outro != rt.id and row is not None and (
             (row["egress_ipv4"] and r["egress_ipv4"] == row["egress_ipv4"])
             or (row["egress_ipv6"] and r["egress_ipv6"] == row["egress_ipv6"])))
+        # A saída que o perfil da saída final declara × a última medida (item 29.6). Outra pergunta que a de cima: um
+        # aparelho pode medir a própria saída esperada e ainda dividi-la com outro, e o contrário.
+        esperada = (_esperada_do_perfil(perfis.get(perfil_da_saida(row["vpn_profile_id"], row["proxy_profile_id"])
+                                                   or "")) if row is not None else None)
         aparelhos.append({
             "instance_id": rt.id, "worker_id": rt.worker_id, "external": rt.external,
             "device_state": rt.state.value,
@@ -518,6 +618,11 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
             "pending": _pendencia(row, st),
             "last_measurement": _medicao_da_listagem(medicao) if medicao is not None else None,
             "egress_shared_with": iguais,
+            "egress_expected": esperada.como_dict() if esperada is not None else None,
+            # Só com a revisão pedida MEDIDA: antes disso a saída da linha é a de um pedido anterior, e compará-la
+            # com a esperada do perfil novo acusaria uma diferença que ainda não foi medida.
+            "egress_matches": (saida_confere(esperada, row["egress_ipv4"], row["egress_ipv6"])
+                               if row is not None and row["state"] in _MEDIDOS else None),
         })
     return {"devices": aparelhos}
 
@@ -560,10 +665,18 @@ class _Item:
     code: str | None = None
     reason: str = ""
     warnings: list[str] = field(default_factory=list)
+    #: Avisos sobre a SAÍDA esperada (item 29.6), cada um com `code` e `message`: nunca recusam.
+    egress_warnings: list[dict[str, object]] = field(default_factory=list)
 
     @property
     def reapply(self) -> bool:
         return self.de.config_do_aparelho != self.para.config_do_aparelho
+
+    @property
+    def pode_gravar(self) -> bool:
+        """O pedido deste item ainda pode valer: não foi recusado, ou só falta a confirmação da conta real (a prévia
+        a devolve como recusa, e o painel a pede em seguida)."""
+        return self.outcome != "refused" or self.code == "real_account_confirm_required"
 
     def recusar(self, code: str, reason: str) -> None:
         self.outcome, self.code, self.reason = "refused", code, reason
@@ -571,7 +684,8 @@ class _Item:
     def como_dict(self) -> dict[str, object]:
         saida: dict[str, object] = {"id": self.id, "outcome": self.outcome, "reason": self.reason,
                                     "from": self.de.como_dict(), "to": self.para.como_dict(),
-                                    "reapply": self.reapply, "warnings": self.warnings}
+                                    "reapply": self.reapply, "warnings": self.warnings,
+                                    "egress_warnings": self.egress_warnings}
         if self.code is not None:
             saida["code"] = self.code
         return saida
@@ -629,6 +743,53 @@ def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> 
                              "continua lá até ser tirado na aba Proxy")
 
 
+def _avisar_da_saida(st: AppState, previa: list[_Item]) -> None:
+    """Os avisos de SAÍDA da prévia (item 29.6), em `egress_warnings` de cada item. Só aviso: a recusa que protege a
+    conta real é a de sempre (`real_account_confirm_required`, por aparelho), e ela não muda.
+
+    - `saida_dedicada_compartilhada`: o perfil que dá a saída final do aparelho declara uma saída esperada e, com este
+      pedido, fica em mais de um aparelho — contando os do lote e os que já o têm. Um perfil `wireguard` externo leva
+      UMA chave e serve a um aparelho por vez; dois aparelhos nele são a mesma saída (e o mesmo par no servidor);
+    - `saida_dedicada_trocada_por_compartilhada`: o aparelho sai de um perfil com saída esperada para um sem (ou para
+      perfil nenhum). É a troca de IP que derruba conta (K-057), e numa reatribuição comum ela seria silenciosa."""
+    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, params FROM network_profiles")}
+    no_lote = {item.id for item in previa}
+    # Quem fica com cada perfil de saída DEPOIS do pedido: os do lote pelo pedido (o recusado de vez fica como está),
+    # os outros pela linha de hoje.
+    destino: dict[str, set[str]] = {}
+    for item in previa:
+        alvo = item.para if item.pode_gravar else item.de
+        pid = perfil_da_saida(alvo.vpn_profile_id, alvo.proxy_profile_id)
+        if pid is not None:
+            destino.setdefault(pid, set()).add(item.id)
+    for r in st.db.query("SELECT instance_id, vpn_profile_id, proxy_profile_id FROM device_network"):
+        pid = perfil_da_saida(r["vpn_profile_id"], r["proxy_profile_id"])
+        if pid is not None and str(r["instance_id"]) not in no_lote:
+            destino.setdefault(str(pid), set()).add(str(r["instance_id"]))
+    for item in previa:
+        if not item.pode_gravar:
+            continue
+        pid_de = perfil_da_saida(item.de.vpn_profile_id, item.de.proxy_profile_id)
+        pid_para = perfil_da_saida(item.para.vpn_profile_id, item.para.proxy_profile_id)
+        antiga, nova = _esperada_do_perfil(perfis.get(pid_de or "")), _esperada_do_perfil(perfis.get(pid_para or ""))
+        if nova is not None:
+            outros = sorted(destino.get(nova.profile_id, set()) - {item.id})
+            if outros:
+                item.egress_warnings.append({
+                    "code": "saida_dedicada_compartilhada", "profile_id": nova.profile_id, "shared_with": outros,
+                    "message": f"o perfil {nova.profile_name} declara a saída {nova.descrever()} e, com este pedido, "
+                               f"fica também em {', '.join(outros)}: a saída dedicada passa a ser compartilhada"})
+        if antiga is not None and nova is None and pid_para != pid_de:
+            novo_perfil = perfis.get(pid_para or "")
+            para_onde = (f"o perfil {novo_perfil['name']}, que não declara saída esperada" if novo_perfil is not None
+                         else "sem perfil de rede (a saída direta)")
+            item.egress_warnings.append({
+                "code": "saida_dedicada_trocada_por_compartilhada", "profile_id": antiga.profile_id,
+                "message": f"{item.id} deixa a saída dedicada {antiga.descrever()} do perfil {antiga.profile_name} e "
+                           f"passa para {para_onde}: o IP de saída muda, e a saída nova pode ser a de outros "
+                           "aparelhos"})
+
+
 def atribuir(st: AppState, body: NetworkAssignBody, quem: str | None) -> dict[str, object]:
     """Pede a rede para os aparelhos. Com `dry_run`, só a prévia; sem ele, tudo ou nada: uma recusa (loja,
     quarentena, conta real sem confirmação, política sem perfil) devolve 409 com a prévia inteira e nada é gravado.
@@ -652,6 +813,7 @@ def atribuir(st: AppState, body: NetworkAssignBody, quem: str | None) -> dict[st
         item = _Item(id=iid, de=de, para=para)
         _julgar(st, item, set(body.confirm_real_account), body.dry_run)
         previa.append(item)
+    _avisar_da_saida(st, previa)
 
     if body.dry_run:
         return {"accepted": False, "dry_run": True, "devices": [i.como_dict() for i in previa]}
@@ -1092,7 +1254,29 @@ def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasuremen
                     level="warn", instance_id=instance_id,
                     data={"instance_id": instance_id, "acao": "saida_compartilhada", "measurement_id": mid,
                           "egress_ipv4": medicao.egress_ipv4, "egress_ipv6": medicao.egress_ipv6, "shared_with": iguais})
+    _avisar_saida_divergente(st, instance_id, medicao, mid, rev)
     return mid, novo
+
+
+def _avisar_saida_divergente(st: AppState, instance_id: str, medicao: NetworkMeasurementInput, mid: int,
+                             rev: int | None) -> None:
+    """O aviso da saída medida que não é a esperada (item 29.6), num evento `warn`: com a política `livre` nenhuma
+    tarefa espera pela rede, e é por aqui (e pelo `parcial` da linha) que a diferença fica à vista. Só para a medição
+    da revisão pedida com IP medido: a de base e a de revisão velha não dizem nada do pedido de hoje."""
+    row = _linha(st, instance_id)
+    if (row is None or rev is None or rev != int(row["desired_rev"]) or row["state"] not in _MEDIDOS
+            or not (medicao.egress_ipv4 or medicao.egress_ipv6)):
+        return
+    esperada = saida_esperada(st, row["vpn_profile_id"], row["proxy_profile_id"])
+    diferenca = saida_divergente(esperada, medicao.egress_ipv4, medicao.egress_ipv6)
+    if esperada is None or not diferenca:
+        return
+    st.bus.emit("network.updated", f"Rede de {instance_id}: " + "; ".join(diferenca), level="warn",
+                instance_id=instance_id,
+                data={"instance_id": instance_id, "acao": "saida_divergente", "measurement_id": mid,
+                      "egress_ipv4": medicao.egress_ipv4, "egress_ipv6": medicao.egress_ipv6,
+                      "expected_ipv4": esperada.ipv4, "expected_ipv6": esperada.ipv6,
+                      "profile_id": esperada.profile_id})
 
 
 def saidas_compartilhadas(st: AppState, instance_id: str, ipv4: str | None, ipv6: str | None) -> list[str]:
@@ -1135,6 +1319,9 @@ def _registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasureme
             return mid, _aparelho_dto(_linha_certa(st, instance_id))
         falta = _falta_para_verificar(medicao, str(row["policy"]), apps_exigidos(st, instance_id),
                                       provado=bloqueio_provado(row))
+        # A saída MEDIDA contra a que o perfil da saída final declara (item 29.6). Sem esperada, nada muda.
+        falta = falta + saida_divergente(saida_esperada(st, row["vpn_profile_id"], row["proxy_profile_id"]),
+                                         medicao.egress_ipv4, medicao.egress_ipv6)
         if not falta:
             estado, detalhe = "trafego_verificado", f"medição #{mid} ({medicao.method}): saída e apps provados"
         elif mediu_ip:

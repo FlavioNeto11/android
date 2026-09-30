@@ -10,7 +10,10 @@ O que se prova aqui (tudo `simulated`: harness com aparelhos falsos, nenhum adb,
   barrado, na política com bloqueio); o que falta vira `parcial`; observação de revisão velha, ou de revisão que
   mudou no meio do registro, não mexe no estado;
 - `verify`/`reapply` respondem 202 com `executed: false`: registram o pedido, não fingem aplicação;
-- o proxy legado da 041 aparece como `configurado` no máximo.
+- o proxy legado da 041 aparece como `configurado` no máximo;
+- a saída esperada do perfil (`params.egress_esperado`, item 29.6): validada como endereço público no cadastro,
+  comparada com a medida (outra saída = `parcial` com o motivo; com `livre`, sem segurar tarefa), decidida pelo proxy
+  encadeado quando há um, e avisada na prévia (dedicada em mais de um aparelho; dedicada trocada por compartilhada).
 """
 from __future__ import annotations
 
@@ -437,6 +440,259 @@ async def test_observacao_da_revisao_que_mudou_no_meio_e_descartada(parque: Harn
     dto = registrar_observacao(st, "android-01", rev=1, estado="conectado", evidencia="rede VPN no dumpsys")
     assert dto.state == "pendente" and dto.applied_rev is None and dto.desired_rev == 2
     assert "descartada" in (dto.detail or "")
+
+
+# ==================================================================== saída esperada por aparelho (item 29.6)
+# O objetivo é uma saída pública distinta e estável por aparelho (ADR-056 §1). A plataforma só via saída COMPARTILHADA
+# (aviso); não comparava a saída medida com a que o perfil deveria dar. `params.egress_esperado` declara a esperada, e a
+# medição a confere.
+DEDICADA, OUTRA, DO_PROXY = "45.162.8.9", "45.162.8.10", "45.162.8.20"
+APP_OK = {"com.instagram.android": "ok"}
+
+
+async def _conectar(h: Harness, c: httpx.AsyncClient, iid: str, **pedido: Any) -> None:
+    """Pede a rede e leva o aparelho a `conectado` (a evidência que a receita leria do aparelho)."""
+    r = await c.post("/api/network/assign", json={"instance_ids": [iid], **pedido})
+    assert r.status_code == 200, r.text
+    rev = _linha(h, iid)["desired_rev"]                                         # type: ignore[index]
+    registrar_observacao(h.state, iid, rev=rev, estado="conectado", evidencia="rede VPN no dumpsys")  # type: ignore[arg-type]
+
+
+def _visao(h: Harness) -> dict[str, dict[str, Any]]:
+    return {d["instance_id"]: d for d in rede.listar_aparelhos(h.state)["devices"]}  # type: ignore[arg-type]
+
+
+async def test_cadastro_valida_a_saida_esperada_como_endereco_publico(parque: Harness) -> None:
+    """A MESMA regra da medição (`_saida_publica`): interface, NAT, loopback, CGNAT e link-local não são saída."""
+    async with _cliente(parque) as c:
+        ok = await _perfil(c, "Dedicada", params={"egress_esperado": " 45.162.8.9 ",
+                                                   "egress_esperado_ipv6": "2804:014c:0::9", "mtu": 1280})
+        # Fica a forma canônica: é com ela que a medição compara.
+        assert ok["params"] == {"egress_esperado": DEDICADA, "egress_esperado_ipv6": "2804:14c::9", "mtu": 1280}
+        so_v6 = await _perfil(c, "Só v6", params={"egress_esperado_ipv6": "2804:14c::a"})
+        assert so_v6["params"] == {"egress_esperado_ipv6": "2804:14c::a"}
+        n = 0
+        ruins_v4 = ("10.0.2.15", "10.0.0.2", "127.0.0.1", "192.168.1.19", "100.64.0.1", "169.254.1.1", "203.0.113.7",
+                    "2804:14c::9", "vpn.exemplo.test", "", 45162, None, ["45.162.8.9"])
+        for ruim in ruins_v4:
+            n += 1
+            r = await c.post("/api/network/profiles", json={
+                "name": f"Ruim {n}", "kind": "vpn", "protocol": "wireguard", "endpoint_host": "vpn.exemplo.test",
+                "endpoint_port": 51820, "params": {"egress_esperado": ruim}})
+            assert r.status_code == 422, (ruim, r.text)
+            assert "params.egress_esperado" in r.text, (ruim, r.text)
+            if isinstance(ruim, str) and ruim[:1].isdigit() and ":" not in ruim:
+                assert "não é endereço público" in r.text, (ruim, r.text)
+        for ruim in ("::1", "fe80::1", "fd00::2", "2001:db8::9", "45.162.8.9"):
+            n += 1
+            r = await c.post("/api/network/profiles", json={
+                "name": f"Ruim {n}", "kind": "proxy", "protocol": "socks5", "endpoint_host": "proxy.exemplo.test",
+                "endpoint_port": 1080, "params": {"egress_esperado_ipv6": ruim}})
+            assert r.status_code == 422 and "params.egress_esperado_ipv6" in r.text, (ruim, r.text)
+        # Nenhum dos recusados foi gravado.
+        assert [p["name"] for p in (await c.get("/api/network/profiles")).json()["profiles"]] == ["Dedicada", "Só v6"]
+
+
+async def test_saida_medida_diferente_da_esperada_vira_parcial_e_a_igual_verifica(parque: Harness) -> None:
+    st = parque.state
+    assert st is not None
+    st.rede_convergencia.trabalho = lambda _rt, motivo: None      # a porta só responde; nada de sonda neste teste
+    async with _cliente(parque) as c:
+        vpn = await _perfil(c, "Dedicada-01", params={"egress_esperado": DEDICADA})
+        await _conectar(parque, c, "android-01", vpn_profile_id=vpn["id"], policy="exigida")
+        # Antes de medir: a esperada aparece, e ainda não há o que comparar.
+        antes = _visao(parque)["android-01"]
+        assert antes["egress_expected"] == {"ipv4": DEDICADA, "ipv6": None, "profile_id": vpn["id"],
+                                            "profile_name": "Dedicada-01"}
+        assert antes["egress_matches"] is None
+
+        # Tudo provado, e a saída é OUTRA: `parcial`, com o motivo — a tarefa com rede exigida espera.
+        mid, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=OUTRA, per_app=APP_OK), rev=1)             # type: ignore[arg-type]
+        assert dto is not None and dto.state == "parcial", dto
+        assert f"saída medida {OUTRA}, esperada {DEDICADA} do perfil Dedicada-01" in (dto.detail or "")
+        assert st.rede_convergencia.motivo_de_espera("android-01") is not None
+        depois = (await c.get("/api/network/devices")).json()["devices"]
+        a1 = next(d for d in depois if d["instance_id"] == "android-01")
+        assert a1["egress_matches"] is False and a1["egress_expected"]["ipv4"] == DEDICADA
+        assert a1["network"]["egress_ipv4"] == OUTRA and a1["pending"] == "verificar"
+        avisos = [json.loads(e["data"]) for e in st.db.query(
+            "SELECT data FROM events WHERE kind='network.updated' AND level='warn' AND instance_id='android-01'")]
+        assert [(a["acao"], a["measurement_id"], a["egress_ipv4"], a["expected_ipv4"]) for a in avisos] == [
+            ("saida_divergente", mid, OUTRA, DEDICADA)]
+
+        # A saída esperada medida: verificado, sem aviso novo.
+        _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, per_app=APP_OK), rev=1)          # type: ignore[arg-type]
+        assert dto is not None and dto.state == "trafego_verificado", dto
+        assert _visao(parque)["android-01"]["egress_matches"] is True
+        assert st.rede_convergencia.motivo_de_espera("android-01") is None
+        assert st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated' AND level='warn'") == 1
+
+        # Esperada em IPv4 e a medição só trouxe IPv6: a saída esperada não foi vista — incerteza não verifica.
+        _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv6="2804:14c::9", per_app=APP_OK), rev=1)     # type: ignore[arg-type]
+        assert dto is not None and dto.state == "parcial"
+        assert f"saída IPv4 não medida, esperada {DEDICADA} do perfil Dedicada-01" in (dto.detail or "")
+        assert _visao(parque)["android-01"]["egress_matches"] is False
+
+        # O aviso de saída COMPARTILHADA continua, e é outra coisa: o android-02, sem esperada, mede a mesma saída.
+        livre = await _perfil(c, "Comum")
+        await _conectar(parque, c, "android-02", vpn_profile_id=livre["id"], policy="exigida")
+        registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, per_app=APP_OK), rev=1)          # type: ignore[arg-type]
+        _, dto = registrar_medicao(st, "android-02", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, per_app=APP_OK), rev=1)          # type: ignore[arg-type]
+        assert dto is not None and dto.state == "trafego_verificado"               # compartilhada é aviso, não bloqueio
+        visao = _visao(parque)
+        assert visao["android-02"]["egress_shared_with"] == ["android-01"]
+        assert visao["android-01"]["egress_shared_with"] == ["android-02"] and visao["android-01"]["egress_matches"] is True
+        # Sem `egress_esperado` no perfil, nada muda: nem esperada, nem comparação.
+        assert visao["android-02"]["egress_expected"] is None and visao["android-02"]["egress_matches"] is None
+
+        # O android-02 passa para o perfil dedicado: até a revisão nova ser medida, a saída da linha é a do pedido
+        # anterior, e não há o que comparar — a medição dela, antes de aplicar, também não vira aviso de diferença.
+        outra = await _perfil(c, "Dedicada-02", params={"egress_esperado": OUTRA})
+        r = await c.post("/api/network/assign", json={"instance_ids": ["android-02"], "vpn_profile_id": outra["id"]})
+        assert r.status_code == 200, r.text
+        a2 = _visao(parque)["android-02"]
+        assert a2["network"]["state"] == "pendente" and a2["network"]["egress_ipv4"] == DEDICADA
+        assert a2["egress_expected"]["ipv4"] == OUTRA and a2["egress_matches"] is None
+        avisos = st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated' AND level='warn'"
+                              " AND data LIKE '%saida_divergente%'")
+        registrar_medicao(st, "android-02", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4="45.162.8.30", per_app=APP_OK), rev=2)     # type: ignore[arg-type]
+        assert _linha(parque, "android-02")["state"] == "pendente"                  # type: ignore[index]
+        assert st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated' AND level='warn'"
+                            " AND data LIKE '%saida_divergente%'") == avisos
+
+
+async def test_proxy_encadeado_decide_a_saida_esperada(parque: Harness) -> None:
+    """Quem dá a saída final é o proxy, quando há (o tráfego sai do túnel e ainda passa por ele); senão a VPN."""
+    st = parque.state
+    assert st is not None
+    async with _cliente(parque) as c:
+        vpn = await _perfil(c, "Dedicada-01", params={"egress_esperado": DEDICADA})
+        proxy = await _perfil(c, "Proxy dedicado", "proxy", "socks5", params={"egress_esperado": DO_PROXY})
+        comum = await _perfil(c, "Proxy comum", "proxy", "socks5")
+        await _conectar(parque, c, "android-01", vpn_profile_id=vpn["id"], proxy_profile_id=proxy["id"],
+                        policy="exigida")
+        assert _visao(parque)["android-01"]["egress_expected"]["profile_name"] == "Proxy dedicado"
+        # A saída da VPN, com o proxy encadeado, NÃO é a esperada do aparelho.
+        _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, per_app=APP_OK), rev=1)          # type: ignore[arg-type]
+        assert dto is not None and dto.state == "parcial"
+        assert f"saída medida {DEDICADA}, esperada {DO_PROXY} do perfil Proxy dedicado" in (dto.detail or "")
+        _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DO_PROXY, per_app=APP_OK), rev=1)          # type: ignore[arg-type]
+        assert dto is not None and dto.state == "trafego_verificado"
+        # Proxy SEM esperada por cima de uma VPN com esperada: a saída é a do proxy, e dela nada foi declarado — a
+        # esperada da VPN não vale para o aparelho (compará-la daria `parcial` para sempre).
+        await _conectar(parque, c, "android-02", vpn_profile_id=vpn["id"], proxy_profile_id=comum["id"],
+                        policy="exigida")
+        a2 = _visao(parque)["android-02"]
+        assert a2["egress_expected"] is None and a2["egress_matches"] is None
+        _, dto = registrar_medicao(st, "android-02", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=OUTRA, per_app=APP_OK), rev=1)             # type: ignore[arg-type]
+        assert dto is not None and dto.state == "trafego_verificado"
+        # As duas famílias declaradas: as duas têm de conferir.
+        duplo = await _perfil(c, "Duas famílias", params={"egress_esperado": DEDICADA,
+                                                          "egress_esperado_ipv6": "2804:14c::9"})
+        await _conectar(parque, c, "android-03", vpn_profile_id=duplo["id"], policy="exigida")
+        _, dto = registrar_medicao(st, "android-03", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, egress_ipv6="2804:14c::a", per_app=APP_OK), rev=1)  # type: ignore[arg-type]
+        assert dto is not None and dto.state == "parcial"
+        assert "saída medida 2804:14c::a, esperada 2804:14c::9 do perfil Duas famílias" in (dto.detail or "")
+        _, dto = registrar_medicao(st, "android-03", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, egress_ipv6="2804:14c::9", per_app=APP_OK), rev=1)  # type: ignore[arg-type]
+        assert dto is not None and dto.state == "trafego_verificado"
+
+
+async def test_politica_livre_com_saida_diferente_mostra_o_estado_e_nao_segura_tarefa(parque: Harness) -> None:
+    st = parque.state
+    assert st is not None
+    async with _cliente(parque) as c:
+        vpn = await _perfil(c, "Dedicada-01", params={"egress_esperado": DEDICADA})
+        await _conectar(parque, c, "android-01", vpn_profile_id=vpn["id"])          # política `livre` (o padrão)
+    _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+        method="app_qa", egress_ipv4=OUTRA, per_app=APP_OK), rev=1)                 # type: ignore[arg-type]
+    assert dto is not None and dto.policy == "livre" and dto.state == "parcial"
+    assert f"esperada {DEDICADA}" in (dto.detail or "")
+    # Com `livre` nada depende da rede: a tarefa segue. O estado e o aviso ficam à vista.
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None
+    a1 = _visao(parque)["android-01"]
+    assert a1["egress_matches"] is False and a1["effective_state"] == "parcial"
+    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated' AND level='warn'"
+                        " AND instance_id='android-01'") == 1
+
+
+async def test_previa_avisa_saida_dedicada_compartilhada_e_troca_por_compartilhada(parque: Harness) -> None:
+    st = parque.state
+    assert st is not None
+    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-03"))
+    async with _cliente(parque) as c:
+        dedicada = await _perfil(c, "Dedicada-01", params={"egress_esperado": DEDICADA})
+        comum = await _perfil(c, "Central")
+        proxy = await _perfil(c, "Proxy comum", "proxy", "socks5")
+
+        async def previa(**pedido: Any) -> dict[str, dict[str, Any]]:
+            r = await c.post("/api/network/assign", json={**pedido, "dry_run": True})
+            assert r.status_code == 200, r.text
+            return {d["id"]: d for d in r.json()["devices"]}
+
+        # Sem saída esperada em jogo: o campo novo vem vazio, e os de antes não mudam.
+        p = await previa(instance_ids=["android-01"], vpn_profile_id=comum["id"])
+        assert p["android-01"]["egress_warnings"] == [] and p["android-01"]["warnings"] == []
+        assert p["android-01"]["outcome"] == "would_assign"
+        # Um aparelho só com o perfil dedicado: é o desenho, sem aviso.
+        p = await previa(instance_ids=["android-01"], vpn_profile_id=dedicada["id"])
+        assert p["android-01"]["egress_warnings"] == []
+        r = await c.post("/api/network/assign", json={"instance_ids": ["android-01"], "vpn_profile_id": dedicada["id"]})
+        assert r.status_code == 200 and r.json()["devices"][0]["egress_warnings"] == []
+
+        # (a) O MESMO perfil com saída esperada em mais de um aparelho, contando quem já o tem (android-01, fora do
+        # lote) e os do próprio lote. Só aviso: o android-02, sem conta real, segue `would_assign`.
+        p = await previa(instance_ids=["android-02", "android-03"], vpn_profile_id=dedicada["id"])
+        [a] = p["android-02"]["egress_warnings"]
+        assert a["code"] == "saida_dedicada_compartilhada" and a["profile_id"] == dedicada["id"]
+        assert a["shared_with"] == ["android-01", "android-03"] and DEDICADA in a["message"]
+        assert "Dedicada-01" in a["message"] and "android-01, android-03" in a["message"]
+        assert p["android-02"]["outcome"] == "would_assign"
+        # O aparelho com conta real é recusado na prévia até a confirmação (como sempre), e o aviso já vem junto: é
+        # o que a pessoa lê antes de confirmar.
+        assert p["android-03"]["code"] == "real_account_confirm_required"
+        assert [w["shared_with"] for w in p["android-03"]["egress_warnings"]] == [["android-01", "android-02"]]
+        # Com o proxy por cima, a saída final do android-02 é a do proxy: ele não divide a saída dedicada.
+        p = await previa(instance_ids=["android-02"], vpn_profile_id=dedicada["id"], proxy_profile_id=proxy["id"])
+        assert p["android-02"]["egress_warnings"] == []
+
+        # (b) Sair de um perfil com saída esperada para um sem: troca de saída dedicada por compartilhada.
+        p = await previa(instance_ids=["android-01"], vpn_profile_id=comum["id"])
+        [b] = p["android-01"]["egress_warnings"]
+        assert b["code"] == "saida_dedicada_trocada_por_compartilhada"
+        assert DEDICADA in b["message"] and "Dedicada-01" in b["message"] and "Central" in b["message"]
+        assert p["android-01"]["outcome"] == "would_assign" and p["android-01"]["reapply"] is True
+        # ... também encadeando um proxy sem esperada, e tirando a VPN de vez.
+        p = await previa(instance_ids=["android-01"], proxy_profile_id=proxy["id"])
+        assert [w["code"] for w in p["android-01"]["egress_warnings"]] == ["saida_dedicada_trocada_por_compartilhada"]
+        p = await previa(instance_ids=["android-01"], vpn_profile_id=None)
+        [b] = p["android-01"]["egress_warnings"]
+        assert b["code"] == "saida_dedicada_trocada_por_compartilhada" and "sem perfil" in b["message"]
+        # Trocar só a política não troca a saída: sem aviso.
+        p = await previa(instance_ids=["android-01"], policy="exigida")
+        assert p["android-01"]["egress_warnings"] == [] and p["android-01"]["reapply"] is False
+        # Recusa de vez (a loja) não recebe aviso de saída: nada vai mudar ali.
+        p = await previa(instance_ids=[LOJA], vpn_profile_id=dedicada["id"])
+        assert p[LOJA]["code"] == "store_instance" and p[LOJA]["egress_warnings"] == []
+
+        # O aviso não bloqueia: o pedido de verdade grava, e a resposta o repete.
+        r = await c.post("/api/network/assign", json={"instance_ids": ["android-02"], "vpn_profile_id": dedicada["id"]})
+        assert r.status_code == 200 and r.json()["accepted"] is True
+        assert [w["code"] for w in r.json()["devices"][0]["egress_warnings"]] == ["saida_dedicada_compartilhada"]
+        # A confirmação por aparelho com conta real segue a mesma: sem ela, 409 (com o aviso na prévia devolvida).
+        r = await c.post("/api/network/assign", json={"instance_ids": ["android-03"], "vpn_profile_id": dedicada["id"]})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "real_account_confirm_required"
+        assert r.json()["detail"]["devices"][0]["egress_warnings"][0]["shared_with"] == ["android-01", "android-02"]
 
 
 # ==================================================================== verify / reapply: pedido, não execução

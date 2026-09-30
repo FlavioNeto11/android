@@ -561,6 +561,41 @@ async def test_perna_de_udp_falha_nao_segura_a_tarefa_e_aparece_por_perna(parque
     assert (sem["udp_ok"], sem["udp_dns_ok"], sem["udp_ntp_ok"]) == (None, None, None)
 
 
+# ============================================================================ saída esperada (item 29.6)
+async def test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O caminho inteiro, pela sonda: o perfil declara a saída (`params.egress_esperado`), o aparelho sai por outra, e a
+    medição — com IP, apps e tudo o mais provado — deixa o aparelho `parcial`. Com a política exigida a tarefa espera
+    e diz por quê; medida a saída esperada, verifica."""
+    st = parque.state
+    assert st is not None
+    ap = SondaFalsa(id="android-01")                         # a sonda mede `IP`
+    st.rede_convergencia._aparelho = lambda _s, _rt: ap
+    monkeypatch.setattr(despacho, "pedir_ciclo_de_vida", Reinicios())
+    pid = rede.criar_perfil(st, rede.ler_cadastro({
+        "name": "Dedicada-01", "kind": "vpn", "protocol": "singbox", "endpoint_host": "10.0.2.2", "endpoint_port": 51820,
+        "params": {"servidor": "central", "egress_esperado": IP_FISICO}}), "teste").id
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=["android-01"], vpn_profile_id=pid, policy="exigida"), "teste")
+    await _ate_conectado(parque, ap)
+    assert await _passo(parque, "tarefa")
+    linha = _linha(parque)
+    assert linha["state"] == "parcial" and linha["egress_ipv4"] == IP
+    assert f"saída medida {IP}, esperada {IP_FISICO} do perfil Dedicada-01" in str(linha["detail"])
+    espera = st.rede_convergencia.motivo_de_espera("android-01") or ""
+    assert "parcial" in espera and f"esperada {IP_FISICO}" in espera
+    visao = {d["instance_id"]: d for d in rede.listar_aparelhos(st)["devices"]}
+    assert visao["android-01"]["egress_matches"] is False
+    # O aparelho passa a sair pela saída declarada (o provedor entregou o IP): a medição seguinte verifica.
+    ap.ip4 = IP_FISICO
+    st.rede_convergencia.memoria("android-01").espera_ate = 0.0
+    st.rede_convergencia.memoria("android-01").ultima_verificacao = -1e9
+    assert await _passo(parque, "varredura")
+    assert _linha(parque)["state"] == "trafego_verificado"
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None
+    visao = {d["instance_id"]: d for d in rede.listar_aparelhos(st)["devices"]}
+    assert visao["android-01"]["egress_matches"] is True and visao["android-01"]["egress_expected"]["ipv4"] == IP_FISICO
+
+
 # ============================================================================ convergência (harness do 25.4)
 def _preparar_sonda(parque: Harness, monkeypatch: pytest.MonkeyPatch, *, policy: str = "exigida_com_bloqueio",
                     iid: str = "android-01", servidor: str = "central",

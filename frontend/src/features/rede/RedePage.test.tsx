@@ -448,6 +448,97 @@ it('UDP aparece por perna, com destaque na que falhou (29.5); sem os campos novo
   expect(celula('android-07').textContent).toContain('UDP não medido');
 });
 
+it('a saída esperada aparece junto do IP medido, com destaque quando a medida é outra (29.6)', async () => {
+  const esperada = { ipv4: '198.51.100.7', ipv6: null, profile_id: 'vpn-1', profile_name: 'Dedicada-01' };
+  backend.on('GET', /\/network\/profiles/, () => json({
+    profiles: [perfil({ name: 'Dedicada-01', params: { egress_esperado: '198.51.100.7' } }), perfil({ id: 'vpn-2', name: 'Central' })],
+  }));
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({ instance_id: 'android-01', effective_state: 'parcial', egress_expected: esperada, egress_matches: false,
+              network: rede({ vpn_profile_id: 'vpn-1', state: 'parcial', egress_ipv4: '198.51.100.99' }) }),
+      linha({ instance_id: 'android-02', effective_state: 'trafego_verificado', egress_expected: esperada, egress_matches: true,
+              network: rede({ instance_id: 'android-02', vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv4: '198.51.100.7' }) }),
+      // Pedido e ainda não medido nesta revisão: a esperada aparece, sem veredito.
+      linha({ instance_id: 'android-03', effective_state: 'pendente', egress_expected: esperada, egress_matches: null,
+              network: rede({ instance_id: 'android-03', vpn_profile_id: 'vpn-1' }) }),
+      // Perfil sem saída esperada (e backend de antes do 29.6, sem os campos): nada aparece.
+      linha({ instance_id: 'android-05', network: rede({ instance_id: 'android-05', vpn_profile_id: 'vpn-2', egress_ipv4: '198.51.100.50' }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-05'));
+  const tabela = Array.from(container.querySelectorAll('table')).find((t) => t.textContent?.includes('IP de saída'))!;
+  const celula = (id: string) => Array.from(tabela.querySelectorAll('tbody tr'))
+    .find((tr) => tr.textContent?.includes(id))!.querySelectorAll('td')[5]!;
+  expect(celula('android-01').textContent).toContain('198.51.100.99');
+  expect(celula('android-01').textContent).toContain('esperada 198.51.100.7 (perfil Dedicada-01) — a saída medida é outra');
+  expect(celula('android-01').querySelector('[title^="A saída medida não é a que o perfil Dedicada-01 declara"]')).not.toBeNull();
+  expect(celula('android-02').textContent).toContain('esperada 198.51.100.7 (perfil Dedicada-01) — confere');
+  expect(celula('android-02').querySelector('[title^="A saída medida não é"]')).toBeNull();
+  expect(celula('android-03').textContent).toContain('esperada 198.51.100.7 (perfil Dedicada-01)');
+  expect(celula('android-03').textContent).not.toContain('confere');
+  expect(celula('android-03').textContent).not.toContain('é outra');
+  expect(celula('android-05').textContent).not.toContain('esperada');
+  // O cartão de perfis diz qual saída cada perfil declara.
+  expect(text()).toContain('saída esperada 198.51.100.7');
+});
+
+it('o cadastro manda a saída esperada em params só quando preenchida (29.6)', async () => {
+  backend.on('POST', /\/network\/profiles$/, (call) => {
+    const b = call.body as Record<string, unknown>;
+    return json({ ...perfil({ id: 'vpn-9', name: b.name as string, params: (b.params ?? {}) as Record<string, unknown> }) });
+  });
+  await render(<RedePage />);
+  await waitFor(() => text().includes('WireGuard escritório'));
+  await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'Dedicada-01');
+  await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
+  await click(byRole('button', /^Criar$/));
+  await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 1);
+  expect('params' in (backend.callsTo('POST', /\/network\/profiles$/)[0]!.body as object)).toBe(false);
+  await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'Dedicada-02');
+  await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
+  await setValue(byRole('textbox', /Saída esperada/) as HTMLInputElement, ' 198.51.100.8 ');
+  await click(byRole('button', /^Criar$/));
+  await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 2);
+  expect(backend.callsTo('POST', /\/network\/profiles$/)[1]!.body).toMatchObject({
+    name: 'Dedicada-02', params: { egress_esperado: '198.51.100.8' },
+  });
+});
+
+it('a prévia mostra os avisos de saída dedicada (compartilhada, ou trocada por compartilhada) sem travar o Aplicar (29.6)', async () => {
+  backend.on('POST', /\/network\/assign/, (call) => {
+    const b = call.body as { dry_run?: boolean; instance_ids?: string[] };
+    return json({ accepted: !b.dry_run, dry_run: !!b.dry_run,
+      devices: (b.instance_ids ?? []).map((id) => ({
+        id, outcome: b.dry_run ? 'would_assign' : 'assigned', reason: 'configuração nova',
+        from: { vpn_profile_id: 'vpn-2', proxy_profile_id: null, policy: 'livre' },
+        to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true, warnings: [],
+        egress_warnings: id === 'android-02'
+          ? [{ code: 'saida_dedicada_compartilhada', profile_id: 'vpn-1', shared_with: ['android-01'],
+               message: 'o perfil Dedicada-01 declara a saída 198.51.100.7 e, com este pedido, fica também em android-01: a saída dedicada passa a ser compartilhada' }]
+          : [{ code: 'saida_dedicada_trocada_por_compartilhada', profile_id: 'vpn-2',
+               message: 'android-01 deixa a saída dedicada 198.51.100.9 do perfil Dedicada-02 e passa para o perfil Central, que não declara saída esperada' }],
+      })),
+    });
+  });
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-02'));
+  await click(byRole('checkbox', /Selecionar android-01/));
+  await click(byRole('checkbox', /Selecionar android-02/));
+  await setValue(byRole('combobox', /Perfil de VPN/) as HTMLSelectElement, 'vpn-1');
+  await click(byRole('button', /Ver prévia/));
+  await waitFor(() => text().includes('aplicaria agora'));
+  const previa = container.querySelector('[aria-label="Prévia da atribuição de rede"]') as HTMLElement;
+  expect(text(previa)).toContain('fica também em android-01: a saída dedicada passa a ser compartilhada');
+  expect(text(previa)).toContain('android-01 deixa a saída dedicada 198.51.100.9 do perfil Dedicada-02');
+  expect(previa.querySelectorAll('[data-aviso-de-saida]').length).toBe(2);
+  // É aviso: o Aplicar segue liberado, e o pedido é o mesmo da prévia.
+  await click(byRole('button', /^Aplicar/));
+  await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 2);
+  expect((backend.callsTo('POST', /\/network\/assign/)[1]!.body as { dry_run: boolean }).dry_run).toBe(false);
+});
+
 it('aparelho em quarentena mostra o motivo na coluna de erro/pendência', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
     devices: [linha({ instance_id: 'android-01', restriction: 'conta bloqueada: nada toca nela' })],

@@ -2274,6 +2274,30 @@ export interface NetworkDeviceRow {
   last_measurement: NetworkMeasurement | null;
   /** Os OUTROS aparelhos com a mesma última saída medida (v4 ou v6) — aviso, não bloqueio (ADR-056 §1, 25.5). */
   egress_shared_with: string[];
+  /** A saída que o perfil da saída final (o proxy, se há; senão a VPN) declara em `params.egress_esperado*` (29.6);
+   *  `null` = o perfil não declara. Ausente = backend de antes do 29.6. */
+  egress_expected?: NetworkExpectedEgress | null;
+  /** A saída medida NESTA revisão é a esperada? `null` = sem esperada, ou a revisão pedida ainda não foi medida.
+   *  `false` deixa o aparelho `parcial` (com política exigida, a tarefa espera). */
+  egress_matches?: boolean | null;
+}
+
+/** A saída esperada de um aparelho e o perfil que a declara (`rede.SaidaEsperada.como_dict()`). */
+export interface NetworkExpectedEgress {
+  ipv4: string | null;
+  ipv6: string | null;
+  profile_id: string;
+  profile_name: string;
+}
+
+/** Um aviso de SAÍDA na prévia da atribuição (`rede._avisar_da_saida`, 29.6). Nunca recusa: `saida_dedicada_compartilhada`
+ *  = o perfil com saída esperada fica em mais de um aparelho (`shared_with`); `saida_dedicada_trocada_por_compartilhada`
+ *  = o aparelho sai de um perfil com saída esperada para um sem. */
+export interface NetworkEgressWarning {
+  code: string;
+  message: string;
+  profile_id?: string;
+  shared_with?: string[];
 }
 
 /** `GET /api/network/devices`. */
@@ -2312,6 +2336,8 @@ export interface NetworkAssignDevice {
   to: NetworkDesejo;
   reapply: boolean;
   warnings: string[];
+  /** Avisos sobre a saída esperada (29.6); ausente num backend de antes. */
+  egress_warnings?: NetworkEgressWarning[];
 }
 
 export interface NetworkAssignResult {

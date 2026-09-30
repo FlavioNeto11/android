@@ -317,7 +317,10 @@ INSERT e não volta: a resposta é o `NetworkProfileDTO`, só com `has_secret`. 
 inteiro num campo faltando. `params` com chave de segredo, ou com o que a redação por formato mascararia (URL com
 senha, par chave/valor aninhado), é recusado. Cofre fechado: 503 `secret_store_unavailable`, sem perfil gravado.
 `GET` lista com `in_use` (os aparelhos que pedem o perfil); `DELETE` responde 409 `network_profile_in_use` com os
-`instance_ids` e, sem uso, apaga a linha e o segredo juntos.
+`instance_ids` e, sem uso, apaga a linha e o segredo juntos. `params.egress_esperado` (IPv4) e
+`params.egress_esperado_ipv6`, opcionais, declaram a saída pública que o perfil deve dar (item 29.6, abaixo): valem a
+mesma regra de endereço público da medição (`_saida_publica`), e endereço privado, loopback, CGNAT, link-local, nome
+de host ou a família trocada dão 422 com o campo no texto; fica gravada a forma canônica.
 
 **Atribuição.** `POST /api/network/assign` com `instance_ids` explícito (o parque inteiro nunca é inferido),
 `vpn_profile_id`, `proxy_profile_id` e `policy` (`livre`|`exigida`|`exigida_com_bloqueio`). Campo omitido fica como
@@ -329,7 +332,10 @@ real vinculada cuja **saída** muda sem estar em `confirm_real_account` (`real_a
 confirmação é por aparelho (ADR-056 §7), não um booleano do lote. Trocar só `livre` ↔ `exigida` não muda o aparelho:
 nem pede confirmação, nem ganha revisão, nem desfaz a verificação. Mudar VPN, proxy ou o bloqueio incrementa
 `desired_rev` e volta o aparelho a `pendente`. Tirar tudo de um aparelho que nunca aplicou nada apaga a linha. A
-prévia avisa quando o proxy global da 041 está gravado no aparelho.
+prévia avisa quando o proxy global da 041 está gravado no aparelho. Cada item traz ainda `egress_warnings` (29.6;
+lista de `{code, message, …}`, vazia quando não há o que avisar, e que nunca recusa): `saida_dedicada_compartilhada`
+(o perfil com saída esperada fica em mais de um aparelho, com `shared_with`) e
+`saida_dedicada_trocada_por_compartilhada` (o aparelho sai de um perfil com saída esperada para um sem).
 
 **Estados, só com evidência.** `pendente`, `configurado`, `conectado`, `trafego_verificado`, `parcial`. Atribuir e
 reaplicar só regridem. `registrar_observacao(rev, estado, evidencia)` é o único caminho para `configurado` e
@@ -337,7 +343,8 @@ reaplicar só regridem. `registrar_observacao(rev, estado, evidencia)` é o úni
 é descartada, como no `proxy._fechar`. `registrar_medicao(medicao, rev)` acrescenta ao histórico sempre, grava a
 última saída medida (`egress_ipv4`, `egress_ipv6`, `verified_at`) e decide: `trafego_verificado` só com a revisão
 pedida aplicada, IP de saída medido, cada app de `rede.apps_exigidos` medido `ok` (sem app exigido, ao menos um app,
-todos `ok`) e, na política com bloqueio, `leak_blocked` verdadeiro; IP medido com algo faltando é `parcial`, com o
+todos `ok`), na política com bloqueio, `leak_blocked` verdadeiro e, quando o perfil declara a saída esperada, a
+saída medida igual a ela (29.6); IP medido com algo faltando é `parcial`, com o
 que falta no `detail`; sem IP, o estado fica. Vocabulário de `per_app`: `ok` (saiu pela rede pedida),
 `fora_da_rede` (vazou), `falhou`, `nao_medido`.
 
@@ -370,7 +377,10 @@ memória, e a readoção (`ligou`) mede de novo quem ainda não está verificado
 (`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy`, `restriction` (a frase da quarentena),
 `real_account`, `required_apps`, `pending` (`aplicar`|`verificar`), `last_measurement` (a última medição, mais
 `udp_dns_ok` e `udp_ntp_ok`, as duas pernas de UDP lidas do `detail`; item 29.5) e `egress_shared_with` (os
-outros aparelhos com a mesma última saída medida, v4 ou v6: aviso, não bloqueio). O proxy da 041 é lido
+outros aparelhos com a mesma última saída medida, v4 ou v6: aviso, não bloqueio), `egress_expected` (a saída que o
+perfil da saída final declara, `{ipv4, ipv6, profile_id, profile_name}`, ou `null`) e `egress_matches` (a saída
+medida nesta revisão é a esperada: `true`/`false`, ou `null` sem esperada ou antes de a revisão pedida ser medida;
+item 29.6). O proxy da 041 é lido
 como `configurado` **no máximo** (`applied` com proxy), `pendente` nos outros estados, e só vale quando não há
 linha em `device_network`.
 
@@ -660,6 +670,31 @@ v6) em outro aparelho entra no início do `detail` da medição ("aviso: a mesma
 não bloqueio: sem provedor, todos saem pelo IP do central, e isso é o esperado; o aviso existe para ninguém ler
 "perfis diferentes" como "saídas diferentes" (ADR-056 §1).
 
+**Saída esperada × medida × compartilhada (29.6).** São três coisas, e nenhuma substitui a outra:
+
+- **esperada** é configuração: `params.egress_esperado` (e `egress_esperado_ipv6`) no perfil, o IP público que ele
+  deve dar. A esperada do APARELHO é a do perfil que dá a saída final — o proxy, se há um atribuído (o tráfego sai do
+  túnel e ainda passa por ele); senão a VPN (`rede.perfil_da_saida`). Não há fallback: com um proxy sem esperada por
+  cima de uma VPN que a declara, o aparelho não tem saída esperada (a da VPN não é a saída dele);
+- **medida** é a da sonda, de dentro do aparelho (`egress_ipv4`/`egress_ipv6` da linha). Se o perfil declara a
+  esperada e a medida é outra — ou a família declarada nem foi medida —, entra no que falta ("saída medida X, esperada
+  Y do perfil N"; "saída IPv4 não medida, esperada Y do perfil N") e o aparelho fica `parcial`: com `exigida` ou
+  `exigida_com_bloqueio` a tarefa espera e a frase da espera traz o motivo; com `livre` nada depende da rede, e o
+  `parcial`, o `egress_matches: false` da listagem e um evento `network.updated` de nível `warn`
+  (`acao: saida_divergente`, com a medida, a esperada e o perfil) deixam a diferença à vista. Igual à esperada, vale a
+  regra de sempre. Perfil sem `egress_esperado`: nada muda. `egress_matches` só tem valor com a revisão pedida já
+  medida (`parcial` ou `trafego_verificado`): antes disso a saída da linha é a de um pedido anterior;
+- **compartilhada** é a comparação entre aparelhos, acima, e continua aviso. Um aparelho pode medir a própria saída
+  esperada e ainda dividi-la com outro: é o que a prévia da atribuição avisa antes (`saida_dedicada_compartilhada`,
+  contando quem já tem o perfil e os do lote) e o `egress_shared_with` mostra depois.
+
+O painel mostra, junto do IP medido, "esperada X (perfil N)" com "confere" ou, em destaque, "a saída medida é outra";
+o cartão de perfis mostra a saída que cada um declara e aceita o campo no cadastro; a prévia mostra os dois avisos em
+destaque. Trocar a saída dedicada por uma compartilhada tem procedimento próprio: "Reversão do piloto de saída
+distinta", no fim desta seção. Prova: `simulated` (os casos de `tests/test_rede_por_aparelho.py` da seção "saída
+esperada por aparelho", `tests/test_rede_sonda.py::test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera`
+e três casos de `RedePage.test.tsx`); com provedor e aparelho reais, `not_run` (é o piloto do item 29.7).
+
 **Decisão: a sonda abre o app exigido só quando uma tarefa espera por ele** (substitui a de "não abre por padrão",
 que travava; para o dono ratificar). App exigido é app de conta vinculada, e abrir o app é usar a conta (ADR-056 §7,
 K-057). Sem tarefa esperando (varredura, `ligou`, pedido), com `rede.sonda.abrir_apps: false` (padrão), app parado
@@ -825,5 +860,30 @@ solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do clien
 | Aplicação e convergência: receita do SFA, comando `device.network`, reinício, conexão como uid 2000, deriva, wipe, desfazer, porta da rede, servidor sing-box do central com regras que fecham o central, chaves por aparelho (058), `sync` antes de desligar, teto de reinícios pedidos (com ou sem boot detectado, recusa conta) (25.4) | implementado | `simulated` (`tests/test_rede_aplicacao.py`, 30 casos; o teto em `::test_reinicio_sem_boot_detectado_tem_teto` e `::test_reinicio_recusado_tambem_conta_para_o_teto`, que falham sem a correção: aparelho e processo falsos; o HTTP de uso único é o único socket real, em 127.0.0.1); num aparelho real `not_run`: depende da versão promovida do SFA (25.10), de subir o sing-box de verdade (ACL, regras e `resolve` do 1.14.2) e do tempo real do boot até o `tun0` |
 | Sonda de saída: IP v4/v6 por eco HTTP/1.0 como uid 2000, DNS da VPN, UDP (DNS e NTP), cobertura por UID pelo `dumpsys netstats`, vazamento com o cliente VPN parado (só `Permission denied` prova; religado pelo boot), abrir o app parado quando a tarefa espera, comparação entre aparelhos, passo `verificar` da convergência (25.5) | implementado | `simulated` (`tests/test_rede_sonda.py`, 17 casos; o vazamento em `::test_vazamento_so_com_o_cliente_parado_e_so_permission_denied_prova`: saídas remontadas no formato real com os números do 25.1, aparelho e processo falsos); num aparelho real `not_run`: depende do 25.4 real (SFA promovido, sing-box de verdade) e de um eco de IP alcançável; o `printf` com NUL do UDP e o formato do `netstats` do Android 14 só foram vistos no piloto, não por esta sonda |
 | Sonda UDP com repetição e pernas separadas: até 3 datagramas de 2 s por perna numa ida só, tentativa e tempo por perna no `detail`, `udp_dns_ok`/`udp_ntp_ok` na listagem e no painel, sem mudar a regra que libera tarefa (29.5) | implementado | `simulated` (`tests/test_rede_sonda.py::test_comando_de_udp_repete_o_datagrama_numa_ida_so_e_diz_tentativa_e_tempo`, `::test_leitura_de_udp_por_perna_e_a_saida_antiga_ainda_e_lida`, `::test_falha_transitoria_de_udp_nao_derruba_a_perna_e_a_persistente_fica_registrada` — que falha no comando de um datagrama só, com `UDP DNS 0 B` — e `::test_perna_de_udp_falha_nao_segura_a_tarefa_e_aparece_por_perna`; `RedePage.test.tsx`, 1 caso); o texto do comando foi ensaiado num `sh` local com `nc` falso (sintaxe e lógica do laço, não o mksh); num aparelho real `not_run` |
+| Saída esperada por aparelho: `params.egress_esperado` validado como endereço público, comparação com a saída medida (diferente vira `parcial` com o motivo), `egress_expected`/`egress_matches` na listagem e no painel, avisos de saída dedicada compartilhada e de troca por compartilhada na prévia (29.6) | implementado | `simulated` (`tests/test_rede_por_aparelho.py`, 5 casos: `::test_cadastro_valida_a_saida_esperada_como_endereco_publico`, `::test_saida_medida_diferente_da_esperada_vira_parcial_e_a_igual_verifica`, `::test_proxy_encadeado_decide_a_saida_esperada`, `::test_politica_livre_com_saida_diferente_mostra_o_estado_e_nao_segura_tarefa`, `::test_previa_avisa_saida_dedicada_compartilhada_e_troca_por_compartilhada`; `tests/test_rede_sonda.py::test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera`; `RedePage.test.tsx`, 3 casos); com provedor externo e aparelho real `not_run` (piloto do 29.7) |
 | Portão de rede no scheduler: validade de `trafego_verificado` (`rede.validade_verificacao_s`), app de conta vinculada depois da medição, remedição disparada pela porta e adiantada pela varredura, suspensão entre etapas do mesmo app e na troca de app, releitura do aparelho entre etapas, reinício que sai com o objetivo suspenso pela rede, app nunca aberto sem travar a tarefa (25.6) | implementado | `simulated` (`tests/test_rede_portao.py`, 12 casos: aparelho de rede e servidor falsos, provedor por regras e aparelho de QA falso; os casos do scheduler falham sem a porta entre etapas, `::test_queda_do_tunel_no_meio_e_vista_entre_etapas_e_o_reinicio_sai` falha sem a releitura e sem a exceção do reinício, `::test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida` falha sem abrir o app pela porta); num aparelho real `not_run`: depende do 25.4/25.5 reais |
 | Aparelhos do worker: perfil por `adb reverse`, endpoint da LAN (`rede.servidor.endpoint_lan`), leitura do firewall do central (porta, interface, origem e perfil efetivos; regra obsoleta) com o comando do dono (sem `-Program`, idempotente), a inspeção e a reversão, recusa com firewall fechado, `remote_access` e `POST …/firewall-check`, cartão no painel (25.7, 29.8) | implementado | `simulated` (`tests/test_rede_worker.py`, 24 casos: aparelho remoto e leitura do firewall falsos; os de interface e de sub-rede erradas falham no leitor anterior, que as lia `liberado`; `RedePage.test.tsx`, 2 casos); a leitura do firewall rodou de verdade, só leitura (29/09 e, com o leitor do 29.8, 30/09: `sem_regra`, sub-rede e interface lidas do sistema; sintaxe dos três comandos analisada no `powershell.exe` 5.1 sem executá-los); regra criada e lida como `liberado`, e aplicação num aparelho do notebook, `not_run`: dependem de o dono configurar o `endpoint_lan` e criar a regra de firewall |
+
+### Reversão do piloto de saída distinta
+
+Para o aparelho **com conta real** que passou a sair por um perfil dedicado (com `egress_esperado`; piloto do item
+29.7), quando o servidor dedicado sai do ar ou o piloto termina.
+
+**O que não fazer.** Voltar o aparelho para o perfil do central (ou tirar o perfil) por uma reatribuição comum. Isso
+troca o IP de saída de uma conta logada (ADR-056 §7, K-057), e a troca fica em silêncio: o perfil de destino não
+declara saída esperada, então o aparelho volta a `trafego_verificado` pela saída compartilhada sem nada acusar a
+diferença. A prévia avisa (`saida_dedicada_trocada_por_compartilhada`), mas aviso não segura o pedido. Também não
+afrouxar a política "para o aparelho voltar a ter internet": sair de `exigida_com_bloqueio` tira o bloqueio, e o
+tráfego passa a sair pela interface física — a mesma troca de saída, por outro caminho. A plataforma não faz nenhuma
+das duas sozinha: a convergência nunca muda o perfil nem a política pedidos.
+
+**O procedimento.**
+
+1. **Manter** o perfil dedicado e a política `exigida_com_bloqueio`. Sem o túnel, o bloqueio do Android recusa o que
+   sai fora da VPN: o aparelho fica **sem rede, explicitamente** (`configurado` ou `parcial`, a tarefa espera e diz
+   por quê), e a conta não aparece por outro IP. Fica assim até uma decisão autorizada do dono.
+2. Decidida a mudança de saída, **reatribuir com a confirmação por aparelho** (`confirm_real_account` com o id; no
+   painel, o diálogo daquele aparelho), depois de ler o aviso da prévia. É uma mudança de saída como qualquer outra:
+   revisão nova, `pendente`, aplicação, teste de vazamento e medição.
+
+Aparelho de QA sem conta real não pede confirmação; o aviso da prévia é o mesmo.

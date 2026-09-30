@@ -16,8 +16,8 @@ import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, Sh
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkFirewallState, NetworkMeasurement,
-  NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
+  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkExpectedEgress, NetworkFirewallState,
+  NetworkMeasurement, NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -254,6 +254,7 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
             ) : null}
           </>
         ) : <span className={s.muted}>não medido</span>}
+        {row.egress_expected ? <SaidaEsperada esperada={row.egress_expected} confere={row.egress_matches ?? null} /> : null}
         {row.last_measurement ? <ResumoDaMedicao m={row.last_measurement} /> : null}
         {d && d.policy === 'exigida_com_bloqueio' ? <ProvaDeVazamento d={d} /> : null}
       </td>
@@ -274,6 +275,20 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         </div>
       </td>
     </tr>
+  );
+}
+
+/** A saída que o perfil declara (29.6) ao lado da medida. Três leituras, e nenhuma presumida: `confere` (a medida
+ *  desta revisão é a esperada), "é outra" (o aparelho fica `parcial`; com política exigida a tarefa espera) e sem
+ *  veredito (a revisão pedida ainda não foi medida). Saída compartilhada é outro aviso, e continua à parte. */
+function SaidaEsperada({ esperada, confere }: { esperada: NetworkExpectedEgress; confere: boolean | null }) {
+  const ips = [esperada.ipv4, esperada.ipv6].filter((ip): ip is string => !!ip).join(' e ');
+  const difere = confere === false;
+  return (
+    <div className={difere ? `${s.rowNote} ${s.dupe}` : s.rowNote}
+         title={difere ? `A saída medida não é a que o perfil ${esperada.profile_name} declara: o aparelho fica parcial até medir ${ips}.` : undefined}>
+      esperada {ips} (perfil {esperada.profile_name}){difere ? ' — a saída medida é outra' : confere ? ' — confere' : ''}
+    </div>
   );
 }
 
@@ -344,6 +359,12 @@ function ProvaDeVazamento({ d }: { d: DeviceNetwork }) {
   return <div className={ruim ? `${s.rowNote} ${s.dupe}` : s.rowNote} title={d.leak_detail ?? undefined}>{texto}</div>;
 }
 
+/** A saída que o perfil declara em `params` (29.6), como texto; `''` = não declara. */
+function saidaDeclarada(p: NetworkProfileListed): string {
+  return [p.params.egress_esperado, p.params.egress_esperado_ipv6]
+    .filter((ip): ip is string => typeof ip === 'string' && ip.length > 0).join(' e ');
+}
+
 function PerfisCard({ perfis, onCriado, onApagar }: {
   perfis: NetworkProfileListed[]; onCriado: () => Promise<void>; onApagar: (id: string, nome: string) => Promise<void>;
 }) {
@@ -353,6 +374,9 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
   const [host, setHost] = useState('');
   const [porta, setPorta] = useState('51820');
   const [secret, setSecret] = useState('');
+  // A saída que o perfil deve dar (29.6): opcional, e só com ela a medição confere a saída do aparelho. Quem valida
+  // é o backend (IPv4 público, a mesma regra da medição): o 422 dele aparece no aviso de erro.
+  const [saida, setSaida] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
   function mudarKind(k: NetworkProfileKind) {
@@ -366,9 +390,10 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
       await api.createNetworkProfile({
         name: nome.trim(), kind, protocol, endpoint_host: host.trim(), endpoint_port: Number(porta),
         secret: secret || undefined,
+        ...(saida.trim() ? { params: { egress_esperado: saida.trim() } } : {}),
       });
       toast({ tone: 'success', title: `Perfil ${nome.trim()} criado` });
-      setNome(''); setHost(''); setSecret('');
+      setNome(''); setHost(''); setSecret(''); setSaida('');
       await onCriado();
     } catch (e) {
       toastError('Não foi possível criar o perfil', e);
@@ -401,6 +426,10 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
           <TextInput aria-label="Segredo (chave, senha ou certificado)" type="password" placeholder="Segredo — opcional, nunca reexibido"
                      autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)}
                      style={{ gridColumn: 'span 3' }} />
+          <TextInput aria-label="Saída esperada (IPv4 público, opcional)" placeholder="Saída esperada — IPv4 público, opcional"
+                     title="O IP público pelo qual o aparelho deve sair com este perfil. Com ele, a medição confere a saída; sem ele, só avisa de saída repetida."
+                     value={saida} mono maxLength={45} onChange={(e) => setSaida(e.target.value)}
+                     style={{ gridColumn: 'span 2' }} />
         </div>
         {perfis.length === 0 ? <p className={s.muted}>Nenhum perfil cadastrado.</p> : (
           <ul className={s.versions} style={{ marginTop: 'var(--sp-3)' }}>
@@ -410,6 +439,7 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
                 <Badge size="sm" tone={p.kind === 'vpn' ? 'accent' : 'info'}>{p.kind} · {p.protocol}</Badge>
                 <code>{p.endpoint_host}:{p.endpoint_port}</code>
                 {p.has_secret ? <Badge size="sm" tone="neutral">segredo guardado</Badge> : null}
+                {saidaDeclarada(p) ? <Badge size="sm" tone="info">saída esperada {saidaDeclarada(p)}</Badge> : null}
                 <span className={s.grow} />
                 <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Apagar ${p.name}`}
                         onClick={() => void onApagar(p.id, p.name)} />
@@ -541,6 +571,12 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
                 <Badge size="sm" tone={PREVIA[d.outcome]?.tom ?? 'neutral'}>{PREVIA[d.outcome]?.rotulo ?? d.outcome}</Badge>
                 <span className={s.muted}>{d.reason}</span>
                 {d.warnings.map((w) => <span key={w} className={s.rowNote}>{w}</span>)}
+                {/* Avisos de saída (29.6): não recusam, mas são a troca de IP que a pessoa precisa ler antes de aplicar. */}
+                {(d.egress_warnings ?? []).map((w) => (
+                  <span key={w.code} data-aviso-de-saida={w.code} className={`${s.rowNote} ${s.dupe}`}>
+                    <ShieldAlert size={12} aria-hidden /> {w.message}
+                  </span>
+                ))}
               </li>
             ))}
           </ul>
