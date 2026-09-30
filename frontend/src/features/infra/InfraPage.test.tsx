@@ -200,7 +200,7 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(t).toContain('Chrome');
     expect(allByRole('button', /^Abrir a persona/, aqui)).toHaveLength(2);
     await click(byRole('button', 'Abrir a persona Rafael Lima (Chrome)', aqui));
-    expect(useUiStore.getState().personaRequest?.id).toBe('ig-2');
+    expect(useUiStore.getState().rota.segmentos[0]).toBe('ig-2');
     // A aba do servidor lista as mesmas personas por aparelho.
     await click(byRole('tab', /^Personas e apps/, byRole('tablist', /Detalhes de worker-lan-01/)));
     expect(text()).toContain('@marina.fotografa (Conectado) · Rafael Lima');

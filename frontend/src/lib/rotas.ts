@@ -11,6 +11,14 @@
  *
  * `#/perfis[...]` é o nome antigo de Personas: continua valendo (parse devolve `legado: true` para a tela trocar o
  * hash por `hashDe`, sem empilhar histórico).
+ *
+ * Parâmetros com dono fixo (não reutilize o nome para outra coisa):
+ * - `foco=<id do aparelho>`: o aparelho aberto no painel de Foco. É GLOBAL (vale em qualquer tela, não é filtro do
+ *   Painel) e acompanha a troca de tela; fechar o Foco tira só ele. Ver `store/ui.ts`.
+ * - `aba=<guia>`: a guia ativa da tela ou do objeto aberto (Aplicativos, Execuções, Configuração…). Em Personas a guia
+ *   é segmento do caminho (`#/personas/<id>/memoria`).
+ * - Filtros de lista (`situacao`, `q`, `ordem`, `visao`, `estado`): da tela que os lê; quem compõe um hash novo a
+ *   partir da rota atual preserva os que não são seus.
  */
 export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'aprendizado', 'infraestrutura',
                       'configuracao', 'diagnostico'] as const;

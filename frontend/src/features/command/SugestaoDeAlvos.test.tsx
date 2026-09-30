@@ -104,6 +104,6 @@ describe('Modo Automático', () => {
     await click(byRole('button', /^Executar/));
     await waitFor(() => expect(text(container)).toContain('Beatriz'));
     await click(byRole('button', /Beatriz/));
-    expect(useUiStore.getState().view).toBe('perfis');
+    expect(useUiStore.getState().view).toBe('personas');
   });
 });

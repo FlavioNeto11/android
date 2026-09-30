@@ -59,7 +59,7 @@ beforeEach(() => {
     instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
-  useUiStore.setState({ focusInstanceId: null, personaRequest: null });
+  useUiStore.getState().navegar({ tela: 'personas', query: { foco: undefined } }, 'replace');
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -169,17 +169,17 @@ describe('personas', () => {
     expect(byRole('button', /Nova persona manual/i)).toBeTruthy();
   });
 
-  it('pedido de outra tela (openPersona) abre a persona pedida na guia pedida e é consumido', async () => {
+  it('pedido de outra tela (openPersona) vira o link da persona e abre a guia pedida', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa(), SEM_CONTA]));
     backend.on('GET', /\/accounts$/, () => json([]));
     backend.on('GET', /approvals/, () => json([]));
-    useUiStore.setState({ personaRequest: { id: 'ig-9', tab: 'contas', nonce: 1 } });
+    useUiStore.getState().openPersona('ig-9', 'contas');
     await act(async () => {
       root.render(<ProfilesPage />);
     });
     await waitFor(() => text().includes('Helena Prado') && text().includes('Personas'));
     await waitFor(() => byRole('tab', /Contas e acesso/i).getAttribute('aria-selected') === 'true');
-    expect(useUiStore.getState().personaRequest).toBeNull();
+    expect(window.location.hash).toBe('#/personas/ig-9/contas');
     expect(text()).toContain('ainda não tem @ de cadastro');
   });
 
@@ -187,7 +187,7 @@ describe('personas', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     backend.on('GET', /\/accounts$/, () => json([]));
     backend.on('GET', /approvals/, () => json([]));
-    useUiStore.setState({ personaRequest: { id: 'ig-1', tab: 'autenticacao', nonce: 2 } });
+    useUiStore.getState().openPersona('ig-1', 'autenticacao');
     await act(async () => {
       root.render(<ProfilesPage />);
     });

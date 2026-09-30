@@ -30,6 +30,7 @@ export function RunsPage() {
   const workers = useAppStore((s) => s.workers);
   const selectedRunId = useUiStore((s) => s.selectedRunId);
   const selectRun = useUiStore((s) => s.selectRun);
+  const abrirExecucao = useUiStore((s) => s.abrirExecucao);
   const setView = useUiStore((s) => s.setView);
   const [loading, setLoading] = useState(false);
   // Filtro por ONDE rodou. Com ele ligado a lista deixa de ser "o que o store tem" e passa a ser a resposta do
@@ -74,7 +75,7 @@ export function RunsPage() {
   const lista = filtrando ? (filtradas ?? []) : runs;
   const temMais = carregadas < total;
 
-  // Abre a mais recente quando nada está selecionado.
+  // Abre a mais recente quando nada está selecionado (substitui o link, não empilha: não foi a pessoa que escolheu).
   useEffect(() => {
     if (!selectedRunId && lista.length > 0 && lista[0]) selectRun(lista[0].id);
   }, [selectedRunId, lista, selectRun]);
@@ -139,7 +140,7 @@ export function RunsPage() {
               <ul className={styles.runList}>
                 {lista.map((r) => (
                   <li key={r.id}>
-                    <RunItem run={r} current={r.id === selectedRunId} onSelect={() => selectRun(r.id)} />
+                    <RunItem run={r} current={r.id === selectedRunId} onSelect={() => abrirExecucao(r.id)} />
                   </li>
                 ))}
               </ul>

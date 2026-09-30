@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type { Instance, InstagramProfile, PersonaDTO, PolicyGroup, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
+import { Banner } from '../../components/Banner';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -40,7 +41,7 @@ function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {
 }
 
 /**
- * Personas (`#/perfis`, rota mantida): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
+ * Personas (`#/personas`, com `#/personas/<id>/<guia>` para uma pessoa; `#/perfis` antigo redireciona): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
  * voz, biografia, fotos e as contas dela em cada app; conta, senha e aparelho se ajustam DENTRO da persona.
  */
 export function ProfilesPage() {
@@ -51,9 +52,12 @@ export function ProfilesPage() {
   const needsPersonEpoch = useAppStore((s) => s.needsPersonEpoch);
   const instancesMap = useAppStore((s) => s.instances);
   const liveWorkers = useAppStore((s) => s.workers);
-  const personaRequest = useUiStore((s) => s.personaRequest);
-  const consumePersonaRequest = useUiStore((s) => s.consumePersonaRequest);
-  const [aberto, setAberto] = useState<{ id: string; aba: Aba; nonce: number } | null>(null);
+  // A persona aberta e a guia vêm do link (`#/personas/<id>/<guia>`): Voltar do navegador fecha, recarregar reabre.
+  const rota = useUiStore((s) => s.rota);
+  const navegar = useUiStore((s) => s.navegar);
+  const voltarPara = useUiStore((s) => s.voltarPara);
+  const idAberto = rota.tela === 'personas' ? rota.segmentos[0] ?? null : null;
+  const abaAberta = abaDoPedido(rota.segmentos[1]);
   const [pessoas, setPessoas] = useState<PersonaDTO[] | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
@@ -83,19 +87,15 @@ export function ProfilesPage() {
     void load();
   }, [load, hydrateCount, needsPersonEpoch]);
 
-  // Pedido de outra tela ("Abrir persona" no Foco): abre a pessoa (e a guia, se dita) e consome o pedido para ele
-  // não reabrir sozinho quando a pessoa voltar à lista. O `nonce` remonta o detalhe se a mesma pessoa for pedida
-  // de novo noutra guia.
-  useEffect(() => {
-    if (!personaRequest) return;
-    setAberto({ id: personaRequest.id, aba: abaDoPedido(personaRequest.tab), nonce: personaRequest.nonce });
-    consumePersonaRequest();
-  }, [personaRequest, consumePersonaRequest]);
-
   // Abrir uma persona e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
   useEffect(() => {
     conteudoAoTopo();
-  }, [aberto?.id]);
+  }, [idAberto]);
+
+  /** Abrir empilha (Voltar do navegador volta à lista); a Visão geral é a guia sem segmento. */
+  const abrir = useCallback((id: string, aba: Aba = 'visao') => {
+    navegar({ tela: 'personas', segmentos: aba === 'visao' ? [id] : [id, aba] });
+  }, [navegar]);
 
   // A lista se releu (apagadas saem, outra tela removeu alguém): a seleção fica só com quem ainda existe.
   useEffect(() => {
@@ -116,10 +116,13 @@ export function ProfilesPage() {
     });
   }, []);
 
-  const emFoco = aberto ? (pessoas ?? []).find((p) => p.id === aberto.id) : undefined;
-  if (aberto && emFoco) {
-    return <ProfileDetail key={`${emFoco.id}:${aberto.nonce}`} profile={emFoco} abaInicial={aberto.aba}
-                          onBack={() => setAberto(null)} onChanged={load} />;
+  const emFoco = idAberto ? (pessoas ?? []).find((p) => p.id === idAberto) : undefined;
+  if (idAberto && emFoco) {
+    // Trocar de guia substitui o link (não empilha); "← Personas" volta à lista pelo histórico quando veio dela.
+    return <ProfileDetail key={emFoco.id} profile={emFoco} aba={abaAberta}
+                          onAbaChange={(a) => navegar({ tela: 'personas', segmentos: a === 'visao' ? [emFoco.id] : [emFoco.id, a] }, 'replace')}
+                          onBack={() => voltarPara({ tela: 'personas' }, 'push', (de) => de.tela === 'personas' && de.segmentos.length === 0)}
+                          onChanged={load} />;
   }
 
   if (pessoas === null && erro) {
@@ -144,14 +147,14 @@ export function ProfilesPage() {
   async function criada(p: PersonaDTO) {
     setCriando(null);
     await load();
-    setAberto({ id: p.id, aba: 'visao', nonce: Date.now() });
+    abrir(p.id);
   }
 
   // "Abrir" numa pessoa criada pelo lote: a lista se relê antes, senão a recém-criada ainda não estaria nela.
   async function abrirDoLote(id: string) {
     setCriando(null);
     await load();
-    setAberto({ id, aba: 'visao', nonce: Date.now() });
+    abrir(id);
   }
 
   const todas = pessoas.length > 0 && pessoas.every((p) => selecionadas.has(p.id));
@@ -169,6 +172,13 @@ export function ProfilesPage() {
       actions={botoesDeCadastro}
     >
       {erro ? <LoadErrorBanner error={erro} onRetry={() => void load()} /> : null}
+      {/* Link para uma persona que não está na lista (removida, ou de outro servidor). */}
+      {idAberto && !emFoco ? (
+        <Banner tone="warning" icon={ShieldAlert} title="Persona não encontrada"
+                actions={<Button size="sm" onClick={() => navegar({ tela: 'personas', query: rota.query }, 'replace')}>Ver todas</Button>}>
+          O link aponta para uma persona que não está na lista.
+        </Banner>
+      ) : null}
 
       <InterventionQueue profiles={contas} instances={instancesMap} workers={liveWorkers} />
 
@@ -196,7 +206,7 @@ export function ProfilesPage() {
             {pessoas.map((p) => (
               <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
                            onSelecionar={() => alternarSelecao(p.id)}
-                           onOpen={() => setAberto({ id: p.id, aba: 'visao', nonce: Date.now() })} />
+                           onOpen={() => abrir(p.id)} />
             ))}
           </AutoGrid>
         </>
