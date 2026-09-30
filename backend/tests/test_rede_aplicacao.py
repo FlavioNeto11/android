@@ -724,6 +724,8 @@ async def test_convergencia_aplica_pede_reinicio_e_conecta(parque: Harness, monk
     linha = _linha(parque)
     assert linha["state"] == "conectado" and "uid 2000" in str(linha["detail"])
     assert "medição do tráfego" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    # A primeira medição da conexão sai na próxima varredura, não depois da deriva (android-05, 29/09: 16 min parado).
+    assert st.rede_convergencia._acao(_linha(parque), "varredura") == "verificar"
     rede.registrar_medicao(st, "android-01", rede.NetworkMeasurementInput(
         method="app_qa", egress_ipv4="45.162.8.9", per_app={"com.pocqa.messenger": "ok"}, leak_blocked=True), rev=1)
     assert _linha(parque)["state"] == "trafego_verificado"
@@ -782,6 +784,10 @@ async def test_deriva_regride_e_wipe_invalida(parque: Harness, monkeypatch: pyte
     _envelhecer_configuracao(parque)
     ap.depois_do_boot(uptime=45)
     assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
+    # A primeira medição da conexão é pedida ao conectar (coberta em test_convergencia_aplica_pede_reinicio_e_conecta);
+    # aqui o assunto é a deriva, então a marca é consumida como se a medição já tivesse saído.
+    assert st.rede_convergencia._acao(_linha(parque), "varredura") == "verificar"
+    st.rede_convergencia.memoria("android-01").verificacao_pedida = False
     # Varredura antes de vencer a deriva: nada a fazer; vencida, relê.
     assert await _passo(parque, "varredura") is False
     st.cfg.file.rede.deriva_s = 0.01

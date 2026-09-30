@@ -485,6 +485,10 @@ class ConvergenciaDeRede:
             mem.reinicios.pop(rev, None)
             mem.espera_ate = 0.0
             mem.ultima_conferencia = self._agora()
+            # A primeira medição da conexão sai no próximo ponto seguro, não na deriva (`rede.deriva_s`, 15 min): no
+            # android-05 (29/09) o `conectado` esperou 16 min para medir. O teste de vazamento guardado da revisão não
+            # é refeito por isto (só o `POST …/verify` o limpa).
+            mem.verificacao_pedida = True
             await self._guardar_linha_de_base(ap, iid, rev)
             return {"instance_id": iid, "rev": rev, "state": novo.state, "evidence": evidencia}
         return self._reiniciar_ou_desistir(rt, row, obs, reiniciou, "o túnel não subiu")
