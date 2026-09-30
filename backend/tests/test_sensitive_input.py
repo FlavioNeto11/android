@@ -42,8 +42,12 @@ class FakeSecretField:
     """Campo de senha de mentira: guarda o texto e registra cada chamada do driver."""
 
     def __init__(self, text: str = "", *, clearable: bool = True, raise_with: str | None = None,
-                 swallows: bool = False):
+                 swallows: bool = False, leituras_atrasadas: int = 0):
         self.text = text
+        # `leituras_atrasadas`: quantas leituras DEPOIS de digitar ainda mostram o campo vazio — a árvore de um
+        # WebView que demora a refletir a máscara (página de senha da Microsoft, 30/09/2026).
+        self.leituras_atrasadas = leituras_atrasadas
+        self._digitou = False
         self.clearable = clearable
         self.raise_with = raise_with
         # `swallows`: o toque não focou este campo, então a digitação vai para OUTRO lugar da tela e o campo de
@@ -63,11 +67,16 @@ class FakeSecretField:
         if self.swallows:
             return                                       # o texto foi para outro campo: aqui não entra nada
         self.text += text
+        self._digitou = self._digitou or bool(text)
 
     # -- o que o canal enxerga ------------------------------------------------
     def tree(self) -> Any:
+        texto = self.text
+        if self._digitou and self.leituras_atrasadas > 0:
+            self.leituras_atrasadas -= 1
+            texto = ""
         node = ('<node class="android.widget.EditText" resource-id="com.instagram.android:id/password" '
-                f"text={quoteattr(self.text)} password=\"true\" clickable=\"true\" enabled=\"true\" "
+                f"text={quoteattr(texto)} password=\"true\" clickable=\"true\" enabled=\"true\" "
                 'bounds="[40,300][680,380]"/>')
         return parse_hierarchy("<hierarchy>" + node + "</hierarchy>")
 
@@ -120,16 +129,28 @@ async def test_campo_que_nao_esvazia_aborta_sem_digitar_a_senha() -> None:
     assert field.typed == []                             # a senha nunca foi digitada
 
 
-async def test_senha_que_nao_chegou_ao_campo_e_denunciada() -> None:
+async def test_senha_que_nao_chegou_ao_campo_e_denunciada(monkeypatch: Any) -> None:
     """Se o toque não focar o campo de senha, a digitação vai para outro lugar da tela — possivelmente o campo de
     usuário, em texto claro, que segue no envio. A pós-condição tem de pegar isso: campo de senha vazio depois de
     digitar é falha, não sucesso. A checagem antiga incluía `after.password`, que é SEMPRE verdadeiro aqui, e por
     isso nunca disparava."""
+    import app.security.sensitive_input as canal
+    monkeypatch.setattr(canal, "PAUSA_ENTRE_CONFERENCIAS_S", 0)    # as releituras não salvam o que não chegou
     field = FakeSecretField(swallows=True)
     with pytest.raises(SensitiveInputError, match="continuou vazio"):
         await channel().fill(call=run_call, io=field, observe=field.observe, locate=field.locate,
                              secret=lambda: SECRET)
     assert field.text == ""                              # o campo de senha ficou mesmo vazio
+
+
+async def test_webview_que_demora_a_mostrar_a_mascara_nao_e_campo_vazio(monkeypatch: Any) -> None:
+    """A página de senha da Microsoft (WebView) mostrou o campo vazio na primeira leitura depois de digitar, com a senha
+    já nele (android-06, 30/09/2026). O canal relê, sem digitar de novo."""
+    import app.security.sensitive_input as canal
+    monkeypatch.setattr(canal, "PAUSA_ENTRE_CONFERENCIAS_S", 0)
+    field = FakeSecretField(leituras_atrasadas=2)
+    await channel().fill(call=run_call, io=field, observe=field.observe, locate=field.locate, secret=lambda: SECRET)
+    assert field.typed == [SECRET]                       # uma digitação só
 
 
 async def test_erro_do_driver_nunca_propaga_o_texto_digitado() -> None:

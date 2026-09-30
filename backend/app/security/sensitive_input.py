@@ -9,6 +9,7 @@ valor, não o coloca em exceção, e não registra nem o comprimento.
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
@@ -21,6 +22,12 @@ log = logging.getLogger("poc.security")
 # Quantas vezes tentar esvaziar o campo antes de desistir. Esvaziar é obrigatório: uma tentativa anterior que
 # preencheu o campo e caiu antes de enviar faria a próxima digitar a credencial duas vezes concatenada.
 CLEAR_ATTEMPTS = 2
+#: Leituras do campo depois de digitar, antes de concluir que ficou vazio. Num WebView (a página de senha da
+#: Microsoft, medido em 30/09/2026 no android-06) a árvore de acessibilidade demora um instante para mostrar a máscara:
+#: a primeira leitura vinha vazia com a senha já no campo, e o login parava em "continuou vazio". Só se RELÊ — nunca
+#: se digita de novo.
+CONFERENCIAS_DEPOIS_DE_DIGITAR = 4
+PAUSA_ENTRE_CONFERENCIAS_S = 0.5
 
 
 async def _ran(coro: Awaitable[Any]) -> bool:
@@ -100,6 +107,11 @@ class SensitiveInputChannel:
             # de `_is_empty`). Sem esta guarda, digitação que não chega ao campo de senha passa despercebida — e o
             # segredo pode ter ido parar no campo ao lado, em texto claro, e seguir no envio.
             after = locate(await observe())
+            for _ in range(CONFERENCIAS_DEPOIS_DE_DIGITAR - 1):
+                if after is not None and after.text:
+                    break
+                await asyncio.sleep(PAUSA_ENTRE_CONFERENCIAS_S)
+                after = locate(await observe())
             if after is None or not after.text:
                 raise SensitiveInputError("O campo sensível continuou vazio depois da digitação.")
         log.info("entrada sensível concluída no campo %s", field.resource_id or field.class_name)
