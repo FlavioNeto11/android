@@ -2207,6 +2207,11 @@ export interface NetworkMeasurement {
   per_app: Record<string, unknown>;
   leak_blocked: boolean | null;
   detail: string | null;
+  /** As duas pernas de UDP (29.5), só em `last_measurement` da listagem (`rede.listar_aparelhos`), derivadas do
+   *  `detail`: DNS por UDP e NTP (o UDP que não é DNS). `udp_ok` é o E das duas. `null` = o `detail` não diz;
+   *  ausente = backend de antes do 29.5. UDP ainda NÃO decide `trafego_verificado`. */
+  udp_dns_ok?: boolean | null;
+  udp_ntp_ok?: boolean | null;
 }
 
 // ---- Rede por aparelho: envelope das rotas (25.8) ------------------------------------------------------------------

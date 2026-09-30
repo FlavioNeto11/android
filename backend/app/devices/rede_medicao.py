@@ -9,7 +9,8 @@ estendido):
 2. com `abrir` (tarefa segurada pela porta da rede, ou `rede.sonda.abrir_apps`): abrir o app exigido que não teve
    tráfego na janela;
 3. o IP de saída v4 e v6, por eco HTTP/1.0 (o primeiro host da lista que devolver IP público);
-4. o resolvedor DNS da rede VPN, a resolução de um nome, UDP de DNS e UDP que não é DNS (NTP);
+4. o resolvedor DNS da rede VPN, a resolução de um nome, UDP de DNS e UDP que não é DNS (NTP) — até três datagramas
+   por perna, parando no primeiro com resposta (item 29.5); `udp_ok` é o E das duas, e NÃO decide `trafego_verificado`;
 5. a contabilidade DEPOIS: por UID, o delta na VPN (tipo 17) × o delta na física. A janela dos apps vai de quando o
    túnel conectou nesta revisão até agora — acumulada: um vazamento visto uma vez não some na medição seguinte, e um
    app que já usou a rede pelo túnel não vira `nao_medido` por estar parado desde a última sonda (o que derrubaria um
@@ -40,7 +41,7 @@ from .rede_aplicacao import AparelhoDaRede, RedeAplicacaoError
 from .sonda_rede import (PACOTE_DO_SHELL, TENTATIVAS_DE_VAZAMENTO, UID_DO_SHELL, Contabilidade, cobertura,
                          comando_abrir_app, comando_dns_e_udp, comando_ip_de_saida, comando_netstats,
                          comando_parar_e_sondar, comando_uids, ler_dns_e_udp, ler_ip_de_saida, ler_netstats,
-                         ler_parar_e_sondar, ler_uids, uid_da_saida)
+                         ler_parar_e_sondar, ler_uids, pior_caso_udp_s, uid_da_saida)
 
 if TYPE_CHECKING:
     from ..config import RedeSondaCfg
@@ -51,6 +52,10 @@ log = logging.getLogger(__name__)
 METODO = "sonda nc http/1.0 + netstats por uid (uid 2000)"
 #: Tempo de cada sonda de IP (o `nc` com o stdin aberto pelo `sleep`).
 _TIMEOUT_IP_S = 8
+#: O prazo da ida do DNS e do UDP: o pior caso das duas pernas (nenhum datagrama com resposta, item 29.5) mais o resto
+#: da mesma ida — o `dumpsys connectivity`, o `ping` de 3 s e a folga de um aparelho sob carga. Eram 60 s fixos para
+#: 10 s de UDP; a folga é a mesma, e o prazo acompanha as tentativas.
+_PRAZO_DNS_E_UDP_S = pior_caso_udp_s() + 50
 #: O teste de vazamento: tentativas de pegar a janela sem `tun0`, e a espera de cada uma (30 passos de 0,1 s no
 #: comando). O prazo da ida ao aparelho soma, por tentativa, a espera e uma folga para o `am force-stop`.
 _TENTATIVAS = TENTATIVAS_DE_VAZAMENTO
@@ -187,7 +192,8 @@ async def medir(ap: AparelhoDaRede, cfg: RedeSondaCfg, *, exigidos: list[str], l
     v6, de_onde_v6 = await _ip(ap, cfg.hosts_ipv6, 6)
     try:
         dns = ler_dns_e_udp(await _shell_2000(ap, comando_dns_e_udp(
-            host_de_resolucao=cfg.hosts_ipv4[0], alvo_dns_udp=cfg.udp_dns, alvo_ntp=cfg.udp_ntp), timeout=60))
+            host_de_resolucao=cfg.hosts_ipv4[0], alvo_dns_udp=cfg.udp_dns, alvo_ntp=cfg.udp_ntp),
+            timeout=_PRAZO_DNS_E_UDP_S))
     except ValueError as exc:
         raise RedeAplicacaoError(str(exc)) from None
     depois = await contabilidade(ap)
@@ -215,7 +221,7 @@ async def medir(ap: AparelhoDaRede, cfg: RedeSondaCfg, *, exigidos: list[str], l
         f"IPv6 {v6} ({de_onde_v6})" if v6 else f"IPv6 sem saída ({de_onde_v6[:70]})",
         f"DNS da VPN {dns.resolvedor or 'não lido'}" + (f", privado {dns.dns_privado}" if dns.dns_privado else "")
         + (", resolve" if dns.resolve else ", NÃO resolve"),
-        f"UDP DNS {dns.udp_dns_bytes} B, NTP {dns.udp_ntp_bytes} B",
+        dns.descrever_udp(),                # por perna: bytes, tentativa e tempo (`sonda_rede.pernas_udp` lê de volta)
         "apps: " + "; ".join(notas),
     ]
     if bloqueio and vazamento is not None:

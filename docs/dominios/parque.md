@@ -368,7 +368,8 @@ memória, e a readoção (`ligou`) mede de novo quem ainda não está verificado
 
 **Visão por aparelho.** `GET /api/network/devices`: por aparelho do parque (a loja fica de fora), `network`
 (`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy`, `restriction` (a frase da quarentena),
-`real_account`, `required_apps`, `pending` (`aplicar`|`verificar`), `last_measurement` e `egress_shared_with` (os
+`real_account`, `required_apps`, `pending` (`aplicar`|`verificar`), `last_measurement` (a última medição, mais
+`udp_dns_ok` e `udp_ntp_ok`, as duas pernas de UDP lidas do `detail`; item 29.5) e `egress_shared_with` (os
 outros aparelhos com a mesma última saída medida, v4 ou v6: aviso, não bloqueio). O proxy da 041 é lido
 como `configurado` **no máximo** (`applied` com proxy), `pendente` nos outros estados, e só vale quando não há
 linha em `device_network`.
@@ -486,9 +487,25 @@ nada é medido. O que se mede:
   IP **público** da família; sem IP, o `detail` guarda o motivo de cada host (`Permission denied` do bloqueio,
   `Timeout`, `No route to host` do IPv6 preso no túnel, que é o esperado com `strict_route`);
 - **DNS e UDP**: o resolvedor da rede VPN (`DnsAddresses` das `LinkProperties` do `tun0`; no SFA, 172.19.0.2, o
-  hijack), o DNS privado do Android, se um nome resolve, e dois datagramas de ida e volta pelo `nc -u`: DNS a
+  hijack), o DNS privado do Android, se um nome resolve, e duas **pernas** de UDP de ida e volta pelo `nc -u`: DNS a
   `rede.sonda.udp_dns` (8.8.4.4; o cliente o sequestra e resolve pelo túnel) e NTP a `rede.sonda.udp_ntp` (o UDP que
-  não é DNS — na cadeia com SOCKS5 o DNS seguia e o NTP se perdia). `udp_ok` só com os dois;
+  não é DNS — na cadeia com SOCKS5 o DNS seguia e o NTP se perdia). Cada perna manda **até 3 datagramas, de 2 s
+  cada, e para no primeiro com resposta** (item 29.5; `sonda_rede.TENTATIVAS_UDP` e `ESPERA_UDP_S`), tudo na mesma
+  ida ao shell, como uid 2000. Com um datagrama só e 5 s de espera, 2 de 32 medições reais de 30/09 perderam uma
+  perna (a #6 do android-03, `UDP DNS 83 B, NTP 0 B`, com carga 18,8 em 2 vCPU naquele minuto; a #21 do android-05,
+  `DNS 0 B, NTP 48 B`) e a repetição manual deu 12/12: era datagrama perdido. O `nc -u` do toybox lê até o prazo
+  mesmo com a resposta na mão, então a perna boa custa 2 s (eram 5) e a pior, 6 s (eram 5); o prazo da ida cobre o
+  pior caso das duas (`rede_medicao._PRAZO_DNS_E_UDP_S`). `udp_ok` continua sendo o E das duas pernas (sem coluna
+  nova), e o `detail` da medição diz cada uma, num formato estável:
+  `UDP DNS 83 B (1ª de 3, 2,0 s), NTP 0 B (0 de 3, 6,1 s)` — bytes, em qual datagrama respondeu (`0 de 3` = em
+  nenhum) e o tempo da perna, medido pelo `/proc/uptime`. Uma medição de antes do 29.5 tem só `UDP DNS 83 B, NTP 0 B`.
+  `sonda_rede.pernas_udp(detail)` lê os dois formatos de volta, e a listagem os entrega em `last_measurement` como
+  `udp_dns_ok` e `udp_ntp_ok` (nulos quando o `detail` não diz); o painel mostra "UDP: DNS ok · NTP falhou", com
+  destaque na perna que falhou. **UDP ainda não é critério de `trafego_verificado`**: `rede._falta_para_verificar`
+  não olha `udp_ok`, e uma medição com uma perna sem resposta e o resto provado verifica o aparelho e libera a tarefa.
+  Tornar UDP critério é decisão à parte (com proxy HTTP o UDP que não é DNS é recusado de propósito, T3). O laço do
+  comando (POSIX conservador: `while [ … ]`, `$((…))`, `break`) ainda não rodou num aparelho (`not_run`); a forma de
+  cada datagrama (`printf | timeout nc -u | wc -c`) é a medida no piloto;
 - **cobertura por app** (`per_app`): `pm list packages -U` dá o UID de cada app de `apps_exigidos` (Instagram,
   Outlook…), e `dumpsys netstats --poll` + `detail` (seção "UID stats", `tag=0x0`) dá os bytes por (tipo, uid). No
   delta da janela, `ok` = o que saiu pela física também passou pela VPN (tipo 17 = tipo 1, como o Chrome no 25.1;
@@ -807,5 +824,6 @@ solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do clien
 | Segredo de rede: consumidor restrito do cofre, entrega por stdin ou `push` com limpeza, redação de `socks5://` e chaves do WireGuard (25.3) | implementado | `simulated` (`tests/test_segredo_de_rede.py`, 19 casos, adb falso); entrega num aparelho real `not_run` (vem com o 25.4) |
 | Aplicação e convergência: receita do SFA, comando `device.network`, reinício, conexão como uid 2000, deriva, wipe, desfazer, porta da rede, servidor sing-box do central com regras que fecham o central, chaves por aparelho (058), `sync` antes de desligar, teto de reinícios pedidos (com ou sem boot detectado, recusa conta) (25.4) | implementado | `simulated` (`tests/test_rede_aplicacao.py`, 30 casos; o teto em `::test_reinicio_sem_boot_detectado_tem_teto` e `::test_reinicio_recusado_tambem_conta_para_o_teto`, que falham sem a correção: aparelho e processo falsos; o HTTP de uso único é o único socket real, em 127.0.0.1); num aparelho real `not_run`: depende da versão promovida do SFA (25.10), de subir o sing-box de verdade (ACL, regras e `resolve` do 1.14.2) e do tempo real do boot até o `tun0` |
 | Sonda de saída: IP v4/v6 por eco HTTP/1.0 como uid 2000, DNS da VPN, UDP (DNS e NTP), cobertura por UID pelo `dumpsys netstats`, vazamento com o cliente VPN parado (só `Permission denied` prova; religado pelo boot), abrir o app parado quando a tarefa espera, comparação entre aparelhos, passo `verificar` da convergência (25.5) | implementado | `simulated` (`tests/test_rede_sonda.py`, 17 casos; o vazamento em `::test_vazamento_so_com_o_cliente_parado_e_so_permission_denied_prova`: saídas remontadas no formato real com os números do 25.1, aparelho e processo falsos); num aparelho real `not_run`: depende do 25.4 real (SFA promovido, sing-box de verdade) e de um eco de IP alcançável; o `printf` com NUL do UDP e o formato do `netstats` do Android 14 só foram vistos no piloto, não por esta sonda |
+| Sonda UDP com repetição e pernas separadas: até 3 datagramas de 2 s por perna numa ida só, tentativa e tempo por perna no `detail`, `udp_dns_ok`/`udp_ntp_ok` na listagem e no painel, sem mudar a regra que libera tarefa (29.5) | implementado | `simulated` (`tests/test_rede_sonda.py::test_comando_de_udp_repete_o_datagrama_numa_ida_so_e_diz_tentativa_e_tempo`, `::test_leitura_de_udp_por_perna_e_a_saida_antiga_ainda_e_lida`, `::test_falha_transitoria_de_udp_nao_derruba_a_perna_e_a_persistente_fica_registrada` — que falha no comando de um datagrama só, com `UDP DNS 0 B` — e `::test_perna_de_udp_falha_nao_segura_a_tarefa_e_aparece_por_perna`; `RedePage.test.tsx`, 1 caso); o texto do comando foi ensaiado num `sh` local com `nc` falso (sintaxe e lógica do laço, não o mksh); num aparelho real `not_run` |
 | Portão de rede no scheduler: validade de `trafego_verificado` (`rede.validade_verificacao_s`), app de conta vinculada depois da medição, remedição disparada pela porta e adiantada pela varredura, suspensão entre etapas do mesmo app e na troca de app, releitura do aparelho entre etapas, reinício que sai com o objetivo suspenso pela rede, app nunca aberto sem travar a tarefa (25.6) | implementado | `simulated` (`tests/test_rede_portao.py`, 12 casos: aparelho de rede e servidor falsos, provedor por regras e aparelho de QA falso; os casos do scheduler falham sem a porta entre etapas, `::test_queda_do_tunel_no_meio_e_vista_entre_etapas_e_o_reinicio_sai` falha sem a releitura e sem a exceção do reinício, `::test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida` falha sem abrir o app pela porta); num aparelho real `not_run`: depende do 25.4/25.5 reais |
 | Aparelhos do worker: perfil por `adb reverse`, endpoint da LAN (`rede.servidor.endpoint_lan`), leitura do firewall do central (porta, interface, origem e perfil efetivos; regra obsoleta) com o comando do dono (sem `-Program`, idempotente), a inspeção e a reversão, recusa com firewall fechado, `remote_access` e `POST …/firewall-check`, cartão no painel (25.7, 29.8) | implementado | `simulated` (`tests/test_rede_worker.py`, 24 casos: aparelho remoto e leitura do firewall falsos; os de interface e de sub-rede erradas falham no leitor anterior, que as lia `liberado`; `RedePage.test.tsx`, 2 casos); a leitura do firewall rodou de verdade, só leitura (29/09 e, com o leitor do 29.8, 30/09: `sem_regra`, sub-rede e interface lidas do sistema; sintaxe dos três comandos analisada no `powershell.exe` 5.1 sem executá-los); regra criada e lida como `liberado`, e aplicação num aparelho do notebook, `not_run`: dependem de o dono configurar o `endpoint_lan` e criar a regra de firewall |

@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 import secrets as pysecrets
 from dataclasses import dataclass, field
 
@@ -33,7 +34,7 @@ import pytest
 
 from app.commands import despacho
 from app.config import RedeSondaCfg
-from app.devices import rede
+from app.devices import rede, rede_medicao, sonda_rede
 from app.devices.rede_aplicacao import RedeAplicacaoError
 from app.devices.rede_medicao import Vazamento, medir, sondar_vazamento
 from app.devices.sonda_rede import (CONSULTA_DNS, PEDIDO_NTP, cobertura, comando_abrir_app, comando_dns_e_udp,
@@ -181,6 +182,11 @@ class SondaFalsa(AparelhoFalso):
     sondas_sem_tunel: int = 0
     ao_abrir: dict[str, tuple[int, int]] = field(default_factory=dict)
     abertos: list[str] = field(default_factory=list)
+    # UDP (item 29.5): em qual datagrama cada perna responde (1 = no primeiro; 0 = em nenhum). O NTP só responde com o
+    # túnel no ar, como antes. `prazo_udp` = o `timeout` que a sonda deu ao shell na ida do DNS/UDP.
+    udp_dns_na: int = 1
+    udp_ntp_na: int = 1
+    prazo_udp: float | None = None
 
     def usar(self, pkg: str, vpn: int, fisica: int) -> None:
         uid = self.uids[pkg]
@@ -209,8 +215,8 @@ class SondaFalsa(AparelhoFalso):
             return self._eco(comando)
         if "UDNS=" in comando:
             self.comandos.append(comando)
-            return (f"U={self.uid}\nDNS=DnsAddresses: [ /172.19.0.2 ]\nPDNS=null\nRES=1\nUDNS=61\n"
-                    f"UNTP={48 if self.tun else 0}\nFIM=1\n")
+            self.prazo_udp = timeout
+            return self._dns_e_udp(comando)
         if comando.startswith("echo U=$(id -u); monkey -p "):
             self.comandos.append(comando)
             pkg = comando.split("monkey -p ", 1)[1].split()[0]
@@ -219,6 +225,27 @@ class SondaFalsa(AparelhoFalso):
                 self.usar(pkg, *self.ao_abrir[pkg])
             return f"U={self.uid}\nFIM=1\n"
         return await super().shell(comando, timeout=timeout)
+
+    def _dns_e_udp(self, comando: str) -> str:
+        """As duas pernas de UDP como o aparelho as responde. O `nc -u` do toybox lê até o prazo mesmo com resposta:
+        cada datagrama custa o `timeout` inteiro, com ou sem resposta (medido em 30/09: cada perna levava sempre ~5 s).
+        Um comando SEM o laço (o de antes do 29.5) manda um datagrama só: a perna que responderia no segundo dá 0 B."""
+        cabeca = f"U={self.uid}\nDNS=DnsAddresses: [ /172.19.0.2 ]\nPDNS=null\nRES=1\n"
+        lacos = [int(n) for n in re.findall(r"while \[ \$n -le (\d+) \]", comando)]
+        pernas = (("DNS", 53, 61, self.udp_dns_na), ("NTP", 123, 48, self.udp_ntp_na if self.tun else 0))
+        if not lacos:
+            dns, ntp = (tam if na == 1 else 0 for _, _, tam, na in pernas)
+            return f"{cabeca}UDNS={dns}\nUNTP={ntp}\nFIM=1\n"
+        assert len(lacos) == 2, comando
+        relogio, linhas = float(self.uptime), []
+        for (nome, porta, tam, na), limite in zip(pernas, lacos):
+            prazo = int(re.search(rf"timeout (\d+) nc -u \S+ {porta} ", comando).group(1))  # type: ignore[union-attr]
+            respondeu = na if 1 <= na <= limite else 0
+            antes = relogio
+            relogio += (respondeu or limite) * prazo
+            linhas += [f"U{nome}={tam if respondeu else 0}", f"T{nome}={respondeu}/{limite}",
+                       f"S{nome}={antes:.2f} {relogio:.2f}"]
+        return cabeca + "\n".join(linhas) + "\nFIM=1\n"
 
     def _parar_e_sondar(self, comando: str) -> str:
         """O laço do comando no aparelho: a cada tentativa, `force-stop`; o `tun0` cai (salvo `ignora_force_stop`) e,
@@ -403,6 +430,135 @@ async def test_abrir_app_so_quando_pedido() -> None:
                     vazamento=None, abrir=True)
     assert ap.abertos == [INSTAGRAM] and r.medicao.per_app[INSTAGRAM] == "ok" and r.abertos == (INSTAGRAM,)
     assert "aberto pela sonda" in (r.medicao.detail or "")
+
+
+# ============================================================================ UDP com repetição (item 29.5)
+# O defeito (medido em 30/09): um datagrama só por perna. Em 32 medições reais, 2 perderam uma perna (a #6 do
+# android-03, `UDP DNS 83 B, NTP 0 B`, com carga 18,8 em 2 vCPU no minuto; a #21 do android-05, `DNS 0 B, NTP 48 B`), e
+# a repetição manual deu 12/12. UDP perde datagrama; uma perda não é "UDP não passa".
+def test_comando_de_udp_repete_o_datagrama_numa_ida_so_e_diz_tentativa_e_tempo() -> None:
+    cmd = comando_dns_e_udp(host_de_resolucao="api.ipify.org", alvo_dns_udp="8.8.4.4", alvo_ntp="time.google.com")
+    n, espera = sonda_rede.TENTATIVAS_UDP, sonda_rede.ESPERA_UDP_S
+    assert (n, espera) == (3, 2)
+    # Uma ida só ao shell, como uid 2000 conferido na mesma ida, e a leitura sabe que chegou ao fim.
+    assert cmd.startswith("echo U=$(id -u); ") and cmd.endswith("echo FIM=1") and "\n" not in cmd
+    # Um laço por perna, parando no primeiro datagrama com resposta; cada datagrama espera `espera` segundos.
+    assert cmd.count(f"while [ $n -le {n} ]; do") == 2 and cmd.count("break; fi; n=$((n+1)); done") == 2
+    assert f"timeout {espera} nc -u 8.8.4.4 53 " in cmd and f"timeout {espera} nc -u time.google.com 123 " in cmd
+    assert "if [ $B -ge 13 ]; then T=$n; break" in cmd and "if [ $B -ge 48 ]; then T=$n; break" in cmd
+    # Por perna: bytes (as chaves de antes), a tentativa que respondeu e os dois instantes do `/proc/uptime`.
+    for chave in ("echo UDNS=$B", "echo UNTP=$B", f"echo TDNS=$T/{n}", f"echo TNTP=$T/{n}", "echo SDNS=$A ",
+                  "echo SNTP=$A "):
+        assert chave in cmd, chave
+    assert cmd.count("/proc/uptime") == 4 and "date +%N" not in cmd
+    # POSIX conservador para o mksh/toybox: nada de `[[`, `function`, `+=`, `$'…'`, `let` nem `local`.
+    # (Só no trecho das pernas: o `grep` do resolvedor, antes dele, tem um `[[]` que é expressão regular.)
+    pernas = cmd.split("echo RES=0; fi; ", 1)[1]
+    for bashismo in ("[[", "function ", "+=", "$'", "let ", "local ", "((n", "&>"):
+        assert bashismo not in pernas.replace("$((", "$<<"), bashismo
+    # O pior caso das duas pernas (nenhuma responde) não passa muito do de antes (2 × 5 s), e o sucesso de primeira
+    # fica mais rápido (2 s por perna no lugar de 5).
+    assert sonda_rede.pior_caso_udp_s() == 2 * n * espera == 12 and espera < 5
+
+
+def test_leitura_de_udp_por_perna_e_a_saida_antiga_ainda_e_lida() -> None:
+    base = "U=2000\nDNS=DnsAddresses: [ /172.19.0.2 ]\nPDNS=null\nRES=1\n"
+    nova = ler_dns_e_udp(base + "UDNS=83\nTDNS=2/3\nSDNS=512.40 516.47\nUNTP=0\nTNTP=0/3\nSNTP=516.50 522.61\nFIM=1\n")
+    assert (nova.udp_dns_bytes, nova.udp_dns_tentativa, nova.udp_dns_s) == (83, 2, 4.1) and nova.udp_dns
+    assert (nova.udp_ntp_bytes, nova.udp_ntp_tentativa, nova.udp_ntp_s) == (0, 0, 6.1) and not nova.udp_ntp
+    assert nova.udp_tentativas == 3
+    assert nova.descrever_udp() == "UDP DNS 83 B (2ª de 3, 4,1 s), NTP 0 B (0 de 3, 6,1 s)"
+    # A saída de antes do 29.5 (um agente ou um comando antigo): sem tentativa nem tempo, e sem erro.
+    antiga = ler_dns_e_udp(base + "UDNS=83\nUNTP=0\nFIM=1\n")
+    assert (antiga.udp_dns_bytes, antiga.udp_dns_tentativa, antiga.udp_dns_s, antiga.udp_tentativas) == (83, None, None,
+                                                                                                        None)
+    assert antiga.udp_dns and not antiga.udp_ntp and antiga.descrever_udp() == "UDP DNS 83 B, NTP 0 B"
+    # Chave nova ilegível (relógio que não veio, texto no lugar do número) não derruba a leitura: só não diz o tempo.
+    torta = ler_dns_e_udp(base + "UDNS=61\nTDNS=1/3\nSDNS= 9.30\nUNTP=48\nTNTP=x\nSNTP=a b\nFIM=1\n")
+    assert (torta.udp_dns_tentativa, torta.udp_dns_s, torta.udp_ntp_tentativa, torta.udp_ntp_s) == (1, None, None, None)
+    assert torta.descrever_udp() == "UDP DNS 61 B (1ª de 3), NTP 48 B"
+    # O relógio que andou para trás (reinício no meio) não vira tempo negativo.
+    assert ler_dns_e_udp(base + "UDNS=61\nTDNS=1/3\nSDNS=900.00 3.10\nUNTP=48\nTNTP=1/3\nSNTP=1 3\nFIM=1\n").udp_dns_s is None
+
+    # O formato do `detail` lido de volta: o novo, o de antes, e no meio de um `detail` com o aviso na frente.
+    pernas = sonda_rede.pernas_udp
+    assert pernas(nova.descrever_udp()) == {
+        "dns": {"bytes": 83, "ok": True, "tentativa": 2, "tentativas": 3, "segundos": 4.1},
+        "ntp": {"bytes": 0, "ok": False, "tentativa": 0, "tentativas": 3, "segundos": 6.1}}
+    assert pernas("UDP DNS 83 B, NTP 0 B") == {
+        "dns": {"bytes": 83, "ok": True, "tentativa": None, "tentativas": None, "segundos": None},
+        "ntp": {"bytes": 0, "ok": False, "tentativa": None, "tentativas": None, "segundos": None}}
+    detalhe = (f"aviso: a mesma saída medida em android-02 | IPv4 {IP} (api.ipify.org) | IPv6 sem saída (x) | DNS da "
+               "VPN 172.19.0.2, resolve | UDP DNS 0 B (0 de 3, 6,0 s), NTP 48 B (1ª de 3, 2,0 s) | apps: shell=ok")
+    lido = pernas(detalhe)
+    assert lido is not None and (lido["dns"]["ok"], lido["ntp"]["ok"], lido["ntp"]["tentativa"]) == (False, True, 1)
+    # 12 B é só o cabeçalho DNS e 47 B não é resposta NTP: os limiares são os da sonda.
+    curto = pernas("UDP DNS 12 B, NTP 47 B")
+    assert curto is not None and (curto["dns"]["ok"], curto["ntp"]["ok"]) == (False, False)
+    # Sem o trecho (medição de outro método, `detail` cortado antes dele, ou vazio): não dá para saber.
+    assert pernas(None) is None and pernas("") is None and pernas(f"IPv4 {IP} (api.ipify.org) | UDP DNS 8") is None
+
+
+async def test_falha_transitoria_de_udp_nao_derruba_a_perna_e_a_persistente_fica_registrada() -> None:
+    # (a) O caso medido: o primeiro datagrama de DNS se perde, o segundo tem resposta. Perna ok, e o `detail` diz.
+    ap = SondaFalsa(tun=True, vpn=True, udp_dns_na=2)
+    m = (await medir(ap, CFG, exigidos=[], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)).medicao
+    assert m.udp_ok is True, m.detail
+    assert "UDP DNS 61 B (2ª de 3, 4,0 s), NTP 48 B (1ª de 3, 2,0 s)" in (m.detail or "")
+    # Tudo numa ida só ao shell, e com prazo que cobre o pior caso das duas pernas mais o resto da ida (o `dumpsys
+    # connectivity`, o `ping` de 3 s): a repetição não pode virar "saída truncada".
+    assert len([c for c in ap.comandos if "UDNS=" in c]) == 1
+    assert ap.prazo_udp is not None and ap.prazo_udp >= sonda_rede.pior_caso_udp_s() + 3 + 30
+    # (b) Persistente numa perna só (o NTP na cadeia com SOCKS5): 0 B, "0 de 3", o tempo das três esperas — e a outra ok.
+    ap = SondaFalsa(tun=True, vpn=True, udp_ntp_na=0)
+    m = (await medir(ap, CFG, exigidos=[], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)).medicao
+    assert m.udp_ok is False and "UDP DNS 61 B (1ª de 3, 2,0 s), NTP 0 B (0 de 3, 6,0 s)" in (m.detail or "")
+    lido = sonda_rede.pernas_udp(m.detail)
+    assert lido is not None and lido["dns"]["ok"] is True and lido["ntp"]["ok"] is False
+    # (c) A outra perna: o DNS nunca responde e o NTP só no terceiro datagrama.
+    ap = SondaFalsa(tun=True, vpn=True, udp_dns_na=0, udp_ntp_na=3)
+    m = (await medir(ap, CFG, exigidos=[], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)).medicao
+    assert m.udp_ok is False and "UDP DNS 0 B (0 de 3, 6,0 s), NTP 48 B (3ª de 3, 6,0 s)" in (m.detail or "")
+    # (d) Quem só responderia no quarto datagrama não respondeu: a sonda manda três.
+    ap = SondaFalsa(tun=True, vpn=True, udp_dns_na=4)
+    m = (await medir(ap, CFG, exigidos=[], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)).medicao
+    assert m.udp_ok is False and "UDP DNS 0 B (0 de 3" in (m.detail or "") and len(m.detail or "") <= 500
+    assert rede_medicao._PRAZO_DNS_E_UDP_S == ap.prazo_udp
+
+
+async def test_perna_de_udp_falha_nao_segura_a_tarefa_e_aparece_por_perna(parque: Harness,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """UDP ainda NÃO é critério de `trafego_verificado` (29.5 não muda a regra que libera tarefa): a medição com uma
+    perna falha e o resto ok verifica o aparelho, e a perna aparece na listagem."""
+    st = parque.state
+    assert st is not None
+    ap, _ = _preparar_sonda(parque, monkeypatch, policy="exigida")
+    ap.udp_ntp_na = 0                                        # o NTP se perde sempre; o DNS responde
+    await _ate_conectado(parque, ap)
+    assert await _passo(parque, "tarefa")
+    linha = _linha(parque)
+    assert linha["state"] == "trafego_verificado", linha["detail"]
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None          # a porta da tarefa não espera por UDP
+    [m] = st.db.query("SELECT udp_ok, detail FROM network_measurements WHERE instance_id='android-01'")
+    assert m["udp_ok"] == 0 and "NTP 0 B (0 de 3, 6,0 s)" in str(m["detail"])
+    # A regra, direto: `udp_ok` falso não entra no que falta.
+    assert rede._falta_para_verificar(rede.NetworkMeasurementInput(
+        method="x", egress_ipv4=IP, udp_ok=False, per_app={"com.android.shell": "ok"}), "exigida", [],
+        provado=True) == []
+    # A listagem acrescenta as duas pernas, derivadas do `detail` (sem coluna nova).
+    visao = {d["instance_id"]: d for d in rede.listar_aparelhos(st)["devices"]}
+    ultima = visao["android-01"]["last_measurement"]
+    assert (ultima["udp_ok"], ultima["udp_dns_ok"], ultima["udp_ntp_ok"]) == (False, True, False)
+    # Medição de antes do 29.5 (o `detail` antigo) também é lida; sem o trecho de UDP, as pernas ficam sem valor.
+    rede.registrar_medicao(st, "android-02", rede.NetworkMeasurementInput(
+        method="sonda antiga", egress_ipv4=IP_FISICO, udp_ok=False, detail="DNS da VPN x | UDP DNS 0 B, NTP 48 B"),
+        rev=None)
+    rede.registrar_medicao(st, "android-03", rede.NetworkMeasurementInput(method="app_qa", egress_ipv4="45.162.8.11"),
+                           rev=None)
+    visao = {d["instance_id"]: d for d in rede.listar_aparelhos(st)["devices"]}
+    antiga, sem = visao["android-02"]["last_measurement"], visao["android-03"]["last_measurement"]
+    assert (antiga["udp_dns_ok"], antiga["udp_ntp_ok"]) == (False, True)
+    assert (sem["udp_ok"], sem["udp_dns_ok"], sem["udp_ntp_ok"]) == (None, None, None)
 
 
 # ============================================================================ convergência (harness do 25.4)

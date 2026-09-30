@@ -410,6 +410,44 @@ it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída 
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(1);
 });
 
+it('UDP aparece por perna, com destaque na que falhou (29.5); sem os campos novos, fica como antes', async () => {
+  const medicao = (over: Partial<NonNullable<NetworkDeviceRow['last_measurement']>>) => ({
+    id: 6, instance_id: 'android-03', measured_at: '2026-09-30T14:02:00Z', method: 'sonda nc http/1.0 + netstats por uid (uid 2000)',
+    egress_ipv4: '198.51.100.7', egress_ipv6: null, dns_resolver: '172.19.0.2', udp_ok: false,
+    per_app: { 'com.android.shell': 'ok' }, leak_blocked: null,
+    detail: 'UDP DNS 83 B (1ª de 3, 2,0 s), NTP 0 B (0 de 3, 6,1 s)', ...over,
+  });
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      // A medição #6 do android-03 (30/09): o DNS respondeu e o NTP não.
+      linha({ instance_id: 'android-03', last_measurement: medicao({ udp_dns_ok: true, udp_ntp_ok: false }) }),
+      linha({ instance_id: 'android-05', last_measurement: medicao({ instance_id: 'android-05', udp_ok: true, udp_dns_ok: true, udp_ntp_ok: true }) }),
+      // Backend de antes do 29.5 (sem os campos), e medição cujo `detail` não diz as pernas (campos nulos).
+      linha({ instance_id: 'android-06', last_measurement: medicao({ instance_id: 'android-06' }) }),
+      linha({ instance_id: 'android-07', last_measurement: medicao({ instance_id: 'android-07', udp_ok: null, udp_dns_ok: null, udp_ntp_ok: null }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-07'));
+  const tabela = Array.from(container.querySelectorAll('table')).find((t) => t.textContent?.includes('IP de saída'))!;
+  const celula = (id: string) => Array.from(tabela.querySelectorAll('tbody tr'))
+    .find((tr) => tr.textContent?.includes(id))!.querySelectorAll('td')[5]!;
+  const udp = (id: string) => Array.from(celula(id).querySelectorAll('div')).find((d) => d.textContent?.startsWith('UDP: '));
+  expect(udp('android-03')!.textContent).toBe('UDP: DNS ok · NTP falhou');
+  // O destaque de quem falhou vem com a explicação (as classes de CSS module não existem no jsdom: o `title` é o
+  // que o teste enxerga do destaque).
+  expect(udp('android-03')!.getAttribute('title')).toContain('Uma perna de UDP ficou sem resposta');
+  expect(udp('android-05')!.textContent).toBe('UDP: DNS ok · NTP ok');
+  expect(udp('android-05')!.getAttribute('title')).toBeNull();
+  // Por perna, o "UDP falhou" genérico não aparece junto.
+  expect(celula('android-03').textContent).not.toContain('UDP falhou');
+  // Sem os campos novos (ou com os dois nulos), o resumo de antes: um UDP só, do `udp_ok`.
+  expect(udp('android-06')).toBeUndefined();
+  expect(celula('android-06').textContent).toContain('DNS 172.19.0.2 · UDP falhou · vazamento não medido');
+  expect(udp('android-07')).toBeUndefined();
+  expect(celula('android-07').textContent).toContain('UDP não medido');
+});
+
 it('aparelho em quarentena mostra o motivo na coluna de erro/pendência', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
     devices: [linha({ instance_id: 'android-01', restriction: 'conta bloqueada: nada toca nela' })],

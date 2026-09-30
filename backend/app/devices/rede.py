@@ -37,6 +37,7 @@ from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..util import novo_id_de_app, now_iso, parse_iso
 from .proxy import _HOST
+from .sonda_rede import pernas_udp
 
 if TYPE_CHECKING:
     from ..state import AppState
@@ -251,6 +252,16 @@ def _medicao_dto(row: Row) -> NetworkMeasurementDTO:
                                  dns_resolver=row["dns_resolver"], udp_ok=_bool(row["udp_ok"]),
                                  per_app=loads(row["per_app"], {}) or {}, leak_blocked=_bool(row["leak_blocked"]),
                                  detail=row["detail"])
+
+
+def _medicao_da_listagem(row: Row) -> dict[str, object]:
+    """A medição como a listagem a mostra: o DTO mais as duas pernas de UDP (item 29.5), DERIVADAS do `detail` — a
+    tabela guarda só `udp_ok` (o E das duas), e a sonda escreve cada perna num formato estável (`sonda_rede.pernas_udp`
+    lê de volta). `None` = o `detail` não diz (medição de outro método, ou cortada antes do trecho)."""
+    pernas = pernas_udp(row["detail"])
+    return {**_medicao_dto(row).model_dump(),
+            "udp_dns_ok": pernas["dns"]["ok"] if pernas is not None else None,
+            "udp_ntp_ok": pernas["ntp"]["ok"] if pernas is not None else None}
 
 
 def _linha(st: AppState, instance_id: str) -> Row | None:
@@ -505,7 +516,7 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
             "real_account": _conta_real(st, rt.id),
             "required_apps": apps_exigidos(st, rt.id),
             "pending": _pendencia(row, st),
-            "last_measurement": _medicao_dto(medicao).model_dump() if medicao is not None else None,
+            "last_measurement": _medicao_da_listagem(medicao) if medicao is not None else None,
             "egress_shared_with": iguais,
         })
     return {"devices": aparelhos}

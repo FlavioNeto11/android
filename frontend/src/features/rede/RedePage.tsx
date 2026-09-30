@@ -285,17 +285,32 @@ function simNao(v: boolean | null, sim: string, nao: string): string {
   return v === null ? 'não medido' : v ? sim : nao;
 }
 
+const UDP_FALHOU = 'Uma perna de UDP ficou sem resposta em todos os datagramas desta medição. É aviso: UDP ainda não '
+  + 'decide "tráfego verificado".';
+
 /** A última medição da sonda de saída (25.5), como o backend a gravou: por app (o navegador não prova os outros
  *  apps), DNS, UDP e o teste de vazamento. `null` é "não medido" — nunca um "ok" presumido. */
 function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
   const apps = Object.entries(m.per_app);
+  // As duas pernas de UDP (29.5): DNS por UDP e NTP. Vêm derivadas do `detail` pela listagem; sem elas (backend de
+  // antes, ou `detail` que não diz), fica o "UDP ok/falhou" do `udp_ok`, como sempre foi.
+  const dns = m.udp_dns_ok ?? null;
+  const ntp = m.udp_ntp_ok ?? null;
+  const porPerna = dns !== null || ntp !== null;
   return (
     <div className={s.rowNote} title={m.detail ?? undefined}>
       <div>método: {m.method}</div>
       <div>
-        DNS {m.dns_resolver ?? 'não lido'} · UDP {simNao(m.udp_ok, 'ok', 'falhou')} · vazamento{' '}
+        DNS {m.dns_resolver ?? 'não lido'}{porPerna ? '' : ` · UDP ${simNao(m.udp_ok, 'ok', 'falhou')}`} · vazamento{' '}
         {simNao(m.leak_blocked, 'bloqueado', 'NÃO bloqueado')}
       </div>
+      {porPerna ? (
+        // Destaque quando uma perna falha: é aviso (UDP ainda não decide "tráfego verificado"), mas não pode sumir.
+        <div className={dns === false || ntp === false ? s.dupe : undefined}
+             title={dns === false || ntp === false ? UDP_FALHOU : undefined}>
+          UDP: DNS {simNao(dns, 'ok', 'falhou')} · NTP {simNao(ntp, 'ok', 'falhou')}
+        </div>
+      ) : null}
       {apps.map(([pkg, r]) => (
         <div key={pkg} className={r === 'ok' ? undefined : s.dupe}>
           {pkg}: {RESULTADO_POR_APP[String(r)] ?? String(r)}

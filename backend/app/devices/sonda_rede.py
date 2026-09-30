@@ -119,12 +119,54 @@ def _sonda_ip(host: str, *, porta: int, timeout_s: int) -> str:
             f"X=$?; echo; echo '{_FIM}'; echo X=$X")
 
 
-def comando_dns_e_udp(*, host_de_resolucao: str, alvo_dns_udp: str, alvo_ntp: str, timeout_s: int = 5) -> str:
+#: As duas pernas de UDP (item 29.5): até `TENTATIVAS_UDP` datagramas por perna, parando no primeiro com resposta, e
+#: cada um esperando `ESPERA_UDP_S`. Com um datagrama só e 5 s de espera, 2 de 32 medições reais (30/09) perderam uma
+#: perna — a #6 do android-03 (`UDP DNS 83 B, NTP 0 B`, com carga 18,8 em 2 vCPU naquele minuto) e a #21 do android-05
+#: (`DNS 0 B, NTP 48 B`) —, e a repetição manual deu 12/12: era datagrama perdido, não UDP que não passa. O `nc -u` do
+#: toybox lê até o prazo mesmo com a resposta na mão (cada perna levava sempre ~5 s), então o prazo por datagrama é o
+#: que a perna boa custa: 2 s no lugar de 5, e 3 × 2 = 6 s na pior (nenhuma resposta), contra os 5 de antes.
+TENTATIVAS_UDP = 3
+ESPERA_UDP_S = 2
+#: O que conta como resposta em cada perna: o cabeçalho DNS tem 12 bytes (menos que isso, ou só isso, não é resposta);
+#: a resposta NTP tem 48.
+MIN_BYTES_DNS = 13
+MIN_BYTES_NTP = 48
+
+
+def pior_caso_udp_s(tentativas: int = TENTATIVAS_UDP, espera_s: int = ESPERA_UDP_S) -> int:
+    """Quanto as duas pernas de UDP levam quando nenhuma responde: é o que o prazo da ida ao shell tem de cobrir."""
+    return 2 * int(tentativas) * int(espera_s)
+
+
+def _perna_udp(nome: str, datagrama: str, host: str, porta: int, minimo: int, tentativas: int, espera_s: int) -> str:
+    # POSIX conservador para o `sh` do Android (mksh) com o toybox: `while [ … ]`, `$((…))`, `break`. O `wc -c` vai a
+    # uma variável e só então vira número (`$((B+0))`: vazio ou com espaço na frente dá o inteiro), sem substituição
+    # de comando dentro da aritmética. O relógio é o `/proc/uptime` (centésimos), lido antes e depois e SUBTRAÍDO NA
+    # LEITURA: o mksh não tem aritmética decimal, e o `date +%N` do toybox não é confiável.
+    return (f"A=$(cut -d' ' -f1 /proc/uptime 2>/dev/null); n=1; T=0; B=0; "
+            f"while [ $n -le {int(tentativas)} ]; do "
+            f"B=$( (printf '{datagrama}'; sleep {max(1, int(espera_s) - 1)}) | timeout {int(espera_s)} "
+            f"nc -u {host} {int(porta)} 2>/dev/null | wc -c); B=$((B+0)); "
+            f"if [ $B -ge {int(minimo)} ]; then T=$n; break; fi; n=$((n+1)); done; "
+            f"echo U{nome}=$B; echo T{nome}=$T/{int(tentativas)}; "
+            f"echo S{nome}=$A $(cut -d' ' -f1 /proc/uptime 2>/dev/null); ")
+
+
+def comando_dns_e_udp(*, host_de_resolucao: str, alvo_dns_udp: str, alvo_ntp: str,
+                      tentativas: int = TENTATIVAS_UDP, espera_s: int = ESPERA_UDP_S) -> str:
     """Uma ida só: o resolvedor da rede VPN (as `DnsAddresses` das `LinkProperties` do `tun0` no `dumpsys
-    connectivity`), o DNS privado do Android, se um nome resolve, e dois datagramas UDP de ida e volta — DNS a um
-    resolvedor explícito (o cliente o sequestra e resolve pelo túnel) e NTP (UDP que não é DNS)."""
+    connectivity`), o DNS privado do Android, se um nome resolve, e as duas pernas de UDP de ida e volta — DNS a um
+    resolvedor explícito (o cliente o sequestra e resolve pelo túnel) e NTP (UDP que não é DNS).
+
+    Cada perna manda até `tentativas` datagramas e para no primeiro com resposta (item 29.5). Saída por perna (`DNS` e
+    `NTP` no lugar de `XXX`): `UXXX=<bytes>` (do datagrama que respondeu, ou do último), `TXXX=<n>/<tentativas>` (em
+    qual datagrama respondeu; 0 = em nenhum) e `SXXX=<uptime antes> <uptime depois>` (segundos do `/proc/uptime`; a
+    duração é a diferença, feita em `ler_dns_e_udp`). As chaves `UDNS=`/`UNTP=` são as de antes; as outras são novas e
+    opcionais na leitura.
+
+    O laço NÃO foi rodado num aparelho quando escrito (a forma de cada datagrama — `printf | timeout nc -u | wc -c` —
+    é a medida no piloto): a prova do comando é a do ambiente real, registrada em `docs/dominios/parque.md`."""
     h, d, n = host_valido(host_de_resolucao), host_valido(alvo_dns_udp), host_valido(alvo_ntp)
-    espera = max(1, timeout_s - 2)
     return (
         "echo U=$(id -u); "
         "D=$(dumpsys connectivity 2>/dev/null); "
@@ -132,11 +174,9 @@ def comando_dns_e_udp(*, host_de_resolucao: str, alvo_dns_udp: str, alvo_ntp: st
         "| head -1)\"; "
         "echo PDNS=$(settings get global private_dns_mode 2>/dev/null); "
         f"if ping -c1 -W3 {h} 2>&1 | grep -q '^PING'; then echo RES=1; else echo RES=0; fi; "
-        f"echo UDNS=$( (printf '{CONSULTA_DNS}'; sleep {espera}) | timeout {timeout_s} nc -u {d} 53 2>/dev/null "
-        "| wc -c); "
-        f"echo UNTP=$( (printf '{PEDIDO_NTP}'; sleep {espera}) | timeout {timeout_s} nc -u {n} 123 2>/dev/null "
-        "| wc -c); "
-        "echo FIM=1"
+        + _perna_udp("DNS", CONSULTA_DNS, d, 53, MIN_BYTES_DNS, tentativas, espera_s)
+        + _perna_udp("NTP", PEDIDO_NTP, n, 123, MIN_BYTES_NTP, tentativas, espera_s)
+        + "echo FIM=1"
     )
 
 
@@ -268,21 +308,88 @@ class DnsEUdp:
     resolve: bool
     udp_dns_bytes: int
     udp_ntp_bytes: int
+    # Por perna (item 29.5): em qual datagrama respondeu (0 = em nenhum) e quanto a perna levou. `None` = a saída não
+    # diz (o comando de antes do 29.5, ou a chave ilegível): a perna continua julgada só pelos bytes.
+    udp_dns_tentativa: int | None = None
+    udp_ntp_tentativa: int | None = None
+    udp_tentativas: int | None = None              # quantos datagramas por perna o comando manda
+    udp_dns_s: float | None = None
+    udp_ntp_s: float | None = None
 
     @property
     def udp_dns(self) -> bool:
-        return self.udp_dns_bytes > 12             # o cabeçalho DNS tem 12 bytes; menos que isso não é resposta
+        return self.udp_dns_bytes >= MIN_BYTES_DNS  # o cabeçalho DNS tem 12 bytes; só isso, ou menos, não é resposta
 
     @property
     def udp_ntp(self) -> bool:
-        return self.udp_ntp_bytes >= 48
+        return self.udp_ntp_bytes >= MIN_BYTES_NTP
+
+    def descrever_udp(self) -> str:
+        """O trecho de UDP do `detail` da medição, num formato ESTÁVEL (quem o lê de volta é `pernas_udp`):
+        `UDP DNS 83 B (1ª de 3, 2,0 s), NTP 0 B (0 de 3, 6,1 s)` — por perna, os bytes, em qual datagrama respondeu
+        (`0 de 3` = em nenhum) e o tempo da perna. Sem a tentativa (a sonda de antes do 29.5), só os bytes:
+        `UDP DNS 83 B, NTP 0 B`; sem o tempo, só a tentativa: `(1ª de 3)`."""
+        def perna(n: int, tentativa: int | None, segundos: float | None) -> str:
+            if tentativa is None or self.udp_tentativas is None:
+                return f"{n} B"
+            qual = f"{tentativa}ª" if tentativa else "0"
+            tempo = "" if segundos is None else ", " + f"{segundos:.1f}".replace(".", ",") + " s"
+            return f"{n} B ({qual} de {self.udp_tentativas}{tempo})"
+
+        return (f"UDP DNS {perna(self.udp_dns_bytes, self.udp_dns_tentativa, self.udp_dns_s)}, "
+                f"NTP {perna(self.udp_ntp_bytes, self.udp_ntp_tentativa, self.udp_ntp_s)}")
+
+
+_PERNA_UDP = r"(\d+) B(?: \((\d+)ª? de (\d+)(?:, (\d+(?:[.,]\d+)?) s)?\))?"
+_TRECHO_UDP = re.compile(rf"UDP DNS {_PERNA_UDP}, NTP {_PERNA_UDP}")
+
+
+def pernas_udp(detail: str | None) -> dict[str, dict[str, object]] | None:
+    """O trecho de UDP de um `detail` de medição (`DnsEUdp.descrever_udp`), lido de volta: `{"dns": {…}, "ntp": {…}}`,
+    cada perna com `bytes`, `ok` (os mesmos limiares da sonda), `tentativa`, `tentativas` e `segundos` (os três `None`
+    no formato de antes do 29.5, `UDP DNS 83 B, NTP 0 B`). `None` = o `detail` não tem o trecho (outro método de
+    medição, texto cortado antes dele): não dá para saber. Procura no meio do texto: o aviso de saída compartilhada
+    entra na frente do `detail`."""
+    m = _TRECHO_UDP.search(detail or "")
+    if m is None:
+        return None
+
+    def perna(grupos: tuple[str | None, ...], minimo: int) -> dict[str, object]:
+        n, tentativa, de, segundos = grupos
+        return {"bytes": int(n or 0), "ok": int(n or 0) >= minimo,
+                "tentativa": None if tentativa is None else int(tentativa),
+                "tentativas": None if de is None else int(de),
+                "segundos": None if segundos is None else float(segundos.replace(",", "."))}
+
+    g = m.groups()
+    return {"dns": perna(g[:4], MIN_BYTES_DNS), "ntp": perna(g[4:], MIN_BYTES_NTP)}
+
+
+def _tentativa_udp(valor: str | None) -> tuple[int | None, int | None]:
+    # `TDNS=2/3` → (2, 3). Ausente ou ilegível: (None, None) — a saída antiga não tem a chave.
+    m = re.fullmatch(r"(\d+)/(\d+)", valor or "")
+    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+
+def _duracao_udp(valor: str | None) -> float | None:
+    # `SDNS=512.40 516.47` → 4.1 s. Um dos instantes faltando, ou o relógio andando para trás: sem tempo.
+    partes = (valor or "").split()
+    if len(partes) != 2:
+        return None
+    try:
+        antes, depois = float(partes[0]), float(partes[1])
+    except ValueError:
+        return None
+    return round(depois - antes, 1) if depois >= antes else None
 
 
 def ler_dns_e_udp(saida: str) -> DnsEUdp:
+    """A saída de `comando_dns_e_udp`. As chaves por perna do 29.5 (`TDNS=`, `SDNS=`, `TNTP=`, `SNTP=`) são opcionais:
+    a saída de antes (só `UDNS=`/`UNTP=`) é lida sem erro, com a tentativa e o tempo em `None`."""
     vals: dict[str, str] = {}
     for linha in (saida or "").splitlines():
         chave, sep, valor = linha.strip().partition("=")
-        if sep and chave in ("DNS", "PDNS", "RES", "UDNS", "UNTP", "FIM"):
+        if sep and chave in ("DNS", "PDNS", "RES", "UDNS", "UNTP", "TDNS", "TNTP", "SDNS", "SNTP", "FIM"):
             vals[chave] = valor.strip()
     if "FIM" not in vals or not {"RES", "UDNS", "UNTP"} <= set(vals):
         raise ValueError("a sonda de DNS e UDP veio incompleta")
@@ -297,8 +404,11 @@ def ler_dns_e_udp(saida: str) -> DnsEUdp:
         return int(vals[chave]) if vals.get(chave, "").isdigit() else 0
 
     pdns = vals.get("PDNS") or None
+    (t_dns, de_dns), (t_ntp, de_ntp) = _tentativa_udp(vals.get("TDNS")), _tentativa_udp(vals.get("TNTP"))
     return DnsEUdp(resolvedor=",".join(validos) or None, dns_privado=None if pdns in (None, "null") else pdns,
-                   resolve=vals["RES"] == "1", udp_dns_bytes=num("UDNS"), udp_ntp_bytes=num("UNTP"))
+                   resolve=vals["RES"] == "1", udp_dns_bytes=num("UDNS"), udp_ntp_bytes=num("UNTP"),
+                   udp_dns_tentativa=t_dns, udp_ntp_tentativa=t_ntp, udp_tentativas=de_dns or de_ntp,
+                   udp_dns_s=_duracao_udp(vals.get("SDNS")), udp_ntp_s=_duracao_udp(vals.get("SNTP")))
 
 
 def ler_uids(saida: str) -> dict[str, int]:
