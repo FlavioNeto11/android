@@ -27,6 +27,15 @@
  *
  * Limite, dito de frente: o axe só acha o que as regras automáticas alcançam (em geral 30–40% dos problemas de
  * acessibilidade). Contraste e nome acessível aparecem; ordem de foco, leitura por leitor de tela e texto claro não.
+ *
+ * O QUE ESTE SCRIPT NÃO PROVA SOZINHO (RF-10 da revisão final, 30/09):
+ *  - O padrão de `--url` (http://127.0.0.1:8000) é o backend do ambiente central, que serve o `dist` da `main`
+ *    implantada, NÃO o branch em que você está. Para medir um branch, suba o dev server dele
+ *    (`npx vite --port <porta>`) e passe `--url http://127.0.0.1:<porta>`.
+ *  - Ele não faz login (e aborta todo POST, então nem poderia). Sem uma sessão, o Chrome sem cabeça cai na tela de
+ *    entrada em TODAS as células: o resultado é o axe da tela de entrada (ou erro por falta do `<header>`), não o das
+ *    9 telas. Até existir uma sessão de leitura para ele, meça as telas autenticadas pelo navegador que já tem sessão
+ *    (painel do navegador da IDE, injetando o axe) ou contra um backend simulado local.
  */
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

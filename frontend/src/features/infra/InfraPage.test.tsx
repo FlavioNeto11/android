@@ -165,10 +165,10 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(text().match(/renderizador/g)).toHaveLength(2);
   });
 
-  it('a aba Logs mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
+  it('a aba Registros mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
     await comEstado({ recentEvents: [evento('log', 'android-13', 'reiniciei o system_server'),
                                      evento('log', 'android-01', 'coisa do central')] });
-    await click(byRole('tab', /^Logs/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    await click(byRole('tab', /^Registros/, byRole('tablist', /Detalhes de worker-lan-01/)));
     expect(text()).toContain('reiniciei o system_server');
     expect(text()).not.toContain('coisa do central');
   });

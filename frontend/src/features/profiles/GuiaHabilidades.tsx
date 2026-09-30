@@ -8,7 +8,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { FLOW_STATUS, metaOf } from '../../lib/status';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { toastError } from '../../store/toasts';
 import { Carregando, Linha, useVersaoAoVivo } from './detalheComum';
 import type { Pessoa } from './pessoa';
@@ -82,7 +82,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
                       <strong>{f.name}</strong>
                       <Badge tone={custo.tone}>{custo.label}</Badge>
                       <span className={styles.muted}>
-                        {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? formatAgo(f.last_at, now) : '—'}
+                        {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? tempoRelativo(f.last_at, now) : '—'}
                       </span>
                     </div>
                     <div className={styles.skillDots} role="img"

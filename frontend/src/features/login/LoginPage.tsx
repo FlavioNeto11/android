@@ -63,7 +63,7 @@ export function LoginPage() {
         {tokenRequired ? (
           <Field
             label="Chave de acesso"
-            hint="É o API_TOKEN configurado no backend. Peça a quem cuida do parque — o painel não a guarda."
+            hint="É o API_TOKEN configurado no servidor. Peça a quem cuida do parque — o painel não a guarda."
           >
             {(f) => (
               <TextInput
@@ -78,7 +78,7 @@ export function LoginPage() {
           </Field>
         ) : (
           <p style={{ margin: 0, fontSize: 13, opacity: 0.7 }}>
-            Este backend está sendo aberto da própria máquina: não é preciso chave de acesso.
+            Este servidor está sendo aberto da própria máquina: não é preciso chave de acesso.
           </p>
         )}
 

@@ -112,7 +112,7 @@ describe('problemas primeiro', () => {
     useAppStore.setState({ health: { ...HEALTH, problems: [] } });
     await montar();
     await waitFor(() => expect(text(container)).toContain('Coletado em'));
-    expect(text(container)).toContain('Nenhum problema detectado pelo backend.');
+    expect(text(container)).toContain('Nenhum problema detectado pelo servidor.');
   });
 });
 

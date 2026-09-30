@@ -111,7 +111,7 @@ export function CriarAparelhoDialog({ onClose }: { onClose: () => void }) {
             <p className={styles.dim}>{recusa.mensagem}</p>
           </Banner>
         ) : null}
-        <Field label="Aplicativo" hint="O app que este aparelho vai operar. Pode ficar para depois (Configuração → Instâncias e contas).">
+        <Field label="Aplicativo" hint="O app que este aparelho vai operar. Pode ficar para depois (Configuração → Aparelhos e contas).">
           {(f) => (
             <Select id={f.id} aria-describedby={f.describedBy} value={rascunho.appId} onChange={(e) => mudar('appId', e.target.value)}>
               <option value="">Nenhum por enquanto</option>

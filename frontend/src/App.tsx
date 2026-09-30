@@ -7,6 +7,7 @@ import { ConfirmHost } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { AprendizadoPage } from './features/aprendizado/AprendizadoPage';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
+import { seletorDoAparelho } from './features/focus/Drawer';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
 import { PendenciasPage } from './features/pendencias/PendenciasPage';
@@ -18,7 +19,7 @@ import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { MenuLateral } from './features/topbar/MenuLateral';
 import { TopBar } from './features/topbar/TopBar';
-import { formatAgoCoarse, useNow } from './lib/time';
+import { tempoRelativo, useNow } from './lib/time';
 import { useAppStore } from './store/app';
 import { reconnectNow, startLive } from './store/live';
 import { useSessionStore } from './store/session';
@@ -34,7 +35,7 @@ function RetryCountdown({ at }: { at: number | null }) {
 function LastSeen({ at }: { at: number | null }) {
   useNow();
   if (!at) return null;
-  return <> Última atualização em tempo real {formatAgoCoarse(new Date(at).toISOString(), Date.now())}.</>;
+  return <> Última atualização em tempo real {tempoRelativo(new Date(at).toISOString(), Date.now())}.</>;
 }
 
 /** Com dados já carregados e o canal ao vivo fora do ar: avisa que a tela pode estar desatualizada. */
@@ -48,7 +49,7 @@ function ConnectionBanner() {
       tone={conn.status === 'disconnected' ? 'danger' : 'warning'}
       icon={WifiOff}
       role="alert"
-      title={conn.status === 'disconnected' ? 'Desconectado do backend' : 'Reconectando ao backend…'}
+      title={conn.status === 'disconnected' ? 'Desconectado do servidor' : 'Reconectando ao servidor…'}
       actions={<Button size="sm" onClick={reconnectNow}>Reconectar agora</Button>}
     >
       Os dados abaixo são os últimos recebidos e <strong>podem estar desatualizados</strong>.<LastSeen at={conn.lastConnectedAt} />{' '}
@@ -88,7 +89,7 @@ export function App() {
   useEffect(() => {
     if (!focusId) return undefined;
     const quadro = requestAnimationFrame(() => {
-      document.querySelector(`[data-instance-card="${CSS.escape(focusId)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      document.querySelector(seletorDoAparelho(focusId))?.scrollIntoView?.({ block: 'nearest' });
     });
     return () => cancelAnimationFrame(quadro);
   }, [focusId]);

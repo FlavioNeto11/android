@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { AiBalance, Health, Instance, Worker } from '../api/types';
 import { hashDe } from '../lib/rotas';
 import { makeInstance, makeRun, makeSnapshot } from '../test/fixtures';
+import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import {
-  JANELA_DE_EXECUCOES, contarAparelhos, contarSelecao, nivelDoAmbiente, objetivosAguardando, ocupacaoDoServidor,
-  ocupacoesDoParque, personasBloqueadas,
+  DESTINO_EM_ANDAMENTO, JANELA_DE_EXECUCOES, contarAparelhos, contarSelecao, execucoesEmAndamento, nivelDoAmbiente,
+  objetivosAguardando, ocupacaoDoServidor, ocupacoesDoParque, personasBloqueadas,
 } from './metricas';
 
 /**
@@ -213,6 +214,14 @@ describe('aguardando você e personas bloqueadas', () => {
     const ativaAntiga = makeRun({ id: 'r-ativa', status: 'running', created_at: '2026-09-01T00:00:00Z',
                                   counts: { ...makeRun().counts, waiting_user: 1, uncertain: 1 } });
     expect(objetivosAguardando([...recentes, ativaAntiga])).toEqual({ total: 2, primeiraExecucao: 'r-ativa' });
+  });
+
+  it('RF-05: execuções em andamento têm a regra do chip "Em andamento" (inclui `planned`) e o destino já filtrado', () => {
+    const runs = (['planning', 'planned', 'running', 'paused', 'cancelling', 'completed', 'needs_input', 'failed', 'cancelled'] as const)
+      .map((status, i) => makeRun({ id: `r-${i}`, status }));
+    expect(execucoesEmAndamento(runs)).toBe(5);
+    expect(execucoesEmAndamento(runs)).toBe(runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length);
+    expect(DESTINO_EM_ANDAMENTO).toEqual({ tela: 'execucoes', query: { status: 'andamento' } });
   });
 
   it('personas bloqueadas contam só `blocked`; sem lista ainda, não há número', () => {

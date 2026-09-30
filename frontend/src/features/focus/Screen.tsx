@@ -10,7 +10,7 @@ import { cx } from '../../lib/format';
 import { LONG_PRESS_MS, isDrag, resolveGesture, type Gesture, type PointerSample } from '../../lib/gesture';
 import { localId } from '../../lib/ids';
 import { INSTANCE_STATE } from '../../lib/status';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
 import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
@@ -60,7 +60,7 @@ interface Ripple {
 
 function FrameAge({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? formatAgoCoarse(ts, now) : '—'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : '—'}</>;
 }
 
 export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
@@ -143,7 +143,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
       const match = frameId ? knownFrames.current.get(frameId) ?? null : null;
       const size = resolveFrameSize(match, { width: headers.width ?? undefined, height: headers.height ?? undefined }, latest);
       if (!frameId || !size) {
-        setLoadError({ message: 'O backend não informou o id/tamanho do frame (X-Frame-Id / FrameInfo).', hint: 'Sem isso não é seguro converter cliques em coordenadas do aparelho.' });
+        setLoadError({ message: 'O servidor não informou o id e o tamanho da imagem (X-Frame-Id / FrameInfo).', hint: 'Sem isso não é seguro converter cliques em coordenadas do aparelho.' });
         return;
       }
       const next: ShownFrame = { url: URL.createObjectURL(blob), id: frameId, ts: headers.ts ?? match?.ts ?? latest?.ts ?? null, width: size.width, height: size.height };
@@ -399,8 +399,8 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
             ) : noFrame ? (
               <>
                 <ImageOff size={28} aria-hidden />
-                <p className={styles.screenStateTitle}>Ainda não há frame desta instância</p>
-                <p>A captura começa quando a automação fica pronta. O primeiro frame aparece aqui sozinho.</p>
+                <p className={styles.screenStateTitle}>Ainda não há imagem deste aparelho</p>
+                <p>A captura começa quando a automação fica pronta. A primeira imagem aparece aqui sozinha.</p>
                 <Button size="sm" variant="outline" icon={RefreshCw} loading={loading} onClick={() => void load()}>Verificar agora</Button>
               </>
             ) : (
@@ -416,12 +416,12 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
             de tela anunciava a etiqueta em loop (P3.3). A informação continua legível ao focar ou navegar. */}
         {shown && paused && !sensitive ? (
           <span className={styles.pausedTag} role="status" aria-live="off" title={PAUSED_LABEL.hint} data-stream="paused">
-            <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
+            <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — última imagem <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>
         ) : null}
         {shown && staleInfo ? (
           <span className={styles.staleTag} role="status" aria-live="off" title={staleInfo.hint} data-stream={instance.stream?.status ?? ''}>
-            <TriangleAlert size={13} aria-hidden /> Desatualizado ({staleInfo.title}) — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
+            <TriangleAlert size={13} aria-hidden /> Desatualizado ({staleInfo.title}) — última imagem <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>
         ) : null}
         {shown ? (
@@ -433,9 +433,9 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
       </div>
 
       <div className={styles.screenMeta}>
-        <span><Clock size={11} aria-hidden /> último frame <FrameAge ts={shown?.ts ?? instance.frame?.ts ?? null} /></span>
+        <span><Clock size={11} aria-hidden /> última imagem <FrameAge ts={shown?.ts ?? instance.frame?.ts ?? null} /></span>
         <span>{shown ? `${shown.width}×${shown.height} px` : '—'}</span>
-        <Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load()}>Atualizar frame</Button>
+        <Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load()}>Atualizar imagem</Button>
       </div>
     </>
   );

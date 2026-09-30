@@ -169,7 +169,7 @@ describe('personas', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     await render();
     expect(text()).toContain('Nenhuma persona cadastrada');
-    expect(byRole('button', /Nova persona a partir de um prompt/i)).toBeTruthy();
+    expect(byRole('button', /Nova persona a partir de uma descrição/i)).toBeTruthy();
     expect(byRole('button', /Nova persona manual/i)).toBeTruthy();
   });
 
@@ -223,7 +223,7 @@ describe('nova persona', () => {
     backend.on('POST', /^\/api\/personas\/generate$/, () => json(RASCUNHO));
     backend.on('POST', /^\/api\/personas$/, (c) => json(pessoa({ ...(c.body as object), id: 'ig-9', username: null }), 201));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     expect(text()).toContain('claude-sonnet-x');
     expect(text()).toContain('≈ US$ 0,02–0,03 por persona');
@@ -264,7 +264,7 @@ describe('nova persona', () => {
       () => json({ ...RASCUNHO, biography: { ...RASCUNHO.biography, beliefs: crencas } }));
     backend.on('POST', /^\/api\/personas$/, (c) => json(pessoa({ ...(c.body as object), id: 'ig-9', username: null }), 201));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professora em Recife');
     await click(byRole('button', /Gerar rascunho/i));
@@ -283,7 +283,7 @@ describe('nova persona', () => {
     backend.on('POST', /^\/api\/personas\/generate$/,
                () => apiError(422, 'persona_draft_invalid', 'Rascunho recusado: idade abaixo de 18; voz incompleta (slang).'));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'uma adolescente');
     await click(byRole('button', /Gerar rascunho/i));
     await waitFor(() => text().includes('O rascunho veio fora das regras'));
@@ -296,7 +296,7 @@ describe('nova persona', () => {
     backend.on('GET', /^\/api\/ai$/, () => json({ ...IA_PAGA, simulated: true,
       roles: [{ ...IA_PAGA.roles[0], provider: 'simulated', kind: 'simulated', model: 'simulado' }] }));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('Provedor simulado: sem custo'));
     expect(text()).not.toContain('É uma chamada paga de IA');
   });
@@ -419,7 +419,7 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(text()).toContain('Grupos de acesso'));
     await waitFor(() => expect(text()).toContain('0 sozinho · 2 com aprovação · 0 só manual'));
     expect(text()).toContain('2 mudança(s) em relação ao padrão');
-    expect(text()).toContain('1 perfil(is)');
+    expect(text(document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement)).toContain('1 persona');
     expect(text()).toContain('nenhum — padrão do catálogo');      // o Bruno não tem grupo
   });
 

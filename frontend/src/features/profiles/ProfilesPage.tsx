@@ -17,11 +17,13 @@ import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
+// Estados de sessão que só uma pessoa resolve: o mesmo conjunto da caixa de Pendências (fila e caixa não divergem).
+import { PRECISA_DE_PESSOA } from '../pendencias/modelo';
 import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
@@ -35,8 +37,6 @@ import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 
-/** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
-const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
 
 /** Quem tem conta de cadastro, no formato que a fila e os grupos de acesso sempre leram (`username` presente). */
 function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {
@@ -143,7 +143,7 @@ export function ProfilesPage() {
   const contas = comConta(pessoas);
   const botoesDeCadastro = (
     <>
-      <Button icon={Wand2} variant="primary" onClick={() => setCriando('prompt')}>Nova persona a partir de um prompt</Button>
+      <Button icon={Wand2} variant="primary" onClick={() => setCriando('prompt')}>Nova persona a partir de uma descrição</Button>
       <Button icon={PenLine} onClick={() => setCriando('manual')}>Nova persona manual</Button>
     </>
   );
@@ -211,7 +211,7 @@ export function ProfilesPage() {
         <EmptyState
           icon={UserRound}
           title="Nenhuma persona cadastrada"
-          hint="Descreva a pessoa num prompt (a IA propõe um rascunho para você revisar) ou crie à mão. Contas e aparelho vêm depois."
+          hint="Descreva a pessoa em poucas palavras (a IA propõe um rascunho para você revisar) ou crie à mão. Contas e aparelho vêm depois."
           actions={botoesDeCadastro}
         >
           Nenhuma persona foi cadastrada ainda.
@@ -344,7 +344,7 @@ function InterventionQueue({ profiles, instances, workers }: {
                     <Smartphone size={13} aria-hidden />
                     {p.instance_id ?? <span className={styles.muted}>sem aparelho vinculado</span>}
                     {server ? <ServerBadge server={server} size="sm" estatico /> : null}
-                    <span className={styles.muted}>· {formatAgoCoarse(p.session.verified_at, now)}</span>
+                    <span className={styles.muted}>· {tempoRelativo(p.session.verified_at, now)}</span>
                   </p>
                   {p.session.detail ? <p className={styles.filaMotivo}>{p.session.detail}</p> : null}
                 </div>

@@ -206,7 +206,7 @@ export function DiagnosticsPage() {
 
       {refreshing ? (
         <Banner tone="info" icon={Gauge} role="status" title="Refazendo o diagnóstico…">
-          Isto pode levar de alguns segundos a poucos minutos: o backend consulta as ferramentas e mede a capacidade da máquina. Os resultados anteriores continuam abaixo.
+          Isto pode levar de alguns segundos a poucos minutos: o servidor consulta as ferramentas e mede a capacidade da máquina. Os resultados anteriores continuam abaixo.
         </Banner>
       ) : null}
 
@@ -219,12 +219,12 @@ export function DiagnosticsPage() {
       <Card aria-label="Problemas" id="diag-problemas">
         <CardHeader
           title="Problemas"
-          subtitle="O que o backend encontrou de errado, e o que fazer a respeito."
+          subtitle="O que o servidor encontrou de errado, e o que fazer a respeito."
           actions={health ? <StatusBadge meta={metaOf(HEALTH_STATUS, health.status)} size="lg" /> : undefined}
         />
         <div className={styles.body}>
           {problems.length === 0 ? (
-            <p className={styles.meta}>Nenhum problema detectado pelo backend.</p>
+            <p className={styles.meta}>Nenhum problema detectado pelo servidor.</p>
           ) : (
             <div className={styles.problems}>
               {problems.map((p, i) => (
@@ -283,7 +283,7 @@ export function DiagnosticsPage() {
 
           {/* Detalhes técnicos (item 11.7-5): recolhidos por padrão, com sumário de âncoras acima. */}
           <Card aria-label="Detalhes técnicos">
-            <CardHeader title="Detalhes técnicos" subtitle="Máquina, aceleração, ferramentas, capacidade e outros dados enviados pelo backend — recolhidos por padrão." />
+            <CardHeader title="Detalhes técnicos" subtitle="Máquina, aceleração, ferramentas, capacidade e outros dados enviados pelo servidor — recolhidos por padrão." />
             <div className={styles.body}>
               <nav className={styles.anchorNav} aria-label="Ir para">
                 <button type="button" className={styles.anchorLink} onClick={() => jumpTo('diag-maquina')}>Máquina</button>
@@ -294,7 +294,7 @@ export function DiagnosticsPage() {
               </nav>
 
               <Disclosure id="diag-maquina" summary={<><Server size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Máquina</>} defaultOpen={openMachine} onToggle={setOpenMachine}>
-                {() => (data.host !== undefined ? <JsonTree value={data.host} labels={LABELS} /> : <p className={styles.meta}>O backend não informou dados do host.</p>)}
+                {() => (data.host !== undefined ? <JsonTree value={data.host} labels={LABELS} /> : <p className={styles.meta}>O servidor não informou dados da máquina.</p>)}
               </Disclosure>
 
               <Disclosure
@@ -306,7 +306,7 @@ export function DiagnosticsPage() {
               >
                 {() => (
                   <>
-                    {data.acceleration !== undefined ? <JsonTree value={data.acceleration} labels={LABELS} /> : <p className={styles.meta}>O backend não informou dados de aceleração.</p>}
+                    {data.acceleration !== undefined ? <JsonTree value={data.acceleration} labels={LABELS} /> : <p className={styles.meta}>O servidor não informou dados de aceleração.</p>}
                     {accelOk === false ? (
                       <Banner tone="warning" icon={TriangleAlert} compact>Sem aceleração de hardware os emuladores ficam lentos demais. Ative a virtualização na BIOS e o WHPX/Hyper-V (Windows) ou o hipervisor do emulador.</Banner>
                     ) : null}
@@ -351,7 +351,7 @@ export function DiagnosticsPage() {
                   ) : data.tools !== undefined ? (
                     <JsonTree value={data.tools} labels={LABELS} />
                   ) : (
-                    <p className={styles.meta}>O backend não informou a lista de ferramentas.</p>
+                    <p className={styles.meta}>O servidor não informou a lista de ferramentas.</p>
                   )
                 )}
               </Disclosure>

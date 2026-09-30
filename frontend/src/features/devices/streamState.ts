@@ -84,7 +84,7 @@ export function streamLabel(inst: Pick<Instance, 'state' | 'stream'> & Partial<P
     return { title: 'Frame histórico', tone: 'warning', hint: st.detail };
   }
   if (inst.control === 'ai') return AI_NOT_LOOKING_LABEL;
-  return { title: 'Sem frame novo', tone: 'warning',
+  return { title: 'Sem imagem nova', tone: 'warning',
            hint: 'O aparelho segue online; a captura está atrasada ou o canal de eventos parou. Isto não é '
              + '“aparelho offline”.' };
 }

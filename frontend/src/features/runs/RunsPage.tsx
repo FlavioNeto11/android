@@ -11,7 +11,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { RUN_STATUS, metaOf } from '../../lib/status';
-import { formatAgoCoarse, formatDateTime, useNow } from '../../lib/time';
+import { tempoRelativo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
@@ -229,7 +229,7 @@ export function RunsPage() {
 
 function Age({ ts }: { ts: string }) {
   const now = useNow();
-  return <>{formatAgoCoarse(ts, now)}</>;
+  return <>{tempoRelativo(ts, now)}</>;
 }
 
 function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean; onSelect: () => void }) {

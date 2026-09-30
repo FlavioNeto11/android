@@ -188,7 +188,7 @@ export function hintForError(e: ApiError): string {
       return 'O backend está lento ou travado. Veja o Diagnóstico e tente novamente em instantes.';
     case 'stale_frame':
     case 'frame_mismatch':
-      return 'A tela mudou — aguarde o novo frame e tente de novo.';
+      return 'A tela mudou — aguarde a nova imagem e tente de novo.';
     case 'not_controller':
       return 'Você não está com o controle desta instância. Use “Assumir controle” antes de interagir.';
     // ADR-040: a senha mora na conta da persona, nunca no comando nem na execução.

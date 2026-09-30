@@ -15,7 +15,6 @@ import {
   UserRound,
   Wallet,
 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -30,17 +29,19 @@ import { toneClass } from '../../components/tone';
 import { Tooltip } from '../../components/Tooltip';
 import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
-import { CONN_STATUS, isRunActive } from '../../lib/status';
+import { CONN_STATUS } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore } from '../../store/ui';
-import { useContagemDeAparelhos, useObjetivosAguardando } from '../../store/metricas';
+import {
+  DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento, useObjetivosAguardando,
+} from '../../store/metricas';
 import { SaudeAmbiente } from './SaudeAmbiente';
 import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
 import styles from './TopBar.module.css';
 
-export const EXTERNAL_DATA_NOTICE = 'Screenshots e textos das telas são enviados ao provedor externo de IA';
+export const EXTERNAL_DATA_NOTICE = 'Capturas e textos das telas são enviados ao provedor externo de IA';
 
 export function TopBar() {
   const menuAberto = useUiStore((s) => s.menuAberto);
@@ -126,18 +127,19 @@ function OperadorAtual() {
 
 function Counters() {
   const hydrated = useAppStore((s) => s.hydrated);
-  const runs = useAppStore((s) => s.runs);
   const metrics = useAppStore((s) => s.metrics);
   // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM — de cada servidor.
   const rodizio = useAppStore((s) => !!s.settings?.auto_start_devices);
   const setView = useUiStore((s) => s.setView);
+  const navegar = useUiStore((s) => s.navegar);
   const abrirExecucao = useUiStore((s) => s.abrirExecucao);
 
   // Fonte única (`store/metricas`, tarefa 02 da revisão de UX): o total é o de aparelhos de TAREFA, o mesmo de
   // "N de T selecionados"; a loja fica à parte e o aparelho de servidor fora do ar não conta como online.
   const { online, total, desconhecidos, loja } = useContagemDeAparelhos();
   const aguardando = useObjetivosAguardando();
-  const active = useMemo(() => runs.filter((r) => isRunActive(r.status)).length, [runs]);
+  // A mesma conta do chip "Em andamento" de Execuções, e o clique abre a lista já nesse filtro (RF-05).
+  const active = useExecucoesEmAndamento();
 
   if (!hydrated) return <Skeleton width={420} height={24} radius={6} />;
 
@@ -163,8 +165,8 @@ function Counters() {
           <span className={styles.counterLabel}>online</span>
         </div>
       </Tooltip>
-      <Tooltip content="Execuções ativas (planejando, em execução, pausadas ou cancelando). Clique para ver.">
-        <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => setView('execucoes')}>
+      <Tooltip content="Execuções em andamento (planejando, planejadas, em execução, pausadas ou cancelando). Clique para ver a lista filtrada.">
+        <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => navegar(DESTINO_EM_ANDAMENTO)}>
           <Activity size={14} aria-hidden />
           <span className={styles.counterValue}>{formatInt(active)}</span>
           <span className={styles.counterLabel}>{active === 1 ? 'execução' : 'execuções'}</span>
@@ -185,7 +187,7 @@ function Counters() {
           <span className={styles.counterLabel}>aguardando você</span>
         </button>
       </Tooltip>
-      <Tooltip content="Uso de CPU da máquina host">
+      <Tooltip content="Uso de CPU do servidor central">
         <div className={cx(styles.counter, metrics && metrics.cpu_percent >= 90 && styles.counterHot)}>
           <Cpu size={14} aria-hidden />
           <span className={styles.counterLabel}>CPU</span>
@@ -193,7 +195,7 @@ function Counters() {
           {metrics ? <Medidor pct={metrics.cpu_percent} alto={75} critico={90} /> : null}
         </div>
       </Tooltip>
-      <Tooltip content={metrics ? `Memória em uso: ${formatInt(metrics.mem_used_percent)}% (usada / total)` : 'Memória do host (sem dados ainda)'}>
+      <Tooltip content={metrics ? `Memória em uso: ${formatInt(metrics.mem_used_percent)}% (usada / total)` : 'Memória do servidor central (sem dados ainda)'}>
         <div className={cx(styles.counter, metrics && metrics.mem_used_percent >= 92 && styles.counterHot)}>
           <MemoryStick size={14} aria-hidden />
           <span className={styles.counterLabel}>RAM</span>
@@ -234,7 +236,7 @@ function AiBadge() {
         </Tooltip>
       ) : null}
       {!ai.configured && !ai.simulated ? (
-        <Tooltip content="Defina a chave do provedor de IA no arquivo .env do backend e reinicie o servidor. A chave nunca é informada pelo navegador.">
+        <Tooltip content="Defina a chave do provedor de IA no arquivo .env do servidor e reinicie-o. A chave nunca é informada pelo navegador.">
           <span tabIndex={0} style={{ display: 'inline-flex' }}>
             <Badge tone="danger" icon={ShieldAlert} size="lg">IA não configurada</Badge>
           </span>
@@ -349,7 +351,7 @@ function AiDetailsPopover({ ai, features: healthFeatures }: { ai: AiStatus; feat
           </KvList>
         </>
       ) : (
-        <p className={styles.aiNote}>O backend não informou o estado de receitas, fluxos e imagens.</p>
+        <p className={styles.aiNote}>O servidor não informou o estado de receitas, fluxos e imagens.</p>
       )}
     </Popover>
   );
@@ -365,7 +367,7 @@ function ConnectionIndicator() {
   // com problema, a cor do tom volta (e o ConnectionBanner no conteúdo explica).
   return (
     <div className={cx(styles.conn, waiting && styles.connWaiting)} role="status" aria-live="polite">
-      <Tooltip content={conn.lastError && waiting ? `Último erro: ${conn.lastError}` : 'Canal em tempo real (WebSocket) com o backend'}>
+      <Tooltip content={conn.lastError && waiting ? `Último erro: ${conn.lastError}` : 'Canal em tempo real com o servidor'}>
         <StatusBadge meta={meta} plain srPrefix="Conexão" />
       </Tooltip>
       {waiting ? <Button size="sm" variant="ghost" icon={RefreshCw} iconOnly label="Reconectar agora" onClick={reconnectNow} /> : null}

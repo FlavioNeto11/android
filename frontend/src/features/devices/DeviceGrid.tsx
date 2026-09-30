@@ -93,7 +93,6 @@ export function DeviceGrid() {
 
   // Seleção é escolha de ALVO de comando: a loja aparece na grade, mas nunca é alvo.
   const taskOrder = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
-  const onRange = useCallback((id: string) => selectRange(id, taskOrder), [selectRange, taskOrder]);
   // 11.5: seleção rápida por servidor, ao lado da seleção por estado — só aparece quando há mais de um servidor
   // em jogo (o caso comum é tudo local, e um botão único ali seria ruído).
   const serverBuckets = useMemo(
@@ -107,15 +106,33 @@ export function DeviceGrid() {
     [instances, filtro, workersMap]);
   const grupos = useMemo(() => agruparPorServidor(visiveis, workersMap), [visiveis, workersMap]);
 
-  const { selecionados, total } = contarSelecao(selectedIds, taskOrder);
-  const allSelected = total > 0 && selecionados === total;
+  // RF-01 (revisão final): a ação em lote vale SÓ para o que a pessoa está vendo. O filtro esconde cartões, mas a
+  // seleção sobrevive a ele (vem do navegador, dos contadores por estado ou de antes do link filtrado). Em vez de
+  // podar a seleção em silêncio, o que está escondido fica marcado, é contado à parte ("N fora do filtro atual") e
+  // NUNCA vai para a barra: Iniciar/Parar agem na hora, sem confirmação, e não podem alcançar quem não aparece.
+  const tarefaVisivel = useMemo(() => {
+    const vistos = new Set(visiveis.map((i) => i.id));
+    return taskOrder.filter((id) => vistos.has(id));
+  }, [taskOrder, visiveis]);
+  const onRange = useCallback((id: string) => selectRange(id, tarefaVisivel), [selectRange, tarefaVisivel]);
+  const idsDaAcao = useMemo(() => tarefaVisivel.filter((id) => selectedSet.has(id)), [tarefaVisivel, selectedSet]);
+  const alvos = useMemo(() => {
+    const daAcao = new Set(idsDaAcao);
+    return instances.filter((i) => daAcao.has(i.id));
+  }, [instances, idsDaAcao]);
+
+  const { selecionados, total } = contarSelecao(selectedIds, tarefaVisivel);
+  const foraDoFiltro = contarSelecao(selectedIds, taskOrder).selecionados - selecionados;
+  const allSelected = total > 0 && selecionados === total && foraDoFiltro === 0;
+  // A barra existe enquanto houver aparelho marcado, visível ou não: é nela que o aviso do escondido aparece.
+  const barraVisivel = hydrated && (selecionados > 0 || foraDoFiltro > 0);
   const limparFiltro = () => trocarQuery({ estado: undefined });
 
   return (
     <section className={styles.section} aria-labelledby="devices-title">
       <div className={styles.sectionHeader}>
         <h2 id="devices-title" className={styles.sectionTitle}>Aparelhos</h2>
-        {hydrated && total > 0 ? (
+        {hydrated && taskOrder.length > 0 ? (
           <span className={styles.stateSummary} aria-label="Aparelhos por estado">
             {/* 11.5: cada contador seleciona os aparelhos daquele estado (ex.: "3 parados" → liga os três de uma vez),
                 em vez de marcar cartão por cartão. A loja nunca entra: seleção é alvo de comando. */}
@@ -134,7 +151,7 @@ export function DeviceGrid() {
             {contagem.loja ? (
               <span title="A loja (Play Store) não recebe tarefa: fica fora da contagem e da seleção.">
                 {contagem.porEstado.length > 0 ? ' · ' : ''}
-                loja {ROTULO_DO_ESTADO[contagem.loja.estado][0]}
+                aparelho-loja {ROTULO_DO_ESTADO[contagem.loja.estado][0]}
               </span>
             ) : null}
           </span>
@@ -163,7 +180,7 @@ export function DeviceGrid() {
         </span>
         <div className={styles.visao} role="group" aria-label="Forma de exibir os aparelhos">
           <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'cards'} onClick={() => setVisao('cards')}>
-            <LayoutGrid size={14} aria-hidden /> Cards
+            <LayoutGrid size={14} aria-hidden /> Cartões
           </button>
           <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'lista'} onClick={() => setVisao('lista')}>
             <List size={14} aria-hidden /> Lista
@@ -171,13 +188,15 @@ export function DeviceGrid() {
         </div>
         <div className={styles.sectionActions}>
           {/* Com aparelhos marcados, o contador mora na barra de seleção (logo abaixo): dizer duas vezes só confunde. */}
-          {selecionados === 0 ? (
+          {!barraVisivel ? (
             <span className={styles.selSummary} aria-live="polite">
               {hydrated ? `0 de ${total} selecionados` : ''}
             </span>
           ) : null}
-          <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(taskOrder)}>
-            Selecionar todas
+          {/* Só o que o filtro mostra (e substitui a seleção): nada escondido fica marcado depois deste clique. */}
+          <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || total === 0 || allSelected}
+                  onClick={() => setSelection(tarefaVisivel)}>
+            Selecionar todos
           </Button>
           <Button size="sm" variant="ghost" icon={X} disabled={selectedIds.length === 0} onClick={clearSelection}>
             Limpar
@@ -186,17 +205,18 @@ export function DeviceGrid() {
       </div>
 
       {/* Presa ao topo da grade, na fila normal: nunca cobre um cartão. Com o Foco aberto mantém o lugar, sem botões. */}
-      {selectedIds.length > 0 && hydrated ? (
+      {barraVisivel ? (
         <BarraDeSelecao
-          ids={selectedIds}
+          ids={idsDaAcao}
           selecionados={selecionados}
+          foraDoFiltro={foraDoFiltro}
           emFoco={focusId !== null}
-          hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')}
-          hasHibernated={instances.some((i) => selectedSet.has(i.id) && i.state === 'hibernated')}
+          hasAbsent={alvos.some((i) => i.state === 'absent')}
+          hasHibernated={alvos.some((i) => i.state === 'hibernated')}
           hibernation={hibernation}
           // Numa seleção mista, o verbo só é oferecido se TODOS aceitarem: era assim que `create` chegava a um
           // aparelho de outra máquina e criava um AVD que nunca seria usado.
-          selected={instances.filter((i) => selectedSet.has(i.id))}
+          selected={alvos}
         />
       ) : null}
 
@@ -217,20 +237,20 @@ export function DeviceGrid() {
           <EmptyState
             icon={ServerCrash}
             tone="danger"
-            title="Sem conexão com o backend"
-            hint={<>Inicie o backend (FastAPI em <span className="mono">127.0.0.1:8000</span>) e aguarde: a reconexão é automática.{connError ? ` Último erro: ${connError}` : ''}</>}
+            title="Sem conexão com o servidor"
+            hint={<>Inicie o servidor central (em <span className="mono">127.0.0.1:8000</span>) e aguarde: a reconexão é automática.{connError ? ` Último erro: ${connError}` : ''}</>}
             actions={<Button variant="outline" onClick={reconnectNow}>Tentar agora</Button>}
           >
             Ainda não foi possível carregar a lista de aparelhos.
           </EmptyState>
         )
-      ) : total === 0 ? (
+      ) : taskOrder.length === 0 ? (
         <EmptyState
           icon={Smartphone}
           title="Nenhum aparelho cadastrado"
-          hint="O backend deveria listar android-01 … android-10. Abra o Diagnóstico para conferir o SDK e a configuração."
+          hint="O servidor deveria listar android-01 … android-10. Abra o Diagnóstico para conferir o SDK e a configuração."
         >
-          O snapshot veio sem aparelhos.
+          O servidor respondeu sem nenhum aparelho.
         </EmptyState>
       ) : visiveis.length === 0 ? (
         <EmptyState
@@ -276,7 +296,7 @@ export function DeviceGrid() {
                     <button type="button" className={styles.paradasBotao} aria-expanded={!recolhido}
                             onClick={() => alternarParadas(g.chave)}>
                       {recolhido ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
-                      Paradas ({g.paradas.length})
+                      Parados ({g.paradas.length})
                     </button>
                     {recolhido ? null : <div className={styles.gridCompacto}>{g.paradas.map((i) => cartao(i, true))}</div>}
                   </>

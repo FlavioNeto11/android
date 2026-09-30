@@ -7,12 +7,13 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useSessionStore } from '../../store/session';
 import { useUiStore } from '../../store/ui';
-import { makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
+import { makePersona, makeRun, makeSession, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import type { EntradaDoLivro } from '../aprendizado/model';
+import { tituloCurto } from '../runs/filtroExecucoes';
 import { MenuLateral } from '../topbar/MenuLateral';
-import { montarPendencias } from './modelo';
+import { PRECISA_DE_PESSOA, montarPendencias } from './modelo';
 import { PendenciasPage } from './PendenciasPage';
 import { usePendenciasStore } from './store';
 
@@ -35,6 +36,10 @@ const EXECUCAO = makeRun({
   counts: { succeeded: 0, failed: 0, waiting_user: 2, uncertain: 1, cancelled: 0, running: 0, pending: 0 },
 });
 
+const PRESA = makePersona('p2', 'Bia Nunes', {
+  username: 'bia.nunes', session: { ...makeSession('auth_challenge', 'android-02'), verified_at: '2026-09-30T07:00:00Z' },
+});
+
 describe('montarPendencias (puro)', () => {
   it('uma linha por item, por aprovação e por execução; o total é o tamanho da lista, mais antigas primeiro', () => {
     const lista = montarPendencias({
@@ -53,6 +58,32 @@ describe('montarPendencias (puro)', () => {
     const exec = lista.find((p) => p.origem === 'execucao');
     expect(exec?.detalhe).toContain('3 objetivos');
     expect(exec?.destino).toEqual({ tela: 'execucoes', segmentos: ['r-espera'] });
+  });
+
+  it('RF-09: o título da execução é o título curto de Execuções, sem a abertura repetida', () => {
+    const run = makeRun({ ...EXECUCAO, id: 'r-curto', command: 'Nas instâncias selecionadas, no QA Messenger, leia o nome do contato. Confirme na tela.' });
+    const [linha] = montarPendencias({ aprendizado: [], aprovacoes: [], execucoes: [run] });
+    expect(linha?.titulo).toBe(tituloCurto(run.command).titulo);
+    expect(linha?.titulo).not.toMatch(/^Nas instâncias/);
+  });
+
+  it('RF-03: sessões que só uma pessoa resolve entram, uma por persona com conta; as demais não', () => {
+    const lista = montarPendencias({
+      aprendizado: [], aprovacoes: [], execucoes: [],
+      personas: [
+        PRESA,
+        makePersona('p3', 'Caio Souza', { username: 'caio', session: makeSession('session_ready', 'android-04') }),
+        makePersona('p4', 'Sem Conta', { session: makeSession('needs_person') }),   // sem conta: não é a fila
+        makePersona('p5', 'Dora Reis', { username: 'dora', session: makeSession('wrong_account', null) }),
+      ],
+    });
+    expect(lista.map((p) => p.chave)).toEqual(['intervencao:p2', 'intervencao:p5']);
+    expect(lista[0]).toMatchObject({ origem: 'intervencao', titulo: 'Bia Nunes (@bia.nunes)', desde: '2026-09-30T07:00:00Z',
+                                     destino: { tela: 'personas' } });
+    expect(lista[0]?.detalhe).toContain('android-02');
+    expect(lista[1]?.detalhe).toContain('sem aparelho vinculado');
+    // O conjunto é o da fila "Aguardando intervenção" de Personas.
+    expect([...PRECISA_DE_PESSOA].sort()).toEqual(['auth_challenge', 'needs_person', 'wrong_account']);
   });
 
   it('fontes ainda não lidas (null) não quebram nem inventam linhas', () => {
@@ -74,7 +105,7 @@ beforeEach(() => {
   backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Ana Lima')]));
   const snap = makeSnapshot();
   useAppStore.setState({ ...initialDataState, hydrated: true, health: snap.health, settings: snap.settings, runs: [EXECUCAO] });
-  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, falhou: false });
+  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false });
   useContagemDoAprendizado.setState({ pendentes: null });
   useSessionStore.setState({ operator: 'ana' });
   useUiStore.getState().navegar({ tela: 'pendencias' }, 'replace');
@@ -100,6 +131,19 @@ describe('caixa de pendências', () => {
     expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (4)');
     // O nome da persona vem da lista de personas.
     await waitFor(() => expect(text(container)).toContain('Persona Ana Lima'));
+  });
+
+  it('RF-03: a sessão que pede pessoa aparece na caixa, e o contador do menu continua igual à lista', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Ana Lima'), PRESA]));
+    await act(async () => { root.render(<><MenuLateral /><PendenciasPage /></>); });
+    await waitFor(() => expect(container.querySelectorAll('li[data-origem]')).toHaveLength(5));
+    const linha = container.querySelector('li[data-origem="intervencao"]') as HTMLElement;
+    expect(text(linha)).toContain('Bia Nunes (@bia.nunes)');
+    expect(linha.querySelector('a')?.getAttribute('href')).toBe('#/personas');
+    const itemDoMenu = container.querySelector('nav a[href="#/pendencias"]') as HTMLElement;
+    expect(text(itemDoMenu)).toContain('5 esperando você');
+    expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Intervenção (1)');
+    expect(backend.callsTo('POST', /./)).toHaveLength(0);
   });
 
   it('a ação primária só leva à tela onde se decide (nada é aprovado aqui) e o filtro por origem fica no link', async () => {

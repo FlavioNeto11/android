@@ -16,6 +16,7 @@ import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { Field, Select, TextInput } from '../../components/Field';
+import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
 import { LimitsEditor, PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
 import styles from './Profiles.module.css';
@@ -70,8 +71,8 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
     const { confirmed } = await confirm({
       title: `Apagar o grupo ${g.name}?`,
       body: g.members.length
-        ? `${g.members.length} perfil(is) deixam o grupo e voltam a herdar só do padrão do catálogo. As escolhas próprias de cada perfil ficam.`
-        : 'Nenhum perfil está neste grupo.',
+        ? `${g.members.length === 1 ? '1 persona deixa o grupo e volta' : `${g.members.length} personas deixam o grupo e voltam`} a herdar só do padrão do catálogo. As escolhas próprias de cada persona ficam.`
+        : 'Nenhuma persona está neste grupo.',
       confirmLabel: 'Apagar grupo', danger: true,
     });
     if (!confirmed) return;
@@ -90,13 +91,13 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
         <div>
           <h3 id="grupos-de-acesso" className={styles.groupsTitle}><ShieldCheck size={16} aria-hidden /> Grupos de acesso</h3>
           <p className={styles.detail}>
-            Políticas e limites que valem para vários perfis de uma vez. O que um perfil mudar para si sobrepõe o grupo.
+            Políticas e limites que valem para várias personas de uma vez. O que uma persona mudar para si sobrepõe o grupo.
           </p>
         </div>
         <Button size="sm" icon={Plus} onClick={() => setEditando('novo')}>Novo grupo</Button>
       </div>
       {grupos.length === 0 ? (
-        <p className={styles.detail}>Nenhum grupo ainda. Crie um e marque os perfis que devem segui-lo.</p>
+        <p className={styles.detail}>Nenhum grupo ainda. Crie um e marque as personas que devem segui-lo.</p>
       ) : (
         <div className={styles.groupGrid}>
           {grupos.map((g) => {
@@ -120,9 +121,9 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
                     {mudancas ? `${mudancas} mudança(s) em relação ao padrão` : 'Igual ao padrão do catálogo'}
                     {g.loosened.length ? <> · <Badge tone="danger" size="sm">afrouxa {g.loosened.length} ação(ões) de risco</Badge></> : null}
                   </p>
-                  <div className={styles.memberChips} aria-label={`Perfis no grupo ${g.name}`}>
+                  <div className={styles.memberChips} aria-label={`Personas no grupo ${g.name}`}>
                     <Badge size="sm" tone={g.members.length ? 'info' : 'muted'}>
-                      <Users size={12} aria-hidden /> {g.members.length} perfil(is)
+                      <Users size={12} aria-hidden /> {plural(g.members.length, 'persona', 'personas')}
                     </Badge>
                     {g.members.slice(0, 8).map((m) => <span key={m.id} className={styles.memberChip}>@{m.username}</span>)}
                     {g.members.length > 8 ? <span className={styles.muted}>+{g.members.length - 8}</span> : null}
@@ -209,7 +210,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
       const base = politicas[0]!;
       setLimites({ ...(base.group_limits ?? {}), ...(base.own_limits ?? {}) });
     } catch (e) {
-      toastError('Não foi possível ler o acesso do perfil', e);
+      toastError('Não foi possível ler o acesso da persona', e);
     }
   }
 
@@ -255,7 +256,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
         }
       }
       toast({ tone: 'success', title: grupo ? `Grupo ${nome.trim()} salvo` : `Grupo ${nome.trim()} criado`,
-              message: `${profile_ids.length} perfil(is) seguem este grupo.` });
+              message: `${plural(profile_ids.length, 'persona segue', 'personas seguem')} este grupo.` });
       await onSaved();
     } catch (e) {
       toastError('Não foi possível salvar o grupo', e);
@@ -322,7 +323,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
 
         <fieldset className={styles.memberPick}>
           <legend>Perfis neste grupo <Badge size="sm">{membros.size}</Badge></legend>
-          {profiles.length === 0 ? <p className={styles.detail}>Nenhum perfil cadastrado.</p> : null}
+          {profiles.length === 0 ? <p className={styles.detail}>Nenhuma persona com conta cadastrada.</p> : null}
           {profiles.map((p) => {
             const outro = p.policy_group_id && p.policy_group_id !== grupo?.id ? nomeDoGrupo.get(p.policy_group_id) : null;
             return (
@@ -337,7 +338,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
 
         <div className={styles.personaLayout}>
           <div>
-            <h4 className={styles.groupDialogSub}>O que os perfis do grupo podem fazer</h4>
+            <h4 className={styles.groupDialogSub}>O que as personas do grupo podem fazer</h4>
             <PolicyActionsEditor
               acoes={acoes} efetivo={efetivo} salvando={salvando || carregandoApp}
               loosened={acoes.filter((c) => c.risk === 'high' && caps[c.key] && RANK[caps[c.key]!] > RANK[c.default_policy]).map((c) => c.key)}

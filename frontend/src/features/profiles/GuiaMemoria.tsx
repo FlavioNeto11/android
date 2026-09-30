@@ -9,7 +9,7 @@ import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { Field, TextArea, TextInput } from '../../components/Field';
 import { clamp01 } from '../../lib/format';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { Carregando, useLista, useVersaoAoVivo } from './detalheComum';
@@ -145,7 +145,7 @@ export function AbaMemoria({ profile, appId = null }: { profile: Pessoa; appId?:
                           confiança {Math.round(m.confidence * 100)}%
                         </Badge>
                         <span className={styles.muted}>
-                          visto {m.occurrences}x · usado {m.last_used_at ? formatAgo(m.last_used_at, now) : 'nunca'}
+                          visto {m.occurrences}x · usado {m.last_used_at ? tempoRelativo(m.last_used_at, now) : 'nunca'}
                         </span>
                         <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void esquecer(m)}>Esquecer</Button>
                       </div>

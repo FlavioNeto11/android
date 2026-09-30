@@ -5,9 +5,9 @@
  *   #/painel                      #/painel?foco=android-01&estado=desconhecido
  *   #/personas                    #/personas?situacao=bloqueada&q=ana&ordem=nome&visao=tabela
  *   #/personas/<id>               #/personas/<id>/<aba>
- *   #/aplicativos                 #/aplicativos/<pacote>?aba=versoes
+ *   #/aplicativos                 #/aplicativos/<app_id>?aba=versoes
  *   #/execucoes                   #/execucoes/<id>?aba=linha-do-tempo
- *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções)
+ *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções, intervenções)
  *   #/aprendizado?aba=aprovar|aprendido|falhas|sinais   (sem `aba` = Para aprovar)
  *   #/infraestrutura  #/diagnostico
  *   #/configuracao?aba=aplicativos|instancias|ia|fluxos|limites   (sem `aba` = Aplicativos: o link antigo

@@ -221,13 +221,13 @@ describe('FocusPanel — tela no ritmo da IA (r-20260928195344-02ee9e)', () => {
 
   it('sem a IA no controle, o mesmo frame de 10 s continua desatualizado', async () => {
     const el = await focoCom('none', 10);
-    expect(text(el)).toContain('Desatualizado (Sem frame novo)');
+    expect(text(el)).toContain('Desatualizado (Sem imagem nova)');
   });
 
   it('a IA sem olhar a tela além do prazo: desatualizado, com o motivo certo', async () => {
     const el = await focoCom('ai', 45);
     expect(text(el)).toContain('Desatualizado (IA sem olhar a tela)');
-    expect(text(el)).not.toContain('Sem frame novo');
+    expect(text(el)).not.toContain('Sem imagem nova');
   });
 });
 
