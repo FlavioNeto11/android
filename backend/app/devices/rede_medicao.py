@@ -16,11 +16,14 @@ estendido):
    `trafego_verificado` a cada "Verificar"). A do shell é só esta passada (é o tráfego da própria sonda).
 
 O teste de VAZAMENTO (`sondar_vazamento`, só com a política `exigida_com_bloqueio`) é separado, porque desliga a VPN
-de verdade: com o túnel saindo, o cliente VPN é PARADO (`am force-stop`, sem `tun0`) e a sonda de IPv4 roda de novo.
-Só o `Permission denied` do Android é bloqueio provado; um IP é vazamento; qualquer outra coisa (`Timeout`, nome que não
-resolve) não prova nada. Parar o servidor não serve: com o túnel no ar e o servidor fora, a sonda dá `Timeout` com o
-bloqueio ligado ou desligado (25.1, 18:06:50) — era o que o primeiro desenho media, e virava "bloqueado" presumido. O
-always-on não religa o cliente depois do `force-stop` (25.1, 18:07): quem chama religa pelo boot.
+de verdade: com o túnel saindo, o cliente VPN é PARADO (`am force-stop`, sem `tun0`) e a sonda de IPv4 roda de novo —
+parar, esperar o `tun0` sumir e sondar numa ida SÓ ao aparelho (`sonda_rede.comando_parar_e_sondar`), porque com
+always-on e lockdown o Android religa o cliente em menos de um segundo (android-05, 29/09) e, em idas separadas, 2 de 3
+testes reais acharam o túnel de volta. Só o `Permission denied` do Android é bloqueio provado; um IP é vazamento;
+qualquer outra coisa (`Timeout`, nome que não resolve, a janela sem `tun0` nunca vista) não prova nada. Parar o
+servidor não serve: com o túnel no ar e o servidor fora, a sonda dá `Timeout` com o bloqueio ligado ou desligado (25.1,
+18:06:50) — era o que o primeiro desenho media, e virava "bloqueado" presumido. Se o túnel não voltar sozinho depois
+(no 25.1, 18:07, não voltou), quem chama religa pelo boot.
 
 Nada aqui muda estado: a sonda só devolve o que viu. Uma leitura que não veio (adb em root, saída truncada) levanta
 `RedeAplicacaoError` e nada é gravado — incerteza não vira medição.
@@ -33,10 +36,11 @@ from typing import TYPE_CHECKING
 
 from ..util import now_iso
 from .rede import NetworkMeasurementInput
-from .rede_aplicacao import AparelhoDaRede, RedeAplicacaoError, observar
-from .sonda_rede import (PACOTE_DO_SHELL, UID_DO_SHELL, Contabilidade, cobertura, comando_abrir_app,
-                         comando_dns_e_udp, comando_ip_de_saida, comando_netstats, comando_parar_cliente, comando_uids,
-                         ler_dns_e_udp, ler_ip_de_saida, ler_netstats, ler_uids, uid_da_saida)
+from .rede_aplicacao import AparelhoDaRede, RedeAplicacaoError
+from .sonda_rede import (PACOTE_DO_SHELL, TENTATIVAS_DE_VAZAMENTO, UID_DO_SHELL, Contabilidade, cobertura,
+                         comando_abrir_app, comando_dns_e_udp, comando_ip_de_saida, comando_netstats,
+                         comando_parar_e_sondar, comando_uids, ler_dns_e_udp, ler_ip_de_saida, ler_netstats,
+                         ler_parar_e_sondar, ler_uids, uid_da_saida)
 
 if TYPE_CHECKING:
     from ..config import RedeSondaCfg
@@ -47,6 +51,10 @@ log = logging.getLogger(__name__)
 METODO = "sonda nc http/1.0 + netstats por uid (uid 2000)"
 #: Tempo de cada sonda de IP (o `nc` com o stdin aberto pelo `sleep`).
 _TIMEOUT_IP_S = 8
+#: O teste de vazamento: tentativas de pegar a janela sem `tun0`, e a espera de cada uma (30 passos de 0,1 s no
+#: comando). O prazo da ida ao aparelho soma, por tentativa, a espera e uma folga para o `am force-stop`.
+_TENTATIVAS = TENTATIVAS_DE_VAZAMENTO
+_ESPERA_TUN_S = 3
 #: O erro do `connect` que o bloqueio do Android devolve a um app fora da VPN (lockdown sem `tun0`, 25.1 18:03:57 e
 #: 18:06:50). É a ÚNICA assinatura que prova o bloqueio.
 _RECUSA_DO_BLOQUEIO = "Permission denied"
@@ -126,20 +134,23 @@ async def sondar_vazamento(ap: AparelhoDaRede, cfg: RedeSondaCfg, pacote: str) -
         return TesteDeVazamento(Vazamento(None, f"vazamento não medido: a sonda de IPv4 não saiu nem com o túnel no ar "
                                                 f"({host[:100]}), e uma sonda que não funciona não prova bloqueio",
                                           now_iso()), cliente_parado=False)
+    # Parar, esperar o `tun0` sumir e sondar numa ida SÓ ao aparelho (`comando_parar_e_sondar`): com always-on e
+    # lockdown o Android religa o cliente em menos de um segundo, e em idas separadas o túnel já tinha voltado
+    # (android-05, 29/09: 2 de 3 testes reais sem medição). Tudo, da chamada à leitura, fica no `try`: o `force-stop`
+    # pode ter rodado mesmo com a saída perdida.
     try:
-        await _shell_2000(ap, comando_parar_cliente(pacote), timeout=30)
-    except Exception as exc:  # noqa: BLE001 - o `force-stop` pode ter rodado: tratado como parado
-        return TesteDeVazamento(Vazamento(None, f"vazamento não medido: parar o cliente VPN falhou "
-                                                f"({str(exc)[:140]})", now_iso()), cliente_parado=True)
-    try:
-        obs = await observar(ap, pacote)
-        if obs.tun:
-            # O túnel continuou (o cliente não parou, ou algo o religou na hora): a sonda sairia por ele, e isso
-            # não diz nada sobre o bloqueio.
-            return TesteDeVazamento(Vazamento(None, "vazamento não medido: o tun0 continuou no ar depois de parar o "
-                                                    f"cliente ({obs.descrever(pacote)[:140]})", now_iso()),
+        saida = await _shell_2000(ap, comando_parar_e_sondar(pacote, host, timeout_s=_TIMEOUT_IP_S),
+                                  timeout=_TENTATIVAS * (_ESPERA_TUN_S + 5) + _TIMEOUT_IP_S + 20)
+        _usadas, sem_tun = ler_parar_e_sondar(saida)
+        if not sem_tun:
+            # A espera nunca viu o aparelho sem `tun0`: o cliente não parou, ou o always-on o religou antes do passo
+            # de 0,1 s. Daqui não dá para separar os dois, e a sonda sairia pelo túnel — não diz nada do bloqueio.
+            return TesteDeVazamento(Vazamento(None, f"vazamento não medido: o tun0 continuou no ar depois de parar o "
+                                                    f"cliente — ou o always-on religou o cliente antes da sonda — em "
+                                                    f"todas as {_TENTATIVAS} tentativas", now_iso()),
                                     cliente_parado=True)
-        ip, motivo = await _ip(ap, [host], 4)
+        r = ler_ip_de_saida(saida, 4)
+        ip, motivo = r.ip, f"{host}: {r.motivo}"
     except Exception as exc:  # noqa: BLE001 - o cliente está parado: o desfecho tem de voltar a quem o religa
         return TesteDeVazamento(Vazamento(None, f"vazamento não medido: a sonda falhou com o cliente parado "
                                                 f"({str(exc)[:140]})", now_iso()), cliente_parado=True)

@@ -12,7 +12,8 @@ emulador, nenhuma VPN, nenhum eco de IP de verdade):
 - a sonda: tudo como uid 2000 (root é recusado), cobertura por UID dos apps exigidos (Instagram e Outlook), o shell
   como a própria sonda, a janela dos apps acumulada desde a conexão, e o teste de vazamento com o CLIENTE VPN parado
   (sem `tun0`): só o `Permission denied` prova o bloqueio, um IP é vazamento, o `Timeout` não prova nada; depois do
-  `force-stop` nada levanta;
+  `force-stop` nada levanta; parar e sondar vão numa ida só, com novas tentativas, e o always-on que religa o cliente
+  na hora (android-05, 29/09) não esconde mais o bloqueio;
 - a convergência: `conectado` → verificar → `trafego_verificado` ou `parcial`; deriva no meio regride sem medir; o
   teste de vazamento vem antes da medição, uma vez por revisão, e o cliente parado é religado pelo boot (a linha volta
   a `configurado` e reinicia); o servidor do central não é tocado, e o servidor externo também tem o vazamento medido;
@@ -36,8 +37,8 @@ from app.devices import rede
 from app.devices.rede_aplicacao import RedeAplicacaoError
 from app.devices.rede_medicao import Vazamento, medir, sondar_vazamento
 from app.devices.sonda_rede import (CONSULTA_DNS, PEDIDO_NTP, cobertura, comando_abrir_app, comando_dns_e_udp,
-                                    comando_ip_de_saida, host_valido, ler_dns_e_udp, ler_ip_de_saida, ler_netstats,
-                                    ler_uids)
+                                    comando_ip_de_saida, comando_parar_e_sondar, host_valido, ler_dns_e_udp,
+                                    ler_ip_de_saida, ler_netstats, ler_parar_e_sondar, ler_uids)
 from app.main import create_app
 from app.modules.identity.presentation.schemas import ProfileCreate
 
@@ -139,6 +140,18 @@ def test_comandos_so_levam_host_e_pacote_validados() -> None:
     udp = comando_dns_e_udp(host_de_resolucao="api.ipify.org", alvo_dns_udp="8.8.4.4", alvo_ntp="time.google.com")
     assert "nc -u 8.8.4.4 53" in udp and "nc -u time.google.com 123" in udp and "'" + CONSULTA_DNS + "'" in udp
     assert PEDIDO_NTP.startswith("\\033") and PEDIDO_NTP.count("\\000") == 47
+    # O teste de vazamento numa ida só: pacote e host validados, a MESMA sonda de IP (texto igual) dentro do laço.
+    with pytest.raises(ValueError):
+        comando_parar_e_sondar("com.x; reboot", "api.ipify.org")
+    with pytest.raises(ValueError):
+        comando_parar_e_sondar(PKG, "$(id)")
+    vaz = comando_parar_e_sondar(PKG, "api.ipify.org")
+    assert vaz.startswith("echo U=$(id -u)") and f"am force-stop {PKG}" in vaz and "sleep 0.1" in vaz
+    assert "[ -e /sys/class/net/tun0 ]" in vaz and "while [ $n -le 5 ]" in vaz and "SEM_TUN=$S" in vaz
+    assert cmd.split("echo U=$(id -u); ", 1)[1] in vaz
+    assert ler_parar_e_sondar("U=2000\nTENTATIVAS=5\nSEM_TUN=0\n") == (5, 0)
+    with pytest.raises(ValueError):
+        ler_parar_e_sondar("U=2000\n==SONDA-INICIO==\n")
     with pytest.raises(ValueError):
         RedeSondaCfg(hosts_ipv4=["api.ipify.org && reboot"])
 
@@ -157,10 +170,14 @@ class SondaFalsa(AparelhoFalso):
     contadores: dict[tuple[int, int], list[int]] = field(default_factory=dict)
     servidor_fora: bool = False              # túnel no ar e servidor parado: `nc: Timeout` (25.1, 18:06:50)
     ignora_force_stop: bool = False          # o `tun0` continua depois de parar o cliente
-    religa_sozinho: bool = False             # o always-on religa o cliente logo depois (o 25.1 não viu isto)
+    religa_sozinho: bool = False             # o always-on religa o cliente logo DEPOIS da sonda sem `tun0`
+    # O always-on religando o cliente ANTES da sonda (android-05, 29/09: em menos de um segundo): nas primeiras
+    # `religa_antes` tentativas o `tun0` cai e volta sem a janela ser vista; `religa_sempre`, em todas.
+    religa_antes: int = 0
+    religa_sempre: bool = False
     resposta_sem_tunel: str | None = None    # outra resposta sem `tun0` (ex.: `nc: Timeout`)
     parado: bool = False
-    paradas: int = 0
+    paradas: int = 0                         # quantos `am force-stop` do cliente (um por tentativa)
     sondas_sem_tunel: int = 0
     ao_abrir: dict[str, tuple[int, int]] = field(default_factory=dict)
     abertos: list[str] = field(default_factory=list)
@@ -183,6 +200,10 @@ class SondaFalsa(AparelhoFalso):
         if "dumpsys netstats" in comando:
             self.comandos.append(comando)
             return _netstats({k: (v[0], v[1]) for k, v in self.contadores.items()}).replace("U=2000", f"U={self.uid}")
+        if "am force-stop " in comando and "==SONDA-INICIO==" in comando:
+            # Antes do ramo do eco: o teste de vazamento numa ida só (`comando_parar_e_sondar`).
+            self.comandos.append(comando)
+            return self._parar_e_sondar(comando)
         if "==SONDA-INICIO==" in comando:
             self.comandos.append(comando)
             return self._eco(comando)
@@ -197,15 +218,27 @@ class SondaFalsa(AparelhoFalso):
             if pkg in self.ao_abrir:
                 self.usar(pkg, *self.ao_abrir[pkg])
             return f"U={self.uid}\nFIM=1\n"
-        if comando.startswith("echo U=$(id -u); am force-stop "):
-            self.comandos.append(comando)
-            assert comando.split("am force-stop ", 1)[1].split(";")[0] == PKG
+        return await super().shell(comando, timeout=timeout)
+
+    def _parar_e_sondar(self, comando: str) -> str:
+        """O laço do comando no aparelho: a cada tentativa, `force-stop`; o `tun0` cai (salvo `ignora_force_stop`) e,
+        se o always-on o religar antes de a espera ver a janela, a tentativa se perde; senão a sonda roda sem túnel."""
+        pkg = comando.split("am force-stop ", 1)[1].split()[0]
+        assert pkg == PKG
+        n = int(comando.split("while [ $n -le ", 1)[1].split()[0])
+        sonda, sem_tun, t = "", 0, 0
+        for t in range(1, n + 1):
             self.paradas += 1
             self.parado = True
-            if not self.ignora_force_stop:
-                self.tun = self.vpn = False
-            return f"U={self.uid}\nFIM=1\n"
-        return await super().shell(comando, timeout=timeout)
+            if self.ignora_force_stop:
+                continue
+            if self.religa_sempre or t <= self.religa_antes:
+                continue                                # caiu e voltou dentro do passo de 0,1 s: sem janela
+            self.tun = self.vpn = False
+            sem_tun = t
+            sonda = self._eco(comando).split("\n", 1)[1]    # sem o `U=`, que já sai no começo
+            break
+        return f"U={self.uid}\n{sonda}TENTATIVAS={t}\nSEM_TUN={sem_tun}\n"
 
     def _eco(self, comando: str) -> str:
         host = comando.split(" nc ", 1)[1].split()[0]
@@ -329,13 +362,37 @@ async def test_falha_depois_de_parar_o_cliente_nao_levanta() -> None:
     original = ap.shell
 
     async def shell(comando: str, *, timeout: float = 40) -> str:
-        if ap.parado and "==SONDA-INICIO==" in comando:
-            return "U=2000\n"                               # saída truncada
+        if "am force-stop " in comando and "==SONDA-INICIO==" in comando:
+            ap.paradas += 1
+            ap.parado = True
+            return "U=2000\n"                               # saída truncada: o force-stop rodou, o resto não veio
         return await original(comando, timeout=timeout)
 
     ap.shell = shell  # type: ignore[method-assign]
     t = await sondar_vazamento(ap, CFG, PKG)
     assert t.vazamento.bloqueado is None and t.cliente_parado is True and "falhou com o cliente parado" in t.vazamento.texto
+
+
+async def test_always_on_que_religa_na_hora_nao_esconde_o_bloqueio() -> None:
+    """O achado real (android-05, 29/09): com always-on e lockdown, o Android religa o cliente em menos de um segundo
+    depois do `force-stop`. Com parar, ler o `tun0` e sondar em idas separadas, o túnel já estava de volta: 2 de 3
+    testes deram "o tun0 continuou no ar" (aparelho em `parcial` e um reinício a mais). Numa ida só, com novas
+    tentativas, a janela sem `tun0` é pega e o bloqueio fica provado."""
+    # (a) O caso medido: o always-on religa na hora nas 2 primeiras tentativas; a 3ª pega a janela.
+    ap = _com_bloqueio(religa_antes=2)
+    t = await sondar_vazamento(ap, CFG, PKG)
+    assert t.vazamento.bloqueado is True and t.cliente_parado is True, t.vazamento.texto
+    assert "Permission denied" in t.vazamento.texto
+    assert ap.paradas == 3 and ap.sondas_sem_tunel == 1
+    # Uma ida só ao aparelho depois da sonda de escolha do host: nada de leitura do `tun0` separada no meio.
+    depois = ap.comandos[[i for i, c in enumerate(ap.comandos) if "force-stop" in c][0]:]
+    assert len(depois) == 1, depois
+    # (b) Religa em TODAS as tentativas: não medido, com o porquê — nunca "bloqueado" presumido.
+    ap = _com_bloqueio(religa_sempre=True)
+    t = await sondar_vazamento(ap, CFG, PKG)
+    assert t.vazamento.bloqueado is None and t.cliente_parado is True
+    assert "religou o cliente" in t.vazamento.texto and "5 tentativas" in t.vazamento.texto
+    assert ap.paradas == 5 and ap.sondas_sem_tunel == 0
 
 
 async def test_abrir_app_so_quando_pedido() -> None:

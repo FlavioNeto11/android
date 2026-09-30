@@ -498,14 +498,27 @@ nada é medido. O que se mede:
 - **vazamento** (só com `exigida_com_bloqueio`; `rede_medicao.sondar_vazamento`): feito **antes** da medição e uma
   vez por revisão, com a VPN derrubada DE VERDADE. A sonda de IPv4 precisa sair pelo túnel primeiro (sem isso, nada
   é tocado e `leak_blocked` fica `None`: sonda que não funciona não prova bloqueio). Depois o **cliente VPN é
-  parado** (`am force-stop`, como uid 2000), a leitura confere que o `tun0` sumiu, e a sonda roda de novo: só o
+  parado** e a sonda roda de novo, ao mesmo host, **numa ida só ao shell** (uid 2000;
+  `sonda_rede.comando_parar_e_sondar`): até 5 tentativas de `am force-stop`, cada uma esperando o
+  `/sys/class/net/tun0` sumir em passos de 0,1 s por até 3 s; no instante em que some, a mesma sonda de IPv4 roda e o
+  laço acaba (`SEM_TUN=` diz em qual tentativa, ou 0). Por que numa ida só: com always-on e lockdown o Android religa
+  o cliente em **menos de um segundo** (prova real, android-05, 29/09). Com parar, ler o `tun0` e sondar em três idas
+  ao aparelho, o túnel já tinha voltado entre elas: de 3 testes reais, 1 deu `Permission denied` e 2 deram "o tun0
+  continuou no ar", o que deixava o aparelho em `parcial` e custava um reinício a mais. O comando foi escrito POSIX
+  conservador para o mksh/toybox (`[ -e … ]`, `$((…))`, `sleep 0.1`) e ainda não rodou num aparelho (`not_run`); a
+  simulação está em `backend/tests/test_rede_sonda.py::test_always_on_que_religa_na_hora_nao_esconde_o_bloqueio`. Só o
   `Permission denied` do Android prova o bloqueio (`leak_blocked` verdadeiro); um IP é vazamento (falso, "VAZOU" no
-  `detail`); qualquer outra coisa (`Timeout`, nome que não resolve, `tun0` que continuou no ar) fica `None` com o
-  motivo. Parar o SERVIDOR (o primeiro desenho) não serve: com o túnel no ar e o servidor fora, a sonda dá `Timeout`
-  com o bloqueio ligado ou desligado (25.1, 18:06:50), e o teste gravava "bloqueado" presumido. O always-on não religa
-  o cliente depois do `force-stop` (25.1, 18:07): sem o túnel de volta na releitura, a linha regride a `configurado`
+  `detail`); qualquer outra coisa (`Timeout`, nome que não resolve, a janela sem `tun0` nunca vista nas 5 tentativas —
+  o cliente não parou ou o always-on o religou antes do passo de 0,1 s) fica `None` com o motivo. Limite conhecido:
+  entre ver o `tun0` ausente e o `connect` do `nc` há milissegundos; um cliente que volte exatamente aí leva a sonda
+  pelo túnel e o IP seria lido como VAZOU — o lado conservador (uma falha a mais, nunca um "bloqueado" falso).
+  Comparar com o IP do túnel não resolve: com o servidor no central atrás do mesmo NAT, as duas saídas podem ser o
+  mesmo endereço. Parar o SERVIDOR (o primeiro desenho) não serve: com o túnel no ar e o servidor fora, a sonda dá
+  `Timeout` com o bloqueio ligado ou desligado (25.1, 18:06:50), e o teste gravava "bloqueado" presumido. Depois do
+  teste, a convergência relê: com o túnel de volta sozinho (o always-on religou, como no android-05), mede na mesma
+  passada; sem ele (no 25.1, 18:07, o always-on não religou), a linha regride a `configurado`
   com o desfecho do teste e a convergência pede o reinício (o boot religa o cliente com o perfil selecionado, 25.1
-  18:21); a medição vem depois do boot, com o teste guardado. Custo: **um reinício a mais por revisão**, além do da
+  18:21); a medição vem depois do boot, com o teste guardado. Custo: **até um reinício a mais por revisão**, além do da
   aplicação (e de novo a cada `POST …/verify`, que refaz o teste — o 202 avisa — ou depois de cada reinício do
   backend, porque o teste fica em memória: `network_measurements` não guarda a revisão). Sem o reinício garantido logo
   depois, o teste nem começa (`leak_blocked` `None`, sem guardar, e a medição seguinte tenta de novo): com um objetivo

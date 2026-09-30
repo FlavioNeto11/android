@@ -106,9 +106,15 @@ def comando_ip_de_saida(host: str, *, porta: int = 80, timeout_s: int = 8) -> st
     """O IP de saída visto DE FORA, por HTTP/1.0 com o `nc` do Android (não há `curl`). O `sleep` segura o stdin
     aberto: sem ele o `nc` fecha antes da resposta (medido no 25.1). A família vem do host (api.ipify.org só tem A,
     api6.ipify.org só AAAA). O `X=` é o código de saída do `nc` (124 = o `timeout` venceu)."""
+    return "echo U=$(id -u); " + _sonda_ip(host, porta=porta, timeout_s=timeout_s)
+
+
+def _sonda_ip(host: str, *, porta: int, timeout_s: int) -> str:
+    # O corpo da sonda de IP, sem o `U=`: o mesmo texto serve à sonda solta e à do teste de vazamento
+    # (`comando_parar_e_sondar`), e os marcadores e o `X=` ficam iguais por construção — `ler_ip_de_saida` lê os dois.
     host = host_valido(host)
     pedido = f"GET / HTTP/1.0\\r\\nHost: {host}\\r\\nUser-Agent: sonda-de-rede\\r\\nConnection: close\\r\\n\\r\\n"
-    return (f"echo U=$(id -u); echo '{_INICIO}'; "
+    return (f"echo '{_INICIO}'; "
             f"(printf '{pedido}'; sleep {max(1, timeout_s - 2)}) | timeout {timeout_s} nc {host} {int(porta)} 2>&1; "
             f"X=$?; echo; echo '{_FIM}'; echo X=$X")
 
@@ -156,12 +162,61 @@ def comando_abrir_app(pacote: str, espera_s: int) -> str:
             f"sleep {int(espera_s)}; input keyevent KEYCODE_HOME; echo FIM=1")
 
 
-def comando_parar_cliente(pacote: str) -> str:
-    """Para o cliente VPN (teste de vazamento): sem o processo, o `tun0` some e só o bloqueio do Android (lockdown)
-    segura o tráfego fora da VPN. O shell (uid 2000) pode (medido no 25.1, 18:06:50); o always-on NÃO o religa depois
-    (18:07), então quem chama religa pelo boot."""
+#: Quantas vezes o teste de vazamento para o cliente atrás da janela sem `tun0` (ver `comando_parar_e_sondar`).
+TENTATIVAS_DE_VAZAMENTO = 5
+#: Por quanto tempo, em passos de 0,1 s, cada tentativa espera o `tun0` sumir depois do `force-stop`.
+_PASSOS_SEM_TUN = 30
+_TUN0 = "/sys/class/net/tun0"
+
+
+def comando_parar_e_sondar(pacote: str, host: str, *, tentativas: int = TENTATIVAS_DE_VAZAMENTO, porta: int = 80,
+                           timeout_s: int = 8) -> str:
+    """O teste de vazamento numa ida só ao shell (uid 2000): para o cliente VPN, espera o `tun0` sumir e, NO INSTANTE
+    em que some, roda a mesma sonda de IPv4 (`_sonda_ip`, os mesmos marcadores e `X=`) ao mesmo host. Sem o processo
+    do cliente, só o bloqueio do Android (lockdown) segura o tráfego fora da VPN; o shell pode dar o `force-stop`
+    (medido no 25.1, 18:06:50).
+
+    Por que numa ida só: com always-on e lockdown, o Android religa o cliente em menos de um segundo depois do
+    `force-stop` (android-05, 29/09). Com parar, ler o `tun0` e sondar em três idas ao aparelho, o túnel já tinha
+    voltado entre elas: em 3 testes reais, 1 deu `Permission denied` e 2 deram "o tun0 continuou no ar", o que deixava
+    o aparelho em `parcial` e custava um reinício a mais. Aqui a espera é em passos de 0,1 s por até 3 s, e sem a
+    janela a tentativa se repete (até `tentativas`).
+
+    Saída: `U=`, a sonda (só se pegou a janela), `TENTATIVAS=<n usadas>` e `SEM_TUN=<n da tentativa que pegou a janela,
+    ou 0>`. Com `SEM_TUN=0` não há sonda nenhuma (sem marcadores).
+
+    Escrito para o `sh` do Android (mksh) com o toybox, de forma POSIX conservadora: `[ -e … ]` (o `test` embutido; o
+    `/sys/class/net/tun0` é um link simbólico, e `-e` o segue), `$((…))`, `while`/`break`, e `sleep 0.1` (o `sleep` do
+    toybox aceita fração de segundo). NÃO foi rodado num aparelho quando escrito: a prova do comando é a do ambiente
+    real, registrada em `docs/dominios/parque.md`.
+
+    Limite conhecido: entre ver o `tun0` ausente e o `connect` do `nc` há milissegundos (a resolução do nome e o
+    `connect`); um cliente que volte exatamente aí leva a sonda pelo túnel, e o IP dela seria lido como VAZOU. É o lado
+    conservador (uma falha a mais, nunca um "bloqueado" falso: o `Permission denied` só existe sem `tun0`). Comparar
+    com o IP do túnel não resolve: com o servidor no central atrás do mesmo NAT, a saída da VPN e a da física podem ser
+    o mesmo endereço, e a comparação esconderia um vazamento de verdade."""
     pacote = pacote_valido(pacote)
-    return f"echo U=$(id -u); am force-stop {pacote}; echo FIM=1"
+    sonda = _sonda_ip(host, porta=porta, timeout_s=timeout_s)
+    # `T` guarda a última tentativa começada: é o que `TENTATIVAS=` diz, com ou sem a janela (o `n` passa do limite
+    # quando o laço se esgota).
+    return (f"echo U=$(id -u); n=1; S=0; T=0; "
+            f"while [ $n -le {int(tentativas)} ]; do T=$n; "
+            f"am force-stop {pacote} >/dev/null 2>&1; i=0; "
+            f"while [ -e {_TUN0} ] && [ $i -lt {_PASSOS_SEM_TUN} ]; do sleep 0.1; i=$((i+1)); done; "
+            f"if [ ! -e {_TUN0} ]; then S=$n; {sonda}; break; fi; "
+            f"n=$((n+1)); done; "
+            f"echo TENTATIVAS=$T; echo SEM_TUN=$S")
+
+
+def ler_parar_e_sondar(saida: str) -> tuple[int, int]:
+    """(tentativas usadas, tentativa que pegou a janela sem `tun0` ou 0). Levanta `ValueError` sem o `SEM_TUN=` (saída
+    truncada: não dá para saber se a sonda rodou sem o túnel). A sonda em si se lê com `ler_ip_de_saida`."""
+    texto = saida or ""
+    sem_tun = re.search(r"^SEM_TUN=(\d+)\s*$", texto, re.M)
+    usadas = re.search(r"^TENTATIVAS=(\d+)\s*$", texto, re.M)
+    if sem_tun is None or usadas is None:
+        raise ValueError("o teste de vazamento veio incompleto (sem o SEM_TUN)")
+    return int(usadas.group(1)), int(sem_tun.group(1))
 
 
 def uid_da_saida(saida: str) -> int | None:

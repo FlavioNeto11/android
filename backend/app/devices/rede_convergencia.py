@@ -589,7 +589,8 @@ class ConvergenciaDeRede:
 
     async def _tunel_de_volta(self, ap: AparelhoDaRede, pkg: str, bloqueio: bool) -> bool:
         """Depois de parar o cliente para o teste de vazamento: o túnel voltou sozinho (o always-on religou)? No 25.1
-        não voltava (18:07); uma leitura que falha conta como não — religar pelo boot é o lado seguro."""
+        não voltava (18:07); no android-05 (29/09), com always-on e lockdown, voltava em menos de um segundo — os dois
+        acontecem, por isso se lê. Uma leitura que falha conta como não: religar pelo boot é o lado seguro."""
         try:
             return (await observar(ap, pkg)).conectada(bloqueio)
         except Exception as exc:  # noqa: BLE001
@@ -620,7 +621,7 @@ class ConvergenciaDeRede:
         novo = rede.registrar_observacao(
             self.st, iid, rev=rev, estado="configurado",
             evidencia=f"teste de vazamento ({vazamento.texto[:220]}); o cliente VPN foi parado para o teste e o "
-                      "always-on não o religa sem boot: reinicia, e a medição vem depois")
+                      "túnel não voltou sozinho sem boot: reinicia, e a medição vem depois")
         # O desfecho do teste vai no motivo: a evidência do reinício substitui o `detail` da linha.
         self._agendar_reinicio(iid, rev, f"religar o cliente VPN depois do teste de vazamento da rev {rev} "
                                          f"({vazamento.texto[:200]})")
