@@ -124,14 +124,16 @@ opcional do dono, fora do escopo do projeto.
 
 | 2 | Recarga da Anthropic registrada no livro-caixa da plataforma (`POST /api/ai/balances/anthropic/recharge {"amount": 20}`, 30/09 13:07Z, a pedido do dono, que recarregou US$ 20,00 no Console) | âncora de fechamento US$ 3,12, saldo estimado US$ 2,46 (`low`) | âncora `recarga`, saldo estimado US$ 22,46 (`ok`) | conferido em `GET /api/ai/balances`; OpenAI e Gemini inalterados; valor informado pelo dono, sem leitura do Console |
 | 3 | Acesso do GitHub App **Claude** (instalação `136995446`) restrito ao repositório `android` (a pedido do dono, 30/09, após passkey) | "All repositories" (atuais e futuros da conta); permissões de leitura/escrita em actions, checks, code, discussions, issues, pull requests, hooks e workflows | "Only select repositories": só `FlavioNeto11/android`; permissões inalteradas | conferido relendo a página: `selected:true`, "Selected 1 repository". O pedido de permissão pendente já estava atendido ("already up to date"). Reversível na mesma tela |
+| 4 | Orçamento de Actions (conta `FlavioNeto11`), aplicado **pelo dono** | US$ 100,00, "Stop usage: No" (só alerta) | **US$ 15,00, "Stop usage: Yes"** (US$ 10,01 gastos no ciclo) | conferido na tela em 30/09 ~18:30Z; alertas 75/90/100% mantidos. O ciclo reinicia em 01/10 |
+| 5 | Regra de firewall do central (UDP 51820, LAN, Wi-Fi), aplicada **pelo dono** num PowerShell de administrador (D1 da Fase 29) | sem regra | regra ativa, conferida por leitura (`Get-NetFirewallRule`) e pelo `firewall-check` da plataforma (`liberado`) | a coordenação registra o W0 |
+| 6 | Reserva DHCP no roteador ZTE F6600P (D2 da Fase 29), feita por mim no Chrome do dono logado por ele | sem reserva | `centralfrm` → MAC `ac:45:ef:2c:22:fc` (Wi-Fi do central) → `192.168.1.81` | persiste após recarregar; o central segue em 192.168.1.81; sem reinício do roteador; nenhuma outra entrada alterada |
 
-Nada mais foi alterado. O teto de US$ 15 com "Stop usage" segue **não aplicado**: a edição do valor foi barrada pelo
-classificador de permissões desta sessão e ficou para o dono aplicar (ou liberar).
+Nada mais foi alterado. O teto de US$ 15 (registro 4) foi aplicado pelo dono depois que a edição do valor foi barrada duas vezes
+pelo classificador de permissões da sessão desta frente.
 
 ## 7. Ações que dependem do dono
 
-1. **Aplicar o teto de US$ 15 com "Stop usage"** em Budgets and alerts (Actions → Edit): a edição do valor foi barrada duas vezes pelo classificador de permissões da sessão que fez esta frente (mesmo com a aprovação do dono em chat), então fica para o dono aplicar ou liberar essa ação para o Chrome. Até lá vale US$ 100 só com alerta.
-2. Nada mais. `gh auth refresh -s user` (leitura da API de cobrança por script) é opcional.
+Nenhuma pendente desta frente: teto, firewall e DHCP foram aplicados e conferidos (registros 4 a 6). `gh auth refresh -s user` (leitura da API de cobrança por script) é opcional. As pendências da Fase 29 (servidores de saída, consentimento das contas Outlook, e-mail de teste) estão em `pendencias-evolucao3.md`.
 
 ## 8. Próximas verificações (quando a corrida sair)
 
