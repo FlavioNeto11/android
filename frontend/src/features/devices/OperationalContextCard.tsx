@@ -126,7 +126,8 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
             <div key={p.profile_id} style={{ display: 'contents' }}>
               <dt>Persona</dt>
               <dd>
-                {p.display_name ?? p.username} (@{p.username}){p.persona_name ? ` · persona ${p.persona_name}` : ''}
+                {/* O rótulo já diz "Persona": o nome dela e a conta, sem repetir "· persona Y" (RF-24). */}
+                {p.persona_name ?? p.display_name ?? p.username} (@{p.username})
                 {' '}· senha {p.credential_configured ? 'guardada' : 'não guardada'}
               </dd>
               <dt>Sessão</dt>

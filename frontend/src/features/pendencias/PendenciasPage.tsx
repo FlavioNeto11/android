@@ -8,7 +8,7 @@ import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
-import { tempoRelativo, useNow } from '../../lib/time';
+import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
 import { ROTULO_DA_ORIGEM, type OrigemDaPendencia, type Pendencia } from './modelo';
@@ -108,7 +108,7 @@ function Linha({ p, agora }: { p: Pendencia; agora: number }) {
       <div className={styles.corpo}>
         <div className={styles.topo}>
           <Badge size="sm" tone={TOM[p.origem]}>{ROTULO_DA_ORIGEM[p.origem]}</Badge>
-          <span className={styles.idade} title={p.desde ?? undefined}>
+          <span className={styles.idade} title={p.desde ? formatDateTime(p.desde) : undefined}>
             {p.desde ? `esperando ${tempoRelativo(p.desde, agora)}` : 'há quanto tempo: não informado'}
           </span>
         </div>
