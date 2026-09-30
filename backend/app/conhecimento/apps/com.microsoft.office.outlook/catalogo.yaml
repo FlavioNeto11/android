@@ -1,0 +1,49 @@
+# Catálogo de ações do Outlook, como DADO (ADR-052, item 23.8). Lido e validado por `carregar_catalogo`
+# (`app/planning/capabilities.py`); nenhum Python do Outlook monta `Capability`.
+#
+# SÓ LEITURA (T17 do ADR-057): abrir a caixa, levantar remetente e assunto das mensagens recentes e buscar por texto.
+# Nenhuma ação tem efeito externo. Enviar, responder, encaminhar, apagar e mover ficam FORA do catálogo: a ação com
+# efeito exige `commit_selector` (quem dispara o efeito), e o botão de enviar do Outlook não foi observado — declarar
+# o envio sem ele seria adivinhar o commit. Com o catálogo, uma etapa com efeito no Outlook sem ação daqui é recusada
+# pela porta de política (item 13.2): enviar e-mail é da pessoa.
+#
+# Abrir uma MENSAGEM também fica de fora: marca a mensagem como lida na conta (e pode disparar confirmação de leitura
+# para o remetente) — é mudança de estado da conta, não leitura.
+#
+# As provas são `model_judged` e `items_collected`: as telas depois do login não foram observadas neste parque, e um
+# `element_present` com id inventado reprovaria a etapa certa (ou aprovaria a errada). Quando a caixa for observada
+# (29.12), os ids entram como prova local, como no Instagram.
+#
+# Login e conferência da conta não aparecem aqui: são do motor de sessão (`sessao.yaml`), fora do laço da IA, e a
+# porta de sessão garante a conta antes de qualquer etapa.
+app: com.microsoft.office.outlook
+contract_version: 1
+
+acoes:
+
+  - key: OPEN_MAIL_INBOX
+    title: Abrir a caixa de entrada do Outlook
+    goal: Ir para a Caixa de Entrada do Outlook, sem abrir nenhuma mensagem.
+    post_kind: model_judged
+    post_value: caixa de entrada aberta
+    post_description: A tela mostra a Caixa de Entrada do Outlook com a lista de mensagens.
+
+  - key: COLLECT_MAIL_HEADERS
+    title: Levantar remetente e assunto das mensagens recentes
+    precondition: A Caixa de Entrada do Outlook está aberta.
+    goal: Levantar o remetente e o assunto de cada mensagem recente da lista, de cima para baixo, sem abrir nenhuma.
+    collect: true
+    collect_limit: 10
+    # A lista já abre nas mais recentes. Voltar ao topo é "puxar para atualizar", que sincroniza a caixa: não precisa.
+    collect_from_top: false
+    post_kind: items_collected
+    post_value: remetente e assunto de cada mensagem recente
+    post_description: O remetente e o assunto das mensagens recentes foram lidos da lista.
+
+  - key: SEARCH_MAIL
+    title: Buscar "{query}" no Outlook
+    bindings: [query]
+    goal: Buscar {query} pela busca do Outlook e deixar a lista de resultados à vista, sem abrir nenhuma mensagem.
+    post_kind: model_judged
+    post_value: resultados da busca por {query}
+    post_description: A tela mostra os resultados da busca do Outlook por {query} (ou diz que não há resultado).

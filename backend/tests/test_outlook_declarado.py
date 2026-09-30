@@ -530,6 +530,17 @@ def test_a_pasta_do_outlook_traz_o_login_gerenciado_sem_ser_ancora() -> None:
     assert len(tipos) == len(set(tipos))
 
 
+def test_o_catalogo_do_outlook_e_so_de_leitura() -> None:
+    """T17 do ADR-057: abrir a caixa, levantar remetente e assunto, buscar. Nada com efeito externo — enviar e-mail
+    fica fora do catálogo."""
+    m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
+    assert m.catalog is not None
+    acoes = [m.catalog.get(chave) for chave in ("OPEN_MAIL_INBOX", "COLLECT_MAIL_HEADERS", "SEARCH_MAIL")]
+    todas = m.catalog.capabilities
+    assert {c.key for c in todas} == {c.key for c in acoes}
+    assert not any(c.side_effect or c.needs_draft or c.commit_selector or c.limit_bucket for c in todas)
+
+
 def test_o_conhecimento_declara_o_login_em_etapas_com_entrada_e_alternativa() -> None:
     k = conhecimento.do_app(OUTLOOK)
     etapa = k.formulario.etapa_do_usuario
