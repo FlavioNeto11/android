@@ -20,24 +20,21 @@ mecanismo (`scripts/claude-plan-100.py`).
   `claude/evolucao3` (worktree `.claude/worktrees/evo3`); a Fase 28 foi acrescentada pelo 26.8. O estado de cada
   frente está na seção "Estado por frente", logo abaixo; o de cada item, só pelo mecanismo.
 
-## Estado por frente (atualizado em 29/09 ~19:40Z)
+## Estado por frente (fechamento da execução, 30/09 ~03:00Z)
 
-| Frente | Itens | Estado real | Prova |
+No ar: central e agente do notebook em `e7d44ce` (ou o último commit desta evolução em `origin/main`), migração 058.
+Estado de cada item: `scripts/claude-plan-100.py` (a fonte). Provas reais: [relatório §26](../relatorio-validacao.md).
+
+| Frente | Itens | Situação | Prova |
 |---|---|---|---|
-| Contratos (Onda 0) | C1–C5, 23.1 | commitado `aad3b0d`; **implantado** em `99fc90a` (central e agente do notebook em `0.1.0+99fc90a`, migração 057, `/api/health` ok) | `simulated` (297 testes); migrações ensaiadas numa cópia do banco real (`data/backups/20260929-154437`) e aplicadas no deploy: `real` |
-| A. Distribuição | 23.2, 23.3, 23.12, 25.10 | 23.3 feito (`45bd8ea`, registrado). 23.2 **bloqueado por defeito técnico em investigação**: Outlook 5.2635.3 importado (`c-20260929184859-0fe853`, depois da correção do inspetor implantada), assinatura aprovada; o canário no android-02 falhou e a versão foi para a **quarentena**: o processo `qemu-system-x86_64-headless.exe` do emulador cai com `0xc0000005` em código sem módulo ao abrir o Outlook (4 quedas: 15:56, 16:03, 16:10, 16:15 locais; convidado com 780–860 MB livres, então não é falta de RAM do convidado). `-feature -Vulkan` não pegou; `gpu_mode: angle_indirect` também caiu; o reparo levou o android-02 (QA) ao `reset`. `config.yaml` restaurado. Depois: também cai no binário com janela (android-11), no notebook (android-09, outra CPU) e com o Vulkan do convidado escondido — bloqueio P15, com as saídas que dependem do dono. 25.10: WireGuard e sing-box no catálogo, `installable`, instalados no android-05; falta canário e promoção | 23.3 `simulated`; 23.2 `real` até o canário (falho) |
-| B1. Sessão por conta | 23.4, 23.5, 23.6 | em implementação (workflow `wf_3f3d07a0-057`, worktree `evo3-b1`) | — |
-| B2. Cofre e painel de contas | 23.9, 23.10 | em implementação (`evo3-b2`) | — |
-| Contas reais | 23.7, 23.8, 23.11, 23.13 | esperam 23.2 (o Outlook precisa abrir num aparelho) e a integração de B | — |
-| C1. Plano e roteamento | 24.1, 24.2, 24.5, 24.8, 24.6 | em implementação (`evo3-c1`) | — |
-| C2. Execução entre apps | 24.3, 24.4, 24.7 | em implementação (`evo3-c2`) | — |
-| Prova entre apps | 24.9 | espera C1, C2 e 23.13 | — |
-| D0. Medição do cliente | 25.1 | **feito** (17:49–18:39Z, android-05): sing-box recomendado (único que compõe VPN + proxy); receita automatizável e limitações em `data/rede/piloto/medicao-25.1.md` (fora do Git) | `real` |
-| D1. Rede, núcleo | 25.2, 25.3 | em implementação (`evo3-d1`); 25.4–25.7 na onda seguinte, com a receita do 25.1 | — |
-| D3. Painel Rede | 25.8 | em implementação (`evo3-d3`) | — |
-| D. Implantação em ondas | 25.9 | espera 25.4–25.8 | — |
-| E. Pedidos persistentes | 26.1–26.8 | **feito** (`ef99388`, registrado): desenho completo e Fase 28 (13 itens) no plano | `not_run` (pesquisa e desenho) |
-| V. Aceite | 27.1–27.3 | 27.1 depois da Onda 1; 27.2 espera rede, Outlook e comando no mesmo aparelho | — |
+| Contratos | C1–C5, 23.1 | feitos e implantados | `simulated`; migrações 056–058 ensaiadas e aplicadas: `real` |
+| A. Outlook na loja e distribuição | 23.2, 23.3, 23.12 | 23.3 feito; 23.2 **bloqueado (P15)**: importado e aprovado, canários falharam, versão em quarentena; 23.12 bloqueado (P15) | 23.2 `real` até o canário |
+| B. Sessão e contas | 23.4–23.6, 23.9–23.11 | 23.4–23.6 e 23.10 feitos; 23.9 real (senha clonada nas 3 contas); 23.11 **parcial**: contas Outlook de André, Bruno e Lucas criadas, falta o consentimento (P5) e o vínculo com aparelho (P15) | `simulated` / `real` |
+| B'. Outlook real | 23.7, 23.8, 23.13 | **bloqueados (P15)** | `not_run` |
+| C. Comando entre apps | 24.1–24.9 | 24.1, 24.3, 24.4, 24.7 provados em aparelho real (QA Messenger → Chrome, android-05); 24.2, 24.5, 24.6, 24.8 em simulado; 24.9 **parcial**: o recorte Outlook → Instagram espera o P15 | `real` / `simulated` |
+| D. Rede por aparelho | 25.1–25.10 | 25.1, 25.2, 25.3, 25.4, 25.5, 25.10 `real`; 25.6 e 25.8 em simulado; 25.9 **parcial**: android-05, 02, 06 (André) e 03 (Bruno) em `trafego_verificado` com vazamento bloqueado; notebook espera o firewall (25.7) | ver §26.2.1 |
+| E. Pedidos persistentes | 26.1–26.8 | feitos (pesquisa e desenho); Fase 28 registrada para a implementação | `not_run` (desenho) |
+| V. Aceite | 27.1–27.3 | 27.1 e 27.3 feitos; 27.2 **bloqueado (P15)** | — |
 
 Achados da medição 25.1 que o 25.4 tem de tratar: o servidor do piloto expõe o loopback do central a quem está no
 túnel (regras de rota têm de recusar loopback e faixas privadas); o `restart` da plataforma não faz `sync` e perdeu
@@ -134,17 +131,17 @@ entrega (`resultado.json` do mecanismo).
 
 | # | Pendência | Bloqueia |
 |---|---|---|
-| P1 | Provedor de VPN e de proxy: endpoints, protocolo, credenciais, quantidade de IPs. Nada é contratado automaticamente | 25.9 além do piloto; IPs distintos ficam `not_run` |
-| P2 | Par para o piloto (servidor WireGuard próprio no notebook ou no central mexe na máquina) | 25.1 |
-| P3 | Login Google e Instalar no android-11 (Outlook e cliente VPN) | 23.2, 25.10 |
-| P4 | Endereço Outlook completo de cada persona | 23.11 |
-| P5 | Consentimento por conta Outlook | 23.11, 23.13 |
-| P6 | Confirmar o propósito que o ADR-056 cita do pedido: "isolamento, persistência e comprovação da rota e do IP de saída" e, "como objetivo de separação", "saída pública distinta e estável por dispositivo" | texto final do ADR-056 |
-| P7 | Autorização por aparelho para trocar a rede de conta real logada | 25.9 nos aparelhos 03 e 06 |
-| P8 | Saldo de IA (Anthropic em US$ 3,31) e autorização das validações pagas | 23.13, 24.9, 27.2 |
-| P9 | Desafio no Outlook bloqueia a persona inteira ou só a conta? | 23.5 |
+| P1 | Provedor de VPN e de proxy: endpoints, protocolo, credenciais, quantidade de IPs. Nada é contratado automaticamente **Aberta** (30/09): sem provedor; os 4 aparelhos saem pelo IP do central. | 25.9 além do piloto; IPs distintos ficam `not_run` |
+| P2 | Par para o piloto (servidor WireGuard próprio no notebook ou no central mexe na máquina) **Resolvida** (29/09): sing-box do central em modo usuário. | 25.1 |
+| P3 | Login Google e Instalar no android-11 (Outlook e cliente VPN) **Resolvida** (29/09): a IDE instalou WireGuard e sing-box; o Outlook já estava. | 23.2, 25.10 |
+| P4 | Endereço Outlook completo de cada persona **Resolvida** para as 3 ativas (29/09); bloqueadas e sem e-mail seguem pendentes. | 23.11 |
+| P5 | Consentimento por conta Outlook **Aberta**: consentimento de cada conta Outlook, no painel (Persona › Contas). | 23.11, 23.13 |
+| P6 | Confirmar o propósito que o ADR-056 cita do pedido: "isolamento, persistência e comprovação da rota e do IP de saída" e, "como objetivo de separação", "saída pública distinta e estável por dispositivo" **Aberta**: confirmar o propósito citado no ADR-056. | texto final do ADR-056 |
+| P7 | Autorização por aparelho para trocar a rede de conta real logada **Usada** (30/09): android-06 e android-03, conta conferida antes e depois. | 25.9 nos aparelhos 03 e 06 |
+| P8 | Saldo de IA (Anthropic em US$ 3,31) e autorização das validações pagas **Usada em parte**: ~US$ 0,56 de US$ 1,50; resta ~US$ 0,94 para 23.13/24.9/27.2. | 23.13, 24.9, 27.2 |
+| P9 | Desafio no Outlook bloqueia a persona inteira ou só a conta? **Resolvida** (29/09): desafio só na conta do app (23.5). | 23.5 |
 | P10 | Personas bloqueadas (5) e lucas (android-01 sem o Instagram) | 23.11, 23.13 |
-| P11 | RAM de 2 GB com dois apps grandes: medir no canário; pode pedir 3 GB | 23.12 |
+| P11 | RAM de 2 GB com dois apps grandes: medir no canário; pode pedir 3 GB **Descartada** (29/09): o convidado tinha 780 MB–1,2 GB livres nas quedas; a causa é o P15. | 23.12 |
 | P12 | Troca das senhas das 3 contas vivas (pendência anterior): depois do clone as senhas ficam independentes | 23.11 |
 | P13 | Janela de deploy combinada com as outras sessões | passo 4 |
 | P14 | Créditos da IDE: a única medição é ~US$ 8 por item médio em Opus (n=3, `docs/claude-plano-100.md`). Com ~30 itens de código, a faixa é de US$ 200 a 400, contra US$ 250 de crédito registrado em 28/09 | ritmo da Onda 1 |
@@ -247,13 +244,14 @@ com o bloqueio provado ("Permission denied" com o cliente parado) e a saída com
 
 ## Próxima ação
 
-1. **Outlook (P15):** bloqueado pela queda do emulador; saídas (a)–(d) pedidas ao dono. Enquanto isso, as contas
-   Outlook (23.11) podem ser cadastradas e clonadas sem aparelho, depois do deploy da Onda 1.
-2. **Onda 1 (em curso):** quando o workflow `wf_3f3d07a0-057` terminar, revisar o diff de cada frente, integrar em
-   `claude/evolucao3` na ordem B → C → D, rodar a suíte inteira uma vez em segundo plano e prioridade ociosa, e
-   registrar os itens pelo `aplicar`.
-3. **Onda 2:** 25.4–25.7 no `evo3-d1` com a receita do 25.1 e as três limitações acima; depois deploy, 25.9 em
-   ondas (android-05, android-02, um remoto; conta real só com a autorização P7 já dada, um por vez).
-4. **Contas reais, depois do 23.2 destravado:** 23.7 (observação), 23.8, 23.11 (contas das 3 ativas, clone da senha),
-   23.12, 23.13, 24.9 e 27.2, com a IA paga pontual autorizada (até US$ 1,50).
-5. **Registrar 25.1** pelo `aplicar` (`real`) e levar a medição para o relatório de validação.
+1. **Do dono, destravam o resto (em ordem de impacto):**
+   - P15 — escolher a saída do Outlook: celular físico por USB (o Outlook roda nele como aparelho externo), ou aceitar o
+     Outlook web no Chrome do aparelho para o comando entre apps, ou esperar uma versão nova do app e refazer o canário;
+   - P5 — dar o consentimento das 3 contas Outlook no painel (Persona › Contas);
+   - 25.7 — num PowerShell de administrador do central, a regra que `GET /api/network/server` → `remote_access`
+     mostra (UDP 51820 para o sing-box, só a sub-rede local); depois atribuir a rede a um aparelho do notebook;
+   - P1 — provedor com IPs distintos, se IP de saída distinto por aparelho continuar sendo objetivo;
+   - ratificar a decisão do 25.6 (a sonda abre a tela inicial do app exigido, sem toque, para medir a cobertura).
+2. **Com o P15 destravado:** 23.7 (observação das telas do Microsoft, sem digitar) → 23.8 (YAML do Outlook) → 23.12 →
+   23.13 (login real, autorizado) → 24.9 (Outlook → Instagram) → 27.2, com o saldo de IA que resta (~US$ 0,94).
+3. **Fase 28** (pedidos persistentes, implementação) quando o dono quiser iniciá-la.

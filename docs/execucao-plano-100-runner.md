@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-216 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+217 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -205,13 +205,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 23.4 | implemented | simulated |  | — | The reviewer raised two findings against 23.4. Both were real and are fixed. (a) The executor never passed the package. AoDesmentirSessao.__call__ (backend/app/taskqueue/executor.py) now takes `package: str \| None = No… |  |
 | 23.5 | implemented | simulated |  | — | The challenge rule itself (session_rules.aplicar_desafio, SocialRepository._trava_a_persona) is unchanged. The reviewer's defect was upstream of it: the executor dropped the screen's package, so in production aplicar_de… |  |
 | 23.6 | implemented | simulated |  | — | Two findings, both real and fixed. (1) password_step_missing (the password screen did not appear after 'avançar'). SessaoDeclarada._etapa_do_usuario used to count a failure (_count_failure) and return RETRYABLE. Each sc… |  |
-| 23.7 | pendente | — | — | — |  |  |
-| 23.8 | pendente | — | — | — |  |  |
-| 23.9 | implemented | simulated |  | — | No change in this round; the reviewer raised nothing on 23.9. It stays as declared. SecretStore.clonar(ref, *, para=None) re-encrypts inside the vault with a fresh nonce and the new ref's AAD, and returns only the refer… |  |
+| 23.7 | blocked | not_run |  | — | Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11). | P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do don… |
+| 23.8 | blocked | not_run |  | — | Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11). | P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do don… |
+| 23.9 | implemented | real |  | — | Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado de verdade nas 3 contas Outlook das personas ativas (acc-gHP-beH2mr0Hm4f8, acc-e8DatK8Dk0lqHh8S, acc-F8QScZU_KN9qdjVt): credential.configured=true, consenti… |  |
 | 23.10 | implemented | simulated |  | — | The reviewer's three findings on 23.10 were all real and are fixed. Each has a test that failed before the fix and passes now.  (1) GuiaConfiguracoes.tsx could show the loading skeleton forever. The catalog is now `AppC… | Real proof needs a second app with catalog.yaml (Outlook does not have one yet) and a deploy; neither is authorized in this round. |
 | 23.11 | partial | real |  | — | 29/09 ~22:26Z, central 081d696: contas Outlook criadas para as 3 personas ativas (acc-gHP-beH2mr0Hm4f8 André, acc-e8DatK8Dk0lqHh8S Bruno, acc-F8QScZU_KN9qdjVt Lucas) com o e-mail outlook.com confirmado pelo dono como lo… | consentimento de cada conta Outlook é do dono no painel (P5); vínculo persona-aparelho-outlook espera o P15 (o Outlook não roda no parque emulado); 5 personas… |
-| 23.12 | pendente | — | — | — |  |  |
-| 23.13 | pendente | — | — | — |  |  |
+| 23.12 | blocked | not_run |  | — | Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11). | P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do don… |
+| 23.13 | blocked | not_run |  | — | Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11). | P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do don… |
 | 24.1 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: planejador de verdade (Opus) montou planos com required_apps [qa-messenger, chrome], app por etapa e saídas declaradas (r-20260930023442-bd5c5a… |  |
 | 24.2 | implemented | simulated |  | — | No change since the previous declaration. state.py::_policy_gate judges each step by the step's own app (step app_id, else the plan's app, else the device's app, via Scheduler._app_context). A capability that the step's… |  |
 | 24.3 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023442-bd5c5a concluída 4/4: a etapa do QA Messenger gravou primeiro_contato="Suporte QA" (step_outputs, app qa-messenger), a do Chro… |  |
@@ -222,8 +222,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 24.8 | implemented | simulated |  | — | FIXED the proof level: it was declared 'real', but the only evidence is tests, so it is simulated. Content, unchanged: in models.py (the PlanStep.app_id comment) and in prompts.py::PLANNER_SYSTEM, the forbidden example… |  |
 | 24.9 | partial | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (bd5c5a), conta indisponível (12d329) e reinício no meio (13ec70). Custo tot… | o recorte pedido (Outlook → Instagram) depende do P15: o Outlook não roda no parque emulado |
 | 25.1 | implemented | real |  | — | 29/09 17:49–18:39Z, central (backend b34e2f6), android-05: WireGuard e sing-box instalados pela plataforma (c-20260929175405-31bf0d, c-20260929175430-c2940e), ACTIVATE_VPN por appops sem diálogo, always-on + lockdown va… |  |
-| 25.2 | implemented | simulated |  | — | backend/app/devices/rede.py, rotas /api/network/* em api.py, adendo v0.42 em docs/api-contract.md; tests/test_rede_por_aparelho.py. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29… |  |
-| 25.3 | implemented | simulated |  | — | Defeito confirmado e corrigido. Com o redaction.py ganhando `pre[_-]?shared[_-]?key\|psk`, tests/test_compilador_de_skills.py::test_nome_de_parametro_com_cara_de_credencial falhava com `AssertionError: psk` (reproduzido… |  |
+| 25.2 | implemented | real |  | — | Real, central 5306b5d+, 29–30/09: POST /api/network/profiles (vpn-central-wireguard), POST /api/network/assign com dry_run (prévia) e sem confirmação recusado para conta real (real_account_confirm_required), com confirm… |  |
+| 25.3 | implemented | real |  | — | Real, 29–30/09: chaves WireGuard geradas por aparelho (network_keys, migração 058; privada direto ao cofre) e entregues pelo consumidor restrito aos 4 aparelhos (android-05, 02, 06, 03), perfil servido uma vez; crash_re… |  |
 | 25.4 | implemented | real |  | — | Real, android-05 (QA), central 5306b5d, 29/09 23:47–00:37Z: perfil vpn-central-wireguard (servidor do central, sing-box em modo usuário), atribuição exigida_com_bloqueio; a convergência aplicou sozinha (device.network c… |  |
 | 25.5 | implemented | real |  | — | Real, android-05 (QA), central 549a297, 30/09 01:00–01:04Z: teste de vazamento com o cliente VPN parado e sem tun0 — o Android recusou a sonda de IPv4 como uid 2000 (Permission denied): bloqueio fora da VPN provado; rei… |  |
 | 25.6 | implemented | simulated |  | — | Three findings confirmed and fixed. (a) DEADLOCK: vitrine.objetivo_em_andamento gains `exceto_quem_espera_a_rede`, which ignores an objective that is `running` with wait_reason='rede'. _pedir_reinicio uses it; the busy… | Real proof not_run: depends on 25.4/25.5 running on a real device. Within a single step a drop is still not seen: with exigida (no lockdown), apps can go out o… |
@@ -240,8 +240,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 26.7 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §11 (tela Pedidos, ações, caixa de avisos, API); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.8 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §12 (três casos) e §13 (Fase 28 proposta, registrada no plano-100 com o bloco 28-pedidos-persistentes); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao… |  |
 | 27.1 | implemented | not_run |  | — | docs/relatorio-validacao.md §26.3 (revisão adversarial por frente com os achados graves corrigidos, correção da integração eb38139 e das regressões 99abe23) e §26.4 (cenários do aceite integrado no mesmo aparelho); crit… |  |
-| 27.2 | pendente | — | — | — |  |  |
-| 27.3 | pendente | — | — | — |  |  |
+| 27.2 | blocked | not_run |  | — | Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11). | P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do don… |
+| 27.3 | implemented | not_run |  | — | docs/relatorio-validacao.md §26 (implantações, provas reais, matriz de rede por aparelho, comando entre apps, revisão, cenários), CHANGELOG 2026-09-30, docs/estado-atual.md, docs/handoffs/terceira-evolucao.md (estado po… |  |
 | 28.1 | pendente | — | — | — |  |  |
 | 28.2 | pendente | — | — | — |  |  |
 | 28.3 | pendente | — | — | — |  |  |
@@ -260,7 +260,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (37): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
+Pendentes (36): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

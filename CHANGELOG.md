@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-30 (madrugada) — Terceira evolução: rede por aparelho real, comando entre apps real, contas por app; Outlook bloqueado pelo emulador
+
+**Implantado** no central (e no agente do notebook) em ondas: `99fc90a` (contratos, migrações 056 e 057), `081d696`
+(Onda 1), `5306b5d` (Onda 2 da rede, migração 058) e as correções achadas nas provas reais (`a097f00`, `549a297`,
+`6460baf`, `e7d44ce`). Detalhe e provas em [relatório §26](docs/relatorio-validacao.md); estado por frente e
+pendências em [handoffs/terceira-evolucao.md](docs/handoffs/terceira-evolucao.md).
+
+- **Rede por aparelho (ADR-056, Fase 25):** VPN no Android (sing-box) com servidor do central em modo usuário, perfis e
+  atribuição por aparelho com prévia e confirmação para conta real, convergência (aplicar, reiniciar, conectar,
+  verificar, deriva, rollback), sonda de saída por `nc` e `netstats` por UID, teste de vazamento, portão de rede no
+  scheduler, painel Rede. **Real:** android-05, android-02 (QA), android-06 (André) e android-03 (Bruno) em
+  `trafego_verificado`, com o bloqueio fora da VPN provado e a saída compartilhada detectada (IP do central).
+- **Comando entre aplicativos (ADR-058, Fase 24):** catálogo de vários apps, saídas de etapa (`read_value`,
+  `{{saida:nome}}`, migração 056), conta e portas do app da etapa, roteamento por conjunto de apps, etapa de outro app
+  não conclui com o app errado na frente. **Real:** QA Messenger → Chrome no android-05, conta indisponível e reinício
+  do backend no meio sem repetir etapa.
+- **Contas por app (ADR-057, Fase 23):** sessão por conta (fim da âncora única), desafio só na conta do app, formulário
+  em etapas, senha clonada no cofre, painel de contas por app. **Real:** contas Outlook de André, Bruno e Lucas com a
+  senha clonada (consentimento pendente do dono).
+- **Outlook (bloqueado, P15):** importado da loja depois de corrigir o inspetor (split sem esquema v1), mas o Outlook
+  5.2635.3 derruba o emulador 37.1.11/37.2.11 e, no 37.3.2, morre numa armadilha proposital (`UD2`) da `libhxcomm.so`.
+- **Pedidos persistentes (Fase 26):** pesquisa e desenho completos; Fase 28 registrada para a implementação.
+- Documentação e processo: ADR-056 a 059, adendos v0.41 e v0.42, `docs/banco.md` (056–058), relatório §26, handoff.
+
 ## 2026-09-29 (noite) — Planejamento da terceira evolução: Outlook, comando entre apps, rede por aparelho, pedidos persistentes
 
 Só documentação e processo; nenhum código, nenhum aparelho tocado, nenhuma chamada paga. Pedido do dono de 29/09.

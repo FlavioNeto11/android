@@ -1,30 +1,22 @@
 # Estado atual — handoff
 
-**Revisado em 29/09/2026 (noite): planejamento da terceira evolução (Fases 23–27), depois do deploy de `b34e2f6`
-(Fase 22).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 30/09/2026 (madrugada): terceira evolução executada (Fases 23–27), no ar em `e7d44ce`.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Terceira evolução (29/09, noite): EM EXECUÇÃO.** Onda 0 implantada em `99fc90a` (central e agente do
-  notebook); 23.1, 23.3, 25.1 (real) e 26.1–26.8 feitos; Onda 1 (seis frentes) em implementação; 23.2 bloqueado por
-  queda do emulador ao abrir o Outlook, em investigação. Estado por frente em
-  [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md#estado-por-frente-atualizado-em-2909-1940z). Pedido do dono: Outlook em todos os perfis com
-  as contas vinculadas, comando que atravessa vários apps, VPN e proxy por aparelho com IP de saída medido, e a
-  pesquisa de pedidos persistentes. Diagnóstico e desenho em [design/terceira-evolucao.md](design/terceira-evolucao.md);
-  coordenação, arquivos reservados, dependências e pendências em
-  [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md); itens nas Fases 23–27 do plano (43 itens,
-  pendentes); ADR-056 a ADR-059.
-  - **Decisões do dono de 29/09:** rever a cláusula de rede do ADR-055 (ADR-056; a recomendação contrária da IDE
-    está anotada); clonar a senha do Instagram no cofre para a conta Outlook, com consentimento por conta (ADR-057); o
-    Outlook é o primeiro app do 12.3.
-  - **Achados que mudam o trabalho:** o login gerenciado está preso à conta âncora (o Instagram); um desafio em
-    qualquer app bloqueia a persona inteira; o proxy atual prova só a configuração, e o `-http-proxy` do emulador não
-    cobre UDP; nenhum valor passa de uma etapa a outra; não há agendamento no produto.
-  - **Para o dono:** provedor e endpoints de rede (nada é contratado sozinho), o Outlook e o cliente VPN no android-11,
-    o endereço Outlook de cada persona e o consentimento de cada conta, autorização por aparelho para trocar a rede de
-    conta real, e as validações pagas (saldo estimado da Anthropic em US$ 3,31).
-  - **Próxima ação:** Onda 0 pelo coordenador (contratos C1–C5 e o 23.1); em paralelo, com o dono, o 23.2 e o 25.1.
+- **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
+  do notebook), migração 058. Estado por frente, pendências P1–P15 e próxima ação em
+  [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md); provas em [relatório §26](relatorio-validacao.md).
+  - **Real:** rede por aparelho em `trafego_verificado` no android-05, 02, 06 (André) e 03 (Bruno), com o bloqueio fora
+    da VPN provado; comando entre apps (QA Messenger → Chrome) com saída reaproveitada, conta indisponível e reinício no
+    meio; contas Outlook das 3 ativas com a senha clonada no cofre.
+  - **Bloqueado (P15):** o Outlook 5.2635.3 não roda no parque emulado (derruba o emulador estável; no canary, o app
+    morre numa armadilha da `libhxcomm.so`). Travados por isso: 23.2, 23.7, 23.8, 23.12, 23.13, 24.9 (recorte Outlook),
+    27.2.
+  - **Para o dono:** saída do P15 (celular físico, Outlook web ou versão nova); consentimento das 3 contas Outlook (P5);
+    regra de firewall do UDP 51820 para os aparelhos do notebook (25.7); provedor para IP distinto (P1); ratificar a
+    abertura do app pela sonda (25.6). Saldo estimado da Anthropic: US$ 2,56.
 
 - **Fase 22 (29/09, noite): IMPLANTADA em `b34e2f6`** (~17:05Z; sem migração nova; `/api/health` `ok`; agente do
   notebook em `0.1.0+b34e2f6`; leva junto o layout da outra sessão, `13fb5c0`). [Relatório §25](relatorio-validacao.md),

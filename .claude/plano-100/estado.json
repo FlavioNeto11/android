@@ -3770,30 +3770,17 @@
   "23.9": {
    "id": "23.9",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "No change in this round; the reviewer raised nothing on 23.9. It stays as declared. SecretStore.clonar(ref, *, para=None) re-encrypts inside the vault with a fresh nonce and the new ref's AAD, and returns only the reference. SocialService.add_account accepts clonar_de and runs every check before creating the account. clone_account_credential is the path for an account that already exists. The audit event carries ids only. _apagar_credencial skips a secret_ref that another account_credentials row still uses, and delete_profile removes the vault secret of every account. Routes: POST /api/instagram/profiles/{pid}/accounts accepts `clonar_de`. It refuses with 422 clonar_de_com_senha, 422 consentimento_nao_clonado, 409 credencial_de_outra_persona, 404 not_found, 409 no_credential and 503 secret_store_unavailable. New POST /api/instagram/profiles/{pid}/accounts/{aid}/credential/clone takes {cl Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado de verdade nas 3 contas Outlook das personas ativas (acc-gHP-beH2mr0Hm4f8, acc-e8DatK8Dk0lqHh8S, acc-F8QScZU_KN9qdjVt): credential.configured=true, consentimento ausente (nunca clonado), valor nunca exposto. Testes simulated da frente B2.",
    "blocker": "",
-   "arquivos": [
-    "backend/app/security/secret_store.py",
-    "backend/app/social/service.py",
-    "backend/app/modules/identity/presentation/schemas.py",
-    "backend/app/models.py",
-    "backend/app/api.py",
-    "frontend/src/features/profiles/GuiaContas.tsx",
-    "frontend/src/api/client.ts",
-    "frontend/src/api/types.ts",
-    "docs/dominios/persona.md",
-    "backend/tests/test_credenciais_da_conta.py",
-    "backend/tests/test_secret_store.py",
-    "frontend/src/features/profiles/ProfileDetail.test.tsx"
-   ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_credenciais_da_conta.py tests/test_secret_store.py tests/test_social_profiles.py (passed); cd frontend && npx vitest run src/features/profiles/ (96 passed) && npm run typecheck (ok)",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:44:52+00:00"
   },
   "23.10": {
    "id": "23.10",
@@ -3990,46 +3977,32 @@
   "25.2": {
    "id": "25.2",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "backend/app/devices/rede.py, rotas /api/network/* em api.py, adendo v0.42 em docs/api-contract.md; tests/test_rede_por_aparelho.py. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real, central 5306b5d+, 29–30/09: POST /api/network/profiles (vpn-central-wireguard), POST /api/network/assign com dry_run (prévia) e sem confirmação recusado para conta real (real_account_confirm_required), com confirm_real_account aceito (android-06, android-03), GET /api/network/devices com desejado x observado e egress_shared_with, POST …/verify e …/apply; matriz em docs/relatorio-validacao.md §26.2.1.",
    "blocker": "",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/devices/rede.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/api.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/tests/test_rede_por_aparelho.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/docs/dominios/parque.md",
-    "C:/git/android/.claude/worktrees/evo3-d1/docs/dominios/apps-e-loja.md"
-   ],
-   "testes": "cd C:/git/android/.claude/worktrees/evo3-d1/backend && .venv/Scripts/python.exe -m pytest -q tests/test_rede_por_aparelho.py -> 14 passed (os 4 novos: 4 failed com a lógica antiga reconstruída); .venv/Scripts/python.exe -m pytest -q tests/test_arquitetura.py -> 9 passed; python scripts/docs-check.py -> 0 erros (1 aviso preexistente de estado.json)",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:44:52+00:00"
   },
   "25.3": {
    "id": "25.3",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Defeito confirmado e corrigido. Com o redaction.py ganhando `pre[_-]?shared[_-]?key|psk`, tests/test_compilador_de_skills.py::test_nome_de_parametro_com_cara_de_credencial falhava com `AssertionError: psk` (reproduzido: 1 failed). A correção fica fora dos arquivos reservados à frente (o coordenador deve integrá-la sabendo disso): em backend/app/modules/skills/domain/compiler.py, `_SECRET_NAME` ganhou `psk` entre os tokens e `pre_?shared` na alternância `_?key`, com comentário do porquê (ADR-056 §5). Conferido: psk, pre_shared_key, presharedkey e wg_psk casam; pskx, upsk e os cinco inocentes (opiniao, pinned, username, tokenizar, contato) não casam. Agora 77 passed. O restante do 25.3 segue como declarado: segredo_de_rede.segredo_no_convidado (consumidor restrito do cofre por profile_id, entrega por stdin ou push com remoção, recibo sem tamanho nem hash, limpeza garantida); Adb.gravar_arq Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real, 29–30/09: chaves WireGuard geradas por aparelho (network_keys, migração 058; privada direto ao cofre) e entregues pelo consumidor restrito aos 4 aparelhos (android-05, 02, 06, 03), perfil servido uma vez; crash_reports apagados na provisão; nenhum segredo em comandos, eventos ou tabelas de texto (conferido em teste). Testes simulated da frente D1.",
    "blocker": "",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/modules/skills/domain/compiler.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/security/redaction.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/security/segredo_de_rede.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/security/secret_store.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/app/devices/adb.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/backend/tests/test_segredo_de_rede.py",
-    "C:/git/android/.claude/worktrees/evo3-d1/docs/dominios/parque.md"
-   ],
-   "testes": "cd C:/git/android/.claude/worktrees/evo3-d1/backend && .venv/Scripts/python.exe -m pytest -q tests/test_compilador_de_skills.py -> 77 passed (antes: 1 failed em -k credencial); .venv/Scripts/python.exe -m pytest -q tests/test_segredo_de_rede.py -> 19 passed; .venv/Scripts/python.exe -m pytest -q tests/test_sensitive_input.py -> 61 passed",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:44:52+00:00"
   },
   "25.8": {
    "id": "25.8",
@@ -4231,6 +4204,96 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T02:42:14+00:00"
+  },
+  "23.7": {
+   "id": "23.7",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
+   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:44:52+00:00"
+  },
+  "23.8": {
+   "id": "23.8",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
+   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:44:52+00:00"
+  },
+  "23.12": {
+   "id": "23.12",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
+   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:44:52+00:00"
+  },
+  "23.13": {
+   "id": "23.13",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
+   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:44:52+00:00"
+  },
+  "27.2": {
+   "id": "27.2",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
+   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
+   "arquivos": [],
+   "testes": "ver evidência",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:44:52+00:00"
+  },
+  "27.3": {
+   "id": "27.3",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/relatorio-validacao.md §26 (implantações, provas reais, matriz de rede por aparelho, comando entre apps, revisão, cenários), CHANGELOG 2026-09-30, docs/estado-atual.md, docs/handoffs/terceira-evolucao.md (estado por frente, P1–P15, próxima ação), K-062 e K-063, estado pelo aplicar. O aceite integrado (27.2) segue bloqueado pelo P15.",
+   "blocker": "",
+   "arquivos": [],
+   "testes": "docs-check",
+   "grupo": "evolucao3-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:46:43+00:00"
   }
  },
  "rodadas": [
@@ -4877,6 +4940,31 @@
    ],
    "grupos": [
     "evolucao3-coordenador"
+   ]
+  },
+  {
+   "quando": "2026-09-30T02:44:52+00:00",
+   "itens": [
+    "23.9",
+    "25.2",
+    "25.3",
+    "23.7",
+    "23.8",
+    "23.12",
+    "23.13",
+    "27.2"
+   ],
+   "grupos": [
+    "evolucao3-fechamento"
+   ]
+  },
+  {
+   "quando": "2026-09-30T02:46:43+00:00",
+   "itens": [
+    "27.3"
+   ],
+   "grupos": [
+    "evolucao3-fechamento"
    ]
   }
  ]

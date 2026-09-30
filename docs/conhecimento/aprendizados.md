@@ -1441,3 +1441,36 @@ desfaz o estado do servidor. No SQLite, a transação segue viva, e a suíte pas
 
 **Aplicabilidade.** Vigente. Todo `except` que engole erro de SQL dentro de uma transação alheia precisa do savepoint.
 Candidatos conhecidos em [banco.md](../banco.md).
+
+### K-062 — O Outlook derruba o emulador; o canary mostra que é o app que se recusa a rodar ali
+
+**Data:** 29/09/2026 · **Área:** apps, emuladores (ADR-057, item 23.2, P15)
+
+**Sintoma.** Ao abrir o Outlook 5.2635.3, o processo `qemu-system-x86_64[-headless].exe` cai com `0xc0000005` em código
+sem módulo, 10 a 30 s depois da tela inicial, no central e no notebook, com e sem janela, com SwiftShader e ANGLE e com
+o driver Vulkan do convidado escondido; o convidado tinha memória folgada.
+
+**Causa.** No emulador 37.3.2 (canary), o processo aguenta e aparece o que houve: a thread `Hx-Storage` da
+`libhxcomm.so` do Outlook executa `UD2` (bytes `0f 0b`), uma armadilha proposital, logo depois de iniciar o
+armazenamento. Nas versões 37.1.11 (estável) e 37.2.11 (beta), essa armadilha no convidado derrubava o emulador inteiro.
+
+**O que não funcionou.** `-feature -Vulkan` (o `ro.hardware.vulkan` segue `ranchu`), `gpu_mode: angle_indirect`,
+esconder o `vulkan.ranchu.so` por bind-mount, a imagem android-36 com o canary.
+
+**Aplicabilidade.** Vigente para o Outlook 5.2635.3. Antes de culpar a RAM ou o renderizador numa queda do emulador,
+leia o evento 1000 do Windows (código e deslocamento) e repita no emulador canary, que entrega o sinal ao convidado.
+
+### K-063 — Com always-on e bloqueio, o cliente VPN volta em menos de um segundo: o teste de vazamento é uma ida só
+
+**Data:** 30/09/2026 · **Área:** rede por aparelho (ADR-056, item 25.5)
+
+**Sintoma.** No android-05, o teste de vazamento em três idas ao aparelho (`force-stop`, leitura do `tun0`, sonda) deu
+"Permission denied" em 1 de 3 tentativas; nas outras, o `tun0` já tinha voltado e o teste ficou inconclusivo, com um
+reinício a mais.
+
+**O que funcionou.** Um script no convidado que para o cliente, espera o `/sys/class/net/tun0` sumir em passos de 0,1 s
+e dispara a sonda no mesmo instante, até 5 tentativas (`sonda_rede.comando_parar_e_sondar`, `549a297`). Só "Permission
+denied" como uid 2000 prova o bloqueio; root não é coberto pelo bloqueio.
+
+**Aplicabilidade.** Vigente. Vale para qualquer medição que dependa de a VPN estar caída com always-on ligado.
+
