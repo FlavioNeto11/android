@@ -82,6 +82,7 @@ class _No:
     password: bool = False
     acao: str = ""
     web: bool = False            # id do WebView: o id do HTML, sem o pacote (é como o UiAutomator2 o entrega)
+    enabled: bool = True
 
     @property
     def resource_id(self) -> str:
@@ -177,8 +178,9 @@ class FakeOutlook:
                         rid="btn_add_google_account", clickable=True, acao="google"),
                     _No("android.widget.Button", (40, 1100, 680, 1150), rid="btn_privacy_terms", clickable=True,
                         acao="termos"),
+                    # Observado em 30/09 (android-06): o "Continue" fica DESABILITADO até haver e-mail no campo.
                     _No("android.widget.Button", continuar, text="Continue", rid="btn_primary_button",
-                        clickable=True, acao="continuar")]
+                        clickable=True, acao="continuar", enabled=bool(self.email))]
         if t == "carregando":
             self._espera -= 1
             if self._espera <= 0:
@@ -294,7 +296,7 @@ class FakeOutlook:
         linhas = "".join(
             f'<node class={quoteattr(n.cls)} package="{OUTLOOK}" text={quoteattr(n.text)} '
             f'resource-id={quoteattr(n.resource_id)} content-desc={quoteattr(n.desc)} '
-            f'clickable="{str(n.clickable).lower()}" enabled="true" focused="false" '
+            f'clickable="{str(n.clickable).lower()}" enabled="{str(n.enabled).lower()}" focused="false" '
             f'password="{str(n.password).lower()}" scrollable="false" '
             f'bounds="[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]" />' for n in self._nos)
         return f'<hierarchy rotation="0">{linhas}</hierarchy>'

@@ -128,6 +128,10 @@ def identifier_form(tree: UiTree, *, avancar: re.Pattern[str], exclusao: re.Patt
     Campo de senha na tela é o formulário de uma tela só (ou a etapa da senha), nunca esta. Dois campos de texto, ou
     dois botões de avançar, é incerteza: o identificador digitado no campo errado iria parar numa busca ou num "criar
     conta" — então nada é escolhido. A barra de endereço da Custom Tab (`ignorar`) não é campo do formulário.
+
+    O botão pode estar DESABILITADO: o "Continue" do Outlook só habilita com um e-mail no campo (medido em 30/09/2026
+    no android-06 — exigir `enabled` fazia o login parar em "formulário não identificado" antes de digitar). Quem toca
+    relê a tela depois de preencher, e aí o botão já está habilitado.
     """
     if any(e.password for e in tree.elements):
         return None
@@ -137,7 +141,7 @@ def identifier_form(tree: UiTree, *, avancar: re.Pattern[str], exclusao: re.Patt
     campo = campos[0]
     botoes = []
     for e in tree.elements:
-        if not (e.clickable and e.enabled) or e is campo or e.bounds[1] < campo.bounds[3]:
+        if not e.clickable or e is campo or e.bounds[1] < campo.bounds[3]:
             continue
         rotulo = _rotulo(e)
         if rotulo and not exclusao.search(rotulo) and avancar.match(rotulo.strip()):
