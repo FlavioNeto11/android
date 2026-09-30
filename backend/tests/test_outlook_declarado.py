@@ -178,8 +178,9 @@ class FakeOutlook:
                         rid="btn_add_google_account", clickable=True, acao="google"),
                     _No("android.widget.Button", (40, 1100, 680, 1150), rid="btn_privacy_terms", clickable=True,
                         acao="termos"),
-                    # Observado em 30/09 (android-06): o "Continue" fica DESABILITADO até haver e-mail no campo.
-                    _No("android.widget.Button", continuar, text="Continue", rid="btn_primary_button",
+                    # Observado em 30/09 (android-06): o "Continue" fica DESABILITADO até haver e-mail no campo, e
+                    # traz o texto repetido na descrição ("Continue Continue").
+                    _No("android.widget.Button", continuar, text="Continue", desc="Continue", rid="btn_primary_button",
                         clickable=True, acao="continuar", enabled=bool(self.email))]
         if t == "carregando":
             self._espera -= 1

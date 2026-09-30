@@ -51,6 +51,15 @@ def _rotulo(e: UiElement) -> str:
     return f"{e.text} {e.desc}".strip()
 
 
+def _casa_inteiro(padrao: re.Pattern[str], e: UiElement) -> bool:
+    """O rótulo casa `padrao` por inteiro pelo texto, pela descrição ou pelos dois juntos.
+
+    O mesmo botão às vezes traz o texto repetido na descrição: medido em 30/09/2026 no "Continue" do Outlook
+    (android-06, "Continue Continue") e nos botões do WebView da Microsoft. Só o rótulo junto não casaria."""
+    junto = _rotulo(e)
+    return any(padrao.match(t.strip()) for t in {e.text or "", e.desc or "", junto} if t.strip())
+
+
 def _sufixo(resource_id: str) -> str:
     return resource_id.rsplit("/", 1)[-1].lower()
 
@@ -106,7 +115,7 @@ def submit_button(tree: UiTree, password: UiElement, *, entrar: re.Pattern[str],
         rotulo = _rotulo(e)
         if not rotulo or exclusao.search(rotulo):
             continue
-        if entrar.match(rotulo.strip()):
+        if _casa_inteiro(entrar, e):
             candidatos.append(e)
     return candidatos[0] if len(candidatos) == 1 else None
 
@@ -144,7 +153,7 @@ def identifier_form(tree: UiTree, *, avancar: re.Pattern[str], exclusao: re.Patt
         if not e.clickable or e is campo or e.bounds[1] < campo.bounds[3]:
             continue
         rotulo = _rotulo(e)
-        if rotulo and not exclusao.search(rotulo) and avancar.match(rotulo.strip()):
+        if rotulo and not exclusao.search(rotulo) and _casa_inteiro(avancar, e):
             botoes.append(e)
     return FormularioDoUsuario(campo=campo, botao=botoes[0]) if len(botoes) == 1 else None
 
@@ -161,9 +170,7 @@ def botao_unico(tree: UiTree, *, pacote: str, rotulo: re.Pattern[str], exclusao:
 
     def casa(e: UiElement) -> bool:
         junto = _rotulo(e)
-        if not junto or exclusao.search(junto):
-            return False
-        return any(rotulo.match(t.strip()) for t in {e.text or "", e.desc or "", junto} if t.strip())
+        return bool(junto) and not exclusao.search(junto) and _casa_inteiro(rotulo, e)
 
     candidatos = [e for e in tree.elements
                   if e.clickable and e.enabled and not e.editable and (not e.package or e.package == pacote) and casa(e)]
