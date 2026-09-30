@@ -174,6 +174,80 @@ ociosos e avisar que os testes serão refeitos.
 | D8 | Perfil Public do firewall do **notebook** está desligado (achado, fora do escopo) | notebook | segurança do notebook | 0 |
 | D9 | **Decidir o renderizador dos aparelhos com conta real** (android-01, 03 e 06) para receberem o Outlook: `gpu_mode: host` muda o que os apps enxergam do aparelho (o `GL_RENDERER` deixa de ser o SwiftShader e passa a dizer o nome da placa do host) e exige um reinício de cada aparelho. Alternativa: manter esses aparelhos como estão e pôr a conta Outlook da persona num aparelho de QA com GPU do host | central | 29.12 (23.12), 29.13 | 0 |
 
+## Entregas prontas, à espera da ação do dono
+
+Cada bloco diz a ação exata, o que ela libera e o roteiro que a IDE executa em seguida. Tudo aqui é `not_run` até a
+ação acontecer.
+
+### D1 e D2 → aparelho do notebook com rede (29.9; fecha 25.7 e o resto do 25.9)
+
+**Ação do dono** (PowerShell de administrador no central; a plataforma só lê o firewall). O comando abaixo é o que a
+plataforma gera hoje com os valores lidos do sistema (`POST /api/network/server/firewall-check`, 30/09 16:10Z: estado
+`sem_regra`, perfil Public, interface Wi-Fi, sub-rede 192.168.1.0/24):
+
+```powershell
+$n='Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)'; Get-NetFirewallRule -DisplayName $n -EA 0 | Remove-NetFirewallRule; New-NetFirewallRule -DisplayName $n -Direction Inbound -Action Allow -Protocol UDP -LocalPort 51820 -RemoteAddress 192.168.1.0/24 -InterfaceAlias 'Wi-Fi' -Profile Any
+```
+
+Conferir: o comando de inspeção que a mesma rota devolve (`inspect_command`). Desfazer:
+`Remove-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)'`. E, no roteador,
+a reserva DHCP do central (o endereço da Wi-Fi é o `rede.servidor.endpoint_lan`; se ele mudar, os aparelhos remotos com
+bloqueio ficam sem rede até um Reaplicar).
+
+**Roteiro da IDE (W0–W8), numa janela sem tarefa** (cadastrar o par reinicia o servidor VPN do central e derruba por
+segundos o túnel de android-02, 03, 05 e 06; com a prova de vazamento na linha, isso não refaz teste nenhum):
+
+| Passo | O quê | Evidência esperada |
+|---|---|---|
+| W0 | `POST /api/network/server/firewall-check` | `liberado`, sem aviso de origem `Any` |
+| W1 | ligar o android-09 (QA, notebook) | `online` |
+| W2 | `POST /api/network/assign` com `instance_ids: ["android-09"]`, o perfil do central e `policy: exigida` | linha `pendente`, rev 1 |
+| W3 | provisão (a convergência usa `adb reverse` pelo túnel) | `configurado`; perfil importado |
+| W4 | reinício pedido pela rede; túnel | `conectado`; no log do servidor, `inbound connection from 10.66.0.N` do par remoto |
+| W5 | medição | `trafego_verificado`; linha em `network_measurements` com IP, DNS e UDP por perna |
+| W6 | queda e volta: modo avião no convidado por 1 min | deriva → `configurado` → tile ou reinício → `conectado` de novo, sem reprovisão |
+| W7 | reinício do agente do notebook | o aparelho segue com a rede; o central relê |
+| W8 | só então `exigida_com_bloqueio` (teste de vazamento real no remoto) e, no fim, desatribuir (rollback) | prova na linha; depois a linha sai |
+
+### D3 → piloto de saída distinta (29.7; fecha o P1 no que é piloto)
+
+**Ação do dono:** dois servidores pequenos com IPv4 público próprio, cada um com um WireGuard (ou sing-box) aceitando
+UM par; as chaves dos clientes geradas por ele; os dados entram pelo painel (Aplicativos › Rede › Perfis), um perfil
+por servidor. A referência de preço da pesquisa (dois servidores em São Paulo a US$ 7/mês cada) é de 30/09 e precisa
+ser conferida na contratação; nada é contratado pela IDE.
+
+Por perfil: tipo `vpn`, protocolo `wireguard`, `endpoint_host` e `endpoint_port` do servidor, o segredo (a chave
+privada do cliente, que vai ao cofre) e `params` com `peer_public_key`, `address` (o endereço do cliente no túnel),
+`egress_esperado` (o IPv4 público do servidor) e, se houver, `dns` e `mtu`.
+
+**Roteiro da IDE (V1):** atribuir um perfil a cada um de dois aparelhos de QA sem conta real (android-07 e android-08),
+política `exigida_com_bloqueio`; conferir em cada um `trafego_verificado`, `egress_matches: true`,
+`egress_shared_with: []`, `leak_result: 1`, UDP por perna; reiniciar, hibernar e acordar; parar o serviço num dos
+servidores e ver o aparelho ficar sem saída (falha fechada), sem cair para a saída do central. A reversão que **não**
+se faz num aparelho com conta real está em `docs/dominios/parque.md` ("Reversão do piloto de saída distinta").
+
+### D4, D5, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9, 27.2)
+
+1. **D9** (renderizador nos aparelhos com conta real, ou a conta Outlook num aparelho de QA com GPU do host): sem ela
+   o Outlook não pode ser aberto no aparelho da persona (com SwiftShader ele derruba o emulador).
+2. **D4** (consentimento por conta, em Persona › Contas e acesso › cartão do Outlook): sem ele a senha não entra no
+   canal sensível.
+3. Com as duas: promover a release (já em `canary`, aprovada no android-07), distribuir só para os aparelhos com GPU
+   do host, `inspect_app`, observar as telas de senha e de desafio (23.7), escrever `sessao.yaml`/`telas.yaml`/
+   `catalogo.yaml` (23.8), login e persistência por perfil (23.13). Desafio, código e CAPTCHA ficam com a pessoa
+   (ADR-009).
+4. **D6** (um e-mail de teste do dono para a caixa da persona, assunto inofensivo com um perfil público, sem dígitos
+   que pareçam código) e chamada paga dentro da autorização de 29/09 (até US$ 1,50; usados ~US$ 0,56; saldo estimado
+   US$ 22,46 depois da recarga de 30/09): cenário C1 — ler o assunto no Outlook, buscar o perfil no Instagram só de
+   leitura, com retomada, cancelamento e a negativa sem consentimento. Se o custo estimado passar do que resta da
+   autorização, a IDE pede antes.
+
+### D7 → PostgreSQL (29.14; fecha o P17)
+
+O limite de gasto do GitHub Actions foi liberado pelo dono em 30/09 12:10Z. O job `backend-postgres` roda no cron
+diário (05:17Z) no commit da `main`, que já tem a 063: a prova vem do run de 01/10, sem carga no central e sem
+Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/relatorio-validacao.md`.
+
 ## Checkpoints
 
 ### Checkpoint 5 — 30/09 ~16:10Z — E4 (GPU do host pelo serviço), canário do Outlook e painel
