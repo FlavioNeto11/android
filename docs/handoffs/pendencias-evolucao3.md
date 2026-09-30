@@ -316,8 +316,9 @@ Instrução do dono, transmitida pela sessão "Github": "eu quero que tudo funci
 leitura conservadora de ~17:00Z (abaixo, mantida como registro). Vale para os aparelhos com conta real: `gpu_mode:
 host` e um reinício em android-01 (Lucas), 03 (Bruno) e 06 (André), com o Outlook no mesmo aparelho do Instagram de
 cada persona (a plataforma aceita um app de cada tipo por aparelho). **Não** autoriza reset de dados nem efeito externo
-em conta real (mensagem, comentário, publicar, seguir). Como a ordem veio por outra sessão e o risco é de conta real,
-a IDE confirma com o dono no chat, em uma linha, antes do primeiro aparelho com conta.
+em conta real (mensagem, comentário, publicar, seguir). **Confirmado pelo dono diretamente no chat da IDE** (30/09
+~18:20Z), ampliando: "não só com esses mas em todos" — `gpu_mode: host` e reinício, sem apagar dados, em todos os
+aparelhos do parque, os com conta real um por vez e com a conta conferida antes e depois.
 
 Com isso voltam ao escopo: o C1 **Outlook → Instagram** só de leitura (24.9) no aparelho de cada persona, e o aceite
 no mesmo aparelho (27.2).
