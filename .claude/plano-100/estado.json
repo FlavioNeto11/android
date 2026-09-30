@@ -4051,20 +4051,16 @@
   },
   "23.2": {
    "id": "23.2",
-   "status": "blocked",
+   "status": "partial",
    "proof": "real",
-   "evidence": "Outlook 5.2635.3 importado da loja (c-20260929184859-0fe853, depois da correção do inspetor em 45bd8ea) e assinatura aprovada; canário no android-02 (c-20260929185249-440edc) e no android-09 (c-20260929194525-da36f8) falharam na abertura e a versão está em quarentena; diagnóstico no handoff P15 (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive).",
-   "blocker": "P15: o Outlook não roda no parque emulado; saídas do dono: celular físico, Outlook web no Chrome ou versão nova do app",
-   "arquivos": [
-    "backend/app/releases/inspector.py"
-   ],
-   "testes": "tests/test_app_releases.py (42)",
-   "grupo": "evolucao3-onda1",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "Outlook 5.2635.3 importado da loja (c-20260929184859-0fe853) e assinatura aprovada em 29/09. Os canários de 29/09 no android-02 e no android-09 falharam porque o emulador caía com o renderizador SwiftShader-GL do host (diagnóstico corrigido em 30/09, K-062). Real, 30/09 15:37Z, central 0d70882: canário oficial no android-07 com a GPU do host (instances.overrides.android-07.gpu_mode: host), comando c-20260930153719-d11a00 succeeded — 4 splits instalados, 'app chegou ao primeiro plano em 7 s e permaneceu'; a release está em canary (android-07), fora da quarentena. No notebook (android-09, gpu_mode: host no worker.yaml) o app abre e fica 5 min no onboarding.",
+   "blocker": "Falta promover. A promoção espera a recusa por renderizador (item 29.11: abrir o Outlook num aparelho em SwiftShader derruba o emulador) e o fim da janela de observação do P16; a medição de RAM com os dois apps fica para a distribuição (29.12).",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "25.10": {
    "id": "25.10",
@@ -4186,16 +4182,14 @@
    "id": "24.9",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (bd5c5a), conta indisponível (12d329) e reinício no meio (13ec70). Custo total dessas provas: ~US$ 0,56 no livro-caixa da Anthropic (autorização até US$ 1,50). Escolha consciente: o teste NÃO foi feito numa conta real do Instagram (conduta do ADR-055/K-057: conta real não é bancada).",
-   "blocker": "o recorte pedido (Outlook → Instagram) depende do P15: o Outlook não roda no parque emulado",
-   "arquivos": [],
-   "testes": "execuções reais pela API do central",
-   "grupo": "evolucao3-provas-reais",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (r-20260930023442-bd5c5a), conta indisponível (r-20260930023809-12d329) e reinício no meio (r-20260930023901-13ec70); custo ~US$ 0,56.",
+   "blocker": "O recorte Outlook → Instagram depende do login do Outlook (23.13: consentimento D4 e renderizador D9), do e-mail de teste do dono (D6) e de chamada paga dentro da autorização de 29/09. O Outlook abrir deixou de ser o impedimento.",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:41:35+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "25.9": {
    "id": "25.9",
@@ -4214,78 +4208,68 @@
   },
   "23.7": {
    "id": "23.7",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
-   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
-   "arquivos": [],
-   "testes": "ver evidência",
-   "grupo": "evolucao3-fechamento",
-   "modelo": "",
-   "esforco": "",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 30/09 15:44–15:50Z, android-07 (QA, sem conta), sem digitar, pela árvore de tela da plataforma (GET /api/instances/android-07/hierarchy): onboarding (SplashActivity; btn_primary_button 'Add account', btn_secondary_button 'Create new account') e AddAccountActivity (auto_complete_input_email 'Enter your email', btn_primary_button 'Continue', btn_add_google_account, menu_qr_code, btn_privacy_terms). O UiAutomator2 lê o Outlook em primeiro plano.",
+   "blocker": "As telas de senha e de desafio só aparecem depois de informar o e-mail: dependem do consentimento por conta (D4 do handoff pendencias-evolucao3.md) para saber se o login é WebView ou Custom Tab e quantas etapas tem.",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:44:52+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "23.8": {
    "id": "23.8",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
-   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
-   "arquivos": [],
-   "testes": "ver evidência",
-   "grupo": "evolucao3-fechamento",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "As duas telas observadas no 23.7 (onboarding e AddAccountActivity) já dão os sinais do começo do login; o motor de formulário em etapas (23.6) está pronto.",
+   "blocker": "O P15 NÃO é recusa do app ao emulador (corrigido em 30/09): o Outlook abre com a GPU do host. O sessao.yaml depende das telas de senha e de desafio, que só se observam com o consentimento da conta (D4). telas.yaml e catalogo.yaml de leitura dependem do app logado.",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:44:52+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "23.12": {
    "id": "23.12",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
-   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
-   "arquivos": [],
-   "testes": "ver evidência",
-   "grupo": "evolucao3-fechamento",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "Canário aprovado no android-07 com a GPU do host (30/09, c-20260930153719-d11a00); o app também abre no android-09 (notebook) com gpu_mode: host.",
+   "blocker": "Distribuir exige o renderizador do host nos aparelhos de destino (com SwiftShader o Outlook derruba o emulador). Os aparelhos das personas têm conta real: a troca do renderizador neles é decisão do dono (D9 do handoff pendencias-evolucao3.md). Os de QA podem receber depois da janela do P16.",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:44:52+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "23.13": {
    "id": "23.13",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
-   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
-   "arquivos": [],
-   "testes": "ver evidência",
-   "grupo": "evolucao3-fechamento",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "As 3 contas Outlook estão cadastradas com a senha clonada no cofre (23.9, 23.11); o app abre e chega à tela de e-mail num aparelho com a GPU do host.",
+   "blocker": "Falta o consentimento por conta (D4), a decisão do renderizador nos aparelhos com conta real ou o aparelho de QA para a conta (D9) e a distribuição (23.12). Não é mais bloqueio técnico do app.",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:44:52+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "27.2": {
    "id": "27.2",
    "status": "blocked",
    "proof": "not_run",
-   "evidence": "Espera o Outlook abrir num aparelho; código de suporte pronto (23.4–23.6, 23.9–23.11).",
-   "blocker": "P15: o Outlook 5.2635.3 não roda no parque emulado (armadilha UD2 na libhxcomm.so; emulador 37.1.11/37.2.11 cai, 37.3.2 sobrevive e o app morre). Saídas do dono: celular físico por USB, Outlook web no Chrome ou versão nova do app.",
-   "arquivos": [],
-   "testes": "ver evidência",
-   "grupo": "evolucao3-fechamento",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "Rede trafego_verificado nos aparelhos das personas Bruno e André (com a prova de vazamento na linha, Fase 29); comando entre apps provado com apps de QA; Outlook abrindo com a GPU do host.",
+   "blocker": "Depende do 23.13 e do 24.9 no mesmo aparelho: consentimento (D4), renderizador do aparelho da persona (D9), e-mail de teste (D6).",
+   "grupo": "29-registros-p15",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T02:44:52+00:00"
+   "quando": "2026-09-30T16:07:41+00:00"
   },
   "27.3": {
    "id": "27.3",
@@ -5118,6 +5102,21 @@
    ],
    "grupos": [
     "29-outlook-renderizador"
+   ]
+  },
+  {
+   "quando": "2026-09-30T16:07:41+00:00",
+   "itens": [
+    "23.2",
+    "23.7",
+    "23.8",
+    "23.12",
+    "23.13",
+    "24.9",
+    "27.2"
+   ],
+   "grupos": [
+    "29-registros-p15"
    ]
   }
  ]
