@@ -78,6 +78,8 @@ AUTORIZACAO = {
     '29.13': ('consentimento por conta Outlook (dono), login e leitura em conta real, chamada paga de IA e o e-mail de '
               'teste enviado pelo dono'),
     '29.14': 'ligar o Docker/WSL no central para a suíte em PostgreSQL, ou o job do CI depois do limite de gasto',
+    '29.19': ('decidir a escala e contratar os IPv4 (dono); trocar a saída de aparelho com conta real só com '
+              'autorização por aparelho'),
 }
 #: Teto de itens por agente. Não é estética: um agente com oito itens e vinte arquivos perde o fio, e quando erra
 #: leva junto tudo o que já tinha feito. Pedaços do mesmo grupo correm em SEQUÊNCIA, então não há conflito.

@@ -63,6 +63,8 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | arquivado (movido, 11,3 GB, nada apagado); restam os worktrees das frentes, depois do segundo deploy |
 | 29.18 | fechamento | relatório §27, CHANGELOG, estado pelo mecanismo | tudo acima | C | não iniciado |
+| 29.19 | P1 (objetivo de 30/09) | cada aparelho ativo com um IPv4 de saída só dele, medido e estável | 29.7 (V1); **dono**: escala e IPv4 | C | script com N pares e SNAT por origem pronto (`bash -n` e leitura dos pares conferidas); o resto espera o V1 e a decisão de escala |
+| 29.20 | P1 | aparelho saindo pela casa acusado pela plataforma | 29.6 | C | não iniciado |
 
 ## Frentes, arquivos e quem escreve
 
@@ -272,6 +274,39 @@ real), política `exigida_com_bloqueio`; conferir em cada um `trafego_verificado
 servidor e ver o aparelho ficar sem saída (falha fechada), sem cair para a saída do central. A reversão que **não**
 se faz num aparelho com conta real está em `docs/dominios/parque.md` ("Reversão do piloto de saída distinta"). Prova
 do script: sintaxe conferida (`bash -n`); a execução num servidor real é `not_run` até o passo 2.
+
+### Objetivo do dono de 30/09: saída própria por aparelho (29.19, 29.20)
+
+Transmitido pela sessão "Github" (~19:00Z): "cada android tenha sua própria saída, para fins de observabilidade e
+telemetria de algum aplicativo, e nenhum venha do IP da minha rede". Amplia o 29.7 (piloto de dois) para o parque. Fica
+dentro do ADR-056: saída declarada, estável e medida; sem rotação, sem mascarar emulador, imagem ou identidade.
+
+Hoje (medido): android-02, 03, 05 e 06 saem pelo servidor VPN do central — ou seja, pelo IP da casa; android-01 e os
+demais saem direto pela casa. Nenhum tem saída própria.
+
+**Como (desenho):** um servidor com N IPv4 e um par WireGuard por aparelho, cada par saindo por um IP diferente (SNAT
+pela origem no túnel), no lugar de N servidores. `scripts/rede-saida-externa.sh` já aceita `PARES` (uma linha por
+aparelho: chave pública, endereço no túnel, IP local de saída) e recusa dois pares no mesmo IP de saída. No painel, um
+perfil por aparelho: o mesmo endpoint e a mesma chave pública do servidor, `address` e `egress_esperado` próprios — o
+modelo aceita (não há unicidade de endpoint; o aviso `saida_dedicada_compartilhada` é por perfil, e
+`egress_shared_with` compara as saídas MEDIDAS entre aparelhos, que é a prova de que cada um tem a sua). O 29.20 fecha o
+outro lado: a plataforma mede a saída do próprio central e acusa o aparelho que medir igual (IPv4 ou IPv6), e o IPv6
+medido quando o perfil não leva IPv6.
+
+**Ondas:** V1 com android-08 e android-02 (QA; o 07 ficou com o Outlook do Lucas pelo D9) → os demais aparelhos de QA
+(central e notebook) → aparelho com conta real (01, 03, 06) **só com autorização do dono por aparelho** (ADR-056 §7,
+`confirm_real_account`) e com IP do Brasil: trocar a saída de uma conta logada costuma disparar desafio (K-057).
+
+**Custo por escala** (13 aparelhos do parque, sem a loja e a quarentena; preços a conferir na contratação):
+
+| Caminho | Como | Custo por mês | Fonte |
+|---|---|---|---|
+| Oracle Always Free | 2 VMs, 1 IP público cada: 2 aparelhos | 0 | documentação da Oracle (sessão "Github", 30/09); risco de recuperação por ociosidade e de falta de capacidade em SP |
+| Lightsail São Paulo | 1 instância Nano por aparelho (uma instância tem um IPv4 público) | US$ 5 × 13 = **US$ 65** | documentação da AWS, conferida em 30/09 |
+| Vultr São Paulo | 1 servidor de US$ 5 + ~US$ 3 por IPv4 adicional | ~US$ 5 + 12 × 3 = **~US$ 41** | fontes de terceiros (a página da Vultr não abriu para leitura); limite de IPs por servidor a conferir |
+| Hetzner | ~€ 0,50 por IPv4 | — | sem região no Brasil: não serve para conta real |
+
+A decisão é do dono: quantos aparelhos, que provedor e se as contas reais entram (e quando).
 
 ### D4, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9)
 

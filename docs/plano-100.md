@@ -649,7 +649,7 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 perder ocorrência, com orçamento respeitado e relatório que separa observado de conclusão, e as provas `simulated`
 de cada item registradas.
 
-### Fase 29 — Pendências da terceira evolução · 18 itens (pesquisa de 30/09/2026; ADR-056, ADR-057, ADR-058)
+### Fase 29 — Pendências da terceira evolução · 20 itens (pesquisa de 30/09/2026; ADR-056, ADR-057, ADR-058)
 
 Origem: a pesquisa de 30/09 sobre o que ficou pendente na terceira evolução (relatório e seis notas fora do Git, em
 `reports/` e `research_notes/`; o que decide a execução está transcrito em
@@ -680,6 +680,8 @@ mecanismo quando a prova deles existir, não por fecharem aqui.
 | 29.16 | **Mecanismo do plano e registros**: índice de pacotes regenerado, 12.3 no vocabulário do `aplicar`, bloqueio do P15 reescrito com a causa medida, contagem dos 43 itens corrigida (não há bloqueio por assinatura) | contagem de 30/09 | P |
 | 29.17 | **Limpeza reversível**: artefatos do diagnóstico (SDKs beta e canary, imagem android-36, AVDs `diag-outlook*`, piloto de rede, worktrees e branches integrados) arquivados ou removidos só depois de deixarem de ser necessários, sem seguir junção nem tocar chave em uso | inventário de 30/09 | P |
 | 29.18 | **Fechamento**: seção nova em `relatorio-validacao.md`, handoff, CHANGELOG, estado pelo mecanismo e resumo real × simulado × não executado por pendência | — | P |
+| 29.19 | **Saída própria por aparelho, em escala** [A] (objetivo do dono de 30/09: "cada android com sua própria saída… e nenhum pelo IP da minha rede"): servidor com N IPs e um par por aparelho, SNAT pela origem no túnel (`scripts/rede-saida-externa.sh` com `PARES`), um perfil por aparelho com a chave do servidor e `egress_esperado` próprio; ondas V1 (2 QA) → demais QA → conta real só com autorização por aparelho e IP do Brasil; a escala (aparelhos × IPv4 × custo) é decisão do dono | P1, 29.7 | M |
+| 29.20 | **Nenhum aparelho pela saída da casa**: a plataforma mede a saída do próprio central e acusa, por aparelho, a medida igual a ela (IPv4 ou IPv6) e o IPv6 medido quando o perfil não leva IPv6; o painel mostra quem ainda sai pela casa | P1, 29.6 | M |
 
 **Fecha quando:** o CI está verde no commit publicado; um reinício do backend com prova válida não reinicia nenhum
 aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
