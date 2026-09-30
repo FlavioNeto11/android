@@ -538,3 +538,55 @@ def test_a_impressao_nao_muda_com_a_quebra_de_linha(lite: _Falso) -> None:
     assert lite._impressao("CREATE TABLE t (a INT);\r\nCREATE INDEX i ON t(a);\r\n") == \
            lite._impressao("CREATE TABLE t (a INT);\nCREATE INDEX i ON t(a);\n")
     assert lite._impressao("SELECT 1;") != lite._impressao("SELECT 2;")     # e o conteúdo ainda conta
+
+
+def test_migracao_063_acrescenta_a_prova_de_vazamento_sem_mexer_na_linha_que_ja_existe(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 063 (item 29.2) num banco que já tem aparelho com rede: só colunas novas, vazias. A prova que o código
+    anterior guardava em memória NÃO é inventada pela migração (ela não conhece o aparelho); quem a adota, com a
+    correspondência demonstrada, é a convergência. Roda no banco configurado: SQLite ou, com `TEST_DATABASE_URL`,
+    PostgreSQL (o `ADD COLUMN … CHECK … DEFAULT` é o ponto em que os dois dialetos poderiam divergir)."""
+    destino = _copia_das_migracoes(tmp_path, monkeypatch, ate="058_chaves_de_rede")
+    db = _banco(tmp_path)
+    assert db.migrate()[-1] == "058_chaves_de_rede"
+    db.execute("INSERT INTO device_network(instance_id, policy, desired_rev, applied_rev, state, verified_at,"
+               " updated_at) VALUES ('android-03', 'exigida_com_bloqueio', 1, 1, 'trafego_verificado',"
+               " '2026-09-30T08:01:09.592Z', '2026-09-30T08:01:09.592Z')")
+    origem = Path(db_mod.__file__).resolve().parents[1] / "migrations" / "063_prova_de_vazamento.sql"
+    shutil.copy2(origem, destino / origem.name)
+    assert db.migrate() == ["063_prova_de_vazamento"] and db.divergencias() == []
+    linha = db.one("SELECT * FROM device_network WHERE instance_id='android-03'")
+    assert linha is not None
+    assert (linha["state"], linha["desired_rev"], linha["applied_rev"]) == ("trafego_verificado", 1, 1)
+    assert [linha[c] for c in ("leak_rev", "leak_client", "leak_result", "leak_at", "leak_detail")] == [None] * 5
+    assert linha["leak_pending"] == 0
+    # Os dois CHECK valem nos dois bancos: resultado só 0, 1 ou vazio; pendente só 0 ou 1, nunca vazio.
+    db.execute("UPDATE device_network SET leak_rev=1, leak_result=1, leak_pending=1 WHERE instance_id='android-03'")
+    for ruim in ("leak_result=2", "leak_pending=2", "leak_pending=NULL"):
+        with pytest.raises(INTEGRITY_ERRORS):
+            with db.tx():
+                db.execute(f"UPDATE device_network SET {ruim} WHERE instance_id='android-03'")  # noqa: S608
+    # Linha nova nasce sem prova e sem ensaio pendente (o INSERT do modelo não cita as colunas).
+    db.execute("INSERT INTO device_network(instance_id, updated_at) VALUES ('android-05', '2026-09-30T12:00:00Z')")
+    nova = db.one("SELECT leak_rev, leak_pending FROM device_network WHERE instance_id='android-05'")
+    assert nova is not None and (nova["leak_rev"], nova["leak_pending"]) == (None, 0)
+    db.close()
+
+
+def test_migracao_de_numero_menor_criada_depois_ainda_e_aplicada(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 063 foi numerada depois das 059–062, que o plano nomeia para a Fase 28 e que ainda não existem. O executor
+    aplica todo arquivo que não está em `schema_migrations`, em ordem de nome: a 059 que nascer depois entra num
+    banco que já tem a 063, e o controle de impressão continua limpo. Ordenar os arquivos, sozinho, não provaria
+    isto: o que prova é aplicar."""
+    destino = _copia_das_migracoes(tmp_path, monkeypatch)
+    db = _banco(tmp_path)
+    assert "063_prova_de_vazamento" in db.migrate()
+    (destino / "059_reservada_da_fase_28.sql").write_text(
+        "CREATE TABLE t_reservada_059 (id TEXT PRIMARY KEY, criada_em TEXT NOT NULL);\n", encoding="utf-8")
+    assert db.migrate() == ["059_reservada_da_fase_28"]
+    assert db.columns("t_reservada_059") and db.divergencias() == [] and db.migrate() == []
+    aplicadas = [r["version"] for r in db.query("SELECT version FROM schema_migrations ORDER BY version")]
+    assert aplicadas.index("059_reservada_da_fase_28") < aplicadas.index("063_prova_de_vazamento")
+    db.execute("DROP TABLE t_reservada_059")
+    db.close()

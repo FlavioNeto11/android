@@ -1502,3 +1502,29 @@ do driver funcionam com o módulo trocado, e `appium driver list --installed` li
 **Aplicabilidade.** Vigente até o driver publicar uma versão que empacote a 5.0.12 (o script avisa "nada a trocar" e a
 entrada sai de `CORRECOES`). Vale para qualquer aviso em caminho com `inBundle`: o relatório do `npm audit` não
 distingue, e só a leitura do disco prova a correção.
+
+### K-065 — Evidência de teste destrutivo só em memória: o reinício do backend a perde e o teste se repete no parque
+
+**Data:** 30/09/2026 · **Área:** rede por aparelho (ADR-056, ADR-061; itens 25.5 e 29.2)
+
+**Sintoma.** Um reinício do backend às 02:40Z de 30/09 (um deploy). Entre 06:52Z e 07:59Z, 11 reinícios de aparelho
+pedidos pela rede: android-02 (4, mais 1 reaplicação), android-06 (6, mais 2 reaplicações) e android-03 (1), os dois
+últimos com conta real logada. No android-05 o mesmo teste, refeito, não concluiu, e um aparelho que estava
+`trafego_verificado` passou a `parcial`.
+
+**Causa.** O desfecho do teste de vazamento era guardado em `_Memoria.vazamento`, "em memória de propósito", com a
+justificativa de que perder a memória "só significa conferir de novo". Para uma conferência barata isso vale. Para um
+teste que para o cliente VPN e reinicia o aparelho, não: a memória perdida virou teste refeito. O gatilho não era o
+reinício em si, e sim a remedição a 90% da validade, horas depois, o que escondeu a relação de causa.
+
+**O que não funcionou.** Tratar como "um reinício a mais por revisão": o custo real foi multiplicado pelo túnel que
+não sobe no boot (item 29.3). Propor o *backfill* da prova na migração com o cliente vazio: a migração não conhece o
+aparelho, e um campo vazio que "vale até a primeira leitura" é um curinga.
+
+**O que funcionou.** A prova na linha do aparelho, presa à revisão e à instalação do cliente VPN; a intenção gravada
+antes do `force-stop`; a validade só para a medição barata (ADR-061). Na transição, adoção só com o histórico e a data
+do APK demonstrados, conferida numa cópia do banco antes do deploy.
+
+**Aplicabilidade.** Vigente. Antes de guardar em memória o resultado de qualquer verificação, perguntar quanto custa
+refazê-la: se custa reinício, toque em conta real ou chamada paga, o resultado é dado durável, com a chave do que ele
+prova.

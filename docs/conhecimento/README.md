@@ -81,6 +81,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-057 | Outlook como primeiro app novo: conta por app, sessão por conta, credencial clonada no cofre | apps/contas/segurança | decisão | 29/09 | vigente (a implementar, Fase 23) | `docs/decisoes.md#adr-057` | Fase 23, 12.3, ADR-040, ADR-052 |
 | ADR-058 | Comando entre aplicativos: catálogo pelo app da etapa, valor lido entre etapas | execução/IA | decisão | 29/09 | proposto (Fase 24) | `docs/decisoes.md#adr-058` | Fase 24, 12.1, ADR-009 |
 | ADR-059 | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | execução/produto | decisão | 29/09 | proposto (Fase 26) | `docs/decisoes.md#adr-059` | Fase 26 |
+| ADR-061 | A prova de vazamento é da linha do aparelho: presa à revisão e ao cliente VPN, sem validade por relógio | parque/rede | decisão | 30/09 | vigente | `docs/decisoes.md#adr-061` | 29.2, ADR-056, K-065 |
 | K-001 | Harness de teste usava as portas do parque real | testes | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-001` | `base_console_port` |
 | K-002 | Checkout apaga `config.yaml` não versionado | operação | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-002` | ADR-011 |
 | K-003 | "malformed database schema" após reboot | banco | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-003` | `restore.ps1` |
@@ -120,6 +121,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-059 | Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável | parque/emuladores | erro | 29/09 | vigente (a relação com o irq segue aberta) | `docs/conhecimento/aprendizados.md#k-059` | 21.15, K-050 |
 | K-062 | O Outlook derruba o emulador estável; no canary, o app morre numa armadilha UD2 da libhxcomm.so | apps/emuladores | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-062` | 23.2, P15, ADR-057 |
 | K-063 | Always-on religa o cliente VPN em menos de 1 s: teste de vazamento numa ida só ao aparelho | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-063` | 25.5, ADR-056 |
+| K-065 | Evidência de teste destrutivo só em memória: cada reinício do backend a perde e o teste se repete em todo o parque | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-065` | 29.2, ADR-061 |
 | K-064 | Dependência empacotada no tarball (`inBundle`): `npm audit fix` e `overrides` não corrigem, e o lock editado fica verde com o código vulnerável no disco | CI/dependências | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-064` | 29.1 |
 
 ## Como localizar

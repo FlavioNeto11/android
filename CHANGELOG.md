@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-30 (tarde) — Fase 29: pendências da terceira evolução (CI, prova durável de vazamento, firewall)
+
+**Integrado** na `main`; a implantação e a observação de 6 h são o item 29.4 (o estado fica em
+[handoffs/pendencias-evolucao3.md](docs/handoffs/pendencias-evolucao3.md)). A pesquisa de 30/09 corrigiu o diagnóstico
+do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShader-GL do host.
+
+- **CI (29.1, `9428a6a`):** o `brace-expansion` 5.0.9 (alta) vem dentro do tarball do `appium-uiautomator2-driver`
+  8.7.0. `npm audit fix` e `overrides` não alcançam dependência empacotada, e o lock editado deixava o audit verde com
+  a 5.0.9 no disco. `tools/appium/corrigir-empacotados.mjs` troca o arquivo instalado no `postinstall`, e o CI instala
+  e confere o disco. Prova `real`: run 36713946044 verde. K-064.
+- **Prova durável de vazamento (29.2, P16, ADR-061, migração 063):** a prova do teste com o cliente VPN parado passa a
+  morar em `device_network` (`leak_*`), presa à revisão e à instalação do cliente VPN. A intenção é gravada antes do
+  `force-stop`; o ensaio interrompido por reinício do backend é fechado como inconclusivo, sem parar o cliente de novo;
+  cliente novo, wipe e `POST …/verify` invalidam; o relógio da medição não. É a prova da linha, e não o `leak_blocked`
+  da medição, que decide `trafego_verificado` e a porta da tarefa. Quem ficou sem desfecho que aprove deixa de ser
+  medido em laço. Na transição, a prova anterior só é adotada com o histórico e a data do APK demonstrados. Prova:
+  `simulated` (`tests/test_rede_sonda.py`, 12 cenários novos; o do reinício do backend falha no código de `6997091`);
+  `real` para a leitura do cliente em três aparelhos e para a 063 numa cópia do banco do central. K-065.
+- **Firewall do central para a LAN (29.8):** a leitura passa a conferir porta, perfil efetivo, interface, origem e
+  programa de cada regra; estado novo `regra_obsoleta`; o comando proposto sai sem `-Program`, restrito à sub-rede e à
+  interface lidas do sistema, idempotente, com inspeção e reversão. Uma regra presa a outra interface era lida como
+  `liberado`. Prova: `simulated` (`tests/test_rede_worker.py`, 9 casos novos) e leitura `real` no central (só leitura);
+  a regra criada e o aparelho do notebook com rede seguem `not_run` (29.9).
+- **Painel:** a prova de vazamento por aparelho (revisão, data e cliente) e o estado novo do firewall, com os comandos
+  de inspeção e reversão.
+- **Plano:** Fase 29 (18 itens) e handoff; 12.3 sai de `pending` para `partial/real` pelo mecanismo.
+
 ## 2026-09-30 (madrugada) — Terceira evolução: rede por aparelho real, comando entre apps real, contas por app; Outlook bloqueado pelo emulador
 
 **Implantado** no central (e no agente do notebook) em ondas: `99fc90a` (contratos, migrações 056 e 057), `081d696`

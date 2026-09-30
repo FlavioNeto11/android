@@ -2824,3 +2824,40 @@ com "credencial" é tratado como segredo pela redação.
   - Código de verificação, senha e token nunca são saída.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
+
+## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
+
+Compatível para trás: só campos novos e um estado novo na leitura do firewall. Prova: `simulated`
+(`backend/tests/test_rede_sonda.py`, `test_rede_worker.py`, `test_db.py`); a leitura do cliente VPN em aparelho real e
+a migração numa cópia do banco do central são `real` (30/09); o reinício do backend sem reinício de aparelho por 6 h é
+`not_run` (item 29.4).
+
+**`DeviceNetworkDTO` (em `GET /api/network/devices` → `devices[].network`, e nas respostas de `verify`, `reapply` e
+`assign`).** Campos novos, da migração 063:
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `leak_rev` | inteiro ou nulo | a revisão em que o teste de vazamento foi feito; nulo = nenhum teste |
+| `leak_client` | texto ou nulo | a instalação do cliente VPN testada: `<versão> (<código>) <pasta de instalação>` |
+| `leak_result` | booleano ou nulo | `true` = bloqueio provado; `false` = vazou; nulo = não concluiu |
+| `leak_at`, `leak_detail` | texto ou nulo | quando, e o que a sonda mostrou (ou por que a prova foi apagada) |
+| `leak_pending` | booleano | ensaio marcado e sem desfecho |
+
+A prova vale quando `leak_rev == desired_rev` e `leak_result == true` (o backend ainda confere o cliente lido no
+aparelho). Com `policy: exigida_com_bloqueio`, é ela que decide `state: trafego_verificado` e `pending`; o
+`leak_blocked` de `last_measurement` é o registro do que a sonda levou.
+
+**`POST /api/network/devices/{iid}/verify`.** Com `exigida_com_bloqueio`, o pedido apaga a prova da linha (`leak_rev`
+volta a nulo, o motivo fica em `leak_detail`). O `state` não muda na resposta, mas `pending` passa a `verificar` e a
+tarefa com rede exigida espera até o teste refeito; o `reason` diz isso e avisa do reinício. O pedido sobrevive a um
+reinício do backend.
+
+**Evento `network.updated`.** `data.acao: "vazamento"` com `leak_result` (e `adotada: true` quando a prova veio do
+histórico, na primeira subida com a 063).
+
+**`GET /api/network/server` → `remote_access.firewall` e `POST /api/network/server/firewall-check`.** Estado novo
+`regra_obsoleta` (fechado: a regra aponta, por `-Program`, para um executável que não é o binário atual do servidor).
+Campos novos na leitura: `lan_subnet`, `warnings`, `stale_rules`, `ignored_rules`, `missing`, `inspect_command` e
+`revert_command`. `commands` passa a trazer a regra sem `-Program`, restrita à sub-rede IPv4 e à interface lidas do
+sistema, idempotente; o que o sistema não informou vem como marcador (`<SUB-REDE-IPV4-DA-LAN>`), e `missing` diz o que
+faltou. A plataforma continua só lendo o firewall.

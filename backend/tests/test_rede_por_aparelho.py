@@ -320,15 +320,24 @@ async def test_estado_so_avanca_com_evidencia_e_medicao_por_app(parque: Harness)
     _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
         method="app_qa", egress_ipv4="45.162.8.9", per_app=ok), rev=2)
     assert dto is not None and dto.state == "parcial" and "bloqueio" in (dto.detail or "")
+    # Uma medição que DIZ "bloqueado" não é prova: a prova é a da linha (o teste com o cliente VPN parado, item 29.2).
+    _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+        method="app_qa", egress_ipv4="45.162.8.9", per_app=ok, leak_blocked=True), rev=2)
+    assert dto is not None and dto.state == "parcial" and "bloqueio" in (dto.detail or "")
+    cliente = "1.14.2 (739) /data/app/~~a==/io.nekohasekai.sfa-b=="
+    assert rede.marcar_ensaio_de_vazamento(st, "android-01", rev=2, cliente=cliente)
+    assert rede.gravar_prova_de_vazamento(st, "android-01", rev=2, cliente=cliente, resultado=True,
+                                                 quando="2026-09-30T12:00:00Z", detalhe="Permission denied")
     _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(
         method="app_qa", egress_ipv4="45.162.8.9", per_app=ok, leak_blocked=True), rev=2)
     assert dto is not None and dto.state == "trafego_verificado"
+    assert (dto.leak_rev, dto.leak_result, dto.leak_pending, dto.leak_client) == (2, True, False, cliente)
 
     # Regressão (falha, deriva) vale sempre, com o erro.
     dto = registrar_observacao(st, "android-01", rev=2, estado="pendente", evidencia="VPN caiu", erro="sem túnel")
     assert dto.state == "pendente" and dto.error == "sem túnel"
     assert pendencias(st)[0]["falta"] == "aplicar"                 # regrediu: reaplicar, não só reconferir
-    assert st.db.one("SELECT COUNT(*) AS n FROM network_measurements WHERE instance_id='android-01'")["n"] == 6
+    assert st.db.one("SELECT COUNT(*) AS n FROM network_measurements WHERE instance_id='android-01'")["n"] == 7
 
 
 def test_medicao_recusa_ip_trocado_e_resultado_fora_do_vocabulario() -> None:
@@ -395,9 +404,9 @@ async def test_reaplicacao_no_meio_da_medicao_nao_vira_verificado(parque: Harnes
 
     original = rede._falta_para_verificar
 
-    def com_reaplicacao_no_meio(*args: Any) -> list[str]:
+    def com_reaplicacao_no_meio(*args: Any, **kw: Any) -> list[str]:
         rede.pedir_reaplicacao(st, "android-01", "outra aba")
-        return original(*args)
+        return original(*args, **kw)
 
     monkeypatch.setattr(rede, "_falta_para_verificar", com_reaplicacao_no_meio)
     _, dto = registrar_medicao(st, "android-01", NetworkMeasurementInput(

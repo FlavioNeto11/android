@@ -4301,6 +4301,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T02:46:43+00:00"
+  },
+  "29.1": {
+   "id": "29.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall troca a cópia empacotada), por `node corrigir-empacotados.mjs --conferir` e pelos testes do script. Antes: run agendado 36673606572 reprovado (brace-expansion 5.0.9, alta, dentro do tarball do appium-uiautomator2-driver 8.7.0). Medido numa cópia que `npm audit fix` e `overrides` não alcançam dependência empacotada e que editar só o lock deixa o audit verde com a 5.0.9 no disco; instalação limpa com a correção: disco em 5.0.12, minimatch e glob do driver funcionando, `appium driver list --installed` com uiautomator2@8.7.0. Arquivos: tools/appium/corrigir-empacotados.mjs (+ .test.mjs, 6 casos), package.json, package-lock.json, .github/workflows/ci.yml; K-064. O `node_modules` do Appium do central ainda tem a 5.0.9: é trocado por `npm ci` na janela do primeiro deploy (item 29.4).",
+   "grupo": "29-ci",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T13:03:45+00:00"
   }
  },
  "rodadas": [
@@ -4981,6 +4993,15 @@
    ],
    "grupos": [
     "29-registros-12.3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T13:03:45+00:00",
+   "itens": [
+    "29.1"
+   ],
+   "grupos": [
+    "29-ci"
    ]
   }
  ]

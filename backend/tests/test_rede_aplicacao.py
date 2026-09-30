@@ -455,6 +455,10 @@ class AparelhoFalso:
     comandos: list[str] = field(default_factory=list)
     uid: int = 2000
     instalado: bool = True
+    # A instalação do cliente VPN: a pasta muda a cada instalação ou atualização (o que invalida a prova de vazamento).
+    instalacao: str = "inst1"
+    versao: int = 739
+    instalado_em: int | None = 1_700_000_000        # o APK gravado em 2023: anterior a qualquer teste deste arquivo
     appops: bool = False
     always_on: str = "null"
     lockdown: str = "0"
@@ -476,7 +480,10 @@ class AparelhoFalso:
         self.comandos.append(comando)
         if comando.startswith("echo U=$(id -u)"):
             return (f"U={self.uid}\nA={self.always_on}\nL={self.lockdown}\nT={int(self.tun)}\nV={int(self.vpn)}\n"
-                    f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nS={self.uptime}\n")
+                    f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nK={self.linha_do_cliente()}\n"
+                    f"S={self.uptime}\n")
+        if comando.startswith("echo M=$(stat -c %Y "):
+            return f"M={'' if self.instalado_em is None else self.instalado_em}\nU={self.uid}\n"
         if comando.startswith("echo A=$(settings get"):
             return f"A={self.always_on}\nL={self.lockdown}\n"
         if comando.startswith("pm path"):
@@ -503,6 +510,17 @@ class AparelhoFalso:
         elif comando.startswith("rm -rf /sdcard/Android/data/"):
             self.relatorios = 0
         return ""
+
+    def linha_do_cliente(self) -> str:
+        """O que o `dumpsys package` mostra do cliente, como o `echo` sem aspas entrega (uma linha só)."""
+        if not self.instalado:
+            return ""
+        return (f"codePath=/data/app/~~{self.instalacao}==/{PKG}-{self.instalacao}== versionCode={self.versao} "
+                "minSdk=32 targetSdk=37 versionName=1.14.2")
+
+    @property
+    def cliente(self) -> str:
+        return f"1.14.2 ({self.versao}) /data/app/~~{self.instalacao}==/{PKG}-{self.instalacao}=="
 
     async def elementos(self) -> list[Elemento]:
         els = [Elemento(t, PKG, (100 + 10 * i, 900)) for i, t in enumerate(self.tela)]
@@ -602,7 +620,16 @@ async def test_desfazer_e_a_leitura_como_uid_2000() -> None:
                                         "echo L=$(settings get secure always_on_vpn_lockdown)"]
     assert "tirados" in evidencia
     assert "id -u" in comando_de_observacao(PKG) and "ni[{]VPN CONNECTED" in comando_de_observacao(PKG)
-    obs = ler_observacao("U=2000\nA=io.nekohasekai.sfa\nL=1\nT=1\nV=1\nR=1\nC=0\nP=1\nS=42\n")
+    obs = ler_observacao("U=2000\nA=io.nekohasekai.sfa\nL=1\nT=1\nV=1\nR=1\nC=0\nP=1\n"
+                         "K=codePath=/data/app/~~AbC==/io.nekohasekai.sfa-XyZ== versionCode=739 minSdk=32 targetSdk=37 "
+                         "versionName=1.14.2\nS=42\n")
+    # A instalação do cliente: versão e pasta (sorteada a cada instalação). É a isto que a prova de vazamento se prende.
+    assert obs.cliente == "1.14.2 (739) /data/app/~~AbC==/io.nekohasekai.sfa-XyZ=="
+    assert "dumpsys package io.nekohasekai.sfa" in comando_de_observacao(PKG)
+    # Instalado e sem identidade legível é leitura incompleta (repete depois), nunca "cliente desconhecido".
+    with pytest.raises(RedeAplicacaoError, match="incompleta"):
+        ler_observacao("U=2000\nA=io.nekohasekai.sfa\nL=1\nT=1\nV=1\nR=1\nC=0\nP=1\nK=\nS=42\n")
+    assert ler_observacao("U=2000\nA=null\nL=0\nT=0\nV=0\nR=0\nC=0\nP=0\nK=\nS=42\n").cliente == ""
     assert obs.configuracao_ok(PKG, True) and obs.conectada(True) and obs.uptime_s == 42
     root = AparelhoFalso(uid=0)
     with pytest.raises(RedeAplicacaoError, match="uid 0"):
@@ -731,8 +758,15 @@ async def test_convergencia_aplica_pede_reinicio_e_conecta(parque: Harness, monk
     assert "medição do tráfego" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
     # A primeira medição da conexão sai na próxima varredura, não depois da deriva (android-05, 29/09: 16 min parado).
     assert st.rede_convergencia._acao(_linha(parque), "varredura") == "verificar"
-    rede.registrar_medicao(st, "android-01", rede.NetworkMeasurementInput(
-        method="app_qa", egress_ipv4="45.162.8.9", per_app={"com.pocqa.messenger": "ok"}, leak_blocked=True), rev=1)
+    # Com bloqueio, a medição sozinha não libera: falta a prova de vazamento da linha (o teste com o cliente parado).
+    medicao = rede.NetworkMeasurementInput(method="app_qa", egress_ipv4="45.162.8.9",
+                                           per_app={"com.pocqa.messenger": "ok"}, leak_blocked=True)
+    rede.registrar_medicao(st, "android-01", medicao, rev=1)
+    assert _linha(parque)["state"] == "parcial" and st.rede_convergencia.motivo_de_espera("android-01") is not None
+    assert rede.marcar_ensaio_de_vazamento(st, "android-01", rev=1, cliente=ap.cliente)
+    assert rede.gravar_prova_de_vazamento(st, "android-01", rev=1, cliente=ap.cliente, resultado=True,
+                                          quando=now_iso(), detalhe="Permission denied")
+    rede.registrar_medicao(st, "android-01", medicao, rev=1)
     assert _linha(parque)["state"] == "trafego_verificado"
     assert st.rede_convergencia.motivo_de_espera("android-01") is None
     # Nenhum segredo nas tabelas de texto, nos comandos nem nos eventos.

@@ -3609,3 +3609,41 @@ marcada, idempotência por chave, posse por prazo, sucessora e o gancho de fim d
    a proibição de simular apoio de pessoas independentes.
 
 **Relação.** ADR-047, ADR-051, ADR-054, ADR-055; Fase 26; [design/pedidos-persistentes.md](design/pedidos-persistentes.md).
+
+## ADR-061 — A prova de vazamento é da linha do aparelho: presa à revisão e ao cliente VPN, sem validade por relógio
+
+**Data:** 30/09/2026 · **Estado:** aceito · **Decisão técnica** (item 29.2; pendência P16 da terceira evolução).
+O número 060 é o que [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §5 nomeia para a Fase 28.
+
+**Contexto.** A política `exigida_com_bloqueio` (ADR-056 §3) só libera tarefa com o bloqueio fora da VPN provado, e
+a prova é um teste destrutivo: o cliente VPN é parado, a sonda precisa ser recusada pelo Android e, quase sempre, o
+aparelho reinicia para religar o cliente. O desfecho vivia na memória do backend. Medido em 30/09: um reinício do
+backend às 02:40Z custou 11 reinícios de aparelho horas depois (a remedição a 90% da validade refez o teste em três
+aparelhos, dois com conta real), e cada reinício ainda rolou o dado do túnel que não sobe no boot.
+
+**Decisão.**
+
+1. A prova mora em `device_network` (migração 063): revisão, instalação do cliente VPN, resultado, quando, detalhe e
+   a marca de ensaio pendente. Vale com a revisão pedida, o cliente lido agora no aparelho e resultado positivo.
+2. É ela que decide `trafego_verificado` na política com bloqueio e que a porta da tarefa consulta. A medição
+   registra o que levou; não declara o bloqueio.
+3. Invalidam: revisão nova, cliente de outra instalação, wipe ou identidade, e `POST …/verify`. **O relógio não**: a
+   validade é da medição barata, e o bloqueio em vigor é relido a cada conferência. Reaplicar a mesma revisão não
+   invalida.
+4. A intenção do ensaio é gravada antes do `force-stop`; o desfecho, com CAS pela revisão. Ensaio sem desfecho e sem
+   ninguém o rodando é fechado como inconclusivo, sem parar o cliente de novo.
+5. Negativo, inconclusivo e ausente nunca aprovam. Negativo e inconclusivo não se refazem sozinhos.
+6. Na primeira subida, a prova anterior é adotada só com aparelho, revisão, histórico e data do cliente demonstrados;
+   a migração não escreve prova.
+
+**Alternativas.** Tabela própria de testes: exigiria junção na porta, perguntada a cada segundo, e limpeza; a linha já
+tem o CAS por revisão. Refazer o teste por validade: troca uma propriedade do sistema, que a deriva já vigia, por
+reinícios certos em aparelhos com conta real. *Backfill* na migração com o cliente vazio valendo "até a primeira
+leitura": atribuiria a prova a um cliente desconhecido. Política `exigida` sem bloqueio: abre mão do que o ADR-056 §3
+exige. Manter a prova antiga até o teste novo no `verify`: deixaria a tarefa passar com uma prova que a pessoa pediu
+para refazer.
+
+**Consequências.** `verify` com bloqueio segura a tarefa até o teste novo (minutos). Voltar ao código anterior
+reintroduz o defeito: as colunas ficam e são ignoradas, o que torna a volta possível, não segura.
+
+**Relação.** ADR-056 (rede por aparelho); K-063 (o teste numa ida só); K-065; item 29.3 (o túnel que não sobe no boot).

@@ -31,7 +31,9 @@ function linha(over: Partial<NetworkDeviceRow> = {}): NetworkDeviceRow {
 function rede(over: Partial<NonNullable<NetworkDeviceRow['network']>> = {}) {
   return { instance_id: 'android-01', vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' as const,
            desired_rev: 1, applied_rev: 1, state: 'pendente' as const, detail: null, error: null,
-           egress_ipv4: null, egress_ipv6: null, verified_at: null, updated_at: '', updated_by: null, ...over };
+           egress_ipv4: null, egress_ipv6: null, verified_at: null, updated_at: '', updated_by: null,
+           leak_rev: null, leak_client: null, leak_result: null, leak_at: null, leak_detail: null, leak_pending: false,
+           ...over };
 }
 
 /** `GET /network/server` no molde de `ServidorDeRede.status()` (25.4) com o `remote_access` do 25.7. */
@@ -332,6 +334,34 @@ it('prévia em voo quando a seleção muda: a resposta velha não liga "Aplicar"
   expect((final!.instance_ids as string[]).slice().sort()).toEqual(['android-01', 'android-02']);
 });
 
+it('a prova de vazamento da linha aparece por revisão e cliente, e só "provado" não é alerta (29.2)', async () => {
+  const base = { vpn_profile_id: 'vpn-1', policy: 'exigida_com_bloqueio' as const, state: 'trafego_verificado' as const,
+                 desired_rev: 2, applied_rev: 2, leak_at: '2026-09-30T06:52:38Z',
+                 leak_client: '1.14.2 (739) /data/app/~~AbC==/io.nekohasekai.sfa-XyZ==' };
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({ instance_id: 'android-01', network: rede({ ...base, leak_rev: 2, leak_result: true }) }),
+      linha({ instance_id: 'android-02', network: rede({ ...base, instance_id: 'android-02', leak_rev: 1, leak_result: true }) }),
+      linha({ instance_id: 'android-03', network: rede({ ...base, instance_id: 'android-03', leak_rev: 2, leak_result: null,
+                                                         leak_detail: 'vazamento não medido: o ensaio foi interrompido' }) }),
+      linha({ instance_id: 'android-05', network: rede({ ...base, instance_id: 'android-05', leak_rev: 2, leak_result: false }) }),
+      linha({ instance_id: 'android-06', network: rede({ ...base, instance_id: 'android-06', leak_rev: 2, leak_pending: true }) }),
+      linha({ instance_id: 'android-07', network: rede({ ...base, instance_id: 'android-07', policy: 'exigida' }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('bloqueio fora da VPN'));
+  expect(text()).toContain('rev 2, cliente 1.14.2 (739)');                    // a pasta de instalação fica no title
+  expect(text()).not.toContain('/data/app/');
+  expect(text()).toContain('a prova é da rev 1, e a pedida é a 2');           // prova de outra revisão não vale
+  expect(text()).toContain('não concluiu');
+  expect(text()).toContain('VAZOU');
+  expect(text()).toContain('teste em curso');
+  // Sem bloqueio pedido, a linha nem aparece: cinco aparelhos com a frase, não seis.
+  expect(text().split('bloqueio fora da VPN:').length - 1).toBe(5);
+  expect(container.querySelector('[title="vazamento não medido: o ensaio foi interrompido"]')).not.toBeNull();
+});
+
 it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída repetida vinda do backend (25.5)', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
     devices: [
@@ -353,6 +383,7 @@ it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída 
   expect(text()).toContain('DNS 172.19.0.2');
   expect(text()).toContain('UDP falhou');
   expect(text()).toContain('vazamento não medido');                          // null nunca vira "bloqueado"
+  expect(text()).toContain('bloqueio fora da VPN: sem prova');                // com bloqueio pedido e sem prova na linha
   expect(text()).toContain('com.microsoft.office.outlook: sem tráfego medido');
   expect(text()).toContain('com.instagram.android: pelo túnel');
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(1);

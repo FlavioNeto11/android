@@ -360,8 +360,10 @@ que falta no `detail`; sem IP, o estado fica. Vocabulário de `per_app`: `ok` (s
 sonda do 25.5, no próximo ponto seguro; `…/apply` executa já). Reaplicar é revisão nova (`applied_rev <
 desired_rev`, durável). Verificar não muda o estado; o pedido fica no `detail`, no evento e na memória da
 convergência (`ConvergenciaDeRede.pedir_verificacao`), que roda a sonda na próxima varredura com o aparelho livre ou
-antes da tarefa, refazendo o teste de vazamento da revisão. Um reinício do backend perde o pedido em memória, mas a
-readoção (`ligou`) mede de novo quem ainda não está verificado. Loja, quarentena e aparelho sem rede pedida
+antes da tarefa. Com a política `exigida_com_bloqueio`, verificar **apaga a prova de vazamento da linha** (é o pedido
+de refazer o teste): a falta dela é o que dispara o teste, então o pedido sobrevive a um reinício do backend, e até o
+teste novo provar o bloqueio a tarefa com rede exigida espera. Sem bloqueio, um reinício do backend perde a marca em
+memória, e a readoção (`ligou`) mede de novo quem ainda não está verificado. Loja, quarentena e aparelho sem rede pedida
 (`nothing_requested`) são recusados.
 
 **Visão por aparelho.** `GET /api/network/devices`: por aparelho do parque (a loja fica de fora), `network`
@@ -401,7 +403,8 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   precisa da VPN desligada); o perfil do aparelho servido **uma vez** por um HTTP efêmero em `127.0.0.1` do central
   (`ServidorDeUmaVez`: os bytes ficam em memória, o caminho tem token, um GET e fecha), montado e entregue pelo
   consumidor restrito (`segredo_de_rede.segredos_entregues`); o aparelho local chega por `10.0.2.2` (medido), o do
-  worker por `adb reverse tcp:P tcp:P` (desfeito ao fim; a prova é do 25.7); `am start …
+  worker por `adb reverse tcp:P tcp:P` (desfeito ao fim; só há prova simulada — num aparelho do worker é `not_run`,
+  ver 25.7); `am start …
   sing-box://import-remote-profile?url=…#plataforma-<id>-r<rev>`; os toques achados pelo **texto** na árvore da
   plataforma e só no pacote do cliente ("No, thanks" na primeira execução, "OK", "Create", nessa ordem); espera o GET;
   `sync`; `settings put secure always_on_vpn_app <pkg>` e `always_on_vpn_lockdown` 1 só com `exigida_com_bloqueio`
@@ -496,7 +499,8 @@ nada é medido. O que se mede:
   `trafego_verificado` a cada "Verificar". A do shell (`com.android.shell`, a própria sonda, sempre no `per_app`) é
   só a passada, e sem IP nenhum ela é `falhou`;
 - **vazamento** (só com `exigida_com_bloqueio`; `rede_medicao.sondar_vazamento`): feito **antes** da medição e uma
-  vez por revisão, com a VPN derrubada DE VERDADE. A sonda de IPv4 precisa sair pelo túnel primeiro (sem isso, nada
+  vez por revisão e por instalação do cliente VPN (a prova fica na linha do aparelho; ver "A prova de vazamento",
+  abaixo), com a VPN derrubada DE VERDADE. A sonda de IPv4 precisa sair pelo túnel primeiro (sem isso, nada
   é tocado e `leak_blocked` fica `None`: sonda que não funciona não prova bloqueio). Depois o **cliente VPN é
   parado** e a sonda roda de novo, ao mesmo host, **numa ida só ao shell** (uid 2000;
   `sonda_rede.comando_parar_e_sondar`): até 5 tentativas de `am force-stop`, cada uma esperando o
@@ -526,6 +530,70 @@ nada é medido. O que se mede:
   que a plataforma não reinicia de verdade (25.7; lá, `exigida_com_bloqueio` fica em `parcial` — use `exigida`). O teste vale também com servidor externo (não depende de parar servidor nenhum), e o servidor do central
   não é tocado: os outros pares não perdem a conexão. Depois do `force-stop`, nenhuma falha levanta erro: o desfecho
   volta a quem religa o cliente, para o aparelho nunca ficar sem VPN (e, com bloqueio, sem rede) esquecido.
+
+### A prova de vazamento (item 29.2, ADR-061)
+
+O teste de vazamento para o cliente VPN e, quase sempre, custa um reinício do aparelho. Até 30/09 o desfecho dele
+vivia só na memória da convergência: um reinício do backend o perdia, e a remedição seguinte (a 90% de
+`rede.validade_verificacao_s`) refazia o teste em todo aparelho com bloqueio. Medido em 30/09: um reinício do backend
+às 02:40Z custou 11 reinícios de aparelho entre 06:52Z e 07:59Z, em três aparelhos, dois com conta real.
+
+A prova mora em `device_network` (migração 063):
+
+| Coluna | O que guarda |
+|---|---|
+| `leak_rev` | a revisão (`desired_rev`) em que o teste foi feito; vazio = nenhum teste |
+| `leak_client` | a instalação do cliente VPN testada: `<versão> (<código>) <pasta de instalação>`, lida do aparelho como uid 2000 na mesma ida em que se lê o resto da rede. A pasta é sorteada pelo Android a cada instalação ou atualização |
+| `leak_result` | 1 = o Android recusou a sonda fora da VPN; 0 = vazou; vazio = não concluiu |
+| `leak_at`, `leak_detail` | quando, e o que a sonda mostrou (ou por que a prova foi apagada) |
+| `leak_pending` | 1 entre a intenção do ensaio e o desfecho |
+
+**Quando vale.** `leak_rev = desired_rev`, `leak_client` igual ao cliente lido agora e `leak_result = 1`. É a prova
+da linha, e não o `leak_blocked` de uma medição, que decide `trafego_verificado` na política com bloqueio e que a
+porta da tarefa consulta (`rede.bloqueio_provado`, `rede.verificacao_invalida` → `bloqueio`). O `leak_blocked` da
+medição é o registro do que a sonda levou.
+
+**O que invalida.** Revisão nova (a chave deixa de casar; reaplicar a **mesma** revisão depois de uma falha não
+invalida, senão um teste que custa reinício viraria laço). Cliente VPN de outra instalação (a conferência apaga a
+prova). Wipe, reset ou outro aparelho atrás do id (o gancho `invalidar`). `POST …/verify`.
+
+**O que não invalida.** O relógio. A validade governa a medição barata (IP, DNS, UDP, apps); o bloqueio é relido a
+cada conferência (`always_on_vpn_lockdown`, "Lockdown filtering rules"), e a falta dele regride a linha pela deriva.
+Um túnel caído também não: a linha regride a `configurado`, a prova fica, e o aparelho segue sem saída fora da VPN
+até o túnel voltar.
+
+**O ensaio.** A intenção é gravada antes do `force-stop` (`leak_pending = 1`, com CAS pela revisão aplicada) e o
+desfecho depois (CAS pela revisão, pela instalação e pela marca de pendente: o resultado de um ensaio de revisão
+antiga não vira prova da nova). Quem encontra `leak_pending = 1` sem ensaio em curso neste processo — o backend
+reiniciou no meio — fecha como inconclusivo e **não** para o cliente de novo; se o túnel ficou caído, é deriva, e o
+caminho de sempre (`configurado` → reinício) o religa.
+
+**O que nunca aprova.** Resultado 0, vazio ou ausente leva a `parcial`. Vazou e inconclusivo são desfechos: não se
+refazem sozinhos, só por `POST …/verify`, revisão nova ou cliente novo, e a linha nesse estado deixa de ser medida a
+cada `rede.sonda.reverificar_s` (só quando a última saída medida está para sair da validade). O teste adiado (objetivo
+no meio, celular sem worker) não é desfecho: nada é gravado, e enquanto segue adiado a passada confere e dispensa a
+medição — no android-05, em 30/09, a sonda rodou 34 vezes em seis horas para escrever o mesmo `parcial`.
+
+**Transição (primeira subida com a 063).** A prova que o código anterior fez ficou só no histórico. Ela é adotada,
+sem parar o cliente, quando o registro a sustenta (`rede.prova_anterior`): a linha nunca escrita pelo mecanismo novo,
+a última medição com o bloqueio provado, e os comandos `verificar` da revisão, do mais novo para trás, todos com o
+bloqueio provado — o mais antigo deles é o teste; **e** quando o APK do cliente VPN no aparelho é anterior a esse
+teste (`stat -c %Y`, em segundos desde 1970, lido na hora). Sem a correspondência, o teste é feito. Uma prova apagada
+(o motivo fica em `leak_detail`) nunca é readotada.
+
+| O que foi provado | Nível |
+|---|---|
+| Reinício do backend com prova válida não para o cliente nem reinicia o aparelho, inclusive na remedição a 90% da validade e com a validade vencida | `simulated`: `tests/test_rede_sonda.py::test_reinicio_do_backend_com_prova_valida_nao_para_o_cliente_nem_reinicia_o_aparelho` (no código de `6997091` o mesmo cenário para o cliente de novo: `paradas == 2`) |
+| Revisão nova, cliente de outra instalação, wipe e `verify` invalidam | `simulated`: `::test_vazamento_em_cache_so_vale_para_a_mesma_revisao`, `::test_cliente_vpn_de_outra_instalacao_invalida_a_prova`, `::test_wipe_apaga_a_prova`, `::test_verify_apaga_a_prova_e_o_pedido_sobrevive_ao_reinicio_do_backend` |
+| Túnel caído mantém a prova e o bloqueio | `simulated`: `::test_tunel_caido_mantem_a_prova_e_o_bloqueio` |
+| Inconclusivo e vazou não aprovam nem se repetem | `simulated`: `::test_inconclusivo_nunca_aprova_e_nao_se_repete`, `::test_vazou_fica_parcial_e_a_tarefa_espera` |
+| Intenção antes do `force-stop`; ensaio interrompido não se repete | `simulated`: `::test_intencao_gravada_antes_do_force_stop_e_ensaio_interrompido_nao_se_repete` |
+| Desfecho de revisão antiga não vira prova da nova | `simulated`: `::test_desfecho_de_revisao_antiga_nao_vira_prova_da_nova` |
+| Adoção só com a correspondência demonstrada | `simulated`: `::test_prova_anterior_a_migracao_e_adotada_sem_parar_o_cliente` e os três casos de `::test_prova_anterior_que_nao_se_demonstra_nao_e_adotada` |
+| A 063 num banco com aparelho verificado; a 059 criada depois | `simulated` em SQLite: `tests/test_db.py::test_migracao_063_…` e `::test_migracao_de_numero_menor_criada_depois_ainda_e_aplicada`; em PostgreSQL `not_run` (item 29.14) |
+| A leitura do cliente e da data do APK em aparelho real | `real`, 30/09 ~12:50Z, android-02, 03 e 06, como uid 2000, só leitura |
+| A 063 numa cópia do banco do central e a decisão de adoção dos quatro aparelhos | `real`, 30/09 12:57Z: aplicada sem divergência; android-02, 03 e 06 adotam, android-05 não (a última medição dele não provou) |
+| Reinício do backend no central sem reinício de aparelho, por 6 h | `not_run` até o item 29.4 |
 
 A medição vai para `rede.registrar_medicao` (`method`: "sonda nc http/1.0 + netstats por uid (uid 2000)"), que decide
 `trafego_verificado`/`parcial` pelas regras acima. **Comparação entre aparelhos**: a mesma última saída medida (v4 ou
@@ -600,18 +668,51 @@ verbo, e nada muda na rota do host nem no túnel SSH. Duas diferenças, e só el
 
 O UDP do notebook chega ao sing-box do central só se o **Firewall do Windows daqui** deixar — mexer em firewall é
 proibido para a automação (P2). A plataforma só **lê** (`devices/rede_firewall.py`: um PowerShell sem nenhum verbo
-que escreva, no `ActiveStore`, ~3,5 s) os perfis, a rede em que o `endpoint_lan` está e as regras do executável ou
-da porta, e conclui na ordem do Windows: perfil desligado não filtra (`desligado`); regra de entrada habilitada que
-bloqueia vence a que permite (`bloqueado` — a que o Windows cria quando o aviso "permitir acesso" fica sem
-resposta); regra que permite UDP na porta ao executável (`liberado`); sem regra, vale a entrada padrão (`sem_regra`
-com Block); não leu (`desconhecido`: fora do Windows, erro, prazo). Cada leitura vem com o **comando exato do dono**:
+que escreva, no `ActiveStore`, ~3 a 4 s) os perfis, as interfaces com endereço e prefixo, e as regras de entrada
+habilitadas do executável ou da porta UDP. Cada regra é julgada contra o que o pacote do notebook encontra **de
+fato** (29.8): a porta UDP; o perfil **efetivo** da interface que tem o `endpoint_lan`; essa interface
+(`InterfaceAlias`: a própria ou `Any`); o endereço local; a origem (`RemoteAddress`), que precisa **conter** a
+sub-rede IPv4 daquela interface, calculada do endereço e do prefixo que o sistema informa; e o programa, quando a
+regra tem um. A conclusão segue a ordem do Windows:
+
+| estado | quer dizer | a aplicação num remoto |
+|---|---|---|
+| `desligado` | o firewall do perfil daquela rede está desligado: não filtra | segue |
+| `bloqueado` | uma regra de entrada habilitada bloqueia e vence a que permite (a que o Windows cria quando o aviso "permitir acesso" fica sem resposta). Para bloquear, basta a origem pegar um pedaço da LAN | recusa |
+| `liberado` | uma regra permite UDP na porta, vinda da LAN do endpoint, naquela interface e naquele perfil (ou a entrada padrão é Allow). Origem `Any` libera **com aviso**: está mais aberta que o necessário — o servidor escuta também em `[::]` e a Wi-Fi do central tem IPv6 público | segue |
+| `regra_obsoleta` | a regra existe, mas aponta (`-Program`) para um executável que não é o binário atual do servidor (o caminho do sing-box tem a versão no nome; a atualização deixa a regra para trás) | recusa |
+| `sem_regra` | entrada padrão Block e nenhuma regra que cubra. As que existem e não cobrem vão ditas no `detail` com o porquê: outra interface, outra sub-rede, só parte da LAN (um endereço só), outro perfil | recusa |
+| `desconhecido` | não leu (fora do Windows, erro, prazo) ou a regra que decidiria não pôde ser conferida (o `endpoint_lan` não é endereço desta máquina, regra presa a um tipo de interface ou a um usuário local): não prova nem nega | segue, com a nota |
+
+Regra de **outro** programa que abre UDP em qualquer porta (TeamViewer, Teams: há várias no central) não conta para
+nada. Cada leitura traz três comandos, todos montados com o que o sistema informou:
 
 ```powershell
-New-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 51820 -Program '<caminho absoluto do rede.servidor.binario>' -RemoteAddress LocalSubnet -Profile <perfil da rede do endpoint_lan>
+# commands — o que FALTA rodar (vazio quando nada falta), num PowerShell de administrador do central:
+$n='Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)'; Get-NetFirewallRule -DisplayName $n -EA 0 | Remove-NetFirewallRule; New-NetFirewallRule -DisplayName $n -Direction Inbound -Action Allow -Protocol UDP -LocalPort 51820 -RemoteAddress <sub-rede IPv4 da interface do endpoint_lan> -InterfaceAlias '<interface do endpoint_lan>' -Profile Any
+
+# inspect_command — ver a regra (só leitura): perfil, porta, origem, interface e programa
+Get-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)' | ForEach-Object { [pscustomobject]@{ Regra = $_.DisplayName; Habilitada = $_.Enabled; Acao = $_.Action; Perfil = $_.Profile; Protocolo = ($_ | Get-NetFirewallPortFilter).Protocol; Porta = ($_ | Get-NetFirewallPortFilter).LocalPort; Origem = ($_ | Get-NetFirewallAddressFilter).RemoteAddress; Interface = ($_ | Get-NetFirewallInterfaceFilter).InterfaceAlias; Programa = ($_ | Get-NetFirewallApplicationFilter).Program } } | Format-List
+
+# revert_command — desfazer
+Remove-NetFirewallRule -DisplayName 'Central de Aparelhos - rede por aparelho (WireGuard UDP 51820)'
 ```
 
-(e `Disable-NetFirewallRule -Name '<regra>'` para cada regra que bloqueia; a de política de grupo é dita, porque o
-comando local não a desfaz). Na aplicação num remoto a convergência relê o firewall: `bloqueado`/`sem_regra`
+O porquê de cada parte da regra: **sem `-Program`**, porque o caminho do sing-box leva a versão
+(`data/rede/sing-box-1.14.2-windows-amd64/`) e a regra morreria na atualização; **origem = a sub-rede da LAN**
+(no central de hoje, `192.168.1.0/24`), e não `Any` (exporia a porta pelo IPv6 público da Wi-Fi) nem `LocalSubnet`
+(cobre também o vEthernet do WSL); **`-InterfaceAlias`**, porque o servidor escuta em todas as interfaces;
+**`-Profile Any`**, porque a restrição de verdade é a origem e a interface, e o perfil muda quando o Windows
+reclassifica a rede (Public ↔ Private). É **idempotente**: tira a regra de mesmo nome antes de criar (`-EA 0` é
+`-ErrorAction SilentlyContinue`: sem regra anterior, segue calado), então rodar duas vezes deixa uma regra só — e é
+assim que o mesmo comando troca uma `regra_obsoleta`. O que o sistema não informou (o `endpoint_lan` não é de
+nenhuma interface, é um nome, ou veio sem prefixo) vira o marcador `<SUB-REDE-IPV4-DA-LAN>` /
+`<INTERFACE-DA-LAN>`, que o PowerShell recusa (a linha inteira não roda), e o `missing` e o `detail` dizem o que
+faltou — com os endereços que a máquina tem, para corrigir o `endpoint_lan`. Sem a regra, a inspeção responde que
+não achou nenhuma com esse nome. Para cada regra que bloqueia vem um `Disable-NetFirewallRule -Name '<regra>'` (a de
+política de grupo é dita, porque o comando local não a desfaz).
+
+Na aplicação num remoto a convergência relê o firewall: os fechados (`bloqueado`, `sem_regra`, `regra_obsoleta`)
 **recusam** (`pendente` com o comando no `error`: aplicar assim deixaria o túnel "no ar" sem handshake e, com
 bloqueio, o aparelho sem rede); `desconhecido` segue com a nota na evidência, e a conexão do par no log do servidor e
 a sonda decidem. O `conectado` de um remoto sem conexão no log diz o endpoint e o estado do firewall. Com par remoto
@@ -619,17 +720,25 @@ no servidor, o laço de 60 s relê o firewall a cada 10 min (cache); sem par rem
 
 Rotas: `GET /api/network/server` ganha `remote_access` (`lan_endpoint`, `wireguard_udp_port`, `remote_peers`,
 `firewall` — a última leitura, `null` se ainda não lida: o GET não roda PowerShell) e `remote` em cada par;
-`POST /api/network/server/firewall-check` relê já e devolve o `remote_access`. No painel Rede, o cartão "Servidor do
-central" mostra o endereço da LAN, os aparelhos remotos, o estado do firewall e o comando, com "Conferir firewall".
+`POST /api/network/server/firewall-check` relê já e devolve o `remote_access`. O `firewall` traz `state`, `detail`,
+`endpoint`, `profile`, `interface`, `endpoint_is_local`, `allowing_rules`, `blocking_rules`, `commands` e, desde o
+29.8, `lan_subnet`, `warnings`, `stale_rules`, `ignored_rules` (as que não cobrem, com o porquê), `missing`,
+`inspect_command` e `revert_command`. No painel Rede, o cartão "Servidor do central" mostra o endereço da LAN, os
+aparelhos remotos, o estado do firewall e o comando, com "Conferir firewall" (o cartão ainda não conhece o estado
+`regra_obsoleta` nem mostra a inspeção, a reversão e os avisos: pendência do painel).
 
-Leitura real do firewall (só leitura, 29/09 22:12 UTC, central, worktree `evo3-d1` sobre `3823f4b`): Wi-Fi
-192.168.1.81 no perfil **Public**, os três perfis ligados com entrada Block, nenhuma regra para o sing-box nem para a
-UDP 51820 → `sem_regra`. **Procedimento do dono** para a prova num remoto:
+Leitura real do firewall (só leitura, central): em 29/09 22:12 UTC (worktree `evo3-d1` sobre `3823f4b`) e de novo
+em 30/09 12:48 UTC com o leitor do 29.8 (worktree `p3-firewall`, pelo `powershell.exe` 5.1, 2,7 a 4,0 s, 15 regras
+candidatas): Wi-Fi 192.168.1.81/24 no perfil **Public**, os três perfis ligados com entrada Block, nenhuma regra para
+o sing-box nem para a UDP 51820 → `sem_regra`, com `lan_subnet 192.168.1.0/24`, `interface Wi-Fi` e o comando acima
+preenchido com os dois. A regra **não foi criada** (é do dono): o `liberado` lido no sistema real é `not_run`.
+**Procedimento do dono** para a prova num remoto:
 
-1. `rede.servidor.endpoint_lan: 192.168.1.81` no `config/config.yaml` do central (confira o IP; DHCP muda) e reinicie
-   o backend;
-2. num PowerShell de administrador do central, o comando que `POST /api/network/server/firewall-check` devolve
-   (hoje, com `-Profile Public`); relido, o estado vira `liberado`;
+1. `rede.servidor.endpoint_lan: 192.168.1.81` no `config/config.yaml` do central (confira o IP; DHCP muda — uma
+   reserva no roteador evita refazer tudo) e reinicie o backend;
+2. num PowerShell de administrador do central, o comando que `POST /api/network/server/firewall-check` devolve em
+   `commands`; confira com o `inspect_command` (`Origem 192.168.1.0/255.255.255.0` — o Windows mostra a máscara
+   por extenso —, `Interface Wi-Fi`, `Perfil Any`, `Programa Any`); relido, o estado vira `liberado` sem aviso;
 3. um aparelho do notebook (android-09…15), sem conta real ou com a autorização por aparelho (ADR-056 §7), com um
    perfil de VPN `params.servidor: "central"` e `POST /api/network/devices/{id}/apply`;
 4. a prova: `inbound connection from 10.66.0.N` do endereço daquele aparelho no log do servidor
@@ -639,8 +748,12 @@ UDP 51820 → `sem_regra`. **Procedimento do dono** para a prova num remoto:
 Limites conhecidos: o perfil antigo fica dentro do SFA a cada reaplicação (sem root não há como apagá-lo; o novo fica
 selecionado sozinho); o proxy SOCKS5 perde o UDP que não é DNS (medido); o servidor escuta a UDP 51820 em todas as
 interfaces (o endpoint não tem campo de escuta); um perfil `wireguard` externo leva UMA chave e serve a um aparelho
-por vez (P1); o aparelho do worker depende do `endpoint_lan` e da regra de firewall do dono (25.7), e uma regra com
-`-RemoteAddress LocalSubnet` só vale para o notebook na mesma sub-rede do central.
+por vez (P1); o aparelho do worker depende do `endpoint_lan` e da regra de firewall do dono (25.7), e a regra
+proposta, restrita à sub-rede da LAN, só vale para o notebook na mesma sub-rede do central (um worker fora dela não
+é coberto, e nada aqui o prova); a leitura do firewall só considera as regras UDP que cobrem a porta e as do
+executável — uma regra genérica de protocolo `Any` sem programa não é lida (é onde moram as regras de pacote de app
+e as presas a um usuário local, que não dizem respeito ao sing-box), e uma regra restrita a um único endereço da LAN
+(só o notebook) é lida como fechada, porque não contém a LAN do endpoint.
 
 A redação por formato (`security/redaction.py`) cobre a rede: a senha em `socks5://`, `socks5h://` e `socks4://`
 (`usuario:***@`), `PrivateKey`/`private_key`, `PresharedKey`/`pre_shared_key`/`psk` e a chave de 44 caracteres
@@ -654,4 +767,4 @@ solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do clien
 | Aplicação e convergência: receita do SFA, comando `device.network`, reinício, conexão como uid 2000, deriva, wipe, desfazer, porta da rede, servidor sing-box do central com regras que fecham o central, chaves por aparelho (058), `sync` antes de desligar, teto de reinícios pedidos (com ou sem boot detectado, recusa conta) (25.4) | implementado | `simulated` (`tests/test_rede_aplicacao.py`, 30 casos; o teto em `::test_reinicio_sem_boot_detectado_tem_teto` e `::test_reinicio_recusado_tambem_conta_para_o_teto`, que falham sem a correção: aparelho e processo falsos; o HTTP de uso único é o único socket real, em 127.0.0.1); num aparelho real `not_run`: depende da versão promovida do SFA (25.10), de subir o sing-box de verdade (ACL, regras e `resolve` do 1.14.2) e do tempo real do boot até o `tun0` |
 | Sonda de saída: IP v4/v6 por eco HTTP/1.0 como uid 2000, DNS da VPN, UDP (DNS e NTP), cobertura por UID pelo `dumpsys netstats`, vazamento com o cliente VPN parado (só `Permission denied` prova; religado pelo boot), abrir o app parado quando a tarefa espera, comparação entre aparelhos, passo `verificar` da convergência (25.5) | implementado | `simulated` (`tests/test_rede_sonda.py`, 17 casos; o vazamento em `::test_vazamento_so_com_o_cliente_parado_e_so_permission_denied_prova`: saídas remontadas no formato real com os números do 25.1, aparelho e processo falsos); num aparelho real `not_run`: depende do 25.4 real (SFA promovido, sing-box de verdade) e de um eco de IP alcançável; o `printf` com NUL do UDP e o formato do `netstats` do Android 14 só foram vistos no piloto, não por esta sonda |
 | Portão de rede no scheduler: validade de `trafego_verificado` (`rede.validade_verificacao_s`), app de conta vinculada depois da medição, remedição disparada pela porta e adiantada pela varredura, suspensão entre etapas do mesmo app e na troca de app, releitura do aparelho entre etapas, reinício que sai com o objetivo suspenso pela rede, app nunca aberto sem travar a tarefa (25.6) | implementado | `simulated` (`tests/test_rede_portao.py`, 12 casos: aparelho de rede e servidor falsos, provedor por regras e aparelho de QA falso; os casos do scheduler falham sem a porta entre etapas, `::test_queda_do_tunel_no_meio_e_vista_entre_etapas_e_o_reinicio_sai` falha sem a releitura e sem a exceção do reinício, `::test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida` falha sem abrir o app pela porta); num aparelho real `not_run`: depende do 25.4/25.5 reais |
-| Aparelhos do worker: perfil por `adb reverse`, endpoint da LAN (`rede.servidor.endpoint_lan`), leitura do firewall do central com o comando do dono, recusa com firewall fechado, `remote_access` e `POST …/firewall-check`, cartão no painel (25.7) | implementado | `simulated` (`tests/test_rede_worker.py`, 15 casos: aparelho remoto e leitura do firewall falsos; `RedePage.test.tsx`, 2 casos); a leitura do firewall rodou de verdade uma vez, só leitura (29/09, `sem_regra`); aplicação num aparelho do notebook `not_run`: depende de o dono configurar o `endpoint_lan` e criar a regra de firewall |
+| Aparelhos do worker: perfil por `adb reverse`, endpoint da LAN (`rede.servidor.endpoint_lan`), leitura do firewall do central (porta, interface, origem e perfil efetivos; regra obsoleta) com o comando do dono (sem `-Program`, idempotente), a inspeção e a reversão, recusa com firewall fechado, `remote_access` e `POST …/firewall-check`, cartão no painel (25.7, 29.8) | implementado | `simulated` (`tests/test_rede_worker.py`, 24 casos: aparelho remoto e leitura do firewall falsos; os de interface e de sub-rede erradas falham no leitor anterior, que as lia `liberado`; `RedePage.test.tsx`, 2 casos); a leitura do firewall rodou de verdade, só leitura (29/09 e, com o leitor do 29.8, 30/09: `sem_regra`, sub-rede e interface lidas do sistema; sintaxe dos três comandos analisada no `powershell.exe` 5.1 sem executá-los); regra criada e lida como `liberado`, e aplicação num aparelho do notebook, `not_run`: dependem de o dono configurar o `endpoint_lan` e criar a regra de firewall |

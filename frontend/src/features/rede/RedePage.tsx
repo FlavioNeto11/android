@@ -16,8 +16,8 @@ import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, Sh
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkFirewallState, NetworkMeasurement, NetworkPolicy,
-  NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
+  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkFirewallState, NetworkMeasurement,
+  NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -245,6 +245,7 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
           </>
         ) : <span className={s.muted}>não medido</span>}
         {row.last_measurement ? <ResumoDaMedicao m={row.last_measurement} /> : null}
+        {d && d.policy === 'exigida_com_bloqueio' ? <ProvaDeVazamento d={d} /> : null}
       </td>
       <td>{d?.verified_at ? new Date(d.verified_at).toLocaleString('pt-BR') : <span className={s.muted}>nunca</span>}</td>
       <td>
@@ -292,6 +293,30 @@ function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
       ))}
     </div>
   );
+}
+
+/** A prova do teste de vazamento que a LINHA guarda (29.2): é ela, e não o "vazamento" da última medição, que
+ *  decide a política com bloqueio. Presa à revisão e à instalação do cliente VPN; sobrevive a reinício do backend. */
+function ProvaDeVazamento({ d }: { d: DeviceNetwork }) {
+  const daRevisao = d.leak_rev !== null && d.leak_rev === d.desired_rev;
+  const quando = d.leak_at ? new Date(d.leak_at).toLocaleString('pt-BR') : 'sem data';
+  const cliente = d.leak_client ? d.leak_client.split(' /')[0] : 'cliente não lido';
+  let texto: string;
+  let ruim = true;
+  if (d.leak_pending) {
+    texto = 'bloqueio fora da VPN: teste em curso (o cliente VPN é parado para a sonda)';
+  } else if (!daRevisao) {
+    texto = d.leak_rev === null ? 'bloqueio fora da VPN: sem prova (nenhum teste para esta revisão)'
+      : `bloqueio fora da VPN: a prova é da rev ${d.leak_rev}, e a pedida é a ${d.desired_rev}`;
+  } else if (d.leak_result === true) {
+    texto = `bloqueio fora da VPN: provado em ${quando} (rev ${d.leak_rev}, cliente ${cliente})`;
+    ruim = false;
+  } else if (d.leak_result === false) {
+    texto = `bloqueio fora da VPN: VAZOU no teste de ${quando} — "Testar" refaz`;
+  } else {
+    texto = `bloqueio fora da VPN: teste de ${quando} não concluiu — "Testar" refaz (reinicia o aparelho)`;
+  }
+  return <div className={ruim ? `${s.rowNote} ${s.dupe}` : s.rowNote} title={d.leak_detail ?? undefined}>{texto}</div>;
 }
 
 function PerfisCard({ perfis, onCriado, onApagar }: {
@@ -531,6 +556,7 @@ const FIREWALL: Record<NetworkFirewallState, { rotulo: string; tom: Tone }> = {
   desligado: { rotulo: 'firewall desligado', tom: 'warning' },
   bloqueado: { rotulo: 'firewall bloqueia', tom: 'danger' },
   sem_regra: { rotulo: 'firewall sem regra', tom: 'danger' },
+  regra_obsoleta: { rotulo: 'regra do firewall obsoleta', tom: 'danger' },
   desconhecido: { rotulo: 'firewall não lido', tom: 'neutral' },
 };
 
@@ -586,12 +612,21 @@ function ServidorCard() {
                   : <Badge tone="neutral" size="sm">firewall ainda não lido</Badge>}
             </p>
             {fw ? <p className={s.legend}>{fw.detail} (lido em {fw.checked_at})</p> : null}
+            {fw && fw.warnings && fw.warnings.length > 0 ? <p className={s.dupe}>{fw.warnings.join(' ')}</p> : null}
             {fw && fw.commands.length > 0 ? (
               <div>
                 <p className={s.legend}>O dono roda, num PowerShell de administrador do central (a plataforma não mexe no firewall), e depois pede Reaplicar:</p>
                 <pre aria-label="Comando do firewall" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 'var(--fs-xs)' }}>
                   {fw.commands.join('\n')}
                 </pre>
+                {fw.inspect_command ? (
+                  <details>
+                    <summary className={s.legend}>Conferir a regra e desfazer</summary>
+                    <pre aria-label="Inspeção e reversão do firewall" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 'var(--fs-xs)' }}>
+                      {[fw.inspect_command, fw.revert_command].filter(Boolean).join('\n')}
+                    </pre>
+                  </details>
+                ) : null}
               </div>
             ) : null}
           </div>

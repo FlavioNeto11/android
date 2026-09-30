@@ -7,11 +7,12 @@ Cliente: sing-box (SFA, `io.nekohasekai.sfa`), o único que compõe VPN e proxy 
 3. com a VPN DESLIGADA (`am force-stop`): com ela ligada, o download do perfil sai pelo túnel e não alcança o host;
 4. o perfil do aparelho (com a chave dele) servido UMA vez por um HTTP efêmero em 127.0.0.1 do central, montado e
    entregue pelo consumidor restrito do cofre (`segredos_entregues`): o aparelho local chega por `10.0.2.2` (o
-   medido); o do worker, por `adb reverse` (o túnel do adb já o alcança; a prova é do 25.7);
+   medido); o do worker, por `adb reverse` (o túnel do adb já o alcança; prova só simulada, o aparelho do worker
+   com rede é `not_run`, item 29.9);
 5. `am start … sing-box://import-remote-profile?url=…#<nome>` e os toques achados pelo TEXTO na árvore de tela da
    plataforma: "No, thanks" (só na primeira execução), "OK" e "Create";
 6. `sync` — OBRIGATÓRIO: o `restart` da plataforma era `emu kill` sem `sync`, e o perfil importado 26 s antes se
-   perdeu (o `stop_process` agora sincroniza também, mas o agente do worker só ganha isso quando for atualizado);
+   perdeu (o `stop_process` agora sincroniza também, no central e no agente do worker);
 7. `settings put secure always_on_vpn_app <pkg>` e, com a política `exigida_com_bloqueio`,
    `always_on_vpn_lockdown 1` (senão 0); relidos;
 8. apagar `…/files/crash_reports/` (a queda do cliente grava a configuração COM a chave privada ali) e `sync`.
@@ -32,6 +33,7 @@ import http.server
 import ipaddress
 import json
 import logging
+import re
 import secrets as pysecrets
 import threading
 import time
@@ -568,6 +570,9 @@ class Observacao:
     regras_de_bloqueio: bool = False
     relatorios_de_falha: int = 0
     cliente_instalado: bool = False
+    #: A instalação do cliente VPN que está no aparelho (`identidade_do_cliente`): versão e pasta de instalação. A
+    #: prova de vazamento vale para ESTA instalação; atualizar ou reinstalar o cliente muda a pasta e a invalida.
+    cliente: str = ""
     uptime_s: int | None = None
     extras: dict[str, str] = field(default_factory=dict)
 
@@ -604,13 +609,44 @@ def comando_de_observacao(pacote: str) -> str:
         "echo R=$(echo \"$D\" | grep -c 'Lockdown filtering rules'); "
         f"echo C=$(ls {_crash_reports(pacote)} 2>/dev/null | grep -c .); "
         f"echo P=$(pm path {pacote} 2>/dev/null | grep -c package:); "
+        # A instalação do cliente, numa linha (o `echo` sem aspas junta as três): `codePath` (a pasta tem um sufixo
+        # sorteado a cada instalação ou atualização), `versionCode` e `versionName`. Lido como o shell, sem root.
+        f"echo K=$(dumpsys package {pacote} 2>/dev/null | grep -m3 -E 'codePath=|versionCode=|versionName='); "
         "echo S=$(cut -d. -f1 /proc/uptime)"
     )
 
 
+_CODE_PATH = re.compile(r"codePath=(\S+)")
+_VERSION_CODE = re.compile(r"versionCode=(\d+)")
+_VERSION_NAME = re.compile(r"versionName=(\S+)")
+
+
+def identidade_do_cliente(linha: str) -> str:
+    """`<versão> (<código>) <pasta de instalação>` a partir da linha `K` da observação; vazio se não der para ler as
+    três partes. A pasta (`/data/app/~~…==/<pacote>-…==`) é sorteada pelo Android a cada instalação: a mesma versão
+    reinstalada é OUTRA instalação, e não depende do fuso do aparelho como o `lastUpdateTime`."""
+    pasta, codigo, nome = (r.search(linha or "") for r in (_CODE_PATH, _VERSION_CODE, _VERSION_NAME))
+    if not (pasta and codigo and nome):
+        return ""
+    return f"{nome.group(1)} ({codigo.group(1)}) {pasta.group(1)}"
+
+
+def comando_da_instalacao(pacote: str) -> str:
+    """Quando o APK do cliente foi gravado no aparelho, em segundos desde 1970 (independente do fuso do aparelho, ao
+    contrário do `lastUpdateTime` do `dumpsys`). Lido como o shell; a pasta do pacote é legível por todos."""
+    return f"echo M=$(stat -c %Y $(pm path {pacote} 2>/dev/null | head -1 | cut -d: -f2) 2>/dev/null); echo U=$(id -u)"
+
+
+async def instalado_em(ap: AparelhoDaRede, pacote: str) -> int:
+    v = _ler_pares(await ap.shell(comando_da_instalacao(pacote), timeout=30), ("M", "U"))
+    if not v.get("M", "").isdigit():
+        raise RedeAplicacaoError(f"a data de instalação do cliente VPN {pacote} não veio do aparelho")
+    return int(v["M"])
+
+
 def ler_observacao(saida: str) -> Observacao:
-    v = _ler_pares(saida, ("U", "A", "L", "T", "V", "R", "C", "P", "S"))
-    faltam = sorted({"U", "A", "L", "T", "V", "R", "P"} - set(v))
+    v = _ler_pares(saida, ("U", "A", "L", "T", "V", "R", "C", "P", "K", "S"))
+    faltam = sorted({"U", "A", "L", "T", "V", "R", "P", "K"} - set(v))
     if faltam:
         raise RedeAplicacaoError(f"a leitura da rede no aparelho veio incompleta (faltou {', '.join(faltam)})")
 
@@ -621,9 +657,15 @@ def ler_observacao(saida: str) -> Observacao:
             return 0
 
     uid = int(v["U"]) if v["U"].isdigit() else None
+    cliente = identidade_do_cliente(v["K"])
+    if num("P") > 0 and not cliente:
+        # Instalado e sem identidade legível: não dá para saber A QUAL instalação a prova de vazamento pertence. É
+        # leitura incompleta (repete depois), nunca "cliente desconhecido" — que levaria a refazer o teste à toa.
+        raise RedeAplicacaoError("a leitura da rede no aparelho veio incompleta (o cliente VPN está instalado, mas a "
+                                 "versão e a pasta de instalação não vieram)")
     return Observacao(uid=uid, always_on=v["A"], lockdown=v["L"], tun=num("T") > 0, vpn_conectada=num("V") > 0,
                       regras_de_bloqueio=num("R") > 0, relatorios_de_falha=num("C"), cliente_instalado=num("P") > 0,
-                      uptime_s=int(v["S"]) if v.get("S", "").isdigit() else None)
+                      cliente=cliente, uptime_s=int(v["S"]) if v.get("S", "").isdigit() else None)
 
 
 async def observar(ap: AparelhoDaRede, pacote: str, *, esperar_tun_s: float = 0.0, intervalo_s: float = 5.0) -> Observacao:
@@ -653,5 +695,6 @@ def endereco_no_tunel(plano_ou_address: str) -> str:
 
 __all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "Observacao", "Plano", "ProxyDoCliente",
            "RedeAplicacaoError", "ServidorDeUmaVez", "TunelWg", "apagar_relatorios_de_falha", "comando_de_observacao",
-           "config_do_cliente", "desfazer", "endereco_no_tunel", "endpoint_do_central", "ler_observacao",
-           "montar_plano", "observar", "origem_do_aparelho", "provisionar", "tocar_importacao"]
+           "comando_da_instalacao", "config_do_cliente", "desfazer", "endereco_no_tunel", "endpoint_do_central",
+           "identidade_do_cliente", "instalado_em", "ler_observacao", "montar_plano", "observar", "origem_do_aparelho",
+           "provisionar", "tocar_importacao"]

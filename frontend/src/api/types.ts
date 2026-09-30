@@ -2181,6 +2181,17 @@ export interface DeviceNetwork {
   verified_at: string | null;
   updated_at: string;
   updated_by: string | null;
+  /** A prova do teste de vazamento (política `exigida_com_bloqueio`), guardada na linha do aparelho: vale quando
+   *  `leak_rev === desired_rev` e `leak_result === true`. `false` = vazou; `null` = não concluiu, ou nunca testado
+   *  (`leak_rev` nulo). Sobrevive a reinício do backend; revisão nova, cliente VPN novo, wipe e "Testar" a apagam. */
+  leak_rev: number | null;
+  /** A instalação do cliente VPN testada: `<versão> (<código>) <pasta de instalação>`. */
+  leak_client: string | null;
+  leak_result: boolean | null;
+  leak_at: string | null;
+  leak_detail: string | null;
+  /** Ensaio marcado e ainda sem desfecho (em curso, ou interrompido por um reinício do backend). */
+  leak_pending: boolean;
 }
 
 /** Uma medição da saída feita de dentro do aparelho; `null` nos booleanos = não medido. */
@@ -2306,7 +2317,7 @@ export interface NetworkAssignResult {
 
 /** Leitura do Firewall do Windows do central para os aparelhos de OUTRA máquina (25.7, `rede_firewall.avaliar`).
  *  Só leitura: `commands` é o que o DONO roda num PowerShell de administrador — a plataforma nunca mexe no firewall. */
-export type NetworkFirewallState = 'liberado' | 'bloqueado' | 'sem_regra' | 'desligado' | 'desconhecido';
+export type NetworkFirewallState = 'liberado' | 'bloqueado' | 'sem_regra' | 'regra_obsoleta' | 'desligado' | 'desconhecido';
 
 export interface NetworkFirewallReading {
   state: NetworkFirewallState;
@@ -2319,6 +2330,14 @@ export interface NetworkFirewallReading {
   blocking_rules: string[];
   commands: string[];
   checked_at: string;
+  /** Da leitura por porta, interface, origem e perfil (29.8); ausentes numa leitura antiga em cache. */
+  lan_subnet?: string | null;
+  warnings?: string[];
+  stale_rules?: string[];
+  ignored_rules?: string[];
+  missing?: string[];
+  inspect_command?: string | null;
+  revert_command?: string | null;
 }
 
 /** `remote_access` de `GET /api/network/server` e corpo de `POST /api/network/server/firewall-check` (25.7). */

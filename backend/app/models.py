@@ -2091,6 +2091,15 @@ class DeviceNetworkDTO(BaseModel):
     verified_at: str | None = None
     updated_at: str
     updated_by: str | None = None
+    # A prova do teste de vazamento (item 29.2, migração 063). Vale quando `leak_rev == desired_rev`, o cliente lido
+    # no aparelho é `leak_client` e `leak_result` é verdadeiro. `leak_result`: True = bloqueio provado; False = vazou;
+    # None = não concluiu (ou nunca testado, com `leak_rev` nulo). `leak_pending` = ensaio marcado, sem desfecho.
+    leak_rev: int | None = None
+    leak_client: str | None = None
+    leak_result: bool | None = None
+    leak_at: str | None = None
+    leak_detail: str | None = None
+    leak_pending: bool = False
 
 
 class NetworkMeasurementDTO(BaseModel):

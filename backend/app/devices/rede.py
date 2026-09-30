@@ -428,9 +428,12 @@ def apps_sem_prova(st: AppState, row: Row) -> list[str]:
 
 def verificacao_invalida(st: AppState, row: Row) -> str | None:
     """Por que um `trafego_verificado` com política exigida não vale para a porta da tarefa (item 25.6): `vencida`
-    (`rede.validade_verificacao_s`) ou `apps` (`apps_sem_prova`). `None` = vale (ou a pergunta não se aplica)."""
+    (`rede.validade_verificacao_s`), `bloqueio` (política com bloqueio sem prova de vazamento que valha para a revisão,
+    item 29.2) ou `apps` (`apps_sem_prova`). `None` = vale (ou a pergunta não se aplica)."""
     if verificacao_vencida(row, _validade(st)):
         return "vencida"
+    if row["state"] == "trafego_verificado" and not bloqueio_provado(row):
+        return "bloqueio"
     if apps_sem_prova(st, row):
         return "apps"
     return None
@@ -736,10 +739,11 @@ def pedir_reaplicacao(st: AppState, instance_id: str, quem: str | None) -> dict[
 
 
 def pedir_verificacao(st: AppState, instance_id: str, quem: str | None) -> dict[str, object]:
-    """Registra o pedido de medir de novo. O estado NÃO muda: pedir verificação não é evidência de nada, e desfazer
-    um `trafego_verificado` só porque alguém quer reconferir seguraria tarefa à toa. Quem mede é a sonda de saída
-    (25.5), pela convergência (`ConvergenciaDeRede.pedir_verificacao` marca o pedido para o próximo ponto seguro);
-    aparelho aplicado e ainda não verificado já está em `pendencias()` como `verificar` e é medido de qualquer jeito."""
+    """Registra o pedido de medir de novo. O estado NÃO muda: pedir verificação não é evidência de nada. Quem mede é
+    a sonda de saída (25.5), pela convergência (`ConvergenciaDeRede.pedir_verificacao` marca o pedido para o próximo
+    ponto seguro); aparelho aplicado e ainda não verificado já está em `pendencias()` como `verificar` e é medido de
+    qualquer jeito. Sem bloqueio, o `trafego_verificado` segue valendo para a tarefa até a medição nova. Com a política
+    `exigida_com_bloqueio`, o pedido APAGA a prova de vazamento (item 29.2): a tarefa espera o teste refeito."""
     _alvo_de_pedido(st, instance_id)
     agora = now_iso()
     with st.db.tx():
@@ -750,6 +754,11 @@ def pedir_verificacao(st: AppState, instance_id: str, quem: str | None) -> dict[
         anterior = str(row["detail"] or "")
         st.db.execute("UPDATE device_network SET detail=?, updated_at=?, updated_by=? WHERE instance_id=?",
                       ((f"{pedido} | antes: {anterior}" if anterior else pedido)[:500], agora, quem, instance_id))
+        if row["policy"] == "exigida_com_bloqueio":
+            # Com bloqueio, verificar é refazer o teste de vazamento. A prova é apagada AQUI, no banco: o pedido
+            # sobrevive a um reinício do backend (a prova ausente é o que dispara o teste), e até o teste novo provar
+            # o bloqueio a tarefa com rede exigida espera — quem pediu para provar de novo não quer a prova antiga.
+            apagar_prova_de_vazamento(st, instance_id, f"verificação pedida por {quem or 'painel'}")
     _emitir(st, f"Rede de {instance_id}: verificação pedida", instance_id=instance_id, acao="verify",
             desired_rev=int(row["desired_rev"]), state=row["state"])
     return _resposta_de_pedido(st, instance_id, "verify",
@@ -810,9 +819,209 @@ def _descartar(st: AppState, instance_id: str, motivo: str, agora: str) -> None:
                   (motivo[:500], agora, instance_id))
 
 
-def _falta_para_verificar(medicao: NetworkMeasurementInput, policy: str, exigidos: list[str]) -> list[str]:
+# ============================================================================ a prova de vazamento (item 29.2)
+# O teste de vazamento para o cliente VPN e, quase sempre, custa um reinício do aparelho. A prova dele morava só na
+# memória da convergência: cada reinício do backend a perdia, e a remedição seguinte refazia o teste em todos os
+# aparelhos com bloqueio (30/09: um reinício do backend, 11 reinícios de aparelho, dois deles com conta real). Agora
+# ela mora na linha do aparelho (colunas `leak_*`, migração 063), presa à revisão e à instalação do cliente VPN.
+SituacaoDaProva = Literal["vale", "ausente", "outra_revisao", "interrompida", "outro_cliente", "vazou", "inconclusiva"]
+
+
+@dataclass(frozen=True)
+class ProvaDeVazamento:
+    """O que a linha guarda do teste com o cliente VPN parado. `resultado`: True = o Android recusou a sonda fora da
+    VPN; False = vazou; None = o teste não concluiu. `pendente` = um ensaio foi marcado e o desfecho não foi gravado."""
+
+    rev: int | None
+    cliente: str | None
+    resultado: bool | None
+    quando: str | None
+    detalhe: str | None
+    pendente: bool
+
+    def situacao(self, rev: int, cliente: str | None = None) -> SituacaoDaProva:
+        """O que a prova diz para a revisão `rev` e, quando informado, para a instalação `cliente` do cliente VPN.
+        Só `vale` aprova. `vazou` e `inconclusiva` são desfechos DESTA revisão e deste cliente: não aprovam e não se
+        refazem sozinhos (cada teste para o cliente VPN). `ausente`, `outra_revisao` e `outro_cliente` pedem um teste
+        novo. `interrompida` é o ensaio marcado sem desfecho (o backend reiniciou no meio): quem a encontra a fecha
+        como inconclusiva, sem parar o cliente de novo."""
+        if self.rev is None:
+            return "ausente"
+        if self.rev != rev:
+            return "outra_revisao"
+        if self.pendente:
+            return "interrompida"
+        if cliente is not None and (self.cliente or "") != cliente:
+            return "outro_cliente"
+        if self.resultado is True:
+            return "vale"
+        return "vazou" if self.resultado is False else "inconclusiva"
+
+
+def prova_de_vazamento(row: Row) -> ProvaDeVazamento:
+    return ProvaDeVazamento(rev=None if row["leak_rev"] is None else int(row["leak_rev"]), cliente=row["leak_client"],
+                            resultado=_bool(row["leak_result"]), quando=row["leak_at"], detalhe=row["leak_detail"],
+                            pendente=bool(row["leak_pending"]))
+
+
+def bloqueio_provado(row: Row) -> bool:
+    """A política da linha está atendida no que depende do teste de vazamento? Sem bloqueio pedido, a pergunta não se
+    aplica (sim). Com bloqueio, só com a prova da revisão pedida e resultado positivo. A instalação do cliente não é
+    conferida aqui (precisa do aparelho): a convergência apaga a prova quando lê outra instalação."""
+    if row["policy"] != "exigida_com_bloqueio":
+        return True
+    return prova_de_vazamento(row).situacao(int(row["desired_rev"])) == "vale"
+
+
+def marcar_ensaio_de_vazamento(st: AppState, instance_id: str, *, rev: int, cliente: str) -> bool:
+    """A INTENÇÃO do ensaio, gravada antes de o cliente VPN ser parado: se o backend cair no meio, a linha diz que um
+    ensaio começou e não terminou, e ninguém o repete às cegas. Só com a revisão pedida aplicada (`False` = o pedido
+    mudou; o ensaio não começa). A prova anterior da linha, se havia, deixa de valer aqui."""
+    agora = now_iso()
+    cur = st.db.execute(
+        "UPDATE device_network SET leak_rev=?, leak_client=?, leak_result=NULL, leak_at=?, leak_detail=?,"
+        " leak_pending=1, updated_at=? WHERE instance_id=? AND desired_rev=? AND applied_rev=?",
+        (rev, cliente, agora, "ensaio em curso: o cliente VPN é parado para a sonda", agora, instance_id, rev, rev))
+    return cur.rowcount == 1
+
+
+def gravar_prova_de_vazamento(st: AppState, instance_id: str, *, rev: int, cliente: str, resultado: bool | None,
+                              quando: str, detalhe: str) -> bool:
+    """O desfecho do ensaio marcado. A gravação exige a revisão pedida, a revisão e a instalação do ensaio e a marca
+    de pendente: o resultado de um ensaio de revisão antiga (reaplicação no meio) não vira prova da nova."""
+    agora = now_iso()
+    cur = st.db.execute(
+        "UPDATE device_network SET leak_result=?, leak_at=?, leak_detail=?, leak_pending=0, updated_at=?"
+        " WHERE instance_id=? AND desired_rev=? AND leak_rev=? AND leak_client=? AND leak_pending=1",
+        (None if resultado is None else int(resultado), quando, detalhe[:500], agora, instance_id, rev, rev, cliente))
+    if cur.rowcount != 1:
+        return False
+    rotulo = {True: "bloqueio provado", False: "VAZOU"}.get(resultado, "inconclusivo")  # type: ignore[arg-type]
+    _emitir(st, f"Rede de {instance_id}: teste de vazamento da rev {rev} — {rotulo}", instance_id=instance_id,
+            acao="vazamento", desired_rev=rev, leak_result=resultado)
+    return True
+
+
+def desmarcar_ensaio_de_vazamento(st: AppState, instance_id: str, *, rev: int, motivo: str) -> None:
+    """O ensaio marcado nem chegou a parar o cliente (a sonda não saiu com o túnel no ar): nada foi tocado e nada foi
+    provado. A linha volta a não ter prova; a medição seguinte tenta de novo."""
+    st.db.execute(
+        "UPDATE device_network SET leak_rev=NULL, leak_client=NULL, leak_result=NULL, leak_at=NULL, leak_detail=?,"
+        " leak_pending=0, updated_at=? WHERE instance_id=? AND leak_rev=? AND leak_pending=1",
+        (f"ensaio não iniciado: {motivo}"[:500], now_iso(), instance_id, rev))
+
+
+def fechar_ensaio_interrompido(st: AppState, instance_id: str) -> bool:
+    """Um ensaio marcado e sem desfecho, com ninguém o rodando (o backend reiniciou no meio): fecha como INCONCLUSIVO.
+    O cliente VPN pode ter sido parado; quem relê o aparelho trata o túnel caído pelo caminho de sempre. O teste não é
+    refeito sozinho: inconclusivo não aprova, e só `POST …/verify`, revisão nova ou cliente novo o refazem."""
+    agora = now_iso()
+    cur = st.db.execute(
+        "UPDATE device_network SET leak_result=NULL, leak_pending=0, leak_detail=?, updated_at=?"
+        " WHERE instance_id=? AND leak_pending=1",
+        (f"vazamento não medido: o ensaio foi interrompido antes do desfecho (o backend reiniciou no meio; fechado em "
+         f"{agora}). O cliente VPN não é parado de novo sozinho: peça Verificar para refazer", agora, instance_id))
+    if cur.rowcount == 1:
+        _emitir(st, f"Rede de {instance_id}: ensaio de vazamento interrompido, fechado como inconclusivo",
+                instance_id=instance_id, acao="vazamento", leak_result=None)
+    return cur.rowcount == 1
+
+
+def apagar_prova_de_vazamento(st: AppState, instance_id: str, motivo: str) -> bool:
+    """A prova deixou de valer (wipe, outro aparelho atrás do id, cliente VPN de outra instalação, pedido de
+    verificar): as colunas voltam a vazio, e o motivo fica em `leak_detail`."""
+    agora = now_iso()
+    cur = st.db.execute(
+        "UPDATE device_network SET leak_rev=NULL, leak_client=NULL, leak_result=NULL, leak_at=NULL, leak_pending=0,"
+        " leak_detail=?, updated_at=? WHERE instance_id=? AND (leak_rev IS NOT NULL OR leak_pending=1)",
+        (f"prova apagada em {agora}: {motivo}"[:500], agora, instance_id))
+    return cur.rowcount == 1
+
+
+# ---------------------------------------------------------------------------- transição: a prova de antes da 063
+# Na primeira subida com a migração 063, os aparelhos que o código anterior verificou têm a prova só no histórico (a
+# memória do backend que a guardava morreu com ele). Refazer o teste em todos seria repetir, uma última vez, o defeito
+# que a 063 corrige — com conta real logada em alguns. A prova anterior só é ADOTADA quando se demonstra, pelo que
+# ficou registrado e pelo que o aparelho mostra, que ela é deste aparelho, desta revisão e desta instalação do cliente.
+# Linha criada depois da 063 nunca passa por aqui: nela, `leak_blocked = 1` numa medição só existe com prova na linha.
+@dataclass(frozen=True)
+class ProvaAnterior:
+    testado_em: str            # o início do comando que fez o teste (o teste não começou antes disto)
+    comando: str               # o `device.network` que o registrou
+    medicao: int               # a última medição do aparelho, com o bloqueio provado
+
+
+def prova_anterior(st: AppState, row: Row) -> ProvaAnterior | None:
+    """O teste de vazamento que o código anterior à 063 fez para ESTA revisão, se o registro o sustenta sem buraco:
+
+    - a linha nunca foi escrita pelo mecanismo novo (`leak_*` todas vazias; uma prova apagada deixa o motivo em
+      `leak_detail`, e o pedido de refazer não pode ser contornado por aqui);
+    - a revisão pedida está aplicada, com bloqueio;
+    - a ÚLTIMA medição do aparelho tem o bloqueio provado (um teste posterior inconclusivo teria deixado NULL);
+    - dos comandos `verificar` desta revisão, do mais novo para trás, todos concluíram com o bloqueio provado; o mais
+      antigo dessa sequência é o teste (ou o contém), e o começo dele é o limite inferior do instante do teste.
+
+    Quem chama ainda confere, no aparelho, que o cliente VPN instalado é anterior a `testado_em`."""
+    iid, rev = str(row["instance_id"]), int(row["desired_rev"])
+    if (row["policy"] != "exigida_com_bloqueio" or row["applied_rev"] is None or int(row["applied_rev"]) != rev
+            or row["leak_rev"] is not None or row["leak_pending"] or row["leak_detail"] is not None):
+        return None
+    ultima = st.db.one("SELECT id, leak_blocked FROM network_measurements WHERE instance_id=? ORDER BY id DESC LIMIT 1",
+                       (iid,))
+    if ultima is None or ultima["leak_blocked"] != 1:
+        return None
+    teste: Row | None = None
+    # Só comando já terminado: o `verificar` em curso (o que está perguntando isto) ainda não tem desfecho.
+    for c in st.db.query("SELECT id, state, params, result, started_at, created_at FROM commands"
+                         " WHERE instance_id=? AND verb='device.network' AND finished_at IS NOT NULL"
+                         " ORDER BY created_at DESC, id DESC", (iid,)):
+        params = loads(c["params"], {}) or {}
+        if params.get("acao") != "verificar":
+            continue
+        if params.get("rev") != rev or c["state"] != "succeeded":
+            break
+        desfecho = (loads(c["result"], {}) or {}).get("outcome") or {}
+        provou = desfecho.get("leak_blocked") is True
+        if not provou and desfecho.get("measurement_id") is not None:
+            m = st.db.one("SELECT leak_blocked FROM network_measurements WHERE id=? AND instance_id=?",
+                          (desfecho["measurement_id"], iid))
+            provou = m is not None and m["leak_blocked"] == 1
+        if not provou:
+            break
+        teste = c
+    if teste is None:
+        return None
+    return ProvaAnterior(testado_em=str(teste["started_at"] or teste["created_at"]), comando=str(teste["id"]),
+                         medicao=int(ultima["id"]))
+
+
+def adotar_prova_de_vazamento(st: AppState, instance_id: str, *, rev: int, cliente: str, anterior: ProvaAnterior,
+                              instalado_em: str) -> bool:
+    """Grava a prova anterior na linha. Só numa linha que o mecanismo novo nunca escreveu e com a revisão aplicada (o
+    mesmo CAS do ensaio); o `leak_detail` diz de onde veio, para ninguém a ler como teste feito agora."""
+    agora = now_iso()
+    detalhe = (f"adotada do histórico em {agora}: teste de vazamento da rev {rev} feito a partir de "
+               f"{anterior.testado_em} (comando {anterior.comando}), com o Android recusando a sonda fora da VPN "
+               f"(Permission denied), confirmado até a medição #{anterior.medicao}; o cliente VPN instalado é de "
+               f"{instalado_em}, anterior ao teste")
+    cur = st.db.execute(
+        "UPDATE device_network SET leak_rev=?, leak_client=?, leak_result=1, leak_at=?, leak_detail=?, updated_at=?"
+        " WHERE instance_id=? AND desired_rev=? AND applied_rev=? AND leak_rev IS NULL AND leak_detail IS NULL"
+        " AND leak_pending=0",
+        (rev, cliente, anterior.testado_em, detalhe[:500], agora, instance_id, rev, rev))
+    if cur.rowcount != 1:
+        return False
+    _emitir(st, f"Rede de {instance_id}: prova de vazamento anterior adotada (rev {rev}, sem parar o cliente VPN)",
+            instance_id=instance_id, acao="vazamento", desired_rev=rev, leak_result=True, adotada=True)
+    return True
+
+
+def _falta_para_verificar(medicao: NetworkMeasurementInput, policy: str, exigidos: list[str], *,
+                          provado: bool) -> list[str]:
     """O que impede `trafego_verificado`. `exigidos` vem de `apps_exigidos`: cada um tem de estar medido e `ok`.
-    Sem app exigido (aparelho sem conta vinculada), vale o mínimo: pelo menos um app medido."""
+    Sem app exigido (aparelho sem conta vinculada), vale o mínimo: pelo menos um app medido. `provado` = a prova de
+    vazamento da LINHA vale para a revisão (`bloqueio_provado`): com bloqueio, é ela que decide — o `leak_blocked` da
+    medição é o registro do que a sonda levou, não uma segunda fonte da verdade (uma medição não "declara" o bloqueio)."""
     falta = []
     if not (medicao.egress_ipv4 or medicao.egress_ipv6):
         falta.append("IP de saída não medido")
@@ -824,7 +1033,7 @@ def _falta_para_verificar(medicao: NetworkMeasurementInput, policy: str, exigido
     ruins = sorted(f"{app}={r}" for app, r in medicao.per_app.items() if r != "ok")
     if ruins:
         falta.append("apps fora da rede pedida: " + ", ".join(ruins))
-    if policy == "exigida_com_bloqueio" and medicao.leak_blocked is not True:
+    if policy == "exigida_com_bloqueio" and (not provado or medicao.leak_blocked is False):
         falta.append("o bloqueio fora da VPN não foi provado")
     return falta
 
@@ -835,7 +1044,8 @@ def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasuremen
 
     `trafego_verificado` só com tudo: a revisão pedida aplicada (`rev` = `desired_rev` = `applied_rev`), IP de saída
     PÚBLICO medido (o modelo recusa endereço de interface), cada app de `apps_exigidos` medido `ok` (ou, sem app
-    exigido, ao menos um app, todos `ok`) e, na política com bloqueio, o vazamento barrado. IP medido com algo
+    exigido, ao menos um app, todos `ok`) e, na política com bloqueio, a prova de vazamento da linha valendo para a
+    revisão (`bloqueio_provado`, item 29.2). IP medido com algo
     faltando é `parcial`, com o que falta no `detail`. Sem IP medido, o estado não sai do lugar. `rev=None` = medição
     de base (sem rede aplicada): entra no histórico e não mexe em nada.
 
@@ -898,7 +1108,8 @@ def _registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasureme
                            f"{row['desired_rev']} pedida")
             _descartar(st, instance_id, f"medição #{mid} registrada; o estado não muda ({motivo})", agora)
             return mid, _aparelho_dto(_linha_certa(st, instance_id))
-        falta = _falta_para_verificar(medicao, str(row["policy"]), apps_exigidos(st, instance_id))
+        falta = _falta_para_verificar(medicao, str(row["policy"]), apps_exigidos(st, instance_id),
+                                      provado=bloqueio_provado(row))
         if not falta:
             estado, detalhe = "trafego_verificado", f"medição #{mid} ({medicao.method}): saída e apps provados"
         elif mediu_ip:
