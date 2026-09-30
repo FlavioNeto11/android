@@ -310,7 +310,38 @@ medido quando o perfil não leva IPv6.
 
 A decisão é do dono: quantos aparelhos, que provedor e se as contas reais entram (e quando).
 
+### D9 revisto (30/09 ~18:25Z): tudo em todos os aparelhos
+
+Instrução do dono, transmitida pela sessão "Github": "eu quero que tudo funcione em todos os aparelhos". Substitui a
+leitura conservadora de ~17:00Z (abaixo, mantida como registro). Vale para os aparelhos com conta real: `gpu_mode:
+host` e um reinício em android-01 (Lucas), 03 (Bruno) e 06 (André), com o Outlook no mesmo aparelho do Instagram de
+cada persona (a plataforma aceita um app de cada tipo por aparelho). **Não** autoriza reset de dados nem efeito externo
+em conta real (mensagem, comentário, publicar, seguir). Como a ordem veio por outra sessão e o risco é de conta real,
+a IDE confirma com o dono no chat, em uma linha, antes do primeiro aparelho com conta.
+
+Com isso voltam ao escopo: o C1 **Outlook → Instagram** só de leitura (24.9) no aparelho de cada persona, e o aceite
+no mesmo aparelho (27.2).
+
+**Ordem segura** (depois das 21:30Z e do segundo deploy; um trabalho pesado por vez, K-058):
+
+1. QA: android-07, 10, 12 e 09; depois 08, 02 e 05 no central (trocar o renderizador deles também) e 13–15 no
+   notebook. Em cada um: Outlook instalado, aberto e estável; renderizador selecionado lido do log; rede como está.
+2. Um aparelho com conta por vez (06, depois 03, depois 01), cada um assim:
+   - antes: Instagram logado, sessão viva (verificação da plataforma), a tela "Confirm you're human" ausente, cópia do
+     `config.yaml`;
+   - `instances.overrides.<id>.gpu_mode: host`, reinício pela plataforma (a escada de reparo sem reset);
+   - depois: o mesmo exame do "antes", o renderizador `host` no log, o Outlook instalado e aberto;
+   - **parar e voltar atrás** (tirar o override e reiniciar) se o Instagram perder a sessão, pedir desafio ou
+     mostrar "Confirm you're human" — e nada toca nessa tela.
+3. Vínculo (persona, aparelho, `outlook`) no aparelho da persona; login do Outlook (23.13) com o dono à mão para o
+   desafio da Microsoft; C1 Outlook → Instagram em leitura; 27.2.
+
+**Matriz por aparelho** (o que funciona e o que não, com o motivo): entra no fechamento (29.18) e em
+`docs/relatorio-validacao.md` §27.
+
 ### D4, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9)
+
+*Registro da leitura conservadora de ~17:00Z, substituída às ~18:25Z (bloco acima).*
 
 **D9, decidido** (dono, 30/09): contas reais não mudam de renderizador. O que decorre, escolhido pelo caminho mais
 conservador, sem nova pergunta:
