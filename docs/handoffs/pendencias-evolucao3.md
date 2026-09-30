@@ -51,7 +51,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | **janela aberta às 15:24Z de 30/09**, fim previsto 21:30Z; laço de observação rodando |
 | 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | **implantado**, `real` (medições #58 a #61 com o detalhe por perna) |
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
-| 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~19:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
+| 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
@@ -63,7 +63,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | arquivado (movido, 11,3 GB, nada apagado); restam os worktrees das frentes, depois do segundo deploy |
 | 29.18 | fechamento | relatório §27, CHANGELOG, estado pelo mecanismo | tudo acima | C | não iniciado |
-| 29.19 | P1 (objetivo de 30/09) | cada aparelho ativo com um IPv4 de saída só dele, medido e estável | 29.7 (V1); **dono**: escala e IPv4 | C | **adiado por decisão do dono** (30/09 ~19:15Z), junto com o 29.7; script com N pares pronto |
+| 29.19 | P1 (objetivo de 30/09) | cada aparelho ativo com um IPv4 de saída só dele, medido e estável | 29.7 (V1); **dono**: escala e IPv4 | C | **adiado por decisão do dono** (30/09 ~18:15Z), junto com o 29.7; script com N pares pronto |
 | 29.20 | P1 | aparelho saindo pela casa acusado pela plataforma | 29.6 | C | não iniciado; segue o 29.19 (adiado) |
 
 ## Frentes, arquivos e quem escreve
@@ -172,10 +172,10 @@ A janela do P16 vai até 21:30Z (18:30 em Brasília). Nada abaixo reinicia o bac
 | # | Quando | O quê | Onde | Custo | Libera |
 |---|---|---|---|---|---|
 | 1 | ~~já~~ **feito 17:20Z** | Regra de firewall (bloco D1 abaixo), num PowerShell **de administrador** | central | 0 | W0 `real` (`liberado`); W1–W8 depois das 21:30Z |
-| 2 | ~~já~~ **feito 18:30Z** | Reserva DHCP do central no **mesmo** `192.168.1.81` (MAC da Wi-Fi); sem reinício do roteador | roteador | 0 | 29.9 estável |
+| 2 | ~~já~~ **feito ~18:05Z** | Reserva DHCP do central no **mesmo** `192.168.1.81` (MAC da Wi-Fi); sem reinício do roteador | roteador | 0 | 29.9 estável |
 | 3 | ~~já~~ **feito 17:55–17:57Z** | Consentimento nos 3 cartões do Outlook (Lucas, Bruno, André) | painel › Persona › Contas | 0 | login (29.13) depois do segundo deploy |
-| 4 | ~~quando quiser~~ **adiado pelo dono** (19:15Z) | Servidores de saída própria (bloco D3 e 29.19): roteiro e script prontos para quando ele quiser | provedor + painel | 0 a US$ 65/mês, conforme a escala | 29.7, 29.19 |
-| 5 | ~~depois do 3~~ **enviado pelo dono** (~19:15Z) | E-mail de teste para o Outlook do Lucas (texto no bloco D9) | conta do dono | 0 | C1 (29.13); a IDE confere a chegada |
+| 4 | ~~quando quiser~~ **adiado pelo dono** (~18:15Z) | Servidores de saída própria (bloco D3 e 29.19): roteiro e script prontos para quando ele quiser | provedor + painel | 0 a US$ 65/mês, conforme a escala | 29.7, 29.19 |
+| 5 | ~~depois do 3~~ **enviado pelo dono** (~18:15Z) | E-mail de teste para o Outlook do Lucas (texto no bloco D9) | conta do dono | 0 | C1 (29.13); a IDE confere a chegada |
 | 6 | ~22:00Z em diante | Ficar à mão para um desafio da Microsoft no login | celular do dono | 0 | 23.13 |
 
 Depois das 21:30Z a IDE registra o 29.4, faz o segundo deploy (29.11 e agente do notebook), promove e distribui o
@@ -277,9 +277,9 @@ do script: sintaxe conferida (`bash -n`); a execução num servidor real é `not
 
 ### Objetivo do dono de 30/09: saída própria por aparelho (29.19, 29.20)
 
-**Adiado por decisão do dono** (30/09 ~19:15Z, transmitido pela sessão "Github"): "pode ser feita depois". Não é pendência dele nem bloqueio: o roteiro abaixo, o bloco D3 e o script ficam prontos para quando ele quiser, e a escala continua sendo decisão dele.
+**Adiado por decisão do dono** (30/09 ~18:15Z, transmitido pela sessão "Github"): "pode ser feita depois". Não é pendência dele nem bloqueio: o roteiro abaixo, o bloco D3 e o script ficam prontos para quando ele quiser, e a escala continua sendo decisão dele.
 
-Transmitido pela sessão "Github" (~19:00Z): "cada android tenha sua própria saída, para fins de observabilidade e
+Transmitido pela sessão "Github" (~18:10Z): "cada android tenha sua própria saída, para fins de observabilidade e
 telemetria de algum aplicativo, e nenhum venha do IP da minha rede". Amplia o 29.7 (piloto de dois) para o parque. Fica
 dentro do ADR-056: saída declarada, estável e medida; sem rotação, sem mascarar emulador, imagem ou identidade.
 
@@ -352,7 +352,7 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 - **D1 feito pelo dono** (~17:20Z) e **W0 `real`** (17:5xZ, `POST /api/network/server/firewall-check`, só leitura):
   `liberado`, perfil Public, interface Wi-Fi, sub-rede 192.168.1.0/24, sem aviso, sem regra obsoleta.
-- **D2 feito** (~18:30Z) pela sessão "Github" no Chrome do dono, com a sessão dele: reserva DHCP do MAC da Wi-Fi do
+- **D2 feito** (~18:05Z) pela sessão "Github" no Chrome do dono, com a sessão dele: reserva DHCP do MAC da Wi-Fi do
   central no mesmo `192.168.1.81`, sem reinício do roteador.
 - **D4 feito** (17:55–17:57Z) pela sessão "Github" no painel, por delegação do dono e com a sessão dele, sem digitar
   senha: as três contas Outlook com `consent_at` preenchido.
