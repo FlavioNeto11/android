@@ -14,13 +14,15 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, ratio } from '../../lib/format';
 import { CONTROL_OWNER, INSTANCE_STATE, SESSION_STATUS, STEP_STATUS, metaOf } from '../../lib/status';
-import { ageMs, formatAgoCoarse, useNow } from '../../lib/time';
+import { evidenciaLegivel, tempoRelativo } from '../../lib/rotulos';
+import { ageMs, useNow } from '../../lib/time';
 import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
 import { CommandSummary } from './CommandTrail';
-import { canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
+import { NO_FRAME_TITLE, canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
 import { ServerBadge } from './ServerBadge';
+import { seloDoAparelho } from './selos';
 import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, isScreenFailure, streamLabel } from './streamState';
 import { usePreviewVisible } from './usePreviewVisible';
 import styles from './Devices.module.css';
@@ -35,6 +37,11 @@ interface DeviceCardProps {
   onToggle: (id: string) => void;
   onRange: (id: string) => void;
   onOpen: (id: string) => void;
+  /**
+   * Versão compacta (aparelho parado): cabeçalho, estado, a conta e o botão. Sem a miniatura e sem o bloco
+   * "Emulador desligado", que ocupava a altura de um cartão inteiro para dizer o que o selo já diz.
+   */
+  compacto?: boolean;
 }
 
 /**
@@ -83,7 +90,7 @@ export function useFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stre
 
 function FrameAge({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? formatAgoCoarse(ts, now) : 'sem frame'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : 'sem frame'}</>;
 }
 
 function Thumb({ instance, server, visible, onOpen }: { instance: Instance; server: ServerHint | null; visible: boolean; onOpen: () => void }) {
@@ -186,16 +193,16 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
 }
 
 /** Quem mostrar primeiro: quem tem conta de cadastro (o @ diz mais que o nome), e cada persona uma vez só. */
-function personasDoCartao(lista: readonly PersonaOnDevice[] | null | undefined): PersonaOnDevice[] {
+export function personasDoCartao(lista: readonly PersonaOnDevice[] | null | undefined): PersonaOnDevice[] {
   const vistas = new Set<string>();
   return [...(lista ?? [])]
     .sort((a, b) => Number(!!b.username) - Number(!!a.username))
     .filter((p) => (vistas.has(p.profile_id) ? false : (vistas.add(p.profile_id), true)));
 }
 
-const rotuloDaPersona = (p: PersonaOnDevice) => (p.username ? `@${p.username}` : p.name || p.display_name || p.profile_id);
+export const rotuloDaPersona = (p: PersonaOnDevice) => (p.username ? `@${p.username}` : p.name || p.display_name || p.profile_id);
 
-function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
+function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, focused, onToggle, onRange, onOpen, compacto = false }: DeviceCardProps) {
   const { id, state, current } = instance;
   const personas = personasDoCartao(vinculadas);
   const busyAction = useBusyStore((s) => s.busy[id]);
@@ -221,7 +228,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
   // A loja (Play Store) é ligada, desligada e aberta como qualquer aparelho, mas nunca é ALVO de comando: sem caixa
   // de seleção, e Ctrl/Shift+clique não fazem nada nela.
   const loja = instance.kind === 'store';
-  const stateMeta = metaOf(INSTANCE_STATE, state);
+  const stateMeta = seloDoAparelho(instance, workers);
   const controlMeta = metaOf(CONTROL_OWNER, instance.control);
   const stepMeta = current?.step_status ? metaOf(STEP_STATUS, current.step_status) : null;
 
@@ -236,6 +243,12 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
   };
 
   const primary = primaryActionFor(state, instance);
+  // Na versão compacta some o bloco grande da miniatura; o que ele dizia DE ÚTIL (a máquina não responde, o ADB caiu)
+  // sobe para uma linha. "Emulador desligado" em si não sobe: é o que o selo "Parada" já diz.
+  const tituloSemTela = compacto && state !== 'online' ? noFrameTitle(state, instance.kind, server) : null;
+  // "Desligado de propósito" (aqui ou no worker) e "Hibernado" são o que o selo já diz; só o que é PROBLEMA sobe.
+  const avisoDoServidor = state !== 'online' && tituloSemTela && tituloSemTela !== NO_FRAME_TITLE[state]
+    && !/^(Emulador desligado|Hibernado)/.test(tituloSemTela) ? tituloSemTela : null;
 
   // Abrir o foco estreita o conteúdo (1270 → 786 px): a grade troca de colunas e o cartão clicado ia parar fora da
   // vista — o "scroll que quebra" do Painel. O próprio cartão em foco se põe à vista depois que o layout assenta
@@ -258,7 +271,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
     <div className={styles.cardWrap}>
       <article
         ref={cardRef}
-        className={cx(styles.card, selected && styles.cardSelected, focused && styles.cardFocused, !!instance.attention && styles.cardAttention)}
+        className={cx(styles.card, compacto && styles.cardCompacto, selected && styles.cardSelected, focused && styles.cardFocused, !!instance.attention && styles.cardAttention)}
         aria-label={`Aparelho ${id} — ${stateMeta.label}`}
         data-instance-card={id}
         onClickCapture={onClickCapture}
@@ -279,30 +292,35 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
           <span className={styles.headBadge}><StatusBadge meta={stateMeta} size="sm" srPrefix="Estado" /></span>
         </div>
 
-        <Thumb instance={instance} server={server} visible={visible} onOpen={() => onOpen(id)} />
+        {compacto ? null : <Thumb instance={instance} server={server} visible={visible} onOpen={() => onOpen(id)} />}
 
         <div className={styles.body}>
-          <div className={cx(styles.line, !instance.account_label && styles.lineMuted)}>
-            <User size={13} aria-hidden />
-            <span className="truncate" title={instance.account_label ?? undefined}>
-              <span className="sr-only">Conta: </span>
-              {instance.account_label || 'Sem rótulo de conta'}
-            </span>
-          </div>
-          {instance.account_evidence ? (
-            <div className={styles.observed}>
-              <Eye size={11} aria-hidden />
-              <span className={styles.observedTag}>observado</span>
-              <span className="truncate" title={instance.account_evidence}>{instance.account_evidence}</span>
+          {/* Sem dado, sem linha: "Sem rótulo de conta" e "Sem app associado" repetidos em todo cartão eram só ruído. */}
+          {instance.account_label ? (
+            <div className={styles.line}>
+              <User size={13} aria-hidden />
+              <span className="truncate" title={instance.account_label}>
+                <span className="sr-only">Conta: </span>
+                {instance.account_label}
+              </span>
             </div>
           ) : null}
-          <div className={cx(styles.line, !appName && styles.lineMuted)}>
-            <AppWindow size={13} aria-hidden />
-            <span className="truncate" title={appName ?? undefined}>
-              <span className="sr-only">App: </span>
-              {appName ?? 'Sem app associado'}
-            </span>
-          </div>
+          {instance.account_evidence && !compacto ? (
+            <div className={styles.observed}>
+              <Eye size={11} aria-hidden />
+              <span className={styles.observedTag}>Evidência</span>
+              <span className="truncate" title={instance.account_evidence}>{evidenciaLegivel(instance.account_evidence)}</span>
+            </div>
+          ) : null}
+          {appName && !compacto ? (
+            <div className={styles.line}>
+              <AppWindow size={13} aria-hidden />
+              <span className="truncate" title={appName}>
+                <span className="sr-only">App: </span>
+                {appName}
+              </span>
+            </div>
+          ) : null}
           {personas.length > 0 ? (
             // N personas (uma por app): os avatares de todas, a conta e a sessão AQUI da primeira, e "+N" para o resto.
             // A sessão vem por último e desce de linha quando não cabe: com ela antes, o @ ficava em "@mari…" (medido
@@ -323,43 +341,53 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
             </div>
           ) : null}
 
-          <div className={styles.metaRow}>
-            <StatusBadge
-              meta={controlMeta}
-              size="sm"
-              label={instance.control === 'none' ? 'Controle: —' : `Controle: ${mine ? 'Você' : controlMeta.label}`}
-            />
-            {state === 'online' ? (
-              <span className={styles.frameAge} title="Idade do último frame recebido">
-                <Clock size={11} aria-hidden />
-                <span className="sr-only">Último frame </span>
-                <FrameAge ts={instance.frame?.ts ?? null} />
-              </span>
-            ) : null}
-          </div>
+          {avisoDoServidor ? (
+            <div className={cx(styles.line, styles.lineMuted)} title={instance.state_detail ?? undefined}>
+              <TriangleAlert size={13} aria-hidden />
+              <span>{avisoDoServidor}</span>
+            </div>
+          ) : null}
 
-          <div className={styles.step}>
-            {current?.step_title ? (
-              <>
-                <span className={cx(styles.stepTitle, 'truncate')} title={current.step_title}>{current.step_title}</span>
-                <div className={styles.metaRow}>
-                  {stepMeta ? <StatusBadge meta={stepMeta} size="sm" plain /> : <span />}
-                </div>
-                <ProgressBar
-                  value={ratio(current.steps_done, current.steps_total)}
-                  label={`Etapas concluídas em ${id}`}
-                  text={`${current.steps_done}/${current.steps_total}`}
-                />
-              </>
-            ) : showSlotWait ? (
-              <span className={cx(styles.stepIdle, styles.stepWait)} title={slotWait ?? undefined}>
-                <Hourglass size={12} aria-hidden />
-                <span><span className="sr-only">Tarefa na fila: </span>{slotWait}</span>
-              </span>
-            ) : (
-              <span className={styles.stepIdle}>{current?.run_id ? 'Aguardando a próxima etapa…' : 'Sem tarefa em andamento'}</span>
-            )}
-          </div>
+          {/* Só o que tem dado: "Controle: —" (ninguém no comando) e "Sem tarefa em andamento" não dizem nada. */}
+          {instance.control !== 'none' || (state === 'online' && !compacto) ? (
+            <div className={styles.metaRow}>
+              {instance.control !== 'none' ? (
+                <StatusBadge meta={controlMeta} size="sm" label={`Controle: ${mine ? 'Você' : controlMeta.label}`} />
+              ) : <span />}
+              {state === 'online' ? (
+                <span className={styles.frameAge} title="Idade do último frame recebido">
+                  <Clock size={11} aria-hidden />
+                  <span className="sr-only">Último frame </span>
+                  <FrameAge ts={instance.frame?.ts ?? null} />
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {current?.step_title || showSlotWait || current?.run_id ? (
+            <div className={styles.step}>
+              {current?.step_title ? (
+                <>
+                  <span className={cx(styles.stepTitle, 'truncate')} title={current.step_title}>{current.step_title}</span>
+                  <div className={styles.metaRow}>
+                    {stepMeta ? <StatusBadge meta={stepMeta} size="sm" plain /> : <span />}
+                  </div>
+                  <ProgressBar
+                    value={ratio(current.steps_done, current.steps_total)}
+                    label={`Etapas concluídas em ${id}`}
+                    text={`${current.steps_done}/${current.steps_total}`}
+                  />
+                </>
+              ) : showSlotWait ? (
+                <span className={cx(styles.stepIdle, styles.stepWait)} title={slotWait ?? undefined}>
+                  <Hourglass size={12} aria-hidden />
+                  <span><span className="sr-only">Tarefa na fila: </span>{slotWait}</span>
+                </span>
+              ) : (
+                <span className={styles.stepIdle}>Aguardando a próxima etapa…</span>
+              )}
+            </div>
+          ) : null}
 
           {comandoAMostrar ? <CommandSummary cmd={comandoAMostrar} /> : null}
 

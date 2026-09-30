@@ -56,7 +56,7 @@ afterEach(async () => {
 describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as duas saídas', () => {
   it('mostra o comando sem desfecho, o motivo e a trilha inteira', async () => {
     const el = await render();
-    await waitFor(() => expect(text(el)).toContain('Desconhecido'));
+    await waitFor(() => expect(text(el)).toContain('Sem resposta'));
     expect(text(el)).toContain('Há 1 comando sem desfecho');
     expect(text(el)).toContain('não completou o boot');
     // A trilha: criado → enviado → recebido → iniciado → concluído.
@@ -65,12 +65,24 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     }
   });
 
+  it('o verbo técnico e o servidor saem em português; o identificador original fica no title (tarefa 04)', async () => {
+    linhas = [{ ...incerto, verb: 'app.distribute', created_at: '2020-01-01T00:00:00.000Z', finished_at: null }];
+    useAppStore.setState({ workers: { 'worker-lan-01': { id: 'worker-lan-01', name: 'Notebook da LAN' } as never } });
+    const el = await render();
+    await waitFor(() => expect(text(el)).toContain('Distribuição de app'));
+    expect(text(el)).not.toContain('app.distribute');
+    expect(text(el)).toContain('Notebook da LAN');
+    expect(text(el)).not.toContain('worker-lan-01');
+    expect(el.querySelector('[title="Identificador: app.distribute"]')).toBeTruthy();
+    expect(text(el)).toMatch(/há \d+ (anos?|meses|mês)/); // nunca "há 61000 h"
+  });
+
   it('“Verificar agora” pergunta ao estado real e fecha o comando quando há prova', async () => {
     backend.on('POST', /\/commands\/[^/]+\/verify$/, () =>
       json({ command: { ...incerto, state: 'succeeded', reason: "verificado pelo estado real: o aparelho está 'online'" },
              changed: true, verifiable: true }));
     const el = await render();
-    await waitFor(() => expect(text(el)).toContain('Desconhecido'));
+    await waitFor(() => expect(text(el)).toContain('Sem resposta'));
     await click(byRole('button', /Verificar agora/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/verify$/)).toHaveLength(1));
   });
@@ -78,7 +90,7 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
   it('“Marcar como falhou” pede confirmação e só então manda a decisão humana, com a nota da pessoa', async () => {
     backend.on('POST', /\/commands\/[^/]+\/resolve$/, () => json({ ...incerto, state: 'failed' }));
     const el = await render();
-    await waitFor(() => expect(text(el)).toContain('Desconhecido'));
+    await waitFor(() => expect(text(el)).toContain('Sem resposta'));
     await click(byRole('button', /Marcar como falhou/, el));
     // Nada sai antes do "sim": a decisão fecha o comando para sempre (P2.6, mesmo rito dos objetivos).
     const dialogo = await waitFor(() => byRole('dialog', /Marcar como falhou\?/));
@@ -103,7 +115,7 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     await act(async () => {
       root.render(<><CommandHistory instanceId="Pixel_7a-Lab.02" /><ConfirmHost /></>);
     });
-    await waitFor(() => expect(text(container)).toContain('Desconhecido'));
+    await waitFor(() => expect(text(container)).toContain('Sem resposta'));
     await click(byRole('button', /Marcar como concluído/, container));
     const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
     await click(byRole('button', /Sim, está concluído/, dialogo));      // sem observação nenhuma
@@ -116,13 +128,13 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
   it('desistir no diálogo NÃO grava desfecho nenhum', async () => {
     backend.on('POST', /\/commands\/[^/]+\/resolve$/, () => json({ ...incerto, state: 'succeeded' }));
     const el = await render();
-    await waitFor(() => expect(text(el)).toContain('Desconhecido'));
+    await waitFor(() => expect(text(el)).toContain('Sem resposta'));
     await click(byRole('button', /Marcar como concluído/, el));
     const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
     await click(byRole('button', /^Voltar$/, dialogo));
     await waitFor(() => expect(allByRole('dialog', /Marcar como/)).toHaveLength(0));
     expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(0);
-    expect(text(el)).toContain('Desconhecido'); // continua aberto, esperando a pessoa
+    expect(text(el)).toContain('Sem resposta'); // continua aberto, esperando a pessoa
   });
 
   it('comando já resolvido não oferece decisão nenhuma', async () => {

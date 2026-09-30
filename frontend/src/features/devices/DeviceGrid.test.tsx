@@ -1,0 +1,157 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { useAppStore } from '../../store/app';
+import { initialDataState } from '../../store/reducer';
+import { useUiStore } from '../../store/ui';
+import { makeInstance, makeSnapshot } from '../../test/fixtures';
+import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text } from '../../test/harness';
+import { DeviceGrid, agruparPorServidor, estadoDoFiltro } from './DeviceGrid';
+
+/**
+ * Tarefa 04 (revisão de UX): a grade agrupa por servidor, recolhe as paradas, alterna Cards/Lista e aplica
+ * `?estado=`. Prova `simulated` (backend falso, nenhum aparelho real).
+ */
+let root: Root;
+let container: HTMLElement;
+let backend: FakeBackend;
+
+const WORKER = {
+  id: 'worker-lan-01', name: 'Notebook da LAN', appium_mode: 'local', max_slots: 6, verbs: [],
+  state: 'online', observed_state: 'online', maintenance: false, connected: true, local: false,
+  resources: {}, devices: [], enrolled_at: '2026-09-17T10:00:00Z',
+};
+const CENTRAL = { ...WORKER, id: 'central', name: 'Servidor central', local: true };
+
+function semear(workerConectado = true): void {
+  const lista = [
+    makeInstance(1, { state: 'online', worker_id: 'central' }),
+    makeInstance(2, { state: 'stopped', worker_id: 'central' }),
+    makeInstance(3, { state: 'stopped', worker_id: 'central' }),
+    makeInstance(9, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' }),
+    makeInstance(10, { state: 'online', kind: 'external', worker_id: 'worker-lan-01' }),
+  ];
+  const snap = makeSnapshot();
+  useAppStore.setState({
+    ...initialDataState, settings: snap.settings, health: snap.health, hydrated: true,
+    instances: Object.fromEntries(lista.map((i) => [i.id, i])), instanceOrder: lista.map((i) => i.id),
+    workers: { central: CENTRAL as never, 'worker-lan-01': { ...WORKER, connected: workerConectado } as never },
+  });
+}
+
+beforeAll(() => installBrowserStubs());
+
+beforeEach(() => {
+  backend = new FakeBackend();
+  backend.on('GET', /personas/, () => json([]));
+  backend.install();
+  try { window.localStorage.clear(); } catch { /* sem armazenamento */ }
+  useUiStore.setState({ selectedIds: [], rota: { tela: 'painel', segmentos: [], query: {} } });
+  semear();
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
+
+async function renderGrade(): Promise<HTMLElement> {
+  await act(async () => { root.render(<DeviceGrid />); });
+  return container;
+}
+
+describe('funções puras', () => {
+  it('estadoDoFiltro só aceita estados de aparelho', () => {
+    expect(estadoDoFiltro('desconhecido')).toBe('desconhecido');
+    expect(estadoDoFiltro('stopped')).toBe('stopped');
+    expect(estadoDoFiltro('banana')).toBeNull();
+    expect(estadoDoFiltro(undefined)).toBeNull();
+  });
+
+  it('agruparPorServidor: central primeiro e, em cada servidor, ativos e paradas separados', () => {
+    const s = useAppStore.getState();
+    const lista = s.instanceOrder.map((id) => s.instances[id]!);
+    const g = agruparPorServidor(lista, s.workers);
+    expect(g.map((x) => x.nome)).toEqual(['Servidor central', 'Notebook da LAN']);
+    expect(g[0]!.ativos.map((i) => i.id)).toEqual(['android-01']);
+    expect(g[0]!.paradas.map((i) => i.id)).toEqual(['android-02', 'android-03']);
+    expect(g[1]!.paradas.map((i) => i.id)).toEqual(['android-09']);
+  });
+});
+
+describe('DeviceGrid — paradas compactas e agrupamento', () => {
+  it('mostra os grupos por servidor, o botão "Paradas" e o compacto sem "Emulador desligado"', async () => {
+    const el = await renderGrade();
+    expect(text(el)).toContain('Notebook da LAN');
+    expect(text(el)).toContain('Paradas (2)');
+    expect(text(el)).toContain('Paradas (1)');
+    expect(text(el)).not.toContain('Emulador desligado');
+    expect(text(el)).not.toContain('Sem tarefa em andamento');
+  });
+
+  it('recolher "Paradas" esconde os cartões e a escolha fica lembrada', async () => {
+    const el = await renderGrade();
+    expect(el.querySelector('[data-instance-card="android-02"]')).toBeTruthy();
+    await click(byRole('button', /Paradas \(2\)/, el));
+    expect(el.querySelector('[data-instance-card="android-02"]')).toBeNull();
+    expect(byRole('button', /Paradas \(2\)/, el).getAttribute('aria-expanded')).toBe('false');
+    expect(window.localStorage.getItem('cda.painel.paradasRecolhidas')).toContain('"');
+    // o servidor remoto segue aberto
+    expect(el.querySelector('[data-instance-card="android-09"]')).toBeTruthy();
+  });
+});
+
+describe('DeviceGrid — alternância Cards / Lista', () => {
+  it('a Lista mostra todos os aparelhos em linhas, e a escolha vai para o localStorage', async () => {
+    const el = await renderGrade();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
+    await click(byRole('button', /^Lista$/, el));
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(5);
+    expect(byRole('button', /^Lista$/, el).getAttribute('aria-pressed')).toBe('true');
+    expect(window.localStorage.getItem('cda.painel.visao')).toBe('"lista"');
+    expect(allByRole('checkbox', /Selecionar android-/, el)).toHaveLength(5);
+  });
+
+  it('a preferência gravada abre a Lista de saída', async () => {
+    window.localStorage.setItem('cda.painel.visao', '"lista"');
+    const el = await renderGrade();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(5);
+  });
+
+  it('valor estranho no armazenamento volta para Cards', async () => {
+    window.localStorage.setItem('cda.painel.visao', '"mosaico"');
+    const el = await renderGrade();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
+    expect(byRole('button', /^Cards$/, el).getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('DeviceGrid — filtro ?estado=', () => {
+  it('estado=desconhecido mostra só os aparelhos do servidor fora do ar e oferece "Limpar filtro"', async () => {
+    semear(false);
+    useUiStore.setState({ rota: { tela: 'painel', segmentos: [], query: { estado: 'desconhecido' } } });
+    const el = await renderGrade();
+    expect(text(el)).toContain('Filtro: desconhecidos (2)');
+    expect(el.querySelector('[data-instance-card="android-09"]')).toBeTruthy();
+    expect(el.querySelector('[data-instance-card="android-10"]')).toBeTruthy();
+    expect(el.querySelector('[data-instance-card="android-01"]')).toBeNull();
+    expect(byRole('button', /Limpar filtro/, el)).toBeTruthy();
+  });
+
+  it('estado inválido na URL não filtra nada', async () => {
+    useUiStore.setState({ rota: { tela: 'painel', segmentos: [], query: { estado: 'banana' } } });
+    const el = await renderGrade();
+    expect(text(el)).not.toContain('Filtro:');
+    expect(el.querySelector('[data-instance-card="android-01"]')).toBeTruthy();
+  });
+
+  it('filtro sem resultado explica e oferece limpar', async () => {
+    useUiStore.setState({ rota: { tela: 'painel', segmentos: [], query: { estado: 'error' } } });
+    const el = await renderGrade();
+    expect(text(el)).toContain('Nenhum aparelho neste estado');
+  });
+});

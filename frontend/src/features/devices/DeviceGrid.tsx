@@ -1,19 +1,55 @@
-import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { CheckCheck, ChevronDown, ChevronRight, LayoutGrid, List, ServerCrash, Smartphone, X } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import type { Instance, Worker } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
+import { isStringArray, loadJson, saveJson } from '../../lib/storage';
 import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/app';
-import { ROTULO_DO_ESTADO, contarSelecao, useContagemDeAparelhos } from '../../store/metricas';
+import {
+  ORDEM_DOS_ESTADOS, ROTULO_DO_ESTADO, contarSelecao, estadoContado, useContagemDeAparelhos, type EstadoContado,
+} from '../../store/metricas';
 import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { BarraDeSelecao } from '../painel/BarraDeSelecao';
 import { DeviceCard } from './DeviceCard';
-import { countByServer } from './deviceState';
+import { DeviceList } from './DeviceList';
+import { countByServer, serverHintOf } from './deviceState';
+import { ehAparelhoParado } from './selos';
 import styles from './Devices.module.css';
+
+type Visao = 'cards' | 'lista';
+
+const ehVisao = (v: unknown): v is Visao => v === 'cards' || v === 'lista';
+
+/** Valores de `?estado=` do Painel: os estados de aparelho do resumo (`store/metricas`), inclusive `desconhecido`. */
+export function estadoDoFiltro(valor: string | undefined): EstadoContado | null {
+  return ORDEM_DOS_ESTADOS.find((e) => e === valor) ?? null;
+}
+
+export interface GrupoDeServidor { chave: string; nome: string; ativos: Instance[]; paradas: Instance[] }
+
+/** Agrupa por servidor: o central primeiro, depois os demais por nome. Em cada um, o que roda e o que está parado. */
+export function agruparPorServidor(
+  instancias: readonly Instance[],
+  workers: Readonly<Record<string, Worker>>,
+): GrupoDeServidor[] {
+  const mapa = new Map<string, GrupoDeServidor>();
+  for (const inst of instancias) {
+    const server = serverHintOf(inst, workers);
+    const chave = server?.id ?? '';
+    let g = mapa.get(chave);
+    if (!g) {
+      g = { chave, nome: server?.name ?? 'Servidor central', ativos: [], paradas: [] };
+      mapa.set(chave, g);
+    }
+    (ehAparelhoParado(inst) ? g.paradas : g.ativos).push(inst);
+  }
+  return [...mapa.values()].sort((a, b) => (a.chave === '' ? -1 : b.chave === '' ? 1 : a.nome.localeCompare(b.nome, 'pt-BR')));
+}
 
 export function DeviceGrid() {
   const hydrated = useAppStore((s) => s.hydrated);
@@ -30,6 +66,18 @@ export function DeviceGrid() {
   const setSelection = useUiStore((s) => s.setSelection);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const openFocus = useUiStore((s) => s.openFocus);
+  const estadoQuery = useUiStore((s) => s.rota.query.estado);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const filtro = estadoDoFiltro(estadoQuery);
+  // Cards/Lista e grupos recolhidos: preferência da pessoa, lembrada no navegador (`lib/storage` já protege tudo).
+  const [visao, setVisaoEstado] = useState<Visao>(() => loadJson('painel.visao', ehVisao) ?? 'cards');
+  const [recolhidos, setRecolhidos] = useState<string[]>(() => loadJson('painel.paradasRecolhidas', isStringArray) ?? []);
+  const setVisao = (v: Visao) => { setVisaoEstado(v); saveJson('painel.visao', v); };
+  const alternarParadas = (chave: string) => setRecolhidos((atual) => {
+    const novo = atual.includes(chave) ? atual.filter((c) => c !== chave) : [...atual, chave];
+    saveJson('painel.paradasRecolhidas', novo);
+    return novo;
+  });
 
   const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
   // Personas não vêm no snapshot nem em eventos: são poucas e mudam devagar, então basta reler a cada snapshot. Cada
@@ -52,8 +100,16 @@ export function DeviceGrid() {
     () => countByServer(taskOrder.map((id) => ({ id, worker_id: instancesMap[id]?.worker_id ?? null })), workersMap),
     [taskOrder, instancesMap, workersMap]);
 
+  // `?estado=`: o que a tarefa 02 liga em "N aparelhos em estado desconhecido". A loja nunca entra no filtro: a
+  // contagem que levou até aqui (`store/metricas`) também não a conta.
+  const visiveis = useMemo(
+    () => (filtro ? instances.filter((i) => i.kind !== 'store' && estadoContado(i, workersMap) === filtro) : instances),
+    [instances, filtro, workersMap]);
+  const grupos = useMemo(() => agruparPorServidor(visiveis, workersMap), [visiveis, workersMap]);
+
   const { selecionados, total } = contarSelecao(selectedIds, taskOrder);
   const allSelected = total > 0 && selecionados === total;
+  const limparFiltro = () => trocarQuery({ estado: undefined });
 
   return (
     <section className={styles.section} aria-labelledby="devices-title">
@@ -96,9 +152,23 @@ export function DeviceGrid() {
             ))}
           </span>
         ) : null}
+        {filtro ? (
+          <span className={styles.chipFiltro}>
+            Filtro: {ROTULO_DO_ESTADO[filtro][1]} ({visiveis.length})
+            <Button size="sm" variant="ghost" icon={X} onClick={limparFiltro}>Limpar filtro</Button>
+          </span>
+        ) : null}
         <span className={styles.sectionHint}>
           <kbd>Ctrl</kbd> + clique alterna · <kbd>Shift</kbd> + clique seleciona um intervalo
         </span>
+        <div className={styles.visao} role="group" aria-label="Forma de exibir os aparelhos">
+          <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'cards'} onClick={() => setVisao('cards')}>
+            <LayoutGrid size={14} aria-hidden /> Cards
+          </button>
+          <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'lista'} onClick={() => setVisao('lista')}>
+            <List size={14} aria-hidden /> Lista
+          </button>
+        </div>
         <div className={styles.sectionActions}>
           {/* Com aparelhos marcados, o contador mora na barra de seleção (logo abaixo): dizer duas vezes só confunde. */}
           {selecionados === 0 ? (
@@ -162,24 +232,60 @@ export function DeviceGrid() {
         >
           O snapshot veio sem aparelhos.
         </EmptyState>
+      ) : visiveis.length === 0 ? (
+        <EmptyState
+          icon={Smartphone}
+          title="Nenhum aparelho neste estado"
+          hint="O filtro vem do link que você abriu. Limpe-o para ver todos os aparelhos."
+          actions={<Button variant="outline" onClick={limparFiltro}>Limpar filtro</Button>}
+        >
+          Nenhum aparelho está {filtro ? ROTULO_DO_ESTADO[filtro][1] : 'neste estado'} agora.
+        </EmptyState>
+      ) : visao === 'lista' ? (
+        <DeviceList instances={visiveis} appNames={appNames} porAparelho={porAparelho} selectedSet={selectedSet}
+                    focusId={focusId} onToggle={toggleSelected} onRange={onRange} onOpen={openFocus} />
       ) : (
-        <div className={styles.grid}>
-          {instances.map((inst) => (
-            <DeviceCard
-              key={inst.id}
-              instance={inst}
-              appName={inst.app_id ? appNames.get(inst.app_id) ?? inst.app_id : null}
-              personas={porAparelho.get(inst.id) ?? null}
-              selected={selectedSet.has(inst.id)}
-              focused={focusId === inst.id}
-              onToggle={toggleSelected}
-              onRange={onRange}
-              onOpen={openFocus}
-            />
-          ))}
+        <div className={styles.grupos}>
+          {grupos.map((g) => {
+            const recolhido = recolhidos.includes(g.chave);
+            const cartao = (inst: Instance, compacto: boolean) => (
+              <DeviceCard
+                key={inst.id}
+                instance={inst}
+                appName={inst.app_id ? appNames.get(inst.app_id) ?? inst.app_id : null}
+                personas={porAparelho.get(inst.id) ?? null}
+                selected={selectedSet.has(inst.id)}
+                focused={focusId === inst.id}
+                compacto={compacto}
+                onToggle={toggleSelected}
+                onRange={onRange}
+                onOpen={openFocus}
+              />
+            );
+            return (
+              <div key={g.chave} className={styles.grupo}>
+                {grupos.length > 1 ? (
+                  <h3 className={styles.grupoTitulo}>
+                    {g.nome}
+                    <span className={styles.grupoContagem}>{plural(g.ativos.length + g.paradas.length, 'aparelho', 'aparelhos')}</span>
+                  </h3>
+                ) : null}
+                {g.ativos.length > 0 ? <div className={styles.grid}>{g.ativos.map((i) => cartao(i, false))}</div> : null}
+                {g.paradas.length > 0 ? (
+                  <>
+                    <button type="button" className={styles.paradasBotao} aria-expanded={!recolhido}
+                            onClick={() => alternarParadas(g.chave)}>
+                      {recolhido ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+                      Paradas ({g.paradas.length})
+                    </button>
+                    {recolhido ? null : <div className={styles.gridCompacto}>{g.paradas.map((i) => cartao(i, true))}</div>}
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
   );
 }
-
