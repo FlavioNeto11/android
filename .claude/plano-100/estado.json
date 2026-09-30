@@ -4151,6 +4151,97 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-29T22:30:01+00:00"
+  },
+  "25.4": {
+   "id": "25.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, android-05 (QA), central 5306b5d, 29/09 23:47–00:37Z: perfil vpn-central-wireguard (servidor do central, sing-box em modo usuário), atribuição exigida_com_bloqueio; a convergência aplicou sozinha (device.network c-20260929235109-3da445), pediu o reinício (c-20260929235119-9f274f, requested_by rede) e conectou (c-20260929235309-c275a8): lido como uid 2000 always-on=io.nekohasekai.sfa, lockdown=1, tun0 no ar, VPN CONNECTED, regras de bloqueio ativas, e o servidor do central viu o par 10.66.0.2. Achado e corrigido na prova: a primeira medição esperava a deriva de 15 min (a097f00, teste que falhava antes). Integrado em 5306b5d (merge da Onda 2) e implantado no central em 5306b5d/a097f00 (29/09); suíte inteira 3821 ok + 1 falha de ambiente; vitest 833/833.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/vitrine.py",
+    "backend/tests/test_rede_aplicacao.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "backend: pytest tests/test_rede_aplicacao.py tests/test_rede_portao.py tests/test_rede_sonda.py tests/test_rede_worker.py tests/test_rede_por_aparelho.py tests/test_contratos_terceira_evolucao.py tests/test_interrupcao_entre_apps.py tests/test_conta_do_app_da_etapa.py -> 118 passed",
+   "grupo": "evolucao3-onda2",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T00:39:51+00:00"
+  },
+  "25.5": {
+   "id": "25.5",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, android-05, 30/09 00:37Z: medição #1 pela sonda nc http/1.0 + netstats por uid (uid 2000): IPv4 de saída 38.211.146.161 (api.ipify.org, pelo túnel), IPv6 sem rota (strict_route, sem vazar), DNS da VPN 172.19.0.2, UDP de DNS 83 B e NTP 48 B, shell coberto por UID. Teste de vazamento real às 00:09Z: com o cliente parado e sem tun0, o Android recusou a sonda como uid 2000 (Permission denied) — bloqueio provado; mas em 2 de 3 testes o always-on religou o cliente antes da sonda e o resultado ficou inconclusivo, deixando o aparelho em parcial. Integrado em 5306b5d (merge da Onda 2) e implantado no central em 5306b5d/a097f00 (29/09); suíte inteira 3821 ok + 1 falha de ambiente; vitest 833/833.",
+   "blocker": "o teste de vazamento em três idas ao aparelho perde a janela quando o always-on religa o cliente; correção em curso (uma ida só ao shell)",
+   "arquivos": [
+    "backend/app/devices/rede_medicao.py",
+    "backend/app/devices/sonda_rede.py",
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/devices/rede_servidor.py",
+    "backend/app/config.py",
+    "config/config.example.yaml",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/rede/RedePage.test.tsx",
+    "backend/tests/test_rede_sonda.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "backend: tests/test_rede_sonda.py 17 passed (part of the 118 passed); frontend: npx vitest run src/features/rede 15 passed; npm run typecheck ok",
+   "grupo": "evolucao3-onda2",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T00:39:51+00:00"
+  },
+  "25.6": {
+   "id": "25.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Three findings confirmed and fixed. (a) DEADLOCK: vitrine.objetivo_em_andamento gains `exceto_quem_espera_a_rede`, which ignores an objective that is `running` with wait_reason='rede'. _pedir_reinicio uses it; the busy worker and ControlOwner checks still apply separately. I found a related 25.6 bug of my own: an objective suspended between steps stayed `running`, so set_objective never ran again and wait_reason='rede' stayed set with the next step already on screen. scheduler._work now calls repo.clear_wait_reason when it resumes. (b) DROP NOT OBSERVED: new optional hook Scheduler.rede_releitura (this is not a change to C4). _work awaits it between steps, before _portas_na_troca/_porta_da_rede, and it never takes down the worker. state.py wires it to ConvergenciaDeRede.reler_entre_etapas: with policy exigida and the row in conectado/parcial/trafego_verificado, it reads the device once a Integrado em 5306b5d (merge da Onda 2) e implantado no central em 5306b5d/a097f00 (29/09); suíte inteira 3821 ok + 1 falha de ambiente; vitest 833/833.",
+   "blocker": "Real proof not_run: depends on 25.4/25.5 running on a real device. Within a single step a drop is still not seen: with exigida (no lockdown), apps can go out over the physical network until the step ends; this is documented.",
+   "arquivos": [
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/state.py",
+    "backend/app/vitrine.py",
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/devices/rede_medicao.py",
+    "backend/app/devices/sonda_rede.py",
+    "backend/app/config.py",
+    "config/config.example.yaml",
+    "backend/tests/test_rede_portao.py",
+    "backend/tests/test_rede_sonda.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "backend: tests/test_rede_portao.py 12 passed, tests/test_contratos_terceira_evolucao.py, tests/test_interrupcao_entre_apps.py, tests/test_conta_do_app_da_etapa.py (part of the 118 passed)",
+   "grupo": "evolucao3-onda2",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T00:39:51+00:00"
+  },
+  "25.7": {
+   "id": "25.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "No 25.7-specific finding this round; the earlier implementation stands (adb reverse, endpoint_lan, read-only firewall check with the owner's command, refusal while the firewall is closed, remote_access, POST /api/network/server/firewall-check, panel card). Two interactions with this round: (1) the restart cap in 25.4 now covers the phone with no worker, where `restart` = stop+start only re-adopts the device, and the error tells the owner to restart the phone by hand and ask for Reaplicar; (2) the leak test is not run on a phone with no worker (_vazamento_adiado), because it would stop the client with no way to bring it back. On that phone exigida_com_bloqueio stays `parcial`, and the doc recommends `exigida`. The LAN worker's devices do get the leak test (the worker restarts them). The one real firewall reading from earlier (29/09, read-only, state sem_regra) does not count as proof. tes Integrado em 5306b5d (merge da Onda 2) e implantado no central em 5306b5d/a097f00 (29/09); suíte inteira 3821 ok + 1 falha de ambiente; vitest 833/833.",
+   "blocker": "Real proof not_run: the owner has to set rede.servidor.endpoint_lan and create the firewall rule (the exact command is in GET /api/network/server -> remote_access), and 25.4 has to run on a device of the notebook.",
+   "arquivos": [
+    "backend/app/devices/rede_convergencia.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "backend: tests/test_rede_worker.py 15 passed (part of the 118 passed); test_rede_sonda.py::test_vazamento_adiado_com_objetivo_no_meio_e_no_celular_sem_worker",
+   "grupo": "evolucao3-onda2",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T00:39:51+00:00"
   }
  },
  "rodadas": [
@@ -4754,6 +4845,18 @@
    ],
    "grupos": [
     "evolucao3-coordenador"
+   ]
+  },
+  {
+   "quando": "2026-09-30T00:39:51+00:00",
+   "itens": [
+    "25.4",
+    "25.5",
+    "25.6",
+    "25.7"
+   ],
+   "grupos": [
+    "evolucao3-onda2"
    ]
   }
  ]
