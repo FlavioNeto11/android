@@ -83,7 +83,7 @@ dono. Não aponte a variável para outro PostgreSQL da máquina: a credencial de
 | `backend-sqlite` | todo push/PR | `pytest -q` contra SQLite |
 | `backend-postgres` | `schedule` (diário, 05:17 UTC) ou `workflow_dispatch` | `pytest -q` contra `postgres:17` de serviço, `TEST_DATABASE_URL` |
 | `frontend` | todo push/PR | `npm run typecheck` + `npm test` |
-| `dependencias` | todo push/PR + diário | `pip-audit --strict` (backend + worker) e `npm audit --audit-level=high` (frontend, Appium) |
+| `dependencias` | todo push/PR + diário | `pip-audit --strict` (backend + worker) e `npm audit --audit-level=high` (frontend, Appium). No Appium, ainda `npm ci` + `node corrigir-empacotados.mjs --conferir`: o driver traz dependências dentro do tarball, e o `npm audit` só lê o lock (K-064) |
 | `worker-agent-smoke` | todo push/PR | instala só `worker-requirements.txt` e importa `app.worker.agent` — prova que o agente continua leve |
 | `docs` | todo push/PR | `python scripts/docs-check.py` + testes puros de `scripts/tests` (docs-check e livro-razão do plano-100) |
 

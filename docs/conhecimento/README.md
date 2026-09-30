@@ -120,6 +120,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-059 | Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável | parque/emuladores | erro | 29/09 | vigente (a relação com o irq segue aberta) | `docs/conhecimento/aprendizados.md#k-059` | 21.15, K-050 |
 | K-062 | O Outlook derruba o emulador estável; no canary, o app morre numa armadilha UD2 da libhxcomm.so | apps/emuladores | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-062` | 23.2, P15, ADR-057 |
 | K-063 | Always-on religa o cliente VPN em menos de 1 s: teste de vazamento numa ida só ao aparelho | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-063` | 25.5, ADR-056 |
+| K-064 | Dependência empacotada no tarball (`inBundle`): `npm audit fix` e `overrides` não corrigem, e o lock editado fica verde com o código vulnerável no disco | CI/dependências | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-064` | 29.1 |
 
 ## Como localizar
 

@@ -163,6 +163,20 @@ jobs:
         run: |
           npm audit
           npm audit --audit-level=high
+      # 30/09: o driver UiAutomator2 traz dependências DENTRO do tarball (`bundleDependencies`). O `npm audit` lê só
+      # o lock; um lock corrigido com a cópia vulnerável ainda no disco passaria calado (medido: `npm ci` deixa a
+      # 5.0.9 empacotada do brace-expansion mesmo com o lock dizendo 5.0.12). Por isso instala de verdade — o
+      # `postinstall` troca a cópia empacotada — e confere o DISCO. Um passo por comando: no runner Windows o shell
+      # é o pwsh, em que só o último comando de um bloco decide o passo.
+      - name: Appium · instala (o postinstall troca a cópia empacotada vulnerável)
+        working-directory: tools/appium
+        run: npm ci --no-audit --no-fund
+      - name: Appium · o instalado bate com o lock
+        working-directory: tools/appium
+        run: node corrigir-empacotados.mjs --conferir
+      - name: Appium · testes do corretor
+        working-directory: tools/appium
+        run: npm test
 
   backend-tipos:
     # Tipagem gradual (ADR-030, fase A da evolução arquitetural). O código novo da arquitetura modular

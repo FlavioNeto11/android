@@ -1474,3 +1474,31 @@ denied" como uid 2000 prova o bloqueio; root não é coberto pelo bloqueio.
 
 **Aplicabilidade.** Vigente. Vale para qualquer medição que dependa de a VPN estar caída com always-on ligado.
 
+### K-064 — Dependência empacotada no tarball: o `npm audit fix` diz que corrige e não corrige, e o lock editado mente
+
+**Data:** 30/09/2026 · **Área:** CI e dependências (`tools/appium`, job `dependencias`)
+
+**Sintoma.** A corrida agendada de 30/09 05:29Z reprovou no `npm audit --audit-level=high` do Appium:
+`brace-expansion` 5.0.9 (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, alta) em
+`node_modules/appium-uiautomator2-driver/node_modules/`. O relatório dizia "fix available via `npm audit fix`".
+
+**Causa.** O `appium-uiautomator2-driver` 8.7.0 publica as dependências DENTRO do próprio tarball
+(`bundleDependencies`; no lock, `"inBundle": true`). O 8.7.0 saiu em 14/09 06:30Z e o `brace-expansion` 5.0.12 em
+14/09 21:59Z: a última versão do driver carrega a vulnerável, e não há versão mais nova.
+
+**O que não funcionou (medido, numa cópia).**
+
+- `npm audit fix` (com e sem `--package-lock-only`): `changed: 0`. Dependência empacotada não é resolvida pelo
+  registro.
+- `overrides` no `package.json`: o lock não muda e o aviso continua.
+- Editar só o lock (a entrada aninhada como 5.0.12, sem `inBundle`): o `npm audit` fica verde e o `npm ci` deixa a
+  5.0.9 no disco, porque a pasta vem de dentro do tarball do driver. É um lock que mente.
+
+**O que funcionou.** Corrigir o arquivo instalado e fazer o lock dizer a verdade: `tools/appium/corrigir-empacotados.mjs`
+roda no `postinstall` do `npm ci` e troca a cópia empacotada pela 5.0.12 da raiz (mesma versão maior; o `minimatch`
+empacotado pede `^5.0.8`), e o CI instala de verdade e confere o disco (`--conferir`). Conferido: `minimatch` e `glob`
+do driver funcionam com o módulo trocado, e `appium driver list --installed` lista o `uiautomator2@8.7.0`.
+
+**Aplicabilidade.** Vigente até o driver publicar uma versão que empacote a 5.0.12 (o script avisa "nada a trocar" e a
+entrada sai de `CORRECOES`). Vale para qualquer aviso em caminho com `inBundle`: o relatório do `npm audit` não
+distingue, e só a leitura do disco prova a correção.
