@@ -46,13 +46,13 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | Item | Liga a | Resultado esperado | Depende de | Resp. | Estado |
 |---|---|---|---|---|---|
 | 29.1 | CI | job `dependências` verde no commit publicado | — | C | **feito**, `real`: `9428a6a`, run 36713946044 verde (13:03Z) |
-| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **integrado**, `simulated`; revisão independente feita (4 achados corrigidos); prova real = 29.4 |
-| 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | **integrado**, `simulated` + gesto `real` no android-05; pela convergência no central: a observar depois do deploy |
-| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | ensaio `real` feito (063 numa cópia, adoção decidida); deploy depois do CI |
-| 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | **integrado**, `real` (o comando novo em android-05 e android-02, só leitura) |
-| 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **integrado**, `simulated`; o real é o 29.7 |
+| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **implantado** `0d70882`; `real` na subida (adoção em 02, 03 e 06; teste e gravação no 05); as 6 h são o 29.4 |
+| 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | **implantado**; `real` pela convergência no android-05 (túnel religado pelo tile depois do teste, sem reinício); boot falho pela convergência: a observar |
+| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | **janela aberta às 15:24Z de 30/09**, fim previsto 21:30Z; laço de observação rodando |
+| 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | **implantado**, `real` (medições #58 a #61 com o detalhe por perna) |
+| 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | bloqueado (externo) |
-| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **integrado**, `simulated` + leitura `real` no central |
+| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | E7 e E3 **executados** (`real`): `skiavk` refutado; falta E4 (GPU do host pelo serviço, android-07) depois do deploy |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | não iniciado |
@@ -175,6 +175,45 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Checkpoints
 
+### Checkpoint 4 — 30/09 ~15:35Z — primeiro deploy e início da janela do P16
+
+**Implantado:** central em `0d70882`, migração `063_prova_de_vazamento`, `/api/health` `ok` sem problemas (15:24:44Z,
+`scripts/deploy.ps1`, com backup e a etapa nova do Appium: `npm ci` e o disco conferido em 5.0.12). CI do commit: run
+36730509649 verde (pytest SQLite 36m39s; o job de PostgreSQL só roda no cron). Agente do notebook atualizado para
+`0.1.0+0d70882` pelo instalador oficial (15:29Z); o worker segue `degraded` só pelo relógio (+5,9 s em relação ao
+central), que não é desta fase.
+
+**Ensaio antes do deploy** (15:22Z, `real`): a 063 numa cópia fresca do banco, sem divergência; decisão de adoção
+igual à do checkpoint 2; nenhum comando aberto.
+
+**O que a subida mostrou** (`real`, banco do central, comandos e eventos):
+
+| Aparelho | Conta real | O que aconteceu | Cliente VPN parado? | Reinício pedido pela rede? |
+|---|---|---|---|---|
+| android-02 | não | 15:25:44Z prova anterior **adotada** (teste a partir de 30/09 01:22:29Z, comando `c-20260930012229-187ca4`); medição #59 às 15:26:07Z, `leak_blocked=1`, `trafego_verificado` | não | não |
+| android-03 | sim (Bruno) | 15:25:44Z **adotada** (teste a partir de 02:29:45Z, `c-20260930022945-fd0d76`); medição #58, `leak_blocked=1` | não | não |
+| android-06 | sim (André) | 15:25:44Z **adotada** (teste a partir de 01:38:43Z, `c-20260930013843-6b8340`); medição #60, `leak_blocked=1` | não | não |
+| android-05 | não | sem adoção, por desenho. Com o objetivo parado: "medição dispensada" (nenhuma sonda à toa). Objetivo abandonado às 15:26:30Z; `POST …/apply` às 15:26:37Z → comando `c-20260930152637-06956a`: **teste às 15:26:50Z, bloqueio provado e gravado na linha**; **túnel religado pelo tile às 15:26:59Z, sem reinício**; medição #61 às 15:27:22Z, `trafego_verificado` | sim, uma vez (o teste) | não |
+
+É a primeira vez que o teste de vazamento termina sem reiniciar o aparelho: 45 s do pedido ao `trafego_verificado`.
+As medições novas trazem o UDP por perna (`UDP DNS 83 B (1ª de 3, 2,0 s), NTP 48 B (1ª de 3, 2,0 s)`).
+
+**Janela de observação (29.4).** Início: **30/09 15:24Z** (a subida do backend). Fim previsto: **21:30Z**. Commit
+`0d70882`; revisão 1 nos quatro aparelhos. A remedição a 90% da validade, que antes disparava o defeito, cai por volta
+de 20:50Z (5,4 h depois das medições de 15:26Z). O que invalida a janela: reinício do backend, deploy, `POST …/verify`
+ou reatribuição de rede em qualquer dos quatro aparelhos.
+
+- Laço de observação: `scripts/rede-observacao.py --desde 2026-09-30T15:23:00Z --a-cada 600 --ate 2026-09-30T21:40:00Z`,
+  processo próprio no central (não depende da sessão da IDE), acrescentando uma leitura a cada 10 min em
+  `data/rede/observacao-p16/janela-20260930.md` (fora do Git). Ele separa teste de vazamento, adoção e reinício pedido
+  pela rede (classificado pelo passo anterior: teste de vazamento, túnel ou aplicação).
+- Critério: em android-02, 03 e 06, **nenhum** teste de vazamento e **nenhum** reinício classificado como "teste de
+  vazamento" até o fim, com pelo menos uma medição nova por aparelho depois de 20:50Z trazendo `leak_blocked=1`. Um
+  reinício classificado como "túnel" é do 29.3 e entra no registro como tal, não como falha do P16.
+- Evento que pode contaminar, registrado de antemão: o E4 (android-07 com a GPU do host) e o canário do Outlook nele
+  rodam dentro da janela, só com a CPU do host abaixo de 60%; início e fim ficam anotados aqui.
+
+### Checkpoint 3 — 30/09 ~14:40Z
 ### Checkpoint 3 — 30/09 ~14:40Z
 
 - Commits locais em `claude/evolucao3`, sobre `15d9ff9`, prontos para publicar: P16 com firewall (29.2, 29.8),
@@ -239,11 +278,9 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Próxima ação
 
-1. Publicar (`git push origin claude/evolucao3:main`) e esperar o CI (~40 min no runner do central; nada pesado até lá).
-2. Repetir o ensaio da 063 e da adoção numa cópia fresca do banco; `git pull --ff-only` no checkout do central e
-   `scripts/deploy.ps1` com os quatro aparelhos ociosos. Registrar aqui a hora: é o início da janela de 6 h (29.4).
-3. Depois da subida: conferir a adoção em android-02, 03 e 06 (comando `verificar` sem `force-stop`, `leak_*`
-   preenchidas, nenhum `restart` pedido por `rede`), resolver o objetivo preso do android-05 e acompanhar o primeiro
-   teste real dele com o código novo.
-4. Durante a janela, sem reiniciar o backend: E4 no android-07, inspeção visual do painel (29.15), registros do P15
-   (29.16).
+1. Janela do P16 em curso até 21:30Z: não reiniciar o backend, não implantar, não pedir `verify` nem reatribuir rede em
+   android-02, 03, 05 e 06. Ler `data/rede/observacao-p16/janela-20260930.md` no fim e registrar o 29.4.
+2. Dentro da janela: E4 no android-07 (GPU do host pelo serviço) e canário do Outlook nele; inspeção visual do painel
+   (29.15).
+3. Depois da janela: `gpu_mode: host` nos aparelhos que vão receber o Outlook (exige reinício do backend), promoção e
+   distribuição (29.12), observação das telas e YAML do Outlook.
