@@ -3831,29 +3831,17 @@
   "24.1": {
    "id": "24.1",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "No change since the previous declaration. Citing another app or asking for a site no longer drops the catalog. RunService._catalogos has three modes (free plan, per-catalog, cross-app); PLANNER_MULTIAPP_SYSTEM comes with _MultiPlanOut and _plano_entre_apps; apps_do_plano fills required_apps in every mode; the new planning/apps_do_comando.py module handles apps_citados and pede_site. Proof: tests/test_planejador_entre_apps.py, which I reran here (with test_prompts_licoes.py: 28 passed). NOT RUN: whether the real Anthropic/OpenAI APIs accept the strict _MultiPlanOut schema. That is item 24.9, a paid call. Coupling with 24.8 is kept: _trecho searches for the literal '- Se o comando envolver MAIS DE UM app', which 24.8 left unchanged. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: planejador de verdade (Opus) montou planos com required_apps [qa-messenger, chrome], app por etapa e saídas declaradas (r-20260930023442-bd5c5a, r-20260930023901-13ec70).",
    "blocker": "",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/taskqueue/service.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/apps_do_comando.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/parsing.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/prompts.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/provider.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/capabilities.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/anthropic_provider.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/openai_provider.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/app/planning/simulated_provider.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/backend/tests/test_planejador_entre_apps.py",
-    "C:/git/android/.claude/worktrees/evo3-c1/docs/dominios/execution.md"
-   ],
-   "testes": "cd C:/git/android/.claude/worktrees/evo3-c1/backend && .venv/Scripts/python.exe -m pytest -q tests/test_planejador_entre_apps.py tests/test_prompts_licoes.py -> 28 passed",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "execuções reais pela API do central",
+   "grupo": "evolucao3-provas-reais",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:41:35+00:00"
   },
   "24.2": {
    "id": "24.2",
@@ -3957,69 +3945,47 @@
   "24.3": {
    "id": "24.3",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "backend/app/taskqueue/saidas.py, executor read_value, planning/prompts.py (saidas e {{saida:nome}}), parsing (referência sem leitura vira pergunta); tests/test_valor_entre_etapas.py, test_planejador_entre_apps.py::test_planejador_declara_a_saida_no_outlook_e_o_instagram_a_usa. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023442-bd5c5a concluída 4/4: a etapa do QA Messenger gravou primeiro_contato=\"Suporte QA\" (step_outputs, app qa-messenger), a do Chrome abriu a busca com {{saida:primeiro_contato}} resolvido e gravou o título do primeiro resultado (app chrome). Sem efeito externo.",
    "blocker": "",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/saidas.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/executor.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/automation/tools.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/repository.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/scheduler.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/foreach.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/service.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/tests/test_valor_entre_etapas.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/frontend/src/features/runs/resultadoDaInstancia.ts",
-    "C:/git/android/.claude/worktrees/evo3-c2/frontend/src/features/runs/ResultadoPorInstancia.tsx",
-    "C:/git/android/.claude/worktrees/evo3-c2/docs/dominios/execution.md",
-    "C:/git/android/.claude/worktrees/evo3-c2/docs/skill-dsl.md"
-   ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_valor_entre_etapas.py: 31 passed. Os dois testes novos falham com a correção revertida.\nJunto com test_conta_do_app_da_etapa, test_interrupcao_entre_apps e test_tela_da_falha: 76 passed.\nDescompilador, ensino e perfil multiapp: 41 passed.\nHabilidades na execução, fatia abrir conversa, manifesto, costuras de aprendizado, d1 fluxos e contratos da terceira evolução: 103 passed.\nFrontend sem mudança nesta rodada.\npython scripts/docs-check.py: 0 erros.",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "execuções reais pela API do central",
+   "grupo": "evolucao3-provas-reais",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:41:35+00:00"
   },
   "24.4": {
    "id": "24.4",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Achado do revisor ('Conta: ' vazio comprovava a conferência): corrigido.\n- repository.py::conta_esperada tem três desfechos:\n  - a persona tem UMA conta ativa com nome no app: essa conta;\n  - senão (nenhuma conta, ou mais de uma ativa), numa etapa do app do aparelho ou sem app: o rótulo do aparelho. Rótulo vazio dá None, e isso cobre o caso (b) do revisor, que perdia o rótulo;\n  - numa etapa de outro app: None.\n- repository.py::_insert_steps: sem conta esperada, o molde {account_label} fica SEM resolver (antes virava 'Conta: ').\n- scheduler.py::_conta_da_etapa (novo), chamado em _work depois de resolver_saidas e antes de policy_gate:\n  - com a conta conhecida agora, Repository.resolver_conta (novo) grava a conta na linha, com a cerca de status='ready';\n  - sem ela, waiting_user com o motivo 'não tem UMA conta conhecida em …' e AJUDA_DA_CONTA_DO_APP, sem tentativa gasta.\n  Repository.usa_ Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
-   "blocker": "Nenhum no código. Outlook e Instagram num aparelho real, com conta indisponível, interrupção e retomada: not_run (fecha no 24.9). O aparelho falso encena um app só, então o 'segundo app' é outro registro de app no mesmo pacote do QA.",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/repository.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/scheduler.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/app/taskqueue/executor.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/tests/test_conta_do_app_da_etapa.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/docs/dominios/execution.md"
-   ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_conta_do_app_da_etapa.py: 8 passed. Os dois testes novos falham com a correção revertida.\nNos arquivos da frente (conta do app, valor entre etapas, interrupção entre apps, tela da falha): 76 passed.\nPerfil multiapp, descompilador e ensino: 41 passed.\nHabilidades na execução, fatia, manifesto, costuras, d1 fluxos e contratos: 103 passed.",
-   "grupo": "evolucao3-onda1",
+   "proof": "real",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023809-12d329: a etapa que conferia a conta no QA Messenger, com a pessoa do item sem conta conhecida nesse app, foi para waiting_user (\"sem a conta esperada, a conferência passaria com qualquer conta na tela\") em vez de aceitar a tela.",
+   "blocker": "",
+   "arquivos": [],
+   "testes": "execuções reais pela API do central",
+   "grupo": "evolucao3-provas-reais",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:41:35+00:00"
   },
   "24.7": {
    "id": "24.7",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "tests/test_interrupcao_entre_apps.py (cancelar, reinício e sucessora; ::test_reinicio_retoma_no_segundo_app_de_outro_pacote com tests/fake_device.py pacotes_extras); parte com aparelho real é o 24.9. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29/09 ~22:23Z); suíte inteira 3747 ok + 1 falha de ambiente (test_backup); vitest 830/830.",
+   "proof": "real",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023901-13ec70: backend reiniciado (stop.ps1 + farm-central) com a etapa do Chrome em curso; retomou e concluiu 4/4; as etapas do QA Messenger não se repetiram (1 tentativa cada), a do Chrome teve 2 (a interrompida e a retomada) e a saída nome_contato gravada antes do reinício foi reaproveitada.",
    "blocker": "",
-   "arquivos": [
-    "C:/git/android/.claude/worktrees/evo3-c2/backend/tests/test_interrupcao_entre_apps.py",
-    "C:/git/android/.claude/worktrees/evo3-c2/docs/dominios/execution.md"
-   ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_interrupcao_entre_apps.py: passou, dentro dos 76 passed rodados junto com test_conta_do_app_da_etapa, test_valor_entre_etapas e test_tela_da_falha.",
-   "grupo": "evolucao3-onda1",
+   "arquivos": [],
+   "testes": "execuções reais pela API do central",
+   "grupo": "evolucao3-provas-reais",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-29T22:26:37+00:00"
+   "quando": "2026-09-30T02:41:35+00:00"
   },
   "25.2": {
    "id": "25.2",
@@ -4235,6 +4201,36 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T00:39:51+00:00"
+  },
+  "24.9": {
+   "id": "24.9",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: comando entre apps só de leitura provado com QA Messenger → Chrome (bd5c5a), conta indisponível (12d329) e reinício no meio (13ec70). Custo total dessas provas: ~US$ 0,56 no livro-caixa da Anthropic (autorização até US$ 1,50). Escolha consciente: o teste NÃO foi feito numa conta real do Instagram (conduta do ADR-055/K-057: conta real não é bancada).",
+   "blocker": "o recorte pedido (Outlook → Instagram) depende do P15: o Outlook não roda no parque emulado",
+   "arquivos": [],
+   "testes": "execuções reais pela API do central",
+   "grupo": "evolucao3-provas-reais",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:41:35+00:00"
+  },
+  "25.9": {
+   "id": "25.9",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "docs/relatorio-validacao.md §26.2.1: ondas android-05 e android-02 (QA) e android-06 e android-03 (contas reais, autorização P7, conta conferida antes e depois), todos em trafego_verificado com vazamento bloqueado e a saída compartilhada detectada.",
+   "blocker": "aparelhos do notebook: falta a regra de firewall do dono (25.7); android-01 (Lucas) fora da autorização P7; IP distinto por aparelho depende de provedor (P1)",
+   "arquivos": [],
+   "testes": "ondas reais pela API do central",
+   "grupo": "evolucao3-coordenador",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T02:42:14+00:00"
   }
  },
  "rodadas": [
@@ -4856,6 +4852,28 @@
    "quando": "2026-09-30T01:07:54+00:00",
    "itens": [
     "25.5"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
+   ]
+  },
+  {
+   "quando": "2026-09-30T02:41:35+00:00",
+   "itens": [
+    "24.1",
+    "24.3",
+    "24.4",
+    "24.7",
+    "24.9"
+   ],
+   "grupos": [
+    "evolucao3-provas-reais"
+   ]
+  },
+  {
+   "quando": "2026-09-30T02:42:14+00:00",
+   "itens": [
+    "25.9"
    ],
    "grupos": [
     "evolucao3-coordenador"

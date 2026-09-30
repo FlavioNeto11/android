@@ -1941,6 +1941,44 @@ o do `aplicar`.
   aguenta e o Outlook morre numa armadilha proposital (`UD2`) em `libhxcomm.so`, thread `Hx-Storage`. O app recusa o
   ambiente emulado.
 
+### 26.2.1 Matriz de rede por aparelho (25.9, 30/09 ~02:45Z)
+
+Perfil `vpn-central-wireguard` (sing-box do central em modo usuário), política `exigida_com_bloqueio`. "Vazamento
+bloqueado" = com o cliente VPN parado e sem `tun0`, o Android recusou a sonda como uid 2000 ("Permission denied").
+
+| Aparelho | Conta | Estado | IP de saída medido | Vazamento | UDP | Apps por UID | Medido em (UTC) |
+|---|---|---|---|---|---|---|---|
+| android-05 | QA | `trafego_verificado` | 38.211.146.161 | bloqueado | ok | shell | 30/09 01:03 |
+| android-02 | QA | `trafego_verificado` | 38.211.146.161 | bloqueado | ok | shell | 30/09 01:27 |
+| android-06 | André (real) | `trafego_verificado` | 38.211.146.161 | bloqueado | ok | Instagram, shell | 30/09 01:42 |
+| android-03 | Bruno (real) | `trafego_verificado` | 38.211.146.161 | bloqueado | **falhou** | Instagram, shell | 30/09 02:33 |
+| android-01 | Lucas (sem o Instagram) | sem rede pedida | — | — | — | — | — |
+| android-04, 07, 08 | QA/quarentena | sem rede pedida | — | — | — | — | — |
+| android-09, 10, 12–15 (notebook) | QA | `not_run`: falta a regra de firewall do dono (25.7) | — | — | — | — | — |
+
+- **Saída compartilhada detectada:** os quatro aparelhos saem pelo IP do central, e cada linha aponta os outros ("mesma
+  saída que…"). Configuração diferente nunca foi apresentada como IP diferente. IP distinto por aparelho depende de
+  provedor (P1).
+- **Contas reais (autorização P7):** conta conferida por leitura antes e depois da troca, um aparelho por vez, fora de
+  uso: André `session_ready` antes (`c-20260930013055-37bcd9`) e depois (`c-20260930014245-9a6d91`); Bruno antes
+  (`c-20260930014706-126a74`) e depois (`c-20260930023319-04fca0`). Personas seguem `active`; nenhum desafio.
+- **Achados operacionais:** o túnel às vezes não sobe no primeiro boot (a convergência resolve com um reinício a mais,
+  dentro do teto); o android-03 estava sem internet antes da troca (conectividade `unavailable`) e voltou com um
+  `restart`; o UDP do android-03 falhou na medição #6 (registrado como está).
+
+### 26.2.2 Comando entre aplicativos em aparelho real (24.x, 30/09 ~02:35–02:41Z)
+
+No android-05 (rede verificada), só leitura, QA Messenger → Chrome (o recorte Outlook → Instagram espera o P15; o teste
+não usou conta real do Instagram, pela conduta do ADR-055/K-057):
+
+- `r-20260930023442-bd5c5a`: 4/4; saída `primeiro_contato` lida no QA e usada na busca do Chrome; título do primeiro
+  resultado gravado como segunda saída.
+- `r-20260930023809-12d329`: a etapa que conferia a conta no QA, com a pessoa sem conta conhecida nesse app, foi para
+  `waiting_user` em vez de aceitar a tela (conta indisponível).
+- `r-20260930023901-13ec70`: backend reiniciado no meio da etapa do Chrome; retomou e concluiu 4/4 sem repetir as
+  etapas do QA, reaproveitando a saída gravada antes do reinício.
+- Custo: ~US$ 0,56 no livro-caixa da Anthropic desde a âncora de 29/09 17:46Z (planejamentos e as três execuções).
+
 ### 26.3 Revisão (27.1)
 
 Cada frente da Onda 1 passou por um revisor adversarial (Opus) que leu o diff contra o pacote e as decisões T1–T24;
