@@ -46,20 +46,20 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | Item | Liga a | Resultado esperado | Depende de | Resp. | Estado |
 |---|---|---|---|---|---|
 | 29.1 | CI | job `dependências` verde no commit publicado | — | C | **feito**, `real`: `9428a6a`, run 36713946044 verde (13:03Z) |
-| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **integrado** (commit local do P16); `simulated` + leitura e ensaio `real`; revisão independente em curso |
-| 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | a medir (android-05) |
-| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | não iniciado |
-| 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | não iniciado |
-| 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | não iniciado |
+| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **integrado**, `simulated`; revisão independente feita (4 achados corrigidos); prova real = 29.4 |
+| 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | **integrado**, `simulated` + gesto `real` no android-05; pela convergência no central: a observar depois do deploy |
+| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | ensaio `real` feito (063 numa cópia, adoção decidida); deploy depois do CI |
+| 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | **integrado**, `real` (o comando novo em android-05 e android-02, só leitura) |
+| 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **integrado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | bloqueado (externo) |
-| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **integrado** (no commit do P16, de `d59fd36`); `simulated` + leitura `real` no central |
+| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **integrado**, `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
-| 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | não iniciado |
+| 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | E7 e E3 **executados** (`real`): `skiavk` refutado; falta E4 (GPU do host pelo serviço, android-07) depois do deploy |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | não iniciado |
 | 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | não iniciado |
 | 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | bloqueado (externo) |
 | 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
-| 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | não iniciado |
+| 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **parcial**, `simulated`; falta a inspeção visual depois do deploy |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | não iniciado |
 | 29.18 | fechamento | relatório §27, CHANGELOG, estado pelo mecanismo | tudo acima | C | não iniciado |
@@ -175,6 +175,44 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Checkpoints
 
+### Checkpoint 3 — 30/09 ~14:40Z
+
+- Commits locais em `claude/evolucao3`, sobre `15d9ff9`, prontos para publicar: P16 com firewall (29.2, 29.8),
+  painel (29.15), túnel no boot e achados da revisão (29.3), UDP (29.5), saída esperada (29.6).
+- **Suíte inteira do backend** (SQLite), uma vez, no commit do P16 com o 29.3: 3860 passed, 1 failed
+  (`tests/test_backup.py::test_backup_e_restore_ensaio_de_ponta_a_ponta`, falha de ambiente conhecida: o worktree não
+  tem `config/config.yaml`), 34 min em prioridade ociosa. Depois dela entraram 29.5 e 29.6, com os arquivos afetados
+  (176 testes de rede, banco, arquitetura e pacote do agente) e o painel (`tsc`, vitest 840/840); a suíte inteira
+  desses dois é a do CI.
+- **Revisão independente do P16** (agente em modo leitura): o mecanismo central segurou (nenhum caminho para o cliente
+  em dois testes sem `verify`); quatro achados, todos corrigidos com o teste que falhava antes — A1 (falha antes da
+  adoção virava teste destrutivo), A2 (`verify` e wipe sem marca na linha antiga), A3 (linha recriada adotava a prova
+  da anterior), A4 (medição a cada passada sem IP).
+- **29.3 medido** (`real`, android-05, 7 boots): o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início
+  do serviço com o convidado sem CPU, ou serviço que para sozinho); sobe entre 92 e 176 s; `force-stop` não religa; o
+  tile do cliente religa. O código do gesto rodou duas vezes no android-05 às 13:30Z (túnel de volta em ~9 s, bloqueio
+  intacto). Incidente da medição: um filtro largo matou o processo do host que segura o UiAutomator2 do android-05; o
+  servidor no aparelho seguiu vivo e a API diz `automation: ready`.
+- **E3 executado** (`real`, 14:08–14:36Z, AVD `diag-outlook`, emulador 37.1.11, um fator por vez):
+
+  | Fase | O que mudou | Selecionado de fato | Resultado |
+  |---|---|---|---|
+  | controle | `-gpu swiftshader_indirect` | `gles_mode_selected:swiftshader`; `debug.hwui.renderer=skiagl` | o emulador caiu ~31 s depois de abrir o Outlook (reproduz o P15) |
+  | `-prop` | `-prop debug.hwui.renderer=skiavk` | a propriedade **não** foi aplicada (continuou `skiagl`) | o emulador caiu em ~57 s |
+  | `setprop` | `setprop debug.hwui.renderer skiavk` como o shell | `skiavk`, Vulkan do SwiftShader | o emulador não cai, mas **o convidado quebra**: `VulkanManager: Assertion failed: !grExtensions.hasExtension(VK_KHR_EXTERNAL_SEMAPHORE_FD…)` em `system_server`, SystemUI e Settings, em laço |
+  | `setprop` + `-gpu lavapipe` | Vulkan do lavapipe | `vulkan_mode_selected:lavapipe`, GLES ainda `swiftshader` | o convidado travou (o shell parou de responder por mais de 9 min) |
+
+  Conclusão: **`skiavk` não serve** nesta imagem e neste emulador; o relato externo de 240 aberturas não vale aqui. As
+  cinco "aberturas sem queda" da fase `setprop` eram o convidado em laço de queda — por isso a conferência do estado
+  do app, e não só "o emulador está vivo". O caminho provado continua sendo `-gpu host` (E2); `swangle` e
+  `angle_indirect` selecionam o SwiftShader-GL no 37.1.11.
+- **E4 preparado**: `instances.overrides.android-07.gpu_mode: host` no `config.yaml` do central (cópia em
+  `data/backups/config.yaml.antes-fase29-20260930-143629`); o override por instância é a estrutura que já existe e
+  vale em todo boot. Entra em vigor no deploy; o experimento (ligar o android-07 pelo serviço, abrir o Outlook, medir
+  GPU, RAM e captura) roda depois dele, sem reiniciar o backend.
+- **E7 executado** (checkpoint 2).
+
+### Checkpoint 2 — 30/09 ~13:15Z
 ### Checkpoint 2 — 30/09 ~13:15Z
 
 - 29.1 **feito** (`real`): run 36713946044 verde às 13:03Z no commit `9428a6a`.
@@ -201,7 +239,11 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Próxima ação
 
-1. Aplicar os achados da revisão do P16 e o 29.3 (com o que a medição do android-05 mostrar).
-2. Suíte inteira do backend uma vez, push, esperar o CI.
-3. Resolver o objetivo `r-20260930023809-12d329:android-05`, repetir o ensaio da 063 e da adoção, e fazer o primeiro
-   deploy (29.4) com os aparelhos ociosos; registrar aqui o início da janela de 6 h.
+1. Publicar (`git push origin claude/evolucao3:main`) e esperar o CI (~40 min no runner do central; nada pesado até lá).
+2. Repetir o ensaio da 063 e da adoção numa cópia fresca do banco; `git pull --ff-only` no checkout do central e
+   `scripts/deploy.ps1` com os quatro aparelhos ociosos. Registrar aqui a hora: é o início da janela de 6 h (29.4).
+3. Depois da subida: conferir a adoção em android-02, 03 e 06 (comando `verificar` sem `force-stop`, `leak_*`
+   preenchidas, nenhum `restart` pedido por `rede`), resolver o objetivo preso do android-05 e acompanhar o primeiro
+   teste real dele com o código novo.
+4. Durante a janela, sem reiniciar o backend: E4 no android-07, inspeção visual do painel (29.15), registros do P15
+   (29.16).
