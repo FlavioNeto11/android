@@ -28,8 +28,9 @@ import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
-  orphanInstances, renderizadorMeta, vagasOcupadas,
+  ocupacaoDoServidor, orphanInstances, renderizadorMeta,
 } from './infraState';
+import type { Ocupacao } from '../../store/metricas';
 import { CriarAparelhoDialog } from './CriarAparelho';
 import { recusaDaAposentadoria, type RecusaNaTela } from './provisionamento';
 import appStyles from '../../App.module.css';
@@ -197,8 +198,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
   const [criando, setCriando] = useState(false);
   // Ocupação conta o que ocupa RAM, não o que já respondeu ao ADB: `booting` come a vaga desde o primeiro
   // segundo, e contá-lo só depois fazia o painel prometer vaga que não existia.
-  const ocupadas = vagasOcupadas(instancias, worker?.devices);
-  const vagas = worker?.max_slots ?? instancias.length;
+  const vagas = ocupacaoDoServidor(instancias, worker);
   const livreGb = metrics?.mem_available_gb ?? null;
   const usadoPct = metrics?.mem_used_percent ?? null;
   const r = worker?.resources;
@@ -233,9 +233,9 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
                    fracao={(usadoPct ?? 0) / 100} />
           <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r?.disk_free_gb ?? null)}
                    fracao={fracaoDeDisco(r?.disk_free_gb, r?.disk_total_gb)} />
-          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${vagas}`}
-                   fracao={vagas ? ocupadas / vagas : 0} />
+          <VagasOcupadas ocupacao={vagas} />
         </div>
+        <AvisoDeVagas ocupacao={vagas} />
         <CapacidadesDoServidor worker={worker} health={health} />
         <ListaDeAparelhos instancias={instancias} personas={dados.personas} onAposentado={onAposentado} />
         <AbasDoServidor id="central" instancias={instancias} dados={dados} now={now} />
@@ -274,8 +274,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
   const idade = ageMs(worker.last_seen_at, now);
   const velho = isStale(idade);
   const r = worker.resources;
-  const ocupadas = vagasOcupadas(instancias, worker.devices);
-  const ocupacao = worker.max_slots ? ocupadas / worker.max_slots : 0;
+  const vagas = ocupacaoDoServidor(instancias, worker);
 
   async function manutencao(on: boolean): Promise<void> {
     setOcupado(true);
@@ -395,9 +394,9 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
                    fracao={r.ram_total_mb && r.ram_free_mb ? 1 - r.ram_free_mb / r.ram_total_mb : 0} />
           <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r.disk_free_gb ?? null)}
                    fracao={fracaoDeDisco(r.disk_free_gb, r.disk_total_gb)} />
-          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${worker.max_slots}`}
-                   fracao={ocupacao} />
+          <VagasOcupadas ocupacao={vagas} />
         </div>
+        <AvisoDeVagas ocupacao={vagas} />
         <CapacidadesDoServidor worker={worker} />
         <ListaDeAparelhos instancias={instancias} personas={dados.personas} doWorker={worker.devices} />
         <AparelhosParaAdotar worker={worker} />
@@ -423,6 +422,29 @@ function TunelDoWorker({ worker, now }: { worker: Worker; now: number }) {
       Túnel: {fora ? 'fora' : 'no ar'}
       {worker.transport_since ? ` (${formatAgo(worker.transport_since, now)})` : ''}
       {fora && worker.transport_detail ? ` — ${worker.transport_detail}` : ''}
+    </p>
+  );
+}
+
+/** Infraestrutura é a tela dona das vagas (revisão de UX, tarefa 02): a conta sai de `store/metricas`, a mesma do
+ *  semáforo do cabeçalho. Fora do ar, a ocupação lá não se sabe — "0 de 6" seria um número inventado. */
+function VagasOcupadas({ ocupacao: o }: { ocupacao: Ocupacao }) {
+  return (
+    <Recurso icon={Smartphone} rotulo="Vagas ocupadas"
+             valor={o.ocupadas === null ? `? de ${o.vagas}` : `${o.ocupadas} de ${o.vagas}`}
+             fracao={o.ocupadas !== null && o.vagas ? o.ocupadas / o.vagas : 0} />
+  );
+}
+
+/** "5 de 4" é real (o backend conta igual), não erro de cálculo: diz-se o que é e o que implica, sem adivinhar a causa. */
+function AvisoDeVagas({ ocupacao: o }: { ocupacao: Ocupacao }) {
+  if (o.ocupadas === null) return <p className={styles.dim}>Servidor fora do ar: a ocupação das vagas lá não é conhecida agora.</p>;
+  if (!o.acima) return null;
+  return (
+    <p className={styles.alerta} role="note">
+      Acima da capacidade: {o.ocupadas} aparelhos ligados para {plural(o.vagas, 'vaga', 'vagas')}. A vaga é o quanto
+      este servidor comporta ligado ao mesmo tempo; acima dela os aparelhos disputam a RAM e o próximo a ligar pode
+      ficar sem memória.
     </p>
   );
 }

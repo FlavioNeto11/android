@@ -1,4 +1,4 @@
-import type { EventRecord, Health, Instance, RunSummary, WorkerDevice } from '../../api/types';
+import type { EventRecord, Health, Instance, RunSummary } from '../../api/types';
 import type { Tone } from '../../lib/status';
 
 /**
@@ -76,21 +76,8 @@ export function isStale(ageMs: number | null): boolean {
   return ageMs !== null && ageMs > STALE_HEARTBEAT_MS;
 }
 
-/** Estados de PROCESSO, no vocabulário do worker, que ocupam uma vaga na máquina dele. */
-const PROCESSO_OCUPA = new Set(['online', 'running', 'booting', 'starting', 'stopping']);
-
-/**
- * Quantas vagas estão ocupadas neste servidor. Contar só instância `online` subestimava: um aparelho `booting`
- * já come a RAM da vaga, e quem decide se o processo está de pé é o worker — não o ADB visto daqui (#63).
- */
-export function vagasOcupadas(instances: readonly Instance[], doWorker?: readonly WorkerDevice[]): number {
-  const proc = new Map((doWorker ?? []).filter((d) => d.instance_id).map((d) => [d.instance_id as string, d.state]));
-  return instances.filter((i) => {
-    const p = proc.get(i.id);
-    if (p && p !== 'unknown') return PROCESSO_OCUPA.has(p);
-    return i.state === 'online' || i.state === 'booting' || i.state === 'stopping';
-  }).length;
-}
+/** A regra das vagas mora na fonte única de números (`store/metricas`); fica exportada aqui por compatibilidade. */
+export { ocupacaoDoServidor, vagasOcupadas } from '../../store/metricas';
 
 /** Fração 0..1 para a barra; `null` quando falta o total (aí a barra não inventa um valor). */
 export function fracaoDeDisco(livreGb?: number | null, totalGb?: number | null): number {

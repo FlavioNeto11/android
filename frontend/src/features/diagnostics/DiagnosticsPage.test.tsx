@@ -77,9 +77,10 @@ describe('painel de decisão (azulejos)', () => {
     // Saúde: degradada, 1 problema (fixture HEALTH).
     expect(text(container)).toContain('Degradado');
     expect(text(container)).toContain('1 problema');
-    // Aparelhos: 1 online (fixture seedStore), 3 vagas (SETTINGS.max_online_devices).
-    expect(text(container)).toContain('1 online');
-    expect(text(container)).toContain('3 vagas');
+    // Aparelhos: 1 de 2 online (fixture seedStore). As vagas são por servidor e moram na Infraestrutura (tarefa 02
+    // da revisão de UX): o azulejo não põe mais o online do parque contra a vaga só do central.
+    expect(text(container)).toContain('1 de 2 online');
+    expect(text(container)).not.toContain('3 vagas');
     // Máquina: CPU 37%, RAM livre 40,5 GB (fixture metrics).
     expect(text(container)).toContain('CPU 37%');
     expect(text(container)).toContain('40,5 GB');

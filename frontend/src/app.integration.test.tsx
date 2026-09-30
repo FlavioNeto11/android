@@ -112,7 +112,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     const page = text();
     expect(page).toContain('Central de Aparelhos');
     expect(page).toContain('MODO SIMULADO');
-    expect(page).toContain('Ambiente degradado');
+    expect(page).toContain('Ambiente em atenção'); // saúde degradada (IA simulada) vira Atenção no semáforo
     expect(page).toContain('2/10'); // instâncias online
     expect(page).toContain('Desatualizado'); // android-02 com frame.stale
     expect(page).toContain('Login necessário no QA Messenger'); // attention
@@ -167,13 +167,17 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(allByRole('button', 'Hibernar android-08')).toHaveLength(0);
   });
 
-  it('rodízio: com auto_start_devices a barra mostra as vagas ao lado de ONLINE', async () => {
+  // Tarefa 02 da revisão de UX: "N vagas" ao lado do online do parque era a vaga só do central (max_online_devices)
+  // posta contra aparelhos de todos os servidores. As vagas são por servidor e moram na Infraestrutura; o cabeçalho
+  // fica com o resumo, e um servidor acima da capacidade vira motivo no semáforo.
+  it('rodízio: com auto_start_devices a barra continua só com ONLINE; as vagas são da Infraestrutura', async () => {
     const ws = FakeWebSocket.last;
     const settings = { ...makeSnapshot().settings, auto_start_devices: true, max_online_devices: 3 };
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings }) }));
-    await waitFor(() => expect(text()).toContain('3/10online3 vagas'));
-    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings: makeSnapshot().settings }) }));
-    await waitFor(() => expect(text()).not.toContain('3 vagas'));
+    await flush(20);
+    const header = document.querySelector('header') as HTMLElement;
+    expect(text(header)).toContain('3/10online');
+    expect(text(header)).not.toContain('vagas');
   });
 
   it('chip da IA abre os modelos por função e o estado de receitas, fluxos e imagens', async () => {

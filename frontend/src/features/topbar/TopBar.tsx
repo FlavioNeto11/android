@@ -2,7 +2,6 @@ import {
   Server,
   Activity,
   Bot,
-  Check,
   Cpu,
   FlaskConical,
   GraduationCap,
@@ -20,10 +19,9 @@ import {
   Stethoscope,
   UserRound,
   Wallet,
-  X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { AiBalance, AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -39,12 +37,14 @@ import { Tooltip } from '../../components/Tooltip';
 import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
 import { intervaloVisivel } from '../../lib/polling';
-import { CONN_STATUS, HEALTH_STATUS, isRunActive, metaOf } from '../../lib/status';
+import { CONN_STATUS, isRunActive } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore, type View } from '../../store/ui';
+import { useContagemDeAparelhos, useObjetivosAguardando } from '../../store/metricas';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
+import { SaudeAmbiente } from './SaudeAmbiente';
 import styles from './TopBar.module.css';
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
@@ -149,7 +149,7 @@ export function TopBar() {
         </div>
       </div>
       <div className={styles.strip}>
-        <HealthPill />
+        <SaudeAmbiente />
         <Counters />
       </div>
     </header>
@@ -186,122 +186,24 @@ function OperadorAtual() {
 }
 
 // ---- Saúde do ambiente ---------------------------------------------------------------------------
-
-function HealthPill() {
-  const health = useAppStore((s) => s.health);
-  const hydrated = useAppStore((s) => s.hydrated);
-  const setView = useUiStore((s) => s.setView);
-
-  if (!health) {
-    return hydrated ? null : <Skeleton width={118} height={28} radius={999} />;
-  }
-  const meta = metaOf(HEALTH_STATUS, health.status);
-  const Icon = meta.icon;
-  const problems = health.problems ?? [];
-
-  return (
-    <Popover
-      label={`${meta.label}. ${problems.length > 0 ? `${problems.length} problema(s). ` : ''}Abrir detalhes do ambiente`}
-      title="Saúde do ambiente"
-      align="start"
-      triggerClassName={cx(styles.pillBtn, toneClass(meta.tone))}
-      trigger={
-        <>
-          <Icon size={14} aria-hidden />
-          {meta.label}
-          {problems.length > 0 ? <span className={styles.pillCount}>{problems.length}</span> : null}
-        </>
-      }
-    >
-      {(close) => (
-        <>
-          <StatusBadge meta={meta} />
-          {problems.length === 0 ? (
-            <p style={{ marginTop: 8, color: 'var(--text-2)' }}>Nenhum problema detectado. SDK, Appium e IA responderam normalmente.</p>
-          ) : (
-            <ul className={styles.healthList}>
-              {problems.map((p, i) => (
-                <li key={`${p.code}-${i}`} className={styles.problem}>
-                  <p className={styles.problemMsg}>{p.message}</p>
-                  {p.hint ? <p className={styles.problemHint}>O que fazer: {p.hint}</p> : null}
-                  <p className={cx(styles.problemCode, 'mono')}>{p.code}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className={styles.healthFacts}>
-            <Fact ok={!!health.sdk?.found}>
-              {health.sdk?.found
-                ? `Android SDK encontrado${health.sdk.emulator_version ? ` · emulador ${health.sdk.emulator_version}` : ''}${health.sdk.accel ? ` · aceleração ${health.sdk.accel}` : ''}`
-                : 'Android SDK não encontrado'}
-            </Fact>
-            <Fact ok={!!health.appium?.running}>
-              {health.appium?.running ? `Appium em execução (porta ${health.appium.port})` : `Appium parado${health.appium?.detail ? ` — ${health.appium.detail}` : ''}`}
-            </Fact>
-            <Fact ok={!!health.ai && (health.ai.configured || health.ai.simulated)}>
-              {health.ai?.simulated ? 'IA em modo simulado' : health.ai?.configured ? `IA configurada${health.ai.model ? ` (${health.ai.model})` : ''}` : 'IA não configurada'}
-            </Fact>
-          </div>
-          <div className={styles.healthFooter}>
-            <span>Backend v{health.version}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              icon={Stethoscope}
-              onClick={() => {
-                close();
-                setView('diagnostico');
-              }}
-            >
-              Abrir Diagnóstico
-            </Button>
-          </div>
-        </>
-      )}
-    </Popover>
-  );
-}
-
-function Fact({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <p className={styles.fact}>
-      {ok ? <Check size={13} className={styles.factOk} aria-hidden /> : <X size={13} className={styles.factBad} aria-hidden />}
-      <span className="sr-only">{ok ? 'OK: ' : 'Problema: '}</span>
-      {children}
-    </p>
-  );
-}
+// O semáforo mora em `SaudeAmbiente.tsx` (revisão de UX, tarefa 02): nível e motivos de `store/metricas`.
 
 // ---- Contadores ----------------------------------------------------------------------------------
 
 function Counters() {
   const hydrated = useAppStore((s) => s.hydrated);
-  const instances = useAppStore((s) => s.instances);
   const runs = useAppStore((s) => s.runs);
   const metrics = useAppStore((s) => s.metrics);
-  // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM.
-  const slots = useAppStore((s) => (s.settings?.auto_start_devices ? s.settings.max_online_devices : null));
+  // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM — de cada servidor.
+  const rodizio = useAppStore((s) => !!s.settings?.auto_start_devices);
   const setView = useUiStore((s) => s.setView);
   const selectRun = useUiStore((s) => s.selectRun);
 
-  // O total é o que está cadastrado — o "10" fixo de antes fazia um parque de 4 aparelhos aparecer como "4/10".
-  const { online, total } = useMemo(() => {
-    const list = Object.values(instances);
-    return { online: list.filter((i) => i.state === 'online').length, total: list.length };
-  }, [instances]);
-
-  const { active, blocked, firstBlocked } = useMemo(() => {
-    let a = 0;
-    let b = 0;
-    let first: string | null = null;
-    for (const r of runs) {
-      if (isRunActive(r.status)) a += 1;
-      const n = (r.counts?.waiting_user ?? 0) + (r.counts?.uncertain ?? 0);
-      if (n > 0 && !first) first = r.id;
-      b += n;
-    }
-    return { active: a, blocked: b, firstBlocked: first };
-  }, [runs]);
+  // Fonte única (`store/metricas`, tarefa 02 da revisão de UX): o total é o de aparelhos de TAREFA, o mesmo de
+  // "N de T selecionados"; a loja fica à parte e o aparelho de servidor fora do ar não conta como online.
+  const { online, total, desconhecidos, loja } = useContagemDeAparelhos();
+  const aguardando = useObjetivosAguardando();
+  const active = useMemo(() => runs.filter((r) => isRunActive(r.status)).length, [runs]);
 
   if (!hydrated) return <Skeleton width={420} height={24} radius={6} />;
 
@@ -311,18 +213,20 @@ function Counters() {
   // altura da faixa e o "· vagas N" espremido junto do valor lia como "3 /15 · vagas 4".
   return (
     <div className={styles.counters} role="group" aria-label="Indicadores">
+      {/* As vagas saíram daqui: o número era só a vaga do central, posta ao lado do online do parque inteiro. Elas
+          são por servidor, e a Infraestrutura é a dona; acima da capacidade vira motivo no semáforo. */}
       <Tooltip
-        content={
-          typeof slots === 'number'
-            ? `Aparelhos online / cadastrados · rodízio ligado: até ${slots} aparelho(s) ligado(s) ao mesmo tempo (vagas de RAM); os demais ligam sob demanda.`
-            : 'Aparelhos online / cadastrados'
-        }
+        content={[
+          'Aparelhos de tarefa online / cadastrados',
+          loja ? 'a loja fica à parte (não recebe tarefa)' : null,
+          desconhecidos > 0 ? `${desconhecidos} em estado desconhecido (servidor fora do ar)` : null,
+          rodizio ? 'rodízio ligado: cada servidor liga até as vagas dele (em Infraestrutura)' : null,
+        ].filter(Boolean).join(' · ')}
       >
         <div className={styles.counter}>
           <Smartphone size={14} aria-hidden />
           <span className={styles.counterValue}>{online}<span className={styles.counterDim}>/{total}</span></span>
           <span className={styles.counterLabel}>online</span>
-          {typeof slots === 'number' ? <span className={styles.counterSlots}>{slots} vagas</span> : null}
         </div>
       </Tooltip>
       <Tooltip content="Execuções ativas (planejando, em execução, pausadas ou cancelando). Clique para ver.">
@@ -332,18 +236,19 @@ function Counters() {
           <span className={styles.counterLabel}>{active === 1 ? 'execução' : 'execuções'}</span>
         </button>
       </Tooltip>
-      <Tooltip content="Tarefas bloqueadas: objetivos aguardando o usuário + objetivos incertos que pedem revisão. Clique para abrir.">
+      {/* Era "N bloqueadas", lido como personas bloqueadas. São objetivos de execução que esperam uma pessoa. */}
+      <Tooltip content="Objetivos das execuções recentes que esperam você: aguardando uma ação sua ou com resultado incerto para revisar. Clique para abrir.">
         <button
           type="button"
-          className={cx(styles.counter, blocked > 0 && styles.counterAlert)}
+          className={cx(styles.counter, aguardando.total > 0 && styles.counterAlert)}
           onClick={() => {
-            if (firstBlocked) selectRun(firstBlocked);
+            if (aguardando.primeiraExecucao) selectRun(aguardando.primeiraExecucao);
             setView('execucoes');
           }}
         >
           <Hand size={14} aria-hidden />
-          <span className={styles.counterValue}>{formatInt(blocked)}</span>
-          <span className={styles.counterLabel}>{blocked === 1 ? 'bloqueada' : 'bloqueadas'}</span>
+          <span className={styles.counterValue}>{formatInt(aguardando.total)}</span>
+          <span className={styles.counterLabel}>aguardando você</span>
         </button>
       </Tooltip>
       <Tooltip content="Uso de CPU da máquina host">
