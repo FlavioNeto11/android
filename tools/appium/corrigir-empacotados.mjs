@@ -28,6 +28,22 @@ export const CORRECOES = [
     minimo: '5.0.12',
     avisos: ['GHSA-q2hr-2g5m-vwhr', 'GHSA-qhr7-859c-m2p7', 'GHSA-6j4f-fj2g-mc7p'],
   },
+  // 30/09/2026 (tarde): a axios 1.19.0 entrou na faixa 1.0.0–1.19.0 de sete avisos (um alto). A da raiz sobe pelo
+  // `overrides` do package.json (o `appium` 3.7.0 fixa 1.19.0; o `@appium/support` publicado depois já fixa 1.20.0);
+  // as duas cópias empacotadas no driver, dentro do `@appium/base-driver` e do `@appium/support` do tarball, só por
+  // aqui. Mesma versão maior e as mesmas dependências declaradas, então a cópia resolve igual.
+  {
+    pacote: 'axios',
+    dentro_de: 'appium-uiautomator2-driver/node_modules/@appium/base-driver',
+    minimo: '1.20.0',
+    avisos: ['GHSA-vh66-26gq-q6x8', 'GHSA-x97p-jq2g-jp4f', 'GHSA-c29m-xwm3-cm6r', 'GHSA-mghh-pgcx-3jjj'],
+  },
+  {
+    pacote: 'axios',
+    dentro_de: 'appium-uiautomator2-driver/node_modules/@appium/support',
+    minimo: '1.20.0',
+    avisos: ['GHSA-vh66-26gq-q6x8', 'GHSA-x97p-jq2g-jp4f', 'GHSA-c29m-xwm3-cm6r', 'GHSA-mghh-pgcx-3jjj'],
+  },
 ];
 
 function partes(versao) {
@@ -56,8 +72,11 @@ export function corrigir(raiz, c, { conferir = false } = {}) {
   const empacotado = join(modulos, c.dentro_de, 'node_modules', c.pacote);
   const daRaiz = join(modulos, c.pacote);
   const onde = relative(raiz, empacotado).split(sep).join('/');
-  if (!existsSync(join(modulos, c.dentro_de))) {
-    return { estado: 'impossivel', texto: `${c.dentro_de} não está instalado em ${modulos}: rode \`npm ci\` antes` };
+  // O pacote instalado é o primeiro trecho de `dentro_de` (o driver); o resto é caminho dentro do tarball dele. Sem o
+  // driver, rodou antes do `npm ci` (erro); sem o trecho de dentro, o driver deixou de empacotá-lo (nada a fazer).
+  const instalado = c.dentro_de.split('/node_modules/')[0];
+  if (!existsSync(join(modulos, instalado))) {
+    return { estado: 'impossivel', texto: `${instalado} não está instalado em ${modulos}: rode \`npm ci\` antes` };
   }
   const atual = versaoEm(empacotado);
   if (atual === null) {

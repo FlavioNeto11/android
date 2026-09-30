@@ -46,6 +46,9 @@ do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShade
   uma leitura que falha antes da adoção virava teste destrutivo na passada seguinte; `verify` e wipe não deixavam
   marca na linha antiga (a prova era readotada); linha recriada adotava a prova da anterior; e o desfecho que não
   aprova media a cada passada quando a sonda não trazia IP.
+- **CI de novo vermelho às 17:36Z (axios):** sete avisos novos na `axios` 1.19.0 (um alto). A da raiz sobe para a
+  1.20.0 por `overrides`; as duas cópias empacotadas no driver entram no mesmo corretor do 29.1, agora com caminho
+  aninhado. Conferido numa instalação limpa (audit alto sem achado, disco em 1.20.0, Appium no ar com o driver). K-064.
 - **Deploy:** `deploy.ps1` passa a instalar as dependências do Appium quando o lock muda e a conferir o disco.
 - **Sonda UDP com repetição (29.5):** até 3 datagramas de 2 s por perna, parando no primeiro com resposta; o `detail`
   diz bytes, tentativa e tempo por perna (DNS e NTP), e a listagem ganha `udp_dns_ok`/`udp_ntp_ok`. UDP segue fora do

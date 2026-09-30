@@ -81,3 +81,24 @@ test('sem o driver instalado é erro (rodou antes do npm ci), não sucesso', () 
     assert.equal(executar(['--raiz', base, '--conferir'], calado), 1);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
+
+test('cópia empacotada mais funda (dentro de um pacote do tarball do driver) é trocada e conferida', () => {
+  const A = CORRECOES.find((c) => c.pacote === 'axios' && c.dentro_de.includes('@appium/support'));
+  const base = mkdtempSync(join(tmpdir(), 'empacotados-'));
+  const modulos = join(base, 'node_modules');
+  const funda = join(modulos, A.dentro_de, 'node_modules', A.pacote);
+  const escreve = (pasta, versao) => {
+    mkdirSync(pasta, { recursive: true });
+    writeFileSync(join(pasta, 'package.json'), JSON.stringify({ name: A.pacote, version: versao }));
+  };
+  try {
+    escreve(funda, '1.19.0');
+    escreve(join(modulos, A.pacote), '1.20.0');
+    assert.equal(corrigir(base, A, { conferir: true }).estado, 'vulneravel');
+    assert.equal(corrigir(base, A).estado, 'trocado');
+    assert.equal(JSON.parse(readFileSync(join(funda, 'package.json'), 'utf8')).version, '1.20.0');
+    // O driver sem aquele pacote dentro do tarball: nada a fazer, não erro.
+    rmSync(join(modulos, A.dentro_de), { recursive: true, force: true });
+    assert.equal(corrigir(base, A).estado, 'ok');
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});

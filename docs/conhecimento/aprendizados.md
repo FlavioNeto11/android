@@ -1530,6 +1530,16 @@ do driver funcionam com o módulo trocado, e `appium driver list --installed` li
 entrada sai de `CORRECOES`). Vale para qualquer aviso em caminho com `inBundle`: o relatório do `npm audit` não
 distingue, e só a leitura do disco prova a correção.
 
+**Segunda ocorrência (30/09, 17:36Z, run 36747845045).** A `axios` 1.19.0 entrou em sete avisos (um alto,
+GHSA-vh66-26gq-q6x8 e outros) horas depois do CI verde da manhã. Três cópias: a da raiz (dependência comum do
+`appium` 3.7.0, que fixa `1.19.0`), resolvida por `overrides` (`"axios": "1.20.0"`; o `@appium/support` publicado
+depois já fixa a 1.20.0), e duas empacotadas mais fundo, em `appium-uiautomator2-driver/node_modules/@appium/base-driver`
+e `…/@appium/support`, que entraram em `CORRECOES` com `dentro_de` aninhado. O dependente fixa a versão exata, então a
+troca vai além do que ele declara: aceita porque é a mesma versão maior com as mesmas dependências declaradas, e o
+autor dele já publicou a 1.20.0. Conferido numa instalação limpa: audit alto sem achado (restam 4 moderados do
+`morgan`, abaixo do limite do CI), disco em 1.20.0 nas três, `appium` responde `/status` e lista o
+`uiautomator2@8.7.0`. Lição: o CI verde de uma manhã não protege a tarde — o aviso nasce no registro, não no commit.
+
 ### K-065 — Evidência de teste destrutivo só em memória: o reinício do backend a perde e o teste se repete no parque
 
 **Data:** 30/09/2026 · **Área:** rede por aparelho (ADR-056, ADR-061; itens 25.5 e 29.2)

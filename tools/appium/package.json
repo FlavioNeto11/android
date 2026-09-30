@@ -12,5 +12,8 @@
   "dependencies": {
     "appium": "3.7.0",
     "appium-uiautomator2-driver": "8.7.0"
+  },
+  "overrides": {
+    "axios": "1.20.0"
   }
 }
