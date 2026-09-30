@@ -116,7 +116,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(page).toContain('2/10'); // instâncias online
     expect(page).toContain('Desatualizado'); // android-02 com frame.stale
     expect(page).toContain('Login necessário no QA Messenger'); // attention
-    expect(page).toContain('observado'); // account_evidence
+    expect(page).toContain('Evidência'); // account_evidence
     expect(page).toContain('Aguardando o adb responder'); // booting + detalhe
     expect(page).toContain('Criar AVD'); // absent
     expect(page).toContain('Tentar novamente'); // error
@@ -154,7 +154,8 @@ describe('Central de Aparelhos — sessão completa', () => {
       if (!el) throw new Error('cartão hibernado ausente');
       return el as HTMLElement;
     });
-    expect(text(card)).toContain('Hibernado — acorda em segundos, sem ocupar RAM');
+    // Tarefa 04: o parado sai compacto — sem o bloco da miniatura; o selo "Hibernado" e o botão "Acordar" dizem tudo.
+    expect(text(card)).not.toContain('Hibernado — acorda em segundos, sem ocupar RAM');
     expect(text()).toContain('3/10'); // continua 3 online
     expect(text(document.querySelector('header') as HTMLElement)).not.toContain('vagas'); // rodízio desligado
     expect(text(document.querySelector('[aria-label="Aparelhos por estado"]') as HTMLElement)).toContain('1 hibernado');
