@@ -28,7 +28,7 @@ import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
-  orphanInstances, vagasOcupadas,
+  orphanInstances, renderizadorMeta, vagasOcupadas,
 } from './infraState';
 import { CriarAparelhoDialog } from './CriarAparelho';
 import { recusaDaAposentadoria, type RecusaNaTela } from './provisionamento';
@@ -645,9 +645,17 @@ function Capacidades({ instancia }: { instancia: Instance }) {
   if (abi) partes.push(abi);
   if (instancia.play_store === true) partes.push('Play Services');
   if (instancia.play_store === false) partes.push('AOSP');
-  if (partes.length === 0) return null;
+  // O renderizador do emulador (29.11) é capacidade como as outras: decide se um app roda aqui. O fallback sai em
+  // destaque, porque é o que a pessoa não pediu — o resto acompanha a linha, sem chamar atenção.
+  const gpu = renderizadorMeta(instancia.renderer);
+  if (gpu && !gpu.fallback) partes.push(gpu.label);
+  if (partes.length === 0 && !gpu?.fallback) return null;
+  const dica = [instancia.system_image, gpu && !gpu.fallback ? gpu.title : null].filter(Boolean).join(' — ');
   return (
-    <span className={styles.dim} title={instancia.system_image ?? undefined}> · {partes.join(' · ')}</span>
+    <>
+      {partes.length > 0 ? <span className={styles.dim} title={dica || undefined}> · {partes.join(' · ')}</span> : null}
+      {gpu?.fallback ? <Badge tone="warning" size="sm" plain title={gpu.title}>{gpu.label}</Badge> : null}
+    </>
   );
 }
 

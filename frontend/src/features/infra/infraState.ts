@@ -20,6 +20,34 @@ export function instanceStateMeta(state: Instance['state']): { label: string; to
   return ESTADO[state] ?? { label: state, tone: 'neutral' };
 }
 
+const RENDERIZADOR: Record<string, string> = { host: 'GPU do host', swiftshader: 'SwiftShader' };
+
+/** `swiftshader_indirect` e `swiftshader` são o mesmo renderizador: o sufixo diz só como o convidado fala com ele. */
+function nomeDoRenderizador(modo: string): string {
+  const canonico = modo.trim().toLowerCase().replace(/_indirect$/, '');
+  return RENDERIZADOR[canonico] ?? modo;
+}
+
+/**
+ * O renderizador do emulador em uma linha (29.11). Vale o SELECIONADO pelo emulador quando se sabe; fora do ar só
+ * existe o pedido, e a linha diz que é pedido. `fallback` é o caso que derruba aparelho: pediu `host`, o emulador
+ * caiu para o SwiftShader sem reclamar, e um app que não roda nele (o Outlook) levaria o emulador junto.
+ */
+export function renderizadorMeta(r: Instance['renderer']): { label: string; title: string; fallback: boolean } | null {
+  if (!r || (!r.configured && !r.gles)) return null;
+  const pedido = r.configured ? `pedido (gpu_mode): ${r.configured}` : 'pedido (gpu_mode): não se sabe';
+  if (!r.gles) {
+    return { label: `renderizador pedido: ${nomeDoRenderizador(r.configured ?? '')}`, fallback: false,
+             title: `${pedido}. O emulador só diz o que selecionou quando está no ar.` };
+  }
+  const selecionado = `selecionado pelo emulador: GLES ${r.gles}${r.vulkan ? `, Vulkan ${r.vulkan}` : ''}`;
+  if (r.fallback) {
+    return { label: `renderizador: ${nomeDoRenderizador(r.gles)} (pediu ${r.configured ?? '?'})`, fallback: true,
+             title: `${pedido}; ${selecionado}. O emulador trocou de renderizador sem avisar.` };
+  }
+  return { label: `renderizador: ${nomeDoRenderizador(r.gles)}`, fallback: false, title: `${pedido}; ${selecionado}.` };
+}
+
 /** Aparelhos agrupados por servidor. `null` é o servidor central — ele também é um servidor. */
 export function groupByWorker(instances: readonly Instance[]): Map<string | null, Instance[]> {
   const out = new Map<string | null, Instance[]>();

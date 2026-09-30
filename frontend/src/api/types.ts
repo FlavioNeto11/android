@@ -130,6 +130,13 @@ interface Instance {
   abis?: string[];
   play_store?: boolean | null;
   /**
+   * Renderizador do EMULADOR (29.11): o `gpu_mode` pedido e o que o emulador selecionou de fato — são dois fatos,
+   * porque ele aceita um `-gpu` e usa outro sem reclamar. `gles`/`vulkan` vêm do log do emulador a cada entrada no
+   * ar (nulos fora do ar); `fallback` = o selecionado não é o pedido, e aí o motivo vem também em `attention`.
+   * Nulo/ausente = não é emulador que se conheça (físico, ou worker com agente antigo).
+   */
+  renderer?: { configured: string | null; gles: string | null; vulkan: string | null; fallback: boolean } | null;
+  /**
    * Inventário conferido contra o que o worker DECLARA hospedar (v0.10). `divergent` quer dizer que as fontes
    * discordam sobre qual aparelho está por trás deste id — e aí verbo destrutivo é recusado pelo backend, porque
    * um `reset` agiria num aparelho com a tela em outro. Nulo/ausente = conferido, ou worker desconectado.

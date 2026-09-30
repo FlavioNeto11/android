@@ -2,8 +2,31 @@ import { describe, expect, it } from 'vitest';
 import type { EventRecord, Health, Instance, RunSummary, WorkerDevice } from '../../api/types';
 import {
   STALE_HEARTBEAT_MS, centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker,
-  instanceStateMeta, isStale, orphanInstances, vagasOcupadas,
+  instanceStateMeta, isStale, orphanInstances, renderizadorMeta, vagasOcupadas,
 } from './infraState';
+
+// 29.11: argumento aceito não é renderizador usado — a linha mostra o que o emulador SELECIONOU.
+describe('renderizadorMeta — o renderizador selecionado pelo emulador', () => {
+  it('no ar mostra o selecionado; fora do ar só o pedido, dito como pedido', () => {
+    const noAr = renderizadorMeta({ configured: 'host', gles: 'host', vulkan: 'host', fallback: false });
+    expect(noAr).toMatchObject({ label: 'renderizador: GPU do host', fallback: false });
+    const parado = renderizadorMeta({ configured: 'swiftshader_indirect', gles: null, vulkan: null, fallback: false });
+    expect(parado?.label).toBe('renderizador pedido: SwiftShader');
+    expect(parado?.title).toContain('só diz o que selecionou quando está no ar');
+  });
+
+  it('fallback diz o selecionado E o pedido', () => {
+    const caiu = renderizadorMeta({ configured: 'host', gles: 'swiftshader', vulkan: 'swiftshader', fallback: true });
+    expect(caiu).toMatchObject({ label: 'renderizador: SwiftShader (pediu host)', fallback: true });
+    expect(caiu?.title).toContain('sem avisar');
+  });
+
+  it('sem dado não inventa nada', () => {
+    expect(renderizadorMeta(null)).toBeNull();
+    expect(renderizadorMeta(undefined)).toBeNull();
+    expect(renderizadorMeta({ configured: null, gles: null, vulkan: null, fallback: false })).toBeNull();
+  });
+});
 
 function inst(id: string, worker_id: string | null): Instance {
   return { id, worker_id, state: 'online' } as unknown as Instance;

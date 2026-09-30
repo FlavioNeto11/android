@@ -148,6 +148,23 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(text()).toContain('Appium local');
   });
 
+  // 29.11: o renderizador do emulador é capacidade do aparelho; o fallback silencioso sai em destaque.
+  it('o aparelho mostra o renderizador selecionado, e o fallback aparece com o que foi pedido', async () => {
+    await comEstado({
+      instances: {
+        'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'online',
+          renderer: { configured: 'host', gles: 'host', vulkan: 'host', fallback: false } }),
+        'android-14': makeInstance(14, { worker_id: 'worker-lan-01', state: 'online',
+          renderer: { configured: 'host', gles: 'swiftshader', vulkan: 'swiftshader', fallback: true } }),
+        'android-15': makeInstance(15, { worker_id: 'worker-lan-01', state: 'stopped' }),   // agente antigo: sem dado
+      },
+      instanceOrder: ['android-13', 'android-14', 'android-15'],
+    });
+    expect(text()).toContain('renderizador: GPU do host');
+    expect(text()).toContain('renderizador: SwiftShader (pediu host)');
+    expect(text().match(/renderizador/g)).toHaveLength(2);
+  });
+
   it('a aba Logs mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
     await comEstado({ recentEvents: [evento('log', 'android-13', 'reiniciei o system_server'),
                                      evento('log', 'android-01', 'coisa do central')] });
