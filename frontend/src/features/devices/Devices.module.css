@@ -443,52 +443,7 @@
   }
 }
 
-/* ---------- barra de ação em lote ---------- */
-.bulkDock {
-  position: sticky;
-  bottom: 14px;
-  z-index: var(--z-sticky);
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-  margin-top: 2px;
-}
-
-.bulk {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 100%;
-  padding: 8px 10px 8px 14px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-lg);
-  background: #141b21;
-  box-shadow: var(--shadow-3);
-  pointer-events: auto;
-  animation: slide-up var(--dur-med) var(--ease);
-}
-
-.bulkLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-right: 6px;
-  color: var(--text-1);
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.bulkLabel svg {
-  color: var(--accent-text);
-}
-
-.bulkSep {
-  width: 1px;
-  align-self: stretch;
-  margin: 2px 4px;
-  background: var(--border-2);
-}
+/* A barra de ação em lote vive em features/painel/BarraDeSelecao (presa ao topo da grade). */
 
 /* ---- trilha do comando: criado → enviado → recebido → iniciado → concluído ------------------- */
 .commandGroup {

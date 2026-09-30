@@ -1,5 +1,5 @@
 import { ArrowLeft, Bot, Hand, LoaderCircle, Minus, X, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { api, toApiError } from '../../api/client';
 import { useOperationalContext } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
@@ -28,6 +28,7 @@ import {
 import styles from './Focus.module.css';
 import { FocusSection } from './FocusSection';
 import { HierarchyList } from './HierarchyList';
+import { Drawer } from './Drawer';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
@@ -50,6 +51,9 @@ function assinarTelaEstreita(avisar: () => void): () => void {
 function useTelaEstreita(): boolean {
   return useSyncExternalStore(assinarTelaEstreita, () => consultaTelaEstreita()?.matches ?? false, () => false);
 }
+
+/** O botão que abre o Foco no cartão do aparelho: para onde o teclado volta quando o drawer fecha. */
+const cartaoDe = (id: string): string => `[data-instance-card="${CSS.escape(id)}"] button[aria-label^="Abrir"]`;
 
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
@@ -80,10 +84,6 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const [shown, setShown] = useState<ShownFrame | null>(null);
   const [highlight, setHighlight] = useState<[number, number, number, number] | null>(null);
   const [hierarquiaAberta, setHierarquiaAberta] = useState(false);
-
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, []);
 
   const mine = userHasControl(instance, lease);
 
@@ -150,7 +150,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
 
   if (!instance) {
     return (
-      <aside ref={panelRef} tabIndex={-1} className={styles.panel} role="dialog" aria-modal="false" aria-label={`Foco: ${instanceId}`}>
+      <Drawer panelRef={panelRef} ariaLabel={`Foco: ${instanceId}`} onClose={closeFocus} restoreSelector={cartaoDe(instanceId)}>
         <div className={styles.header}>
           {telaEstreita ? <Button variant="ghost" icon={ArrowLeft} onClick={closeFocus}>Voltar</Button> : null}
           <span className={styles.title}>{instanceId}</span>
@@ -160,7 +160,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         <EmptyState icon={Minus} title="Aparelho não encontrado" hint="Ele pode ter sido removido do backend. Feche este painel e escolha outro aparelho.">
           O backend não lista mais {instanceId}.
         </EmptyState>
-      </aside>
+      </Drawer>
     );
   }
 
@@ -187,21 +187,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const pending = !mine && (instance.control_pending || lease?.status === 'pending');
 
   return (
-    <aside
-      ref={panelRef}
-      tabIndex={-1}
-      className={styles.panel}
-      role="dialog"
-      aria-modal="false"
-      aria-label={`Visão de foco: ${instance.id}`}
-      onKeyDown={(e) => {
-        if (e.key !== 'Escape' || e.defaultPrevented) return;
-        const t = e.target as HTMLElement;
-        if (t.closest('dialog')) return;
-        if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-        closeFocus();
-      }}
-    >
+    <Drawer panelRef={panelRef} ariaLabel={`Visão de foco: ${instance.id}`} onClose={closeFocus} restoreSelector={cartaoDe(instance.id)}>
       <div className={styles.header}>
         {/* Em tela cheia (celular) não há painel ao lado para onde "fechar": a saída é "Voltar", no canto onde
             o polegar espera. No desktop continua "Fechar" à direita. */}
@@ -346,6 +332,6 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           </FocusSection>
         </div>
       </div>
-    </aside>
+    </Drawer>
   );
 }

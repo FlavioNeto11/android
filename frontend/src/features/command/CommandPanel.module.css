@@ -184,14 +184,6 @@
   white-space: nowrap;
 }
 
-.reason {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--warning-text);
-  font-size: var(--fs-sm);
-}
-
 /* Recusa do pré-voo (#51): a limitação explicada ANTES de agendar, por aparelho, com a saída ao lado. */
 .preflight {
   border: 1px solid var(--warning-border);
@@ -377,23 +369,41 @@
 }
 
 /* ADR-050: o Automático na frente; os modos manuais recolhidos atrás de um link discreto. */
-.manualLink {
-  padding: 0 4px;
+/* Controle segmentado Automático | Manual: duas posições, uma sempre marcada (o link antigo "escolher manualmente" não
+   dizia em qual das duas a pessoa estava). */
+.segmentado {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+}
+
+.segmento {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 12px;
   border: 0;
-  background: none;
-  color: var(--text-3);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
   font: inherit;
   font-size: var(--fs-sm);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.manualLink:hover { color: var(--text-1); }
+.segmento:hover {
+  color: var(--text-1);
+}
 
-.manualSep {
-  color: var(--text-3);
-  font-size: var(--fs-sm);
+.segmentoAtivo,
+.segmentoAtivo:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+  font-weight: 600;
 }
 
 .autoDica {
@@ -414,4 +424,46 @@
 
 .saldo[data-tone='danger'] {
   color: var(--danger-text);
+}
+
+/* Etapas do comando: 1 Refinar (opcional) → 2 Planejar → 3 Executar. */
+.etapas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.etapa {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.etapaNum {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-2);
+  border-radius: 50%;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.etapaSeta {
+  color: var(--text-3);
+}
+
+.etapasDica {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.etapasDica strong {
+  color: var(--text-2);
+  font-weight: 600;
 }

@@ -200,13 +200,31 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(card3, { ctrlKey: true });
     const card6 = document.querySelector('article[aria-label^="Aparelho android-06"]') as HTMLElement;
     await click(card6, { shiftKey: true }); // intervalo 03..06
-    await waitFor(() => expect(text()).toContain('Ação em 5 aparelhos'));
+    await waitFor(() => expect(allByRole('toolbar', /Ação em 5 aparelhos/)).toHaveLength(1));
+    const barra = byRole('toolbar', /Ação em 5 aparelhos/);
+    expect(text(barra)).toContain('5 selecionados');
     expect(text()).toContain('5 de 10 selecionados');
 
-    // a barra em lote oferece "Hibernar" (recurso ligado), mas não "Acordar" (nenhum hibernado na seleção)
-    expect(allByRole('button', 'Hibernar', byRole('toolbar', /Ação em 5/))).toHaveLength(1);
-    expect(allByRole('button', 'Acordar', byRole('toolbar', /Ação em 5/))).toHaveLength(0);
-    await click(byRole('button', 'Parar', byRole('toolbar', /Ação em 5/)));
+    // A barra fica presa ao TOPO da grade (antes da grade no documento), e não flutua sobre os cartões.
+    const grade = document.querySelector('article[aria-label^="Aparelho android-01"]')?.parentElement as HTMLElement;
+    expect(barra.parentElement?.compareDocumentPosition(grade) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    // À vista ficam as ações de rotina; hibernar, instalar, abrir app e o reset moram em "Mais ações".
+    expect(allByRole('button', 'Parar', barra)).toHaveLength(1);
+    expect(allByRole('button', 'Hibernar', barra)).toHaveLength(0);
+    expect(allByRole('button', /Resetar dados/, barra)).toHaveLength(0);
+    await click(byRole('button', /^Mais ações/, barra));
+    const menu = await waitFor(() => byRole('dialog', 'Mais ações'));
+    // a seleção tem "sem AVD" mas nenhum hibernado: oferece "Hibernar", não "Acordar"
+    expect(allByRole('button', /^Hibernar/, menu)).toHaveLength(1);
+    expect(allByRole('button', /^Acordar/, menu)).toHaveLength(0);
+    expect(allByRole('button', /^Instalar app/, menu)).toHaveLength(1);
+    expect(allByRole('button', /^Abrir app/, menu)).toHaveLength(1);
+    // O reset fica sozinho na zona de perigo (e o clique nele só abre a confirmação: aqui não é dado).
+    expect(allByRole('button', /^Resetar dados/, byRole('group', 'Zona de perigo', menu))).toHaveLength(1);
+    await click(byRole('button', /^Mais ações/, barra)); // fecha o menu
+    await waitFor(() => expect(allByRole('dialog', 'Mais ações')).toHaveLength(0));
+    await click(byRole('button', 'Parar', barra));
     await waitFor(() => expect(backend.callsTo('POST', /bulk$/)).toHaveLength(1));
     // O lote passou a mandar `idempotency_key` dentro de `params` (item 1.3): sem ela, um segundo clique — ou o
     // reenvio de uma requisição que o navegador achou perdida — abriria uma segunda leva de comandos nos mesmos
