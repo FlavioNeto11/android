@@ -310,7 +310,7 @@ medido quando o perfil não leva IPv6.
 
 A decisão é do dono: quantos aparelhos, que provedor e se as contas reais entram (e quando).
 
-### D9 revisto (30/09 ~18:25Z): tudo em todos os aparelhos
+### D9 revisto (30/09 ~18:17Z): tudo em todos os aparelhos
 
 Instrução do dono, transmitida pela sessão "Github": "eu quero que tudo funcione em todos os aparelhos". Substitui a
 leitura conservadora de ~17:00Z (abaixo, mantida como registro). Vale para os aparelhos com conta real: `gpu_mode:
@@ -341,7 +341,7 @@ no mesmo aparelho (27.2).
 
 ### D4, D6 e D9 → Outlook logado e o fluxo entre apps (29.12, 29.13; fecham 23.8, 23.12, 23.13, 24.9)
 
-*Registro da leitura conservadora de ~17:00Z, substituída às ~18:25Z (bloco acima).*
+*Registro da leitura conservadora de ~17:00Z, substituída às ~18:17Z (bloco acima).*
 
 **D9, decidido** (dono, 30/09): contas reais não mudam de renderizador. O que decorre, escolhido pelo caminho mais
 conservador, sem nova pergunta:
