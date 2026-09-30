@@ -9,7 +9,7 @@ rastro (comando `device.network` no histórico do aparelho; reinício como coman
 |---|---|
 | `pendente`, pedido com VPN/proxy | **aplicar**: plano, chave e par no servidor, cliente pela loja, receita; → `configurado` e pede o reinício |
 | `pendente`, pedido vazio (tirou tudo) | **desfazer**: tira always-on e bloqueio; → `configurado` e pede o reinício |
-| `configurado` | **conectar**: lê como uid 2000; túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; reiniciou e o túnel não subiu → tenta de novo; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
+| `configurado` | **conectar**: lê como uid 2000 (depois de um boot, esperando o `tun0` até `rede.espera_tun_s` contados do boot); túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; a configuração valendo e só o túnel faltando → o tile do cliente (`rede.cliente_tile`, item 29.3) e, se ele não religar, outro reinício; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
 | `conectado`, `parcial` | **verificar** (25.5; ao ligar, a pedido, pela porta da tarefa, e na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s`): relê como o conferir e, com o túnel no ar, roda a sonda de saída (`rede_medicao.medir`) e grava a medição — só ela leva a `trafego_verificado` ou `parcial`. Com bloqueio, antes, a prova de vazamento: a que a linha guarda para a revisão e para a instalação do cliente VPN (colunas `leak_*`, item 29.2) ou, sem ela, o teste (`rede_medicao.sondar_vazamento`: o cliente VPN parado, com a intenção gravada antes); sem o túnel de volta, → `configurado` e reinicia (o boot religa o cliente), e a medição vem depois |
 | `trafego_verificado` | **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
 
@@ -50,7 +50,8 @@ from ..util import now, now_iso, parse_iso
 from ..vitrine import objetivo_em_andamento
 from . import rede
 from .rede_aplicacao import (AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError, apagar_relatorios_de_falha,
-                             desfazer, endereco_no_tunel, instalado_em, montar_plano, observar, provisionar)
+                             desfazer, endereco_no_tunel, instalado_em, montar_plano, observar, provisionar,
+                             religar_pelo_tile)
 from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, sondar_vazamento
 from .sonda_rede import Contabilidade
 
@@ -72,6 +73,9 @@ _FOLGA_S = 5.0
 _INTERVALO_DA_PORTA_S = 30.0
 #: Depois de uma leitura que falhou ou de um reinício recusado, quanto esperar antes de a varredura tentar de novo.
 _ESPERA_DA_RELEITURA_S = 300.0
+#: Quanto o relógio do aparelho pode estar longe do servidor para a data do APK do cliente servir de prova na adoção
+#: da transição (item 29.2). O emulador acerta o relógio pelo host; mais que isto é relógio quebrado.
+_DESVIO_DE_RELOGIO_S = 120.0
 #: Fração final da validade de um `trafego_verificado` em que a varredura (aparelho livre) já mede de novo: a tarefa
 #: que chega depois encontra a medição renovada em vez de esperar por ela.
 _ANTECEDENCIA_DA_VALIDADE = 0.1
@@ -131,6 +135,8 @@ class ConvergenciaDeRede:
         self.intervalo_do_reinicio_s = 5.0
         #: Entre uma leitura da tela e a próxima, na importação do perfil (o SFA leva um instante para trocar de tela).
         self.pausa_da_tela_s = 1.5
+        #: Quanto esperar o túnel depois de clicar o tile do cliente (medido em 30/09: 1 a 4 s depois do clique).
+        self.espera_do_tile_s = 20.0
 
     # ------------------------------------------------------------------ utilidades
     @property
@@ -181,8 +187,10 @@ class ConvergenciaDeRede:
             if estado == "parcial" and self._bloqueio_sem_saida(row):
                 # O teste de vazamento desta revisão já tem desfecho e ele não aprova (vazou ou não concluiu): nenhuma
                 # medição muda isso, e o teste não se refaz sozinho. Medir de novo só para a saída medida não
-                # envelhecer; quem destrava é `POST …/verify`, revisão nova ou cliente novo.
-                return "verificar" if self._medicao_envelhecida(row) else None
+                # envelhecer; quem destrava é `POST …/verify`, revisão nova ou cliente novo. A espera da medição que
+                # não verificou vale aqui: sem IP medido o `verified_at` não anda, e sem ela cada passada mediria de
+                # novo (um comando e uma sonda por minuto enquanto o eco de IP ou o servidor estivessem fora).
+                return "verificar" if self._medicao_envelhecida(row) and agora >= mem.espera_ate else None
             if motivo == "tarefa" and estado == "parcial" and mem.medida_sem_abrir:
                 # O `parcial` veio de uma medição que não podia abrir o app parado; a tarefa segurada é o que o abre
                 # (a sonda abre com a porta como motivo). Uma vez: medida assim, a espera volta a valer.
@@ -315,7 +323,7 @@ class ConvergenciaDeRede:
                 frase = (f"rede exigida ({politica}): a medição que verificou o aparelho não cobre {apps} (conta "
                          "vinculada depois dela); ")
             elif invalida == "bloqueio":
-                porque = str(row["leak_detail"] or "nenhum teste de vazamento feito para esta revisão")[:160]
+                porque = str(row["leak_detail"] or "sem prova gravada para esta revisão")[:160]
                 frase = (f"rede exigida ({politica}): o bloqueio fora da VPN não tem prova que valha para a rev {rev} "
                          f"({porque}); o teste de vazamento para o cliente VPN e pode reiniciar o aparelho; ")
             else:
@@ -524,8 +532,16 @@ class ConvergenciaDeRede:
             return {"instance_id": iid, "rev": rev, "state": novo.state, "evidence": obs.descrever(pkg)}
         if obs.relatorios_de_falha:
             await apagar_relatorios_de_falha(ap, pkg)      # a queda do cliente grava a chave ali
+        religado = ""
+        if not obs.conectada(plano_bloqueio) and (reiniciou or (plano_bloqueio and obs.regras_de_bloqueio)):
+            # A configuração está no lugar e VALENDO (houve boot depois dela, ou o bloqueio já está em vigor): só o
+            # túnel falta — o cliente não subiu neste boot ou morreu depois. Antes de reiniciar (e rolar o mesmo dado
+            # de novo: em 30/09 a primeira tentativa do always-on falhou em 5 de 7 boots), o tile do cliente.
+            nova = await self._religar_sem_reinicio(ap, iid, plano_bloqueio)
+            if nova is not None:
+                obs, religado = nova, "religado pelo tile do cliente, sem reinício; "
         if obs.conectada(plano_bloqueio):
-            evidencia = f"túnel no ar, lido como uid 2000: {obs.descrever(pkg)}" + self._par_no_servidor(iid)
+            evidencia = f"{religado}túnel no ar, lido como uid 2000: {obs.descrever(pkg)}" + self._par_no_servidor(iid)
             novo = rede.registrar_observacao(self.st, iid, rev=rev, estado="conectado", evidencia=evidencia)
             mem.reinicios.pop(rev, None)
             mem.espera_ate = 0.0
@@ -537,6 +553,24 @@ class ConvergenciaDeRede:
             await self._guardar_linha_de_base(ap, iid, rev)
             return {"instance_id": iid, "rev": rev, "state": novo.state, "evidence": evidencia}
         return self._reiniciar_ou_desistir(rt, row, obs, reiniciou, "o túnel não subiu")
+
+    async def _religar_sem_reinicio(self, ap: AparelhoDaRede, iid: str, bloqueio: bool) -> Observacao | None:
+        """O túnel de volta pelo tile do cliente (`rede.cliente_tile`), sem reiniciar o aparelho; `None` se não deu (ou
+        se o gesto está desligado). Quem chama garante que só o túnel falta: a configuração, o always-on e o bloqueio
+        ficam como estão, e a releitura final é a de sempre (uid 2000, com as regras de bloqueio conferidas)."""
+        tile = str(self.cfg.cliente_tile or "").strip()
+        if not tile:
+            return None
+        try:
+            obs, o_que = await religar_pelo_tile(ap, self.cfg.cliente_pacote, tile, espera_s=self.espera_do_tile_s)
+        except Exception as exc:  # noqa: BLE001 - o gesto é uma tentativa: sem ele, vale o reinício de sempre
+            log.info("%s: o tile do cliente VPN não religou o túnel — %s", iid, exc)
+            return None
+        log.info("%s: %s", iid, o_que)
+        if obs is None or not obs.conectada(bloqueio):
+            return None
+        self.st.bus.emit("log", f"{iid}: {o_que}", instance_id=iid)
+        return obs
 
     def _reiniciar_ou_desistir(self, rt: DeviceRuntime, row: Row, obs: Observacao, reiniciou: bool,
                                o_que: str) -> dict[str, object]:
@@ -701,16 +735,20 @@ class ConvergenciaDeRede:
         """A transição da migração 063 (`rede.prova_anterior`): a prova que o backend anterior fez e guardou só em
         memória é adotada quando o histórico a sustenta E o cliente VPN instalado é anterior ao teste — lido agora, do
         aparelho. `None` = não há o que adotar (segue para o ensaio). A leitura que falha levanta: sem saber de quando
-        é o cliente não se adota, e também não se para o cliente às cegas; a passada seguinte tenta de novo."""
+        é o cliente não se adota, e também não se para o cliente às cegas; a passada seguinte tenta de novo (o comando
+        que falhou não conta como evidência em `prova_anterior`)."""
         row = self._linha(iid)
         anterior = rede.prova_anterior(self.st, row) if row is not None else None
         if anterior is None:
             return None
-        gravado = await instalado_em(ap, self.cfg.cliente_pacote)
+        gravado, relogio = await instalado_em(ap, self.cfg.cliente_pacote)
         teste = _epoch(anterior.testado_em)
-        if teste is None or gravado >= teste:
-            log.info("%s: prova de vazamento anterior NÃO adotada (cliente VPN gravado em %s, teste a partir de %s)",
-                     iid, gravado, anterior.testado_em)
+        # A data do APK é do relógio do aparelho e a do teste é do servidor: com os relógios separados a comparação
+        # não prova nada (um aparelho atrasado faria um cliente novo parecer anterior ao teste).
+        desvio = abs(relogio - time.time())
+        if teste is None or gravado >= teste or desvio > _DESVIO_DE_RELOGIO_S:
+            log.info("%s: prova de vazamento anterior NÃO adotada (cliente VPN gravado em %s, teste a partir de %s, "
+                     "relógio do aparelho a %.0f s do servidor)", iid, gravado, anterior.testado_em, desvio)
             return None
         quando = datetime.fromtimestamp(gravado, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if not rede.adotar_prova_de_vazamento(self.st, iid, rev=rev, cliente=cliente, anterior=anterior,
@@ -771,7 +809,9 @@ class ConvergenciaDeRede:
             # banco é o que diz, a quem vier depois, que o ensaio não terminou.
             mem.ensaio_em_curso = False
         if not await self._tunel_de_volta(ap, pkg, True):
-            return self._religar_pelo_boot(iid, rev, teste.vazamento)
+            # O cliente ficou parado. Primeiro o tile (sem reinício); só se ele não religar, o boot.
+            if await self._religar_sem_reinicio(ap, iid, True) is None:
+                return self._religar_pelo_boot(iid, rev, teste.vazamento)
         return teste.vazamento
 
     async def _verificar(self, rt: DeviceRuntime, row: Row, motivo: Motivo) -> dict[str, object]:

@@ -977,6 +977,25 @@ async def test_vazou_fica_parcial_e_a_tarefa_espera(parque: Harness, monkeypatch
     assert await _passo(parque, "tarefa") is False and ap.paradas == 1              # nem teste nem medição de novo
 
 
+async def test_cliente_parado_pelo_teste_e_religado_pelo_tile_sem_reiniciar_o_aparelho(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Item 29.3: o teste de vazamento deixa o cliente parado. Antes do reinício, o tile; religado, a medição sai na
+    mesma passada e o teste deixa de custar um reinício do aparelho."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios = _preparar_sonda(parque, monkeypatch)
+    await _ate_conectado(parque, ap)
+    ap.tile_religa = True
+    pedidos = len(reinicios.pedidos)
+    assert await _passo(parque, "tarefa")
+    await asyncio.sleep(0.2)
+    linha = _linha(parque)
+    assert ap.paradas == 1 and ap.cliques_no_tile == 1 and len(reinicios.pedidos) == pedidos
+    assert linha["state"] == "trafego_verificado" and (linha["leak_rev"], linha["leak_result"]) == (1, 1)
+    [m] = st.db.query("SELECT leak_blocked FROM network_measurements")
+    assert m["leak_blocked"] == 1 and ap.lockdown == "1" and ap.regras is True
+
+
 def _como_antes_da_063(parque: Harness, iid: str = "android-01") -> None:
     """A linha como a migração 063 a encontra num aparelho que o código anterior verificou: sem nada em `leak_*`; a
     prova só existe no histórico (o comando que fez o teste e as medições com o bloqueio provado)."""
@@ -1010,7 +1029,8 @@ async def test_prova_anterior_a_migracao_e_adotada_sem_parar_o_cliente(parque: H
     assert any("stat -c %Y" in c for c in ap.comandos)                              # a data do cliente veio do aparelho
 
 
-@pytest.mark.parametrize("caso", ["cliente_mais_novo_que_o_teste", "ultima_medicao_sem_prova", "prova_apagada"])
+@pytest.mark.parametrize("caso", ["cliente_mais_novo_que_o_teste", "ultima_medicao_sem_prova", "prova_apagada",
+                                  "relogio_do_aparelho_atrasado"])
 async def test_prova_anterior_que_nao_se_demonstra_nao_e_adotada(parque: Harness, monkeypatch: pytest.MonkeyPatch,
                                                                 caso: str) -> None:
     """Sem a correspondência demonstrada, nada de adoção: o teste é feito (e é ele que prova)."""
@@ -1025,12 +1045,14 @@ async def test_prova_anterior_que_nao_se_demonstra_nao_e_adotada(parque: Harness
     elif caso == "ultima_medicao_sem_prova":                # o caso do android-05 em 30/09: a última medição não provou
         st.db.execute("UPDATE network_measurements SET leak_blocked=NULL WHERE id=(SELECT MAX(id) FROM"
                       " network_measurements)")
+    elif caso == "relogio_do_aparelho_atrasado":
+        # A data do APK é do relógio do aparelho: com ele uma hora atrás, "anterior ao teste" não prova nada.
+        ap.relogio_atrasado_s = 3600
     else:                                                   # a prova foi apagada depois da 063 (pedido, cliente, wipe)
-        rede.apagar_prova_de_vazamento(st, "android-01", "teste") or st.db.execute(
-            "UPDATE device_network SET leak_detail='prova apagada: teste' WHERE instance_id='android-01'")
+        assert rede.apagar_prova_de_vazamento(st, "android-01", "teste") is True
     _reiniciar_o_backend(parque)
     row = st.db.one("SELECT * FROM device_network WHERE instance_id='android-01'")
-    if caso != "cliente_mais_novo_que_o_teste":
+    if caso in ("ultima_medicao_sem_prova", "prova_apagada"):
         assert rede.prova_anterior(st, row) is None
     assert await _passo(parque, "varredura")
     assert ap.paradas == 2 and "adotada" not in str(_linha(parque)["leak_detail"])
@@ -1052,6 +1074,110 @@ async def test_adocao_sem_a_data_do_cliente_nao_adota_nem_para_o_cliente(parque:
                            " LIMIT 1")
     assert ultimo["state"] == "failed" and "data de instalação" in str(ultimo["reason"])
     assert await _passo(parque, "varredura") is False       # espera antes de tentar de novo
+
+
+@pytest.mark.parametrize("falha", ["data_do_apk_nao_lida", "leitura_como_root", "tunel_caido_na_primeira_passada"])
+async def test_falha_antes_da_adocao_nao_vira_teste_destrutivo_na_passada_seguinte(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch, falha: str) -> None:
+    """Achado da revisão (A1): a primeira passada depois do deploy falha por um motivo qualquer (uma leitura que não
+    veio, o túnel caído), e o comando que falhou vira o mais novo do histórico. Ele não é evidência de nada: a passada
+    seguinte ainda adota a prova, em vez de parar o cliente VPN de um aparelho com conta real."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios = _preparar_sonda(parque, monkeypatch)
+    await _ate_verificado(parque, ap)
+    _como_antes_da_063(parque)
+    _reiniciar_o_backend(parque)
+    if falha == "data_do_apk_nao_lida":
+        ap.instalado_em = None
+        assert await _passo(parque, "varredura")
+        ap.instalado_em = 1_700_000_000
+    elif falha == "leitura_como_root":
+        ap.uid = 0
+        assert await _passo(parque, "ligou")
+        ap.uid = 2000
+    else:
+        ap.tun = ap.vpn = False
+        ap.uptime = 5000
+        assert await _passo(parque, "varredura") and _linha(parque)["state"] == "configurado"
+        assert await _passo(parque, "varredura")                       # pede o reinício que religa o cliente
+        await _reiniciar(parque, ap)
+    assert ap.paradas == 1 and _linha(parque)["leak_rev"] is None
+    mem = st.rede_convergencia.memoria("android-01")
+    mem.espera_ate, mem.ultima_verificacao = 0.0, -1e9
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.2)
+    linha = _linha(parque)
+    assert ap.paradas == 1, "a falha da primeira passada virou teste destrutivo na segunda"
+    assert "adotada do histórico" in str(linha["leak_detail"]) and linha["state"] == "trafego_verificado"
+
+
+@pytest.mark.parametrize("gesto", ["verify", "wipe"])
+async def test_pedido_de_refazer_e_wipe_valem_tambem_na_linha_de_antes_da_063(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch, gesto: str) -> None:
+    """Achado da revisão (A2): na linha que o mecanismo novo nunca escreveu não há prova a apagar — mas o MOTIVO tem de
+    ficar, porque é a falta dele que permite a adoção. Sem isso, o `verify` respondia "o teste é refeito" e a passada
+    seguinte adotava a prova antiga, sem teste nenhum."""
+    st = parque.state
+    assert st is not None
+    ap, _ = _preparar_sonda(parque, monkeypatch)
+    await _ate_verificado(parque, ap)
+    _como_antes_da_063(parque)
+    _reiniciar_o_backend(parque)
+    if gesto == "verify":
+        st.rede_convergencia.pedir_verificacao("android-01", "teste")
+        assert "verificação pedida por teste" in str(_linha(parque)["leak_detail"])
+        assert await _passo(parque, "varredura")
+        assert ap.paradas == 2 and "adotada" not in str(_linha(parque)["leak_detail"])
+    else:
+        st.rede_convergencia.invalidar("android-01", "wipe")
+        linha = _linha(parque)
+        assert linha["state"] == "pendente" and "dados do aparelho apagados (wipe)" in str(linha["leak_detail"])
+        assert rede.prova_anterior(st, st.db.one("SELECT * FROM device_network WHERE instance_id='android-01'")) is None
+
+
+async def test_linha_apagada_e_recriada_nao_adota_a_prova_da_anterior(parque: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado da revisão (A3): a rede foi tirada do aparelho (a linha sai) e pedida de novo. O histórico do mesmo id —
+    comandos `verificar` da rev 1 com o bloqueio provado — é de outra configuração: a linha nova nasce marcada e faz o
+    seu próprio teste."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios = _preparar_sonda(parque, monkeypatch)
+    await _ate_verificado(parque, ap)
+    st.rede_convergencia._apagar_linha("android-01", "rede tirada (teste)")
+    ap2, _ = _preparar_sonda(parque, monkeypatch, reinicios=reinicios)
+    linha = _linha(parque)
+    assert linha["desired_rev"] == 1 and "nenhum teste de vazamento" in str(linha["leak_detail"])
+    assert rede.prova_anterior(st, st.db.one("SELECT * FROM device_network WHERE instance_id='android-01'")) is None
+    await _ate_conectado(parque, ap2)
+    _liberar_a_porta(parque)
+    assert await _passo(parque, "tarefa")
+    assert ap2.paradas == 1 and "adotada" not in str(_linha(parque)["leak_detail"])
+
+
+async def test_desfecho_que_nao_aprova_com_a_sonda_sem_ip_nao_mede_a_cada_passada(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado da revisão (A4): com o teste inconclusivo gravado, a medição só é refeita para a saída não envelhecer. Mas
+    sem IP medido (o eco fora, o servidor fora) o `verified_at` não anda, a medição segue "envelhecida" e cada passada
+    media de novo. A espera da medição que não verificou vale aqui também."""
+    st = parque.state
+    assert st is not None
+    ap, _ = _preparar_sonda(parque, monkeypatch)
+    await _ate_conectado(parque, ap)
+    ap.religa_sempre = True
+    assert await _passo(parque, "tarefa") and _linha(parque)["state"] == "parcial"
+    _envelhecer_medicao(parque, 5.5)
+    ap.ip4 = None
+    mem = st.rede_convergencia.memoria("android-01")
+    mem.espera_ate, mem.ultima_verificacao = 0.0, -1e9
+    antes = st.db.scalar("SELECT COUNT(*) FROM network_measurements")
+    passadas = []
+    for _ in range(6):
+        _liberar_a_porta(parque)
+        passadas.append(await _passo(parque, "varredura"))
+    assert passadas == [True, False, False, False, False, False]
+    assert st.db.scalar("SELECT COUNT(*) FROM network_measurements") == antes + 1 and ap.paradas == 5
 
 
 def test_desfecho_de_revisao_antiga_nao_vira_prova_da_nova(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:

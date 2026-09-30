@@ -1473,6 +1473,8 @@ e dispara a sonda no mesmo instante, até 5 tentativas (`sonda_rede.comando_para
 denied" como uid 2000 prova o bloqueio; root não é coberto pelo bloqueio.
 
 **Aplicabilidade.** Vigente. Vale para qualquer medição que dependa de a VPN estar caída com always-on ligado.
+Correção de 30/09 (K-066): o "volta em menos de um segundo" foi visto em 29/09 e **não se repetiu** em 4 tentativas
+de 30/09 no mesmo aparelho. Não conte com o always-on para religar o cliente depois de um `force-stop`.
 
 ### K-064 — Dependência empacotada no tarball: o `npm audit fix` diz que corrige e não corrige, e o lock editado mente
 
@@ -1528,3 +1530,27 @@ do APK demonstrados, conferida numa cópia do banco antes do deploy.
 **Aplicabilidade.** Vigente. Antes de guardar em memória o resultado de qualquer verificação, perguntar quanto custa
 refazê-la: se custa reinício, toque em conta real ou chamada paga, o resultado é dado durável, com a chave do que ele
 prova.
+
+### K-066 — O always-on tenta subir a VPN uma vez por boot; com o convidado sem CPU ele falha, e reiniciar rola o mesmo dado
+
+**Data:** 30/09/2026 · **Área:** rede por aparelho (ADR-056, item 29.3)
+
+**Sintoma.** Depois de um reinício pedido pela rede, a conferência lia o aparelho sem `tun0` (always-on, bloqueio e
+regras no lugar, cliente instalado) e pedia outro reinício. Em 30/09, 15 de 30 conferências depois do boot foram
+assim; um teste de vazamento no android-06 custou 6 reinícios e 2 reaplicações.
+
+**Causa.** Medida em 7 boots no android-05: o sistema chama `startAlwaysOnVpn` uma vez por boot. Com o convidado sem
+CPU durante o boot (2 vCPU, carga 11 a 20, SystemUI em laço de ANR), o serviço do cliente leva mais de ~22 s para
+chamar `startForeground` e é morto por ANR (3 de 5 falhas), ou sobe e para em segundos (2 de 5). Quando sobe, sobe
+entre 92 e 176 s de ligado; a plataforma conferia aos 95–159 s, com espera de 60 s.
+
+**O que não funcionou.** Reiniciar de novo (a mesma chance de falhar, e mais carga). `am force-stop` para o always-on
+religar (0 de 4). Iniciar o serviço pelo shell (não exportado). Clicar num tile que já estava na barra (0 de 2).
+
+**O que funcionou.** Esperar o `tun0` até 180 s contados do boot. E, só com a configuração valendo e o túnel
+faltando, o tile de configurações rápidas do próprio cliente, adicionado na hora e clicado pelo `cmd statusbar` como o
+shell, com três guardas na mesma ida: SystemUI estável, tile na barra e nenhum `tun0` (o tile é alternador). O túnel
+volta em segundos, sem tocar em always-on nem em bloqueio.
+
+**Aplicabilidade.** Vigente para o cliente sing-box 1.14.2 em Android 14. A causa de fundo é CPU do convidado no boot:
+um host menos carregado falha menos. O gesto com um app em primeiro plano e nos aparelhos do notebook segue `not_run`.

@@ -37,6 +37,16 @@ do P15: o Outlook não recusa o emulador; o que cai é o renderizador SwiftShade
   medido em laço. Na transição, a prova anterior só é adotada com o histórico e a data do APK demonstrados. Prova:
   `simulated` (`tests/test_rede_sonda.py`, 12 cenários novos; o do reinício do backend falha no código de `6997091`);
   `real` para a leitura do cliente em três aparelhos e para a 063 numa cópia do banco do central. K-065.
+- **Túnel que não sobe no boot (29.3):** medido no android-05 (7 boots): o always-on tenta uma vez por boot e falhou
+  em 5 de 7 com o convidado sem CPU; cada conferência sem `tun0` pedia outro reinício (android-06: 6 reinícios por um
+  teste). A espera passa a 180 s contados do boot, e, com a configuração valendo e só o túnel faltando, o tile do
+  cliente é tentado antes do reinício — também depois do teste de vazamento, que deixa de custar um reinício. Prova:
+  `simulated` e `real` no android-05 (o código do gesto, duas vezes, 13:30Z). K-066.
+- **Revisão independente do P16:** quatro achados corrigidos antes da publicação, cada um com o teste que falhava —
+  uma leitura que falha antes da adoção virava teste destrutivo na passada seguinte; `verify` e wipe não deixavam
+  marca na linha antiga (a prova era readotada); linha recriada adotava a prova da anterior; e o desfecho que não
+  aprova media a cada passada quando a sonda não trazia IP.
+- **Deploy:** `deploy.ps1` passa a instalar as dependências do Appium quando o lock muda e a conferir o disco.
 - **Firewall do central para a LAN (29.8):** a leitura passa a conferir porta, perfil efetivo, interface, origem e
   programa de cada regra; estado novo `regra_obsoleta`; o comando proposto sai sem `-Program`, restrito à sub-rede e à
   interface lidas do sistema, idempotente, com inspeção e reversão. Uma regra presa a outra interface era lida como

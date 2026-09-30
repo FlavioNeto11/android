@@ -634,14 +634,18 @@ def identidade_do_cliente(linha: str) -> str:
 def comando_da_instalacao(pacote: str) -> str:
     """Quando o APK do cliente foi gravado no aparelho, em segundos desde 1970 (independente do fuso do aparelho, ao
     contrário do `lastUpdateTime` do `dumpsys`). Lido como o shell; a pasta do pacote é legível por todos."""
-    return f"echo M=$(stat -c %Y $(pm path {pacote} 2>/dev/null | head -1 | cut -d: -f2) 2>/dev/null); echo U=$(id -u)"
+    return (f"echo M=$(stat -c %Y $(pm path {pacote} 2>/dev/null | head -1 | cut -d: -f2) 2>/dev/null); "
+            "echo N=$(date +%s); echo U=$(id -u)")
 
 
-async def instalado_em(ap: AparelhoDaRede, pacote: str) -> int:
-    v = _ler_pares(await ap.shell(comando_da_instalacao(pacote), timeout=30), ("M", "U"))
-    if not v.get("M", "").isdigit():
+async def instalado_em(ap: AparelhoDaRede, pacote: str) -> tuple[int, int]:
+    """(quando o APK do cliente foi gravado, o relógio do aparelho agora), os dois em segundos desde 1970. O relógio
+    vai junto porque a data do APK é a do relógio DO APARELHO: quem a compara com um horário do servidor confere antes
+    que os dois relógios andam juntos."""
+    v = _ler_pares(await ap.shell(comando_da_instalacao(pacote), timeout=30), ("M", "N", "U"))
+    if not v.get("M", "").isdigit() or not v.get("N", "").isdigit():
         raise RedeAplicacaoError(f"a data de instalação do cliente VPN {pacote} não veio do aparelho")
-    return int(v["M"])
+    return int(v["M"]), int(v["N"])
 
 
 def ler_observacao(saida: str) -> Observacao:
@@ -683,6 +687,63 @@ async def observar(ap: AparelhoDaRede, pacote: str, *, esperar_tun_s: float = 0.
         await asyncio.sleep(intervalo_s)
 
 
+# ============================================================================ religar o túnel sem reiniciar (29.3)
+# Medido em 30/09 no android-05 (7 boots, host com carga): o `startAlwaysOnVpn` do sistema roda UMA vez por boot, e em
+# 5 de 7 a primeira tentativa falhou — ANR de início do serviço com o convidado sem CPU (3), ou o serviço subindo e
+# parando sozinho (2). Reiniciar de novo rola o mesmo dado. O que religou sem reinício, 5 de 5 com o SystemUI
+# estável: o tile de configurações rápidas do próprio cliente, ADICIONADO NA HORA (um tile que já estava na barra
+# não responde) e clicado pelo `cmd statusbar`, como o shell. Always-on, bloqueio e as regras ficaram como estavam,
+# e a sonda seguiu saindo pelo túnel. `am force-stop` não religa (0 de 4), e o serviço não é exportado.
+_TILE = re.compile(r"^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$")
+
+
+def comando_de_religar(tile: str) -> str:
+    """Uma ida ao aparelho: tira o tile (se havia), põe de novo, espera o SystemUI processar e clica — SÓ se o
+    SystemUI não reiniciou no meio (no boot ele entra em laço de ANR e renasce sem o tile), se o tile entrou na barra
+    e se NÃO há `tun0` (o tile é um alternador: clicado com o túnel no ar, desligaria a VPN)."""
+    if not _TILE.match(tile or ""):
+        raise RedeAplicacaoError(f"tile do cliente VPN inválido: {tile!r}")
+    na_barra = f"settings get secure sysui_qs_tiles | grep -c -F 'custom({tile})'"
+    return (
+        f"Q0=$({na_barra}); echo Q0=$Q0; "
+        "P1=$(pidof com.android.systemui); "
+        f"cmd statusbar remove-tile {tile} >/dev/null 2>&1; sleep 2; "
+        f"cmd statusbar add-tile {tile} >/dev/null 2>&1; sleep 3; "
+        "P2=$(pidof com.android.systemui); "
+        f"Q=$({na_barra}); "
+        "T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); "
+        "echo P1=$P1; echo P2=$P2; echo Q=$Q; echo T=$T; "
+        'if [ -n "$P1" ] && [ "$P1" = "$P2" ] && [ "$Q" -gt 0 ] && [ "$T" -eq 0 ]; then '
+        f"cmd statusbar click-tile {tile} >/dev/null 2>&1; echo CLICOU=1; else echo CLICOU=0; fi"
+    )
+
+
+async def religar_pelo_tile(ap: AparelhoDaRede, pacote: str, tile: str, *, espera_s: float = 20.0) -> tuple[Observacao | None, str]:
+    """Tenta subir o túnel pelo tile do cliente, sem reiniciar o aparelho. Devolve a observação com o túnel no ar (ou
+    `None`) e o que aconteceu. Não mexe em always-on nem em bloqueio; a barra volta a como estava."""
+    v = _ler_pares(await ap.shell(comando_de_religar(tile), timeout=60), ("Q0", "P1", "P2", "Q", "T", "CLICOU"))
+    try:
+        if v.get("CLICOU") != "1":
+            if v.get("T", "0") != "0":
+                return None, "tile não acionado: já há tun0 (clicar desligaria a VPN)"
+            if not v.get("P1") or v.get("P1") != v.get("P2"):
+                return None, "tile não acionado: o SystemUI reiniciou durante a preparação"
+            return None, "tile não acionado: o SystemUI não pôs o tile na barra a tempo"
+        obs = await observar(ap, pacote, esperar_tun_s=espera_s, intervalo_s=2.0)
+        if obs.tun and not obs.vpn_conectada and espera_s > 0:
+            await asyncio.sleep(2.0)                   # o `tun0` aparece um instante antes do CONNECTED no dumpsys
+            obs = await observar(ap, pacote)
+        if obs.tun and obs.vpn_conectada:
+            return obs, "túnel religado pelo tile do cliente, sem reinício"
+        return None, f"o tile foi clicado e o túnel não subiu em {espera_s:g} s"
+    finally:
+        if v.get("Q0", "0") == "0":                    # o tile não estava na barra antes: sai de novo
+            try:
+                await ap.shell(f"cmd statusbar remove-tile {tile} >/dev/null 2>&1; true", timeout=20)
+            except Exception as exc:  # noqa: BLE001 - arrumação: não muda o desfecho
+                logging.getLogger(__name__).info("tile do cliente VPN não removido da barra — %s", exc)
+
+
 async def apagar_relatorios_de_falha(ap: AparelhoDaRede, pacote: str) -> None:
     await ap.shell(f"rm -rf {_crash_reports(pacote)}", timeout=30)
     await ap.shell("sync", timeout=60)
@@ -697,4 +758,4 @@ __all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "Observacao", "Plano
            "RedeAplicacaoError", "ServidorDeUmaVez", "TunelWg", "apagar_relatorios_de_falha", "comando_de_observacao",
            "comando_da_instalacao", "config_do_cliente", "desfazer", "endereco_no_tunel", "endpoint_do_central",
            "identidade_do_cliente", "instalado_em", "ler_observacao", "montar_plano", "observar", "origem_do_aparelho",
-           "provisionar", "tocar_importacao"]
+           "comando_de_religar", "provisionar", "religar_pelo_tile", "tocar_importacao"]

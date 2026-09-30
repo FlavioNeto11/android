@@ -122,6 +122,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-062 | O Outlook derruba o emulador estável; no canary, o app morre numa armadilha UD2 da libhxcomm.so | apps/emuladores | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-062` | 23.2, P15, ADR-057 |
 | K-063 | Always-on religa o cliente VPN em menos de 1 s: teste de vazamento numa ida só ao aparelho | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-063` | 25.5, ADR-056 |
 | K-065 | Evidência de teste destrutivo só em memória: cada reinício do backend a perde e o teste se repete em todo o parque | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-065` | 29.2, ADR-061 |
+| K-066 | O always-on tenta subir a VPN uma vez por boot e falha com o convidado sem CPU; o tile do cliente religa sem reinício | rede por aparelho | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-066` | 29.3, ADR-056 |
 | K-064 | Dependência empacotada no tarball (`inBundle`): `npm audit fix` e `overrides` não corrigem, e o lock editado fica verde com o código vulnerável no disco | CI/dependências | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-064` | 29.1 |
 
 ## Como localizar

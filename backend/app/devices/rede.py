@@ -673,10 +673,14 @@ def _gravar_desejado(st: AppState, item: _Item, quem: str | None, agora: str) ->
         st.db.execute("DELETE FROM device_network WHERE instance_id=?", (iid,))
         return
     if row is None:
+        # `leak_detail` nasce preenchido: a linha é NOVA, e o histórico do mesmo id (comandos e medições de uma rede
+        # que já foi tirada, de outra configuração) não é prova dela. É essa marca que impede a adoção da transição
+        # (`prova_anterior`) de valer para linha recriada.
         st.db.execute("INSERT INTO device_network(instance_id, vpn_profile_id, proxy_profile_id, policy, desired_rev,"
-                      " state, detail, updated_at, updated_by) VALUES (?,?,?,?,?,?,?,?,?)",
+                      " state, detail, updated_at, updated_by, leak_detail) VALUES (?,?,?,?,?,?,?,?,?,?)",
                       (iid, para.vpn_profile_id, para.proxy_profile_id, para.policy, 1, "pendente",
-                       f"rede pedida (rev 1) por {quem or 'painel'}; aguarda a aplicação no aparelho", agora, quem))
+                       f"rede pedida (rev 1) por {quem or 'painel'}; aguarda a aplicação no aparelho", agora, quem,
+                       f"rede pedida em {agora}: nenhum teste de vazamento feito para esta linha"))
         return
     if item.reapply:
         rev = int(row["desired_rev"]) + 1
@@ -919,8 +923,8 @@ def fechar_ensaio_interrompido(st: AppState, instance_id: str) -> bool:
     cur = st.db.execute(
         "UPDATE device_network SET leak_result=NULL, leak_pending=0, leak_detail=?, updated_at=?"
         " WHERE instance_id=? AND leak_pending=1",
-        (f"vazamento não medido: o ensaio foi interrompido antes do desfecho (o backend reiniciou no meio; fechado em "
-         f"{agora}). O cliente VPN não é parado de novo sozinho: peça Verificar para refazer", agora, instance_id))
+        (f"vazamento não medido: ensaio interrompido antes do desfecho (o backend reiniciou no meio); peça Verificar "
+         f"para refazer. Fechado em {agora}", agora, instance_id))
     if cur.rowcount == 1:
         _emitir(st, f"Rede de {instance_id}: ensaio de vazamento interrompido, fechado como inconclusivo",
                 instance_id=instance_id, acao="vazamento", leak_result=None)
@@ -929,11 +933,13 @@ def fechar_ensaio_interrompido(st: AppState, instance_id: str) -> bool:
 
 def apagar_prova_de_vazamento(st: AppState, instance_id: str, motivo: str) -> bool:
     """A prova deixou de valer (wipe, outro aparelho atrás do id, cliente VPN de outra instalação, pedido de
-    verificar): as colunas voltam a vazio, e o motivo fica em `leak_detail`."""
+    verificar): as colunas voltam a vazio, e o motivo fica em `leak_detail` — SEMPRE, mesmo quando não havia prova
+    gravada. Na linha que veio de antes da 063 o motivo é o que impede a adoção da prova do histórico: quem pediu para
+    refazer o teste, ou apagou o aparelho, não pode receber de volta a prova antiga."""
     agora = now_iso()
     cur = st.db.execute(
         "UPDATE device_network SET leak_rev=NULL, leak_client=NULL, leak_result=NULL, leak_at=NULL, leak_pending=0,"
-        " leak_detail=?, updated_at=? WHERE instance_id=? AND (leak_rev IS NOT NULL OR leak_pending=1)",
+        " leak_detail=?, updated_at=? WHERE instance_id=?",
         (f"prova apagada em {agora}: {motivo}"[:500], agora, instance_id))
     return cur.rowcount == 1
 
@@ -958,8 +964,11 @@ def prova_anterior(st: AppState, row: Row) -> ProvaAnterior | None:
       `leak_detail`, e o pedido de refazer não pode ser contornado por aqui);
     - a revisão pedida está aplicada, com bloqueio;
     - a ÚLTIMA medição do aparelho tem o bloqueio provado (um teste posterior inconclusivo teria deixado NULL);
-    - dos comandos `verificar` desta revisão, do mais novo para trás, todos concluíram com o bloqueio provado; o mais
-      antigo dessa sequência é o teste (ou o contém), e o começo dele é o limite inferior do instante do teste.
+    - dos comandos `verificar` desta revisão, do mais novo para trás, todos os que TÊM desfecho de bloqueio o têm
+      provado; o mais antigo dessa sequência é o teste (ou o contém), e o começo dele é o limite inferior do instante
+      do teste. Comando que falhou, ficou incerto (o backend reiniciou no meio) ou só releu o aparelho não é evidência
+      de nada e é pulado: uma leitura que falha uma vez não pode fazer a passada seguinte desistir da adoção e parar o
+      cliente. Andar mais para trás só deixa `testado_em` mais antigo, e a conferência da data do cliente mais estrita.
 
     Quem chama ainda confere, no aparelho, que o cliente VPN instalado é anterior a `testado_em`."""
     iid, rev = str(row["instance_id"]), int(row["desired_rev"])
@@ -978,16 +987,21 @@ def prova_anterior(st: AppState, row: Row) -> ProvaAnterior | None:
         params = loads(c["params"], {}) or {}
         if params.get("acao") != "verificar":
             continue
-        if params.get("rev") != rev or c["state"] != "succeeded":
-            break
+        if params.get("rev") != rev:
+            break                                      # outra revisão: o que vem antes não é desta
+        if c["state"] != "succeeded":
+            continue                                   # falhou ou ficou incerto: não diz nada do bloqueio
         desfecho = (loads(c["result"], {}) or {}).get("outcome") or {}
-        provou = desfecho.get("leak_blocked") is True
-        if not provou and desfecho.get("measurement_id") is not None:
+        if desfecho.get("measurement_id") is not None:
             m = st.db.one("SELECT leak_blocked FROM network_measurements WHERE id=? AND instance_id=?",
                           (desfecho["measurement_id"], iid))
             provou = m is not None and m["leak_blocked"] == 1
+        elif "leak_blocked" in desfecho:
+            provou = desfecho["leak_blocked"] is True  # o teste que deixou o cliente parado (a medição veio depois)
+        else:
+            continue                                   # só releu (deriva) ou dispensou a medição: sem desfecho
         if not provou:
-            break
+            break                                      # mediu ou testou sem provar: a sequência acaba aqui
         teste = c
     if teste is None:
         return None

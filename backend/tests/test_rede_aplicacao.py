@@ -459,6 +459,13 @@ class AparelhoFalso:
     instalacao: str = "inst1"
     versao: int = 739
     instalado_em: int | None = 1_700_000_000        # o APK gravado em 2023: anterior a qualquer teste deste arquivo
+    relogio_atrasado_s: int = 0                     # quanto o relógio do aparelho está atrás do servidor
+    # O tile de configurações rápidas do cliente (item 29.3): se o clique religa o túnel, se o SystemUI reinicia no
+    # meio da preparação (o laço de ANR do boot) e quantas vezes o tile foi de fato clicado.
+    tile_religa: bool = False
+    sistema_instavel: bool = False
+    tile_na_barra: bool = False
+    cliques_no_tile: int = 0
     appops: bool = False
     always_on: str = "null"
     lockdown: str = "0"
@@ -482,8 +489,24 @@ class AparelhoFalso:
             return (f"U={self.uid}\nA={self.always_on}\nL={self.lockdown}\nT={int(self.tun)}\nV={int(self.vpn)}\n"
                     f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nK={self.linha_do_cliente()}\n"
                     f"S={self.uptime}\n")
+        if comando.startswith("Q0=$(settings get secure sysui_qs_tiles"):
+            havia, tun = int(self.tile_na_barra), int(self.tun)
+            clicou = not self.sistema_instavel and not self.tun
+            self.tile_na_barra = not self.sistema_instavel
+            if clicou:
+                self.cliques_no_tile += 1
+                if self.tile_religa:
+                    self.tun = self.vpn = True
+                    if hasattr(self, "parado"):
+                        self.parado = False
+            return (f"Q0={havia}\nP1=900\nP2={901 if self.sistema_instavel else 900}\n"
+                    f"Q={int(self.tile_na_barra)}\nT={tun}\nCLICOU={int(clicou)}\n")
+        if comando.startswith("cmd statusbar remove-tile"):
+            self.tile_na_barra = False
+            return ""
         if comando.startswith("echo M=$(stat -c %Y "):
-            return f"M={'' if self.instalado_em is None else self.instalado_em}\nU={self.uid}\n"
+            return (f"M={'' if self.instalado_em is None else self.instalado_em}\n"
+                    f"N={int(time.time()) - self.relogio_atrasado_s}\nU={self.uid}\n")
         if comando.startswith("echo A=$(settings get"):
             return f"A={self.always_on}\nL={self.lockdown}\n"
         if comando.startswith("pm path"):
@@ -680,6 +703,7 @@ async def parque(tmp_path: Path) -> Iterator[Harness]:
     st.rede_convergencia.atraso_do_reinicio_s = 0.05
     st.rede_convergencia.intervalo_do_reinicio_s = 0.05
     st.rede_convergencia.pausa_da_tela_s = 0.01
+    st.rede_convergencia.espera_do_tile_s = 0
     try:
         yield h
     finally:
@@ -795,10 +819,75 @@ async def test_tunel_que_nao_sobe_reinicia_ate_o_teto_e_depois_espera(parque: Ha
             assert len(reinicios.pedidos) == 2 and _linha(parque)["state"] == "configurado"
     linha = _linha(parque)
     assert linha["state"] == "pendente" and "o túnel não subiu depois de 2 reinício" in str(linha["error"])
+    # Antes de cada reinício (e de desistir), o tile do cliente foi tentado — e aqui ele não religa (item 29.3).
+    assert ap.cliques_no_tile == 2 and ap.tile_na_barra is False
     assert await _passo(parque, "varredura") is False                             # espera antes de repetir
     assert "falhou" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
     [ultimo] = st.db.query("SELECT * FROM commands WHERE verb='device.network' ORDER BY created_at DESC LIMIT 1")
     assert ultimo["state"] == "failed"
+
+
+async def test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Item 29.3. Em 30/09 a primeira tentativa do always-on falhou em 5 de 7 boots (ANR de início do serviço com o
+    convidado sem CPU), e cada conferência sem `tun0` pedia OUTRO reinício — o mesmo dado, rolado de novo (android-06:
+    6 reinícios e 2 reaplicações). O tile do cliente religa sem reinício, com always-on e bloqueio intactos."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")                                       # aplicar
+    await asyncio.sleep(0.3)
+    assert len(reinicios.pedidos) == 1
+    # Sem boot desde a configuração, o bloqueio ainda não vale no sistema: o tile NÃO é tentado, o caminho é o reinício.
+    ap.tile_religa = True
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    assert ap.cliques_no_tile == 0 and _linha(parque)["state"] == "configurado"
+    pedidos = len(reinicios.pedidos)
+    # O boot veio e o cliente não subiu (a configuração e as regras de bloqueio estão no lugar; só o túnel falta).
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=300, tun=False)
+    comandos = len(ap.comandos)
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    linha = _linha(parque)
+    assert linha["state"] == "conectado" and "religado pelo tile do cliente, sem reinício" in str(linha["detail"])
+    assert ap.cliques_no_tile == 1 and len(reinicios.pedidos) == pedidos           # nenhum reinício a mais
+    # O gesto não mexe na configuração: always-on, bloqueio e regras como estavam; a barra volta ao que era.
+    assert ap.always_on == PKG and ap.lockdown == "1" and ap.regras is True and ap.tile_na_barra is False
+    assert not any(c.startswith("settings put") or c.startswith("settings delete") for c in ap.comandos[comandos:])
+    # Com o túnel no ar o tile nunca é clicado (é um alternador: desligaria a VPN).
+    assert await _passo(parque, "ligou") is True and ap.cliques_no_tile == 1
+
+
+async def test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue(parque: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """O SystemUI no laço de ANR do boot renasce sem o tile (medido: 0 de 2 nessa condição): sem clique, e o caminho
+    de antes (outro reinício) continua valendo."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=300, tun=False)
+    ap.tile_religa, ap.sistema_instavel = True, True
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    assert ap.cliques_no_tile == 0 and _linha(parque)["state"] == "configurado"
+    assert len(reinicios.pedidos) == 2 and "o túnel não subiu depois do boot" in str(reinicios.pedidos[-1][1])
+
+
+def test_comando_do_tile_so_clica_sem_tun0_com_o_systemui_estavel_e_o_tile_na_barra() -> None:
+    from app.devices.rede_aplicacao import comando_de_religar
+
+    cmd = comando_de_religar("io.nekohasekai.sfa/.bg.TileService")
+    assert cmd.index("remove-tile") < cmd.index("add-tile") < cmd.index("click-tile")   # tile velho não responde
+    assert '[ "$P1" = "$P2" ]' in cmd and '[ "$T" -eq 0 ]' in cmd and '[ "$Q" -gt 0 ]' in cmd
+    assert "always_on_vpn" not in cmd and "settings put" not in cmd                      # só LÊ a barra
+    for ruim in ("", "io.nekohasekai.sfa", "pkg/.Tile; reboot", "pkg/$(id)"):
+        with pytest.raises(RedeAplicacaoError):
+            comando_de_religar(ruim)
 
 
 async def test_falha_de_aplicacao_nao_se_repete_as_cegas(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:

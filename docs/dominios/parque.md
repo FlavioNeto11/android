@@ -576,10 +576,51 @@ medição — no android-05, em 30/09, a sonda rodou 34 vezes em seis horas para
 
 **Transição (primeira subida com a 063).** A prova que o código anterior fez ficou só no histórico. Ela é adotada,
 sem parar o cliente, quando o registro a sustenta (`rede.prova_anterior`): a linha nunca escrita pelo mecanismo novo,
-a última medição com o bloqueio provado, e os comandos `verificar` da revisão, do mais novo para trás, todos com o
-bloqueio provado — o mais antigo deles é o teste; **e** quando o APK do cliente VPN no aparelho é anterior a esse
-teste (`stat -c %Y`, em segundos desde 1970, lido na hora). Sem a correspondência, o teste é feito. Uma prova apagada
-(o motivo fica em `leak_detail`) nunca é readotada.
+a última medição com o bloqueio provado, e os comandos `verificar` da revisão, do mais novo para trás, todos os que
+têm desfecho de bloqueio com ele provado — o mais antigo deles é o teste; **e** quando o APK do cliente VPN no
+aparelho é anterior a esse teste (`stat -c %Y`, em segundos desde 1970, lido na hora, com o relógio do aparelho a no
+máximo 2 min do servidor). Sem a correspondência, o teste é feito. Três cuidados, achados pela revisão independente:
+comando que falhou, ficou incerto ou só releu o aparelho não é evidência e é pulado (uma leitura que falha uma vez
+não pode virar teste destrutivo na passada seguinte); apagar a prova deixa o motivo em `leak_detail` mesmo quando não
+havia prova gravada, e uma linha com motivo nunca adota (o `verify` e o wipe valem também na linha antiga); e a linha
+nova já nasce com `leak_detail` preenchido, para o histórico de uma rede que foi tirada não virar prova da que foi
+pedida depois.
+
+### O túnel que não sobe no boot (item 29.3)
+
+Medido em 30/09 no android-05 (QA), 7 reinícios pela plataforma com o host sob carga, prova `real`:
+
+- o `startAlwaysOnVpn` do sistema roda **uma vez** por boot. A primeira tentativa falhou em 5 de 7: ANR de início do
+  serviço (3: o cliente leva mais de ~22 s para chamar `startForeground`, com o convidado sem CPU — pressão de CPU
+  90%, carga 11 a 20 em 2 vCPU) ou o serviço sobe e para sozinho em segundos (2). Não houve a exceção de serviço em
+  primeiro plano do piloto, nem relatório de falha;
+- quando sobe, o túnel aparece entre 92 e 176 s de ligado (a segunda chance é o receptor de boot do próprio cliente);
+  depois de 180 s não sobe mais. A conferência da plataforma lia o aparelho aos 95–159 s e pedia outro reinício: em
+  30/09, 15 de 30 conferências depois do boot terminaram assim, e o android-06 levou 6 reinícios e 2 reaplicações por
+  causa de um teste de vazamento;
+- `am force-stop` não religa o cliente (0 de 4; o "volta em menos de um segundo" do K-063 não se repetiu), e o serviço
+  não é exportado;
+- o **tile de configurações rápidas do cliente** religa sem reinício: 5 de 5 com o tile adicionado na hora e o SystemUI
+  estável, 1 a 4 s depois do clique. Um tile que já estava na barra não responde, e com o SystemUI no laço de ANR do
+  boot o clique não acontece. Always-on, bloqueio e regras ficaram como estavam nas 6 conferências.
+
+O que a plataforma faz com isso:
+
+| Medida | Onde |
+|---|---|
+| Espera o `tun0` até `rede.espera_tun_s` **contados do boot** (padrão 180 s, era 60) antes de concluir que não subiu | `rede_convergencia._observar_depois_do_boot` |
+| Com a configuração valendo e só o túnel faltando, tenta o tile antes de reiniciar: tira e põe o tile, confere que o SystemUI não reiniciou, que o tile entrou na barra e que **não há `tun0`** (o tile é um alternador), clica, relê como uid 2000 e devolve a barra ao que era | `rede_aplicacao.religar_pelo_tile`, `rede.cliente_tile` (vazio desliga) |
+| O mesmo tile depois do teste de vazamento: religado, a medição sai na mesma passada e o teste deixa de custar um reinício | `rede_convergencia._prova_ou_ensaio` |
+| Sem boot desde a configuração (o bloqueio ainda não vale no sistema), o tile não é tentado: o caminho é o reinício | `rede_convergencia._conectar` |
+
+Prova: `simulated` — `tests/test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio`,
+`::test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue`,
+`::test_comando_do_tile_so_clica_sem_tun0_com_o_systemui_estavel_e_o_tile_na_barra` e
+`tests/test_rede_sonda.py::test_cliente_parado_pelo_teste_e_religado_pelo_tile_sem_reiniciar_o_aparelho`. `real`,
+30/09 13:30Z, android-05, o código de `religar_pelo_tile` chamado direto pelo adb, duas vezes: cliente parado, sonda
+fora da VPN recusada (`Permission denied`), túnel de volta em ~9 s, always-on e bloqueio intactos, tile fora da barra.
+`not_run`: o gesto com um app em primeiro plano (o android-05 estava no launcher), o gesto logo depois de um boot
+falho pela convergência, e os aparelhos do notebook.
 
 | O que foi provado | Nível |
 |---|---|
