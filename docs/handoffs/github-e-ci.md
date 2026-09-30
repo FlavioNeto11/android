@@ -111,10 +111,7 @@ central, e o job com prioridade ociosa (K-058). Enquanto isso o hospedado custa 
 | GitHub Apps instaladas | ChatGPT Codex Connector, **Claude**, Claude Design Import, Netlify |
 | OAuth apps autorizados | 12 (Cloudflare, fal.ai, Galileo, GitHub Android/CLI/iOS, Gitkraken, LangChain, Netlify Auth, Postman, Visual Studio, VS Code); vários "nunca usados" |
 
-**Pendente de sudo (passkey do dono):** o app **Claude** tem um "Permission updates requested" (instalação
-`136995446`). O GitHub pediu reautenticação (passkey) para abrir a tela de revisão e eu parei ali. Não aprovei nem
-recusei nada, e não sei ainda o que ele pede nem em quais repositórios está instalado. A configuração dos outros
-apps (escopo por repositório) também fica atrás do sudo.
+**Passkey feito em 30/09; o pedido de permissão do app Claude já estava atendido e o acesso foi restrito ao `android` (registro 3 abaixo).** Os outros três apps e os 12 OAuth apps ficam como estão.
 
 Não recomendo, sem necessidade comprovada, revogar OAuth apps ou apps instalados; os "nunca usados" são higiene
 opcional do dono, fora do escopo do projeto.
@@ -126,16 +123,15 @@ opcional do dono, fora do escopo do projeto.
 | 1 | Execução manual do `Contêiner` (`workflow_dispatch`) | último run falhou (bloqueio de gasto), 29/09 | run `36715781075` verde | prova do bloqueio resolvido; custo ~2 min hospedados (< US$ 0,02) |
 
 | 2 | Recarga da Anthropic registrada no livro-caixa da plataforma (`POST /api/ai/balances/anthropic/recharge {"amount": 20}`, 30/09 13:07Z, a pedido do dono, que recarregou US$ 20,00 no Console) | âncora de fechamento US$ 3,12, saldo estimado US$ 2,46 (`low`) | âncora `recarga`, saldo estimado US$ 22,46 (`ok`) | conferido em `GET /api/ai/balances`; OpenAI e Gemini inalterados; valor informado pelo dono, sem leitura do Console |
+| 3 | Acesso do GitHub App **Claude** (instalação `136995446`) restrito ao repositório `android` (a pedido do dono, 30/09, após passkey) | "All repositories" (atuais e futuros da conta); permissões de leitura/escrita em actions, checks, code, discussions, issues, pull requests, hooks e workflows | "Only select repositories": só `FlavioNeto11/android`; permissões inalteradas | conferido relendo a página: `selected:true`, "Selected 1 repository". O pedido de permissão pendente já estava atendido ("already up to date"). Reversível na mesma tela |
 
 Nada mais foi alterado. O teto de US$ 15 com "Stop usage" segue **não aplicado**: a edição do valor foi barrada pelo
 classificador de permissões desta sessão e ficou para o dono aplicar (ou liberar).
 
 ## 7. Ações que dependem do dono
 
-1. **Decidir a proposta da seção 3** (teto de US$ 15 com "Stop usage") ou manter US$ 100 só com alerta.
-2. **Passkey** para entrar em sudo mode no GitHub, e então revisar o "Permission updates requested" do app Claude
-   (a tela já está a um passo: `https://github.com/settings/installations/136995446/permissions/update`).
-3. Nada mais. `gh auth refresh -s user` (leitura da API de cobrança por script) é opcional.
+1. **Aplicar o teto de US$ 15 com "Stop usage"** em Budgets and alerts (Actions → Edit): a edição do valor foi barrada duas vezes pelo classificador de permissões da sessão que fez esta frente (mesmo com a aprovação do dono em chat), então fica para o dono aplicar ou liberar essa ação para o Chrome. Até lá vale US$ 100 só com alerta.
+2. Nada mais. `gh auth refresh -s user` (leitura da API de cobrança por script) é opcional.
 
 ## 8. Próximas verificações (quando a corrida sair)
 
