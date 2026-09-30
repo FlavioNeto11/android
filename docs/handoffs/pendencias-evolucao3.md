@@ -45,20 +45,20 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 
 | Item | Liga a | Resultado esperado | Depende de | Resp. | Estado |
 |---|---|---|---|---|---|
-| 29.1 | CI | job `dependências` verde no commit publicado | — | C | **integrado** `9428a6a`; run 36713946044 em curso |
-| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | em implementação |
+| 29.1 | CI | job `dependências` verde no commit publicado | — | C | **feito**, `real`: `9428a6a`, run 36713946044 verde (13:03Z) |
+| 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **integrado** (commit local do P16); `simulated` + leitura e ensaio `real`; revisão independente em curso |
 | 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | a medir (android-05) |
 | 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | não iniciado |
 | 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | não iniciado |
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | não iniciado |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | bloqueado (externo) |
-| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | não iniciado |
+| 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **integrado** (no commit do P16, de `d59fd36`); `simulated` + leitura `real` no central |
 | 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | bloqueado (externo) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | não iniciado |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | não iniciado |
 | 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | não iniciado |
 | 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | bloqueado (externo) |
-| 29.14 | P17 | suíte e migrações em PostgreSQL real | **dono** (Docker/WSL) ou CI agendado | C | bloqueado (externo) |
+| 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
 | 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | não iniciado |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | não iniciado |
@@ -122,20 +122,26 @@ interrompido" e **não** para o cliente de novo; o túnel caído é tratado pelo
 **Nunca aprova.** Resultado 0, NULL ou ausente leva a `parcial` com o motivo, e não é refeito sozinho: só por
 `POST …/verify`, revisão nova ou cliente novo.
 
-**Primeira implantação (29.4).** A prova de hoje só existe na memória do backend. Migrar sem critério a atribuiria a
-um cliente desconhecido; não migrar nada força um teste destrutivo (e os reinícios do 29.3) em android-03 e
-android-06, que têm conta real. O que se demonstra, por aparelho, antes do deploy:
+**Primeira implantação (29.4).** A prova de hoje só existe na memória do backend. A migração 063 só cria colunas:
+ela não conhece o aparelho, e um `UPDATE` com o cliente vazio valendo "até a primeira leitura" seria um curinga. Não
+adotar nada forçaria um teste destrutivo (e os reinícios do 29.3) em android-03 e android-06, que têm conta real — e
+logo na primeira varredura, porque a porta passa a exigir a prova da linha. A adoção é feita pelo código, na primeira
+verificação de cada aparelho, só com a correspondência demonstrada (`rede.prova_anterior` + a data do APK lida do
+aparelho; descrição em `docs/dominios/parque.md`, "A prova de vazamento").
 
-| Aparelho | Teste que provou (comando `device.network`, `verificar`) | Medição que o registrou | Revisão | Cliente lido em 30/09 12:06Z | Instalado em |
-|---|---|---|---|---|---|
-| android-02 | 30/09 06:52:38Z, `leak_blocked: true` | #11 (07:08:08Z) | 1 (única) | 1.14.2 (739) | 30/09 01:07:40Z |
-| android-06 | 30/09 07:06:39Z, `leak_blocked: true` | #14 (07:32:09Z) | 1 (única) | 1.14.2 (739) | 30/09 01:32:48Z |
-| android-03 | 30/09 07:57:39Z, `leak_blocked: true` | #18 (08:01:09Z) | 1 (única) | 1.14.2 (739) | 30/09 01:48:47Z |
-| android-05 | 30/09 ~01:02Z | #3 (01:03:57Z); depois, 34 medições sem prova (teste adiado) | 1 (única) | 1.14.2 (739) | 29/09 22:28:46Z |
+Ensaio `real` de 30/09 12:57Z: a 063 aplicada numa cópia do banco do central (sem divergência) e a decisão de adoção
+calculada com os aparelhos lidos como uid 2000, só leitura:
 
-Nos três primeiros, o cliente foi instalado antes do teste e não mudou, a revisão é a mesma e nenhuma medição
-posterior contradiz a prova: a adoção é demonstrável. No android-05 (QA, sem conta) a prova **não** é adotada: ele
-faz o primeiro teste real com o código novo, que é também a prova real do caminho de gravação.
+| Aparelho | Teste mais antigo da sequência provada (comando `verificar`) | Última medição | APK do cliente gravado em (`stat -c %Y`) | Decisão |
+|---|---|---|---|---|
+| android-02 | 30/09 01:22:29Z (`c-20260930012229-187ca4`) | #43, bloqueio provado | 30/09 01:07:36Z | **adota** |
+| android-06 | 30/09 01:38:43Z (`c-20260930013843-6b8340`) | #14, bloqueio provado | 30/09 01:32:45Z | **adota** |
+| android-03 | 30/09 02:29:45Z (`c-20260930022945-fd0d76`) | #18, bloqueio provado | 30/09 01:48:46Z | **adota** |
+| android-05 | — (a última medição não provou: o teste está adiado desde 06:28Z) | #40+, sem prova | 29/09 22:28:44Z | **não adota** |
+
+O android-05 (QA, sem conta) faz o primeiro teste real com o código novo: é a prova real do caminho de gravação
+(intenção, desfecho, reinício). **Antes do deploy:** repetir o ensaio (o estado pode ter mudado) e resolver o objetivo
+preso do android-05.
 
 **Reversão.** Voltar ao código de `6997091` reintroduz o defeito (a prova volta a viver só na memória e o próximo
 reinício arma os testes). As colunas novas ficam no banco e o código antigo as ignora: isso torna a volta possível,
@@ -169,6 +175,24 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Checkpoints
 
+### Checkpoint 2 — 30/09 ~13:15Z
+
+- 29.1 **feito** (`real`): run 36713946044 verde às 13:03Z no commit `9428a6a`.
+- 29.2 e 29.8 num commit local (`claude/evolucao3`, sobre `d8bcbf4`), **ainda não publicado**: falta a revisão
+  independente (em curso), o 29.3 e a suíte inteira. Testes de rede e de banco: verdes (SQLite). Painel: `tsc` e
+  vitest 834/834.
+- 29.3: medição em curso no android-05 (boots e gestos sem reinício); o objetivo `r-20260930023809-12d329:android-05`
+  segue em `waiting_user` de propósito até a medição acabar (é o que impede a plataforma de reiniciar o aparelho).
+- E7 (29.10) **executado**, `real`, só leitura: o único dump do emulador no notebook
+  (`qemu-system-x86_64-headless.exe.16644.dmp`, 29/09 19:45Z, canário do Outlook no android-09) tem a mesma assinatura
+  do central — `0xc0000005` de leitura em código sem módulo, com `gles_swiftshader\libGLESv2.dll` na pilha.
+- Remedições de 12:33Z (android-02) e 12:57Z (android-06) saíram **sem** teste destrutivo: a memória do backend atual
+  ainda tem a prova. O defeito volta no próximo reinício do backend com o código antigo; com o novo, a adoção o evita.
+- Outra sessão ("Github") cuida de Actions e cota: só empurra docs com `[skip ci]`, não implanta, e monitora o cron
+  de PostgreSQL de 01/10. O dono recarregou a Anthropic (US$ 22,46 estimados às 13:07Z): o saldo deixou de ser
+  bloqueio; a autorização de chamada paga continua sendo a de 29/09 (até US$ 1,50, ~US$ 0,56 usados).
+- `deploy.ps1` ganhou a etapa das dependências do Appium (o `node_modules` do central ainda tem a 5.0.9).
+
 ### Checkpoint 1 — 30/09 ~12:30Z
 
 - `9428a6a` na `main`: 29.1. Run do CI 36713946044 em curso.
@@ -177,6 +201,7 @@ ociosos e avisar que os testes serão refeitos.
 
 ## Próxima ação
 
-1. Terminar o 29.2 com os testes L1–L10 e a migração 063; medir o 29.3 no android-05 quando o CI terminar.
-2. Resolver o objetivo `r-20260930023809-12d329:android-05` (em `waiting_user`) antes do deploy.
-3. Suíte, push, CI, ensaio e primeiro deploy (29.4); registrar o início da janela de 6 h.
+1. Aplicar os achados da revisão do P16 e o 29.3 (com o que a medição do android-05 mostrar).
+2. Suíte inteira do backend uma vez, push, esperar o CI.
+3. Resolver o objetivo `r-20260930023809-12d329:android-05`, repetir o ensaio da 063 e da adoção, e fazer o primeiro
+   deploy (29.4) com os aparelhos ociosos; registrar aqui o início da janela de 6 h.

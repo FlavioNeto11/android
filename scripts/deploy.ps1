@@ -145,6 +145,31 @@ if (-not $PularDependencias) {
   }
 }
 
+# ------------------------------------------------------------------ 3c. dependências do Appium
+# A mesma falta, no terceiro lugar: `tools/appium/node_modules` também é artefato e não acompanha o `git pull`. Em
+# 30/09 o lock passou a exigir a troca de uma dependência empacotada vulnerável (K-064), e sem esta etapa o central
+# seguiria com a versão antiga no disco enquanto o CI dizia que estava corrigido. Com o backend PARADO: é ele que
+# sobe o Appium, e o `npm ci` apaga a pasta inteira. Só reinstala quando o lock mudou desde o commit que estava no
+# ar (ou a pasta não existe); a conferência do disco roda sempre e, se reprovar, reinstala uma vez.
+if (-not $PularDependencias) {
+  $appium = Join-Path $root 'tools\appium'
+  $conferir = { & node (Join-Path $appium 'corrigir-empacotados.mjs') --conferir | Out-Host; $LASTEXITCODE -eq 0 }
+  $mudou = -not (Test-Path (Join-Path $appium 'node_modules'))
+  if (-not $mudou -and $antes -and $antes.commit -and $antes.commit -ne $esperadoCommit) {
+    & git -C $root diff --quiet $antes.commit $esperadoCommit -- tools/appium/package.json tools/appium/package-lock.json
+    $mudou = $LASTEXITCODE -ne 0
+  }
+  Write-Host ('--- dependências do Appium (' + $(if ($mudou) { 'npm ci: o lock mudou' } else { 'só a conferência do disco' }) + ') ---')
+  if ($mudou -or -not (& $conferir)) {
+    Push-Location $appium
+    try { & npm ci --no-audit --no-fund 2>&1 | Select-Object -Last 3 | Out-Host } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0 -or -not (& $conferir)) {
+      throw ('a instalação do Appium falhou ou o disco não bate com o lock, e o backend está PARADO. Corrija e rode ' +
+             'de novo, ou suba o que estava: Start-ScheduledTask farm-central.')
+    }
+  }
+}
+
 # ------------------------------------------------------------------ 4. subir (a migração acontece aqui)
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'
 if ($supervisionado) {
