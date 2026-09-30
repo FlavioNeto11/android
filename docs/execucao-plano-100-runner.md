@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-226 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+227 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -258,7 +258,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
-| 29.4 | pendente | — | — | — |  |  |
+| 29.4 | implemented | real | opus | — | Real, 30/09, central 0d70882 (deploy 15:24:44Z, backend sem reinício até 21:30Z; 6 h 05 min, 36 leituras de scripts/rede-observacao.py em data/rede/observacao-p16/janela-20260930.md). Na subida: prova anterior adotada e… | None |
 | 29.5 | implemented | real | opus | — | backend/app/devices/sonda_rede.py::comando_dns_e_udp (até 3 datagramas de 2 s por perna, parando no primeiro com resposta, numa ida só como uid 2000; TDNS/TNTP e SDNS/SNTP por perna), ler_dns_e_udp (lê também a saída an… |  |
 | 29.6 | implemented | simulated | opus | — | backend/app/devices/rede.py: params.egress_esperado e egress_esperado_ipv6 validados como endereço público (422 com o campo), saida_esperada (o perfil da saída final: o proxy, se houver; senão a VPN), saida_divergente s… |  |
 | 29.7 | blocked | not_run | opus | — | Pronto para quando o dono quiser: scripts/rede-saida-externa.sh (Ubuntu/Debian e Oracle Linux; um ou N pares, SNAT por origem, recusa dois pares no mesmo IP de saída; conferido com bash -n e com a leitura dos pares) e o… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z ("pode ser feita depois"): não é pendência aberta. Retomar = criar os servidores pelo bloco D3 e rodar o V1 no andr… |
@@ -280,7 +280,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (47): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.4, 29.7, 29.9, 29.12, 29.13, 29.14, 29.16, 29.17, 29.18, 29.19, 29.20, T.2
+Pendentes (46): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.12, 29.13, 29.14, 29.16, 29.17, 29.18, 29.19, 29.20, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

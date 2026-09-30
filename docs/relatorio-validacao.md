@@ -2058,7 +2058,16 @@ boot falho, com app em primeiro plano, e nos aparelhos do notebook.
 Início 15:24 (a subida do backend em `0d70882`), fim previsto 21:30; laço `scripts/rede-observacao.py` a cada 10 min em
 `data/rede/observacao-p16/janela-20260930.md`. Critério: nenhum teste de vazamento e nenhum reinício classificado como
 teste de vazamento em android-02, 03 e 06, com a remedição a 90% da validade (por volta de 20:50) trazendo
-`leak_blocked=1` da prova da linha. **Resultado: em curso** (validação pendente; o desfecho entra aqui ao fim da janela).
+`leak_blocked=1` da prova da linha.
+
+**Resultado (`real`, banco e API do central em `0d70882`, backend no ar sem reinício de 15:24:44 a 21:30):** 6 h 05 min
+de janela, 36 leituras. Em android-02, 03 e 06: **nenhum teste de vazamento, nenhuma adoção depois da subida, nenhum
+reinício pedido pela rede**. A remedição a 90% da validade aconteceu às 20:51:13 (medições #62 android-02, #63
+android-03, #64 android-06) e às 20:52:15 (#65 android-05), todas com `leak_blocked=1` vindo da prova da linha
+(`leak_rev=1`, `leak_result=1`), e os quatro seguiram `trafego_verificado`. O único teste da janela é o do android-05
+na subida (15:26:50, esperado: ele não tinha prova adotável). Nada invalidou a janela: sem deploy, sem `verify` e sem
+reatribuição nesses aparelhos; o que aconteceu no parque no período (E4 no android-07 e 09, canários do Outlook no
+android-10 e 12) foi em outros aparelhos. Leituras em `data/rede/observacao-p16/janela-20260930.md` (fora do Git).
 
 ### 27.5 UDP por perna (29.5) e saída esperada (29.6)
 

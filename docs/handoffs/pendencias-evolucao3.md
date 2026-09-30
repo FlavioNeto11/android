@@ -48,7 +48,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.1 | CI | job `dependências` verde no commit publicado | — | C | **feito**, `real`: `9428a6a`, run 36713946044 verde (13:03Z) |
 | 29.2 | P16 | reinício do backend com prova válida não reinicia aparelho | 063 livre | C | **implantado** `0d70882`; `real` na subida (adoção em 02, 03 e 06; teste e gravação no 05); as 6 h são o 29.4 |
 | 29.3 | P16 | reinício que sobe sem túnel não vira cadeia de reinícios | medição em QA | C | **implantado**; `real` pela convergência no android-05 (túnel religado pelo tile depois do teste, sem reinício); boot falho pela convergência: a observar |
-| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | **janela aberta às 15:24Z de 30/09**, fim previsto 21:30Z; laço de observação rodando |
+| 29.4 | P16 (L11) | 6 h reais sem `restart` pedido por `rede`, com remedição | 29.2, 29.3, CI verde | C | **feito**, `real`: 15:24:44–21:30Z sem reinício do backend; remedição 20:51–20:52Z (#62–#65) com `leak_blocked=1` da linha; 0 teste e 0 reinício pela rede em 02, 03 e 06 |
 | 29.5 | UDP #6/#21 | medição diz perna, tentativas, bytes e tempo | 29.2 integrado (mesmo arquivo) | A | **implantado**, `real` (medições #58 a #61 com o detalhe por perna) |
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |

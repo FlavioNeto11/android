@@ -4434,6 +4434,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T18:16:51+00:00"
+  },
+  "29.4": {
+   "id": "29.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 30/09, central 0d70882 (deploy 15:24:44Z, backend sem reinício até 21:30Z; 6 h 05 min, 36 leituras de scripts/rede-observacao.py em data/rede/observacao-p16/janela-20260930.md). Na subida: prova anterior adotada em android-02, 03 e 06 sem parar o cliente VPN (15:25:44Z); android-05 testado uma vez (15:26:50Z, c-20260930152637-06956a). Na janela: nenhum teste de vazamento e nenhum reinício pedido pela rede em android-02, 03 e 06; remedição a 90% da validade às 20:51:13Z (#62, #63, #64) e 20:52:15Z (#65, android-05), todas com leak_blocked=1 da prova da linha, os quatro em trafego_verificado. Nenhum evento invalidou a janela (sem deploy, verify ou reatribuição nesses aparelhos).",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T21:31:37+00:00"
   }
  },
  "rodadas": [
@@ -5229,6 +5242,15 @@
    "itens": [
     "24.9",
     "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T21:31:37+00:00",
+   "itens": [
+    "29.4"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
