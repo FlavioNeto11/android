@@ -125,7 +125,10 @@ social.
 
 **Não feito no RF-07.** `PlanTab.tsx:137` mostra as chaves do plano cruas (`username`, `message`…). Traduzir exige um
 mapa de nomes de parâmetro, que é decisão de conteúdo e não troca de texto, e fica registrado. `APK`, `AVD` em
-diálogos técnicos e "token de inscrição" ficaram, porque são nomes do domínio e não estavam na lista.
+diálogos técnicos e "token de inscrição" ficaram, porque são nomes do domínio e não estavam na lista. Também ficaram
+os motivos de verbo desabilitado com "instância" em `features/devices/deviceState.ts` ("Falha na instância",
+"Disponível com a instância parada…", "Exige a instância online."). Não estavam na lista do RF-07, e
+`deviceState.test.ts:247` confere um deles. Fica para uma próxima varredura de textos.
 
 ### RF-09: título curto em Pendências (`3fd3ce3`)
 
@@ -225,7 +228,9 @@ final: o navegador da IDE com sessão e axe injetado, ou um backend simulado loc
 - **not_run**: verificação visual a 1440, 1024 e 390 px. O dev server do branch (porta 5198) é outra origem e cai na
   tela de entrada. Entrar exige `POST` de sessão no central, o que as regras desta revisão vedam ("login em conta"), e
   a coordenação pediu carga mínima no host. O dev server não foi iniciado. RF-01 e RF-02 no navegador, e o axe, ficam
-  para a FASE B da 09.
+  para a FASE B da 09. `python scripts/docs-check.py` também não rodou. A coluna "Antes" da tabela do RF-07 cita de
+  propósito "backend", "worker" e "frame", e a checagem de vocabulário pode apontá-los. Isso fica para a consolidação
+  do orquestrador.
 
 ## Arquivos tocados
 
