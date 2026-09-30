@@ -34,7 +34,7 @@ function LinhaDeSinal({ s }: { s: Sinal }) {
         <span className={styles.itemTitulo}>{rotuloDoSinal(s.kind)}</span>
         {pol ? <Badge tone={pol.tone} size="sm">{pol.label}</Badge> : null}
         {s.verdict ? <Badge tone={s.verdict === 'certo' ? 'success' : 'danger'} size="sm">deu {s.verdict}</Badge> : null}
-        {s.simulated ? <Badge tone="warning" size="sm" icon={FlaskConical} title="Execução simulada: nunca rebaixa nem promove nada real">simulado</Badge> : null}
+        {s.simulated ? <Badge tone="warning" size="sm" icon={FlaskConical} title="Execução simulada: nunca desliga nem promove nada real">simulado</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
         {s.created_at ? <span>{formatClock(s.created_at)}</span> : null}

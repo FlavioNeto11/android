@@ -87,12 +87,11 @@ export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem,
   }
 }
 
-/** Abre Configuração já em Fluxos e receitas, com a seção Habilidades aberta (as chaves que a página lembra, como faz
- *  `infra/CriarAparelho.tsx` para Limites). */
+/** Abre Configuração já em Fluxos e receitas (`?aba=fluxos`), com a seção Habilidades aberta (a chave que a página
+ *  lembra, como faz `infra/CriarAparelho.tsx` para Limites). */
 function abrirHabilidades(): void {
-  saveJson('settingsSection', 'fluxos');
   saveJson('settings.section.habilidades', true);
-  useUiStore.getState().setView('configuracao');
+  useUiStore.getState().navegar({ tela: 'configuracao', query: { aba: 'fluxos' } });
 }
 
 /**

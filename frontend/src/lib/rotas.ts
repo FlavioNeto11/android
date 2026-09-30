@@ -7,7 +7,11 @@
  *   #/personas/<id>               #/personas/<id>/<aba>
  *   #/aplicativos                 #/aplicativos/<pacote>?aba=versoes
  *   #/execucoes                   #/execucoes/<id>?aba=linha-do-tempo
- *   #/aprendizado  #/infraestrutura  #/configuracao?aba=aplicativos  #/diagnostico
+ *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções)
+ *   #/aprendizado?aba=aprovar|aprendido|falhas|sinais   (sem `aba` = Para aprovar)
+ *   #/infraestrutura  #/diagnostico
+ *   #/configuracao?aba=aplicativos|instancias|ia|fluxos|limites   (sem `aba` = Aplicativos: o link antigo
+ *                                 `#/configuracao` continua abrindo a mesma guia)
  *
  * `#/perfis[...]` é o nome antigo de Personas: continua valendo (parse devolve `legado: true` para a tela trocar o
  * hash por `hashDe`, sem empilhar histórico).
@@ -27,8 +31,8 @@
  *     `andamento` | `concluida` | `pendencia` | `falha` | `cancelada`; `periodo` = `24h` | `7d` | `30d`;
  *     `aparelho` = id do aparelho; `servidor` = id do servidor. Convivem com `aba` da execução aberta.
  */
-export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'aprendizado', 'infraestrutura',
-                      'configuracao', 'diagnostico'] as const;
+export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pendencias', 'aprendizado',
+                      'infraestrutura', 'configuracao', 'diagnostico'] as const;
 export type Tela = (typeof TELAS)[number];
 
 export interface Rota {

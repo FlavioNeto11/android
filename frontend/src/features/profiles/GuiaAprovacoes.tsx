@@ -6,7 +6,9 @@ import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, TextArea } from '../../components/Field';
+import { hashDe } from '../../lib/rotas';
 import { toast, toastError } from '../../store/toasts';
+import { usePendenciasStore } from '../pendencias/store';
 import { Carregando, useLista } from './detalheComum';
 import type { Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
@@ -22,6 +24,7 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
     try {
       await api.decideApproval(a.id, verbo, verbo === 'edit' ? { content: editando[a.id] ?? '' } : {});
       await recarregar();
+      void usePendenciasStore.getState().atualizar();
       toast({
         tone: verbo === 'reject' ? 'info' : 'success',
         title: verbo === 'approve' ? 'Aprovado' : verbo === 'edit' ? 'Editado e aprovado' : 'Rejeitado',
@@ -38,12 +41,14 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
   if (itens.length === 0) {
     return (
       <EmptyState icon={CheckCircle2} title="Nada para aprovar"
-                  hint="Ações com aprovação exigida aparecem aqui antes de acontecer.">
+                  hint={<>Ações com aprovação exigida aparecem aqui antes de acontecer. <a href={hashDe('pendencias')}>Ver todas as pendências</a>.</>}>
         Nenhuma pendência.
       </EmptyState>
     );
   }
   return (
+    <>
+    <p className={styles.lead}>Só as desta persona. <a href={hashDe('pendencias')}>Ver todas as pendências</a>.</p>
     <div className={styles.grid}>
       {itens.map((a) => (
         <Card key={a.id}>
@@ -68,5 +73,6 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
         </Card>
       ))}
     </div>
+    </>
   );
 }

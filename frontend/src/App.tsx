@@ -9,6 +9,7 @@ import { AprendizadoPage } from './features/aprendizado/AprendizadoPage';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
+import { PendenciasPage } from './features/pendencias/PendenciasPage';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
 import { AppsPage } from './features/apps/AppsPage';
@@ -96,7 +97,7 @@ export function App() {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
     const names = { painel: 'Painel', personas: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
-                    aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
+                    pendencias: 'Pendências', aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
@@ -119,6 +120,7 @@ export function App() {
             {view === 'personas' ? <ProfilesPage /> : null}
             {view === 'aplicativos' ? <AppsPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
+            {view === 'pendencias' ? <PendenciasPage /> : null}
             {view === 'aprendizado' ? <AprendizadoPage /> : null}
             {view === 'infraestrutura' ? <InfraPage /> : null}
             {view === 'configuracao' ? <SettingsPage /> : null}

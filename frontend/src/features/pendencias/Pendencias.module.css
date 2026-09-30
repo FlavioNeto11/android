@@ -1,0 +1,59 @@
+/* Caixa única de pendências (tarefa 06 da revisão de UX). Só tokens; sem cor fixa. */
+
+.chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.chip {
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.chip:hover { background: var(--surface-2); }
+.chipOn { background: var(--accent-soft); border-color: var(--accent-border); color: var(--text-1); }
+
+.lista { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+
+.linha {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  min-width: 0;
+}
+
+.corpo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; flex: 1; }
+.topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.idade { color: var(--text-3); font-size: var(--fs-xs); }
+.titulo { color: var(--text-1); font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detalhe { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.acao {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: none;
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.acao:hover { background: var(--accent-hover); }
+
+.nota { margin: 0; color: var(--text-2); font-size: var(--fs-sm); max-width: 80ch; }
+
+@media (max-width: 560px) {
+  .linha { flex-direction: column; align-items: stretch; }
+  .acao { justify-content: center; }
+}

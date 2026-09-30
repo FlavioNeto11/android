@@ -6,6 +6,7 @@
  * cartão leva à página do app: versões, distribuição com prévia e atualização. "Novo aplicativo" cadastra o pacote;
  * a versão entra depois, pelo arquivo que o dono fornece ou pela Play Store da loja — nunca de espelho.
  */
+import { dicaDoTermo } from '../apps/glossario';
 import { Plus, Store } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
@@ -110,16 +111,16 @@ function CartaoDoApp({ app, onOpen }: { app: AppStoreEntry; onOpen: () => void }
         </div>
       </div>
       <div className={styles.line}>
-        {app.promoted ? <Badge size="sm" tone="success">{app.promoted.version_name}</Badge>
-          : <Badge size="sm" tone="warning">sem versão promovida</Badge>}
+        {app.promoted ? <Badge size="sm" tone="success" title={`Versão promovida: ${dicaDoTermo('promovida')}`}>{app.promoted.version_name}</Badge>
+          : <Badge size="sm" tone="warning" title={dicaDoTermo('sem-promovida')}>sem versão promovida</Badge>}
         <span>{app.devices_with_app} aparelho(s) com o app</span>
       </div>
       <div className={styles.badges}>
-        {app.outdated ? <Badge size="sm" tone="info">atualização para {app.outdated}</Badge> : null}
-        {app.pending ? <Badge size="sm" tone="neutral">{app.pending} pendente(s)</Badge> : null}
+        {app.outdated ? <Badge size="sm" tone="info" title={dicaDoTermo('atualizacao')}>atualização para {app.outdated}</Badge> : null}
+        {app.pending ? <Badge size="sm" tone="neutral" title={dicaDoTermo('pendente')}>{app.pending} pendente(s)</Badge> : null}
         {app.installing ? <Badge size="sm" tone="info">{app.installing} instalando</Badge> : null}
         {app.failed ? <Badge size="sm" tone="danger">{app.failed} com falha</Badge> : null}
-        {app.other_version ? <Badge size="sm" tone="warning">{app.other_version} fora do catálogo</Badge> : null}
+        {app.other_version ? <Badge size="sm" tone="warning" title={dicaDoTermo('fora-do-catalogo')}>{app.other_version} fora do catálogo</Badge> : null}
       </div>
       {app.attention[0] ? <span className={styles.muted}>{app.attention[0]}</span> : null}
     </button>

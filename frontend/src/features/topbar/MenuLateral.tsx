@@ -1,14 +1,14 @@
 import {
-  GraduationCap, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
+  GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
   Stethoscope, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { formatInt } from '../../lib/format';
-import { intervaloVisivel } from '../../lib/polling';
 import { hashDe, type Tela } from '../../lib/rotas';
 import { useSessionStore } from '../../store/session';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
+import { usePendencias, useReleituraDasPendencias } from '../pendencias/usePendencias';
 import styles from './MenuLateral.module.css';
 
 /**
@@ -22,6 +22,7 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
   { tela: 'personas', label: 'Personas', icon: UserRound },
   { tela: 'aplicativos', label: 'Aplicativos', icon: Package },
   { tela: 'execucoes', label: 'Execuções', icon: ListChecks },
+  { tela: 'pendencias', label: 'Pendências', icon: Inbox },
   { tela: 'aprendizado', label: 'Aprendizado', icon: GraduationCap },
   { tela: 'infraestrutura', label: 'Infraestrutura', icon: Server },
   { tela: 'configuracao', label: 'Configuração', icon: SettingsIcon },
@@ -31,19 +32,11 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
 export const ID_MENU = 'menu-principal';
 export const ID_BOTAO_MENU = 'botao-menu';
 
-/** Releitura da contagem "Para aprovar" (ADR-054, D1). Só depois do login — sem sessão, a leitura só colheria 401 —
- *  e só com a aba visível. Falha é silenciosa (o store explica por quê). */
-const CONTAGEM_A_CADA_MS = 60_000;
-
+/** A contagem "Para aprovar" do Aprendizado (ADR-054, D1). A releitura é a da caixa de Pendências (uma leitura a cada
+ *  minuto alimenta as duas); sem sessão não há leitura, e falha é silenciosa (o store explica por quê). */
 function usePendentesDoAprendizado(): number | null {
   const operator = useSessionStore((s) => s.operator);
   const pendentes = useContagemDoAprendizado((s) => s.pendentes);
-  useEffect(() => {
-    if (!operator) return undefined;
-    const atualizar = () => void useContagemDoAprendizado.getState().atualizar();
-    atualizar();
-    return intervaloVisivel(atualizar, CONTAGEM_A_CADA_MS);
-  }, [operator]);
   return operator ? pendentes : null;
 }
 
@@ -55,6 +48,9 @@ export function MenuLateral() {
   const setMenuRecolhido = useUiStore((s) => s.setMenuRecolhido);
   const setMenuAberto = useUiStore((s) => s.setMenuAberto);
   const paraAprovar = usePendentesDoAprendizado();
+  useReleituraDasPendencias();
+  // O número do item Pendências é o total da lista da própria tela (mesma função), não uma soma à parte.
+  const pendencias = usePendencias().total;
   const navRef = useRef<HTMLElement>(null);
   const abertoAntes = useRef(false);
 
@@ -95,7 +91,9 @@ export function MenuLateral() {
         </div>
         <ul className={styles.lista}>
           {NAV.map(({ tela, label, icon: Icon }) => {
-            const conta = tela === 'aprendizado' && paraAprovar !== null && paraAprovar > 0 ? paraAprovar : null;
+            const n = tela === 'aprendizado' ? paraAprovar : tela === 'pendencias' ? pendencias : null;
+            const conta = n !== null && n > 0 ? n : null;
+            const legenda = tela === 'pendencias' ? 'esperando você' : 'para aprovar';
             return (
               <li key={tela}>
                 {/* O `foco` vai junto: trocar de tela não fecha o aparelho aberto no painel de Foco. */}
@@ -108,11 +106,12 @@ export function MenuLateral() {
                 >
                   <Icon size={18} aria-hidden className={styles.icone} />
                   <span className={styles.rotulo}>{label}</span>
-                  {/* A fila do D1: o que o sistema não publica sozinho e espera o dono. */}
+                  {/* Pendências: tudo o que espera uma decisão sua. Aprendizado: a fila do D1 (o que o sistema não publica
+                      sozinho). */}
                   {conta !== null ? (
-                    <span className={styles.contagem} title={`${conta} item(ns) para aprovar`}>
+                    <span className={styles.contagem} title={`${conta} ${conta === 1 ? 'item' : 'itens'} ${legenda}`}>
                       <span aria-hidden>{formatInt(conta)}</span>
-                      <span className="sr-only"> ({formatInt(conta)} para aprovar)</span>
+                      <span className="sr-only"> ({formatInt(conta)} {legenda})</span>
                     </span>
                   ) : null}
                 </a>

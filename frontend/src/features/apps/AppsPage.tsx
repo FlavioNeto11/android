@@ -11,7 +11,7 @@
  * Loja de apps (pedido do dono, 26/09): a aba "Loja" abre primeiro — vitrine no jeito da Play Store, cadastro de app
  * novo, distribuição com prévia e atualização de quem ficou para trás — e "Proxy" distribui o proxy do aparelho.
  */
-import { AppWindow, ArrowLeft, CircleDollarSign, Globe, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users, Wifi } from 'lucide-react';
+import { AppWindow, ArrowLeft, CircleDollarSign, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppDetail, AppOverview } from '../../api/types';
@@ -19,6 +19,7 @@ import appStyles from '../../App.module.css';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
+import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -32,9 +33,10 @@ import { ProxyPage } from '../loja/ProxyPage';
 import { RedePage } from '../rede/RedePage';
 import { ReleasesPage } from '../releases/ReleasesPage';
 import { RECIPE_STATUS } from '../settings/flowsRecipes';
+import { LegendaDaLoja } from './glossario';
 import styles from './Apps.module.css';
 
-type Aba = 'loja' | 'apps' | 'versoes' | 'rede' | 'proxy';
+type Aba = 'loja' | 'apps' | 'versoes' | 'rede';
 
 const LEAD: Record<Aba, string> = {
   loja: 'Os aplicativos do parque no jeito de uma loja: a versão de cada um, quem está atrasado, e distribuir para '
@@ -42,19 +44,19 @@ const LEAD: Record<Aba, string> = {
   apps: 'Cada app com as contas dos perfis nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA '
     + 'e o quanto do trabalho já roda por receita, sem IA.',
   versoes: 'Todas as versões de todos os apps numa lista só, com a loja (Play Store) e o que cada aparelho tem.',
-  // Item 25.8 (ADR-056): a aba principal passa a ser Rede — VPN e proxy por aparelho, com IP de saída medido e
-  // prova de tráfego. "Proxy (legado)" continua existindo à parte: é a única tela que ainda sabe TIRAR o proxy
-  // HTTP global da migração 041 do aparelho (RedePage só lê esse legado, nunca escreve nele — achado do revisor
-  // no 25.8). Some quando a 25.4 aposentar o proxy global de vez.
-  rede: 'VPN e proxy por aparelho: perfis, política, IP de saída medido e prova de tráfego — com prévia antes de confirmar.',
-  proxy: 'Legado da migração 041 (26/09): o proxy HTTP global do Android, pedido como uma versão. Use a aba Rede '
-    + 'para o que é novo; esta fica só para tirar um proxy legado ainda aplicado.',
+  // Item 25.8 (ADR-056): a aba principal é Rede — VPN e proxy por aparelho, com IP de saída medido e prova de
+  // tráfego. O "Proxy (legado)" deixou de ser aba (revisão de UX, tarefa 06) e mora no fim da Rede, recolhido e
+  // marcado como descontinuado: é a única tela que ainda sabe TIRAR o proxy HTTP global da migração 041 do aparelho
+  // (RedePage só lê esse legado, nunca escreve nele — achado do revisor no 25.8).
+  rede: 'VPN e proxy por aparelho: perfis, política, IP de saída medido e prova de tráfego, com prévia antes de confirmar.',
 };
 
 const usd = (v: number) => (v >= 0.01 ? `US$ ${v.toFixed(2)}` : v > 0 ? '< US$ 0,01' : 'US$ 0');
 
-const ABAS: readonly Aba[] = ['loja', 'apps', 'versoes', 'rede', 'proxy'];
+const ABAS: readonly Aba[] = ['loja', 'apps', 'versoes', 'rede'];
 const ehAba = (v: string | undefined): v is Aba => !!v && (ABAS as readonly string[]).includes(v);
+/** `?aba=proxy` (link antigo da aba "Proxy (legado)") abre a Rede com o trecho do legado já aberto. */
+const ABA_ANTIGA_DO_PROXY = 'proxy';
 
 export function AppsPage() {
   // Guia e app aberto vêm do link: `#/aplicativos?aba=versoes`, `#/aplicativos/<app>` (o app abre em "Por app").
@@ -63,7 +65,8 @@ export function AppsPage() {
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const voltarPara = useUiStore((s) => s.voltarPara);
   const aberto = rota.tela === 'aplicativos' ? rota.segmentos[0] ?? null : null;
-  const aba: Aba = aberto ? 'apps' : ehAba(rota.query.aba) ? rota.query.aba : 'loja';
+  const proxyAntigo = !aberto && rota.query.aba === ABA_ANTIGA_DO_PROXY;
+  const aba: Aba = aberto ? 'apps' : proxyAntigo ? 'rede' : ehAba(rota.query.aba) ? rota.query.aba : 'loja';
   // Trocar de guia substitui o link; "Loja" é a guia padrão e não aparece nele.
   const setAba = (a: Aba) => trocarQuery({ aba: a === 'loja' ? undefined : a });
   const abrirApp = (id: string) => navegar({ tela: 'aplicativos', segmentos: [id] });
@@ -74,7 +77,6 @@ export function AppsPage() {
     { id: 'apps', label: 'Por app', icon: AppWindow },
     { id: 'versoes', label: 'Versões e instalação', icon: Package },
     { id: 'rede', label: 'Rede', icon: Wifi },
-    { id: 'proxy', label: 'Proxy (legado)', icon: Globe },
   ];
   return (
     <div className={appStyles.page}>
@@ -87,14 +89,38 @@ export function AppsPage() {
         </div>
       ) : null}
       {!aberto ? <Tabs tabs={abas} active={aba} onChange={setAba} idBase="aplicativos" label="Aplicativos" /> : null}
+      {aba === 'loja' || aba === 'versoes' ? <LegendaDaLoja /> : null}
       <TabPanel idBase="aplicativos" id={aba}>
         {aba === 'apps' ? (aberto ? <AppDetailView appId={aberto} onBack={fecharApp} /> : <AppsGrid onOpen={abrirApp} />) : null}
         {aba === 'versoes' ? <ReleasesPage embutida /> : null}
         {aba === 'loja' ? <LojaPage /> : null}
-        {aba === 'rede' ? <RedePage /> : null}
-        {aba === 'proxy' ? <ProxyPage /> : null}
+        {aba === 'rede' ? (
+          <>
+            <RedePage />
+            <ProxyDescontinuado abertoDeInicio={proxyAntigo} />
+          </>
+        ) : null}
       </TabPanel>
     </div>
+  );
+}
+
+/** O proxy global antigo: recolhido, com o selo "descontinuado" e o aviso de quando ainda serve. */
+function ProxyDescontinuado({ abertoDeInicio }: { abertoDeInicio: boolean }) {
+  return (
+    <Disclosure
+      className={styles.proxyLegado}
+      defaultOpen={abertoDeInicio}
+      summary={<>Proxy global (antigo) <Badge size="sm" tone="warning">descontinuado</Badge></>}
+    >
+      <div className={styles.avisoDescontinuado}>
+        <p className={styles.muted}>
+          É o proxy HTTP único de antes da rede por aparelho (26/09), pedido como uma versão. Use a Rede, acima, para
+          tudo o que é novo. Este trecho só serve para tirar um proxy antigo que ainda esteja aplicado em algum aparelho.
+        </p>
+        <ProxyPage />
+      </div>
+    </Disclosure>
   );
 }
 
@@ -117,7 +143,7 @@ function AppsGrid({ onOpen }: { onOpen: (id: string) => void }) {
     return <LoadingRegion label="Carregando aplicativos…"><Skeleton height={160} /></LoadingRegion>;
   }
   if (apps.length === 0) {
-    return <EmptyState icon={AppWindow} title="Nenhum aplicativo cadastrado" hint="Cadastre em Configuração → Aplicativos.">Sem apps.</EmptyState>;
+    return <EmptyState icon={AppWindow} title="Nenhum aplicativo cadastrado" hint="Cadastre um aplicativo na aba Loja, com o botão Novo aplicativo.">Sem apps.</EmptyState>;
   }
   return (
     <div className={styles.grid}>
