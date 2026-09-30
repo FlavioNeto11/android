@@ -40,6 +40,12 @@ Microsoft reais, `not_run` (29.12, 23.13).
 - Testes: `backend/tests/test_outlook_declarado.py`; `test_perfil_multiapp.py`,
   `test_roteamento_por_conjunto_de_apps.py` e `test_pacote_declarado.py` passam a esperar o login gerenciado (e o
   catálogo) do Outlook; `test_sensitive_input.py` ganha a página da Microsoft.
+- **Depois do "Next", pelo login real do André** (android-06, 22:18–22:24Z): o aviso da conta Microsoft ("OK"), o
+  diálogo de chave de acesso do sistema (Voltar), "Authentication in progress", "Add another account" ("MAYBE LATER"),
+  privacidade ("NEXT"), diagnóstico ("Decline"), experiências ("CONTINUE TO OUTLOOK"), a caixa e a gaveta viram dado
+  observado. O motor genérico ganha `dispensa.por_tela` (o botão de UMA tela `intersticial`), `dispensa.voltar` (o
+  Voltar num diálogo de outro pacote) — aplicados depois do envio, na abertura e na leitura da conta — e
+  `extracoes.<nome>.dentro_de` (a conta lida só dentro do painel da gaveta, onde o e-mail não tem id).
 
 ## 2026-09-30 (tarde) — Fase 29: pendências da terceira evolução (CI, prova durável de vazamento, firewall)
 

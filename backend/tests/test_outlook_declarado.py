@@ -53,6 +53,7 @@ from .test_sessao_em_etapas import SESSAO as SESSAO_EM_ETAPAS
 from .test_sessao_em_etapas import TELAS as TELAS_EM_ETAPAS
 
 OUTLOOK = "com.microsoft.office.outlook"
+CREDENCIAIS = "com.android.credentialmanager"   # o diálogo de chave de acesso do sistema (observado 30/09 android-06)
 PASTA = PASTA_DOS_APPS / OUTLOOK
 EMAIL = "pessoa@exemplo.com"          # endereço de exemplo; nunca uma conta real
 MASCARADO = "pe*****@exemplo.com"
@@ -83,12 +84,13 @@ class _No:
     acao: str = ""
     web: bool = False            # id do WebView: o id do HTML, sem o pacote (é como o UiAutomator2 o entrega)
     enabled: bool = True
+    pkg: str = OUTLOOK
 
     @property
     def resource_id(self) -> str:
         if not self.rid or self.web:
             return self.rid
-        return f"{OUTLOOK}:id/{self.rid}"
+        return f"{self.pkg}:id/{self.rid}"
 
 
 def _web(cls: str, bounds: tuple[int, int, int, int], **kw: Any) -> _No:
@@ -104,7 +106,13 @@ class FakeOutlook:
     Microsoft pede a senha sem propor código. `troca_lenta`: leituras em que a página de código continua na tela depois
     do toque em "Use your password" (o WebView demora). `apos_continuar` / `apos_senha`: a página que a Microsoft
     mostra depois do "Continue" (no lugar da de código) e depois do "Next" certo. `protecao_na_verificacao`: a página
-    de código traz também o texto de conta segurada."""
+    de código traz também o texto de conta segurada.
+
+    Depois do "Next" certo (observado 30/09 android-06, `apos_senha="aviso"`, o padrão): aviso da conta Microsoft (o
+    "OK" pede `toques_no_ok` toques) → diálogo de chave de acesso do SISTEMA (`chave`, outro pacote; sai pelo Voltar) →
+    "Authentication in progress" → "Add another account" → privacidade → diagnóstico → experiências → caixa. Com
+    `apos_senha="manter"`, o "Stay signed in?" suposto, direto para a caixa. `outra_conta_na_coluna` põe OUTRO e-mail
+    na coluna de contas da gaveta, fora do `drawer_folder_composable`."""
 
     senha_aceita: str = SENHA
     conta: str | None = None
@@ -114,7 +122,10 @@ class FakeOutlook:
     troca_lenta: int = 0
     espera_da_pagina: int = 2
     apos_continuar: str = ""
-    apos_senha: str = "manter"
+    apos_senha: str = "aviso"
+    toques_no_ok: int = 2
+    espera_da_autenticacao: int = 3
+    outra_conta_na_coluna: str = ""
     protecao_na_verificacao: bool = False
     duas_entradas: bool = False
     conta_existe: bool = True
@@ -131,10 +142,10 @@ class FakeOutlook:
 
     # ------------------------------------------------------------------ o que o motor lê do aparelho
     def current_package(self) -> str | None:
-        return OUTLOOK
+        return CREDENCIAIS if self.tela == "chave" else OUTLOOK
 
     def current_focus(self) -> tuple[str | None, str | None]:
-        return OUTLOOK, ".MainActivity"
+        return (CREDENCIAIS, ".CredentialSelectorActivity") if self.tela == "chave" else (OUTLOOK, ".MainActivity")
 
     def getprop(self, name: str) -> str:
         return "en-US" if name == "ro.product.locale" else ""
@@ -266,24 +277,103 @@ class FakeOutlook:
             return [_No("android.widget.TextView", (40, 300, 680, 360), text="Getting things ready"),
                     _No("android.widget.Button", (40, 1000, 680, 1070), text="Continue", clickable=True,
                         acao="seguir")]
-        avatar = _No("android.widget.ImageButton", (20, 40, 100, 120), desc="Open navigation drawer",
-                     rid="account_button", clickable=True, acao="gaveta")
+        # ---- depois do "Next": a sequência observada em 30/09 no android-06 ----
+        if t == "aviso":
+            return self._pagina(
+                "Microsoft account notice",
+                _web("android.view.View", (0, 0, 720, 1280), rid="app-host"),
+                _web("android.view.View", (0, 60, 720, 1100), rid="scrollDiv"),
+                _web("android.view.View", (0, 60, 720, 1100), rid="interruptContainer"),
+                _web("android.widget.TextView", (40, 120, 680, 180), text="A quick note about your Microsoft account"),
+                _web("android.widget.TextView", (40, 220, 680, 260), text="Your important things are right here"),
+                _web("android.widget.TextView", (40, 400, 680, 440), text="Your privacy is our priority"),
+                _web("android.widget.TextView", (40, 580, 680, 620), text="You're in control"),
+                _web("android.widget.TextView", (40, 900, 300, 940), text="Learn more", clickable=True,
+                     acao="saiba_mais"),
+                _web("android.view.View", (0, 1100, 720, 1280), rid="StickyFooter"),
+                _web("android.widget.Button", (420, 1160, 680, 1230), text="OK", clickable=True, acao="ok"))
+        if t == "chave":
+            # O diálogo do SISTEMA: outro pacote. O "Continue" criaria a chave de acesso — nunca é tocado.
+            return [_No("android.widget.TextView", (40, 700, 680, 760), text="Safer with passkeys", pkg=CREDENCIAIS),
+                    _No("android.widget.TextView", (40, 770, 680, 860), pkg=CREDENCIAIS,
+                        text="With passkeys, you don't need to create or remember complex passwords."),
+                    _No("android.widget.Button", (40, 1100, 300, 1170), text="Learn more", clickable=True,
+                        acao="saiba_mais", pkg=CREDENCIAIS),
+                    _No("android.widget.Button", (420, 1100, 680, 1170), text="Continue", desc="Continue",
+                        clickable=True, acao="criar_chave", pkg=CREDENCIAIS)]
+        if t == "autenticando":
+            self._espera -= 1
+            if self._espera <= 0:
+                self.tela = "outra_conta"
+            return [_No("android.widget.TextView", (40, 600, 680, 660), text="Authentication in progress",
+                        rid="message")]
+        if t == "outra_conta":
+            return [_No("android.widget.TextView", (100, 40, 600, 110), text="Add another account"),
+                    _No("android.widget.TextView", (40, 400, 680, 460), text="Would you like to add another account?",
+                        rid="empty_state_title"),
+                    _No("android.widget.Button", (40, 1160, 340, 1230), text="MAYBE LATER",
+                        rid="bottom_flow_navigation_start_button", clickable=True, acao="talvez_depois"),
+                    _No("android.widget.Button", (380, 1160, 680, 1230), text="ADD",
+                        rid="bottom_flow_navigation_end_button", clickable=True, acao="adicionar_outra")]
+        if t == "privacidade":
+            return [_No("android.widget.TextView", (40, 500, 680, 560), text="Your Data, Your Way",
+                        rid="illustration_detail_title"),
+                    _No("android.widget.TextView", (40, 580, 680, 700), rid="illustration_detail_description",
+                        text="We've updated Outlook's privacy settings to give you more control."),
+                    _No("android.widget.Button", (380, 1160, 680, 1230), text="NEXT",
+                        rid="bottom_flow_navigation_end_button", clickable=True, acao="privacidade_next")]
+        if t == "diagnostico":
+            return [_No("android.widget.TextView", (40, 500, 680, 560), text="Getting Better Together",
+                        rid="illustration_detail_title"),
+                    _No("android.widget.TextView", (40, 580, 680, 700), rid="illustration_detail_description",
+                        text="We'd like additional diagnostic and usage data sent to us to improve Outlook."),
+                    _No("android.widget.Button", (40, 1080, 680, 1150), text="Accept", rid="btn_primary_button",
+                        clickable=True, acao="aceitar"),
+                    _No("android.widget.Button", (40, 1160, 680, 1230), text="Decline", rid="btn_secondary_button",
+                        clickable=True, acao="recusar")]
+        if t == "experiencias":
+            return [_No("android.widget.TextView", (40, 500, 680, 560), text="Powering Your Experiences",
+                        rid="illustration_detail_title"),
+                    _No("android.widget.TextView", (40, 580, 680, 700), rid="illustration_detail_description",
+                        text="Outlook includes experiences that connect to online services."),
+                    _No("android.widget.Button", (40, 1160, 680, 1230), text="CONTINUE TO OUTLOOK",
+                        rid="bottom_flow_navigation_end_button", clickable=True, acao="continuar_no_outlook")]
+        # O botão do canto não tem descrição (observado): só o id.
+        avatar = _No("android.widget.ImageButton", (20, 40, 100, 120), rid="account_button", clickable=True,
+                     acao="gaveta")
+        caixa = [avatar,
+                 _No("android.widget.TextView", (120, 50, 400, 110), text="Inbox"),
+                 _No("androidx.compose.ui.platform.ComposeView", (0, 130, 720, 1150), rid="conversation_list"),
+                 # Um remetente sem nome mostra o endereço, e um assunto é "Verify your email" (SUPOSIÇÃO do conteúdo).
+                 _No("android.widget.TextView", (40, 150, 680, 190), text="noreply@servico.exemplo"),
+                 _No("android.widget.TextView", (40, 190, 680, 230), text="Verify your email"),
+                 _No("android.widget.TextView", (40, 260, 680, 300), text="Equipe Exemplo"),
+                 _No("android.widget.TextView", (40, 300, 680, 340), text="Seu pedido chegou"),
+                 _No("android.widget.TextView", (40, 1180, 200, 1230), text="Mail", rid="label"),
+                 _No("android.widget.TextView", (260, 1180, 460, 1230), text="Calendar", rid="label"),
+                 _No("android.widget.TextView", (520, 1180, 700, 1230), text="Apps", rid="menu_more")]
         if t == "gaveta":
-            return [_No("android.widget.FrameLayout", (0, 0, 600, 1280), rid="drawer"),
-                    _No("android.widget.TextView", (40, 200, 580, 240), text=self.conta or "", rid="account_email"),
-                    _No("android.widget.TextView", (40, 300, 580, 340), text="Inbox"),
-                    _No("android.widget.TextView", (40, 360, 580, 400), text="Drafts"),
-                    _No("android.widget.ImageButton", (40, 1100, 120, 1180), desc="Add account", clickable=True,
-                        acao="outra_conta")]
-        # Caixa de entrada (SUPOSIÇÃO): um remetente sem nome mostra o endereço, e um assunto é "Verify your email".
-        return [avatar,
-                _No("android.widget.TextView", (120, 50, 400, 110), text="Inbox"),
-                _No("android.widget.ImageButton", (620, 40, 700, 120), desc="Search", clickable=True, acao="busca"),
-                _No("androidx.recyclerview.widget.RecyclerView", (0, 130, 720, 1250), rid="message_list"),
-                _No("android.widget.TextView", (40, 150, 680, 190), text="noreply@servico.exemplo"),
-                _No("android.widget.TextView", (40, 190, 680, 230), text="Verify your email"),
-                _No("android.widget.TextView", (40, 260, 680, 300), text="Equipe Exemplo"),
-                _No("android.widget.TextView", (40, 300, 680, 340), text="Seu pedido chegou")]
+            # Por cima da caixa, que continua na árvore. A conta é o TextView SEM id abaixo de "Outlook.com", dentro do
+            # `drawer_folder_composable` (bounds observados); a coluna da esquerda pode mostrar outras contas.
+            coluna = [_No("android.widget.ImageView", (10, 200, 150, 280), desc=self.outra_conta_na_coluna,
+                          clickable=True, acao="trocar_conta")] if self.outra_conta_na_coluna else []
+            return [*caixa,
+                    _No("android.widget.FrameLayout", (0, 0, 620, 1280), rid="drawer_content"),
+                    _No("android.widget.LinearLayout", (0, 60, 160, 1280), rid="account_navigation_view"),
+                    *coluna,
+                    _No("android.widget.ImageButton", (10, 1000, 150, 1080), rid="btn_add_account", clickable=True,
+                        acao="outra_conta"),
+                    _No("android.widget.ImageButton", (10, 1100, 150, 1180), rid="action_help", clickable=True),
+                    _No("android.widget.ImageButton", (10, 1190, 150, 1270), rid="action_settings", clickable=True),
+                    _No("androidx.compose.ui.platform.ComposeView", (160, 60, 620, 1280),
+                        rid="drawer_folder_composable"),
+                    _No("android.widget.TextView", (177, 85, 358, 123), text="Outlook.com"),
+                    _No("android.widget.TextView", (177, 123, 605, 156), text=self.conta or ""),
+                    *[_No("android.widget.TextView", (177, 200 + 60 * i, 605, 250 + 60 * i), text=pasta,
+                          clickable=True)
+                      for i, pasta in enumerate(("Favorites", "Inbox", "Sent", "Drafts", "Archive", "Deleted",
+                                                 "Conversation History", "Junk"))]]
+        return caixa
 
     def _depois_da_espera(self) -> str:
         if not self.conta_existe:
@@ -295,7 +385,7 @@ class FakeOutlook:
     def page_source(self) -> str:
         self._nos = self._montar()
         linhas = "".join(
-            f'<node class={quoteattr(n.cls)} package="{OUTLOOK}" text={quoteattr(n.text)} '
+            f'<node class={quoteattr(n.cls)} package="{n.pkg}" text={quoteattr(n.text)} '
             f'resource-id={quoteattr(n.resource_id)} content-desc={quoteattr(n.desc)} '
             f'clickable="{str(n.clickable).lower()}" enabled="{str(n.enabled).lower()}" focused="false" '
             f'password="{str(n.password).lower()}" scrollable="false" '
@@ -311,6 +401,8 @@ class FakeOutlook:
         if alvo is None:
             return
         self.calls.append(f"toque:{alvo.acao or alvo.text}")
+        seguinte = {"talvez_depois": "privacidade", "privacidade_next": "diagnostico", "recusar": "experiencias",
+                    "continuar_no_outlook": "caixa"}
         if alvo.acao.startswith("foco:"):
             self._foco = alvo.acao.split(":", 1)[1]
             self.teclado = True
@@ -329,6 +421,13 @@ class FakeOutlook:
                 self.erro, self.senha = "Your account or password is incorrect.", ""
                 return
             self.conta, self.senha, self.tela = self.email, "", self.apos_senha
+        elif alvo.acao == "ok":
+            # Observado: o primeiro toque só rolou a página e deu foco ao botão; o segundo avançou.
+            self.toques_no_ok -= 1
+            if self.toques_no_ok <= 0:
+                self.tela = "chave"
+        elif alvo.acao in seguinte:
+            self.tela = seguinte[alvo.acao]
         elif alvo.acao in ("nao", "sim"):
             self.tela = "caixa"
         elif alvo.acao == "gaveta":
@@ -344,8 +443,14 @@ class FakeOutlook:
 
     def press_key(self, key: str) -> None:
         self.calls.append(f"key:{key}")
-        if key == "back" and self.tela == "gaveta":
+        if key != "back":
+            return
+        if self.tela == "gaveta":
             self.tela = "caixa"
+        elif self.tela == "chave":
+            # O Voltar fecha o diálogo sem criar a chave; o Outlook conclui a autenticação.
+            self.tela = "autenticando" if self.espera_da_autenticacao else "outra_conta"
+            self._espera = self.espera_da_autenticacao
 
 
 @dataclass
@@ -404,9 +509,11 @@ def _perfil(m: Montado) -> str:
 
 
 def _nunca_tocados(app: FakeOutlook) -> set[str]:
-    """Os toques que o login NUNCA dá: criar conta, conta Google, pedir código, trocar de conta, manter conectado."""
+    """Os toques que o login NUNCA dá: criar conta, conta Google, pedir código, trocar de conta, manter conectado,
+    criar chave de acesso, adicionar outra conta, aceitar o diagnóstico opcional, "saiba mais"."""
     return {f"toque:{a}" for a in ("criar", "google", "enviar_codigo", "ja_recebi", "trocar", "sim", "outra_conta",
-                                   "qr", "termos")} & set(app.calls)
+                                   "qr", "termos", "criar_chave", "adicionar_outra", "aceitar", "saiba_mais",
+                                   "trocar_conta")} & set(app.calls)
 
 
 # ==================================================================== o pacote
@@ -432,8 +539,11 @@ def test_o_conhecimento_declara_o_login_em_etapas_com_entrada_e_alternativa() ->
 
 # ==================================================================== o caminho observado
 async def test_login_percorre_as_telas_observadas_e_confirma_pela_gaveta(outlook: Any) -> None:
-    """Boas-vindas → "Add account" → e-mail → "Continue" → espera → "Verify your email" → "Use your password" → senha
-    pelo canal sensível na página que mostra ESTE e-mail → "Next" → "Stay signed in?" (recusa) → caixa → gaveta."""
+    """A sequência inteira observada em 30/09 (android-10 até a senha, android-06 depois): boas-vindas → "Add account"
+    → e-mail → "Continue" → espera → "Verify your email" → "Use your password" → senha pelo canal sensível na página
+    que mostra ESTE e-mail → "Next" → aviso da conta ("OK", dois toques) → chave de acesso do sistema (Voltar) →
+    "Authentication in progress" → "Add another account" ("MAYBE LATER") → privacidade ("NEXT") → diagnóstico
+    ("Decline") → experiências ("CONTINUE TO OUTLOOK") → caixa → gaveta pelo `account_button` → o e-mail."""
     app = FakeOutlook()
     m = outlook(app)
     r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
@@ -441,17 +551,56 @@ async def test_login_percorre_as_telas_observadas_e_confirma_pela_gaveta(outlook
     assert r.observed_username == EMAIL and r.attempted_login
     # O e-mail no campo dele, a senha UMA vez no `passwordEntry`; nada mais digitado em lugar nenhum.
     assert app.typed == [("email", EMAIL), ("senha", SENHA)]
-    toques = [c for c in app.calls if c.startswith("toque:")]
-    for passo in ("toque:entrada", "toque:continuar", "toque:usar_senha", "toque:enviar", "toque:nao",
-                  "toque:gaveta"):
-        assert passo in toques, passo
-    assert toques.index("toque:entrada") < toques.index("toque:continuar") < toques.index("toque:usar_senha") \
-        < toques.index("toque:enviar") < toques.index("toque:nao")
+    ordem = ["toque:entrada", "toque:continuar", "toque:usar_senha", "toque:enviar", "toque:ok", "key:back",
+             "toque:talvez_depois", "toque:privacidade_next", "toque:recusar", "toque:continuar_no_outlook",
+             "toque:gaveta"]
+    passos = [c for c in app.calls if c.startswith(("toque:", "key:")) and not c.startswith("toque:foco:")]
+    assert [p for p in passos if p != "toque:ok"] == [p for p in ordem if p != "toque:ok"]
+    assert app.calls.count("toque:ok") == 2                           # o primeiro só deu foco ao botão (observado)
+    assert passos.index("toque:enviar") < passos.index("toque:ok") < passos.index("key:back")
     assert app.calls.count("toque:usar_senha") == 1 and app.calls.count("enviar") == 1
     assert _nunca_tocados(app) == set()
+    assert app.tela == "gaveta"
     assert _sessao(m)["status"] == SessionStatus.session_ready.value
     assert _credencial(m) == "active" and [t["stage"] for t in _tentativas(m)] == ["classified"]
     assert all(SENHA not in (t["detail"] or "") for t in _tentativas(m))
+
+
+async def test_o_stay_signed_in_suposto_e_recusado_com_no(outlook: Any) -> None:
+    """SUPOSIÇÃO (não apareceu no login observado): se a Microsoft perguntar "Stay signed in?", a resposta é "No"."""
+    app = FakeOutlook(apos_senha="manter")
+    m = outlook(app)
+    r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
+    assert r.outcome is Outcome.SESSION_READY, r.detail
+    assert "toque:nao" in app.calls and _nunca_tocados(app) == set()
+
+
+async def test_a_sequencia_retomada_no_meio_segue_pela_leitura_da_conta(outlook: Any) -> None:
+    """O app reaberto no meio do primeiro uso (logado, num informativo): a verificação da conta atravessa pelas mesmas
+    dispensas declaradas, sem digitar nada, até a gaveta."""
+    app = FakeOutlook(conta=EMAIL, tela="privacidade")
+    m = outlook(app)
+    r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
+    assert r.ready and not r.attempted_login and app.typed == []
+    assert "toque:privacidade_next" in app.calls and "toque:recusar" in app.calls
+    assert _nunca_tocados(app) == set() and app.tela == "gaveta"
+
+
+async def test_dialogo_de_chave_de_acesso_na_reabertura_sai_pelo_voltar(outlook: Any) -> None:
+    app = FakeOutlook(conta=EMAIL, tela="chave", espera_da_autenticacao=0)
+    m = outlook(app)
+    r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
+    assert r.ready, r.detail
+    assert "key:back" in app.calls and "toque:criar_chave" not in app.calls
+
+
+async def test_gaveta_com_outra_conta_na_coluna_le_so_a_do_painel(outlook: Any) -> None:
+    """A coluna de contas à esquerda (fora do `drawer_folder_composable`) pode mostrar outra conta: ela não conta."""
+    app = FakeOutlook(conta=EMAIL, tela="caixa", outra_conta_na_coluna="outra@exemplo.com")
+    m = outlook(app)
+    r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
+    assert r.ready and r.observed_username == EMAIL
+    assert "toque:trocar_conta" not in app.calls
 
 
 async def test_a_microsoft_pedindo_a_senha_direto_dispensa_a_alternativa(outlook: Any) -> None:
@@ -611,6 +760,11 @@ def test_paginas_de_autenticacao_nao_confirmam_a_conta() -> None:
     ("carregando", "carregando_autenticacao", "carregando"), ("verificar", "verificar_email", "dois_fatores"),
     ("senha", "senha", "login"), ("travada", "conta_travada", "desafio"), ("codigo", "codigo", "dois_fatores"),
     ("manter", "manter_conectado", "intersticial"), ("desconhecida", telas.DESCONHECIDA, telas.DESCONHECIDA),
+    # Observadas 30/09 no android-06, depois do "Next".
+    ("aviso", "aviso_da_conta", "intersticial"), ("autenticando", "autenticando", "carregando"),
+    ("outra_conta", "outra_conta", "intersticial"), ("privacidade", "privacidade", "intersticial"),
+    ("diagnostico", "diagnostico", "intersticial"), ("experiencias", "experiencias", "intersticial"),
+    ("caixa", "caixa_de_entrada", "autenticada"), ("gaveta", "conta_aberta", "autenticada"),
 ])
 def test_cada_tela_do_dublê_e_reconhecida_pelo_dado(tela: str, esperada: str, tipo: str) -> None:
     k = conhecimento.do_app(OUTLOOK)
@@ -686,6 +840,19 @@ def _etapa(d: dict[str, Any]) -> dict[str, Any]:
     (lambda d: _etapa(d)["alternativas"].append(dict(_etapa(d)["alternativas"][0])), "repetida"),
     (lambda d: _etapa(d)["alternativas"][0].update(sinal_do_botao="nao_existe"), "sinal 'nao_existe'"),
     (lambda d: _etapa(d).update(alternativas={"tela": "verificar_email"}), "esperava uma lista"),
+    # Dispensa por tela: só `intersticial` (desafio, código, login e casa nunca se dispensam), uma vez cada.
+    (lambda d: d["dispensa"]["por_tela"][0].update(tela="conta_travada"), "tipo intersticial"),
+    (lambda d: d["dispensa"]["por_tela"][0].update(tela="verificar_email"), "tipo intersticial"),
+    (lambda d: d["dispensa"]["por_tela"][0].update(tela="caixa_de_entrada"), "tipo intersticial"),
+    (lambda d: d["dispensa"]["por_tela"][0].update(tela="nao_existe"), "tela 'nao_existe'"),
+    (lambda d: d["dispensa"]["por_tela"].append(dict(d["dispensa"]["por_tela"][0])), "repetida"),
+    (lambda d: d["dispensa"]["por_tela"][0].update(sinal_do_botao="nao_existe"), "sinal 'nao_existe'"),
+    # Dispensa pelo Voltar: só outro pacote Android, com um sinal que exista em todo idioma.
+    (lambda d: d["dispensa"]["voltar"][0].update(pacote="credentialmanager"), "não é um pacote"),
+    (lambda d: d["dispensa"]["voltar"][0].update(pacote=OUTLOOK), "pelo botão"),
+    (lambda d: d["dispensa"]["voltar"][0].update(sinal="nao_existe"), "sinal 'nao_existe'"),
+    (lambda d: d["dispensa"]["voltar"][0].update(botao="x"), "campo desconhecido"),
+    (lambda d: d["dispensa"].update(aceitar=[]), "campo desconhecido"),
 ])
 def test_dado_errado_dos_blocos_novos_e_recusado_na_carga(mexe: Callable[[dict[str, Any]], object],
                                                          trecho: str) -> None:
@@ -693,3 +860,66 @@ def test_dado_errado_dos_blocos_novos_e_recusado_na_carga(mexe: Callable[[dict[s
     mexe(dados)
     with pytest.raises(SessaoInvalida, match=trecho):
         conhecimento.de_dados(dados, _telas_do_outlook())
+
+
+# ==================================================================== a sequência depois do "Next" (observada 30/09)
+def _reconhecer(app: FakeOutlook) -> tuple[Any, Any]:
+    k = conhecimento.do_app(OUTLOOK)
+    arvore = parse_hierarchy(app.page_source())
+    return arvore, k.reconhecer(arvore, package=app.current_package(), locale="en-US")
+
+
+def test_o_continue_do_dialogo_de_chave_de_acesso_nunca_e_o_do_formulario() -> None:
+    """O diálogo do sistema também tem "Continue": ele não é o formulário do identificador, nem entrada, nem dispensa
+    por botão — a única saída declarada é o Voltar."""
+    k = conhecimento.do_app(OUTLOOK)
+    app = FakeOutlook(tela="chave")
+    arvore, r = _reconhecer(app)
+    assert r.outro_app
+    assert k.formulario_de_usuario(arvore, "en-US") is None and k.botao_da_entrada(arvore, "en-US") is None
+    d = k.dispensa_declarada(arvore, r, CREDENCIAIS, "en-US")
+    assert d is not None and d.voltar and d.botao is None
+    # Outro pacote qualquer com o mesmo texto não é dispensado: o Voltar é só do pacote declarado.
+    assert k.dispensa_declarada(arvore, r, "com.exemplo.outro", "en-US") is None
+
+
+@pytest.mark.parametrize(("tela", "acao"), [
+    ("aviso", "ok"), ("outra_conta", "talvez_depois"), ("privacidade", "privacidade_next"),
+    ("diagnostico", "recusar"), ("experiencias", "continuar_no_outlook"),
+])
+def test_cada_intermediaria_tem_um_botao_declarado_e_so_o_dela(tela: str, acao: str) -> None:
+    k = conhecimento.do_app(OUTLOOK)
+    app = FakeOutlook(tela=tela)
+    arvore, r = _reconhecer(app)
+    d = k.dispensa_declarada(arvore, r, OUTLOOK, "en-US")
+    assert d is not None and d.botao is not None
+    assert next(n.acao for n in app._nos if n.text == d.botao.text) == acao     # noqa: SLF001
+    # "ADD" e "Accept" nunca: nem declarados, nem como recusa global (a global só acha o "MAYBE LATER").
+    global_ = k.botao_de_dispensa(arvore)
+    assert global_ is None or global_.text == "MAYBE LATER"
+
+
+def test_o_ok_do_aviso_nao_vale_fora_do_aviso() -> None:
+    """"OK" e "NEXT" não são recusas em lugar nenhum além da tela deles: na caixa ou numa página da Microsoft que não
+    é o aviso, nada é dispensado."""
+    k = conhecimento.do_app(OUTLOOK)
+    for tela in ("caixa", "senha", "verificar", "desconhecida"):
+        arvore, r = _reconhecer(FakeOutlook(tela=tela, email=EMAIL, conta=EMAIL))
+        assert k.dispensa_declarada(arvore, r, OUTLOOK, "en-US") is None, tela
+
+
+def test_intermediaria_com_verificacao_na_tela_nao_e_dispensada() -> None:
+    k = conhecimento.do_app(OUTLOOK)
+    xml = FakeOutlook(tela="aviso").page_source().replace(
+        "</hierarchy>", f'<node class="android.widget.TextView" package="{OUTLOOK}" text="Help us protect your account" '
+        'resource-id="" content-desc="" clickable="false" enabled="true" bounds="[40,60][680,100]" /></hierarchy>')
+    arvore = parse_hierarchy(xml)
+    r = k.reconhecer(arvore, package=OUTLOOK, locale="en-US")
+    assert r.trava is not None and k.dispensa_declarada(arvore, r, OUTLOOK, "en-US") is None
+
+
+def test_o_email_fora_do_painel_da_gaveta_nao_e_a_conta() -> None:
+    """A extração vale só dentro do `drawer_folder_composable`: sem o contêiner na árvore, nada é lido."""
+    k = conhecimento.do_app(OUTLOOK)
+    xml = FakeOutlook(conta=EMAIL, tela="gaveta").page_source().replace("drawer_folder_composable", "outro_painel")
+    assert k.conta_observada(parse_hierarchy(xml)) is None

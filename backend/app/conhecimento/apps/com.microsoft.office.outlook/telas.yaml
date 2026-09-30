@@ -1,11 +1,13 @@
 # Conhecimento de TELAS do Outlook, como dado (ADR-052, item 23.8). Lido pelo classificador genérico
 # (`app/automation/conhecimento_de_telas.py`) e, pelo `sessao.yaml` desta pasta, pelo motor genérico de sessão.
 #
-# O que é OBSERVADO e o que é SUPOSIÇÃO vem marcado em cada linha. Observado = árvore da plataforma (UiAutomator2) no
-# android-10, Outlook 5.2635.3, em 30/09/2026: boas-vindas, "Add account", a espera do WebView de autenticação, "Verify
-# your email" e "Enter your password". Tudo DEPOIS da senha (continuar conectado, telas do Outlook depois de entrar,
-# caixa de entrada, gaveta com a conta) e as telas de desafio da Microsoft são suposição conservadora: se não casarem,
-# a tela fica desconhecida e o motor para — nunca vira sucesso.
+# O que é OBSERVADO e o que é SUPOSIÇÃO vem marcado em cada linha. Observado = árvore da plataforma (UiAutomator2) em
+# 30/09/2026, Outlook 5.2635.3: no android-10, boas-vindas, "Add account", a espera do WebView de autenticação, "Verify
+# your email" e "Enter your password"; no android-06 (login real do André, 22:18–22:24Z), tudo o que veio depois do
+# "Next": o aviso da conta Microsoft, o diálogo de chave de acesso do sistema, "Authentication in progress", "Add
+# another account", os três informativos do primeiro uso, a caixa e a gaveta com o e-mail. O "Stay signed in?" e as
+# telas de desafio da Microsoft seguem suposição conservadora: se não casarem, a tela fica desconhecida e o motor para
+# — nunca vira sucesso. Os botões do Outlook vêm em MAIÚSCULAS ("MAYBE LATER"): todo sinal casa sem diferenciar caixa.
 #
 # Os sinais de tela casam contra o texto da tela, uma linha por elemento ("texto descrição"). `(?m)` ancora cada sinal
 # numa LINHA: o Outlook é um app de correio, e o detector de desafio roda no meio da execução sobre a caixa de entrada
@@ -18,29 +20,56 @@ idioma_padrao: en
 
 sinais:
   en:
-    # --- entrada (observado) ---
+    # --- entrada (observado 30/09 android-10) ---
     boas_vindas: '(?m)^\s*welcome to outlook\s*$'                    # TextView `title`
     adicionar_conta: '^\s*add account\s*$'                            # Button `btn_primary_button` das boas-vindas
-    continuar: '^\s*continue\s*$'                                     # Button `btn_primary_button` do "Add account"
+    # Button `btn_primary_button` do "Add account" (texto repetido na descrição, observado 30/09 android-06). Só vale no
+    # formulário do identificador, na tela `adicionar_conta`: o "Continue" do diálogo de chave de acesso (outro pacote)
+    # nunca é o dele.
+    continuar: '^\s*continue\s*$'
     # Entrar com OUTRA conta ou criar uma nunca é o botão do formulário; "Send a code" / "Already received a code?"
     # são o caminho do código, que é da pessoa.
     outra_forma: '(google|create new account|qr code|send (a )?code|already received a code)'
-    # --- WebView da Microsoft (observado) ---
+    # --- WebView da Microsoft (observado 30/09 android-10) ---
     usar_senha: '^\s*use your password\s*$'                           # Button do "Verify your email"
     entrar: '^\s*(next|sign in)\s*$'                                  # Button "Next" do "Enter your password"
-    # "Verify your email" com o botão de enviar código: a Microsoft propõe código por padrão (observado).
+    # "Verify your email" com o botão de enviar código: a Microsoft propõe código por padrão.
     verificar_email: '(?ms)^\s*verify your email\b.*^\s*(send|get) (a )?code\b'
     # --- desafios da Microsoft (SUPOSIÇÃO: textos públicos da Microsoft, não observados neste parque) ---
     codigo: '(?m)^\s*(enter code|approve sign[- ]?in request|verify your identity|check your authenticator app)\s*[.!]?\s*$'
     conta_travada: "(?m)^\\s*(help us protect your account|your account has been (temporarily )?(locked|blocked|suspended)|we'?ve detected something unusual about this sign[- ]?in)\\s*[.!]?\\s*$"
-    # --- depois da senha (SUPOSIÇÃO) ---
+    # --- recusas da Microsoft (SUPOSIÇÃO) ---
     senha_incorreta: '(your account or password is incorrect|that password is incorrect|incorrect password)'
     conta_inexistente: "(that microsoft account doesn'?t exist|we couldn'?t find an account with that)"
+    # --- "Stay signed in?" (SUPOSIÇÃO: não apareceu no login observado) ---
     manter_conectado: '(?m)^\s*stay signed in\?\s*$'
     nao: '^\s*no\s*$'                                                 # a recusa do "Stay signed in?"
-    caixa_de_entrada: '(?m)^\s*inbox\s*$'
-  # Toda a tabela `pt` é SUPOSIÇÃO: o aparelho observado roda em inglês. Os ids (estrutura) valem nos dois idiomas; o
-  # que o texto pt não casar fica desconhecido e para o login para a pessoa.
+    # --- depois da senha (observado 30/09 android-06, nesta ordem) ---
+    # 1. WebView "Microsoft account notice": aviso informativo, não aceite de termos. O único botão é "OK" (o primeiro
+    #    toque só rolou a página e deu foco ao botão; o segundo avançou).
+    aviso_da_conta: '(?m)^\s*(microsoft account notice|a quick note about your microsoft account)\s*$'
+    ok: '^\s*ok\s*$'
+    # 2. Diálogo do SISTEMA (com.android.credentialmanager) oferecendo criar chave de acesso: recusa pelo Voltar, sem
+    #    tocar no "Continue" dele.
+    chave_de_acesso: "(safer with passkeys|with passkeys, you don'?t need)"
+    # 3. TextView `message` "Authentication in progress", ~20 s.
+    autenticando: '(?m)^\s*authentication in progress\s*$'
+    # 4. "Add another account": `empty_state_title`; "MAYBE LATER" (`bottom_flow_navigation_start_button`). O "ADD" ao
+    #    lado nunca é tocado.
+    outra_conta: '(?m)^\s*would you like to add another account\?\s*$'
+    talvez_depois: '^\s*maybe later\s*$'
+    # 5. Informativo de privacidade (`illustration_detail_title`), "NEXT".
+    privacidade: '(?m)^\s*your data, your way\s*$'
+    proximo: '^\s*next\s*$'
+    # 6. Dados OPCIONAIS de diagnóstico: "Decline" (`btn_secondary_button`) — o dado opcional não é enviado. "Accept"
+    #    nunca.
+    diagnostico: '(?m)^\s*getting better together\s*$'
+    recusar: '^\s*decline\s*$'
+    # 7. Informativo das experiências conectadas, "CONTINUE TO OUTLOOK".
+    experiencias: '(?m)^\s*powering your experiences\s*$'
+    continuar_no_outlook: '^\s*continue to outlook\s*$'
+  # Toda a tabela `pt` é SUPOSIÇÃO: os aparelhos observados rodam em inglês. Os ids (estrutura) valem nos dois idiomas;
+  # o que o texto pt não casar fica desconhecido e para o login para a pessoa.
   pt:
     boas_vindas: '(?m)^\s*(boas-vindas ao outlook|bem-vindo ao outlook)\s*$'
     adicionar_conta: '^\s*adicionar conta\s*$'
@@ -55,16 +84,27 @@ sinais:
     conta_inexistente: '(essa conta microsoft n[ãa]o existe|n[ãa]o encontramos uma conta com)'
     manter_conectado: '(?m)^\s*(continuar conectado|manter-se conectado)\?\s*$'
     nao: '^\s*n[ãa]o\s*$'
-    caixa_de_entrada: '(?m)^\s*caixa de entrada\s*$'
+    aviso_da_conta: '(?m)^\s*(aviso da conta microsoft|uma nota r[áa]pida sobre (a )?sua conta microsoft)\s*$'
+    ok: '^\s*ok\s*$'
+    chave_de_acesso: '(mais seguran[çc]a com (as )?chaves de acesso|com (as )?chaves de acesso, voc[êe] n[ãa]o precisa)'
+    autenticando: '(?m)^\s*autentica[çc][ãa]o em andamento\s*$'
+    outra_conta: '(?m)^\s*(gostaria|deseja) (de )?adicionar outra conta\?\s*$'
+    talvez_depois: '^\s*talvez (mais tarde|depois)\s*$'
+    privacidade: '(?m)^\s*seus dados, do seu jeito\s*$'
+    proximo: '^\s*(avan[çc]ar|pr[óo]ximo)\s*$'
+    diagnostico: '(?m)^\s*melhorando juntos\s*$'
+    recusar: '^\s*recusar\s*$'
+    experiencias: '(?m)^\s*(potencializando|impulsionando) suas experi[êe]ncias\s*$'
+    continuar_no_outlook: '^\s*continuar (no|para o) outlook\s*$'
 
-# Quem está logado: o e-mail da conta, com UM valor na tela. Os ids são SUPOSIÇÃO (a gaveta de contas não foi
-# observada) e de propósito NÃO incluem os do WebView de autenticação (`bannerText`, `identityBadge`): lá o endereço
-# aparece antes de a conta existir no app, e o "Stay signed in?" confirmaria uma conta que o Outlook ainda não abriu.
-# Id errado falha para "a conta não pôde ser lida" (incerto), nunca para sucesso; e sem ids o motor leria qualquer
-# endereço da caixa — o de um remetente viraria "conta errada".
+# Quem está logado: o e-mail da conta, com UM valor na tela (observado 30/09 android-06). Na gaveta, o endereço é um
+# TextView SEM id logo abaixo de "Outlook.com", dentro do ComposeView `drawer_folder_composable`: a extração vale só
+# dentro dele. Fora ficam a coluna de contas à esquerda (`account_navigation_view`, que pode listar outras), o WebView
+# de autenticação (`bannerText`: o endereço aparece antes de a conta existir no app) e a caixa (o endereço de um
+# remetente viraria "conta errada").
 extracoes:
   email_da_conta:
-    ids: [account_email, account_email_address, drawer_account_email]
+    dentro_de: [drawer_folder_composable]
     padrao: '^([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})$'
 
 # Em ordem de precedência: a primeira regra que casar vence. Desafio e código não passam pelas regras — quem decide é
@@ -75,24 +115,39 @@ telas:
   - {tela: verificar_email, tipo: dois_fatores, sinal: verificar_email,
      razao: a Microsoft propõe verificar o e-mail por código}
   - {tela: codigo, tipo: dois_fatores, sinal: codigo, razao: a Microsoft pede código ou aprovação}
-  # Observado: o WebView "Enter your password" (`passwordEntry`, o único campo de senha).
+  # Observado 30/09 android-10: o WebView "Enter your password" (`passwordEntry`, o único campo de senha).
   - {tela: senha, tipo: login, formulario_de_senha: true, razao: há um campo de senha na tela}
-  # Observado: AddAccountActivity, AutoCompleteTextView `auto_complete_input_email`. Vem antes das boas-vindas porque o
-  # `btn_primary_button` existe nas duas.
+  # Observado 30/09 android-10: AddAccountActivity, AutoCompleteTextView `auto_complete_input_email`. Vem antes das
+  # boas-vindas porque o `btn_primary_button` existe nas duas.
   - {tela: adicionar_conta, tipo: login, ids: [auto_complete_input_email], razao: tela de adicionar conta}
-  # Observado: SplashActivity, "Welcome to Outlook" com "Add account" e "Create new account".
+  # Observado 30/09 android-10: SplashActivity, "Welcome to Outlook" com "Add account" e "Create new account".
   - {tela: boas_vindas, tipo: login, sinal: boas_vindas, ids: [btn_primary_button],
      razao: boas-vindas do Outlook sem conta}
-  # Observado: ~10 s de ProgressBar antes do WebView da Microsoft.
+  # Observado 30/09 android-10: ~10 s de ProgressBar antes do WebView da Microsoft.
   - {tela: carregando_autenticacao, tipo: carregando, ids: [common_auth_webview_progressbar],
      razao: a página de autenticação da Microsoft está carregando}
   - {tela: carregando, tipo: carregando, sem_elementos: true, razao: tela ainda sem elementos}
-  # SUPOSIÇÃO daqui para baixo.
+  # SUPOSIÇÃO: não apareceu no login observado.
   - {tela: manter_conectado, tipo: intersticial, autenticada: true, sinal: manter_conectado,
      razao: a Microsoft pergunta se continua conectado}
-  - {tela: conta_aberta, tipo: autenticada, autenticada: true, extracao: email_da_conta,
+  # Observado 30/09 android-06, na ordem em que vieram depois do "Next". As intermediárias são `intersticial` e
+  # autenticadas (a senha foi aceita); quem as fecha, e com que botão, é o `sessao.yaml` (`dispensa.por_tela`).
+  - {tela: aviso_da_conta, tipo: intersticial, autenticada: true, sinal: aviso_da_conta,
+     razao: aviso informativo da conta Microsoft}
+  - {tela: autenticando, tipo: carregando, sinal: autenticando, ids: [message],
+     razao: o Outlook conclui a autenticação}
+  - {tela: outra_conta, tipo: intersticial, autenticada: true, sinal: outra_conta, ids: [empty_state_title],
+     razao: o Outlook oferece adicionar outra conta}
+  - {tela: privacidade, tipo: intersticial, autenticada: true, sinal: privacidade, ids: [illustration_detail_title],
+     razao: informativo de privacidade do Outlook}
+  - {tela: diagnostico, tipo: intersticial, autenticada: true, sinal: diagnostico, ids: [illustration_detail_title],
+     razao: o Outlook pede dados opcionais de diagnóstico}
+  - {tela: experiencias, tipo: intersticial, autenticada: true, sinal: experiencias, ids: [illustration_detail_title],
+     razao: informativo das experiências conectadas do Outlook}
+  # A gaveta vem antes da caixa: aberta, ela fica por cima da lista, que continua na árvore.
+  - {tela: conta_aberta, tipo: autenticada, autenticada: true, ids: [drawer_folder_composable],
      razao: a gaveta com a conta aberta}
-  - {tela: caixa_de_entrada, tipo: autenticada, autenticada: true, sinal: caixa_de_entrada, razao: caixa de entrada}
+  - {tela: caixa_de_entrada, tipo: autenticada, autenticada: true, ids: [conversation_list], razao: caixa de entrada}
 
 # Onde a conta pode ser lida (a caixa, de onde a gaveta abre) e como chegar lá sem efeito externo: voltar do Android e,
 # se preciso, reabrir o app uma vez.

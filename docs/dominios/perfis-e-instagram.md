@@ -475,34 +475,53 @@ só em dado, entra no registro com catálogo, leitura e login). Os testes leem o
 | Arquivo | O que declara |
 |---|---|
 | `app.yaml` | `provedor_de_sessao: microsoft`, perfil e internet obrigatórios, `ancora_do_perfil: false` (desafio para só a conta Outlook, item 23.5), `renderizador_recusado: [swiftshader]` (29.11) |
-| `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", gaveta e caixa; extração do e-mail da conta |
-| `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensa só por recusa, conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
-| `catalogo.yaml` | só leitura: `OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS`, `SEARCH_MAIL`; nenhuma ação com efeito |
+| `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", as intermediárias do primeiro uso, gaveta e caixa; extração do e-mail da conta dentro do painel da gaveta |
+| `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensas (recusas globais, botão por tela e Voltar no diálogo do sistema), conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
+| `catalogo.yaml` | fora da `main` (abaixo) |
 
 O caminho do login: boas-vindas → "Add account" → e-mail no `auto_complete_input_email` → "Continue" → ~10 s de
 `common_auth_webview_progressbar` → WebView `common_auth_webview`; em "Verify your email" com "Use your password",
 escolhe a senha; sem essa oferta, é código e vai para a pessoa → senha no `passwordEntry` só pelo canal sensível, numa
-página cujo `bannerText` mostra ESTE e-mail → "Next" → "Stay signed in?" recusado com "No" → caixa → gaveta pelo
-botão do canto → o e-mail da conta, com um valor só.
+página cujo `bannerText` mostra ESTE e-mail → "Next" → aviso da conta Microsoft ("OK") → diálogo de chave de acesso do
+sistema (Voltar, nunca o "Continue" dele) → "Authentication in progress" (~20 s) → "Add another account" ("MAYBE
+LATER", nunca "ADD") → privacidade ("NEXT") → diagnóstico opcional ("Decline", nunca "Accept") → experiências
+("CONTINUE TO OUTLOOK") → caixa → gaveta pelo `account_button` → o e-mail da conta, com um valor só.
 
-**Observado × suposto.** Observado (android-10, Outlook 5.2635.3, UiAutomator2, 30/09/2026, em inglês): as telas até
-a página da senha, com os ids e textos que os testes usam. Suposição, marcada linha a linha nos YAML:
+**As dispensas declaradas (item 23.8, motor genérico).** Três blocos opcionais do `sessao.yaml`, que quem não declara
+não sente (o Instagram segue igual):
 
-- tudo depois do "Next": o "Stay signed in?" ("No"/"Yes"), as telas do Outlook depois de entrar (dispensa por
-  "Skip", "Not now", "Maybe later", "Don't allow"), a caixa ("Inbox"), o botão da gaveta (`account_button`,
-  "Open navigation drawer") e o e-mail na gaveta (`account_email` e vizinhos);
+- `dispensa.por_tela: [{tela, sinal_do_botao}]`: o botão que fecha UMA tela `intersticial` (a carga recusa qualquer
+  outro tipo: desafio, código, login e casa nunca se dispensam), só nela, com um candidato só do próprio app
+  (`formulario.py::botao_unico`). É para o botão que não é recusa em lugar nenhum além daquela tela — "OK" e "NEXT"
+  como rótulos globais seriam tocados em qualquer tela.
+- `dispensa.voltar: [{pacote, sinal}]`: o diálogo de OUTRO pacote (o sistema oferecendo algo) sai pela tecla Voltar,
+  sem tocar nele, só com o sinal declarado na tela e nenhuma verificação à vista. A carga recusa o próprio app.
+- `ConhecimentoDeSessao.dispensa_declarada` responde pelos dois, nunca numa tela com trava. O motor a aplica depois do
+  envio (`_watch_after_submit`, antes da tabela de desfechos, até `intersticiais_max`, e cada dispensa renova o prazo:
+  a tela mudando não é envio sem resposta), na abertura (o app reaberto no meio do primeiro uso, ou com o diálogo do
+  sistema por cima) e na leitura da conta (`ler_conta`, que ganhou o `voltar`).
+- `extracoes.<nome>.dentro_de: [id]` (`telas.yaml`, `conhecimento_de_telas.Extracao.cabe`): a extração vale só para
+  elementos dentro do contêiner declarado. A gaveta do Outlook mostra o e-mail num TextView SEM id dentro do
+  `drawer_folder_composable`; fora dele ficam a coluna de contas (que pode listar outras), o WebView de autenticação e
+  a caixa (o endereço de um remetente viraria "conta errada").
+
+**Observado × suposto.** Observado (Outlook 5.2635.3, UiAutomator2, 30/09/2026, em inglês): no android-10, as telas
+até a página da senha; no android-06, o login real do André (22:18–22:24Z) do "Next" até a gaveta, com os ids, textos
+e a ordem que os testes usam ("OK" com dois toques; botões em MAIÚSCULAS; o "Continue" com o texto repetido na
+descrição; o `account_button` sem descrição). Suposição, marcada linha a linha nos YAML:
+
+- o "Stay signed in?" ("No"/"Yes") e o diálogo de notificação do Android ("Don't allow"), que não apareceram;
 - os textos de desafio da Microsoft ("Help us protect your account", "Your account has been locked", "Enter code",
   "Approve sign in request", "Verify your identity") e de recusa ("Your account or password is incorrect", "That
   Microsoft account doesn't exist");
-- a tabela `pt` inteira (o aparelho observado roda em inglês) e o prazo de 60 s depois do "Next".
+- a tabela `pt` inteira (os aparelhos observados rodam em inglês).
 
-O que a suposição errar termina incerto, com o login automático parado até uma pessoa olhar — nunca sucesso: a
-extração do e-mail não inclui os ids do WebView (`bannerText`), então nem o "Stay signed in?" nem a senha confirmam a
-conta, e um remetente da caixa não é lido como a conta. Os sinais de desafio e código são títulos de página ancorados
-na linha (`(?m)`), e o "Verify your email" exige também a linha "Send code" da mesma página: o detector roda sobre a
-caixa no meio da execução, e um assunto de e-mail solto não pode parar a etapa. Só "Help us protect your account"
-entrou no detector genérico (`automation/hierarchy.py::_CONTA_TRAVADA`, que omite a captura antes de ela sair): as
-outras frases, soltas ali, pegariam DM de golpe no Instagram ("your account has been locked").
+O que a suposição errar termina incerto, com o login automático parado até uma pessoa olhar — nunca sucesso. Os
+sinais de desafio e código são títulos de página ancorados na linha (`(?m)`), e o "Verify your email" exige também a
+linha "Send code" da mesma página: o detector roda sobre a caixa no meio da execução, e um assunto de e-mail solto não
+pode parar a etapa. Só "Help us protect your account" entrou no detector genérico
+(`automation/hierarchy.py::_CONTA_TRAVADA`, que omite a captura antes de ela sair): as outras frases, soltas ali,
+pegariam DM de golpe no Instagram ("your account has been locked").
 
 Consequências do login gerenciado: a conta Outlook nasce com `automated_login` (a sessão deixa de ser marcada à mão;
 é Conectar/Verificar conta), a sessão pronta de um comando Outlook + Instagram exige as duas contas prontas no
@@ -512,19 +531,29 @@ recusava toda conta com login automático). O painel ainda esconde o botão de r
 
 **Catálogo: fora da `main`.** Com `catalogo.yaml`, o Outlook deixaria de ser app de etapa livre no plano entre apps
 (ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3); 16 testes que provam esse fluxo ficariam
-vermelhos (`test_planejador_entre_apps.py`: 13; `test_porta_de_politica_por_app.py`: 3). Por isso o catálogo fica FORA da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit `806eed9` do branch `worktree-agent-a2c596de1676ca7fa`, para quando ação de catálogo puder entregar valor a outra etapa.
+vermelhos (`test_planejador_entre_apps.py`: 13; `test_porta_de_politica_por_app.py`: 3). Por isso o catálogo fica FORA
+da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do
+Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit
+`806eed9` do branch `worktree-agent-a2c596de1676ca7fa` (fora da história atual do branch), para quando ação de
+catálogo puder entregar valor a outra etapa.
 
-Riscos conhecidos, para a observação real (29.12): os sinais genéricos que já existiam ("verify your account",
+Riscos conhecidos, para a próxima observação real: os sinais genéricos que já existiam ("verify your account",
 "security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista
-pode parar a etapa como desafio; e o rótulo do "Next" que venha repetido no texto e na descrição não seria achado
-pela geometria de sempre (o login pararia incerto, sem digitar).
+pode parar a etapa como desafio; e uma tela de carregamento no meio da leitura da conta (`ler_conta`) ainda encerra a
+leitura em vez de esperar — depois do envio isso não acontece, porque o "Authentication in progress" passa na
+observação do envio, antes da caixa.
 
-Prova `simulated`: `backend/tests/test_outlook_declarado.py` (a pasta real carrega; o login percorre as telas
-observadas com os ids e textos delas; código sem a oferta da senha, conta segurada e código depois da senha vão para a
-pessoa sem bloquear a persona; o `passwordEntry` só recebe a senha, pelo canal sensível; tela desconhecida não é
-sucesso; a caixa não é desafio nem mostra a conta; carga recusada) e
+Prova `simulated`: `backend/tests/test_outlook_declarado.py` (a pasta real carrega; o login percorre a sequência
+inteira observada até a gaveta, com os ids, textos e a ordem dela; "ADD", "Accept", "Continue" do diálogo do sistema e
+"saiba mais" nunca são tocados; o app reaberto no meio do primeiro uso ou com o diálogo por cima segue pelas mesmas
+dispensas; a coluna de contas não é lida; código sem a oferta da senha, conta segurada e código depois da senha vão
+para a pessoa sem bloquear a persona; o `passwordEntry` só recebe a senha, pelo canal sensível; tela desconhecida não
+é sucesso; a caixa não é desafio nem mostra a conta; carga recusada) e
 `backend/tests/test_sensitive_input.py::test_pagina_da_microsoft_que_segura_a_conta_e_sensivel_mesmo_sem_campo`.
-Aparelho e conta Microsoft reais: `not_run` (29.12 e 23.13).
+Observação real (relato da sessão da IDE, android-06, 30/09 22:18–22:24Z, sem id de execução registrado aqui): a
+senha pelo canal sensível foi aceita, e o motor de então parou incerto no aviso da conta; a sequência seguinte foi
+atravessada à mão e é a que este dado declara. O login automático de ponta a ponta com este dado: `not_run` (29.12 e
+23.13).
 
 ## Extensão para outros apps (item 12.3 — pendente)
 

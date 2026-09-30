@@ -8,8 +8,11 @@
 #   Microsoft; se ele propõe código ("Verify your email") e oferece "Use your password", escolhe-se a senha (é o
 #   método de entrada que o titular usa, não um desafio resolvido); a senha vai ao `passwordEntry` SÓ pelo canal
 #   sensível, numa página que mostra ESTE e-mail (`bannerText`) → "Next".
-# Depois do "Next" nada foi observado: o que segue abaixo é suposição conservadora, e o que não casar termina incerto e
-# para o login automático até uma pessoa olhar.
+# Depois do "Next" (observado 30/09 android-06, login real do André): o aviso da conta Microsoft ("OK"), o diálogo de
+# chave de acesso do sistema (Voltar), "Authentication in progress", "Add another account" ("MAYBE LATER"), os
+# informativos de privacidade ("NEXT"), de diagnóstico ("Decline") e de experiências ("CONTINUE TO OUTLOOK"), a caixa
+# e a gaveta com o e-mail. O "Stay signed in?" e as recusas da Microsoft seguem suposição; o que não casar termina
+# incerto e para o login automático até uma pessoa olhar.
 #
 # Desafio, código, aprovação no Authenticator e CAPTCHA seguem com a pessoa (ADR-009): o motor só os reconhece. A trava
 # por desafio no Outlook para só a conta Outlook da persona, nunca a persona (item 23.5): o Outlook não é o app âncora.
@@ -24,9 +27,9 @@ ajustes:
   max_logins_per_day: 3         # envios de senha por conta em 24 h (ADR-055)
   open_timeout_s: 60.0
   settle_s: 3.0
-  # Depois do "Continue" o WebView leva ~10 s (observado); depois do "Next", a Microsoft pergunta se continua
-  # conectado e o Outlook configura a conta antes da caixa (SUPOSIÇÃO: não medido). 60 s cobre a espera observada com
-  # folga; o que passar disso termina incerto, nunca sucesso.
+  # Depois do "Continue" o WebView leva ~10 s (observado 30/09 android-10); depois do "Next", "Authentication in
+  # progress" leva ~20 s (observado 30/09 android-06). Cada dispensa declarada renova o prazo; o que passar dele
+  # termina incerto, nunca sucesso.
   submit_wait_s: 60.0
   verify_timeout_s: 45.0
 
@@ -49,34 +52,50 @@ formulario:
     recusas:
       - {sinal: conta_inexistente, detalhe: a Microsoft informou que não há conta com esse e-mail}
 
-# SUPOSIÇÃO (telas depois da senha não observadas): só RECUSAS, jamais "Allow"/"Yes"/"Turn on", que concederiam
-# notificação, contatos ou manteriam o login no WebView.
+# Dispensa de telas benignas. Os `rotulos` valem em qualquer tela, então só RECUSAS, jamais "Allow"/"Yes"/"Turn on"/
+# "Accept"/"Add", que concederiam notificação, dados, contatos ou outra conta.
 dispensa:
-  intersticiais_max: 4
+  # A sequência observada tem seis intermediárias, e o "OK" do aviso pediu dois toques: 10 dá folga sem virar laço.
+  intersticiais_max: 10
   rotulos:
     - '^\s*(?:skip|pular)\s*$'
     - '^\s*(?:not now|agora n[ãa]o)\s*$'
-    - '^\s*(?:maybe later|talvez mais tarde)\s*$'
-    # O diálogo de notificação do Android (outro pacote): o lado que NÃO concede.
+    - '^\s*(?:maybe later|talvez mais tarde)\s*$'        # "MAYBE LATER" do "Add another account" (observado 30/09)
+    # O diálogo de notificação do Android (outro pacote): o lado que NÃO concede. SUPOSIÇÃO.
     - "^\\s*(?:don'?t allow|n[ãa]o permitir)\\s*$"
   ids: []
   # O "No" do "Stay signed in?": não guardar o login no WebView — a mesma escolha do "salvar dados de login?".
   sinal_de_salvar_login: nao
+  # O botão que fecha cada intermediária observada 30/09 no android-06, SÓ na tela dela. Nenhum é aceite: o aviso da
+  # conta é informativo ("OK"), o de outra conta é recusado ("MAYBE LATER", nunca "ADD"), o de privacidade e o de
+  # experiências são informativos ("NEXT", "CONTINUE TO OUTLOOK"), e o de diagnóstico RECUSA o dado opcional
+  # ("Decline", nunca "Accept").
+  por_tela:
+    - {tela: aviso_da_conta, sinal_do_botao: ok}
+    - {tela: outra_conta, sinal_do_botao: talvez_depois}
+    - {tela: privacidade, sinal_do_botao: proximo}
+    - {tela: diagnostico, sinal_do_botao: recusar}
+    - {tela: experiencias, sinal_do_botao: continuar_no_outlook}
+  # O sistema oferece criar uma chave de acesso (observado 30/09 android-06): nada é criado — a tecla Voltar fecha o
+  # diálogo sem tocar no "Continue" dele.
+  voltar:
+    - {pacote: com.android.credentialmanager, sinal: chave_de_acesso}
 
-# Qual conta está aberta: o Outlook não tem aba de perfil; a conta é o e-mail mostrado na gaveta aberta pelo botão do
-# canto (SUPOSIÇÃO: ids e descrição não observados). Com um valor só: a gaveta pode listar mais de uma conta. Lida
-# logo depois do envio (`ler_ao_entrar`): a caixa não mostra a conta, e sem isto todo login terminaria incerto.
+# Qual conta está aberta (observado 30/09 android-06): o Outlook não tem aba de perfil; o `account_button` do canto
+# (SEM descrição) abre a gaveta, e a conta é o e-mail dentro do `drawer_folder_composable` (`telas.yaml`), com um
+# valor só. Lida logo depois do envio (`ler_ao_entrar`): a caixa não mostra a conta, e sem isto todo login terminaria
+# incerto.
 conta:
   extracao: email_da_conta
   tela_de_perfil: conta_aberta
   acesso:
     ids: [account_button]
-    rotulos: ['^\s*(open navigation drawer|abrir (a )?gaveta de navega[çc][ãa]o)\s*$']
   passos_max: 6
   espera_s: 2.0
   ler_ao_entrar: true
 
-# Depois do "Next", em ordem: a primeira que casar vence (SUPOSIÇÃO: nada depois da senha foi observado).
+# Depois do "Next", em ordem: a primeira que casar vence. As intermediárias observadas não chegam aqui: saem
+# pela dispensa declarada, antes desta tabela. As recusas e o "Stay signed in?" são SUPOSIÇÃO.
 depois_do_envio:
   - {sinal: senha_incorreta, desfecho: invalid_credential, detalhe: a Microsoft informou senha incorreta}
   - {tipos: [desafio, dois_fatores], desfecho: auth_challenge,
