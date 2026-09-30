@@ -187,7 +187,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
             <dd className={styles.linhaUnica}><SeloDeEstado estado={estado} /></dd>
           </div>
           <div className={styles.row}>
-            <dt><ShieldCheck size={14} aria-hidden /> Grupo de acesso</dt>
+            <dt><ShieldCheck size={14} aria-hidden /> Grupo</dt>
             <dd className={styles.linhaUnica}>{pessoa.policy_group_name
               ? <Badge tone="info">{pessoa.policy_group_name}</Badge>
               : <Truncado texto="nenhum — padrão do catálogo" className={styles.muted} />}</dd>

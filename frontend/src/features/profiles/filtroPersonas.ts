@@ -159,7 +159,7 @@ export function estadoComposto(p: PersonaDTO): EstadoComposto {
                acao: { rotulo: 'Guardar senha', guia: 'contas' } };
     case 'logged_out':
       return { rotulo: 'Ativa · deslogada', tom: 'warning',
-               explicacao: detalhe || 'A conta está fora do app no aparelho.', acao: { rotulo: 'Conectar', guia: 'contas' } };
+               explicacao: detalhe || 'A conta está fora do app no aparelho.', acao: { rotulo: 'Ver conta', guia: 'contas' } };  // só leva à guia: "Conectar" prometeria um efeito
     case 'challenge':
       return { rotulo: 'Ativa · desafio de segurança', tom: 'danger',
                explicacao: detalhe || 'O app pediu uma verificação que só uma pessoa resolve.',

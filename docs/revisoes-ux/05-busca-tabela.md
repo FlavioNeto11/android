@@ -30,7 +30,7 @@ central (Windows Server 2025). Modelo: Opus 5.5, esforço high.
 4. **Estado composto**: situação e fase da sessão viram um selo só, explicado no tooltip (rótulo + porquê):
    "Ativa · app não instalado", "Ativa · sem conta", "Ativa · conectada", "Bloqueada pela plataforma" etc. Quando
    há o que resolver, o cartão ganha uma ação ("Instalar app", "Adicionar conta", "Guardar senha", "Vincular
-   aparelho", "Resolver") que **só navega** para a guia da persona onde se resolve (`#/personas/<id>/aparelhos` ou
+   aparelho", "Ver conta", "Resolver") que **só navega** para a guia da persona onde se resolve (`#/personas/<id>/aparelhos` ou
    `/contas`); nada é instalado, conectado nem vinculado a partir da lista. No máximo dois selos por linha
    (situação; servidor com "mudou de servidor"/"indisponível"). "localidade não registrada" deixou de ser um selo
    sobreposto ao nome do servidor: vai no texto, com tooltip.
@@ -95,15 +95,20 @@ filtros convivem com `aba` e com o id da execução aberta (`#/execucoes/<id>?st
 - **Bug achado e corrigido no caminho:** o store guarda só as 100 execuções mais recentes (`MAX_RUNS` em
   `store/reducer.ts`), e a lista lia do store. "Carregar mais" passava da centésima e as antigas sumiam de novo; a
   busca nunca acharia uma execução além dela. A tela agora guarda as páginas que buscou e as une com as ao vivo do
-  store (`unirExecucoes`, a versão ao vivo ganha). Não mexi no store (não é da minha posse). Efeito colateral
-  possível, não verificado: o detalhe (`RunView`) de uma execução além da centésima depende do que o `RunView` lê
-  do store; ele busca o detalhe por id, então deve abrir, mas não testei esse caminho.
+  store (`unirExecucoes`, a versão ao vivo ganha). Não mexi no store (não é da minha posse). O detalhe de uma
+  execução além da centésima abre: o `RunView` usa o detalhe carregado por id (`store/live.ts` recarrega a cada troca
+  de `selectedRunId`) antes do resumo do store (prova real abaixo).
 - **Título "Recentes"** da coluna ficou como estava: trocar para "Histórico" obrigaria mexer em
   `app.integration.test.tsx` (tarefa 01). O subtítulo diz "N de 246 execuções".
 - **Execuções sem visão em tabela.** O briefing pede tabela para Personas; em Execuções a coluna é mestre-detalhe
   de 340 px, onde a tabela não cabe. A barra é a mesma, sem o botão de visão.
 - **Aparelhos (15) sem barra.** A grade de aparelhos mora em `features/devices` e `features/painel` (tarefas 03 e
   04), fora da minha posse. `BarraListagem` está pronta para ser usada lá.
+- **"Ver conta", não "Conectar"**, para a sessão deslogada: o botão só leva à guia Contas e acesso, e "Conectar"
+  prometeria um efeito que ele não tem. No cartão, a linha "Grupo de acesso" virou "Grupo" (quebrava em duas linhas
+  a 1440 px), como na tabela.
+- **Lint**: o repositório não tem ESLint configurado (nem script `lint` no `package.json`); os comentários
+  `eslint-disable` de `RunsPage.tsx` já existiam. Valem o typecheck e a suíte.
 - **Co-Authored-By**: usei `Claude Sonnet 5.5`, como o orquestrador pediu, embora o trabalho seja do Opus 5.5.
 
 ## Toques em arquivo alheio
@@ -123,7 +128,7 @@ filtros convivem com `aba` e com o id da execução aberta (`#/execucoes/<id>?st
 ## Provas
 
 **simulated** (vitest, backend falso):
-- `npm run typecheck` verde. `npm test` inteiro: **79 arquivos, 929 testes, todos verdes** (30/09, 20:20Z).
+- `npm run typecheck` verde. `npm test` inteiro: **79 arquivos, 929 testes, todos verdes** (30/09, 20:20Z, e de novo às 20:25Z depois dos últimos ajustes de rótulo).
 - `src/features/profiles/filtroPersonas.test.ts` (8): situação num código só; estado composto "Ativa · app não
   instalado" com ação que só aponta a guia; `situacao=bloqueada` filtra as bloqueadas; valor desconhecido não
   esvazia; busca pelo @ com e sem "@" e sem acento; filtros combinados (situação, vínculo, grupo, app, busca);
@@ -168,9 +173,13 @@ vite na 5195 com `VITE_API_TARGET=http://127.0.0.1:8000`, painel do Browser da I
 - Observado e alheio: pela porta do vite o canal ao vivo cai com 1006 (faixa "Desconectado do backend"), já
   registrado na tarefa 01. A 390 px o saldo das contas de IA se sobrepõe no topo (tarefa 01/02).
 
+- Execução além da centésima (30/09, cerca de 20:26Z, 1440 px): `#/execucoes?q=762d0d` achou a 221ª execução do
+  histórico ("1 de 246 execuções", título "Entre na conversa com o contato de teste identificado como QA-001 e…"),
+  e o clique abriu o detalhe completo dela (`#/execucoes/r-20260917175222-762d0d?q=762d0d`, "Concluída", 3 de 3
+  aparelhos com sucesso, guias com os eventos e evidências).
+
 **not_run**: 768 e 1920 px. Leitor de tela real. A ação "Instalar app" no navegador (a lógica foi provada no teste;
-não cliquei para não abrir nada além do necessário). Abrir o detalhe de uma execução além da centésima no
-navegador.
+não cliquei para não abrir nada além do necessário).
 
 ## O que ficou de fora e pendências
 
