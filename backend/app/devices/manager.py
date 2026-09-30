@@ -2112,14 +2112,15 @@ class DeviceManager:
             sdk = await rt.executor.run(rt.adb.getprop, "ro.build.version.sdk", timeout=20, label="api do aparelho")
             abilist = await rt.executor.run(rt.adb.getprop, "ro.product.cpu.abilist", timeout=20, label="abis")
             gms = await rt.executor.run(rt.adb.getprop, "ro.com.google.gmsversion", timeout=20, label="gms")
+            # A propriedade só existe nas imagens com a Play Store: a `google_apis` traz o GMS sem ela (medido em
+            # 30/09/2026: `com.google.android.gms` instalado e a propriedade vazia em android-02 e android-07). Sem
+            # o pacote na conta, todo emulador daqui era "AOSP" e o pré-voo recusava o Outlook, que exige GMS.
+            pacote = (await rt.executor.run(rt.adb.is_installed, "com.google.android.gms", timeout=30,
+                                            label="gms instalado")) if not (gms or "").strip() else True
         except (DriverError, AdbError) as exc:
             log.info("%s: não foi possível ler as capacidades agora (%s)", rt.id, exc)
             return
-        # Ausência da propriedade prova AOSP num emulador NOSSO; num aparelho de outra máquina (físico, outra
-        # distribuição do Android) ela pode simplesmente não existir — e aí a resposta honesta é "não se sabe".
-        tem_gms: bool | None = bool((gms or "").strip())
-        if not tem_gms and rt.external:
-            tem_gms = None
+        tem_gms = gms_do_aparelho(gms, pacote, externo=rt.external)
         self.registrar_capacidades(rt, {
             "kind": "emulator" if not rt.external else None,
             "api_level": int(sdk) if sdk.strip().isdigit() else None,
@@ -3931,3 +3932,15 @@ def _density_bucket(density: int | None) -> str:
     from .installer import density_bucket
 
     return density_bucket(density, desconhecida="desconhecida")
+
+
+def gms_do_aparelho(propriedade: str | None, pacote_instalado: bool, *, externo: bool) -> bool | None:
+    """O aparelho tem o Google Play Services? `ro.com.google.gmsversion` OU o pacote `com.google.android.gms`.
+
+    A propriedade sozinha dizia "AOSP" para a imagem `google_apis`, que tem o GMS e não tem a propriedade. Nenhum
+    dos dois num emulador NOSSO prova AOSP; num aparelho de outra máquina (físico, outra distribuição) a resposta
+    honesta é "não se sabe".
+    """
+    if (propriedade or "").strip() or pacote_instalado:
+        return True
+    return None if externo else False
