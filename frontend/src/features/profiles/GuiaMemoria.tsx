@@ -90,8 +90,8 @@ export function AbaMemoria({ profile, appId = null }: { profile: Pessoa; appId?:
   const grupos = agruparMemoriaPorAssunto(itens);
   return (
     <Card>
-      <CardHeader title="O que este perfil sabe"
-                  subtitle="O que ele viu na tela, o que as pessoas disseram a ele e o que foi ensinado aqui. Senha e código nunca entram."
+      <CardHeader title="O que esta persona sabe"
+                  subtitle="O que ela viu na tela, o que as pessoas disseram a ela e o que foi ensinado aqui. Senha e código nunca entram."
                   actions={
                     <Button size="sm" icon={BrainCircuit} onClick={() => setEnsinando((v) => !v)}>
                       {ensinando ? 'Fechar' : 'Ensinar um fato'}

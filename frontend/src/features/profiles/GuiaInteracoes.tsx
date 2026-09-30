@@ -17,7 +17,7 @@ export function AbaInteracoes({ profile, appId = null }: { profile: Pessoa; appI
   if (itens === null) return <Carregando />;
   if (itens.length === 0) {
     return (
-      <EmptyState icon={MessageSquare} title="Sem interações" hint="Aqui fica o que este perfil fez e recebeu.">
+      <EmptyState icon={MessageSquare} title="Sem interações" hint="Aqui fica o que esta persona fez e recebeu.">
         Nada registrado ainda.
       </EmptyState>
     );
@@ -26,7 +26,7 @@ export function AbaInteracoes({ profile, appId = null }: { profile: Pessoa; appI
   const filtrados = filtro ? itens.filter((i) => i.type === filtro) : itens;
   return (
     <Card>
-      <CardHeader title="Histórico social" subtitle="O que este perfil fez e recebeu, do mais recente ao mais antigo." />
+      <CardHeader title="Histórico social" subtitle="O que esta persona fez e recebeu, do mais recente ao mais antigo." />
       <CardBody>
         <TimelineFilter tipos={tipos} ativo={filtro} onChange={setFiltro} />
         {filtrados.length === 0 ? (

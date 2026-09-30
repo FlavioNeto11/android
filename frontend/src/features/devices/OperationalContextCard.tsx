@@ -122,9 +122,9 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
               ))}
             </ul>
           </dd>
-          {ctx.profiles.length === 0 ? (<><dt>Perfil</dt><dd>nenhum perfil vinculado</dd></>) : ctx.profiles.map((p) => (
+          {ctx.profiles.length === 0 ? (<><dt>Persona</dt><dd>nenhuma persona vinculada</dd></>) : ctx.profiles.map((p) => (
             <div key={p.profile_id} style={{ display: 'contents' }}>
-              <dt>Perfil</dt>
+              <dt>Persona</dt>
               <dd>
                 {p.display_name ?? p.username} (@{p.username}){p.persona_name ? ` · persona ${p.persona_name}` : ''}
                 {' '}· senha {p.credential_configured ? 'guardada' : 'não guardada'}
