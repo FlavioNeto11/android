@@ -78,8 +78,8 @@ selecionada: vira `#/execucoes/<id>` com replace.
 - `selectRun(id)` continua existindo. Na tela Execuções ele também troca o hash (replace).
   `selectRun(x); setView('execucoes')` (usado em Infraestrutura, Aprendizado e Aplicativos) já chega em
   `#/execucoes/x`.
-- `lib/rotas.ts`: a API ficou igual. Entraram a documentação dos parâmetros com dono (`foco`, `aba`, filtros) e o
-  utilitário `mesmoLugar(a, b)`. Nenhuma assinatura mudou.
+- `lib/rotas.ts`: a API ficou igual. Entrou só a documentação dos parâmetros com dono (`foco`, `aba`, filtros).
+  Nenhuma assinatura mudou.
 - `ProfileDetail` aceita `aba` e `onAbaChange` (controlada) e mantém `abaInicial` para uso não controlado.
 
 ## Divergências do briefing e decisões registradas
@@ -123,7 +123,8 @@ selecionada: vira `#/execucoes/<id>` com replace.
 
 **simulated** (vitest, backend falso):
 - `npm run typecheck` verde. `npm test` inteiro: **75 arquivos, 873 testes, todos verdes** (30/09, cerca de
-  19:54Z).
+  19:54Z). Depois da remoção do `mesmoLugar` (sem uso), o typecheck e `rotas.test.ts` + `ui.test.ts` (21) seguiram
+  verdes. `python scripts/docs-check.py`: 0 erros (1 aviso antigo do `estado.json`, alheio).
 - `src/store/ui.test.ts` (15): `podeVoltarPara`; `#/perfis/ig-1/memoria?foco=…` → `#/personas/…` sem empilhar; hash
   desconhecido volta à rota atual; `hashchange` aplica a rota; abrir o Foco empilha preservando `q` e `situacao`, e
   fechar chama `history.back()` com a tela respondendo na hora; trocar de aparelho substitui; link colado com
@@ -146,13 +147,21 @@ selecionada: vira `#/execucoes/<id>` com replace.
   Começou recolhida (a janela do painel do navegador media menos de 1280 px no carregamento) e "Expandir menu"
   expandiu. `#/perfis` virou `#/personas`, com o título certo e "Personas" como item atual. "Abrir André Carvalho"
   → `#/personas/<id>`; a guia Memória → `#/personas/<id>/memoria`, sem nova entrada no histórico (o comprimento
-  ficou em 3). Recarregar o link reabriu a mesma pessoa na mesma guia, e Voltar → `#/personas` com a lista.
+  ficou em 3). Navegar de novo para o link abriu a mesma pessoa na mesma guia, e Voltar → `#/personas` com a lista.
   "Abrir android-01 na visão de foco" → `#/painel?foco=android-01` (o painel abriu e o conteúdo ficou com 594 px),
   e Voltar fechou o painel (`#/painel`). O menu Execuções → `#/execucoes/r-20260928155247-f55c04`; a guia Linha do
-  tempo → `?aba=linha-do-tempo` por replace, e recarregar o link reabriu a guia. `#/aplicativos?aba=apps` →
+  tempo → `?aba=linha-do-tempo` por replace, e navegar de novo para o link abriu a guia. `#/aplicativos?aba=apps` →
   "Abrir Chrome" → `#/aplicativos/chrome`, e Voltar → `#/aplicativos?aba=apps` na guia "Por app".
-- 1024×768: coluna expandida (212 px) com as 8 seções visíveis, conteúdo com 812 px, botão "Menu" oculto,
-  `scrollWidth` 1024.
+- **Recarga de verdade** (`location.reload()`, `performance…type === "reload"`, com um marcador de `window` que
+  sumiu) em `#/perfis/<id>/memoria?foco=android-01`, num gesto só: o hash ficou canônico
+  (`#/personas/<id>/memoria?foco=android-01`), "Personas" como item atual, a mesma pessoa na guia Memória e o painel
+  de Foco de android-01 aberto.
+- 1024×768: com a preferência já gravada (expandida, pelo clique a 1440), coluna de 212 px, as 8 seções visíveis,
+  conteúdo com 812 px, botão "Menu" oculto, `scrollWidth` 1024. Depois de apagar a preferência e recarregar em
+  `#/painel?foco=android-01`: coluna recolhida por padrão (60 px), Foco aberto, conteúdo com 364 px (antes ~424 px,
+  com a navegação no topo) e `scrollWidth` 1024. **Custo conhecido:** quem expandir a coluna a 1024 px com o Foco
+  aberto fica com cerca de 212 px de conteúdo. É escolha da pessoa (o padrão ali é recolhida), mas fica
+  registrado para a tarefa 03 (drawer), que pode fazer o Foco sobrepor em vez de empurrar nessa faixa.
 - 390×844: coluna oculta (`visibility: hidden`), botão "Menu" visível, `scrollWidth` 390. Abrir a gaveta mostra as 8
   seções inteiras, com o teclado no item atual e `aria-expanded="true"`. Clicar em "Diagnóstico" navegou, fechou a
   gaveta e devolveu o foco ao botão.

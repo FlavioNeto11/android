@@ -74,8 +74,3 @@ export function hashDe(tela: Tela, opc: { segmentos?: readonly string[]; query?:
 export function hashDaRota(r: Rota): string {
   return hashDe(r.tela, { segmentos: r.segmentos, query: r.query });
 }
-
-/** Mesma tela e mesmo objeto (a query pode diferir): "voltar à lista" aceita a lista com qualquer filtro. */
-export function mesmoLugar(a: Rota, b: Rota): boolean {
-  return a.tela === b.tela && a.segmentos.length === b.segmentos.length && a.segmentos.every((s, i) => s === b.segmentos[i]);
-}
