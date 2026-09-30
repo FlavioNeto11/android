@@ -510,11 +510,9 @@ aparelho (`RunService._mundo`), e remover a conta recusa só a do app âncora (`
 recusava toda conta com login automático). O painel ainda esconde o botão de remover para conta com login automático
 (`GuiaContas.tsx`): a do Outlook sai pela API.
 
-**Catálogo: decisão do dono pendente.** Com `catalogo.yaml`, o Outlook deixa de ser app de etapa livre no plano
-entre apps (ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3): "ler o código no e-mail do Outlook
-e usar no Instagram" vira pergunta. O catálogo está num commit só (`806eed9`): mantê-lo deixa vermelhos 16 testes
-que provam esse fluxo com o Outlook como o app sem catálogo (`test_planejador_entre_apps.py`: 13;
-`test_porta_de_politica_por_app.py`: 3); revertê-lo devolve o caminho livre e mantém o login gerenciado.
+**Catálogo: fora da `main`.** Com `catalogo.yaml`, o Outlook deixaria de ser app de etapa livre no plano entre apps
+(ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3); 16 testes que provam esse fluxo ficariam
+vermelhos (`test_planejador_entre_apps.py`: 13; `test_porta_de_politica_por_app.py`: 3). Por isso o catálogo fica FORA da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit `806eed9` do branch `worktree-agent-a2c596de1676ca7fa`, para quando ação de catálogo puder entregar valor a outra etapa.
 
 Riscos conhecidos, para a observação real (29.12): os sinais genéricos que já existiam ("verify your account",
 "security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista

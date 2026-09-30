@@ -118,14 +118,12 @@ sessão, que perguntam a este registro (ciclo).
 
 **O Outlook é o segundo pacote de dado** (`app/conhecimento/apps/com.microsoft.office.outlook/`, item 23.8,
 [perfis](perfis-e-instagram.md#o-outlook-como-dado-item-238)): `provedor_de_sessao: microsoft` sem ser âncora,
-`telas.yaml` + `sessao.yaml` com o login em etapas da conta Microsoft, e um `catalogo.yaml` só de leitura (abrir a
-caixa, levantar remetente e assunto, buscar). Enviar, responder e abrir uma mensagem (que a marca como lida) ficam
+`telas.yaml` + `sessao.yaml` com o login em etapas da conta Microsoft, e — fora da `main` — um `catalogo.yaml` só de
+leitura (abrir a caixa, levantar remetente e assunto, buscar). Enviar, responder e abrir uma mensagem (que a marca como lida) ficam
 fora: com o catálogo, uma etapa com efeito no Outlook sem ação dele é recusada pela porta de política (item 13.2), e o
 Outlook deixa de ser app de etapa livre no plano entre apps — e ação de catálogo não lê valor para outra etapa (item
-24.3), então "ler no Outlook e usar no Instagram" vira pergunta. **Decisão do dono pendente:** o catálogo está num
-commit só (`806eed9`); revertê-lo devolve o Outlook ao caminho livre com o login gerenciado mantido; com ele ficam
-vermelhos 16 testes do plano entre apps que usam o Outlook como o app sem catálogo
-(`test_planejador_entre_apps.py`, `test_porta_de_politica_por_app.py`). O que ele declara depois da senha é
+24.3), então "ler no Outlook e usar no Instagram" viraria pergunta, e 16 testes do plano entre apps ficariam
+vermelhos. Por isso o catálogo fica FORA da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit `806eed9` do branch `worktree-agent-a2c596de1676ca7fa`, para quando ação de catálogo puder entregar valor a outra etapa. O que ele declara depois da senha é
 suposição, marcada nos arquivos.
 
 **O QA Messenger é a prova de extensibilidade, e só em teste.** `backend/tests/fake_dois_apps.py::manifesto_do_qa`

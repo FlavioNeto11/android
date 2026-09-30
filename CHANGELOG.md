@@ -29,10 +29,9 @@ Microsoft reais, `not_run` (29.12, 23.13).
   WebView da Microsoft → "Use your password" → senha pelo canal sensível → "Next"); tudo depois da senha e os
   desafios da Microsoft são suposição marcada nos arquivos e terminam incertos quando não casam. `app.yaml` ganha
   `provedor_de_sessao: microsoft` (segue sem ser âncora).
-- **Catálogo só de leitura** (`catalogo.yaml`, commit `806eed9`): abrir a caixa, levantar remetente e assunto,
-  buscar. Enviar e abrir mensagem ficam fora (T17 do ADR-057). **Decisão do dono pendente:** com catálogo, o Outlook
-  deixa de ser app de etapa livre no plano entre apps (ADR-058) e não lê valor para outra etapa (24.3); 16 testes do
-  plano entre apps ficam vermelhos. Reverter `806eed9` devolve o caminho livre e mantém o login gerenciado.
+- **Catálogo só de leitura preparado e mantido fora da `main`** (commit `806eed9` do branch do agente): com ele, o
+  Outlook deixaria de ser app de etapa livre no plano entre apps (ADR-058) e não leria valor para outra etapa (24.3) —
+  o C1 do dono depende disso, e 16 testes do plano entre apps ficariam vermelhos.
 - **Remover conta** recusa só a do app âncora (`SocialService.delete_account`), não toda conta com login automático.
 - **Motor genérico** (`integrations/app_declarado/`): `etapa_do_usuario.entrada` (a tela do app deslogado e o botão
   que abre a do identificador) e `etapa_do_usuario.alternativas` (escolher a senha na tela que propõe código; nunca
