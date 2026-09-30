@@ -4174,29 +4174,22 @@
   },
   "25.5": {
    "id": "25.5",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, android-05, 30/09 00:37Z: medição #1 pela sonda nc http/1.0 + netstats por uid (uid 2000): IPv4 de saída 38.211.146.161 (api.ipify.org, pelo túnel), IPv6 sem rota (strict_route, sem vazar), DNS da VPN 172.19.0.2, UDP de DNS 83 B e NTP 48 B, shell coberto por UID. Teste de vazamento real às 00:09Z: com o cliente parado e sem tun0, o Android recusou a sonda como uid 2000 (Permission denied) — bloqueio provado; mas em 2 de 3 testes o always-on religou o cliente antes da sonda e o resultado ficou inconclusivo, deixando o aparelho em parcial. Integrado em 5306b5d (merge da Onda 2) e implantado no central em 5306b5d/a097f00 (29/09); suíte inteira 3821 ok + 1 falha de ambiente; vitest 833/833.",
-   "blocker": "o teste de vazamento em três idas ao aparelho perde a janela quando o always-on religa o cliente; correção em curso (uma ida só ao shell)",
+   "evidence": "Real, android-05 (QA), central 549a297, 30/09 01:00–01:04Z: teste de vazamento com o cliente VPN parado e sem tun0 — o Android recusou a sonda de IPv4 como uid 2000 (Permission denied): bloqueio fora da VPN provado; reinício pedido pela rede e túnel de volta; medição #3 trafego_verificado: IPv4 38.211.146.161 (api.ipify.org, pelo túnel), IPv6 sem rota (sem vazar), DNS da VPN 172.19.0.2, UDP de DNS 83 B e NTP 48 B, shell coberto por UID, leak_blocked=true. Achados corrigidos na prova: teste de vazamento em uma ida só com até 5 tentativas (549a297, o always-on religava o cliente entre as idas) e primeira medição sem esperar a deriva (a097f00). Instagram/Outlook por UID: not_run (aparelho de QA sem esses apps; entra nas ondas com conta real).",
+   "blocker": "",
    "arquivos": [
-    "backend/app/devices/rede_medicao.py",
     "backend/app/devices/sonda_rede.py",
-    "backend/app/devices/rede_convergencia.py",
-    "backend/app/devices/rede_servidor.py",
-    "backend/app/config.py",
-    "config/config.example.yaml",
-    "frontend/src/api/types.ts",
-    "frontend/src/features/rede/RedePage.test.tsx",
-    "backend/tests/test_rede_sonda.py",
-    "docs/dominios/parque.md"
+    "backend/app/devices/rede_medicao.py",
+    "backend/app/devices/rede_convergencia.py"
    ],
-   "testes": "backend: tests/test_rede_sonda.py 17 passed (part of the 118 passed); frontend: npx vitest run src/features/rede 15 passed; npm run typecheck ok",
-   "grupo": "evolucao3-onda2",
+   "testes": "tests/test_rede_sonda.py (18), test_rede_aplicacao.py (30), test_rede_portao.py (12), test_rede_worker.py (15)",
+   "grupo": "evolucao3-coordenador",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T00:39:51+00:00"
+   "quando": "2026-09-30T01:07:54+00:00"
   },
   "25.6": {
    "id": "25.6",
@@ -4857,6 +4850,15 @@
    ],
    "grupos": [
     "evolucao3-onda2"
+   ]
+  },
+  {
+   "quando": "2026-09-30T01:07:54+00:00",
+   "itens": [
+    "25.5"
+   ],
+   "grupos": [
+    "evolucao3-coordenador"
    ]
   }
  ]

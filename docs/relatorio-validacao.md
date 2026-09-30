@@ -1920,6 +1920,16 @@ o do `aplicar`.
   2000); persistência em restart e em hibernar/acordar; adb e leitura de tela vivos; IP de saída igual ao do central
   (sem provedor); cobertura por UID pelo `dumpsys netstats`; UDP e DNS pelo túnel. Relatório completo fora do Git em
   `data/rede/piloto/medicao-25.1.md`.
+- **25.4 e 25.5 (rede aplicada e medida, android-05, 29–30/09):** perfil `vpn-central-wireguard` (sing-box do central em
+  modo usuário), política `exigida_com_bloqueio`. A convergência aplicou sozinha (`c-20260929235109-3da445`), pediu o
+  reinício (`c-20260929235119-9f274f`) e conectou (`c-20260929235309-c275a8`): always-on, lockdown, `tun0`, VPN
+  conectada e regras de bloqueio lidas como uid 2000, e o servidor viu o par `10.66.0.2`. Teste de vazamento: com o
+  cliente parado e sem `tun0`, o Android recusou a sonda ("Permission denied"). Medição #3 (01:03:57Z):
+  `trafego_verificado`, IPv4 `38.211.146.161` pelo túnel, IPv6 sem rota, DNS e UDP (DNS e NTP) pelo túnel,
+  `leak_blocked=true`. Três defeitos achados na prova e corrigidos com teste que falhava antes: a primeira medição
+  esperava a deriva de 15 min (`a097f00`); o always-on religava o cliente entre as idas do teste de vazamento
+  (`549a297`, uma ida só com tentativas); cliente ausente falhava no `pm path` antes de instalar (`6460baf`, visto no
+  android-02 resetado). O IP de saída é o do central: sem provedor, IP distinto por aparelho segue `not_run` (P1).
 - **25.10:** sing-box e WireGuard pela Play Store do android-11 com a conta do dono; canário do sing-box no android-05
   (`c-20260929222844-0a5046`) e promoção.
 - **23.11 (parcial):** contas Outlook das 3 personas ativas com o login `outlook.com` confirmado pelo dono e a senha

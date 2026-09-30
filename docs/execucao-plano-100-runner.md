@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-215 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+216 de 253 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -225,7 +225,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.2 | implemented | simulated |  | — | backend/app/devices/rede.py, rotas /api/network/* em api.py, adendo v0.42 em docs/api-contract.md; tests/test_rede_por_aparelho.py. Integrado em claude/evolucao3 (eb38139, 99abe23) e implantado no central em 081d696 (29… |  |
 | 25.3 | implemented | simulated |  | — | Defeito confirmado e corrigido. Com o redaction.py ganhando `pre[_-]?shared[_-]?key\|psk`, tests/test_compilador_de_skills.py::test_nome_de_parametro_com_cara_de_credencial falhava com `AssertionError: psk` (reproduzido… |  |
 | 25.4 | implemented | real |  | — | Real, android-05 (QA), central 5306b5d, 29/09 23:47–00:37Z: perfil vpn-central-wireguard (servidor do central, sing-box em modo usuário), atribuição exigida_com_bloqueio; a convergência aplicou sozinha (device.network c… |  |
-| 25.5 | partial | real |  | — | Real, android-05, 30/09 00:37Z: medição #1 pela sonda nc http/1.0 + netstats por uid (uid 2000): IPv4 de saída 38.211.146.161 (api.ipify.org, pelo túnel), IPv6 sem rota (strict_route, sem vazar), DNS da VPN 172.19.0.2,… | o teste de vazamento em três idas ao aparelho perde a janela quando o always-on religa o cliente; correção em curso (uma ida só ao shell) |
+| 25.5 | implemented | real |  | — | Real, android-05 (QA), central 549a297, 30/09 01:00–01:04Z: teste de vazamento com o cliente VPN parado e sem tun0 — o Android recusou a sonda de IPv4 como uid 2000 (Permission denied): bloqueio fora da VPN provado; rei… |  |
 | 25.6 | implemented | simulated |  | — | Three findings confirmed and fixed. (a) DEADLOCK: vitrine.objetivo_em_andamento gains `exceto_quem_espera_a_rede`, which ignores an objective that is `running` with wait_reason='rede'. _pedir_reinicio uses it; the busy… | Real proof not_run: depends on 25.4/25.5 running on a real device. Within a single step a drop is still not seen: with exigida (no lockdown), apps can go out o… |
 | 25.7 | implemented | simulated |  | — | No 25.7-specific finding this round; the earlier implementation stands (adb reverse, endpoint_lan, read-only firewall check with the owner's command, refusal while the firewall is closed, remote_access, POST /api/networ… | Real proof not_run: the owner has to set rede.servidor.endpoint_lan and create the firewall rule (the exact command is in GET /api/network/server -> remote_acc… |
 | 25.8 | implemented | simulated |  | — | cd C:/git/android/.claude/worktrees/evo3-d3/frontend && npx vitest run src/features/rede src/features/loja src/features/apps/AppsPage.test.tsx -> 3 arquivos, 21 testes, todos passando; npm run typecheck -> limpo. Os 4 a… | Nada bloqueado no escopo D3 (só frontend). O pedido do revisor de 'testar a rota real com TestClient contra o painel' é integração backend+frontend, fora do es… |
@@ -260,7 +260,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (38): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.5, 25.9, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
+Pendentes (37): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.7, 23.8, 23.11, 23.12, 23.13, 24.9, 25.9, 27.2, 27.3, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
