@@ -5,4 +5,12 @@
 @media (max-width: 720px) { .secretRow { grid-template-columns: minmax(0, 1fr); } }
 .dupe { color: var(--danger-text, var(--text-2)); font-weight: 600; }
 .rowNote { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-xs); }
+/* A tabela de aparelhos tem nove colunas. Espremida num painel de 800 px, o `overflow-wrap: anywhere` herdado da
+   tabela da loja quebrava o IP e o nome do pacote no meio. Aqui ela tem largura mínima e ROLA dentro do cartão
+   (`.tableWrap`), a 800 px e a 375 px; IP, id do aparelho e pacote não quebram, e o texto longo quebra em palavra. */
+.devices { min-width: 1080px; }
+.devices td { overflow-wrap: break-word; }
+.devices td code, .devices td strong { white-space: nowrap; }
+.devices td:nth-child(6) { min-width: 200px; }
+.devices td:nth-child(8) { min-width: 180px; max-width: 320px; }
 .legend { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-xs); color: var(--text-3); }

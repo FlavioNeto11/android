@@ -103,6 +103,27 @@ it('proxy legado sem linha nova aparece como "Configurado", nunca "Tráfego veri
   expect(text()).not.toContain('Tráfego verificado');
 });
 
+it('aparelho lido sem proxy diz "sem proxy (legado conferido)", e só o nunca conferido fica com o traço (29.15)', async () => {
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      // O android-01 de 30/09: o proxy global foi lido de volta e não há nenhum. Antes aparecia como "—".
+      linha({ instance_id: 'android-01', network: null,
+              legacy_proxy: { proxy_id: null, name: null, value: null, state: 'applied', observed_value: null,
+                              verified_at: '2026-09-30T10:00:00Z', detail: 'configuração lida de volta do aparelho',
+                              effective_state: null } }),
+      linha({ instance_id: 'android-07', network: null, legacy_proxy: null }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-07'));
+  const tabela = Array.from(container.querySelectorAll('table')).find((t) => t.textContent?.includes('IP de saída'))!;
+  const linhas = Array.from(tabela.querySelectorAll('tbody tr'));
+  const proxyDe = (id: string) => linhas.find((tr) => tr.textContent?.includes(id))!.querySelectorAll('td')[2]!;
+  expect(proxyDe('android-01').textContent).toBe('sem proxy (legado conferido)');
+  expect(proxyDe('android-01').querySelector('[title="configuração lida de volta do aparelho"]')).not.toBeNull();
+  expect(proxyDe('android-07').textContent).toBe('—');
+});
+
 it('cria o perfil e manda o segredo uma vez só, no corpo do pedido', async () => {
   backend.on('POST', /\/network\/profiles$/, (call) => {
     const b = call.body as Record<string, unknown>;

@@ -4,7 +4,7 @@
  * handle, identificador de login, senha só de escrita com CONSENTIMENTO, sessão, Conectar/Verificar/Sair e as
  * tentativas — tudo pelas rotas POR CONTA (`…/accounts/{aid}/…`), com os botões gateados por `session_actions`.
  */
-import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
+import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, Mail, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppCatalogEntry, AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
@@ -21,7 +21,7 @@ import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
-import { aparelhosDe, handleDe, type Pessoa } from './pessoa';
+import { aparelhosDe, ehEndereco, handleDe, type Pessoa } from './pessoa';
 import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
 import styles from './Profiles.module.css';
 
@@ -375,7 +375,11 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
     <li className={styles.accountRow}>
       <div className={styles.accountMain}>
         <strong>{nomeDoApp(c)}</strong>
-        <span className={styles.accountHandle}><AtSign size={12} aria-hidden /> {c.handle || '—'}</span>
+        {/* O identificador de um app de e-mail É um endereço: o "@" de nome de usuário na frente dele lia-se
+            "@ fulano@dominio" (cartão do Outlook, 30/09). Endereço ganha o ícone de carta; usuário, o arroba. */}
+        <span className={styles.accountHandle}>
+          {ehEndereco(c.handle) ? <Mail size={12} aria-hidden /> : <AtSign size={12} aria-hidden />} {c.handle || '—'}
+        </span>
         {c.host ? <span className={styles.accountHandle}><Globe size={12} aria-hidden /> {c.host}</span> : null}
         <div className={styles.accountBadges}>
           <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, status)} size="sm" />

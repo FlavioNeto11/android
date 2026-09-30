@@ -13,6 +13,18 @@ export function handleDe(p: Pick<Pessoa, 'username'>): string | null {
 }
 
 /** Nome para mostrar: o nome da persona; senão o de exibição; senão nome e sobrenome; senão o @. Nunca vazio. */
+/** O identificador de login de uma conta é um ENDEREÇO (tem `@` no meio, como `fulano@outlook.com`) ou um nome de
+ *  usuário? O Outlook e outros apps de e-mail entram com o endereço; pôr o "@" de usuário na frente dele produzia
+ *  "@ fulano@outlook.com" no cartão da conta. */
+export function ehEndereco(identificador: string | null | undefined): boolean {
+  return !!identificador && identificador.indexOf('@') > 0;
+}
+
+/** Como o identificador aparece no painel: o endereço como está; o nome de usuário, com um único "@". */
+export function rotuloDoIdentificador(identificador: string): string {
+  return ehEndereco(identificador) ? identificador : `@${identificador.replace(/^@/, '')}`;
+}
+
 export function nomeDe(p: Pessoa): string {
   const nome = ('name' in p && typeof p.name === 'string' ? p.name : '').trim();
   if (nome) return nome;

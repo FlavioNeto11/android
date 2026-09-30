@@ -174,7 +174,7 @@ export function RedePage() {
                     actions={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void carregar()}>Recarregar</Button>} />
         <CardBody>
           <div className={s.tableWrap}>
-            <table className={s.table}>
+            <table className={`${s.table} ${s.devices}`}>
               <thead>
                 <tr>
                   <th>Aparelho</th><th>VPN</th><th>Proxy</th><th>Política</th><th>Estado</th>
@@ -226,7 +226,17 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         ) : null}
       </td>
       <td>{nomeDe(d?.vpn_profile_id ?? null)}</td>
-      <td>{d ? nomeDe(d.proxy_profile_id) : legado?.proxy_id ? `${legado.value} (legado)` : '—'}</td>
+      <td>
+        {d ? nomeDe(d.proxy_profile_id)
+          : legado?.proxy_id ? `${legado.value} (legado)`
+          : legado ? (
+            // Há linha do legado e nenhum proxy pedido: o aparelho foi LIDO e está sem proxy. Um "—" aqui se
+            // confundia com "nunca conferido" (android-01, 30/09).
+            <span className={s.muted} title={legado.detail ?? 'Proxy global do Android lido de volta: nenhum configurado.'}>
+              sem proxy (legado conferido)
+            </span>
+          ) : <span className={s.muted} title="Nenhum proxy pedido nem lido para este aparelho.">—</span>}
+      </td>
       <td>{d ? POLITICA_LABEL[d.policy].split(' (')[0] : '—'}</td>
       <td>
         {meta ? <StatusBadge meta={somenteLegado ? { ...meta, description: 'Proxy legado (migração 041): prova a configuração, não o tráfego.' } : meta} size="sm" />

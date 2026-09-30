@@ -22,7 +22,7 @@ import type { Aba } from './abas';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
 import { Linha, useVersaoAoVivo } from './detalheComum';
 import { EMOJI_OPTIONS, FORMALITY_OPTIONS, LENGTH_OPTIONS, Ruler, StatFigure, TagList } from './PersonaVisual';
-import { handleDe, idsDosAparelhos, nomeDe, type Pessoa } from './pessoa';
+import { handleDe, idsDosAparelhos, nomeDe, rotuloDoIdentificador, type Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
 import { InteractionTimeline } from './Timeline';
 
@@ -146,7 +146,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
             <dl className={styles.rows}>
               {contas.map((c) => (
                 <Linha key={c.id} rotulo={`${c.app_name ?? c.app_id}${c.host ? ` · ${c.host}` : ''}`}>
-                  {c.handle ? `@${c.handle.replace(/^@/, '')} ` : ''}
+                  {c.handle ? `${rotuloDoIdentificador(c.handle)} ` : ''}
                   <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, c.session?.status ?? c.session_status)} size="sm" />
                 </Linha>
               ))}
