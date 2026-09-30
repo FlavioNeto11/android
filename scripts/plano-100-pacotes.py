@@ -68,6 +68,16 @@ AUTORIZACAO = {
     '27.2': ('chamada paga de IA e login/leitura em conta real (Outlook e Instagram no mesmo aparelho, rede '
              'trafego_verificado)'),
     '28.12': 'prova real de um pedido recorrente no central, com chamada paga pontual de IA',
+    # Pendências da terceira evolução (Fase 29): o ato que cada item [A] exige e quem o faz.
+    '29.7': ('contratar os dois servidores do piloto e gerar as chaves dos clientes (dono); atribuir a rede em dois '
+             'aparelhos de QA sem conta real'),
+    '29.9': ('criar a regra do Firewall do Windows no central num PowerShell de administrador e a reserva DHCP no '
+             'roteador (dono); a plataforma só lê o firewall'),
+    '29.12': ('promover e distribuir o Outlook ao parque; "Atualizar" na Play Store do aparelho-loja, se for preciso, '
+              'é do dono'),
+    '29.13': ('consentimento por conta Outlook (dono), login e leitura em conta real, chamada paga de IA e o e-mail de '
+              'teste enviado pelo dono'),
+    '29.14': 'ligar o Docker/WSL no central para a suíte em PostgreSQL, ou o job do CI depois do limite de gasto',
 }
 #: Teto de itens por agente. Não é estética: um agente com oito itens e vinte arquivos perde o fio, e quando erra
 #: leva junto tudo o que já tinha feito. Pedaços do mesmo grupo correm em SEQUÊNCIA, então não há conflito.

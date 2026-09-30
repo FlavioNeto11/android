@@ -649,6 +649,42 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 perder ocorrência, com orçamento respeitado e relatório que separa observado de conclusão, e as provas `simulated`
 de cada item registradas.
 
+### Fase 29 — Pendências da terceira evolução · 18 itens (pesquisa de 30/09/2026; ADR-056, ADR-057, ADR-058)
+
+Origem: a pesquisa de 30/09 sobre o que ficou pendente na terceira evolução (relatório e seis notas fora do Git, em
+`reports/` e `research_notes/`; o que decide a execução está transcrito em
+[handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md), com tarefa, dependência, arquivos, aceite,
+integração e reversão de cada item). Corrige o diagnóstico do P15 (o Outlook não recusa o emulador: o que cai é o
+renderizador SwiftShader-GL do host), o defeito do P16 e o erro de contagem do fechamento. Ordem: 29.1 antes de
+qualquer push; 29.2 a 29.4 antes de qualquer sequência de deploys; o resto conforme as dependências do handoff. Os
+itens originais afetados (12.3, 23.2, 23.7, 23.8, 23.12, 23.13, 24.9, 25.7, 25.9, 27.2) mudam de estado pelo
+mecanismo quando a prova deles existir, não por fecharem aqui.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 29.1 | **CI: dependência empacotada do Appium**: `brace-expansion` 5.0.9 (alta) vem dentro do tarball do `appium-uiautomator2-driver` 8.7.0; trocar o arquivo instalado pela 5.0.12, lock coerente e o CI conferindo o disco, sem baixar o nível da auditoria nem suprimir o aviso | run 36673606572 (30/09); K-064 | P |
+| 29.2 | **Prova durável de vazamento (P16)**: a prova do teste com o cliente VPN parado passa a morar em `device_network` (migração 063), presa à revisão e ao cliente VPN instalado; intenção gravada antes do `force-stop`, desfecho com CAS por revisão, retomada idempotente depois de reinício no meio, invalidação por cliente novo, wipe, identidade e `POST …/verify`; o relógio da medição barata não apaga a prova; negativo, ausente ou inconclusivo nunca aprova (`rede.py`, `rede_convergencia.py`, `rede_aplicacao.py`, `rede_medicao.py`, DTO e cartão) | P16; 11 reinícios em 30/09 por um reinício do backend | G |
+| 29.3 | **Túnel que não sobe no boot**: em 30/09, 15 de 30 conferências depois do reinício leram o aparelho sem `tun0` com 95 a 159 s de ligado, e cada uma pediu outro reinício (android-06: 6 reinícios e 2 reaplicações por um teste). Medir em QA por que o cliente não sobe, se sobe esperando ou com um gesto sem reinício, e corrigir a espera e a religação | medido em `commands` (30/09) | M |
+| 29.4 | **Primeira implantação do P16 e observação de 6 h**: adoção da prova anterior só onde aparelho, revisão, configuração e cliente se demonstram; ensaio da migração em cópia; implantação com os aparelhos ociosos; janela real de 6 h passando pela remedição que antes disparava o defeito | P16 (L11) | M |
+| 29.5 | **Sonda UDP com repetição e pernas separadas**: 2 a 3 datagramas por perna dentro do mesmo prazo, com bytes, tempo, tentativas e motivo por perna (DNS e NTP) no detalhe e no DTO; sem mudar a regra que libera tarefa | medições #6 e #21 (30/09) | M |
+| 29.6 | **Saída esperada por aparelho (P1)**: `params.egress_esperado` no perfil, comparação com a saída medida (diferente vira `parcial` com o motivo), aviso de duplicidade na prévia e no painel; reversão que não troca saída dedicada por compartilhada em silêncio | P1; T7 do ADR-056 | M |
+| 29.7 | **Piloto de saída distinta (V1)** [A]: dois aparelhos de QA sem conta real, dois endpoints WireGuard externos, saídas medidas diferentes e estáveis, TCP, UDP e DNS pela rota, queda e reconexão com falha fechada | P1 | M |
+| 29.8 | **Firewall do central para a LAN**: o comando proposto e a leitura passam a considerar porta, interface, origem e perfil efetivos; regra idempotente sem `-Program` versionado, inspeção e reversão | 25.7; leitura de 30/09 | M |
+| 29.9 | **Aparelho do worker com rede (W0 a W8)** [A]: do aparelho do notebook ao IP de saída, com provisão, conexão, TCP, UDP e DNS, queda e recuperação; janela sem tarefa (cadastrar o par reinicia o servidor VPN do central) | 25.7, 25.9 | M |
+| 29.10 | **Renderizador do emulador para o Outlook (E3 a E7)**: provar qual renderizador foi selecionado de fato, medir `skiavk` no AVD de diagnóstico e GPU do host pelo serviço num QA elegível, com CPU, RAM, VRAM, captura de tela e estabilidade; causa da `UD2` do Hx (corrida do NLS e armazenamento rasgado) | P15; K-062 | M |
+| 29.11 | **Renderizador por aparelho e por worker**: configuração persistente na estrutura existente, aplicada depois de boot, reinício, hibernação e retomada; promoção por canário no central e no notebook | P15 | M |
+| 29.12 | **Outlook no parque** [A]: canário, promoção e distribuição pelo fluxo oficial; observação das telas sem digitar; `telas.yaml`, `sessao.yaml` e `catalogo.yaml`; instalação, abertura e reconhecimento provados por aparelho (23.2, 23.7, 23.8, 23.12) | P15 | G |
+| 29.13 | **Conta, login e fluxo entre apps do Outlook** [A]: situação de cada conta e persona, consentimento por conta, login e sessão pronta por perfil (23.13), e o cenário C1 Outlook → Instagram só de leitura com retomada, cancelamento e negativa (24.9, 27.2) | P5, P10, P12 | M |
+| 29.14 | **PostgreSQL (P17)** [A]: migrações 056 a 058 e a 063 e as consultas novas em PostgreSQL real, pelo CI ou por ambiente autorizado; SQLite não é evidência substituta | P17 | M |
+| 29.15 | **Painel da rede e das contas**: proxy legado sem ambiguidade, identificador de e-mail sem prefixo de usuário, tabela legível a 800 px e a 375 px, e os estados que o dado real não mostra inspecionados em ambiente simulado isolado | 25.8, 23.10 | M |
+| 29.16 | **Mecanismo do plano e registros**: índice de pacotes regenerado, 12.3 no vocabulário do `aplicar`, bloqueio do P15 reescrito com a causa medida, contagem dos 43 itens corrigida (não há bloqueio por assinatura) | contagem de 30/09 | P |
+| 29.17 | **Limpeza reversível**: artefatos do diagnóstico (SDKs beta e canary, imagem android-36, AVDs `diag-outlook*`, piloto de rede, worktrees e branches integrados) arquivados ou removidos só depois de deixarem de ser necessários, sem seguir junção nem tocar chave em uso | inventário de 30/09 | P |
+| 29.18 | **Fechamento**: seção nova em `relatorio-validacao.md`, handoff, CHANGELOG, estado pelo mecanismo e resumo real × simulado × não executado por pendência | — | P |
+
+**Fecha quando:** o CI está verde no commit publicado; um reinício do backend com prova válida não reinicia nenhum
+aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
+parque; e cada pendência restante tem o que ficou pronto e a ação exata que falta.
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

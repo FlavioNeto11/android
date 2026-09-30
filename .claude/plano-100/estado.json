@@ -2198,9 +2198,16 @@
   },
   "12.3": {
    "id": "12.3",
-   "status": "pending",
-   "proof": "not_run",
-   "evidence": "Aguardando decisão do dono sobre qual app ganha login determinístico/catálogo primeiro; hoje Outlook/TikTok/Facebook operam pela IA livre com login feito pela pessoa no Foco."
+   "status": "partial",
+   "proof": "real",
+   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto.",
+   "blocker": "Falta o critério do item: uma execução com efeito no app, com login pela credencial da conta. Depende do Outlook abrir no parque (renderizador do emulador, 29.10 a 29.12; o P15 NÃO é recusa do app ao emulador) e do login real com consentimento (29.13).",
+   "grupo": "29-registros-12.3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T12:23:08+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -4965,6 +4972,15 @@
    ],
    "grupos": [
     "evolucao3-fechamento"
+   ]
+  },
+  {
+   "quando": "2026-09-30T12:23:08+00:00",
+   "itens": [
+    "12.3"
+   ],
+   "grupos": [
+    "29-registros-12.3"
    ]
   }
  ]

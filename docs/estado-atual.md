@@ -5,6 +5,13 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **Pendências da terceira evolução (30/09, em curso): Fase 29.** Coordenação, estado por tarefa, reservas de
+  aparelho e pedidos ao dono em [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md). A pesquisa de
+  30/09 corrigiu o diagnóstico do P15 (o Outlook **não** recusa o emulador: cai o renderizador SwiftShader-GL do host;
+  com `-gpu host` chegou ao login no AVD de diagnóstico) e mediu o P16 (um reinício do backend custou 11 reinícios de
+  aparelho). Feito: CI (`9428a6a`, 29.1). Em curso: prova durável de vazamento (29.2) e o túnel que não sobe no boot
+  (29.3), que entram no primeiro deploy. **Não implantar nada antes disso.**
+
 - **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
   do notebook), migração 058. Estado por frente, pendências P1–P15 e próxima ação em
   [handoffs/terceira-evolucao.md](handoffs/terceira-evolucao.md); provas em [relatório §26](relatorio-validacao.md).

@@ -43,6 +43,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Banco, migrações, SQLite × PostgreSQL, vários backends | [`banco.md`](banco.md) | Ao criar migração ou mexer em `db.py` |
 | Worker remoto: instalação, canal, túnel, segurança | [`worker.md`](worker.md) | Ao operar ou alterar o agente |
 | Operação: instalação, testes, CI, deploy, backup, incidentes, scripts por risco | [`operacao.md`](operacao.md) | Antes de rodar qualquer script ou implantar |
+| Pendências da terceira evolução (Fase 29): P16, CI, renderizador do Outlook, saída esperada, UDP, firewall do worker; tarefa, aceite, reservas de aparelho e pedidos ao dono | [`handoffs/pendencias-evolucao3.md`](handoffs/pendencias-evolucao3.md) | Antes de mexer na prova de vazamento, na sonda de saída, no renderizador do emulador ou de implantar com rede aplicada em aparelhos |
 | Desempenho e capacidade: linha de base, benchmark, métricas agregadas, decisões sobre runtimes e orquestração | [`relatorio-desempenho.md`](relatorio-desempenho.md); coordenação em [`handoffs/evolucao-desempenho.md`](handoffs/evolucao-desempenho.md) | Antes de afirmar ganho de desempenho ou de mexer em captura, observação, reserva de capacidade |
 | Onde ficam os arquivos de evidência (storage) | [`evidencias.md`](evidencias.md) | Ao mexer em `storage.py` ou nas evidências |
 | Decisões de arquitetura e do dono (ADR) | [`decisoes.md`](decisoes.md) | Antes de mudar algo que uma decisão fixou |
