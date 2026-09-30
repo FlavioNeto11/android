@@ -181,6 +181,11 @@ A janela do P16 vai até 21:30Z (18:30 em Brasília). Nada abaixo reinicia o bac
 Depois das 21:30Z a IDE registra o 29.4, faz o segundo deploy (29.11 e agente do notebook), promove e distribui o
 Outlook (07, 10, 12), vincula as contas e, com o que estiver pronto, roda W0–W8 e V1 — um trabalho pesado por vez.
 
+**Processo (decisão do dono de 30/09 ~18:35Z, transmitida pela sessão "Github"):** o CI deixa de bloquear
+enquanto o ambiente não for produção. Código vai à `main` com `[skip ci]`, validado pela suíte local dos arquivos
+afetados; o deploy não espera o CI e mantém ensaio e backup; o cron diário (05:17Z) segue como rede de segurança
+(`docs/operacao.md` §5).
+
 ## Pedidos ao dono
 
 | # | Ação | Onde | Desbloqueia | Custo |

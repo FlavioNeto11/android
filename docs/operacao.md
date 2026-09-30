@@ -123,6 +123,12 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   núcleos). Parar o runner: `Stop-ScheduledTask farm-ci-runner`; remover: `C:\actions-runner\config.cmd remove` com
   um token de remoção (`gh api -X POST repos/FlavioNeto11/android/actions/runners/remove-token`) e
   `Unregister-ScheduledTask farm-ci-runner`.
+- **CI não bloqueia enquanto não for produção** (decisão do dono de 30/09, ~18:35Z): o push de código vai à `main`
+  com `[skip ci]` por padrão, e o deploy não espera o CI (o `deploy.ps1` nunca o consultou: era convenção). O que
+  valida antes do push é a suíte local dos arquivos afetados, mais `tests/test_arquitetura.py` e
+  `tests/test_pacote_do_agente.py`; o deploy segue com ensaio de migração e backup. A rede de segurança é o cron
+  diário (05:17Z, inclusive o `backend-postgres`), que o `[skip ci]` não afeta, e o `workflow_dispatch` quando se
+  quiser uma rodada inteira. Reverter: voltar a empurrar sem `[skip ci]` e esperar o CI antes do deploy.
 
 ## 6. Deploy
 
