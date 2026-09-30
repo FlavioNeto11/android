@@ -399,7 +399,9 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   contas reais uma por vez, cada uma com o Instagram conferido depois: 06 (21:58Z), 03 (22:25Z), 01 (reinstalado e
   logado de novo, 22:32Z). Nenhuma tela "Confirm you're human". Efeito colateral: com `limits.max_online_devices: 4`,
   a distribuição que ligou o 08 fez o rodízio hibernar 01, 03 e 06 juntos (snapshot, sem apagar nada); acordados um
-  por vez.
+  por vez. **Com as três contas reais ligadas, a quarta vaga do central fica livre** (android-07 hibernado às 23:13Z):
+  qualquer boot novo no central faria o rodízio hibernar uma delas. Para mais aparelhos ligados, o dono sobe o
+  limite.
 - **Outlook:** promovido e `ready` em 01, 02, 03, 06, 07, 08, 10, 12. Vínculos Lucas→01, Bruno→03, André→06 (os de 10
   e 12 desfeitos). Logins: André (android-06) com as telas depois da senha passadas à mão — "OK" no aviso da conta,
   passkey recusada com Voltar, "Maybe later", "Decline" no diagnóstico opcional — e declaradas; Bruno (03) e Lucas (01)
@@ -601,6 +603,8 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
    (C1 num aparelho com a rede verificada).
 2. Achados sem correção ainda: dica "Now your folders…" depois da gaveta; "Save your login info?" do Instagram em
    Views não clicáveis; texto do aviso de fallback do renderizador quando falta só o reinício.
-3. Investigar o W4 (29.9) no android-09 antes de repetir: o túnel remoto e o ADB do convidado.
-4. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
-5. Fechamento (29.18): §27 com a matriz por aparelho e o resumo real × simulado × não executado.
+3. W4 (29.9): o cliente VPN nem subiu no android-09 e o servidor não viu par novo; o adbd caiu junto, com o
+   notebook em ~83% de swap. Antes de repetir, medir o always-on no boot desse aparelho e a memória do notebook.
+4. PostgreSQL (29.14): a sessão "Github" lê o cron de 01/10 05:17Z e avisa; o resultado entra no §27.1.
+5. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
+6. Fechamento (29.18): fecha com o 27.2 e o 29.14; o §27 e a matriz por aparelho já estão no relatório.

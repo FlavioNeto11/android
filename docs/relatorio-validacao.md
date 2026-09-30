@@ -2017,6 +2017,12 @@ item é o do `aplicar`. Horas em UTC.
 | 30/09 12:19 | `9428a6a` | CI: dependência empacotada do Appium (29.1) | `real`: run 36713946044 verde (13:03), job `dependências` com `npm ci`, conferência do disco e testes do corretor |
 | 30/09 14:37 | `0d70882` | P16 (migração 063), túnel no boot, UDP, saída esperada, firewall, painel (29.2, 29.3, 29.5, 29.6, 29.8, 29.15) | `real`: run 36730509649 verde (pytest SQLite 36m39s); suíte local 3860 passed e 1 failed (`test_backup`, ambiente do worktree) no commit do P16 |
 | 30/09 15:24 | `0d70882` | deploy no central (`scripts/deploy.ps1`): backup, painel, `npm ci` do Appium com o disco em 5.0.12, migração 063 | `real`: `/api/health` `ok`, commit e migração conferidos pelo script; agente do notebook `0.1.0+0d70882` (15:29) |
+| 30/09 17:46 | `d197fec` | CI: `axios` 1.20.0 (overrides na raiz e troca das duas cópias empacotadas) | `real`: run 36753830379 — tentativa 1 falhou no `npm ci` por ENOENT no cache do npm do central (o mesmo do runner); `npm cache verify`; tentativa 2 verde às 18:30 (pytest SQLite, mypy, painel, dependências, docs) |
+| 30/09 18:35 | — | decisão do dono: o CI deixa de bloquear push e deploy enquanto não for produção | a partir daqui o código implantado tem como prova os testes locais dos arquivos afetados e o cron diário (05:17), não uma corrida por push |
+| 30/09 21:33 | `f6c7df2` | segundo deploy: 29.11, correção da `axios`, login gerenciado do Outlook; `gpu_mode: host` no `config.yaml` | `real`: `/api/health` `ok`; agente do notebook `0.1.0+f6c7df2` (21:36) |
+| 30/09 21:44–22:18 | `da62dd7`, `43db7a6`, `9f7b18b`, `48efc82` | correções medidas no aparelho: GMS pelo pacote; avançar desabilitado até o identificador; rótulo repetido na descrição; releitura do campo sensível | `real` cada uma no aparelho que a mostrou; `simulated` com o teste que falhava antes |
+| 30/09 22:56 | `9ff427c` | telas do Outlook depois da senha (23.8) | `real`: logins do Bruno e do Lucas de ponta a ponta |
+| 30/09 23:11 | `9f6acdb` | boas-vindas do Outlook pelo carrossel | `real`: `/api/health` `ok`; agente do notebook `0.1.0+9f6acdb` |
 
 PostgreSQL: `not_run` nesta data. O job `backend-postgres` só roda no cron (05:17); o de 30/09 não iniciou por limite
 de gasto, liberado pelo dono às 12:10. A prova é a do run de 01/10 (29.14).
@@ -2107,9 +2113,9 @@ Hx, que não bloqueia o app com a GPU do host), E8, o login (consentimento) e a 
 
 | Aparelho | Conta | Renderizador | Instagram | Outlook | Rede | Observação |
 |---|---|---|---|---|---|---|
-| android-01 | Lucas | host | reinstalado e logado, `session_ready` 22:32 | `ready`, logado sozinho, `session_ready` 23:04 | sem rede gerenciada | C1 `r-20260930230500-f52eec` |
-| android-03 | Bruno | host | `session_ready` 22:25 (depois da troca) | `ready`, logado sozinho, `session_ready` 23:01 | `trafego_verificado` #70 | — |
-| android-06 | André | host | `session_ready` 21:58 (depois da troca) | `ready`, logado (telas pós-senha à mão), `session_ready` 22:56 | `trafego_verificado` #67 | — |
+| android-01 | Lucas | host | reinstalado e logado, `session_ready` 22:32 | `ready`, login automático de ponta a ponta, `session_ready` 23:04 | sem rede gerenciada | C1 `r-20260930230500-f52eec` |
+| android-03 | Bruno | host | `session_ready` 22:25 (depois da troca) | `ready`, login automático de ponta a ponta, `session_ready` 23:01; fechado e reaberto, mantido (23:09) | `trafego_verificado` #70 | — |
+| android-06 | André | host | `session_ready` 21:58 (depois da troca) | `ready`, senha automática e telas depois da senha à mão (a observação que virou o 23.8), `session_ready` 22:56; fechado e reaberto, mantido (23:10) | `trafego_verificado` #67 | — |
 | android-02, 07, 08 | QA | host | — | `ready` | 02: central | — |
 | android-05 | QA | host | — | `missing` (timeout de adb) | central | instala ao acordar |
 | android-09 | QA | host | — | (instala ao ligar) | W0–W3; W4 falhou; rollback | 29.9 |

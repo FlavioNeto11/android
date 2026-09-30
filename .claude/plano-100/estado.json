@@ -4249,14 +4249,14 @@
    "id": "23.13",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Microsoft. Persistência: Outlook fechado (am force-stop) e reaberto pela verificação da plataforma, sessão mantida (android-03 23:09:55Z, android-06 23:10:30Z).",
-   "blocker": "Reinício do aparelho com o Outlook logado not_run. Achado: a dica 'Now your folders on mobile match…' depois de abrir a gaveta (janela fora da árvore) deixa o login em 'incerto' até um Voltar.",
+   "evidence": "Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Microsoft. Persistência: Outlook fechado (am force-stop) e reaberto pela verificação da plataforma, sessão mantida (android-03 23:09:55Z, android-06 23:10:30Z). not_run: o reinício do aparelho com o Outlook logado.",
+   "blocker": null,
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T23:10:46+00:00"
+   "quando": "2026-09-30T23:15:11+00:00"
   },
   "27.2": {
    "id": "27.2",
@@ -4400,14 +4400,14 @@
    "id": "29.17",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arquivo/; as seis junções dos SDKs extras desfeitas só como atalho, sem seguir o destino. Nada foi apagado.",
-   "blocker": "Restam os worktrees das frentes (p3-firewall, p3-medicao, p3-renderizador) e seus branches, que saem depois da segunda implantação; a exclusão definitiva dos arquivos é do dono.",
+   "evidence": "Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arquivo/; junções desfeitas só como atalho. Nada foi apagado.",
+   "blocker": "Restam os worktrees das frentes (p3-firewall, p3-medicao com junção de node_modules, p3-renderizador, agent-a2c596de1676ca7fa com o catálogo do Outlook fora da main) e as origens do agente no notebook (C:\\farm\\origem-*). Saem com cuidado com as junções; a exclusão definitiva dos arquivos é do dono.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:56:15+00:00"
+   "quando": "2026-09-30T23:15:11+00:00"
   },
   "29.7": {
    "id": "29.7",
@@ -4452,14 +4452,14 @@
    "id": "29.9",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 30/09, central 48efc82, android-09 (QA, notebook): W0 firewall-check 'liberado' (regra do dono, perfil Public, Wi-Fi, 192.168.1.0/24); W1 ligado com a GPU do host (22:34Z); W2 perfil vpn-central-wireguard, política exigida (22:35Z); W3 'configurado' (perfil importado, 22:37Z).",
-   "blocker": "W4 falhou: depois do reinício pedido pela rede o túnel não subiu (tun0 ausente, lockdown=0) e o adbd do convidado ficou offline também no adb do próprio notebook; a rede pediu um segundo reinício às 22:47Z. Rollback às 22:48Z (sem VPN, política livre); o aparelho voltou online às 22:53Z. Hipótese a medir: o caminho do túnel remoto e o ADB dependem um do outro quando a VPN sobe no convidado. W5–W8 not_run.",
+   "evidence": "Real, 30/09, central 48efc82, android-09 (QA, notebook): W0 firewall-check 'liberado' (regra do dono, perfil Public, Wi-Fi, 192.168.1.0/24); W1 ligado com a GPU do host (22:34Z); W2 perfil vpn-central-wireguard, política exigida (22:35Z); W3 'configurado' (perfil entregue por adb reverse, TCP; o túnel é UDP direto para rede.servidor.endpoint_lan 192.168.1.81:51820).",
+   "blocker": "W4 falhou, medido: o serviço VPN nem subiu no convidado (tun0 ausente, sem rede VPN no dumpsys) e o log do servidor do central não registra nenhuma conexão de um par novo entre 22:35 e 22:53Z (só 10.66.0.2–.5, os aparelhos do central); o adbd do convidado ficou offline também no adb do próprio notebook, que estava com o swap em ~83%. A rede pediu 2 reinícios; rollback às 22:48Z e o aparelho voltou às 22:53Z. Antes de repetir: medir o always-on do cliente no boot desse aparelho e a pressão de memória do notebook. W5–W8 not_run.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T23:08:34+00:00"
+   "quando": "2026-09-30T23:15:11+00:00"
   },
   "29.12": {
    "id": "29.12",
@@ -4486,6 +4486,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T23:08:34+00:00"
+  },
+  "29.16": {
+   "id": "29.16",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Pelo mecanismo, em 30/09: índice de pacotes regenerado; 12.3 no vocabulário do aplicar; P15 reescrito com a causa medida (SwiftShader-GL, não recusa do app; K-062); os itens do Outlook e do comando entre apps (23.x, 24.9, 27.2) registrados com o estado de cada um e o bloqueio exato; itens 29.19 e 29.20 acrescentados (objetivo do dono, adiados por decisão dele). check sem interrupção; docs-check 0 erros.",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T23:15:11+00:00"
+  },
+  "29.18": {
+   "id": "29.18",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Relatório §27 (27.1 a 27.9, com a matriz por aparelho), handoff com checkpoints 1 a 9, CHANGELOG, estado-atual e o livro do plano atualizados em 30/09; resumo real × simulado × não executado entregue ao dono no chat.",
+   "blocker": "Fecha quando o 27.2 tiver o C1 num aparelho com rede verificada (e-mail de teste do dono para o Bruno ou o André) e o cron de PostgreSQL de 01/10 05:17Z (29.14) tiver resultado.",
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-30T23:15:11+00:00"
   }
  },
  "rodadas": [
@@ -5317,6 +5343,19 @@
    "quando": "2026-09-30T23:10:46+00:00",
    "itens": [
     "23.13"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-09-30T23:15:11+00:00",
+   "itens": [
+    "29.9",
+    "23.13",
+    "29.16",
+    "29.17",
+    "29.18"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
