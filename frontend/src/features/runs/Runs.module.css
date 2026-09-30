@@ -1265,12 +1265,18 @@ button.evTile:hover {
 
 /* O app citado na abertura do objetivo, à parte do título (antes todo título começava com "No QA Messenger, …"). */
 .runItemApp {
+  max-width: 11rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-2);
   font-size: var(--fs-xs);
+}
+
+/* Mais específico que `.runItemMeta span` (inline-flex): o corte com reticências só vale num bloco. */
+.runItemMeta .runItemApp {
+  display: inline-block;
 }
 
 .runItemMeta {
@@ -1296,7 +1302,8 @@ button.evTile:hover {
    (em 1024 px o detalhe ficava com ~600 px e as abas saíam da tela). */
 @media (max-width: 1100px) {
   .runsLayout { grid-template-columns: minmax(0, 1fr); }
-  .runListCard { position: static; max-height: 45vh; }
+  /* 65vh, não 45vh (tarefa UX 05): com a barra de busca e filtros no topo, 45vh deixava ~1 item e meio à vista. */
+  .runListCard { position: static; max-height: 65vh; }
 }
 
 /* 11.1 — linhas de aparelho e de etapa em tela estreita: as colunas fixas (110 + 150–230 + 150 px) não cabem em

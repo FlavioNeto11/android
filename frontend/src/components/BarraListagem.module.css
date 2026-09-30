@@ -39,9 +39,16 @@
 }
 .limpar:hover { background: var(--accent-soft); }
 
-/* Tela estreita: a busca ocupa a linha; os botões de visão ficam só com ícone. */
+/* Coluna estreita: a busca ocupa a linha, as listas dividem a de baixo por igual, chips menores. */
+.compacta .busca { flex-basis: 100%; }
+.compacta .lista { flex: 1 1 9rem; min-width: 0; }
+.compacta .lista select { width: 100%; }
+.compacta .chips { gap: 4px; }
+.compacta .chip { min-height: 24px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
+
+/* Tela estreita: a busca ocupa a linha; os botões de visão ficam só com ícone. Os chips quebram linha em vez de
+   rolar de lado: rolando, o chip ligado podia ficar fora da tela e a pessoa não via qual filtro estava valendo. */
 @media (max-width: 560px) {
   .busca { flex-basis: 100%; }
   .visaoBotao span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
 }

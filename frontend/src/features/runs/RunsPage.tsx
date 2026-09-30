@@ -163,6 +163,7 @@ export function RunsPage() {
           <div className={styles.runBarra}>
             <BarraListagem
               nome="execuções"
+              compacta
               busca={{ valor: filtro.q, onChange: (q) => mudar({ q: q || undefined }), placeholder: 'Buscar no objetivo ou código' }}
               filtros={[
                 { chave: 'status', rotulo: 'Situação da execução', tipo: 'chips', rotuloTodos: 'Todas',
@@ -243,10 +244,10 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
       <span className={styles.runItemCmd}>{titulo}</span>
       <span className={styles.runItemTop}>
         <StatusBadge meta={metaOf(RUN_STATUS, run.status)} size="sm" className={styles.runItemBadge} />
-        {app ? <span className={styles.runItemApp}>{app}</span> : null}
         <span className={styles.runItemAge} title={formatDateTime(run.created_at)}><Age ts={run.created_at} /></span>
       </span>
       <span className={styles.runItemMeta}>
+        {app ? <span className={styles.runItemApp}>{app}</span> : null}
         <span className={styles.shortId}>{run.short_id}</span>
         <span><Smartphone size={11} aria-hidden /> {run.instances_used}/{run.instances_requested}</span>
         {c ? (

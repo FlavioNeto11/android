@@ -110,7 +110,7 @@ function Truncado({ texto, className }: { texto: string; className?: string }) {
 /** Um selo só para a situação: "Ativa · app não instalado", com o porquê no tooltip. */
 function SeloDeEstado({ estado }: { estado: EstadoComposto }) {
   return (
-    <Tooltip content={estado.explicacao}>
+    <Tooltip content={`${estado.rotulo}: ${estado.explicacao}`}>
       <span tabIndex={0} className={styles.seloEstado} aria-label={`${estado.rotulo}. ${estado.explicacao}`}>
         <Badge tone={estado.tom}>{estado.rotulo}</Badge>
       </span>
@@ -175,14 +175,11 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
           <div className={styles.row}>
             <dt><Server size={14} aria-hidden /> Servidor</dt>
             <dd className={styles.linhaUnica}>
-              {servidor ? <Truncado texto={servidor} /> : <span className={styles.muted}>—</span>}
+              {/* "localidade não registrada" era um selo que se sobrepunha ao nome do servidor; agora vai no tooltip. */}
+              {servidor ? <Truncado texto={loc && !loc.known ? `${servidor} (localidade não registrada)` : servidor} />
+                : <span className={styles.muted}>—</span>}
               {loc?.moved ? <Badge tone="warning">mudou de servidor</Badge> : null}
               {loc && !loc.available ? <Badge tone="warning">indisponível</Badge> : null}
-              {loc && !loc.known && !loc.moved && loc.available ? (
-                <Tooltip content="O servidor onde os dados vivem ainda não foi registrado.">
-                  <span tabIndex={0} className={styles.muted}>(não registrado)</span>
-                </Tooltip>
-              ) : null}
             </dd>
           </div>
           <div className={styles.row}>
@@ -193,7 +190,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
             <dt><ShieldCheck size={14} aria-hidden /> Grupo de acesso</dt>
             <dd className={styles.linhaUnica}>{pessoa.policy_group_name
               ? <Badge tone="info">{pessoa.policy_group_name}</Badge>
-              : <span className={styles.muted}>nenhum — padrão do catálogo</span>}</dd>
+              : <Truncado texto="nenhum — padrão do catálogo" className={styles.muted} />}</dd>
           </div>
         </dl>
         <p className={styles.cartaoAviso}>{aviso ? <Truncado texto={aviso} /> : null}</p>

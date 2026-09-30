@@ -36,6 +36,8 @@ interface BarraListagemProps {
   /** Presente só quando algum filtro esconde itens. */
   onLimpar?: () => void;
   className?: string;
+  /** Coluna estreita (a lista de Execuções, ~340 px): as listas dividem a linha por igual e os chips encolhem. */
+  compacta?: boolean;
 }
 
 /**
@@ -43,12 +45,12 @@ interface BarraListagemProps {
  * controlada: quem usa guarda o estado (na URL, por `trocarQuery`) e a barra só mostra e avisa. Personas e
  * Execuções usam a mesma, para a mesma coisa estar no mesmo lugar em todas as listas.
  */
-export function BarraListagem({ nome, busca, filtros = [], ordem, visao, resumo, onLimpar, className }: BarraListagemProps) {
+export function BarraListagem({ nome, busca, filtros = [], ordem, visao, resumo, onLimpar, className, compacta }: BarraListagemProps) {
   const idBusca = useId();
   const chips = filtros.filter((f) => f.tipo === 'chips');
   const listas = filtros.filter((f) => f.tipo === 'lista');
   return (
-    <div className={cx(styles.barra, className)} role="search" aria-label={`Buscar e filtrar ${nome}`}>
+    <div className={cx(styles.barra, compacta && styles.compacta, className)} role="search" aria-label={`Buscar e filtrar ${nome}`}>
       <div className={styles.linha}>
         <label className={styles.busca} htmlFor={idBusca}>
           <Search size={15} aria-hidden className={styles.buscaIcone} />

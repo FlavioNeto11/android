@@ -140,7 +140,7 @@ export function estadoComposto(p: PersonaDTO): EstadoComposto {
   const fase = p.session_actions?.phase;
   const detalhe = p.session_actions?.detail;
   if (!handleDe(p)) {
-    return { rotulo: 'Ativa · sem conta de cadastro', tom: 'neutral',
+    return { rotulo: 'Ativa · sem conta', tom: 'neutral',
              explicacao: 'A pessoa existe, mas ainda não tem conta em nenhum app. Cadastre uma conta na guia Contas e acesso.',
              acao: { rotulo: 'Adicionar conta', guia: 'contas' } };
   }

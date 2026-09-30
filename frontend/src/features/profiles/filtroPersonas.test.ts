@@ -50,7 +50,7 @@ describe('situação da persona', () => {
     expect(e).toMatchObject({ rotulo: 'Ativa · app não instalado', tom: 'warning', acao: { rotulo: 'Instalar app', guia: 'aparelhos' } });
     expect(estadoComposto(BASE[1]!)).toMatchObject({ rotulo: 'Bloqueada pela plataforma', tom: 'danger' });
     expect(estadoComposto(BASE[1]!).acao).toBeUndefined();
-    expect(estadoComposto(BASE[2]!).rotulo).toBe('Ativa · sem conta de cadastro');
+    expect(estadoComposto(BASE[2]!).rotulo).toBe('Ativa · sem conta');
     expect(estadoComposto(BASE[3]!)).toMatchObject({ rotulo: 'Ativa · conectada', tom: 'success' });
   });
 });
