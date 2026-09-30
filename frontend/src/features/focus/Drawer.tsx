@@ -30,12 +30,25 @@ export function elementosFocaveis(raiz: HTMLElement): HTMLElement[] {
 }
 
 /**
- * O que conta como "clicar fora" do drawer: o conteúdo da página (o `main` do App), menos os cartões de aparelho.
+ * Os marcadores de um aparelho na grade do Painel: o cartão (visão Cards) e a linha (visão Lista). Uma lista só, lida
+ * pelo "clique fora", pela devolução do foco e pela rolagem até o aparelho: com o marcador só do cartão, na Lista a
+ * linha contava como "fora" e o clique para trocar de aparelho ou marcar era engolido (RF-02 da revisão final).
+ */
+export const MARCADORES_DE_APARELHO = ['data-instance-card', 'data-instance-row'] as const;
+
+/** Seletor do aparelho `id` na grade (cartão ou linha), com um descendente opcional (`button[aria-label^="Abrir"]`). */
+export function seletorDoAparelho(id: string, dentro = ''): string {
+  return MARCADORES_DE_APARELHO.map((m) => `[${m}="${CSS.escape(id)}"]${dentro ? ` ${dentro}` : ''}`).join(', ');
+}
+
+/**
+ * O que conta como "clicar fora" do drawer: o conteúdo da página (o `main` do App), menos os aparelhos da grade.
  * Ficam de fora de propósito, e continuam clicáveis com o drawer aberto: o menu lateral (os links levam o `?foco=` junto
- * para a tela seguinte) e os cartões (trocar de aparelho). Também o topo, os popovers e os avisos.
+ * para a tela seguinte) e os cartões e linhas de aparelho (trocar de aparelho, marcar). Também o topo, os popovers e
+ * os avisos.
  */
 const AREA_DE_FORA = '#conteudo';
-const CARTAO = '[data-instance-card]';
+const APARELHO = MARCADORES_DE_APARELHO.map((m) => `[${m}]`).join(', ');
 
 interface DrawerProps {
   panelRef: RefObject<HTMLElement | null>;
@@ -67,7 +80,7 @@ export function Drawer({ panelRef, ariaLabel, onClose, restoreSelector, children
       const painel = panelRef.current;
       if (!(alvo instanceof Element) || !painel || painel.contains(alvo)) return;
       const fora = alvo.closest('[data-drawer-scrim]') !== null
-        || (alvo.closest(AREA_DE_FORA) !== null && alvo.closest(CARTAO) === null);
+        || (alvo.closest(AREA_DE_FORA) !== null && alvo.closest(APARELHO) === null);
       if (!fora) return;
       e.preventDefault();
       e.stopPropagation();

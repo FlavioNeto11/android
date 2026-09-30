@@ -7,6 +7,7 @@ import { ConfirmHost } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { AprendizadoPage } from './features/aprendizado/AprendizadoPage';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
+import { seletorDoAparelho } from './features/focus/Drawer';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
 import { PendenciasPage } from './features/pendencias/PendenciasPage';
@@ -88,7 +89,7 @@ export function App() {
   useEffect(() => {
     if (!focusId) return undefined;
     const quadro = requestAnimationFrame(() => {
-      document.querySelector(`[data-instance-card="${CSS.escape(focusId)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      document.querySelector(seletorDoAparelho(focusId))?.scrollIntoView?.({ block: 'nearest' });
     });
     return () => cancelAnimationFrame(quadro);
   }, [focusId]);

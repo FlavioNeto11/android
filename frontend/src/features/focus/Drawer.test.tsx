@@ -9,7 +9,7 @@ import { initialDataState } from '../../store/reducer';
 import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeInstance, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, byRole, click, flush, installBrowserStubs, json, waitFor } from '../../test/harness';
-import { Drawer, elementosFocaveis } from './Drawer';
+import { Drawer, elementosFocaveis, seletorDoAparelho } from './Drawer';
 import { FocusPanel } from './FocusPanel';
 
 /**
@@ -74,14 +74,19 @@ describe('Drawer — casca modal do Foco', () => {
       <main id="conteudo">
         <button type="button" id="acao">Ação da página</button>
         <article data-instance-card="android-02"><button type="button" id="cartao">Abrir android-02</button></article>
+        <table><tbody><tr data-instance-row="android-03">
+          <td><input type="checkbox" id="caixa" aria-label="Selecionar android-03" /></td>
+          <td><button type="button" id="linha">Abrir android-03</button></td>
+        </tr></tbody></table>
       </main>`;
     document.body.appendChild(pagina);
-    for (const id of ['topo', 'menu', 'acao', 'cartao']) pagina.querySelector(`#${id}`)!.addEventListener('click', (e) => { e.preventDefault(); agiu(id); });
+    for (const id of ['topo', 'menu', 'acao', 'cartao', 'linha', 'caixa']) pagina.querySelector(`#${id}`)!.addEventListener('click', (e) => { if (id !== 'caixa') e.preventDefault(); agiu(id); });
     await act(async () => root.render(<Casca onClose={fechar}><button type="button">Um</button></Casca>));
 
-    for (const id of ['topo', 'menu', 'cartao']) await click(pagina.querySelector(`#${id}`)!);
+    // RF-02: a linha da visão Lista vale o mesmo que o cartão (trocar de aparelho, marcar), não "clique fora".
+    for (const id of ['topo', 'menu', 'cartao', 'linha', 'caixa']) await click(pagina.querySelector(`#${id}`)!);
     expect(fechar).not.toHaveBeenCalled();
-    expect(agiu.mock.calls.map((c) => c[0])).toEqual(['topo', 'menu', 'cartao']);
+    expect(agiu.mock.calls.map((c) => c[0])).toEqual(['topo', 'menu', 'cartao', 'linha', 'caixa']);
 
     agiu.mockClear();
     await click(pagina.querySelector('#acao')!);
@@ -164,6 +169,21 @@ describe('Drawer — casca modal do Foco', () => {
     await act(async () => root.render(<></>));
     expect(document.activeElement).toBe(cartao);
     cartao.remove();
+  });
+
+  it('RF-02: o seletor de devolução do foco acha o botão "Abrir" do cartão e o da linha da Lista', () => {
+    const pagina = document.createElement('div');
+    pagina.innerHTML = `
+      <article data-instance-card="android-02"><button type="button" aria-label="Abrir android-02" id="c"></button></article>
+      <table><tbody><tr data-instance-row="android-03">
+        <td><button type="button" aria-label="Abrir android-03" id="l"></button></td>
+      </tr></tbody></table>`;
+    document.body.appendChild(pagina);
+    const abrir = 'button[aria-label^="Abrir"]';
+    expect(document.querySelector(seletorDoAparelho('android-02', abrir))?.id).toBe('c');
+    expect(document.querySelector(seletorDoAparelho('android-03', abrir))?.id).toBe('l');
+    expect(document.querySelector(seletorDoAparelho('android-03'))?.tagName).toBe('TR');
+    pagina.remove();
   });
 });
 

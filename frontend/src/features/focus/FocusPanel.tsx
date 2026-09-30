@@ -28,7 +28,7 @@ import {
 import styles from './Focus.module.css';
 import { FocusSection } from './FocusSection';
 import { HierarchyList } from './HierarchyList';
-import { Drawer } from './Drawer';
+import { Drawer, seletorDoAparelho } from './Drawer';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
@@ -52,8 +52,8 @@ function useTelaEstreita(): boolean {
   return useSyncExternalStore(assinarTelaEstreita, () => consultaTelaEstreita()?.matches ?? false, () => false);
 }
 
-/** O botão que abre o Foco no cartão do aparelho: para onde o teclado volta quando o drawer fecha. */
-const cartaoDe = (id: string): string => `[data-instance-card="${CSS.escape(id)}"] button[aria-label^="Abrir"]`;
+/** O botão que abre o Foco no cartão ou na linha do aparelho: para onde o teclado volta quando o drawer fecha. */
+const cartaoDe = (id: string): string => seletorDoAparelho(id, 'button[aria-label^="Abrir"]');
 
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
