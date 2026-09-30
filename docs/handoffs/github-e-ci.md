@@ -125,7 +125,10 @@ opcional do dono, fora do escopo do projeto.
 |---|---|---|---|---|
 | 1 | Execução manual do `Contêiner` (`workflow_dispatch`) | último run falhou (bloqueio de gasto), 29/09 | run `36715781075` verde | prova do bloqueio resolvido; custo ~2 min hospedados (< US$ 0,02) |
 
-Nada mais foi alterado.
+| 2 | Recarga da Anthropic registrada no livro-caixa da plataforma (`POST /api/ai/balances/anthropic/recharge {"amount": 20}`, 30/09 13:07Z, a pedido do dono, que recarregou US$ 20,00 no Console) | âncora de fechamento US$ 3,12, saldo estimado US$ 2,46 (`low`) | âncora `recarga`, saldo estimado US$ 22,46 (`ok`) | conferido em `GET /api/ai/balances`; OpenAI e Gemini inalterados; valor informado pelo dono, sem leitura do Console |
+
+Nada mais foi alterado. O teto de US$ 15 com "Stop usage" segue **não aplicado**: a edição do valor foi barrada pelo
+classificador de permissões desta sessão e ficou para o dono aplicar (ou liberar).
 
 ## 7. Ações que dependem do dono
 
@@ -138,3 +141,17 @@ Nada mais foi alterado.
 
 - 01/10 05:17Z: cron do `CI` com `backend-postgres`. Se iniciar em `ubuntu-latest` e passar, o item 3 do §1 vira `real`.
 - Fim de outubro: conferir se o gasto adicional ficou em US$ 0 (Billing → Usage, agrupado por repositório).
+
+## 9. Proposta registrada: custo de tempo da suíte local (a decidir depois da janela do P16)
+
+Medido em 30/09 por leitura, sem carga: a suíte inteira do backend em prioridade ociosa (K-058) levou ~33 min de
+relógio para ~13 min de CPU (documentado: ~11 min sem restrição), é serial (241 arquivos, ~2.900 funções, sem
+`xdist`) e cada commit de código pagava duas vezes (local + CI do runner, ~35–40 min). A coordenação adotou, para a
+Fase 29: suíte inteira local **uma vez** (P16: 3860 passed, 1 failed, o `test_backup` de ambiente, sem `config.yaml`
+no worktree, 34 min), depois só os arquivos afetados + `tests/test_arquitetura.py` + `tests/test_pacote_do_agente.py`,
+com o CI do runner como a suíte inteira oficial antes do deploy.
+
+**Pendente, só se o dono quiser (depois da janela de observação de 6 h do P16, com o central ocioso):** medir
+`pytest --durations=50` para achar os testes lentos e avaliar `pytest-xdist` (porta base 5640, banco e arquivos
+compartilhados podem não ser seguros em paralelo). Nada disso foi executado. Quem cita no fechamento da Fase 29 é a
+coordenação.
