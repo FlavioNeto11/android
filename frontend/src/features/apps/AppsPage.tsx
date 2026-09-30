@@ -41,7 +41,7 @@ type Aba = 'loja' | 'apps' | 'versoes' | 'rede';
 const LEAD: Record<Aba, string> = {
   loja: 'Os aplicativos do parque no jeito de uma loja: a versão de cada um, quem está atrasado, e distribuir para '
     + 'todos, para N aparelhos ou para os que você escolher, com prévia antes de confirmar.',
-  apps: 'Cada app com as contas dos perfis nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA '
+  apps: 'Cada app com as contas das personas nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA '
     + 'e o quanto do trabalho já roda por receita, sem IA.',
   versoes: 'Todas as versões de todos os apps numa lista só, com a loja (Play Store) e o que cada aparelho tem.',
   // Item 25.8 (ADR-056): a aba principal é Rede — VPN e proxy por aparelho, com IP de saída medido e prova de

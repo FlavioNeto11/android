@@ -428,7 +428,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'stale_frame', 'Frame antigo'));
     await pointer(box, 'pointerdown', 500, 600);
     await pointer(box, 'pointerup', 500, 600);
-    await waitFor(() => expect(text()).toContain('A tela mudou — aguarde o novo frame e tente de novo'));
+    await waitFor(() => expect(text()).toContain('A tela mudou — aguarde a nova imagem e tente de novo'));
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(framesBefore));
 
     await click(byRole('button', /^Devolver à IA/, panel));
@@ -512,7 +512,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     const builtinDelete = allByRole('button', /^Excluir/)[0] as HTMLElement;
     expect(builtinDelete.getAttribute('aria-disabled')).toBe('true'); // app embutido não pode ser excluído
 
-    await click(byRole('tab', /^Instâncias e contas/));
+    await click(byRole('tab', /^Aparelhos e contas/));
     await waitFor(() => expect(text()).toContain('Aplicar app a todas'));
     await click(byRole('tab', /^IA$/));
     await waitFor(() => expect(text()).toContain('nunca no navegador'));
@@ -635,9 +635,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(text(panel)).toContain('Nenhuma receita aprendida ainda');
     expect(text(panel)).toContain('A IA aprende o caminho uma vez; as próximas execuções repetem por seletores, sem custo de modelo. Se a tela mudar, a IA assume só aquela etapa.');
 
-    // --- Instâncias e contas: PUT só com o campo alterado ---
+    // --- Aparelhos e contas: PUT só com o campo alterado ---
     backend.on('PUT', /^\/api\/instances\/android-07$/, (c) => json(makeInstance(7, c.body as object)));
-    await click(byRole('tab', /^Instâncias e contas/));
+    await click(byRole('tab', /^Aparelhos e contas/));
     // Item 11.9: os campos ficam num painel que abre ao clicar no cartão — não mais numa linha de tabela sempre aberta.
     await click(byRole('button', /Editar android-07/));
     await setValue(byRole('textbox', 'Rótulo da conta') as HTMLInputElement, 'qa-novo-07');

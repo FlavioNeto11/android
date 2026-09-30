@@ -10,6 +10,7 @@ import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { PageSection } from '../../components/Page';
+import { plural } from '../../lib/format';
 import { localId } from '../../lib/ids';
 import { hashDe } from '../../lib/rotas';
 import { selectInstanceList, useAppStore } from '../../store/app';
@@ -88,7 +89,7 @@ export function AppsSection() {
                 </div>
                 <span className={styles.appPkg}>{app.package}{app.activity ? `/${app.activity}` : ''}</span>
                 <span className={styles.appMeta}>
-                  {used} instância(s) · {selectors} seletor(es) · {app.apk_path ? 'APK configurado' : 'sem APK'} · {app.nav_hints ? 'com dicas de navegação' : 'sem dicas'}
+                  {plural(used, 'aparelho', 'aparelhos')} · {selectors} seletor(es) · {app.apk_path ? 'APK configurado' : 'sem APK'} · {app.nav_hints ? 'com dicas de navegação' : 'sem dicas'}
                 </span>
                 <div className={styles.appActions}>
                   <Button size="sm" icon={Pencil} onClick={() => setEditing({ app })}>Editar dicas e seletores</Button>

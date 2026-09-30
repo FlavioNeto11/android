@@ -143,7 +143,7 @@ export function ProfilesPage() {
   const contas = comConta(pessoas);
   const botoesDeCadastro = (
     <>
-      <Button icon={Wand2} variant="primary" onClick={() => setCriando('prompt')}>Nova persona a partir de um prompt</Button>
+      <Button icon={Wand2} variant="primary" onClick={() => setCriando('prompt')}>Nova persona a partir de uma descrição</Button>
       <Button icon={PenLine} onClick={() => setCriando('manual')}>Nova persona manual</Button>
     </>
   );
@@ -211,7 +211,7 @@ export function ProfilesPage() {
         <EmptyState
           icon={UserRound}
           title="Nenhuma persona cadastrada"
-          hint="Descreva a pessoa num prompt (a IA propõe um rascunho para você revisar) ou crie à mão. Contas e aparelho vêm depois."
+          hint="Descreva a pessoa em poucas palavras (a IA propõe um rascunho para você revisar) ou crie à mão. Contas e aparelho vêm depois."
           actions={botoesDeCadastro}
         >
           Nenhuma persona foi cadastrada ainda.

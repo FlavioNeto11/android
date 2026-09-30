@@ -285,8 +285,8 @@ export function CommandPanel() {
     : ecoPersona?.erro ?? null;
 
   const reason: string | null =
-    !hydrated ? 'Aguardando a conexão com o backend.'
-    : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
+    !hydrated ? 'Aguardando a conexão com o servidor.'
+    : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do servidor (o restante do painel continua funcionando).'
     : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
     // ADR-040: a execução não carrega credencial. A senha mora na conta da persona, com consentimento por conta, e a
@@ -425,7 +425,7 @@ export function CommandPanel() {
 
   // Refinar não precisa de alvo escolhido nem de prévia em dia: só de texto, IA e nenhuma senha no meio.
   const refinarImpede: string | null =
-    !hydrated ? 'Aguardando a conexão com o backend.'
+    !hydrated ? 'Aguardando a conexão com o servidor.'
     : !aiOk ? 'IA não configurada.'
     : trimmed.length < 3 ? 'Escreva o objetivo do seu jeito primeiro; a IA organiza e pergunta o que faltar.'
     : pareceCredencial(trimmed) ? SENHA_NO_COMANDO

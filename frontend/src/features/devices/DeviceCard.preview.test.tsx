@@ -163,20 +163,20 @@ describe('prévia suspensa (stream.status = paused)', () => {
     await FakeIntersectionObserver.report(card(), true);
     const t = text(card());
     expect(t).toContain('Prévia suspensa');
-    expect(t).toContain('último frame');
+    expect(t).toContain('última imagem');
     expect(t).not.toContain('Desatualizado');
-    expect(t).not.toContain('Sem frame novo');
+    expect(t).not.toContain('Sem imagem nova');
     // a imagem antiga continua lá
     expect(thumbSrc()).toBe('/api/instances/android-03/frame?mode=thumb&f=f1');
     expect(container.querySelector('[title^="Ninguém estava olhando"]')).not.toBeNull();
   });
 
-  it('suspensa sem frame nenhum não diz "Aguardando o primeiro frame" nem "Desatualizado"', async () => {
+  it('suspensa sem frame nenhum não diz "Aguardando a primeira imagem" nem "Desatualizado"', async () => {
     await render(online({ frame: null, stream: stream('paused') }));
     await FakeIntersectionObserver.report(card(), true);
     const t = text(card());
     expect(t).toContain('Prévia suspensa');
-    expect(t).not.toContain('Aguardando o primeiro frame');
+    expect(t).not.toContain('Aguardando a primeira imagem');
     expect(t).not.toContain('Desatualizado');
   });
 
@@ -192,7 +192,7 @@ describe('prévia suspensa (stream.status = paused)', () => {
     const casos: [Instance, string, string[]][] = [
       [online({ frame: frame('p', OLD_TS, true), stream: stream('paused', { last_frame_at: OLD_TS }) }), 'Prévia suspensa',
        ['Desatualizado', 'Captura falhando', 'Servidor desconectado']],
-      [online({ frame: null, stream: stream('no_frame') }), 'Aguardando o primeiro frame', ['Prévia suspensa']],
+      [online({ frame: null, stream: stream('no_frame') }), 'Aguardando a primeira imagem', ['Prévia suspensa']],
       [online({ frame: frame('e', OLD_TS, true), stream: stream('capture_error', { consecutive_capture_failures: 4 }) }),
        'Captura falhando', ['Prévia suspensa']],
       [online({ frame: frame('w', OLD_TS, true), stream: stream('worker_offline') }), 'Servidor desconectado', ['Prévia suspensa']],
@@ -221,7 +221,7 @@ describe('tela sensível (contrato C4)', () => {
     expect(t).toContain('Tela sensível — prévia oculta');
     expect(t).not.toContain('Desatualizado');
     expect(t).not.toContain('Imagem indisponível');
-    expect(t).not.toContain('Aguardando o primeiro frame');
+    expect(t).not.toContain('Aguardando a primeira imagem');
     // o cartão continua abrindo o foco (é lá que o controle manual, às cegas, acontece)
     expect(container.querySelector('button[aria-label="Abrir android-03 na visão de foco"]')).not.toBeNull();
   });

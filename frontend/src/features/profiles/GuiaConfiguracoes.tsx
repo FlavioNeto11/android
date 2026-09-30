@@ -8,6 +8,7 @@ import type {
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { Field, Select } from '../../components/Field';
+import { plural } from '../../lib/format';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { toastError } from '../../store/toasts';
 import { Carregando, useVersaoAoVivo } from './detalheComum';
@@ -147,7 +148,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
                         onChange={(e) => void trocarGrupo(e.target.value)}>
                   <option value="">Sem grupo — só o padrão do catálogo</option>
                   {grupos.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name} · {g.members.length} perfil(is)</option>
+                    <option key={g.id} value={g.id}>{g.name} · {plural(g.members.length, 'persona', 'personas')}</option>
                   ))}
                 </Select>
               )}

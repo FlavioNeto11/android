@@ -18,7 +18,7 @@ type SectionId = 'apps' | 'instancias' | 'ia' | 'fluxos' | 'limites';
 
 const SECTIONS: TabDef<SectionId>[] = [
   { id: 'apps', label: 'Aplicativos', icon: AppWindow },
-  { id: 'instancias', label: 'Instâncias e contas', icon: Smartphone },
+  { id: 'instancias', label: 'Aparelhos e contas', icon: Smartphone },
   { id: 'ia', label: 'IA', icon: Bot },
   { id: 'fluxos', label: 'Fluxos e receitas', icon: Workflow },
   { id: 'limites', label: 'Limites', icon: SlidersHorizontal },

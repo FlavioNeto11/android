@@ -53,7 +53,7 @@ describe('DeviceCard — hibernado', () => {
     expect(el.querySelector('img')).toBeNull();
     // sem tela ao vivo não há "abrir pela miniatura" nem idade de frame
     expect(allByRole('button', /na visão de foco$/, el)).toHaveLength(0);
-    expect(text(el)).not.toContain('Último frame');
+    expect(text(el)).not.toContain('Última imagem');
   });
 
   it('a ação principal é "Acordar" e envia POST …/actions/wake', async () => {

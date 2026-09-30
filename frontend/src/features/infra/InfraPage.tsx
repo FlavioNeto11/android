@@ -118,7 +118,7 @@ export function InfraPage() {
         <div>
           <h1 className={appStyles.pageTitle}>Infraestrutura</h1>
           <p className={appStyles.pageLead}>
-            {plural(workers.length + 1, 'servidor', 'servidores')} — este e {plural(workers.length, 'worker', 'workers')}
+            {plural(workers.length + 1, 'servidor', 'servidores')} — este e {plural(workers.length, 'remoto', 'remotos')}
           </p>
         </div>
         <Button icon={Plus} loading={inscrevendo} onClick={() => void inscrever()}>Inscrever servidor</Button>
@@ -132,7 +132,7 @@ export function InfraPage() {
           // Sem este aviso, o aparelho ficaria sem ciclo de vida e ninguém saberia por quê.
         >
           {remotasSemWorker.map((i) => `${i.id} → ${i.worker_id}`).join(', ')}. Inscreva o servidor ou desamarre o
-          aparelho em Configuração → Instâncias.
+          aparelho em Configuração → Aparelhos e contas.
         </Banner>
       ) : null}
 
@@ -143,8 +143,8 @@ export function InfraPage() {
       {workers.length === 0 ? (
         <EmptyState
           icon={Server}
-          title="Nenhum servidor worker inscrito"
-          hint="Um worker é uma máquina que hospeda aparelhos. Gere um token de inscrição e rode o agente nela; o passo a passo está em docs/worker.md."
+          title="Nenhum servidor remoto inscrito"
+          hint="Um servidor remoto é uma máquina que hospeda aparelhos. Gere um token de inscrição e rode o agente nela; o passo a passo está em docs/worker.md."
         />
       ) : (
         workers
@@ -714,7 +714,7 @@ function AbasDoServidor({ id, instancias, dados, now }: {
   if (instancias.length === 0) return null;
 
   const abas = [
-    { id: 'logs' as const, label: 'Logs', icon: ScrollText, count: logs.length },
+    { id: 'logs' as const, label: 'Registros', icon: ScrollText, count: logs.length },
     { id: 'evidencias' as const, label: 'Evidências', icon: Camera, count: evidencias.length },
     { id: 'fila' as const, label: 'Fila', icon: ListOrdered, count: fila.length, alert: fila.length > 0 },
     { id: 'perfis' as const, label: 'Personas e apps', icon: User, count: instancias.length },

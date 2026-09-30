@@ -41,7 +41,7 @@ import { SaudeAmbiente } from './SaudeAmbiente';
 import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
 import styles from './TopBar.module.css';
 
-export const EXTERNAL_DATA_NOTICE = 'Screenshots e textos das telas são enviados ao provedor externo de IA';
+export const EXTERNAL_DATA_NOTICE = 'Capturas e textos das telas são enviados ao provedor externo de IA';
 
 export function TopBar() {
   const menuAberto = useUiStore((s) => s.menuAberto);
@@ -187,7 +187,7 @@ function Counters() {
           <span className={styles.counterLabel}>aguardando você</span>
         </button>
       </Tooltip>
-      <Tooltip content="Uso de CPU da máquina host">
+      <Tooltip content="Uso de CPU do servidor central">
         <div className={cx(styles.counter, metrics && metrics.cpu_percent >= 90 && styles.counterHot)}>
           <Cpu size={14} aria-hidden />
           <span className={styles.counterLabel}>CPU</span>
@@ -195,7 +195,7 @@ function Counters() {
           {metrics ? <Medidor pct={metrics.cpu_percent} alto={75} critico={90} /> : null}
         </div>
       </Tooltip>
-      <Tooltip content={metrics ? `Memória em uso: ${formatInt(metrics.mem_used_percent)}% (usada / total)` : 'Memória do host (sem dados ainda)'}>
+      <Tooltip content={metrics ? `Memória em uso: ${formatInt(metrics.mem_used_percent)}% (usada / total)` : 'Memória do servidor central (sem dados ainda)'}>
         <div className={cx(styles.counter, metrics && metrics.mem_used_percent >= 92 && styles.counterHot)}>
           <MemoryStick size={14} aria-hidden />
           <span className={styles.counterLabel}>RAM</span>
@@ -236,7 +236,7 @@ function AiBadge() {
         </Tooltip>
       ) : null}
       {!ai.configured && !ai.simulated ? (
-        <Tooltip content="Defina a chave do provedor de IA no arquivo .env do backend e reinicie o servidor. A chave nunca é informada pelo navegador.">
+        <Tooltip content="Defina a chave do provedor de IA no arquivo .env do servidor e reinicie-o. A chave nunca é informada pelo navegador.">
           <span tabIndex={0} style={{ display: 'inline-flex' }}>
             <Badge tone="danger" icon={ShieldAlert} size="lg">IA não configurada</Badge>
           </span>
@@ -351,7 +351,7 @@ function AiDetailsPopover({ ai, features: healthFeatures }: { ai: AiStatus; feat
           </KvList>
         </>
       ) : (
-        <p className={styles.aiNote}>O backend não informou o estado de receitas, fluxos e imagens.</p>
+        <p className={styles.aiNote}>O servidor não informou o estado de receitas, fluxos e imagens.</p>
       )}
     </Popover>
   );
@@ -367,7 +367,7 @@ function ConnectionIndicator() {
   // com problema, a cor do tom volta (e o ConnectionBanner no conteúdo explica).
   return (
     <div className={cx(styles.conn, waiting && styles.connWaiting)} role="status" aria-live="polite">
-      <Tooltip content={conn.lastError && waiting ? `Último erro: ${conn.lastError}` : 'Canal em tempo real (WebSocket) com o backend'}>
+      <Tooltip content={conn.lastError && waiting ? `Último erro: ${conn.lastError}` : 'Canal em tempo real com o servidor'}>
         <StatusBadge meta={meta} plain srPrefix="Conexão" />
       </Tooltip>
       {waiting ? <Button size="sm" variant="ghost" icon={RefreshCw} iconOnly label="Reconectar agora" onClick={reconnectNow} /> : null}

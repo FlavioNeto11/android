@@ -84,21 +84,21 @@ describe('funções puras', () => {
 });
 
 describe('DeviceGrid — paradas compactas e agrupamento', () => {
-  it('mostra os grupos por servidor, o botão "Paradas" e o compacto sem "Emulador desligado"', async () => {
+  it('mostra os grupos por servidor, o botão "Parados" e o compacto sem "Emulador desligado"', async () => {
     const el = await renderGrade();
     expect(text(el)).toContain('Notebook da LAN');
-    expect(text(el)).toContain('Paradas (2)');
-    expect(text(el)).toContain('Paradas (1)');
+    expect(text(el)).toContain('Parados (2)');
+    expect(text(el)).toContain('Parados (1)');
     expect(text(el)).not.toContain('Emulador desligado');
     expect(text(el)).not.toContain('Sem tarefa em andamento');
   });
 
-  it('recolher "Paradas" esconde os cartões e a escolha fica lembrada', async () => {
+  it('recolher "Parados" esconde os cartões e a escolha fica lembrada', async () => {
     const el = await renderGrade();
     expect(el.querySelector('[data-instance-card="android-02"]')).toBeTruthy();
-    await click(byRole('button', /Paradas \(2\)/, el));
+    await click(byRole('button', /Parados \(2\)/, el));
     expect(el.querySelector('[data-instance-card="android-02"]')).toBeNull();
-    expect(byRole('button', /Paradas \(2\)/, el).getAttribute('aria-expanded')).toBe('false');
+    expect(byRole('button', /Parados \(2\)/, el).getAttribute('aria-expanded')).toBe('false');
     expect(window.localStorage.getItem('cda.painel.paradasRecolhidas')).toContain('"');
     // o servidor remoto segue aberto
     expect(el.querySelector('[data-instance-card="android-09"]')).toBeTruthy();
@@ -126,7 +126,7 @@ describe('DeviceGrid — alternância Cards / Lista', () => {
     window.localStorage.setItem('cda.painel.visao', '"mosaico"');
     const el = await renderGrade();
     expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
-    expect(byRole('button', /^Cards$/, el).getAttribute('aria-pressed')).toBe('true');
+    expect(byRole('button', /^Cartões$/, el).getAttribute('aria-pressed')).toBe('true');
   });
 });
 
@@ -149,7 +149,7 @@ describe('DeviceGrid — filtro ?estado=', () => {
     expect(el.querySelector('[data-instance-card="android-01"]')).toBeTruthy();
   });
 
-  it('RF-01: com filtro, a seleção escondida não entra na ação e "Selecionar todas" pega só o que se vê', async () => {
+  it('RF-01: com filtro, a seleção escondida não entra na ação e "Selecionar todos" pega só o que se vê', async () => {
     // android-01 (online) marcado antes, e o link abre só os parados: ele fica fora da vista.
     useUiStore.setState({ selectedIds: ['android-01'], rota: { tela: 'painel', segmentos: [], query: { estado: 'stopped' } } });
     const el = await renderGrade();

@@ -151,7 +151,7 @@ export function DeviceGrid() {
             {contagem.loja ? (
               <span title="A loja (Play Store) não recebe tarefa: fica fora da contagem e da seleção.">
                 {contagem.porEstado.length > 0 ? ' · ' : ''}
-                loja {ROTULO_DO_ESTADO[contagem.loja.estado][0]}
+                aparelho-loja {ROTULO_DO_ESTADO[contagem.loja.estado][0]}
               </span>
             ) : null}
           </span>
@@ -180,7 +180,7 @@ export function DeviceGrid() {
         </span>
         <div className={styles.visao} role="group" aria-label="Forma de exibir os aparelhos">
           <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'cards'} onClick={() => setVisao('cards')}>
-            <LayoutGrid size={14} aria-hidden /> Cards
+            <LayoutGrid size={14} aria-hidden /> Cartões
           </button>
           <button type="button" className={styles.visaoBotao} aria-pressed={visao === 'lista'} onClick={() => setVisao('lista')}>
             <List size={14} aria-hidden /> Lista
@@ -196,7 +196,7 @@ export function DeviceGrid() {
           {/* Só o que o filtro mostra (e substitui a seleção): nada escondido fica marcado depois deste clique. */}
           <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || total === 0 || allSelected}
                   onClick={() => setSelection(tarefaVisivel)}>
-            Selecionar todas
+            Selecionar todos
           </Button>
           <Button size="sm" variant="ghost" icon={X} disabled={selectedIds.length === 0} onClick={clearSelection}>
             Limpar
@@ -237,8 +237,8 @@ export function DeviceGrid() {
           <EmptyState
             icon={ServerCrash}
             tone="danger"
-            title="Sem conexão com o backend"
-            hint={<>Inicie o backend (FastAPI em <span className="mono">127.0.0.1:8000</span>) e aguarde: a reconexão é automática.{connError ? ` Último erro: ${connError}` : ''}</>}
+            title="Sem conexão com o servidor"
+            hint={<>Inicie o servidor central (em <span className="mono">127.0.0.1:8000</span>) e aguarde: a reconexão é automática.{connError ? ` Último erro: ${connError}` : ''}</>}
             actions={<Button variant="outline" onClick={reconnectNow}>Tentar agora</Button>}
           >
             Ainda não foi possível carregar a lista de aparelhos.
@@ -248,9 +248,9 @@ export function DeviceGrid() {
         <EmptyState
           icon={Smartphone}
           title="Nenhum aparelho cadastrado"
-          hint="O backend deveria listar android-01 … android-10. Abra o Diagnóstico para conferir o SDK e a configuração."
+          hint="O servidor deveria listar android-01 … android-10. Abra o Diagnóstico para conferir o SDK e a configuração."
         >
-          O snapshot veio sem aparelhos.
+          O servidor respondeu sem nenhum aparelho.
         </EmptyState>
       ) : visiveis.length === 0 ? (
         <EmptyState
@@ -296,7 +296,7 @@ export function DeviceGrid() {
                     <button type="button" className={styles.paradasBotao} aria-expanded={!recolhido}
                             onClick={() => alternarParadas(g.chave)}>
                       {recolhido ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
-                      Paradas ({g.paradas.length})
+                      Parados ({g.paradas.length})
                     </button>
                     {recolhido ? null : <div className={styles.gridCompacto}>{g.paradas.map((i) => cartao(i, true))}</div>}
                   </>

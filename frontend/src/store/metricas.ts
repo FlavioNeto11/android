@@ -47,8 +47,8 @@ export const ROTULO_DO_ESTADO: Record<EstadoContado, readonly [string, string]> 
   booting: ['iniciando', 'iniciando'],
   stopping: ['parando', 'parando'],
   hibernated: ['hibernado', 'hibernados'],
-  stopped: ['parada', 'paradas'],
-  absent: ['sem AVD', 'sem AVD'],
+  stopped: ['parado', 'parados'],
+  absent: ['sem emulador', 'sem emulador'],
   error: ['com erro', 'com erro'],
   desconhecido: ['desconhecido', 'desconhecidos'],
 };

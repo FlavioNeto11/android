@@ -71,7 +71,7 @@ describe('Configuração no contrato de página', () => {
   it('as cinco abas continuam role=tab com os mesmos nomes, direto na página (sem Card em volta)', async () => {
     await render();
     const abas = allByRole('tab', /.+/, container).map((t) => (t.textContent ?? '').trim());
-    expect(abas).toEqual(['Aplicativos', 'Instâncias e contas', 'IA', 'Fluxos e receitas', 'Limites']);
+    expect(abas).toEqual(['Aplicativos', 'Aparelhos e contas', 'IA', 'Fluxos e receitas', 'Limites']);
     const lista = byRole('tablist', 'Seções de configuração', container);
     // A lista de abas é filha da página, como em Aplicativos — não mais de um cartão (`section`) que envolvia tudo.
     expect(lista.closest('section')).toBeNull();
@@ -99,9 +99,9 @@ describe('Configuração no contrato de página', () => {
     expect(text(container)).toContain('nunca no navegador');
   });
 
-  it('Instâncias e contas: um cartão por servidor, com o nome da máquina no cabeçalho', async () => {
+  it('Aparelhos e contas: um cartão por servidor, com o nome da máquina no cabeçalho', async () => {
     await render();
-    await click(byRole('tab', /^Instâncias e contas/, container));
+    await click(byRole('tab', /^Aparelhos e contas/, container));
     await waitFor(() => expect(text(container)).toContain('Aplicar app a todas'));
     expect(titulosDeCartao()).toEqual(expect.arrayContaining(['Aparelhos, apps e contas', 'Este servidor']));
   });

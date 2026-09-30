@@ -49,7 +49,7 @@ function ConnectionBanner() {
       tone={conn.status === 'disconnected' ? 'danger' : 'warning'}
       icon={WifiOff}
       role="alert"
-      title={conn.status === 'disconnected' ? 'Desconectado do backend' : 'Reconectando ao backend…'}
+      title={conn.status === 'disconnected' ? 'Desconectado do servidor' : 'Reconectando ao servidor…'}
       actions={<Button size="sm" onClick={reconnectNow}>Reconectar agora</Button>}
     >
       Os dados abaixo são os últimos recebidos e <strong>podem estar desatualizados</strong>.<LastSeen at={conn.lastConnectedAt} />{' '}

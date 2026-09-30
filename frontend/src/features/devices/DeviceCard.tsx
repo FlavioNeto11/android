@@ -90,7 +90,7 @@ export function useFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stre
 
 function FrameAge({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? tempoRelativo(ts, now) : 'sem frame'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : 'sem imagem'}</>;
 }
 
 function Thumb({ instance, server, visible, onOpen }: { instance: Instance; server: ServerHint | null; visible: boolean; onOpen: () => void }) {
@@ -167,8 +167,8 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
       ) : (
         <div className={styles.placeholder}>
           <ImageOff size={24} aria-hidden />
-          <span className={styles.placeholderTitle}>{frame ? 'Imagem indisponível' : 'Aguardando o primeiro frame'}</span>
-          <span>{frame ? 'O backend não entregou este frame.' : 'A captura começa assim que a automação estiver pronta.'}</span>
+          <span className={styles.placeholderTitle}>{frame ? 'Imagem indisponível' : 'Aguardando a primeira imagem'}</span>
+          <span>{frame ? 'O servidor não entregou esta imagem.' : 'A captura começa assim que a automação estiver pronta.'}</span>
         </div>
       )}
       {/* Suspensa sobre o marcador (a loja fora de vista) repetiria "sem imagem" com a hora de uma tela que nunca
@@ -176,7 +176,7 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
       {paused && frame && !sensitive ? (
         <div className={styles.pausedOverlay}>
           <span className={styles.pausedTag} title={PAUSED_LABEL.hint}><Pause size={12} aria-hidden /> {PAUSED_LABEL.title}</span>
-          <span className={styles.staleAge}>último frame <FrameAge ts={frame.ts} /></span>
+          <span className={styles.staleAge}>última imagem <FrameAge ts={frame.ts} /></span>
         </div>
       ) : null}
       {stale ? (
@@ -184,7 +184,7 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
           <span className={styles.staleTag} title={staleInfo?.hint}><TriangleAlert size={13} aria-hidden /> Desatualizado</span>
           <span className={styles.staleAge}>
             {staleInfo ? `${staleInfo.title} · ` : ''}
-            {frame ? <>último frame <FrameAge ts={frame.ts} /></> : 'nenhum frame recebido'}
+            {frame ? <>última imagem <FrameAge ts={frame.ts} /></> : 'nenhuma imagem recebida'}
           </span>
         </div>
       ) : null}
@@ -355,9 +355,9 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
                 <StatusBadge meta={controlMeta} size="sm" label={`Controle: ${mine ? 'Você' : controlMeta.label}`} />
               ) : <span />}
               {state === 'online' ? (
-                <span className={styles.frameAge} title="Idade do último frame recebido">
+                <span className={styles.frameAge} title="Idade da última imagem recebida">
                   <Clock size={11} aria-hidden />
-                  <span className="sr-only">Último frame </span>
+                  <span className="sr-only">Última imagem </span>
                   <FrameAge ts={instance.frame?.ts ?? null} />
                 </span>
               ) : null}

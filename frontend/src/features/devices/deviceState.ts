@@ -254,7 +254,7 @@ const ROTULO_EXTRA: Record<Exclude<FocusVerb, InstanceAction>, string> = {
   enter: 'Enter',
   delete: 'Apagar',
   verify_app: 'Verificar app',
-  refresh_frame: 'Atualizar frame',
+  refresh_frame: 'Atualizar imagem',
   reload_context: 'Reler contexto',
   hierarchy: 'Ver hierarquia',
   cancel_command: 'Cancelar comando',
@@ -321,7 +321,7 @@ export function focusActionGroups(instance: Pick<Instance, 'id' | 'state' | 'kin
 
   const observe: FocusItem[] = [
     { action: 'refresh_frame', label: focusLabel('refresh_frame'),
-      disabledReason: online ? null : 'Só há frame novo com o aparelho online.' },
+      disabledReason: online ? null : 'Só há imagem nova com o aparelho online.' },
     { action: 'reload_context', label: focusLabel('reload_context'), disabledReason: null },
     { action: 'hierarchy', label: focusLabel('hierarchy'), disabledReason: null },
   ];
