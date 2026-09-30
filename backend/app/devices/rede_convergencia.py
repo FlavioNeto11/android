@@ -392,8 +392,16 @@ class ConvergenciaDeRede:
             cliente = await self._garantir_cliente(rt, ap)
             evidencia = await provisionar(ap, self.st.db, self.st.secrets, plano, self.cfg, pausa_s=self.pausa_da_tela_s)
         except Exception as exc:
+            conectividade = getattr(rt, "connectivity", None)
+            if "não baixou o perfil" in str(exc) and getattr(conectividade, "state", None) == "unavailable":
+                # android-03 (30/09): o aparelho estava sem internet desde antes da troca e o erro dizia só "não baixou
+                # o perfil". Não se recusa a aplicação por isto — com o bloqueio ativo e a VPN caída a sonda de internet
+                # também dá `unavailable`, e a reaplicação funciona —, só se diz o que a plataforma já mediu.
+                exc = RedeAplicacaoError(f"{exc}; a plataforma mede este aparelho SEM internet "
+                                         f"({getattr(conectividade, 'detail', '') or 'sonda de internet'}): confira a "
+                                         "rede do aparelho — um restart costuma resolver — e peça Reaplicar")
             self._falhou(iid, rev, exc)
-            raise
+            raise exc from None
         novo = rede.registrar_observacao(self.st, iid, rev=rev, estado="configurado",
                                          evidencia=f"{cliente}; {evidencia}{aviso_do_firewall}; falta o reinício "
                                                    "(always-on só vale no boot)")

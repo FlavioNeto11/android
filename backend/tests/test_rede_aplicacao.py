@@ -979,3 +979,30 @@ def test_adb_reverse_so_leva_a_porta_no_argumento(monkeypatch: pytest.MonkeyPatc
     a.remove_reverse(18123)
     assert argvs == [["adb", "-s", "emulator-5640", "reverse", "tcp:18123", "tcp:18123"],
                      ["adb", "-s", "emulator-5640", "reverse", "--remove", "tcp:18123"]]
+
+
+async def test_sem_download_com_o_aparelho_sem_internet_diz_o_que_a_plataforma_mediu(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """android-03 (30/09): o aparelho estava sem internet desde antes da troca, e o erro dizia só "não baixou o
+    perfil". Com a conectividade medida `unavailable`, o erro diz isso e sugere o restart; sem ela, o erro fica como era
+    (a aplicação não é recusada pela sonda: com o bloqueio ativo e a VPN caída ela também dá `unavailable`)."""
+    from app.devices import rede_convergencia
+    from app.models import ConnectivityInfo
+
+    st = parque.state
+    assert st is not None
+    _preparar(parque, monkeypatch, policy="exigida")
+
+    async def sem_download(*_a: object, **_k: object) -> str:
+        raise RedeAplicacaoError("o io.nekohasekai.sfa não baixou o perfil (OK, Create tocados, nenhum GET)")
+
+    monkeypatch.setattr(rede_convergencia, "provisionar", sem_download)
+    rt = st.devices.devices["android-01"]
+    rt.connectivity = ConnectivityInfo(state="unavailable", detail="sem internet: DNS não responde")
+    assert await _passo(parque, "pedido")
+    erro = str(_linha(parque)["error"])
+    assert "não baixou o perfil" in erro and "SEM internet" in erro and "restart" in erro
+    rt.connectivity = ConnectivityInfo(state="healthy")
+    assert await _passo(parque, "pedido")
+    erro = str(_linha(parque)["error"])
+    assert "não baixou o perfil" in erro and "SEM internet" not in erro
