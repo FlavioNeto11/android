@@ -229,6 +229,17 @@ consentimento pendente P5). Estado registrado pelo `aplicar`: 23.4–23.6, 23.9,
 `implemented`/`simulated`; 23.11 `partial`/`real`; 23.2 `blocked` (P15). Em curso: Onda 2 da rede (25.4–25.7, workflow
 `wf_720c8ed8-d1a`, worktree `evo3-d1`).
 
+**Checkpoint 4 (30/09 ~01:35Z).** Onda 2 da rede (25.4–25.7, workflow `wf_720c8ed8-d1a`) integrada em `5306b5d` (um
+conflito no `RedePage`, resolvido), suíte inteira 3821 ok + 1 de ambiente, vitest 833/833; migração 058
+(`network_keys`) ensaiada numa cópia do banco e implantada. Correções achadas na prova real e implantadas: primeira
+medição sem esperar a deriva (`a097f00`), teste de vazamento numa ida só (`549a297`), cliente ausente instalado pela
+loja (`6460baf`). Sing-box promovido (25.10). **Rede real:** android-05 e android-02 (QA) em `trafego_verificado`,
+com o bloqueio provado ("Permission denied" com o cliente parado) e a saída compartilhada detectada (os dois em
+`38.211.146.161`, o IP do central). android-06 (conta real do André, autorização P7): conta lida antes
+(`c-20260930013055-37bcd9`, `session_ready`), rede atribuída com a confirmação por aparelho, convergindo.
+`config.yaml` do central (fora do Git): `rede.servidor.endpoint_lan: "192.168.1.81"` e `rede.sonda.abrir_apps: true`
+(backups em `data/backups/config.yaml.antes-*`).
+
 - **Ajuste de plano (25.5):** a sonda de saída mede por `nc` HTTP a um eco de IP e cobre por UID com `dumpsys
   netstats`, em vez de estender o app de QA, se a medição do 25.1 confirmar que basta. O motivo: a medição fica
   sem app novo a distribuir e a mesma em todos os aparelhos. O app de QA tem build no central (`qa-app/`, Gradle 9.7
