@@ -81,7 +81,7 @@ beforeEach(() => {
     instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
-  useUiStore.setState({ focusInstanceId: null, personaRequest: null });
+  useUiStore.getState().navegar({ tela: 'personas', query: { foco: undefined } }, 'replace');
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);

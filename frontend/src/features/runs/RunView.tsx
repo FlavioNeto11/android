@@ -47,6 +47,17 @@ function defaultTab(status: RunStatus | undefined): TabId {
   return status === 'planning' || status === 'needs_input' || status === 'planned' ? 'plano' : 'instancias';
 }
 
+/** Nome da guia no link (`#/execucoes/<id>?aba=linha-do-tempo`): português, estável, independente do id interno. */
+const ABA_NA_URL: Record<TabId, string> = {
+  plano: 'plano', instancias: 'aparelhos', textos: 'textos', timeline: 'linha-do-tempo', evidencias: 'evidencias',
+  decisoes: 'decisoes', relatorio: 'relatorio',
+};
+
+function abaDaUrl(v: string | undefined): TabId | null {
+  const achada = (Object.keys(ABA_NA_URL) as TabId[]).find((k) => ABA_NA_URL[k] === v);
+  return achada ?? null;
+}
+
 interface RunViewProps {
   /** Mostra o seletor de execuções recentes no cabeçalho (usado no Painel). */
   showPicker?: boolean;
@@ -166,7 +177,21 @@ interface RunBodyProps {
 }
 
 function RunBody({ run, data, loading, picker }: RunBodyProps) {
-  const [tab, setTab] = useState<TabId>(() => defaultTab(run.status));
+  // Na tela Execuções a guia vive no link (`?aba=`); no Painel a mesma visão não mexe na URL da tela.
+  const naTelaExecucoes = useUiStore((s) => s.view === 'execucoes');
+  const abaUrl = useUiStore((s) => (s.view === 'execucoes' ? s.rota.query.aba : undefined));
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const [tab, setTabLocal] = useState<TabId>(() => abaDaUrl(abaUrl) ?? defaultTab(run.status));
+  // Link colado ou Voltar/Avançar com outra guia: a visão acompanha.
+  useEffect(() => {
+    const t = abaDaUrl(abaUrl);
+    if (t) setTabLocal(t);
+  }, [abaUrl]);
+  /** Troca de guia: substitui o link (sem empilhar). A guia padrão do estado da execução não entra no link. */
+  const setTab = (t: TabId) => {
+    setTabLocal(t);
+    if (naTelaExecucoes) trocarQuery({ aba: t === defaultTab(run.status) ? undefined : ABA_NA_URL[t] });
+  };
   const [busy, setBusy] = useState<string | null>(null);
   const selectRun = useUiStore((st) => st.selectRun);
   const [retryResult, setRetryResult] = useState<RetryFailedResponse | null>(null);

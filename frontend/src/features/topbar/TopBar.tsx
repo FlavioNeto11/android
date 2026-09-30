@@ -1,29 +1,23 @@
 import {
-  Server,
   Activity,
   Bot,
   Check,
   Cpu,
   FlaskConical,
-  GraduationCap,
   Hand,
-  LayoutGrid,
-  ListChecks,
   LogOut,
+  Menu as MenuIcon,
   MemoryStick,
   MonitorSmartphone,
-  Package,
   RefreshCw,
-  Settings as SettingsIcon,
   ShieldAlert,
   Smartphone,
   Stethoscope,
   UserRound,
   Wallet,
   X,
-  type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { AiBalance, AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -38,110 +32,41 @@ import { toneClass } from '../../components/tone';
 import { Tooltip } from '../../components/Tooltip';
 import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
-import { intervaloVisivel } from '../../lib/polling';
 import { CONN_STATUS, HEALTH_STATUS, isRunActive, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
-import { hashForView, useUiStore, type View } from '../../store/ui';
-import { useContagemDoAprendizado } from '../aprendizado/contagem';
+import { hashForView, useUiStore } from '../../store/ui';
+import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
 import styles from './TopBar.module.css';
-
-const NAV: { view: View; label: string; icon: LucideIcon }[] = [
-  { view: 'painel', label: 'Painel', icon: LayoutGrid },
-  { view: 'perfis', label: 'Personas', icon: UserRound },
-  { view: 'aplicativos', label: 'Aplicativos', icon: Package },
-  { view: 'execucoes', label: 'Execuções', icon: ListChecks },
-  { view: 'aprendizado', label: 'Aprendizado', icon: GraduationCap },
-  { view: 'infraestrutura', label: 'Infraestrutura', icon: Server },
-  { view: 'configuracao', label: 'Configuração', icon: SettingsIcon },
-  { view: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
-];
 
 export const EXTERNAL_DATA_NOTICE = 'Screenshots e textos das telas são enviados ao provedor externo de IA';
 
-/** De que lado de uma faixa rolável ainda há conteúdo escondido. */
-export type Transbordo = '' | 'inicio' | 'fim' | 'ambos';
-
-/** Pura, para o teste. Tolerância de 1 px: as medidas do navegador chegam arredondadas. */
-export function transbordoDe(m: { scrollLeft: number; clientWidth: number; scrollWidth: number }): Transbordo {
-  const antes = m.scrollLeft > 1;
-  const depois = m.scrollLeft + m.clientWidth < m.scrollWidth - 1;
-  return antes && depois ? 'ambos' : depois ? 'fim' : antes ? 'inicio' : '';
-}
-
-/** Em janela estreita a navegação rola de lado e "Configuração" e "Diagnóstico" sumiam sem pista (P2.5). O CSS
- *  desenha um gradiente na borda que ainda tem seções; aqui só se mede. No jsdom tudo mede zero: sem gradiente. */
-function useTransbordoHorizontal(ref: RefObject<HTMLElement | null>): Transbordo {
-  const [estado, setEstado] = useState<Transbordo>('');
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const medir = () => setEstado(transbordoDe(el));
-    medir();
-    el.addEventListener('scroll', medir, { passive: true });
-    window.addEventListener('resize', medir);
-    // A faixa muda de largura sem `resize` da janela: fonte que termina de carregar, rótulo que troca.
-    const observador = typeof ResizeObserver === 'function' ? new ResizeObserver(medir) : null;
-    observador?.observe(el);
-    return () => {
-      el.removeEventListener('scroll', medir);
-      window.removeEventListener('resize', medir);
-      observador?.disconnect();
-    };
-  }, [ref]);
-  return estado;
-}
-
-/** Releitura da contagem "Para aprovar" (ADR-054, D1). Só depois do login — sem sessão, a leitura só colheria 401 —
- *  e só com a aba visível. Falha é silenciosa (o store explica por quê). */
-const CONTAGEM_A_CADA_MS = 60_000;
-
-function usePendentesDoAprendizado(): number | null {
-  const operator = useSessionStore((s) => s.operator);
-  const pendentes = useContagemDoAprendizado((s) => s.pendentes);
-  useEffect(() => {
-    if (!operator) return undefined;
-    const atualizar = () => void useContagemDoAprendizado.getState().atualizar();
-    atualizar();
-    return intervaloVisivel(atualizar, CONTAGEM_A_CADA_MS);
-  }, [operator]);
-  return operator ? pendentes : null;
-}
-
 export function TopBar() {
-  const view = useUiStore((s) => s.view);
-  const navRef = useRef<HTMLElement>(null);
-  const transborda = useTransbordoHorizontal(navRef);
-  const paraAprovar = usePendentesDoAprendizado();
+  const menuAberto = useUiStore((s) => s.menuAberto);
+  const setMenuAberto = useUiStore((s) => s.setMenuAberto);
   return (
     <header className={styles.bar}>
-      {/* Duas faixas de propósito: em cima, onde estou (marca, seções) e com quem (IA, conexão, operador); embaixo,
-          como está o parque. Numa faixa só, navegação e indicadores só cabiam acima de ~2200 px: abaixo disso o
-          status quebrava de linha sozinho, alinhado à direita sob um vazio. */}
+      {/* Duas faixas de propósito: em cima, a marca e com quem se está (IA, conexão, operador); embaixo, como está o
+          parque. As seções moram no menu lateral (MenuLateral.tsx): na faixa de cima elas não cabiam abaixo de
+          ~1500 px e sumiam sem pista. */}
       <div className={styles.row}>
+        {/* Abaixo de 1024 px o menu lateral vira gaveta, e este botão a abre. */}
+        <button
+          type="button"
+          id={ID_BOTAO_MENU}
+          className={styles.menuBtn}
+          aria-controls={ID_MENU}
+          aria-expanded={menuAberto}
+          onClick={() => setMenuAberto(!menuAberto)}
+        >
+          <MenuIcon size={20} aria-hidden />
+          <span className="sr-only">Menu</span>
+        </button>
         <a href={hashForView('painel')} className={styles.brand} aria-label="Central de Aparelhos — ir para o Painel">
           <span className={styles.brandMark}><MonitorSmartphone size={16} aria-hidden /></span>
           <span className={styles.brandName}>Central de Aparelhos</span>
         </a>
-        {/* O gradiente fica no embrulho: um pseudo-elemento na própria faixa rolaria junto com o conteúdo. */}
-        <div className={styles.navWrap} data-transborda={transborda || undefined}>
-          <nav ref={navRef} className={styles.nav} aria-label="Seções">
-            {NAV.map(({ view: v, label, icon: Icon }) => (
-              <a key={v} href={hashForView(v)} className={styles.navLink} aria-current={view === v ? 'page' : undefined}>
-                <Icon size={15} aria-hidden />
-                {label}
-                {/* A fila do D1: o que o sistema não publica sozinho e espera o dono. */}
-                {v === 'aprendizado' && paraAprovar !== null && paraAprovar > 0 ? (
-                  <span className={styles.navCount} title={`${paraAprovar} item(ns) para aprovar`}>
-                    <span aria-hidden>{formatInt(paraAprovar)}</span>
-                    <span className="sr-only"> ({formatInt(paraAprovar)} para aprovar)</span>
-                  </span>
-                ) : null}
-              </a>
-            ))}
-          </nav>
-        </div>
         <div className={styles.tools}>
           <AiBadge />
           <ConnectionIndicator />
@@ -282,7 +207,7 @@ function Counters() {
   // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM.
   const slots = useAppStore((s) => (s.settings?.auto_start_devices ? s.settings.max_online_devices : null));
   const setView = useUiStore((s) => s.setView);
-  const selectRun = useUiStore((s) => s.selectRun);
+  const abrirExecucao = useUiStore((s) => s.abrirExecucao);
 
   // O total é o que está cadastrado — o "10" fixo de antes fazia um parque de 4 aparelhos aparecer como "4/10".
   const { online, total } = useMemo(() => {
@@ -337,8 +262,8 @@ function Counters() {
           type="button"
           className={cx(styles.counter, blocked > 0 && styles.counterAlert)}
           onClick={() => {
-            if (firstBlocked) selectRun(firstBlocked);
-            setView('execucoes');
+            if (firstBlocked) abrirExecucao(firstBlocked);
+            else setView('execucoes');
           }}
         >
           <Hand size={14} aria-hidden />

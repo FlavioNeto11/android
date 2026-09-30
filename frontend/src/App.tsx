@@ -15,6 +15,7 @@ import { AppsPage } from './features/apps/AppsPage';
 import { InfraPage } from './features/infra/InfraPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { MenuLateral } from './features/topbar/MenuLateral';
 import { TopBar } from './features/topbar/TopBar';
 import { formatAgoCoarse, useNow } from './lib/time';
 import { useAppStore } from './store/app';
@@ -116,7 +117,7 @@ export function App() {
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
-    const names = { painel: 'Painel', perfis: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
+    const names = { painel: 'Painel', personas: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
                     aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
@@ -132,11 +133,12 @@ export function App() {
       </button>
       <TopBar />
       <div className={styles.body}>
+        <MenuLateral />
         <main ref={mainRef} id="conteudo" tabIndex={-1} className={styles.main}>
           <ConnectionBanner />
           <div className={stale ? styles.stale : undefined}>
             {view === 'painel' ? <PainelPage /> : null}
-            {view === 'perfis' ? <ProfilesPage /> : null}
+            {view === 'personas' ? <ProfilesPage /> : null}
             {view === 'aplicativos' ? <AppsPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
             {view === 'aprendizado' ? <AprendizadoPage /> : null}

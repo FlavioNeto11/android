@@ -674,3 +674,57 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text()).toContain('Aparelhos'));
   });
 });
+
+// Revisão de UX de 30/09 (tarefa 01): a URL diz onde a pessoa está — Voltar do navegador fecha o que abriu, o link
+// colado reabre a mesma visão, e o nome antigo `#/perfis` continua valendo.
+describe('Central de Aparelhos — rotas por objeto e menu', () => {
+  const atual = () => {
+    const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
+    return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
+  };
+
+  it('o menu lateral tem as oito seções e marca a atual', async () => {
+    await goTo('#/painel');
+    const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
+    expect(nav.querySelectorAll('a')).toHaveLength(8);
+    expect(atual()).toEqual(['Painel']);
+  });
+
+  it('#/perfis (link antigo) vira #/personas sem quebrar', async () => {
+    await goTo('#/perfis');
+    await waitFor(() => expect(window.location.hash).toBe('#/personas'));
+    expect(atual()).toEqual(['Personas']);
+    expect(document.title).toBe('Personas · Central de Aparelhos');
+    await goTo('#/painel');
+  });
+
+  it('abrir o Foco põe o aparelho na URL, e o Voltar do navegador fecha o painel', async () => {
+    await waitFor(() => byRole('button', 'Abrir android-02 na visão de foco'));
+    await click(byRole('button', 'Abrir android-02 na visão de foco'));
+    await waitFor(() => byRole('dialog', /Visão de foco: android-02/));
+    expect(window.location.hash).toBe('#/painel?foco=android-02');
+    await act(async () => window.history.back());
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    expect(window.location.hash).toBe('#/painel');
+  });
+
+  it('link colado com ?foco= abre o mesmo aparelho', async () => {
+    await goTo('#/infraestrutura?foco=android-01');
+    await waitFor(() => byRole('dialog', /Visão de foco: android-01/));
+    expect(atual()).toEqual(['Infraestrutura']);
+    await click(byRole('button', /^Fechar/, byRole('dialog', /Visão de foco: android-01/)));
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    expect(window.location.hash).toBe('#/infraestrutura');
+  });
+
+  it('Execuções: o link nomeia a execução e a guia; colar o link reabre a mesma guia', async () => {
+    await goTo('#/execucoes');
+    await waitFor(() => expect(window.location.hash).toBe(`#/execucoes/${RUN_ID}`));
+    await goTo(`#/execucoes/${RUN_ID}?aba=linha-do-tempo`);
+    await waitFor(() => expect(byRole('tab', /Linha do tempo/).getAttribute('aria-selected')).toBe('true'));
+    await click(byRole('tab', /^Plano/));
+    // Plano é a guia padrão de uma execução planejando, e aí não entra no link; senão, entra como `aba=plano`.
+    await waitFor(() => expect([`#/execucoes/${RUN_ID}`, `#/execucoes/${RUN_ID}?aba=plano`]).toContain(window.location.hash));
+    await goTo('#/painel');
+  });
+});

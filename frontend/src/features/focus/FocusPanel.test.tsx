@@ -343,7 +343,7 @@ function secao(el: HTMLElement, nome: string): HTMLElement {
 
 describe('FocusPanel — seções da coluna lateral', () => {
   afterEach(() => {
-    useUiStore.setState({ view: 'painel', personaRequest: null });
+    useUiStore.getState().navegar({ tela: 'painel', query: { foco: undefined } }, 'replace');
   });
 
   it('as seções vêm na ordem do desenho, com as de consulta longa no fim e recolhidas', async () => {
@@ -462,8 +462,9 @@ describe('FocusPanel — seções da coluna lateral', () => {
       return s;
     });
     await click(allByRole('button', 'Abrir persona', personas)[0] as HTMLElement);
-    expect(useUiStore.getState().view).toBe('perfis');
-    expect(useUiStore.getState().personaRequest?.id).toBe('ig-1');
+    expect(useUiStore.getState().view).toBe('personas');
+    // O link nomeia a pessoa; o Foco continua aberto (o `foco` vai junto).
+    expect(useUiStore.getState().rota.segmentos).toEqual(['ig-1']);
   });
 });
 

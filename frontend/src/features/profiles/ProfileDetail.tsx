@@ -31,14 +31,23 @@ import styles from './Profiles.module.css';
  * aberta, e só então. "Contas e acesso" funde as antigas Contas e Autenticação; "Imagens" é a galeria; "Aparelhos"
  * são os N vínculos (onda E2, ADR-043).
  */
-export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao' }: {
+export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao', aba: abaControlada, onAbaChange }: {
   profile: Pessoa;
   onBack: () => void;
   onChanged: () => Promise<void>;
-  /** Guia de abertura (ex.: pedida pelo Foco com `openPersona(id, 'contas')`). */
+  /** Guia de abertura quando a guia não é controlada de fora. */
   abaInicial?: Aba;
+  /** Guia controlada pela tela (vem do link `#/personas/<id>/<guia>`); a troca sai por `onAbaChange`. */
+  aba?: Aba;
+  onAbaChange?: (aba: Aba) => void;
 }) {
-  const [aba, setAba] = useState<Aba>(abaInicial);
+  const [abaLocal, setAbaLocal] = useState<Aba>(abaInicial);
+  const aba = abaControlada ?? abaLocal;
+  // Guias, "ir para" da Visão geral e "+ conta" passam todos por aqui: com a guia no link, cada troca chega à URL.
+  const setAba = (a: Aba) => {
+    setAbaLocal(a);
+    onAbaChange?.(a);
+  };
   // Item 12.2: a persona tem contas em vários apps; o filtro de app vale para Memória e Interações.
   const [contas, recarregarContas, erroContas] = useContas(profile.id);
   const [appFiltro, setAppFiltro] = useState<string | null>(null);

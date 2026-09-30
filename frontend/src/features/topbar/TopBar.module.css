@@ -7,7 +7,7 @@
   background: var(--surface-1);
 }
 
-/* Faixa de cima: marca · seções · (IA, conexão, operador). */
+/* Faixa de cima: (botão do menu, abaixo de 1024 px) · marca · (IA, conexão, operador). */
 .row {
   display: flex;
   align-items: center;
@@ -43,72 +43,34 @@
   letter-spacing: -0.01em;
 }
 
-.navWrap {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.nav {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  height: var(--topbar-h);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar { display: none; }
-
-.navLink {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  color: var(--text-3);
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color var(--dur-fast) var(--ease);
-}
-
-.navLink:hover {
-  color: var(--text-1);
-}
-
-.navLink[aria-current="page"] {
-  color: var(--text-1);
-}
-
-/* A contagem "Para aprovar" do Aprendizado (ADR-054): pede decisão do dono, então usa o tom de aviso. */
-.navCount {
-  display: inline-grid;
+/* Abre a gaveta do menu (MenuLateral) abaixo de 1024 px; acima, a coluna lateral está sempre à vista. */
+.menuBtn {
+  display: none;
   place-items: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
-  background: var(--warning-solid);
-  color: var(--text-on-warning);
-  font-size: 11px;
-  font-weight: 700;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
 }
 
-.navLink[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent);
+.menuBtn:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+@media (max-width: 1023px) {
+  .menuBtn { display: grid; }
 }
 
 .tools {
   display: flex;
   flex: none;
+  margin-left: auto;
   align-items: center;
   gap: var(--sp-3);
 }
@@ -460,50 +422,14 @@ button.counter:focus-visible {
   font-size: var(--fs-xs);
 }
 
-/* Pista de que a navegação continua: gradiente do lado que ainda tem seções (`data-transborda` vem do TopBar.tsx,
-   que mede a faixa). Vale em qualquer largura: entre 900 e ~1400 px a faixa também pode rolar (P2.5). */
-.navWrap::before,
-.navWrap::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 36px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
-}
-.navWrap::before { left: 0; background: linear-gradient(to right, #13181e, transparent); }
-.navWrap::after { right: 0; background: linear-gradient(to left, #13181e, transparent); }
-.navWrap[data-transborda="fim"]::after,
-.navWrap[data-transborda="ambos"]::after,
-.navWrap[data-transborda="inicio"]::before,
-.navWrap[data-transborda="ambos"]::before { opacity: 1; }
-
-/* Até ~1480 px a marca vira só o ícone e a navegação perde os ícones: é o que deixa as sete seções inteiras em
-   1366 e quase inteiras em 1024 (o resto rola, com a pista acima). */
-@media (max-width: 1480px) {
-  .brandName { display: none; }
-  .row { gap: var(--sp-4); }
-  .navLink svg { display: none; }
-}
-
 @media (max-width: 1180px) {
-  .navLink { padding: 0 9px; }
   /* Conexão e operador viram só ícone: o texto segue no DOM (leitor de tela e tooltip), só não ocupa largura. */
   .conn :global(*) { font-size: 0; }
   .opName { display: none; }
 }
 
-/* 11.1 — janela estreita: marca e ferramentas numa linha, a navegação desce inteira para a de baixo (rolável),
-   e os indicadores seguem na faixa própria. */
 @media (max-width: 900px) {
-  .row { flex-wrap: wrap; row-gap: 0; padding: 0 var(--sp-4); }
-  .brandName { display: inline; }
-  .tools { margin-left: auto; }
-  .navWrap { order: 3; flex-basis: 100%; margin: 0 calc(-1 * var(--sp-4)); padding: 0 var(--sp-2); border-top: 1px solid var(--border-1); }
-  .nav { height: 44px; }
-  .navLink svg { display: inline; }
+  .row { padding: 0 var(--sp-4); gap: var(--sp-3); }
   /* A régua inteira (~950 px) não cabe: sem medidor e sem etiqueta de vagas (o tooltip diz), e se ainda faltar
      largura os indicadores descem para uma segunda linha em vez de rolar escondidos. */
   .strip { flex-wrap: wrap; row-gap: 2px; padding: 4px var(--sp-4); }
@@ -518,7 +444,6 @@ button.counter:focus-visible {
   .ai { flex: 0 1 auto; }
   .aiChip { min-width: 0; max-width: 120px; }
   .conn { border: 0; padding: 0; }
-  .navLink { padding: 0 9px; }
 
   /* Cinco contadores não cabem numa linha de ~350 px: a faixa vira coluna (saúde em cima) e os contadores viram
      grade 3 + 2. As divisórias passam a ser o `gap` sobre o fundo cor de borda. */

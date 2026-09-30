@@ -53,9 +53,22 @@ const LEAD: Record<Aba, string> = {
 
 const usd = (v: number) => (v >= 0.01 ? `US$ ${v.toFixed(2)}` : v > 0 ? '< US$ 0,01' : 'US$ 0');
 
+const ABAS: readonly Aba[] = ['loja', 'apps', 'versoes', 'rede', 'proxy'];
+const ehAba = (v: string | undefined): v is Aba => !!v && (ABAS as readonly string[]).includes(v);
+
 export function AppsPage() {
-  const [aba, setAba] = useState<Aba>('loja');
-  const [aberto, setAberto] = useState<string | null>(null);
+  // Guia e app aberto vêm do link: `#/aplicativos?aba=versoes`, `#/aplicativos/<app>` (o app abre em "Por app").
+  const rota = useUiStore((s) => s.rota);
+  const navegar = useUiStore((s) => s.navegar);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const voltarPara = useUiStore((s) => s.voltarPara);
+  const aberto = rota.tela === 'aplicativos' ? rota.segmentos[0] ?? null : null;
+  const aba: Aba = aberto ? 'apps' : ehAba(rota.query.aba) ? rota.query.aba : 'loja';
+  // Trocar de guia substitui o link; "Loja" é a guia padrão e não aparece nele.
+  const setAba = (a: Aba) => trocarQuery({ aba: a === 'loja' ? undefined : a });
+  const abrirApp = (id: string) => navegar({ tela: 'aplicativos', segmentos: [id] });
+  const fecharApp = () => voltarPara({ tela: 'aplicativos', query: { aba: 'apps' } }, 'push',
+    (de) => de.tela === 'aplicativos' && de.segmentos.length === 0);
   const abas: TabDef<Aba>[] = [
     { id: 'loja', label: 'Loja', icon: Store },
     { id: 'apps', label: 'Por app', icon: AppWindow },
@@ -75,7 +88,7 @@ export function AppsPage() {
       ) : null}
       {!aberto ? <Tabs tabs={abas} active={aba} onChange={setAba} idBase="aplicativos" label="Aplicativos" /> : null}
       <TabPanel idBase="aplicativos" id={aba}>
-        {aba === 'apps' ? (aberto ? <AppDetailView appId={aberto} onBack={() => setAberto(null)} /> : <AppsGrid onOpen={setAberto} />) : null}
+        {aba === 'apps' ? (aberto ? <AppDetailView appId={aberto} onBack={fecharApp} /> : <AppsGrid onOpen={abrirApp} />) : null}
         {aba === 'versoes' ? <ReleasesPage embutida /> : null}
         {aba === 'loja' ? <LojaPage /> : null}
         {aba === 'rede' ? <RedePage /> : null}

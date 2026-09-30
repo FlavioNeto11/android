@@ -9,10 +9,13 @@ import { useSessionStore } from '../../store/session';
 import { makeInstance, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
-import { TopBar, transbordoDe } from './TopBar';
+import { useUiStore } from '../../store/ui';
+import { MenuLateral } from './MenuLateral';
+import { TopBar } from './TopBar';
 
 // P2.5 da auditoria UX (27/09): o contador "online / total" tinha um 10 fixo (`Math.max(10, …)`) — um parque de
-// 4 aparelhos aparecia como "4/10" — e a navegação rolável não dava pista de que havia mais seções.
+// 4 aparelhos aparecia como "4/10". Revisão de UX de 30/09 (tarefa 01): as seções saíram da faixa do topo (cortadas
+// sem pista) para o menu lateral, que abaixo de 1024 px vira gaveta aberta pelo botão "Menu".
 
 let root: Root;
 let container: HTMLElement;
@@ -40,8 +43,9 @@ async function renderBar(instances: Instance[]): Promise<HTMLElement> {
     instances: Object.fromEntries(instances.map((i) => [i.id, i])),
     instanceOrder: instances.map((i) => i.id),
   });
+  // Topo e menu juntos, como no App: o botão "Menu" do topo abre a gaveta do menu lateral.
   await act(async () => {
-    root.render(<TopBar />);
+    root.render(<><TopBar /><MenuLateral /></>);
   });
   return container;
 }
@@ -67,28 +71,70 @@ describe('TopBar — contador de aparelhos', () => {
   });
 });
 
-describe('TopBar — pista de rolagem da navegação', () => {
-  it('transbordoDe diz de que lado ainda há seções escondidas', () => {
-    expect(transbordoDe({ scrollLeft: 0, clientWidth: 300, scrollWidth: 300 })).toBe('');
-    expect(transbordoDe({ scrollLeft: 0, clientWidth: 300, scrollWidth: 500 })).toBe('fim');
-    expect(transbordoDe({ scrollLeft: 200, clientWidth: 300, scrollWidth: 500 })).toBe('inicio');
-    expect(transbordoDe({ scrollLeft: 100, clientWidth: 300, scrollWidth: 500 })).toBe('ambos');
-    // arredondamento de 1 px do navegador não conta como transbordo
-    expect(transbordoDe({ scrollLeft: 0, clientWidth: 299, scrollWidth: 300 })).toBe('');
-    expect(transbordoDe({ scrollLeft: 1, clientWidth: 299, scrollWidth: 300 })).toBe('');
+describe('Menu lateral — as oito seções sempre alcançáveis', () => {
+  beforeEach(() => {
+    useUiStore.getState().navegar({ tela: 'painel', query: { foco: undefined } }, 'replace');
+    useUiStore.setState({ menuAberto: false, menuRecolhido: false });
   });
 
-  it('a faixa fica dentro do embrulho medido e, sem transbordo (jsdom mede zero), não ganha o atributo', async () => {
+  const menu = (el: HTMLElement) => el.querySelector('nav[aria-label="Seções"]') as HTMLElement;
+
+  it('lista as oito seções como links canônicos, com aria-current só na atual', async () => {
     const el = await renderBar([]);
-    const nav = el.querySelector('nav[aria-label="Seções"]');
-    expect(nav).not.toBeNull();
-    expect(nav?.parentElement?.hasAttribute('data-transborda')).toBe(false);
-    // as oito seções (Aprendizado entrou com o ADR-054) continuam todas na faixa: a pista é visual, nada some do DOM
-    expect(nav?.querySelectorAll('a')).toHaveLength(8);
+    const links = Array.from(menu(el).querySelectorAll('a'));
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/aprendizado', '#/infraestrutura', '#/configuracao',
+      '#/diagnostico',
+    ]);
+    expect(links.map((a) => text(a))).toContain('Personas');
+    expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Painel']);
+    await act(async () => useUiStore.getState().setView('personas'));
+    expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Personas']);
+  });
+
+  it('o aparelho em Foco vai junto na troca de seção', async () => {
+    const el = await renderBar([]);
+    await act(async () => useUiStore.getState().openFocus('android-01'));
+    expect(menu(el).querySelector('a[href="#/infraestrutura?foco=android-01"]')).not.toBeNull();
+  });
+
+  it('recolher deixa só os ícones sem tirar o nome acessível dos links', async () => {
+    const el = await renderBar([]);
+    const botao = Array.from(menu(el).querySelectorAll('button')).find((b) => text(b) === 'Recolher menu') as HTMLElement;
+    expect(botao.getAttribute('aria-expanded')).toBe('true');
+    await act(async () => botao.click());
+    expect(useUiStore.getState().menuRecolhido).toBe(true);
+    expect(menu(el).hasAttribute('data-recolhido')).toBe(true);
+    expect(botao.getAttribute('aria-expanded')).toBe('false');
+    expect(text(menu(el).querySelector('a[href="#/diagnostico"]') as HTMLElement)).toBe('Diagnóstico');
+    expect(window.localStorage.getItem('cda.menuRecolhido')).toBe('true');
+  });
+
+  it('gaveta: o botão "Menu" abre, o teclado entra no item atual, Esc fecha e devolve o foco ao botão', async () => {
+    const el = await renderBar([]);
+    const botao = el.querySelector('#botao-menu') as HTMLButtonElement;
+    expect(botao.getAttribute('aria-controls')).toBe('menu-principal');
+    expect(botao.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => botao.click());
+    expect(botao.getAttribute('aria-expanded')).toBe('true');
+    expect(menu(el).hasAttribute('data-aberto')).toBe(true);
+    expect(document.activeElement?.getAttribute('href')).toBe('#/painel');
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(useUiStore.getState().menuAberto).toBe(false);
+    expect(document.activeElement).toBe(botao);
+  });
+
+  it('trocar de seção fecha a gaveta', async () => {
+    await renderBar([]);
+    await act(async () => useUiStore.getState().setMenuAberto(true));
+    await act(async () => useUiStore.getState().setView('diagnostico'));
+    expect(useUiStore.getState().menuAberto).toBe(false);
   });
 });
 
-describe('TopBar — contagem "Para aprovar" do Aprendizado (ADR-054)', () => {
+describe('Menu lateral — contagem "Para aprovar" do Aprendizado (ADR-054)', () => {
   afterEach(() => {
     useSessionStore.setState({ operator: null });
     useContagemDoAprendizado.setState({ pendentes: null });
