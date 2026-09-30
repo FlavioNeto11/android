@@ -1,8 +1,5 @@
-import { InstallAppMenu } from './InstallAppMenu';
-import { OpenAppMenu } from './OpenAppMenu';
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
-import type { Instance } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -11,13 +8,11 @@ import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/ap
 import { ROTULO_DO_ESTADO, contarSelecao, useContagemDeAparelhos } from '../../store/metricas';
 import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
-import { ACTION_META, runBulkAction, useBusyStore } from './actions';
 import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
+import { BarraDeSelecao } from '../painel/BarraDeSelecao';
 import { DeviceCard } from './DeviceCard';
-import {
-  QUICK_VERBS, bulkActionsFor, bulkBlockersFor, countByServer, type BulkContext,
-} from './deviceState';
+import { countByServer } from './deviceState';
 import styles from './Devices.module.css';
 
 export function DeviceGrid() {
@@ -105,9 +100,12 @@ export function DeviceGrid() {
           <kbd>Ctrl</kbd> + clique alterna · <kbd>Shift</kbd> + clique seleciona um intervalo
         </span>
         <div className={styles.sectionActions}>
-          <span className={styles.selSummary} aria-live="polite">
-            {hydrated ? `${selecionados} de ${total} selecionados` : ''}
-          </span>
+          {/* Com aparelhos marcados, o contador mora na barra de seleção (logo abaixo): dizer duas vezes só confunde. */}
+          {selecionados === 0 ? (
+            <span className={styles.selSummary} aria-live="polite">
+              {hydrated ? `0 de ${total} selecionados` : ''}
+            </span>
+          ) : null}
           <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(taskOrder)}>
             Selecionar todas
           </Button>
@@ -116,6 +114,21 @@ export function DeviceGrid() {
           </Button>
         </div>
       </div>
+
+      {/* Presa ao topo da grade, na fila normal: nunca cobre um cartão. Com o Foco aberto mantém o lugar, sem botões. */}
+      {selectedIds.length > 0 && hydrated ? (
+        <BarraDeSelecao
+          ids={selectedIds}
+          selecionados={selecionados}
+          emFoco={focusId !== null}
+          hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')}
+          hasHibernated={instances.some((i) => selectedSet.has(i.id) && i.state === 'hibernated')}
+          hibernation={hibernation}
+          // Numa seleção mista, o verbo só é oferecido se TODOS aceitarem: era assim que `create` chegava a um
+          // aparelho de outra máquina e criava um AVD que nunca seria usado.
+          selected={instances.filter((i) => selectedSet.has(i.id))}
+        />
+      ) : null}
 
       {!hydrated ? (
         connStatus === 'connecting' ? (
@@ -166,88 +179,7 @@ export function DeviceGrid() {
           ))}
         </div>
       )}
-
-      {selectedIds.length > 0 && hydrated ? (
-        <BulkBar
-          ids={selectedIds}
-          hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')}
-          hasHibernated={instances.some((i) => selectedSet.has(i.id) && i.state === 'hibernated')}
-          hibernation={hibernation}
-          // Numa seleção mista, o verbo só é oferecido se TODOS aceitarem: era assim que `create` chegava a um
-          // aparelho de outra máquina e criava um AVD que nunca seria usado.
-          selected={instances.filter((i) => selectedSet.has(i.id))}
-        />
-      ) : null}
     </section>
   );
 }
 
-/** `selected` aqui exige o `id`: a barra precisa DIZER quem impede o verbo, não só escondê-lo (achado #62). */
-interface BulkBarProps extends Omit<BulkContext, 'selected'> {
-  ids: string[];
-  selected: readonly Pick<Instance, 'id' | 'supported_verbs'>[];
-}
-
-function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkBarProps) {
-  const bulkBusy = useBusyStore((s) => s.bulkBusy);
-  const clearSelection = useUiStore((s) => s.clearSelection);
-  const actions = bulkActionsFor({ hasAbsent, hasHibernated, hibernation, selected });
-  // O verbo que sumiu da barra era um mistério: reaparece desabilitado, com quem o impede. Só os verbos que
-  // o foco também oferece — `create`/`wake` dependem do estado da seleção, não de capacidade.
-  const bloqueados = QUICK_VERBS
-    .filter((q) => !q.needsHibernation || hibernation)
-    .map((q) => ({ action: q.action, quem: bulkBlockersFor(selected, q.action) }))
-    .filter((b) => b.quem.length > 0);
-
-  return (
-    <div className={styles.bulkDock}>
-      <div className={styles.bulk} role="toolbar" aria-label={`Ação em ${plural(ids.length, 'aparelho', 'aparelhos')}`}>
-        <span className={styles.bulkLabel}>
-          <Smartphone size={15} aria-hidden />
-          Ação em {plural(ids.length, 'aparelho', 'aparelhos')}
-        </span>
-        {actions.map((a) => a === 'open_app' ? (
-          <OpenAppMenu key={a} size="sm" loading={bulkBusy === a} disabled={bulkBusy !== null && bulkBusy !== a}
-                       onPick={(appId) => void runBulkAction(ids, a, { app_id: appId })} />
-        ) : a === 'install_apk' ? (
-          <InstallAppMenu key={a} size="sm" loading={bulkBusy === a} disabled={bulkBusy !== null && bulkBusy !== a}
-                          onPick={(appId) => void runBulkAction(ids, a, { app_id: appId })} />
-        ) : (
-          <Button
-            key={a}
-            size="sm"
-            icon={ACTION_META[a].icon}
-            loading={bulkBusy === a}
-            disabled={bulkBusy !== null && bulkBusy !== a}
-            onClick={() => void runBulkAction(ids, a)}
-          >
-            {ACTION_META[a].label}
-          </Button>
-        ))}
-        {bloqueados.map(({ action, quem }) => (
-          <Button
-            key={`x-${action}`}
-            size="sm"
-            icon={ACTION_META[action].icon}
-            disabledReason={`${quem.length === 1 ? quem[0] : quem.join(', ')} não ${quem.length === 1 ? 'aceita' : 'aceitam'} `
-              + `“${ACTION_META[action].label}”. Tire ${quem.length === 1 ? 'esse aparelho' : 'esses aparelhos'} da seleção para usar o verbo.`}
-          >
-            {ACTION_META[action].label}
-          </Button>
-        ))}
-        <span className={styles.bulkSep} aria-hidden />
-        <Button
-          size="sm"
-          variant="dangerGhost"
-          icon={ACTION_META.reset.icon}
-          loading={bulkBusy === 'reset'}
-          disabled={bulkBusy !== null && bulkBusy !== 'reset'}
-          onClick={() => void runBulkAction(ids, 'reset')}
-        >
-          Resetar dados…
-        </Button>
-        <Button size="sm" variant="ghost" icon={X} iconOnly label="Limpar seleção" onClick={clearSelection} />
-      </div>
-    </div>
-  );
-}

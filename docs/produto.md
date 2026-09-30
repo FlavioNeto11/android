@@ -66,7 +66,14 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   personas combinam com o pedido (perfil, voz, crenças como coerência, disponibilidade); o aparelho e o servidor
   saem da sessão pronta, do vínculo e da carga. Antes de criar, "Quem faz e onde" mostra cada persona com o motivo,
   o aparelho e o servidor, as descartadas e as que faltam dados (com link para completar na persona). Pedido de
-  propaganda ou de voto não é roteado (ADR-048). Os modos manuais ficam em "escolher manualmente".
+  propaganda ou de voto não é roteado (ADR-048). Os modos manuais ficam no lado "Manual" do controle
+  segmentado **Automático | Manual** (sempre há um dos dois marcado). Refinar com IA, Planejar e Executar são etapas
+  em sequência, numeradas; quando uma está indisponível, o motivo aparece no próprio botão (ao passar o mouse ou focar).
+- **Seleção em massa e Foco (revisão de UX, 30/09).** Com aparelhos marcados, uma barra fica presa ao topo da grade
+  (nunca sobre os cartões): "N selecionados", Iniciar, Parar, Reiniciar e "Mais ações" (Hibernar, Instalar app, Abrir
+  app e, numa "Zona de perigo" à parte, Resetar dados, sempre com a confirmação). O Foco é um drawer lateral que
+  **sobrepõe** a página sem reorganizar a grade; fecha com Esc, com o clique no fundo ou em Fechar, e devolve o teclado
+  ao cartão. Com ele aberto, a barra em massa esconde os botões (as ações do aparelho estão no drawer).
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada

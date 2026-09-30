@@ -19,6 +19,9 @@
   display: flex;
   min-height: 0;
   min-width: 0;
+  /* O drawer de Foco é SOBREPOSTO (position: absolute) a esta área: não empurra o conteúdo, então a grade, o Comando
+     e o `main` mantêm a largura com o painel aberto ou fechado. */
+  position: relative;
 }
 
 .main {
