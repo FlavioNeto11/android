@@ -5,8 +5,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 10px 0 9px;
+  height: var(--hit-min);
+  padding: 0 12px 0 10px;
   border: 1px solid var(--tone-border);
   border-radius: var(--radius-pill);
   background: var(--tone-soft);
@@ -27,13 +27,13 @@
 .contagem {
   display: inline-grid;
   place-items: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--tone-text);
   color: var(--bg);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 

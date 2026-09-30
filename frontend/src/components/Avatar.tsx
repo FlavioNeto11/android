@@ -22,7 +22,7 @@ function iniciais(nome: string): string {
  *  círculo — nunca um quadrado quebrado nem um vazio do tamanho da imagem. */
 export function Avatar({ src, name, size = 40 }: AvatarProps) {
   const [falhou, setFalhou] = useState(false);
-  const estilo = { width: size, height: size, fontSize: Math.round(size * 0.38) };
+  const estilo = { width: size, height: size, fontSize: Math.max(13, Math.round(size * 0.38)) };
   if (!src || falhou) {
     return (
       <span className={cx(ui.avatar, ui.fallback)} style={estilo} aria-hidden>

@@ -4,6 +4,7 @@ import {
   Cpu,
   FlaskConical,
   Hand,
+  Info,
   LogOut,
   Menu as MenuIcon,
   MemoryStick,
@@ -15,12 +16,12 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useMemo } from 'react';
-import type { AiBalance, AiStatus, Health } from '../../api/types';
+import type { AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { KvList, KvRow } from '../../components/JsonTree';
 import {
-  balanceOfRole, balanceShortName, balanceStateLabel, balanceTone, balanceUsage, headerBalances, money,
+  balanceOfRole, balanceShortName, balanceStateLabel, balanceTone, balanceUsage, balanceUsdLabel, headerBalances,
 } from '../../lib/aiBalance';
 import { Popover } from '../../components/Popover';
 import { Skeleton } from '../../components/Skeleton';
@@ -72,9 +73,18 @@ export function TopBar() {
           <OperadorAtual />
         </div>
       </div>
+      {/* Três grupos, da esquerda para a direita: Saúde, Capacidade e Custos. O rótulo de cada um é texto discreto; o
+          que pede ação (semáforo, contador "aguardando você", saldo baixo) é o único que ganha cor. */}
       <div className={styles.strip}>
-        <SaudeAmbiente />
-        <Counters />
+        <div className={styles.grupo} role="group" aria-label="Saúde">
+          <span className={styles.grupoRotulo} aria-hidden>Saúde</span>
+          <SaudeAmbiente />
+        </div>
+        <div className={styles.grupo} role="group" aria-label="Capacidade">
+          <span className={styles.grupoRotulo} aria-hidden>Capacidade</span>
+          <Counters />
+        </div>
+        <Custos />
       </div>
     </header>
   );
@@ -232,7 +242,6 @@ function AiBadge() {
       ) : (
         <AiDetailsPopover ai={ai} features={features} />
       )}
-      <AiBalanceChips balances={ai.balances} />
       {ai.sends_data_externally ? (
         <Tooltip content={EXTERNAL_DATA_NOTICE}>
           <span className={styles.notice} tabIndex={0} role="img" aria-label={EXTERNAL_DATA_NOTICE}>
@@ -248,20 +257,30 @@ function AiBadge() {
  * Saldo estimado de cada conta de IA em uso (ADR-051). Só aparece a conta que paga alguma função (ou que está
  * barrada): o chip é alerta, não enfeite — verde discreto quando tudo vai bem, cor quando pede ação.
  */
-function AiBalanceChips({ balances }: { balances: AiBalance[] | undefined }) {
+function Custos() {
+  const balances = useAppStore((s) => s.health?.ai?.balances);
   const list = headerBalances(balances);
   if (list.length === 0) return null;
+  const emOutraMoeda = list.some((b) => b.currency !== 'USD');
   return (
-    <div className={styles.balances} role="group" aria-label="Saldo das contas de IA">
-      {list.map((b) => (
-        <Tooltip key={b.account} content={`${b.label}: ${b.message} Usada por: ${balanceUsage(b)}. Detalhes em Configuração › IA.`}>
-          <span tabIndex={0} className={styles.balanceChip} data-tone={balanceTone(b)}>
-            <Wallet size={12} aria-hidden />
-            <span>{balanceShortName(b.account)}</span>
-            <strong>{b.estimated_balance === null ? '?' : money(b.estimated_balance, b.currency)}</strong>
-          </span>
-        </Tooltip>
-      ))}
+    <div className={styles.grupo} role="group" aria-label="Custos: saldo das contas de IA">
+      <span className={styles.grupoRotulo} aria-hidden>Custos</span>
+      <div className={styles.balances}>
+        {list.map((b) => (
+          <Tooltip key={b.account} content={`${b.label}: ${b.message} Usada por: ${balanceUsage(b)}. Detalhes em Configuração › IA.`}>
+            <span tabIndex={0} className={styles.balanceChip} data-tone={balanceTone(b)}>
+              <Wallet size={14} aria-hidden />
+              <span>{balanceShortName(b.account)}</span>
+              <strong>{balanceUsdLabel(b)}</strong>
+            </span>
+          </Tooltip>
+        ))}
+      </div>
+      <Tooltip content={`Valores estimados: o saldo que você informou menos o consumo medido desde então. Todos em US$${emOutraMoeda ? '; a conta em outra moeda aparece convertida pelo câmbio configurado' : ''}.`}>
+        <span className={styles.estimado} tabIndex={0} role="img" aria-label="Valores estimados, em US$">
+          <Info size={14} aria-hidden />
+        </span>
+      </Tooltip>
     </div>
   );
 }
@@ -313,7 +332,7 @@ function AiDetailsPopover({ ai, features: healthFeatures }: { ai: AiStatus; feat
             {ai.balances.map((b) => (
               <KvRow key={b.account} label={balanceShortName(b.account)}>
                 <span className={styles.aiAccount} data-tone={balanceTone(b)}>
-                  {b.estimated_balance === null ? 'sem leitura' : money(b.estimated_balance, b.currency)}
+                  {b.estimated_balance === null ? 'sem leitura' : balanceUsdLabel(b)}
                   {b.state !== 'ok' ? ` · ${balanceStateLabel(b.state)}` : ''}
                 </span>
                 <br /><small className={styles.aiNote}>{balanceUsage(b)}</small>

@@ -126,6 +126,22 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
     expect(document.activeElement).toBe(botao);
   });
 
+  it('escolher uma seção na gaveta leva o foco ao conteúdo, não ao botão "Menu"', async () => {
+    const main = document.createElement('main');
+    main.id = 'conteudo';
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+    const el = await renderBar([]);
+    await act(async () => useUiStore.getState().setMenuAberto(true));
+    const link = el.querySelector('a[href="#/diagnostico"]') as HTMLAnchorElement;
+    await act(async () => {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(useUiStore.getState().menuAberto).toBe(false);
+    expect(document.activeElement).toBe(main);
+    main.remove();
+  });
+
   it('trocar de seção fecha a gaveta', async () => {
     await renderBar([]);
     await act(async () => useUiStore.getState().setMenuAberto(true));
@@ -185,11 +201,27 @@ describe('TopBar — saldo das contas de IA (ADR-051)', () => {
     await act(async () => {
       useAppStore.setState({ health: { ...snap.health, ai: { ...snap.health.ai, balances } } as typeof snap.health });
     });
-    const grupo = el.querySelector('[aria-label="Saldo das contas de IA"]') as HTMLElement;
+    const grupo = el.querySelector('[aria-label="Custos: saldo das contas de IA"]') as HTMLElement;
     expect(grupo).not.toBeNull();
     expect(text(grupo)).toContain('US$ 1,50');
     expect(text(grupo)).not.toContain('R$');
     const chips = Array.from(grupo.querySelectorAll('[data-tone]')).map((c) => c.getAttribute('data-tone'));
     expect(chips).toEqual(['warning', 'danger']);
+  });
+
+  it('padroniza em US$: a conta em reais entra convertida e o ícone avisa que o valor é estimado', async () => {
+    const snap = makeSnapshot();
+    const balances = [
+      { ...base, account: 'gemini', label: 'Gemini', currency: 'BRL', units_per_usd: 5.2, roles: ['decide'], in_use: true,
+        estimated_balance: 29.37, estimated_balance_usd: 5.6481, state: 'ok' },
+    ];
+    const el = await renderBar([]);
+    await act(async () => {
+      useAppStore.setState({ health: { ...snap.health, ai: { ...snap.health.ai, balances } } as typeof snap.health });
+    });
+    const grupo = el.querySelector('[aria-label="Custos: saldo das contas de IA"]') as HTMLElement;
+    expect(text(grupo)).toContain('US$ 5,65');
+    expect(text(grupo)).not.toContain('R$');
+    expect(grupo.querySelector('[aria-label="Valores estimados, em US$"]')).not.toBeNull();
   });
 });

@@ -88,14 +88,14 @@
 .contagem {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 20px;
+  height: 20px;
   margin-left: auto;
   padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--warning-solid);
   color: var(--text-on-warning);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -143,11 +143,11 @@
   position: absolute;
   top: 3px;
   right: 3px;
-  min-width: 16px;
-  height: 16px;
+  min-width: 20px;
+  height: 20px;
   margin: 0;
-  padding: 0 3px;
-  font-size: 10px;
+  padding: 0 4px;
+  font-size: var(--fs-xs);
 }
 
 .cabecalhoGaveta,

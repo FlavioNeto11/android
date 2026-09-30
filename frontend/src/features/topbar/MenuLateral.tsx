@@ -31,6 +31,8 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
 
 export const ID_MENU = 'menu-principal';
 export const ID_BOTAO_MENU = 'botao-menu';
+/** O `<main>` do App (`App.tsx`), que recebe o foco quando a gaveta fecha por troca de seção. */
+const ID_CONTEUDO = 'conteudo';
 
 /** A contagem "Para aprovar" do Aprendizado (ADR-054, D1). A releitura é a da caixa de Pendências (uma leitura a cada
  *  minuto alimenta as duas); sem sessão não há leitura, e falha é silenciosa (o store explica por quê). */
@@ -53,6 +55,7 @@ export function MenuLateral() {
   const pendencias = usePendencias().total;
   const navRef = useRef<HTMLElement>(null);
   const abertoAntes = useRef(false);
+  const foiNavegacao = useRef(false);
 
   // Gaveta: ao abrir, o teclado entra no item ativo (ou no primeiro); ao fechar, volta ao botão "Menu".
   useEffect(() => {
@@ -61,7 +64,11 @@ export function MenuLateral() {
         ?? navRef.current?.querySelector<HTMLElement>('a');
       alvo?.focus();
     } else if (abertoAntes.current) {
-      document.getElementById(ID_BOTAO_MENU)?.focus();
+      // Escolheu uma seção: o teclado segue para o conteúdo novo (um Tab já cai no primeiro controle da tela), e não
+      // de volta ao botão "Menu". Esc ou "Fechar" não trocaram de tela: voltam ao botão que abriu a gaveta.
+      const destino = foiNavegacao.current ? document.getElementById(ID_CONTEUDO) : null;
+      (destino ?? document.getElementById(ID_BOTAO_MENU))?.focus();
+      foiNavegacao.current = false;
     }
     abertoAntes.current = aberto;
   }, [aberto]);
@@ -102,7 +109,10 @@ export function MenuLateral() {
                   className={styles.item}
                   aria-current={view === tela ? 'page' : undefined}
                   title={recolhido ? label : undefined}
-                  onClick={() => setMenuAberto(false)}
+                  onClick={() => {
+                    foiNavegacao.current = aberto;
+                    setMenuAberto(false);
+                  }}
                 >
                   <Icon size={18} aria-hidden className={styles.icone} />
                   <span className={styles.rotulo}>{label}</span>

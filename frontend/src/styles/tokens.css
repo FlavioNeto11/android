@@ -1,8 +1,8 @@
 /*
  * Design tokens — tema escuro "sala de controle".
  * Neutros grafite/ardósia, UM acento (teal calmo). Cores de status só aparecem junto de ícone + texto.
- * Contrastes verificados para WCAG AA sobre --surface-1/2:
- *   --text-1 ≈ 14:1 · --text-2 ≈ 8:1 · --text-3 ≈ 5.3:1 · tons de status (texto) ≥ 6:1
+ * Contrastes do texto sobre --surface-1/2 medidos pela razão WCAG (scripts/ui-auditoria.js::__uiRazao); a tabela
+ * está em docs/revisoes-ux/07-tipografia-a11y.md.
  */
 :root {
   color-scheme: dark;
@@ -20,11 +20,14 @@
   --border-1: #232b35;
   --border-2: #313b48;
   --border-3: #44505f;
+  /* Borda de controle (campo, caixa de seleção, chave): 3:1 contra as superfícies, exigência de contraste de
+     componente (WCAG 1.4.11). As bordas decorativas de cartão seguem nos tons acima. */
+  --control-border: #6d7d91;
 
   /* texto */
   --text-1: #e7ebf0;
   --text-2: #aab5c3;
-  --text-3: #8492a3;
+  --text-3: #8f9cae;
   --text-on-accent: #04201c;
 
   /* acento único */
@@ -67,12 +70,20 @@
   /* tipografia */
   --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-  --fs-xs: 11.5px;
-  --fs-sm: 12.5px;
-  --fs-md: 13.5px;
-  --fs-lg: 15px;
-  --fs-xl: 18px;
-  --fs-2xl: 22px;
+  /* Escala da tarefa 07 (30/09): 12 · 13 · 14 · 16 · 20 · 24 px. Texto de interface nunca abaixo de 13 px e corpo
+     em 14 px. `--fs-xs` e `--fs-sm` ficam os dois em 13 px de propósito: legenda e apoio se distinguem pela cor e
+     pelo peso, não por um tamanho ilegível. 12 px só existe como `--fs-2xs`, para contador dentro de selo redondo
+     e rótulo de gráfico; cada uso é exceção documentada em docs/revisoes-ux/07-tipografia-a11y.md. */
+  --fs-2xs: 12px;
+  --fs-xs: 13px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
   --lh-tight: 1.25;
   --lh-normal: 1.5;
 
@@ -101,9 +112,12 @@
   /* layout */
   --topbar-h: 56px;
   --page-pad: 24px;
-  /* Nunca mais largo que a janela: entre 600 e 720 px o painel ocupava mais que a tela e era recortado
-     pelo `overflow: clip` do app. Abaixo de 720 px ele vira tela cheia (Focus.module.css). */
-  --focus-panel-w: min(clamp(600px, 44vw, 920px), 100vw);
+  /* Largura máxima do conteúdo da página em telas muito largas (centralizada; a grade de aparelhos ganha colunas
+     até aí, o cartão não estica). */
+  --page-max: 1600px;
+  /* Alvo de clique: mínimo de 32 px e o confortável para toque. */
+  --hit-min: 32px;
+  --hit-touch: 40px;
   /* Faixas de layout da PÁGINA (design §9.1). Variável CSS não entra em `@container`/`@media`, então elas vivem
      aqui como contrato escrito e se repetem literais nas regras `@container page (…)`:
        compacto  < 560 px   → uma coluna, recuos menores, formulários empilhados
