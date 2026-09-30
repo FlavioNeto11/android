@@ -128,6 +128,7 @@ class FakeOutlook:
     outra_conta_na_coluna: str = ""
     protecao_na_verificacao: bool = False
     duas_entradas: bool = False
+    titulo_das_boas_vindas: str = "Welcome to Outlook"   # o carrossel gira (android-03: "Connected and protected")
     conta_existe: bool = True
     email: str = ""
     senha: str = ""
@@ -168,7 +169,8 @@ class FakeOutlook:
         if t == "boas_vindas":
             extra = [_No("android.widget.Button", (40, 900, 680, 970), text="Add account", clickable=True,
                          acao="entrada")] if self.duas_entradas else []
-            return [_No("android.widget.TextView", (40, 300, 680, 360), text="Welcome to Outlook", rid="title"),
+            return [_No("android.widget.LinearLayout", (32, 80, 688, 904), rid="outlook_stories"),
+                    _No("android.widget.TextView", (40, 300, 680, 360), text=self.titulo_das_boas_vindas, rid="title"),
                     *extra,
                     _No("android.widget.Button", (40, 1000, 680, 1070), text="Add account", rid="btn_primary_button",
                         clickable=True, acao="entrada"),
@@ -753,6 +755,15 @@ def test_paginas_de_autenticacao_nao_confirmam_a_conta() -> None:
         arvore = parse_hierarchy(FakeOutlook(tela=tela, email=EMAIL).page_source())
         assert k.conta_observada(arvore) is None, tela
         assert geometria.mostra_o_identificador(arvore, EMAIL), tela
+
+
+def test_boas_vindas_com_outro_titulo_do_carrossel_ainda_e_boas_vindas() -> None:
+    """O título das boas-vindas gira (android-03, 30/09: "Connected and protected"); a tela é a mesma."""
+    k = conhecimento.do_app(OUTLOOK)
+    app = FakeOutlook(tela="boas_vindas", email=EMAIL)
+    app.titulo_das_boas_vindas = "Connected and protected"
+    r = k.reconhecer(parse_hierarchy(app.page_source()), package=OUTLOOK, locale="en-US")
+    assert (r.tela, r.tipo) == ("boas_vindas", "login")
 
 
 @pytest.mark.parametrize(("tela", "esperada", "tipo"), [

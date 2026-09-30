@@ -120,9 +120,10 @@ telas:
   # Observado 30/09 android-10: AddAccountActivity, AutoCompleteTextView `auto_complete_input_email`. Vem antes das
   # boas-vindas porque o `btn_primary_button` existe nas duas.
   - {tela: adicionar_conta, tipo: login, ids: [auto_complete_input_email], razao: tela de adicionar conta}
-  # Observado 30/09 android-10: SplashActivity, "Welcome to Outlook" com "Add account" e "Create new account".
-  - {tela: boas_vindas, tipo: login, sinal: boas_vindas, ids: [btn_primary_button],
-     razao: boas-vindas do Outlook sem conta}
+  # Observado 30/09 android-10: SplashActivity, "Welcome to Outlook" com "Add account" e "Create new account". O título é
+  # um carrossel (`outlook_stories`): no android-03 a mesma tela dizia "Connected and protected" — por isso a tela é
+  # reconhecida pelo carrossel, e não pelo título.
+  - {tela: boas_vindas, tipo: login, ids: [outlook_stories], razao: boas-vindas do Outlook sem conta}
   # Observado 30/09 android-10: ~10 s de ProgressBar antes do WebView da Microsoft.
   - {tela: carregando_autenticacao, tipo: carregando, ids: [common_auth_webview_progressbar],
      razao: a página de autenticação da Microsoft está carregando}
