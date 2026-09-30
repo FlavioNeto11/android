@@ -72,8 +72,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Seleção em massa e Foco (revisão de UX, 30/09).** Com aparelhos marcados, uma barra fica presa ao topo da grade
   (nunca sobre os cartões): "N selecionados", Iniciar, Parar, Reiniciar e "Mais ações" (Hibernar, Instalar app, Abrir
   app e, numa "Zona de perigo" à parte, Resetar dados, sempre com a confirmação). O Foco é um drawer lateral que
-  **sobrepõe** a página sem reorganizar a grade; fecha com Esc, com o clique no fundo ou em Fechar, e devolve o teclado
-  ao cartão. Com ele aberto, a barra em massa esconde os botões (as ações do aparelho estão no drawer).
+  **sobrepõe** a página sem reorganizar a grade; fecha com Esc, com o clique na página ou em Fechar, e devolve o teclado
+  ao cartão (o menu lateral e os cartões seguem clicáveis: o Foco acompanha a troca de tela ou de aparelho). Com ele aberto, a barra em massa esconde os botões (as ações do aparelho estão no drawer).
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada

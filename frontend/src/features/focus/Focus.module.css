@@ -8,6 +8,9 @@
   z-index: calc(var(--z-panel) - 1);
   background: rgba(4, 7, 10, 0.52);
   animation: fade-in var(--dur-med) var(--ease);
+  /* Só escurece. O menu lateral e os cartões seguem clicáveis com o drawer aberto (o `?foco=` acompanha a troca de
+     tela, e um clique em outro cartão troca de aparelho); o clique no resto da página fecha (Drawer.tsx). */
+  pointer-events: none;
 }
 
 .panel {

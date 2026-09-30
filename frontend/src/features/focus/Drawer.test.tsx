@@ -64,6 +64,32 @@ describe('Drawer — casca modal do Foco', () => {
     expect(fechar).toHaveBeenCalledTimes(2);
   });
 
+  it('clicar na página fecha e o clique é engolido; menu lateral, cartões e o topo seguem clicáveis', async () => {
+    const fechar = vi.fn();
+    const agiu = vi.fn();
+    const pagina = document.createElement('div');
+    pagina.innerHTML = `
+      <header><button type="button" id="topo">Topo</button></header>
+      <nav><a href="#/personas" id="menu">Personas</a></nav>
+      <main id="conteudo">
+        <button type="button" id="acao">Ação da página</button>
+        <article data-instance-card="android-02"><button type="button" id="cartao">Abrir android-02</button></article>
+      </main>`;
+    document.body.appendChild(pagina);
+    for (const id of ['topo', 'menu', 'acao', 'cartao']) pagina.querySelector(`#${id}`)!.addEventListener('click', (e) => { e.preventDefault(); agiu(id); });
+    await act(async () => root.render(<Casca onClose={fechar}><button type="button">Um</button></Casca>));
+
+    for (const id of ['topo', 'menu', 'cartao']) await click(pagina.querySelector(`#${id}`)!);
+    expect(fechar).not.toHaveBeenCalled();
+    expect(agiu.mock.calls.map((c) => c[0])).toEqual(['topo', 'menu', 'cartao']);
+
+    agiu.mockClear();
+    await click(pagina.querySelector('#acao')!);
+    expect(fechar).toHaveBeenCalledTimes(1);
+    expect(agiu).not.toHaveBeenCalled(); // o clique só fechou: não agiu sobre o que estava embaixo
+    pagina.remove();
+  });
+
   it('Esc num campo de texto, num popover ou numa caixa de confirmação NÃO fecha o drawer', async () => {
     const fechar = vi.fn();
     await act(async () => root.render(

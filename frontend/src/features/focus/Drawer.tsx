@@ -1,4 +1,4 @@
-import { useEffect, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import styles from './Focus.module.css';
 
 const FOCAVEIS =
@@ -29,6 +29,14 @@ export function elementosFocaveis(raiz: HTMLElement): HTMLElement[] {
   return visiveis.length > 0 ? visiveis : todos;
 }
 
+/**
+ * O que conta como "clicar fora" do drawer: o conteúdo da página (o `main` do App), menos os cartões de aparelho.
+ * Ficam de fora de propósito, e continuam clicáveis com o drawer aberto: o menu lateral (os links levam o `?foco=` junto
+ * para a tela seguinte) e os cartões (trocar de aparelho). Também o topo, os popovers e os avisos.
+ */
+const AREA_DE_FORA = '#conteudo';
+const CARTAO = '[data-instance-card]';
+
 interface DrawerProps {
   panelRef: RefObject<HTMLElement | null>;
   ariaLabel: string;
@@ -47,6 +55,28 @@ interface DrawerProps {
  * Abaixo de 720 px de janela o painel é tela cheia (Focus.module.css) e o fundo nem aparece.
  */
 export function Drawer({ panelRef, ariaLabel, onClose, restoreSelector, children }: DrawerProps) {
+  const fecharRef = useRef(onClose);
+  fecharRef.current = onClose;
+
+  // Clique fora: o primeiro clique na página SÓ fecha (é engolido, como num fundo de modal) em vez de também agir
+  // sobre o que estava embaixo. Isso também evita o pior caso: um clique que navega logo depois de um `history.back()`
+  // ainda pendente reabriria o Foco. Captura, para chegar antes do botão clicado.
+  useEffect(() => {
+    const aoClicar = (e: MouseEvent) => {
+      const alvo = e.target;
+      const painel = panelRef.current;
+      if (!(alvo instanceof Element) || !painel || painel.contains(alvo)) return;
+      const fora = alvo.closest('[data-drawer-scrim]') !== null
+        || (alvo.closest(AREA_DE_FORA) !== null && alvo.closest(CARTAO) === null);
+      if (!fora) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fecharRef.current();
+    };
+    document.addEventListener('click', aoClicar, true);
+    return () => document.removeEventListener('click', aoClicar, true);
+  }, [panelRef]);
+
   useEffect(() => {
     const ativo = document.activeElement;
     const origem = ativo instanceof HTMLElement && ativo !== document.body ? ativo : null;
@@ -92,8 +122,8 @@ export function Drawer({ panelRef, ariaLabel, onClose, restoreSelector, children
 
   return (
     <>
-      {/* O fundo só existe para o clique fora: não é foco nem conteúdo. */}
-      <div className={styles.scrim} aria-hidden onClick={onClose} data-drawer-scrim />
+      {/* Só escurece: não pega o ponteiro (menu e cartões seguem clicáveis); o clique fora é tratado acima. */}
+      <div className={styles.scrim} aria-hidden data-drawer-scrim />
       <aside
         ref={panelRef}
         tabIndex={-1}
