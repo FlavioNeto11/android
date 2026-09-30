@@ -186,12 +186,15 @@ IDE; só navegação, nenhum clique com efeito): todas as medições de "Antes e
 a 1440, 1024, 390 e 1920 px (o saldo deixou de sobrepor o botão ao lado a 390 px; a régua de status coube numa linha a
 1440 px; conteúdo centralizado em 1600 px a 1920 px). O dev server foi parado ao fim.
 
+**real** (documentação): `backend/.venv/Scripts/python.exe scripts/docs-check.py` (raiz do worktree, 30/09 21:02Z): 0 erros, 1 aviso antigo do `estado.json`, alheio.
+
 **not_run**: Lighthouse; axe a 1024 e 390 px e nas guias internas (só as 8 telas a 1440 px); leitor de tela; navegação completa por teclado nas outras seis telas (só
-Painel e Personas, como no critério de aceite); `python scripts/docs-check.py` (sem `python` nesta máquina, e a tarefa não
-mexe em `docs/` além do relatório); teste de contraste do tema em alto contraste do sistema (`forced-colors`).
+Painel e Personas, como no critério de aceite); teste de contraste do tema em alto contraste do sistema (`forced-colors`).
 
 ## O que ficou de fora
 
+- **Risco para a tarefa 09**: a regra global `button { background-color: transparent; border: 0 }` (`base.css`) só afeta botão sem classe de fundo. Varredura do código: todo `<button>` tem `className` (exceto os `hidden` de submit), então nenhum botão depende mais do cinza nativo; ainda assim vale um olhar visual da 09 em botões novos das tarefas 06 e 08.
+- **Nota de método**: o "antes" da tabela do auditor próprio foi medido com a primeira versão do `ui-auditoria.js` (antes da regra do maior entre campo e rótulo nas caixas de seleção, da tolerância de 0,5 px e da exclusão de `font-size: 0`). Essas três mudanças só reduziriam os números do "antes"; o axe (mesmas 3 violações de contraste antes) corrobora a coluna de contraste.
 - Adoção dos estilos de texto nomeados (`.t-*`) nos componentes; os tokens já chegam a todos por `--fs-*`.
 - Ampliar os alvos para 40 px em telas de toque.
 - Alvos em controles que só aparecem com popover aberto ou no fim de um fluxo de confirmação (o auditor só mede o que
