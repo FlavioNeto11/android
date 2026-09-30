@@ -24,8 +24,9 @@ name: CI
 on:
   # Push só na main (28/09): com um runner próprio só, o push de cada branch com PR rodava duas vezes (push e
   # pull_request) e enchia a fila; o branch com PR segue testado pelo `pull_request`.
-  push:
-    branches: [main]
+  # PUSH DESLIGADO em 30/09/2026 (decisão do dono: o ambiente ainda não é produção e esperar o CI atrasava todo o
+  # processo). A rede de segurança é a corrida diária abaixo (conjunto inteiro, com PostgreSQL), o disparo manual e o
+  # pull_request. Para voltar a rodar em todo push da main: devolver `push: branches: [main]` aqui.
   pull_request:
   workflow_dispatch:
   schedule:

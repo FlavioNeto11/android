@@ -84,6 +84,12 @@ dono. Não aponte a variável para outro PostgreSQL da máquina: a credencial de
 
 ## 5. CI
 
+**Desde 30/09/2026 o CI não roda mais a cada push na `main`** (decisão do dono: ambiente ainda não produtivo; o CI
+atrasava o processo). Onde a tabela abaixo diz "todo push/PR", leia "PR, corrida diária e disparo manual". A rede de
+segurança é a corrida diária das 05:17 UTC (conjunto inteiro, com PostgreSQL) e o `workflow_dispatch`; o laço de
+trabalho é `scripts/testes-afetados.py` (§4). Não é mais preciso `[skip ci]` nos commits. Para voltar: devolver
+`push: branches: [main]` ao `on:` do `ci.yml` (e esperar o CI antes do deploy).
+
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
