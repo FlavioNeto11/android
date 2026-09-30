@@ -79,42 +79,6 @@ export function rotuloDoComando(verbo: string): string {
   return COMANDOS[verbo] ?? humanizar(verbo);
 }
 
-// ---- tempo relativo ---------------------------------------------------------------------------------------
-
-const S = 1000;
-const MIN = 60 * S;
-const H = 60 * MIN;
-const D = 24 * H;
-
-function unidades(n: number, singular: string, plural: string): string {
-  return `${n} ${n === 1 ? singular : plural}`;
-}
-
-/**
- * Duração em uma unidade só, arredondada para baixo: "12 s", "1 min", "3 h", "6 dias", "2 meses".
- * "há 161 h" vira "há 6 dias" e "há 1 min 14 s" vira "há 1 min": quem olha quer a ordem de grandeza, não a precisão.
- */
-export function duracaoHumana(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '—';
-  if (ms < MIN) return `${Math.floor(ms / S)} s`;
-  if (ms < H) return `${Math.floor(ms / MIN)} min`;
-  if (ms < D) return `${Math.floor(ms / H)} h`;
-  const dias = Math.floor(ms / D);
-  if (dias < 30) return unidades(dias, 'dia', 'dias');
-  if (dias < 365) return unidades(Math.floor(dias / 30), 'mês', 'meses');
-  return unidades(Math.floor(dias / 365), 'ano', 'anos');
-}
-
-/** "agora", "há 12 s", "há 1 min", "há 3 h", "há 6 dias". Sem instante válido: "—". */
-export function tempoRelativo(iso: string | null | undefined, agoraMs: number): string {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
-  const idade = Math.max(0, agoraMs - t);
-  if (idade < 5 * S) return 'agora';
-  return `há ${duracaoHumana(idade)}`;
-}
-
 // ---- evidência observada --------------------------------------------------------------------------------
 
 const NIVEL_OBSERVADO: Readonly<Record<string, string>> = {

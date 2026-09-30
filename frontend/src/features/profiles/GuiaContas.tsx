@@ -18,7 +18,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
-import { formatAgo, formatDateTime, useNow } from '../../lib/time';
+import { tempoRelativo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { aparelhosDe, ehEndereco, handleDe, type Pessoa } from './pessoa';
@@ -388,7 +388,7 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
             {c.automated_login ? 'login automático' : 'login pela pessoa (Foco)'}
           </Badge>
           {fase ? <Badge size="sm" tone={fase.tone}>{fase.label}</Badge> : null}
-          {conferida ? <span className={styles.muted}>conferida {formatAgo(conferida, now)}</span> : null}
+          {conferida ? <span className={styles.muted}>conferida {tempoRelativo(conferida, now)}</span> : null}
         </div>
         {observada ? <p className={styles.detail}>Conta observada na tela: @{observada}</p> : null}
         {escolhe ? (

@@ -17,7 +17,7 @@ import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
@@ -344,7 +344,7 @@ function InterventionQueue({ profiles, instances, workers }: {
                     <Smartphone size={13} aria-hidden />
                     {p.instance_id ?? <span className={styles.muted}>sem aparelho vinculado</span>}
                     {server ? <ServerBadge server={server} size="sm" estatico /> : null}
-                    <span className={styles.muted}>· {formatAgoCoarse(p.session.verified_at, now)}</span>
+                    <span className={styles.muted}>· {tempoRelativo(p.session.verified_at, now)}</span>
                   </p>
                   {p.session.detail ? <p className={styles.filaMotivo}>{p.session.detail}</p> : null}
                 </div>

@@ -9,8 +9,8 @@ import { confirm } from '../../components/Confirm';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx } from '../../lib/format';
 import { metaOf, type StatusMeta } from '../../lib/status';
-import { duracaoHumana, rotuloDoComando } from '../../lib/rotulos';
-import { useNow } from '../../lib/time';
+import { rotuloDoComando } from '../../lib/rotulos';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { ACTION_META, cancelarComando, comandoAbertoDe } from './actions';
@@ -55,12 +55,15 @@ function hora(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(undefined, { hour12: false });
 }
 
-/** Quanto tempo faz, numa unidade só ("há 12 s", "há 3 min", "há 6 dias"). Para um comando em voo é o que diz se travou. */
+/**
+ * Quanto tempo faz, numa unidade só ("há 12 s", "há 3 min", "há 6 dias"), pelo formatador único (`lib/time`). Para um
+ * comando em voo é o que diz se travou. Sem instante (ou no futuro) não diz nada: a trilha não mostra travessão.
+ */
 export function idade(iso: string | null, agora = Date.now()): string {
   if (!iso) return '';
   const ms = agora - new Date(iso).getTime();
   if (Number.isNaN(ms) || ms < 0) return '';
-  return `há ${duracaoHumana(ms)}`;
+  return tempoRelativo(iso, agora);
 }
 
 /**

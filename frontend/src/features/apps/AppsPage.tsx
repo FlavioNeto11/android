@@ -26,7 +26,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { ACCOUNT_SESSION_STATUS, APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, metaOf, RUN_STATUS } from '../../lib/status';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { LojaPage } from '../loja/LojaPage';
 import { ProxyPage } from '../loja/ProxyPage';
@@ -173,7 +173,7 @@ function AppsGrid({ onOpen }: { onOpen: (id: string) => void }) {
               <Stat icon={Package} rotulo="versões" valor={String(a.releases)} />
             </dl>
             <span className={styles.muted}>
-              {a.last_run_at ? `última execução ${formatAgo(a.last_run_at, now)}` : 'nenhuma execução nos últimos 7 dias'}
+              {a.last_run_at ? `última execução ${tempoRelativo(a.last_run_at, now)}` : 'nenhuma execução nos últimos 7 dias'}
             </span>
           </button>
         );
@@ -256,7 +256,7 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                       <StatusBadge meta={metaOf(RUN_STATUS, r.status)} size="sm" />
                       <span className={styles.runCommand}>{r.command}</span>
                       {(r.app_ids ?? []).length > 1 ? <Badge size="sm" tone="accent">{(r.app_ids ?? []).length} apps</Badge> : null}
-                      <span className={styles.muted}>{formatAgo(r.created_at, now)}</span>
+                      <span className={styles.muted}>{tempoRelativo(r.created_at, now)}</span>
                     </button>
                   </li>
                 ))}
@@ -298,7 +298,7 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                     <button type="button" className={styles.failRow} onClick={() => abrirExecucao(f.run_id)}>
                       <strong>{f.title}</strong>
                       <span className={styles.failDetail}>{f.status_detail ?? '—'}</span>
-                      <span className={styles.muted}>{f.finished_at ? formatAgo(f.finished_at, now) : ''}</span>
+                      <span className={styles.muted}>{f.finished_at ? tempoRelativo(f.finished_at, now) : ''}</span>
                     </button>
                   </li>
                 ))}

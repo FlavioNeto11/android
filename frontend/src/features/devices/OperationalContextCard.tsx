@@ -17,7 +17,7 @@ import { type LoadError, toLoadError } from '../../lib/loadError';
 import {
   CONNECTIVITY_STATE, INSTANCE_STATE, READINESS_PHASE, SESSION_STATUS, STREAM_STATUS, metaOf, type StatusMeta,
 } from '../../lib/status';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { SESSION_PHASE_LABEL } from '../profiles/sessionGate';
 
 export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMeta> = {
@@ -30,7 +30,7 @@ export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], St
 /** Só este pedaço assina o relógio de 1 s: com `useNow()` no topo, o cartão inteiro re-renderizava a cada segundo. */
 export function Quando({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? formatAgoCoarse(ts, now) : 'nunca'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : 'nunca'}</>;
 }
 
 /**

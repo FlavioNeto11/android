@@ -20,7 +20,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { Tabs } from '../../components/Tabs';
 import { cx, formatGb, formatMb, formatPercent, plural } from '../../lib/format';
 import { SESSION_STATUS, metaOf, type Tone } from '../../lib/status';
-import { ageMs, formatAgo, formatClock, useNow } from '../../lib/time';
+import { ageMs, tempoRelativo, formatClock, useNow } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
@@ -223,7 +223,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
       <CardBody>
         {/* Idade do dado também aqui: uma tela parada parecia atual porque o central nunca se declarava velho. */}
         <p className={cx(styles.dim, idadeDoDado !== null && idadeDoDado > 30_000 && styles.alerta)}>
-          Últimas métricas: {metrics ? formatAgo(metrics.ts, now) : 'ainda não chegaram'}
+          Últimas métricas: {metrics ? tempoRelativo(metrics.ts, now) : 'ainda não chegaram'}
           {health?.problems?.length ? ` · ${plural(health.problems.length, 'problema', 'problemas')} em Diagnóstico` : ''}
         </p>
         <div className={styles.recursos}>
@@ -382,7 +382,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
       <CardBody>
         {/* Idade do dado é informação de primeira classe: sem ela, uma tela velha parece atual. */}
         <p className={cx(styles.dim, velho && styles.alerta)}>
-          Último contato: {formatAgo(worker.last_seen_at, now)}
+          Último contato: {tempoRelativo(worker.last_seen_at, now)}
           {velho ? ' — os dados abaixo podem estar desatualizados' : ''}
           {worker.state_detail ? ` · ${worker.state_detail}` : ''}
         </p>
@@ -420,7 +420,7 @@ function TunelDoWorker({ worker, now }: { worker: Worker; now: number }) {
     <p className={cx(styles.dim, fora && styles.alerta)}>
       <Cable size={14} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} />
       Túnel: {fora ? 'fora' : 'no ar'}
-      {worker.transport_since ? ` (${formatAgo(worker.transport_since, now)})` : ''}
+      {worker.transport_since ? ` (${tempoRelativo(worker.transport_since, now)})` : ''}
       {fora && worker.transport_detail ? ` — ${worker.transport_detail}` : ''}
     </p>
   );
@@ -791,7 +791,7 @@ function ListaDeEventos({ itens, now, vazio }: { itens: readonly EventRecord[]; 
     <ul className={styles.linhas}>
       {itens.map((e, n) => (
         <li key={e.id ?? `${e.ts}-${n}`} className={cx(styles.linha, e.level === 'error' && styles.alerta)}>
-          <span className={styles.dim} title={formatAgo(e.ts, now)}>{formatClock(e.ts)}</span>
+          <span className={styles.dim} title={tempoRelativo(e.ts, now)}>{formatClock(e.ts)}</span>
           <span className={styles.aparelhoId}>{e.instance_id}</span>
           <span className="truncate" title={e.message}>{e.message}</span>
         </li>

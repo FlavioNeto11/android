@@ -20,7 +20,7 @@ import { AutoGrid, PageSection } from '../../components/Page';
 import { StatusBadge } from '../../components/StatusBadge';
 import { plural } from '../../lib/format';
 import { APP_INSTALL_STATE, DRIFT_KIND, INSTANCE_STATE, SESSION_STATUS, metaOf } from '../../lib/status';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { chaveDoApp } from '../../store/reducer';
 import { toast, toastError } from '../../store/toasts';
@@ -201,7 +201,7 @@ function CartaoDoVinculo({ profile, vinculo: v, apps: instalados, onChanged }: {
               <span className={styles.badgeRow}>
                 <StatusBadge meta={metaOf(SESSION_STATUS, v.session.status)} size="sm" srPrefix="Sessão neste aparelho" />
                 {v.session.stale ? <Badge size="sm" tone="warning">precisa reler</Badge> : null}
-                {v.session.verified_at ? <span className={styles.muted}>conferida {formatAgo(v.session.verified_at, now)}</span> : null}
+                {v.session.verified_at ? <span className={styles.muted}>conferida {tempoRelativo(v.session.verified_at, now)}</span> : null}
               </span>
             ) : <span className={styles.muted}>sem conta que sirva a este vínculo</span>}
           </Linha>

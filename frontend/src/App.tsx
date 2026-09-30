@@ -19,7 +19,7 @@ import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { MenuLateral } from './features/topbar/MenuLateral';
 import { TopBar } from './features/topbar/TopBar';
-import { formatAgoCoarse, useNow } from './lib/time';
+import { tempoRelativo, useNow } from './lib/time';
 import { useAppStore } from './store/app';
 import { reconnectNow, startLive } from './store/live';
 import { useSessionStore } from './store/session';
@@ -35,7 +35,7 @@ function RetryCountdown({ at }: { at: number | null }) {
 function LastSeen({ at }: { at: number | null }) {
   useNow();
   if (!at) return null;
-  return <> Última atualização em tempo real {formatAgoCoarse(new Date(at).toISOString(), Date.now())}.</>;
+  return <> Última atualização em tempo real {tempoRelativo(new Date(at).toISOString(), Date.now())}.</>;
 }
 
 /** Com dados já carregados e o canal ao vivo fora do ar: avisa que a tela pode estar desatualizada. */

@@ -10,7 +10,7 @@ import { cx } from '../../lib/format';
 import { LONG_PRESS_MS, isDrag, resolveGesture, type Gesture, type PointerSample } from '../../lib/gesture';
 import { localId } from '../../lib/ids';
 import { INSTANCE_STATE } from '../../lib/status';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
 import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
@@ -60,7 +60,7 @@ interface Ripple {
 
 function FrameAge({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? formatAgoCoarse(ts, now) : '—'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : '—'}</>;
 }
 
 export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(

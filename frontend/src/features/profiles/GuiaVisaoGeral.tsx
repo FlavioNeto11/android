@@ -16,7 +16,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ACCOUNT_SESSION_STATUS, INSTANCE_STATE, PROFILE_STATUS, metaOf } from '../../lib/status';
 import { plural } from '../../lib/format';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import type { Aba } from './abas';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
@@ -108,7 +108,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
           <div className={styles.statRow}>
             <StatFigure value={totalInteracoes ?? '—'} label="interações confirmadas" />
             <StatFigure value={semIaPct === null ? '—' : `${semIaPct}%`} label="roda sem IA" />
-            <StatFigure value={ultimoContato ? formatAgo(ultimoContato, now) : 'nunca'} label="último contato" />
+            <StatFigure value={ultimoContato ? tempoRelativo(ultimoContato, now) : 'nunca'} label="último contato" />
           </div>
         </CardBody>
       </Card>
