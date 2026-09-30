@@ -1356,10 +1356,11 @@ class SocialService:
         return self.get_account(profile_id, account_id)
 
     def delete_account(self, profile_id: str, account_id: str) -> None:
-        conta = self.get_account(profile_id, account_id)
-        if conta.automated_login:
+        self.get_account(profile_id, account_id)
+        if self.repo.eh_pacote_ancora(profile_id, self.repo.pacote_da_conta(profile_id, account_id)):
             # O perfil ainda é ancorado no @ do app âncora (tabela e sessão do provedor): tirar a conta daria um
-            # perfil sem a sessão que o resto do sistema lê.
+            # perfil sem a sessão que o resto do sistema lê. Só a do app âncora: login automático não é âncora — a
+            # conta do Outlook (login gerenciado desde o 23.8, sem ser âncora) sai como qualquer outra.
             raise SocialError("anchor_account", f"A conta do {self._rotulo_ancora()} é a âncora deste perfil e não pode"
                                                 " ser removida.", 409)
         self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))

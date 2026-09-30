@@ -1,0 +1,102 @@
+# Conhecimento de TELAS do Outlook, como dado (ADR-052, item 23.8). Lido pelo classificador genérico
+# (`app/automation/conhecimento_de_telas.py`) e, pelo `sessao.yaml` desta pasta, pelo motor genérico de sessão.
+#
+# O que é OBSERVADO e o que é SUPOSIÇÃO vem marcado em cada linha. Observado = árvore da plataforma (UiAutomator2) no
+# android-10, Outlook 5.2635.3, em 30/09/2026: boas-vindas, "Add account", a espera do WebView de autenticação, "Verify
+# your email" e "Enter your password". Tudo DEPOIS da senha (continuar conectado, telas do Outlook depois de entrar,
+# caixa de entrada, gaveta com a conta) e as telas de desafio da Microsoft são suposição conservadora: se não casarem,
+# a tela fica desconhecida e o motor para — nunca vira sucesso.
+#
+# Os sinais de tela casam contra o texto da tela, uma linha por elemento ("texto descrição"). `(?m)` ancora cada sinal
+# numa LINHA: o Outlook é um app de correio, e o detector de desafio roda no meio da execução sobre a caixa de entrada
+# — um assunto de e-mail com a frase solta não pode parar a execução. Os de desafio e código usam frases de TÍTULO de
+# página (linha inteira) e, no "Verify your email", duas linhas da mesma página que nunca aparecem juntas numa lista de
+# mensagens. Cada classe acentuada traz a forma sem acento (o detector casa contra o texto normalizado).
+app: com.microsoft.office.outlook
+versao: 1
+idioma_padrao: en
+
+sinais:
+  en:
+    # --- entrada (observado) ---
+    boas_vindas: '(?m)^\s*welcome to outlook\s*$'                    # TextView `title`
+    adicionar_conta: '^\s*add account\s*$'                            # Button `btn_primary_button` das boas-vindas
+    continuar: '^\s*continue\s*$'                                     # Button `btn_primary_button` do "Add account"
+    # Entrar com OUTRA conta ou criar uma nunca é o botão do formulário; "Send a code" / "Already received a code?"
+    # são o caminho do código, que é da pessoa.
+    outra_forma: '(google|create new account|qr code|send (a )?code|already received a code)'
+    # --- WebView da Microsoft (observado) ---
+    usar_senha: '^\s*use your password\s*$'                           # Button do "Verify your email"
+    entrar: '^\s*(next|sign in)\s*$'                                  # Button "Next" do "Enter your password"
+    # "Verify your email" com o botão de enviar código: a Microsoft propõe código por padrão (observado).
+    verificar_email: '(?ms)^\s*verify your email\b.*^\s*(send|get) (a )?code\b'
+    # --- desafios da Microsoft (SUPOSIÇÃO: textos públicos da Microsoft, não observados neste parque) ---
+    codigo: '(?m)^\s*(enter code|approve sign[- ]?in request|verify your identity|check your authenticator app)\s*[.!]?\s*$'
+    conta_travada: "(?m)^\\s*(help us protect your account|your account has been (temporarily )?(locked|blocked|suspended)|we'?ve detected something unusual about this sign[- ]?in)\\s*[.!]?\\s*$"
+    # --- depois da senha (SUPOSIÇÃO) ---
+    senha_incorreta: '(your account or password is incorrect|that password is incorrect|incorrect password)'
+    conta_inexistente: "(that microsoft account doesn'?t exist|we couldn'?t find an account with that)"
+    manter_conectado: '(?m)^\s*stay signed in\?\s*$'
+    nao: '^\s*no\s*$'                                                 # a recusa do "Stay signed in?"
+    caixa_de_entrada: '(?m)^\s*inbox\s*$'
+  # Toda a tabela `pt` é SUPOSIÇÃO: o aparelho observado roda em inglês. Os ids (estrutura) valem nos dois idiomas; o
+  # que o texto pt não casar fica desconhecido e para o login para a pessoa.
+  pt:
+    boas_vindas: '(?m)^\s*(boas-vindas ao outlook|bem-vindo ao outlook)\s*$'
+    adicionar_conta: '^\s*adicionar conta\s*$'
+    continuar: '^\s*continuar\s*$'
+    outra_forma: '(google|criar (uma )?nova conta|c[óo]digo qr|enviar (um )?c[óo]digo|j[áa] recebeu um c[óo]digo)'
+    usar_senha: '^\s*usar (a )?sua senha\s*$'
+    entrar: '^\s*(avan[çc]ar|pr[óo]ximo|entrar)\s*$'
+    verificar_email: '(?ms)^\s*verifi(que|car) (o )?seu e-?mail\b.*^\s*(enviar|obter) (um |o )?c[óo]digo\b'
+    codigo: '(?m)^\s*(insira o c[óo]digo|digite o c[óo]digo|aprovar (a )?solicita[çc][ãa]o de (entrada|login)|verifi(que|car) (a )?sua identidade|verifique seu aplicativo authenticator)\s*[.!]?\s*$'
+    conta_travada: '(?m)^\s*(ajude-nos a proteger (a )?sua conta|sua conta foi (temporariamente )?(bloqueada|suspensa)|detectamos algo incomum (sobre|nesta) (esta )?entrada)\s*[.!]?\s*$'
+    senha_incorreta: '(sua conta ou senha est[áa] incorreta|essa senha est[áa] incorreta|senha incorreta)'
+    conta_inexistente: '(essa conta microsoft n[ãa]o existe|n[ãa]o encontramos uma conta com)'
+    manter_conectado: '(?m)^\s*(continuar conectado|manter-se conectado)\?\s*$'
+    nao: '^\s*n[ãa]o\s*$'
+    caixa_de_entrada: '(?m)^\s*caixa de entrada\s*$'
+
+# Quem está logado: o e-mail da conta, com UM valor na tela. Os ids são SUPOSIÇÃO (a gaveta de contas não foi
+# observada) e de propósito NÃO incluem os do WebView de autenticação (`bannerText`, `identityBadge`): lá o endereço
+# aparece antes de a conta existir no app, e o "Stay signed in?" confirmaria uma conta que o Outlook ainda não abriu.
+# Id errado falha para "a conta não pôde ser lida" (incerto), nunca para sucesso; e sem ids o motor leria qualquer
+# endereço da caixa — o de um remetente viraria "conta errada".
+extracoes:
+  email_da_conta:
+    ids: [account_email, account_email_address, drawer_account_email]
+    padrao: '^([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})$'
+
+# Em ordem de precedência: a primeira regra que casar vence. Desafio e código não passam pelas regras — quem decide é
+# o detector (`detectar_conta_travada`), com os sinais genéricos e estes; as regras deles estão aqui para dar NOME à
+# tela. `verificar_email` vem antes de `codigo`: é a tela de código que oferece a senha (`sessao.yaml`).
+telas:
+  - {tela: conta_travada, tipo: desafio, sinal: conta_travada, razao: a Microsoft bloqueou ou pede proteção da conta}
+  - {tela: verificar_email, tipo: dois_fatores, sinal: verificar_email,
+     razao: a Microsoft propõe verificar o e-mail por código}
+  - {tela: codigo, tipo: dois_fatores, sinal: codigo, razao: a Microsoft pede código ou aprovação}
+  # Observado: o WebView "Enter your password" (`passwordEntry`, o único campo de senha).
+  - {tela: senha, tipo: login, formulario_de_senha: true, razao: há um campo de senha na tela}
+  # Observado: AddAccountActivity, AutoCompleteTextView `auto_complete_input_email`. Vem antes das boas-vindas porque o
+  # `btn_primary_button` existe nas duas.
+  - {tela: adicionar_conta, tipo: login, ids: [auto_complete_input_email], razao: tela de adicionar conta}
+  # Observado: SplashActivity, "Welcome to Outlook" com "Add account" e "Create new account".
+  - {tela: boas_vindas, tipo: login, sinal: boas_vindas, ids: [btn_primary_button],
+     razao: boas-vindas do Outlook sem conta}
+  # Observado: ~10 s de ProgressBar antes do WebView da Microsoft.
+  - {tela: carregando_autenticacao, tipo: carregando, ids: [common_auth_webview_progressbar],
+     razao: a página de autenticação da Microsoft está carregando}
+  - {tela: carregando, tipo: carregando, sem_elementos: true, razao: tela ainda sem elementos}
+  # SUPOSIÇÃO daqui para baixo.
+  - {tela: manter_conectado, tipo: intersticial, autenticada: true, sinal: manter_conectado,
+     razao: a Microsoft pergunta se continua conectado}
+  - {tela: conta_aberta, tipo: autenticada, autenticada: true, extracao: email_da_conta,
+     razao: a gaveta com a conta aberta}
+  - {tela: caixa_de_entrada, tipo: autenticada, autenticada: true, sinal: caixa_de_entrada, razao: caixa de entrada}
+
+# Onde a conta pode ser lida (a caixa, de onde a gaveta abre) e como chegar lá sem efeito externo: voltar do Android e,
+# se preciso, reabrir o app uma vez.
+estado_conhecido:
+  telas: [caixa_de_entrada]
+  voltar_max: 3
+  reabrir: true

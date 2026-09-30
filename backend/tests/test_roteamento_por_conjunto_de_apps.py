@@ -40,7 +40,8 @@ ENTRE_APPS = "leia o último e-mail no Outlook e curta o post de @marca no Insta
 
 
 def _outlook(h: Harness) -> None:
-    """O Outlook cadastrado na instalação (o manifesto dele já existe: conta da persona, sem login gerenciado)."""
+    """O Outlook cadastrado na instalação (o manifesto dele já existe: conta da persona, com login gerenciado desde o
+    23.8)."""
     assert h.state is not None
     if h.state.db.one("SELECT 1 FROM apps WHERE id='outlook'") is None:
         h.state.db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES "
@@ -145,9 +146,16 @@ async def test_mundo_por_conjunto_aptos_e_sessao_pronta(harness: Harness) -> Non
     for pid, iid in ((ana, "android-01"), (bia, "android-02")):
         repo.set_account_session(pid, repo.conta_ancora(pid)["id"], iid, status=SessionStatus.session_ready,
                                  verified_at="2026-09-29T00:00:00Z")
+    # Desde o 23.8 o Outlook também tem login gerenciado: a sessão pronta do conjunto é a dos DOIS apps no aparelho.
+    # Só o Instagram pronto ainda não basta para o conjunto; basta para o Instagram sozinho.
+    assert (ana, "android-01") not in st.runs._mundo(["outlook", "instagram"]).sessoes_prontas  # noqa: SLF001
+    assert {(ana, "android-01"), (bia, "android-02")} <= st.runs._mundo(["instagram"]).sessoes_prontas  # noqa: SLF001
+    conta_outlook = st.db.one("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id='outlook'", (ana,))
+    repo.set_account_session(ana, conta_outlook["id"], "android-01", status=SessionStatus.session_ready,
+                             verified_at="2026-09-29T00:00:00Z")
     mundo = st.runs._mundo(["outlook", "instagram"])                                          # noqa: SLF001
-    # A sessão que conta é a do Instagram (login gerenciado); a do Outlook ainda não existe (23.8) e não zera tudo.
-    assert {(ana, "android-01"), (bia, "android-02")} <= mundo.sessoes_prontas
+    assert (ana, "android-01") in mundo.sessoes_prontas
+    assert (bia, "android-02") not in mundo.sessoes_prontas                                  # Bia não tem Outlook
     assert mundo.sem_conta == frozenset()
     assert mundo.serve(ana, "android-01", ["outlook", "instagram"])
     assert not mundo.serve(bia, "android-02", ["outlook", "instagram"])

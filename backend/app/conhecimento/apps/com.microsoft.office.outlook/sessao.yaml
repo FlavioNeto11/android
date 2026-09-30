@@ -1,0 +1,97 @@
+# Conhecimento de SESSÃO do Outlook, como dado (ADR-052, item 23.8). Lido pelo motor genérico de sessão
+# (`app/integrations/app_declarado/sessao.py`, validado por `app_declarado/conhecimento.py`); nenhuma linha de Python
+# é do Outlook. Sinais e telas citados aqui são os do `telas.yaml` desta pasta.
+#
+# O login da conta Microsoft é EM ETAPAS (item 23.6), com dois passos declarados do item 23.8, observados no android-10
+# (Outlook 5.2635.3, 30/09/2026):
+#   boas-vindas → "Add account" → e-mail no `auto_complete_input_email` → "Continue" → ~10 s de espera → WebView da
+#   Microsoft; se ele propõe código ("Verify your email") e oferece "Use your password", escolhe-se a senha (é o
+#   método de entrada que o titular usa, não um desafio resolvido); a senha vai ao `passwordEntry` SÓ pelo canal
+#   sensível, numa página que mostra ESTE e-mail (`bannerText`) → "Next".
+# Depois do "Next" nada foi observado: o que segue abaixo é suposição conservadora, e o que não casar termina incerto e
+# para o login automático até uma pessoa olhar.
+#
+# Desafio, código, aprovação no Authenticator e CAPTCHA seguem com a pessoa (ADR-009): o motor só os reconhece. A trava
+# por desafio no Outlook para só a conta Outlook da persona, nunca a persona (item 23.5): o Outlook não é o app âncora.
+app: com.microsoft.office.outlook
+versao: 1
+rotulo: Outlook
+
+# Padrões; o `config.yaml` de cada instalação sobrescreve em `contas.sessao.com.microsoft.office.outlook`.
+ajustes:
+  max_auth_attempts: 3          # falhas ANTES do envio até exigir o intervalo
+  auth_cooldown_s: 300
+  max_logins_per_day: 3         # envios de senha por conta em 24 h (ADR-055)
+  open_timeout_s: 60.0
+  settle_s: 3.0
+  # Depois do "Continue" o WebView leva ~10 s (observado); depois do "Next", a Microsoft pergunta se continua
+  # conectado e o Outlook configura a conta antes da caixa (SUPOSIÇÃO: não medido). 60 s cobre a espera observada com
+  # folga; o que passar disso termina incerto, nunca sucesso.
+  submit_wait_s: 60.0
+  verify_timeout_s: 45.0
+
+formulario:
+  # O "Next" da página da senha. A geometria acha: o campo com o atributo `password` (o `passwordEntry`), o botão logo
+  # abaixo com este rótulo; "Show password" e "Send a code to …" não casam, e o de código é excluído.
+  sinal_do_botao: entrar
+  sinal_de_exclusao: outra_forma
+  etapa_do_usuario:
+    tela: adicionar_conta       # o e-mail no `auto_complete_input_email`, "Continue" abaixo
+    sinal_do_botao: continuar
+    # Observado: o Outlook sem conta abre nas boas-vindas; "Add account" leva à tela do e-mail. "Create new account"
+    # nunca é tocado (cria conta nova na Microsoft).
+    entrada: {tela: boas_vindas, sinal_do_botao: adicionar_conta}
+    # Observado: a Microsoft propõe código ("Verify your email") e oferece "Use your password". Sem essa oferta, a
+    # mesma tela é código (`dois_fatores`) e vai para a pessoa.
+    alternativas:
+      - {tela: verificar_email, sinal_do_botao: usar_senha}
+    # SUPOSIÇÃO: o texto da Microsoft para e-mail sem conta.
+    recusas:
+      - {sinal: conta_inexistente, detalhe: a Microsoft informou que não há conta com esse e-mail}
+
+# SUPOSIÇÃO (telas depois da senha não observadas): só RECUSAS, jamais "Allow"/"Yes"/"Turn on", que concederiam
+# notificação, contatos ou manteriam o login no WebView.
+dispensa:
+  intersticiais_max: 4
+  rotulos:
+    - '^\s*(?:skip|pular)\s*$'
+    - '^\s*(?:not now|agora n[ãa]o)\s*$'
+    - '^\s*(?:maybe later|talvez mais tarde)\s*$'
+    # O diálogo de notificação do Android (outro pacote): o lado que NÃO concede.
+    - "^\\s*(?:don'?t allow|n[ãa]o permitir)\\s*$"
+  ids: []
+  # O "No" do "Stay signed in?": não guardar o login no WebView — a mesma escolha do "salvar dados de login?".
+  sinal_de_salvar_login: nao
+
+# Qual conta está aberta: o Outlook não tem aba de perfil; a conta é o e-mail mostrado na gaveta aberta pelo botão do
+# canto (SUPOSIÇÃO: ids e descrição não observados). Com um valor só: a gaveta pode listar mais de uma conta. Lida
+# logo depois do envio (`ler_ao_entrar`): a caixa não mostra a conta, e sem isto todo login terminaria incerto.
+conta:
+  extracao: email_da_conta
+  tela_de_perfil: conta_aberta
+  acesso:
+    ids: [account_button]
+    rotulos: ['^\s*(open navigation drawer|abrir (a )?gaveta de navega[çc][ãa]o)\s*$']
+  passos_max: 6
+  espera_s: 2.0
+  ler_ao_entrar: true
+
+# Depois do "Next", em ordem: a primeira que casar vence (SUPOSIÇÃO: nada depois da senha foi observado).
+depois_do_envio:
+  - {sinal: senha_incorreta, desfecho: invalid_credential, detalhe: a Microsoft informou senha incorreta}
+  - {tipos: [desafio, dois_fatores], desfecho: auth_challenge,
+     detalhe: 'a Microsoft exige verificação adicional; só uma pessoa pode resolver'}
+  # O "Stay signed in?" e a caixa não mostram a conta (os ids da extração são os da gaveta): o motor lê pelo acesso.
+  - {telas: [conta_aberta, caixa_de_entrada, manter_conectado], desfecho: conferir_conta}
+  - {tipos: [login], desfecho: uncertain, detalhe: 'continuou na entrada da Microsoft, sem mensagem de erro'}
+
+textos:
+  desafio: >-
+    A Microsoft exige verificação adicional na conta do Outlook. Assuma o controle do aparelho, resolva na tela e
+    devolva o controle: a verificação recomeça sozinha.
+  desafio_pendente: a Microsoft exige verificação adicional na conta do Outlook
+  senha_recusada: >-
+    a senha guardada foi recusada pela Microsoft; altere-a no portal para liberar a autenticação automática do Outlook
+  credencial_recusada: >-
+    credencial de {usuario} recusada pela Microsoft; login automático do Outlook bloqueado até a senha ser alterada
+    no portal

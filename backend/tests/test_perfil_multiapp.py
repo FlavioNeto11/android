@@ -43,17 +43,18 @@ def test_perfil_nasce_com_a_conta_do_instagram_e_ganha_outras(tmp_path: Path) ->
     assert sem.value.code == "consentimento_de_credencial" and [c.app_id for c in svc.list_accounts(pid)] == ["instagram"]
     conta = svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="mariana@exemplo.com",
                                                       password=SecretStr(SENHA_OUTLOOK), consent=True))
-    assert conta.app_name == "Outlook" and not conta.automated_login and conta.credential_configured
+    # Desde o 23.8 o Outlook tem login gerenciado (`provedor_de_sessao: microsoft`): a conta nasce com login automático.
+    assert conta.app_name == "Outlook" and conta.automated_login and conta.credential_configured
     assert conta.session_status == "unknown"
     # a senha vai para o cofre; o banco só guarda a referência
     linha = db.one("SELECT * FROM account_credentials WHERE account_id=?", (conta.id,))
     assert linha is not None and SENHA_OUTLOOK not in json.dumps(dict(linha))
     assert SENHA_OUTLOOK not in json.dumps([c.model_dump() for c in svc.list_accounts(pid)])
 
-    # a pessoa entrou pelo Foco e marca a sessão; no Instagram isso é do provedor
-    assert svc.update_account(pid, conta.id, ProfileAccountPatch(session_status="session_ready")).session_status == "session_ready"
-    with pytest.raises(SocialError):
-        svc.update_account(pid, contas[0].id, ProfileAccountPatch(session_status="session_ready"))
+    # Sessão de app com login gerenciado é do provedor, não marcada à mão: no Instagram e, desde o 23.8, no Outlook.
+    for conta_gerenciada in (conta.id, contas[0].id):
+        with pytest.raises(SocialError):
+            svc.update_account(pid, conta_gerenciada, ProfileAccountPatch(session_status="session_ready"))
     # uma conta por app; app inexistente; a do Instagram é a âncora
     for ruim in (ProfileAccountCreate(app_id="outlook"), ProfileAccountCreate(app_id="nao-existe")):
         with pytest.raises(SocialError):

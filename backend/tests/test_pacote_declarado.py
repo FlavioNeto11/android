@@ -180,15 +180,15 @@ def test_bloco_antigo_do_config_yaml_nao_e_ignorado_em_silencio() -> None:
     assert cfg.contas.session_max_age_s == 60 and cfg.contas.sessao[PKG].settle_s == 5
 
 
-def test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora() -> None:
-    """Item 23.3 (ADR-057): o Outlook é a primeira pasta real depois do Instagram, só com `app.yaml`. Entra no
-    registro sem provedor de sessão, sem catálogo e sem leitura de tela (a IA opera o app; o login gerenciado é o
-    23.8), exige perfil e internet, e NÃO é âncora: a conta âncora da persona segue sendo a do Instagram — dois
-    âncoras derrubariam a descoberta inteira."""
+def test_outlook_embutido_entra_com_login_gerenciado_sem_ser_ancora() -> None:
+    """Item 23.3 (ADR-057): o Outlook é a primeira pasta real depois do Instagram. Desde o 23.8 ela traz também
+    `telas.yaml` e `sessao.yaml`: entra no registro com provedor de sessão próprio, sem leitura de tela para rascunho,
+    exige perfil e internet, e NÃO é âncora: a conta âncora da persona segue sendo a do Instagram — dois âncoras
+    derrubariam a descoberta inteira. O detalhe do login está em `test_outlook_declarado.py`."""
     outlook = "com.microsoft.office.outlook"
     manifestos = {m.definition.package: m for m in descobrir(PASTA_DOS_APPS)}
     assert {PKG, outlook} <= set(manifestos)
     m = manifestos[outlook]
     assert m.definition.needs_profile and m.definition.requires_internet
-    assert m.definition.session_provider is None and m.session is None and m.catalog is None
+    assert m.definition.session_provider == "microsoft" and m.session is not None and m.screen is None
     assert [p for p, mm in manifestos.items() if mm.definition.profile_anchor] == [PKG]

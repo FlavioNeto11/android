@@ -1,16 +1,19 @@
-# Definição do Outlook como DADO (ADR-052, ADR-057). Primeiro marco do 12.3: o caminho livre. Só esta definição,
-# sem `sessao.yaml`, sem `telas.yaml` e sem `catalogo.yaml`: a IA opera o app, e a senha da conta Outlook da
-# persona, se consentida, só passa pelo canal sensível (`type_secret`, ADR-040), no pacote desta conta.
-# O login gerenciado (provedor de sessão, telas e catálogo de leitura) entra com o 23.8, depois que o motor de
-# sessão deixa de resolver tudo pela conta âncora (23.4) e aceita formulário em etapas (23.6).
+# Definição do Outlook como DADO (ADR-052, ADR-057). Junto de `telas.yaml` (telas, desafios da Microsoft e estado
+# conhecido) e `sessao.yaml` (login gerenciado em etapas), é tudo que a plataforma sabe do app: nenhuma linha de
+# Python. Item 23.8. A senha da conta Outlook da persona, se consentida, só
+# passa pelo canal sensível (`type_secret`, ADR-040), no pacote desta conta e na página da Microsoft que mostra o
+# e-mail dela.
 app: com.microsoft.office.outlook
 nome: Microsoft Outlook
 rotulo: Outlook
+# Tipo do provedor de sessão da conta (a conta Microsoft): dizer um tipo é dizer que o app tem login gerenciado, e
+# exige o `sessao.yaml` desta pasta. Distinto do de todo outro app: o registro acha o pacote pelo tipo.
+provedor_de_sessao: microsoft
 # A conta Outlook é da persona (uma por persona, ADR-043): a tarefa exige o perfil vinculado ao aparelho.
 precisa_de_perfil: true
 precisa_de_internet: true
 # NÃO é âncora: a conta da persona que carrega o "Conectado" do perfil segue sendo a do Instagram. Dois apps âncora
-# derrubam o registro inteiro (`pacote_ancora()`).
+# derrubam o registro inteiro (`pacote_ancora()`). Um desafio aqui para só a conta Outlook (item 23.5).
 ancora_do_perfil: false
 # O Outlook DERRUBA o processo do emulador quando o GLES do host é o SwiftShader. Medido em 30/09/2026, Outlook
 # 5.2635.3 no emulador 37.1.11: `0xc0000005` com `gles_swiftshader\libGLESv2.dll` na pilha, na tela de onboarding,
