@@ -1,10 +1,12 @@
 import type { AiBalance, Health, Instance, InstanceState, RunSummary, Worker, WorkerDevice } from '../api/types';
 import { serverHintOf } from '../features/devices/deviceState';
+import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import { hashDe } from '../lib/rotas';
 import { isRunActive, type ConnStatus } from '../lib/status';
 import { useMemo } from 'react';
 import { selectInstanceList, useAppStore } from './app';
 import type { DataState } from './reducer';
+import type { Destino } from './ui';
 
 /**
  * Fonte única dos números do portal (revisão de UX, tarefa 02). O mesmo indicador aparecia com valores diferentes
@@ -26,6 +28,8 @@ import type { DataState } from './reducer';
  * - **aguardando você**: objetivos `waiting_user` + `uncertain` das execuções ativas e das 20 mais recentes (a
  *   mesma janela do snapshot). Não são personas.
  * - **personas bloqueadas**: personas com `status = blocked` (bloqueadas pela plataforma).
+ * - **execuções em andamento**: o grupo "Em andamento" de Execuções (planejando, planejada, em execução, pausada,
+ *   cancelando). O contador do topo e o chip da tela contam igual.
  */
 
 // ---- Aparelhos ------------------------------------------------------------------------------------
@@ -189,6 +193,18 @@ export function objetivosAguardando(runs: readonly RunSummary[]): { total: numbe
   return { total: lista.reduce((s, x) => s + x.objetivos, 0), primeiraExecucao: lista[0]?.run.id ?? null };
 }
 
+/**
+ * Execuções em andamento: a MESMA regra do chip "Em andamento" de Execuções (`grupoDoStatus`, que inclui `planned`).
+ * O contador do topo contava à parte (`isRunActive`, sem `planned`): com uma execução planejada, o topo dizia N e o
+ * chip N+1 (RF-05 da revisão final).
+ */
+export function execucoesEmAndamento(runs: readonly RunSummary[]): number {
+  return runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length;
+}
+
+/** Para onde o contador de execuções leva: a lista já filtrada pelo mesmo grupo que ele conta. */
+export const DESTINO_EM_ANDAMENTO: Destino = { tela: 'execucoes', query: { status: 'andamento' } };
+
 /** Personas bloqueadas pela plataforma. `null` enquanto a lista não chegou. */
 export function personasBloqueadas(personas: readonly { status?: string | null }[] | null): number | null {
   return personas ? personas.filter((p) => p.status === 'blocked').length : null;
@@ -329,6 +345,11 @@ export function useContagemDeAparelhos(): ContagemDeAparelhos {
 export function useObjetivosAguardando(): { total: number; primeiraExecucao: string | null } {
   const runs = useAppStore((s) => s.runs);
   return useMemo(() => objetivosAguardando(runs), [runs]);
+}
+
+export function useExecucoesEmAndamento(): number {
+  const runs = useAppStore((s) => s.runs);
+  return useMemo(() => execucoesEmAndamento(runs), [runs]);
 }
 
 export function useSaudeDoAmbiente(): { nivel: NivelDoAmbiente; motivos: Motivo[] } {

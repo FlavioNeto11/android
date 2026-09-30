@@ -15,7 +15,6 @@ import {
   UserRound,
   Wallet,
 } from 'lucide-react';
-import { useMemo } from 'react';
 import type { AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -30,12 +29,14 @@ import { toneClass } from '../../components/tone';
 import { Tooltip } from '../../components/Tooltip';
 import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
-import { CONN_STATUS, isRunActive } from '../../lib/status';
+import { CONN_STATUS } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore } from '../../store/ui';
-import { useContagemDeAparelhos, useObjetivosAguardando } from '../../store/metricas';
+import {
+  DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento, useObjetivosAguardando,
+} from '../../store/metricas';
 import { SaudeAmbiente } from './SaudeAmbiente';
 import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
 import styles from './TopBar.module.css';
@@ -126,18 +127,19 @@ function OperadorAtual() {
 
 function Counters() {
   const hydrated = useAppStore((s) => s.hydrated);
-  const runs = useAppStore((s) => s.runs);
   const metrics = useAppStore((s) => s.metrics);
   // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM — de cada servidor.
   const rodizio = useAppStore((s) => !!s.settings?.auto_start_devices);
   const setView = useUiStore((s) => s.setView);
+  const navegar = useUiStore((s) => s.navegar);
   const abrirExecucao = useUiStore((s) => s.abrirExecucao);
 
   // Fonte única (`store/metricas`, tarefa 02 da revisão de UX): o total é o de aparelhos de TAREFA, o mesmo de
   // "N de T selecionados"; a loja fica à parte e o aparelho de servidor fora do ar não conta como online.
   const { online, total, desconhecidos, loja } = useContagemDeAparelhos();
   const aguardando = useObjetivosAguardando();
-  const active = useMemo(() => runs.filter((r) => isRunActive(r.status)).length, [runs]);
+  // A mesma conta do chip "Em andamento" de Execuções, e o clique abre a lista já nesse filtro (RF-05).
+  const active = useExecucoesEmAndamento();
 
   if (!hydrated) return <Skeleton width={420} height={24} radius={6} />;
 
@@ -163,8 +165,8 @@ function Counters() {
           <span className={styles.counterLabel}>online</span>
         </div>
       </Tooltip>
-      <Tooltip content="Execuções ativas (planejando, em execução, pausadas ou cancelando). Clique para ver.">
-        <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => setView('execucoes')}>
+      <Tooltip content="Execuções em andamento (planejando, planejadas, em execução, pausadas ou cancelando). Clique para ver a lista filtrada.">
+        <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => navegar(DESTINO_EM_ANDAMENTO)}>
           <Activity size={14} aria-hidden />
           <span className={styles.counterValue}>{formatInt(active)}</span>
           <span className={styles.counterLabel}>{active === 1 ? 'execução' : 'execuções'}</span>
