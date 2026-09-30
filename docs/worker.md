@@ -142,8 +142,12 @@ sem `worker-manifest.txt` é erro. `-SoPacote` (`--so-pacote` no Linux) só mont
 
 **Contrato do fio.** Os modelos central↔agente moram em `app/contracts/worker/protocol.py` e o vocabulário de
 verbos em `app/contracts/worker/verbos.py`. `app/workers/protocol.py` e `app/devices/verbs.py` só reexportam os
-mesmos objetos. O esquema é congelado por `tests/test_contratos_do_worker.py` (marca `18285a7c65c51551`): mudar o
-fio exige atualizar a marca de propósito, com o motivo. ADR-031. `worker.yaml` e
+mesmos objetos. O esquema é congelado por `tests/test_contratos_do_worker.py` (marca `074980b4f9d7d9df`): mudar o
+fio exige atualizar a marca de propósito, com o motivo. ADR-031. A marca era `18285a7c65c51551` até 30/09/2026,
+quando `WorkerDevice` ganhou três campos opcionais no `hello` e na batida (`gpu_mode`, `gpu_gles`, `gpu_vulkan`): o
+renderizador pedido e o que o emulador selecionou, lido do log dele
+([parque § Renderizador do emulador](dominios/parque.md#renderizador-do-emulador-item-2911)). Agente antigo não os
+manda e central antigo os ignora. `worker.yaml` e
 `worker-credential.json` não são tocados. No Linux, `KillMode=process` faz os **emuladores continuarem de pé**
 enquanto o agente reinicia; no Windows, o mesmo vale porque o emulador nasce em grupo de processos próprio.
 

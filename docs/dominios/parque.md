@@ -40,6 +40,59 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   apaga o snapshot do AVD sem falhar por ausência. `DeviceManager.snapshot_failures` conta falhas consecutivas
   por instância.
 
+## Renderizador do emulador (item 29.11)
+
+O renderizador gráfico é por aparelho e por worker, e a plataforma lê do log o que o emulador **selecionou**, porque
+argumento aceito não é renderizador usado.
+
+**O que foi medido** (`real`, 30/09/2026, emulador 37.1.11, imagem `android-34;google_apis`; detalhe em
+[K-062](../conhecimento/aprendizados.md)):
+
+- Com `-gpu swiftshader_indirect` (o padrão do parque), o Outlook 5.2635.3 derruba o processo do emulador:
+  `0xc0000005` com `gles_swiftshader\libGLESv2.dll` na pilha, na tela de onboarding, cerca de 31 s depois de abrir.
+- Com `-gpu host` ele abre e fica estável, subido pelo serviço (tarefa agendada, sessão 0): android-07 no central
+  (NVIDIA RTX 2000) e android-09 no notebook (Quadro T1000). O log diz
+  `emuglConfig_init: vulkan_mode_selected:host gles_mode_selected:host`, o canário do Outlook passou no android-07,
+  cinco minutos no onboarding sem queda nos dois, cerca de 200 MB de VRAM por emulador e captura de tela funcionando.
+
+**O que não funciona** (mesma medição):
+
+| Tentativa | O que acontece |
+|---|---|
+| `-gpu angle_indirect` | recusado: "not valid, switching to 'auto'" |
+| `-gpu swangle` | aceito, e o log acaba em `gles_mode_selected:swiftshader` |
+| `-prop debug.hwui.renderer=skiavk` | aceito, e a propriedade não muda |
+| `setprop debug.hwui.renderer skiavk` | muda, e todo processo com interface aborta em `VulkanManager` |
+
+Os valores de `gpu_mode` que o 37.1.11 atende de fato são `host` e `swiftshader_indirect` (ou `swiftshader`).
+
+**Como configurar.**
+
+- Por máquina: `android.gpu_mode` no `config.yaml` (central) ou no `worker.yaml` (todos os aparelhos daquele worker).
+- Por aparelho do central: `instances.overrides.<id>.gpu_mode` no `config.yaml`, validado na carga.
+- Mudar o renderizador exige **reiniciar o aparelho**, e o boot seguinte é a frio: `gpu_mode` entra na assinatura de
+  hardware do snapshot (`devices/manager.py::_hw_signature`), então o snapshot da hibernação deixa de valer. No
+  central, a configuração só é relida quando o backend reinicia.
+
+**O selecionado, lido e exposto.** `devices/emulator.py::ler_renderizador` lê do `emulator-<avd>.log` a última linha
+`emuglConfig_init` (uma por subida; o arquivo é aberto em append). O gerenciador a guarda a cada entrada no ar (boot,
+reinício, acordar e readoção) e a esquece quando o aparelho sai do ar. `GET /api/instances` devolve
+`renderer: {configured, gles, vulkan, fallback}` em cada aparelho; `renderer` nulo quer dizer que não é emulador que
+se conheça. No aparelho de um worker o log mora lá: o agente declara `gpu_mode`, `gpu_gles` e `gpu_vulkan` em cada
+aparelho do `hello` e da batida (campos opcionais de `WorkerDevice`), relendo o log só quando o processo muda.
+
+**Fallback silencioso vira aviso.** Pedido `host` e selecionado `swiftshader` (ou qualquer selecionado diferente do
+pedido; `swiftshader_indirect` e `swiftshader` são o mesmo) aparece em `attention` do aparelho e no histórico, com o
+pedido, o selecionado e o caminho do log. O aviso é derivado do que foi lido: cede a vez a outro assunto do cartão e
+volta sozinho. A Infraestrutura mostra o renderizador na linha de capacidades do aparelho.
+
+**Quem usa.** Um app declara em que renderizador ele não roda (`renderizador_recusado` no `app.yaml`), e a plataforma
+recusa instalar e abrir o app nesse aparelho: ver [apps e loja](apps-e-loja.md#compatibilidade).
+
+Prova: `simulated`, `backend/tests/test_renderizador.py` (leitura do log, exposição depois do boot com o dublê da
+máquina, aviso de fallback, declaração do worker e as recusas). A leitura do log por um agente atualizado no notebook
+é `not_run`.
+
 ## Workers: local e remoto
 
 Todo aparelho tem um HOSPEDEIRO — a máquina que o liga e fala com ele pelo ADB. O central sempre é um worker de
@@ -246,6 +299,7 @@ Real, 29/09 (depois do deploy de `f497075`): 11 desativados no android-01 e no a
 |---|---|---|---|
 | Perfil de RAM por imagem do sistema | implementado | ambiente real (medição em host, `scripts/probe-image.ps1`) | `devices/perfis.py`; [`../relatorio-validacao.md`](../relatorio-validacao.md) §2.1, §7.1–7.2 |
 | Hibernação por snapshot | implementado | ambiente real (WHPX, emulador 37.1.11) | `devices/emulator_backend.py`; relatorio-validacao.md §7.3 |
+| Renderizador por aparelho e por worker: selecionado lido do log, fallback como aviso | implementado | `simulated` (`tests/test_renderizador.py`); `gpu_mode: host` pelo serviço é `real` (30/09, android-07 e android-09); leitura pelo agente no notebook `not_run` | `devices/emulator.py`, `devices/manager.py`, `worker/executor.py`; plano-100 id 29.11 |
 | Rodízio local (`_rotate`) | implementado | ambiente real (10 contas / 4 vagas) | `taskqueue/scheduler.py:522`; relatorio-validacao.md §7.4 |
 | Worker local (`LocalWorker`) | implementado | automatizada (`test_worker_executor.py`, `test_contrato_de_worker.py`) + ambiente real para verbos de ciclo de vida no host central | `workers/local.py`; relatorio-validacao.md §13, aceite 1 |
 | Worker remoto: `stop` | implementado | ambiente real (21/09, `worker-lan-01`, `c-20260921172219-9331e1` e outros) | `worker/agent.py`, `worker/executor.py`; relatorio-validacao.md §13, aceite 1 |

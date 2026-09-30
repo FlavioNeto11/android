@@ -77,6 +77,13 @@ android:
   width: 720
   height: 1280
   density: 320
+  # Renderizador do emulador (`-gpu`), para TODOS os aparelhos deste worker. O emulador 37.1.11 atende de fato dois
+  # valores (medido em 30/09/2026): `swiftshader_indirect` (ou `swiftshader`), por software, e `host`, a GPU desta
+  # máquina (~200 MB de VRAM por emulador; funciona com o agente como tarefa agendada). `angle_indirect` é recusado
+  # e `swangle` acaba em SwiftShader: o que foi SELECIONADO sai no log (`logs/emulator-<avd>.log`, linha
+  # `emuglConfig_init`), e o agente o declara ao central em cada batida. Há app que derruba o emulador no SwiftShader
+  # (o Outlook): ele só é instalado e aberto em aparelho com `host`. Mudar exige reiniciar o agente e os aparelhos,
+  # e o boot seguinte é a frio.
   gpu_mode: swiftshader_indirect
   # Sem `-lowram` aqui de propósito: o perfil da imagem já o põe onde ela precisa (google_apis, AOSP). Declarado
   # neste bloco, ele valeria também para a VM da loja (ela não tem como sobrescrever flags), e o perfil da

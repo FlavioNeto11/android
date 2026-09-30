@@ -68,7 +68,8 @@ perfil vêm de `links_de_perfil` do `app.yaml`.
 
 1. `app.yaml` (obrigatório): `app` (o mesmo pacote da pasta), `nome`, `rotulo`, `provedor_de_sessao` (só com conta
    gerenciada), `precisa_de_perfil`, `precisa_de_internet`, `ancora_do_perfil`, `links_de_perfil`, `tipos_de_texto`,
-   `leituras_de_conversa` e `leitura` (campo fora desta lista é recusado: `pacote.py::_CAMPOS`);
+   `leituras_de_conversa`, `leitura` e `renderizador_recusado` (campo fora desta lista é recusado:
+   `pacote.py::_CAMPOS`);
 2. `catalogo.yaml`, se o app tem ações: `app`, `contract_version` e `acoes`;
 3. `telas.yaml` + `sessao.yaml`, se o app tem conta gerenciada: telas e estado conhecido, login declarado.
    `provedor_de_sessao` e `sessao.yaml` vêm juntos ou não vêm (`pacote.py::manifesto_da_pasta` recusa um sem o
@@ -321,11 +322,44 @@ para os aparelhos escolhidos (`device_proxy_state`, desejado × observado).
 `backend/app/devices/compatibilidade.py` — ponto único "este app roda neste aparelho?", usado no pré-voo de
 execução, em `release_targets` e em `distribute()`:
 
-- `Requisitos` (de uma release: `min_sdk`, `abis`, `requires_gms`).
-- `Capacidades` (do aparelho: `device_kind`, `system_image`, `api_level`, `abis`, `play_store`).
-- `motivo_incompativel(req, cap, aparelho=None)` — três checagens em ordem: nível de API, ABI, GMS. **Regra
-  central: capacidade desconhecida (`None`) nunca vira recusa** — quem não declarou nada passa; a prova real
-  continua sendo a instalação em si.
+- `Requisitos` (de uma release: `min_sdk`, `abis`, `requires_gms`; do `app.yaml` do app: `renderizador_recusado`).
+- `Capacidades` (do aparelho: `device_kind`, `system_image`, `api_level`, `abis`, `play_store`, `renderizador`).
+- `motivo_incompativel(req, cap, aparelho=None)` — quatro checagens em ordem: nível de API, ABI, GMS e renderizador
+  do emulador. **Regra central: capacidade desconhecida (`None`) nunca vira recusa** — quem não declarou nada passa;
+  a prova real continua sendo a instalação em si. O renderizador é a exceção, descrita abaixo.
+
+### Renderizador recusado pelo app (item 29.11)
+
+`renderizador_recusado` é uma chave opcional do `app.yaml`: a lista dos renderizadores do emulador em que o app
+derruba o emulador. Os valores aceitos são os que o emulador seleciona de fato, `host` e `swiftshader` (o apelido
+`swiftshader_indirect` vale por `swiftshader`); valor desconhecido, ou a lista com os dois, é recusado na carga. O
+Outlook declara `renderizador_recusado: [swiftshader]`, com a medição de 30/09/2026 no comentário
+([parque § Renderizador do emulador](parque.md#renderizador-do-emulador-item-2911)).
+
+O que a plataforma compara é o renderizador **selecionado** pelo emulador quando ele é conhecido (`renderer.gles` do
+aparelho); sem ele, o **configurado** (`gpu_mode`). Com o renderizador recusado, o app não é instalado nem aberto
+naquele aparelho, e a frase diz o motivo e o que configurar ("Outlook derruba o emulador com o renderizador
+SwiftShader, que é o deste aparelho; configure `gpu_mode: host` neste aparelho e reinicie-o"). Quando o pedido era
+`host` e o emulador caiu para o SwiftShader, a frase diz isso e manda ler o log, em vez de mandar configurar o que já
+está configurado.
+
+| Onde | Como recusa |
+|---|---|
+| Canário (`start_canary`, `POST /releases/{id}/lifecycle`) | 409 `app_incompativel` antes de aceitar; o canal da versão não muda |
+| Instalação (`install_on`, `POST /instances/{id}/app/install`, verbo `install_apk`) | 409 `app_incompativel`; nenhum estado gravado |
+| Volta de versão (`rollback`) | a mesma recusa: ela instala e abre o app |
+| Distribuição e prévia (`distribute`, `dry_run`, "N aparelhos") | `outcome: incompatible` com o motivo; a versão desejada não é gravada |
+| Destinos (`GET /releases/{id}/targets`) e convergência | `compatible: false`; o aparelho não adota a promovida |
+| Entrega automática (`_entregar`) | recusa sem virar `install_failed` |
+| Pré-voo e porta do app da tarefa (`_app_preflight`, `_app_resolver`) | `app_incompativel` antes de agendar; no despacho, o objetivo espera uma pessoa |
+
+**Renderizador desconhecido é recusa**, só para o app que tem a chave: a "prova pela instalação" aqui seria a queda
+do processo do emulador, com a sessão de quem estiver logado nele. Acontece no aparelho de um worker cujo agente
+ainda não declara o renderizador; a frase diz "renderizador desconhecido" e pede para atualizar o agente. Aparelho
+físico ou contêiner não tem renderizador de emulador, e o requisito não se aplica. App sem a chave não muda em nada.
+
+Prova: `simulated`, `backend/tests/test_renderizador.py`. O canário do Outlook no android-07 com `gpu_mode: host` é
+`real` (30/09/2026, antes desta recusa existir); a recusa no ambiente central é `not_run`.
 
 ## Capacidades — implementação e validação
 
@@ -338,6 +372,7 @@ execução, em `release_targets` e em `distribute()`:
 | Distribuição entre servidores por carga (10.5) | implementado | automatizada (`tests/test_limites_por_servidor.py`, 15 casos); **nunca com dois workers reais** | `taskqueue/service.py`, `taskqueue/balanceamento.py`; plano-100 id 10.5; relatorio-validacao.md §13 aceite 5 |
 | Distribuição de release ao parque (`eager`) | implementado | automatizada (`tests/test_distribute.py`) | `state.py::distribute` |
 | Compatibilidade app × aparelho | implementado | automatizada (`tests/test_capacidades_declaradas.py`) | `devices/compatibilidade.py` |
+| Renderizador recusado pelo app (`renderizador_recusado`) | implementado | `simulated` (`tests/test_renderizador.py`); recusa no ambiente central `not_run` | `devices/compatibilidade.py`, `integrations/app_declarado/pacote.py`; plano-100 id 29.11 |
 | Distribuição por alvo (escolhidos / N) com prévia | implementado | simulada em SQLite (`tests/test_loja_de_apps.py`); PostgreSQL e parque real **não executados** | `state.py::distribute`, `vitrine.py` |
 | App secundário instala ao ligar | implementado | simulada (`tests/test_loja_de_apps.py`, com controle negativo) | `vitrine.py::trabalho_ao_ligar` |
 | Cadastro automático do app no import | implementado | simulada (`tests/test_loja_de_apps.py`) | `vitrine.py::cadastrar_app_se_novo` |

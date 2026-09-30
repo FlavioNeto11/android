@@ -54,7 +54,16 @@ android:
   height: 1280
   density: 320
   data_partition: 4G
-  gpu_mode: swiftshader_indirect   # sessão RDP/servidor: sem GPU do host
+  # Renderizador do emulador (`-gpu`). O emulador 37.1.11 atende de fato dois valores (medido em 30/09/2026):
+  #   swiftshader_indirect (ou swiftshader)  renderização por software; funciona em sessão RDP e em servidor sem GPU
+  #   host                                   GPU desta máquina (~200 MB de VRAM por emulador); funciona pelo serviço
+  # Argumento aceito não é renderizador usado: `angle_indirect` é recusado ("switching to 'auto'") e `swangle` acaba
+  # em SwiftShader. O que ele SELECIONOU sai no log (`emuglConfig_init: … gles_mode_selected`), e o painel mostra:
+  # pedido diferente do selecionado vira aviso no aparelho. Há app que derruba o emulador no SwiftShader (o Outlook,
+  # `renderizador_recusado` no app.yaml dele): ele só é instalado e aberto em aparelho com `host`.
+  # Por aparelho: `instances.overrides.<id>.gpu_mode` (exemplo abaixo). Mudar exige reiniciar o backend e o
+  # aparelho, e o boot seguinte é a frio (o snapshot da hibernação é do hardware de antes).
+  gpu_mode: swiftshader_indirect
   boot_timeout_s: 480
   # Guarda de capacidade: um boot só é aceito se, descontado o que os boots em andamento ainda vão alocar,
   # couber esta instância (custo no HOST) e sobrar min_free_ram_mb_after_boot para o host. O custo no host vem
@@ -125,6 +134,8 @@ instances:
   #   android-04:
   #     ram_mb: 2560
   #     hibernation: false
+  #   android-03:
+  #     gpu_mode: host           # só este aparelho na GPU do host (o que recebe o Outlook); os outros seguem o padrão
   #
   # b) Aparelho ADB EXTERNO no lugar do emulador da instância (celular por USB, `host:porta` por rede,
   #    emulador de OUTRA máquina por túnel SSH). Não gasta RAM deste host nem vaga do rodízio; o painel nunca
