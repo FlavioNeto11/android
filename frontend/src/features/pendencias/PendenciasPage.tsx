@@ -9,7 +9,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { formatAgo, useNow } from '../../lib/time';
-import { useUiStore } from '../../store/ui';
+import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { ROTULO_DA_ORIGEM, type OrigemDaPendencia, type Pendencia } from './modelo';
@@ -97,7 +97,9 @@ export function PendenciasPage() {
 }
 
 function Linha({ p, agora }: { p: Pendencia; agora: number }) {
-  const href = hashDe(p.destino.tela, { segmentos: p.destino.segmentos, query: p.destino.query });
+  // O aparelho em Foco vai junto, como nos links do menu: abrir a decisão não fecha o painel aberto.
+  const foco = useUiStore((s) => s.focusInstanceId);
+  const href = hashDe(p.destino.tela, { segmentos: p.destino.segmentos, query: { ...p.destino.query, [PARAM_FOCO]: foco ?? undefined } });
   return (
     <li className={styles.linha} data-origem={p.origem}>
       <div className={styles.corpo}>

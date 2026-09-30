@@ -112,17 +112,24 @@ clicar em nada com efeito; o painel do navegador estava com o canal ao vivo caí
   sem "Proxy (legado)". Um único botão "Novo aplicativo" em todo o portal, na Loja.
 - 1024 px e 390 px: `scrollWidth` igual à janela em Pendências, Aplicativos, Configuração e Aprendizado (as faixas de abas
   rolam dentro do próprio contêiner, como antes). Em 1024, botão da linha de pendência dentro da janela (direita em 973).
+- Detalhe do app na Loja (`#/aplicativos` > cartão "Chrome", sem versão promovida), 1440 e 390 px, `scrollWidth` igual à
+  janela: selos `nenhuma versão promovida` e `IA pelo caminho livre` (com `Termo`) sem quebrar a linha, aviso "Sem versão
+  promovida: ainda não há o que distribuir" com o botão "Ir para as versões" e a âncora `loja-versoes` presentes. O
+  tooltip por foco não abriu quando forcei `focus()` por script no navegador do painel (janela sem foco de verdade): essa
+  parte continua provada só em jsdom (`AppsPage.test.tsx`).
 - Com o login do navegador da IDE, a caixa leu só a origem Execução com dados; as leituras `/aprendizado/pendentes` e
   `/approvals` não puderam ser conferidas com itens reais.
 
 **not_run**: aprovar, recusar, desligar, promover ou cadastrar de verdade (proibido); caixa com itens de Aprendizado e de
-Persona contra o backend vivo (não havia nenhum pendente); tooltip por foco no navegador real (provado só em jsdom);
+Persona contra o backend vivo (não havia nenhum pendente); tooltip por foco no navegador real (provado só em jsdom; a tentativa por script não o abriu);
 leitor de tela; 768 e 1920 px.
 
 ## O que ficou de fora e pendências
 
 - Mover o editor de dicas e seletores para a página do app em Aplicativos e deixar Configuração > Aplicativos só com o link.
 - A aba Execuções poderia apontar para a caixa ("Com pendência" nos filtros da tarefa 05): não mexi em `features/runs`.
+- `ParaAprovarTab` e `AprendizadoPage` relêem `/aprendizado/pendentes` duas vezes (contagem e caixa); a chamada da contagem
+  é redundante agora que a caixa já a alimenta.
 - O chip "aguardando você" do topo e a linha "objetivos aguardando você" do semáforo de saúde continuam em objetivos.
 - Termos da loja em `features/releases/ReleasesPage.tsx` (rótulos de canal e status) ficaram só com a legenda, sem
   `Termo`/`title` por selo (não é da posse desta tarefa).
