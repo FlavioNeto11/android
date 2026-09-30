@@ -419,6 +419,34 @@ async def test_porta_do_app_recusa_a_tarefa_no_aparelho_com_o_renderizador_recus
         await h.state.stop()
 
 
+async def test_abrir_e_instalar_pelo_painel_sao_recusados_no_aparelho_com_o_renderizador_recusado(
+        tmp_path: Path) -> None:
+    """O caminho de uma pessoa: o botão "Abrir app" (e o "Instalar") do aparelho. É aqui que se derruba, por engano,
+    um emulador com conta logada — a recusa vem antes do 202 e fica no histórico do aparelho, com o motivo."""
+    h = await _parque(tmp_path)
+    assert h.state is not None
+    try:
+        falsificar(h)
+        versao(h, OUTLOOK, 7)                                        # importar a versão cadastra o app sozinho
+        app_id = h.state.db.scalar("SELECT id FROM apps WHERE package=?", (OUTLOOK,))
+        async with cliente(h) as c:
+            for verbo in ("open_app", "install_apk"):
+                r = await c.post(f"/api/instances/android-02/actions/{verbo}", json={"app_id": app_id})
+                assert r.status_code == 409, r.text
+                detalhe = r.json()["detail"]
+                assert detalhe["code"] == "app_incompativel", detalhe
+                assert "Outlook" in detalhe["message"] and "SwiftShader" in detalhe["message"]
+                comando = h.state.commands.get(detalhe["command_id"])
+                assert comando["state"] == "rejected" and "gpu_mode: host" in comando["reason"]
+            # No aparelho com `host` o mesmo app abre; e o app sem a chave segue abrindo no SwiftShader.
+            aceito = await c.post("/api/instances/android-01/actions/open_app", json={"app_id": app_id})
+            assert aceito.status_code == 202, aceito.text
+            qa = await c.post("/api/instances/android-02/actions/open_app", json={})
+            assert qa.status_code == 202, qa.text
+    finally:
+        await h.state.stop()
+
+
 # ==================================================================== o aparelho de outra máquina
 def _declarado(**campos: Any) -> Any:
     return protocol.WorkerDevice(serial="emulator-5554", avd_name="w-03", instance_id="android-03", kind="emulator",

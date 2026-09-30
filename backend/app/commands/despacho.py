@@ -25,7 +25,8 @@ from ..automation.driver import DriverError, DriverTimeout
 from ..db import Row
 from ..devices.adb import AdbError, AdbTimeout
 from ..devices.avd import AvdError
-from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from ..devices.compatibilidade import (capacidades_de, motivo_do_renderizador, motivo_incompativel,
+                                       requisitos_de_release, requisitos_do_app)
 from ..devices.manager import DESEJO_DO_VERBO, DeviceRuntime, InstanceBusy
 from ..devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_ESPERAM_O_BOOT,
                              motivo_nao_suportado)
@@ -646,7 +647,24 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
         return "device_busy", "a IA está executando neste aparelho; pause/cancele a execução ou assuma o controle"
     if action in ("install_apk", "open_app", "home", "back", "recents") and rt.state != InstanceState.online:
         return "rejected", "a instância precisa estar online"
+    # Requisito de renderizador do app (29.11): "Abrir app" e "Instalar" de um app que derruba o emulador no
+    # renderizador deste aparelho. É o caminho de uma PESSOA, e o que cai junto é a sessão de quem está logado ali.
+    if action in ("install_apk", "open_app") and (porque := _renderizador_recusa(s, rt, body.app_id)) is not None:
+        return "app_incompativel", porque
     return None
+
+
+def _renderizador_recusa(s: AppState, rt: DeviceRuntime, app_id: str | None) -> str | None:
+    """O app do verbo declarou que não roda no renderizador deste aparelho (`renderizador_recusado` no `app.yaml`)?
+
+    Aparelho sem app definido não é assunto daqui: essa recusa é de `_app_for`, que quem despacha chama em seguida e
+    que tem a frase dela.
+    """
+    try:
+        app = _app_for(s, rt, app_id)
+    except DespachoRecusado:
+        return None
+    return motivo_do_renderizador(requisitos_do_app(app["package"]), capacidades_de(rt))
 
 
 async def _despachar(s: AppState, command_id: str) -> None:

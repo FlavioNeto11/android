@@ -346,7 +346,8 @@ está configurado.
 | Onde | Como recusa |
 |---|---|
 | Canário (`start_canary`, `POST /releases/{id}/lifecycle`) | 409 `app_incompativel` antes de aceitar; o canal da versão não muda |
-| Instalação (`install_on`, `POST /instances/{id}/app/install`, verbo `install_apk`) | 409 `app_incompativel`; nenhum estado gravado |
+| Instalação (`install_on`, `POST /instances/{id}/app/install`) | 409 `app_incompativel`; nenhum estado gravado |
+| "Abrir app" e "Instalar" do aparelho (`POST /instances/{id}/actions/open_app` e `install_apk`, e o lote) | 409 `app_incompativel` no pré-voo do verbo (`despacho._precheck`); a recusa fica no histórico do aparelho |
 | Volta de versão (`rollback`) | a mesma recusa: ela instala e abre o app |
 | Distribuição e prévia (`distribute`, `dry_run`, "N aparelhos") | `outcome: incompatible` com o motivo; a versão desejada não é gravada |
 | Destinos (`GET /releases/{id}/targets`) e convergência | `compatible: false`; o aparelho não adota a promovida |
