@@ -27,6 +27,11 @@ export interface BarraDeSelecaoProps extends Omit<BulkContext, 'selected'> {
   selecionados: number;
   selected: readonly Pick<Instance, 'id' | 'supported_verbs'>[];
   /**
+   * Marcados que o filtro da tela esconde (RF-01). Ficam FORA de `ids`: a barra só age no que se vê, e diz quantos
+   * ficaram de fora para a pessoa não achar que a ação os alcança.
+   */
+  foraDoFiltro?: number;
+  /**
    * Um aparelho está aberto no drawer de Foco, que já tem estas ações: a barra mantém o lugar (a grade não pula) e
    * o contador, mas esconde os botões, para nenhuma ação aparecer duas vezes.
    */
@@ -42,7 +47,9 @@ function motivoDoBloqueio(quem: string[], action: InstanceAction): string {
  * Barra de seleção: fica presa ao topo da grade (nunca sobre os cartões) e só existe com aparelhos marcados. Em
  * tela estreita a linha rola para o lado em vez de quebrar.
  */
-export function BarraDeSelecao({ ids, selecionados, selected, hasAbsent, hasHibernated, hibernation, emFoco }: BarraDeSelecaoProps) {
+export function BarraDeSelecao({
+  ids, selecionados, selected, hasAbsent, hasHibernated, hibernation, emFoco, foraDoFiltro = 0,
+}: BarraDeSelecaoProps) {
   const bulkBusy = useBusyStore((s) => s.bulkBusy);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const todas = bulkActionsFor({ hasAbsent, hasHibernated, hibernation, selected });
@@ -57,20 +64,31 @@ export function BarraDeSelecao({ ids, selecionados, selected, hasAbsent, hasHibe
   const bloqueadosNaBarra = bloqueados.filter((b) => FREQUENTES.includes(b.action));
   const bloqueadosNoMenu = bloqueados.filter((b) => !FREQUENTES.includes(b.action));
   const acoesDoMenu: readonly InstanceAction[] = [...noMenu, ...bloqueadosNoMenu.map((b) => b.action), 'reset'];
+  // Tudo o que está marcado está escondido pelo filtro: não há sobre o que agir.
+  const semAlvoVisivel = ids.length === 0;
+  const comAcoes = !emFoco && !semAlvoVisivel;
 
   return (
     <div className={cx(styles.dock, emFoco && styles.dockEmFoco)} data-barra-de-selecao>
       <div
         className={styles.bar}
-        role={emFoco ? undefined : 'toolbar'}
-        aria-label={emFoco ? undefined : `Ação em ${plural(ids.length, 'aparelho', 'aparelhos')}`}
+        role={comAcoes ? 'toolbar' : undefined}
+        aria-label={comAcoes ? `Ação em ${plural(ids.length, 'aparelho', 'aparelhos')}` : undefined}
       >
         <span className={styles.label} aria-live="polite">
           <Smartphone size={15} aria-hidden />
           {plural(selecionados, 'selecionado', 'selecionados')}
+          {foraDoFiltro > 0 ? ` (${foraDoFiltro} fora do filtro atual)` : ''}
         </span>
         {emFoco ? (
           <span className={styles.nota}>As ações deste aparelho estão no painel de foco.</span>
+        ) : semAlvoVisivel ? (
+          <>
+            <span className={styles.nota}>
+              Nenhum aparelho marcado aparece neste filtro. As ações valem só para o que está à vista.
+            </span>
+            <Button size="sm" variant="ghost" icon={X} iconOnly label="Limpar seleção" onClick={clearSelection} />
+          </>
         ) : (
           <>
             {frequentes.map((a) => (

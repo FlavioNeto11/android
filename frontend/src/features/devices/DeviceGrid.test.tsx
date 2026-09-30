@@ -149,6 +149,32 @@ describe('DeviceGrid — filtro ?estado=', () => {
     expect(el.querySelector('[data-instance-card="android-01"]')).toBeTruthy();
   });
 
+  it('RF-01: com filtro, a seleção escondida não entra na ação e "Selecionar todas" pega só o que se vê', async () => {
+    // android-01 (online) marcado antes, e o link abre só os parados: ele fica fora da vista.
+    useUiStore.setState({ selectedIds: ['android-01'], rota: { tela: 'painel', segmentos: [], query: { estado: 'stopped' } } });
+    const el = await renderGrade();
+    // A barra avisa, mas não oferece ação sobre quem não aparece.
+    expect(text(el)).toContain('0 selecionados');
+    expect(text(el)).toContain('(1 fora do filtro atual)');
+    expect(el.querySelector('[role="toolbar"]')).toBeNull();
+    const barra = el.querySelector('[data-barra-de-selecao]') as HTMLElement;
+    expect(allByRole('button', /^Iniciar$|^Parar$|^Reiniciar$|Mais ações/, barra)).toHaveLength(0);
+
+    await click(byRole('button', /^Selecionar tod/, el));
+    // Só os três parados visíveis (02, 03 e 09); o online escondido saiu da seleção.
+    expect(useUiStore.getState().selectedIds.slice().sort()).toEqual(['android-02', 'android-03', 'android-09']);
+    expect(byRole('toolbar', /Ação em 3 aparelhos/, el)).toBeTruthy();
+    expect(text(el)).not.toContain('fora do filtro');
+  });
+
+  it('RF-01: seleção lembrada com ids escondidos: a barra age só nos visíveis e conta os demais à parte', async () => {
+    useUiStore.setState({ selectedIds: ['android-01', 'android-02'], rota: { tela: 'painel', segmentos: [], query: { estado: 'stopped' } } });
+    const el = await renderGrade();
+    expect(byRole('toolbar', /Ação em 1 aparelho$/, el)).toBeTruthy();
+    expect(text(el)).toContain('1 selecionado');
+    expect(text(el)).toContain('(1 fora do filtro atual)');
+  });
+
   it('filtro sem resultado explica e oferece limpar', async () => {
     useUiStore.setState({ rota: { tela: 'painel', segmentos: [], query: { estado: 'error' } } });
     const el = await renderGrade();
