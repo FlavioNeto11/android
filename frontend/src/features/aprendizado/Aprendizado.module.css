@@ -184,7 +184,8 @@
 .exemplos li { overflow-wrap: anywhere; }
 
 .linkBtn {
-  padding: 0;
+  /* 32 px de área de clique: o respiro vertical entra como padding (o botão é inline, a linha não muda) */
+  padding: 6px 0;
   border: 0;
   background: none;
   color: var(--accent-text);

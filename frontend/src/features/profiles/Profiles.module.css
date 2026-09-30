@@ -148,7 +148,7 @@
 .filterBar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .filterTag {
   border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-2);
-  color: var(--text-2); font-size: var(--fs-sm); padding: 4px var(--sp-3); cursor: pointer;
+  color: var(--text-2); font-size: var(--fs-sm); min-height: var(--hit-min); padding: 4px var(--sp-3); cursor: pointer;
 }
 .filterTag:hover { background: var(--surface-3); }
 .filterTagActive { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); font-weight: 600; }
@@ -189,7 +189,7 @@
 .personality { font-size: var(--fs-lg); line-height: var(--lh-normal); margin: 0; }
 .editablePanel { border-top: 1px solid var(--border-1); margin-top: var(--sp-4); padding-top: var(--sp-4); }
 .disclosure {
-  display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none; min-height: var(--hit-min);
   font-size: var(--fs-sm); color: var(--text-2); user-select: none;
 }
 .disclosure::-webkit-details-marker { display: none; }
@@ -229,7 +229,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 .segmentedBtn {
   border: none; background: transparent; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600;
-  padding: 4px var(--sp-3); border-radius: var(--radius-pill); cursor: pointer; line-height: 1.4;
+  min-height: var(--hit-min); padding: 4px var(--sp-3); border-radius: var(--radius-pill); cursor: pointer; line-height: 1.4;
 }
 .segmentedBtn:hover:not(:disabled) { background: var(--surface-3); }
 .segmentedBtn:disabled { cursor: not-allowed; opacity: 0.6; }
@@ -295,7 +295,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .appSwitcher { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .appSwitcherLabel { font-size: var(--fs-sm); color: var(--text-2); margin-right: var(--sp-1); }
 .appChip {
-  display: inline-flex; align-items: center; gap: var(--sp-2); padding: 4px var(--sp-3);
+  display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--hit-min); padding: 4px var(--sp-3);
   border: 1px solid var(--border-1); border-radius: var(--radius-pill); background: var(--surface-2);
   color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
@@ -525,7 +525,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   border: 1px solid var(--info-border);
   border-radius: var(--radius-pill);
   color: var(--info-text);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   line-height: 15px;
 }
@@ -891,7 +891,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 
 /* Menu "⋯": as ações que não são "Abrir". O vermelho de Remover mora só aqui dentro. */
 .menuGatilho {
-  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center; width: var(--hit-min); height: var(--hit-min);
   border: 1px solid var(--border-2); border-radius: var(--radius-md); background: transparent; color: var(--text-2);
   cursor: pointer;
 }

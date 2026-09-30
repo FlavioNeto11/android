@@ -476,7 +476,7 @@
 .commandHint {
   margin: 0;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
 }
 
@@ -511,7 +511,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--fs-xs);
 }
 
 /* Selo, idade e botão não encolhem; quem cede espaço é o texto (verbo, servidor), com reticências. Sem isto um
@@ -543,14 +543,14 @@
 
 .commandAge {
   color: var(--text-3, var(--text-2));
-  font-size: 11px;
+  font-size: var(--fs-xs);
   white-space: nowrap;
 }
 
 .commandReason {
   margin: 0;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
 }
 
@@ -568,12 +568,13 @@
   align-items: center;
   gap: 4px;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 /* Marco que não aconteceu aparece apagado — a ausência é informação (enviado sem "recebido" é um estado real). */
 .trailStepVazio {
-  opacity: 0.45;
+  /* Cor, não opacidade: a 0,45 o texto caía a 2,7:1. O --text-3 passa de 5:1 e continua lendo como apagado. */
+  color: var(--text-3);
 }
 
 .commandActions {
@@ -592,7 +593,10 @@
 .logResumo {
   color: var(--text-2);
   cursor: pointer;
-  font-size: 12px;
+  /* 32 px de área de clique sem mexer na linha: padding que some na margem negativa */
+  padding: 6px 0;
+  margin: -6px 0;
+  font-size: var(--fs-xs);
 }
 
 .logCauda {
@@ -604,7 +608,7 @@
   border-radius: 6px;
   color: var(--text-2);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -612,7 +616,9 @@
 
 /* 11.5 — contador de estado que seleciona os aparelhos daquele estado. Parece texto até o ponteiro chegar. */
 .stateQuick {
-  padding: 0 2px;
+  /* área de clique de 32 px sem mudar a linha de contadores: padding que some na margem negativa */
+  padding: 6px 2px;
+  margin: -6px 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -722,7 +728,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 28px;
+  min-height: var(--hit-min);
   padding: 0 10px;
   border-radius: calc(var(--radius-md) - 2px);
   color: var(--text-2);
