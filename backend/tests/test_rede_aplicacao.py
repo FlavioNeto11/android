@@ -480,7 +480,12 @@ class AparelhoFalso:
         if comando.startswith("echo A=$(settings get"):
             return f"A={self.always_on}\nL={self.lockdown}\n"
         if comando.startswith("pm path"):
-            return "package:/data/app/sfa/base.apk\n" if self.instalado else ""
+            if self.instalado:
+                return "package:/data/app/sfa/base.apk\n"
+            if not comando.rstrip().endswith("; true"):
+                # Como o Android: pacote ausente é código 1, e o shell da plataforma levanta (android-02, 29/09).
+                raise RuntimeError("adb shell falhou (1)")
+            return ""
         if comando.startswith("cmd appops set"):
             self.appops = True
         elif comando.startswith("cmd appops get"):

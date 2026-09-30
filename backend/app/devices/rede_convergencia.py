@@ -364,14 +364,17 @@ class ConvergenciaDeRede:
     async def _garantir_cliente(self, rt: DeviceRuntime, ap: AparelhoDaRede) -> str:
         """O cliente VPN instalado pelo fluxo de releases (a versão PROMOVIDA na loja; nunca APK de fora)."""
         pkg = self.cfg.cliente_pacote
-        if "package:" in await ap.shell(f"pm path {pkg}", timeout=30):
+        # `pm path` sai com código 1 quando o pacote não existe, e o shell da plataforma trata saída diferente de 0 como
+        # falha: no android-02 resetado (29/09) a aplicação morria aqui ("adb shell falhou (1)") antes de instalar.
+        consulta = f"pm path {pkg} 2>/dev/null; true"
+        if "package:" in await ap.shell(consulta, timeout=30):
             return f"{pkg} já instalado"
         alvo = self.st.releases.promoted_release(pkg)
         if alvo is None or alvo.status.value != "installable":
             raise RedeAplicacaoError(f"o cliente VPN {pkg} não está no aparelho e não há versão promovida dele na loja "
                                      "(item 25.10): promova-a para a rede poder ser aplicada")
         await self.st._entregar(rt, pkg, alvo.id)
-        if "package:" not in await ap.shell(f"pm path {pkg}", timeout=30):
+        if "package:" not in await ap.shell(consulta, timeout=30):
             raise RedeAplicacaoError(f"a entrega de {pkg} terminou sem o pacote no aparelho")
         return f"{pkg} instalado pela loja ({alvo.version_name})"
 
