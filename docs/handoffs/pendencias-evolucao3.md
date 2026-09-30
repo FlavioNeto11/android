@@ -392,8 +392,8 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   `0.1.0+f6c7df2`; depois, correções medidas no aparelho, cada uma com teste que falhava antes: GMS pelo pacote
   (`da62dd7`), "Continue" desabilitado até o e-mail (`43db7a6`), rótulo repetido na descrição (`9f7b18b`), releitura
   do campo sensível no WebView (`48efc82`), telas depois da senha (`9ff427c`). Cinco reinícios do backend, nenhum
-  reinício de aparelho pedido por prova de vazamento perdida. `2e29350` (boas-vindas pelo carrossel) ainda
-  não implantado.
+  reinício de aparelho pedido por prova de vazamento perdida. `2e29350` (boas-vindas pelo carrossel) implantado às 23:11Z (`9f6acdb`), com o agente
+  do notebook no mesmo commit.
 - **Renderizador `host` em todos** (confirmação do dono no chat, ~18:20Z): `android.gpu_mode: host` no `config.yaml`
   (cópia `data/backups/config.yaml.antes-gpu-host-todos-20260930-213144`). QA primeiro (02, 05, 07, 08), depois as
   contas reais uma por vez, cada uma com o Instagram conferido depois: 06 (21:58Z), 03 (22:25Z), 01 (reinstalado e
@@ -599,7 +599,8 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
 
 1. Pedido ao dono (uma linha): um e-mail de teste igual ao do Lucas para a caixa do Bruno ou do André — fecha o 27.2
    (C1 num aparelho com a rede verificada).
-2. Implantar o que está na `main` e ainda não subiu (boas-vindas pelo carrossel) junto com a próxima correção.
+2. Achados sem correção ainda: dica "Now your folders…" depois da gaveta; "Save your login info?" do Instagram em
+   Views não clicáveis; texto do aviso de fallback do renderizador quando falta só o reinício.
 3. Investigar o W4 (29.9) no android-09 antes de repetir: o túnel remoto e o ADB do convidado.
 4. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
 5. Fechamento (29.18): §27 com a matriz por aparelho e o resumo real × simulado × não executado.
