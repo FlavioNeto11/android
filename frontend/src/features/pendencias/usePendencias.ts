@@ -17,22 +17,29 @@ export function usePendencias(nomeDaPersona?: (id: string | null) => string | nu
 } {
   const aprendizado = usePendenciasStore((s) => s.aprendizado);
   const aprovacoes = usePendenciasStore((s) => s.aprovacoes);
+  const personas = usePendenciasStore((s) => s.personas);
   const falhou = usePendenciasStore((s) => s.falhou);
   const execucoes = useAppStore((s) => s.runs);
   const itens = useMemo(
-    () => montarPendencias({ aprendizado, aprovacoes, execucoes, nomeDaPersona }),
-    [aprendizado, aprovacoes, execucoes, nomeDaPersona],
+    () => montarPendencias({ aprendizado, aprovacoes, execucoes, personas, nomeDaPersona }),
+    [aprendizado, aprovacoes, execucoes, personas, nomeDaPersona],
   );
-  return { itens, total: itens.length, carregado: aprendizado !== null || aprovacoes !== null, falhou };
+  return {
+    itens, total: itens.length, carregado: aprendizado !== null || aprovacoes !== null || personas !== null, falhou,
+  };
 }
 
-/** Quem monta o menu liga a releitura periódica (uma vez; a página só lê). */
+/**
+ * Quem monta o menu liga a releitura periódica (uma vez; a página só lê). O evento `session.needs_person` (a batida
+ * `needsPersonEpoch`) também relê: uma sessão que passou a pedir pessoa não espera o próximo minuto para aparecer.
+ */
 export function useReleituraDasPendencias(): void {
   const operator = useSessionStore((s) => s.operator);
+  const needsPersonEpoch = useAppStore((s) => s.needsPersonEpoch);
   useEffect(() => {
     if (!operator) return undefined;
     const atualizar = () => void usePendenciasStore.getState().atualizar();
     atualizar();
     return intervaloVisivel(atualizar, A_CADA_MS);
-  }, [operator]);
+  }, [operator, needsPersonEpoch]);
 }

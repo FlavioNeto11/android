@@ -1,11 +1,13 @@
 /**
- * A caixa única de pendências (revisão de UX, tarefa 06): tudo o que espera uma decisão da pessoa, de três origens que
- * antes viviam em telas diferentes.
+ * A caixa única de pendências (revisão de UX, tarefa 06): tudo o que espera uma decisão da pessoa, de quatro origens
+ * que antes viviam em telas diferentes.
  *
  * - **Aprendizado**: itens da fila "Para aprovar" (efeito fora do sistema ou texto de pessoa), um por item.
  * - **Persona**: textos que uma persona quer publicar e esperam aprovação, um por aprovação.
  * - **Execução**: execuções com objetivos aguardando uma ação sua ou com resultado incerto, UMA LINHA POR EXECUÇÃO
  *   (o número de objetivos vai no texto da linha).
+ * - **Intervenção**: sessões de conta que só uma pessoa resolve (login, desafio, conta errada), uma por persona — a
+ *   fila "Aguardando intervenção" de Personas (RF-03 da revisão final).
  *
  * O contador do menu e a lista saem da mesma função (`montarPendencias`): o total é sempre o número de linhas. O
  * "aguardando você" do cabeçalho continua contando OBJETIVOS (definição da tarefa 02, `store/metricas.ts`); as duas
@@ -14,19 +16,27 @@
  * A ação primária de cada linha LEVA à tela onde se decide (com a evidência ao lado); a caixa não aprova nem recusa
  * nada: decidir sem ver o contexto é o erro que a aprovação existe para evitar.
  */
-import type { Approval, RunSummary } from '../../api/types';
+import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
+import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import type { Destino } from '../../store/ui';
 import { execucoesAguardando } from '../../store/metricas';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
 import { tituloCurto } from '../runs/filtroExecucoes';
 
-export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao';
+export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao' | 'intervencao';
 
 export const ROTULO_DA_ORIGEM: Record<OrigemDaPendencia, string> = {
   aprendizado: 'Aprendizado',
   persona: 'Persona',
   execucao: 'Execução',
+  intervencao: 'Intervenção',
 };
+
+/**
+ * Estados de sessão que só uma pessoa resolve (login, desafio de segurança, conta errada) — mesmo conjunto do backend
+ * (achado #106). Um só lugar: a fila "Aguardando intervenção" de Personas e a caixa de pendências leem daqui.
+ */
+export const PRECISA_DE_PESSOA: ReadonlySet<string> = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
 
 export interface Pendencia {
   /** Estável entre leituras (a lista não pisca quando a caixa é relida). */
@@ -97,10 +107,34 @@ export function pendenciasDeExecucoes(runs: readonly RunSummary[]): Pendencia[] 
   });
 }
 
+/**
+ * Sessões que esperam uma pessoa (RF-03 da revisão final): a mesma fila "Aguardando intervenção" de Personas — persona
+ * com conta e sessão em login, desafio ou conta errada. A decisão continua lá (assumir o controle do aparelho e
+ * resolver na tela); a caixa só leva até ela.
+ */
+export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[] {
+  return personas.filter((p) => p.username && PRECISA_DE_PESSOA.has(p.session.status)).map((p) => {
+    const nome = p.display_name || p.name;
+    const aparelho = p.session.instance_id ?? p.instance_id;
+    return {
+      chave: `intervencao:${p.id}`,
+      origem: 'intervencao',
+      titulo: nome && nome !== p.username ? `${nome} (@${p.username})` : `@${p.username}`,
+      detalhe: `${metaOf(ACCOUNT_SESSION_STATUS, p.session.status).label} · ${aparelho ?? 'sem aparelho vinculado'}`
+        + ' · só uma pessoa resolve',
+      desde: p.session.verified_at,
+      acao: 'Resolver',
+      destino: { tela: 'personas' },
+    };
+  });
+}
+
 export interface EntradasDaCaixa {
   aprendizado: readonly EntradaDoLivro[] | null;
   aprovacoes: readonly Approval[] | null;
   execucoes: readonly RunSummary[];
+  /** Personas (`GET /personas`, a mesma leitura da tela Personas): delas saem as sessões que pedem pessoa. */
+  personas?: readonly PersonaDTO[] | null;
   nomeDaPersona?: (id: string | null) => string | null;
 }
 
@@ -110,6 +144,7 @@ export function montarPendencias(e: EntradasDaCaixa): Pendencia[] {
     ...pendenciasDeAprendizado(e.aprendizado ?? []),
     ...pendenciasDeAprovacoes(e.aprovacoes ?? [], e.nomeDaPersona ?? (() => null)),
     ...pendenciasDeExecucoes(e.execucoes),
+    ...pendenciasDeSessoes(e.personas ?? []),
   ];
   return todas.sort((a, b) => tempo(a.desde) - tempo(b.desde) || a.chave.localeCompare(b.chave));
 }

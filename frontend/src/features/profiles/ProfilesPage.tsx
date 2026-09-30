@@ -22,6 +22,8 @@ import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
+// Estados de sessão que só uma pessoa resolve: o mesmo conjunto da caixa de Pendências (fila e caixa não divergem).
+import { PRECISA_DE_PESSOA } from '../pendencias/modelo';
 import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
@@ -35,8 +37,6 @@ import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 
-/** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
-const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
 
 /** Quem tem conta de cadastro, no formato que a fila e os grupos de acesso sempre leram (`username` presente). */
 function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {

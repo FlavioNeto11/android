@@ -11,14 +11,15 @@ import { hashDe } from '../../lib/rotas';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
-import { usePersonas } from '../profiles/usePersonas';
 import { ROTULO_DA_ORIGEM, type OrigemDaPendencia, type Pendencia } from './modelo';
 import { usePendenciasStore } from './store';
 import { usePendencias } from './usePendencias';
 import styles from './Pendencias.module.css';
 
-const ORIGENS: readonly OrigemDaPendencia[] = ['aprendizado', 'persona', 'execucao'];
-const TOM: Record<OrigemDaPendencia, 'accent' | 'info' | 'warning'> = { aprendizado: 'accent', persona: 'info', execucao: 'warning' };
+const ORIGENS: readonly OrigemDaPendencia[] = ['aprendizado', 'persona', 'execucao', 'intervencao'];
+const TOM: Record<OrigemDaPendencia, 'accent' | 'info' | 'warning' | 'danger'> = {
+  aprendizado: 'accent', persona: 'info', execucao: 'warning', intervencao: 'danger',
+};
 const ehOrigem = (v: string | undefined): v is OrigemDaPendencia => !!v && (ORIGENS as readonly string[]).includes(v);
 
 /**
@@ -29,7 +30,8 @@ export function PendenciasPage() {
   const agora = useNow();
   const origemDoLink = useUiStore((s) => s.rota.query.origem);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
-  const pessoas = usePersonas();
+  // A mesma leitura de personas que a caixa já faz (para as sessões que pedem pessoa): uma chamada, não duas.
+  const pessoas = usePendenciasStore((s) => s.personas);
   const nomeDaPersona = useCallback((id: string | null) => {
     const p = id ? pessoas?.find((x) => x.id === id) : null;
     return p ? nomeDe(p) : null;
@@ -42,7 +44,7 @@ export function PendenciasPage() {
   }, []);
 
   const contagem = useMemo(() => {
-    const c: Record<OrigemDaPendencia, number> = { aprendizado: 0, persona: 0, execucao: 0 };
+    const c: Record<OrigemDaPendencia, number> = { aprendizado: 0, persona: 0, execucao: 0, intervencao: 0 };
     for (const p of itens) c[p.origem] += 1;
     return c;
   }, [itens]);
@@ -51,7 +53,7 @@ export function PendenciasPage() {
   return (
     <Page
       title="Pendências"
-      lead="Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas e execuções que pararam esperando você."
+      lead="Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas, execuções que pararam esperando você e contas que pedem uma intervenção (login, desafio de segurança, conta errada)."
     >
       {falhou ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status">
@@ -87,7 +89,8 @@ export function PendenciasPage() {
 
       <Disclosure summary="Como o número é contado" bare>
         <p className={styles.nota}>
-          Cada linha é uma decisão sua: um aprendizado, um texto de persona ou uma execução. O número no menu é o total
+          Cada linha é uma decisão sua: um aprendizado, um texto de persona, uma execução ou uma conta que pede
+          intervenção (a mesma fila &quot;Aguardando intervenção&quot; de Personas). O número no menu é o total
           desta lista. O &quot;aguardando você&quot; do topo conta os <em>objetivos</em> dentro das execuções, por isso pode
           ser maior que o número de execuções listadas aqui.
         </p>
