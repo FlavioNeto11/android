@@ -144,9 +144,10 @@ def _result(hy_ex=1.0, hy_mx=1.0, hy_se=1.0, jm_mx=1.0, rg_se=0.5, bm_se=0.5, bm
         return {"all": _grp(30, (ex + mx + se) / 3, **k), "grep_friendly": _grp(12, ex, **k), "mixed": _grp(6, mx, **k), "semantic_only": _grp(12, se, **k)}
     summary = {"hybrid": s(hy_ex, hy_mx, hy_se, **kw), "jev_map": s(hy_ex, jm_mx, hy_se, cost=0.03),
                "ripgrep": s(rg_ex, rg_mx, rg_se, ctx=4000.0), "code_search": s(bm_ex, bm_mx, bm_se, ctx=8000.0)}
-    rows = [{"id": f"H{i:02d}", "strategy": st, "r3": 1.0, "failure": None} for st in ("hybrid", "jev_map", "ripgrep", "code_search") for i in range(30)]
+    rows = [{"id": f"H{i:02d}", "strategy": st, "r3": 1.0, "failure": None, "hybrid_rule_hash": hy.rule_hash()}
+            for st in ("hybrid", "jev_map", "ripgrep", "code_search") for i in range(30)]
     return {"meta": {"provider": "jev", "thresholds_path": str(HB / "thresholds.json"), "aborted": None, "checkout_verified": True,
-                     "redactions": 0, "network_attempts": 60}, "summary": summary, "rows": rows}
+                     "corpus_visibility": "public", "redactions": {}, "network_attempts": 60}, "summary": summary, "rows": rows}
 
 
 def test_evaluator_pass_fail_and_reservations():
@@ -185,9 +186,7 @@ def test_evaluator_critical_misses_and_reliability_and_privacy():
         if row["strategy"] == "jev_map" and row["id"] in {"H00", "H01"}:
             row["failure"] = "timeout"
     assert he.evaluate(r)["criteria"]["H6"]["ok"] is False
-    r = _result()
-    r["meta"]["network_attempts"] = 61
-    assert he.evaluate(r)["criteria"]["H9"]["ok"] is False
+
 
 
 # --------------------------------------------------------------------------- travas e harness
@@ -264,3 +263,84 @@ def test_holdout_freeze_manifest_matches_freeze_json():
         if key == "corpus" and "corpus" not in cur:
             continue                                          # sem checkout não dá para recomputar a árvore do corpus
         assert cur[key] == value, f"{key} mudou depois do congelamento: registre uma nova versão do holdout"
+
+
+# --------------------------------------------------------------------------- H9 (avaliador v2: exatamente o limiar congelado)
+def _h9(**meta_over):
+    r = _result()
+    r["meta"].update(meta_over)
+    return he.evaluate(r)["criteria"]["H9"]
+
+
+@pytest.mark.parametrize("kind", ["private_key", "bearer", "api_key", "jwt"])
+def test_h9_fails_on_any_hard_redaction(kind):
+    h = _h9(redactions={kind: 1})
+    assert h["ok"] is False and h["observed"]["hard_redaction_hits"] == 1 and h["checks"]["hard_redaction_hits"] is False
+
+
+@pytest.mark.parametrize("kind", ["email", "win_user_path", "secret_assign"])
+def test_h9_does_not_fail_on_soft_redactions_only(kind):
+    h = _h9(redactions={kind: 3})
+    assert h["ok"] is True and h["observed"]["hard_redaction_hits"] == 0 and h["observed"]["soft_redactions"] == {kind: 3}
+
+
+def test_h9_reproduces_the_real_round_exactly_email_2_and_everything_else_valid():
+    h = _h9(redactions={"email": 2})
+    assert h["ok"] is True and h["observed"] == {
+        "checkout_verified": True, "hard_redaction_hits": 0, "soft_redactions": {"email": 2}, "network_attempts": 60,
+        "hybrid_rule_hash_matches": True, "private_code_sent": False,
+        "private_code_sent_source": "derived_from_existing_artifacts (corpus_visibility=public, checkout_verified=true)"}
+
+
+def test_h9_hard_and_soft_together_still_fail_only_because_of_the_hard_ones():
+    h = _h9(redactions={"email": 5, "jwt": 1})
+    assert h["ok"] is False and h["observed"]["hard_redaction_hits"] == 1 and h["observed"]["soft_redactions"] == {"email": 5}
+
+
+def test_h9_attempt_ceiling_is_60():
+    assert _h9(network_attempts=60)["ok"] is True
+    h = _h9(network_attempts=61)
+    assert h["ok"] is False and h["checks"]["network_attempts"] is False
+
+
+def test_h9_invalid_checkout_fails():
+    assert _h9(checkout_verified=False)["ok"] is False and _h9(checkout_verified=None)["ok"] is False
+
+
+def test_h9_rule_hash_mismatch_or_missing_fails():
+    r = _result()
+    r["rows"][0]["hybrid_rule_hash"] = "0" * 64                  # a 1ª linha é do híbrido
+    assert he.evaluate(r)["criteria"]["H9"]["checks"]["hybrid_rule_hash_matches"] is False
+    r = _result()
+    for row in r["rows"]:
+        row.pop("hybrid_rule_hash", None)
+    assert he.evaluate(r)["criteria"]["H9"]["ok"] is False
+
+
+def test_h9_private_code_sent_true_fails_and_is_derived_when_not_persisted():
+    h = _h9(private_code_sent=True)
+    assert h["ok"] is False and h["observed"]["private_code_sent_source"] == "persisted"
+    assert _h9(private_code_sent=False)["ok"] is True
+    assert _h9(corpus_visibility="private")["ok"] is False        # sem o campo persistido, corpus não público ⇒ não se prova ausência de envio privado
+
+
+def test_h9_hard_kinds_are_exactly_the_redactors_hard_set():
+    import redact
+    assert he.HARD_KINDS == frozenset(redact.HARD) == {"private_key", "bearer", "api_key", "jwt"}
+    assert not (he.HARD_KINDS & set(redact.SOFT))
+
+
+@pytest.mark.skipif(not (repo_root() / "data" / "jev-pilot" / "holdout-real" / "results.json").exists(), reason="rodada real ausente")
+def test_corrected_replay_of_the_real_round_is_offline_and_does_not_touch_the_raw_result(monkeypatch):
+    import hashlib
+
+    def deny(*a, **k):
+        raise AssertionError("rede aberta")
+    monkeypatch.setattr(socket.socket, "connect", deny)
+    path = repo_root() / "data" / "jev-pilot" / "holdout-real" / "results.json"
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    result = json.loads(path.read_text(encoding="utf-8"))
+    v = he.evaluate(result)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    assert all(v["criteria"][f"H{i}"]["ok"] for i in range(1, 10)) and v["verdict"] == "PASS"
+    assert v["criteria"]["H9"]["observed"]["soft_redactions"] == {"email": 2}

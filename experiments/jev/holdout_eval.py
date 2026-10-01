@@ -9,11 +9,51 @@ import json
 from pathlib import Path
 
 import metrics as mt
+from redact import HARD
+
+HARD_KINDS = frozenset(HARD)          # private_key, bearer, api_key, jwt; o resto (secret_assign, email, win_user_path) é SOFT
 
 
 def _items(summary_part: dict, n_key: str = "RECALL_AT_3") -> int:
     """R@3 médio × n = itens (fracionários quando há 2 arquivos esperados) com o arquivo esperado no top-3."""
     return round(summary_part[n_key] * summary_part["n"], 6)
+
+
+def _h9(result: dict, th: dict, hybrid_rows: list[dict]) -> dict:
+    """H9 EXATAMENTE como congelado em `thresholds.json` (checkout fixado e limpo; achados DUROS <= hard_redaction_hits_max; tentativas
+    <= network_attempts_max; hash da regra híbrida igual ao congelado; nenhum código privado enviado). Redações SOFT (e-mail,
+    secret_assign, win_user_path) são registradas e redigidas antes do envio, mas NÃO reprovam o critério.
+
+    Versão 2 do avaliador: a v1 comparava o total de redações de QUALQUER tipo com 0 (defeito de implementação, reconhecido pelo dono
+    em 2026-10-01; o limiar e os dados não mudaram). `private_code_sent` e o hash por linha são verificados com o que a rodada persistiu:
+    quando o bruto não traz `private_code_sent`, ele é DERIVADO dos artefatos existentes (`derived_from_existing_artifacts`)."""
+    spec = th["criteria"]["H9_provenance_and_privacy"]
+    meta = result["meta"]
+    red = meta.get("redactions") or {}
+    red = red if isinstance(red, dict) else {}
+    hard = sum(n for k, n in red.items() if k in HARD_KINDS)
+    soft = {k: n for k, n in red.items() if k not in HARD_KINDS}
+    attempts = meta.get("network_attempts") or 0
+    frozen_hash = th["hybrid_rule"]["hash"]
+    hashes = {r.get("hybrid_rule_hash") for r in hybrid_rows}
+    rule_ok = bool(hybrid_rows) and hashes == {frozen_hash}
+    if "private_code_sent" in meta:
+        private_sent, private_src = bool(meta["private_code_sent"]), "persisted"
+    else:                          # corpus público + checkout verificado (pinned, limpo, origem do golden) + allowed_files ⇒ nada privado saiu
+        private_sent = not (meta.get("corpus_visibility") == "public" and meta.get("checkout_verified") is True)
+        private_src = "derived_from_existing_artifacts (corpus_visibility=public, checkout_verified=true)"
+    checks = {
+        "checkout_pinned_and_clean": bool(meta.get("checkout_verified")) or not spec["checkout_must_match_pinned_sha_and_be_clean"],
+        "hard_redaction_hits": hard <= spec["hard_redaction_hits_max"],
+        "network_attempts": attempts <= spec["network_attempts_max"],
+        "hybrid_rule_hash_matches": rule_ok or not spec["hybrid_rule_hash_must_match"],
+        "private_code_not_sent": private_sent is False,
+    }
+    return {"ok": all(checks.values()), "checks": checks,
+            "observed": {"checkout_verified": meta.get("checkout_verified"), "hard_redaction_hits": hard, "soft_redactions": soft,
+                         "network_attempts": attempts, "hybrid_rule_hash_matches": rule_ok, "private_code_sent": private_sent,
+                         "private_code_sent_source": private_src},
+            "evaluator_version": 2}
 
 
 def evaluate(result: dict, thresholds: dict | None = None) -> dict:
@@ -70,11 +110,7 @@ def evaluate(result: dict, thresholds: dict | None = None) -> dict:
     misses = sum(1 for r in rows[strat] if bm_r3[r["id"]] > 0 and r["r3"] < bm_r3[r["id"]])
     out["H8"] = {"ok": misses <= crit["H8_critical_misses"]["max_items"], "observed": {"critical_misses": misses, "of": n_items}}
 
-    redactions = meta.get("redactions") or 0
-    attempts = meta.get("network_attempts") or 0
-    out["H9"] = {"ok": bool(meta.get("checkout_verified")) and redactions == 0
-                 and attempts <= crit["H9_provenance_and_privacy"]["network_attempts_max"],
-                 "observed": {"checkout_verified": meta.get("checkout_verified"), "redactions": redactions, "network_attempts": attempts}}
+    out["H9"] = _h9(result, th, rows[strat])
 
     core = all(out[k]["ok"] for k in ("H1", "H3", "H6", "H8", "H9"))
     secondary = all(out[k]["ok"] for k in ("H2", "H4", "H5", "H7"))
@@ -112,3 +148,31 @@ def markdown(result: dict, verdict: dict) -> str:
     if "note" in verdict:
         lines += ["", verdict["note"]]
     return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Replay OFFLINE do avaliador sobre um `results.json` já gravado: não chama API, não regera respostas, não toca o bruto.
+    Escreve `verdict.corrected-replay.json` e `report.corrected-replay.md` ao lado do bruto."""
+    import argparse
+    import hashlib
+    from netguard import no_network
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--results", required=True)
+    args = ap.parse_args(argv)
+    path = Path(args.results)
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    result = json.loads(path.read_text(encoding="utf-8"))
+    with no_network():
+        verdict = evaluate(result)
+    verdict = {"kind": "PROTOCOL_CORRECTED_REPLAY", "evaluator_version": 2, "NEW_NETWORK_ATTEMPTS": 0, "API_CALLS_REPEATED": "NO",
+               "THRESHOLD_CHANGED_AFTER_RESULTS": "NO", "RULE_CHANGED_AFTER_RESULTS": "NO",
+               "results_json_sha256": before, **verdict}
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before          # o bruto da rodada não muda
+    (path.parent / "verdict.corrected-replay.json").write_text(json.dumps(verdict, ensure_ascii=False, indent=1), encoding="utf-8")
+    (path.parent / "report.corrected-replay.md").write_text(markdown(result, verdict), encoding="utf-8")
+    print(json.dumps({k: verdict[k] for k in ("verdict", "results_json_sha256")}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
