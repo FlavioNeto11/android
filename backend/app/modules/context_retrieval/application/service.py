@@ -150,7 +150,7 @@ class ContextRetrievalService:
             if texto is None:
                 saida.append(r)
                 continue
-            trecho = "\n".join(texto.splitlines()[r.start_line - 1:r.end_line])
+            trecho = "\n".join(texto.split(chr(10))[r.start_line - 1:r.end_line])
             if hard_secret_kind(trecho) or has_soft_secret(trecho):
                 avisos.append("text_withheld:secret")
                 saida.append(r)

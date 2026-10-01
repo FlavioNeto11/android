@@ -219,3 +219,63 @@ def test_portao_de_segredo_mole_falha_fechado_sem_redator_registrado(monkeypatch
     monkeypatch.setattr(sensitive, "_redator", None)
     with pytest.raises(RuntimeError):                                      # nunca "sem segredo" por falta de ligação
         sensitive.has_soft_secret("qualquer texto")
+
+
+# ---------------------------------------------------------------- achados da revisão final (PR #18)
+def test_chamada_que_falha_tambem_gasta_a_cota_da_sessao(tmp_path: Path) -> None:
+    """Provedor falhando em laço não pode passar do teto: a tentativa conta, responda ou não (antes só a resposta contava)."""
+    falso = FakeSemanticProvider(locality=ProviderLocality.REMOTE, fail_with=ProviderTimeout("timeout"))
+    servico = _servico(tmp_path, falso, max_calls_per_session=3, max_calls=1)
+    with servico.session():
+        packs = [servico.gather(f"como funciona a autenticacao do sistema variante {i}") for i in range(8)]
+    assert len(falso.calls) == 3                                    # nenhuma tentativa além do teto
+    assert all(p is not None and p.files for p in packs)            # e o local entregou sempre
+    assert packs[-1].metadata["fallback_reason"] == "budget_exceeded"   # type: ignore[union-attr]
+
+
+def test_cache_do_mapa_com_numero_absurdo_ou_aninhamento_profundo_e_miss(tmp_path: Path) -> None:
+    from app.modules.context_retrieval.domain.model import RETRIEVAL_VERSION
+    from app.modules.context_retrieval.infrastructure import repomap
+
+    entrada = {"path": "a.py", "language": "py", "size": float("inf"), "symbols": [], "summary": ""}
+    bruto = {"revision": "r1", "version": RETRIEVAL_VERSION, "max_symbols": 8, "entries": [entrada]}
+    assert repomap._de_dict(bruto, "r1", 8) is None                 # int(inf) = OverflowError: miss, nunca exceção
+
+
+def test_chave_de_api_de_projeto_com_hifen_e_underscore_e_segredo_duro() -> None:
+    from app.modules.context_retrieval.domain.sensitive import hard_secret_kind
+
+    assert hard_secret_kind("chave: sk-proj-Ab12_Cd34-Ef56Gh78Ij90Kl12Mn34") is not None
+
+
+def test_texto_da_regiao_usa_a_mesma_numeracao_de_linha_dos_retrievers(tmp_path: Path) -> None:
+    """`\x0c` (form feed, comum em fontes GNU) quebra `str.splitlines()` mas não é fim de linha para os retrievers."""
+    raiz = _arquivos(tmp_path / "repo")
+    (raiz / "app" / "gnu.py").write_text("# cabecalho\n" + "\x0c\n" * 5 + "def funcao_unica_do_gnu():\n    return 1\n", encoding="utf-8")
+    cfg = _cfg(tmp_path, enabled=True, mode="local_only")
+    pack = wiring.build_service(cfg, root=raiz).gather("onde fica `funcao_unica_do_gnu`", with_text=True)
+    assert pack is not None
+    regiao = next(r for r in pack.regions if r.path == "app/gnu.py")
+    assert "funcao_unica_do_gnu" in (regiao.text or "")
+
+
+@pytest.mark.parametrize("onde", ["cache", "bm25"])
+def test_falha_ao_gravar_nao_deixa_tmp_orfao(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, onde: str) -> None:
+    import os
+
+    from app.modules.context_retrieval.infrastructure.cache import SemanticCache
+
+    def quebrar(origem: object, destino: object) -> None:
+        raise PermissionError("antivirus segurando o arquivo")
+
+    monkeypatch.setattr(os, "replace", quebrar)
+    pasta = tmp_path / "c"
+    if onde == "cache":
+        SemanticCache(pasta).put("a" * 64, {"files": []})
+    else:
+        raiz = _arquivos(tmp_path / "repo")
+        cfg = _cfg(tmp_path, enabled=True, mode="local_only")
+        cfg.file.paths.data_dir = str(pasta.parent)
+        wiring.build_service(cfg, root=raiz).gather("onde fica `verify_token`")
+    sobras = [p.name for p in tmp_path.rglob("*.tmp")]
+    assert sobras == []

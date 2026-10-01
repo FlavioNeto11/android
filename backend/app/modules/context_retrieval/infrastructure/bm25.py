@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import uuid
 import re
 import time
 from collections import Counter
@@ -227,7 +228,10 @@ class BM25Retriever:
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return None
         idx.media = (sum(idx.tamanhos) / n) if n else 0.0
-        self.stats["cache_bytes"] = arq.stat().st_size
+        try:
+            self.stats["cache_bytes"] = arq.stat().st_size
+        except OSError:                               # podado por outro processo entre a leitura e o stat: já temos o índice
+            self.stats["cache_bytes"] = 0
         return idx
 
     def _gravar(self, idx: _Indice, cab: dict[str, str]) -> None:
@@ -236,11 +240,14 @@ class BM25Retriever:
             return
         try:
             self._dir.mkdir(parents=True, exist_ok=True)
-            tmp = arq.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"header": cab, "paths": idx.caminhos, "sizes": idx.tamanhos,
-                                       "postings": idx.postings}, ensure_ascii=False, separators=(",", ":")),
-                           encoding="utf-8")
-            os.replace(tmp, arq)                  # atômico: leitor nunca vê arquivo pela metade
+            tmp = arq.with_name(f"{arq.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")  # único: dois processos não se atropelam
+            try:
+                tmp.write_text(json.dumps({"header": cab, "paths": idx.caminhos, "sizes": idx.tamanhos,
+                                           "postings": idx.postings}, ensure_ascii=False, separators=(",", ":")),
+                               encoding="utf-8")
+                os.replace(tmp, arq)              # atômico: leitor nunca vê arquivo pela metade
+            finally:
+                tmp.unlink(missing_ok=True)       # só sobra se a gravação falhou
             self.stats["cache_bytes"] = arq.stat().st_size
             self._podar(cab["root_id"], arq)
         except OSError:

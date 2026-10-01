@@ -5,7 +5,12 @@ não falha o retrieval, manda o pedido para o local (`FallbackReason.BUDGET_EXCE
 provedor reporta (`ProviderUsage`); nada aqui estima custo por conta própria além dos tokens de entrada, que
 vêm da conta de bytes do payload (a conferência é prévia, o provedor ainda não respondeu).
 
-Thread-safe: o retrieval roda em `asyncio.to_thread` e o ledger é da sessão inteira.
+A chamada é contada quando é AUTORIZADA (reserva atômica sob o lock, no `check_call`), não quando responde: timeout, 429,
+5xx e resposta inválida também gastam a cota de chamadas, então um provedor falhando em laço não passa do teto da sessão.
+Tokens e custo entram só com o que o provedor reporta (`record`).
+
+Thread-safe: conferir e reservar são um passo só sob o lock (N threads não passam juntas pelo teto). O teto de sessão vale
+pela vida do serviço (um `ledger` por serviço) e não zera.
 """
 from __future__ import annotations
 
@@ -25,8 +30,8 @@ class BudgetLedger:
     def begin_request(self) -> "RequestBudget":
         return RequestBudget(self)
 
-    def _pode(self, calls_do_pedido: int, est_input_tokens: int, tokens_do_pedido: int, custo_do_pedido: float
-              ) -> FallbackReason | None:
+    def _reservar(self, calls_do_pedido: int, est_input_tokens: int, tokens_do_pedido: int, custo_do_pedido: float
+                  ) -> FallbackReason | None:
         b = self.budget
         with self._lock:
             if calls_do_pedido >= b.max_calls_per_request or self.calls >= b.max_calls_per_session:
@@ -35,11 +40,11 @@ class BudgetLedger:
                 return FallbackReason.BUDGET_EXCEEDED
             if self.cost_usd >= b.max_cost_usd or custo_do_pedido >= b.max_cost_usd:
                 return FallbackReason.BUDGET_EXCEEDED
+            self.calls += 1  # reserva: a tentativa conta, responda ou não
         return None
 
     def _gasta(self, usage: ProviderUsage) -> None:
         with self._lock:
-            self.calls += 1
             self.input_tokens += usage.input_tokens
             self.cost_usd += usage.cost_usd
 
@@ -59,10 +64,13 @@ class RequestBudget:
         self.cost_usd = 0.0
 
     def check_call(self, *, est_input_tokens: int) -> FallbackReason | None:
-        return self._ledger._pode(self.calls, est_input_tokens, self.input_tokens, self.cost_usd)
+        """Confere os tetos e, se passar, RESERVA a chamada (conta já). Chamar só imediatamente antes de chamar o provedor."""
+        motivo = self._ledger._reservar(self.calls, est_input_tokens, self.input_tokens, self.cost_usd)
+        if motivo is None:
+            self.calls += 1
+        return motivo
 
     def record(self, usage: ProviderUsage) -> None:
-        self.calls += 1
         self.input_tokens += usage.input_tokens
         self.cost_usd += usage.cost_usd
         self._ledger._gasta(usage)

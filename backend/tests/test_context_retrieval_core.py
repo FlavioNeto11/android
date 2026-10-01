@@ -178,14 +178,15 @@ def test_a_constante_e_o_unico_interruptor_do_codigo_privado(monkeypatch: pytest
 def test_orcamento_por_pedido_e_por_sessao() -> None:
     ledger = BudgetLedger(Budget(max_calls_per_request=2, max_calls_per_session=3))
     r1 = ledger.begin_request()
+    # `check_call` autorizado RESERVA a chamada: ela conta mesmo que o provedor falhe e `record` nunca chegue
     assert r1.check_call(est_input_tokens=10) is None
     r1.record(ProviderUsage(input_tokens=10))
-    r1.record(ProviderUsage(input_tokens=10))
-    assert r1.check_call(est_input_tokens=10) is FallbackReason.BUDGET_EXCEEDED   # 2 por pedido
+    assert r1.check_call(est_input_tokens=10) is None
+    assert r1.check_call(est_input_tokens=10) is FallbackReason.BUDGET_EXCEEDED   # 2 por pedido (a 2ª falhou e contou)
     r2 = ledger.begin_request()
-    assert r2.check_call(est_input_tokens=10) is None
-    r2.record(ProviderUsage())
+    assert r2.check_call(est_input_tokens=10) is None                              # 3ª da sessão
     assert ledger.begin_request().check_call(est_input_tokens=10) is FallbackReason.BUDGET_EXCEEDED  # 3 na sessão
+    assert ledger.snapshot()["calls"] == 3
 
 
 def test_orcamento_de_tokens_e_de_custo() -> None:

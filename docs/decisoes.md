@@ -3747,5 +3747,10 @@ viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (t
 (`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
 local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
 
+**Adendo (revisão final do PR #18).** O orçamento conta a chamada quando ela é AUTORIZADA (reserva atômica), não quando responde:
+falha de provedor também gasta a cota. O hit de cache do mapa corrompido (número absurdo, aninhamento profundo) é miss. Gravações
+de cache e de índice usam `.tmp` único e não deixam sobra se falham. A chave de API de projeto (`sk-proj-…`) é segredo duro. Os
+limites que ficaram abertos estão em [dominios/context-retrieval.md](dominios/context-retrieval.md#limites-conhecidos-revisão-final-do-pr-18).
+
 **Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
 [ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.

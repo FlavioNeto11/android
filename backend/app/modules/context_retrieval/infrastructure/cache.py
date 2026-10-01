@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import uuid
 import re
 from pathlib import Path
 
@@ -64,9 +65,12 @@ class SemanticCache:
             return
         try:
             self._dir.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
-            tmp = arq.with_suffix(".tmp")
-            tmp.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, arq)
+            tmp = arq.with_name(f"{arq.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")  # único: dois put não se atropelam
+            try:
+                tmp.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+                os.replace(tmp, arq)
+            finally:
+                tmp.unlink(missing_ok=True)       # só sobra se a gravação falhou; depois do replace já não existe
             self._podar()
         except OSError:
             return

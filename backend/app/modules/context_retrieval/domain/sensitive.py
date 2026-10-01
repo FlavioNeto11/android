@@ -119,7 +119,7 @@ _DUROS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("bearer_token", re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=\-]{20,}")),
     ("authorization_header", re.compile(r"Authorization\s*:\s*(?:Basic|Token|ApiKey|Digest)\s+\S{8,}", re.IGNORECASE)),
     ("api_key", re.compile(
-        r"\b(?:sk-ant-[A-Za-z0-9_\-]{8,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|"
+        r"\b(?:sk-ant-[A-Za-z0-9_\-]{8,}|sk-[A-Za-z0-9_\-]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|"
         r"gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9\-]{10,}|glpat-[A-Za-z0-9_\-]{20,})")),
     ("dsn_password", re.compile(r"\b[a-z][a-z0-9+.\-]*://[^/\s:@]+:[^@\s/]{3,}@", re.IGNORECASE)),
 )

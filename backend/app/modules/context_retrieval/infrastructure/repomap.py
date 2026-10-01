@@ -150,7 +150,7 @@ def _de_dict(d: object, revisao: str, max_symbols: int) -> RepoMap | None:
         entradas = tuple(MapEntry(path=str(e["path"]), language=str(e["language"]), size=int(e["size"]),
                                   symbols=tuple(str(s) for s in e["symbols"]), summary=str(e["summary"]))
                          for e in d["entries"])
-    except (KeyError, TypeError, ValueError, IndexError):
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError):
         return None
     return RepoMap(revision=revisao, entries=entradas)
 
@@ -192,7 +192,7 @@ class RepoMapProvider:
         try:
             with open(self._dir / _nome_cache(revisao), encoding="utf-8") as fh:
                 return _de_dict(json.load(fh), revisao, self._max_symbols)
-        except (OSError, ValueError):  # ausente, ilegível ou JSON quebrado: reconstrói, nunca falha
+        except (OSError, ValueError, RecursionError):  # ausente, ilegível, JSON quebrado ou aninhado demais: reconstrói
             return None
 
     def _gravar_disco(self, mapa: RepoMap) -> None:

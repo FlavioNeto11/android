@@ -103,6 +103,26 @@ O índice BM25 mora em disco, em `data/context_retrieval/bm25/bm25-<raiz>-<chave
   construção a frio do índice 5,8 s; carga a quente do disco 0,27 s; consulta mediana 292 ms (P95 706 ms, máx 1,0 s); índice 4,35 MB;
   273 acertos de cache BM25 e 0 erros; total 96,7 s contra ~1.550 s da linha de base de um subprocesso por item (**16x**).
 
+## Limites conhecidos (revisão final do PR #18)
+
+Registrados, não corrigidos nesta fatia; nenhum deles bloqueia o uso atual (CLI e scripts, uma thread só, desligado por padrão).
+- **Uso por mais de uma thread**: `Workspace.pinned()` guarda a revisão congelada na instância, sem trava; duas sessões em
+  threads diferentes podem deixá-la congelada. O orçamento (`BudgetLedger`) já é atômico. Antes de ligar o serviço a um
+  endpoint, dar a cada thread o seu `Workspace` ou travar o `pinned`.
+- **A classe do repositório é declarada na configuração** (`semantic.repository_class`): `synthetic` com provedor remoto
+  libera o envio. A política não confere a classe com o repositório de fato. É escolha de desenho do ADR-063 (quem declara
+  responde); uma verificação por `git remote` fica para quando houver o primeiro uso remoto real.
+- **Segredo "mole" no mapa da etapa A** (título de markdown, símbolo, primeira linha de docstring) só passa pelo portão
+  duro; a regra "mole tira só o trecho" vale para chunks da etapa B.
+- **`query_fp` é sha256 de 12 hex sem sal**: serve para agrupar eventos, não é anônimo contra força bruta de pergunta curta.
+- **Teto de sessão** vale pela vida do serviço e não zera; a estimativa de tokens (bytes/4) pode subestimar o Jev em até ~2x
+  (o payload leva cada id duas vezes); o custo que conta é o que o provedor reporta.
+- **Fail-open sem rastro**: falha inesperada do semântico vira `fallback_reason` sem traceback no log; só a categoria fica
+  nas métricas.
+- Poda do índice BM25 é por raiz (3 por raiz); o diretório não tem teto global.
+- Fora do módulo: `test_instalacao_do_worker::test_o_instalador_windows_grava_a_versao_derivada_do_commit` falha em qualquer
+  `git worktree` (inclusive da `main`): `worker-install.ps1` lê `.git\HEAD` como arquivo. Dívida separada.
+
 ## Cache da resposta semântica
 
 Chave = revisão do repositório (hash de árvore do git, mais um resumo do que está sujo) + pergunta normalizada + escopo +

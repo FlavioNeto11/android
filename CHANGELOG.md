@@ -93,6 +93,9 @@ mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, tr
   `--contexto` usa um serviço só no lote (orçamento de sessão compartilhado); motor léxico Python por contagem (paridade com `rg`);
   `rg` opcional com descoberta robusta; `docs-check` não exige mais o handoff local; regressão contra o piloto (30 casos públicos).
   Medido no plano-100 inteiro: 96,7 s contra ~1.550 s (16x). Prova: `test_context_retrieval_{bm25_cache,hardening,pilot_regression}.py`.
+- **Revisão final do PR #18** (duas revisões independentes, só leitura): a chamada ao provedor passa a contar quando autorizada (falha
+  também gasta a cota da sessão); cache do mapa corrompido é miss; `.tmp` único e sem sobra; texto de região com a mesma numeração
+  de linha dos retrievers (``); `sk-proj-…` é segredo duro. Limites abertos em `docs/dominios/context-retrieval.md`.
 
 ## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
 
