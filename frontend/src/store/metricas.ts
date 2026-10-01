@@ -29,9 +29,10 @@ import type { Destino } from './ui';
  *   D1 da revisão de UX): aprovações do Aprendizado e de persona, intervenções em sessão e execuções em `needs_input`.
  *   O chip do topo, o semáforo e o selo do menu leem o mesmo `usePendencias().total`.
  * - **personas bloqueadas**: personas com `status = blocked` (bloqueadas pela plataforma).
- * - **execuções em andamento**: o grupo "Em andamento" de Execuções (planejando, planejada, em execução, pausada,
- *   cancelando). O contador do topo e o chip da tela contam igual, sobre o que o store guarda: o snapshot traz TODAS as
- *   em andamento (não só as 20 recentes) e o teto de `MAX_RUNS` do reducer nunca descarta uma delas (nem uma
+ * - **execuções em andamento**: o grupo "Em andamento" de Execuções (planejando, em execução, pausada, cancelando).
+ *   A `planned` fica de fora (D2): é um plano pronto para inspeção, ainda não executado, com chip próprio. O contador
+ *   do topo e o chip da tela contam igual, sobre o que o store guarda: o snapshot traz TODAS as em andamento (não só
+ *   as 20 recentes) e o teto de `MAX_RUNS` do reducer nunca descarta uma delas (nem uma
  *   `needs_input`, que é pendência).
  */
 
@@ -172,9 +173,9 @@ export function ocupacoesDoParque(instances: readonly Instance[], workers: MapaD
 // ---- Execuções e personas -------------------------------------------------------------------------
 
 /**
- * Execuções em andamento: a MESMA regra do chip "Em andamento" de Execuções (`grupoDoStatus`, que inclui `planned`).
- * O contador do topo contava à parte (`isRunActive`, sem `planned`): com uma execução planejada, o topo dizia N e o
- * chip N+1 (RF-05 da revisão final).
+ * Execuções em andamento: a MESMA regra do chip "Em andamento" de Execuções (`grupoDoStatus`). O contador do topo
+ * contava à parte, e o topo e o chip divergiam (RF-05 da revisão final). Desde a D2, `planned` não entra em nenhum dos
+ * dois: tem chip próprio, "Planejadas".
  */
 export function execucoesEmAndamento(runs: readonly RunSummary[]): number {
   return runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length;

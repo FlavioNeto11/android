@@ -28,7 +28,8 @@
  *     `vinculo` = `com` | `sem` (aparelho vinculado); `grupo` = id do grupo de acesso ou `nenhum`; `app` = id do app
  *     de um vínculo; `ordem` = `situacao` | `atividade` (sem = nome); `visao` = `tabela` (sem = cartões).
  *   - Execuções (tarefa UX 05, `features/runs/filtroExecucoes.ts`): `q` (objetivo ou código), `status` =
- *     `andamento` | `concluida` | `pendencia` | `falha` | `cancelada`; `periodo` = `24h` | `7d` | `30d`;
+ *     `andamento` | `planejada` | `concluida` | `pendencia` (rótulo "Pede atenção") | `falha` | `cancelada`;
+ *     `periodo` = `24h` | `7d` | `30d`;
  *     `aparelho` = id do aparelho; `servidor` = id do servidor. Convivem com `aba` da execução aberta.
  */
 export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pendencias', 'aprendizado',

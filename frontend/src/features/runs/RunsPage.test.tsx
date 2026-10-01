@@ -159,3 +159,21 @@ it('D1: o chip de `completed_with_issues` + `needs_input` não usa a palavra "pe
   await waitFor(() => expect(text(document.querySelector('[role="tooltip"]') as HTMLElement)).toMatch(/pararam pedindo informação/));
   expect(text(document.querySelector('[role="tooltip"]') as HTMLElement)).toContain('Pendências');
 });
+
+it('D2: as execuções `planned` têm chip próprio "Planejadas", fora de "Em andamento", e o link `?status=planejada` vale', async () => {
+  const runs = [
+    makeRun({ id: 'r-plano', short_id: 'plano', status: 'planned', command: 'Plano para inspecionar', created_at: new Date(Date.now() - 3 * 864e5).toISOString() }),
+    makeRun({ id: 'r-roda', short_id: 'roda', status: 'running', command: 'Rodando agora', created_at: new Date().toISOString() }),
+  ];
+  backend.on('GET', /^\/api\/runs$/, () => json({ runs, total: runs.length, limit: 200, offset: 0 }));
+  backend.on('GET', /^\/api\/runs\/[^/]+/, () => json(null, 404));
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { status: 'planejada' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(itens()).toEqual(['Plano para inspecionar']));
+  expect(byRole('button', /^Planejadas/).getAttribute('aria-pressed')).toBe('true');
+  expect(text(byRole('button', /^Planejadas/))).toBe('Planejadas1');
+  expect(text(byRole('button', /^Em andamento/))).toBe('Em andamento1');
+  await act(async () => byRole('button', /^Planejadas/).focus());
+  await waitFor(() => expect(text(document.querySelector('[role="tooltip"]') as HTMLElement))
+    .toBe('Plano pronto para inspeção; ainda não foi executado'));
+});

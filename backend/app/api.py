@@ -285,14 +285,16 @@ async def health(request: Request) -> Any:
     return st(request).health()
 
 
-# O snapshot traz as 20 execuções mais recentes E TODAS as que não terminaram: as em andamento e as que esperam
-# resposta (`needs_input`). O painel conta as duas sobre o que o snapshot entrega (topo e chip "Em andamento"; caixa
-# de Pendências, chip "aguardando você" e selo do menu), e uma execução de semanas atrás ficava fora das 20 mais
-# recentes: o contador abria num número de janela e mudava depois de visitar Execuções (RF-05 e decisão D1 da revisão
-# de UX). Custo: uma linha por execução parada nesses estados (27 `needs_input` no parque real em 30/09).
-_STATUS_NAO_TERMINAIS = tuple(sorted(str(x.value) for x in RunStatus if x not in RUN_TERMINAL))
+# O snapshot traz as 20 execuções mais recentes E TODAS as que não terminaram, exceto `planned`: as em andamento e as
+# que esperam resposta (`needs_input`). O painel conta as duas sobre o que o snapshot entrega (topo e chip "Em
+# andamento"; caixa de Pendências, chip "aguardando você" e selo do menu), e uma execução de semanas atrás ficava fora
+# das 20 mais recentes: o contador abria num número de janela e mudava depois de visitar Execuções (RF-05 e decisão D1
+# da revisão de UX). `planned` é um plano pronto para inspeção, que ninguém mandou executar: não é "em andamento"
+# (decisão D2) e nenhum contador a lê, então só vem se estiver entre as 20 recentes. Custo: uma linha por execução
+# parada em `needs_input` ou em andamento (27 + 0 no parque real em 30/09).
+_STATUS_DO_SNAPSHOT = tuple(sorted(str(x.value) for x in RunStatus if x not in RUN_TERMINAL and x != RunStatus.planned))
 _SQL_RUNS_DO_SNAPSHOT = (
-    "SELECT * FROM runs WHERE status IN (" + ",".join(f"'{x}'" for x in _STATUS_NAO_TERMINAIS) + ")"
+    "SELECT * FROM runs WHERE status IN (" + ",".join(f"'{x}'" for x in _STATUS_DO_SNAPSHOT) + ")"
     " OR id IN (SELECT id FROM runs ORDER BY created_at DESC LIMIT 20) ORDER BY created_at DESC")
 
 

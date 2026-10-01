@@ -6,14 +6,15 @@ import type { RunSummary } from '../../api/types';
  *
  * Códigos na URL (registrados em `lib/rotas.ts`):
  * - `q`: texto do objetivo (sem acento, sem caixa) ou o código curto da execução.
- * - `status`: `andamento` | `concluida` | `pendencia` | `falha` | `cancelada` (grupos de `RunStatus`, abaixo). O
+ * - `status`: `andamento` | `planejada` | `concluida` | `pendencia` | `falha` | `cancelada` (grupos de `RunStatus`,
+ *   abaixo). O
  *   código `pendencia` ficou na URL para os links antigos valerem; o rótulo é "Pede atenção" (decisão D1).
  * - `periodo`: `24h` | `7d` | `30d` (criada nesse intervalo).
  * - `aparelho`: id do aparelho; `servidor`: id do servidor (worker). Estes dois a API filtra (`instance_id`,
  *   `worker_id`); os outros a tela filtra sobre o histórico inteiro.
  */
 
-export const GRUPOS_STATUS = ['andamento', 'concluida', 'pendencia', 'falha', 'cancelada'] as const;
+export const GRUPOS_STATUS = ['andamento', 'planejada', 'concluida', 'pendencia', 'falha', 'cancelada'] as const;
 export type GrupoStatus = (typeof GRUPOS_STATUS)[number];
 export const PERIODOS = ['24h', '7d', '30d'] as const;
 export type Periodo = (typeof PERIODOS)[number];
@@ -24,11 +25,13 @@ export type Periodo = (typeof PERIODOS)[number];
  * rótulo não usa a palavra. O código na URL continua `pendencia`.
  */
 export const ROTULO_GRUPO: Record<GrupoStatus, string> = {
-  andamento: 'Em andamento', concluida: 'Concluídas', pendencia: 'Pede atenção', falha: 'Falharam', cancelada: 'Canceladas',
+  andamento: 'Em andamento', planejada: 'Planejadas', concluida: 'Concluídas', pendencia: 'Pede atenção', falha: 'Falharam',
+  cancelada: 'Canceladas',
 };
 
 /** A dica de cada chip, quando o rótulo sozinho não diz o que entra. */
 export const DICA_GRUPO: Partial<Record<GrupoStatus, string>> = {
+  planejada: 'Plano pronto para inspeção; ainda não foi executado',
   pendencia: 'Terminaram com algum problema para revisar ou pararam pedindo informação. As que pararam pedindo '
     + 'informação dependem de você e também estão em Pendências.',
 };
@@ -38,7 +41,9 @@ const MS_PERIODO: Record<Periodo, number> = { '24h': 864e5, '7d': 7 * 864e5, '30
 
 /**
  * Cada status da execução num grupo só. "Pede atenção" junta o que terminou com algo por resolver e o que parou
- * pedindo informação: nos dois casos alguém precisa olhar.
+ * pedindo informação: nos dois casos alguém precisa olhar. `planned` NÃO é "em andamento" (decisão D2 da revisão de
+ * UX): é um plano pronto para inspeção que ninguém mandou executar. No parque real eram 3, de 19/09 a 27/09, e o
+ * contador do topo dizia "3 execuções" com nada rodando.
  */
 export function grupoDoStatus(s: RunSummary['status']): GrupoStatus {
   switch (s) {
@@ -47,7 +52,8 @@ export function grupoDoStatus(s: RunSummary['status']): GrupoStatus {
     case 'needs_input': return 'pendencia';
     case 'failed': return 'falha';
     case 'cancelled': return 'cancelada';
-    default: return 'andamento';      // planning, planned, running, paused, cancelling
+    case 'planned': return 'planejada';
+    default: return 'andamento';      // planning, running, paused, cancelling
   }
 }
 

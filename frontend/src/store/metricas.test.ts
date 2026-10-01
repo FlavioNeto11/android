@@ -222,20 +222,22 @@ describe('aguardando você e personas bloqueadas', () => {
     expect(pendenciasDe(visitado.runs)).toBe(5);
   });
 
-  it('RF-05: execuções em andamento têm a regra do chip "Em andamento" (inclui `planned`) e o destino já filtrado', () => {
+  it('RF-05 e D2: execuções em andamento têm a regra do chip "Em andamento" (sem `planned`) e o destino já filtrado', () => {
     const runs = (['planning', 'planned', 'running', 'paused', 'cancelling', 'completed', 'needs_input', 'failed', 'cancelled'] as const)
       .map((status, i) => makeRun({ id: `r-${i}`, status }));
-    expect(execucoesEmAndamento(runs)).toBe(5);
+    // D2: `planned` é "plano pronto para inspeção; ainda não foi executado". Não está em andamento.
+    expect(execucoesEmAndamento(runs)).toBe(4);
     expect(execucoesEmAndamento(runs)).toBe(runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length);
     expect(DESTINO_EM_ANDAMENTO).toEqual({ tela: 'execucoes', query: { status: 'andamento' } });
   });
 
   it('RF-05: o contador de em andamento vale desde o primeiro carregamento e não muda ao visitar Execuções', () => {
-    // O parque real: 3 `planned` antigas (rank 57, 169 e 176 de 247), fora das 20 mais recentes e das 100 do store.
+    // Três execuções em andamento antigas (rank 57, 169 e 176 de 247), fora das 20 mais recentes e das 100 do store.
+    // (No parque real eram 3 `planned`; com a D2 elas deixaram de ser "em andamento", e o caso vale para `paused`.)
     const dia = (n: number) => new Date(Date.UTC(2026, 8, 30) - n * 3_600_000).toISOString();
     const concluidas = (de: number, ate: number) => Array.from({ length: ate - de }, (_, i) =>
       makeRun({ id: `r-${de + i}`, short_id: `s${de + i}`, status: 'completed', created_at: dia(de + i) }));
-    const antigas = [57, 169, 176].map((rank) => makeRun({ id: `planejada-${rank}`, status: 'planned', created_at: dia(rank) }));
+    const antigas = [57, 169, 176].map((rank) => makeRun({ id: `pausada-${rank}`, status: 'paused', created_at: dia(rank) }));
 
     // Primeira carga: o snapshot traz as 20 recentes E as em andamento (o backend passou a mandá-las).
     const aberto = hydrateFromSnapshot(initialDataState, makeSnapshot({ runs: [...concluidas(0, 20), ...antigas] }));

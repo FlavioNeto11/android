@@ -163,7 +163,7 @@ function Counters() {
           <span className={styles.counterLabel}>online</span>
         </div>
       </Tooltip>
-      <Tooltip content="Execuções em andamento (planejando, planejadas, em execução, pausadas ou cancelando). Clique para ver a lista filtrada.">
+      <Tooltip content="Execuções em andamento (planejando, em execução, pausadas ou cancelando). Um plano pronto que ainda não foi executado não conta. Clique para ver a lista filtrada.">
         <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => navegar(DESTINO_EM_ANDAMENTO)}>
           <Activity size={14} aria-hidden />
           <span className={styles.counterValue}>{formatInt(active)}</span>
