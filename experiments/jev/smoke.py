@@ -30,8 +30,9 @@ from provider import (KEY_ENV, PINNED_MODEL, PRICE_USD_PER_MTOK_INPUT, ProviderE
 
 HERE = Path(__file__).resolve().parent
 SYNTHETIC = HERE / "synthetic_corpus"
-#: TRAVA DO DONO (2026-10-01): a rodada real do smoke só roda depois de autorização explícita. Continua False.
-SMOKE_RUN_AUTHORIZED = False
+#: TRAVA DO DONO. Liberada em 2026-10-01 por autorização EXPLÍCITA do dono, só para `synthetic_corpus/` e no máximo 6
+#: tentativas de rede. Não afeta `benchmark.PRIVATE_CODE_SEND_APPROVED`, que segue False (BLOCKED_PRIVACY).
+SMOKE_RUN_AUTHORIZED = True
 MAX_CALLS = 6
 TIMEOUT_PROBE_S = 0.05
 

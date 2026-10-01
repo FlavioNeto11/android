@@ -50,7 +50,10 @@ def test_real_run_is_locked_in_three_ways(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as e1:
         sm.main(["--run", "--out", str(tmp_path)])
     assert "--confirm-synthetic-only" in str(e1.value)
-    assert sm.SMOKE_RUN_AUTHORIZED is False
+    assert sm.SMOKE_RUN_AUTHORIZED is True              # liberada pelo dono em 2026-10-01 (só o smoke sintético)
+    import benchmark
+    assert benchmark.PRIVATE_CODE_SEND_APPROVED is False
+    monkeypatch.setattr(sm, "SMOKE_RUN_AUTHORIZED", False)
     with pytest.raises(SystemExit) as e2:
         sm.main(["--run", "--confirm-synthetic-only", "--out", str(tmp_path)])
     assert "BLOCKED_AUTHORIZATION" in str(e2.value)

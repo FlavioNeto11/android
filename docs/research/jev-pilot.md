@@ -666,3 +666,17 @@ com transporte falso), *rate limits*, carga, português.
 **Para autorizar:** responder explicitamente "autorizo as 6 chamadas do smoke sintético"; então um commit muda
 `SMOKE_RUN_AUTHORIZED` e a chave entra por variável de ambiente (`TYPESAFE_API_KEY`), nunca no chat. Comando:
 `python experiments/jev/smoke.py --run --confirm-synthetic-only --max-calls 6`. Resultado em `data/jev-pilot/smoke/` (ignorado).
+
+### 36.1 Autorização recebida e estado da rodada (2026-10-01, terceira rodada)
+
+- O dono autorizou as 6 chamadas **só** do corpus `experiments/jev/synthetic_corpus/`. `SMOKE_RUN_AUTHORIZED = True`;
+  `PRIVATE_CODE_SEND_APPROVED` segue `False` (BLOCKED_PRIVACY); `STANDARD_API_RETENTION` segue UNKNOWN.
+- Antes de qualquer envio o `--run` roda `isolation.check` (segredos, literais do projeto, nomes e sequências idênticos ao
+  repositório privado, payloads incluídos) e aborta se não for PASS. Nos testes: PASS no corpus real e FAIL em violação injetada.
+- Registro por chamada: CALL_ID, QUESTION_TYPE, HTTP_STATUS, NETWORK_ATTEMPT, LATENCY_MS, INPUT_BYTES, RESPONSE_BYTES,
+  MODEL_RETURNED, PARSE_OK, CONFIDENCE, ERROR_CLASS, COST_ESTIMATE; p50/p95/min/max; `ACTUAL_INPUT_TOKENS` só de `usage`, senão UNKNOWN.
+- **Resultado: NÃO EXECUTADO.** `TYPESAFE_API_KEY_PRESENT = NO` no processo desta sessão (bash e PowerShell, escopos Process/User/Machine).
+  O comando autorizado abortou antes de qualquer rede ("variável ausente. Nada foi enviado."): `NETWORK_ATTEMPTS = 0`.
+  Provas até aqui: `simulated` (`experiments/jev/tests/test_smoke.py`, 79 testes); chamadas reais: `not_run`.
+- Para executar: definir a chave **localmente** (variável de ambiente de Usuário e reiniciar a sessão, ou no PowerShell do dono
+  `$env:TYPESAFE_API_KEY = ...` e rodar o comando acima) e compartilhar só o JSON de `data/jev-pilot/smoke/`.
