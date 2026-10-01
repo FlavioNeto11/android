@@ -10,7 +10,8 @@ entre ~70 mil e ~1,5 milhão de tokens só para se orientar — antes de ler uma
     python scripts/plano-100-pacotes.py --conferir # só confere que plano e apêndice continuam casando
     python scripts/plano-100-pacotes.py --contexto # EXPERIMENTAL, opt-in: acrescenta sugestões do retrieval de contexto
 
-`--contexto` consulta `backend/app/modules/context_retrieval` (ADR-063) e só escreve algo quando o retrieval está
+`--contexto` consulta `backend/app/modules/context_retrieval` (ADR-063) pela API Python, com um único serviço para todos os
+itens (índice BM25 em disco por revisão, nada reconstruído por item), e só escreve algo quando o retrieval está
 ligado na configuração (`context_retrieval.enabled`) ou quando `--contexto-modo` o pede de forma explícita. Sem a flag
 a saída é byte a byte a de sempre; com o retrieval desligado, também. As sugestões dependem da revisão do código e por
 isso NÃO se commitam os pacotes gerados com `--contexto`.
@@ -18,12 +19,13 @@ isso NÃO se commitam os pacotes gerados com `--contexto`.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
+import time
 
 RAIZ = Path(__file__).resolve().parents[1]
 PLANO = Path('docs/plano-100.md')
@@ -214,51 +216,70 @@ def escrever(itens: list[dict], apendice: dict[str, dict], sugerir_contexto=None
     gravar(destino / 'indice.json', json.dumps(indice, ensure_ascii=False, indent=1) + '\n')
 
 
-def python_do_backend() -> str:
-    """O Python do venv do backend (tem pydantic e o `app`); sem ele, o que está rodando este script."""
-    for candidato in ('Scripts/python.exe', 'bin/python'):
-        caminho = RAIZ / 'backend' / '.venv' / candidato
-        if caminho.is_file():
-            return str(caminho)
-    return sys.executable
+class SugestorDeContexto:
+    """`item -> linhas` pela API Python do retrieval de contexto, com UM serviço para o lote inteiro. Nunca levanta.
 
-
-def sugerir_contexto_por_retrieval(modo: str | None = None, *, executar=subprocess.run):
-    """Devolve a função `item -> linhas` que consulta a CLI do retrieval de contexto. Nunca levanta.
-
-    Falha (sem venv, timeout, saída ruim) e retrieval desligado dão a MESMA resposta: nenhuma linha. O retrieval é
-    auxílio do pacote, não requisito dele.
+    O serviço (e com ele o `Workspace`, a revisão, o índice BM25, o mapa, o cache e o orçamento de sessão) é montado uma vez,
+    na primeira consulta, e reaproveitado em todos os itens; `sessao()` congela a revisão enquanto o lote roda. Sem
+    subprocesso por item. Falha ao importar o backend, retrieval desligado e erro na consulta dão a MESMA resposta:
+    nenhuma linha; o retrieval é auxílio do pacote, não requisito dele.
     """
-    avisou = False
-    desligado = False
 
-    def sugerir(item: dict) -> list[str]:
-        nonlocal avisou, desligado
-        if desligado:                       # é propriedade da configuração, igual para todos os itens: uma pergunta basta
+    def __init__(self, modo: str | None = None, *, servico=None, fabrica=None) -> None:
+        self.modo = modo
+        self._servico = servico
+        self._fabrica = fabrica or self._fabrica_real
+        self._pronto = servico is not None
+        self._avisou = False
+        self.tempos_ms: list[float] = []
+
+    def _montar(self):
+        if self._pronto:
+            return self._servico
+        self._pronto = True
+        try:
+            self._servico = self._fabrica()
+        except Exception as erro:  # noqa: BLE001 - falta de dependência do backend não derruba a geração
+            self._servico = None
+            self._avisar(f'o retrieval de contexto não carregou ({type(erro).__name__})')
+        return self._servico
+
+    def _fabrica_real(self):
+        backend = str(RAIZ / 'backend')
+        if backend not in sys.path:
+            sys.path.insert(0, backend)
+        from app.config import load_config
+        from app.modules.context_retrieval.domain.model import RetrievalMode
+        from app.modules.context_retrieval.wiring import build_service
+        return build_service(load_config(), mode=RetrievalMode(self.modo) if self.modo else None)
+
+    def _avisar(self, motivo: str) -> None:
+        if not self._avisou:
+            print(f'Aviso: {motivo}; os pacotes saem sem sugestões.', file=sys.stderr)
+            self._avisou = True
+
+    def sessao(self):
+        servico = self._montar()
+        return servico.session() if servico is not None else contextlib.nullcontext()
+
+    def __call__(self, item: dict) -> list[str]:
+        servico = self._montar()
+        if servico is None or not getattr(servico, 'enabled', False):
             return []
         pergunta = f"{item['titulo']}. {item['corpo']}"[:600]
-        comando = [python_do_backend(), '-m', 'app.modules.context_retrieval.presentation.cli', pergunta, '--json']
-        if modo:
-            comando += ['--mode', modo]
+        inicio = time.perf_counter()
         try:
-            saida = executar(comando, cwd=RAIZ / 'backend', capture_output=True, text=True, encoding='utf-8',
-                             errors='replace', timeout=90, check=False)
-            dados = json.loads(saida.stdout)
-        except (OSError, ValueError, subprocess.SubprocessError):
-            if not avisou:
-                print('Aviso: o retrieval de contexto não respondeu; os pacotes saem sem sugestões.', file=sys.stderr)
-                avisou = True
+            pack = servico.gather(pergunta)
+        except Exception as erro:  # noqa: BLE001
+            self._avisar(f'a consulta ao retrieval falhou ({type(erro).__name__})')
             return []
-        if not isinstance(dados, dict) or dados.get('enabled') is False:
-            desligado = isinstance(dados, dict)
+        self.tempos_ms.append((time.perf_counter() - inicio) * 1000)
+        if pack is None:
             return []
-        linhas = [f"- `{f['path']}`" for f in dados.get('files', []) if isinstance(f, dict) and 'path' in f]
-        linhas += [f"- `{r['path']}:{r['start_line']}-{r['end_line']}`" for r in dados.get('regions', [])
-                   if isinstance(r, dict) and {'path', 'start_line', 'end_line'} <= set(r)]
-        origem = f"origem {dados.get('origin')}, revisão {str(dados.get('revision', ''))[:12]}"
+        linhas = [f'- `{f.path}`' for f in pack.files]
+        linhas += [f'- `{r.path}:{r.start_line}-{r.end_line}`' for r in pack.regions]
+        origem = f'origem {pack.origin}, revisão {pack.revision[:12]}'
         return [f'_{origem}_', ''] + linhas if linhas else []
-
-    return sugerir
 
 
 def gravar(caminho: Path, conteudo: str) -> None:
@@ -337,8 +358,12 @@ def main(argv=None) -> int:
     # `--fila` só gera se ainda não houver pacote. Regenerar apaga e reescreve o diretório inteiro, e pedir a fila
     # de um bloco enquanto agentes de outro estão lendo os pacotes deles tiraria os arquivos debaixo deles.
     if not args.conferir and not (args.fila and (RAIZ / DESTINO / 'indice.json').is_file()):
-        escrever(itens, apendice,
-                 sugerir_contexto_por_retrieval(args.contexto_modo) if (args.contexto or args.contexto_modo) else None)
+        sugestor = SugestorDeContexto(args.contexto_modo) if (args.contexto or args.contexto_modo) else None
+        if sugestor is None:
+            escrever(itens, apendice)
+        else:
+            with sugestor.sessao():
+                escrever(itens, apendice, sugestor)
     if args.fila:
         indice = json.loads((RAIZ / DESTINO / 'indice.json').read_text(encoding='utf-8'))
         print(json.dumps(fila(indice, args.bloco), ensure_ascii=False, indent=1))

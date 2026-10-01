@@ -89,6 +89,10 @@ mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, tr
 - **Primeiro ponto de integração**: `scripts/plano-100-pacotes.py --contexto` (opt-in) e a CLI
   `python -m app.modules.context_retrieval.presentation.cli`.
 - Prova: `backend/tests/test_context_retrieval_{core,local,semantic,integration}.py` e `scripts/tests/test_pacotes_contexto.py`.
+- **Estabilização (2ª rodada)**: índice BM25 persistente por revisão (gravação atômica, corrompido = miss, higiene de segredo, poda);
+  `--contexto` usa um serviço só no lote (orçamento de sessão compartilhado); motor léxico Python por contagem (paridade com `rg`);
+  `rg` opcional com descoberta robusta; `docs-check` não exige mais o handoff local; regressão contra o piloto (30 casos públicos).
+  Medido no plano-100 inteiro: 96,7 s contra ~1.550 s (16x). Prova: `test_context_retrieval_{bm25_cache,hardening,pilot_regression}.py`.
 
 ## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
 
