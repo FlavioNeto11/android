@@ -101,6 +101,12 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
     const link = (h: string) => menu(el).querySelector(`a[href="${h}"]`) as HTMLElement;
     expect(link('#/diagnostico').getAttribute('aria-label')).toBe('Diagnóstico');
     await waitFor(() => expect(link('#/aprendizado').getAttribute('aria-label')).toBe('Aprendizado, 3 para aprovar'));
+    // B1 (WCAG 2.5.3): o nome COMEÇA pelo texto visível ("Aprendizado 3"); a explicação vem depois, e o selo não repete
+    // a legenda em texto escondido (o axe soma o texto escondido ao visível e acusava `label-content-name-mismatch`).
+    const aprendizado = link('#/aprendizado');
+    const curar = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+    expect(aprendizado.textContent).toBe('Aprendizado 3');
+    expect(curar(aprendizado.getAttribute('aria-label') ?? '').startsWith(curar(aprendizado.textContent ?? ''))).toBe(true);
     await act(async () => useUiStore.getState().setMenuRecolhido(true));
     // Recolhido o rótulo some da vista, mas o nome acessível segue o mesmo e o item atual continua marcado.
     expect(link('#/diagnostico').getAttribute('aria-label')).toBe('Diagnóstico');
@@ -251,7 +257,7 @@ describe('Menu lateral — contagem "Para aprovar" do Aprendizado (ADR-054)', ()
     useSessionStore.setState({ operator: 'ana' });
     const el = await renderBar([]);
     const link = () => el.querySelector('a[href="#/aprendizado"]') as HTMLElement;
-    await waitFor(() => expect(text(link())).toContain('3 para aprovar'));
+    await waitFor(() => expect(link().getAttribute('aria-label')).toBe('Aprendizado, 3 para aprovar'));
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/pendentes$/).length).toBeGreaterThanOrEqual(1);
   });
 

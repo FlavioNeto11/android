@@ -138,7 +138,7 @@ describe('o mesmo número em três lugares', () => {
     await waitFor(() => expect(container.querySelectorAll('li[data-origem]')).toHaveLength(4));
     expect(new Set([...container.querySelectorAll('li[data-origem]')].map((l) => l.getAttribute('data-origem'))))
       .toEqual(new Set(['aprendizado', 'persona', 'execucao', 'intervencao']));
-    await waitFor(() => expect(text(seloDoMenu() as HTMLElement)).toContain('4 esperando você'));
+    await waitFor(() => expect(seloDoMenu()?.getAttribute('aria-label')).toBe('Pendências, 4 aguardando você'));
     expect(text(chipDoTopo() as HTMLElement)).toBe('4aguardando você');
     expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (4)');
   });
@@ -152,7 +152,7 @@ describe('o mesmo número em três lugares', () => {
     await waitFor(() => expect(text(container)).toContain('Nada esperando você'));
     expect(container.querySelectorAll('li[data-origem]')).toHaveLength(0);
     expect(text(chipDoTopo() as HTMLElement)).toBe('0aguardando você');
-    expect(text(seloDoMenu() as HTMLElement)).not.toMatch(/esperando você/);
+    expect(seloDoMenu()?.getAttribute('aria-label')).toBe('Pendências');
   });
 });
 
