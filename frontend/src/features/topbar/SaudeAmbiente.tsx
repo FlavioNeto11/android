@@ -4,6 +4,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { toneClass } from '../../components/tone';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
+import { focarConteudo } from '../../lib/scroll';
 import type { Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import {
@@ -68,7 +69,13 @@ function Detalhes({ nivel, lista, versao, fechar }: {
   const bloqueadas = personasBloqueadas(usePersonas());
   // D1: o mesmo total da caixa de Pendências (e do chip do topo e do selo do menu), levando a ela.
   const aguardando = usePendencias().total;
-  const link = (href: string, texto: string) => <a className={styles.link} href={href} onClick={fechar}>{texto}</a>;
+  // RF-45: o link troca a tela e o popover some com ele: o foco vai ao conteúdo ANTES (como na gaveta do menu), em
+  // vez de cair no `<body>` junto com o painel.
+  const seguir = () => {
+    fechar();
+    focarConteudo();
+  };
+  const link = (href: string, texto: string) => <a className={styles.link} href={href} onClick={seguir}>{texto}</a>;
 
   return (
     <div className={styles.painel}>

@@ -5,6 +5,7 @@ import {
 import { useEffect, useRef } from 'react';
 import { formatInt } from '../../lib/format';
 import { hashDe, type Tela } from '../../lib/rotas';
+import { focarConteudo } from '../../lib/scroll';
 import { useSessionStore } from '../../store/session';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
@@ -32,8 +33,6 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
 
 export const ID_MENU = 'menu-principal';
 export const ID_BOTAO_MENU = 'botao-menu';
-/** O `<main>` do App (`App.tsx`), que recebe o foco quando a gaveta fecha por troca de seção. */
-const ID_CONTEUDO = 'conteudo';
 
 /** A gaveta só existe abaixo de 1024 px (`MenuLateral.module.css`). Sem `matchMedia` (jsdom), vale como gaveta. */
 function ehGaveta(): boolean {
@@ -72,8 +71,7 @@ export function MenuLateral() {
     } else if (abertoAntes.current) {
       // Escolheu uma seção: o teclado segue para o conteúdo novo (um Tab já cai no primeiro controle da tela), e não
       // de volta ao botão "Menu". Esc ou "Fechar" não trocaram de tela: voltam ao botão que abriu a gaveta.
-      const destino = foiNavegacao.current ? document.getElementById(ID_CONTEUDO) : null;
-      (destino ?? document.getElementById(ID_BOTAO_MENU))?.focus();
+      if (!(foiNavegacao.current && focarConteudo())) document.getElementById(ID_BOTAO_MENU)?.focus();
       foiNavegacao.current = false;
     }
     abertoAntes.current = aberto;

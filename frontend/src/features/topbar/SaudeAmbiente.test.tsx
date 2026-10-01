@@ -152,6 +152,27 @@ describe('SaudeAmbiente — semáforo', () => {
     await act(async () => useAppStore.getState().setConn({ status: 'disconnected' }));
     expect(normal(gatilho().getAttribute('aria-label')).startsWith(normal(gatilho().textContent))).toBe(true);
   });
+
+  // RF-45 (prova simulada 13): seguir um link do popover trocava a tela e deixava o foco no `<body>` (o painel some
+  // com o link focado dentro). Pelo menu, ele ia para o conteúdo. Agora os dois usam `lib/scroll::focarConteudo`.
+  it('RF-45: seguir um link do popover leva o foco ao conteúdo principal, não ao início da página', async () => {
+    const main = document.createElement('main');
+    main.id = 'conteudo';
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+    await montar({ connected: false, state: 'offline' });
+    for (const rotulo of ['Abrir Infraestrutura', 'Diagnóstico']) {
+      const pop = await abrir();
+      const link = [...pop.querySelectorAll('a')].find((a) => text(a) === rotulo) as HTMLAnchorElement;
+      expect(link, rotulo).toBeTruthy();
+      link.focus();
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      expect(document.querySelector('[role="dialog"]'), rotulo).toBeNull();
+      expect(document.activeElement, rotulo).toBe(main);
+    }
+  });
 });
 
 describe('TopBar — mesma base de contagem da grade', () => {
