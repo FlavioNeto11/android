@@ -1129,3 +1129,16 @@ async def test_sem_download_com_o_aparelho_sem_internet_diz_o_que_a_plataforma_m
     assert await _passo(parque, "pedido")
     erro = str(_linha(parque)["error"])
     assert "não baixou o perfil" in erro and "SEM internet" not in erro
+
+
+def test_regras_de_bloqueio_contam_as_regras_e_nao_o_cabecalho() -> None:
+    """O `dumpsys connectivity` do Android 14 imprime "Lockdown filtering rules:" mesmo sem bloqueio (lista vazia).
+    Contando o cabeçalho, a política `exigida` (sem bloqueio) nunca via o túnel como conectado e a rede reiniciava o
+    aparelho em cadeia (android-09, 01/10/2026). A contagem é das linhas `UIDs:` da lista; medido no aparelho real:
+    R=3 no android-03 (com bloqueio) e R=0 no android-09 (sem)."""
+    from app.devices.rede_aplicacao import comando_de_observacao
+
+    cmd = comando_de_observacao("io.nekohasekai.sfa")
+    trecho = next(p for p in cmd.split("; ") if p.startswith("echo R="))
+    assert "grep -c 'UIDs:'" in trecho and "grep -A" in trecho
+    assert "grep -c 'Lockdown filtering rules'" not in cmd

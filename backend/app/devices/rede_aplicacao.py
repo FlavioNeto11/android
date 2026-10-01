@@ -606,7 +606,11 @@ def comando_de_observacao(pacote: str) -> str:
         "echo T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); "
         "D=$(dumpsys connectivity 2>/dev/null); "
         "echo V=$(echo \"$D\" | grep -c 'ni[{]VPN CONNECTED'); "
-        "echo R=$(echo \"$D\" | grep -c 'Lockdown filtering rules'); "
+        # Conta as REGRAS, não o cabeçalho: o `dumpsys connectivity` do Android 14 imprime "Lockdown filtering rules:"
+        # sempre, com a lista vazia sem bloqueio. Contando o cabeçalho, todo aparelho tinha "regras ativas", e com a
+        # política `exigida` (sem bloqueio) o túnel no ar nunca valia como conectado — a rede reiniciava em cadeia
+        # (android-09, W4, 01/10/2026: tun0 no ar, VPN CONNECTED, lockdown=0, 2 reinícios).
+        "echo R=$(echo \"$D\" | grep -A8 'Lockdown filtering rules' | grep -c 'UIDs:'); "
         f"echo C=$(ls {_crash_reports(pacote)} 2>/dev/null | grep -c .); "
         f"echo P=$(pm path {pacote} 2>/dev/null | grep -c package:); "
         # A instalação do cliente, numa linha (o `echo` sem aspas junta as três): `codePath` (a pasta tem um sufixo
