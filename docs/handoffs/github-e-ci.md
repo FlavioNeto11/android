@@ -139,8 +139,25 @@ Nenhuma pendente desta frente: teto, firewall e DHCP foram aplicados e conferido
 
 ## 8. Próximas verificações (quando a corrida sair)
 
-- 01/10 05:17Z: cron do `CI` com `backend-postgres`. Se iniciar em `ubuntu-latest` e passar, o item 3 do §1 vira `real`.
-- Fim de outubro: conferir se o gasto adicional ficou em US$ 0 (Billing → Usage, agrupado por repositório).
+- ~~01/10 05:17Z: cron do `CI` com `backend-postgres`~~ **feito (01/10)**: o job iniciou em `ubuntu-latest` (bloqueio de gasto
+  resolvido, `real`), mas o limite de 25 min o cancelou (run 36819958569); com `timeout-minutes: 60` e o `workflow_dispatch`
+  `somente_postgres`, o run 36830963968 passou: **3962 passed, 0 failed em 45 min** (§27.1 do `relatorio-validacao.md`). O item 3
+  do §1 (testes do PostgreSQL) é `real`.
+- Fim de outubro: conferir se o gasto adicional ficou em US$ 0 (Billing → Usage, agrupado por repositório). O orçamento de
+  Actions está em US$ 15 com Stop usage (registro 4).
+
+## 10. Estado final da frente (01/10/2026, ~09:50Z) e o que muda no processo
+
+| Mudança | Onde | Reverter |
+|---|---|---|
+| CI **sem gatilho de push** (só `pull_request`, `workflow_dispatch` e o cron diário 05:17Z) | `ci.yml`, commit `2a39720` | devolver `push: branches: [main]` ao `on:` |
+| `backend-postgres` com limite de **60 min** e input `somente_postgres` (pula os outros 6 jobs; `gh workflow run ci.yml --ref main -f somente_postgres=true`, ~45 min, hospedado, ~US$ 0,28) | `ci.yml`, commit `63b2753` | voltar a 25 e tirar o input |
+| `scripts/testes-afetados.py` (laço rápido de testes por diff) | commit `d2813b4` | apagar o script |
+| Vigias desta sessão **encerrados** em 01/10 ~09:50Z (monitor de central/aparelhos/agente/CI/CPU e as checagens agendadas) | só na sessão; nenhum arquivo | n/a |
+
+Sem vigia ativo: o que era alerta automático (central fora do ar, aparelho em erro, cadeia de boots, boot no central com conta
+real ligada, CPU alta) passa a ser conferido à mão. O rodízio com `max_online_devices=4` pode hibernar uma conta real quando
+um aparelho do central sobe (§ fechamento da coordenação).
 
 ## 9. Proposta registrada: custo de tempo da suíte local (a decidir depois da janela do P16)
 
