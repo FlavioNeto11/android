@@ -3,7 +3,7 @@ import { useAppStore } from '../../store/app';
 import { intervaloVisivel } from '../../lib/polling';
 import { useSessionStore } from '../../store/session';
 import { montarPendencias, type Pendencia } from './modelo';
-import { usePendenciasStore } from './store';
+import { usePendenciasStore, type FalhasDeLeitura } from './store';
 
 /** Releitura da caixa: só depois do login (sem sessão a leitura só colheria 401) e só com a aba visível. */
 const A_CADA_MS = 60_000;
@@ -13,19 +13,20 @@ const A_CADA_MS = 60_000;
  * texto das aprovações; não muda a contagem.
  */
 export function usePendencias(nomeDaPersona?: (id: string | null) => string | null): {
-  itens: Pendencia[]; total: number; carregado: boolean; falhou: boolean;
+  itens: Pendencia[]; total: number; carregado: boolean; falhou: boolean; falhas: FalhasDeLeitura;
 } {
   const aprendizado = usePendenciasStore((s) => s.aprendizado);
   const aprovacoes = usePendenciasStore((s) => s.aprovacoes);
   const personas = usePendenciasStore((s) => s.personas);
   const falhou = usePendenciasStore((s) => s.falhou);
+  const falhas = usePendenciasStore((s) => s.falhas);
   const execucoes = useAppStore((s) => s.runs);
   const itens = useMemo(
     () => montarPendencias({ aprendizado, aprovacoes, execucoes, personas, nomeDaPersona }),
     [aprendizado, aprovacoes, execucoes, personas, nomeDaPersona],
   );
   return {
-    itens, total: itens.length, carregado: aprendizado !== null || aprovacoes !== null || personas !== null, falhou,
+    itens, total: itens.length, carregado: aprendizado !== null || aprovacoes !== null || personas !== null, falhou, falhas,
   };
 }
 

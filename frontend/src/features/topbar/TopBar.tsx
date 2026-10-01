@@ -38,6 +38,7 @@ import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore } from '../../store/ui';
 import { DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento } from '../../store/metricas';
+import { AVISO_ORIGEM_NAO_CARREGOU, falaDoTotal, numeroExibido } from '../pendencias/exibicao';
 import { usePendencias } from '../pendencias/usePendencias';
 import { SaudeAmbiente } from './SaudeAmbiente';
 import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
@@ -105,7 +106,8 @@ export function TopBar() {
 function BotaoMenu() {
   const menuAberto = useUiStore((s) => s.menuAberto);
   const setMenuAberto = useUiStore((s) => s.setMenuAberto);
-  const aguardando = usePendencias().total;
+  const { total: aguardando, falhou } = usePendencias();
+  const fala = falaDoTotal(aguardando, falhou, 'aguardando você');
   return (
     <button
       type="button"
@@ -116,8 +118,8 @@ function BotaoMenu() {
       onClick={() => setMenuAberto(!menuAberto)}
     >
       <MenuIcon size={20} aria-hidden />
-      <span className="sr-only">Menu{aguardando > 0 ? `, ${formatInt(aguardando)} aguardando você` : ''}</span>
-      {aguardando > 0 ? <span className={styles.menuSelo} aria-hidden>{aguardando > 99 ? '99+' : aguardando}</span> : null}
+      <span className="sr-only">Menu{fala ? `, ${fala}` : ''}</span>
+      {aguardando > 0 || falhou ? <span className={styles.menuSelo} aria-hidden>{numeroExibido(aguardando, falhou, 99)}</span> : null}
     </button>
   );
 }
@@ -128,11 +130,12 @@ function BotaoMenu() {
  *  (`Counters`, `Custos`, os detalhes da IA e da sessão): nenhum número é calculado de novo aqui. O painel não aninha
  *  outro popover (o clique dentro de um popover filho contaria como "fora" do pai): a IA vira um detalhe expansível. */
 function ResumoCelular() {
-  const aguardando = usePendencias().total;
+  const { total: aguardando, falhou } = usePendencias();
+  const fala = falaDoTotal(aguardando, falhou, 'aguardando você');
   return (
     <Popover
       // O nome começa pelo que está escrito no botão (WCAG 2.5.3).
-      label={`Resumo${aguardando > 0 ? `, ${formatInt(aguardando)} aguardando você` : ''}. Abrir capacidade, recursos, custos, IA e sessão`}
+      label={`Resumo${fala ? `, ${fala}` : ''}. Abrir capacidade, recursos, custos, IA e sessão`}
       title="Resumo"
       align="end"
       triggerClassName={styles.resumoBtn}
@@ -250,7 +253,7 @@ function Counters({ partes = 'todos', painel = false }: { partes?: PartesDosCont
   // "N de T selecionados"; a loja fica à parte e o aparelho de servidor fora do ar não conta como online.
   const { online, total, desconhecidos, loja } = useContagemDeAparelhos();
   // D1 (decisões da revisão de UX): o MESMO total da caixa de Pendências e do selo do menu, e o clique leva a ela.
-  const aguardando = usePendencias().total;
+  const { total: aguardando, falhou: aguardandoIncompleto } = usePendencias();
   // A mesma conta do chip "Em andamento" de Execuções, e o clique abre a lista já nesse filtro (RF-05).
   const active = useExecucoesEmAndamento();
 
@@ -290,15 +293,17 @@ function Counters({ partes = 'todos', painel = false }: { partes?: PartesDosCont
         </button>
       </Tooltip>
       {/* Era "N bloqueadas", lido como personas bloqueadas. Hoje é o total da caixa de Pendências (D1). */}
-      <Tooltip content="Pendências: o que depende de você (aprovações do Aprendizado e das personas, contas que pedem intervenção e execuções paradas pedindo informação). O mesmo número da caixa de Pendências. Clique para abrir.">
+      <Tooltip content={`Pendências: o que depende de você (aprovações do Aprendizado e das personas, contas que pedem intervenção e execuções paradas pedindo informação). O mesmo número da caixa de Pendências. Clique para abrir.${aguardandoIncompleto ? ` ${AVISO_ORIGEM_NAO_CARREGOU}` : ''}`}>
         <button
           type="button"
-          className={cx(styles.counter, aguardando > 0 && styles.counterAlert)}
+          className={cx(styles.counter, (aguardando > 0 || aguardandoIncompleto) && styles.counterAlert)}
           onClick={() => navegar({ tela: 'pendencias' })}
         >
           <Hand size={14} aria-hidden />
-          <span className={styles.counterValue}>{formatInt(aguardando)}</span>
+          <span className={styles.counterValue}>{numeroExibido(aguardando, aguardandoIncompleto)}</span>
           <span className={styles.counterLabel}>aguardando você</span>
+          {/* Falha de leitura não pode parecer número: o "+" do piso ganha a explicação para quem não vê. */}
+          {aguardandoIncompleto ? <span className="sr-only"> ({AVISO_ORIGEM_NAO_CARREGOU})</span> : null}
         </button>
       </Tooltip>
       </> : null}

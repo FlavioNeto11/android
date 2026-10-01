@@ -72,8 +72,9 @@
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
   /* Escala da tarefa 07 (30/09): 12 · 13 · 14 · 16 · 20 · 24 px. Texto de interface nunca abaixo de 13 px e corpo
      em 14 px. `--fs-xs` e `--fs-sm` ficam os dois em 13 px de propósito: legenda e apoio se distinguem pela cor e
-     pelo peso, não por um tamanho ilegível. 12 px só existe como `--fs-2xs`, para contador dentro de selo redondo
-     e rótulo de gráfico; cada uso é exceção documentada em docs/revisoes-ux/07-tipografia-a11y.md. */
+     pelo peso, não por um tamanho ilegível. 12 px só existe como `--fs-2xs`, para rótulo de gráfico; cada uso
+     é exceção documentada em docs/revisoes-ux/07-tipografia-a11y.md. Contador dentro de selo redondo usa 13 px
+     (`--fs-xs`): o selo do botão "Menu" e o da seção Atividade da persona subiram na rodada 2, B2. */
   --fs-2xs: 12px;
   --fs-xs: 13px;
   --fs-sm: 13px;

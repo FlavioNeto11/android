@@ -3,13 +3,14 @@ import {
   Stethoscope, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { formatInt } from '../../lib/format';
 import { hashDe, type Tela } from '../../lib/rotas';
 import { focarConteudo } from '../../lib/scroll';
 import { useSessionStore } from '../../store/session';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import { elementosFocaveis } from '../focus/Drawer';
+import { falaDoTotal, numeroExibido } from '../pendencias/exibicao';
+import { usePendenciasStore } from '../pendencias/store';
 import { usePendencias, useReleituraDasPendencias } from '../pendencias/usePendencias';
 import styles from './MenuLateral.module.css';
 
@@ -57,7 +58,9 @@ export function MenuLateral() {
   const paraAprovar = usePendentesDoAprendizado();
   useReleituraDasPendencias();
   // O número do item Pendências é o total da lista da própria tela (mesma função), não uma soma à parte.
-  const pendencias = usePendencias().total;
+  const { total: pendencias, falhou: pendenciasIncompleto } = usePendencias();
+  // B8: se a fila do Aprendizado não carregou, o "Para aprovar" também é um piso (a contagem guardada pode ser velha).
+  const aprendizadoIncompleto = usePendenciasStore((s) => s.falhas.aprendizado);
   const navRef = useRef<HTMLElement>(null);
   const abertoAntes = useRef(false);
   const foiNavegacao = useRef(false);
@@ -137,9 +140,11 @@ export function MenuLateral() {
         </div>
         <ul className={styles.lista}>
           {NAV.map(({ tela, label, icon: Icon }) => {
-            const n = tela === 'aprendizado' ? paraAprovar : tela === 'pendencias' ? pendencias : null;
-            const conta = n !== null && n > 0 ? n : null;
-            const legenda = tela === 'pendencias' ? 'esperando você' : 'para aprovar';
+            const incompleto = tela === 'aprendizado' ? aprendizadoIncompleto : tela === 'pendencias' ? pendenciasIncompleto : false;
+            const n = tela === 'aprendizado' ? (paraAprovar ?? (incompleto ? 0 : null)) : tela === 'pendencias' ? pendencias : null;
+            // Zero só some se a leitura foi completa: com uma origem fora, "0" não é número, e o selo vira "?".
+            const conta = n !== null && (n > 0 || incompleto) ? n : null;
+            const legenda = tela === 'pendencias' ? 'aguardando você' : 'para aprovar';
             return (
               <li key={tela}>
                 {/* O `foco` vai junto: trocar de tela não fecha o aparelho aberto no painel de Foco. */}
@@ -148,8 +153,10 @@ export function MenuLateral() {
                   className={styles.item}
                   aria-current={view === tela ? 'page' : undefined}
                   // Nome explícito: recolhido, o rótulo só existe como texto fora da vista e o `title` não é nome confiável.
-                  // O aria-label vale no lugar do conteúdo, então leva junto a contagem que o selo mostra.
-                  aria-label={conta !== null ? `${label}, ${formatInt(conta)} ${legenda}` : label}
+                  // O aria-label vale no lugar do conteúdo, então leva junto a contagem que o selo mostra. WCAG 2.5.3: o
+                  // nome COMEÇA pelo que se vê ("Pendências 4"); o que vem depois ("aguardando você") só o explica. Por
+                  // isso o selo não repete a legenda em texto escondido: o texto visível do item é só rótulo + número.
+                  aria-label={conta !== null ? `${label}, ${falaDoTotal(conta, incompleto, legenda)}` : label}
                   title={recolhido ? label : undefined}
                   onClick={() => {
                     foiNavegacao.current = aberto;
@@ -159,12 +166,18 @@ export function MenuLateral() {
                   <Icon size={18} aria-hidden className={styles.icone} />
                   <span className={styles.rotulo}>{label}</span>
                   {/* Pendências: tudo o que espera uma decisão sua. Aprendizado: a fila do D1 (o que o sistema não publica
-                      sozinho). */}
+                      sozinho). O espaço antes do selo não pesa no layout flex, mas separa "Pendências" de "4" no texto
+                      visível que o WCAG 2.5.3 compara com o nome ("Pendências4" não está em "Pendências 4, …"). */}
                   {conta !== null ? (
-                    <span className={styles.contagem} title={`${conta} ${conta === 1 ? 'item' : 'itens'} ${legenda}`}>
-                      <span aria-hidden>{formatInt(conta)}</span>
-                      <span className="sr-only"> ({formatInt(conta)} {legenda})</span>
-                    </span>
+                    <>
+                      {' '}
+                      <span className={styles.contagem}
+                            title={incompleto
+                              ? `${numeroExibido(conta, true)} ${legenda}: alguma origem não carregou, o número pode ser maior`
+                              : `${conta} ${conta === 1 ? 'item' : 'itens'} ${legenda}`}>
+                        {numeroExibido(conta, incompleto)}
+                      </span>
+                    </>
                   ) : null}
                 </a>
               </li>

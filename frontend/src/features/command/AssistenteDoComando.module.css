@@ -139,4 +139,16 @@
 @media (max-width: 560px) {
   .box { padding: var(--sp-3); }
   .espaco { display: none; }
+  /* M1 (rodada 2): um botão por linha, na largura toda, e o texto quebra em vez de vazar do botão
+     ("Planejar com as respostas" tem mais texto do que cabe numa linha de 99 px). */
+  .rodape { flex-direction: column; align-items: stretch; }
+  .rodape button {
+    height: auto;
+    min-height: var(--hit-min);
+    padding-top: 6px;
+    padding-bottom: 6px;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: center;
+  }
 }

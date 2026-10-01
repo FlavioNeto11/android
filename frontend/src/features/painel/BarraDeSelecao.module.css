@@ -9,7 +9,9 @@
 .bar {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  /* A barra QUEBRA quando não cabe (M2, rodada 2): rolar de lado deixava ações fora da tela, sem pista, assim que o
+     rótulo crescia ("2 selecionados (1 ignorado: servidor sem resposta)" já passava de 390 px e de 768 px). */
+  flex-wrap: wrap;
   gap: 6px;
   min-height: 46px;
   padding: 6px 10px 6px 14px;
@@ -17,10 +19,6 @@
   border-radius: var(--radius-lg);
   background: var(--surface-2);
   box-shadow: var(--shadow-3);
-  /* Em tela estreita a linha ROLA para o lado, em vez de quebrar em duas e crescer. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
 }
 
 .bar > * {
@@ -45,13 +43,23 @@
 .dockEmFoco .bar {
   border-color: var(--border-1);
   box-shadow: none;
-  overflow-x: hidden;
 }
 
-.nota {
+.bar > .nota {
+  flex: 1 1 0;
+  min-width: 0;
   color: var(--text-3);
   font-size: var(--fs-sm);
-  white-space: nowrap;
+}
+
+/* Tela estreita (celular e tablet com o menu em gaveta): o rótulo, que pode ser longo, ocupa a primeira linha e as ações
+   descem inteiras, todas à vista. Em tela larga o rótulo e as ações dividem a mesma linha. */
+@media (max-width: 900px) {
+  .bar > .label {
+    flex: 1 1 100%;
+    margin-right: 0;
+    white-space: normal;
+  }
 }
 
 /* ---------- menu "Mais ações" ---------- */

@@ -120,13 +120,22 @@ describe('SaudeAmbiente — semáforo', () => {
     const pop = await abrir();
     await waitFor(() => expect(text(pop)).toContain('2 personas bloqueadas pela plataforma'));
     // D1: o mesmo número e o mesmo destino da caixa de Pendências (antes: objetivos, levando a Execuções).
-    expect(text(pop)).toContain('2 pendências esperando você');
-    const pendencias = [...pop.querySelectorAll('a')].find((a) => text(a).includes('pendências esperando'));
+    expect(text(pop)).toContain('2 pendências aguardando você');
+    const pendencias = [...pop.querySelectorAll('a')].find((a) => text(a).includes('pendências aguardando'));
     expect(pendencias?.getAttribute('href')).toBe(hashDe('pendencias'));
     const bloqueadas = [...pop.querySelectorAll('a')].find((a) => text(a).includes('personas bloqueadas'));
     expect(bloqueadas?.getAttribute('href')).toBe(hashDe('personas', { query: { situacao: 'bloqueada' } }));
     // Personas bloqueadas não mudam a cor: são estado de trabalho, não de saúde.
     expect(text(gatilho())).toBe('Ambiente OK');
+  });
+
+  it('B8: com uma origem de pendências fora, o popover diz "2+" e que alguma origem não carregou, não "2"', async () => {
+    await montar({});
+    await act(async () => usePendenciasStore.setState({ falhou: true }));
+    const pop = await abrir();
+    expect(text(pop)).toContain('2+ pendências aguardando você (Alguma origem não carregou: o número pode ser maior.)');
+    expect(text(pop)).not.toContain('2 pendências aguardando você');
+    await act(async () => usePendenciasStore.setState({ falhou: false }));
   });
 
   it('painel sem conexão com o central: Crítico', async () => {

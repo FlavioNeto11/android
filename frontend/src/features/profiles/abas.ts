@@ -49,3 +49,13 @@ export function secaoDaAba(aba: Aba): SecaoDef {
 export function abaPadraoDaSecao(secao: SecaoDef): Aba {
   return secao.guias[0]!;
 }
+
+/**
+ * A guia que abre ao clicar na seção, sabendo do que o selo dela conta (B3, rodada 2): o selo da "Atividade" conta as
+ * Aprovações que esperam a pessoa, então, havendo alguma, o clique leva às Aprovações (a guia que explica o número) e
+ * não às Interações. Sem pendência, vale a primeira guia da seção.
+ */
+export function abaAoEscolherSecao(secao: SecaoDef, aprovacoesPendentes: number | null): Aba {
+  if (secao.id === 'atividade' && aprovacoesPendentes) return 'aprovacoes';
+  return abaPadraoDaSecao(secao);
+}

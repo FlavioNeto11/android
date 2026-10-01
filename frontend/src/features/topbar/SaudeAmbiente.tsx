@@ -10,6 +10,7 @@ import { useAppStore } from '../../store/app';
 import {
   ROTULO_DO_NIVEL, personasBloqueadas, useSaudeDoAmbiente, type Motivo, type NivelDoAmbiente,
 } from '../../store/metricas';
+import { AVISO_ORIGEM_NAO_CARREGOU, numeroExibido } from '../pendencias/exibicao';
 import { usePendencias } from '../pendencias/usePendencias';
 import { usePersonas } from '../profiles/usePersonas';
 import styles from './SaudeAmbiente.module.css';
@@ -68,7 +69,7 @@ function Detalhes({ nivel, lista, versao, fechar }: {
 }) {
   const bloqueadas = personasBloqueadas(usePersonas());
   // D1: o mesmo total da caixa de Pendências (e do chip do topo e do selo do menu), levando a ela.
-  const aguardando = usePendencias().total;
+  const { total: aguardando, falhou: aguardandoIncompleto } = usePendencias();
   // RF-45: o link troca a tela e o popover some com ele: o foco vai ao conteúdo ANTES (como na gaveta do menu), em
   // vez de cair no `<body>` junto com o painel.
   const seguir = () => {
@@ -100,7 +101,7 @@ function Detalhes({ nivel, lista, versao, fechar }: {
       ) : null}
       {/* Não mudam a cor do semáforo: são estado de trabalho, não de saúde. Mas o número vem com o nome do que conta
           e leva à lista — o "15 bloqueadas" de antes não dizia se eram personas ou tarefas. */}
-      {(bloqueadas ?? 0) > 0 || aguardando > 0 ? (
+      {(bloqueadas ?? 0) > 0 || aguardando > 0 || aguardandoIncompleto ? (
         <>
           <p className={styles.subtitulo}>Também</p>
           <ul className={styles.avisos}>
@@ -108,9 +109,12 @@ function Detalhes({ nivel, lista, versao, fechar }: {
               <li>{link(hashDe('personas', { query: { situacao: 'bloqueada' } }),
                         `${bloqueadas} ${bloqueadas === 1 ? 'persona bloqueada' : 'personas bloqueadas'} pela plataforma`)}</li>
             ) : null}
-            {aguardando > 0 ? (
-              <li>{link(hashDe('pendencias'),
-                        `${aguardando} ${aguardando === 1 ? 'pendência esperando' : 'pendências esperando'} você`)}</li>
+            {aguardando > 0 || aguardandoIncompleto ? (
+              <li>{link(hashDe('pendencias'), !aguardandoIncompleto
+                ? `${aguardando} ${aguardando === 1 ? 'pendência' : 'pendências'} aguardando você`
+                : aguardando > 0
+                  ? `${numeroExibido(aguardando, true)} ${aguardando === 1 ? 'pendência' : 'pendências'} aguardando você (${AVISO_ORIGEM_NAO_CARREGOU})`
+                  : `Não foi possível contar as pendências (${AVISO_ORIGEM_NAO_CARREGOU})`)}</li>
             ) : null}
           </ul>
         </>

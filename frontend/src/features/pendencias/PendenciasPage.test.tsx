@@ -146,7 +146,7 @@ describe('caixa de pendências', () => {
     const origens = Array.from(container.querySelectorAll('li[data-origem]')).map((l) => l.getAttribute('data-origem'));
     expect(origens.sort()).toEqual(['aprendizado', 'aprendizado', 'execucao', 'persona']);
     const itemDoMenu = container.querySelector('nav a[href="#/pendencias"]') as HTMLElement;
-    expect(text(itemDoMenu)).toContain('4 esperando você');
+    expect(itemDoMenu.getAttribute('aria-label')).toBe('Pendências, 4 aguardando você');
     expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (4)');
     // O nome da persona vem da lista de personas.
     await waitFor(() => expect(text(container)).toContain('Persona Ana Lima'));
@@ -160,7 +160,7 @@ describe('caixa de pendências', () => {
     expect(text(linha)).toContain('Bia Nunes (@bia.nunes)');
     expect(linha.querySelector('a')?.getAttribute('href')).toBe('#/personas');
     const itemDoMenu = container.querySelector('nav a[href="#/pendencias"]') as HTMLElement;
-    expect(text(itemDoMenu)).toContain('5 esperando você');
+    expect(itemDoMenu.getAttribute('aria-label')).toBe('Pendências, 5 aguardando você');
     expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Intervenção (1)');
     expect(backend.callsTo('POST', /./)).toHaveLength(0);
   });
@@ -188,7 +188,7 @@ describe('caixa de pendências', () => {
     await act(async () => { root.render(<><MenuLateral /><PendenciasPage /></>); });
     await waitFor(() => expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (6)'));
     const itemDoMenu = container.querySelector('nav a[href="#/pendencias"]') as HTMLElement;
-    expect(text(itemDoMenu)).toContain('6 esperando você');
+    expect(itemDoMenu.getAttribute('aria-label')).toBe('Pendências, 6 aguardando você');
     // A lista principal tem as recentes; as antigas ficam na seção recolhida, que diz quantas são.
     const principal = container.querySelector('ul[aria-label="Pendências"]') as HTMLElement;
     expect(principal.querySelectorAll('li[data-origem]')).toHaveLength(4);
@@ -200,12 +200,12 @@ describe('caixa de pendências', () => {
     expect(text(container)).toContain('Objetivo antigo 12');
   });
 
-  it('caixa vazia diz "Nada esperando você"; leitura que falha avisa que a lista pode estar incompleta', async () => {
+  it('caixa vazia diz "Nada aguardando você"; leitura que falha avisa que a lista pode estar incompleta', async () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [], total: 0 }));
     backend.on('GET', /^\/api\/approvals/, () => json({ detail: 'erro' }, 500));
     useAppStore.setState({ runs: [] });
     await act(async () => { root.render(<PendenciasPage />); });
-    await waitFor(() => expect(text(container)).toContain('Nada esperando você'));
+    await waitFor(() => expect(text(container)).toContain('Nada aguardando você'));
     await waitFor(() => expect(text(container)).toContain('pode estar incompleta'));
     expect(allByRole('listitem', /./, container).filter((l) => l.hasAttribute('data-origem'))).toHaveLength(0);
   });

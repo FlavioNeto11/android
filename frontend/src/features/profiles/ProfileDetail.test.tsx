@@ -529,6 +529,30 @@ it('as aprovações mostram o texto que sairá e os três verbos', async () => {
   await waitFor(() => backend.callsTo('POST', /decide/).length === 1);
 });
 
+it('B3: o selo da Atividade conta aprovações e o clique abre a guia Aprovações; o nome diz o que o número conta', async () => {
+  const pendente = {
+    id: 'apr-1', profile_id: 'ig-1', run_id: 'run-1', objective_id: 'run-1:android-02', step_id: 's1',
+    capability: 'SEND_MESSAGE', target: '@ana', summary: 'Enviar a mensagem para @ana',
+    generated_content: 'bom dia!', approved_content: null, content: 'bom dia!', status: 'pending',
+    created_at: '2026-09-17T12:00:00Z', decided_at: null, decided_note: null,
+  };
+  backend.on('GET', /approvals/, () => json([pendente]));
+  await abrir();
+  const nav = byRole('navigation', /Seções da persona/);
+  const botao = await waitFor(() => byRole('button', /^Atividade, 1 aprovação aguardando você$/, nav));
+  // WCAG 2.5.3: o texto visível ("Atividade 1") é o começo do nome.
+  expect(botao.textContent).toBe('Atividade 1');
+  await click(botao);
+  expect(byRole('tab', /Aprovações/).getAttribute('aria-selected')).toBe('true');
+  expect(byRole('tab', /Interações/).getAttribute('aria-selected')).toBe('false');
+});
+
+it('B3: sem aprovação pendente a Atividade abre a primeira guia (Interações), como antes', async () => {
+  await abrir();
+  await click(byRole('button', /^Atividade$/, byRole('navigation', /Seções da persona/)));
+  expect(byRole('tab', /Interações/).getAttribute('aria-selected')).toBe('true');
+});
+
 /** Registra as rotas mínimas de que a aba Configurações precisa: catálogo do app, capacidades e política. */
 function montarConfigBackend(capabilities: unknown[], policyBody: unknown, interacoes: unknown[] = []): void {
   backend.on('GET', /app-catalog/, () => json([

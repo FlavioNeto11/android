@@ -986,7 +986,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .navSecaoContagem {
   min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center;
   border-radius: var(--radius-pill); background: var(--warning-soft); color: var(--warning-text);
-  border: 1px solid var(--warning-border); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums;
+  border: 1px solid var(--warning-border); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
 }
 .navSecoesSelect { display: none; }
 @container page (max-width: 559px) {

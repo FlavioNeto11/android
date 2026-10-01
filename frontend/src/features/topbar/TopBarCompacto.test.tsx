@@ -30,7 +30,8 @@ afterEach(async () => {
   container.remove();
   delete (window as { matchMedia?: unknown }).matchMedia;
   useSessionStore.setState({ operator: null });
-  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false });
+  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false,
+                               falhas: { aprendizado: false, aprovacoes: false, personas: false } });
 });
 
 /** O jsdom não tem `matchMedia`: o dublê responde pelo `max-width` da consulta, como o navegador numa janela dessa largura. */
@@ -160,6 +161,22 @@ describe('Botão "Menu" — selo de pendências (D1)', () => {
     expect(text(menu)).toBe('Menu, 2 aguardando você2');
     await montar({ pendencias: 0 });
     expect(text(container.querySelector('#botao-menu') as HTMLElement)).toBe('Menu');
+  });
+});
+
+describe('Botão "Menu" e "Resumo" — origem que não carregou (B8)', () => {
+  it('o selo do Menu vira "2+", o nome diz que pode ser mais e o Resumo repete; sem nada contado, o selo é "?"', async () => {
+    fingirLargura(390);
+    await montar({ pendencias: 2 });
+    await act(async () => usePendenciasStore.setState({ falhou: true, falhas: { aprendizado: true, aprovacoes: false, personas: false } }));
+    const menu = container.querySelector('#botao-menu') as HTMLButtonElement;
+    expect(text(menu)).toBe('Menu, 2 ou mais aguardando você; alguma origem não carregou2+');
+    expect(botaoDoCabecalho('Resumo')!.getAttribute('aria-label'))
+      .toMatch(/^Resumo, 2 ou mais aguardando você; alguma origem não carregou\./);
+    await montar({ pendencias: 0 });
+    await act(async () => usePendenciasStore.setState({ falhou: true }));
+    expect(text(container.querySelector('#botao-menu') as HTMLElement)).toBe('Menu, não foi possível contar; alguma origem não carregou?');
+    await act(async () => usePendenciasStore.setState({ falhou: false, falhas: { aprendizado: false, aprovacoes: false, personas: false } }));
   });
 });
 
