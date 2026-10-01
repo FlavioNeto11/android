@@ -58,7 +58,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **implantado**, `real`: renderizador lido pela API; recusa real em 01/03/06 antes do reinício; parque ligado todo em `host` |
 | 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | **feito**, `real`: promovido 21:42Z; `ready` em 01, 02, 03, 06, 07, 08, 10, 12; 05, 09, 13–15 instalam ao ligar |
 | 29.13 | 23.11, 23.13, 24.9, 27.2 | login e C1 provados | 29.12; **dono**: consentimento, saldo, e-mail de teste | C | **Outlook das 3 contas logado** no aparelho do Instagram de cada uma (01, 03, 06); **C1 real** no 01 (`r-20260930230500-f52eec`); falta o C1 num aparelho com rede verificada (e-mail de teste para Bruno ou André) |
-| 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | aguarda o cron; a sessão "Github" monitora e avisa |
+| 29.14 | P17 | suíte e migrações em PostgreSQL real | cron do CI de 01/10 05:17Z (o limite de gasto caiu em 30/09 12:10Z) | C | **feito**, `real`: run 36830963968 (01/10, 7c3b787) 3962 passed, 0 failed em PostgreSQL |
 | 29.15 | 25.8, 23.10 | painel sem as três ambiguidades; estados ausentes inspecionados | 29.2 integrado (`RedePage`) | A | **implantado**; inspeção `real` a 800 e 375 px com o dado do central; estados que o dado real não mostra: só jsdom |
 | 29.16 | 12.3, contagem | `check` sem interrupção; 12.3 no vocabulário; P15 reescrito | 29.10 para o P15 | C | índice regenerado neste commit |
 | 29.17 | artefatos | espaço devolvido sem tocar o que está em uso | 29.10 (usa `diag-outlook`) | C | arquivado (movido, 11,3 GB, nada apagado); restam os worktrees das frentes, depois do segundo deploy |
@@ -605,6 +605,6 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
    Views não clicáveis; texto do aviso de fallback do renderizador quando falta só o reinício.
 3. W4 (29.9): o cliente VPN nem subiu no android-09 e o servidor não viu par novo; o adbd caiu junto, com o
    notebook em ~83% de swap. Antes de repetir, medir o always-on no boot desse aparelho e a memória do notebook.
-4. PostgreSQL (29.14): a sessão "Github" lê o cron de 01/10 05:17Z e avisa; o resultado entra no §27.1.
+4. PostgreSQL (29.14): **verde** em 01/10 (run 36830963968); rotina: cron 05:17Z e dispatch `somente_postgres`.
 5. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
 6. Fechamento (29.18): fecha com o 27.2 e o 29.14; o §27 e a matriz por aparelho já estão no relatório.

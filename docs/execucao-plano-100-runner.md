@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-234 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+235 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -268,7 +268,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.11 | implemented | real | opus | — | Real, 30/09, central f6c7df2 em diante (deploy 21:33Z) e agente do notebook 0.1.0+f6c7df2: GET /api/instances devolve renderer {configured, gles, vulkan, fallback} lido do log (android-10 e 12: host/host). Com android.g… | None |
 | 29.12 | implemented | real | opus | — | Real, 30/09: canários por aparelho em android-10 (c-20260930190806-9eed42) e android-12 (c-20260930190947-b165db); promoção 21:42Z; distribuição com a recusa por renderizador ativa; Outlook 5.2635.3 'ready' (instalado,… | android-05 ficou 'missing' depois de um timeout de adb na instalação (hibernado; instala ao acordar); android-09 e 13–15 (notebook) instalam quando ligados. |
 | 29.13 | partial | real | opus | — | Real, 30/09, com o dono decidindo o renderizador host em todos (chat, ~18:20Z) e o consentimento das 3 contas: Outlook logado no aparelho do Instagram de cada persona — André em android-06 (senha pelo canal sensível; te… | O aceite no mesmo aparelho COM rede trafego_verificado (27.2) precisa do C1 em android-03 ou 06 (têm a rede), e o e-mail de teste foi só para o Lucas: falta um… |
-| 29.14 | pendente | — | — | — |  |  |
+| 29.14 | implemented | real | opus | — | Real, 01/10/2026, GitHub Actions hospedado (ubuntu-latest, postgres:17 de serviço): run 36830963968 (workflow_dispatch somente_postgres, commit 7c3b787) — 3962 passed, 28 skipped, 0 failed em 45 min; suíte inteira do ba… | None |
 | 29.15 | implemented | real | opus | — | Real, 30/09 ~16:00Z, central 0d70882, painel servido pelo backend com o dado do parque: android-01 mostra 'sem proxy (legado conferido)'; aparelhos com bloqueio mostram 'bloqueio fora da VPN: provado em … (rev 1, client… | None |
 | 29.16 | implemented | real | opus | — | Pelo mecanismo, em 30/09: índice de pacotes regenerado; 12.3 no vocabulário do aplicar; P15 reescrito com a causa medida (SwiftShader-GL, não recusa do app; K-062); os itens do Outlook e do comando entre apps (23.x, 24.… | None |
 | 29.17 | partial | real | opus | — | Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Android\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arqui… | Restam os worktrees das frentes (p3-firewall, p3-medicao com junção de node_modules, p3-renderizador, agent-a2c596de1676ca7fa com o catálogo do Outlook fora da… |
@@ -280,7 +280,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (39): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.14, 29.17, 29.18, 29.19, 29.20, T.2
+Pendentes (38): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.17, 29.18, 29.19, 29.20, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

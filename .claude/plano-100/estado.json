@@ -4512,6 +4512,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-30T23:15:11+00:00"
+  },
+  "29.14": {
+   "id": "29.14",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 01/10/2026, GitHub Actions hospedado (ubuntu-latest, postgres:17 de serviço): run 36830963968 (workflow_dispatch somente_postgres, commit 7c3b787) — 3962 passed, 28 skipped, 0 failed em 45 min; suíte inteira do backend, migrações 056–058 e 063 e a consulta nova do snapshot em PostgreSQL. Antes: cron 36819958569 inconclusivo por timeout de 25 min (70% sem falha) e 36822159704/36826258680 com falhas só de portabilidade (teste com rowid; caminho do Windows comparado com as regras do Linux), corrigidas em 5a28f44 e 7c3b787. Timeout do job subiu para 60 min (63b2753).",
+   "blocker": null,
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-01T08:20:06+00:00"
   }
  },
  "rodadas": [
@@ -5356,6 +5369,15 @@
     "29.16",
     "29.17",
     "29.18"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-01T08:20:06+00:00",
+   "itens": [
+    "29.14"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
