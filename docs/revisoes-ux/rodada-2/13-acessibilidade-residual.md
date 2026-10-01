@@ -34,7 +34,7 @@ foi feito:
 | "Sidebar só com ícones por padrão" (item 5) | **Já era** expandida por padrão em >= 1280 px, recolhida abaixo, com botão "Recolher menu"/"Expandir menu" e preferência em `localStorage` (`cda.menuRecolhido`, via `lib/storage.ts`, que já tem try/catch em leitura e gravação). Vem de `menuRecolhidoInicial()` em `store/ui.ts`. Só exportei a função e escrevi o teste. |
 | "Sidebar recolhida com `font-size: 0`" | A sidebar usa o recurso `sr-only` (clip) e não `font-size: 0`. O único `font-size: 0` do portal é `TopBar.module.css:466 .conn :global(*)` (< 1180 px, conexão como só ícone), arquivo da tarefa 10: **não mexi**. |
 | "Gaveta com hambúrguer abaixo de 768 px" | A gaveta vale abaixo de **1024 px** (`MenuLateral.module.css`). |
-| "5 alvos < 32 px no Painel, 6 na Infraestrutura" | O auditor próprio (`scripts/ui-auditoria.js`, tolerância de 0,5 px) dá **0** em todas as telas; uma medição estrita (`getBoundingClientRect`, `< 32`) achou **1** no Painel simulado (`stateQuick`, 31,5 px) e 0 na Infraestrutura. Os 5 e 6 do briefing vêm de dados reais (vários contadores de estado no Painel; linhas de aparelho com tarefa em voo e persona na Infraestrutura), que o simulado (4 aparelhos parados, sem execução) não reproduz. Por isso corrigi **todas** as classes que usam a receita de 6 px: o que a medição simulada não alcança fica coberto pela causa comum. |
+| "5 alvos < 32 px no Painel, 6 na Infraestrutura" | O auditor próprio (`scripts/ui-auditoria.js`, tolerância de 0,5 px) dá **0** em todas as telas; uma medição estrita (`getBoundingClientRect`, `< 32`) achou **1** no Painel simulado (`stateQuick`, 31,5 px) e 0 na Infraestrutura. Hipótese, não verificada: os 5 e 6 do briefing vêm de dados reais (vários contadores de estado no Painel; linhas de aparelho com tarefa em voo e persona na Infraestrutura), que o simulado (4 aparelhos parados, sem execução) não reproduz. Por isso corrigi **todas** as classes que usam a receita de 6 px: o que a medição simulada não alcança fica coberto pela causa comum. |
 | "Foco ao fechar o drawer não volta" | Voltava (rodada 1, RF-02). Medi de novo e funciona; só o degrau final era novo. |
 
 ## Arquivos tocados
@@ -44,13 +44,13 @@ Da posse da tarefa 13:
 - `frontend/src/features/focus/Drawer.tsx` (degrau final do foco) e `Drawer.test.tsx`
 - `frontend/src/features/infra/Infra.module.css` (alvos)
 - `frontend/src/features/diagnostics/Diagnostics.module.css` e `MeasurementsChart.tsx` (13 px, largura real, papel do gráfico)
-- `frontend/src/features/topbar/TopBar.test.tsx` (teste do aria-label)
 
 **Toque em arquivo alheio** (mínimo, listado como o regulamento pede):
 - `frontend/src/features/devices/Devices.module.css`: `.stateQuick` e `.logResumo`, 6 para 7 px.
 - `frontend/src/features/command/CommandPanel.module.css`: `min-height` 26 para `--hit-min` em `.personaChip` e `.previaOpcao`.
 - `frontend/src/components/overlay.module.css`: `.toastClose` 22 para 32 px.
 - `frontend/src/store/ui.ts`: apenas `export` em `menuRecolhidoInicial` (para o teste) e `store/ui.test.ts` (3 testes novos).
+- `frontend/src/features/topbar/TopBar.test.tsx` (posse da tarefa 10): só o teste novo do `aria-label`, no bloco "Menu lateral" que já morava ali.
 
 `--fs-2xs` (12 px) **não** foi alterado: o token continua em uso pelo selo de pendências do botão Menu
 (`TopBar.module.css`, 18 px de altura, tarefa 10). O comentário do token em `tokens.css` não foi reescrito; ele cita o
@@ -118,6 +118,7 @@ backend simulado da porta 8713):
 - Os 5 alvos do Painel e 6 da Infraestrutura **com dados reais**: não reproduzíveis no simulado; a correção cobre a classe
   inteira de controles, mas a contagem real só se confirma no build implantado.
 - Os chips "Por persona" antes da mudança (min-height 26): medidos só depois (32 px).
+- `.toastClose` (32 px) e `.previaOpcao` (`--hit-min`): alterados mas nunca renderizados no simulado; conferidos só pela leitura do CSS.
 - Toque em aparelho real (só emulação de viewport).
 - Tema claro (o produto é só escuro).
 - Capturas de tela comparativas em 1440 e 1024 px: usei medidas de DOM e capturas pontuais (chart em 390 px, painel em
