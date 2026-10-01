@@ -29,9 +29,11 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     `host` em todo o parque, lido do log e com recusa por app; Outlook promovido e `ready` em 8 aparelhos; as três
     contas Outlook logadas no aparelho do Instagram de cada persona (01, 03, 06), Instagram conferido depois da troca;
     C1 Outlook → Instagram só de leitura no android-01.
-  - **Falta:** C1 num aparelho com rede verificada (27.2: e-mail de teste do dono para o Bruno ou o André); W4 da rede
-    no notebook falhou e foi revertido (29.9); persistência da sessão do Outlook; PostgreSQL no cron de 01/10 (29.14).
-    Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
+  - **Falta (01/10 ~11:00Z):** C1 num aparelho com rede verificada (27.2: o e-mail de teste não chegou à caixa do Bruno;
+    o C1 no 03 falhou e o gasto pago passou da autorização de 29/09 — ~US$ 1,86 de 1,50; nada pago roda até o dono
+    decidir); W4 da rede no notebook bloqueado pela memória dos emuladores paginada (K-067); 10 execuções antigas com
+    efeito em conta real esperam decisão do dono; D8 (firewall do notebook) com o comando pronto. PostgreSQL verde
+    (29.14). Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
 
 - **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
   do notebook), migração 058. Estado por frente, pendências P1–P15 e próxima ação em
