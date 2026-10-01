@@ -30,7 +30,7 @@ import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
   ocupacaoDoServidor, orphanInstances, renderizadorMeta,
 } from './infraState';
-import type { Ocupacao } from '../../store/metricas';
+import { estadoContado, type Ocupacao } from '../../store/metricas';
 import { CriarAparelhoDialog } from './CriarAparelho';
 import { recusaDaAposentadoria, type RecusaNaTela } from './provisionamento';
 import appStyles from '../../App.module.css';
@@ -538,6 +538,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
 }) {
   const openFocus = useUiStore((s) => s.openFocus);
   const openPersona = useUiStore((s) => s.openPersona);
+  const workers = useAppStore((s) => s.workers);
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
   const apps = useAppStore((s) => s.apps);
@@ -580,7 +581,8 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
   return (
     <ul className={styles.aparelhos}>
       {instancias.map((i) => {
-        const meta = instanceStateMeta(i.state);
+        // RF-40: aparelho de servidor fora do ar é "desconhecido", como no Painel e no Foco (era "parado").
+        const meta = instanceStateMeta(estadoContado(i, workers));
         const proc = processo.get(i.id);
         // A instância do config.yaml sai editando o arquivo: o botão nem aparece para ela.
         const aposentavel = !!onAposentado && i.origin === 'dynamic';

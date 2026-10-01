@@ -12,8 +12,8 @@ import { useAppStore } from '../../store/app';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
 import { CommandSummary } from './CommandTrail';
 import { personasDoCartao, rotuloDaPersona } from './DeviceCard';
-import { primaryActionFor, serverHintOf } from './deviceState';
-import { seloDoAparelho } from './selos';
+import { MOTIVO_SERVIDOR_SEM_RESPOSTA, primaryActionFor, serverHintOf } from './deviceState';
+import { aparelhoDesconhecido, seloDoAparelho } from './selos';
 import styles from './Devices.module.css';
 
 interface DeviceRowProps {
@@ -33,6 +33,8 @@ const DeviceRow = memo(function DeviceRow({ instance, appName, personas: vincula
   const workers = useAppStore((s) => s.workers);
   const server = serverHintOf(instance, workers);
   const selo = seloDoAparelho(instance, workers);
+  // RF-40: o mesmo do cartão — sem servidor, o verbo do estado guardado não é oferecido como se valesse.
+  const semServidor = aparelhoDesconhecido(instance, workers) ? MOTIVO_SERVIDOR_SEM_RESPOSTA : null;
   const personas = personasDoCartao(vinculadas);
   const busyAction = useBusyStore((s) => s.busy[id]);
   const comandoAberto = useAppStore((s) => comandoAbertoDe(s.lastCommand[id]));
@@ -97,7 +99,7 @@ const DeviceRow = memo(function DeviceRow({ instance, appName, personas: vincula
         {primary ? (
           <Button size="sm" variant="secondary" icon={ACTION_META[primary].icon}
                   loading={busyAction === primary || comandoAberto?.verb === primary}
-                  disabledReason={motivoDoComando(comandoAberto, id, primary)}
+                  disabledReason={semServidor ?? motivoDoComando(comandoAberto, id, primary)}
                   onClick={() => void runInstanceAction(id, primary)}>
             {state === 'error' ? 'Tentar novamente' : ACTION_META[primary].label}
           </Button>

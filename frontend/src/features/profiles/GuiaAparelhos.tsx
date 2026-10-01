@@ -28,6 +28,7 @@ import { useUiStore } from '../../store/ui';
 import { OperationalContextCard } from '../devices/OperationalContextCard';
 import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
+import { aparelhoDesconhecido, seloDoAparelho } from '../devices/selos';
 import { Carregando, Linha, useLista } from './detalheComum';
 import { aparelhosDe, nomeDe, type Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
@@ -187,8 +188,11 @@ function CartaoDoVinculo({ profile, vinculo: v, apps: instalados, onChanged }: {
       <CardBody>
         <dl className={`${styles.rows} ${styles.rowsCartao}`}>
           <Linha rotulo="Estado">
-            {estado ? <StatusBadge meta={metaOf(INSTANCE_STATE, estado)} size="sm" /> : <span className={styles.muted}>não está no parque</span>}
-            {inst?.state_detail ? <span className={styles.muted}> · {inst.state_detail}</span> : null}
+            {/* RF-40: o aparelho do parque passa pela regra do desconhecido (servidor sem resposta), como nas outras telas. */}
+            {inst ? <StatusBadge meta={seloDoAparelho(inst, workers)} size="sm" />
+              : estado ? <StatusBadge meta={metaOf(INSTANCE_STATE, estado)} size="sm" />
+              : <span className={styles.muted}>não está no parque</span>}
+            {inst?.state_detail && !aparelhoDesconhecido(inst, workers) ? <span className={styles.muted}> · {inst.state_detail}</span> : null}
           </Linha>
           <Linha rotulo="Servidor">
             {server ? <ServerBadge server={server} size="sm" estatico /> : inst || !v.worker_id ? 'este servidor' : v.worker_id}

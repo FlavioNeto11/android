@@ -537,3 +537,52 @@ describe('FocusPanel — ações em grupos', () => {
     await flush(20);
   });
 });
+
+// RF-40 (prova simulada 13): com o servidor do aparelho fora do ar, a lista dizia "Desconhecido" e o Foco ao lado
+// "Parada / O emulador está desligado", oferecendo "Iniciar". A regra é uma só (`store/metricas::estadoContado`).
+describe('FocusPanel — servidor sem resposta = estado desconhecido (RF-40)', () => {
+  const fora = () => worker({ connected: false, state: 'offline' });
+
+  it('o estado diz "Desconhecido" e explica, sem afirmar "Parada" nem "desligado"', async () => {
+    const el = await renderFocus(
+      makeInstance(9, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01',
+                        state_detail: "Aparelho em 'stopped'" }), [fora()]);
+    const t = text(el);
+    expect(t).toContain('Desconhecido');
+    expect(t).toContain('O servidor deste aparelho não está respondendo; não dá para saber se o emulador está ligado.');
+    expect(t).not.toContain('Parada');
+    expect(t).not.toContain('O emulador está desligado');
+    expect(t).not.toContain("Aparelho em 'stopped'");
+    // A seção "Estado e saúde" lê a mesma regra (a linha do aparelho e o semáforo da seção).
+    expect(text(secao(el, 'Estado e saúde'))).toContain('Desconhecido');
+  });
+
+  it('as ações que dependem do servidor ficam indisponíveis com o motivo no próprio botão', async () => {
+    const el = await renderFocus(
+      makeInstance(9, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' }), [fora()]);
+    for (const nome of [/^Iniciar/, /^Assumir controle/, /^Resetar dados…/, /^Instalar app/, /^Abrir app/]) {
+      const b = byRole('button', nome, el);
+      expect(b.getAttribute('aria-disabled'), String(nome)).toBe('true');
+      expect(text(b), String(nome)).toContain('Servidor sem resposta');
+    }
+  });
+
+  it('estado guardado "online" com o servidor fora: nada de tela ao vivo nem verbos de aparelho ligado', async () => {
+    const el = await renderFocus(
+      makeInstance(9, { state: 'online', kind: 'external', worker_id: 'worker-lan-01' }), [fora()]);
+    expect(el.querySelector('[role="img"][aria-label^="Tela ao vivo"]')).toBeNull();
+    expect(text(el)).toContain('Desconhecido');
+    for (const nome of [/^Parar/, /^Reiniciar/, /^Assumir controle/]) {
+      const b = byRole('button', nome, el);
+      expect(b.getAttribute('aria-disabled'), String(nome)).toBe('true');
+      expect(text(b), String(nome)).toContain('Servidor sem resposta');
+    }
+  });
+
+  it('servidor conectado: o estado guardado vale e os verbos seguem clicáveis', async () => {
+    const el = await renderFocus(
+      makeInstance(9, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' }), [worker()]);
+    expect(text(el)).not.toContain('Desconhecido');
+    expect(byRole('button', /^Iniciar/, el).getAttribute('aria-disabled')).toBeNull();
+  });
+});

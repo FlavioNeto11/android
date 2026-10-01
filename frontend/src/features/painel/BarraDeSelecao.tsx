@@ -32,6 +32,11 @@ export interface BarraDeSelecaoProps extends Omit<BulkContext, 'selected'> {
    */
   foraDoFiltro?: number;
   /**
+   * Marcados à vista cujo servidor não responde (RF-40): o estado deles é desconhecido. Também ficam FORA de `ids`,
+   * e a barra diz quantos foram ignorados.
+   */
+  desconhecidos?: number;
+  /**
    * Um aparelho está aberto no drawer de Foco, que já tem estas ações: a barra mantém o lugar (a grade não pula) e
    * o contador, mas esconde os botões, para nenhuma ação aparecer duas vezes.
    */
@@ -48,7 +53,7 @@ function motivoDoBloqueio(quem: string[], action: InstanceAction): string {
  * tela estreita a linha rola para o lado em vez de quebrar.
  */
 export function BarraDeSelecao({
-  ids, selecionados, selected, hasAbsent, hasHibernated, hibernation, emFoco, foraDoFiltro = 0,
+  ids, selecionados, selected, hasAbsent, hasHibernated, hibernation, emFoco, foraDoFiltro = 0, desconhecidos = 0,
 }: BarraDeSelecaoProps) {
   const bulkBusy = useBusyStore((s) => s.bulkBusy);
   const clearSelection = useUiStore((s) => s.clearSelection);
@@ -64,7 +69,7 @@ export function BarraDeSelecao({
   const bloqueadosNaBarra = bloqueados.filter((b) => FREQUENTES.includes(b.action));
   const bloqueadosNoMenu = bloqueados.filter((b) => !FREQUENTES.includes(b.action));
   const acoesDoMenu: readonly InstanceAction[] = [...noMenu, ...bloqueadosNoMenu.map((b) => b.action), 'reset'];
-  // Tudo o que está marcado está escondido pelo filtro: não há sobre o que agir.
+  // Tudo o que está marcado está escondido pelo filtro ou sem servidor: não há sobre o que agir.
   const semAlvoVisivel = ids.length === 0;
   const comAcoes = !emFoco && !semAlvoVisivel;
 
@@ -79,13 +84,19 @@ export function BarraDeSelecao({
           <Smartphone size={15} aria-hidden />
           {plural(selecionados, 'selecionado', 'selecionados')}
           {foraDoFiltro > 0 ? ` (${foraDoFiltro} fora do filtro atual)` : ''}
+          {desconhecidos > 0
+            ? ` (${plural(desconhecidos, 'ignorado', 'ignorados')}: servidor sem resposta)`
+            : ''}
         </span>
         {emFoco ? (
           <span className={styles.nota}>As ações deste aparelho estão no painel de foco.</span>
         ) : semAlvoVisivel ? (
           <>
             <span className={styles.nota}>
-              Nenhum aparelho marcado aparece neste filtro. As ações valem só para o que está à vista.
+              {desconhecidos > 0
+                ? 'Os aparelhos marcados à vista estão com o estado desconhecido: o servidor deles não está respondendo. '
+                  + 'Nenhuma ação os alcança até ele voltar.'
+                : 'Nenhum aparelho marcado aparece neste filtro. As ações valem só para o que está à vista.'}
             </span>
             <Button size="sm" variant="ghost" icon={X} iconOnly label="Limpar seleção" onClick={clearSelection} />
           </>

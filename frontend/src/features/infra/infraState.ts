@@ -1,12 +1,13 @@
 import type { EventRecord, Health, Instance, RunSummary } from '../../api/types';
 import type { Tone } from '../../lib/status';
+import type { EstadoContado } from '../../store/metricas';
 
 /**
  * Regras puras da visão de infraestrutura, fora do componente para serem testáveis em node — mesmo padrão de
  * `features/devices/deviceState.ts`.
  */
 
-const ESTADO: Record<Instance['state'], { label: string; tone: Tone }> = {
+const ESTADO: Record<EstadoContado, { label: string; tone: Tone }> = {
   online: { label: 'online', tone: 'success' },
   booting: { label: 'iniciando', tone: 'info' },
   stopping: { label: 'parando', tone: 'info' },
@@ -14,9 +15,12 @@ const ESTADO: Record<Instance['state'], { label: string; tone: Tone }> = {
   stopped: { label: 'parado', tone: 'neutral' },
   absent: { label: 'sem AVD', tone: 'neutral' },
   error: { label: 'com erro', tone: 'danger' },
+  // Servidor fora do ar ou sem canal (RF-40): a mesma palavra do Painel e do Foco, nunca o estado guardado.
+  desconhecido: { label: 'desconhecido', tone: 'warning' },
 };
 
-export function instanceStateMeta(state: Instance['state']): { label: string; tone: Tone } {
+/** Recebe o estado CONTADO (`store/metricas::estadoContado`), não o `state` cru: a regra do desconhecido é a mesma. */
+export function instanceStateMeta(state: EstadoContado): { label: string; tone: Tone } {
   return ESTADO[state] ?? { label: state, tone: 'neutral' };
 }
 

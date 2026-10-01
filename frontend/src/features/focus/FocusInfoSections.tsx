@@ -89,9 +89,9 @@ const GRAVIDADE: Record<Tone, number> = { danger: 4, warning: 3, info: 2, accent
  * O semáforo da seção: o pior sinal entre as camadas. Serve para decidir se vale abrir a seção, não substitui as
  * linhas — cada uma continua dizendo o seu estado.
  */
-export function healthLight(instance: Instance): { label: string; tone: Tone } {
+export function healthLight(instance: Instance, estado: StatusMeta = metaOf(INSTANCE_STATE, instance.state)): { label: string; tone: Tone } {
   const tons: Tone[] = [
-    metaOf(INSTANCE_STATE, instance.state).tone,
+    estado.tone,
     instance.readiness ? metaOf(READINESS_PHASE, instance.readiness.phase).tone : 'neutral',
     instance.stream ? metaOf(STREAM_STATUS, instance.stream.status).tone : 'neutral',
     instance.connectivity ? metaOf(CONNECTIVITY_STATE, instance.connectivity.state).tone : 'neutral',
@@ -104,7 +104,7 @@ export function healthLight(instance: Instance): { label: string; tone: Tone } {
   if (pior === 'warning') return { label: 'Pede atenção', tone: 'warning' };
   if (pior === 'info' || pior === 'accent') return { label: 'Em transição', tone: 'info' };
   if (pior === 'success') return { label: 'Saudável', tone: 'success' };
-  return { label: metaOf(INSTANCE_STATE, instance.state).label, tone: 'neutral' };
+  return { label: estado.label, tone: 'neutral' };
 }
 
 function Linha({ meta, detalhe, children }: { meta: StatusMeta; detalhe?: string | null; children?: ReactNode }) {
@@ -117,12 +117,19 @@ function Linha({ meta, detalhe, children }: { meta: StatusMeta; detalhe?: string
   );
 }
 
-export function HealthSection({ instance }: { instance: Instance }) {
+/**
+ * `selo` é o estado que o painel mostra (`devices/selos::seloDoAparelho`): com o servidor sem resposta ele é
+ * "Desconhecido" (RF-40), e o `state_detail` do backend, que descreve o estado guardado, fica de fora.
+ */
+export function HealthSection({ instance, selo, desconhecido = false }: {
+  instance: Instance; selo?: StatusMeta; desconhecido?: boolean;
+}) {
   const { readiness, stream, connectivity, automation, resources } = instance;
+  const estado = selo ?? metaOf(INSTANCE_STATE, instance.state);
   return (
-    <FocusSection title="Estado e saúde" badge={healthLight(instance)}>
+    <FocusSection title="Estado e saúde" badge={healthLight(instance, estado)}>
       <KvList>
-        <KvRow label="Aparelho"><Linha meta={metaOf(INSTANCE_STATE, instance.state)} detalhe={instance.state_detail} /></KvRow>
+        <KvRow label="Aparelho"><Linha meta={estado} detalhe={desconhecido ? null : instance.state_detail} /></KvRow>
         <KvRow label="Prontidão">
           {readiness ? <Linha meta={metaOf(READINESS_PHASE, readiness.phase)} detalhe={readiness.detail} /> : '—'}
         </KvRow>

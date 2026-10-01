@@ -17,7 +17,7 @@ import { Disclosure } from '../../components/Disclosure';
 import { TextInput } from '../../components/Field';
 import { Tooltip } from '../../components/Tooltip';
 import { ACTION_META, cancelarComando, runInstanceAction } from '../devices/actions';
-import type { FocusActionGroups, FocusItem, FocusVerb } from '../devices/deviceState';
+import { MOTIVO_SERVIDOR_SEM_RESPOSTA, type FocusActionGroups, type FocusItem, type FocusVerb } from '../devices/deviceState';
 import { InstallAppMenu } from '../devices/InstallAppMenu';
 import { OpenAppMenu } from '../devices/OpenAppMenu';
 import styles from './Focus.module.css';
@@ -50,7 +50,7 @@ function Grupo({ title, className, children }: { title: string; className?: stri
 }
 
 export function FocusActions({
-  instance, groups, openCmd, busyAction, mine, pending, sending, defaultApp, contextLoading,
+  instance, groups, openCmd, busyAction, mine, pending, sending, defaultApp, desconhecido = false, contextLoading,
   onKey, onText, onRefreshFrame, onReloadContext, onShowHierarchy,
 }: {
   instance: Instance;
@@ -62,6 +62,8 @@ export function FocusActions({
   sending: boolean;
   /** O app padrão do aparelho: é o que "Verificar app" relê (a lista em Apps verifica cada um). */
   defaultApp: { name: string; package: string } | null;
+  /** Servidor do aparelho fora do ar ou sem canal (RF-40): o motivo de controle manual não sai do estado guardado. */
+  desconhecido?: boolean;
   contextLoading: boolean;
   onKey: (key: ManualKey) => void;
   onText: (text: string) => Promise<boolean>;
@@ -120,7 +122,8 @@ export function FocusActions({
 
   const travaManual = groups.manual[0]?.disabledReason ?? null;
   const motivoSemControle =
-    instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
+    desconhecido ? MOTIVO_SERVIDOR_SEM_RESPOSTA
+    : instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
     : instance.state !== 'online' ? 'O aparelho precisa estar online para o controle manual.'
     : pending ? 'Pedido de controle enviado: aguardando a IA concluir a ação atual.'
     : 'Assuma o controle (na faixa do topo) para tocar na tela, digitar e usar as teclas do Android.';

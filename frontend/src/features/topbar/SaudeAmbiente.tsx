@@ -4,6 +4,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { toneClass } from '../../components/tone';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
+import { focarConteudo } from '../../lib/scroll';
 import type { Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import {
@@ -41,7 +42,9 @@ export function SaudeAmbiente() {
   return (
     <Popover
       // O nome acessível começa pelo que está escrito no botão (rótulo e contagem), e só então diz o que ele faz.
-      label={`${rotulo}${lista.length > 0 ? `, ${motivos(lista.length)}` : ''}. Abrir detalhes do ambiente`}
+      // RF-44 (WCAG 2.5.3): literalmente — "Ambiente crítico 8 motivos…" contém o "Ambiente crítico 8" visível; com a
+      // vírgula e sem espaço entre o rótulo e o selo, o texto lido era "Ambiente crítico8" e não estava no nome.
+      label={`${rotulo}${lista.length > 0 ? ` ${motivos(lista.length)}` : ''}. Abrir detalhes do ambiente`}
       title="Saúde do ambiente"
       align="start"
       triggerClassName={cx(styles.gatilho, toneClass(tone))}
@@ -49,7 +52,8 @@ export function SaudeAmbiente() {
         <>
           <Icon size={14} aria-hidden />
           {rotulo}
-          {lista.length > 0 ? <span className={styles.contagem}>{lista.length}</span> : null}
+          {/* O espaço separa rótulo e selo no TEXTO do botão; entre itens flex ele não ocupa lugar na tela. */}
+          {lista.length > 0 ? <>{' '}<span className={styles.contagem}>{lista.length}</span></> : null}
         </>
       }
     >
@@ -65,7 +69,13 @@ function Detalhes({ nivel, lista, versao, fechar }: {
   const bloqueadas = personasBloqueadas(usePersonas());
   // D1: o mesmo total da caixa de Pendências (e do chip do topo e do selo do menu), levando a ela.
   const aguardando = usePendencias().total;
-  const link = (href: string, texto: string) => <a className={styles.link} href={href} onClick={fechar}>{texto}</a>;
+  // RF-45: o link troca a tela e o popover some com ele: o foco vai ao conteúdo ANTES (como na gaveta do menu), em
+  // vez de cair no `<body>` junto com o painel.
+  const seguir = () => {
+    fechar();
+    focarConteudo();
+  };
+  const link = (href: string, texto: string) => <a className={styles.link} href={href} onClick={seguir}>{texto}</a>;
 
   return (
     <div className={styles.painel}>

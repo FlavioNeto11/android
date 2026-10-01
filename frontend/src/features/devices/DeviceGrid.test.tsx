@@ -208,3 +208,55 @@ describe('DeviceGrid — filtro ?estado=', () => {
     expect(text(el)).toContain('Nenhum aparelho neste estado');
   });
 });
+
+// RF-40 (prova simulada 13): o aparelho de servidor fora do ar é "Desconhecido" na linha e no cartão, e nada ali
+// oferece "Iniciar" clicável; a barra em lote não age nele e diz quantos ficaram de fora.
+describe('DeviceGrid — servidor sem resposta (RF-40)', () => {
+  const linha = (el: HTMLElement, id: string) => el.querySelector(`[data-instance-row="${id}"]`) as HTMLElement;
+  const cartao = (el: HTMLElement, id: string) => el.querySelector(`[data-instance-card="${id}"]`) as HTMLElement;
+
+  it('na Lista: selo "Desconhecido" e o verbo do estado guardado indisponível com o motivo no botão', async () => {
+    semear(false);
+    useUiStore.setState({ rota: { tela: 'painel', segmentos: [], query: { visao: 'lista' } } });
+    const el = await renderGrade();
+    expect(text(linha(el, 'android-09'))).toContain('Desconhecido');
+    const iniciar = byRole('button', /^Iniciar/, linha(el, 'android-09'));
+    expect(iniciar.getAttribute('aria-disabled')).toBe('true');
+    expect(text(iniciar)).toContain('Servidor sem resposta');
+    // O aparelho do central parado continua com "Iniciar" de verdade.
+    expect(byRole('button', /^Iniciar/, linha(el, 'android-02')).getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('nos Cartões: o mesmo, inclusive o "Hibernar" do aparelho que constava online', async () => {
+    semear(false);
+    // A hibernação vem ligada no snapshot de teste (`fixtures.makeSnapshot`).
+    const el = await renderGrade();
+    const iniciar = byRole('button', /^Iniciar/, cartao(el, 'android-09'));
+    expect(iniciar.getAttribute('aria-disabled')).toBe('true');
+    expect(text(iniciar)).toContain('Servidor sem resposta');
+    const hibernar = byRole('button', /^Hibernar android-10/, cartao(el, 'android-10'));
+    expect(hibernar.getAttribute('aria-disabled')).toBe('true');
+    expect(hibernar.getAttribute('aria-label')).toContain('Servidor sem resposta');
+  });
+
+  it('barra em lote: age só nos de estado conhecido e conta os ignorados', async () => {
+    semear(false);
+    useUiStore.setState({ selectedIds: ['android-02', 'android-09'], rota: { tela: 'painel', segmentos: [], query: {} } });
+    const el = await renderGrade();
+    expect(byRole('toolbar', /Ação em 1 aparelho$/, el)).toBeTruthy();
+    expect(text(el)).toContain('2 selecionados');
+    expect(text(el)).toContain('(1 ignorado: servidor sem resposta)');
+  });
+
+  it('barra em lote: só desconhecidos marcados, nenhuma ação, e a nota diz por quê', async () => {
+    semear(false);
+    useUiStore.setState({ selectedIds: ['android-09', 'android-10'], rota: { tela: 'painel', segmentos: [], query: { estado: 'desconhecido' } } });
+    const el = await renderGrade();
+    expect(el.querySelector('[role="toolbar"]')).toBeNull();
+    const barra = el.querySelector('[data-barra-de-selecao]') as HTMLElement;
+    expect(allByRole('button', /^Iniciar$|^Parar$|^Reiniciar$|Mais ações/, barra)).toHaveLength(0);
+    expect(text(barra)).toContain('(2 ignorados: servidor sem resposta)');
+    expect(text(barra)).toContain('servidor deles não está respondendo');
+    expect(text(barra)).not.toContain('Nenhum aparelho marcado aparece neste filtro');
+  });
+});

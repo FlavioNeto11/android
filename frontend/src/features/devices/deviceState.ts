@@ -123,6 +123,15 @@ export function noFrameTitle(state: Exclude<InstanceState, 'online'>, kind?: Ins
   return NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
 }
 
+/**
+ * Motivo de todo verbo de um aparelho cujo servidor está fora do ar ou sem canal (RF-40). O estado guardado dele é
+ * velho (`store/metricas::estadoContado` o conta como "desconhecido"), então nenhum botão pode partir dele: "Iniciar"
+ * num aparelho que talvez esteja ligado, ou "Exige a instância online" num que talvez esteja, afirmariam sem saber.
+ * Quem decide se o servidor responde é o chamador, pela regra única (`servidorInalcancavel`): este módulo não a
+ * importa porque `store/metricas` já importa daqui.
+ */
+export const MOTIVO_SERVIDOR_SEM_RESPOSTA = 'Servidor sem resposta: não dá para agir neste aparelho até o servidor dele voltar.';
+
 /** `Hibernar` só faz sentido com o aparelho ligado, a hibernação habilitada E o aparelho aceitando o verbo. */
 export function canHibernate(state: InstanceState, hibernationEnabled: boolean,
                              inst?: Pick<Instance, 'supported_verbs'>): boolean {
@@ -273,14 +282,17 @@ export function focusLabel(action: FocusVerb): string {
  * `unavailable` com o motivo: um botão que o pré-voo recusaria não é oferecido como se valesse.
  */
 export function focusActionGroups(instance: Pick<Instance, 'id' | 'state' | 'kind' | 'supported_verbs'>,
-                                  hibernation: boolean, openCmd: Command | undefined): FocusActionGroups {
+                                  hibernation: boolean, openCmd: Command | undefined,
+                                  servidorSemResposta = false): FocusActionGroups {
   const { id, state } = instance;
-  const online = state === 'online';
+  const online = state === 'online' && !servidorSemResposta;
   const unavailable: FocusUnavailable[] = [];
-  const emVoo = (action: InstanceAction): string | null => motivoDoComando(openCmd, id, action) ?? null;
+  // Servidor sem resposta vem antes de tudo (RF-40): o motivo por estado sairia de um estado velho.
+  const semServidor = servidorSemResposta ? MOTIVO_SERVIDOR_SEM_RESPOSTA : null;
+  const emVoo = (action: InstanceAction): string | null => semServidor ?? motivoDoComando(openCmd, id, action) ?? null;
   // `verify_app` também vira comando no backend (202 com `command_id`) e disputa o aparelho como `install_apk`,
   // mas não está na lista de ciclo de vida de `actions.ts`: pergunta-se pelo verbo irmão para ter o mesmo texto.
-  const emVooApp = motivoDoComando(openCmd, id, 'install_apk') ?? null;
+  const emVooApp = semServidor ?? motivoDoComando(openCmd, id, 'install_apk') ?? null;
 
   /** Item de verbo do backend, ou `null` quando o aparelho não o aceita (e aí ele já foi para `unavailable`). */
   const verbo = (action: InstanceAction, porEstado: string | null, label = ACTION_META[action].label): FocusItem | null => {
@@ -314,14 +326,14 @@ export function focusActionGroups(instance: Pick<Instance, 'id' | 'state' | 'kin
 
   // Teclas e texto vão por `/input` sob o lease do controle, não por `/actions`: não passam pelo `supported_verbs`
   // (a loja também os aceita) nem pelo comando em voo — quem está com o controle na mão decide.
-  const travaManual = state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
-    : online ? null : 'O aparelho precisa estar online.';
+  const travaManual = semServidor ?? (state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
+    : online ? null : 'O aparelho precisa estar online.');
   const manual: FocusItem[] = (['back', 'home', 'recents', 'enter', 'delete'] as const)
     .map((a) => ({ action: a, label: focusLabel(a), disabledReason: travaManual }));
 
   const observe: FocusItem[] = [
     { action: 'refresh_frame', label: focusLabel('refresh_frame'),
-      disabledReason: online ? null : 'Só há imagem nova com o aparelho online.' },
+      disabledReason: semServidor ?? (online ? null : 'Só há imagem nova com o aparelho online.') },
     { action: 'reload_context', label: focusLabel('reload_context'), disabledReason: null },
     { action: 'hierarchy', label: focusLabel('hierarchy'), disabledReason: null },
   ];

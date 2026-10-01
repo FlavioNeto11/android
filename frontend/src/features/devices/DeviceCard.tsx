@@ -20,9 +20,11 @@ import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
 import { CommandSummary } from './CommandTrail';
-import { NO_FRAME_TITLE, canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
+import {
+  MOTIVO_SERVIDOR_SEM_RESPOSTA, NO_FRAME_TITLE, canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint,
+} from './deviceState';
 import { ServerBadge } from './ServerBadge';
-import { seloDoAparelho } from './selos';
+import { aparelhoDesconhecido, seloDoAparelho } from './selos';
 import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, isScreenFailure, streamLabel } from './streamState';
 import { usePreviewVisible } from './usePreviewVisible';
 import styles from './Devices.module.css';
@@ -229,6 +231,8 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
   // de seleção, e Ctrl/Shift+clique não fazem nada nela.
   const loja = instance.kind === 'store';
   const stateMeta = seloDoAparelho(instance, workers);
+  // RF-40: com o servidor sem resposta, o verbo que o estado guardado sugere ("Iniciar") fica indisponível, com o motivo.
+  const semServidor = aparelhoDesconhecido(instance, workers) ? MOTIVO_SERVIDOR_SEM_RESPOSTA : null;
   const controlMeta = metaOf(CONTROL_OWNER, instance.control);
   const stepMeta = current?.step_status ? metaOf(STEP_STATUS, current.step_status) : null;
 
@@ -410,7 +414,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
               variant={state === 'error' ? 'outline' : 'secondary'}
               icon={ACTION_META[primary].icon}
               loading={busyAction === primary || comandoAberto?.verb === primary}
-              disabledReason={motivoDoComando(comandoAberto, id, primary)}
+              disabledReason={semServidor ?? motivoDoComando(comandoAberto, id, primary)}
               onClick={() => void runInstanceAction(id, primary)}
             >
               {state === 'error' ? 'Tentar novamente' : ACTION_META[primary].label}
@@ -430,7 +434,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
               iconOnly
               label={`${ACTION_META.hibernate.label} ${id}`}
               loading={busyAction === 'hibernate' || comandoAberto?.verb === 'hibernate'}
-              disabledReason={motivoDoComando(comandoAberto, id, 'hibernate')}
+              disabledReason={semServidor ?? motivoDoComando(comandoAberto, id, 'hibernate')}
               onClick={() => void runInstanceAction(id, 'hibernate')}
             />
           ) : null}

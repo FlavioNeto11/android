@@ -11,9 +11,9 @@ import { Select, TextInput } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import ui from '../../components/ui.module.css';
 import { cx } from '../../lib/format';
-import { INSTANCE_STATE, metaOf } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { selectTaskInstances, useAppStore } from '../../store/app';
+import { seloDoAparelho } from '../devices/selos';
 import { toast, toastError } from '../../store/toasts';
 import {
   EMPTY_FILTERS, groupByServer, hasActiveFilter, matchesFilters, observedMatchOf, type InstanceFilters,
@@ -270,7 +270,8 @@ export function InstancesSection() {
                     <>
                       <div className={styles.instanceCardTop}>
                         <span className={styles.instanceCardId}>{inst.id}</span>
-                        <StatusBadge meta={metaOf(INSTANCE_STATE, inst.state)} size="sm" />
+                        {/* RF-40: servidor sem resposta = "Desconhecido", a regra das outras telas. */}
+                        <StatusBadge meta={seloDoAparelho(inst, workersMap)} size="sm" />
                       </div>
                       <div className={styles.instanceCardApp}>
                         <AppWindow size={13} aria-hidden className={styles.instanceCardAppIcon} />

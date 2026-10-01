@@ -18,7 +18,9 @@ import {
   CONNECTIVITY_STATE, INSTANCE_STATE, READINESS_PHASE, SESSION_STATUS, STREAM_STATUS, metaOf, type StatusMeta,
 } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
+import { useAppStore } from '../../store/app';
 import { SESSION_PHASE_LABEL } from '../profiles/sessionGate';
+import { aparelhoDesconhecido, seloDoAparelho } from './selos';
 
 export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMeta> = {
   installed: { label: 'instalado', tone: 'success', icon: CircleCheck },
@@ -67,6 +69,11 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
   refreshKey?: string;
 }) {
   const { ctx, erro, carregando, carregar } = useOperationalContext(instanceId, profileId, refreshKey);
+  // RF-40: o estado lido no contexto passa pela regra do desconhecido (servidor sem resposta) com o servidor que o
+  // parque conhece agora — a mesma das outras telas, para este cartão não dizer "Parada" ao lado do "Desconhecido".
+  const workers = useAppStore((s) => s.workers);
+  const doParque = useAppStore((s) => (ctx ? s.instances[ctx.instance_id] : undefined));
+  const aparelho = ctx ? { id: ctx.instance_id, worker_id: doParque?.worker_id ?? null, state: ctx.device.state } : null;
 
   if (!instanceId && !profileId) return null;
   return (
@@ -93,8 +100,8 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
           </dd>
           <dt>Aparelho</dt>
           <dd>
-            {ctx.instance_id} <StatusBadge meta={metaOf(INSTANCE_STATE, ctx.device.state)} size="sm" srPrefix="Estado" />
-            {ctx.device.state_detail ? ` — ${ctx.device.state_detail}` : ''}
+            {ctx.instance_id} <StatusBadge meta={aparelho ? seloDoAparelho(aparelho, workers) : metaOf(INSTANCE_STATE, ctx.device.state)} size="sm" srPrefix="Estado" />
+            {ctx.device.state_detail && !(aparelho && aparelhoDesconhecido(aparelho, workers)) ? ` — ${ctx.device.state_detail}` : ''}
           </dd>
           <dt>Prontidão</dt>
           <dd data-testid="context-readiness">

@@ -13,6 +13,7 @@ import { INSTANCE_STATE } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
+import { SELO_DESCONHECIDO } from '../devices/selos';
 import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
 import styles from './Focus.module.css';
 
@@ -41,6 +42,11 @@ export interface ScreenHandle {
 
 interface ScreenProps {
   instance: Instance;
+  /**
+   * O servidor do aparelho está fora do ar ou sem canal (RF-40; quem decide é `devices/selos::aparelhoDesconhecido`).
+   * O `state` guardado é velho: nem a tela ao vivo nem o "Parada" saem dele.
+   */
+  desconhecido?: boolean;
   /** O usuário tem o lease e pode interagir. */
   interactive: boolean;
   /** Uma entrada está em voo: novos gestos esperam. */
@@ -64,11 +70,11 @@ function FrameAge({ ts }: { ts: string | null }) {
 }
 
 export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
-  { instance, interactive, busy, onGesture, highlight, onShownChange },
+  { instance, desconhecido = false, interactive, busy, onGesture, highlight, onShownChange },
   ref,
 ) {
   const id = instance.id;
-  const online = instance.state === 'online';
+  const online = instance.state === 'online' && !desconhecido;
   const latestId = instance.frame?.id ?? null;
 
   const [shown, setShown] = useState<ShownFrame | null>(null);
@@ -313,6 +319,21 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
     const [x1, y1, x2, y2] = highlight;
     return { left: rect.left + x1 * sx, top: rect.top + y1 * sy, width: Math.max(2, (x2 - x1) * sx), height: Math.max(2, (y2 - y1) * sy) };
   })();
+
+  if (desconhecido) {
+    // Nada do estado guardado aqui: nem o rótulo, nem o `state_detail` do backend ("Aparelho em 'stopped'").
+    const Icon = SELO_DESCONHECIDO.icon;
+    return (
+      <div className={styles.screenFrame}>
+        <div className={styles.screenState}>
+          <Icon size={30} aria-hidden />
+          <p className={styles.screenStateTitle}>{SELO_DESCONHECIDO.label}</p>
+          <p>{SELO_DESCONHECIDO.description}</p>
+          <p>A tela ao vivo e as ações voltam quando o servidor responder. Veja a seção “Servidor” ao lado.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!online) {
     const meta = INSTANCE_STATE[instance.state] ?? INSTANCE_STATE.error;
