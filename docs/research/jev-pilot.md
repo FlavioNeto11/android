@@ -680,3 +680,84 @@ com transporte falso), *rate limits*, carga, português.
   Provas até aqui: `simulated` (`experiments/jev/tests/test_smoke.py`, 79 testes); chamadas reais: `not_run`.
 - Para executar: definir a chave **localmente** (variável de ambiente de Usuário e reiniciar a sessão, ou no PowerShell do dono
   `$env:TYPESAFE_API_KEY = ...` e rodar o comando acima) e compartilhar só o JSON de `data/jev-pilot/smoke/`.
+
+## 37. Benchmark PÚBLICO de recuperação (Scrapy 2.19.0) — preparado, não executado (2026-10-01, terceira rodada)
+
+**Estado:** `REAL_JEV_CALLS_RUN = NO`. Preparado enquanto a chave não existe; nada é enviado a ninguém. Pacote em
+`experiments/jev/public_bench/` (README próprio).
+
+### 37.1 Escolha do repositório
+
+| Item | Valor |
+|---|---|
+| Repositório | `scrapy/scrapy` (framework de crawling em Python) |
+| Licença | **BSD-3-Clause** (texto do `LICENSE` conferido no checkout; permite redistribuição e uso) |
+| Versão fixada | tag `2.19.0`, commit `8026deeaac371a5d9a3edbe4886d58f61139d464` (2026-09-10, "Bump version: 2.18.0 → 2.19.0") |
+| Tamanho do corpus | pacote `scrapy/`: 179 arquivos `.py`, ~32 mil linhas, 1,17 MB, 2.178 trechos |
+| Por quê | arquitetura real e em camadas (engine, scheduler, downloader, middlewares, extensões, pipelines) com muitos módulos que se parecem entre si; mantido há anos, release estável, licença permissiva, Python como o produto; metadados lidos via `gh api` (sem clonar) antes de escolher. Alternativas descartadas: Flask/httpx (pequenos demais para busca semântica); Celery (metadado de licença `NOASSERTION` no GitHub); Django/SQLAlchemy (grandes demais para conferir o gabarito à mão). |
+| Limitação | o corpus fica em **inglês** e o produto privado está em português; `tests/` (302 arquivos) fica fora de propósito (repetem o vocabulário de produção e criariam ambiguidade de gabarito, o problema G10 do piloto privado). |
+
+O clone (`git clone --depth 1 --branch 2.19.0`, rede só para um repositório público) vai para `data/jev-pilot/public/` (ignorado
+pelo Git); o código do Scrapy **nunca é executado**, só lido como texto. `benchmark.verify_public_checkout` recusa qualquer
+diretório que não seja repositório Git próprio, com a origem e o SHA fixados e árvore rastreada limpa.
+
+### 37.2 Golden: 20 perguntas, 8 EXACT + 12 SEMANTIC
+
+Gabarito conferido **à mão** contra o commit fixado (grep + leitura das regiões); o Jev não foi usado para gerar nem rever.
+Cada item tem arquivos, símbolos e regiões `[arquivo, ini, fim]`. As regras de grupo são mecânicas e testadas:
+EXACT = a pergunta traz entre crases um literal que aparece verbatim numa região esperada; SEMANTIC = nenhum token da pergunta
+(fora stopwords e palavras onipresentes do domínio) é igual a um token dos nomes esperados. Exemplos: P01 "Which code sends the
+`request_dropped` signal?" (EXACT, `core/engine.py`); P11 "Where is the pause between consecutive requests to the same server
+enforced?" (SEMANTIC, `core/downloader/__init__.py`, sem as palavras `delay`/`download`/`slot`); P13 "How does the framework make
+sure the same page is not fetched twice?" (SEMANTIC, 2 arquivos: `dupefilters.py` + `core/scheduler.py`). Dezenove dos vinte
+itens têm um único arquivo esperado; P13 é o único multi-arquivo.
+
+### 37.3 Baselines locais (medidas offline, sem Jev)
+
+| Grupo | ripgrep RECALL@3 | BM25 (code_search) RECALL@3 |
+|---|---|---|
+| EXACT (8) | 1,000 | 1,000 |
+| SEMANTIC (12) | 0,083 | 0,000 |
+| Todas (20) | 0,450 | 0,400 |
+
+Mesmas métricas, termos mecânicos (`query_terms`), janela ±5 linhas e trava de entrega (8 trechos / 16 KiB) do piloto privado.
+
+### 37.4 Achado que mudou o desenho (antes de qualquer chamada)
+
+O shortlist BM25 de 30 trechos contém o arquivo esperado em **100 % das EXACT e 0 % das SEMANTIC** (com 200 trechos: 71 % dos
+arquivos, mas só 5/12 itens com alguma região esperada). O pipeline do piloto privado (BM25 → Jev) **não consegue** ganhar nas
+perguntas semânticas por construção: o Jev só reordena o que o BM25 trouxe. Isto vale também como alerta para o piloto privado:
+a vantagem do rerank é limitada pelo recall do primeiro estágio. Registrado como medição das baselines, não como ajuste de
+gabarito (`expected_*` não mudou). Resposta pré-registrada em `thresholds.json`: duas variantes, **veredito pela `jev_map`**.
+
+- `jev_rerank` (controle): BM25 top-30 → 1 requisição.
+- `jev_map` (principal): mapa do repositório (172 arquivos, 1 linha cada com a 1ª frase da docstring e os nomes definidos, 35 KB;
+  Choice aceita até 255 opções) → o Jev escolhe arquivos (requisição A) → o Jev escolhe trechos dos 2 primeiros arquivos
+  (requisição B, ≤ 60 trechos e ≤ 80.000 bytes por causa do limite de 32 mil tokens de state + maior pergunta) → entrega
+  adaptativa (menor k de 2 a 8 com probabilidade acumulada ≥ 0,80). Falhas caem no BM25 ou no ranking da etapa A e contam.
+
+### 37.5 Limiares pré-registrados
+
+Mesmos T1–T8 do piloto privado (T1, T2, T3, T4, T6 idênticos, comparado por teste), com ajustes de escala escritos antes de
+qualquer resultado: `min_requests` 20; T8 com teto de 2 itens em 20; T7 troca "aprovação do dono para código privado" por
+"checkout fixado e íntegro". Veredito mecânico (`GO`, `PARTIAL_GO`, `NO_GO`, `INSUFFICIENT_EVIDENCE`) calculado por
+`report.evaluate` para a variante principal; a outra é reportada como ablação. `THRESHOLD_CHANGED_AFTER_RESULTS = NO`.
+
+### 37.6 Estimativa (sem rede; tokens são PROXY, o tokenizador do Jev é desconhecido)
+
+| | Requisições | Bytes de entrada | Tokens PROXY | Custo (US$ 0,042/Mtok, saída grátis) |
+|---|---|---|---|---|
+| `jev_rerank` (20 perguntas) | 20 | 547.700 (maior payload 38.959) | 136.925–182.566 | 0,0058–0,0077 |
+| `jev_map`, etapa A | 20 | 875.772 (maior 43.837) | — | — |
+| `jev_map`, etapa B | 20 | 335.655–1.640.000 (depende do que o Jev escolher) | — | — |
+| **Total** | **60** | **1.759.127–3.063.472** | **439.781–1.021.157** | **0,0185–0,0429** |
+
+`max_retries = 0` e teto `--max-calls 60`; um 429/529 não é repetido. O custo real só se conhece pelo `usage` da API
+(`ACTUAL_INPUT_TOKENS` = UNKNOWN até lá). Free tier da conta: UNKNOWN.
+
+### 37.7 Trava e o que NÃO foi feito
+
+`PUBLIC_BENCHMARK_AUTHORIZED = False`; `--provider jev --corpus-root …` aborta com `BLOCKED_AUTHORIZATION` mesmo com chave. Para
+rodar é preciso: (1) o smoke sintético ter passado, (2) a chave local, (3) autorização explícita do dono para as 60 requisições.
+`PRIVATE_CODE_SEND_APPROVED = False` e `SMOKE_RUN_AUTHORIZED = True` não foram tocados. Prova: baselines e estimativa `measured`
+offline; harness com provedor falso `simulated` (`tests/test_public_bench.py`, 17 testes; suíte do experimento 96); Jev real `not_run`.

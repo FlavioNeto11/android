@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "registered_at": "2026-10-01",
+  "registered_before_any_real_jev_result": true,
+  "THRESHOLD_CHANGED_AFTER_RESULTS": "NO",
+  "rule": "Limiares do benchmark PÚBLICO (Scrapy 2.19.0, 20 perguntas), escritos ANTES de qualquer chamada real ao Jev. São os mesmos T1–T8 do piloto privado (experiments/jev/thresholds.json), com três ajustes de escala que não dependem de resultado algum: min_requests 20 (uma por pergunta), T8 com teto de 2 itens em 20 (proporção 1/18 do original arredondada para cima) e T7 trocado de 'aprovação do dono para código privado' por 'checkout fixado e íntegro'. Se algum número mudar depois de ver resultado real, registrar THRESHOLD_CHANGED_AFTER_RESULTS = YES e a razão em docs/research/jev-pilot.md. Baselines (ripgrep, BM25) NÃO são resultados do Jev; os limiares são RELATIVOS a elas.",
+  "scope_of_conclusion": "Mesmo um GO aqui prova valor de recuperação SÓ para este corpus público em inglês. Não prova ganho no código privado em português (BLOCKED_PRIVACY) nem substitui o piloto privado; serve para decidir se vale pedir autorização para ele.",
+  "pilot_a_claude_code_retrieval": {
+    "T1_exact_no_regression": {
+      "group": "grep_friendly",
+      "metric": "RECALL_AT_3",
+      "jev_minus_ripgrep_min": -0.05,
+      "why": "Busca exata é o ponto forte do ripgrep; o rerank não pode piorar isso além de 5 pontos (8 perguntas EXACT)."
+    },
+    "T2_semantic_gain": {
+      "group": "semantic_only",
+      "metric": "RECALL_AT_3",
+      "jev_minus_code_search_min": 0.1,
+      "jev_minus_ripgrep_min": 0.1,
+      "why": "Sem ganho de 10 pontos sobre o BM25 local gratuito E sobre o ripgrep (12 perguntas SEMANTIC), o Jev só acrescenta custo, latência e envio externo de código."
+    },
+    "T3_context_reduction": {
+      "metric": "CONTEXT_BYTES_RETURNED_MEDIAN",
+      "max_ratio_of_naive_read": 0.5,
+      "max_ratio_of_code_search": 1.0,
+      "why": "Reduzir pelo menos pela metade o cenário 'Read dos arquivos inteiros' e não entregar mais que o BM25 local. É PROXY em bytes, não tokens."
+    },
+    "T4_latency": {
+      "p50_ms_max": 1500,
+      "p95_ms_max": 4000,
+      "why": "Acima disso a busca fica mais lenta que ler o arquivo. A latência real será medida primeiro no smoke sintético; este limiar não muda por causa dele."
+    },
+    "T5_reliability": {
+      "failure_rate_max": 0.05,
+      "min_requests": 20,
+      "why": "Falha/timeout/resposta inválida acima de 5 % tornaria o fallback o caminho comum. Toda falha DEVE cair no ranking BM25 sem derrubar a rodada."
+    },
+    "T6_cost": {
+      "max_usd_for_golden_run": 1.0,
+      "max_usd_per_query": 0.05,
+      "why": "Preço oficial US$ 0,042/Mtok de entrada; o teto existe para pegar erro de payload (estado gigante), não porque o custo previsto se aproxime dele."
+    },
+    "T7_privacy_gate": {
+      "owner_approval_required": false,
+      "hard_redaction_hits_max": 0,
+      "checkout_must_match_pinned_sha_and_be_clean": true,
+      "why": "Código PÚBLICO sob licença BSD-3: não há envio de código privado. A trava é outra: o checkout tem de estar exatamente no SHA fixado, sem modificações, com a origem esperada (benchmark.verify_public_checkout). Achado duro de segredo continua bloqueando o chunk."
+    },
+    "T8_critical_misses": {
+      "max_items": 2,
+      "why": "Item em que o BM25 local tinha um arquivo esperado no top-3 e o Jev o tirou do top-3. Mais de 2 em 20 significa que o rerank esconde contexto importante."
+    },
+    "verdicts": {
+      "GO": "T1..T8 passam.",
+      "PARTIAL_GO": "T1, T5, T7, T8 passam e (exatamente um entre T2 e T3 passa, ou T4/T6 falham por margem).",
+      "NO_GO": "T1, T5, T7 ou T8 falham; ou T2 e T3 falham juntos.",
+      "INSUFFICIENT_EVIDENCE": "Sem rodada real, ou menos de min_requests requisições."
+    },
+    "pipeline_spec": {
+      "stage_1": "BM25 local sobre chunks de scrapy/ → shortlist de até 30 chunks, no máximo 100.000 bytes de payload, excluindo qualquer chunk com achado duro de segredo.",
+      "stage_2": "Jev 1.13.0 (versão fixada): UMA requisição com um Choice sobre os ids do shortlist e um Noul 'existe resposta?'.",
+      "delivery": "Trechos ordenados pela probabilidade do Jev; entrega o menor k (2..8) com probabilidade acumulada ≥ 0,80; teto 16 KiB. Baselines usam k=8 e o mesmo teto.",
+      "fallback": "Qualquer erro/timeout/resposta inválida/escolha fora do conjunto → ordem do BM25 e entrega padrão; a falha é contada.",
+      "confidence": "Registrada, NÃO usada como porta no retrieval.",
+      "requests_budget": "60 requisições: jev_rerank 20 + jev_map 40 (2 por pergunta); max_retries=0; --max-calls 60.",
+      "frozen_at": "2026-10-01, antes de qualquer chamada real",
+      "variants": {
+        "jev_rerank": "CONTROLE/ablação (a mesma do piloto privado): BM25 top-30 → Jev. Medido antes de qualquer chamada: o shortlist contém o arquivo esperado em 100 % das perguntas EXACT e em 0 % das SEMANTIC (sem região esperada em nenhum), logo T2 é inalcançável por construção nesta variante. Serve para T1 (sem regressão em EXACT) e para mostrar o teto do rerank.",
+        "jev_map": "PRINCIPAL (a que decide o veredito): etapa A = 1 requisição, Choice sobre os ARQUIVOS (mapa do repositório: 1 linha por arquivo com a 1ª frase da docstring do módulo e os nomes definidos, ≤260 bytes, 172 arquivos < 255 opções); etapa B = 1 requisição, Choice sobre os trechos dos 2 primeiros arquivos (≤60 trechos, ≤80.000 bytes ≈ 27 mil tokens < 32 mil); entrega = menor k (2..8) com prob. acumulada ≥ 0,80 sobre a etapa B, seguida do melhor trecho local (BM25 dentro do arquivo) dos arquivos 3..8 da etapa A. Falha na etapa A → ranking BM25; falha na etapa B → ranking da etapa A com o melhor trecho local por arquivo. Ambas contam como falha."
+      },
+      "headline_strategy": "jev_map",
+      "headline_rule": "O veredito do benchmark é o de `jev_map`. O de `jev_rerank` é reportado como ablação e NÃO pode ser escolhido depois de ver os resultados (duas variantes seriam comparação múltipla).",
+      "state_cap_bytes": "jev_rerank: 100.000 (teto do piloto privado; o maior payload medido é 38.959); jev_map etapa B: 80.000.",
+      "measured_before_any_jev_call": {
+        "bm25_shortlist30_file_coverage_EXACT": 1.0,
+        "bm25_shortlist30_file_coverage_SEMANTIC": 0.0,
+        "baseline_recall_at_3": {
+          "ripgrep_EXACT": 1.0,
+          "code_search_EXACT": 1.0,
+          "ripgrep_SEMANTIC": 0.083,
+          "code_search_SEMANTIC": 0.0
+        },
+        "note": "Medições das baselines locais (sem Jev). Foram feitas depois de escrever o golden e as perguntas e ANTES de qualquer chamada Jev; motivaram a variante jev_map. O gabarito expected_* não foi alterado por elas."
+      }
+    }
+  }
+}

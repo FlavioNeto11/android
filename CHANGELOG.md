@@ -79,6 +79,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - 2ª rodada: due diligence de privacidade (MCA, DPA, política, Trust Center; retenção padrão `UNKNOWN`) → Piloto A sobre código
     privado `BLOCKED_PRIVACY` (trava em `benchmark.py`); smoke sintético de 6 chamadas preparado e travado (`smoke.py`,
     `synthetic_corpus/`), estimativa offline ~US$ 0,00005. Ainda **nenhuma chamada real**.
+  - 3ª rodada: smoke sintético autorizado pelo dono (`SMOKE_RUN_AUTHORIZED = True`) mas **não executado** (sem `TYPESAFE_API_KEY`);
+    benchmark PÚBLICO preparado (Scrapy 2.19.0, BSD-3, SHA `8026dee`; 20 perguntas, baselines, 2 variantes, 60 requisições,
+    US$ 0,0185–0,0429 PROXY) e travado (`PUBLIC_BENCHMARK_AUTHORIZED = False`). Achado: shortlist BM25 cobre 0 % das perguntas semânticas.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 

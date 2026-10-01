@@ -50,6 +50,7 @@ benchmark usa o binário embutido do Claude Code (`ARGV0=rg`), `JEV_RG_BIN`, ou 
 | `netguard.py` | trava de rede usada pelo benchmark offline |
 | `smoke.py`, `synthetic_corpus/` | smoke sintético (protocolo/erro/latência/custo) sem código do projeto; estimativa offline; rodada real travada |
 | `replay.py` | Piloto B: lista permitida de colunas, rótulos derivados, roteadores de base |
+| `public_bench/`, `repomap.py` | benchmark PÚBLICO (Scrapy 2.19.0, BSD-3, SHA fixado): golden de 20 perguntas, limiares, `prepare.py`; **não executado com o Jev**, travado (`PUBLIC_BENCHMARK_AUTHORIZED = False`). Ver `public_bench/README.md` |
 
 ## Estado atual: BLOCKED_PRIVACY e smoke sintético travado
 

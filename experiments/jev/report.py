@@ -18,14 +18,15 @@ def _fmt(v) -> str:
     return str(v)
 
 
-def evaluate(result: dict, thresholds: dict | None = None) -> dict:
-    th = (thresholds or json.loads(THRESHOLDS.read_text(encoding="utf-8")))["pilot_a_claude_code_retrieval"]
+def evaluate(result: dict, thresholds: dict | None = None, strategy: str = "jev_rerank") -> dict:
     meta = result["meta"]
-    if meta.get("provider") != "jev" or "summary" not in result or "jev_rerank" not in result["summary"]:
+    path = Path(meta["thresholds_path"]) if meta.get("thresholds_path") else THRESHOLDS
+    th = (thresholds or json.loads(path.read_text(encoding="utf-8")))["pilot_a_claude_code_retrieval"]
+    if meta.get("provider") != "jev" or "summary" not in result or strategy not in result["summary"]:
         return {"verdict": "NOT_EVALUATED", "reason": f"provider={meta.get('provider')}: só a rodada real avalia"}
     s = result["summary"]
-    jev, rg, cs = s["jev_rerank"], s["ripgrep"], s["code_search"]
-    rows = [r for r in result["rows"] if r["strategy"] == "jev_rerank"]
+    jev, rg, cs = s[strategy], s["ripgrep"], s["code_search"]
+    rows = [r for r in result["rows"] if r["strategy"] == strategy]
     base = {r["id"]: r for r in result["rows"] if r["strategy"] == "code_search"}
     out: dict = {}
     t1 = th["T1_exact_no_regression"]
@@ -46,6 +47,8 @@ def evaluate(result: dict, thresholds: dict | None = None) -> dict:
     out["T6"] = cost <= t6["max_usd_for_golden_run"] and cost / max(1, jev["all"]["n"]) <= t6["max_usd_per_query"]
     hard = sum(v for k, v in (meta.get("redactions") or {}).items() if k in ("private_key", "bearer", "api_key", "jwt"))
     out["T7"] = hard <= th["T7_privacy_gate"]["hard_redaction_hits_max"]       # a aprovação do dono é externa ao benchmark
+    if th["T7_privacy_gate"].get("checkout_must_match_pinned_sha_and_be_clean"):
+        out["T7"] = out["T7"] and meta.get("checkout_verified") is True
     crit = 0
     for r in rows:
         b = base.get(r["id"])
@@ -62,13 +65,14 @@ def evaluate(result: dict, thresholds: dict | None = None) -> dict:
     else:
         verdict = "PARTIAL_GO"
     out["verdict"] = verdict
-    out["note"] = "T7 também exige aprovação do dono e DPA lido (fora do benchmark)."
+    out["note"] = ("T7: checkout fixado e íntegro (corpus público)." if meta.get("corpus_visibility") == "public"
+                   else "T7 também exige aprovação do dono e DPA lido (fora do benchmark).")
     return out
 
 
 def markdown(result: dict, verdict: dict) -> str:
     meta = result["meta"]
-    lines = [f"# Piloto A — rodada `{meta.get('provider')}`", "",
+    lines = [f"# Piloto A — rodada `{meta.get('provider')}` · corpus {meta.get('corpus_visibility', 'private')}", "",
              f"- golden v{meta['golden_version']} · base `{meta['source_sha']}` · corpus {meta['corpus_files']} arquivos, "
              f"{meta['corpus_chunks']} chunks, {meta['corpus_bytes']:,} bytes",
              f"- entrega ao Claude: até {meta['deliver_max_spans']} trechos / {meta['deliver_max_bytes']:,} bytes · "
@@ -94,7 +98,12 @@ def markdown(result: dict, verdict: dict) -> str:
 
 def write_outputs(out_dir: Path, result: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
-    verdict = evaluate(result)
+    headline = result["meta"].get("headline_strategy", "jev_rerank")
+    verdict = evaluate(result, strategy=headline)
+    variants = [s for s in result.get("summary", {}) if s.startswith("jev_")]
+    if len(variants) > 1:                                   # benchmark público: a variante principal é a PRÉ-REGISTRADA
+        verdict["headline_strategy"] = headline
+        verdict["variants"] = {s: evaluate(result, strategy=s) for s in variants}
     (out_dir / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     (out_dir / "verdict.json").write_text(json.dumps(verdict, ensure_ascii=False, indent=1), encoding="utf-8")
     (out_dir / "report.md").write_text(markdown(result, verdict), encoding="utf-8")

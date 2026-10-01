@@ -1,0 +1,525 @@
+{
+  "meta": {
+    "version": 1,
+    "frozen_at": "2026-10-01",
+    "source_sha": "8026dee",
+    "source_sha_full": "8026deeaac371a5d9a3edbe4886d58f61139d464",
+    "source_url": "https://github.com/scrapy/scrapy.git",
+    "source_tag": "2.19.0",
+    "visibility": "public",
+    "license": "BSD-3-Clause",
+    "thresholds_file": "thresholds.json",
+    "corpus": {
+      "roots": [
+        "scrapy"
+      ],
+      "extensions": [
+        ".py"
+      ],
+      "note": "Corpus do benchmark PÚBLICO: o pacote de produção `scrapy/` (179 arquivos .py, ~32 mil linhas) na tag 2.19.0. `tests/` fica fora de propósito: a pergunta é sobre onde o código FAZ algo, e os testes repetem o vocabulário de produção e criariam ambiguidade de gabarito (o mesmo problema G10 do golden privado)."
+    },
+    "required_categories": [
+      "EXACT_SYMBOL",
+      "EXACT_SETTING",
+      "SEMANTIC_BEHAVIOR",
+      "SEMANTIC_CROSS_MODULE"
+    ],
+    "group_rule": {
+      "EXACT": "categoria começa com EXACT_; grep_friendly=true; a pergunta traz entre crases um literal que aparece VERBATIM numa região esperada (verificado por teste).",
+      "SEMANTIC": "categoria começa com SEMANTIC_; semantic_only=true; a pergunta descreve o comportamento SEM citar nenhum identificador da resposta: após remover stopwords e as palavras onipresentes do domínio (ubiquitous_words), nenhum token da pergunta é igual a um token dos nomes de função/classe esperados (verificado por teste)."
+    },
+    "ubiquitous_words": [
+      "request",
+      "requests",
+      "response",
+      "responses",
+      "spider",
+      "spiders",
+      "crawl",
+      "crawler",
+      "scrapy",
+      "item",
+      "items",
+      "page",
+      "pages",
+      "server",
+      "url",
+      "http",
+      "code",
+      "framework",
+      "component"
+    ],
+    "how_verified": "Gabarito conferido À MÃO contra o código do commit 8026dee (grep + leitura dos trechos); Jev NÃO foi usado para gerar nem rever expected_*. Regiões são [arquivo, linha_inicial, linha_final], 1-indexadas, relativas à raiz do repositório Scrapy.",
+    "relevance_rule": "Um resultado é relevante no nível de ARQUIVO se o arquivo está em expected_files; é relevante no nível de REGIÃO se o trecho devolvido intersecta alguma expected_regions. Mesmas definições do golden privado.",
+    "frozen": "NÃO editar depois de ver resultado de Jev real (THRESHOLD_CHANGED_AFTER_RESULTS). Mudança exige novo version e registro no relatório.",
+    "headline_strategy": "jev_map"
+  },
+  "items": [
+    {
+      "id": "P01",
+      "question": "Which code sends the `request_dropped` signal?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "scrapy/core/engine.py"
+      ],
+      "expected_symbols": [
+        "ExecutionEngine._schedule_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/engine.py",
+          456,
+          469
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Há outras ocorrências do termo (docstring do scheduler, definição em signals.py), mas só o engine EMITE o sinal."
+    },
+    {
+      "id": "P02",
+      "question": "Where is the default value of `RETRY_HTTP_CODES` defined?",
+      "category": "EXACT_SETTING",
+      "expected_files": [
+        "scrapy/settings/default_settings.py"
+      ],
+      "expected_symbols": [
+        "RETRY_HTTP_CODES"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/settings/default_settings.py",
+          545,
+          545
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "retry.py só LÊ a configuração (linha 148); a definição do valor padrão é uma linha em default_settings.py."
+    },
+    {
+      "id": "P03",
+      "question": "Where is the `depth` key of `request.meta` assigned a value?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "scrapy/spidermiddlewares/depth.py"
+      ],
+      "expected_symbols": [
+        "DepthMiddleware.get_processed_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/spidermiddlewares/depth.py",
+          109,
+          117
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "O termo `request.meta` aparece em dezenas de arquivos; `depth` só em depth.py e commands/parse.py (opção de CLI, sem atribuição)."
+    },
+    {
+      "id": "P04",
+      "question": "Where is the `DUPEFILTER_DEBUG` setting read?",
+      "category": "EXACT_SETTING",
+      "expected_files": [
+        "scrapy/dupefilters.py"
+      ],
+      "expected_symbols": [
+        "RFPDupeFilter.from_crawler"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/dupefilters.py",
+          131,
+          138
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "default_settings.py DEFINE o valor (linha 349); a LEITURA é em from_crawler. A mensagem de log da linha 171 só cita o nome."
+    },
+    {
+      "id": "P05",
+      "question": "Where is `_ScrapyAgent` instantiated?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "scrapy/core/downloader/handlers/http11.py"
+      ],
+      "expected_symbols": [
+        "HTTP11DownloadHandler.download_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/downloader/handlers/http11.py",
+          124,
+          137
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "A classe é definida no mesmo arquivo; há uma única instanciação (download_request)."
+    },
+    {
+      "id": "P06",
+      "question": "Which code catches `DontCloseSpider` when the spider goes idle?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "scrapy/core/engine.py"
+      ],
+      "expected_symbols": [
+        "ExecutionEngine._spider_idle"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/engine.py",
+          592,
+          615
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "exceptions.py define a exceção; só _spider_idle a detecta e decide não fechar."
+    },
+    {
+      "id": "P07",
+      "question": "Where is `domains_seen` updated?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/offsite.py"
+      ],
+      "expected_symbols": [
+        "OffsiteMiddleware.process_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/offsite.py",
+          91,
+          93
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "O atributo é criado em __init__ (linha 59), mas só process_request o ATUALIZA (add, linha 93)."
+    },
+    {
+      "id": "P08",
+      "question": "Where is the `memusage/limit_reached` stat set?",
+      "category": "EXACT_SETTING",
+      "expected_files": [
+        "scrapy/extensions/memusage.py"
+      ],
+      "expected_symbols": [
+        "MemoryUsage._check_limit"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/extensions/memusage.py",
+          105,
+          108
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Literal de estatística; uma única ocorrência em scrapy/."
+    },
+    {
+      "id": "P09",
+      "question": "Which component keeps a crawl from wandering onto sites the spider was not meant to visit?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/offsite.py"
+      ],
+      "expected_symbols": [
+        "OffsiteMiddleware.process_request",
+        "OffsiteMiddleware.get_host_regex"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/offsite.py",
+          83,
+          101
+        ],
+        [
+          "scrapy/downloadermiddlewares/offsite.py",
+          127,
+          137
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A pergunta não usa 'offsite', 'allowed' nem 'domains'. A resposta é o filtro de hosts permitidos."
+    },
+    {
+      "id": "P10",
+      "question": "What decides that a crawl is finished and starts the shutdown when no work is left?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/core/engine.py"
+      ],
+      "expected_symbols": [
+        "ExecutionEngine.spider_is_idle",
+        "ExecutionEngine._spider_idle"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/engine.py",
+          438,
+          447
+        ],
+        [
+          "scrapy/core/engine.py",
+          592,
+          615
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Resposta: spider_is_idle (condições) + _spider_idle (dispara o fechamento com razão 'finished')."
+    },
+    {
+      "id": "P11",
+      "question": "Where is the pause between consecutive requests to the same server enforced?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/core/downloader/__init__.py"
+      ],
+      "expected_symbols": [
+        "Slot.download_delay",
+        "Downloader._process_queue"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/downloader/__init__.py",
+          115,
+          119
+        ],
+        [
+          "scrapy/core/downloader/__init__.py",
+          285,
+          311
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A fila de cada slot adia o próximo download (call_later) conforme o atraso configurado."
+    },
+    {
+      "id": "P12",
+      "question": "Which code adapts the sending speed according to how quickly the remote server answers?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/extensions/throttle.py"
+      ],
+      "expected_symbols": [
+        "AutoThrottle._response_downloaded",
+        "AutoThrottle._adjust_delay"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/extensions/throttle.py",
+          61,
+          74
+        ],
+        [
+          "scrapy/extensions/throttle.py",
+          102,
+          127
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Ajusta o atraso do slot pela latência medida (latency / concorrência alvo)."
+    },
+    {
+      "id": "P13",
+      "question": "How does the framework make sure the same page is not fetched twice?",
+      "category": "SEMANTIC_CROSS_MODULE",
+      "expected_files": [
+        "scrapy/dupefilters.py",
+        "scrapy/core/scheduler.py"
+      ],
+      "expected_symbols": [
+        "RFPDupeFilter.request_seen",
+        "Scheduler.enqueue_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/dupefilters.py",
+          140,
+          147
+        ],
+        [
+          "scrapy/core/scheduler.py",
+          374,
+          376
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Duas peças: o filtro guarda impressões digitais (request_seen) e o scheduler o consulta antes de enfileirar."
+    },
+    {
+      "id": "P14",
+      "question": "How are waiting requests ordered so that urgent ones go out first?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/pqueues.py"
+      ],
+      "expected_symbols": [
+        "ScrapyPriorityQueue.push",
+        "ScrapyPriorityQueue.pop"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/pqueues.py",
+          173,
+          219
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Uma fila por valor de prioridade (negada); pop serve a de menor valor (maior prioridade)."
+    },
+    {
+      "id": "P15",
+      "question": "What happens when user-written parsing code blows up unexpectedly?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/core/scraper.py"
+      ],
+      "expected_symbols": [
+        "Scraper.handle_spider_error"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/core/scraper.py",
+          351,
+          381
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Registra no log, emite o sinal e incrementa as estatísticas; CloseSpider é tratado à parte (fecha o spider)."
+    },
+    {
+      "id": "P16",
+      "question": "Which component gives a request another chance after a temporary failure?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/retry.py"
+      ],
+      "expected_symbols": [
+        "get_retry_request",
+        "RetryMiddleware.process_response",
+        "RetryMiddleware.process_exception"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/retry.py",
+          96,
+          138
+        ],
+        [
+          "scrapy/downloadermiddlewares/retry.py",
+          160,
+          184
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A pergunta evita 'retry'. Há também a lógica de reenvio em outros arquivos (ex.: redirect), mas a política de tentativas é deste arquivo."
+    },
+    {
+      "id": "P17",
+      "question": "How are a username and password attached to outgoing requests for sites that demand login through a standard header?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/httpauth.py"
+      ],
+      "expected_symbols": [
+        "HttpAuthMiddleware.process_request"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/httpauth.py",
+          69,
+          88
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Cabeçalho Authorization montado com a credencial por requisição ou do middleware, só para o domínio configurado."
+    },
+    {
+      "id": "P18",
+      "question": "Which code keeps session state sent by the server and sends it back in later requests?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/cookies.py"
+      ],
+      "expected_symbols": [
+        "CookiesMiddleware.process_request",
+        "CookiesMiddleware.process_response"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/cookies.py",
+          78,
+          110
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Jar por requisição: extrai de Set-Cookie na resposta e injeta o cabeçalho Cookie na requisição."
+    },
+    {
+      "id": "P19",
+      "question": "Where does the framework unpack response bodies that the server sent in a shrunken form?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/downloadermiddlewares/httpcompression.py"
+      ],
+      "expected_symbols": [
+        "HttpCompressionMiddleware.process_response",
+        "HttpCompressionMiddleware._decode"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/downloadermiddlewares/httpcompression.py",
+          85,
+          133
+        ],
+        [
+          "scrapy/downloadermiddlewares/httpcompression.py",
+          163,
+          174
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Lê Content-Encoding e decodifica gzip/deflate/br/zstd com teto de tamanho."
+    },
+    {
+      "id": "P20",
+      "question": "What terminates the crawl when the process grows too large in RAM?",
+      "category": "SEMANTIC_BEHAVIOR",
+      "expected_files": [
+        "scrapy/extensions/memusage.py"
+      ],
+      "expected_symbols": [
+        "MemoryUsage._check_limit"
+      ],
+      "expected_regions": [
+        [
+          "scrapy/extensions/memusage.py",
+          105,
+          133
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A extensão detecta o excesso (limite em MB, estatística, e-mail opcional) e pede o fechamento do spider com a razão 'memusage_exceeded'."
+    }
+  ]
+}

@@ -167,14 +167,22 @@ def parse_noul(ans: Any, qid: str = "?") -> float:
     return _num01(ans.get("noul"), f"{qid}.noul")
 
 
-def retrieval_request(question: str, candidates: Mapping[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """(state, questions) do rerank. Fonte ÚNICA: o `retrieve` e a estimativa de custo usam o mesmo payload."""
-    instr = ("Which entry of `entries` best helps answer `question` about a Python codebase? "
-             "Pick the entry id whose code most directly answers it.")
+def retrieval_request(question: str, candidates: Mapping[str, str],
+                      kind: str = "code") -> tuple[dict[str, Any], dict[str, Any]]:
+    """(state, questions) do rerank. Fonte ÚNICA: o `retrieve` e a estimativa de custo usam o mesmo payload.
+    `kind="code"`: as entradas são trechos de código; `kind="map"`: são resumos de arquivo (benchmark público, `jev_map`)."""
+    if kind == "map":
+        instr = ("Each entry of `entries` summarizes one file of a Python codebase (its purpose and the names it defines). "
+                 "Which file is most likely to contain the code that answers `question`? Pick the file id.")
+        exists = "Does any file in `entries` plausibly contain the answer to `question`?"
+    else:
+        instr = ("Which entry of `entries` best helps answer `question` about a Python codebase? "
+                 "Pick the entry id whose code most directly answers it.")
+        exists = "Does any entry of `entries` directly answer `question`?"
     state = {"question": question, "entries": dict(candidates)}
     questions = {
         "best": choice_q(instr, {i: None for i in candidates}),
-        "exists": noul_q("Does any entry of `entries` directly answer `question`?"),
+        "exists": noul_q(exists),
     }
     return state, questions
 
@@ -203,13 +211,13 @@ class DecisionProvider(ABC):
         answers, model, usage = parse_answers(raw)
         return NoulResult(parse_noul(answers.get("q"), "q"), model, usage, (time.perf_counter() - t0) * 1000)
 
-    def retrieve(self, question: str, candidates: Mapping[str, str]) -> RetrievalResult:
+    def retrieve(self, question: str, candidates: Mapping[str, str], kind: str = "code") -> RetrievalResult:
         """Rerank de candidatos por Choice (padrão `semantic_find` da doc oficial): UMA requisição com um `choice`
         sobre os ids dos candidatos e um `noul` "existe resposta?"."""
         if not candidates:
             raise InvalidResponse("sem candidatos")
         ids = list(candidates)
-        state, questions = retrieval_request(question, candidates)
+        state, questions = retrieval_request(question, candidates, kind)
         t0 = time.perf_counter()
         raw = self.evaluate(state, questions)
         answers, model, usage = parse_answers(raw)
