@@ -4262,14 +4262,14 @@
    "id": "27.2",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real: android-03 e 06 com rede trafego_verificado (#74 no 03, prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10 o C1 no android-03 (r-20261001102648-8594fe) falhou: o e-mail de teste enviado do Outlook do André para o do Bruno não estava na caixa dele (Focused e Other conferidas por captura, sem IA), e a etapa de leitura esgotou o teto de 60 chamadas de IA duas vezes (~US$ 0,92).",
-   "blocker": "Confirmar a entrega do e-mail (Enviados do André, Junk do Bruno) sem IA e nova autorização de gasto do dono: a autorização paga de 29/09 (US$ 1,50) foi ultrapassada (~US$ 1,86 no total).",
+   "evidence": "Real: android-03 e 06 com rede trafego_verificado (prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10, no android-03: r-20261001102648-8594fe falhou (o e-mail de teste estava na Junk; ~US$ 0,92); com o e-mail movido para a Inbox e a autorização do dono no chat (até US$ 1,00, uma tentativa), r-20261001123433-09ff22 falhou na primeira etapa: o plano pediu 'caixa Focused' como pós-condição e o verificador não achou na árvore a indicação da aba selecionada (os elementos da lista do Outlook não expõem texto); ~US$ 0,25, sem repetição.",
+   "blocker": "Uma nova tentativa precisa de nova autorização do dono. Para ela: comando sem citar a aba (o e-mail está no topo da caixa), ou leitura do assunto pela captura de tela; o gasto pago total desde 29/09 é ~US$ 2,11.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-01T10:48:19+00:00"
+   "quando": "2026-10-01T12:38:34+00:00"
   },
   "27.3": {
    "id": "27.3",
@@ -5407,6 +5407,15 @@
    "quando": "2026-10-01T12:27:06+00:00",
    "itens": [
     "29.9"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-01T12:38:34+00:00",
+   "itens": [
+    "27.2"
    ],
    "grupos": [
     "29-pendencias-evolucao3"

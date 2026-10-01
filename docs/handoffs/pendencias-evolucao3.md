@@ -385,6 +385,15 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 11 — 01/10 ~12:40Z — C1 autorizado no 03, limite do notebook
+
+- **C1 no android-03** (autorização do dono no chat: "pode rodar o C1, até US$ 1,00", uma tentativa):
+  `r-20261001123433-09ff22` falhou na primeira etapa. O comando citou a aba Focused, o plano a pôs na pós-condição, e o
+  verificador não achou na árvore a indicação da aba selecionada (a lista do Outlook não expõe texto). Gasto medido
+  pelo saldo: ~US$ 0,25 (21,15 → 20,90). Sem repetição. Gasto pago total desde 29/09: ~US$ 2,11.
+- **Notebook:** `max_slots` 3 (decisão do dono no chat, 01/10 ~12:38Z), aplicado por `PUT /api/servers/worker-lan-01/limits`;
+  efetivo 3. Desfazer: `{"max_slots": null}` volta ao declarado (6).
+
 ### Checkpoint 10 — 01/10 ~10:50Z — pendências da manhã
 
 - **Rodízio** (`0f76562`, implantado 10:00Z): entrega de app sozinha não tira a vaga de aparelho com conta vinculada

@@ -35,7 +35,7 @@ lido por SSH, só leitura, e comparado com o central.
    sobe com a VPN): `Get-Counter '\Memory\Pages/sec','\Memory\Committed Bytes','\Memory\Commit Limit'`, o CPU dos
    `qemu-system` e `adb devices` no próprio notebook. Se a paginação disparar ou o compromisso chegar ao limite no
    instante em que o adbd cai, aí sim a mudança é de memória.
-3. **Mitigação reversível, se o dono quiser já:** menos emuladores ao mesmo tempo no notebook (hoje o limite é 6
+3. **Mitigação reversível — APLICADA em 01/10 ~12:38Z por decisão do dono (`max_slots` efetivo 3):** menos emuladores ao mesmo tempo no notebook (hoje o limite é 6
    vagas). Pelo painel (Infraestrutura › servidor › limites) ou pela API, `max_slots` 3. Desfazer: voltar para 6. Não
    mexe no Windows.
 4. **Se a medição do item 2 apontar paginação**, a mudança mais simples e reversível é fixar o arquivo de paginação,
