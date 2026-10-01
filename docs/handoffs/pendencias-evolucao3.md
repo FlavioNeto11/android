@@ -53,7 +53,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
-| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | W0–W3 `real`; D1, D2 e D8 feitos; **W4 falhou e a causa segue sem medição** (a hipótese de memória caiu, K-067); plano de medição em [memoria-do-notebook.md](memoria-do-notebook.md) |
+| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | W0–W3 `real`; D1, D2 e D8 feitos; **W4: a causa era código, corrigida em `658e5bb` (checkpoint 12)**; W2–W7 `real` no android-09; **W8: o túnel não voltou depois do teste de vazamento** (a hipótese de memória caiu, K-067) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **implantado**, `real`: renderizador lido pela API; recusa real em 01/03/06 antes do reinício; parque ligado todo em `host` |
 | 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | **feito**, `real`: promovido 21:42Z; `ready` em 01, 02, 03, 06, 07, 08, 10, 12; 05, 09, 13–15 instalam ao ligar |
@@ -658,8 +658,8 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
    (C1 num aparelho com a rede verificada).
 2. Achados sem correção ainda: dica "Now your folders…" depois da gaveta; "Save your login info?" do Instagram em
    Views não clicáveis; texto do aviso de fallback do renderizador quando falta só o reinício.
-3. W4 (29.9): o cliente VPN nem subiu no android-09 e o servidor não viu par novo; o adbd caiu junto, com o
-   notebook em ~83% de swap. Antes de repetir, medir o always-on no boot desse aparelho e a memória do notebook.
+3. W4 (29.9): **resolvido** pelo `658e5bb` (checkpoint 12). Resta o W8: depois do teste de vazamento real no android-09 o túnel
+   não voltou (tile falhou, 2 reinícios, a rede desistiu); medir antes de repetir.
 4. PostgreSQL (29.14): **verde** em 01/10 (run 36830963968); rotina: cron 05:17Z e dispatch `somente_postgres`.
 5. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
 6. Fechamento (29.18): fecha com o 27.2 e o 29.14; o §27 e a matriz por aparelho já estão no relatório.

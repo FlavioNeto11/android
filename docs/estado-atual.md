@@ -74,11 +74,17 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     `host` em todo o parque, lido do log e com recusa por app; Outlook promovido e `ready` em 8 aparelhos; as três
     contas Outlook logadas no aparelho do Instagram de cada persona (01, 03, 06), Instagram conferido depois da troca;
     C1 Outlook → Instagram só de leitura no android-01.
-  - **Falta (01/10 ~11:00Z):** C1 num aparelho com rede verificada (27.2: o e-mail de teste não chegou à caixa do Bruno;
-    o C1 no 03 falhou e o gasto pago passou da autorização de 29/09 — ~US$ 1,86 de 1,50; nada pago roda até o dono
-    decidir); W4 da rede no notebook bloqueado pela memória dos emuladores paginada (K-067); as 10 execuções antigas de mensagem a
-    terceiros e CETESB foram canceladas em 01/10 sem efeito externo (ver acima); D8 (firewall do notebook) com o comando pronto. PostgreSQL verde
-    (29.14). Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
+  - **Falta (01/10, atualizado depois do checkpoint 12):** C1 num aparelho com rede verificada (27.2: o e-mail de teste não chegou à
+    caixa do Bruno). As tentativas pagas no android-03 falharam; a última, `r-20261001124036-996716`, custou ~US$ 0,26 com
+    autorização específica do dono de até US$ 0,60 e não foi repetida. O total pago desde 29/09 é ~US$ 2,37, acima da
+    autorização de 29/09 (US$ 1,50) ([checkpoint 11](handoffs/pendencias-evolucao3.md)); nova tentativa paga só com nova
+    autorização. **W4 (29.9): a causa foi achada e corrigida em `658e5bb`** (implantado 12:59Z): a observação contava o cabeçalho
+    "Lockdown filtering rules:" do dumpsys como regra de bloqueio, e a rede reiniciava o aparelho em cadeia; a hipótese de memória
+    do notebook caiu (K-067; `max_slots` 3 segue aplicado como mitigação reversível, sem Windows alterado). No android-09 W2–W7
+    ficaram `real` (13:08Z) e o bloqueio do W8 foi provado (13:26Z), **mas depois do teste de vazamento o túnel não voltou**
+    (rollback 13:37Z): essa é a pendência da rede no notebook, não a memória (checkpoint 12). As 10 execuções antigas de mensagem a
+    terceiros e CETESB foram canceladas em 01/10 sem efeito externo (ver acima); D8 (firewall do notebook) feito pelo dono. PostgreSQL verde
+  (29.14). Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
 
 - **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
   do notebook), migração 058. Estado por frente, pendências P1–P15 e próxima ação em

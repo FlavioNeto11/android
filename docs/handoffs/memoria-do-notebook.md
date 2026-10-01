@@ -1,5 +1,9 @@
 # Memória do notebook (worker-lan-01) e o W4 da rede — diagnóstico de 01/10/2026
 
+> **Atualização (01/10, ~13:45Z):** a causa do W4 foi achada em código e corrigida (`658e5bb`; checkpoint 12 e K-067), não era a
+> memória. Este documento fica como o registro da medição de memória do notebook (pressão histórica de paginação, `max_slots` 3).
+> Onde ele diz que a causa "não está medida", vale o checkpoint 12.
+
 Pedido do dono (via sessão de orquestração, 01/10): preparar o diagnóstico e a mudança recomendada para a memória do
 notebook, que o K-067 apontou como causa do W4 (29.9). **Nenhuma configuração do Windows foi alterada.** Tudo abaixo foi
 lido por SSH, só leitura, e comparado com o central.
