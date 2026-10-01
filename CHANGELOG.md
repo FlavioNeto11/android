@@ -84,6 +84,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     escolhas não gravadas (`MODEL_BEHAVIOR_VALIDATED = NO`); detalhes em `docs/research/jev-pilot.md` §36.2;
     benchmark PÚBLICO preparado (Scrapy 2.19.0, BSD-3, SHA `8026dee`; 20 perguntas, baselines, 2 variantes, 60 requisições,
     US$ 0,0185–0,0429 PROXY) e travado (`PUBLIC_BENCHMARK_AUTHORIZED = False`). Achado: shortlist BM25 cobre 0 % das perguntas semânticas.
+  - Benchmark público Scrapy 2.19.0 **executado** (1 rodada, 60 tentativas, 544.084 tokens, US$ 0,0229): `jev_map` SEMANTIC R@3 0,958 contra ripgrep 0,083 e BM25 0,000,
+    mas EXACT R@3 0,875 < ripgrep 1,000 (T1 −0,125 < −0,05) ⇒ veredito mecânico `NO_GO`; `jev_rerank` `PARTIAL_GO` (controle). Detalhe em `docs/research/jev-pilot.md` §37.8.
+    Código privado segue `BLOCKED_PRIVACY`; trava pública voltou a `False`.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 

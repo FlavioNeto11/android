@@ -1,4 +1,4 @@
-# Benchmark PÚBLICO de recuperação de contexto (Scrapy 2.19.0) — preparado, NÃO executado com o Jev
+# Benchmark PÚBLICO de recuperação de contexto (Scrapy 2.19.0) — executado UMA vez em 2026-10-01 (NO_GO mecânico)
 
 Corpus: [`scrapy/scrapy`](https://github.com/scrapy/scrapy), **BSD-3-Clause**, tag `2.19.0`, commit
 `8026deeaac371a5d9a3edbe4886d58f61139d464` (2026-09-10). Mesmo contrato do piloto privado (métricas, entrega, limiares T1–T8),
@@ -24,8 +24,9 @@ python experiments/jev/benchmark.py --golden experiments/jev/public_bench/golden
 
 ## Travas
 
-- `benchmark.PUBLIC_BENCHMARK_AUTHORIZED = False`: `--provider jev` com `--corpus-root` aborta com `BLOCKED_AUTHORIZATION`
-  mesmo com chave e `--confirm-external-send`. Só muda num commit próprio, citando a autorização explícita do dono.
+- `benchmark.PUBLIC_BENCHMARK_AUTHORIZED = False` (voltou a False depois da única rodada autorizada): `--provider jev` com
+  `--corpus-root` aborta com `BLOCKED_AUTHORIZATION` mesmo com chave. Só muda num commit próprio, citando autorização explícita do dono.
+- Resultado e limiares aplicados: `docs/research/jev-pilot.md` §37.8.
 - `verify_public_checkout`: o corpus só roda se for um repositório Git **próprio**, com a origem e o SHA fixados e nenhum arquivo
   rastreado modificado. O repositório privado nunca passa por aqui: sem `--corpus-root` o caminho é o privado (`BLOCKED_PRIVACY`).
 - Um golden `visibility=public` sem `--corpus-root` é recusado.

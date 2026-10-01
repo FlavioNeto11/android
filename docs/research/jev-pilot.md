@@ -782,3 +782,58 @@ Corpus: `synthetic_corpus/` (nenhum byte do repositório). `SYNTHETIC_ISOLATION_
 - **Achado contra a expectativa:** a documentação diz 2–10 níveis para `score`, mas 1 nível **não** deu 422. O erro de validação 422 e o formato do seu corpo **não foram observados** (só simulados). O plano não foi alterado depois da resposta; repetir exigiria nova autorização.
 - **Limitação do registro:** o harness gravou tipo, confiança e validação de cada resposta, mas **não a escolha (A0x) nem o valor do score**; portanto a correção do Jev não foi avaliada. 429/529 e backoff não foram exercitados.
 - **Veredito:** `PROTOCOL_VALIDATED = PARTIAL` (autenticação, os três tipos, 2 perguntas por requisição, `usage`, timeout de cliente); `MODEL_BEHAVIOR_VALIDATED = NO`; `RETRIEVAL_VALUE_VALIDATED = NO`. Não é conclusão de adoção.
+
+### 37.8 RESULTADO REAL do benchmark público (2026-10-01, uma rodada, branch `claude/jev-pilot`)
+
+Prova: **real** (máquina central, 2026-10-01, commit `a655952` com a trava liberada; comando `benchmark.py --golden
+public_bench/golden.json --corpus-root data/jev-pilot/public/scrapy --provider jev --confirm-external-send --max-calls 60
+--max-retries 0`). Bruto em `data/jev-pilot/public-run-real/` (ignorado). Antes da rodada: instrumentação corrigida para gravar a
+seleção do Jev, as regiões, R@1, bytes, tokens e status por requisição (commit `040b7f9`; golden, limiares, perguntas, pipeline,
+prompt e mapa **não** mudaram; `THRESHOLD_CHANGED_AFTER_RESULTS = NO`, conferido por `git log`). Ensaio completo com transporte falso e
+rede bloqueada antes de gastar chamada; 101 testes passando. Corpus enviado: só o checkout público fixado (nenhum byte do repositório
+privado; payloads limitados por `allowed_files`).
+
+**Rede:** 60 tentativas (teto 60, `max_retries = 0`), todas HTTP 200, `PARSE_OK`, modelo `jev-1.13.0`, 0 falhas, 0 redações.
+Latência por requisição (60): min 270,8 / p50 366,6 / p95 443,2 / max 552,3 ms. Por pergunta: `jev_rerank` p50 361 / p95 421 ms;
+`jev_map` (2 requisições) p50 725 / p95 867 ms. Entrada 1.869.012 B → **544.084 tokens reais** (`usage`); saída 78.198 tokens
+(grátis); custo **US$ 0,022852** (`jev_map` US$ 0,016789; `jev_rerank` US$ 0,006063).
+
+| RECALL (jev_map é a variante principal) | EXACT R@1 | EXACT R@3 | SEMANTIC R@1 | SEMANTIC R@3 | SEMANTIC R@5 | ALL R@3 |
+|---|---|---|---|---|---|---|
+| ripgrep | 0,875 | 1,000 | 0,000 | 0,083 | 0,083 | 0,450 |
+| BM25 | 0,750 | 1,000 | 0,000 | 0,000 | 0,000 | 0,400 |
+| `jev_rerank` (controle) | 1,000 | 1,000 | 0,000 | 0,000 | 0,000 | 0,400 |
+| **`jev_map`** | 0,750 | 0,875 | 0,958 | 0,958 | 0,958 | 0,925 |
+
+`jev_map` vs ripgrep: SEMANTIC +0,875, EXACT −0,125, ALL +0,475. vs BM25: SEMANTIC +0,958, EXACT −0,125, ALL +0,525. Contexto
+mediano entregue: `jev_map` 1.890 B (ripgrep 3.984, BM25 7.283; leitura inteira dos arquivos esperados 7.548).
+
+**Limiares pré-registrados (`jev_map`), aplicados mecanicamente:**
+
+| T | Status | Observado | Limite |
+|---|---|---|---|
+| T1 EXACT sem regressão | **FAIL** | −0,125 | ≥ −0,05 |
+| T2 ganho semântico | PASS | +0,958 (BM25), +0,875 (ripgrep) | ≥ +0,10 sobre ambos |
+| T3 redução de contexto | PASS | 1.890 B ≤ 0,5 × 7.548 e ≤ BM25 7.283 | — |
+| T4 latência | PASS | p50 725 ms, p95 867 ms | ≤ 1.500 / ≤ 4.000 |
+| T5 confiabilidade | PASS | 40 requisições, 0 falhas | ≥ 20, taxa ≤ 0,05 |
+| T6 custo | PASS | US$ 0,0168 total, US$ 0,00084 por pergunta | ≤ 1,0 / ≤ 0,05 |
+| T7 privacidade do corpus | PASS | 0 achados duros, checkout verificado | 0 e checkout íntegro |
+| T8 perdas críticas | PASS | 1 (P01) | ≤ 2 |
+
+**`PUBLIC_BENCHMARK_VERDICT = NO_GO`** (regra versionada: T1 falhou). A ablação `jev_rerank` dá `PARTIAL_GO` (T2 falha, como previsto
+pela cobertura 0 % do shortlist BM25; não é evidência contra o Jev).
+
+- **O que falhou em T1:** um item EXACT em oito. P01 ("Which code sends the `request_dropped` signal?"): o `jev_map` pôs
+  `core/scheduler.py`, `signals.py` e `extensions/throttle.py` à frente de `core/engine.py` (nenhum arquivo esperado no top-3; confiança 0,78). Em P05 acertou o
+  arquivo só em 3º lugar. Com n = 8 a granularidade é 0,125, então o limite −0,05 equivale a tolerância zero; o limiar **não** foi reinterpretado.
+- **Nas SEMANTIC:** as 12 têm um arquivo esperado em 1º lugar; 11 ficam completas e P13 (2 arquivos esperados) só acerta `dupefilters.py`, sem `core/scheduler.py`
+  no top-5. REGION_RECALL do `jev_map` em SEMANTIC 0,708 (regiões exatas ainda falham em metade de P09–P12).
+- **Exploratório pós-hoc (sem Jev; não altera o veredito):** BM25 sobre as mesmas linhas do mapa dá SEMANTIC R@3 0,083 e EXACT R@3 0,250, logo o ganho não vem só
+  de ter um mapa.
+- **Limites desta evidência:** 20 perguntas escritas pelo mesmo agente, uma rodada, sem repetição (variância desconhecida); as SEMANTIC foram escritas
+  de propósito sem o vocabulário do código, o que penaliza métodos lexicais; o Scrapy é público e pode estar nos dados de treino do Jev (contaminação
+  desconhecida); as baselines são mecânicas de um disparo, não busca agêntica iterativa; ganho aqui não vale para o código privado em português.
+- **API_CONTRACT_MISMATCH:** documentação diz `score` com 2–10 níveis; observado no smoke (6 tentativas, chamada 5): 1 nível aceito com HTTP 200 (§36.2). Não reproduzido nesta rodada.
+- **Conclusão permitida:** `RETRIEVAL_VALUE_VALIDATED = NO` (veredito mecânico NO_GO; sinal semântico forte e isolado a um item EXACT). O benchmark privado segue
+  `BLOCKED_PRIVACY` (retenção padrão da API UNKNOWN); nada aqui autoriza enviar código privado. `PUBLIC_BENCHMARK_AUTHORIZED` voltou a `False`.
