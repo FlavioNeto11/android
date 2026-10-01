@@ -1,20 +1,19 @@
 /**
- * Guia "Visão geral": a pessoa num relance — identidade, a faixa de fotos, as contas e o aparelho, a voz em réguas
- * e os números. Tudo vem do objeto da persona (que já traz voz, biografia e imagens desde a 047/048) e das contas
+ * Guia "Visão geral": a pessoa num relance — atributos, a faixa de fotos, as contas e o aparelho, a voz em réguas
+ * e os números. Foto, nome, @, estado e aparelho moram UMA vez só, no cabeçalho da persona (`PersonaHeader`); o cartão
+ * "Identidade" daqui tem só os atributos, e os sensíveis (religião, política) ficam recolhidos. Tudo vem do objeto da persona (que já traz voz, biografia e imagens desde a 047/048) e das contas
  * carregadas pelo shell; interações e capacidades são as únicas leituras próprias, e cada uma cai em vazio, não
  * em erro.
  */
-import { ArrowRight, ImagePlus, Smartphone, Sparkles, Star } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { api, profileAvatarUrl } from '../../api/client';
+import { ArrowRight, ChevronRight, ImagePlus, Smartphone, Sparkles, Star } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { api } from '../../api/client';
 import type { ProfileAccount, ProfileCapabilities, SocialInteraction } from '../../api/types';
-import { Avatar } from '../../components/Avatar';
-import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
-import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { plural } from '../../lib/format';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -26,6 +25,29 @@ import { EMOJI_OPTIONS, FORMALITY_OPTIONS, LENGTH_OPTIONS, Ruler, StatFigure, Ta
 import { handleDe, idsDosAparelhos, nomeDe, rotuloDoIdentificador, type Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
 import { InteractionTimeline } from './Timeline';
+
+/**
+ * Bloco recolhível, FECHADO por padrão: religião e política só aparecem para quem pede. O conteúdo nem é montado
+ * enquanto está fechado (não fica no DOM para leitor de tela nem para cópia). Botão com `aria-expanded`, que o
+ * teclado alcança e aciona com Enter ou Espaço.
+ */
+function AtributosDePersonalidade({ children }: { children: React.ReactNode }) {
+  const [aberto, setAberto] = useState(false);
+  const idCorpo = useId();
+  return (
+    <div className={styles.atributosSensiveis}>
+      <button type="button" className={styles.atributosBotao} aria-expanded={aberto} aria-controls={idCorpo}
+              onClick={() => setAberto((a) => !a)}>
+        <ChevronRight size={14} className={styles.atributosSeta} data-aberto={aberto || undefined} aria-hidden />
+        Atributos de personalidade
+        <span className={styles.muted}>religião e política</span>
+      </button>
+      <div id={idCorpo} hidden={!aberto}>
+        {aberto ? <dl className={styles.rows}>{children}</dl> : null}
+      </div>
+    </div>
+  );
+}
 
 export function VisaoGeral({ profile, contas, irPara }: {
   profile: Pessoa;
@@ -56,7 +78,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
   }, [profile.id, versao]);
 
   const nome = nomeDe(profile);
-  const handle = handleDe(profile);
+  const handleDaPersona = handleDe(profile);
   const t = profile.traits ?? {};
   const temVoz = !!(t.formality || t.typical_length || t.emojis || (t.interests ?? []).length);
   const fotos = (profile.images ?? []).filter((i) => i.status === 'ready');
@@ -70,33 +92,18 @@ export function VisaoGeral({ profile, contas, irPara }: {
       <Card>
         <CardHeader title="Identidade" />
         <CardBody className={styles.identityCard}>
-          <div className={styles.identidade}>
-            <Avatar src={profileAvatarUrl(profile.id)} name={nome} size={72} />
-            <div>
-              <h3 className={styles.title}>{nome}</h3>
-              <p className={styles.lead}>
-                {handle ? `@${handle}` : 'sem conta de cadastro'}{profile.email ? ` · ${profile.email}` : ''}
-              </p>
-            </div>
-          </div>
           <dl className={styles.rows}>
             <Linha rotulo="Idade">{typeof profile.age === 'number' ? `${profile.age} anos` : '—'}</Linha>
             <Linha rotulo="Gênero">{profile.gender || '—'}</Linha>
             <Linha rotulo="Cidade">{bio.home?.city || '—'}</Linha>
             <Linha rotulo="Profissão">{bio.work?.profession || '—'}</Linha>
-            {/* Crenças numa linha cada (ADR-048): o detalhe, com o espectro, fica na guia Persona. */}
-            <Linha rotulo="Religião">{resumoDaReligiao(religiaoDe(bio)) || '—'}</Linha>
-            <Linha rotulo="Política">{resumoDaPolitica(politicaDe(bio)) || '—'}</Linha>
             {profile.email ? <Linha rotulo="E-mail">{profile.email}</Linha> : null}
           </dl>
-          <div className={styles.identityBadges}>
-            <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} />
-            <Badge icon={Smartphone} tone={profile.instance_id ? 'neutral' : 'muted'}>
-              {profile.instance_id
-                ? `${profile.instance_id} (principal)${outros > 0 ? ` +${outros}` : ''}`
-                : 'sem aparelho vinculado'}
-            </Badge>
-          </div>
+          {/* Crenças (ADR-048) são sensíveis: não abrem por padrão. O detalhe, com o espectro, fica na guia Persona. */}
+          <AtributosDePersonalidade>
+            <Linha rotulo="Religião">{resumoDaReligiao(religiaoDe(bio)) || '—'}</Linha>
+            <Linha rotulo="Política">{resumoDaPolitica(politicaDe(bio)) || '—'}</Linha>
+          </AtributosDePersonalidade>
           {temVoz ? (
             <>
               <div className={styles.pair}>
@@ -148,7 +155,8 @@ export function VisaoGeral({ profile, contas, irPara }: {
             <dl className={styles.rows}>
               {contas.map((c) => (
                 <Linha key={c.id} rotulo={`${c.app_name ?? c.app_id}${c.host ? ` · ${c.host}` : ''}`}>
-                  {c.handle ? `${rotuloDoIdentificador(c.handle)} ` : ''}
+                  {/* O @ da persona já está no cabeçalho: aqui só entra o identificador que é de OUTRA conta. */}
+                  {c.handle && c.handle !== handleDaPersona ? `${rotuloDoIdentificador(c.handle)} ` : ''}
                   <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, c.session?.status ?? c.session_status)} size="sm" />
                 </Linha>
               ))}

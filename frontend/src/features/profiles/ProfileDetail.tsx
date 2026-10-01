@@ -1,16 +1,13 @@
 import {
-  ArrowLeft, BrainCircuit, ClipboardCheck, Image as ImageIcon, KeyRound, ListChecks, MessageSquare, Settings2,
-  Smartphone, Sparkles, UserRound,
+  Activity, BrainCircuit, ClipboardCheck, Image as ImageIcon, KeyRound, ListChecks, MessageSquare, Settings2,
+  Smartphone, Sparkles, UserRound, Wrench, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, profileAvatarUrl } from '../../api/client';
-import { Avatar } from '../../components/Avatar';
-import { Button } from '../../components/Button';
+import { api } from '../../api/client';
+import { Select } from '../../components/Field';
 import { Page } from '../../components/Page';
-import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
-import { type Aba } from './abas';
+import { abaPadraoDaSecao, SECOES, secaoDaAba, type Aba, type SecaoId } from './abas';
 import { AbaAparelho } from './GuiaAparelhos';
 import { AbaAprovacoes } from './GuiaAprovacoes';
 import { AbaConfiguracoes } from './GuiaConfiguracoes';
@@ -22,13 +19,18 @@ import { AbaInteracoes } from './GuiaInteracoes';
 import { AbaMemoria } from './GuiaMemoria';
 import { AbaPersona } from './GuiaPersona';
 import { VisaoGeral } from './GuiaVisaoGeral';
-import { handleDe, idsDosAparelhos, nomeDe, type Pessoa } from './pessoa';
+import { PersonaHeader } from './PersonaHeader';
+import { idsDosAparelhos, type Pessoa } from './pessoa';
 import { AppSwitcher, useContas } from './ProfileAccounts';
 import styles from './Profiles.module.css';
 
+const ICONE_DA_SECAO: Record<SecaoId, LucideIcon> = {
+  visao: UserRound, perfil: Sparkles, contas: KeyRound, atividade: Activity, avancado: Wrench,
+};
+
 /**
- * Tela de uma persona: a pessoa e as guias dela. Cada guia vive no seu arquivo e carrega o que precisa quando é
- * aberta, e só então. "Contas e acesso" funde as antigas Contas e Autenticação; "Imagens" é a galeria; "Aparelhos"
+ * Tela de uma persona: o cabeçalho único (`PersonaHeader`), as 5 seções (`abas.ts`) e as guias da seção aberta. Cada
+ * guia vive no seu arquivo e carrega o que precisa quando é aberta, e só então. "Contas e acesso" funde as antigas Contas e Autenticação; "Imagens" é a galeria; "Aparelhos"
  * são os N vínculos (onda E2, ADR-043).
  */
 export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao', aba: abaControlada, onAbaChange }: {
@@ -37,7 +39,7 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
   onChanged: () => Promise<void>;
   /** Guia de abertura quando a guia não é controlada de fora. */
   abaInicial?: Aba;
-  /** Guia controlada pela tela (vem do link `#/personas/<id>/<guia>`); a troca sai por `onAbaChange`. */
+  /** Guia controlada pela tela (vem do link `#/personas/<persona>/<guia>`); a troca sai por `onAbaChange`. */
   aba?: Aba;
   onAbaChange?: (aba: Aba) => void;
 }) {
@@ -64,68 +66,98 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
     };
   }, [profile.id, aba]);
 
-  const nome = nomeDe(profile);
-  const handle = handleDe(profile);
   const nAparelhos = idsDosAparelhos(profile).length;
-  const abas: TabDef<Aba>[] = [
-    { id: 'visao', label: 'Visão geral', icon: UserRound },
-    { id: 'persona', label: 'Persona', icon: Sparkles },
-    { id: 'contas', label: 'Contas e acesso', icon: KeyRound, count: contas?.length ?? null },
-    { id: 'imagens', label: 'Imagens', icon: ImageIcon, count: profile.images?.length ?? null },
-    { id: 'aparelhos', label: 'Aparelhos', icon: Smartphone, count: nAparelhos || null },
-    { id: 'memoria', label: 'Memória', icon: BrainCircuit },
-    { id: 'interacoes', label: 'Interações', icon: MessageSquare },
-    { id: 'habilidades', label: 'Habilidades', icon: Sparkles },
-    { id: 'aprovacoes', label: 'Aprovações', icon: ClipboardCheck, count: pendentes, alert: !!pendentes },
-    { id: 'execucoes', label: 'Execuções', icon: ListChecks },
-    { id: 'config', label: 'Configurações', icon: Settings2 },
-  ];
+  const secao = secaoDaAba(aba);
+  const guias: Record<Aba, TabDef<Aba>> = {
+    visao: { id: 'visao', label: 'Visão geral', icon: UserRound },
+    persona: { id: 'persona', label: 'Persona', icon: Sparkles },
+    contas: { id: 'contas', label: 'Contas e acesso', icon: KeyRound, count: contas?.length ?? null },
+    imagens: { id: 'imagens', label: 'Imagens', icon: ImageIcon, count: profile.images?.length ?? null },
+    aparelhos: { id: 'aparelhos', label: 'Aparelhos', icon: Smartphone, count: nAparelhos || null },
+    memoria: { id: 'memoria', label: 'Memória', icon: BrainCircuit },
+    interacoes: { id: 'interacoes', label: 'Interações', icon: MessageSquare },
+    habilidades: { id: 'habilidades', label: 'Habilidades', icon: Sparkles },
+    aprovacoes: { id: 'aprovacoes', label: 'Aprovações', icon: ClipboardCheck, count: pendentes, alert: !!pendentes },
+    execucoes: { id: 'execucoes', label: 'Execuções', icon: ListChecks },
+    config: { id: 'config', label: 'Configurações', icon: Settings2 },
+  };
+  const guiasDaSecao = secao.guias.map((g) => guias[g]);
+  // O app só filtra estas duas guias; fora delas a fileira de apps seria ruído sem efeito (e sem explicação).
+  const mostraEscopoDeApp = (aba === 'memoria' || aba === 'interacoes') && !!contas && contas.length > 0;
+  const conteudo = (
+    <>
+      {aba === 'visao' ? <VisaoGeral profile={profile} contas={contas} irPara={setAba} /> : null}
+      {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
+      {aba === 'contas' ? (
+        <AbaContasEAcesso key={novaConta} profile={profile} contas={contas} erro={erroContas}
+                          recarregar={recarregarContas} onChanged={onChanged} abrirFormulario={novaConta > 0} />
+      ) : null}
+      {aba === 'imagens' ? <AbaImagens profile={profile} onChanged={onChanged} /> : null}
+      {aba === 'aparelhos' ? <AbaAparelho profile={profile} onChanged={onChanged} /> : null}
+      {aba === 'memoria' ? <AbaMemoria profile={profile} appId={appFiltro} /> : null}
+      {aba === 'interacoes' ? <AbaInteracoes profile={profile} appId={appFiltro} /> : null}
+      {aba === 'habilidades' ? <AbaHabilidades profile={profile} /> : null}
+      {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
+      {aba === 'execucoes' ? <AbaExecucoes profile={profile} /> : null}
+      {aba === 'config' ? <AbaConfiguracoes profile={profile} onChanged={onChanged} /> : null}
+    </>
+  );
 
   return (
     <Page>
-      <div className={styles.header}>
-        <div>
-          <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={onBack}>Personas</Button>
-          <div className={styles.identidade}>
-            <Avatar src={profileAvatarUrl(profile.id)} name={nome} size={56} />
-            <div>
-              <h1 className={styles.title}>{nome}</h1>
-              <p className={styles.lead}>
-                {handle ? `@${handle}` : 'sem conta de cadastro'} ·{' '}
-                {profile.instance_id
-                  ? `${profile.instance_id}${nAparelhos > 1 ? ` (principal) +${nAparelhos - 1}` : ''}`
-                  : 'sem aparelho vinculado'}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className={styles.headerButtons}>
-          {profile.status !== 'active' ? <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /> : null}
-          {handle ? <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, profile.session.status)} /> : null}
-        </div>
-      </div>
+      <PersonaHeader profile={profile} onBack={onBack} irPara={setAba} />
 
-      {contas && contas.length ? (
+      {/* Primeiro nível: 5 seções. A URL guarda a GUIA; a seção sai dela (link antigo `…/memoria` abre Perfil > Memória). */}
+      <nav className={styles.navSecoes} aria-label="Seções da persona">
+        <div className={styles.navSecoesLista}>
+          {SECOES.map((sec) => {
+            const Icone = ICONE_DA_SECAO[sec.id];
+            const atual = sec.id === secao.id;
+            const alerta = sec.id === 'atividade' && !!pendentes;
+            return (
+              <button key={sec.id} type="button" className={styles.navSecaoBotao}
+                      aria-current={atual ? 'page' : undefined}
+                      onClick={() => { if (!atual) setAba(abaPadraoDaSecao(sec)); }}>
+                <Icone size={14} aria-hidden />
+                {sec.rotulo}
+                {alerta ? <span className={styles.navSecaoContagem} title="Aprovações esperando você">{pendentes}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+        {/* Em tela estreita as seções viram uma lista suspensa: nenhum rótulo é cortado. */}
+        <div className={styles.navSecoesSelect}>
+          <Select aria-label="Seção da persona" value={secao.id}
+                  onChange={(e) => {
+                    const alvo = SECOES.find((sec) => sec.id === e.target.value);
+                    if (alvo && alvo.id !== secao.id) setAba(abaPadraoDaSecao(alvo));
+                  }}>
+            {SECOES.map((sec) => (
+              <option key={sec.id} value={sec.id}>
+                {sec.rotulo}{sec.id === 'atividade' && pendentes ? ` (${pendentes} para decidir)` : ''}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </nav>
+
+      {/* Segundo nível: as guias da seção aberta (só quando há mais de uma). */}
+      {guiasDaSecao.length > 1 ? (
+        <div className={styles.navGuias}>
+          <Tabs tabs={guiasDaSecao} active={aba} onChange={setAba} idBase={`perfil-${profile.id}`} label={`Guias de ${secao.rotulo}`} />
+        </div>
+      ) : null}
+
+      {mostraEscopoDeApp && contas ? (
         <AppSwitcher contas={contas} valor={appFiltro} onChange={setAppFiltro}
                      onAdicionar={() => { setAba('contas'); setNovaConta((n) => n + 1); }} />
       ) : null}
-      <Tabs tabs={abas} active={aba} onChange={setAba} idBase={`perfil-${profile.id}`} label="Guias da persona" />
-      <TabPanel idBase={`perfil-${profile.id}`} id={aba}>
-        {aba === 'visao' ? <VisaoGeral profile={profile} contas={contas} irPara={setAba} /> : null}
-        {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
-        {aba === 'contas' ? (
-          <AbaContasEAcesso key={novaConta} profile={profile} contas={contas} erro={erroContas}
-                            recarregar={recarregarContas} onChanged={onChanged} abrirFormulario={novaConta > 0} />
-        ) : null}
-        {aba === 'imagens' ? <AbaImagens profile={profile} onChanged={onChanged} /> : null}
-        {aba === 'aparelhos' ? <AbaAparelho profile={profile} onChanged={onChanged} /> : null}
-        {aba === 'memoria' ? <AbaMemoria profile={profile} appId={appFiltro} /> : null}
-        {aba === 'interacoes' ? <AbaInteracoes profile={profile} appId={appFiltro} /> : null}
-        {aba === 'habilidades' ? <AbaHabilidades profile={profile} /> : null}
-        {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
-        {aba === 'execucoes' ? <AbaExecucoes profile={profile} /> : null}
-        {aba === 'config' ? <AbaConfiguracoes profile={profile} onChanged={onChanged} /> : null}
-      </TabPanel>
+
+      {guiasDaSecao.length > 1 ? (
+        <TabPanel idBase={`perfil-${profile.id}`} id={aba}>{conteudo}</TabPanel>
+      ) : (
+        <div role="region" aria-label={secao.rotulo}>{conteudo}</div>
+      )}
     </Page>
   );
 }
