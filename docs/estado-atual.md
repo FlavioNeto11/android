@@ -1,34 +1,40 @@
 # Estado atual — handoff
 
-**Revisado em 30/09/2026 (noite): Fase 29 no ar em `9ff427c` (migração 063); P16 provado em 6 h; Outlook logado nas 3 contas.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 01/10/2026 (tarde): runtime do backend em `5d8b545` (migração 063); Fase 29 no ar; P16 provado em 6 h; Outlook logado nas 3 contas.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main`, NÃO IMPLANTADA.** Seis briefings do dono (cabeçalho compacto no
+- **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main`, NÃO IMPLANTADA até a conferência de 01/10 (tarde); implantação só do painel em curso.** Seis briefings do dono (cabeçalho compacto no
   celular, texto cortado com tooltip, detalhe da persona em 5 seções e com nome legível na URL, acessibilidade residual,
   resumo da execução e regra de pendências, revalidação) mais a rodada de correções do revisor. Relatórios em
   [revisoes-ux/rodada-2/](revisoes-ux/rodada-2/); veredito em [revalidacao-final.md](revisoes-ux/rodada-2/revalidacao-final.md):
   pronto com ressalvas (0 altos; os 2 médios, M1 e M2, foram corrigidos em `16-correcoes-finais.md`).
-  - **Para o deploy (coordenação):** só o painel (`npm run build` + deploy); a rodada 2 **não** mexe no backend.
+  - **Delta contra o runtime (conferido em 01/10, tarde):** `git diff --name-only 5d8b545 main -- backend` dá 0 arquivos e não há migração
+    nova; o delta é só `frontend/src` (66 arquivos), docs e `scripts/ui-truncamento.js`. A implantação exige **somente reconstruir
+    `frontend/dist`** (`npm run build`), sem `deploy.ps1`, sem reinício do backend e sem tocar nos aparelhos.
   - **Prova:** `simulated` (frontend 94 arquivos/1133 testes na árvore mesclada com a `main`); `real` só contra o backend simulado
     do worktree (matriz 9 telas x 6 larguras, axe 4.13, Lighthouse 13.5 em Painel e Personas); `not_run`: semáforo no nível
     "Atenção", custos no topo, execução em andamento, origem Intervenção, leitor de tela e toque real.
   - **Abertos (baixos):** B5, B6, B9–B11 da revalidação e RF-07r, 19, 27, 30, 32, 35, 41, 42, 48, 49 da rodada 1.
 
-- **Revisão de UX/UI do portal (01/10, madrugada): INTEGRADA NA `main`, NÃO IMPLANTADA.** Nove tarefas dos briefings do dono
+- **Revisão de UX/UI do portal, rodada 1 (01/10, madrugada): INTEGRADA NA `main` e IMPLANTADA no runtime `5d8b545`.** Nove tarefas dos briefings do dono
   (menu lateral e rotas por objeto, números e semáforo numa fonte única, barra de seleção e drawer, textos e cards, busca e
   tabela, caixa única de Pendências, tipografia e acessibilidade, varredura de textos, revisão final) mais correções e
   decisões do dono delegadas à IA. Relatórios em [revisoes-ux/](revisoes-ux/) (veredito em
   [revisao-final.md](revisoes-ux/revisao-final.md): pronto com ressalvas); decisões em ADR-062.
-  - **Para o deploy (coordenação):** **exige reiniciar o backend**, não só `npm run build`: o `GET /api/snapshot` mudou
-    (`backend/app/api.py`: as 20 execuções recentes, todas as `needs_input` e as não terminais, exceto `planned`;
-    ~+21 KB sobre 77 KB). O reinício do backend custou 11 reinícios de aparelho na Fase 29: escolher a janela.
+  - **Implantação (corrige o registro anterior, que dizia "não implantada"):** o backend da rodada 1 (`GET /api/snapshot`:
+    as 20 execuções recentes, todas as `needs_input` e as não terminais, exceto `planned`) já roda: `8bcedc5`, `cade559` e `368b575`
+    estão dentro do `5d8b545`. Runtime observado em `GET /api/health` (01/10, tarde): commit `5d8b545`, migração
+    `063_prova_de_vazamento`, status `ok`, `problems: []`. O bundle servido então (`index-lmjapcAt.js`, build de 01/10 09:27) tinha o
+    chip "Planejadas" da rodada 1. **Não há mais necessidade de reiniciar o backend para a rodada 1.** O `83af733` é só
+    documentação e não prova deploy; a associação ao deploy foi **inferida** pelo commit devolvido por `/api/health` e pelo início
+    dos processos `app.main` (01/10 10:43), não por registro de deploy; não há hora exata registrada.
   - **Prova:** `simulated` (frontend 85 arquivos/1027 testes na árvore mesclada com a `main`; backend 514 testes dos arquivos
     que citam o snapshot, em SQLite; backend simulado na 8765 com axe 4.13 em 54 combinações + 15 visões internas, zero falhas de
     contraste, e Lighthouse de acessibilidade 99–100) [revisoes-ux/13-prova-simulada.md](revisoes-ux/13-prova-simulada.md);
-    `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: pendente,
-    quem lê é o cron de 01/10 05:17Z.** O total verdadeiro de pendências (27 `needs_input`, não 4) só aparece depois do deploy.
+    `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: ainda não revalidado
+    (lacuna aberta, não verificada nesta sessão; quem lê é o cron de 01/10 05:17Z).**
   - **Para o dono:** 3 execuções `planned` (19/09, 22/09, 27/09; planos de mensagem no Instagram para terceiros, nunca
     executados) e 27 `needs_input` de 17/09 a 28/09 ficaram intactas: decidir se cancela; achados baixos abertos
     (RF-11, 16, 17, 23, 07r, 14, 27, 30, 32–35, 37, 38) em [revisao-final.md](revisoes-ux/revisao-final.md).
