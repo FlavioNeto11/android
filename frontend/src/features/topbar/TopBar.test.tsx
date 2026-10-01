@@ -126,6 +126,76 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
     expect(document.activeElement).toBe(botao);
   });
 
+  // RF-26: o jsdom não move o foco no Tab; o teste dispara o Tab e confere o que o ouvinte da gaveta decide.
+  function tab(alvo: Element | null, shift = false): KeyboardEvent {
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true });
+    (alvo ?? document.body).dispatchEvent(ev);
+    return ev;
+  }
+
+  it('gaveta aberta prende o Tab: do último item volta ao primeiro, e Shift+Tab do primeiro vai ao último', async () => {
+    const el = await renderBar([]);
+    await act(async () => (el.querySelector('#botao-menu') as HTMLButtonElement).click());
+    const nav = menu(el);
+    const focaveis = Array.from(nav.querySelectorAll<HTMLElement>('a[href], button'));
+    const primeiro = focaveis[0]!;
+    const ultimo = focaveis[focaveis.length - 1]!;
+    expect(focaveis.length).toBeGreaterThan(9);
+
+    ultimo.focus();
+    expect(tab(ultimo).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(primeiro);
+    expect(tab(primeiro, true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(ultimo);
+
+    // No meio da lista o Tab é do navegador: nada a interceptar.
+    const meio = focaveis[3]!;
+    meio.focus();
+    expect(tab(meio).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(meio);
+    expect(nav.querySelectorAll('a[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it('gaveta aberta traz o foco de volta se ele já estava fora, e o Esc fecha mesmo com o foco fora', async () => {
+    const el = await renderBar([]);
+    const botao = el.querySelector('#botao-menu') as HTMLButtonElement;
+    const fora = document.createElement('button');                 // o "Reconectar agora" atrás do fundo escurecido
+    fora.textContent = 'Reconectar agora';
+    document.body.appendChild(fora);
+    await act(async () => botao.click());
+    const nav = menu(el);
+    const focaveis = Array.from(nav.querySelectorAll<HTMLElement>('a[href], button'));
+
+    fora.focus();
+    expect(tab(fora).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(focaveis[0]);
+    fora.focus();
+    expect(tab(fora, true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(focaveis[focaveis.length - 1]);
+
+    fora.focus();
+    await act(async () => {
+      fora.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(useUiStore.getState().menuAberto).toBe(false);
+    expect(document.activeElement).toBe(botao);                    // fechou sem escolher seção: o foco volta ao "Menu"
+    fora.remove();
+  });
+
+  it('gaveta fechada não intercepta Tab nem Esc', async () => {
+    const el = await renderBar([]);
+    const fora = document.createElement('button');
+    document.body.appendChild(fora);
+    fora.focus();
+    expect(tab(fora).defaultPrevented).toBe(false);
+    await act(async () => {
+      fora.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(menu(el).hasAttribute('data-aberto')).toBe(false);
+    expect(document.activeElement).toBe(fora);
+    fora.remove();
+  });
+
   it('escolher uma seção na gaveta leva o foco ao conteúdo, não ao botão "Menu"', async () => {
     const main = document.createElement('main');
     main.id = 'conteudo';
