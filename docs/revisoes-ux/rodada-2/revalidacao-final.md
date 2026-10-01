@@ -26,7 +26,8 @@ passos para reproduzir e fica para uma tarefa pequena separada.
    prometeu o celular): a caixa "Responda aqui" de uma execução que pede informação fica espremida em 127 px com os
    botões cortados (M1), e a barra de seleção com um aparelho de servidor fora do ar deixa as 6 ações fora da vista
    (M2, o RF-37 agravado).
-2. **Quatro regressões Baixas das próprias tarefas**: nome acessível do menu lateral que não começa pelo texto
+2. **Sete Baixas atribuíveis às tarefas 10 a 14**: quatro visíveis na tela (B1 a B4) e três de código ou ferramenta
+   (B5 a B7); B8 a B11 são pré-existentes. As visíveis: nome acessível do menu lateral que não começa pelo texto
    visível (B1, tarefa 13; o Lighthouse acusa em todas as telas a 1440 px), selos de 12 px novos sem a documentação
    que o token exige (B2, tarefas 10 e 12), a seção "Atividade" cujo selo conta Aprovações mas abre Interações (B3,
    tarefa 12) e "Plano pronto. Nada foi executado ainda · 0 de 1 objetivo com sucesso" (B4, tarefa 14).
@@ -55,8 +56,8 @@ passos para reproduzir e fica para uma tarefa pequena separada.
 - **Teclas reais** pelo painel (`Enter`, `Tab`, `Esc`) nos fluxos de drawer, gaveta e popover do semáforo.
 - Ao fim: backend, vite e servidor estático parados (8715, 5115 e 8745 livres); a **8000 nunca foi tocada** (dono
   PID 22060 no fim). Nenhuma ação com efeito foi disparada: Executar, Planejar, Iniciar, Parar, Resetar, Instalar,
-  Assumir controle, aprovar e recusar ficaram intocados. Marcar caixas de seleção e abrir popovers foram as únicas
-  interações.
+  Assumir controle, aprovar e recusar ficaram intocados. Só houve navegação, filtros, guias e seções, abrir e fechar o
+  drawer, abrir popovers e marcar caixas de seleção (marcação local).
 
 **Dados semeados, pelas rotas do simulado**: login "Revisao 15"; 2 saldos de IA (`POST /api/ai/balances/{conta}`);
 6 personas (`POST /api/personas`), duas com o **mesmo nome** "Lucas Almeida", uma com acento ("Ana Beatriz Nandu Ávila")
@@ -85,6 +86,8 @@ API, ABI, Play e imagem nos 12 aparelhos locais.
 - Execução `running`, origem "Intervenção" (sessão em desafio), sessão "Conectado · confirmada há…" no cabeçalho da
   persona e selo "Comprovado" (`proven: true`): o simulado não alcança.
 - Lighthouse nas larguras 1920, 1280, 1024 e 768 (rodado a 1440 nas 9 telas e a 390 em Painel e Personas).
+- Popover "Recursos" do tablet (768 px) nunca aberto; a gaveta do menu exercitada com teclado só a 768 px (a 390 só
+  a presença do botão "Menu").
 - Leitor de tela, toque real (só emulação de largura), tema claro (o produto é só escuro).
 - RF-12, RF-38 e RF-43 não foram remedidos; `scripts/ui-verificar.mjs` (não faz login, RF-10); `python
   scripts/docs-check.py`.
@@ -169,7 +172,7 @@ visível ou teclado quebrado; **Baixa** = texto, polimento, código, estrutura p
 | **B6** | **14 x 11** | `ResumoDaExecucao.tsx` mede o corte do pedido por conta própria (`resize` da janela) em vez de `useTransborda` de `components/TruncatedText.tsx`, a regra que a 11 criou: duas implementações. O expansor e a legenda usam `outline` no foco e não o anel do portal (`--focus-ring`, `box-shadow`). O script de truncamento cobre o pedido (há `aria-expanded` + `aria-controls` no `dd`), então não vira caso. | estático |
 | **B7** | **10** e **10 x 13** | Polimento: `.alvoToque.alvoToque.alvoToque` (especificidade forçada) em `TopBar.module.css`; linha sem recuo em `SaudeAmbiente.tsx` (`<span className={styles.rotulo}>`); o mesmo número dito de dois jeitos, "aguardando você" (topo, botão Menu, Resumo) e "esperando você" (menu lateral, Pendências, semáforo). | estático + real (nomes lidos) |
 | **B8** | pré-existente, agora também no botão Menu (10) | Quando uma origem falha (reproduzido com o item de aprendizado ilegível: `GET /api/aprendizado/pendentes` 500), a caixa avisa "Não foi possível ler todas as origens agora. A lista pode estar incompleta", mas o topo, o botão Menu e o menu lateral mostram **3** sem ressalva e o chip diz "Aprendizado (0)" como se fosse zero certo. Falha não deveria parecer número. **Passos**: derrubar uma das leituras da caixa e recarregar. | real |
-| **B9** | pré-existente (lista de Personas), relevante para a 12 | Homônimos têm o mesmo nome acessível no botão da linha ("Abrir Lucas Almeida" duas vezes); quem usa leitor de tela não distingue as duas. O slug já distingue (`…-iwug`, `…-pwfl`); o nome pode levar o @ ou o aparelho. | real |
+| **B9** | pré-existente (lista de Personas), relevante para a 12 | Pelo padrão `Abrir ${nome}` do botão da linha (lido "Abrir Lucas Almeida" na tabela filtrada com os 2 homônimos), homônimos ficam com o mesmo nome acessível; quem usa leitor de tela não distingue os dois. O slug já distingue (`…-iwug`, `…-pwfl`); o nome pode levar o @ ou o aparelho. | real |
 | **B10** | pré-existente (`GuiaPersona`) | Os 7 botões de bloco da guia Persona ("Identidade IA (parcial)", "Trabalho IA (vazia)"…) têm **31,5 px** de altura: passam no auditor (tolerância de 0,5 px) e falham na medida estrita; é a mesma receita de meio pixel que a 13 corrigiu em outras classes. | real |
 | **B11** | pré-existente (`ParaAprovarTab`) | O cartão do item mostra a referência crua `licao:li-rev15-1` (soma-se ao RF-07r). | real |
 
@@ -226,9 +229,11 @@ Lidos os merges `652cb40` (14), `c495b2d` (10), `bf1b046` (12), `c286dd1` (11) e
 
 - Caminho do relatório (acima).
 - As medições de linha de base do briefing são do build implantado em `83af733` com dados reais; aqui o dado é o do
-  simulado (12 aparelhos locais + 2 remotos, 6 personas, 5 execuções). Com ele, **0** alvo abaixo de 32 px no Painel e
-  na Infraestrutura (auditor e medida estrita), não 5 e 6; os "5 e 6 com dados reais" seguem sem prova (a hipótese
-  da tarefa 13).
+  simulado (12 aparelhos locais + 2 remotos, 6 personas, 5 execuções). Com ele renderizaram os contadores de estado
+  do Painel (`stateQuick`), os botões de persona e de tarefa das linhas da Infraestrutura (`personaDoAparelho`,
+  `.tarefa`), e a medida deu **0** alvo abaixo de 32 px no Painel e na Infraestrutura (auditor e medida estrita), não
+  5 e 6: a correção da 13 cobre a causa comum nessas classes; a contagem 5/6 do build antigo com dado real não foi
+  reproduzida.
 - "Rodar axe/Lighthouse nas 9 telas": axe nas 54 células; Lighthouse nas 9 a 1440 e em 2 a 390 (as demais larguras
   `not_run`).
 
