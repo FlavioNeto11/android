@@ -114,8 +114,18 @@ remoto só liga pela configuração. Primeiro ponto de integração: `python scr
 | Integração com o gerador de pacotes (saída idêntica com a flag desligada) | `simulated` | `scripts/tests/test_pacotes_contexto.py` |
 | Chamada real ao Jev | `not_run` | `REAL_JEV_NETWORK_CALLS = 0`; sem autorização para código privado |
 
+## Limites conhecidos
+
+- **Custo por consulta fria**: o índice BM25 vive na memória do processo. Cada chamada da CLI (e cada item de
+  `plano-100-pacotes.py --contexto`) reconstrói o índice: ~4–5 s no repositório inteiro (1,4 mil arquivos), medido em 01/10 na máquina
+  central. Com o retrieval desligado a CLI responde uma vez só por geração de pacotes. Correção prevista: persistir o índice por revisão
+  (como o mapa) ou processar todos os itens num único processo.
+- **`rg` fora do PATH**: no serviço central o `rg` pode não estar no PATH; o léxico cai sozinho no caminho Python (mesmo resultado,
+  mais lento). Seis testes de paridade pulam sem `rg`.
+- A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
+
 ## Próximas fatias
 
-Tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
+Índice BM25 persistente por revisão; tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
 custo reais; outros `SemanticProvider` (embeddings locais, Ollama, banco vetorial); consumo do `ContextPack` por skills,
 planejamento e subagentes.

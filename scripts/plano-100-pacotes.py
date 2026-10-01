@@ -230,15 +230,19 @@ def sugerir_contexto_por_retrieval(modo: str | None = None, *, executar=subproce
     auxílio do pacote, não requisito dele.
     """
     avisou = False
+    desligado = False
 
     def sugerir(item: dict) -> list[str]:
-        nonlocal avisou
+        nonlocal avisou, desligado
+        if desligado:                       # é propriedade da configuração, igual para todos os itens: uma pergunta basta
+            return []
         pergunta = f"{item['titulo']}. {item['corpo']}"[:600]
         comando = [python_do_backend(), '-m', 'app.modules.context_retrieval.presentation.cli', pergunta, '--json']
         if modo:
             comando += ['--mode', modo]
         try:
-            saida = executar(comando, cwd=RAIZ / 'backend', capture_output=True, text=True, timeout=90, check=False)
+            saida = executar(comando, cwd=RAIZ / 'backend', capture_output=True, text=True, encoding='utf-8',
+                             errors='replace', timeout=90, check=False)
             dados = json.loads(saida.stdout)
         except (OSError, ValueError, subprocess.SubprocessError):
             if not avisou:
@@ -246,6 +250,7 @@ def sugerir_contexto_por_retrieval(modo: str | None = None, *, executar=subproce
                 avisou = True
             return []
         if not isinstance(dados, dict) or dados.get('enabled') is False:
+            desligado = isinstance(dados, dict)
             return []
         linhas = [f"- `{f['path']}`" for f in dados.get('files', []) if isinstance(f, dict) and 'path' in f]
         linhas += [f"- `{r['path']}:{r['start_line']}-{r['end_line']}`" for r in dados.get('regions', [])

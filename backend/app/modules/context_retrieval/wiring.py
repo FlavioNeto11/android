@@ -7,10 +7,10 @@ configuração, ao cache, às métricas ou ao pacote de contexto.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
-from ...config import Config
+from ...config import Config, EnvSettings
 from .application.budget import BudgetLedger
 from .application.hybrid import HybridRetriever
 from .application.local import LocalRetriever
@@ -34,10 +34,36 @@ def pasta_de_dados(cfg: Config) -> Path:
     return cfg.path(cfg.file.paths.data_dir) / cfg.file.context_retrieval.cache.directory
 
 
+class _AmbienteDoProvedor(Mapping[str, str]):
+    """O que o adaptador pode ler do ambiente: só a chave do Jev, e só quando alguém a lê.
+
+    Guarda o `EnvSettings` (cujo campo é `SecretStr`), não a string: o valor só existe durante o `get`, e nem `vars()` do
+    adaptador nem o `repr` deste objeto o mostram.
+    """
+
+    _CHAVE = "TYPESAFE_API_KEY"
+
+    def __init__(self, env: EnvSettings) -> None:
+        self._env = env
+
+    def __getitem__(self, chave: str) -> str:
+        if chave == self._CHAVE and self._env.typesafe_api_key is not None:
+            return self._env.typesafe_api_key.get_secret_value()
+        raise KeyError(chave)
+
+    def __iter__(self) -> Iterator[str]:
+        if self._env.typesafe_api_key is not None:
+            yield self._CHAVE
+
+    def __len__(self) -> int:
+        return 1 if self._env.typesafe_api_key is not None else 0
+
+    def __repr__(self) -> str:
+        return "<ambiente do provedor semântico>"
+
+
 def ambiente_do_provedor(cfg: Config) -> Mapping[str, str]:
-    """O que o adaptador pode ler do ambiente. Hoje, só a chave do Jev, e só se estiver configurada."""
-    chave = cfg.env.typesafe_api_key
-    return {"TYPESAFE_API_KEY": chave.get_secret_value()} if chave is not None else {}
+    return _AmbienteDoProvedor(cfg.env)
 
 
 def criar_provedor(cfg: Config) -> SemanticProvider | None:

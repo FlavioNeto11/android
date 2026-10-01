@@ -35,7 +35,16 @@ def _texto(pack: ContextPack) -> str:
     return "\n".join(linhas)
 
 
+def _stdout_utf8() -> None:
+    """A pergunta e os caminhos têm acento e seta; o console do Windows (cp1252) e um pipe sem codificação quebravam a CLI."""
+    for fluxo in (sys.stdout, sys.stderr):
+        reconfigurar = getattr(fluxo, "reconfigure", None)
+        if reconfigurar is not None:
+            reconfigurar(encoding="utf-8", errors="replace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _stdout_utf8()
     ap = argparse.ArgumentParser(prog="context_retrieval", description=__doc__.splitlines()[0])
     ap.add_argument("query", help="a pergunta ou a descrição da tarefa")
     ap.add_argument("--root", type=Path, default=None, help="raiz do repositório (padrão: a do projeto)")

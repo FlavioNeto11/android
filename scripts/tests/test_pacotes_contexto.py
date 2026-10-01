@@ -68,6 +68,17 @@ class PacotesComContextoTest(unittest.TestCase):
                     quebrado = gerar(Path(b), pacotes.sugerir_contexto_por_retrieval(executar=executor))
             self.assertEqual(base, quebrado)
 
+    def test_desligado_pergunta_uma_vez_so(self) -> None:
+        chamadas = []
+
+        def executar(comando, **_k):
+            chamadas.append(comando)
+            return subprocess.CompletedProcess([], 0, stdout=json.dumps({'enabled': False}), stderr='')
+        sugerir = pacotes.sugerir_contexto_por_retrieval(executar=executar)
+        for _ in range(5):
+            self.assertEqual(sugerir(ITENS[0]), [])
+        self.assertEqual(len(chamadas), 1)
+
     def test_o_modo_explicito_vai_para_a_cli(self) -> None:
         chamadas = []
 

@@ -235,6 +235,14 @@ def test_jev_em_repositorio_privado_nega_antes_de_qualquer_envio(tmp_path: Path,
     assert pack is not None and pack.metadata["fallback_reason"] == "privacy_block"
 
 
+def test_a_chave_do_jev_nao_fica_em_atributo_do_adaptador(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    segredo = "valor-de-teste-nao-e-uma-chave"
+    monkeypatch.setenv("TYPESAFE_API_KEY", segredo)
+    prov = wiring.criar_provedor(_cfg(tmp_path, semantic={"provider": "jev"}))
+    assert prov is not None and prov.available() == (True, None)
+    assert segredo not in repr(vars(prov)) and segredo not in repr(prov)
+
+
 def test_hibrido_sem_provedor_configurado_cai_no_local(tmp_path: Path) -> None:
     pack = _servico(tmp_path, None, enabled=True, mode="hybrid").gather("emitir fatura")
     assert pack is not None and pack.metadata["fallback_reason"] == "no_provider" and pack.files
@@ -289,6 +297,19 @@ def test_cli_com_modo_explicito_devolve_o_pacote(tmp_path: Path, monkeypatch: py
     saida = json.loads(capsys.readouterr().out)
     assert saida["files"][0]["path"] == "app/auth.py" and saida["mode"] == "local_only"
     assert all("text" not in r for r in saida["regions"])
+
+
+def test_cli_escreve_utf8_mesmo_com_o_console_em_cp1252(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado ao rodar `plano-100-pacotes.py --contexto` de verdade: a seta da pergunta derrubava a CLI no pipe cp1252."""
+    import io
+    import sys
+    bruto = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(bruto, encoding="cp1252", write_through=True))
+    monkeypatch.setattr(cli, "load_config", lambda: _cfg(tmp_path))
+    assert cli.main(["valida o token → cobrança `verify_token`", "--json", "--mode", "local_only",
+                     "--root", str(_repo(tmp_path))]) == 0
+    saida = json.loads(bruto.getvalue().decode("utf-8"))
+    assert "→" in saida["query"] and saida["files"]
 
 
 def test_cli_so_aceita_none_e_fake_como_provedor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
