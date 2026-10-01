@@ -96,7 +96,9 @@ de ciclo de vida.
   contagem e o filtro já o tratam como desconhecido.
 - **Também fica igual**: a miniatura do cartão para estados que não são `stopped` nem `error` (por exemplo, um
   `hibernated` guardado) mostra o título do estado guardado. O `noFrameTitle` só reescreve `stopped` e `error` para
-  servidor fora do ar. O selo do cartão já diz "Desconhecido". Não mexi: é o texto da miniatura, da tarefa 04.
+  servidor fora do ar. Com o estado guardado `online`, a miniatura do cartão mostra a última imagem com o aviso
+  "Desatualizado", e não um título. O selo do cartão já diz "Desconhecido" nos dois casos. Não mexi: é a miniatura,
+  da tarefa 04.
 
 ### Provas do RF-40 (simulated)
 
