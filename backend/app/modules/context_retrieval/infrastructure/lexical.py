@@ -11,6 +11,7 @@ A metadata devolvida diz QUANTOS termos e arquivos, nunca QUAIS termos nem conte
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -36,6 +37,8 @@ MAX_PALAVRAS = 20
 _PALAVRA = re.compile(r"[A-Za-zÀ-ÿ]{5,}")
 #: Folga sob o limite de ~32 mil caracteres da linha de comando do Windows.
 _LIMITE_LINHA_CMD = 20_000
+#: `.cmd`/`.bat` passam pelo cmd.exe, que corta a linha em 8191 caracteres (e corta em silêncio).
+_LIMITE_LINHA_CMD_SCRIPT = 7_000
 _TIMEOUT_RG_S = 30.0
 
 
@@ -86,15 +89,39 @@ def _contar(linha_baixa: str, grupo: TermGroup) -> int:
     return sum(linha_baixa.count(v) for v in grupo)
 
 
+def localizar_ripgrep(configurado: str | None = None) -> str | None:
+    """Caminho de um `rg` utilizável, ou `None` (e então o motor é o Python, com o mesmo resultado).
+
+    Ordem: o caminho configurado (`context_retrieval.lexical.ripgrep_path`), a variável `RIPGREP_PATH` e, por último, o
+    PATH (`shutil.which` já aplica o PATHEXT do Windows: acha `rg.exe`, `rg.cmd`). Nenhum caminho de instalação é
+    presumido: o ripgrep do VS Code ou o embutido em outra ferramenta não são procurados, porque mudam de versão e de
+    pasta. Candidato que não executa `--version` é descartado.
+    """
+    candidatos = [configurado, os.environ.get("RIPGREP_PATH"), shutil.which("rg")]
+    for c in candidatos:
+        if not c:
+            continue
+        achado = c if os.path.isfile(c) else shutil.which(c)
+        if not achado:
+            continue
+        try:
+            r = subprocess.run([achado, "--version"], capture_output=True, timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0 and r.stdout.startswith(b"ripgrep"):
+            return achado
+    return None
+
+
 class LexicalRetriever:
     """`ContextRetriever` por casamento literal. Não guarda estado entre pedidos (o universo é do `Workspace`)."""
 
     name = "lexical"
 
     def __init__(self, workspace: Workspace, *, use_ripgrep: bool = True, window_lines: int = 7,
-                 max_windows_per_file: int = 3) -> None:
+                 max_windows_per_file: int = 3, ripgrep_path: str | None = None) -> None:
         self._ws = workspace
-        self._rg = shutil.which("rg") if use_ripgrep else None
+        self._rg = localizar_ripgrep(ripgrep_path) if use_ripgrep else None
         self._half = max(0, window_lines // 2)
         self._max_windows = max(1, max_windows_per_file)
 
@@ -106,10 +133,11 @@ class LexicalRetriever:
         padroes = [x for g in grupos for v in g for x in ("-e", v)]
         base = [self._rg, "--json", "--no-config", "--fixed-strings", "--ignore-case", "--no-ignore", "--hidden",
                 *padroes, "--"]
+        limite = _LIMITE_LINHA_CMD_SCRIPT if self._rg.lower().endswith((".cmd", ".bat")) else _LIMITE_LINHA_CMD
         gasto = sum(len(a) + 1 for a in base)
         lotes: list[list[str]] = [[]]
         for arq in arquivos:
-            if lotes[-1] and gasto + sum(len(a) + 1 for a in lotes[-1]) + len(arq) + 1 > _LIMITE_LINHA_CMD:
+            if lotes[-1] and gasto + sum(len(a) + 1 for a in lotes[-1]) + len(arq) + 1 > limite:
                 lotes.append([])
             lotes[-1].append(arq)
         achados: dict[str, list[int]] = {}
@@ -191,12 +219,21 @@ class LexicalRetriever:
         else:
             alvo = [(a, candidatas[a]) for a in arquivos if a in candidatas]
 
-        resultados: list[tuple[int, int, str, dict[int, set[int]]]] = []
+        # Motor Python: o ranking só precisa das CONTAGENS, que são aditivas por linha (o termo não atravessa quebra de
+        # linha), então contar no texto inteiro dá o mesmo número que a varredura linha a linha e é bem mais rápido. As
+        # linhas casadas (para as janelas) só são levantadas para os arquivos ESCOLHIDOS.
+        rapido = candidatas is None and not any(chr(10) in v for g in grupos for v in g)
+        resultados: list[tuple[int, int, str, dict[int, set[int]] | None]] = []
         for caminho, linhas_rg in alvo:
             texto = self._ws.read_text(caminho)
             if texto is None:
                 continue
-            contagem, por_linha = self._varrer(texto, grupos, linhas_rg)
+            if rapido:
+                baixo = texto.lower()
+                contagem = [_contar(baixo, g) for g in grupos]
+                por_linha: dict[int, set[int]] | None = None
+            else:
+                contagem, por_linha = self._varrer(texto, grupos, linhas_rg)
             distintos = sum(1 for c in contagem if c)
             if distintos:
                 resultados.append((distintos, sum(contagem), caminho, por_linha))
@@ -207,6 +244,8 @@ class LexicalRetriever:
         regioes: list[Region] = []
         for distintos, ocorrencias, caminho, por_linha in escolhidos:
             texto = self._ws.read_text(caminho) or ""
+            if por_linha is None:
+                _, por_linha = self._varrer(texto, grupos, None)
             janelas = self._janelas(caminho, texto, por_linha)
             hits.append(FileHit(path=caminho, score=float(distintos * 1000 + min(ocorrencias, 999)), source=self.name,
                                 matched_terms=distintos, regions=janelas))
