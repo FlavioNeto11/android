@@ -6,7 +6,7 @@ import type { PersonaDTO } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
-import { useUiStore } from '../../store/ui';
+import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
@@ -184,7 +184,8 @@ describe('personas', () => {
     });
     await waitFor(() => text().includes('Helena Prado') && text().includes('Personas'));
     await waitFor(() => byRole('tab', /Contas e acesso/i).getAttribute('aria-selected') === 'true');
-    expect(window.location.hash).toBe('#/personas/ig-9/contas');
+    // O pedido chega pelo id; a tela o troca pelo nome legível (mesmo lugar, sem empilhar).
+    expect(window.location.hash).toBe('#/personas/helena-prado/contas');
     expect(text()).toContain('ainda não tem @ de cadastro');
   });
 
@@ -196,7 +197,163 @@ describe('personas', () => {
     await act(async () => {
       root.render(<ProfilesPage />);
     });
-    await waitFor(() => byRole('tab', /Visão geral/i).getAttribute('aria-selected') === 'true');
+    await waitFor(() => byRole('button', /^Visão geral/).getAttribute('aria-current') === 'page');
+    await waitFor(() => window.location.hash === '#/personas/mariana-costa');
+  });
+});
+
+// ---------------------------------------------------------------- rotas da persona: nome legível e links antigos
+// O link carrega a persona (slug legível ou o id antigo) e a GUIA; a seção da tela sai da guia.
+describe('rotas da persona', () => {
+  const LUCAS_A = pessoa({ id: 'ig-A1B2C3D4E5F6g7h8', name: 'Lucas Almeida', display_name: 'Lucas Almeida', username: 'lucas.a' });
+  const LUCAS_B = pessoa({ id: 'ig-Z9Y8X7W6V5U4t3s2', name: 'Lucas Almeida', display_name: 'Lucas Almeida', username: 'lucas.b' });
+
+  function apis(lista: PersonaDTO[]) {
+    backend.on('GET', /^\/api\/personas$/, () => json(lista));
+    backend.on('GET', /\/accounts$/, () => json([]));
+    backend.on('GET', /approvals/, () => json([]));
+    backend.on('GET', /\/memory/, () => json([]));
+  }
+
+  async function montar(): Promise<void> {
+    await act(async () => {
+      root.render(<ProfilesPage />);
+    });
+  }
+
+  it('link antigo com id + guia (…/ig-1/memoria) abre a Memória DENTRO de Perfil e troca o id pelo nome, sem empilhar', async () => {
+    apis([pessoa(), SEM_CONTA]);
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['ig-1', 'memoria'] }); });
+    const historico = window.history.length;
+    await montar();
+    await waitFor(() => byRole('tab', /Memória/).getAttribute('aria-selected') === 'true');
+    expect(byRole('button', /^Perfil/).getAttribute('aria-current')).toBe('page');
+    await waitFor(() => window.location.hash === '#/personas/mariana-costa/memoria');
+    expect(window.history.length).toBe(historico);                       // replace: nenhuma entrada nova
+    expect(useUiStore.getState().rota.segmentos).toEqual(['mariana-costa', 'memoria']);
+  });
+
+  it('cada guia antiga continua abrindo a guia certa na seção certa', async () => {
+    apis([pessoa()]);
+    const casos: [string, RegExp, RegExp][] = [
+      ['persona', /^Perfil/, /^Persona/], ['imagens', /^Perfil/, /^Imagens/], ['memoria', /^Perfil/, /^Memória/],
+      ['contas', /^Contas e aparelhos/, /^Contas e acesso/], ['aparelhos', /^Contas e aparelhos/, /^Aparelhos/],
+      ['interacoes', /^Atividade/, /^Interações/], ['execucoes', /^Atividade/, /^Execuções/], ['aprovacoes', /^Atividade/, /^Aprovações/],
+      ['habilidades', /^Avançado/, /^Habilidades/], ['config', /^Avançado/, /^Configurações/],
+    ];
+    for (const [guia, secao, aba] of casos) {
+      await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['ig-1', guia] }, 'replace'); });
+      await act(async () => { root.render(<ProfilesPage key={guia} />); });
+      await waitFor(() => byRole('tab', aba).getAttribute('aria-selected') === 'true');
+      expect(byRole('button', secao, byRole('navigation', /Seções da persona/)).getAttribute('aria-current')).toBe('page');
+      await waitFor(() => window.location.hash === `#/personas/mariana-costa/${guia}`);
+      await act(async () => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('link com o nome legível (…/helena-prado/contas) abre a persona certa direto', async () => {
+    apis([pessoa(), SEM_CONTA]);
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['helena-prado', 'contas'] }); });
+    await montar();
+    await waitFor(() => byRole('tab', /Contas e acesso/).getAttribute('aria-selected') === 'true');
+    expect(container.querySelector('h1')?.textContent).toBe('Helena Prado');
+    expect(window.location.hash).toBe('#/personas/helena-prado/contas');
+  });
+
+  it('o alias #/perfis/<id>/<guia> segue valendo e termina no link com o nome', async () => {
+    apis([pessoa()]);
+    window.history.replaceState(window.history.state, '', '#/perfis/ig-1/aparelhos');
+    await act(async () => { aplicarHash(true); });
+    await montar();
+    await waitFor(() => byRole('tab', /Aparelhos/).getAttribute('aria-selected') === 'true');
+    await waitFor(() => window.location.hash === '#/personas/mariana-costa/aparelhos');
+  });
+
+  it('o aparelho em Foco (?foco=) atravessa a troca do id pelo nome', async () => {
+    apis([pessoa()]);
+    await act(async () => {
+      useUiStore.getState().navegar({ tela: 'personas', segmentos: ['ig-1'], query: { foco: 'android-02' } });
+    });
+    await montar();
+    await waitFor(() => window.location.hash === '#/personas/mariana-costa?foco=android-02');
+    expect(useUiStore.getState().focusInstanceId).toBe('android-02');
+  });
+
+  it('guia que não existe cai na Visão geral e o link vira só o nome da persona', async () => {
+    apis([pessoa()]);
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['mariana-costa', 'visao'] }); });
+    await montar();
+    await waitFor(() => window.location.hash === '#/personas/mariana-costa');
+    expect(byRole('button', /^Visão geral/).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('com a lista ainda carregando NÃO pisca "Persona não encontrada"; só avisa depois, se ninguém bate', async () => {
+    let liberar: () => void = () => {};
+    const segura = new Promise<void>((resolve) => { liberar = resolve; });
+    backend.on('GET', /^\/api\/personas$/, async () => { await segura; return json([pessoa()]); });
+    backend.on('GET', /\/accounts$/, () => json([]));
+    backend.on('GET', /approvals/, () => json([]));
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['ninguem-assim'] }); });
+    await montar();
+    expect(text()).not.toContain('Persona não encontrada');
+    await act(async () => { liberar(); });
+    await waitFor(() => text().includes('Persona não encontrada'));
+    expect(window.location.hash).toBe('#/personas/ninguem-assim');          // não reescreve o que não resolveu
+  });
+
+  it('com a lista carregando, o link por nome também espera e depois abre a persona (sem aviso no meio)', async () => {
+    let liberar: () => void = () => {};
+    const segura = new Promise<void>((resolve) => { liberar = resolve; });
+    backend.on('GET', /^\/api\/personas$/, async () => { await segura; return json([pessoa()]); });
+    backend.on('GET', /\/accounts$/, () => json([]));
+    backend.on('GET', /approvals/, () => json([]));
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['mariana-costa'] }); });
+    await montar();
+    expect(text()).not.toContain('Persona não encontrada');
+    await act(async () => { liberar(); });
+    await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');
+    expect(text()).not.toContain('Persona não encontrada');
+  });
+
+  it('homônimos: cada um tem o seu link (nome + sufixo do id) e o nome puro não adivinha', async () => {
+    apis([LUCAS_A, LUCAS_B, pessoa()]);
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: [LUCAS_B.id] }); });
+    await montar();
+    await waitFor(() => container.querySelector('h1')?.textContent === 'Lucas Almeida');
+    await waitFor(() => /^#\/personas\/lucas-almeida-[a-z0-9]{4}$/.test(window.location.hash));
+    expect(window.location.hash).toBe('#/personas/lucas-almeida-t3s2');
+    expect(text()).toContain('@lucas.b');
+    expect(text()).not.toContain('@lucas.a');
+    // O link do outro homônimo abre o outro.
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['lucas-almeida-g7h8'] }); });
+    await waitFor(() => text().includes('@lucas.a'));
+    expect(text()).not.toContain('@lucas.b');
+    // O nome sem sufixo é ambíguo: nada é aberto.
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['lucas-almeida'] }); });
+    await waitFor(() => text().includes('Mais de uma persona com esse nome'));
+    expect(text()).not.toContain('Persona não encontrada');
+  });
+
+  it('renomear a persona com a tela aberta não vira "não encontrada": o link acompanha o nome novo', async () => {
+    apis([pessoa()]);
+    await act(async () => { useUiStore.getState().navegar({ tela: 'personas', segmentos: ['mariana-costa', 'persona'] }); });
+    await montar();
+    await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');
+    apis([pessoa({ name: 'Mariana Souza', display_name: 'Mariana Souza' })]);
+    await act(async () => { useAppStore.setState({ hydrateCount: 2 }); });          // a lista se relê
+    await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Souza');
+    await waitFor(() => window.location.hash === '#/personas/mariana-souza/persona');
+    expect(text()).not.toContain('Persona não encontrada');
+  });
+
+  it('abrir pela lista já usa o nome legível no link', async () => {
+    apis([pessoa(), SEM_CONTA]);
+    await montar();
+    await waitFor(() => text().includes('Helena Prado'));
+    await click(byRole('button', /Abrir Helena Prado/));
+    await waitFor(() => container.querySelector('h1')?.textContent === 'Helena Prado');
+    expect(window.location.hash).toBe('#/personas/helena-prado');
   });
 });
 
@@ -742,7 +899,7 @@ describe('busca, filtros e visão em tabela', () => {
     expect(text()).not.toMatch(/Ativaapp não instalado/);
     const pedidosAntes = backend.calls.filter((c) => c.method !== 'GET').length;
     await click(byRole('button', /Instalar app: abrir Mariana Costa/));
-    expect(window.location.hash).toBe('#/personas/ig-1/aparelhos');
+    expect(window.location.hash).toBe('#/personas/mariana-costa/aparelhos');
     // Nada foi instalado: só navegou.
     expect(backend.calls.filter((c) => c.method !== 'GET').length).toBe(pedidosAntes);
   });

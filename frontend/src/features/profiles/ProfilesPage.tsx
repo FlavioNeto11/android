@@ -37,6 +37,7 @@ import {
 import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
+import { homonimosDoSegmento, resolverPersona, slugsDasPersonas } from './slugPersona';
 
 
 /** Quem tem conta de cadastro, no formato que a fila e os grupos de acesso sempre leram (`username` presente). */
@@ -45,7 +46,8 @@ function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {
 }
 
 /**
- * Personas (`#/personas`, com `#/personas/<id>/<guia>` para uma pessoa; `#/perfis` antigo redireciona): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
+ * Personas (`#/personas`, com `#/personas/<persona>/<guia>` para uma pessoa, onde `<persona>` é o nome legível
+ * (`lucas-almeida`) ou o id antigo; `#/perfis` antigo redireciona): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
  * voz, biografia, fotos e as contas dela em cada app; conta, senha e aparelho se ajustam DENTRO da persona.
  */
 export function ProfilesPage() {
@@ -56,12 +58,13 @@ export function ProfilesPage() {
   const needsPersonEpoch = useAppStore((s) => s.needsPersonEpoch);
   const instancesMap = useAppStore((s) => s.instances);
   const liveWorkers = useAppStore((s) => s.workers);
-  // A persona aberta e a guia vêm do link (`#/personas/<id>/<guia>`): Voltar do navegador fecha, recarregar reabre.
+  // A persona aberta e a guia vêm do link (`#/personas/<persona>/<guia>`): Voltar do navegador fecha, recarregar
+  // reabre. `<persona>` é o slug legível ou o id antigo; quem chega por id é levado ao slug (mesmo lugar, sem histórico).
   const rota = useUiStore((s) => s.rota);
   const navegar = useUiStore((s) => s.navegar);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const voltarPara = useUiStore((s) => s.voltarPara);
-  const idAberto = rota.tela === 'personas' ? rota.segmentos[0] ?? null : null;
+  const segmentoAberto = rota.tela === 'personas' ? rota.segmentos[0] ?? null : null;
   const abaAberta = abaDoPedido(rota.segmentos[1]);
   const [pessoas, setPessoas] = useState<PersonaDTO[] | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
@@ -94,15 +97,44 @@ export function ProfilesPage() {
     void load();
   }, [load, hydrateCount, needsPersonEpoch]);
 
+  // O nome legível de cada persona na URL (colisão de nomes resolvida pelo id); sai só do que já foi carregado.
+  const slugs = useMemo(() => (pessoas ? slugsDasPersonas(pessoas) : null), [pessoas]);
+  const slugDe = useCallback((id: string) => slugs?.get(id) ?? id, [slugs]);
+
+  // Quem o link nomeia. Renomear a persona (guia Persona) muda o slug embaixo do link aberto: enquanto o segmento
+  // não muda, vale a última pessoa que ele resolveu (senão a tela mostraria "não encontrada" por um instante).
+  const resolvida = useRef<{ segmento: string; id: string } | null>(null);
+  let emFoco = segmentoAberto && pessoas ? resolverPersona(segmentoAberto, pessoas) ?? undefined : undefined;
+  if (!emFoco && segmentoAberto && pessoas && resolvida.current?.segmento === segmentoAberto) {
+    emFoco = pessoas.find((p) => p.id === resolvida.current?.id);
+  }
+  const idEmFoco = emFoco?.id ?? null;
+  useEffect(() => {
+    resolvida.current = segmentoAberto && idEmFoco ? { segmento: segmentoAberto, id: idEmFoco } : null;
+  }, [segmentoAberto, idEmFoco]);
+
   // Abrir uma persona e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
   useEffect(() => {
     conteudoAoTopo();
-  }, [idAberto]);
+  }, [idEmFoco]);
+
+  // O link canônico: slug legível + guia (a Visão geral é a guia sem segmento). Id antigo, caixa diferente, guia
+  // inexistente e slug velho depois de um renome são reescritos SUBSTITUINDO a entrada (nada empilha). Só age quando
+  // o link difere do canônico, então reler a lista não repete o replace.
+  const abaDoLink = rota.segmentos[1];
+  useEffect(() => {
+    if (!idEmFoco || !slugs || rota.tela !== 'personas') return;
+    const aba = abaDoPedido(abaDoLink);
+    const esperado = aba === 'visao' ? [slugDe(idEmFoco)] : [slugDe(idEmFoco), aba];
+    if (rota.segmentos.length === esperado.length && esperado.every((seg, i) => rota.segmentos[i] === seg)) return;
+    navegar({ tela: 'personas', segmentos: esperado, query: rota.query }, 'replace');
+  }, [idEmFoco, slugs, slugDe, rota, abaDoLink, navegar]);
 
   /** Abrir empilha (Voltar do navegador volta à lista); a Visão geral é a guia sem segmento. */
   const abrir = useCallback((id: string, aba: Aba = 'visao') => {
-    navegar({ tela: 'personas', segmentos: aba === 'visao' ? [id] : [id, aba] });
-  }, [navegar]);
+    const alvo = slugDe(id);
+    navegar({ tela: 'personas', segmentos: aba === 'visao' ? [alvo] : [alvo, aba] });
+  }, [navegar, slugDe]);
 
   // A lista se releu (apagadas saem, outra tela removeu alguém): a seleção fica só com quem ainda existe.
   useEffect(() => {
@@ -123,11 +155,10 @@ export function ProfilesPage() {
     });
   }, []);
 
-  const emFoco = idAberto ? (pessoas ?? []).find((p) => p.id === idAberto) : undefined;
-  if (idAberto && emFoco) {
+  if (segmentoAberto && emFoco) {
     // Trocar de guia substitui o link (não empilha); "← Personas" volta à lista pelo histórico quando veio dela.
     return <ProfileDetail key={emFoco.id} profile={emFoco} aba={abaAberta}
-                          onAbaChange={(a) => navegar({ tela: 'personas', segmentos: a === 'visao' ? [emFoco.id] : [emFoco.id, a] }, 'replace')}
+                          onAbaChange={(a) => navegar({ tela: 'personas', segmentos: a === 'visao' ? [slugDe(emFoco.id)] : [slugDe(emFoco.id), a] }, 'replace')}
                           onBack={() => voltarPara({ tela: 'personas' }, 'push', (de) => de.tela === 'personas' && de.segmentos.length === 0)}
                           onChanged={load} />;
   }
@@ -206,11 +237,18 @@ export function ProfilesPage() {
     >
       {erro ? <LoadErrorBanner error={erro} onRetry={() => void load()} /> : null}
       {/* Link para uma persona que não está na lista (removida, ou de outro servidor). */}
-      {idAberto && !emFoco ? (
-        <Banner tone="warning" icon={ShieldAlert} title="Persona não encontrada"
-                actions={<Button size="sm" onClick={() => navegar({ tela: 'personas', query: rota.query }, 'replace')}>Ver todas</Button>}>
-          O link aponta para uma persona que não está na lista.
-        </Banner>
+      {segmentoAberto && !emFoco ? (
+        homonimosDoSegmento(segmentoAberto, pessoas).length > 1 ? (
+          <Banner tone="warning" icon={ShieldAlert} title="Mais de uma persona com esse nome"
+                  actions={<Button size="sm" onClick={() => navegar({ tela: 'personas', query: rota.query }, 'replace')}>Ver todas</Button>}>
+            O link não diz qual delas. Escolha uma na lista.
+          </Banner>
+        ) : (
+          <Banner tone="warning" icon={ShieldAlert} title="Persona não encontrada"
+                  actions={<Button size="sm" onClick={() => navegar({ tela: 'personas', query: rota.query }, 'replace')}>Ver todas</Button>}>
+            O link aponta para uma persona que não está na lista.
+          </Banner>
+        )
       ) : null}
 
       <InterventionQueue profiles={contas} instances={instancesMap} workers={liveWorkers} />
