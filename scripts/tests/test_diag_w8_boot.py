@@ -38,15 +38,16 @@ class BootW8(unittest.TestCase):
         escritas = mod.plano("os")["escritas_possiveis"]
         for w in escritas:
             self.assertTrue(w.startswith(("settings put secure always_on_vpn", "settings delete secure always_on_vpn_app",
-                                          "input keyevent KEYCODE_HOME", "input tap", "POST /api/instances/android-09/actions/restart"))
+                                          "input keyevent KEYCODE_HOME", "am force-stop io.nekohasekai.sfa", "input tap", "POST /api/instances/android-09/actions/restart"))
                             or "w8load" in w, w)
         self.assertNotIn("always_on_vpn_lockdown 1", " ".join(escritas))
-        for proibido in ("pm clear", "force-stop", "wg", "reset", "uninstall"):
+        for proibido in ("pm clear", "wg", "reset", "uninstall"):
             self.assertFalse(any(proibido in w for w in escritas), proibido)
 
     def test_a_carga_so_roda_no_ensaio_starved(self) -> None:
         self.assertEqual([k for k, v in mod.ENSAIOS.items() if v["starved"]], ["os-starved"])
-        self.assertEqual([k for k, v in mod.ENSAIOS.items() if v["receiver"]], ["os+receiver"])
+        self.assertEqual([k for k, v in mod.ENSAIOS.items() if v["receiver"]], ["os+receiver", "os+stopped"])
+        self.assertEqual([k for k, v in mod.ENSAIOS.items() if v.get("force_stop")], ["os+stopped"])
 
     def test_gate_que_falha_nao_escreve_e_a_segunda_tentativa_e_recusada(self) -> None:
         class Amb:

@@ -9,6 +9,8 @@ Ensaios (variáveis separadas; nenhum combina mais de uma):
   os            always-on, SFA parado pela UI antes (`startedByUser=false`): só a 1ª chance (o `startAlwaysOnVpn` do sistema).
   os+receiver   always-on, VPN ligada pela UI antes do restart (`startedByUser` fica `true`): as DUAS chances (sistema + BootReceiver).
   os-starved    como `os`, mais carga de CPU DENTRO do convidado desde o primeiro adb do boot (emula o convidado sem CPU do K-066).
+  os+stopped    always-on, VPN ligada pela UI e depois `am force-stop` do cliente antes do restart: a precondição do boot 3 do W8
+                (pacote em `stopped`: o BootReceiver não é entregue; só a 1ª chance, a do sistema, pode subir o serviço).
 
 SEGURO POR PADRÃO (sem --execute só mostra o plano). Só o android-09. Um marcador por ensaio impede repetir. Escritas possíveis no
 aparelho (o teste `test_vocabulario_de_escrita` fecha a lista): `settings put secure always_on_vpn_app`/`always_on_vpn_lockdown`,
@@ -60,11 +62,13 @@ ENSAIOS = {
     "os": {"receiver": False, "starved": False},
     "os+receiver": {"receiver": True, "starved": False},
     "os-starved": {"receiver": False, "starved": True},
+    "os+stopped": {"receiver": True, "starved": False, "force_stop": True},
 }
 CMD_ALWAYS_ON = f"settings put secure always_on_vpn_app {PACOTE}"
 CMD_LOCKDOWN_0 = "settings put secure always_on_vpn_lockdown 0"
 CMD_ALWAYS_ON_OFF = "settings delete secure always_on_vpn_app"
 CMD_HOME = "input keyevent KEYCODE_HOME"
+CMD_FORCE_STOP = f"am force-stop {PACOTE}"
 PIDS_CARGA = "/data/local/tmp/w8load.pids"
 CMD_CARGA = ("rm -f " + PIDS_CARGA + "; for i in 1 2 3 4 5 6 7 8; do nohup sh -c 'while :; do :; done' >/dev/null 2>&1 & "
              "echo $! >> " + PIDS_CARGA + "; done; echo CARGA=$(wc -l < " + PIDS_CARGA + ")")
@@ -152,6 +156,13 @@ def preparar(amb: Ambiente, kind: str, reg: Any) -> dict[str, Any]:
         p["start"] = tocar_botao(amb, "Start", reg)
         p["tun_subiu_antes"] = esperar_tun(amb, True, 40)
         amb.shell(CMD_HOME, 20)
+    if ENSAIOS[kind].get("force_stop"):
+        # A precondição do boot 3 do W8: o pacote em `stopped` (o `force-stop` do teste de vazamento) com a VPN tendo estado no ar.
+        rc, _, err = amb.shell(CMD_FORCE_STOP, 20)
+        reg("escrita", cmd=CMD_FORCE_STOP, rc=rc, erro=err.strip()[:120])
+        amb.dormir(3.0)
+        est = tile.ler_estado(amb, pesada=True)
+        p["apos_force_stop"] = {"stopped": est.get("stopped"), "tun": est.get("tun")}
     return p
 
 
@@ -280,10 +291,10 @@ def rodar(amb: Ambiente, run: Path, kind: str, reg: Any) -> dict[str, Any]:
 def plano(kind: str) -> dict[str, Any]:
     return {"instancia": IID, "ensaio": kind, "modo": "plano (nenhuma chamada)", "variaveis": ENSAIOS[kind],
             "passos": ["gate (precondições do tile + conectividade healthy)", f"escrever: {CMD_ALWAYS_ON}; {CMD_LOCKDOWN_0}",
-                       "os+receiver: UM toque no Start (VPN no ar antes do restart)", "restart pela plataforma (boot a frio)",
+                       "os+receiver/os+stopped: UM toque no Start (VPN no ar antes do restart)", "os+stopped: am force-stop do cliente", "restart pela plataforma (boot a frio)",
                        "os-starved: laços de CPU no convidado desde o primeiro adb", "amostras do tun0 até 300 s de uptime",
                        "capturar buffers events/main/system/crash/kernel", "desfazer: carga, Stop se subiu, always-on/lockdown, HOME"],
-            "escritas_possiveis": [CMD_ALWAYS_ON, CMD_LOCKDOWN_0, CMD_ALWAYS_ON_OFF, CMD_HOME, CMD_CARGA, CMD_SEM_CARGA,
+            "escritas_possiveis": [CMD_ALWAYS_ON, CMD_LOCKDOWN_0, CMD_ALWAYS_ON_OFF, CMD_HOME, CMD_FORCE_STOP, CMD_CARGA, CMD_SEM_CARGA,
                                    "input tap <Start|Stop>", "POST /api/instances/android-09/actions/restart"]}
 
 
