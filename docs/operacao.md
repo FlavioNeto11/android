@@ -95,7 +95,7 @@ trabalho é `scripts/testes-afetados.py` (§4). Não é mais preciso `[skip ci]`
 | Job | Quando | O que faz |
 |---|---|---|
 | `backend-sqlite` | todo push/PR | `pytest -q` contra SQLite |
-| `backend-postgres` | `schedule` (diário, 05:17 UTC) ou `workflow_dispatch` | `pytest -q` contra `postgres:17` de serviço, `TEST_DATABASE_URL` |
+| `backend-postgres` | `schedule` (diário, 05:17 UTC) ou `workflow_dispatch` (com `somente_postgres=true` roda só ele, hospedado, sem ocupar o runner do central; `gh workflow run ci.yml -f somente_postgres=true`) | `pytest -q` contra `postgres:17` de serviço, `TEST_DATABASE_URL`; limite de **60 min** desde 01/10 (o de 25 cancelou o cron de 01/10, run 36819958569) |
 | `frontend` | todo push/PR | `npm run typecheck` + `npm test` |
 | `dependencias` | todo push/PR + diário | `pip-audit --strict` (backend + worker) e `npm audit --audit-level=high` (frontend, Appium). No Appium, ainda `npm ci` + `node corrigir-empacotados.mjs --conferir`: o driver traz dependências dentro do tarball, e o `npm audit` só lê o lock (K-064) |
 | `worker-agent-smoke` | todo push/PR | instala só `worker-requirements.txt` e importa `app.worker.agent` — prova que o agente continua leve |

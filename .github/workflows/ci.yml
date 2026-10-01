@@ -29,6 +29,11 @@ on:
   # pull_request. Para voltar a rodar em todo push da main: devolver `push: branches: [main]` aqui.
   pull_request:
   workflow_dispatch:
+    inputs:
+      somente_postgres:
+        description: 'Roda so o job backend-postgres (hospedado), sem ocupar o runner do central com o SQLite'
+        type: boolean
+        default: false
   schedule:
     - cron: "17 5 * * *"      # corrida diária em PostgreSQL — paridade de dialeto sem custar em todo push
 
@@ -60,6 +65,7 @@ jobs:
     name: backend · pytest (SQLite)
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 60
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -76,7 +82,9 @@ jobs:
   backend-postgres:
     name: backend · pytest (PostgreSQL)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 60 min (era 25): o cron de 01/10/2026 (run 36819958569) foi CANCELADO pelo limite de 25 min com o runner hospedado
+    # de 2 núcleos; a suíte leva ~14 min na máquina do dono. `workflow_dispatch` com `somente_postgres` roda só este job.
+    timeout-minutes: 60
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     defaults:
       run:
@@ -112,6 +120,7 @@ jobs:
     name: frontend · typecheck + vitest
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: frontend
@@ -142,6 +151,7 @@ jobs:
     name: dependências · pip-audit + npm audit
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 35
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/esperar-parque
@@ -187,6 +197,7 @@ jobs:
     name: backend · mypy (gradual)
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -213,6 +224,7 @@ jobs:
     name: worker · instala só o agente e importa
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -230,6 +242,7 @@ jobs:
     name: docs · docs-check e livro-razão do plano-100
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 25
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/esperar-parque
