@@ -3684,3 +3684,61 @@ crescerem muito, criar índice em `runs(status)`.
 **Relação.** [produto.md](produto.md) (menu, visões, pendências); [revisoes-ux/revisao-final.md](revisoes-ux/revisao-final.md);
 [revisoes-ux/12-decisoes.md](revisoes-ux/12-decisoes.md); ADR-054 (aprendizado) e ADR-055 (proteção de contas), origens das
 aprovações e intervenções.
+
+
+## ADR-063 — Retrieval de contexto de código: léxico + BM25 locais, semântico plugável, política única de envio
+
+**Data:** 01/10/2026 · **Estado:** aceito · **Decisão técnica** (fase de implementação do JEV-PILOT; o dono encerrou a fase
+técnica do piloto e liberou construir, integrar, testar e simular; **não** liberou enviar código privado).
+
+**Contexto.** O piloto (`claude/jev-pilot`, **não mergeada**, segue como evidência e protótipo; relatório em
+`claude/jev-pilot:docs/research/jev-pilot-closure.md`) validou, em dois corpora públicos, que *salvaguarda lexical + mapa
+semântico* é candidata a recuperar contexto top-3/top-5, e que o provedor semântico **não** substitui grep/BM25. O backend não
+tinha camada de retrieval de código: a IA do planejador/ator/verificador lê telas de aparelho, e o único passo de "juntar
+contexto antes de implementar" é o gerador de pacotes do plano-100 mais a leitura manual da skill `preparar-tarefa`.
+
+**Decisão.**
+
+1. Módulo novo `backend/app/modules/context_retrieval/` (domínio, aplicação, infraestrutura, apresentação), reescrito a
+   partir da `main`; do piloto vêm ideias e contratos, não arquivos.
+2. `ContextRetriever` → `ContextSelection` → `ContextPack`. Retrievers: léxico (ripgrep, com caminho Python equivalente),
+   BM25 (stdlib), semântico (`SemanticProvider`, interface), híbrido. O provedor Jev é um adaptador entre vários: a regra
+   híbrida não o conhece, e um falso determinístico exercita o pipeline sem rede.
+3. **Regra híbrida v1** (a validada): identificador explícito na pergunta e achado lexical → o melhor arquivo lexical fica no
+   topo, o semântico completa sem duplicar, e até 2 janelas lexicais entram antes das semânticas; sem sinal lexical, o
+   semântico é o principal. `lexical_preserve` (padrão 1) é configurável, mas o padrão é o que o piloto mediu.
+4. Modos: `disabled` (padrão; o pipeline antigo segue e o serviço nem toca o disco), `local_only`, `shadow` (o semântico roda
+   para medir; o contexto entregue é o local) e `hybrid`. `context_retrieval.enabled: false` vence qualquer `mode`.
+5. **Política única** (`ExternalContextPolicy`): olha onde o provedor executa (local/remoto/falso) e a classe do repositório
+   (privado/público/sintético), nunca o nome do provedor. Repositório **privado** a provedor **remoto** é negado.
+   `PRIVATE_CODE_SEND_APPROVED = False` é **constante de código**, de propósito: liberar código privado é decisão do dono, com
+   ADR novo, e não um valor esquecido num YAML.
+6. Caminho sensível (`.env`, `config.yaml`, `secrets/`, `data/`, `evidence/`, `backups/`, `personas/`, chaves, bancos, logs…)
+   nunca entra em índice, mapa ou chunk. **Portão duro de segredo** (chave privada, JWT, bearer, chave de API, DSN com senha)
+   bloqueia o pedido inteiro, não só redige; segredo "mole" (par chave/valor que a redação central mascararia) tira só o
+   trecho. O mole reaproveita `security.redaction`.
+7. **Fail-open**: timeout, 429, 529, provedor fora do ar, resposta inválida, orçamento estourado, bloqueio de privacidade ou
+   falha de parse caem no resultado local, com `fallback_reason`. O semântico nunca bloqueia o trabalho. Há orçamento de
+   chamadas por pedido e por sessão, tokens, custo e prazo, e todo payload tem teto (arquivos, chunks, bytes).
+8. A chave `TYPESAFE_API_KEY` vem só do ambiente/`.env` (`EnvSettings`); chave ausente = provedor indisponível = fallback.
+9. Cache em JSON no disco (sem migração) por revisão do repositório (hash de árvore, com resumo do que está sujo), pergunta
+   normalizada, escopo, versão do retrieval, provedor, modelo e etapa; o mapa tem cache próprio. Nunca guarda código nem segredo.
+10. Observabilidade por **lista fechada de campos** (arquivos considerados/escolhidos, latência, fallback e razão, provedor,
+    modelo, tokens, custo, acerto de cache, razão de bloqueio de privacidade); a pergunta vira impressão digital. API de
+    leitura `GET /api/context-retrieval/status`; a tela do painel é a próxima fatia.
+11. Primeiro ponto de integração: `scripts/plano-100-pacotes.py --contexto` (opt-in), que acrescenta aos pacotes de trabalho
+    sugestões de arquivos e trechos. A mesma CLI (`python -m app.modules.context_retrieval.presentation.cli`) serve à skill
+    `preparar-tarefa`. O retrieval **não** decide ação, clique, aprovação nem segurança.
+
+**Alternativas.** Mergear a branch do piloto: traria 9 mil linhas de pesquisa, avaliadores e corpora para a produção.
+Integrar na IA do planejador: ela lê telas, não código; seria um consumidor inventado. Flag de configuração para liberar
+código privado: um `true` esquecido vence a decisão do dono. RAG persistente, vector DB ou grafo de conhecimento agora:
+decidir backend antes de ter a abstração certa; entram depois, como mais um `SemanticProvider`.
+
+**Consequências.** Mergear não muda nada (o padrão é desligado). Nenhuma chamada de rede ao Jev nesta fase
+(`REAL_JEV_NETWORK_CALLS = 0`): o adaptador é provado só com transporte simulado. Ligar `shadow` em repositório público mede
+qualidade e custo reais sem alterar o contexto. Mudar a regra ou o formato da seleção exige subir `RETRIEVAL_VERSION`, que
+invalida os caches.
+
+**Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
+[ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.

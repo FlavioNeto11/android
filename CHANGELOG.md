@@ -69,6 +69,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-01 (noite) — Retrieval de contexto de código (ADR-063), branch `feat/context-retrieval`
+
+Na branch, **não mergeada na `main`** e **não implantada**; desligado por padrão (`context_retrieval.enabled: false`), então
+mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, transporte simulado, sem rede); chamada real ao Jev `not_run`
+(`REAL_JEV_NETWORK_CALLS = 0`). `claude/jev-pilot` segue como evidência e não foi mergeada.
+
+- **Módulo novo** `backend/app/modules/context_retrieval/`: `ContextRetriever`→`ContextSelection`→`ContextPack`; retrievers
+  léxico (ripgrep com caminho Python equivalente), BM25 (stdlib), semântico em duas etapas (mapa→arquivos, chunks→regiões) e
+  híbrido (regra v1 do piloto: salvaguarda lexical no topo, semântico completa); modos `disabled`/`local_only`/`shadow`/`hybrid`.
+- **Provedor plugável** (`SemanticProvider`): falso determinístico e adaptador Jev (`POST /v1/systemone`, chave só em
+  `TYPESAFE_API_KEY`). A regra híbrida não conhece o provedor.
+- **Privacidade como política única** (`ExternalContextPolicy`): repositório privado a provedor remoto é negado
+  (`PRIVATE_CODE_SEND_APPROVED = False`, constante de código); caminho sensível nunca entra em índice, mapa ou chunk; portão duro de
+  segredo bloqueia o pedido (reaproveita `security/redaction.py` para o "mole").
+- **Fail-open, orçamento, cache e observabilidade**: toda falha do semântico cai no local com `fallback_reason`; teto de chamadas,
+  tokens, custo, prazo e payload; cache por revisão do repositório; eventos por lista fechada de campos (nunca código nem a pergunta
+  crua) e `GET /api/context-retrieval/status`.
+- **Primeiro ponto de integração**: `scripts/plano-100-pacotes.py --contexto` (opt-in) e a CLI
+  `python -m app.modules.context_retrieval.presentation.cli`.
+- Prova: `backend/tests/test_context_retrieval_{core,local,semantic,integration}.py` e `scripts/tests/test_pacotes_contexto.py`.
+
 ## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
 
 Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `simulated` e `real` contra o backend simulado do

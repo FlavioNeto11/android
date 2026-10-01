@@ -2898,3 +2898,22 @@ implantação.
   recusado.
 - Protocolo do worker (`DeclaredDevice`): `gpu_mode`, `gpu_gles`, `gpu_vulkan`, todos com padrão nulo. Agente antigo
   não os manda, e o central trata o renderizador daquele aparelho como desconhecido.
+
+## Adendo v0.44 (01/10/2026) — Retrieval de contexto de código: leitura de estado (ADR-063)
+
+Compatível para trás: uma rota nova, só leitura, sem efeito colateral e sem mudar nenhuma existente. Prova: `simulated`
+(`backend/tests/test_context_retrieval_integration.py`).
+
+**`GET /api/context-retrieval/status`** — não consulta código, não chama provedor e não gasta nada.
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `enabled` | booleano | o interruptor `context_retrieval.enabled` |
+| `mode` | texto | modo efetivo: `disabled`, `local_only`, `shadow` ou `hybrid` (`disabled` sempre que `enabled` é falso) |
+| `top_k` | inteiro | arquivos no contexto entregue |
+| `provider` | objeto | `name`, `model`, `available` (booleano) e `unavailable_reason` (`key_missing`, `no_provider`…); nunca a chave |
+| `external_send` | objeto | `allowed`, `reason` e `repository_class`: o que a política de envio decide para este repositório |
+| `budget` | objeto | `timeout_ms`, `max_calls` (por pedido) e `max_cost_usd` |
+| `summary` | objeto | dos eventos recentes: `requests`, `by_mode`, `cache` (`hit`/`miss`), `latency_ms` (`p50`, `p95`, `n`), `cost_usd`, `input_tokens`, `fallbacks` (por razão) e `privacy_blocks` |
+
+Sem a configuração composta responde 503 `not_ready`. Nunca devolve código, a pergunta ou caminhos de arquivo.
