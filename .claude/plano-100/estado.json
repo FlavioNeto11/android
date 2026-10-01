@@ -4262,14 +4262,14 @@
    "id": "27.2",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real: android-03 e 06 com rede trafego_verificado (prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10, no android-03: r-20261001102648-8594fe falhou (o e-mail de teste estava na Junk; ~US$ 0,92); com o e-mail movido para a Inbox e a autorização do dono no chat (até US$ 1,00, uma tentativa), r-20261001123433-09ff22 falhou na primeira etapa: o plano pediu 'caixa Focused' como pós-condição e o verificador não achou na árvore a indicação da aba selecionada (os elementos da lista do Outlook não expõem texto); ~US$ 0,25, sem repetição.",
-   "blocker": "Uma nova tentativa precisa de nova autorização do dono. Para ela: comando sem citar a aba (o e-mail está no topo da caixa), ou leitura do assunto pela captura de tela; o gasto pago total desde 29/09 é ~US$ 2,11.",
+   "evidence": "Real: android-03 e 06 com rede trafego_verificado (prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10, no android-03, três tentativas: 8594fe (e-mail na Junk, ~US$ 0,92), 09ff22 (pós-condição da aba Focused, ~US$ 0,25) e 996716 (autorização do dono até US$ 0,60; ~US$ 0,26): a IA VIU 'Perfil para conferir: nasa' na captura, mas read_value foi recusado porque a linha da lista do Outlook (ComposeView conversation_list) não expõe texto nem descrição de acessibilidade no android-03; a execução ficou esperando o usuário e foi cancelada para não gastar mais.",
+   "blocker": "Limitação da plataforma, medida: read_value só aceita valor lido de texto da árvore, e a lista do Outlook no android-03 não o expõe (no android-01, em 30/09, expunha). Fecha com leitura do valor pela captura de tela (mudança no executor, com prova) ou abrindo o e-mail de teste; gasto pago total desde 29/09: ~US$ 2,37, e nova tentativa precisa de nova autorização.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-01T12:38:34+00:00"
+   "quando": "2026-10-01T12:43:57+00:00"
   },
   "27.3": {
    "id": "27.3",
@@ -5414,6 +5414,15 @@
   },
   {
    "quando": "2026-10-01T12:38:34+00:00",
+   "itens": [
+    "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-01T12:43:57+00:00",
    "itens": [
     "27.2"
    ],

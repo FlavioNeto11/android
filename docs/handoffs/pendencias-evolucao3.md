@@ -391,6 +391,10 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   `r-20261001123433-09ff22` falhou na primeira etapa. O comando citou a aba Focused, o plano a pôs na pós-condição, e o
   verificador não achou na árvore a indicação da aba selecionada (a lista do Outlook não expõe texto). Gasto medido
   pelo saldo: ~US$ 0,25 (21,15 → 20,90). Sem repetição. Gasto pago total desde 29/09: ~US$ 2,11.
+- **C1 de novo, sem citar a aba** (autorização do dono no chat, até US$ 0,60): `r-20261001124036-996716` — a IA viu o
+  assunto "Perfil para conferir: nasa" na captura, mas `read_value` foi recusado: a linha da lista do Outlook no
+  android-03 não expõe texto na árvore. Execução cancelada ao ficar esperando o usuário; ~US$ 0,26. Total pago desde
+  29/09: ~US$ 2,37. Fechar o 27.2 pede leitura do valor pela captura (executor) ou abrir o e-mail.
 - **Notebook:** `max_slots` 3 (decisão do dono no chat, 01/10 ~12:38Z), aplicado por `PUT /api/servers/worker-lan-01/limits`;
   efetivo 3. Desfazer: `{"max_slots": null}` volta ao declarado (6).
 
