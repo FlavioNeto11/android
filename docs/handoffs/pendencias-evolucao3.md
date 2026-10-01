@@ -385,6 +385,18 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 13 — 01/10 ~16:45Z — W8, Fase A1 no android-09 (`real`)
+
+- Acionador separado `scripts/diag-w8-tile.py` (`6696931`; seguro por padrão, só android-09, vocabulário de escrita fechado e
+  testado). Fase A1 às 16:39Z com o coletor read-only ligado antes (run `data/diag-w8/20261001T163900Z`): gesto do produto com
+  stdout/stderr/exit code do clique capturados (exit 0, saídas vazias, 13 ms), observação de 37 s: **sem `tun0`**.
+- No logcat do aparelho: clique entregue ao tile às 16:39:33.207Z; o `ProxyService` do cliente sobe (FGS permitido por
+  `OP_ACTIVATE_VPN`) e **para sozinho 1,789 s depois**, sem `Established by`, ANR ou crash; `ACTIVATE_VPN: allow`. Classificador
+  `F6_TUN_NOT_CREATED` (F1–F5 `PASS`, com a ressalva do F5 em `w8-diagnostico-android09.md` §13).
+- A2 (force-stop) `NOT_RUN` pela regra; rollback: tile ao Q0 (ausente), estado relido (`always_on=null`, `lockdown=0`, sem
+  `tun0`/VPN), sem reinício, sem outro aparelho. **W8 = OPEN**; sem mudança de código do produto. Em aberto: o motivo do auto-stop
+  do serviço, o efeito da falta de peer neste teste e um controle no android-05.
+
 ### Checkpoint 12 — 01/10 ~13:45Z — W4–W8 no notebook, a causa do W4 era código
 
 - **Causa do W4 achada e corrigida** (`658e5bb`, implantado 12:59Z): a observação contava o cabeçalho "Lockdown filtering
@@ -659,7 +671,8 @@ ou reatribuição de rede em qualquer dos quatro aparelhos.
 2. Achados sem correção ainda: dica "Now your folders…" depois da gaveta; "Save your login info?" do Instagram em
    Views não clicáveis; texto do aviso de fallback do renderizador quando falta só o reinício.
 3. W4 (29.9): **resolvido** pelo `658e5bb` (checkpoint 12). Resta o W8: depois do teste de vazamento real no android-09 o túnel
-   não voltou (tile falhou, 2 reinícios, a rede desistiu); medir antes de repetir.
+   não voltou (tile falhou, 2 reinícios, a rede desistiu). A Fase A1 de 01/10 (checkpoint 13) mostrou que o gesto isolado também
+   não sobe o túnel (o serviço do cliente para sozinho em 1,8 s); o próximo passo depende do dono.
 4. PostgreSQL (29.14): **verde** em 01/10 (run 36830963968); rotina: cron 05:17Z e dispatch `somente_postgres`.
 5. Persistência do Outlook no reinício do aparelho (a do app fechado e reaberto já é `real`, 23:10Z).
 6. Fechamento (29.18): fecha com o 27.2 e o 29.14; o §27 e a matriz por aparelho já estão no relatório.

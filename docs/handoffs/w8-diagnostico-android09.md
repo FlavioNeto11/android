@@ -3,7 +3,9 @@
 **W4 = CLOSED** (causa em código, corrigida em `658e5bb`; K-067 e checkpoint 12 de
 [pendencias-evolucao3.md](pendencias-evolucao3.md)). **W8 = OPEN**: depois do teste de vazamento real no android-09 o
 túnel não voltou. Este arquivo é o plano do diagnóstico; a evidência bruta do dia está nos checkpoints 10–12 daquele
-arquivo e não é repetida aqui. Nada do que está abaixo foi executado no aparelho: o experimento depende de autorização.
+arquivo e não é repetida aqui. Os §1–§12 são o plano de 01/10 (nada havia sido escrito no aparelho até então). **A Fase A1 foi
+executada em 01/10 às 16:39Z (§13): o gesto do tile isolado NÃO subiu o túnel no android-09.** A2 não rodou (regra do plano)
+e o W8 completo segue aberto.
 
 ## 1. O que aconteceu (UTC, `events`, `commands.result`, `backend.log`)
 
@@ -135,8 +137,8 @@ no servidor, sem tocar nos outros aparelhos, sem teste de vazamento, sem reiníc
   `force-stop` sob lockdown (H4 na condição real). Também não prova F9 (sem peer, a ausência de handshake é esperada) nem o
   boot com o convidado sem CPU (H9).
 - **Impacto:** o aparelho fica sem internet enquanto o `tun0` estiver no ar apontando para um servidor sem peer; desfaz-se
-  clicando o tile de novo ou parando o cliente. É conta zero (QA). Requer um acionador pontual **com flag** (`force-stop`,
-  `add-tile`, `click-tile`), que **não** existe: o coletor é só leitura.
+  clicando o tile de novo ou parando o cliente. É conta zero (QA). Requer um acionador pontual **com flag**: é o
+  `scripts/diag-w8-tile.py` (`6696931`, seguro por padrão, só android-09); o coletor continua só leitura.
 
 ## 9. W8 completo: sequência mínima (se a Fase A não bastar)
 
@@ -168,3 +170,57 @@ do cliente do 09; handshake no boot 2; contadores de memória do notebook (SSH n
 `backend/app/devices/rede_convergencia.py` (`_conectar`, `_religar_sem_reinicio`, `_reiniciar_ou_desistir`),
 `backend/app/config.py` (`reinicios_max`, espera do tile), `backend/tests/test_rede_aplicacao.py`, `docs/conhecimento/aprendizados.md`.
 Só se o coletor externo não bastar para distinguir H3–H6 (decisão de 01/10: sem mudar produção para logar melhor antes).
+
+## 13. Resultado da Fase A1 (01/10/2026, 16:39Z, `real`)
+
+Execução: commit `6696931` (`scripts/diag-w8-tile.py --fase a1 --execute --instance android-09`), central `C:/git/android`, coletor
+`scripts/diag-w8.py coletar` em `data/diag-w8/20261001T163900Z/` (fora do Git; PID 45256→2144, 16:39:00Z–16:42:08Z, 187 amostras;
+SSH do notebook `SSH_UNAVAILABLE`, só CPU/RAM/swap do agente). Só o android-09; sem `assign`, peer, reinício, servidor WireGuard,
+IA paga nem conta real.
+
+**Linha de base (17 precondições lidas, todas ok):** online, `qa-user-09`, sem execução/comando aberto, adb `127.0.0.1:15555` como
+uid 2000, `always_on=null`, `lockdown=0`, sem `tun0`, sem VPN CONNECTED, sem linha `device_network`, sem peer, `worker-lan-01`
+conectado (estado `degraded` pelo relógio +6,6 s e `swap_used_pct` 81,6: só contexto). Cliente com processo vivo (pid 6512),
+`stopped=false`, tile **ausente** (Q0=0), SystemUI pid 2529, uptime 10739 s. A comparação com o force-stop era válida.
+
+**Gesto** (o `comando_de_religar` do produto, importado, trocando só o clique para capturar a saída; o teste confere): `Q0=0 P1=2529
+P2=2529 Q=1 T=0 CLICOU=1`. `click-tile`: **exit 0, stdout vazio, stderr vazio, 13 ms** no aparelho (5,46 s o gesto inteiro).
+Observação silenciosa de 37,4 s (9 leituras a cada ~4 s): `tun0` ausente em todas, pid do cliente (6512) e do SystemUI (2529) fixos;
+leitura final `stopped=false`, VPN não conectada, 0 regras de bloqueio.
+
+**O que o logcat completo do aparelho mostra** (UTC; `-b all -d` e `--pid=6512`, lidos logo depois, porque o filtro do coletor
+descarta as linhas do próprio app):
+
+| Hora | Evento |
+|---|---|
+| 16:39:33.207 | SystemUI registra o clique no `io.nekohasekai.sfa.bg.TileService` |
+| 16:39:33.252 | `Background started FGS: Allowed … .bg.ProxyService; code:OP_ACTIVATE_VPN` |
+| 16:39:33.540 / .567 | `am_foreground_service_start` do `ProxyService`; notificação do serviço postada |
+| 16:39:33.614 | o app pede rede ao `ConnectivityService` (LISTEN_FOR_BEST); nenhuma linha `Established by` |
+| 16:39:34.948 | `cache.db` do cliente escrito (o núcleo começou a inicializar) |
+| 16:39:35.108 | `avc: denied { bind } … netlink_route_socket` (bug b/155595000); antes, `denied { read } somaxconn` às 33.452 |
+| 16:39:35.336 | **`am_foreground_service_stop` do `ProxyService`, `STOP_FOREGROUND`, 1789 ms depois do início**; notificação cancelada 35.398 |
+
+Depois: `dumpsys activity services` sem `ProxyService`; `ACTIVATE_VPN: allow` (o consentimento do VPN está concedido, lido por
+`cmd appops`); sem ANR, sem crash (`CrashReport-Application.log` com 0 bytes e data de 10:41 -0300, anterior), sem notificação
+de alerta. O conteúdo de `crash_reports` não foi lido (pode ter chave); só listado.
+
+**Classificador** (`diag-w8.py classificar --bloqueio nao`, 16:39:20Z–16:40:12Z): `F6_TUN_NOT_CREATED`; F1–F5 `PASS`; F7–F9 não
+alcançados (F9 não se aplica: não há peer). **Ressalva:** o `PASS` de F5 casou `startForegroundCount:0` numa linha do
+ActivityManager, não um serviço de VPN estabelecido; a leitura certa da evidência é "o serviço subiu e parou sozinho em 1,8 s, sem
+`tun0`". O motivo do auto-stop não está no logcat (as mensagens do núcleo vão para o arquivo do app, ilegível sem root).
+
+**A2: `NOT_RUN`** (regra: A1 falhou em F5/F6 → sem force-stop, rollback, encerrar). **Rollback:** o `tun0` já estava ausente (nenhum
+clique de desligar nem force-stop); tile removido (Q0=0). Relido às 16:42Z: `always_on=null`, `lockdown=0`, sem `tun0`, sem VPN
+CONNECTED, tile ausente, cliente vivo (6512) e `stopped=false` como antes, android-09 `online`, sem linha de rede, sem peer, sem
+comando aberto. A última checagem de conectividade do central (`healthy`) é de 16:37:46Z, **anterior** ao A1; não houve uma nova.
+Nenhum reinício; outros aparelhos não tocados.
+
+**Diagnóstico: `TILE_BUG_CONFIRMED`, no sentido do quadro do plano** (o gesto isolado não sobe o túnel neste aparelho, sem force-stop,
+sem always-on e sem lockdown). Mais preciso do que o rótulo: o **clique chega** (F3), o `ProxyService` do cliente **sobe e se
+desliga em 1,8 s** sem criar o `tun0` (o modo "serviço que sobe e para" do P16/H5), **sem** o force-stop (H4 fora como causa
+única), **sem** o SystemUI reiniciar (H1) e com o tile na barra (H2). Fora do alcance desta execução: (a) por que o serviço para
+(sem log do núcleo); (b) se a falta de peer no servidor, ou o perfil que ficou no app depois do rollback das 13:37Z, faz o cliente
+desistir (A1 foi sem peer por desenho; no W8 original havia peer); (c) um controle no android-05 (religou 5 de 5) para saber se o
+`netlink bind` negado também aparece ali. **W8 = OPEN.** Mudança de código do produto: não recomendada ainda
+(`rede_aplicacao.py`, `rede_convergencia.py`, `config.py` intocados).
