@@ -53,7 +53,7 @@ Atualizado a cada checkpoint. "Responsável": C = coordenador; A = agente delega
 | 29.6 | P1 | saída medida ≠ esperada vira `parcial` com o motivo | 29.2 integrado (`rede.py`) | A | **implantado**, `simulated`; o real é o 29.7 |
 | 29.7 | P1 | duas saídas distintas medidas | **dono**: 2 servidores e chaves | C | **adiado por decisão do dono** (30/09 ~18:15Z: "pode ser feita depois"); roteiro (bloco D3) e script prontos |
 | 29.8 | 25.7 | comando e leitura do firewall por porta, interface, origem, perfil | — | A | **implantado**, `simulated` + leitura `real` no central |
-| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | W0–W3 `real`; **W4 falhou** no android-09 (túnel não subiu e o adbd ficou offline; 2 reinícios pela rede); rollback 22:48Z; W5–W8 `not_run` |
+| 29.9 | 25.7, 25.9 | aparelho do notebook em `trafego_verificado`, com recuperação | **dono**: regra e DHCP; 29.8 | C | W0–W3 `real`; D1, D2 e D8 feitos; **W4 falhou e a causa segue sem medição** (a hipótese de memória caiu, K-067); plano de medição em [memoria-do-notebook.md](memoria-do-notebook.md) |
 | 29.10 | P15 | renderizador escolhido por medição, no AVD e pelo serviço | CI fora do ar (carga) | C | **feito**, `real`: E3 (`skiavk` refutado), E4 no central e no notebook (GPU do host pelo serviço: o Outlook abre e fica estável), E7 |
 | 29.11 | P15 | renderizador por aparelho e por worker, persistente | 29.10 | C/A | **implantado**, `real`: renderizador lido pela API; recusa real em 01/03/06 antes do reinício; parque ligado todo em `host` |
 | 29.12 | 23.2, 23.7, 23.8, 23.12 | Outlook promovido, distribuído e reconhecido | 29.11 | C/A | **feito**, `real`: promovido 21:42Z; `ready` em 01, 02, 03, 06, 07, 08, 10, 12; 05, 09, 13–15 instalam ao ligar |
@@ -197,7 +197,7 @@ afetados; o deploy não espera o CI e mantém ensaio e backup; o cron diário (0
 | D5 | ~~Recarga da conta Anthropic~~ **feita** em 30/09 (saldo estimado US$ 22,46); vale a autorização de 29/09 (até US$ 1,50, usados ~US$ 0,56) | — | — | — |
 | D6 | E-mail de teste com assunto inofensivo para a caixa da persona escolhida | conta do dono | 29.13 (C1) | 0 |
 | D7 | ~~Docker/WSL~~ **resolvido pelo CI**: o cron de 01/10 05:17Z roda a suíte em PostgreSQL | — | 29.14 | 0 |
-| D8 | Perfil Public do firewall do **notebook** está desligado e a Wi-Fi dele está no perfil Public (lido em 01/10). A única entrada de que o parque precisa é o SSH (22), já liberado por regra em qualquer perfil (`OpenSSH SSH Server (sshd)`). Ação do dono, num PowerShell de administrador NO NOTEBOOK: `Set-NetFirewallProfile -Profile Public -Enabled True`; desfazer: `Set-NetFirewallProfile -Profile Public -Enabled False` | notebook | segurança do notebook | 0 |
+| D8 | ~~Perfil Public do firewall do notebook desligado~~ **feito pelo dono em 01/10** (`Set-NetFirewallProfile -Profile Public -Enabled True` no notebook e no central); conferido por leitura: Public `Enabled=True` nos dois, regra UDP 51820 do central `liberado`, worker conectado | — | — | 0 |
 | D9 | **Decidido pelo dono em 30/09 (~17:00Z, transmitido pela sessão "Github")**: a alternativa conservadora. O `gpu_mode` de android-01, 03 e 06 (contas reais) **não muda**; a conta Outlook de cada persona (as mesmas contas do Instagram: Lucas, Bruno, André) roda num aparelho de QA com GPU do host. Consequências abaixo, em "D4, D6 e D9" | — | 29.12, 29.13 | 0 |
 
 ## Entregas prontas, à espera da ação do dono
@@ -393,7 +393,8 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   ligarem.
 - **Triagem das execuções paradas:** 17 de teste sem efeito externo canceladas (QA Messenger e leituras de 24/09 a
   28/09); 10 ficam para o dono decidir (mensagens a terceiros e o site da CETESB).
-- **W4 (29.9) bloqueado com a causa medida** (K-067): memória dos emuladores do notebook paginada com RAM livre.
+- **W4 (29.9) bloqueado:** a primeira leitura apontou memória paginada, mas a comparação com o central derrubou a
+  hipótese (K-067 reescrito); a causa segue sem medição e o plano está em [memoria-do-notebook.md](memoria-do-notebook.md).
 - **C1 no android-03 falhou:** o e-mail de teste enviado pela sessão "Github" (Outlook do André → Bruno, autorizado
   pelo dono) não estava na caixa do Bruno; a etapa de leitura esgotou o teto de 60 chamadas de IA duas vezes
   (~US$ 0,92). **A autorização paga de 29/09 (US$ 1,50) foi ultrapassada: ~US$ 1,86 no total.** Nada pago roda até o
@@ -402,7 +403,11 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 - **Limpeza (29.17):** 27 worktrees terminados removidos (os branches ficam; junções desfeitas só como atalho;
   `backend/.venv` e `frontend/node_modules` do central conferidos intactos). Ficam os das sessões em curso (`evo3`,
   `github`, `orq`, `ux-promocao`).
-- **D8:** comando exato para o dono religar o perfil Public do firewall do notebook (tabela de pedidos).
+- **D8 feito pelo dono** (Public religado no notebook e no central; conferido por leitura).
+- **Execuções antigas:** as 13 restantes (mensagens a terceiros, CETESB, planned) canceladas com a autorização do dono,
+  registradas em [execucoes-canceladas-20261001.md](execucoes-canceladas-20261001.md) para recriação.
+- **Correções:** aviso do renderizador com as duas causas (`4fb45d7`); recusa do "salvar login" pelo texto quando o
+  elemento não é clicável (`b665bb5`).
 
 ### Checkpoint 9 — 30/09 ~23:10Z — depois da janela: deploy, renderizador em todos, Outlook logado e C1
 

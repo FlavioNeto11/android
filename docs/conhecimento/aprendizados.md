@@ -1642,23 +1642,22 @@ volta em segundos, sem tocar em always-on nem em bloqueio.
 **Aplicabilidade.** Vigente para o cliente sing-box 1.14.2 em Android 14. A causa de fundo é CPU do convidado no boot:
 um host menos carregado falha menos. O gesto com um app em primeiro plano e nos aparelhos do notebook segue `not_run`.
 
-### K-067 — Notebook com RAM livre e emulador paginado: o convidado para de responder ao ADB
+### K-067 — Working set pequeno do emulador com WHPX não prova paginação do convidado
 
 **Data:** 01/10/2026 · **Área:** worker do notebook (`worker-lan-01`), rede por aparelho (29.9)
 
 **Sintoma.** No W4 (30/09 22:37–22:53Z) o android-09 subiu com o perfil VPN aplicado, o túnel não apareceu e o adbd do
 convidado ficou `offline` também no adb do próprio notebook; a rede pediu um segundo reinício. As instalações seguintes
-no notebook levaram mais de 7 min e a leitura depois de instalar excedeu 40 s (01/10, android-14 e 15).
+no notebook levaram mais de 7 min e uma leitura depois de instalar excedeu 40 s.
 
-**Medido (01/10 10:3xZ, só leitura).** 32,6 GB de RAM livre de 63,7 GB, e o arquivo de paginação com 30,4 GB usados de
-37,1 GB (pico no máximo alocado). Os três emuladores no ar tinham ~4 GB de memória privada e só 0,6–2,9 GB de working
-set: a memória do convidado estava paginada em disco com RAM sobrando. O log do servidor VPN do central não registrou
-par novo entre 22:35 e 22:53Z (o cliente nem chegou a tentar).
+**A armadilha.** A primeira leitura (01/10 10:3xZ) viu os `qemu-system` do notebook com ~4 GB privados e só 0,6–2,9 GB
+de working set, o arquivo de paginação com 30 GB usados e o pico no máximo alocado, e concluiu "convidado paginado".
+Comparado com o central (12:3xZ), a conclusão caiu: lá os emuladores funcionam e mostram o mesmo retrato (menos de 1 GB
+residente com ~3,7 GB privados). Com WHPX, a memória do convidado não aparece no working set do processo como se
+esperava. O que segue de pé: o arquivo de paginação do notebook bateu no máximo alocado (37 GB; o do central, 18 GB de
+pico), e `Pages/sec` estava em 1 no momento da leitura.
 
-**Leitura.** O defeito do W4 não é o desenho da rede remota (o perfil vai por `adb reverse`, o túnel é UDP direto ao
-`rede.servidor.endpoint_lan`): é o convidado sem memória residente — o mesmo efeito do convidado sem CPU do K-066,
-por outra porta. Por que o Windows apara o working set com RAM livre (sessão 0, prioridade de memória, compressão) é
-configuração do host do notebook e não foi tocada.
+**O que fazer.** Não tirar conclusão de memória pelo working set de um emulador com WHPX: medir `Pages/sec`, o
+compromisso contra o limite e o CPU do `qemu-system` DURANTE o defeito. O diagnóstico e o plano estão em
+`docs/handoffs/memoria-do-notebook.md`; a causa do W4 segue sem medição.
 
-**Aplicabilidade.** Antes de repetir o W4 ou de pôr mais aparelhos no notebook, medir o working set dos `qemu-system`
-e o arquivo de paginação. Ajuste no sistema do notebook é decisão do dono.
