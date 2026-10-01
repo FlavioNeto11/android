@@ -51,7 +51,7 @@ export function SaudeAmbiente() {
       trigger={
         <>
           <Icon size={14} aria-hidden />
-          {rotulo}
+<span className={styles.rotulo}>{rotulo}</span>
           {/* O espaço separa rótulo e selo no TEXTO do botão; entre itens flex ele não ocupa lugar na tela. */}
           {lista.length > 0 ? <>{' '}<span className={styles.contagem}>{lista.length}</span></> : null}
         </>
