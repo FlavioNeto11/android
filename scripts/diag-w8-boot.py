@@ -43,6 +43,7 @@ def _carregar(nome: str, arquivo: str):
 
 
 ui = _carregar("diag_w8_uistart_boot", "diag-w8-uistart.py")
+obs = _carregar("diag_w8_boot_obs", "diag-w8-boot-obs.py")                          # parsers puros do que o boot deixa registrado
 tile = ui.tile
 coletor = tile.coletor
 PACOTE, IID = tile.PACOTE, tile.IID
@@ -75,11 +76,34 @@ CMD_CARGA = ("rm -f " + PIDS_CARGA + "; for i in 1 2 3 4 5 6 7 8; do nohup sh -c
 CMD_SEM_CARGA = f"[ -f {PIDS_CARGA} ] && kill $(cat {PIDS_CARGA}) 2>/dev/null; rm -f {PIDS_CARGA}; echo SEM_CARGA=1"
 CMD_AMOSTRA = ("echo U=$(cut -d' ' -f1 /proc/uptime); echo B=$(getprop sys.boot_completed); "
                "echo T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); echo P=$(pidof " + PACOTE + "); "
-               "echo L=$(cut -d' ' -f1 /proc/loadavg)")
+               "echo L=$(cut -d' ' -f1 /proc/loadavg); "
+               # a ordem das redes vista do host, sem depender do logcat: IPv4 em wlan0 (Wi-Fi) e eth0 (celular do AVD)
+               "echo W=$(ip -o -4 addr show wlan0 2>/dev/null | grep -c inet); echo E=$(ip -o -4 addr show eth0 2>/dev/null | grep -c inet)")
+CMD_PACOTE = "dumpsys package " + PACOTE + " 2>/dev/null | grep -E 'User 0:.*stopped=' | head -1"   # `stopped`/`notLaunched`/`enabled` (leitura)
+CMD_RELOGIO = ("echo EPOCH=$(date +%s.%N); echo LOCAL=$(date '+%m-%d %H:%M:%S'); echo GMT=$(date +%z); "
+               "echo TZ=$(getprop persist.sys.timezone); echo UP=$(cut -d' ' -f1 /proc/uptime)")
 CMD_SERVICOS = ("echo S=$(dumpsys activity services " + PACOTE + " 2>/dev/null | grep -o '" + PACOTE +
                 "/[.]bg[.][A-Za-z]*' | sort -u | tr '\\n' ',')")
 OBSERVAR_S = 300.0                                                                # uptime do convidado até onde se observa
 LIMITE_DO_BOOT_S = 420.0                                                          # sem adb voltando até aqui: ensaio incerto
+
+
+# Tudo o que `capturar` lê do aparelho (SÓ leituras: o teste `test_a_captura_so_le` fecha o vocabulário).
+PEDIDOS_CAPTURA = {
+    "events": "logcat -b events -d -v threadtime", "main-system": "logcat -b main,system,crash -d -v threadtime",
+    "kernel": "logcat -b kernel -d -v threadtime", "buffers": "logcat -g",
+    "vpn": "dumpsys connectivity 2>/dev/null | grep -i -B1 -A3 'vpn' | head -120",
+    "servicos": f"dumpsys activity services {PACOTE}", "exit-info": f"dumpsys activity exit-info {PACOTE}",
+    # o que sobrevive ao reboot do AVD ou que o framework guarda além do logcat (leituras; sem root, sem o armazenamento do app)
+    "pacote": f"dumpsys package {PACOTE} 2>/dev/null | grep -E 'User 0:|versionCode|lastUpdateTime|firstInstallTime|pkgFlags|installerPackageName'",
+    "usagestats": f"dumpsys usagestats 2>/dev/null | grep -E 'package={PACOTE}' | grep -E 'FOREGROUND_SERVICE|SERVICE_|STANDBY' | tail -80",
+    "dropbox": ("for t in SYSTEM_BOOT data_app_anr data_app_crash system_app_anr system_app_crash; do "
+                "dumpsys dropbox --print $t 2>/dev/null | head -c 40000; done"),
+    "rede": "dumpsys connectivity 2>/dev/null | grep -E 'Active default network|NetworkAgentInfo' | cut -c1-360",
+    "ambiente": ("echo ANDROID=$(getprop ro.build.version.release); echo SDK=$(getprop ro.build.version.sdk); "
+                 "echo ALWAYSON=$(settings get secure always_on_vpn_app); echo LOCKDOWN=$(settings get secure always_on_vpn_lockdown); "
+                 "echo BOOTID=$(cat /proc/sys/kernel/random/boot_id)"),
+}
 
 
 def agora() -> float:
@@ -166,10 +190,19 @@ def preparar(amb: Ambiente, kind: str, reg: Any) -> dict[str, Any]:
     return p
 
 
+def _estado_pacote(amb: Ambiente, t: float, uptime: float | None) -> dict[str, Any]:
+    """Uma leitura do estado do pacote do cliente (`stopped`, `notLaunched`, `enabled`) com o instante, para ver o que o reboot preservou
+    e quando o sistema o limpou. Só leitura (`dumpsys package`)."""
+    rc, out, _ = amb.shell(CMD_PACOTE, 20)
+    d = obs.parse_pacote(out) if rc == 0 else {}
+    return {"t": iso(t), "u": uptime, **{k: d.get(k) for k in ("stopped", "not_launched", "enabled")}}
+
+
 def observar_boot(amb: Ambiente, run: Path, kind: str, uptime_antes: float, reg: Any) -> dict[str, Any]:
     """Depois do `restart`: espera o adb voltar COM uptime menor (boot novo), injeta a carga (os-starved), amostra o `tun0` até
     OBSERVAR_S de uptime e devolve os instantes (host) do primeiro adb, do `boot_completed` e do `tun0`."""
     r: dict[str, Any] = {"t_restart": iso(amb.agora())}
+    pacote: dict[str, Any] = {}
     t0 = amb.agora()
     amostras = run / f"boot-{kind}.amostras.jsonl"
     boot_novo = False
@@ -194,7 +227,10 @@ def observar_boot(amb: Ambiente, run: Path, kind: str, uptime_antes: float, reg:
                     carga_em = agora_h
                     r["carga"] = {"t": iso(agora_h), "rc": rc, "saida": out.strip()[:80]}
                     reg("carga", **r["carga"])
-            linha = {"t": iso(agora_h), "u": u, "boot": v.get("B"), "tun": v.get("T"), "pid": v.get("P"), "load": v.get("L")}
+            linha = {"t": iso(agora_h), "u": u, "boot": v.get("B"), "tun": v.get("T"), "pid": v.get("P"), "load": v.get("L"),
+                     "wlan0": v.get("W"), "eth0": v.get("E")}
+            if "primeiro_adb" not in pacote:
+                pacote["primeiro_adb"] = _estado_pacote(amb, agora_h, u)            # o `stopped` que o reboot preservou, antes do serviço
             if agora_h - ultimo_servico > 8.0:
                 s = lido(amb, CMD_SERVICOS, 25)
                 linha["servicos"] = (s or {}).get("S")
@@ -203,6 +239,7 @@ def observar_boot(amb: Ambiente, run: Path, kind: str, uptime_antes: float, reg:
             fh.flush()
             if v.get("B") == "1" and "t_boot_completed" not in r:
                 r["t_boot_completed"], r["uptime_no_boot_completed"] = iso(agora_h), u
+                pacote["boot_completed"] = _estado_pacote(amb, agora_h, u)
             if v.get("T") not in (None, "", "0") and "t_tun" not in r:
                 r["t_tun"], r["uptime_no_tun"] = iso(agora_h), u
             if carga_em is not None and u >= OBSERVAR_S - 40 and "carga_parada" not in r:
@@ -213,6 +250,12 @@ def observar_boot(amb: Ambiente, run: Path, kind: str, uptime_antes: float, reg:
             amb.dormir(2.0)
     r["boot_visto"] = boot_novo
     r["fim_observacao"] = iso(amb.agora())
+    if boot_novo:
+        pacote["fim"] = _estado_pacote(amb, amb.agora(), None)
+    r["pacote"] = pacote
+    vistas = [json.loads(x) for x in amostras.read_text(encoding="utf-8").splitlines() if x.strip()]
+    for chave, campo in (("t_wlan0", "wlan0"), ("t_eth0", "eth0")):                  # 1ª vez que cada rede tinha IPv4 (resolução ~2 s)
+        r[chave] = next((a["t"] for a in vistas if a.get(campo) not in (None, "", "0")), None)
     return r
 
 
@@ -220,18 +263,47 @@ def capturar(amb: Ambiente, run: Path, kind: str) -> dict[str, int]:
     """Os buffers do boot, lidos logo depois (o `-T` do coletor perde o começo): events, main+system+crash e kernel, mais o
     estado do framework (VPN, serviços, exit-info). Só texto de log; nada de segredo (o cliente não loga o perfil)."""
     tam: dict[str, int] = {}
-    pedidos = {
-        "events": "logcat -b events -d -v threadtime", "main-system": "logcat -b main,system,crash -d -v threadtime",
-        "kernel": "logcat -b kernel -d -v threadtime", "buffers": "logcat -g",
-        "vpn": "dumpsys connectivity 2>/dev/null | grep -i -B1 -A3 'vpn' | head -120",
-        "servicos": f"dumpsys activity services {PACOTE}", "exit-info": f"dumpsys activity exit-info {PACOTE}",
-        "relogio": "date '+%m-%d %H:%M:%S.%N'; cut -d' ' -f1 /proc/uptime",
-    }
-    for nome, cmd in pedidos.items():
+    for nome, cmd in PEDIDOS_CAPTURA.items():
         rc, out, err = amb.shell(cmd, 90)
         (run / f"boot-{kind}.{nome}.txt").write_text(out + ("\n[stderr] " + err if err.strip() else ""), encoding="utf-8")
         tam[nome] = len(out)
+    tam["relogio"] = capturar_relogio(amb, run, kind)
     return tam
+
+
+def capturar_relogio(amb: Ambiente, run: Path, kind: str) -> int:
+    """Relógio do convidado contra o do central, com o host dos DOIS lados da leitura (a incerteza é metade da ida e volta): o logcat do
+    convidado é hora local, e comparar convidado, central e worker depende deste deslocamento."""
+    h0 = amb.agora()
+    rc, out, _ = amb.shell(CMD_RELOGIO, 20)
+    h1 = amb.agora()
+    v = _pares(out) if rc == 0 else {}
+    if not v.get("EPOCH") or not v.get("GMT"):
+        (run / f"boot-{kind}.relogio.json").write_text(json.dumps({"erro": "leitura falhou", "rc": rc}), encoding="utf-8")
+        return 0
+    sinal = -1 if v["GMT"].startswith("-") else 1
+    gmtoff = sinal * (int(v["GMT"][1:3]) * 3600 + int(v["GMT"][3:5]) * 60)
+    j = {"host_antes": iso(h0), "host_depois": iso(h1), "epoch_aparelho": float(v["EPOCH"]), "local": v.get("LOCAL"), "gmtoff_s": gmtoff,
+         "tz": v.get("TZ"), "uptime_s": v.get("UP"), "ano": int(iso(h0)[:4]), "offset_s": round(float(v["EPOCH"]) - (h0 + h1) / 2.0, 3),
+         "incerteza_s": round((h1 - h0) / 2.0, 3)}
+    (run / f"boot-{kind}.relogio.json").write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
+    return len(json.dumps(j))
+
+
+def resumir_ensaio(run: Path, kind: str) -> dict[str, Any]:
+    """O resumo (assinatura, ordem de rede, ciclo do serviço, PID, pacote) de um ensaio capturado; grava `boot-<kind>.resumo.json`.
+    Melhor esforço: falha de parser nunca derruba o desfazer."""
+    try:
+        r = obs.resumir(run, kind)
+        pj = run / f"boot-{kind}.saida.json"
+        if pj.exists():                                                            # `pacote` medido DURANTE o boot (o dumpsys completo é do fim)
+            pk = (json.loads(pj.read_text(encoding="utf-8")).get("boot") or {}).get("pacote")
+            if pk:
+                r["pacote_no_boot"] = pk
+        (run / f"boot-{kind}.resumo.json").write_text(json.dumps(r, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        return {"codigo": r["assinatura"]["codigo"], "ordem_rede": r["rede"]["ordem"], "lacunas": r["lacunas"]}
+    except Exception as exc:  # noqa: BLE001
+        return {"erro": f"{type(exc).__name__}: {exc}"[:200]}
 
 
 def desfazer(amb: Ambiente, reg: Any) -> dict[str, Any]:
@@ -277,6 +349,7 @@ def rodar(amb: Ambiente, run: Path, kind: str, reg: Any) -> dict[str, Any]:
         r["boot"] = observar_boot(amb, run, kind, uptime_antes, reg)
         if r["boot"]["boot_visto"]:
             r["capturado"] = capturar(amb, run, kind)
+            r["resumo"] = resumir_ensaio(run, kind)
         else:
             r["parada"] = "BOOT_NAO_VISTO_ESTADO_INCERTO"
     except Exception as exc:  # noqa: BLE001 - o desfazer roda de qualquer jeito
@@ -290,6 +363,10 @@ def rodar(amb: Ambiente, run: Path, kind: str, reg: Any) -> dict[str, Any]:
 
 def plano(kind: str) -> dict[str, Any]:
     return {"instancia": IID, "ensaio": kind, "modo": "plano (nenhuma chamada)", "variaveis": ENSAIOS[kind],
+            "observacao": ["pacote (stopped) no 1º adb, no boot_completed e no fim", "PID e mudanças de PID", "wlan0/eth0 a cada ~2 s",
+                           "events: ciclo do serviço (proc_start, FGS start/stop com motivo, kill/anr/crash, notificação)",
+                           "main: ordem das redes, rede padrão, startAlwaysOnVpn", "exit-info, usagestats, dropbox", "relógio convidado x central",
+                           "resumo automático: assinatura TUN_OK/SILENT_STOP/ANR_OU_KILL/..."],
             "passos": ["gate (precondições do tile + conectividade healthy)", f"escrever: {CMD_ALWAYS_ON}; {CMD_LOCKDOWN_0}",
                        "os+receiver/os+stopped: UM toque no Start (VPN no ar antes do restart)", "os+stopped: am force-stop do cliente", "restart pela plataforma (boot a frio)",
                        "os-starved: laços de CPU no convidado desde o primeiro adb", "amostras do tun0 até 300 s de uptime",
@@ -298,7 +375,32 @@ def plano(kind: str) -> dict[str, Any]:
                                    "input tap <Start|Stop>", "POST /api/instances/android-09/actions/restart"]}
 
 
+def main_resumir(argv: list[str]) -> int:
+    """`resumir <pasta> [<ensaio> ...]`: OFFLINE (só lê arquivos já capturados; nenhum adb, nenhum central). Sem ensaio, usa todos os
+    `boot-*.saida.json` ou `boot-*.events.txt` da pasta. Imprime a tabela comparativa e grava `boot-<ensaio>.resumo.json`."""
+    ap = argparse.ArgumentParser(prog="diag-w8-boot.py resumir")
+    ap.add_argument("pasta")
+    ap.add_argument("ensaios", nargs="*")
+    a = ap.parse_args(argv)
+    pasta = Path(a.pasta)
+    ensaios = a.ensaios or sorted({f.name[len("boot-"):-len(".events.txt")] for f in pasta.glob("boot-*.events.txt")})
+    if not ensaios:
+        print("nada para resumir: sem boot-*.events.txt em", pasta, file=sys.stderr)
+        return 2
+    rs = []
+    for k in ensaios:
+        r = obs.resumir(pasta, k)
+        (pasta / f"boot-{k}.resumo.json").write_text(json.dumps(r, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        rs.append(r)
+    print(obs.tabela(rs))
+    return 0
+
+
 def main(argv: list[str] | None = None, amb: Ambiente | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "resumir":
+        return main_resumir(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ensaio", choices=sorted(ENSAIOS))
     ap.add_argument("--execute", action="store_true")
