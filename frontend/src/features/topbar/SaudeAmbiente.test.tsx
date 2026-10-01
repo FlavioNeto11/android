@@ -129,6 +129,15 @@ describe('SaudeAmbiente — semáforo', () => {
     expect(text(gatilho())).toBe('Ambiente OK');
   });
 
+  it('B8: com uma origem de pendências fora, o popover diz "2+" e que alguma origem não carregou, não "2"', async () => {
+    await montar({});
+    await act(async () => usePendenciasStore.setState({ falhou: true }));
+    const pop = await abrir();
+    expect(text(pop)).toContain('2+ pendências aguardando você (Alguma origem não carregou: o número pode ser maior.)');
+    expect(text(pop)).not.toContain('2 pendências aguardando você');
+    await act(async () => usePendenciasStore.setState({ falhou: false }));
+  });
+
   it('painel sem conexão com o central: Crítico', async () => {
     await montar({});
     await act(async () => useAppStore.getState().setConn({ status: 'disconnected' }));

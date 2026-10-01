@@ -14,12 +14,16 @@ import type { EntradaDoLivro } from '../aprendizado/model';
  * A contagem "Para aprovar" do menu (Aprendizado) sai desta mesma leitura: uma chamada a cada minuto, não duas. As
  * personas (`GET /personas`, a mesma leitura da tela Personas) trazem as sessões que pedem uma pessoa (RF-03).
  */
+export interface FalhasDeLeitura { aprendizado: boolean; aprovacoes: boolean; personas: boolean }
+
 interface PendenciasStore {
   aprendizado: EntradaDoLivro[] | null;
   aprovacoes: Approval[] | null;
   personas: PersonaDTO[] | null;
   /** A última leitura de alguma das fontes falhou: a lista pode estar incompleta. */
   falhou: boolean;
+  /** Qual fonte falhou na última leitura (B8, rodada 2): o número daquela origem vira "n+" ou "?" em vez de parecer certo. */
+  falhas: FalhasDeLeitura;
   atualizar: () => Promise<void>;
 }
 
@@ -30,15 +34,17 @@ export const usePendenciasStore = create<PendenciasStore>((set) => ({
   aprovacoes: null,
   personas: null,
   falhou: false,
+  falhas: { aprendizado: false, aprovacoes: false, personas: false },
   atualizar: () => {
     emVoo ??= (async () => {
       try {
         const [fila, aprovacoes, personas] = await Promise.allSettled([
           apiAprendizado.pendentes(), api.listApprovals('pending'), api.listPersonas(),
         ]);
-        const parcial: Partial<PendenciasStore> = {
-          falhou: fila.status === 'rejected' || aprovacoes.status === 'rejected' || personas.status === 'rejected',
+        const falhas: FalhasDeLeitura = {
+          aprendizado: fila.status === 'rejected', aprovacoes: aprovacoes.status === 'rejected', personas: personas.status === 'rejected',
         };
+        const parcial: Partial<PendenciasStore> = { falhou: falhas.aprendizado || falhas.aprovacoes || falhas.personas, falhas };
         if (fila.status === 'fulfilled' && Array.isArray(fila.value?.itens)) {
           parcial.aprendizado = fila.value.itens;
           // O selo do Aprendizado no menu e a caixa leem a mesma fila.

@@ -12,6 +12,7 @@ import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
 import { DIAS_PARA_ANTIGA, ROTULO_DA_ORIGEM, ehAntiga, type OrigemDaPendencia, type Pendencia } from './modelo';
+import { numeroExibido, origemFalhou } from './exibicao';
 import { usePendenciasStore } from './store';
 import { usePendencias } from './usePendencias';
 import styles from './Pendencias.module.css';
@@ -36,7 +37,7 @@ export function PendenciasPage() {
     const p = id ? pessoas?.find((x) => x.id === id) : null;
     return p ? nomeDe(p) : null;
   }, [pessoas]);
-  const { itens, total, carregado, falhou } = usePendencias(nomeDaPersona);
+  const { itens, total, carregado, falhou, falhas } = usePendencias(nomeDaPersona);
   const filtro = ehOrigem(origemDoLink) ? origemDoLink : null;
 
   useEffect(() => {
@@ -66,12 +67,12 @@ export function PendenciasPage() {
       <div className={styles.chips} role="radiogroup" aria-label="Filtrar por origem">
         <button type="button" role="radio" aria-checked={!filtro} className={cx(styles.chip, !filtro && styles.chipOn)}
                 onClick={() => trocarQuery({ origem: undefined })}>
-          Todas ({total})
+          Todas ({numeroExibido(total, falhou)})
         </button>
         {ORIGENS.map((o) => (
           <button key={o} type="button" role="radio" aria-checked={filtro === o}
                   className={cx(styles.chip, filtro === o && styles.chipOn)} onClick={() => trocarQuery({ origem: o })}>
-            {ROTULO_DA_ORIGEM[o]} ({contagem[o]})
+            {ROTULO_DA_ORIGEM[o]} ({numeroExibido(contagem[o], origemFalhou(o, falhas))})
           </button>
         ))}
       </div>

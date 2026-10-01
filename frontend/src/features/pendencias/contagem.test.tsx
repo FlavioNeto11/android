@@ -8,7 +8,7 @@ import { initialDataState } from '../../store/reducer';
 import { useSessionStore } from '../../store/session';
 import { useUiStore } from '../../store/ui';
 import { makePersona, makeRun, makeSession, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { ParaAprovarTab } from '../aprendizado/ParaAprovarTab';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import type { EntradaDoLivro } from '../aprendizado/model';
@@ -110,7 +110,8 @@ beforeEach(() => {
   useAppStore.setState({
     ...initialDataState, hydrated: true, health: snap.health, settings: snap.settings, runs: [EXECUCAO_PARADA, EXECUCAO_OK],
   });
-  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false });
+  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false,
+                               falhas: { aprendizado: false, aprovacoes: false, personas: false } });
   useContagemDoAprendizado.setState({ pendentes: null });
   useSessionStore.setState({ operator: 'ana' });
   useUiStore.getState().navegar({ tela: 'pendencias' }, 'replace');
@@ -153,6 +154,40 @@ describe('o mesmo número em três lugares', () => {
     expect(container.querySelectorAll('li[data-origem]')).toHaveLength(0);
     expect(text(chipDoTopo() as HTMLElement)).toBe('0aguardando você');
     expect(seloDoMenu()?.getAttribute('aria-label')).toBe('Pendências');
+  });
+});
+
+describe('B8: uma origem que não carregou não pode parecer número', () => {
+  it('leitura do Aprendizado falha: topo, menu e chips mostram o piso ("3+") e o aviso, não "3" nem "0"', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => apiError(500, 'internal', 'falhou'));
+    backend.on('GET', /^\/api\/approvals/, () => json([APROVACAO('a1')]));
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Ana Lima'), PRESA, PRONTA]));
+    await act(async () => { root.render(<><MenuLateral /><TopBar /><PendenciasPage /></>); });
+    await waitFor(() => expect(container.querySelectorAll('li[data-origem]')).toHaveLength(3));
+    // Topo: o valor é "3+", com o motivo para quem não vê o "+".
+    await waitFor(() => expect(text(chipDoTopo() as HTMLElement)).toContain('3+aguardando você'));
+    expect(text(chipDoTopo() as HTMLElement)).toContain('Alguma origem não carregou');
+    // Menu: o nome COMEÇA pelo texto visível e diz o motivo; o selo é "3+".
+    const item = seloDoMenu() as HTMLElement;
+    expect(item.getAttribute('aria-label')).toBe('Pendências, 3 ou mais aguardando você; alguma origem não carregou');
+    expect(item.textContent).toBe('Pendências 3+');
+    // Caixa: a origem que falhou diz "?" (não há número a mostrar), as outras seguem exatas e o total é um piso.
+    const chips = text(container.querySelector('[role="radiogroup"]') as HTMLElement);
+    expect(chips).toContain('Todas (3+)');
+    expect(chips).toContain('Aprendizado (?)');
+    expect(chips).toContain('Persona (1)');
+    expect(text(container)).toContain('Não foi possível ler todas as origens agora');
+  });
+
+  it('com todas as leituras certas nada muda: o número sai sem "+" e sem aviso', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [ITEM('1')], total: 1 }));
+    backend.on('GET', /^\/api\/approvals/, () => json([APROVACAO('a1')]));
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Ana Lima'), PRESA]));
+    await act(async () => { root.render(<><MenuLateral /><TopBar /><PendenciasPage /></>); });
+    await waitFor(() => expect(container.querySelectorAll('li[data-origem]')).toHaveLength(4));
+    expect(text(chipDoTopo() as HTMLElement)).toBe('4aguardando você');
+    expect((seloDoMenu() as HTMLElement).getAttribute('aria-label')).toBe('Pendências, 4 aguardando você');
+    expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (4)');
   });
 });
 
