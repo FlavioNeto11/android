@@ -51,6 +51,11 @@ class ExternalContextPolicy:
         self.allow_public = allow_public
         self._sensitive = sensitive or default_matcher()
 
+    def fingerprint(self) -> str:
+        """Identidade da política vigente. Entra na chave do cache da resposta semântica: mudar o que pode sair da máquina
+        (classe do repositório, padrões sensíveis, provedor) nunca reaproveita uma resposta dada sob a política antiga."""
+        return f"{self.repository.value}/{self.locality.value}/{int(self.allow_public)}/{self._sensitive.fingerprint()}"
+
     @property
     def _sai_da_maquina(self) -> bool:
         return self.locality is not ProviderLocality.LOCAL

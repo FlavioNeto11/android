@@ -295,7 +295,8 @@ class SemanticRetriever:
 
     def _chave(self, request: RetrievalRequest, prov: SemanticProvider, etapa: str, extra: str) -> str:
         return self.cache.key(revision=request.revision, query=request.query, scope=tuple(request.scope),
-                              provider=prov.name, model=prov.model, stage=etapa, extra=extra)
+                              provider=prov.name, model=prov.model, stage=etapa,
+                              extra=f"{extra}|{self.policy.fingerprint()}")
 
     def _cache_get(self, chave: str) -> dict[str, Any] | None:
         try:
