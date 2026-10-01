@@ -53,7 +53,7 @@ describe('DeviceCard — hibernado', () => {
     expect(el.querySelector('img')).toBeNull();
     // sem tela ao vivo não há "abrir pela miniatura" nem idade de frame
     expect(allByRole('button', /na visão de foco$/, el)).toHaveLength(0);
-    expect(text(el)).not.toContain('Último frame');
+    expect(text(el)).not.toContain('Última imagem');
   });
 
   it('a ação principal é "Acordar" e envia POST …/actions/wake', async () => {
@@ -114,9 +114,63 @@ describe('DeviceCard — rodízio', () => {
     expect(text(el)).not.toContain('Sem tarefa em andamento');
   });
 
-  it('sem objetivo esperando vaga, a linha continua "Sem tarefa em andamento"', async () => {
+  it('sem objetivo esperando vaga, a linha "Sem tarefa em andamento" nem existe (ruído, tarefa 04)', async () => {
     const el = await renderCard(makeInstance(6, { state: 'hibernated' }));
-    expect(text(el)).toContain('Sem tarefa em andamento');
+    expect(text(el)).not.toContain('Sem tarefa em andamento');
+  });
+});
+
+// Tarefa 04 (revisão de UX): o cartão não repete o que está vazio, e o parado vira compacto.
+describe('DeviceCard — sem ruído e versão compacta', () => {
+  it('ninguém no controle e sem tarefa: nem "Controle: —" nem "Sem tarefa em andamento" nem "Desconhecido"', async () => {
+    const el = await renderCard(makeInstance(2, { state: 'online', control: 'none' }));
+    expect(text(el)).not.toContain('Controle');
+    expect(text(el)).not.toContain('Sem tarefa em andamento');
+    expect(text(el)).not.toContain('Desconhecido');
+  });
+
+  it('sem conta e sem app associado, as linhas somem', async () => {
+    const el = await renderCard(makeInstance(2, { state: 'online', account_label: null, app_id: null }));
+    expect(text(el)).not.toContain('Sem rótulo de conta');
+    expect(text(el)).not.toContain('Sem app associado');
+  });
+
+  it('com a IA no controle, o selo do controle continua', async () => {
+    const el = await renderCard(makeInstance(2, { state: 'online', control: 'ai' }));
+    expect(text(el)).toContain('Controle: IA');
+  });
+
+  it('evidência por seletor sai em português e guarda o original no title', async () => {
+    const cru = 'seletor id=com.pocqa.messenger:id/account_label|text=qa-user-10: 1 elemento(s)';
+    const el = await renderCard(makeInstance(10, { state: 'online', account_evidence: cru }));
+    expect(text(el)).toContain('Confirmado na tela: “qa-user-10”');
+    expect(text(el)).not.toContain('com.pocqa.messenger:id');
+    expect(el.querySelector(`[title="${cru}"]`)).toBeTruthy();
+  });
+
+  it('o compacto é cabeçalho + estado + conta + botão: sem miniatura e sem "Emulador desligado"', async () => {
+    await act(async () => {
+      root.render(<DeviceCard instance={makeInstance(7, { state: 'stopped' })} appName="QA Messenger" selected={false}
+                              focused={false} onToggle={noop} onRange={noop} onOpen={noop} compacto />);
+    });
+    expect(container.querySelector('article')?.getAttribute('aria-label')).toBe('Aparelho android-07 — Parada');
+    expect(text(container)).not.toContain('Emulador desligado');
+    expect(container.querySelector('img')).toBeNull();
+    expect(byRole('button', /^Iniciar$/, container)).toBeTruthy();
+    expect(text(container)).toContain('qa-user-7');
+  });
+
+  it('servidor fora do ar: o selo vira "Desconhecido" (ícone + texto) e a linha diz por quê, também no compacto', async () => {
+    const worker = { id: 'worker-lan-01', name: 'Notebook da LAN', appium_mode: 'local', max_slots: 6, verbs: [],
+                     state: 'online', observed_state: 'online', maintenance: false, connected: false, local: false,
+                     resources: {}, devices: [], enrolled_at: '2026-09-17T10:00:00Z' };
+    useAppStore.setState({ workers: { 'worker-lan-01': worker as never } });
+    await act(async () => {
+      root.render(<DeviceCard instance={makeInstance(13, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' })}
+                              appName={null} selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} compacto />);
+    });
+    expect(container.querySelector('article')?.getAttribute('aria-label')).toBe('Aparelho android-13 — Desconhecido');
+    expect(text(container)).toContain('Servidor Notebook da LAN fora do ar — estado desconhecido');
   });
 });
 
@@ -234,7 +288,7 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     // aparecer em nenhuma tela — e a dica do toast mandava olhar um histórico que a interface não exibia.
     useAppStore.setState({ lastCommand: { 'android-07': comando({}) as never } });
     const el = await renderCard(makeInstance(7, { state: 'online' }));
-    expect(text(el)).toContain('Desconhecido');
+    expect(text(el)).toContain('Sem resposta');
     expect(text(el)).toContain('Iniciar');
   });
 

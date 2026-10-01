@@ -2,6 +2,7 @@ import type {
   Action, AppConfig, Attempt, Command, DeviceAppState, EventRecord, Evidence, FrameInfo, Health, Instance,
   Metrics, Objective, RunDetail, RunSummary, Settings, Snapshot, Step, Worker,
 } from '../api/types';
+import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import { isRecord } from '../lib/format';
 
 /**
@@ -136,11 +137,21 @@ function sortInstances(instances: Record<string, Instance>): string[] {
     .map((i) => i.id);
 }
 
+/**
+ * Mais recentes primeiro, até `MAX_RUNS`. As execuções EM ANDAMENTO e as que esperam resposta (`needs_input`) nunca
+ * saem pelo teto, por mais antigas que sejam: o contador do topo, o chip "Em andamento" e a caixa de Pendências contam
+ * sobre o que o store guarda, e uma execução de semanas atrás caía fora das 100 mais recentes assim que Execuções
+ * carregava o histórico (o contador ia de 0 para 1 enquanto o chip dizia 3, RF-05 da revisão final; D1 para as
+ * `needs_input`). São poucas (27 no parque real); o teto existe para as concluídas, que se acumulam.
+ */
 function sortRuns(runs: RunSummary[]): RunSummary[] {
-  return runs
+  const ordenadas = runs
     .slice()
-    .sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : 0))
-    .slice(0, MAX_RUNS);
+    .sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : 0));
+  if (ordenadas.length <= MAX_RUNS) return ordenadas;
+  const cabem = ordenadas.slice(0, MAX_RUNS);
+  const foraDoTeto = ordenadas.slice(MAX_RUNS).filter((r) => grupoDoStatus(r.status) === 'andamento' || r.status === 'needs_input');
+  return foraDoTeto.length > 0 ? [...cabem, ...foraDoTeto] : cabem;
 }
 
 /** `deduplicated` só faz sentido na resposta de criação; não guardamos no estado. */

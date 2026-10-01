@@ -57,13 +57,22 @@ export function balanceTile(balances: AiBalance[] | null | undefined): DecisionT
   return { key: 'balance', title: 'Saldo de IA', value: valor, sub, tone, anchor: 'diag-custo' };
 }
 
-export function devicesTile(online: number, maxOnline: number | null | undefined, estimatedMax: number | null | undefined): DecisionTile {
-  const hasSlots = typeof maxOnline === 'number' && maxOnline > 0;
-  const tone: Tone = hasSlots && online >= maxOnline! ? 'warning' : 'info';
-  const value = `${online} online`;
-  const slotsTxt = hasSlots ? `${maxOnline} vaga${maxOnline === 1 ? '' : 's'}` : 'vagas não configuradas';
-  const estTxt = typeof estimatedMax === 'number' ? ` · até ${estimatedMax} estimado(s)` : '';
-  return { key: 'devices', title: 'Aparelhos', value, sub: `${slotsTxt}${estTxt}`, tone, anchor: 'diag-capacidade' };
+/**
+ * Os números vêm de `store/metricas` (os mesmos do cabeçalho). Antes o azulejo punha o online do parque inteiro
+ * contra `max_online_devices`, que é a vaga só do central: "7 online · 4 vagas" misturava duas coisas. As vagas
+ * são por servidor e a tela dona delas é a Infraestrutura; aqui só se avisa quando algum servidor passou da conta.
+ */
+export function devicesTile(online: number, total: number, unknown: number, serversOverCapacity: number,
+                            estimatedMax: number | null | undefined): DecisionTile {
+  const tone: Tone = serversOverCapacity > 0 || unknown > 0 ? 'warning' : 'info';
+  const value = `${online} de ${total} online`;
+  const partes = [
+    unknown > 0 ? `${unknown} em estado desconhecido` : null,
+    serversOverCapacity > 0 ? `${serversOverCapacity} servidor${serversOverCapacity === 1 ? '' : 'es'} acima das vagas` : null,
+    typeof estimatedMax === 'number' ? `cabem até ${estimatedMax} neste servidor (estimado)` : null,
+  ].filter(Boolean);
+  const sub = partes.length > 0 ? partes.join(' · ') : 'vagas por servidor em Infraestrutura';
+  return { key: 'devices', title: 'Aparelhos', value, sub, tone, anchor: 'diag-capacidade' };
 }
 
 export function machineTile(
@@ -102,7 +111,9 @@ export interface DecisionTilesInput {
   spendTodayUsd: number | null | undefined;
   dailyLimitUsd: number | null | undefined;
   onlineDevices: number;
-  maxOnlineDevices: number | null | undefined;
+  totalDevices: number;
+  unknownDevices: number;
+  serversOverCapacity: number;
   estimatedMaxDevices: number | null | undefined;
   cpuPercent: number | null | undefined;
   memAvailableGb: number | null | undefined;
@@ -119,7 +130,8 @@ export function buildDecisionTiles(input: DecisionTilesInput): DecisionTile[] {
     healthTile(input.problemsCount, input.healthStatus),
     costTile(input.spendTodayUsd, input.dailyLimitUsd),
     balanceTile(input.balances),
-    devicesTile(input.onlineDevices, input.maxOnlineDevices, input.estimatedMaxDevices),
+    devicesTile(input.onlineDevices, input.totalDevices, input.unknownDevices, input.serversOverCapacity,
+                input.estimatedMaxDevices),
     machineTile(input.cpuPercent, input.memAvailableGb, input.memTotalGb, input.diskFreeGb, input.diskTotalGb),
     accelerationTile(input.accelOk),
   ];

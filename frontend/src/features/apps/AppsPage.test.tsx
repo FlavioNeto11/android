@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AppDetail, AppOverview } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
+import { useUiStore } from '../../store/ui';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { AppsPage } from './AppsPage';
 
@@ -109,5 +110,51 @@ describe('Aplicativos — Por app', () => {
     for (const cru of ['session_ready', 'version_drift', 'downgrade_refused', 'quarantined']) {
       expect(text()).not.toContain(cru);
     }
+  });
+});
+
+// Revisão de UX, tarefa 06: "Proxy (legado)" deixou de ser aba de primeiro nível, e o vocabulário da loja ganhou
+// definição acessível por teclado.
+describe('Aplicativos — Proxy antigo e vocabulário da loja', () => {
+  afterEach(() => {
+    useUiStore.getState().navegar({ tela: 'painel' }, 'replace');
+  });
+
+  it('as abas são Loja, Por app, Versões e instalação e Rede (sem "Proxy (legado)")', async () => {
+    useUiStore.getState().navegar({ tela: 'aplicativos' }, 'replace');
+    await act(async () => { root.render(<AppsPage />); });
+    const nomes = Array.from(container.querySelectorAll('[role="tab"]')).map((t) => (t.textContent ?? '').trim());
+    expect(nomes).toEqual(['Loja', 'Por app', 'Versões e instalação', 'Rede']);
+  });
+
+  it('a legenda explica "promovida", "pendente" e "fora do catálogo", e abre por teclado (<summary>)', async () => {
+    useUiStore.getState().navegar({ tela: 'aplicativos' }, 'replace');
+    await act(async () => { root.render(<AppsPage />); });
+    const resumo = Array.from(container.querySelectorAll('summary')).find((x) => /significam os selos/.test(x.textContent ?? ''));
+    expect(resumo).toBeTruthy();
+    const corpo = text(container);
+    for (const termo of ['Versão promovida', 'Sem versão promovida', 'Pendente', 'Fora do catálogo', 'Atualização para N']) {
+      expect(corpo).toContain(termo);
+    }
+  });
+
+  it('o link antigo #/aplicativos?aba=proxy abre a Rede com o trecho "descontinuado" já aberto', async () => {
+    useUiStore.getState().navegar({ tela: 'aplicativos', query: { aba: 'proxy' } }, 'replace');
+    await act(async () => { root.render(<AppsPage />); });
+    expect(byRole('tab', /^Rede/).getAttribute('aria-selected')).toBe('true');
+    const trecho = Array.from(container.querySelectorAll('details')).find((d) => /Proxy global \(antigo\)/.test(d.textContent ?? ''));
+    expect(trecho).toBeTruthy();
+    expect((trecho as HTMLDetailsElement).open).toBe(true);
+    expect(text(trecho as HTMLElement)).toContain('descontinuado');
+  });
+
+  it('o Termo da loja abre a definição por foco do teclado e fecha com Esc', async () => {
+    const { Termo } = await import('./glossario');
+    await act(async () => { root.render(<Termo termo="promovida">promovida</Termo>); });
+    const gatilho = container.querySelector('[tabindex="0"]') as HTMLElement;
+    await act(async () => { gatilho.focus(); });
+    await waitFor(() => expect(document.querySelector('[role="tooltip"]')?.textContent ?? '').toContain('escolhida como a oficial'));
+    await act(async () => { gatilho.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
   });
 });

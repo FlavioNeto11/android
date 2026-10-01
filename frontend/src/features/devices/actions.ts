@@ -295,14 +295,14 @@ export async function runBulkAction(ids: readonly string[], action: InstanceActi
     }
     if (rejected.length === 0) {
       // `info`, não `success`: neste instante só se sabe que foram aceitas.
-      toast({ tone: 'info', title: `${label}: ${plural(accepted.length, 'instância aceita', 'instâncias aceitas')}`,
+      toast({ tone: 'info', title: `${label}: ${plural(accepted.length, 'aparelho aceito', 'aparelhos aceitos')}`,
               hint: 'O desfecho de cada aparelho aparece à medida que for confirmado.' });
     } else {
       toast({
         tone: accepted.length > 0 ? 'warning' : 'danger',
-        title: `${label}: ${accepted.length} aceita(s), ${rejected.length} rejeitada(s)`,
+        title: `${label}: ${accepted.length} aceito(s), ${rejected.length} recusado(s)`,
         details: rejected.map((r) => `${r.id}: ${r.reason}`),
-        hint: 'Resolva o motivo indicado e repita a ação apenas nas instâncias rejeitadas.',
+        hint: 'Resolva o motivo indicado e repita a ação apenas nos aparelhos recusados.',
       });
     }
   } catch (e) {

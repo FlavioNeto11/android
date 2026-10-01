@@ -221,13 +221,13 @@ describe('FocusPanel — tela no ritmo da IA (r-20260928195344-02ee9e)', () => {
 
   it('sem a IA no controle, o mesmo frame de 10 s continua desatualizado', async () => {
     const el = await focoCom('none', 10);
-    expect(text(el)).toContain('Desatualizado (Sem frame novo)');
+    expect(text(el)).toContain('Desatualizado (Sem imagem nova)');
   });
 
   it('a IA sem olhar a tela além do prazo: desatualizado, com o motivo certo', async () => {
     const el = await focoCom('ai', 45);
     expect(text(el)).toContain('Desatualizado (IA sem olhar a tela)');
-    expect(text(el)).not.toContain('Sem frame novo');
+    expect(text(el)).not.toContain('Sem imagem nova');
   });
 });
 
@@ -343,7 +343,7 @@ function secao(el: HTMLElement, nome: string): HTMLElement {
 
 describe('FocusPanel — seções da coluna lateral', () => {
   afterEach(() => {
-    useUiStore.setState({ view: 'painel', personaRequest: null });
+    useUiStore.getState().navegar({ tela: 'painel', query: { foco: undefined } }, 'replace');
   });
 
   it('as seções vêm na ordem do desenho, com as de consulta longa no fim e recolhidas', async () => {
@@ -462,8 +462,9 @@ describe('FocusPanel — seções da coluna lateral', () => {
       return s;
     });
     await click(allByRole('button', 'Abrir persona', personas)[0] as HTMLElement);
-    expect(useUiStore.getState().view).toBe('perfis');
-    expect(useUiStore.getState().personaRequest?.id).toBe('ig-1');
+    expect(useUiStore.getState().view).toBe('personas');
+    // O link nomeia a pessoa; o Foco continua aberto (o `foco` vai junto).
+    expect(useUiStore.getState().rota.segmentos).toEqual(['ig-1']);
   });
 });
 

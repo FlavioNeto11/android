@@ -733,7 +733,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
                 <th scope="col">App e versão</th>
                 <th scope="col">Etapa</th>
                 <th scope="col">Versão</th>
-                <th scope="col">Status</th>
+                <th scope="col">Situação</th>
                 <th scope="col">Acertos / falhas</th>
                 <th scope="col">Modo sombra</th>
                 <th scope="col">Ações</th>

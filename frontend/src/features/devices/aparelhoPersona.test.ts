@@ -49,7 +49,7 @@ describe('selo da tela: stale não é offline', () => {
                  consecutive_capture_failures: 0 };
   it('sem frame novo com aparelho online não fala em offline', () => {
     const l = streamLabel(inst({ ...base, status: 'stale' }), true);
-    expect(l?.title).toBe('Sem frame novo');
+    expect(l?.title).toBe('Sem imagem nova');
     expect(l?.hint).toContain('não é');
   });
   it('erro de captura e servidor fora têm selo próprio', () => {
@@ -72,7 +72,7 @@ describe('selo da tela: stale não é offline', () => {
                        true)?.title).toBe('Captura falhando');
     expect(streamLabel({ ...inst({ ...base, status: 'worker_offline' }), control: 'ai' }, true)?.title)
       .toBe('Servidor desconectado');
-    expect(streamLabel({ ...inst({ ...base, status: 'stale' }), control: 'none' }, true)?.title).toBe('Sem frame novo');
+    expect(streamLabel({ ...inst({ ...base, status: 'stale' }), control: 'none' }, true)?.title).toBe('Sem imagem nova');
   });
 });
 

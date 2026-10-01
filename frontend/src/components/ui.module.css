@@ -31,10 +31,12 @@
 .btn:focus-visible { border-radius: var(--radius-md); }
 .btn svg { flex: none; }
 
-.btnSm { height: 26px; padding: 0 9px; font-size: var(--fs-sm); border-radius: var(--radius-sm); gap: 5px; }
+.btnSm { height: var(--hit-min); padding: 0 10px; font-size: var(--fs-sm); border-radius: var(--radius-sm); gap: 5px; }
 .btnLg { height: 38px; padding: 0 18px; font-size: var(--fs-lg); }
 .btnIconOnly { padding: 0; width: 32px; }
-.btnIconOnly.btnSm { width: 26px; }
+/* Dentro do Tooltip (`> * { flex: 1 1 auto; min-width: 0 }`) o botão só-ícone encolhia para 28 px: a regra com duas classes vence. */
+.btn.btnIconOnly { min-width: var(--hit-min); flex: none; }
+.btnIconOnly.btnSm { width: var(--hit-min); }
 .btnBlock { width: 100%; }
 
 .btnPrimary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); font-weight: 600; }
@@ -167,7 +169,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  min-height: var(--hit-min);
+  padding: 6px 10px;
   color: var(--text-2);
   font-size: var(--fs-sm);
   font-weight: 500;
@@ -224,7 +227,7 @@
 .select {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-1);
@@ -233,7 +236,7 @@
 .input,
 .select { height: 32px; padding: 0 10px; }
 .textarea { padding: 9px 11px; line-height: 1.5; resize: vertical; min-height: 64px; }
-.inputSm { height: 26px; padding: 0 8px; font-size: var(--fs-sm); border-radius: var(--radius-sm); }
+.inputSm { height: var(--hit-min); padding: 0 8px; font-size: var(--fs-sm); border-radius: var(--radius-sm); }
 .input::placeholder,
 .textarea::placeholder { color: var(--text-3); opacity: 0.85; }
 .input:hover,
@@ -258,14 +261,15 @@
 
 /* ---------- Checkbox ---------- */
 .checkbox { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-.checkboxInput { position: absolute; opacity: 0; width: 18px; height: 18px; margin: 0; cursor: pointer; }
+/* A caixa desenhada tem 18 px; o <input> invisível ocupa 32 x 32 centrado nela, que é a área real do clique. */
+.checkboxInput { position: absolute; opacity: 0; left: -7px; top: 50%; width: var(--hit-min); height: var(--hit-min); margin: -16px 0 0; cursor: pointer; }
 .checkboxBox {
   display: grid;
   place-items: center;
   flex: none;
   width: 18px;
   height: 18px;
-  border: 1.5px solid var(--border-3);
+  border: 1.5px solid var(--control-border);
   border-radius: 5px;
   background: var(--surface-2);
   color: transparent;
@@ -283,6 +287,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: var(--hit-min);
   padding: 2px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -298,7 +303,7 @@
   flex: none;
   width: 32px;
   height: 18px;
-  border: 1.5px solid var(--border-3);
+  border: 1.5px solid var(--control-border);
   border-radius: var(--radius-pill);
   background: var(--surface-2);
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
@@ -420,8 +425,8 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
-  padding: 0 10px;
+  height: var(--hit-min);
+  padding: 0 12px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius-pill);
   background: transparent;

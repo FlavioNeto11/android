@@ -13,7 +13,7 @@ import { CommandPanel } from './CommandPanel';
 /**
  * Modo Automático (ADR-050): é o padrão; Planejar/Executar mostram antes "Quem faz e onde" (com o motivo de cada
  * persona, aparelho e servidor), e só a confirmação cria a execução, ecoando os alvos. Alerta de conduta não deixa
- * confirmar. Os modos manuais ficam atrás de "escolher manualmente". Prova `simulated` (backend falso).
+ * confirmar. Os modos manuais ficam atrás do controle "Automático | Manual". Prova `simulated` (backend falso).
  */
 let root: Root;
 let container: HTMLElement;
@@ -60,7 +60,7 @@ const campo = () => byRole('textbox', 'Comando em linguagem natural') as HTMLTex
 describe('Modo Automático', () => {
   it('é o padrão: sem aparelho marcado, Executar mostra quem faz e onde, e só a confirmação cria a execução', async () => {
     expect(byRole('button', /Automático/).getAttribute('aria-pressed')).toBe('true');
-    expect(text(container)).toContain('escolher manualmente');
+    expect(byRole('button', /^Manual/).getAttribute('aria-pressed')).toBe('false');
     await setValue(campo(), 'responda à tia sobre a missa de domingo');
     await click(byRole('button', /^Executar/));
     await waitFor(() => expect(text(container)).toContain('católica devota, fala de fé com naturalidade'));
@@ -104,6 +104,6 @@ describe('Modo Automático', () => {
     await click(byRole('button', /^Executar/));
     await waitFor(() => expect(text(container)).toContain('Beatriz'));
     await click(byRole('button', /Beatriz/));
-    expect(useUiStore.getState().view).toBe('perfis');
+    expect(useUiStore.getState().view).toBe('personas');
   });
 });

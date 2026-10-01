@@ -20,7 +20,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { Tabs } from '../../components/Tabs';
 import { cx, formatGb, formatMb, formatPercent, plural } from '../../lib/format';
 import { SESSION_STATUS, metaOf, type Tone } from '../../lib/status';
-import { ageMs, formatAgo, formatClock, useNow } from '../../lib/time';
+import { ageMs, tempoRelativo, formatClock, useNow } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
@@ -28,8 +28,9 @@ import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
-  orphanInstances, renderizadorMeta, vagasOcupadas,
+  ocupacaoDoServidor, orphanInstances, renderizadorMeta,
 } from './infraState';
+import type { Ocupacao } from '../../store/metricas';
 import { CriarAparelhoDialog } from './CriarAparelho';
 import { recusaDaAposentadoria, type RecusaNaTela } from './provisionamento';
 import appStyles from '../../App.module.css';
@@ -117,7 +118,7 @@ export function InfraPage() {
         <div>
           <h1 className={appStyles.pageTitle}>Infraestrutura</h1>
           <p className={appStyles.pageLead}>
-            {plural(workers.length + 1, 'servidor', 'servidores')} — este e {plural(workers.length, 'worker', 'workers')}
+            {plural(workers.length + 1, 'servidor', 'servidores')} — este e {plural(workers.length, 'remoto', 'remotos')}
           </p>
         </div>
         <Button icon={Plus} loading={inscrevendo} onClick={() => void inscrever()}>Inscrever servidor</Button>
@@ -131,7 +132,7 @@ export function InfraPage() {
           // Sem este aviso, o aparelho ficaria sem ciclo de vida e ninguém saberia por quê.
         >
           {remotasSemWorker.map((i) => `${i.id} → ${i.worker_id}`).join(', ')}. Inscreva o servidor ou desamarre o
-          aparelho em Configuração → Instâncias.
+          aparelho em Configuração → Aparelhos e contas.
         </Banner>
       ) : null}
 
@@ -142,8 +143,8 @@ export function InfraPage() {
       {workers.length === 0 ? (
         <EmptyState
           icon={Server}
-          title="Nenhum servidor worker inscrito"
-          hint="Um worker é uma máquina que hospeda aparelhos. Gere um token de inscrição e rode o agente nela; o passo a passo está em docs/worker.md."
+          title="Nenhum servidor remoto inscrito"
+          hint="Um servidor remoto é uma máquina que hospeda aparelhos. Gere um token de inscrição e rode o agente nela; o passo a passo está em docs/worker.md."
         />
       ) : (
         workers
@@ -197,8 +198,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
   const [criando, setCriando] = useState(false);
   // Ocupação conta o que ocupa RAM, não o que já respondeu ao ADB: `booting` come a vaga desde o primeiro
   // segundo, e contá-lo só depois fazia o painel prometer vaga que não existia.
-  const ocupadas = vagasOcupadas(instancias, worker?.devices);
-  const vagas = worker?.max_slots ?? instancias.length;
+  const vagas = ocupacaoDoServidor(instancias, worker);
   const livreGb = metrics?.mem_available_gb ?? null;
   const usadoPct = metrics?.mem_used_percent ?? null;
   const r = worker?.resources;
@@ -223,7 +223,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
       <CardBody>
         {/* Idade do dado também aqui: uma tela parada parecia atual porque o central nunca se declarava velho. */}
         <p className={cx(styles.dim, idadeDoDado !== null && idadeDoDado > 30_000 && styles.alerta)}>
-          Últimas métricas: {metrics ? formatAgo(metrics.ts, now) : 'ainda não chegaram'}
+          Últimas métricas: {metrics ? tempoRelativo(metrics.ts, now) : 'ainda não chegaram'}
           {health?.problems?.length ? ` · ${plural(health.problems.length, 'problema', 'problemas')} em Diagnóstico` : ''}
         </p>
         <div className={styles.recursos}>
@@ -233,9 +233,9 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
                    fracao={(usadoPct ?? 0) / 100} />
           <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r?.disk_free_gb ?? null)}
                    fracao={fracaoDeDisco(r?.disk_free_gb, r?.disk_total_gb)} />
-          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${vagas}`}
-                   fracao={vagas ? ocupadas / vagas : 0} />
+          <VagasOcupadas ocupacao={vagas} />
         </div>
+        <AvisoDeVagas ocupacao={vagas} />
         <CapacidadesDoServidor worker={worker} health={health} />
         <ListaDeAparelhos instancias={instancias} personas={dados.personas} onAposentado={onAposentado} />
         <AbasDoServidor id="central" instancias={instancias} dados={dados} now={now} />
@@ -274,8 +274,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
   const idade = ageMs(worker.last_seen_at, now);
   const velho = isStale(idade);
   const r = worker.resources;
-  const ocupadas = vagasOcupadas(instancias, worker.devices);
-  const ocupacao = worker.max_slots ? ocupadas / worker.max_slots : 0;
+  const vagas = ocupacaoDoServidor(instancias, worker);
 
   async function manutencao(on: boolean): Promise<void> {
     setOcupado(true);
@@ -383,7 +382,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
       <CardBody>
         {/* Idade do dado é informação de primeira classe: sem ela, uma tela velha parece atual. */}
         <p className={cx(styles.dim, velho && styles.alerta)}>
-          Último contato: {formatAgo(worker.last_seen_at, now)}
+          Último contato: {tempoRelativo(worker.last_seen_at, now)}
           {velho ? ' — os dados abaixo podem estar desatualizados' : ''}
           {worker.state_detail ? ` · ${worker.state_detail}` : ''}
         </p>
@@ -395,9 +394,9 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
                    fracao={r.ram_total_mb && r.ram_free_mb ? 1 - r.ram_free_mb / r.ram_total_mb : 0} />
           <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r.disk_free_gb ?? null)}
                    fracao={fracaoDeDisco(r.disk_free_gb, r.disk_total_gb)} />
-          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${worker.max_slots}`}
-                   fracao={ocupacao} />
+          <VagasOcupadas ocupacao={vagas} />
         </div>
+        <AvisoDeVagas ocupacao={vagas} />
         <CapacidadesDoServidor worker={worker} />
         <ListaDeAparelhos instancias={instancias} personas={dados.personas} doWorker={worker.devices} />
         <AparelhosParaAdotar worker={worker} />
@@ -421,8 +420,31 @@ function TunelDoWorker({ worker, now }: { worker: Worker; now: number }) {
     <p className={cx(styles.dim, fora && styles.alerta)}>
       <Cable size={14} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} />
       Túnel: {fora ? 'fora' : 'no ar'}
-      {worker.transport_since ? ` (${formatAgo(worker.transport_since, now)})` : ''}
+      {worker.transport_since ? ` (${tempoRelativo(worker.transport_since, now)})` : ''}
       {fora && worker.transport_detail ? ` — ${worker.transport_detail}` : ''}
+    </p>
+  );
+}
+
+/** Infraestrutura é a tela dona das vagas (revisão de UX, tarefa 02): a conta sai de `store/metricas`, a mesma do
+ *  semáforo do cabeçalho. Fora do ar, a ocupação lá não se sabe — "0 de 6" seria um número inventado. */
+function VagasOcupadas({ ocupacao: o }: { ocupacao: Ocupacao }) {
+  return (
+    <Recurso icon={Smartphone} rotulo="Vagas ocupadas"
+             valor={o.ocupadas === null ? `? de ${o.vagas}` : `${o.ocupadas} de ${o.vagas}`}
+             fracao={o.ocupadas !== null && o.vagas ? o.ocupadas / o.vagas : 0} />
+  );
+}
+
+/** "5 de 4" é real (o backend conta igual), não erro de cálculo: diz-se o que é e o que implica, sem adivinhar a causa. */
+function AvisoDeVagas({ ocupacao: o }: { ocupacao: Ocupacao }) {
+  if (o.ocupadas === null) return <p className={styles.dim}>Servidor fora do ar: a ocupação das vagas lá não é conhecida agora.</p>;
+  if (!o.acima) return null;
+  return (
+    <p className={styles.alerta} role="note">
+      Acima da capacidade: {o.ocupadas} aparelhos ligados para {plural(o.vagas, 'vaga', 'vagas')}. A vaga é o quanto
+      este servidor comporta ligado ao mesmo tempo; acima dela os aparelhos disputam a RAM e o próximo a ligar pode
+      ficar sem memória.
     </p>
   );
 }
@@ -692,7 +714,7 @@ function AbasDoServidor({ id, instancias, dados, now }: {
   if (instancias.length === 0) return null;
 
   const abas = [
-    { id: 'logs' as const, label: 'Logs', icon: ScrollText, count: logs.length },
+    { id: 'logs' as const, label: 'Registros', icon: ScrollText, count: logs.length },
     { id: 'evidencias' as const, label: 'Evidências', icon: Camera, count: evidencias.length },
     { id: 'fila' as const, label: 'Fila', icon: ListOrdered, count: fila.length, alert: fila.length > 0 },
     { id: 'perfis' as const, label: 'Personas e apps', icon: User, count: instancias.length },
@@ -769,7 +791,7 @@ function ListaDeEventos({ itens, now, vazio }: { itens: readonly EventRecord[]; 
     <ul className={styles.linhas}>
       {itens.map((e, n) => (
         <li key={e.id ?? `${e.ts}-${n}`} className={cx(styles.linha, e.level === 'error' && styles.alerta)}>
-          <span className={styles.dim} title={formatAgo(e.ts, now)}>{formatClock(e.ts)}</span>
+          <span className={styles.dim} title={tempoRelativo(e.ts, now)}>{formatClock(e.ts)}</span>
           <span className={styles.aparelhoId}>{e.instance_id}</span>
           <span className="truncate" title={e.message}>{e.message}</span>
         </li>

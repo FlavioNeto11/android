@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Geração em lote no "Nova persona a partir de um prompt" (v0.34): quantidade 1 continua igual; mais de uma chama
+ * Geração em lote no "Nova persona a partir de uma descrição" (v0.34): quantidade 1 continua igual; mais de uma chama
  * `POST /personas/generate/batch` com `create`, mostra o custo antes de confirmar, o progresso pelo evento (com a
  * releitura como rede de segurança) e os rascunhos com "Criar selecionadas". Backend falso: `simulated`.
  */
@@ -81,7 +81,7 @@ beforeEach(() => {
     instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
-  useUiStore.setState({ focusInstanceId: null, personaRequest: null });
+  useUiStore.getState().navegar({ tela: 'personas', query: { foco: undefined } }, 'replace');
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -112,7 +112,7 @@ describe('nova persona em lote', () => {
     backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
     backend.on('POST', /^\/api\/personas\/generate$/, () => json(RASCUNHO('Helena Prado')));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     expect((byRole('textbox', /^Quantidade/i) as HTMLInputElement).value).toBe('1');
     expect(text()).not.toContain('Custo estimado do lote');
@@ -135,7 +135,7 @@ describe('nova persona em lote', () => {
       item(2, 'failed', { error: 'O modelo repetiu o nome Marina Lopes, que já existe ou já saiu neste lote.' }),
     ], { create: true, done: true })));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('Provedor simulado: sem custo'));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professoras de Recife');
     await setValue(byRole('textbox', /^Cidade/i) as HTMLInputElement, 'Recife');
@@ -176,7 +176,7 @@ describe('nova persona em lote', () => {
       return json(criada, 201);
     });
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professoras');
     await setValue(byRole('textbox', /^Quantidade/i) as HTMLInputElement, '3');
@@ -216,7 +216,7 @@ describe('nova persona em lote', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     backend.on('GET', /^\/api\/ai$/, () => json(IA_SIMULADA));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professoras');
     await setValue(byRole('textbox', /^Quantidade/i) as HTMLInputElement, '11');
     await waitFor(() => text().includes('Use um número inteiro de 1 a 10.'));

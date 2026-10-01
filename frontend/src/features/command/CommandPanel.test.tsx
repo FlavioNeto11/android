@@ -292,3 +292,52 @@ describe('Comando "Distribuir entre servidores" (item 24.6)', () => {
     expect(text(container)).toContain(SENHA_NO_COMANDO);
   });
 });
+
+// Tarefa 03 (revisão de UX): o link "escolher manualmente" virou um controle segmentado de duas posições, e
+// Refinar → Planejar → Executar são três etapas em ordem, com o motivo de cada bloqueio NO botão.
+describe('Comando — controle segmentado e etapas', () => {
+  const pressionado = (nome: RegExp) => byRole('button', nome).getAttribute('aria-pressed');
+
+  it('Automático | Manual: duas posições, sempre uma marcada; os modos manuais só aparecem no Manual', async () => {
+    // o beforeEach deixou o modo manual "aparelhos marcados"
+    expect(pressionado(/^Manual/)).toBe('true');
+    expect(pressionado(/^Automático/)).toBe('false');
+    expect(pressionado(/^Aparelhos marcados/)).toBe('true');
+
+    await click(byRole('button', /^Automático/));
+    expect(pressionado(/^Automático/)).toBe('true');
+    expect(pressionado(/^Manual/)).toBe('false');
+    expect(allByRole('button', /^Aparelhos marcados/)).toHaveLength(0);
+    expect(text(container)).toContain('a IA escolhe quem faz');
+
+    // voltar ao Manual reabre o último jeito usado
+    await click(byRole('button', /^Manual/));
+    expect(pressionado(/^Manual/)).toBe('true');
+    expect(pressionado(/^Aparelhos marcados/)).toBe('true');
+    await click(byRole('button', /^Por persona/));
+    await click(byRole('button', /^Automático/));
+    await click(byRole('button', /^Manual/));
+    expect(pressionado(/^Por persona/)).toBe('true');
+  });
+
+  it('refinar, planejar e executar formam um grupo de etapas, nessa ordem', async () => {
+    const etapas = byRole('group', /^Etapas do comando/);
+    const nomes = allByRole('button', /./, etapas).map((b) => (b.textContent ?? '').split(' — ')[0]);
+    expect(nomes).toEqual(['Refinar com IA', 'Planejar', 'Executar']);
+  });
+
+  it('Executar indisponível: o motivo está no próprio botão, uma vez só, e não num aviso solto', async () => {
+    useUiStore.setState({ selectedIds: [] });
+    await flush(20);
+    const motivo = 'Selecione ao menos um aparelho na grade abaixo.';
+    const executar = byRole('button', /^Executar/);
+    expect(executar.getAttribute('aria-disabled')).toBe('true');
+    expect(executar.textContent).toContain(motivo);
+    // o Planejar explica pelo mesmo motivo, cada um no seu botão; nenhum aviso fora deles
+    expect(text(container).split(motivo).length - 1).toBe(2);
+    expect(container.querySelector('[class*="reason"]')).toBeNull();
+    // e ao focar, o tooltip mostra o motivo
+    await act(async () => executar.focus());
+    await waitFor(() => expect(allByRole('tooltip', motivo).length).toBeGreaterThan(0));
+  });
+});

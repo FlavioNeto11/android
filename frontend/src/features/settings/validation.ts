@@ -110,7 +110,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
   {
     id: 'capture',
     title: 'Captura de tela',
-    description: 'Frequência das imagens e quando um frame passa a ser “desatualizado”.',
+    description: 'Frequência das imagens e quando uma imagem passa a ser “desatualizada”.',
     choices: [
       {
         key: 'preview_mode',
@@ -126,7 +126,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     fields: [
       dec('capture_grid_interval_s', 'Intervalo na grade', 'segundos', '', 0.1, 120),
       dec('capture_focus_interval_s', 'Intervalo no aparelho em foco', 'segundos', '', 0.05, 60),
-      int('frame_max_age_ms', 'Idade máxima do frame', 'milissegundos', 'Acima disso o frame é marcado como desatualizado e entradas manuais são recusadas.', 100, 600_000),
+      int('frame_max_age_ms', 'Idade máxima da imagem', 'milissegundos', 'Acima disso a imagem é marcada como desatualizada e entradas manuais são recusadas.', 100, 600_000),
     ],
   },
   {

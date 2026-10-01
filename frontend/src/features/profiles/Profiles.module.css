@@ -4,6 +4,15 @@
 .title { margin: 0; font-size: var(--fs-xl); }
 .lead { margin: var(--sp-2) 0 0; color: var(--text-2); max-width: 70ch; }
 
+/* RF-31: link dentro de um parágrafo com 32 px de alvo sem mudar a linha onde mora: padding e margem negativa iguais
+   (a receita do `.linkish` da tarefa 07). Como `inline-flex`, a altura é a da linha mais os 18 px de padding. */
+.linkAlvo {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 4px;
+  margin: -9px -4px;
+}
+
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-4); }
 
 .rows { margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -148,7 +157,7 @@
 .filterBar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .filterTag {
   border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-2);
-  color: var(--text-2); font-size: var(--fs-sm); padding: 4px var(--sp-3); cursor: pointer;
+  color: var(--text-2); font-size: var(--fs-sm); min-height: var(--hit-min); padding: 4px var(--sp-3); cursor: pointer;
 }
 .filterTag:hover { background: var(--surface-3); }
 .filterTagActive { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); font-weight: 600; }
@@ -189,7 +198,7 @@
 .personality { font-size: var(--fs-lg); line-height: var(--lh-normal); margin: 0; }
 .editablePanel { border-top: 1px solid var(--border-1); margin-top: var(--sp-4); padding-top: var(--sp-4); }
 .disclosure {
-  display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none; min-height: var(--hit-min);
   font-size: var(--fs-sm); color: var(--text-2); user-select: none;
 }
 .disclosure::-webkit-details-marker { display: none; }
@@ -229,7 +238,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 .segmentedBtn {
   border: none; background: transparent; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600;
-  padding: 4px var(--sp-3); border-radius: var(--radius-pill); cursor: pointer; line-height: 1.4;
+  min-height: var(--hit-min); padding: 4px var(--sp-3); border-radius: var(--radius-pill); cursor: pointer; line-height: 1.4;
 }
 .segmentedBtn:hover:not(:disabled) { background: var(--surface-3); }
 .segmentedBtn:disabled { cursor: not-allowed; opacity: 0.6; }
@@ -295,7 +304,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .appSwitcher { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .appSwitcherLabel { font-size: var(--fs-sm); color: var(--text-2); margin-right: var(--sp-1); }
 .appChip {
-  display: inline-flex; align-items: center; gap: var(--sp-2); padding: 4px var(--sp-3);
+  display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--hit-min); padding: 4px var(--sp-3);
   border: 1px solid var(--border-1); border-radius: var(--radius-pill); background: var(--surface-2);
   color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
@@ -525,7 +534,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   border: 1px solid var(--info-border);
   border-radius: var(--radius-pill);
   color: var(--info-text);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   line-height: 15px;
 }
@@ -863,9 +872,64 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .selecaoTopo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); min-width: 0; font-size: var(--fs-sm); }
 .cartaoSelecionado { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border); }
 /* A caixa de seleção no canto do cartão, fora do cabeçalho; o cabeçalho reserva a faixa dela à direita. */
-.cartaoPessoa { position: relative; }
-.cartaoPessoa > header { padding-right: calc(var(--sp-5) + 28px); }
-.cartaoSelecao { position: absolute; top: calc(var(--sp-4) + 10px); right: var(--sp-4); z-index: 1; line-height: 0; }
+/* Cartão de layout fixo (tarefa UX 05): as mesmas linhas em todo cartão, uma linha de texto cada, e as ações presas
+   ao pé. A grade estica os cartões da mesma fileira; o conteúdo fixo iguala as fileiras entre si. */
+.cartaoPessoa { position: relative; display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.cartaoTopo {
+  display: flex; align-items: center; gap: var(--sp-3); min-width: 0;
+  padding: var(--sp-4) var(--sp-5) 0;
+}
+.cartaoIdentidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cartaoNome { margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); min-width: 0; }
+.cartaoHandle { color: var(--text-2); font-size: var(--fs-sm); }
+.cartaoCorpo { flex: 1; display: flex; flex-direction: column; min-width: 0; padding-top: var(--sp-3); }
+.cartaoCorpo .cardResumo { min-height: 1.5em; }
+/* O rótulo da linha cede espaço ao valor: com 7.5rem, "Bloqueada pela plataforma" não cabia num cartão de 320 px. */
+.cartaoCorpo .rowsCartao .row { grid-template-columns: 6.25rem minmax(0, 1fr); gap: var(--sp-2); }
+.cartaoAviso {
+  margin: var(--sp-2) 0 0; min-height: 1.5em; color: var(--warning-text); font-size: var(--fs-sm); min-width: 0;
+}
+.truncado { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linhaUnica { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.linhaUnica > * { flex: none; }
+.linhaUnica > .truncado { flex: 0 1 auto; }
+.seloEstado { display: inline-flex; min-width: 0; max-width: 100%; border-radius: var(--radius-pill); }
+.seloEstado > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cartaoCorpo .actions { margin-top: auto; padding-top: var(--sp-4); align-items: center; }
+.actionsFim { margin-left: auto; }
+
+/* Menu "⋯": as ações que não são "Abrir". O vermelho de Remover mora só aqui dentro. */
+.menuGatilho {
+  display: inline-flex; align-items: center; justify-content: center; width: var(--hit-min); height: var(--hit-min);
+  border: 1px solid var(--border-2); border-radius: var(--radius-md); background: transparent; color: var(--text-2);
+  cursor: pointer;
+}
+.menuGatilho:hover, .menuGatilho[aria-expanded="true"] { background: var(--surface-3); color: var(--text-1); }
+.menuAcoes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 12rem; }
+.menuItem {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: 8px 10px; border: 0;
+  border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font: inherit;
+  font-size: var(--fs-sm); text-align: left; cursor: pointer;
+}
+.menuItem:hover { background: var(--surface-3); }
+.menuItem:disabled { opacity: 0.6; cursor: default; }
+.menuItemPerigo { color: var(--danger-text); }
+.menuItemPerigo:hover { background: var(--danger-soft); }
+
+/* Visão em tabela das personas. Rola na horizontal dentro da própria caixa em tela estreita (a página não). */
+.tabelaHost { overflow-x: auto; border: 1px solid var(--border-1); border-radius: var(--radius-lg); background: var(--surface-1); }
+.tabela { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: auto; }
+.tabela th {
+  text-align: left; font-weight: 600; color: var(--text-2); padding: 10px 12px; border-bottom: 1px solid var(--border-2);
+  white-space: nowrap; background: var(--surface-2);
+}
+.tabela td { padding: 8px 12px; border-bottom: 1px solid var(--border-1); vertical-align: middle; max-width: 16rem; }
+.tabela tbody tr:last-child td { border-bottom: 0; }
+.tabela tbody tr:hover { background: var(--surface-2); }
+.tabela .num { text-align: right; font-variant-numeric: tabular-nums; }
+.linhaSelecionada { background: var(--accent-soft); }
+.tabelaPessoa { display: flex; align-items: center; gap: var(--sp-2); min-width: 10rem; font-weight: 600; }
+.tabelaAcoes { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
 .loteDock {
   position: sticky; bottom: 14px; z-index: var(--z-sticky);
   display: flex; justify-content: center; pointer-events: none; margin-top: 2px; min-width: 0;

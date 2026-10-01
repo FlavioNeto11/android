@@ -4,7 +4,7 @@
 .chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .chip {
   border: 1px solid var(--border-1); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-2);
-  padding: 4px var(--sp-3); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  min-height: var(--hit-min); padding: 4px var(--sp-3); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 .chip:hover, .chip:focus-visible { border-color: var(--accent); color: var(--text-1); }
 .chipOn { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }

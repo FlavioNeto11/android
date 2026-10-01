@@ -16,14 +16,14 @@ export function AbaExecucoes({ profile }: { profile: Pessoa }) {
   if (runs === null) return <Carregando />;
   if (runs.length === 0) {
     return (
-      <EmptyState icon={ListChecks} title="Sem execuções" hint="Comandos executados por este perfil aparecem aqui.">
+      <EmptyState icon={ListChecks} title="Sem execuções" hint="Comandos executados por esta persona aparecem aqui.">
         Nenhuma execução ainda.
       </EmptyState>
     );
   }
   return (
     <Card>
-      <CardHeader title="Execuções deste perfil" />
+      <CardHeader title="Execuções desta persona" />
       <CardBody>
         <ul className={styles.list}>
           {runs.map((r) => (

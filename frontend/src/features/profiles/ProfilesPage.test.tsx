@@ -49,6 +49,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
+  try { window.localStorage.clear(); } catch { /* sem armazenamento */ }
   const snap = makeSnapshot();
   useAppStore.setState({
     ...initialDataState,
@@ -59,7 +60,7 @@ beforeEach(() => {
     instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
-  useUiStore.setState({ focusInstanceId: null, personaRequest: null });
+  useUiStore.getState().navegar({ tela: 'personas', query: { foco: undefined } }, 'replace');
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -86,6 +87,8 @@ describe('remover persona', () => {
     await render();
     await waitFor(() => text().includes('mariana.costa91182'));
 
+    // Remover mora no menu "⋯" (tarefa UX 05), longe do "Abrir".
+    await click(byRole('button', /Mais ações de Mariana Costa/i));
     await click(byRole('button', /Remover persona/i));
     await waitFor(() => text().includes('as senhas guardadas no cofre vão junto'));
     await click(byRole('button', /^Voltar$/i, byRole('dialog', /Remover/)));
@@ -100,6 +103,8 @@ describe('remover persona', () => {
     await render();
     await waitFor(() => text().includes('mariana.costa91182'));
 
+    // Remover mora no menu "⋯" (tarefa UX 05), longe do "Abrir".
+    await click(byRole('button', /Mais ações de Mariana Costa/i));
     await click(byRole('button', /Remover persona/i));
     await waitFor(() => text().includes('as senhas guardadas no cofre vão junto'));
     await click(byRole('button', /^Remover$/i, byRole('dialog', /Remover/)));
@@ -165,21 +170,21 @@ describe('personas', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     await render();
     expect(text()).toContain('Nenhuma persona cadastrada');
-    expect(byRole('button', /Nova persona a partir de um prompt/i)).toBeTruthy();
+    expect(byRole('button', /Nova persona a partir de uma descrição/i)).toBeTruthy();
     expect(byRole('button', /Nova persona manual/i)).toBeTruthy();
   });
 
-  it('pedido de outra tela (openPersona) abre a persona pedida na guia pedida e é consumido', async () => {
+  it('pedido de outra tela (openPersona) vira o link da persona e abre a guia pedida', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa(), SEM_CONTA]));
     backend.on('GET', /\/accounts$/, () => json([]));
     backend.on('GET', /approvals/, () => json([]));
-    useUiStore.setState({ personaRequest: { id: 'ig-9', tab: 'contas', nonce: 1 } });
+    useUiStore.getState().openPersona('ig-9', 'contas');
     await act(async () => {
       root.render(<ProfilesPage />);
     });
     await waitFor(() => text().includes('Helena Prado') && text().includes('Personas'));
     await waitFor(() => byRole('tab', /Contas e acesso/i).getAttribute('aria-selected') === 'true');
-    expect(useUiStore.getState().personaRequest).toBeNull();
+    expect(window.location.hash).toBe('#/personas/ig-9/contas');
     expect(text()).toContain('ainda não tem @ de cadastro');
   });
 
@@ -187,7 +192,7 @@ describe('personas', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     backend.on('GET', /\/accounts$/, () => json([]));
     backend.on('GET', /approvals/, () => json([]));
-    useUiStore.setState({ personaRequest: { id: 'ig-1', tab: 'autenticacao', nonce: 2 } });
+    useUiStore.getState().openPersona('ig-1', 'autenticacao');
     await act(async () => {
       root.render(<ProfilesPage />);
     });
@@ -219,7 +224,7 @@ describe('nova persona', () => {
     backend.on('POST', /^\/api\/personas\/generate$/, () => json(RASCUNHO));
     backend.on('POST', /^\/api\/personas$/, (c) => json(pessoa({ ...(c.body as object), id: 'ig-9', username: null }), 201));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     expect(text()).toContain('claude-sonnet-x');
     expect(text()).toContain('≈ US$ 0,02–0,03 por persona');
@@ -260,7 +265,7 @@ describe('nova persona', () => {
       () => json({ ...RASCUNHO, biography: { ...RASCUNHO.biography, beliefs: crencas } }));
     backend.on('POST', /^\/api\/personas$/, (c) => json(pessoa({ ...(c.body as object), id: 'ig-9', username: null }), 201));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professora em Recife');
     await click(byRole('button', /Gerar rascunho/i));
@@ -279,7 +284,7 @@ describe('nova persona', () => {
     backend.on('POST', /^\/api\/personas\/generate$/,
                () => apiError(422, 'persona_draft_invalid', 'Rascunho recusado: idade abaixo de 18; voz incompleta (slang).'));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'uma adolescente');
     await click(byRole('button', /Gerar rascunho/i));
     await waitFor(() => text().includes('O rascunho veio fora das regras'));
@@ -292,7 +297,7 @@ describe('nova persona', () => {
     backend.on('GET', /^\/api\/ai$/, () => json({ ...IA_PAGA, simulated: true,
       roles: [{ ...IA_PAGA.roles[0], provider: 'simulated', kind: 'simulated', model: 'simulado' }] }));
     await render();
-    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('Provedor simulado: sem custo'));
     expect(text()).not.toContain('É uma chamada paga de IA');
   });
@@ -415,7 +420,7 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(text()).toContain('Grupos de acesso'));
     await waitFor(() => expect(text()).toContain('0 sozinho · 2 com aprovação · 0 só manual'));
     expect(text()).toContain('2 mudança(s) em relação ao padrão');
-    expect(text()).toContain('1 perfil(is)');
+    expect(text(document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement)).toContain('1 persona');
     expect(text()).toContain('nenhum — padrão do catálogo');      // o Bruno não tem grupo
   });
 
@@ -626,5 +631,129 @@ describe('grupos de acesso', () => {
     // o Instagram não foi editado: nenhum PUT o regrava (a mesma chave nele continua "com aprovação" no servidor)
     expect(backend.callsTo('PUT', /policy-groups\/grp-1$/).every((c) => c.query.get('package') !== 'com.instagram.android'))
       .toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------- busca, filtros e tabela (tarefa UX 05)
+describe('busca, filtros e visão em tabela', () => {
+  const LISTA = () => [
+    pessoa(),
+    pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'bruno.ferreira9267', display_name: 'Bruno Ferreira',
+             status: 'blocked', instance_id: null, locality: null }),
+    SEM_CONTA,
+  ];
+
+  it('o link da saúde do ambiente (`situacao=bloqueada`) abre a lista já filtrada, e "Limpar filtros" tira o filtro', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'bloqueada' } }, 'replace');
+    await render();
+    await waitFor(() => text().includes('bruno.ferreira9267'));
+    expect(text()).not.toContain('mariana.costa91182');
+    expect(text()).toContain('1 de 3 personas');
+    expect(byRole('button', /Bloqueadas pela plataforma/).getAttribute('aria-pressed')).toBe('true');
+    await click(byRole('button', /Limpar filtros/));
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(window.location.hash).toBe('#/personas');
+  });
+
+  it('buscar pelo @ grava `q` na URL substituindo a entrada (sem empilhar), e o vazio diz o filtro', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    await render();
+    await waitFor(() => text().includes('bruno.ferreira9267'));
+    const antes = window.history.length;
+    await setValue(byRole('textbox', /Buscar personas/) as HTMLInputElement, '@bruno');
+    await waitFor(() => !text().includes('mariana.costa91182'));
+    expect(text()).toContain('Bruno Ferreira');
+    expect(window.location.hash).toBe('#/personas?q=%40bruno');
+    expect(window.history.length).toBe(antes);
+    await setValue(byRole('textbox', /Buscar personas/) as HTMLInputElement, 'ninguém-assim');
+    await waitFor(() => text().includes('Nenhuma persona com "ninguém-assim" no nome ou no @.'));
+  });
+
+  it('filtros combinados persistem no link: recarregar (remontar) mostra o mesmo recorte', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'ativa', vinculo: 'com', ordem: 'situacao' } }, 'replace');
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(text()).not.toContain('Helena Prado');
+    expect(text()).not.toContain('bruno.ferreira9267');
+    expect((byRole('combobox', /Aparelho vinculado/) as HTMLSelectElement).value).toBe('com');
+    expect((byRole('combobox', /Ordenar personas/) as HTMLSelectElement).value).toBe('situacao');
+  });
+
+  it('alternar cartões → tabela não perde a seleção; a tabela tem as colunas pedidas', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    await render();
+    await waitFor(() => text().includes('bruno.ferreira9267'));
+    await click(byRole('checkbox', /^Selecionar Bruno Ferreira$/));
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    expect(window.location.hash).toBe('#/personas?visao=tabela');
+    const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent);
+    expect(cabecalhos).toEqual(['Seleção', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Grupo', 'Ações']);
+    expect((byRole('checkbox', /^Selecionar Bruno Ferreira$/) as HTMLInputElement).checked).toBe(true);
+    expect((byRole('checkbox', /^Selecionar Mariana Costa$/) as HTMLInputElement).checked).toBe(false);
+    await click(byRole('button', /^Cartões$/));
+    await waitFor(() => document.querySelector('table') === null);
+    expect((byRole('checkbox', /^Selecionar Bruno Ferreira$/) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('D3 (RF-08): o menu leva à tela limpa, mas a visão escolhida vira o padrão; o link com `visao` manda', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'ativa' } }, 'replace');
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    expect(window.localStorage.getItem('cda.personas.visao')).toBe('"tabela"');
+    // Pelo menu: `#/personas`, sem filtro e sem `visao`. O filtro some (é do link); a visão fica (é preferência).
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas' }));
+    expect(window.location.hash).toBe('#/personas');
+    await waitFor(() => text().includes('Helena Prado'));
+    expect(document.querySelector('table')).not.toBeNull();
+    // Um link colado com a outra visão abre nela, sem mudar a preferência.
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas', query: { visao: 'cards' } }, 'replace'));
+    await waitFor(() => document.querySelector('table') === null);
+    expect(window.localStorage.getItem('cda.personas.visao')).toBe('"tabela"');
+  });
+
+  it('"Selecionar todas" vale para o que o filtro mostra, e a seleção fora do filtro é avisada', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    await render();
+    await waitFor(() => text().includes('bruno.ferreira9267'));
+    await click(byRole('checkbox', /^Selecionar Mariana Costa$/));
+    await act(async () => { useUiStore.getState().trocarQuery({ situacao: 'bloqueada' }); });
+    await waitFor(() => !text().includes('mariana.costa91182'));
+    expect(text()).toContain('(1 fora do filtro atual)');
+    await click(byRole('checkbox', /Selecionar todas as 1 personas/));
+    expect(text()).toContain('2 de 3 para as ações em lote');
+  });
+
+  it('estado contraditório vira um só ("Ativa · app não instalado") e a ação só leva à guia Aparelhos', async () => {
+    const gate = { allowed: false, reason: null };
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({
+      session_actions: { phase: 'app_missing', detail: 'O Instagram não está instalado no android-02.',
+                         connect: gate, verify: gate, logout: gate, inspect_app: gate },
+    } as Partial<PersonaDTO>)]));
+    backend.on('GET', /\/accounts$/, () => json([]));
+    backend.on('GET', /approvals/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('Ativa · app não instalado'));
+    expect(text()).not.toMatch(/Ativaapp não instalado/);
+    const pedidosAntes = backend.calls.filter((c) => c.method !== 'GET').length;
+    await click(byRole('button', /Instalar app: abrir Mariana Costa/));
+    expect(window.location.hash).toBe('#/personas/ig-1/aparelhos');
+    // Nada foi instalado: só navegou.
+    expect(backend.calls.filter((c) => c.method !== 'GET').length).toBe(pedidosAntes);
+  });
+
+  it('"Marcar bloqueada" saiu do cartão e mora no menu "⋯"', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(() => byRole('button', /^Marcar bloqueada$/)).toThrow();
+    await click(byRole('button', /Mais ações de Mariana Costa/));
+    expect(byRole('button', /^Marcar bloqueada$/)).toBeTruthy();
+    expect(byRole('button', /Remover persona/)).toBeTruthy();
   });
 });

@@ -221,7 +221,7 @@ export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
     <Dialog
       open
       onClose={onClose}
-      title="Nova persona a partir de um prompt"
+      title="Nova persona a partir de uma descrição"
       icon={Wand2}
       size="md"
       footer={rascunho && revisao ? (

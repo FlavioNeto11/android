@@ -30,6 +30,19 @@ export function money(value: number | null | undefined, currency: string): strin
   return `${value < 0 ? '−' : ''}${symbol} ${txt}`;
 }
 
+/** Saldo sempre em US$ (a moeda do cabeçalho): a conta em outra moeda entra convertida pelo câmbio que o backend já
+ *  informa. `null` quando não há leitura. */
+export function balanceUsd(b: AiBalance): number | null {
+  if (b.estimated_balance === null) return null;
+  return emUsd(b);
+}
+
+/** "US$ 5,65" para o chip do cabeçalho; "?" sem leitura. */
+export function balanceUsdLabel(b: AiBalance): string {
+  const v = balanceUsd(b);
+  return v === null || !Number.isFinite(v) ? '?' : money(v, 'USD');
+}
+
 /** Nome curto para o chip do cabeçalho. */
 export function balanceShortName(account: string): string {
   return account === 'anthropic' ? 'Anthropic' : account === 'openai' ? 'OpenAI' : account === 'gemini' ? 'Gemini' : account;

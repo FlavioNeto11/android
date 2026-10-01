@@ -8,7 +8,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { FLOW_STATUS, metaOf } from '../../lib/status';
-import { formatAgo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { toastError } from '../../store/toasts';
 import { Carregando, Linha, useVersaoAoVivo } from './detalheComum';
 import type { Pessoa } from './pessoa';
@@ -39,7 +39,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
   const treinadas = dados.trained ?? [];
   const cartaoTreinadas = treinadas.length ? (
     <Card>
-      <CardHeader title="Ensinadas por você" subtitle="Habilidades do modo treinamento que valem para este perfil. Peça pelo comando." />
+      <CardHeader title="Ensinadas por você" subtitle="Habilidades do modo treinamento que valem para esta persona. Peça pelo comando." />
       <CardBody>
         <ul className={styles.list}>
           {treinadas.map((f) => (
@@ -57,8 +57,8 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
   if (dados.flows.length === 0 && totalEtapas === 0 && interacoes.length === 0) {
     if (cartaoTreinadas) return <div className={styles.grid}>{cartaoTreinadas}</div>;
     return (
-      <EmptyState icon={Sparkles} title="Nada mapeado ainda" hint="Cada execução concluída vira um fluxo; cada etapa que a IA resolveu vira receita. Aqui aparece o que este perfil já sabe fazer.">
-        Este perfil ainda não concluiu nenhuma execução.
+      <EmptyState icon={Sparkles} title="Nada mapeado ainda" hint="Cada execução concluída vira um fluxo; cada etapa que a IA resolveu vira receita. Aqui aparece o que esta persona já sabe fazer.">
+        Esta persona ainda não concluiu nenhuma execução.
       </EmptyState>
     );
   }
@@ -68,7 +68,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
     <div className={styles.grid}>
       {cartaoTreinadas}
       <Card>
-        <CardHeader title="Caminhos que este perfil já percorreu"
+        <CardHeader title="Caminhos que esta persona já percorreu"
                     subtitle="Cada bolinha é uma etapa: verde tem receita própria; a cor de quem falta muda com o quanto o fluxo ainda depende da IA." />
         <CardBody>
           {dados.flows.length === 0 ? <p className={styles.muted}>Nenhum fluxo concluído.</p> : (
@@ -82,7 +82,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
                       <strong>{f.name}</strong>
                       <Badge tone={custo.tone}>{custo.label}</Badge>
                       <span className={styles.muted}>
-                        {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? formatAgo(f.last_at, now) : '—'}
+                        {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? tempoRelativo(f.last_at, now) : '—'}
                       </span>
                     </div>
                     <div className={styles.skillDots} role="img"

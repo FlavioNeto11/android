@@ -22,6 +22,7 @@ import { EVENT_LEVEL, HEALTH_STATUS, metaOf } from '../../lib/status';
 import { isBoolean, loadJson, saveJson } from '../../lib/storage';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
+import { contarAparelhos, ocupacoesDoParque } from '../../store/metricas';
 import { toast, toastError } from '../../store/toasts';
 import { useUsage } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
@@ -152,7 +153,12 @@ export function DiagnosticsPage() {
   const extras = data ? Object.keys(data).filter((k) => !(KNOWN_KEYS as readonly string[]).includes(k)) : [];
   const problems = health?.problems ?? [];
 
-  const onlineDevices = instances.filter((i) => i.state === 'online').length;
+  // Mesma conta do cabeçalho e da grade (`store/metricas`): sem a loja, desconhecido à parte, vagas por servidor.
+  const workers = useAppStore((s) => s.workers);
+  const contagem = useMemo(() => contarAparelhos({ instances: instancesMap, instanceOrder }, workers),
+    [instancesMap, instanceOrder, workers]);
+  const acimaDasVagas = useMemo(() => ocupacoesDoParque(instances, workers).filter((o) => o.acima).length,
+    [instances, workers]);
   const spendToday = usage.report?.spend_today_usd ?? health?.ai?.spend_today_usd ?? null;
   const dailyLimit = settings?.ai_max_usd_per_day ?? null;
 
@@ -163,8 +169,10 @@ export function DiagnosticsPage() {
     problemsCount: problems.length,
     spendTodayUsd: spendToday,
     dailyLimitUsd: dailyLimit,
-    onlineDevices,
-    maxOnlineDevices: settings?.max_online_devices ?? null,
+    onlineDevices: contagem.online,
+    totalDevices: contagem.total,
+    unknownDevices: contagem.desconhecidos,
+    serversOverCapacity: acimaDasVagas,
     estimatedMaxDevices: data ? estimatedMaxDevices(data.capacity) : null,
     cpuPercent: metrics?.cpu_percent ?? null,
     memAvailableGb: metrics?.mem_available_gb ?? null,
@@ -173,7 +181,7 @@ export function DiagnosticsPage() {
     diskTotalGb: disk?.totalGb ?? null,
     accelOk,
     balances: health?.ai?.balances ?? null,
-  }), [health, problems.length, spendToday, dailyLimit, onlineDevices, settings, data, metrics, disk, accelOk]);
+  }), [health, problems.length, spendToday, dailyLimit, contagem, acimaDasVagas, data, metrics, disk, accelOk]);
 
   const filteredEvents = useMemo(() => {
     const list: EventRecord[] = eventLevel === 'all' ? recentEvents.slice() : recentEvents.filter((e) => e.level === eventLevel);
@@ -198,7 +206,7 @@ export function DiagnosticsPage() {
 
       {refreshing ? (
         <Banner tone="info" icon={Gauge} role="status" title="Refazendo o diagnóstico…">
-          Isto pode levar de alguns segundos a poucos minutos: o backend consulta as ferramentas e mede a capacidade da máquina. Os resultados anteriores continuam abaixo.
+          Isto pode levar de alguns segundos a poucos minutos: o servidor consulta as ferramentas e mede a capacidade da máquina. Os resultados anteriores continuam abaixo.
         </Banner>
       ) : null}
 
@@ -211,12 +219,12 @@ export function DiagnosticsPage() {
       <Card aria-label="Problemas" id="diag-problemas">
         <CardHeader
           title="Problemas"
-          subtitle="O que o backend encontrou de errado, e o que fazer a respeito."
+          subtitle="O que o servidor encontrou de errado, e o que fazer a respeito."
           actions={health ? <StatusBadge meta={metaOf(HEALTH_STATUS, health.status)} size="lg" /> : undefined}
         />
         <div className={styles.body}>
           {problems.length === 0 ? (
-            <p className={styles.meta}>Nenhum problema detectado pelo backend.</p>
+            <p className={styles.meta}>Nenhum problema detectado pelo servidor.</p>
           ) : (
             <div className={styles.problems}>
               {problems.map((p, i) => (
@@ -275,7 +283,7 @@ export function DiagnosticsPage() {
 
           {/* Detalhes técnicos (item 11.7-5): recolhidos por padrão, com sumário de âncoras acima. */}
           <Card aria-label="Detalhes técnicos">
-            <CardHeader title="Detalhes técnicos" subtitle="Máquina, aceleração, ferramentas, capacidade e outros dados enviados pelo backend — recolhidos por padrão." />
+            <CardHeader title="Detalhes técnicos" subtitle="Máquina, aceleração, ferramentas, capacidade e outros dados enviados pelo servidor — recolhidos por padrão." />
             <div className={styles.body}>
               <nav className={styles.anchorNav} aria-label="Ir para">
                 <button type="button" className={styles.anchorLink} onClick={() => jumpTo('diag-maquina')}>Máquina</button>
@@ -286,7 +294,7 @@ export function DiagnosticsPage() {
               </nav>
 
               <Disclosure id="diag-maquina" summary={<><Server size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Máquina</>} defaultOpen={openMachine} onToggle={setOpenMachine}>
-                {() => (data.host !== undefined ? <JsonTree value={data.host} labels={LABELS} /> : <p className={styles.meta}>O backend não informou dados do host.</p>)}
+                {() => (data.host !== undefined ? <JsonTree value={data.host} labels={LABELS} /> : <p className={styles.meta}>O servidor não informou dados da máquina.</p>)}
               </Disclosure>
 
               <Disclosure
@@ -298,7 +306,7 @@ export function DiagnosticsPage() {
               >
                 {() => (
                   <>
-                    {data.acceleration !== undefined ? <JsonTree value={data.acceleration} labels={LABELS} /> : <p className={styles.meta}>O backend não informou dados de aceleração.</p>}
+                    {data.acceleration !== undefined ? <JsonTree value={data.acceleration} labels={LABELS} /> : <p className={styles.meta}>O servidor não informou dados de aceleração.</p>}
                     {accelOk === false ? (
                       <Banner tone="warning" icon={TriangleAlert} compact>Sem aceleração de hardware os emuladores ficam lentos demais. Ative a virtualização na BIOS e o WHPX/Hyper-V (Windows) ou o hipervisor do emulador.</Banner>
                     ) : null}
@@ -343,7 +351,7 @@ export function DiagnosticsPage() {
                   ) : data.tools !== undefined ? (
                     <JsonTree value={data.tools} labels={LABELS} />
                   ) : (
-                    <p className={styles.meta}>O backend não informou a lista de ferramentas.</p>
+                    <p className={styles.meta}>O servidor não informou a lista de ferramentas.</p>
                   )
                 )}
               </Disclosure>

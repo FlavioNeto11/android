@@ -1,0 +1,121 @@
+Central de Aparelhos — Avaliação de UX/UI e Backlog
+Sep 30, 2026 · @Flavio Padilha Neto
+Resumo executivo
+O portal tem base sólida (identidade visual coerente em tema escuro, linguagem de domínio clara, proteções em ações destrutivas), mas quatro falhas impedem que ele pareça uma plataforma profissional: menu cortado, números que se contradizem, status de saúde enganoso e ausência de rotas por objeto.
+A avaliação cobriu as 8 telas (Painel, Personas, Aplicativos, Execuções, Aprendizado, Infraestrutura, Configuração, Diagnóstico), o drawer de foco de aparelho, o detalhe de persona e os popovers do topo. Testei 1920, 1440, 1280, 1024, 768 e 390 px, emulando as larguras em iframes. Nenhuma ação com efeito (Executar, Resetar dados, Instalar) foi disparada, e nem todas as sub-abas de Execuções, Configuração e Aprendizado foram abertas.
+Problemas críticos
+Quatro problemas afetam a confiança e a navegação em qualquer tela.
+Menu principal cortado, sem indicação de rolagem. Em 1440 px &quot;Infraestrutura&quot; aparece cortada e &quot;Configuração&quot; e &quot;Diagnóstico&quot; ficam invisíveis; em 1024 px &quot;Infraestrutura&quot; também está cortada; em 390 px somem 5 das 8 abas. Correção: sidebar lateral recolhível (melhor para uma plataforma que vai crescer) ou menu &quot;Mais&quot; abaixo de ~1500 px.
+Números que se contradizem. &quot;5/15 online&quot; e &quot;1 de 14 selecionados&quot; usam totais diferentes; o aria-label diz &quot;9 paradas&quot; e o texto &quot;10 paradas&quot;; a Infraestrutura mostra &quot;vagas ocupadas 5 de 4&quot;; &quot;bloqueadas&quot; mostrou 15 na tela principal e 5 no iframe, e o rótulo não diz o quê (personas? aparelhos?). Correção: fonte única de verdade e rótulo explícito e clicável (&quot;15 personas bloqueadas&quot; leva à lista filtrada).
+&quot;Ambiente OK&quot; mascara problemas reais. O Notebook da LAN está fora do ar, com 6 aparelhos em estado desconhecido, e o indicador segue verde. O estado global deve virar &quot;Atenção&quot; com o motivo.
+Sem deep link por objeto. Abrir uma persona não muda o hash (segue #/perfis): o Voltar do navegador sai da tela e o link não é compartilhável. O mesmo vale para abas internas, execuções e aparelhos. Correção: rotas como #/personas/lucas-almeida/memoria.
+Achados por tela
+Painel
+A barra flutuante &quot;Ação em N aparelho&quot; cobre os cards e, com o drawer aberto, repete os mesmos botões (Iniciar, Parar, Hibernar, Reiniciar, Instalar, Abrir, Resetar). Usar uma barra de seleção fixa no topo da grade ou apenas o drawer.
+O drawer comprime a página em vez de sobrepô-la; o preview do celular fica estreito e legendas truncam (&quot;Prévia suspensa — último frame há 1 min 1…&quot;).
+Ruído repetido em todos os cards: &quot;Sem tarefa em andamento&quot;, &quot;Controle: —&quot;, &quot;Desconhecido&quot;. Exibir apenas quando houver informação.
+Texto técnico cru na UI: app.distribute, seletor id=com.pocqa.messe…, &quot;observado&quot;. Traduzir (&quot;Distribuição de app — sem retorno há 6 dias&quot;) e deixar o detalhe sob &quot;ver detalhes&quot;.
+15 cards altos, a maioria &quot;Emulador desligado&quot;. Oferecer visualização em lista/tabela, agrupamento por servidor e recolher paradas.
+&quot;Automático / escolher manualmente&quot; é um link sublinhado pequeno; deveria ser um seletor segmentado.
+Executar desabilitado com o motivo em aviso laranja distante do botão.
+&quot;Refinar com IA&quot;, &quot;Planejar&quot; e &quot;Executar&quot; não deixam claro se são etapas ou alternativas.
+Personas
+Cards inconsistentes: alguns com foto, outros com iniciais; &quot;Ativa&quot; convive com &quot;app não instalado&quot; em vermelho; &quot;Bloqueada pela platafo…&quot; trunca; &quot;localidade não registrada&quot; se sobrepõe ao texto vizinho.
+Ações ambíguas: &quot;Marcar bloqueada&quot; ao lado da lixeira com peso visual parecido; &quot;Reativar&quot; e &quot;Abrir&quot; se misturam.
+Lista sem busca, filtros nem ordenação (14 personas hoje; não escala). Faltam filtro por situação e visão em tabela.
+Detalhe: foto, nome e handle aparecem 3 vezes seguidas; 11 abas numa faixa que rola sem indicação. Agrupar em 4 ou 5 seções. Decidir conscientemente a exibição de campos sensíveis (religião, política).
+Nomenclatura: menu diz &quot;Personas&quot;, a rota diz perfis, e há &quot;perfil&quot; em outros pontos. Escolher um termo.
+Aplicativos, Configuração e Infraestrutura
+Gestão de apps duplicada: Aplicativos e Configuração &gt; Aplicativos têm ambos &quot;Novo aplicativo&quot;. Consolidar em um lugar e deixar o outro com leitura e link.
+&quot;Proxy (legado)&quot; como aba principal. Ocultar ou marcar como descontinuado.
+Vocabulário de loja não explicado (&quot;promovida&quot;, &quot;fora do catálogo&quot;, &quot;pendente&quot;). Adicionar legenda ou tooltip e ação direta (&quot;Promover versão&quot;) nos estados vazios.
+Métricas repetidas no cabeçalho, no popover &quot;Ambiente OK&quot;, em Infraestrutura e em Diagnóstico (CPU, RAM, vagas, saúde, custos de IA). Definir a tela oficial de cada tema.
+Infraestrutura: linhas densas sem hierarquia servidor &gt; aparelho &gt; persona; as abas (Logs, Evidências, Fila, Personas e apps) ficam abaixo da dobra.
+Execuções e Aprendizado
+Lista de execuções estreita e truncada: todos os itens começam com &quot;No QA Messenger, leia o nome do…&quot;. Usar título curto, data e status.
+&quot;1 de 1 com sucesso comprovado&quot; ao lado de &quot;1 Sucesso&quot; não explica a diferença.
+7 abas no detalhe (Plano, Por aparelho, Textos, Linha do tempo, Evidências, Decisões, Relatório): resumo acima e Relatório como padrão.
+Aprendizado: abas do topo com o mesmo problema de rolagem escondida; aviso longo em laranja e estado vazio ocupam muito espaço; texto denso com jargão interno (&quot;rebaixar&quot;).
+Design visual, responsividade e fluxos
+Design visual
+Tipografia pequena: a maior parte do texto está entre 11,5 e 12,5 px, com pouca diferença entre título e corpo. Para uso prolongado, mínimo de 13 a 14 px.
+Contraste de textos secundários e badges parece baixo (cinza sobre grafite). Confirmar com ferramenta de acessibilidade; minha medição automática com badges translúcidos não é conclusiva.
+Alvos de clique pequenos: 78 botões e links abaixo de 32 px na tela principal, ruim em tablet e telas sensíveis ao toque.
+Barra de status do topo com muitos elementos de peso igual e moedas misturadas (US$ e R$ no popover da IA, com &quot;estimado&quot;).
+Estados vazios sem próxima ação sugerida.
+Responsividade por resolução
+Largura
+Resultado
+Problemas principais
+1920 px
+Funciona bem
+Sem largura máxima; dá para ter mais colunas
+1440 px
+Aceitável
+Menu excede o espaço (744 px de conteúdo em 701 px), Configuração e Diagnóstico ocultos
+1280 px
+Aceitável
+Menu cortado; ícones do menu somem
+1024 px
+Regular
+&quot;Infraestrutura&quot; cortada; botões da barra de ação comprimidos
+768 px
+Regular
+Barra de ação quebra em duas linhas e cobre cards; &quot;Diagnóstico&quot; oculto
+390 px
+Ruim
+Custos sobrepostos aos ícones, 5 de 8 abas ocultas, textarea de comando com 3 linhas
+Se o uso em celular for só monitoramento, vale uma visão mobile enxuta (status, alertas, aprovações) em vez de encaixar tudo.
+Fluxos
+Quatro caminhos para a mesma tarefa (Comando no painel, drawer, barra em massa, tela do aparelho). Definir um caminho principal: escolher aparelhos, descrever a tarefa, revisar o plano, executar.
+Ações destrutivas: &quot;Resetar dados…&quot; está bem protegido, mas fica ao lado de Instalar e Abrir na barra flutuante. Deixar só no drawer ou em menu &quot;⋯&quot;.
+Aprovações espalhadas (Aprendizado &gt; Para aprovar, aba Aprovações da persona, execuções bloqueadas). Criar uma caixa única de pendências com contador no menu.
+Faltam busca global e paleta de comandos (Ctrl+K), além de notificações persistentes.
+Backlog priorizado
+Oito itens, em ordem de execução recomendada; os dois primeiros destravam a confiança básica no produto. Esforço é estimativa relativa (P, M, G), a validar com o time.
+#
+Item
+Prioridade
+Esforço
+Critério de aceite
+1
+Menu: sidebar recolhível ou &quot;Mais&quot; e rotas por objeto (persona, aparelho, execução, app)
+Crítica
+M
+As 8 telas acessíveis de 390 a 1920 px; Voltar do navegador e links diretos funcionam em persona e execução
+2
+Unificar números e semáforo de saúde do ambiente
+Crítica
+M
+Uma fonte de contagem para online, paradas, selecionados, vagas e bloqueadas; &quot;Ambiente&quot; indica Atenção com motivo quando um servidor está fora do ar; nenhuma ocupação acima da capacidade sem alerta
+3
+Refazer barra de ação em massa e drawer de foco
+Alta
+M
+Barra não cobre cards; ações não se repetem entre barra e drawer; drawer sobrepõe sem reflow da grade; Resetar dados fora da barra
+4
+Traduzir textos técnicos e reduzir ruído dos cards de aparelho
+Alta
+P
+Nenhum identificador cru (app.distribute, seletores) visível por padrão; estados vazios não exibem texto
+5
+Busca, filtros, ordenação e visão em tabela em Personas, Aparelhos e Execuções
+Alta
+G
+Busca por nome/handle; filtro por situação e servidor; alternar cards/tabela; estado do filtro na URL
+6
+Consolidar Aplicativos e Configuração; criar caixa única de pendências
+Média
+G
+Um único lugar para cadastrar app; &quot;Proxy (legado)&quot; oculto; contador de aprovações no menu leva à caixa única
+7
+Tipografia, contraste e alvos de clique
+Média
+M
+Texto mínimo 13 px; contraste AA (4,5:1) no texto e nos badges; alvos de clique de pelo menos 32 px
+8
+Estratégia mobile: definir escopo e layout dedicado
+Baixa
+G
+Decisão documentada (monitoramento apenas ou uso completo); em 390 px sem sobreposição no cabeçalho
+Próximo passo sugerido: validar a prioridade dos itens 1 a 3 com quem usa o portal no dia a dia e prototipar o novo menu e a barra de seleção antes de implementar.

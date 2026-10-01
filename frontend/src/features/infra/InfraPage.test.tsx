@@ -165,10 +165,10 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(text().match(/renderizador/g)).toHaveLength(2);
   });
 
-  it('a aba Logs mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
+  it('a aba Registros mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
     await comEstado({ recentEvents: [evento('log', 'android-13', 'reiniciei o system_server'),
                                      evento('log', 'android-01', 'coisa do central')] });
-    await click(byRole('tab', /^Logs/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    await click(byRole('tab', /^Registros/, byRole('tablist', /Detalhes de worker-lan-01/)));
     expect(text()).toContain('reiniciei o system_server');
     expect(text()).not.toContain('coisa do central');
   });
@@ -200,7 +200,7 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(t).toContain('Chrome');
     expect(allByRole('button', /^Abrir a persona/, aqui)).toHaveLength(2);
     await click(byRole('button', 'Abrir a persona Rafael Lima (Chrome)', aqui));
-    expect(useUiStore.getState().personaRequest?.id).toBe('ig-2');
+    expect(useUiStore.getState().rota.segmentos[0]).toBe('ig-2');
     // A aba do servidor lista as mesmas personas por aparelho.
     await click(byRole('tab', /^Personas e apps/, byRole('tablist', /Detalhes de worker-lan-01/)));
     expect(text()).toContain('@marina.fotografa (Conectado) · Rafael Lima');
@@ -521,5 +521,39 @@ describe('aposentar aparelho', () => {
     expect(text(alerta)).toContain('android-17 hospeda o perfil p-1');
     expect(alerta.closest('li')?.textContent).toContain('android-17');
     expect(allByRole('button', /Abrir android-17/)).toHaveLength(1);         // recusado: continua no parque
+  });
+});
+
+// Tarefa 02 da revisão de UX: "Vagas ocupadas: 5 de 4" aparecia sem alerta. O número é real (o backend conta igual,
+// `slots_used`), então a tela destaca e explica em vez de esconder; e servidor fora do ar não inventa ocupação.
+describe('InfraPage — vagas por servidor', () => {
+  it('ocupação acima da capacidade fica destacada e explicada', async () => {
+    const ligados = [1, 2, 3, 5, 6].map((n) => makeInstance(n, { state: 'online', worker_id: 'central' }));
+    useAppStore.setState({
+      workers: {
+        central: worker({ id: 'central', name: 'central', local: true, max_slots: 4 }),
+        'worker-lan-01': worker(),
+      },
+      instances: Object.fromEntries(ligados.map((i) => [i.id, i])),
+      instanceOrder: ligados.map((i) => i.id),
+    });
+    await render();
+    expect(text()).toContain('5 de 4');
+    const nota = document.querySelector('[role="note"]') as HTMLElement;
+    expect(text(nota)).toContain('Acima da capacidade: 5 aparelhos ligados para 4 vagas');
+  });
+
+  it('servidor fora do ar: a ocupação é "?" e a tela diz por quê, em vez de um número velho', async () => {
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ connected: false, state: 'offline', devices: [
+        { serial: 'emulator-5554', state: 'running', instance_id: 'android-13' },
+      ] }) },
+      instances: { 'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'online' }) },
+      instanceOrder: ['android-13'],
+    });
+    await render();
+    expect(text()).toContain('? de 6');
+    expect(text()).toContain('a ocupação das vagas lá não é conhecida agora');
+    expect(document.querySelector('[role="note"]')).toBeNull();
   });
 });

@@ -44,3 +44,23 @@
 .bar { flex: 1 1 0; min-width: 4px; border-radius: 3px 3px 0 0; background: var(--accent); opacity: 0.85; }
 .big { margin: 0; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .runRow .muted { flex: 0 0 auto; white-space: nowrap; }
+
+/* Termo da loja com definição: sublinhado pontilhado diz "há explicação"; o anel de foco é o global do base.css. */
+.termo {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.legenda {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.legenda dt { color: var(--text-1); font-weight: 600; font-size: var(--fs-sm); }
+.legenda dd { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: var(--lh-normal); }
+
+.avisoDescontinuado { display: grid; gap: var(--sp-2); }
+
+.proxyLegado { margin-top: var(--sp-4); }

@@ -97,7 +97,7 @@ export const RUN_STATUS: Record<RunStatus, StatusMeta> = {
   paused: { label: 'Pausada', tone: 'warning', icon: CirclePause },
   cancelling: { label: 'Cancelando', tone: 'warning', icon: LoaderCircle, spin: true },
   completed: { label: 'Concluída', tone: 'success', icon: CircleCheck },
-  completed_with_issues: { label: 'Concluída com pendências', tone: 'warning', icon: TriangleAlert },
+  completed_with_issues: { label: 'Concluída com problemas', tone: 'warning', icon: TriangleAlert },
   cancelled: { label: 'Cancelada', tone: 'muted', icon: Ban },
   failed: { label: 'Falhou', tone: 'danger', icon: CircleX },
 };
@@ -239,7 +239,7 @@ export const READINESS_PHASE: Record<ReadinessInfo['phase'], StatusMeta> = {
 /** Saúde da TELA ao vivo (`StreamStatus`), separada da saúde do aparelho: `stale` NUNCA quer dizer offline. */
 export const STREAM_STATUS: Record<StreamStatus, StatusMeta> = {
   live: { label: 'Ao vivo', tone: 'success', icon: Radio },
-  stale: { label: 'Sem frame novo', tone: 'warning', icon: Hourglass, description: 'Aparelho online, mas a última captura já tem tempo.' },
+  stale: { label: 'Sem imagem nova', tone: 'warning', icon: Hourglass, description: 'Aparelho online, mas a última captura já tem tempo.' },
   no_frame: { label: 'Sem frame ainda', tone: 'neutral', icon: CircleDashed },
   capture_error: { label: 'Falha na captura', tone: 'danger', icon: CircleX, description: 'A captura de tela vem falhando.' },
   worker_offline: { label: 'Servidor desconectado', tone: 'danger', icon: WifiOff, description: 'A máquina que hospeda o aparelho não responde.' },

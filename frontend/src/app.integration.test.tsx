@@ -112,11 +112,11 @@ describe('Central de Aparelhos — sessão completa', () => {
     const page = text();
     expect(page).toContain('Central de Aparelhos');
     expect(page).toContain('MODO SIMULADO');
-    expect(page).toContain('Ambiente degradado');
+    expect(page).toContain('Ambiente em atenção'); // saúde degradada (IA simulada) vira Atenção no semáforo
     expect(page).toContain('2/10'); // instâncias online
     expect(page).toContain('Desatualizado'); // android-02 com frame.stale
     expect(page).toContain('Login necessário no QA Messenger'); // attention
-    expect(page).toContain('observado'); // account_evidence
+    expect(page).toContain('Evidência'); // account_evidence
     expect(page).toContain('Aguardando o adb responder'); // booting + detalhe
     expect(page).toContain('Criar AVD'); // absent
     expect(page).toContain('Tentar novamente'); // error
@@ -154,7 +154,8 @@ describe('Central de Aparelhos — sessão completa', () => {
       if (!el) throw new Error('cartão hibernado ausente');
       return el as HTMLElement;
     });
-    expect(text(card)).toContain('Hibernado — acorda em segundos, sem ocupar RAM');
+    // Tarefa 04: o parado sai compacto — sem o bloco da miniatura; o selo "Hibernado" e o botão "Acordar" dizem tudo.
+    expect(text(card)).not.toContain('Hibernado — acorda em segundos, sem ocupar RAM');
     expect(text()).toContain('3/10'); // continua 3 online
     expect(text(document.querySelector('header') as HTMLElement)).not.toContain('vagas'); // rodízio desligado
     expect(text(document.querySelector('[aria-label="Aparelhos por estado"]') as HTMLElement)).toContain('1 hibernado');
@@ -167,13 +168,17 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(allByRole('button', 'Hibernar android-08')).toHaveLength(0);
   });
 
-  it('rodízio: com auto_start_devices a barra mostra as vagas ao lado de ONLINE', async () => {
+  // Tarefa 02 da revisão de UX: "N vagas" ao lado do online do parque era a vaga só do central (max_online_devices)
+  // posta contra aparelhos de todos os servidores. As vagas são por servidor e moram na Infraestrutura; o cabeçalho
+  // fica com o resumo, e um servidor acima da capacidade vira motivo no semáforo.
+  it('rodízio: com auto_start_devices a barra continua só com ONLINE; as vagas são da Infraestrutura', async () => {
     const ws = FakeWebSocket.last;
     const settings = { ...makeSnapshot().settings, auto_start_devices: true, max_online_devices: 3 };
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings }) }));
-    await waitFor(() => expect(text()).toContain('3/10online3 vagas'));
-    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings: makeSnapshot().settings }) }));
-    await waitFor(() => expect(text()).not.toContain('3 vagas'));
+    await flush(20);
+    const header = document.querySelector('header') as HTMLElement;
+    expect(text(header)).toContain('3/10online');
+    expect(text(header)).not.toContain('vagas');
   });
 
   it('chip da IA abre os modelos por função e o estado de receitas, fluxos e imagens', async () => {
@@ -196,13 +201,31 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(card3, { ctrlKey: true });
     const card6 = document.querySelector('article[aria-label^="Aparelho android-06"]') as HTMLElement;
     await click(card6, { shiftKey: true }); // intervalo 03..06
-    await waitFor(() => expect(text()).toContain('Ação em 5 aparelhos'));
+    await waitFor(() => expect(allByRole('toolbar', /Ação em 5 aparelhos/)).toHaveLength(1));
+    const barra = byRole('toolbar', /Ação em 5 aparelhos/);
+    expect(text(barra)).toContain('5 selecionados');
     expect(text()).toContain('5 de 10 selecionados');
 
-    // a barra em lote oferece "Hibernar" (recurso ligado), mas não "Acordar" (nenhum hibernado na seleção)
-    expect(allByRole('button', 'Hibernar', byRole('toolbar', /Ação em 5/))).toHaveLength(1);
-    expect(allByRole('button', 'Acordar', byRole('toolbar', /Ação em 5/))).toHaveLength(0);
-    await click(byRole('button', 'Parar', byRole('toolbar', /Ação em 5/)));
+    // A barra fica presa ao TOPO da grade (antes da grade no documento), e não flutua sobre os cartões.
+    const grade = document.querySelector('article[aria-label^="Aparelho android-01"]')?.parentElement as HTMLElement;
+    expect(barra.parentElement?.compareDocumentPosition(grade) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    // À vista ficam as ações de rotina; hibernar, instalar, abrir app e o reset moram em "Mais ações".
+    expect(allByRole('button', 'Parar', barra)).toHaveLength(1);
+    expect(allByRole('button', 'Hibernar', barra)).toHaveLength(0);
+    expect(allByRole('button', /Resetar dados/, barra)).toHaveLength(0);
+    await click(byRole('button', /^Mais ações/, barra));
+    const menu = await waitFor(() => byRole('dialog', 'Mais ações'));
+    // a seleção tem "sem AVD" mas nenhum hibernado: oferece "Hibernar", não "Acordar"
+    expect(allByRole('button', /^Hibernar/, menu)).toHaveLength(1);
+    expect(allByRole('button', /^Acordar/, menu)).toHaveLength(0);
+    expect(allByRole('button', /^Instalar app/, menu)).toHaveLength(1);
+    expect(allByRole('button', /^Abrir app/, menu)).toHaveLength(1);
+    // O reset fica sozinho na zona de perigo (e o clique nele só abre a confirmação: aqui não é dado).
+    expect(allByRole('button', /^Resetar dados/, byRole('group', 'Zona de perigo', menu))).toHaveLength(1);
+    await click(byRole('button', /^Mais ações/, barra)); // fecha o menu
+    await waitFor(() => expect(allByRole('dialog', 'Mais ações')).toHaveLength(0));
+    await click(byRole('button', 'Parar', barra));
     await waitFor(() => expect(backend.callsTo('POST', /bulk$/)).toHaveLength(1));
     // O lote passou a mandar `idempotency_key` dentro de `params` (item 1.3): sem ela, um segundo clique — ou o
     // reenvio de uma requisição que o navegador achou perdida — abriria uma segunda leva de comandos nos mesmos
@@ -405,7 +428,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'stale_frame', 'Frame antigo'));
     await pointer(box, 'pointerdown', 500, 600);
     await pointer(box, 'pointerup', 500, 600);
-    await waitFor(() => expect(text()).toContain('A tela mudou — aguarde o novo frame e tente de novo'));
+    await waitFor(() => expect(text()).toContain('A tela mudou — aguarde a nova imagem e tente de novo'));
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(framesBefore));
 
     await click(byRole('button', /^Devolver à IA/, panel));
@@ -483,13 +506,13 @@ describe('Central de Aparelhos — sessão completa', () => {
 
   it('Configuração, Diagnóstico e Execuções renderizam com os dados do backend', async () => {
     await goTo('#/configuracao');
-    await waitFor(() => expect(text()).toContain('Novo aplicativo'));
+    await waitFor(() => expect(text()).toContain('Gerenciar em Aplicativos'));
     expect(text()).toContain('com.poc.qamessenger');
     expect(text()).toContain('embutido');
     const builtinDelete = allByRole('button', /^Excluir/)[0] as HTMLElement;
     expect(builtinDelete.getAttribute('aria-disabled')).toBe('true'); // app embutido não pode ser excluído
 
-    await click(byRole('tab', /^Instâncias e contas/));
+    await click(byRole('tab', /^Aparelhos e contas/));
     await waitFor(() => expect(text()).toContain('Aplicar app a todas'));
     await click(byRole('tab', /^IA$/));
     await waitFor(() => expect(text()).toContain('nunca no navegador'));
@@ -612,9 +635,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(text(panel)).toContain('Nenhuma receita aprendida ainda');
     expect(text(panel)).toContain('A IA aprende o caminho uma vez; as próximas execuções repetem por seletores, sem custo de modelo. Se a tela mudar, a IA assume só aquela etapa.');
 
-    // --- Instâncias e contas: PUT só com o campo alterado ---
+    // --- Aparelhos e contas: PUT só com o campo alterado ---
     backend.on('PUT', /^\/api\/instances\/android-07$/, (c) => json(makeInstance(7, c.body as object)));
-    await click(byRole('tab', /^Instâncias e contas/));
+    await click(byRole('tab', /^Aparelhos e contas/));
     // Item 11.9: os campos ficam num painel que abre ao clicar no cartão — não mais numa linha de tabela sempre aberta.
     await click(byRole('button', /Editar android-07/));
     await setValue(byRole('textbox', 'Rótulo da conta') as HTMLInputElement, 'qa-novo-07');
@@ -623,21 +646,20 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('PUT', /android-07$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /android-07$/)[0]?.body).toEqual({ account_label: 'qa-novo-07' });
 
-    // --- Aplicativos: valida e cria ---
-    backend.on('POST', /^\/api\/apps$/, (c) => json({ id: 'novo', builtin: false, ...(c.body as object) }));
+    // --- Aplicativos: o cadastro novo mora só em Aplicativos (tarefa 06); aqui se edita dicas e seletores ---
+    backend.on('PUT', /^\/api\/apps\/[^/]+$/, (c) => json({ id: 'notes', builtin: false, ...(c.body as object) }));
     await click(byRole('tab', /^Aplicativos/));
-    await click(byRole('button', /^Novo aplicativo/));
-    const editor = await waitFor(() => byRole('dialog', /Novo aplicativo/));
+    expect(allByRole('button', /Novo aplicativo/)).toHaveLength(0);
+    await click(allByRole('button', /^Editar dicas e seletores/)[1] as HTMLElement);
+    const editor = await waitFor(() => byRole('dialog', /Editar Notas/));
+    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, '');
     await click(byRole('button', /^Salvar/, editor));
     await waitFor(() => expect(text(editor)).toContain('Dê um nome ao aplicativo.'));
-    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, 'Loja');
-    await setValue(byRole('textbox', 'Pacote Android', editor) as HTMLInputElement, 'com.poc.loja');
+    await setValue(byRole('textbox', 'Nome', editor) as HTMLInputElement, 'Notas 2');
     await click(byRole('button', /^Salvar/, editor));
-    await waitFor(() => expect(backend.callsTo('POST', /apps$/)).toHaveLength(1));
-    expect(backend.callsTo('POST', /apps$/)[0]?.body).toEqual({
-      name: 'Loja', package: 'com.poc.loja', activity: null, apk_path: null, nav_hints: null, known_selectors: null,
-    });
-    await waitFor(() => expect(text()).toContain('com.poc.loja'));
+    await waitFor(() => expect(backend.callsTo('PUT', /\/apps\/[^/]+$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /\/apps\/[^/]+$/)[0]?.body).toMatchObject({ name: 'Notas 2', package: 'com.poc.notes' });
+    await waitFor(() => expect(text()).toContain('Notas 2'));
 
     await goTo('#/diagnostico');
     await waitFor(() => expect(text()).toContain('Reexecutar diagnóstico'));
@@ -672,5 +694,59 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     await goTo('#/painel');
     await waitFor(() => expect(text()).toContain('Aparelhos'));
+  });
+});
+
+// Revisão de UX de 30/09 (tarefa 01): a URL diz onde a pessoa está — Voltar do navegador fecha o que abriu, o link
+// colado reabre a mesma visão, e o nome antigo `#/perfis` continua valendo.
+describe('Central de Aparelhos — rotas por objeto e menu', () => {
+  const atual = () => {
+    const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
+    return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
+  };
+
+  it('o menu lateral tem as nove seções e marca a atual', async () => {
+    await goTo('#/painel');
+    const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
+    expect(nav.querySelectorAll('a')).toHaveLength(9);
+    expect(atual()).toEqual(['Painel']);
+  });
+
+  it('#/perfis (link antigo) vira #/personas sem quebrar', async () => {
+    await goTo('#/perfis');
+    await waitFor(() => expect(window.location.hash).toBe('#/personas'));
+    expect(atual()).toEqual(['Personas']);
+    expect(document.title).toBe('Personas · Central de Aparelhos');
+    await goTo('#/painel');
+  });
+
+  it('abrir o Foco põe o aparelho na URL, e o Voltar do navegador fecha o painel', async () => {
+    await waitFor(() => byRole('button', 'Abrir android-02 na visão de foco'));
+    await click(byRole('button', 'Abrir android-02 na visão de foco'));
+    await waitFor(() => byRole('dialog', /Visão de foco: android-02/));
+    expect(window.location.hash).toBe('#/painel?foco=android-02');
+    await act(async () => window.history.back());
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    expect(window.location.hash).toBe('#/painel');
+  });
+
+  it('link colado com ?foco= abre o mesmo aparelho', async () => {
+    await goTo('#/infraestrutura?foco=android-01');
+    await waitFor(() => byRole('dialog', /Visão de foco: android-01/));
+    expect(atual()).toEqual(['Infraestrutura']);
+    await click(byRole('button', /^Fechar/, byRole('dialog', /Visão de foco: android-01/)));
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    expect(window.location.hash).toBe('#/infraestrutura');
+  });
+
+  it('Execuções: o link nomeia a execução e a guia; colar o link reabre a mesma guia', async () => {
+    await goTo('#/execucoes');
+    await waitFor(() => expect(window.location.hash).toBe(`#/execucoes/${RUN_ID}`));
+    await goTo(`#/execucoes/${RUN_ID}?aba=linha-do-tempo`);
+    await waitFor(() => expect(byRole('tab', /Linha do tempo/).getAttribute('aria-selected')).toBe('true'));
+    await click(byRole('tab', /^Plano/));
+    // Plano é a guia padrão de uma execução planejando, e aí não entra no link; senão, entra como `aba=plano`.
+    await waitFor(() => expect([`#/execucoes/${RUN_ID}`, `#/execucoes/${RUN_ID}?aba=plano`]).toContain(window.location.hash));
+    await goTo('#/painel');
   });
 });

@@ -6,7 +6,6 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { uuid } from '../../lib/ids';
-import { saveJson } from '../../lib/storage';
 import { useAppStore } from '../../store/app';
 import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
@@ -27,7 +26,7 @@ export function CriarAparelhoDialog({ onClose }: { onClose: () => void }) {
   const apps = useAppStore((s) => s.apps);
   const imagemPadrao = useAppStore((s) => s.health?.features?.system_image ?? null);
   const upsertInstance = useAppStore((s) => s.upsertInstance);
-  const setView = useUiStore((s) => s.setView);
+  const navegar = useUiStore((s) => s.navegar);
   const [rascunho, setRascunho] = useState<RascunhoDeAparelho>(VAZIO);
   const [erros, setErros] = useState<ErrosDoRascunho>({});
   const [recusa, setRecusa] = useState<RecusaNaTela | null>(null);
@@ -66,10 +65,9 @@ export function CriarAparelhoDialog({ onClose }: { onClose: () => void }) {
   };
 
   const irParaLimites = () => {
-    // A aba de Configuração é lembrada nesta chave; abrir já em Limites poupa a pessoa de procurar.
-    saveJson('settingsSection', 'limites');
+    // A guia de Configuração vem do link; abrir já em Limites poupa a pessoa de procurar.
     onClose();
-    setView('configuracao');
+    navegar({ tela: 'configuracao', query: { aba: 'limites' } });
   };
 
   return (
@@ -113,7 +111,7 @@ export function CriarAparelhoDialog({ onClose }: { onClose: () => void }) {
             <p className={styles.dim}>{recusa.mensagem}</p>
           </Banner>
         ) : null}
-        <Field label="Aplicativo" hint="O app que este aparelho vai operar. Pode ficar para depois (Configuração → Instâncias e contas).">
+        <Field label="Aplicativo" hint="O app que este aparelho vai operar. Pode ficar para depois (Configuração → Aparelhos e contas).">
           {(f) => (
             <Select id={f.id} aria-describedby={f.describedBy} value={rascunho.appId} onChange={(e) => mudar('appId', e.target.value)}>
               <option value="">Nenhum por enquanto</option>

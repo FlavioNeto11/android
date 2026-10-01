@@ -1,8 +1,8 @@
 import { BookOpen, Flame, Inbox, MessageSquareText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { loadJson, saveJson } from '../../lib/storage';
+import { useUiStore } from '../../store/ui';
 import { AprendidoTab } from './AprendidoTab';
 import { useContagemDoAprendizado } from './contagem';
 import { FalhasTab } from './FalhasTab';
@@ -24,17 +24,17 @@ const ID = 'aprendizado';
  * - Sinais: os votos e os gestos que viram evidência.
  */
 export function AprendizadoPage() {
-  const [aba, setAba] = useState<Aba>(() => loadJson('aprendizado.aba', isAba) ?? 'aprovar');
+  // A guia vem do link (`#/aprendizado?aba=falhas`); "Para aprovar" é a padrão e não entra nele.
+  const abaDoLink = useUiStore((s) => s.rota.query.aba);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const aba: Aba = isAba(abaDoLink) ? abaDoLink : 'aprovar';
   const pendentes = useContagemDoAprendizado((s) => s.pendentes);
 
   useEffect(() => {
     void useContagemDoAprendizado.getState().atualizar();
   }, []);
 
-  const trocar = (a: Aba) => {
-    setAba(a);
-    saveJson('aprendizado.aba', a);
-  };
+  const trocar = (a: Aba) => trocarQuery({ aba: a === 'aprovar' ? undefined : a }, 'replace');
 
   const tabs: TabDef<Aba>[] = [
     { id: 'aprovar', label: 'Para aprovar', icon: Inbox, count: pendentes, alert: (pendentes ?? 0) > 0 },
@@ -46,7 +46,7 @@ export function AprendizadoPage() {
   return (
     <Page
       title="Aprendizado"
-      lead="O que o sistema aprendeu com as execuções e com você. Sem efeito externo e com repetição, ele publica sozinho; com efeito ou texto de pessoa, espera a sua aprovação. Rebaixar é sempre automático."
+      lead="O que o sistema aprendeu com as execuções e com você. O que tem efeito fora do sistema espera a sua aprovação."
     >
       <Tabs tabs={tabs} active={aba} onChange={trocar} idBase={ID} label="Aprendizado" />
       <TabPanel idBase={ID} id={aba} className={styles.tabBody}>

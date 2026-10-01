@@ -44,7 +44,7 @@ from .devices.compatibilidade import (capacidades_de, motivo_do_renderizador, mo
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
 from .devices import rede  # rede por aparelho (ADR-056, 25.2): corpos e regras moram no módulo, como os do proxy
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
-from .models import (DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
+from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
@@ -285,10 +285,23 @@ async def health(request: Request) -> Any:
     return st(request).health()
 
 
+# O snapshot traz as 20 execuções mais recentes E TODAS as que não terminaram, exceto `planned`: as em andamento e as
+# que esperam resposta (`needs_input`). O painel conta as duas sobre o que o snapshot entrega (topo e chip "Em
+# andamento"; caixa de Pendências, chip "aguardando você" e selo do menu), e uma execução de semanas atrás ficava fora
+# das 20 mais recentes: o contador abria num número de janela e mudava depois de visitar Execuções (RF-05 e decisão D1
+# da revisão de UX). `planned` é um plano pronto para inspeção, que ninguém mandou executar: não é "em andamento"
+# (decisão D2) e nenhum contador a lê, então só vem se estiver entre as 20 recentes. Custo: uma linha por execução
+# parada em `needs_input` ou em andamento (27 + 0 no parque real em 30/09).
+_STATUS_DO_SNAPSHOT = tuple(sorted(str(x.value) for x in RunStatus if x not in RUN_TERMINAL and x != RunStatus.planned))
+_SQL_RUNS_DO_SNAPSHOT = (
+    "SELECT * FROM runs WHERE status IN (" + ",".join(f"'{x}'" for x in _STATUS_DO_SNAPSHOT) + ")"
+    " OR id IN (SELECT id FROM runs ORDER BY created_at DESC LIMIT 20) ORDER BY created_at DESC")
+
+
 @router.get("/snapshot")
 async def snapshot(request: Request) -> Any:
     s = st(request)
-    runs = s.db.query("SELECT * FROM runs ORDER BY created_at DESC LIMIT 20")
+    runs = s.db.query(_SQL_RUNS_DO_SNAPSHOT)
     return {"last_event_id": s.bus.last_id(), "server_time": now_iso(), "health": s.health(),
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
             "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),

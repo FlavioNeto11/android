@@ -77,14 +77,46 @@ export function ageMs(iso: string | null | undefined, nowMs: number): number | n
   return Math.max(0, nowMs - t);
 }
 
-/** "há 5 s", "há 3 min", "há 2 h", "há 4 d". */
-export function formatAgo(iso: string | null | undefined, nowMs: number): string {
-  const age = ageMs(iso, nowMs);
-  if (age === null) return '—';
-  return `há ${formatSpan(age)}`;
+// ---- tempo relativo ("há X") ------------------------------------------------------------------------
+// Fonte única do "há quanto tempo" do portal (RF-06 da revisão final). Havia dois formatadores: este módulo dizia
+// "há 1 min 14 s" e "há 6 d" (Foco, Pendências, Execuções…), e `lib/rotulos` dizia "há 1 min" e "há 6 dias" (cartão):
+// o mesmo quadro aparecia com dois textos no cartão e no Foco. Ficou o da tarefa 04, a ordem de grandeza.
+
+const S = 1000;
+const MIN = 60 * S;
+const H = 60 * MIN;
+const D = 24 * H;
+
+function unidades(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
 }
 
-/** Duração compacta: "850 ms", "12 s", "3 min 05 s", "2 h 10 min". */
+/**
+ * Duração em uma unidade só, arredondada para baixo: "12 s", "1 min", "3 h", "6 dias", "2 meses".
+ * "há 161 h" vira "há 6 dias" e "há 1 min 14 s" vira "há 1 min": quem olha quer a ordem de grandeza, não a precisão.
+ */
+export function duracaoHumana(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < MIN) return `${Math.floor(ms / S)} s`;
+  if (ms < H) return `${Math.floor(ms / MIN)} min`;
+  if (ms < D) return `${Math.floor(ms / H)} h`;
+  const dias = Math.floor(ms / D);
+  if (dias < 30) return unidades(dias, 'dia', 'dias');
+  if (dias < 365) return unidades(Math.floor(dias / 30), 'mês', 'meses');
+  return unidades(Math.floor(dias / 365), 'ano', 'anos');
+}
+
+/** "agora", "há 12 s", "há 1 min", "há 3 h", "há 6 dias". Sem instante válido: "—". */
+export function tempoRelativo(iso: string | null | undefined, agoraMs: number): string {
+  const idade = ageMs(iso, agoraMs);
+  if (idade === null) return '—';
+  if (idade < 5 * S) return 'agora';
+  return `há ${duracaoHumana(idade)}`;
+}
+
+// ---- durações -------------------------------------------------------------------------------------
+
+/** Duração compacta (tempo de execução, não "há X"): "850 ms", "12 s", "3 min 05 s", "2 h 10 min". */
 export function formatSpan(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '—';
   if (ms < 1000) return ms < 1 ? '0 s' : `${Math.round(ms)} ms`;
@@ -102,14 +134,6 @@ export function formatSpan(ms: number): string {
   }
   const d = Math.floor(totalH / 24);
   return `${d} d`;
-}
-
-/** Versão para "há X" sem milissegundos (idades abaixo de 1 s viram "agora"). */
-export function formatAgoCoarse(iso: string | null | undefined, nowMs: number): string {
-  const age = ageMs(iso, nowMs);
-  if (age === null) return '—';
-  if (age < 1000) return 'agora';
-  return `há ${formatSpan(Math.floor(age / 1000) * 1000)}`;
 }
 
 /** Duração entre dois instantes (ou até agora, se `end` for nulo). */

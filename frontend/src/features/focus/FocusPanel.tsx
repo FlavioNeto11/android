@@ -1,5 +1,5 @@
 import { ArrowLeft, Bot, Hand, LoaderCircle, Minus, X, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { api, toApiError } from '../../api/client';
 import { useOperationalContext } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
@@ -28,6 +28,7 @@ import {
 import styles from './Focus.module.css';
 import { FocusSection } from './FocusSection';
 import { HierarchyList } from './HierarchyList';
+import { Drawer, seletorDoAparelho } from './Drawer';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
@@ -50,6 +51,9 @@ function assinarTelaEstreita(avisar: () => void): () => void {
 function useTelaEstreita(): boolean {
   return useSyncExternalStore(assinarTelaEstreita, () => consultaTelaEstreita()?.matches ?? false, () => false);
 }
+
+/** O botão que abre o Foco no cartão ou na linha do aparelho: para onde o teclado volta quando o drawer fecha. */
+const cartaoDe = (id: string): string => seletorDoAparelho(id, 'button[aria-label^="Abrir"]');
 
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
@@ -81,10 +85,6 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const [highlight, setHighlight] = useState<[number, number, number, number] | null>(null);
   const [hierarquiaAberta, setHierarquiaAberta] = useState(false);
 
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, []);
-
   const mine = userHasControl(instance, lease);
 
   const sendInput = useCallback(
@@ -96,7 +96,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         return false;
       }
       if (!displayed) {
-        toast({ tone: 'warning', title: 'Ainda não há frame na tela', hint: 'Aguarde a imagem carregar e tente de novo.' });
+        toast({ tone: 'warning', title: 'Ainda não há imagem na tela', hint: 'Aguarde a imagem carregar e tente de novo.' });
         return false;
       }
       setSending(true);
@@ -107,7 +107,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
       } catch (e) {
         const err = toApiError(e);
         if (err.code === 'stale_frame' || err.code === 'frame_mismatch') {
-          toast({ tone: 'warning', title: 'A tela mudou — aguarde o novo frame e tente de novo', message: 'Nada foi enviado ao aparelho.', key: `stale-${instanceId}` });
+          toast({ tone: 'warning', title: 'A tela mudou — aguarde a nova imagem e tente de novo', message: 'Nada foi enviado ao aparelho.', key: `stale-${instanceId}` });
           screenRef.current?.refresh();
         } else if (err.code === 'not_controller') {
           dropLease(instanceId);
@@ -150,17 +150,17 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
 
   if (!instance) {
     return (
-      <aside ref={panelRef} tabIndex={-1} className={styles.panel} role="dialog" aria-modal="false" aria-label={`Foco: ${instanceId}`}>
+      <Drawer panelRef={panelRef} ariaLabel={`Foco: ${instanceId}`} onClose={closeFocus} restoreSelector={cartaoDe(instanceId)}>
         <div className={styles.header}>
           {telaEstreita ? <Button variant="ghost" icon={ArrowLeft} onClick={closeFocus}>Voltar</Button> : null}
           <span className={styles.title}>{instanceId}</span>
           <span className={styles.headerSpacer} />
           <Button variant="ghost" icon={X} iconOnly label="Fechar visão de foco" onClick={closeFocus} />
         </div>
-        <EmptyState icon={Minus} title="Aparelho não encontrado" hint="Ele pode ter sido removido do backend. Feche este painel e escolha outro aparelho.">
-          O backend não lista mais {instanceId}.
+        <EmptyState icon={Minus} title="Aparelho não encontrado" hint="Ele pode ter sido removido do servidor. Feche este painel e escolha outro aparelho.">
+          O servidor não lista mais {instanceId}.
         </EmptyState>
-      </aside>
+      </Drawer>
     );
   }
 
@@ -187,21 +187,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const pending = !mine && (instance.control_pending || lease?.status === 'pending');
 
   return (
-    <aside
-      ref={panelRef}
-      tabIndex={-1}
-      className={styles.panel}
-      role="dialog"
-      aria-modal="false"
-      aria-label={`Visão de foco: ${instance.id}`}
-      onKeyDown={(e) => {
-        if (e.key !== 'Escape' || e.defaultPrevented) return;
-        const t = e.target as HTMLElement;
-        if (t.closest('dialog')) return;
-        if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-        closeFocus();
-      }}
-    >
+    <Drawer panelRef={panelRef} ariaLabel={`Visão de foco: ${instance.id}`} onClose={closeFocus} restoreSelector={cartaoDe(instance.id)}>
       <div className={styles.header}>
         {/* Em tela cheia (celular) não há painel ao lado para onde "fechar": a saída é "Voltar", no canto onde
             o polegar espera. No desktop continua "Fechar" à direita. */}
@@ -326,8 +312,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               ) : null}
               {instance.abis?.length ? <KvRow label="ABIs"><span className="mono">{instance.abis.join(', ')}</span></KvRow> : null}
               {instance.play_store != null ? <KvRow label="Play Store">{instance.play_store ? 'sim' : 'não'}</KvRow> : null}
-              <KvRow label="Frame exibido"><span className="mono">{shown ? `${shown.id} (${shown.width}×${shown.height})` : '—'}</span></KvRow>
-              <KvRow label="Frame mais novo">
+              <KvRow label="Imagem exibida"><span className="mono">{shown ? `${shown.id} (${shown.width}×${shown.height})` : '—'}</span></KvRow>
+              <KvRow label="Imagem mais nova">
                 <span className="mono">{instance.frame ? `${instance.frame.id} · ${instance.frame.orientation === 'landscape' ? 'paisagem' : 'retrato'}` : '—'}</span>
               </KvRow>
               <KvRow label="Lease"><span className="mono">{lease ? `${lease.leaseId} (${lease.status === 'granted' ? 'concedido' : 'pendente'})` : '—'}</span></KvRow>
@@ -346,6 +332,6 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           </FocusSection>
         </div>
       </div>
-    </aside>
+    </Drawer>
   );
 }

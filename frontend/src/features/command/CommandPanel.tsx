@@ -1,4 +1,4 @@
-import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, Wand2, X } from 'lucide-react';
+import { CheckCheck, ChevronRight, Hand, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, Wand2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, toApiError, type ApiError } from '../../api/client';
 import type {
@@ -148,10 +148,12 @@ export function CommandPanel() {
   const distribuir = target === 'distribuir';
   const porPersona = target === 'persona';
   const automatico = target === 'auto';
-  // No Automático os três modos manuais ficam recolhidos: um clique em "escolher manualmente" os mostra.
-  const [manualAberto, setManualAberto] = useState(false);
+  // O controle "Automático | Manual" tem DUAS posições; dentro do Manual, três jeitos de escolher. Voltar ao Manual
+  // reabre o último jeito usado, não o primeiro da lista.
+  const [manualPreferido, setManualPreferido] = useState<Exclude<ModoDoAlvo, 'auto'>>(target === 'auto' ? 'selecao' : target);
   const mudarModo = (m: ModoDoAlvo) => {
     setTarget(m);
+    if (m !== 'auto') setManualPreferido(m);
     saveJson(CHAVE_DO_MODO, m);
   };
   const count = parseCount(distCount);
@@ -193,7 +195,6 @@ export function CommandPanel() {
   // ADR-047: o assistente aberto (a chave remonta a conversa a cada "Refinar com IA").
   const [assistente, setAssistente] = useState<number | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
-  const reasonId = useId();
   const fieldId = useId();
 
   useEffect(() => {
@@ -284,8 +285,8 @@ export function CommandPanel() {
     : ecoPersona?.erro ?? null;
 
   const reason: string | null =
-    !hydrated ? 'Aguardando a conexão com o backend.'
-    : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
+    !hydrated ? 'Aguardando a conexão com o servidor.'
+    : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do servidor (o restante do painel continua funcionando).'
     : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
     // ADR-040: a execução não carrega credencial. A senha mora na conta da persona, com consentimento por conta, e a
@@ -424,7 +425,7 @@ export function CommandPanel() {
 
   // Refinar não precisa de alvo escolhido nem de prévia em dia: só de texto, IA e nenhuma senha no meio.
   const refinarImpede: string | null =
-    !hydrated ? 'Aguardando a conexão com o backend.'
+    !hydrated ? 'Aguardando a conexão com o servidor.'
     : !aiOk ? 'IA não configurada.'
     : trimmed.length < 3 ? 'Escreva o objetivo do seu jeito primeiro; a IA organiza e pergunta o que faltar.'
     : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
@@ -468,7 +469,7 @@ export function CommandPanel() {
       mudarPessoas(ids);
       mudarModo('persona');
     } else {
-      setManualAberto(true);
+      mudarModo(manualPreferido);
     }
     setSugestao(null);
   };
@@ -483,7 +484,7 @@ export function CommandPanel() {
       <div className={styles.panel}>
         <div className={styles.titleRow}>
           <h2 id="command-title" className={styles.title}>Comando</h2>
-          <p className={styles.subtitle}>Descreva a tarefa em português, do seu jeito. “Refinar com IA” organiza o texto e pergunta o que faltar; depois a IA monta o plano e executa em cada aparelho.</p>
+          <p className={styles.subtitle}>Descreva a tarefa em português, do seu jeito.</p>
         </div>
 
         <label htmlFor={fieldId} className="sr-only">Comando em linguagem natural</label>
@@ -494,7 +495,6 @@ export function CommandPanel() {
           rows={3}
           value={command}
           placeholder={COMMAND_PLACEHOLDER}
-          aria-describedby={reason ? reasonId : undefined}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -563,16 +563,19 @@ export function CommandPanel() {
         ) : null}
 
         <div className={styles.targetMode} role="group" aria-label="Onde executar">
-          <button type="button" className={ui.chip} aria-pressed={automatico} onClick={() => mudarModo('auto')}>
-            <Wand2 size={13} aria-hidden /> Automático
-          </button>
-          {automatico && !manualAberto ? (
-            <button type="button" className={styles.manualLink} aria-expanded={false} onClick={() => setManualAberto(true)}>
-              escolher manualmente
+          {/* Duas posições, uma sempre marcada: no Automático a IA escolhe quem faz; no Manual a pessoa escolhe. */}
+          <div className={styles.segmentado} role="group" aria-label="Quem escolhe os aparelhos">
+            <button type="button" className={cx(styles.segmento, automatico && styles.segmentoAtivo)}
+                    aria-pressed={automatico} onClick={() => mudarModo('auto')}>
+              <Wand2 size={13} aria-hidden /> Automático
             </button>
-          ) : (
+            <button type="button" className={cx(styles.segmento, !automatico && styles.segmentoAtivo)}
+                    aria-pressed={!automatico} onClick={() => { if (automatico) mudarModo(manualPreferido); }}>
+              <Hand size={13} aria-hidden /> Manual
+            </button>
+          </div>
+          {!automatico ? (
             <>
-              <span className={styles.manualSep} aria-hidden>ou</span>
               <button type="button" className={ui.chip} aria-pressed={target === 'selecao'} onClick={() => mudarModo('selecao')}>
                 <Smartphone size={13} aria-hidden /> Aparelhos marcados
               </button>
@@ -583,7 +586,7 @@ export function CommandPanel() {
                 <Shuffle size={13} aria-hidden /> Distribuir entre servidores
               </button>
             </>
-          )}
+          ) : null}
           {automatico ? (
             <span className={styles.autoDica}>
               a IA escolhe quem faz pelo pedido e pelo perfil das personas; aparelho e servidor saem da fila e da carga
@@ -645,44 +648,60 @@ export function CommandPanel() {
                 {plural(Math.max(0, estimate.steps_total - estimate.steps_with_recipe), 'etapa sem IA', 'etapas sem IA')}
               </span>
             ) : null}
-            {reason ? (
-              <span id={reasonId} className={styles.reason}>
-                <Info size={13} aria-hidden /> {reason}
-              </span>
-            ) : (
+            {/* O motivo de um botão indisponível mora NO botão (tooltip ao passar o mouse ou focar, e dentro do nome
+                acessível): um aviso solto ao lado obrigava a ligar o texto ao botão de cabeça. */}
+            {reason ? null : (
               <span className={styles.shortcut}>
                 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> executa em {alvoTexto}
               </span>
             )}
-            <Button
-              icon={Sparkles}
-              disabledReason={refinarImpede}
-              aria-expanded={assistente !== null}
-              onClick={() => setAssistente(Date.now())}
-            >
-              Refinar com IA
-            </Button>
-            <Button
-              icon={ListChecks}
-              loading={inFlight === 'plan'}
-              disabled={inFlight === 'execute'}
-              disabledReason={blocked}
-              onClick={() => void submit('plan')}
-            >
-              Planejar
-            </Button>
-            <Button
-              variant="primary"
-              icon={Play}
-              loading={inFlight === 'execute'}
-              disabled={inFlight === 'plan'}
-              disabledReason={blocked}
-              onClick={() => void submit('execute')}
-            >
-              Executar
-            </Button>
+            {/* Três etapas em sequência, não três escolhas: refinar (opcional) → planejar → executar. */}
+            <div className={styles.etapas} role="group" aria-label="Etapas do comando: refinar, planejar e executar">
+              <span className={styles.etapa}>
+                <span className={styles.etapaNum} aria-hidden>1</span>
+                <Button
+                  icon={Sparkles}
+                  disabledReason={refinarImpede}
+                  aria-expanded={assistente !== null}
+                  onClick={() => setAssistente(Date.now())}
+                >
+                  Refinar com IA
+                </Button>
+                <ChevronRight size={14} className={styles.etapaSeta} aria-hidden />
+              </span>
+              <span className={styles.etapa}>
+                <span className={styles.etapaNum} aria-hidden>2</span>
+                <Button
+                  icon={ListChecks}
+                  loading={inFlight === 'plan'}
+                  disabled={inFlight === 'execute'}
+                  disabledReason={blocked}
+                  onClick={() => void submit('plan')}
+                >
+                  Planejar
+                </Button>
+                <ChevronRight size={14} className={styles.etapaSeta} aria-hidden />
+              </span>
+              <span className={styles.etapa}>
+                <span className={styles.etapaNum} aria-hidden>3</span>
+                <Button
+                  variant="primary"
+                  icon={Play}
+                  loading={inFlight === 'execute'}
+                  disabled={inFlight === 'plan'}
+                  disabledReason={blocked}
+                  onClick={() => void submit('execute')}
+                >
+                  Executar
+                </Button>
+              </span>
+            </div>
           </div>
         </div>
+        <p className={styles.etapasDica}>
+          <strong>Refinar</strong> (opcional) organiza o texto e pergunta o que faltar · <strong>Planejar</strong> só
+          mostra o plano, sem mexer nos aparelhos · <strong>Executar</strong> faz o trabalho em cada aparelho.
+        </p>
         {sugestao ? (
           <SugestaoDeAlvos
             sugestao={sugestao.dados}

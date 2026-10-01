@@ -97,7 +97,9 @@
   gap: var(--sp-2);
   background: none;
   border: 0;
-  padding: 0;
+  /* área de clique de 32 px sem mexer no ritmo da lista: o respiro entra como padding e sai como margem negativa */
+  padding: 6px 0;
+  margin: -6px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -126,10 +128,10 @@
 }
 
 .tarefa {
-  margin-left: auto;
+  margin: -6px 0 -6px auto;
   background: none;
   border: 0;
-  padding: 0;
+  padding: 6px 0;
   color: var(--accent-text);
   cursor: pointer;
   font: inherit;
@@ -179,7 +181,8 @@
   max-width: 100%;
   background: none;
   border: 0;
-  padding: 1px 0;
+  padding: 6px 0;
+  margin: -5px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;

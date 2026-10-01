@@ -17,7 +17,7 @@ import { type LoadError, toLoadError } from '../../lib/loadError';
 import {
   CONNECTIVITY_STATE, INSTANCE_STATE, READINESS_PHASE, SESSION_STATUS, STREAM_STATUS, metaOf, type StatusMeta,
 } from '../../lib/status';
-import { formatAgoCoarse, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { SESSION_PHASE_LABEL } from '../profiles/sessionGate';
 
 export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMeta> = {
@@ -30,7 +30,7 @@ export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], St
 /** Só este pedaço assina o relógio de 1 s: com `useNow()` no topo, o cartão inteiro re-renderizava a cada segundo. */
 export function Quando({ ts }: { ts: string | null }) {
   const now = useNow();
-  return <>{ts ? formatAgoCoarse(ts, now) : 'nunca'}</>;
+  return <>{ts ? tempoRelativo(ts, now) : 'nunca'}</>;
 }
 
 /**
@@ -122,11 +122,12 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
               ))}
             </ul>
           </dd>
-          {ctx.profiles.length === 0 ? (<><dt>Perfil</dt><dd>nenhum perfil vinculado</dd></>) : ctx.profiles.map((p) => (
+          {ctx.profiles.length === 0 ? (<><dt>Persona</dt><dd>nenhuma persona vinculada</dd></>) : ctx.profiles.map((p) => (
             <div key={p.profile_id} style={{ display: 'contents' }}>
-              <dt>Perfil</dt>
+              <dt>Persona</dt>
               <dd>
-                {p.display_name ?? p.username} (@{p.username}){p.persona_name ? ` · persona ${p.persona_name}` : ''}
+                {/* O rótulo já diz "Persona": o nome dela e a conta, sem repetir "· persona Y" (RF-24). */}
+                {p.persona_name ?? p.display_name ?? p.username} (@{p.username})
                 {' '}· senha {p.credential_configured ? 'guardada' : 'não guardada'}
               </dd>
               <dt>Sessão</dt>

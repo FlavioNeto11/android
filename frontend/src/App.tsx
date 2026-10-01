@@ -7,16 +7,19 @@ import { ConfirmHost } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { AprendizadoPage } from './features/aprendizado/AprendizadoPage';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
+import { seletorDoAparelho } from './features/focus/Drawer';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
+import { PendenciasPage } from './features/pendencias/PendenciasPage';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
 import { AppsPage } from './features/apps/AppsPage';
 import { InfraPage } from './features/infra/InfraPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { MenuLateral } from './features/topbar/MenuLateral';
 import { TopBar } from './features/topbar/TopBar';
-import { formatAgoCoarse, useNow } from './lib/time';
+import { tempoRelativo, useNow } from './lib/time';
 import { useAppStore } from './store/app';
 import { reconnectNow, startLive } from './store/live';
 import { useSessionStore } from './store/session';
@@ -32,7 +35,7 @@ function RetryCountdown({ at }: { at: number | null }) {
 function LastSeen({ at }: { at: number | null }) {
   useNow();
   if (!at) return null;
-  return <> Última atualização em tempo real {formatAgoCoarse(new Date(at).toISOString(), Date.now())}.</>;
+  return <> Última atualização em tempo real {tempoRelativo(new Date(at).toISOString(), Date.now())}.</>;
 }
 
 /** Com dados já carregados e o canal ao vivo fora do ar: avisa que a tela pode estar desatualizada. */
@@ -46,7 +49,7 @@ function ConnectionBanner() {
       tone={conn.status === 'disconnected' ? 'danger' : 'warning'}
       icon={WifiOff}
       role="alert"
-      title={conn.status === 'disconnected' ? 'Desconectado do backend' : 'Reconectando ao backend…'}
+      title={conn.status === 'disconnected' ? 'Desconectado do servidor' : 'Reconectando ao servidor…'}
       actions={<Button size="sm" onClick={reconnectNow}>Reconectar agora</Button>}
     >
       Os dados abaixo são os últimos recebidos e <strong>podem estar desatualizados</strong>.<LastSeen at={conn.lastConnectedAt} />{' '}
@@ -81,43 +84,21 @@ export function App() {
     return startLive();
   }, [operator]);
 
-  // Abrir ou fechar o painel de foco muda a largura do conteúdo (1270 → 660 px medidos): a grade troca de colunas,
-  // a página dobra de altura e, com o mesmo deslocamento, o cartão clicado sumia da vista — era o "scroll que
-  // quebra" do Painel. Depois que o layout assenta, o cartão do aparelho em foco (ou o que acabou de sair dele)
-  // volta a ficar visível.
-  const ultimoFoco = useRef<string | null>(null);
+  // O Foco é um drawer SOBREPOSTO: abrir ou fechar não muda a largura do conteúdo nem reorganiza a grade. Sobra só o
+  // caso do link colado (`?foco=`) para um aparelho fora da vista: o cartão dele vem para a tela, sem rolar se já estiver.
   useEffect(() => {
-    const alvo = focusId ?? ultimoFoco.current;
-    ultimoFoco.current = focusId;
-    if (!alvo) return undefined;
-    // O painel cresce em etapas (montagem, imagem, transição): reposiciona a cada mudança de tamanho do conteúdo
-    // durante um instante, não uma vez só — uma correção única chegava antes do layout assentar.
-    const reposicionar = () => {
-      const card = document.querySelector(`[data-instance-card="${CSS.escape(alvo)}"]`);
-      card?.scrollIntoView?.({ block: 'nearest' });
-    };
-    const quadro = requestAnimationFrame(reposicionar);
-    const main = mainRef.current;
-    const obs = typeof ResizeObserver !== 'undefined' && main ? new ResizeObserver(reposicionar) : null;
-    if (obs && main) {
-      obs.observe(main);
-      // a largura muda no `main`, mas a ALTURA cresce no conteúdo (a grade vira uma coluna depois)
-      const grade = document.querySelector(`[data-instance-card="${CSS.escape(alvo)}"]`)?.parentElement;
-      if (grade) obs.observe(grade);
-    }
-    const fim = window.setTimeout(() => obs?.disconnect(), 2000);
-    return () => {
-      cancelAnimationFrame(quadro);
-      window.clearTimeout(fim);
-      obs?.disconnect();
-    };
+    if (!focusId) return undefined;
+    const quadro = requestAnimationFrame(() => {
+      document.querySelector(seletorDoAparelho(focusId))?.scrollIntoView?.({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(quadro);
   }, [focusId]);
 
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
-    const names = { painel: 'Painel', perfis: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
-                    aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
+    const names = { painel: 'Painel', personas: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
+                    pendencias: 'Pendências', aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
@@ -132,13 +113,15 @@ export function App() {
       </button>
       <TopBar />
       <div className={styles.body}>
+        <MenuLateral />
         <main ref={mainRef} id="conteudo" tabIndex={-1} className={styles.main}>
           <ConnectionBanner />
           <div className={stale ? styles.stale : undefined}>
             {view === 'painel' ? <PainelPage /> : null}
-            {view === 'perfis' ? <ProfilesPage /> : null}
+            {view === 'personas' ? <ProfilesPage /> : null}
             {view === 'aplicativos' ? <AppsPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
+            {view === 'pendencias' ? <PendenciasPage /> : null}
             {view === 'aprendizado' ? <AprendizadoPage /> : null}
             {view === 'infraestrutura' ? <InfraPage /> : null}
             {view === 'configuracao' ? <SettingsPage /> : null}

@@ -1,18 +1,47 @@
+/* O Foco é um DRAWER: sobrepõe o conteúdo (ancorado na área abaixo do topo, \`.body\` do App) em vez de empurrá-lo. A
+   grade, o Comando e o \`main\` ficam exatamente como estavam; só o fundo escurece. Antes ele tomava 600 a 920 px da
+   largura do \`main\` (a 1024 px, com o menu aberto, sobravam ~212 px de conteúdo) e o preview do celular ficava
+   estreito. Largura: 720 px no mínimo, o que dá à tela ~340 px e às legendas uma ou duas linhas sem corte. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-panel) - 1);
+  background: rgba(4, 7, 10, 0.52);
+  animation: fade-in var(--dur-med) var(--ease);
+  /* Só escurece. O menu lateral e os cartões seguem clicáveis com o drawer aberto (o `?foco=` acompanha a troca de
+     tela, e um clique em outro cartão troca de aparelho); o clique no resto da página fecha (Drawer.tsx). */
+  pointer-events: none;
+}
+
 .panel {
-  flex: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
-  width: var(--focus-panel-w);
+  width: min(clamp(720px, 52vw, 1000px), 100%);
   min-height: 0;
   border-left: 1px solid var(--border-2);
   background: var(--surface-1);
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
   z-index: var(--z-panel);
-  animation: fade-in var(--dur-med) var(--ease);
+  animation: drawer-in var(--dur-med) var(--ease);
   /* O painel é contêiner: tela e seções decidem pelas colunas pela largura DELE (que varia com a janela e com
      `--focus-panel-w`), não pela da janela — o mesmo padrão da grade de aparelhos. */
   container-type: inline-size;
   container-name: focus;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 /* O painel recebe foco programático ao abrir (para o Esc funcionar); não precisa de anel próprio. */
@@ -257,12 +286,16 @@
   gap: 6px;
   padding: 4px 11px;
   border: 1px solid var(--warning-border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   background: rgba(12, 15, 19, 0.9);
   color: var(--warning-text);
   font-size: var(--fs-sm);
   font-weight: 650;
-  white-space: nowrap;
+  /* Sem \`nowrap\`: numa tela estreita a legenda quebra em linhas (e não some pela borda). */
+  width: max-content;
+  max-width: calc(100% - 20px);
+  text-align: center;
+  line-height: 1.3;
 }
 
 /* Tela sensível (C4): estado neutro por cima da caixa, que continua recebendo os gestos do controle manual. */
@@ -288,12 +321,15 @@
   gap: 6px;
   padding: 4px 11px;
   border: 1px solid var(--neutral-border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   background: rgba(12, 15, 19, 0.9);
   color: var(--neutral-text);
   font-size: var(--fs-sm);
   font-weight: 600;
-  white-space: nowrap;
+  width: max-content;
+  max-width: calc(100% - 20px);
+  text-align: center;
+  line-height: 1.3;
 }
 
 .modeTag {
@@ -307,11 +343,13 @@
   max-width: calc(100% - 20px);
   padding: 4px 11px;
   border: 1px solid var(--border-2);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   background: rgba(12, 15, 19, 0.88);
   color: var(--text-2);
   font-size: var(--fs-sm);
-  white-space: nowrap;
+  width: max-content;
+  text-align: center;
+  line-height: 1.3;
 }
 
 .modeTagLive {
@@ -681,6 +719,11 @@
     width: auto;
     border-left: 0;
     box-shadow: none;
+  }
+
+  /* Tela cheia: não há fundo para clicar. */
+  .scrim {
+    display: none;
   }
 
   .header,

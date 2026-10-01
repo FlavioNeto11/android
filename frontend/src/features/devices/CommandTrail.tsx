@@ -9,7 +9,8 @@ import { confirm } from '../../components/Confirm';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx } from '../../lib/format';
 import { metaOf, type StatusMeta } from '../../lib/status';
-import { useNow } from '../../lib/time';
+import { rotuloDoComando } from '../../lib/rotulos';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { ACTION_META, cancelarComando, comandoAbertoDe } from './actions';
@@ -32,7 +33,7 @@ export const COMMAND_STATE: Record<CommandState, StatusMeta> = {
   failed: { label: 'Falhou', tone: 'danger', icon: CircleX, description: 'O desfecho é conhecido e é negativo.' },
   rejected: { label: 'Recusado', tone: 'neutral', icon: CircleSlash, description: 'Recusado antes de agir: o aparelho ficou intacto.' },
   cancelled: { label: 'Cancelado', tone: 'neutral', icon: CircleSlash, description: 'Cancelado antes de concluir.' },
-  uncertain: { label: 'Desconhecido', tone: 'warning', icon: CircleHelp, description: 'Acabou sem que se saiba o efeito. Nada será repetido sozinho.' },
+  uncertain: { label: 'Sem resposta', tone: 'warning', icon: CircleHelp, description: 'Acabou sem que se saiba o efeito. Nada será repetido sozinho.' },
 };
 
 const MARCOS: { campo: keyof Command; rotulo: string; icone: LucideIcon }[] = [
@@ -44,7 +45,8 @@ const MARCOS: { campo: keyof Command; rotulo: string; icone: LucideIcon }[] = [
 ];
 
 export function rotuloDoVerbo(verb: string): string {
-  return ACTION_META[verb as InstanceAction]?.label ?? verb;
+  // Nunca o identificador cru ("app.distribute"): o que não é ação do aparelho vem do mapa de `lib/rotulos`.
+  return ACTION_META[verb as InstanceAction]?.label ?? rotuloDoComando(verb);
 }
 
 function hora(iso: string | null): string {
@@ -53,15 +55,15 @@ function hora(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(undefined, { hour12: false });
 }
 
-/** Quanto tempo faz, em texto curto. Para um comando em voo é a informação que diz se ele travou. */
+/**
+ * Quanto tempo faz, numa unidade só ("há 12 s", "há 3 min", "há 6 dias"), pelo formatador único (`lib/time`). Para um
+ * comando em voo é o que diz se travou. Sem instante (ou no futuro) não diz nada: a trilha não mostra travessão.
+ */
 export function idade(iso: string | null, agora = Date.now()): string {
   if (!iso) return '';
   const ms = agora - new Date(iso).getTime();
   if (Number.isNaN(ms) || ms < 0) return '';
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `há ${s} s`;
-  const m = Math.floor(s / 60);
-  return m < 60 ? `há ${m} min` : `há ${Math.floor(m / 60)} h`;
+  return tempoRelativo(iso, agora);
 }
 
 /**
@@ -133,7 +135,7 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
   return (
     <span className={styles.commandLine} title={cmd.reason ?? meta.description}>
       <StatusBadge meta={meta} size="sm" srPrefix="Comando" />
-      <span className={styles.commandText}>{rotuloDoVerbo(cmd.verb)}</span>
+      <span className={styles.commandText} title={`Identificador: ${cmd.verb}`}>{rotuloDoVerbo(cmd.verb)}</span>
       <span className={styles.commandAge}><Idade iso={desde} /></span>
       <CancelCommandButton cmd={cmd} />
     </span>
@@ -156,6 +158,7 @@ export function CommandHistory({ instanceId, semTitulo = false }: {
   const [ocupado, setOcupado] = useState<string | null>(null);
   // Recarrega quando o último comando daquele aparelho muda: o evento já chega ao store por WebSocket.
   const ultimo = useAppStore((s) => s.lastCommand[instanceId]);
+  const workers = useAppStore((s) => s.workers);
 
   const carregar = useCallback(async () => {
     try {
@@ -175,7 +178,7 @@ export function CommandHistory({ instanceId, semTitulo = false }: {
       toast(r.changed
         ? { tone: 'success', title: `${rotuloDoVerbo(cmd.verb)} em ${instanceId}: ${metaOf(COMMAND_STATE, r.command.state).label.toLowerCase()}`,
             details: r.command.reason ? [r.command.reason] : undefined }
-        : { tone: 'info', title: `${rotuloDoVerbo(cmd.verb)} em ${instanceId}: continua desconhecido`,
+        : { tone: 'info', title: `${rotuloDoVerbo(cmd.verb)} em ${instanceId}: continua sem resposta`,
             hint: r.verifiable
               ? 'O estado do aparelho não comprova o efeito. Confira o aparelho e use “Marcar como…”.'
               : 'Este verbo não é verificável pelo estado do aparelho: só uma pessoa pode decidir.' });
@@ -244,10 +247,10 @@ export function CommandHistory({ instanceId, semTitulo = false }: {
           <li key={cmd.id} className={cx(styles.commandItem, cmd.state === 'uncertain' && styles.commandItemAberto)}>
             <div className={styles.commandHead}>
               <StatusBadge meta={metaOf(COMMAND_STATE, cmd.state)} size="sm" srPrefix="Comando" />
-              <span className={cx(styles.commandVerb, styles.commandText)}>{rotuloDoVerbo(cmd.verb)}</span>
+              <span className={cx(styles.commandVerb, styles.commandText)} title={`Identificador: ${cmd.verb}`}>{rotuloDoVerbo(cmd.verb)}</span>
               <span className={styles.commandAge}><Idade iso={cmd.finished_at ?? cmd.created_at} /></span>
               {cmd.worker_id ? (
-                <span className={cx(styles.commandAge, styles.commandText)} title={cmd.worker_id}>{cmd.worker_id}</span>
+                <span className={cx(styles.commandAge, styles.commandText)} title={`Identificador: ${cmd.worker_id}`}>{workers[cmd.worker_id]?.name ?? cmd.worker_id}</span>
               ) : null}
             </div>
             {cmd.reason ? <p className={styles.commandReason}>{cmd.reason}</p> : null}

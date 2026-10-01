@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AiStatus } from '../../api/types';
 import { useAppStore } from '../../store/app';
+import { useUiStore } from '../../store/ui';
 import { initialDataState } from '../../store/reducer';
 import { APPS, makeInstance, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
@@ -30,8 +31,9 @@ let backend: FakeBackend;
 beforeAll(() => installBrowserStubs());
 
 beforeEach(() => {
-  // A aba aberta fica lembrada em `settingsSection`: sem limpar, um caso herdaria a aba do anterior.
+  // A guia vem do link (`?aba=`): sem voltar para `#/configuracao`, um caso herdaria a guia do anterior.
   localStorage.clear();
+  useUiStore.getState().navegar({ tela: 'configuracao' }, 'replace');
   backend = new FakeBackend();
   backend.install();
   backend.on('GET', /^\/api\/ai$/, () => json(IA));
@@ -69,7 +71,7 @@ describe('Configuração no contrato de página', () => {
   it('as cinco abas continuam role=tab com os mesmos nomes, direto na página (sem Card em volta)', async () => {
     await render();
     const abas = allByRole('tab', /.+/, container).map((t) => (t.textContent ?? '').trim());
-    expect(abas).toEqual(['Aplicativos', 'Instâncias e contas', 'IA', 'Fluxos e receitas', 'Limites']);
+    expect(abas).toEqual(['Aplicativos', 'Aparelhos e contas', 'IA', 'Fluxos e receitas', 'Limites']);
     const lista = byRole('tablist', 'Seções de configuração', container);
     // A lista de abas é filha da página, como em Aplicativos — não mais de um cartão (`section`) que envolvia tudo.
     expect(lista.closest('section')).toBeNull();
@@ -77,11 +79,13 @@ describe('Configuração no contrato de página', () => {
     expect(allByRole('tabpanel', /.*/, container)).toHaveLength(1);
   });
 
-  it('Aplicativos é um cartão com a ação "Novo aplicativo" no cabeçalho', async () => {
+  it('Aplicativos é um cartão que leva a "Gerenciar em Aplicativos"; o cadastro novo mora só lá', async () => {
     await render();
     expect(titulosDeCartao()).toContain('Aplicativos cadastrados');
     const cabecalho = container.querySelector('header') as HTMLElement;
-    expect(byRole('button', /^Novo aplicativo/, cabecalho)).toBeTruthy();
+    const link = Array.from(cabecalho.querySelectorAll('a')).find((a) => /Gerenciar em Aplicativos/.test(a.textContent ?? ''));
+    expect(link?.getAttribute('href')).toBe('#/aplicativos');
+    expect(allByRole('button', /Novo aplicativo|Cadastrar aplicativo/, container)).toHaveLength(0);
   });
 
   it('IA: "Por função" é cabeçalho de cartão e a tabela fica numa região rolável nomeada', async () => {
@@ -95,9 +99,9 @@ describe('Configuração no contrato de página', () => {
     expect(text(container)).toContain('nunca no navegador');
   });
 
-  it('Instâncias e contas: um cartão por servidor, com o nome da máquina no cabeçalho', async () => {
+  it('Aparelhos e contas: um cartão por servidor, com o nome da máquina no cabeçalho', async () => {
     await render();
-    await click(byRole('tab', /^Instâncias e contas/, container));
+    await click(byRole('tab', /^Aparelhos e contas/, container));
     await waitFor(() => expect(text(container)).toContain('Aplicar app a todas'));
     expect(titulosDeCartao()).toEqual(expect.arrayContaining(['Aparelhos, apps e contas', 'Este servidor']));
   });
@@ -116,14 +120,19 @@ describe('Configuração no contrato de página', () => {
     expect(corpo?.contains(salvar)).toBe(false);
   });
 
-  it('a aba escolhida fica lembrada entre visitas', async () => {
+  it('a guia vai para o link e volta dele: #/configuracao?aba=fluxos abre Fluxos e receitas', async () => {
     await render();
-    await click(byRole('tab', /^Fluxos e receitas/, container));
-    await act(async () => root.unmount());
-    root = createRoot(container);
+    expect(byRole('tab', /^Aplicativos/, container).getAttribute('aria-selected')).toBe('true');
     backend.on('GET', /^\/api\/(flows|recipes)$/, () => json([]));
     backend.on('GET', /^\/api\/flows\/cobertura$/, () => json([]));
+    await click(byRole('tab', /^Fluxos e receitas/, container));
+    expect(useUiStore.getState().rota.query.aba).toBe('fluxos');
+    await act(async () => root.unmount());
+    root = createRoot(container);
     await render();
     expect(byRole('tab', /^Fluxos e receitas/, container).getAttribute('aria-selected')).toBe('true');
+    // "Aplicativos" é a padrão: não aparece no link, e o link antigo `#/configuracao` continua abrindo nela.
+    await click(byRole('tab', /^Aplicativos/, container));
+    expect(useUiStore.getState().rota.query.aba).toBeUndefined();
   });
 });

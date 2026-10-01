@@ -68,6 +68,16 @@ textarea {
 
 button {
   cursor: pointer;
+  /* Sem isto um <button> sem classe de fundo herda o cinza nativo do sistema (contraste 2,6:1 medido). Especificidade
+     de elemento: qualquer classe de componente continua ganhando. */
+  background-color: transparent;
+  border: 0;
+}
+
+/* Campos sem classe de componente (select e arquivo soltos em telas antigas) também têm alvo de 32 px. */
+select,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]) {
+  min-height: var(--hit-min);
 }
 
 button:disabled {
@@ -89,7 +99,8 @@ kbd,
 pre,
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.94em;
+  /* monoespaçada é larga; 0,94em de 13 px dava 12,2 px. Nunca abaixo de 13 px. */
+  font-size: max(0.94em, var(--fs-xs));
 }
 
 kbd {
@@ -183,7 +194,10 @@ summary:focus-visible {
 /* Botão que não parece botão: um selo clicável dentro de uma linha densa (ex.: o servidor no cartão). */
 .linkish {
   display: inline-flex;
-  padding: 0;
+  align-items: center;
+  /* 32 px de área de clique sem alterar a linha onde mora (padding + margem negativa) */
+  padding: 9px 4px;
+  margin: -9px -4px;
   background: none;
   border: 0;
   cursor: pointer;
@@ -239,4 +253,40 @@ summary:focus-visible {
   .spin {
     animation: none;
   }
+}
+
+/* Estilos de texto (tarefa 07). Os componentes usam os tokens `--fs-*` e `--fw-*` direto; estas classes são o
+   vocabulário para o que ainda não tem componente: título de página, de seção, rótulo, valor e legenda. */
+.t-titulo-pagina {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--text-1);
+}
+
+.t-titulo-secao {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--text-1);
+}
+
+.t-rotulo {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+
+.t-valor {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+
+.t-legenda {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--text-3);
 }

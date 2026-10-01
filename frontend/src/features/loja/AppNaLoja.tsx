@@ -26,6 +26,7 @@ import { useAppStore } from '../../store/app';
 import { chaveDoApp } from '../../store/reducer';
 import { toast, toastError } from '../../store/toasts';
 import { ANDAMENTO, CANAL, ORIGEM, idadeDaLeitura } from '../releases/ReleasesPage';
+import { Termo } from '../apps/glossario';
 import { DistribuirDialog } from './DistribuirDialog';
 import { CATEGORIAS, IconeDoApp, resumoDaPromocao } from './comum';
 import styles from './Loja.module.css';
@@ -295,10 +296,11 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
           </div>
         </div>
         <div className={styles.badges}>
-          {promovida ? <Badge tone="success">{promovida.version_name} promovida</Badge>
-            : <Badge tone="warning">nenhuma versão promovida</Badge>}
+          {promovida ? <Badge tone="success">{promovida.version_name} <Termo termo="promovida">promovida</Termo></Badge>
+            : <Badge tone="warning"><Termo termo="sem-promovida">nenhuma versão promovida</Termo></Badge>}
           <Badge tone={entry.has_catalog ? 'success' : 'neutral'}>
-            {entry.has_catalog ? 'IA com catálogo de ações' : 'IA pelo caminho livre'}</Badge>
+            <Termo termo={entry.has_catalog ? 'catalogo-de-acoes' : 'ia-livre'}>
+              {entry.has_catalog ? 'IA com catálogo de ações' : 'IA pelo caminho livre'}</Termo></Badge>
         </div>
         <span className={styles.grow} />
         <Select aria-label="Categoria" small className={styles.inlineSelect} value={entry.category ?? ''} onChange={(e) => void mudarCategoria(e.target.value)}>
@@ -331,6 +333,16 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
         </CardBody>
       </Card>
 
+      {!promovida ? (
+        <Banner tone="warning" icon={TrendingUp} title="Sem versão promovida: ainda não há o que distribuir"
+                actions={<Button size="sm" variant="primary" icon={TrendingUp}
+                                 onClick={() => document.getElementById('loja-versoes')?.scrollIntoView({ block: 'start' })}>
+                  Ir para as versões</Button>}>
+          Envie ou copie uma versão, prove-a em um aparelho (canário) e depois use Promover. Só a versão promovida é
+          distribuída.
+        </Banner>
+      ) : null}
+
       {promovida && atrasados.length > 0 ? (
         <Banner tone="info" icon={TrendingUp} title={`Atualização disponível para ${atrasados.length} aparelho(s)`}
                 actions={<Button variant="primary" size="sm" icon={Send}
@@ -340,7 +352,7 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
         </Banner>
       ) : null}
 
-      <Card>
+      <Card id="loja-versoes">
         <CardHeader title="Versões"
                     subtitle="Aprovar a assinatura → provar num aparelho (canário) → promover → distribuir. Só versão promovida é distribuída." />
         <CardBody>

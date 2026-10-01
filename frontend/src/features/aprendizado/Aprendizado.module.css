@@ -184,7 +184,8 @@
 .exemplos li { overflow-wrap: anywhere; }
 
 .linkBtn {
-  padding: 0;
+  /* 32 px de área de clique: o respiro vertical entra como padding (o botão é inline, a linha não muda) */
+  padding: 6px 0;
   border: 0;
   background: none;
   color: var(--accent-text);
@@ -192,6 +193,15 @@
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* RF-31: link dentro de um parágrafo com 32 px de alvo sem mudar a linha onde mora: padding e margem negativa iguais
+   (a receita do `.linkish` da tarefa 07). Como `inline-flex`, a altura é a da linha mais os 18 px de padding. */
+.linkAlvo {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 4px;
+  margin: -9px -4px;
 }
 
 .trilha {

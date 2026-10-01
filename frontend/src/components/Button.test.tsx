@@ -42,7 +42,7 @@ it('com motivo nulo, o clique chega ao onClick', async () => {
 it('com motivo preenchido, o clique NÃO chega ao onClick e o motivo fica no nome acessível', async () => {
   let cliques = 0;
   await render(
-    <Button disabledReason="Vincule um aparelho a este perfil." onClick={() => { cliques += 1; }}>
+    <Button disabledReason="Vincule um aparelho a esta persona." onClick={() => { cliques += 1; }}>
       Conectar
     </Button>,
   );
@@ -50,7 +50,7 @@ it('com motivo preenchido, o clique NÃO chega ao onClick e o motivo fica no nom
   expect(botao.getAttribute('aria-disabled')).toBe('true');
   await click(botao);
   expect(cliques).toBe(0);
-  expect(botao.textContent).toContain('Vincule um aparelho a este perfil.');
+  expect(botao.textContent).toContain('Vincule um aparelho a esta persona.');
 });
 
 /**

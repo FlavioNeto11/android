@@ -1,13 +1,12 @@
 import { AppWindow, Bot, ServerCrash, SlidersHorizontal, Smartphone, Workflow } from 'lucide-react';
-import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { isString, loadJson, saveJson } from '../../lib/storage';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
+import { useUiStore } from '../../store/ui';
 import { AiSection } from './AiSection';
 import { AppsSection } from './AppsSection';
 import { FlowsRecipesSection } from './FlowsRecipesSection';
@@ -19,14 +18,19 @@ type SectionId = 'apps' | 'instancias' | 'ia' | 'fluxos' | 'limites';
 
 const SECTIONS: TabDef<SectionId>[] = [
   { id: 'apps', label: 'Aplicativos', icon: AppWindow },
-  { id: 'instancias', label: 'Instâncias e contas', icon: Smartphone },
+  { id: 'instancias', label: 'Aparelhos e contas', icon: Smartphone },
   { id: 'ia', label: 'IA', icon: Bot },
   { id: 'fluxos', label: 'Fluxos e receitas', icon: Workflow },
   { id: 'limites', label: 'Limites', icon: SlidersHorizontal },
 ];
 
-function isSection(v: unknown): v is SectionId {
-  return isString(v) && SECTIONS.some((s) => s.id === v);
+/** Como a guia aparece no link (`#/configuracao?aba=aplicativos`); "Aplicativos" é a padrão e não entra nele. */
+const ABA_NO_LINK: Record<SectionId, string> = {
+  apps: 'aplicativos', instancias: 'instancias', ia: 'ia', fluxos: 'fluxos', limites: 'limites',
+};
+
+function secaoDoLink(aba: string | undefined): SectionId {
+  return (Object.keys(ABA_NO_LINK) as SectionId[]).find((id) => ABA_NO_LINK[id] === aba) ?? 'apps';
 }
 
 /**
@@ -37,12 +41,13 @@ function isSection(v: unknown): v is SectionId {
 export function SettingsPage() {
   const hydrated = useAppStore((s) => s.hydrated);
   const connStatus = useAppStore((s) => s.conn.status);
-  const [section, setSection] = useState<SectionId>(() => loadJson('settingsSection', isSection) ?? 'apps');
+  // A guia vem do link: `#/configuracao?aba=fluxos`. Sem `aba`, o link antigo `#/configuracao` continua abrindo
+  // Aplicativos (antes a guia ficava só no localStorage, sem link que a levasse a alguém).
+  const aba = useUiStore((s) => s.rota.query.aba);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const section = secaoDoLink(aba);
 
-  const change = (id: SectionId) => {
-    setSection(id);
-    saveJson('settingsSection', id);
-  };
+  const change = (id: SectionId) => trocarQuery({ aba: id === 'apps' ? undefined : ABA_NO_LINK[id] }, 'replace');
 
   return (
     <Page
