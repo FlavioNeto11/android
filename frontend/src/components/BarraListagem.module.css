@@ -33,8 +33,11 @@
 
 .rodape { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--text-2); }
 .resumo { font-variant-numeric: tabular-nums; }
+/* RF-43: 32 px de alvo (era 24) sem mudar a linha do rodapé: a altura mínima vem do token, e a margem negativa
+   devolve os 8 px a mais (32 − 2 × 4 = os 24 de antes), a receita da tarefa 07 para links em linhas densas. */
 .limpar {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 0; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; gap: 4px; min-height: var(--hit-min); padding: 0 6px; margin: -4px 0;
+  border: 0; border-radius: var(--radius-sm);
   background: transparent; color: var(--accent-text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 .limpar:hover { background: var(--accent-soft); }
