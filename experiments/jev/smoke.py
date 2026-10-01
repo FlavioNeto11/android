@@ -21,9 +21,10 @@ from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import isolation                                                           # noqa: E402
 from corpus import chunk_file, repo_root                                   # noqa: E402
 from netguard import no_network                                            # noqa: E402
-from provider import (KEY_ENV, PINNED_MODEL, PRICE_USD_PER_MTOK_INPUT, ProviderError,   # noqa: E402
+from provider import (KEY_ENV, PINNED_MODEL, PRICE_USD_PER_MTOK_INPUT, ProviderError, ProviderNotEnabled,   # noqa: E402
                       RealJevProvider, choice_q, noul_q, parse_answers, parse_choice, parse_noul, payload_bytes,
                       request_body, retrieval_request, score_q)
 
@@ -149,38 +150,78 @@ def estimate(plan: list[Planned]) -> dict:
 
 
 # --------------------------------------------------------------------------- rodada real (travada)
+def _qtype(p: Planned) -> str:
+    return "+".join(sorted({str(q.get("type", "?")) for q in p.questions.values()}))
+
+
+def _stats(values: list[float]) -> dict:
+    if not values:
+        return {"n": 0}
+    xs = sorted(values)
+
+    def pct(q: float) -> float:
+        pos = (len(xs) - 1) * q
+        lo = int(pos)
+        hi = min(lo + 1, len(xs) - 1)
+        return round(xs[lo] + (xs[hi] - xs[lo]) * (pos - lo), 1)
+    return {"n": len(xs), "min": xs[0], "p50": pct(0.5), "p95": pct(0.95), "max": xs[-1]}
+
+
 def run_real(plan: list[Planned], provider: RealJevProvider) -> dict:
-    results = []
-    for p in plan:
-        rec: dict[str, Any] = {"name": p.name, "purpose": p.purpose, "expect": p.expect}
+    """Uma tentativa de rede por item (`max_retries` deve ser 0). Sem teto/chave/habilitação a rodada ABORTA, sem seguir adiante.
+    Registra só metadados: nunca o payload nem a chave. Só o corpo de erro (sintético, truncado) e o formato das respostas."""
+    results: list[dict] = []
+    aborted = None
+    for i, p in enumerate(plan, 1):
+        rec: dict[str, Any] = {"CALL_ID": i, "name": p.name, "QUESTION_TYPE": _qtype(p), "expect": p.expect,
+                               "purpose": p.purpose, "PARSE_OK": False, "ERROR_CLASS": None}
+        before = provider.calls
         old_timeout = provider.timeout_s
         if p.timeout_s:
             provider.timeout_s = p.timeout_s
         t0 = time.perf_counter()
         try:
             raw = provider.evaluate(p.state, p.questions)
-            rec["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
-            _, model, usage = parse_answers(raw)
-            rec.update(outcome="ok", model_reported=model, input_tokens=usage.input_tokens,
-                       output_tokens=usage.output_tokens,
-                       real_cost_usd=usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6)
-            if p.check:
-                rec["validated"] = p.check(raw)
-            rec["answers_shape"] = {k: v.get("type") for k, v in raw.get("answers", {}).items()}
-            if "q" in raw.get("answers", {}) and raw["answers"]["q"].get("type") == "choice":
-                rec["confidence"] = raw["answers"]["q"].get("confidence")
+            rec["LATENCY_MS"] = round((time.perf_counter() - t0) * 1000, 1)
+            answers, model, usage = parse_answers(raw)
+            rec.update(outcome="ok", MODEL_RETURNED=model, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                       COST_ESTIMATE_USD=usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6,
+                       answers_shape={k: v.get("type") for k, v in answers.items()})
+            rec["validated"] = p.check(raw) if p.check else []
+            rec["PARSE_OK"] = True
+            conf = {k: v.get("confidence") for k, v in answers.items() if v.get("type") in ("choice", "score")}
+            rec["CONFIDENCE_IF_APPLICABLE"] = conf or None
+        except ProviderNotEnabled as exc:                           # teto, chave ou habilitação: ABORTA a rodada
+            rec.update(outcome="aborted", ERROR_CLASS=exc.kind, error=str(exc))
+            aborted = f"{p.name}: {exc}"
         except ProviderError as exc:
-            rec["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
-            rec.update(outcome=exc.kind, error=str(exc), error_body=provider.last_error_body)
+            rec["LATENCY_MS"] = round((time.perf_counter() - t0) * 1000, 1)
+            rec.update(outcome=exc.kind, ERROR_CLASS=exc.kind, error=str(exc), error_body=provider.last_error_body)
         except Exception as exc:                                    # noqa: BLE001 - validação falhou: registrar, não esconder
-            rec.update(outcome="validation_failed", error=f"{type(exc).__name__}: {exc}")
+            rec.update(outcome="validation_failed", ERROR_CLASS=type(exc).__name__, error=str(exc)[:200])
         finally:
             provider.timeout_s = old_timeout
-        rec["network_calls_so_far"] = provider.calls
+        rec.update(HTTP_STATUS=provider.last_status, NETWORK_ATTEMPT=provider.calls, attempts_this_call=provider.calls - before,
+                   INPUT_BYTES=provider.last_request_bytes if provider.calls > before else 0,
+                   RESPONSE_BYTES=provider.last_response_bytes)
         results.append(rec)
-    return {"calls_used": provider.calls, "results": results,
-            "total_real_cost_usd": sum(r.get("real_cost_usd", 0.0) for r in results),
-            "redactions": provider.redactions}
+        if aborted or provider.calls > MAX_CALLS:
+            aborted = aborted or "mais de 6 tentativas de rede"
+            break
+    ok_tokens = [r["input_tokens"] for r in results if r.get("outcome") == "ok"]
+    return {
+        "NETWORK_ATTEMPTS": provider.calls, "calls_used": provider.calls,
+        "MAX_CALLS_RESPECTED": provider.calls <= MAX_CALLS and aborted is None, "aborted": aborted, "results": results,
+        "latency_ms_all": _stats([r["LATENCY_MS"] for r in results if "LATENCY_MS" in r]),
+        "latency_ms_successful": _stats([r["LATENCY_MS"] for r in results if r.get("outcome") == "ok"]),
+        "ACTUAL_INPUT_BYTES": sum(r.get("INPUT_BYTES", 0) for r in results),
+        "ACTUAL_INPUT_TOKENS": sum(ok_tokens) if ok_tokens else "UNKNOWN",
+        "ACTUAL_INPUT_TOKENS_NOTE": "soma de usage.input_tokens das respostas 200; erro e timeout não trazem usage (cobrança deles: UNKNOWN)",
+        "ACTUAL_ESTIMATED_COST_USD": sum(ok_tokens) * PRICE_USD_PER_MTOK_INPUT / 1e6 if ok_tokens else "UNKNOWN",
+        "total_real_cost_usd": sum(r.get("COST_ESTIMATE_USD", 0.0) for r in results),
+        "price_usd_per_mtok_input": PRICE_USD_PER_MTOK_INPUT,
+        "redactions": provider.redactions,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,9 +247,15 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("BLOCKED_AUTHORIZATION: a rodada real do smoke aguarda autorização EXPLÍCITA do dono. Nada foi enviado.")
     if not os.environ.get(KEY_ENV):
         raise SystemExit(f"variável {KEY_ENV} ausente. Nada foi enviado.")
-    cap = min(args.max_calls, MAX_CALLS)
-    provider = RealJevProvider(enabled=True, max_calls=cap, max_retries=0)
+    if not 1 <= args.max_calls <= MAX_CALLS:                        # 0 significaria "sem teto" no provedor
+        raise SystemExit(f"--max-calls deve estar entre 1 e {MAX_CALLS}. Nada foi enviado.")
+    iso = isolation.check(SYNTHETIC, [[p.state, p.questions] for p in plan])
+    if iso["status"] != "PASS":
+        raise SystemExit("SYNTHETIC_ISOLATION_CHECK = FAIL. Nada foi enviado:\n  " + "\n  ".join(iso["problems"]))
+    provider = RealJevProvider(enabled=True, max_calls=args.max_calls, max_retries=0)
     report = run_real(plan, provider)
+    report["SYNTHETIC_ISOLATION_CHECK"] = iso["status"]
+    report["isolation_counters"] = {k: v for k, v in iso.items() if k not in ("status", "problems")}
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{stamp}-real.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=1))

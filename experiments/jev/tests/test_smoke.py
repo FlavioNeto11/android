@@ -95,7 +95,13 @@ def test_simulated_real_run_with_fake_transport_follows_the_plan():
     outcomes = {r["name"]: r["outcome"] for r in rep["results"]}
     assert outcomes == {"noul_auth_latency": "ok", "choice_closed_set": "ok", "score_three_levels": "ok",
                         "rerank_shape": "ok", "error_422": "error", "timeout_probe": "timeout"}
-    assert rep["calls_used"] == 6 and len(seen) == 6 and all(s[0] == pv.API_URL for s in seen)
+    assert rep["calls_used"] == rep["NETWORK_ATTEMPTS"] == 6 and rep["MAX_CALLS_RESPECTED"] and len(seen) == 6
+    assert all(s[0] == pv.API_URL for s in seen)
+    assert [r["NETWORK_ATTEMPT"] for r in rep["results"]] == [1, 2, 3, 4, 5, 6]
+    assert [r["HTTP_STATUS"] for r in rep["results"]] == [200, 200, 200, 200, 422, None]
+    assert all(r["INPUT_BYTES"] > 0 and r["PARSE_OK"] for r in rep["results"] if r["outcome"] == "ok")
+    assert next(r for r in rep["results"] if r["name"] == "timeout_probe")["ERROR_CLASS"] == "timeout"
+    assert rep["ACTUAL_INPUT_TOKENS"] == 1200 and rep["latency_ms_successful"]["n"] == 4
     assert all(r.get("validated") for r in rep["results"] if r["outcome"] == "ok")
     err = next(r for r in rep["results"] if r["name"] == "error_422")
     assert "two levels" in err["error_body"] and "retry" not in err["error"]
@@ -113,6 +119,46 @@ def test_run_never_exceeds_six_network_attempts_even_with_retries():
                            sleep=lambda s: None)
     sm.run_real(sm.build_plan(), p)
     assert n["c"] == 6
+
+
+def test_run_aborts_when_cap_is_hit_and_never_sends_a_seventh():
+    n = {"c": 0}
+
+    def transport(*a):
+        n["c"] += 1
+        return 200, b"{}"
+    p = pv.RealJevProvider(enabled=True, max_calls=2, max_retries=0, env={pv.KEY_ENV: "k" * 20}, transport=transport)
+    rep = sm.run_real(sm.build_plan(), p)
+    assert n["c"] == 2 and rep["aborted"] and rep["MAX_CALLS_RESPECTED"] is False and len(rep["results"]) == 3
+
+
+def test_isolation_passes_on_the_real_synthetic_corpus_and_fails_on_violations(tmp_path):
+    import isolation
+    plan = sm.build_plan()
+    ok = isolation.check(SYN, [[p.state, p.questions] for p in plan])
+    assert ok["status"] == "PASS", ok["problems"]
+    bad = isolation.check(SYN, [{"state": "see backend/app/api.py on android-05"}])
+    assert bad["status"] == "FAIL" and any("literal proibido" in x for x in bad["problems"])
+    (tmp_path / "x.py").write_text("def crew_thing():\n    return 'persona'\n", encoding="utf-8")
+    assert isolation.check(tmp_path)["status"] == "FAIL"
+
+
+def test_run_refuses_to_send_when_isolation_fails(monkeypatch, tmp_path):
+    monkeypatch.setenv(pv.KEY_ENV, "k" * 24)
+    monkeypatch.setattr(sm, "SMOKE_RUN_AUTHORIZED", True)
+    monkeypatch.setattr(sm.isolation, "check", lambda *a, **k: {"status": "FAIL", "problems": ["x"]})
+    monkeypatch.setattr(sm, "RealJevProvider", lambda **k: (_ for _ in ()).throw(AssertionError("provedor criado")))
+    with pytest.raises(SystemExit) as e:
+        sm.main(["--run", "--confirm-synthetic-only", "--out", str(tmp_path)])
+    assert "SYNTHETIC_ISOLATION_CHECK = FAIL" in str(e.value)
+
+
+def test_max_calls_must_be_between_1_and_6(monkeypatch, tmp_path):
+    monkeypatch.setenv(pv.KEY_ENV, "k" * 24)
+    monkeypatch.setattr(sm, "SMOKE_RUN_AUTHORIZED", True)
+    for bad in ("0", "7"):
+        with pytest.raises(SystemExit):
+            sm.main(["--run", "--confirm-synthetic-only", "--max-calls", bad, "--out", str(tmp_path)])
 
 
 # --------------------------------------------------------------------------- o corpus sintético NÃO vem do repositório

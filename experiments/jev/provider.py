@@ -266,6 +266,9 @@ class RealJevProvider(DecisionProvider):
     calls: int = 0
     redactions: dict[str, int] = field(default_factory=dict)
     last_error_body: str = field(default="", repr=False)
+    last_status: int | None = None          # status HTTP da última tentativa (None = sem resposta, ex. timeout)
+    last_request_bytes: int = 0
+    last_response_bytes: int | None = None
     name = "jev"
 
     def _key(self) -> str:
@@ -299,12 +302,15 @@ class RealJevProvider(DecisionProvider):
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         espera = 1.0
         self.last_error_body = ""
+        self.last_status, self.last_response_bytes = None, None
+        self.last_request_bytes = len(body)
         for tentativa in range(self.max_retries + 1):
             # O teto vale POR TENTATIVA de rede: um retry também gasta uma chamada real.
             if self.max_calls and self.calls >= self.max_calls:
                 raise ProviderNotEnabled(f"teto de {self.max_calls} requisições da rodada atingido")
             self.calls += 1
             status, corpo = self.transport(API_URL, headers, body, self.timeout_s)
+            self.last_status, self.last_response_bytes = status, len(corpo)
             if status == 200:
                 try:
                     return json.loads(corpo.decode("utf-8"))
