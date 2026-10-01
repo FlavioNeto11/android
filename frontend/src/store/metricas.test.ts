@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AiBalance, Health, Instance, Worker } from '../api/types';
 import { hashDe } from '../lib/rotas';
 import { makeInstance, makeRun, makeSnapshot } from '../test/fixtures';
+import { hydrateFromSnapshot, initialDataState, mergeRuns, MAX_RUNS } from './reducer';
 import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import {
   DESTINO_EM_ANDAMENTO, JANELA_DE_EXECUCOES, contarAparelhos, contarSelecao, execucoesEmAndamento, nivelDoAmbiente,
@@ -222,6 +223,28 @@ describe('aguardando você e personas bloqueadas', () => {
     expect(execucoesEmAndamento(runs)).toBe(5);
     expect(execucoesEmAndamento(runs)).toBe(runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length);
     expect(DESTINO_EM_ANDAMENTO).toEqual({ tela: 'execucoes', query: { status: 'andamento' } });
+  });
+
+  it('RF-05: o contador de em andamento vale desde o primeiro carregamento e não muda ao visitar Execuções', () => {
+    // O parque real: 3 `planned` antigas (rank 57, 169 e 176 de 247), fora das 20 mais recentes e das 100 do store.
+    const dia = (n: number) => new Date(Date.UTC(2026, 8, 30) - n * 3_600_000).toISOString();
+    const concluidas = (de: number, ate: number) => Array.from({ length: ate - de }, (_, i) =>
+      makeRun({ id: `r-${de + i}`, short_id: `s${de + i}`, status: 'completed', created_at: dia(de + i) }));
+    const antigas = [57, 169, 176].map((rank) => makeRun({ id: `planejada-${rank}`, status: 'planned', created_at: dia(rank) }));
+
+    // Primeira carga: o snapshot traz as 20 recentes E as em andamento (o backend passou a mandá-las).
+    const aberto = hydrateFromSnapshot(initialDataState, makeSnapshot({ runs: [...concluidas(0, 20), ...antigas] }));
+    expect(execucoesEmAndamento(aberto.runs)).toBe(3);
+
+    // Depois de visitar Execuções (200 linhas, mais que o teto do store): o número continua o mesmo, e é o do chip.
+    const historico = [...concluidas(0, 57), antigas[0]!, ...concluidas(58, 169), antigas[1]!, ...concluidas(170, 176), antigas[2]!, ...concluidas(177, 247)];
+    const visitado = mergeRuns(aberto, historico);
+    expect(visitado.runs.length).toBeGreaterThan(MAX_RUNS);                        // as antigas ficam ALÉM do teto
+    expect(execucoesEmAndamento(visitado.runs)).toBe(3);
+    expect(execucoesEmAndamento(visitado.runs)).toBe(historico.filter((r) => grupoDoStatus(r.status) === 'andamento').length);
+
+    // O teto segue valendo para o resto: as 100 mais recentes, mais as duas em andamento que ficaram além dele.
+    expect(visitado.runs).toHaveLength(MAX_RUNS + 2);
   });
 
   it('personas bloqueadas contam só `blocked`; sem lista ainda, não há número', () => {
