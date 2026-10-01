@@ -385,6 +385,20 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 12 — 01/10 ~13:45Z — W4–W8 no notebook, a causa do W4 era código
+
+- **Causa do W4 achada e corrigida** (`658e5bb`, implantado 12:59Z): a observação contava o cabeçalho "Lockdown filtering
+  rules:" do dumpsys (sempre presente) como regra de bloqueio; com a política `exigida`, o túnel no ar nunca valia e a
+  rede reiniciava em cadeia. A hipótese de memória do notebook caiu de vez (K-067).
+- **android-09 (notebook), `real`:** W2–W5 `trafego_verificado` às 13:08Z (#76), um reinício, o servidor viu o par
+  10.66.0.6; W6 modo avião 1 min, túnel de volta sozinho; W7 agente religado, aparelho seguiu sem reinício; W8 teste
+  de vazamento real no remoto (bloqueio provado às 13:26Z). Depois do teste, com o bloqueio, o túnel não voltou (tile
+  falhou, 2 reinícios, a rede desistiu): rollback às 13:37Z, rede tirada às 13:42Z. 4 reinícios pela rede no W8, todos
+  no QA.
+- **android-15:** Outlook `ready` (a leitura lenta se confirmou ao ligar).
+- **C1 no 03 (US$ 0,60 autorizados):** `r-20261001124036-996716`, ~US$ 0,26; a IA viu o assunto na captura, mas a
+  lista do Outlook não expõe texto na árvore e `read_value` recusou. Total pago desde 29/09: ~US$ 2,37.
+
 ### Checkpoint 11 — 01/10 ~12:40Z — C1 autorizado no 03, limite do notebook
 
 - **C1 no android-03** (autorização do dono no chat: "pode rodar o C1, até US$ 1,00", uma tentativa):

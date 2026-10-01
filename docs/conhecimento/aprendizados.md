@@ -1657,7 +1657,11 @@ residente com ~3,7 GB privados). Com WHPX, a memória do convidado não aparece 
 esperava. O que segue de pé: o arquivo de paginação do notebook bateu no máximo alocado (37 GB; o do central, 18 GB de
 pico), e `Pages/sec` estava em 1 no momento da leitura.
 
-**O que fazer.** Não tirar conclusão de memória pelo working set de um emulador com WHPX: medir `Pages/sec`, o
-compromisso contra o limite e o CPU do `qemu-system` DURANTE o defeito. O diagnóstico e o plano estão em
-`docs/handoffs/memoria-do-notebook.md`; a causa do W4 segue sem medição.
+**A causa de verdade (01/10, medida).** Não era memória: o comando de observação da rede contava o cabeçalho
+"Lockdown filtering rules:" do `dumpsys connectivity`, que o Android 14 imprime sempre. Todo aparelho tinha "regras de
+bloqueio"; com a política `exigida` (sem bloqueio) o túnel no ar nunca valia como conectado e a rede reiniciava em
+cadeia. Corrigido em `658e5bb` (conta as linhas `UIDs:`); com a correção, W2–W7 passaram no android-09.
+
+**O que fazer.** Não tirar conclusão de memória pelo working set de um emulador com WHPX, e desconfiar primeiro do
+que a própria plataforma mede: o registro dizia "tun0 no ar; VPN CONNECTED" e mesmo assim "o túnel não subiu".
 

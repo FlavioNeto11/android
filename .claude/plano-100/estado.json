@@ -4450,16 +4450,16 @@
   },
   "29.9": {
    "id": "29.9",
-   "status": "blocked",
+   "status": "partial",
    "proof": "real",
-   "evidence": "Real, 30/09–01/10: W0 firewall-check 'liberado' (regra do dono); D2 reserva DHCP; D8 perfil Public do firewall do notebook religado pelo dono e conferido em 01/10 (Enabled=True no notebook e no central; a regra UDP 51820 segue 'liberado'; worker conectado). W1 ligado com a GPU do host; W2 perfil vpn-central-wireguard, política exigida; W3 'configurado'. W4 falhou (30/09 22:37–22:53Z): o cliente VPN não subiu (o servidor do central não viu par novo) e o adbd do convidado caiu; rollback às 22:48Z.",
-   "blocker": "Causa do W4 sem medição: a hipótese de memória paginada do convidado caiu (K-067: o working set pequeno do emulador com WHPX aparece também no central, onde tudo funciona); o que segue medido é o arquivo de paginação do notebook no máximo alocado. Antes de repetir: medir Pages/sec, compromisso e CPU do qemu durante a subida com a VPN (plano em docs/handoffs/memoria-do-notebook.md); mitigação opcional: max_slots 3 no notebook.",
+   "evidence": "Real, 01/10, android-09 (QA, notebook), central 658e5bb: a causa do W4 foi um defeito de código, medido — o comando de observação contava o cabeçalho 'Lockdown filtering rules:' do dumpsys (sempre presente), então com a política exigida (sem bloqueio) o túnel no ar nunca valia como conectado e a rede reiniciava em cadeia; corrigido para contar as linhas 'UIDs:' (R=3 no android-03 com bloqueio, R=0 no android-09). Depois da correção: W2–W5 — perfil vpn-central-wireguard, política exigida, um reinício, 'conectado' às 13:07:51Z e trafego_verificado às 13:08:37Z (medição #76), com o servidor do central vendo o par 10.66.0.6; W6 — modo avião por 1 min: o túnel voltou sozinho (tun0 e VPN CONNECTED, sem reprovisão nem reinício); W7 — agente do notebook religado às 13:19Z: o aparelho seguiu com o túnel e trafego_verificado, sem reinício; W8 — exigida_com_bloqueio: teste de vazamento REAL no remoto com o cliente parado e o Android recusando a sonda (leak_rev 2, leak_result 1, 13:26Z).",
+   "blocker": "No W8 o túnel não voltou depois do teste de vazamento com o bloqueio: o tile não religou e a rede desistiu depois de 2 reinícios (4 reinícios pela rede no total do W8, todos no QA android-09); rollback às 13:37Z, rede tirada às 13:42Z. É o K-066 (always-on uma vez por boot) mais forte no notebook. Antes de usar bloqueio em aparelho remoto, medir por que o cliente não sobe no boot ali.",
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-01T12:27:06+00:00"
+   "quando": "2026-10-01T13:42:27+00:00"
   },
   "29.12": {
    "id": "29.12",
@@ -5425,6 +5425,15 @@
    "quando": "2026-10-01T12:43:57+00:00",
    "itens": [
     "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-01T13:42:27+00:00",
+   "itens": [
+    "29.9"
    ],
    "grupos": [
     "29-pendencias-evolucao3"
