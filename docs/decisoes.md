@@ -534,6 +534,10 @@ controle de acesso por pessoa: quem tem o `API_TOKEN` entra com o nome que quise
 fazer o quê). `panel` continua aparecendo como operador quando ninguém se identificou, inclusive no loopback (onde
 o login é só o nome, sem token, porque ali quem chama já tem banco e ADB na mão).
 
+**Observação de 01/10/2026.** O caso apareceu em dado real: 30 cancelamentos de execução em dois lotes (17 + 13, com 180 ms e ~17 ms
+entre chamadas) ficaram com `created_by=panel` em `learning_signals`, sem como saber quem chamou a rota. É a consequência acima, não
+um defeito novo; o item 22.1 só levou o operador da sessão aos gestos que TÊM sessão. Limitação conhecida, sem item novo no plano.
+
 **Evidências.** `.claude/plano-100/estado.json` item `9.1`; commit `57f8a3c`; `backend/app/security/sessions.py`;
 `docs/worker.md` ("Sessão de usuário").
 

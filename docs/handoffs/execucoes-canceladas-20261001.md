@@ -21,3 +21,14 @@ efeito externo foram canceladas antes, no mesmo dia (checkpoint 10 de
 | `r-20260926161438-22d65f` | needs_input | 2026-09-26 16:14 | android-01 | (entrar no site da CETESB pelo Chrome e preencher o login; o texto original cita dados de acesso e não é copiado aqui) |
 | `r-20260927225745-e84d7c` | planned | 2026-09-27 22:57 | android-01 | abra a conversa com @bruno.ferreira9267 no instagram |
 | `r-20260928155247-f55c04` | needs_input | 2026-09-28 15:52 | android-06 | no Instagram, responda no direct da prima contando, com o seu jeito, como foi o almoço de domingo em família e a missa antes do almoço |
+
+## Conferência no banco (01/10, tarde; leitura)
+
+- As 13 da tabela acima são o lote 2 (12:17:03Z): 10 `needs_input` + 3 `planned`. As 17 de teste (checkpoint 10) são o lote 1
+  (10:16:05–08Z). Juntas: as 3 `planned` + 27 `needs_input` que o painel contava.
+- As "10 execuções com efeito em conta real" que o checkpoint 10 deixava para o dono são exatamente as 10 `needs_input` desta tabela
+  (conferido por id). "Efeito" era o risco do que fariam, não algo já feito: nas 30, `started_at` é nulo, as 29 etapas ficaram
+  `cancelled`, não há aprovação pendente nem efeito registrado.
+- Autor no banco: não há. Os 30 sinais `cancelou_execucao` têm `created_by=panel` (chamada sem sessão); a trilha só prova a
+  rota e o ritmo programático. A autorização do dono vem deste registro, não do banco.
+

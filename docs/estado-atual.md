@@ -52,9 +52,20 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     `_SQL_RUNS_DO_SNAPSHOT` não mudou depois. O run anterior, 36822159704 (`63b2753`), teve 3 falhas alheias ao snapshot (`rowid` no
     teste, `normcase` e `abspath` em Linux), corrigidas até o verde; ver [relatório §27.1](relatorio-validacao.md). O run em si
     não foi relido nesta sessão além do `gh run view`; a prova é a do relatório. **Não é mais lacuna do snapshot.**
-  - **Para o dono:** 3 execuções `planned` (19/09, 22/09, 27/09; planos de mensagem no Instagram para terceiros, nunca
-    executados) e 27 `needs_input` de 17/09 a 28/09 ficaram intactas: decidir se cancela; achados baixos abertos
-    (RF-11, 16, 17, 23, 07r, 14, 27, 30, 32–35, 37, 38) em [revisao-final.md](revisoes-ux/revisao-final.md).
+  - **Execuções antigas (resolvido):** as 3 `planned` e as 27 `needs_input` de 17/09 a 28/09 **já foram canceladas em 01/10**, com
+    autorização do dono registrada em [handoffs/execucoes-canceladas-20261001.md](handoffs/execucoes-canceladas-20261001.md):
+    lote 1 (17 `needs_input`, ~10:16Z) e lote 2 (10 `needs_input` + 3 `planned`, ~12:17Z). Em todas `started_at` é nulo, nenhuma
+    etapa chegou a `succeeded`, não há aprovação pendente nem efeito externo registrado. **Não resta decisão de cancelamento
+    para o dono**, e não há `planned` nem `needs_input` no central. Achados baixos abertos (RF-11, 16, 17, 23, 07r, 14, 27, 30, 32–35, 37, 38) em [revisao-final.md](revisoes-ux/revisao-final.md).
+
+- **Lacuna de auditabilidade (01/10): mutação pela rota sem sessão identificada.** Os 30 cancelamentos (e o do C1 `r-20261001124036-996716`)
+  passaram por `POST /api/runs/{id}/cancel`, e `learning_signals` tem 30 sinais `cancelou_execucao` com `created_by=panel`: sem
+  sessão, `panel` quer dizer "operador não identificado", não uma pessoa. Os tempos (~180 ms e ~17 ms entre chamadas) indicam
+  chamadas programáticas em sequência. **O banco não prova o autor**; só o registro documental (autorização do dono, nos
+  handoffs acima e no checkpoint 10 da Fase 29) liga os lotes à sessão de coordenação da Fase 29. Não é incidente de segurança, só
+  trilha incompleta, e já é limitação conhecida do ADR-016 (item 9.1; 22.1 cobriu só os gestos com sessão): sem item novo.
+  O C1 recente (execução real, paga, sem efeito externo) está no checkpoint 11 de
+  [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md).
 
 - **Pendências da terceira evolução (30/09): Fase 29. No ar em `9ff427c`** (primeiro deploy `0d70882` às 15:24Z,
   segundo `f6c7df2` às 21:33Z e correções medidas até 22:56Z). Estado por tarefa, pedidos ao dono e checkpoints em
@@ -65,8 +76,8 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     C1 Outlook → Instagram só de leitura no android-01.
   - **Falta (01/10 ~11:00Z):** C1 num aparelho com rede verificada (27.2: o e-mail de teste não chegou à caixa do Bruno;
     o C1 no 03 falhou e o gasto pago passou da autorização de 29/09 — ~US$ 1,86 de 1,50; nada pago roda até o dono
-    decidir); W4 da rede no notebook bloqueado pela memória dos emuladores paginada (K-067); 10 execuções antigas com
-    efeito em conta real esperam decisão do dono; D8 (firewall do notebook) com o comando pronto. PostgreSQL verde
+    decidir); W4 da rede no notebook bloqueado pela memória dos emuladores paginada (K-067); as 10 execuções antigas de mensagem a
+    terceiros e CETESB foram canceladas em 01/10 sem efeito externo (ver acima); D8 (firewall do notebook) com o comando pronto. PostgreSQL verde
     (29.14). Adiado pelo dono: saída própria por aparelho (29.7, 29.19, 29.20).
 
 - **Terceira evolução (30/09, madrugada): EXECUTADA até onde depende só da IDE.** No ar em `e7d44ce` (central e agente
