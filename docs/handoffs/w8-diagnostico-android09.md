@@ -695,4 +695,11 @@ locale, eventos com hora, relógio, buffer que gira e janela sem leitura.
 
 ### 20.4. Revalidação real (UM Start, android-09): ver o registro abaixo
 
-`not_run` até a execução autorizada pelo dono nesta rodada.
+`not_run` (01/10/2026 ~21:45Z). Autorizado UM smoke com a função real do branch (`scripts/diag-w8-smoke-produto.py`, que chama
+`religar_pela_interface` por um adaptador de adb + árvore do central; sem cópia do algoritmo), mas a pré-condição "android-09 online"
+não valeu: `worker-lan-01` `connected=false`/`transport=down` por vários minutos, o android-09 `stopped`, `diag-w8.py preflight` com
+o adb do 09 sem resposta e o SSH ao notebook (192.168.1.19) em timeout (ping com perda). Nada foi tocado no aparelho, nenhum
+marcador de tentativa foi gravado, e não houve improviso (sem ligar/reiniciar o notebook ou o agente). A suíte do backend
+(4077 passados, 1 skip) só falhou `test_backup` por falta de `config/config.yaml` no worktree novo; o mesmo teste passa (5/5) no
+checkout com `config.yaml`, então não é regressão. Retomar o smoke com o worker de volta: `python scripts/diag-w8.py coletar` +
+`backend/.venv/Scripts/python.exe scripts/diag-w8-smoke-produto.py --execute --instance android-09 --run <pasta do coletor>`.
