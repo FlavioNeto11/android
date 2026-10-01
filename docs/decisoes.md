@@ -3647,3 +3647,36 @@ para refazer.
 reintroduz o defeito: as colunas ficam e são ignoradas, o que torna a volta possível, não segura.
 
 **Relação.** ADR-056 (rede por aparelho); K-063 (o teste numa ida só); K-065; item 29.3 (o túnel que não sobe no boot).
+
+## ADR-062 — Pendência tem dona (a caixa) e a URL é a fonte da verdade da tela
+
+**Data:** 01/10/2026 · **Estado:** aceito · **Decisão de produto** (revisão de UX/UI do portal, RF-04 e RF-08; o dono delegou
+a escolha à IA com o contexto, e a IA a tomou em 30/09 com consulta a um revisor independente).
+
+**Contexto.** A revisão final achou quatro definições de "o que espera você" (chip do topo, motivo do semáforo, selo do
+menu e o filtro "Com pendência" de Execuções), com três destinos, e números que dependiam da janela de execuções carregada
+(o topo dizia 4 onde o parque tinha 27 `needs_input`). Também achou a escolha de visão em dois regimes (Painel no navegador,
+Personas no link) e filtros que o menu apagava.
+
+**Decisão.**
+1. "Pendência" é o que depende de uma pessoa: aprovação do Aprendizado, aprovação de persona, conta que pede intervenção e
+   execução `needs_input`. A dona é a caixa de Pendências (`#/pendencias`); topo, semáforo e menu leem o mesmo total e levam a
+   ela. A palavra não nomeia mais nenhum outro conjunto: o filtro de Execuções chama-se "Pede atenção".
+2. O total é completo desde a primeira carga: o snapshot traz todas as `needs_input`, as não terminais e as 20 recentes, e o
+   store não as descarta pelo teto. As paradas há mais de 7 dias ficam numa seção recolhida, mas contam.
+3. `planned` ("plano pronto para inspeção") não é execução em andamento: chip "Planejadas", fora do contador. Nenhuma execução
+   existente é cancelada por esta decisão.
+4. A URL é a fonte da verdade: busca, filtros, objeto e guia ficam no link, e o item do menu leva à tela limpa. A visão
+   (cartões, lista ou tabela) é a exceção, com uma regra: `?visao=` manda, sem ele vale a última escolha neste navegador.
+
+**Alternativas.** Manter o menu restaurando a última busca de cada tela: esconde por que a lista está filtrada e quebra o link
+compartilhado. Contar só as `needs_input` da janela do snapshot: número bonito e errado. Cancelar as 3 `planned` antigas:
+escrita nos dados do dono (são planos de mensagem a terceiros), desnecessária depois de reclassificá-las.
+
+**Consequências.** O snapshot cresce (~+21 KB sobre 77 KB com 27 `needs_input`) e o deploy exige reiniciar o backend. O
+número de pendências sobe para o verdadeiro e a seção "Antigas" pode ficar longa: triagem é do dono. Se as `needs_input`
+crescerem muito, criar índice em `runs(status)`.
+
+**Relação.** [produto.md](produto.md) (menu, visões, pendências); [revisoes-ux/revisao-final.md](revisoes-ux/revisao-final.md);
+[revisoes-ux/12-decisoes.md](revisoes-ux/12-decisoes.md); ADR-054 (aprendizado) e ADR-055 (proteção de contas), origens das
+aprovações e intervenções.

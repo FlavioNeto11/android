@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-01 (madrugada) — Revisão de UX/UI do portal
+
+Integrado na `main`; **não implantado** (exige reiniciar o backend: o `GET /api/snapshot` mudou). Prova `simulated`; leitura
+`real` no central, sem ação. Relatórios em [`docs/revisoes-ux/`](docs/revisoes-ux/), decisões no ADR-062.
+
+- **Menu e rotas:** menu lateral recolhível (gaveta abaixo de 1024 px), rotas por objeto e aba na URL (`lib/rotas.ts`),
+  `#/perfis` redireciona para `#/personas`, foco do aparelho em `?foco=`.
+- **Números e saúde:** fonte única `store/metricas.ts`; aparelho de servidor inalcançável conta como desconhecido; semáforo
+  OK/Atenção/Crítico com motivos e links.
+- **Painel:** barra de seleção presa ao topo (só age no que está visível), drawer de foco que sobrepõe, cards compactos
+  para aparelho parado, visão Cartões/Lista, traduções de comandos e tempo relativo único (`lib/rotulos.ts`, `lib/time.ts`).
+- **Listas:** busca, filtros, ordenação e visão em tabela em Personas e Execuções, tudo na URL (`BarraListagem`).
+- **Pendências:** caixa única (`#/pendencias`) com contador no menu; um só "Novo aplicativo" (em Aplicativos);
+  `planned` deixou de contar como em andamento e ganhou o chip "Planejadas"; "Com pendência" virou "Pede atenção".
+- **Acessibilidade:** tipografia mínima de 13 px, alvos de 32 px, contraste AA (axe 4.13: zero falhas de contraste em 8
+  telas a 1440 px), gaveta do menu com Tab preso.
+- **Backend (uma linha):** `GET /api/snapshot` traz as 20 recentes, todas as `needs_input` e as não terminais exceto
+  `planned` (`api.py`, `docs/api-contract.md`).
+
 ## 2026-09-30 (noite) — item 23.8: o Outlook como dado
 
 Feito num branch de worktree; entra na `main` pela sessão que coordena a onda. Prova `simulated`; aparelho e conta

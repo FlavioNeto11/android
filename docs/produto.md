@@ -54,13 +54,14 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
   Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
-- **Cabeçalho (duas faixas).** Em cima, a marca, as oito seções (Aprendizado entrou em 29/09, com a contagem de "Para
-  aprovar") e, à direita, o chip do modelo de IA (abre os modelos
-  por função), o aviso de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque: a saúde
-  do ambiente (abre os problemas) e os indicadores numa linha só — aparelhos online/cadastrados (com as vagas do
-  rodízio), execuções em andamento, "aguardando você" (o total da caixa de Pendências), CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
-  acima de ~2200 px. Abaixo de 1480 px a marca e a navegação perdem os ícones; abaixo de 1180 px conexão e operador
-  viram só ícone; abaixo de 900 px a navegação desce para a própria linha e rola com a pista de gradiente.
+- **Menu lateral e cabeçalho (revisão de UX, 30/09).** As nove seções (Painel, Personas, Aplicativos, Execuções, Aprendizado,
+  Infraestrutura, Configuração, Diagnóstico e Pendências) ficam num menu lateral recolhível (ícone e rótulo; só ícone quando
+  recolhido; abaixo de 1024 px vira gaveta, aberta pelo botão "Menu", com o Tab preso dentro e Esc para fechar). O item
+  atual tem `aria-current`; o selo de Pendências é o total da caixa. O topo guarda a marca, o chip do modelo de IA, o aviso
+  de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque em três grupos (Saúde, Capacidade e
+  Custos): o semáforo do ambiente (OK, Atenção ou Crítico, com os motivos e links), aparelhos online/cadastrados e vagas
+  por servidor, execuções em andamento, "aguardando você" (o total da caixa de Pendências), CPU e RAM, e os saldos de IA
+  sempre em US$ (valor estimado traz ícone e dica). Os números saem todos de `frontend/src/store/metricas.ts`.
 - **Modo Automático** ([ADR-050](decisoes.md#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão)).
   É o padrão do Comando: a pessoa escreve o pedido e o sistema decide quem faz e onde. A IA escolhe quais e quantas
   personas combinam com o pedido (perfil, voz, crenças como coerência, disponibilidade); o aparelho e o servidor

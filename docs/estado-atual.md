@@ -5,6 +5,21 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **Revisão de UX/UI do portal (01/10, madrugada): INTEGRADA NA `main`, NÃO IMPLANTADA.** Nove tarefas dos briefings do dono
+  (menu lateral e rotas por objeto, números e semáforo numa fonte única, barra de seleção e drawer, textos e cards, busca e
+  tabela, caixa única de Pendências, tipografia e acessibilidade, varredura de textos, revisão final) mais correções e
+  decisões do dono delegadas à IA. Relatórios em [revisoes-ux/](revisoes-ux/) (veredito em
+  [revisao-final.md](revisoes-ux/revisao-final.md): pronto com ressalvas); decisões em ADR-062.
+  - **Para o deploy (coordenação):** **exige reiniciar o backend**, não só `npm run build`: o `GET /api/snapshot` mudou
+    (`backend/app/api.py`: as 20 execuções recentes, todas as `needs_input` e as não terminais, exceto `planned`;
+    ~+21 KB sobre 77 KB). O reinício do backend custou 11 reinícios de aparelho na Fase 29: escolher a janela.
+  - **Prova:** `simulated` (frontend 84 arquivos/1013 testes; backend 514 testes dos arquivos que citam o snapshot, em SQLite);
+    `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: pendente,
+    quem lê é o cron de 01/10 05:17Z.** O total verdadeiro de pendências (27 `needs_input`, não 4) só aparece depois do deploy.
+  - **Para o dono:** 3 execuções `planned` (19/09, 22/09, 27/09; planos de mensagem no Instagram para terceiros, nunca
+    executados) e 27 `needs_input` de 17/09 a 28/09 ficaram intactas: decidir se cancela; achados baixos abertos
+    (RF-11, 16, 17, 23, 07r, 14, 27, 30, 32–35, 37, 38) em [revisao-final.md](revisoes-ux/revisao-final.md).
+
 - **Pendências da terceira evolução (30/09): Fase 29. No ar em `9ff427c`** (primeiro deploy `0d70882` às 15:24Z,
   segundo `f6c7df2` às 21:33Z e correções medidas até 22:56Z). Estado por tarefa, pedidos ao dono e checkpoints em
   [handoffs/pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md); provas no [relatório §27](relatorio-validacao.md).
