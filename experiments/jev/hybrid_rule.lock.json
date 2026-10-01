@@ -1,0 +1,14 @@
+{
+  "HYBRID_RULE_VERSION": "1",
+  "HYBRID_RULE_HASH": "0a904767ac2b0503ac6546ca71aa991917f5bad80f5164940184e3afbb5eed66",
+  "frozen_at": "2026-10-01",
+  "frozen_before_any_hybrid_scoring": true,
+  "origin": "POST_HOC_EXPLORATORY_HYBRID: a hipótese nasceu depois de ver os resultados do Scrapy; ORIGINAL_EXPERIMENT_VERDICT = NO_GO, ORIGINAL_VERDICT_CHANGED = NO.",
+  "rule_spec": "1. Identificador explícito = trecho entre crases (>= 3 caracteres) OU snake_case OU CamelCase (>= 2 partes) OU dotted.path (cada parte >= 2 caracteres); os três últimos com >= 4 caracteres no total.\\n2. Se a pergunta tem identificador explícito E a busca lexical (ripgrep com ESSES termos) acha ao menos um arquivo: a salvaguarda está ATIVA; senão o híbrido é exatamente o jev_map.\\n3. Ativa: ranking de arquivos = [melhor arquivo lexical] + ranking do jev_map sem duplicatas. O melhor arquivo lexical é o primeiro do ranking do ripgrep (termos distintos casados, depois ocorrências, depois caminho).\\n4. Ativa: trechos entregues = até 2 janelas do melhor arquivo lexical + trechos que o jev_map entregou, sem duplicatas, cortados pelo mesmo teto de entrega de todos (8 trechos, 16 KiB).\\n5. A regra não lê expected_files, expected_regions nem a categoria do golden.",
+  "classification_criteria_for_the_exploratory_replay": {
+    "note": "Escritos junto com a regra, antes de qualquer scoring. O replay NÃO usa GO/NO_GO. Como as perguntas SEMANTIC do Scrapy não têm identificador, o resultado SEMANTIC do híbrido é o do jev_map POR CONSTRUÇÃO; só os itens com identificador podem mudar.",
+    "PROMISING": "TODAS: (a) EXACT R@3 >= max(ripgrep, BM25) EXACT R@3 - 0,05; (b) SEMANTIC R@3 >= max(ripgrep, BM25) SEMANTIC R@3 + 0,25; (c) mediana de bytes de contexto <= mediana do BM25; (d) perdas críticas (item em que o BM25 tinha arquivo esperado no top-3 e o híbrido o perdeu) <= 2.",
+    "NOT_PROMISING": "(a) falha OU o ganho SEMANTIC de (b) é < +0,10.",
+    "INCONCLUSIVE": "qualquer outro caso."
+  }
+}

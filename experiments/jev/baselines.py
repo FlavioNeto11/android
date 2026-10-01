@@ -105,11 +105,14 @@ def _python_matches(root: Path, roots: list[str], terms: list[str]) -> dict[str,
     return per_file
 
 
-def ripgrep(root: Path, roots: list[str], question: str) -> Retrieval:
+def ripgrep(root: Path, roots: list[str], question: str, terms: list[str] | None = None) -> Retrieval:
     """Busca textual fixa, sem diferenciar maiúsculas, com janela ±RG_CONTEXT. Termos derivados mecanicamente da
     pergunta (`query_terms`). Ranking de arquivos = termos distintos casados (desc), depois nº de ocorrências (desc),
     depois caminho. O `rg` em si não ranqueia; esta ordenação é a que uma pessoa aplicaria ao ler o resultado."""
-    terms, rule = query_terms(question)
+    if terms is None:
+        terms, rule = query_terms(question)
+    else:                                   # termos dados por quem chama (híbrido: identificadores explícitos)
+        terms, rule = list(terms), "explicit_identifiers"
     roots = scoped_roots(question, roots)
     if not terms:
         return Retrieval("ripgrep", [], notes={"terms": [], "rule": rule})
