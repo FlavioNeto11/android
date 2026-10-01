@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.devices.rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, FOCO_NAO_E_O_CLIENTE, INTERFACE_MOSTRA_STOP, JA_HA_TUN,
+from app.devices.rede_aplicacao import (CLASSE_AMBAS, CLASSE_DESCONHECIDA, CLASSE_NENHUMA, CLASSE_PROXY, CLASSE_VPN,
+                                        ROTULOS_DO_CLIENTE, classe_na_janela, idioma_do_recurso, locale_do_aparelho,
+                                        rotulos_para, CLASSE_ERRADA_PARA_TUN, FOCO_NAO_E_O_CLIENTE, INTERFACE_MOSTRA_STOP, JA_HA_TUN,
                                         ABERTURA_FALHOU, RELIGADO, START_NAO_PROVADO, TUN_NAO_SUBIU, VPN_NAO_CONECTADA,
                                         SFA_COMMIT_DE_REFERENCIA, AparelhoPeloAdb, NoDaTela, RedeAplicacaoError,
                                         achar_botao, religar_pela_interface, religar_pelo_tile)
@@ -241,3 +243,190 @@ def test_localizador_recusa_outro_pacote_repetido_e_desabilitado() -> None:
     assert achar_botao([_no("", (576, 928, 688, 1040), True, habilitado=False), _no("Start", (608, 960, 656, 1008))],
                        PKG, "Start")[0] is None
     assert achar_botao([], PKG, "Start")[0] is None
+
+
+# ====================================================================================================== locale (W8, hardening)
+# Os rótulos vêm do SFA 1.14.2 (commit fc21909): R.string.action_start e R.string.stop em
+# app/src/main/res/values/strings.xml (padrão, inglês), values-fa, values-ru-rRU, values-zh-rCN, values-zh-rTW.
+def test_a_tabela_de_rotulos_e_a_do_sfa_1_14_2() -> None:
+    assert ROTULOS_DO_CLIENTE == {"en": ("Start", "Stop"), "fa": ("شروع", "توقف"), "ru": ("Начать", "Остановить"),
+                                  "zh-CN": ("启动", "停止"), "zh-TW": ("啟動", "停止")}
+
+
+@pytest.mark.parametrize("locale,idioma", [
+    ("en-US", "en"), ("pt-BR", "en"), ("de-DE", "en"), ("ru-RU", "ru"), ("ru", "ru"), ("fa-IR", "fa"), ("fa", "fa"),
+    ("zh-CN", "zh-CN"), ("zh_CN", "zh-CN"), ("zh", "zh-CN"), ("zh-Hans-CN", "zh-CN"), ("zh-SG", "zh-CN"),
+    ("zh-TW", "zh-TW"), ("zh-HK", "zh-TW"), ("zh-Hant", "zh-TW"), ("zh-Hant-TW", "zh-TW"), ("", None), ("null", None)])
+def test_o_idioma_do_recurso_segue_a_resolucao_do_android(locale: str, idioma: str | None) -> None:
+    assert idioma_do_recurso(locale) == idioma
+
+
+def test_locale_do_aparelho_usa_a_primeira_fonte_legivel() -> None:
+    assert locale_do_aparelho({"L1": "ru-RU", "L2": "en-US", "L3": "pt-BR"}) == "ru-RU"
+    assert locale_do_aparelho({"L1": "", "L2": "null", "L3": "en-US"}) == "en-US"
+    assert locale_do_aparelho({"L1": "", "L2": "zh-TW", "L3": "en-US"}) == "zh-TW"
+    assert locale_do_aparelho({}) == ""
+
+
+def test_locale_lido_aceita_so_o_idioma_dele_e_ilegivel_aceita_a_uniao() -> None:
+    assert rotulos_para("zh-TW") == (("啟動",), ("停止",), "zh-TW")
+    inicio, parada, idioma = rotulos_para("")
+    assert idioma is None and set(inicio) == {"Start", "شروع", "Начать", "启动", "啟動"} and "Stop" in parada
+
+
+@pytest.mark.parametrize("locale,rotulo_start,rotulo_stop", [
+    ("en-US", "Start", "Stop"),                          # inglês
+    ("pt-BR", "Start", "Stop"),                          # sem recurso traduzido: o Android usa o padrão
+    ("zh-TW", "啟動", "停止"),                            # traduzido pelo SFA 1.14.2 (values-zh-rTW)
+    ("zh-CN", "启动", "停止"),
+    ("ru-RU", "Начать", "Остановить"),
+    ("fa-IR", "شروع", "توقف"),
+])
+async def test_locale_o_rotulo_do_idioma_do_aparelho_e_tocado_uma_vez(locale: str, rotulo_start: str, rotulo_stop: str) -> None:
+    ap = _aparelho(locale=locale, rotulo_start=rotulo_start, rotulo_stop=rotulo_stop, ui_religa=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.rotulo == rotulo_start and r.locale == locale and ap.toques_ui == [(632, 984)]
+    assert "action_start" in r.metodo
+    # sem tun0, a interface mostra o Stop do MESMO idioma: reconhece e não alterna
+    parado = _aparelho(locale=locale, rotulo_start=rotulo_start, rotulo_stop=rotulo_stop, tela_ui="stop", ui_religa=True)
+    r = await religar_pela_interface(parado, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == INTERFACE_MOSTRA_STOP and parado.toques_ui == []
+
+
+async def test_locale_rotulo_de_outro_idioma_nao_e_tocado_quando_o_locale_e_conhecido() -> None:
+    ap = _aparelho(locale="zh-CN", rotulo_start="啟動", ui_religa=True)                # o rótulo é o do zh-TW
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == START_NAO_PROVADO and ap.toques_ui == []
+
+
+async def test_locale_ilegivel_aceita_um_rotulo_da_tabela_e_continua_fail_closed() -> None:
+    ap = _aparelho(locale="", rotulo_start="شروع", ui_religa=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and ap.toques_ui == [(632, 984)]
+    desconhecido = _aparelho(locale="", rotulo_start="Iniciar", ui_religa=True)
+    r = await religar_pela_interface(desconhecido, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == START_NAO_PROVADO and desconhecido.toques_ui == []
+
+
+@pytest.mark.parametrize("locale", ["en-US", "zh-TW", "ru-RU", ""])
+async def test_locale_label_desconhecido_nenhum_toque(locale: str) -> None:
+    ap = _aparelho(locale=locale, rotulo_start="Iniciar", ui_religa=True)               # o português NÃO está no SFA 1.14.2
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == START_NAO_PROVADO and ap.toques_ui == [] and ap.starts_na_ui == 0 and not ap.tun
+
+
+@pytest.mark.parametrize("locale,rotulo", [("en-US", "Start"), ("zh-TW", "啟動"), ("ru-RU", "Начать")])
+async def test_locale_elemento_semelhante_de_outro_pacote_nenhum_toque(locale: str, rotulo: str) -> None:
+    ap = _aparelho(locale=locale, rotulo_start=rotulo, ui_religa=True, tela_ui="outro_pacote")
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == START_NAO_PROVADO and ap.toques_ui == []
+
+
+def test_localizador_aceita_varios_rotulos_mas_exige_um_so_no_pacote() -> None:
+    cont = NoDaTela("", PKG, (576, 928, 688, 1040), True)
+    assert achar_botao([cont, NoDaTela("啟動", PKG, (608, 960, 656, 1008), False)], PKG, ("Start", "啟動"))[0] is not None
+    dois = [cont, NoDaTela("Start", PKG, (608, 960, 656, 1008), False), NoDaTela("啟動", PKG, (640, 960, 650, 1008), False)]
+    assert achar_botao(dois, PKG, ("Start", "啟動"))[0] is None                            # dois rótulos distintos: ambíguo
+
+
+# ====================================================================================================== guard: a JANELA do Start
+BASE = "10-01 15:00:10.000"
+
+
+def _janela(**kv: str) -> dict[str, str]:
+    return {"OLD": "10-01 14:00:00.000", "EVP": "0", "EVV": "0", **kv}
+
+
+def test_classe_na_janela_so_conta_eventos_da_janela() -> None:
+    assert classe_na_janela(BASE, _janela(EVV="1"))[0] == CLASSE_VPN
+    assert classe_na_janela(BASE, _janela(EVP="1"))[0] == CLASSE_PROXY
+    assert classe_na_janela(BASE, _janela(EVP="1", EVV="2"))[0] == CLASSE_AMBAS
+    assert classe_na_janela(BASE, _janela())[0] == CLASSE_NENHUMA
+
+
+@pytest.mark.parametrize("base,janela", [
+    ("", _janela(EVP="1")),                                            # baseline ilegível
+    ("ontem", _janela(EVP="1")),
+    (BASE, _janela(OLD="", EVP="1")),                                  # hora do buffer ilegível
+    (BASE, _janela(OLD="10-01 15:30:00.000", EVP="1")),                # o buffer girou: o mais antigo é posterior ao baseline
+    (BASE, {"OLD": "10-01 14:00:00.000", "EVP": "", "EVV": ""}),       # as contagens não vieram
+    (BASE, {"OLD": "10-01 14:00:00.000", "EVP": "x", "EVV": "1"}),
+])
+def test_classe_na_janela_sem_prova_e_unknown_nunca_uma_conclusao(base: str, janela: dict[str, str]) -> None:
+    classe, porque = classe_na_janela(base, janela)
+    assert classe == CLASSE_DESCONHECIDA and porque
+
+
+async def test_eventos_historicos_do_buffer_nao_contam_na_janela_deste_start() -> None:
+    ap = _aparelho(ui_religa=True)
+    ap.semear("ProxyService", 3)                                       # o tile do 09 de ontem: o contador cumulativo os veria
+    ap.semear("VPNService", 1)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_VPN and ap.fp == 3 and ap.fv == 2
+
+
+async def test_historico_de_proxyservice_sem_evento_novo_nao_vira_guard() -> None:
+    ap = _aparelho()                                                   # o Start não inicia nada
+    ap.semear("ProxyService", 5)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == TUN_NAO_SUBIU and r.classe == CLASSE_NENHUMA
+
+
+async def test_buffer_rotacionado_a_classe_e_unknown_e_nada_e_inventado_sobre_o_proxyservice() -> None:
+    ap = _aparelho(ui_religa=True, buffer_girou=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_DESCONHECIDA and "ProxyService" not in r.detalhe
+    proxy = _aparelho(ui_inicia_proxy=True, buffer_girou=True)                          # não se prova: sem guard, sem sucesso
+    r = await religar_pela_interface(proxy, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == TUN_NAO_SUBIU and r.classe == CLASSE_DESCONHECIDA and not r.religado
+
+
+async def test_proxyservice_novo_na_janela_e_o_guard_e_vpnservice_novo_e_sucesso() -> None:
+    ap = _aparelho(ui_inicia_proxy=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == CLASSE_ERRADA_PARA_TUN and r.classe == CLASSE_PROXY
+    ok = _aparelho(ui_religa=True)
+    r = await religar_pela_interface(ok, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_VPN and r.tun_apos_s is not None
+
+
+async def test_ambos_por_corrida_nao_e_proxyservice_sem_vpnservice() -> None:
+    com_tun = _aparelho(ui_corrida=True, ui_religa=True)
+    r = await religar_pela_interface(com_tun, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_AMBAS
+    sem_tun = _aparelho(ui_corrida=True)
+    r = await religar_pela_interface(sem_tun, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == TUN_NAO_SUBIU and r.classe == CLASSE_AMBAS
+
+
+async def test_classe_nao_observavel_com_tun_e_connected_nao_afirma_nada_sobre_o_proxyservice() -> None:
+    ap = _aparelho(ui_religa=True, janela_sem_leitura=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_DESCONHECIDA and "ProxyService" not in r.detalhe
+    proxy = _aparelho(ui_inicia_proxy=True, janela_sem_leitura=True)
+    r = await religar_pela_interface(proxy, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == TUN_NAO_SUBIU and r.classe == CLASSE_DESCONHECIDA
+
+
+async def test_comando_da_janela_que_falha_vira_unknown() -> None:
+    class JanelaCai(AparelhoFalso):
+        async def shell(self, comando: str, *, timeout: float = 40) -> str:
+            if "OLD=" in comando and "-T '" in comando:
+                raise RuntimeError("adb shell falhou (1)")
+            return await super().shell(comando, timeout=timeout)
+
+    ap = JanelaCai(primeira_execucao=False, ui_religa=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.religado and r.classe == CLASSE_DESCONHECIDA
+
+
+def test_os_comandos_do_aparelho_usam_o_baseline_do_aparelho_e_recusam_entrada_ruim() -> None:
+    from app.devices.rede_aplicacao import comando_da_janela_do_start, comando_do_estado_da_interface
+
+    estado = comando_do_estado_da_interface(PKG)
+    assert "BASE=$(date '+%m-%d %H:%M:%S.%N'" in estado and "persist.sys.locale" in estado and "system_locales" in estado
+    janela = comando_da_janela_do_start(PKG, BASE)
+    assert f"-T '{BASE}'" in janela and "logcat -b events -d -v time" in janela and "OLD=" in janela
+    for ruim in ("", "ontem", "10-01 15:00:10", "10-01 15:00:10.000'; reboot; '"):
+        with pytest.raises(RedeAplicacaoError):
+            comando_da_janela_do_start(PKG, ruim)

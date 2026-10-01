@@ -1694,5 +1694,7 @@ rótulo do Compose é filho não clicável de um contêiner clicável), UM toque
 `wrong_service_class_for_tun` quando o Start inicia o `ProxyService`. Nunca se escreve o `serviceMode` (é do SFA).
 
 **Aplicabilidade.** Cliente sing-box (SFA) 1.14.2; reconferir o código ao trocar de versão. O Start da UI deixa o `serviceMode`
-em VPN, o que torna o tile funcional naquele aparelho, mas a convergência não depende disso. Os boots 1/3/4 do W8 sem túnel por
+em VPN, o que torna o tile funcional naquele aparelho, mas a convergência não depende disso. O rótulo vem do locale do aparelho
+(tabela `ROTULOS_DO_CLIENTE`, SFA 1.14.2: en/fa/ru/zh-CN/zh-TW; sem identificação independente de idioma, o Compose não tem `testTag`) e a
+classe de serviço só vale na JANELA do Start (`UNKNOWN` sem prova): handoff W8 §20. Os boots 1/3/4 do W8 sem túnel por
 always-on seguem sem causa (`BOOT_RECOVERY_ROOT_CAUSE = OPEN`).

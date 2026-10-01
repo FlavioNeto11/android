@@ -603,11 +603,11 @@ D = uma rede que exige TUN que iniciou o `ProxyService` NÃO conta como recupera
   botão pela árvore COMPLETA da plataforma (`AparelhoDaRede.arvore()`, com os nós sem texto); (4) relê o foco (deve ser o cliente) e o
   `tun0` (se subiu entretanto, não toca); (5) **UM** toque no centro do rótulo `Start`; (6) observa até `tun0` E VPN CONNECTED; (7) lê
   de novo as classes de serviço; (8) devolve o foco (HOME só se o foco ainda é do cliente).
-- **Localizador (`achar_botao`):** exatamente UM nó habilitado do pacote do cliente com o texto `Start`, dentro do **menor contêiner
+- **Localizador (`achar_botao`):** exatamente UM nó habilitado do pacote do cliente com o rótulo `action_start` DO LOCALE do aparelho (§20.1; no inglês, `Start`), dentro do **menor contêiner
   clicável e habilitado do mesmo pacote** que o contém (e não enorme perto dele: ≤ 40× a área do rótulo). Ausente, repetido,
   desabilitado, sem contêiner, ou só em outro pacote: **falha fechada, nenhum toque**. Sem coordenada fixa. Se a tela mostra `Stop`
   sem `tun0`: `interface_mostra_stop`, nenhum toque (nada de alternar às cegas).
-- **Guard D:** `wrong_service_class_for_tun` quando, sem `tun0`, o contador de `am_foreground_service_start` do `ProxyService`
+- **Guard D:** `wrong_service_class_for_tun` quando, sem `tun0`, (a regra original usava o contador cumulativo; §20.2 a trocou pela JANELA do Start) o `am_foreground_service_start` do `ProxyService`
   subiu e o do `VPNService` não. O código vai na frente do motivo do reinício (`[interface: …]`, ele SUBSTITUI o `detail` da linha, 200
   caracteres) e a razão completa na evidência; um evento de log é emitido. A linha fica `configurado` (não saudável). Outros códigos:
   `ja_ha_tun`, `abertura_falhou`, `start_nao_provado`, `interface_mostra_stop`, `foco_nao_e_o_cliente`, `tun_nao_subiu`,
@@ -653,3 +653,46 @@ W8 de ponta a ponta pode exigir ainda o par do 09, uma janela controlada e event
 
 `BOOT_RECOVERY_ROOT_CAUSE = OPEN`: os boots 1/3/4 do W8 (always-on sem túnel; o boot 2 subiu) **não** são explicados pelo `serviceMode`
 (o always-on inicia o `VPNService` direto). W8 continua **OPEN**.
+
+## 20. Hardening antes do merge: locale do botão e janela da classe de serviço (01/10/2026, `simulated`)
+
+Revisão do dono: dois pontos do §19 fechados ANTES de qualquer merge/deploy, seguidos de UMA revalidação real mínima (§20.4).
+
+### 20.1. Locale: o rótulo vem do recurso do SFA, não de uma lista inventada
+
+O botão é `R.string.action_start` do SFA 1.14.2 (commit `fc21909df7a3f0fc9435f3866fb6a4960711aa5f`), com tradução em `values/` (padrão,
+`Start`), `values-fa` (`شروع`), `values-ru-rRU` (`Начать`), `values-zh-rCN` (`启动`) e `values-zh-rTW` (`啟動`); o de parar é
+`R.string.stop` (`Stop`/`توقف`/`Остановить`/`停止`/`停止`). Não há outro idioma traduzido nessa versão. `ROTULOS_DO_CLIENTE` é essa tabela
+(origem: os `strings.xml` do commit de referência), não um palpite. A plataforma NÃO muda o locale do aparelho.
+
+- O locale vem do aparelho, em uma só ida: `persist.sys.locale`, depois o primeiro de `settings get system system_locales`, depois
+  `ro.product.locale`. `idioma_do_recurso` escolhe o recurso como o Android: `ru-*`→ru, `fa-*`→fa, `zh-CN/SG/Hans`→zh-CN,
+  `zh-TW/HK/MO/Hant`→zh-TW, qualquer outro (pt-BR, de-DE…) → o padrão `en`.
+- Locale lido: só os rótulos DESSE idioma entram (o Android mostra um recurso por vez); o de outro idioma não é tocado.
+  Locale ilegível: a união da tabela; o resto do localizador (pacote, contêiner clicável, unicidade, tamanho) segue valendo.
+- Rótulo fora da tabela (ex.: `Iniciar`), nó de outro pacote, ambíguo, desabilitado ou sem contêiner clicável: **nenhum toque**.
+- **Limitação documentada.** Não existe identificação totalmente independente de idioma: o botão do Compose não tem `resource-id` nem
+  `testTag`, só um rótulo de texto dentro de um contêiner clicável sem rótulo. Uma versão do SFA que acrescente ou mude traduções precisa de
+  entrada nova na tabela (`SFA_COMMIT_DE_REFERENCIA` marca o que foi lido); até lá o gesto falha fechado e a convergência segue para o
+  reinício. Nada de coordenada fixa.
+
+### 20.2. Classe de serviço: só a janela DESTE Start
+
+Antes, o contador cumulativo do buffer `events` podia ver o `ProxyService` de um tile de ontem. Agora: o baseline é a hora do
+APARELHO (`date`, no formato do `logcat -v time`) tirada na mesma ida que lê foco/`tun0`/locale; depois do toque, só os
+`am_foreground_service_start` do cliente posteriores ao baseline contam (`logcat -b events -d -v time -T '<base>'`). Se a entrada mais
+antiga do buffer é posterior ao baseline (o buffer girou), se algo não foi lido ou o comando falha: `SERVICE_CLASS = UNKNOWN`, sem
+inventar. Regras: `ProxyService` provado na janela sem `VPNService` → `wrong_service_class_for_tun`; os dois na janela (corrida) →
+`ambas`, não é guard; `UNKNOWN` com `tun0` + VPN CONNECTED continua sendo sucesso e NÃO alega ProxyService; `UNKNOWN` sem túnel →
+`tun_nao_subiu`.
+
+### 20.3. Testes (`simulated`)
+
+`tests/test_rede_religar_interface.py` (75): tabela, resolução de idioma (18 casos), inglês, pt-BR→padrão, fa/ru/zh-CN/zh-TW, rótulo de
+outro idioma, locale ilegível, rótulo desconhecido, elemento de outro pacote, histórico ignorado, buffer rotacionado, ProxyService novo,
+VPNService novo, corrida, classe inobservável e comando da janela que falha. `tests/test_rede_aplicacao.py`: o aparelho falso ganhou
+locale, eventos com hora, relógio, buffer que gira e janela sem leitura.
+
+### 20.4. Revalidação real (UM Start, android-09): ver o registro abaixo
+
+`not_run` até a execução autorizada pelo dono nesta rodada.

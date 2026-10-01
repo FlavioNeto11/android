@@ -483,9 +483,21 @@ class AparelhoFalso:
     toques_ui: list[tuple[int, int]] = field(default_factory=list)
     starts_na_ui: int = 0
     homes: int = 0
-    fp: int = 0                                    # am_foreground_service_start do ProxyService
-    fv: int = 0                                    # ... do VPNService
+    fp: int = 0                                    # am_foreground_service_start do ProxyService (total)
+    fv: int = 0                                    # ... do VPNService (total)
     servicos: str = ""
+    # O locale do aparelho e os rótulos que o SFA mostra nele; o buffer `events` com HORA (a janela do Start, W8):
+    # `eventos_fgs` = (hora, classe); `relogio_ap` anda a cada ida ao aparelho; `buffer_girou` = a entrada mais antiga
+    # é posterior ao baseline; `janela_sem_leitura` = o comando da janela não devolve contagens; `ui_corrida` = o Start
+    # inicia as DUAS classes; `ui_proxy_e_tun_por_fora` = o ProxyService do Start e um tun0 que aparece por outro caminho.
+    locale: str = "en-US"
+    rotulo_start: str = "Start"
+    rotulo_stop: str = "Stop"
+    eventos_fgs: list[tuple[str, str]] = field(default_factory=list)
+    relogio_ap: int = 0
+    buffer_girou: bool = False
+    janela_sem_leitura: bool = False
+    ui_corrida: bool = False
     appops: bool = False
     always_on: str = "null"
     lockdown: str = "0"
@@ -510,8 +522,19 @@ class AparelhoFalso:
                     f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nK={self.linha_do_cliente()}\n"
                     f"S={self.uptime}\n")
         if comando.startswith("echo F=$(dumpsys window"):                  # o estado da interface do cliente (W8)
+            self.relogio_ap += 1
             return (f"F=mCurrentFocus=Window{{1 u0 {self.foco}}}\nT={int(self.tun)}\nSR={self.servicos}\n"
-                    f"FP={self.fp}\nFV={self.fv}\n")
+                    f"L1=\nL2=null\nL3={self.locale}\nBASE={self._hora()}\n")
+        if comando.startswith("echo T=$(ip -o addr show tun0") and "OLD=" in comando:      # a janela do Start (W8)
+            self.relogio_ap += 1
+            base = comando.split("-T '", 1)[1].split("'", 1)[0]
+            assert base.startswith("10-01 15:"), base                                        # o baseline do aparelho, não o do host
+            if self.janela_sem_leitura:
+                return f"T={int(self.tun)}\nOLD=\nEVP=\nEVV=\nSR={self.servicos}\n"
+            antiga = "12-31 23:59:59.000" if self.buffer_girou else "01-01 00:00:00.000"      # o buffer vai bem antes do baseline
+            ep = sum(1 for h, c in self.eventos_fgs if c == "ProxyService" and h >= base)
+            ev = sum(1 for h, c in self.eventos_fgs if c == "VPNService" and h >= base)
+            return f"T={int(self.tun)}\nOLD={antiga}\nEVP={ep}\nEVV={ev}\nSR={self.servicos}\n"
         if comando.startswith("F=$(dumpsys window"):                       # devolver o foco: HOME só se o foco é do cliente
             if PKG in self.foco:
                 self.foco, self.homes = "launcher", self.homes + 1
@@ -528,10 +551,10 @@ class AparelhoFalso:
             if clicou:
                 self.cliques_no_tile += 1
                 if not self.modo_vpn:                       # o tile não recalcula o modo: ProxyService, sem tun0
-                    self.fp += 1
+                    self._fgs("ProxyService")
                 elif self.tile_religa:
                     self.tun = self.vpn = True
-                    self.fv += 1
+                    self._fgs("VPNService")
                     if hasattr(self, "parado"):
                         self.parado = False
             return (f"Q0={havia}\nP1=900\nP2={901 if self.sistema_instavel else 900}\n"
@@ -591,7 +614,7 @@ class AparelhoFalso:
         if not self.app_aberto:
             return [NoDaTela("", "com.google.android.apps.nexuslauncher", (0, 0, 720, 1280), False)]
         quadro = NoDaTela("Dashboard", PKG, (32, 84, 247, 140), False)
-        botao = {"start": ("Start", True), "stop": ("Stop", True)}
+        botao = {"start": (self.rotulo_start, True), "stop": (self.rotulo_stop, True)}
         if self.tela_ui in botao:
             texto, _ = botao[self.tela_ui]
             return [quadro, NoDaTela("", PKG, (576, 928, 688, 1040), True), NoDaTela(texto, PKG, (608, 960, 656, 1008), False)]
@@ -607,15 +630,36 @@ class AparelhoFalso:
             return [quadro, NoDaTela("", PKG, (576, 928, 688, 1040), True, False), NoDaTela("Start", PKG, (608, 960, 656, 1008), False)]
         return [quadro]
 
+    def _hora(self) -> str:
+        return f"10-01 15:{self.relogio_ap // 60:02d}:{self.relogio_ap % 60:02d}.000"
+
+    def _fgs(self, classe: str) -> None:
+        """O ActivityManager iniciou `classe` em primeiro plano AGORA (um evento com a hora do aparelho)."""
+        self.relogio_ap += 1
+        self.eventos_fgs.append((self._hora(), classe))
+        if classe == "ProxyService":
+            self.fp += 1
+        else:
+            self.fv += 1
+
+    def semear(self, classe: str, n: int = 1) -> None:
+        """Eventos HISTÓRICOS no buffer (antes de qualquer baseline): o contador cumulativo os veria; a janela, não."""
+        for _ in range(n):
+            self._fgs(classe)
+
     def _start_da_ui(self) -> None:
         self.starts_na_ui += 1
         if self.tun:                                                    # o Start/Stop alterna: tocar com a VPN no ar a derruba
             self.tun = self.vpn = False
+        elif self.ui_corrida:
+            self._fgs("ProxyService")
+            self._fgs("VPNService")
+            self.modo_vpn, self.tun, self.vpn = True, self.ui_religa, self.ui_religa
         elif self.ui_inicia_proxy:
-            self.fp += 1
+            self._fgs("ProxyService")
         elif self.ui_religa or self.ui_tun_sem_vpn:                     # rebuildServiceMode → VPN → VPNService
             self.modo_vpn = True
-            self.fv += 1
+            self._fgs("VPNService")
             self.tun = True
             self.vpn = not self.ui_tun_sem_vpn
             self.servicos = f"{PKG}/.bg.VPNService,"

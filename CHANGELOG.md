@@ -27,6 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   VPN CONNECTED), com o guard `wrong_service_class_for_tun` e sem fallback para o tile. `rede.cliente_atividade` novo;
   `rede.cliente_tile` vira legado. Prova `simulated`; a real do princípio é de 01/10 (android-09, UM Start da UI).
   W8 segue aberto: os boots 1/3/4 sem túnel por always-on não são explicados. Detalhe: `docs/handoffs/w8-diagnostico-android09.md` §19.
+- **Hardening (mesma branch).** O rótulo do `Start` vem do locale do aparelho e da tabela do SFA 1.14.2 (`ROTULOS_DO_CLIENTE`:
+  en/fa/ru/zh-CN/zh-TW; outro idioma cai no inglês; rótulo desconhecido ou de outro pacote = nenhum toque). A classe de serviço
+  passa a ser lida só na janela do Start (baseline de hora do aparelho); sem prova, `UNKNOWN`. §20 do mesmo handoff.
 
 ## 2026-09-28 — o backend troca o Appium órfão sem prova de mascaramento (K-039 fora do deploy) (branch `claude/nifty-feynman-uflykh`)
 
