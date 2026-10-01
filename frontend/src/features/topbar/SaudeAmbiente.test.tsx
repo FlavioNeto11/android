@@ -104,9 +104,9 @@ describe('SaudeAmbiente — semáforo', () => {
 
   it('notebook da LAN fora do ar: Atenção com os motivos, cada um levando à tela que resolve', async () => {
     await montar({ connected: false, state: 'offline' });
-    expect(text(gatilho())).toBe('Ambiente em atenção2');
+    expect(text(gatilho())).toBe('Ambiente em atenção 2');
     // O nome acessível começa pelo que está escrito (rótulo e número), como pede o critério de a11y da tarefa.
-    expect(gatilho().getAttribute('aria-label')).toMatch(/^Ambiente em atenção, 2 motivos\./);
+    expect(gatilho().getAttribute('aria-label')).toMatch(/^Ambiente em atenção 2 motivos\./);
     const pop = await abrir();
     expect(text(pop)).toContain('Servidor Notebook da LAN fora do ar');
     expect(text(pop)).toContain('2 aparelhos em estado desconhecido');
@@ -132,7 +132,25 @@ describe('SaudeAmbiente — semáforo', () => {
   it('painel sem conexão com o central: Crítico', async () => {
     await montar({});
     await act(async () => useAppStore.getState().setConn({ status: 'disconnected' }));
-    expect(text(gatilho())).toBe('Ambiente crítico1');
+    expect(text(gatilho())).toBe('Ambiente crítico 1');
+  });
+
+  // RF-44 (prova simulada 13): o texto visível era "Ambiente crítico" + o selo "8", sem nada entre eles
+  // ("Ambiente crítico8"), e o nome "Ambiente crítico, 8 motivos…" não o continha: o Lighthouse marcava
+  // `label-content-name-mismatch` (WCAG 2.5.3). A comparação imita a do axe: minúsculas, sem pontuação, espaços únicos.
+  const normal = (s: string | null) => (s ?? '').toLowerCase().replace(/[.,;:!?…]/g, '').replace(/\s+/g, ' ').trim();
+
+  it('RF-44: o nome acessível começa pelo texto visível, em todos os níveis', async () => {
+    await montar({});
+    expect(normal(gatilho().getAttribute('aria-label')).startsWith(normal(gatilho().textContent))).toBe(true);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await montar({ connected: false, state: 'offline' });
+    const visivel = normal(gatilho().textContent);
+    expect(visivel).toBe('ambiente em atenção 2');
+    expect(normal(gatilho().getAttribute('aria-label')).startsWith(visivel)).toBe(true);
+    await act(async () => useAppStore.getState().setConn({ status: 'disconnected' }));
+    expect(normal(gatilho().getAttribute('aria-label')).startsWith(normal(gatilho().textContent))).toBe(true);
   });
 });
 

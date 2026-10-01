@@ -41,7 +41,9 @@ export function SaudeAmbiente() {
   return (
     <Popover
       // O nome acessível começa pelo que está escrito no botão (rótulo e contagem), e só então diz o que ele faz.
-      label={`${rotulo}${lista.length > 0 ? `, ${motivos(lista.length)}` : ''}. Abrir detalhes do ambiente`}
+      // RF-44 (WCAG 2.5.3): literalmente — "Ambiente crítico 8 motivos…" contém o "Ambiente crítico 8" visível; com a
+      // vírgula e sem espaço entre o rótulo e o selo, o texto lido era "Ambiente crítico8" e não estava no nome.
+      label={`${rotulo}${lista.length > 0 ? ` ${motivos(lista.length)}` : ''}. Abrir detalhes do ambiente`}
       title="Saúde do ambiente"
       align="start"
       triggerClassName={cx(styles.gatilho, toneClass(tone))}
@@ -49,7 +51,8 @@ export function SaudeAmbiente() {
         <>
           <Icon size={14} aria-hidden />
           {rotulo}
-          {lista.length > 0 ? <span className={styles.contagem}>{lista.length}</span> : null}
+          {/* O espaço separa rótulo e selo no TEXTO do botão; entre itens flex ele não ocupa lugar na tela. */}
+          {lista.length > 0 ? <>{' '}<span className={styles.contagem}>{lista.length}</span></> : null}
         </>
       }
     >
