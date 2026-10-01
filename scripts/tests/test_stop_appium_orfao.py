@@ -38,10 +38,28 @@ precisa_node = pytest.mark.skipif(NODE is None, reason="sem node nesta máquina"
 so_windows = pytest.mark.skipif(os.name != "nt", reason="Get-NetTCPConnection e Win32_Process só existem no Windows")
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_MOLDURA = re.compile(r"\s*\n\s*(?:\d+\s*)?\|\s*")
+
+
+def _plano(texto: str) -> str:
+    """Tira as cores do pwsh 7.6 e a moldura do erro ("Line | 59 | ..."), que parte a mensagem em linhas, e junta os espaços."""
+    return re.sub(r"\s+", " ", _MOLDURA.sub(" ", _ANSI.sub("", texto)))
+
+
 def _ps(script: str, **env: str) -> subprocess.CompletedProcess[str]:
     """Carrega a biblioteca e roda `script`. Caminhos e dados entram por variável de ambiente, sem aspas no meio."""
-    return subprocess.run([PWSH or "pwsh", "-NoProfile", "-NonInteractive", "-Command", f". $env:LIB; {script}"],
-                          capture_output=True, text=True, timeout=120,
+    r = _ps_cru(script, **env)
+    r.stdout, r.stderr = _plano(r.stdout or ""), _plano(r.stderr or "")
+    return r
+
+
+def _ps_cru(script: str, **env: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([PWSH or "pwsh", "-NoProfile", "-NonInteractive", "-Command",
+                           f"[Console]::OutputEncoding = [Text.Encoding]::UTF8; . $env:LIB; {script}"],
+                          # O pwsh 7 escreve em UTF-8 no pipe; sem `encoding` o Python decodifica pela página do console (OEM 850) e
+                          # "inválido"/"está" viram "inv├ílido"/"est\xa0" (visto em 01/10 ao integrar o PR 15).
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
                           env={**os.environ, "LIB": str(LIB), **env})
 
 
@@ -100,7 +118,8 @@ def test_sem_arquivo_ou_sem_chave_valem_os_padroes_do_backend(tmp_path: Path) ->
 def test_porta_invalida_e_erro_e_nao_um_palpite(tmp_path: Path) -> None:
     cfg = tmp_path / "config.yaml"
     cfg.write_text("appium:\n  port: quarenta\n", encoding="utf-8")
-    r = _ps("Get-AppiumConfig $env:CFG", CFG=str(cfg))
+    # A mensagem sai por `catch`, não pela moldura de erro do pwsh 7.6, que corta linhas longas com "...".
+    r = _ps("try { Get-AppiumConfig $env:CFG } catch { Write-Output $_.Exception.Message; exit 1 }", CFG=str(cfg))
     assert r.returncode != 0
     assert "appium.port inválido" in r.stdout + r.stderr
 
