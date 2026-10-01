@@ -65,6 +65,14 @@ describe('filtros de personas', () => {
       .toMatchObject({ situacao: null, ordem: 'nome', visao: 'cards' });
   });
 
+  it('D3: sem `visao` no link vale a preferência do navegador; com `visao` no link, o link manda', () => {
+    expect(lerFiltroPersonas({}, 'tabela').visao).toBe('tabela');
+    expect(lerFiltroPersonas({ visao: 'cards' }, 'tabela').visao).toBe('cards');
+    expect(lerFiltroPersonas({ visao: 'tabela' }, 'cards').visao).toBe('tabela');
+    expect(lerFiltroPersonas({ visao: 'grade' }, 'tabela').visao).toBe('tabela');
+    expect(lerFiltroPersonas({}).visao).toBe('cards');
+  });
+
   it('busca pelo @ (com ou sem "@") e pelo nome sem acento', () => {
     expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: '@andré.9' })))).toEqual(['André']);
     expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: 'vinicius' })))).toEqual(['Vinícius']);
@@ -96,8 +104,10 @@ describe('filtros de personas', () => {
     expect(c).toMatchObject({ todas: 2, ativa: 2, atencao: 1, bloqueada: 0 });
   });
 
-  it('a URL fica curta: padrão sai do link, e o texto do vazio diz o filtro', () => {
-    expect(queryDoFiltro({ ordem: 'nome', visao: 'cards', q: '' })).toEqual({ ordem: undefined, visao: undefined, q: undefined });
+  it('a URL fica curta: padrão sai do link (exceto a visão), e o texto do vazio diz o filtro', () => {
+    // A visão vai SEMPRE explícita (D3): o padrão dela é a preferência de cada navegador, e um link sem `visao` abriria
+    // na preferência de quem recebe, não na de quem mandou.
+    expect(queryDoFiltro({ ordem: 'nome', visao: 'cards', q: '' })).toEqual({ ordem: undefined, visao: 'cards', q: undefined });
     expect(queryDoFiltro({ ordem: 'atividade', visao: 'tabela' })).toEqual({ ordem: 'atividade', visao: 'tabela' });
     expect(textoSemResultado(lerFiltroPersonas({ situacao: 'bloqueada' }))).toBe('Nenhuma persona bloqueada.');
   });

@@ -18,6 +18,7 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { tempoRelativo, useNow } from '../../lib/time';
+import { lembrarVisao, visaoPreferida } from '../../lib/visao';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
@@ -29,8 +30,8 @@ import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
 import {
-  appsDe, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
-  ordenarPersonas, queryDoFiltro, ROTULO_SITUACAO, SITUACOES, textoSemResultado,
+  appsDe, CHAVE_VISAO, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
+  ordenarPersonas, queryDoFiltro, ROTULO_SITUACAO, SITUACOES, textoSemResultado, VISOES,
   type FiltroPersonas, type OrdemPersona, type Situacao,
 } from './filtroPersonas';
 import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
@@ -68,6 +69,8 @@ export function ProfilesPage() {
   const [criando, setCriando] = useState<'prompt' | 'manual' | null>(null);
   // Seleção para as operações em lote (v0.34): por id, e só de quem ainda está na lista.
   const [selecionadas, setSelecionadas] = useState<ReadonlySet<string>>(() => new Set());
+  // A visão que vale quando o link não traz `visao` (D3): a última escolhida neste navegador.
+  const [preferida, setPreferida] = useState(() => visaoPreferida(CHAVE_VISAO, VISOES, 'cards'));
   const token = useRef(0);
 
   const load = useCallback(async () => {
@@ -163,8 +166,15 @@ export function ProfilesPage() {
 
   // Busca, filtros, ordem e visão vêm do link (`#/personas?situacao=bloqueada&q=ana&visao=tabela`): recarregar e
   // colar o link mostram o mesmo recorte. Gravar substitui a entrada (digitar não empilha uma entrada por tecla).
-  const filtro = lerFiltroPersonas(rota.query);
-  const mudarFiltro = (parcial: Partial<FiltroPersonas>) => trocarQuery(queryDoFiltro(parcial), 'replace');
+  // Sem `visao` no link (o menu leva à tela limpa), vale a última escolhida neste navegador (D3, `lib/visao.ts`).
+  const filtro = lerFiltroPersonas(rota.query, preferida);
+  const mudarFiltro = (parcial: Partial<FiltroPersonas>) => {
+    if (parcial.visao) {
+      lembrarVisao(CHAVE_VISAO, parcial.visao);
+      setPreferida(parcial.visao);
+    }
+    trocarQuery(queryDoFiltro(parcial), 'replace');
+  };
   const visiveis = ordenarPersonas(filtrarPersonas(pessoas, filtro), filtro.ordem);
   const contagem = contagemPorSituacao(pessoas, filtro);
   const escondeAlguem = filtroAtivo(filtro);

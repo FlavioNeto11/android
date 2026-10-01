@@ -30,7 +30,7 @@ export function elementosFocaveis(raiz: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Os marcadores de um aparelho na grade do Painel: o cartão (visão Cards) e a linha (visão Lista). Uma lista só, lida
+ * Os marcadores de um aparelho na grade do Painel: o cartão (visão Cartões) e a linha (visão Lista). Uma lista só, lida
  * pelo "clique fora", pela devolução do foco e pela rolagem até o aparelho: com o marcador só do cartão, na Lista a
  * linha contava como "fora" e o clique para trocar de aparelho ou marcar era engolido (RF-02 da revisão final).
  */

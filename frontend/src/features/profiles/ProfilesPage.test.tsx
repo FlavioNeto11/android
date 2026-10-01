@@ -49,6 +49,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
+  try { window.localStorage.clear(); } catch { /* sem armazenamento */ }
   const snap = makeSnapshot();
   useAppStore.setState({
     ...initialDataState,
@@ -695,6 +696,25 @@ describe('busca, filtros e visão em tabela', () => {
     await click(byRole('button', /^Cartões$/));
     await waitFor(() => document.querySelector('table') === null);
     expect((byRole('checkbox', /^Selecionar Bruno Ferreira$/) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('D3 (RF-08): o menu leva à tela limpa, mas a visão escolhida vira o padrão; o link com `visao` manda', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
+    useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'ativa' } }, 'replace');
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    expect(window.localStorage.getItem('cda.personas.visao')).toBe('"tabela"');
+    // Pelo menu: `#/personas`, sem filtro e sem `visao`. O filtro some (é do link); a visão fica (é preferência).
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas' }));
+    expect(window.location.hash).toBe('#/personas');
+    await waitFor(() => text().includes('Helena Prado'));
+    expect(document.querySelector('table')).not.toBeNull();
+    // Um link colado com a outra visão abre nela, sem mudar a preferência.
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas', query: { visao: 'cards' } }, 'replace'));
+    await waitFor(() => document.querySelector('table') === null);
+    expect(window.localStorage.getItem('cda.personas.visao')).toBe('"tabela"');
   });
 
   it('"Selecionar todas" vale para o que o filtro mostra, e a seleção fora do filtro é avisada', async () => {
