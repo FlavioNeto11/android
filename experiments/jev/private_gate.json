@@ -1,0 +1,36 @@
+{
+  "gate": "PRIVATE_CODE_GATE",
+  "state": "BLOCKED",
+  "state_since": "2026-10-01",
+  "states": ["BLOCKED", "WAITING_VENDOR", "ZDR_AVAILABLE", "ZDR_CONFIRMED", "OWNER_RISK_ACCEPTANCE_REQUIRED", "PASS"],
+  "transitions": {
+    "BLOCKED": {"to": "WAITING_VENDOR", "when": "o dono revisou e ENVIOU docs/research/TYPE_SAFE_PRIVACY_REQUEST.md (registrar data e canal)"},
+    "WAITING_VENDOR": {"to": "ZDR_AVAILABLE", "when": "resposta ESCRITA do fornecedor diz que ZDR pode ser habilitado para esta conta; se disser que não, o estado volta a BLOCKED"},
+    "ZDR_AVAILABLE": {"to": "ZDR_CONFIRMED", "when": "ZDR habilitado E abrangência escrita cobrindo Input/state, Output, logs, telemetria, abuse monitoring, caches, backups e subprocessadores (de preferência em DPA/termo vinculante)"},
+    "ZDR_CONFIRMED": {"to": "OWNER_RISK_ACCEPTANCE_REQUIRED", "when": "evidência escrita anexada em `evidence`"},
+    "OWNER_RISK_ACCEPTANCE_REQUIRED": {"to": "PASS", "when": "o dono registra, em chat e em commit, a aceitação EXPLÍCITA do risco residual (EUA, telemetria, subprocessadores, SOC 2 não lido)"}
+  },
+  "rules": [
+    "PASS nunca é marcado automaticamente nem por inferência do assistente.",
+    "ZDR_AVAILABLE != PASS.",
+    "Resposta verbal, blog de terceiros e página de terceiros (inclusive Cloudflare) não valem como evidência contratual.",
+    "Mudança nos termos oficiais datados em `official_terms_read` reabre o gate (volta a BLOCKED).",
+    "PASS autoriza ESTUDAR o piloto privado desenhado em docs/research/jev-pilot-closure.md §6; a execução exige autorização separada e um commit próprio que libere benchmark.PRIVATE_CODE_SEND_APPROVED."
+  ],
+  "required_for_pass": {"written_vendor_evidence": [], "owner_risk_acceptance": null},
+  "evidence": [],
+  "locks": {"PRIVATE_CODE_SEND_APPROVED": false, "PRIVATE_CODE_BENCHMARK_STATUS": "BLOCKED_PRIVACY", "STANDARD_API_RETENTION": "UNKNOWN"},
+  "official_terms_read": {"read_on": "2026-10-01", "mca": "Sep 23, 2026", "dpa": "Apr 24, 2026", "privacy_policy": "Nov 19, 2025", "aup": "Sep 23, 2026"},
+  "vendor_message": {"path": "docs/research/TYPE_SAFE_PRIVACY_REQUEST.md", "sent": false},
+  "claims": {
+    "STANDARD_INPUT_RETENTION": "NOT_DOCUMENTED",
+    "TELEMETRY_SCOPE": "OFFICIAL_AMBIGUOUS",
+    "ABUSE_MONITORING": "OFFICIAL_EXPLICIT (exists, in perpetuity); scope and retention NOT_DOCUMENTED",
+    "HUMAN_REVIEW": "NOT_DOCUMENTED",
+    "ZDR_AVAILABILITY": "OFFICIAL_EXPLICIT (enterprise); for this account NOT_DOCUMENTED",
+    "ZDR_SCOPE": "NOT_DOCUMENTED",
+    "SUBPROCESSOR_RETENTION": "OFFICIAL_EXPLICIT (AWS stores live requests; Modal, Nebius, CoreWeave process prompts without storing); duration and derived data NOT_DOCUMENTED",
+    "REGION": "OFFICIAL_EXPLICIT (United States only); other regions NOT_DOCUMENTED",
+    "SOC2": "OFFICIAL_EXPLICIT (listed as SOC 2 Type II - 2026); report not read, scope NOT_DOCUMENTED"
+  }
+}

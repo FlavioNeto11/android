@@ -1088,3 +1088,11 @@ Uso candidato: **recuperação de contexto top-K**, não roteador de resposta ú
 
 **Próximo portão: exclusivamente privacidade / ZDR / contrato.** `PRIVATE_CODE_SEND_APPROVED = False`, `PRIVATE_CODE_BENCHMARK_STATUS = BLOCKED_PRIVACY`, `STANDARD_API_RETENTION = UNKNOWN`. Nada de benchmark
 privado, plugin comunitário ou integração no fluxo real. Sem novas rodadas públicas. `KEY_ROTATION_RECOMMENDED = YES` (não rotacionada por mim).
+
+## 40. Encerramento da fase técnica e gate de privacidade (2026-10-01)
+
+Fase técnica **encerrada** (`TECHNICAL_PHASE_STATUS = CLOSED`): nada mais de benchmark, terceiro corpus, mudança de regra, envio de código privado, plugin, integração em runtime/Claude Code ou merge.
+O resumo executivo (veredito, evidências, limitações, arquitetura candidata, rejeitado/validado), a pesquisa nova de privacidade em fontes oficiais com as marcas `OFFICIAL_EXPLICIT`/`OFFICIAL_AMBIGUOUS`/`NOT_DOCUMENTED`,
+o gate `PRIVATE_CODE_GATE` (hoje `BLOCKED`), o desenho do piloto privado (não executado; estimativa 48–60 chamadas, ≈ US$ 0,02, teto ≤ US$ 0,06) e o plano de integração futura estão em
+[`jev-pilot-closure.md`](jev-pilot-closure.md). A mensagem à TypeSafe está redigida e **não enviada**: [`TYPE_SAFE_PRIVACY_REQUEST.md`](TYPE_SAFE_PRIVACY_REQUEST.md). Estado do gate: `experiments/jev/private_gate.json`.
+`OLD_KEY_ROTATION_REQUIRED = YES`. Próximo gate exclusivo: privacidade/ZDR/contrato.

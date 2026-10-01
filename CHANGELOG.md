@@ -97,6 +97,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     Scrapy segue `NO_GO`; trava pública de volta a `False`; código privado `BLOCKED_PRIVACY`; rodada final autorizada. Detalhe em `docs/research/jev-pilot.md` §39.7.
   - Avaliador do H9 corrigido (defeito de implementação: contava e-mail SOFT como achado duro) e replay **offline** do mesmo bruto (0 chamadas): H1–H9 passam ⇒ `PROTOCOL_CORRECTED_REPLAY_VERDICT = PASS`;
     o `FAIL` histórico da v1 do avaliador fica preservado. Limiares, regra, golden e resultados intactos. Evidência de recuperação top-3/top-5 em corpus público (R@1 não validado); próximo portão: privacidade/ZDR/contrato. §39.8.
+  - Fase técnica **encerrada**; pesquisa oficial de privacidade refeita (MCA 23/09/2026, DPA 24/04/2026, Trust Center, docs): retenção padrão `NOT_DOCUMENTED`, ZDR só "enterprise" sem abrangência escrita, Telemetry/"learnings" ambíguos,
+    revisão humana não documentada, EUA apenas. Gate `PRIVATE_CODE_GATE = BLOCKED` (`experiments/jev/private_gate.json`, testado), pedido à TypeSafe **redigido e não enviado**, piloto privado e integração futura só desenhados
+    (`docs/research/jev-pilot-closure.md`). 0 chamadas Jev, nenhum código privado enviado, `main` intocada; chave antiga a rotacionar.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 
