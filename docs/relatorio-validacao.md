@@ -2040,6 +2040,16 @@ o próprio teste ordena por `a.rowid` (só existe no SQLite; `UndefinedColumn` n
 `os.path.normcase`, que não ignora maiúsculas fora do Windows (passam no SQLite do runner do central, que é Windows).
 O P17 só fecha com um run verde depois dessas três correções.
 
+**Segunda rodada, depois das correções `5a28f44` (01/10):** run 36826258680 (`workflow_dispatch`, `somente_postgres=true`,
+commit `5a28f44`, job 110252511169, 06:43:03→07:31:11Z): **1 failed, 3961 passed, 28 skipped em 47m15s**. As falhas do
+`rowid` e do `normcase` (2 testes) sumiram. Resta `test_rede_worker.py::test_leitura_em_cache_forcar_rele_e_falha_e_desconhecido`
+(`regra_obsoleta` em vez de `liberado`): a classe `FirewallDoCentral` faz `binario = Path(os.path.abspath(self._binario()))`
+(`rede_firewall.py:678`) e, num runner Linux, `os.path.abspath` de um caminho `C:\...` prefixa o diretório de trabalho
+(o caminho do Windows não é absoluto para o POSIX), então o programa da regra deixa de bater com o binário; no Windows, onde
+o caminho já é absoluto, nada muda. Correção sugerida: só chamar `os.path.abspath` quando `os.name == "nt"` (ou testar
+`ntpath.isabs`). O P17 segue **real com 1 falha conhecida, ainda não verde**; um terceiro run `somente_postgres` depois dessa
+correção fecha.
+
 ### 27.2 Prova durável de vazamento (29.2) e a subida (29.4)
 
 Antes (o defeito, `real`, banco do central): um reinício do backend às 02:40 de 30/09 → entre 06:52 e 07:59, um teste
