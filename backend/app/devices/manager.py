@@ -1743,9 +1743,13 @@ class DeviceManager:
         if rt.renderer is None or not emu.houve_fallback(rt.renderer_configured, rt.renderer.gles):
             return None
         vulkan = f" (Vulkan: `{rt.renderer.vulkan}`)" if rt.renderer.vulkan else ""
-        return (f"{RENDERIZADOR_PREFIXO}: este aparelho pediu `{rt.renderer_configured}` (gpu_mode) e o emulador "
-                f"selecionou `{rt.renderer.gles}`{vulkan}, sem avisar. App que não roda nesse renderizador não é "
-                f"instalado nem aberto aqui. Veja a linha `emuglConfig_init` em {rt.renderer_log}.")
+        # Duas causas com o mesmo retrato, e daqui não se distingue uma da outra: o `gpu_mode` mudou DEPOIS da subida
+        # (vale no próximo reinício — foi o caso de todo o parque em 30/09, depois da troca para `host`) ou o
+        # emulador trocou de renderizador sem avisar. O texto diz as duas, em vez de afirmar a segunda.
+        return (f"{RENDERIZADOR_PREFIXO}: este aparelho pede `{rt.renderer_configured}` (gpu_mode) e o emulador no "
+                f"ar está com `{rt.renderer.gles}`{vulkan}. Se o gpu_mode mudou depois da subida, vale no próximo "
+                f"reinício; se não, o emulador trocou de renderizador sem avisar (veja a linha `emuglConfig_init` em "
+                f"{rt.renderer_log}). App que não roda nesse renderizador não é instalado nem aberto aqui.")
 
     def _aviso_do_renderizador(self, rt: DeviceRuntime) -> str | None:
         """O fallback silencioso como atenção do aparelho — só com ele no ar: fora dele não há emulador selecionando

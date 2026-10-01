@@ -19,6 +19,7 @@ describe('renderizadorMeta — o renderizador selecionado pelo emulador', () => 
     const caiu = renderizadorMeta({ configured: 'host', gles: 'swiftshader', vulkan: 'swiftshader', fallback: true });
     expect(caiu).toMatchObject({ label: 'renderizador: SwiftShader (pediu host)', fallback: true });
     expect(caiu?.title).toContain('sem avisar');
+    expect(caiu?.title).toContain('vale no próximo reinício');      // a configuração mudada depois da subida
   });
 
   it('sem dado não inventa nada', () => {
