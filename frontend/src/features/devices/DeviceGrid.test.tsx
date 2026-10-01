@@ -10,7 +10,7 @@ import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text 
 import { DeviceGrid, agruparPorServidor, estadoDoFiltro } from './DeviceGrid';
 
 /**
- * Tarefa 04 (revisão de UX): a grade agrupa por servidor, recolhe as paradas, alterna Cards/Lista e aplica
+ * Tarefa 04 (revisão de UX): a grade agrupa por servidor, recolhe as paradas, alterna Cartões/Lista e aplica
  * `?estado=`. Prova `simulated` (backend falso, nenhum aparelho real).
  */
 let root: Root;
@@ -105,7 +105,7 @@ describe('DeviceGrid — paradas compactas e agrupamento', () => {
   });
 });
 
-describe('DeviceGrid — alternância Cards / Lista', () => {
+describe('DeviceGrid — alternância Cartões / Lista', () => {
   it('a Lista mostra todos os aparelhos em linhas, e a escolha vai para o localStorage', async () => {
     const el = await renderGrade();
     expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
@@ -122,11 +122,38 @@ describe('DeviceGrid — alternância Cards / Lista', () => {
     expect(el.querySelectorAll('tbody tr')).toHaveLength(5);
   });
 
-  it('valor estranho no armazenamento volta para Cards', async () => {
+  it('valor estranho no armazenamento volta para Cartões', async () => {
     window.localStorage.setItem('cda.painel.visao', '"mosaico"');
     const el = await renderGrade();
     expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
     expect(byRole('button', /^Cartões$/, el).getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('DeviceGrid — visão no link e preferência no navegador (D3, RF-08)', () => {
+  it('sem `?visao=` (o menu leva à tela limpa) abre a preferência; trocar grava no link, sem empilhar, e no navegador', async () => {
+    window.localStorage.setItem('cda.painel.visao', '"lista"');
+    const el = await renderGrade();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(5);
+    const antes = window.history.length;
+    await click(byRole('button', /^Cartões$/, el));
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
+    expect(useUiStore.getState().rota.query.visao).toBe('cards');
+    expect(window.location.hash).toMatch(/^#\/painel\?(.*&)?visao=cards/);
+    expect(window.history.length).toBe(antes);
+    expect(window.localStorage.getItem('cda.painel.visao')).toBe('"cards"');
+  });
+
+  it('`?visao=` no link manda sobre a preferência (link colado ou Voltar)', async () => {
+    window.localStorage.setItem('cda.painel.visao', '"lista"');
+    useUiStore.getState().navegar({ tela: 'painel', query: { visao: 'cards' } }, 'replace');
+    const el = await renderGrade();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(0);
+    expect(byRole('button', /^Cartões$/, el).getAttribute('aria-pressed')).toBe('true');
+    await act(async () => useUiStore.getState().navegar({ tela: 'painel', query: { visao: 'lista' } }, 'replace'));
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(5);
+    // Ler o link não mexe na preferência: ela muda só quando a pessoa escolhe.
+    expect(window.localStorage.getItem('cda.painel.visao')).toBe('"lista"');
   });
 });
 

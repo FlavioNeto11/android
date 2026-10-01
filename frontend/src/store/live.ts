@@ -149,8 +149,8 @@ async function cycle(): Promise<void> {
 function autoSelectRun(runs: RunSummary[]): void {
   const ui = useUiStore.getState();
   if (ui.selectedRunId) return;
-  // Só entre as 20 mais recentes: o snapshot também leva as execuções em andamento antigas (para o contador), e abrir
-  // a de semanas atrás no detalhe ao carregar seria uma surpresa. Mesmo comportamento de antes do RF-05.
+  // Só entre as 20 mais recentes: o snapshot também leva as execuções em andamento e as `needs_input` antigas (para
+  // os contadores), e abrir a de semanas atrás no detalhe ao carregar seria uma surpresa. Comportamento de antes do RF-05.
   const recentes = [...runs].sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : 0)).slice(0, 20);
   const active = recentes.find((r) => !isRunTerminal(r.status));
   if (active) ui.selectRun(active.id);

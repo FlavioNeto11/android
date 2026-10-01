@@ -4,14 +4,16 @@
  *
  * - **Aprendizado**: itens da fila "Para aprovar" (efeito fora do sistema ou texto de pessoa), um por item.
  * - **Persona**: textos que uma persona quer publicar e esperam aprovação, um por aprovação.
- * - **Execução**: execuções com objetivos aguardando uma ação sua ou com resultado incerto, UMA LINHA POR EXECUÇÃO
- *   (o número de objetivos vai no texto da linha).
+ * - **Execução**: execuções que PARARAM pedindo informação (`needs_input`), uma linha por execução, TODAS, por mais
+ *   antigas que sejam (o snapshot traz todas e o store não as descarta). Decisão D1 da revisão de UX: "pendência" é o
+ *   que depende de uma pessoa. Antes a origem eram os objetivos `waiting_user`/`uncertain` das 20 execuções mais
+ *   recentes: um número de janela (4 no parque real, que tinha 27 `needs_input`) e de execuções que já tinham
+ *   terminado. Essas continuam visíveis em Execuções, no chip "Pede atenção".
  * - **Intervenção**: sessões de conta que só uma pessoa resolve (login, desafio, conta errada), uma por persona — a
  *   fila "Aguardando intervenção" de Personas (RF-03 da revisão final).
  *
  * O contador do menu e a lista saem da mesma função (`montarPendencias`): o total é sempre o número de linhas. O
- * "aguardando você" do cabeçalho continua contando OBJETIVOS (definição da tarefa 02, `store/metricas.ts`); as duas
- * leituras vêm do mesmo seletor de execuções (`execucoesAguardando`) e a diferença está escrita na tela.
+ * "aguardando você" do cabeçalho e o semáforo leem o MESMO total (`usePendencias`) e levam a `#/pendencias`.
  *
  * A ação primária de cada linha LEVA à tela onde se decide (com a evidência ao lado); a caixa não aprova nem recusa
  * nada: decidir sem ver o contexto é o erro que a aprovação existe para evitar.
@@ -19,9 +21,8 @@
 import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import type { Destino } from '../../store/ui';
-import { execucoesAguardando } from '../../store/metricas';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
-import { tituloCurto } from '../runs/filtroExecucoes';
+import { encurtar, tituloCurto } from '../runs/filtroExecucoes';
 
 export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao' | 'intervencao';
 
@@ -90,18 +91,33 @@ export function pendenciasDeAprovacoes(
   });
 }
 
+/** As execuções que pararam esperando uma resposta sua. Todas, sem janela: é o seletor da caixa e do contador. */
+export function execucoesPedindoResposta(runs: readonly RunSummary[]): RunSummary[] {
+  return runs.filter((r) => r.status === 'needs_input');
+}
+
+/** A primeira pergunta do `status_detail` (o servidor junta as perguntas com " | ") e quantas há. */
+function perguntas(detalhe: string | null): { primeira: string; total: number } {
+  const lista = (detalhe ?? '').split(' | ').map((p) => p.trim()).filter(Boolean);
+  return { primeira: lista[0] ?? '', total: lista.length };
+}
+
 export function pendenciasDeExecucoes(runs: readonly RunSummary[]): Pendencia[] {
-  return execucoesAguardando(runs).map(({ run, objetivos }) => {
+  return execucoesPedindoResposta(runs).map((run) => {
     // O MESMO título da lista de Execuções (RF-09): a primeira linha crua repetia "Nas instâncias selecionadas, No
     // QA Messenger, …" e a mesma execução aparecia com dois títulos. O app citado vai para o detalhe, como lá.
     const { titulo, app } = tituloCurto(run.command);
+    const { primeira, total } = perguntas(run.status_detail);
+    const pergunta = primeira
+      ? ` · ${encurtar(primeira, 110)}${total > 1 ? ` (e mais ${total - 1} ${total === 2 ? 'pergunta' : 'perguntas'})` : ''}`
+      : '';
     return {
       chave: `execucao:${run.id}`,
       origem: 'execucao',
       titulo,
-      detalhe: `${app ? `${app} · ` : ''}${objetivos} ${objetivos === 1 ? 'objetivo aguarda' : 'objetivos aguardam'} você ou ${objetivos === 1 ? 'tem' : 'têm'} resultado incerto`,
+      detalhe: `${app ? `${app} · ` : ''}Parou pedindo informação${pergunta}`,
       desde: run.created_at,
-      acao: 'Abrir execução',
+      acao: 'Responder',
       destino: { tela: 'execucoes', segmentos: [run.id] },
     };
   });
@@ -127,6 +143,20 @@ export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[
       destino: { tela: 'personas' },
     };
   });
+}
+
+/** Execução parada há mais que isto vai para "Antigas": continua contando, só não disputa a vista com as recentes. */
+export const DIAS_PARA_ANTIGA = 7;
+
+/**
+ * Triagem por idade (decisão D1): a execução que parou pedindo informação há mais de 7 dias raramente é a próxima
+ * coisa a fazer, e 27 linhas seguidas escondiam o que chegou hoje. Só a origem Execução: o `desde` de uma intervenção
+ * é a última verificação da sessão, e um login travado de verdade não pode ir parar numa seção recolhida.
+ */
+export function ehAntiga(p: Pendencia, agora: number): boolean {
+  if (p.origem !== 'execucao' || !p.desde) return false;
+  const t = Date.parse(p.desde);
+  return Number.isFinite(t) && agora - t > DIAS_PARA_ANTIGA * 86_400_000;
 }
 
 export interface EntradasDaCaixa {

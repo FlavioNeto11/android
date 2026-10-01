@@ -143,3 +143,37 @@ it('sem resultado, o vazio diz que é o filtro e oferece limpar', async () => {
   await waitFor(() => expect(text()).toContain('Nenhuma execução com esse filtro'));
   expect(byRole('button', /^Limpar filtros$/)).toBeTruthy();
 });
+
+it('D1: o chip de `completed_with_issues` + `needs_input` não usa a palavra "pendência" e o link antigo continua valendo', async () => {
+  servirHistorico();
+  // O link de antes (`?status=pendencia`) abre o mesmo recorte: o código na URL não mudou, só o rótulo.
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { status: 'pendencia' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  // i % 3 === 1 são `completed_with_issues`: 82 das 246.
+  await waitFor(() => expect(byRole('button', /^Pede atenção/).getAttribute('aria-pressed')).toBe('true'));
+  expect(text(byRole('button', /^Pede atenção/))).toBe('Pede atenção82');
+  const chips = document.querySelector('[role="group"][aria-label="Situação da execução"]') as HTMLElement;
+  expect(text(chips).toLowerCase()).not.toContain('pendência');
+  // A dica (no foco de teclado também) diz o que o conjunto é, e onde estão as que dependem de você.
+  await act(async () => byRole('button', /^Pede atenção/).focus());
+  await waitFor(() => expect(text(document.querySelector('[role="tooltip"]') as HTMLElement)).toMatch(/pararam pedindo informação/));
+  expect(text(document.querySelector('[role="tooltip"]') as HTMLElement)).toContain('Pendências');
+});
+
+it('D2: as execuções `planned` têm chip próprio "Planejadas", fora de "Em andamento", e o link `?status=planejada` vale', async () => {
+  const runs = [
+    makeRun({ id: 'r-plano', short_id: 'plano', status: 'planned', command: 'Plano para inspecionar', created_at: new Date(Date.now() - 3 * 864e5).toISOString() }),
+    makeRun({ id: 'r-roda', short_id: 'roda', status: 'running', command: 'Rodando agora', created_at: new Date().toISOString() }),
+  ];
+  backend.on('GET', /^\/api\/runs$/, () => json({ runs, total: runs.length, limit: 200, offset: 0 }));
+  backend.on('GET', /^\/api\/runs\/[^/]+/, () => json(null, 404));
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { status: 'planejada' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(itens()).toEqual(['Plano para inspecionar']));
+  expect(byRole('button', /^Planejadas/).getAttribute('aria-pressed')).toBe('true');
+  expect(text(byRole('button', /^Planejadas/))).toBe('Planejadas1');
+  expect(text(byRole('button', /^Em andamento/))).toBe('Em andamento1');
+  await act(async () => byRole('button', /^Planejadas/).focus());
+  await waitFor(() => expect(text(document.querySelector('[role="tooltip"]') as HTMLElement))
+    .toBe('Plano pronto para inspeção; ainda não foi executado'));
+});

@@ -58,7 +58,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   aprovar") e, à direita, o chip do modelo de IA (abre os modelos
   por função), o aviso de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque: a saúde
   do ambiente (abre os problemas) e os indicadores numa linha só — aparelhos online/cadastrados (com as vagas do
-  rodízio), execuções ativas, bloqueadas, CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
+  rodízio), execuções em andamento, "aguardando você" (o total da caixa de Pendências), CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
   acima de ~2200 px. Abaixo de 1480 px a marca e a navegação perdem os ícones; abaixo de 1180 px conexão e operador
   viram só ícone; abaixo de 900 px a navegação desce para a própria linha e rola com a pista de gradiente.
 - **Modo Automático** ([ADR-050](decisoes.md#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão)).
@@ -74,6 +74,19 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   app e, numa "Zona de perigo" à parte, Resetar dados, sempre com a confirmação). O Foco é um drawer lateral que
   **sobrepõe** a página sem reorganizar a grade; fecha com Esc, com o clique na página ou em Fechar, e devolve o teclado
   ao cartão (o menu lateral e os cartões seguem clicáveis: o Foco acompanha a troca de tela ou de aparelho). Com ele aberto, a barra em massa esconde os botões (as ações do aparelho estão no drawer).
+- **Menu, links e visões (revisão de UX, 30/09; decisão D3).** A URL é a fonte da verdade: busca, filtros, o objeto
+  aberto e a guia ficam no link (`frontend/src/lib/rotas.ts`), e colar o link ou usar o Voltar mostra o mesmo recorte.
+  O item do menu leva à tela **limpa**, sem os filtros da última visita. A forma de ver a lista é a exceção, com uma
+  regra só no Painel ("Cartões | Lista") e em Personas ("Cartões | Tabela"): `?visao=` no link manda; sem ele, vale a
+  última visão escolhida neste navegador; escolher grava nos dois (no link, sem empilhar entrada no histórico, e no
+  navegador). Prova: `simulated` (`DeviceGrid.test.tsx`, `ProfilesPage.test.tsx`, `filtroPersonas.test.ts`).
+- **Pendências e o que pede atenção (revisão de UX, 30/09; decisões D1 e D2).** "Pendência" é o que depende de uma
+  pessoa, e tem dona: a caixa de Pendências (`#/pendencias`), com aprovações do Aprendizado e das personas, contas que
+  pedem intervenção e execuções paradas pedindo informação (`needs_input`), todas, por mais antigas. As paradas há mais
+  de 7 dias ficam numa seção recolhida "Antigas (N)", mas contam. O selo do menu, o "aguardando você" do topo e o
+  aviso na saúde do ambiente são o mesmo total e levam à caixa. Em Execuções, o filtro que junta "terminou com
+  problema" e "parou pedindo informação" se chama **Pede atenção**, e um plano pronto que ninguém mandou executar
+  (`planned`) tem o chip **Planejadas**: não conta como execução em andamento.
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada

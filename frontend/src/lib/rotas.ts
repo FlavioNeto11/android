@@ -2,7 +2,7 @@
  * Contrato de rotas do portal (hash). Fonte única: toda tela que monta ou lê um link usa estas funções, nunca
  * concatena `#/...` à mão.
  *
- *   #/painel                      #/painel?foco=android-01&estado=desconhecido
+ *   #/painel                      #/painel?foco=android-01&estado=desconhecido&visao=lista
  *   #/personas                    #/personas?situacao=bloqueada&q=ana&ordem=nome&visao=tabela
  *   #/personas/<id>               #/personas/<id>/<aba>
  *   #/aplicativos                 #/aplicativos/<app_id>?aba=versoes
@@ -26,9 +26,13 @@
  *   - Personas (tarefa UX 05, `features/profiles/filtroPersonas.ts`): `q` (nome ou @), `situacao` = `ativa` |
  *     `atencao` | `bloqueada` (status `blocked`, o mesmo do contador da saúde do ambiente) | `pausada` | `sem-conta`;
  *     `vinculo` = `com` | `sem` (aparelho vinculado); `grupo` = id do grupo de acesso ou `nenhum`; `app` = id do app
- *     de um vínculo; `ordem` = `situacao` | `atividade` (sem = nome); `visao` = `tabela` (sem = cartões).
+ *     de um vínculo; `ordem` = `situacao` | `atividade` (sem = nome); `visao` = `cards` | `tabela`.
+ *   - Painel: `estado` (estado do aparelho, `features/devices/DeviceGrid.tsx`); `visao` = `cards` | `lista`.
+ *   - `visao` (Painel e Personas, decisão D3, `lib/visao.ts`): o link manda; sem ela, vale a última visão escolhida
+ *     neste navegador; escolher grava nos dois. O menu leva à tela limpa (sem filtros nem `visao`).
  *   - Execuções (tarefa UX 05, `features/runs/filtroExecucoes.ts`): `q` (objetivo ou código), `status` =
- *     `andamento` | `concluida` | `pendencia` | `falha` | `cancelada`; `periodo` = `24h` | `7d` | `30d`;
+ *     `andamento` | `planejada` | `concluida` | `pendencia` (rótulo "Pede atenção") | `falha` | `cancelada`;
+ *     `periodo` = `24h` | `7d` | `30d`;
  *     `aparelho` = id do aparelho; `servidor` = id do servidor. Convivem com `aba` da execução aberta.
  */
 export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pendencias', 'aprendizado',

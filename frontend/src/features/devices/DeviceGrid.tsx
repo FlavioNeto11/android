@@ -6,6 +6,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
 import { isStringArray, loadJson, saveJson } from '../../lib/storage';
+import { lembrarVisao, visaoDoLink, visaoPreferida } from '../../lib/visao';
 import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/app';
 import {
   ORDEM_DOS_ESTADOS, ROTULO_DO_ESTADO, contarSelecao, estadoContado, useContagemDeAparelhos, type EstadoContado,
@@ -23,7 +24,8 @@ import styles from './Devices.module.css';
 
 type Visao = 'cards' | 'lista';
 
-const ehVisao = (v: unknown): v is Visao => v === 'cards' || v === 'lista';
+const VISOES: readonly Visao[] = ['cards', 'lista'];
+const CHAVE_VISAO = 'painel.visao';
 
 /** Valores de `?estado=` do Painel: os estados de aparelho do resumo (`store/metricas`), inclusive `desconhecido`. */
 export function estadoDoFiltro(valor: string | undefined): EstadoContado | null {
@@ -69,10 +71,18 @@ export function DeviceGrid() {
   const estadoQuery = useUiStore((s) => s.rota.query.estado);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const filtro = estadoDoFiltro(estadoQuery);
-  // Cards/Lista e grupos recolhidos: preferência da pessoa, lembrada no navegador (`lib/storage` já protege tudo).
-  const [visao, setVisaoEstado] = useState<Visao>(() => loadJson('painel.visao', ehVisao) ?? 'cards');
+  // Cartões/Lista (D3, `lib/visao.ts`): `?visao=` no link manda; sem ele (o menu leva à tela limpa), vale a última
+  // escolhida neste navegador. Escolher grava nos dois: no link, sem empilhar, e no navegador.
+  const visaoQuery = useUiStore((s) => s.rota.query.visao);
+  const [preferida, setPreferida] = useState<Visao>(() => visaoPreferida(CHAVE_VISAO, VISOES, 'cards'));
+  const visao = visaoDoLink(visaoQuery, VISOES) ?? preferida;
+  const setVisao = (v: Visao) => {
+    lembrarVisao(CHAVE_VISAO, v);
+    setPreferida(v);
+    trocarQuery({ visao: v }, 'replace');
+  };
+  // Grupos recolhidos: preferência da pessoa, lembrada no navegador (`lib/storage` já protege tudo).
   const [recolhidos, setRecolhidos] = useState<string[]>(() => loadJson('painel.paradasRecolhidas', isStringArray) ?? []);
-  const setVisao = (v: Visao) => { setVisaoEstado(v); saveJson('painel.visao', v); };
   const alternarParadas = (chave: string) => setRecolhidos((atual) => {
     const novo = atual.includes(chave) ? atual.filter((c) => c !== chave) : [...atual, chave];
     saveJson('painel.paradasRecolhidas', novo);

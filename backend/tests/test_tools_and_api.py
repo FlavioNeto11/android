@@ -117,9 +117,10 @@ async def test_api_dedup_validacao_e_reconexao_por_snapshot(harness: Harness) ->
 
 
 async def test_snapshot_traz_as_recentes_e_todas_as_em_andamento(harness: Harness) -> None:
-    """RF-05: o painel conta as execuções em andamento, e uma `planned` de semanas atrás ficava fora das 20 mais
-    recentes (o contador abria em 0). O snapshot leva as 20 recentes E todas as em andamento; `needs_input` é
-    pendência, não andamento, e não entra por esse caminho."""
+    """RF-05: o painel conta as execuções em andamento, e uma de semanas atrás ficava fora das 20 mais recentes (o
+    contador abria em 0). O snapshot leva as 20 recentes E todas as não terminais, com duas regras das decisões da
+    revisão de UX. D1: `needs_input` é pendência e entra (a caixa de Pendências conta todas, desde a primeira carga).
+    D2: `planned` (plano pronto para inspeção, nunca executado) NÃO é em andamento e não entra por esse caminho."""
     db = harness.state.db
     sql = ("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
            " VALUES (?, ?, 'x', 'execute', ?, 1, '[]', ?)")
@@ -135,8 +136,9 @@ async def test_snapshot_traz_as_recentes_e_todas_as_em_andamento(harness: Harnes
         ids = [r["id"] for r in (await c.get("/api/snapshot")).json()["runs"]]
     assert len(ids) == 22 and len(set(ids)) == 22
     assert ids[:20] == [f"r-recente-{i:02d}" for i in range(24, 4, -1)]            # as 20 mais recentes, em ordem
-    assert ids[20:] == ["r-antiga-pausada", "r-antiga-planejada"]                  # + as em andamento, mais novas antes
-    assert "r-antiga-pendencia" not in ids and "r-antiga-concluida" not in ids
+    # + as não terminais menos `planned`, mais novas antes: a que espera resposta e a em andamento
+    assert ids[20:] == ["r-antiga-pendencia", "r-antiga-pausada"]
+    assert "r-antiga-planejada" not in ids and "r-antiga-concluida" not in ids
 
 
 async def test_manutencao_do_worker_recusa_comando_unico_e_lote(harness: Harness) -> None:

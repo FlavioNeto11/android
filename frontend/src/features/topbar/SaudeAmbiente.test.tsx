@@ -7,7 +7,9 @@ import { hashDe } from '../../lib/rotas';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { useUiStore } from '../../store/ui';
+import { usePendenciasStore } from '../pendencias/store';
 import { SaudeAmbiente } from './SaudeAmbiente';
 import { TopBar } from './TopBar';
 
@@ -67,8 +69,16 @@ async function montar(lan: Partial<Worker>, ui: 'saude' | 'barra' = 'saude'): Pr
     instances: Object.fromEntries(lista.map((i) => [i.id, i])),
     instanceOrder: lista.map((i) => i.id),
     workers: { central: worker({ id: 'central', name: 'central', local: true, max_slots: 4 }), [LAN]: worker(lan) },
-    runs: [makeRun({ counts: { ...makeRun().counts, waiting_user: 1, uncertain: 1 } })],
+    // D1: a pendência de execução é a que PAROU pedindo informação; a que roda com objetivo esperando não conta.
+    runs: [makeRun({ id: 'r-roda', counts: { ...makeRun().counts, waiting_user: 1, uncertain: 1 } }),
+           makeRun({ id: 'r-pergunta', status: 'needs_input', counts: { ...makeRun().counts, waiting_user: 0, running: 0 } })],
   });
+  // A caixa de Pendências: 1 aprovação de persona + a execução acima = 2. É o número que o topo e o semáforo mostram.
+  usePendenciasStore.setState({ aprendizado: [], personas: [], falhou: false, aprovacoes: [{
+    id: 'a1', profile_id: 'p1', run_id: null, objective_id: null, step_id: null, capability: 'comentar', target: '@x',
+    summary: 'Comentário', generated_content: 'oi', approved_content: null, content: 'oi', status: 'pending',
+    created_at: '2026-09-29T10:00:00Z', decided_at: null, decided_note: null, decided_by: null, interaction_id: null,
+  }] });
   await act(async () => {
     root.render(ui === 'barra' ? <TopBar /> : <SaudeAmbiente />);
   });
@@ -105,11 +115,14 @@ describe('SaudeAmbiente — semáforo', () => {
     expect(hrefs).toContain(hashDe('painel', { query: { estado: 'desconhecido' } }));
   });
 
-  it('o popover diz o que está bloqueado (personas) e o que espera você (objetivos), com link para a lista', async () => {
+  it('o popover diz o que está bloqueado (personas) e o que espera você (as pendências da caixa), com link', async () => {
     await montar({});
     const pop = await abrir();
     await waitFor(() => expect(text(pop)).toContain('2 personas bloqueadas pela plataforma'));
-    expect(text(pop)).toContain('2 objetivos aguardando você nas execuções');
+    // D1: o mesmo número e o mesmo destino da caixa de Pendências (antes: objetivos, levando a Execuções).
+    expect(text(pop)).toContain('2 pendências esperando você');
+    const pendencias = [...pop.querySelectorAll('a')].find((a) => text(a).includes('pendências esperando'));
+    expect(pendencias?.getAttribute('href')).toBe(hashDe('pendencias'));
     const bloqueadas = [...pop.querySelectorAll('a')].find((a) => text(a).includes('personas bloqueadas'));
     expect(bloqueadas?.getAttribute('href')).toBe(hashDe('personas', { query: { situacao: 'bloqueada' } }));
     // Personas bloqueadas não mudam a cor: são estado de trabalho, não de saúde.
@@ -131,5 +144,16 @@ describe('TopBar — mesma base de contagem da grade', () => {
     expect(indicadores).toContain('1/4online');
     expect(indicadores).toContain('2aguardando você');
     expect(indicadores).not.toContain('bloquead');
+  });
+
+  it('D1: "aguardando você" é o total da caixa de Pendências e leva a ela', async () => {
+    await montar({}, 'barra');
+    const chip = [...container.querySelectorAll('[aria-label="Indicadores"] button')]
+      .find((b) => text(b as HTMLElement).includes('aguardando você')) as HTMLElement;
+    expect(text(chip)).toBe('2aguardando você');
+    await act(async () => usePendenciasStore.setState({ aprendizado: [] , aprovacoes: [] }));
+    expect(text(chip)).toBe('1aguardando você');
+    await click(chip);
+    expect(useUiStore.getState().rota.tela).toBe('pendencias');
   });
 });

@@ -58,13 +58,21 @@ describe('título curto da execução', () => {
 });
 
 describe('filtros de execuções', () => {
-  it('agrupa os status nos cinco filtros', () => {
+  it('agrupa os status nos seis filtros', () => {
     expect(grupoDoStatus('completed')).toBe('concluida');
     expect(grupoDoStatus('completed_with_issues')).toBe('pendencia');
     expect(grupoDoStatus('needs_input')).toBe('pendencia');
     expect(grupoDoStatus('failed')).toBe('falha');
     expect(grupoDoStatus('cancelled')).toBe('cancelada');
-    for (const s of ['planning', 'planned', 'running', 'paused', 'cancelling'] as const) expect(grupoDoStatus(s)).toBe('andamento');
+    for (const s of ['planning', 'running', 'paused', 'cancelling'] as const) expect(grupoDoStatus(s)).toBe('andamento');
+  });
+
+  it('D2: `planned` não é "em andamento": é um plano pronto para inspeção, que tem chip próprio e vale no link', () => {
+    expect(grupoDoStatus('planned')).toBe('planejada');
+    expect(lerFiltroExecucoes({ status: 'planejada' }).status).toBe('planejada');
+    const runs = [run('r-000001', { status: 'planned' }), run('r-000002', { status: 'running' })];
+    expect(contagemPorGrupo(runs, lerFiltroExecucoes({}), Date.parse('2026-09-30T12:00:00Z')))
+      .toMatchObject({ todas: 2, andamento: 1, planejada: 1 });
   });
 
   it('lê a URL ignorando valores desconhecidos', () => {

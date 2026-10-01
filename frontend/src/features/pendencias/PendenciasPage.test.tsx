@@ -30,11 +30,15 @@ const APROVACAO = (id: string, over: Partial<Approval> = {}): Approval => ({
   created_at: '2026-09-29T10:00:00Z', decided_at: null, decided_note: null, decided_by: null, interaction_id: null, ...over,
 });
 
+// D1 (decisões da revisão de UX): a execução é pendência quando PAROU pedindo informação (`needs_input`). Os
+// contadores de objetivos de uma execução que já terminou não a tornam pendência (vão para "Pede atenção").
+const SEM_OBJETIVOS = { succeeded: 0, failed: 0, waiting_user: 0, uncertain: 0, cancelled: 0, running: 0, pending: 0 };
 const EXECUCAO = makeRun({
-  id: 'r-espera', short_id: 'r-espera', command: 'Siga o perfil X', status: 'running',
-  created_at: '2026-09-30T08:00:00Z',
-  counts: { succeeded: 0, failed: 0, waiting_user: 2, uncertain: 1, cancelled: 0, running: 0, pending: 0 },
+  id: 'r-espera', short_id: 'r-espera', command: 'Siga o perfil X', status: 'needs_input',
+  created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), counts: SEM_OBJETIVOS,
+  status_detail: 'Qual perfil seguir?',
 });
+const DIA = 86_400_000;
 
 const PRESA = makePersona('p2', 'Bia Nunes', {
   username: 'bia.nunes', session: { ...makeSession('auth_challenge', 'android-02'), verified_at: '2026-09-30T07:00:00Z' },
@@ -45,10 +49,10 @@ describe('montarPendencias (puro)', () => {
     const lista = montarPendencias({
       aprendizado: [ITEM('1'), ITEM('2', { state_at: '2026-09-20T10:00:00Z' })],
       aprovacoes: [APROVACAO('a1'), APROVACAO('a2', { status: 'approved' })],
-      execucoes: [EXECUCAO, makeRun({ id: 'r-ok', counts: { succeeded: 1, failed: 0, waiting_user: 0, uncertain: 0, cancelled: 0, running: 0, pending: 0 } })],
+      execucoes: [EXECUCAO, makeRun({ id: 'r-ok', status: 'completed', counts: { ...SEM_OBJETIVOS, succeeded: 1 } })],
       nomeDaPersona: (id) => (id === 'p1' ? 'Ana Lima' : null),
     });
-    // 2 do aprendizado + 1 aprovação pendente (a decidida não entra) + 1 execução (com 3 objetivos: uma linha só).
+    // 2 do aprendizado + 1 aprovação pendente (a decidida não entra) + 1 execução parada pedindo informação.
     expect(lista).toHaveLength(4);
     expect(lista.map((p) => p.origem)).toEqual(['aprendizado', 'aprendizado', 'persona', 'execucao']);
     expect(lista[0]?.chave).toBe('aprendizado:receita:2');
@@ -56,7 +60,7 @@ describe('montarPendencias (puro)', () => {
     expect(persona?.detalhe).toContain('Ana Lima');
     expect(persona?.destino).toEqual({ tela: 'personas', segmentos: ['p1', 'aprovacoes'] });
     const exec = lista.find((p) => p.origem === 'execucao');
-    expect(exec?.detalhe).toContain('3 objetivos');
+    expect(exec?.detalhe).toContain('Qual perfil seguir?');
     expect(exec?.destino).toEqual({ tela: 'execucoes', segmentos: ['r-espera'] });
   });
 
@@ -84,6 +88,21 @@ describe('montarPendencias (puro)', () => {
     expect(lista[1]?.detalhe).toContain('sem aparelho vinculado');
     // O conjunto é o da fila "Aguardando intervenção" de Personas.
     expect([...PRECISA_DE_PESSOA].sort()).toEqual(['auth_challenge', 'needs_person', 'wrong_account']);
+  });
+
+  it('D1: toda execução em `needs_input` é pendência, por mais antiga; objetivo esperando em execução terminada não', () => {
+    // O parque real: 27 `needs_input` de 17/09 a 28/09, quase todas fora das 20 mais recentes. Antes a caixa mostrava
+    // só as da janela (4), e contava `completed_with_issues` com objetivo `waiting_user`, que já terminaram.
+    const recentes = Array.from({ length: 25 }, (_, i) => makeRun({
+      id: `r-rec-${i}`, status: 'completed', counts: SEM_OBJETIVOS, created_at: new Date(Date.now() - i * 60_000).toISOString(),
+    }));
+    const terminouEsperando = makeRun({ id: 'r-cwi', status: 'completed_with_issues', created_at: new Date().toISOString(),
+                                        counts: { ...SEM_OBJETIVOS, waiting_user: 1, uncertain: 1 } });
+    const paradas = [3, 10, 13].map((d) => makeRun({ id: `r-ni-${d}`, status: 'needs_input', counts: SEM_OBJETIVOS,
+                                                     created_at: new Date(Date.now() - d * DIA).toISOString() }));
+    const lista = montarPendencias({ aprendizado: [], aprovacoes: [], execucoes: [...recentes, terminouEsperando, ...paradas] });
+    expect(lista.map((p) => p.chave)).toEqual(['execucao:r-ni-13', 'execucao:r-ni-10', 'execucao:r-ni-3']);
+    expect(lista.every((p) => p.origem === 'execucao' && p.acao === 'Responder')).toBe(true);
   });
 
   it('fontes ainda não lidas (null) não quebram nem inventam linhas', () => {
@@ -159,6 +178,26 @@ describe('caixa de pendências', () => {
     expect(container.querySelectorAll('li[data-origem]')).toHaveLength(1);
     await click(byRole('radio', /^Todas/, container));
     expect(useUiStore.getState().rota.query.origem).toBeUndefined();
+  });
+
+  it('D1: execuções paradas há mais de 7 dias ficam em "Antigas (N)", recolhida, e contam no total e no menu', async () => {
+    const antigas = [8, 12].map((d) => makeRun({ id: `r-velha-${d}`, short_id: `v${d}`, command: `Objetivo antigo ${d}`,
+                                                 status: 'needs_input', counts: SEM_OBJETIVOS,
+                                                 created_at: new Date(Date.now() - d * DIA).toISOString() }));
+    useAppStore.setState({ runs: [EXECUCAO, ...antigas] });
+    await act(async () => { root.render(<><MenuLateral /><PendenciasPage /></>); });
+    await waitFor(() => expect(text(container.querySelector('[role="radiogroup"]') as HTMLElement)).toContain('Todas (6)'));
+    const itemDoMenu = container.querySelector('nav a[href="#/pendencias"]') as HTMLElement;
+    expect(text(itemDoMenu)).toContain('6 esperando você');
+    // A lista principal tem as recentes; as antigas ficam na seção recolhida, que diz quantas são.
+    const principal = container.querySelector('ul[aria-label="Pendências"]') as HTMLElement;
+    expect(principal.querySelectorAll('li[data-origem]')).toHaveLength(4);
+    const resumo = Array.from(container.querySelectorAll('summary, button')).find((b) => /^Antigas \(2\)/.test(text(b as HTMLElement)));
+    expect(resumo).toBeTruthy();
+    expect(text(container)).not.toContain('Objetivo antigo 8');
+    await click(resumo as HTMLElement);
+    await waitFor(() => expect(text(container)).toContain('Objetivo antigo 8'));
+    expect(text(container)).toContain('Objetivo antigo 12');
   });
 
   it('caixa vazia diz "Nada esperando você"; leitura que falha avisa que a lista pode estar incompleta', async () => {

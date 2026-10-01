@@ -14,7 +14,8 @@ import { handleDe, nomeDe } from './pessoa';
  * - `app`: id do app de algum vínculo da persona (`instagram`, `outlook`…).
  * - `q`: texto; casa com nome e @ (sem acento, sem caixa, com ou sem o "@").
  * - `ordem`: `nome` (padrão, omitido) | `situacao` | `atividade`.
- * - `visao`: `cards` (padrão, omitido) | `tabela`.
+ * - `visao`: `cards` | `tabela`. Sem `visao` no link vale a última escolhida neste navegador (`lib/visao.ts`, decisão
+ *   D3); por isso ela vai sempre explícita no link (um link sem ela abriria na preferência de quem o recebe).
  */
 
 export const SITUACOES = ['ativa', 'atencao', 'bloqueada', 'pausada', 'sem-conta'] as const;
@@ -35,6 +36,9 @@ export function nomeDoApp(id: string): string {
 export const ORDENS_PERSONA =['nome', 'situacao', 'atividade'] as const;
 export type OrdemPersona = (typeof ORDENS_PERSONA)[number];
 export type Visao = 'cards' | 'tabela';
+export const VISOES: readonly Visao[] = ['cards', 'tabela'];
+/** Chave da preferência no navegador (`lib/storage` põe o prefixo). */
+export const CHAVE_VISAO = 'personas.visao';
 
 export interface FiltroPersonas {
   q: string;
@@ -54,8 +58,11 @@ function umDe<T extends string>(lista: readonly T[], v: string | undefined): T |
   return v && (lista as readonly string[]).includes(v) ? (v as T) : null;
 }
 
-/** Lê a query do link. Valor desconhecido vira "sem filtro" (um link velho não esvazia a lista sem dizer por quê). */
-export function lerFiltroPersonas(query: Readonly<Record<string, string>>): FiltroPersonas {
+/**
+ * Lê a query do link. Valor desconhecido vira "sem filtro" (um link velho não esvazia a lista sem dizer por quê). A
+ * visão do link manda; sem ela, vale `preferida` (a do navegador).
+ */
+export function lerFiltroPersonas(query: Readonly<Record<string, string>>, preferida: Visao = 'cards'): FiltroPersonas {
   return {
     q: (query.q ?? '').trim() ? query.q ?? '' : '',
     situacao: umDe(SITUACOES, query.situacao),
@@ -63,11 +70,14 @@ export function lerFiltroPersonas(query: Readonly<Record<string, string>>): Filt
     grupo: query.grupo || null,
     app: query.app || null,
     ordem: umDe(ORDENS_PERSONA, query.ordem) ?? 'nome',
-    visao: query.visao === 'tabela' ? 'tabela' : 'cards',
+    visao: umDe(VISOES, query.visao) ?? preferida,
   };
 }
 
-/** O filtro na forma de `trocarQuery`: padrão sai do link (`undefined`), para o link ficar curto e estável. */
+/**
+ * O filtro na forma de `trocarQuery`: padrão sai do link (`undefined`), para o link ficar curto e estável. A visão é a
+ * exceção: vai sempre, porque o padrão dela é de cada navegador.
+ */
 export function queryDoFiltro(f: Partial<FiltroPersonas>): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
   if ('q' in f) out.q = f.q || undefined;
@@ -76,7 +86,7 @@ export function queryDoFiltro(f: Partial<FiltroPersonas>): Record<string, string
   if ('grupo' in f) out.grupo = f.grupo ?? undefined;
   if ('app' in f) out.app = f.app ?? undefined;
   if ('ordem' in f) out.ordem = f.ordem && f.ordem !== 'nome' ? f.ordem : undefined;
-  if ('visao' in f) out.visao = f.visao === 'tabela' ? 'tabela' : undefined;
+  if ('visao' in f) out.visao = f.visao === 'tabela' ? 'tabela' : 'cards';
   return out;
 }
 
