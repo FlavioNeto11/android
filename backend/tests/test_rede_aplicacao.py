@@ -1142,3 +1142,62 @@ def test_regras_de_bloqueio_contam_as_regras_e_nao_o_cabecalho() -> None:
     trecho = next(p for p in cmd.split("; ") if p.startswith("echo R="))
     assert "grep -c 'UIDs:'" in trecho and "grep -A" in trecho
     assert "grep -c 'Lockdown filtering rules'" not in cmd
+
+
+async def test_manutencao_do_worker_recusa_o_reinicio_da_rede_e_nao_o_device_network(
+        parque: Harness) -> None:
+    """Abort gate do W8 (diagnóstico do android-09), pelo `_precheck` REAL: com o worker em manutenção, o reinício que a
+    convergência pede é recusado e a recusa fica no histórico do aparelho; o `device.network` (que não passa pelo
+    `_precheck`) segue correndo; o pedido recusado conta para `reinicios_max` e a convergência espera
+    `_ESPERA_DA_RELEITURA_S` antes de tentar de novo. Sem manutenção, o mesmo pedido é aceito."""
+    from app.devices import rede_convergencia as conv_mod
+    from app.workers.protocol import Hello, WorkerResources
+
+    st = parque.state
+    assert st is not None
+    reg = st.workers
+    reg.autenticar(Hello(worker_id="worker-lan-01", name="Notebook da LAN", agent_version="0.1.0", os="windows",
+                         max_slots=6, verbs=["restart"], devices=[],
+                         resources=WorkerResources(cpu_count=4, ram_total_mb=8192, ram_free_mb=4096)),
+                   token=None, enrollment=reg.criar_inscricao())
+
+    async def _noop(payload: dict) -> None:
+        return None
+    reg.attach("worker-lan-01", _noop)
+    rt = st.devices.devices["android-01"]
+    rt.worker_id, rt.worker_verbs = "worker-lan-01", ["restart"]
+    conv = st.rede_convergencia
+    conv.atraso_do_reinicio_s = 0.05
+    ap = AparelhoFalso(id="android-01")
+    conv._aparelho = lambda _s, _rt: ap
+    perfil = rede.criar_perfil(st, rede.ler_cadastro({"name": "Central", "kind": "vpn", "protocol": "singbox",
+                                                      "endpoint_host": "10.0.2.2", "endpoint_port": 51820,
+                                                      "params": {"servidor": "central"}}), "teste")
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=["android-01"], vpn_profile_id=perfil.id, policy="livre"),
+                  "teste")
+
+    reg.set_maintenance("worker-lan-01", True)
+    agora = [1_000_000.0]
+    conv._agora = lambda: agora[0]
+    assert await _passo(parque, "pedido")                                        # o apply corre em manutenção
+    await asyncio.sleep(0.4)                                                     # o reinício é pedido 0,05 s depois
+    [apply_cmd] = st.db.query("SELECT * FROM commands WHERE verb='device.network'")
+    assert apply_cmd["state"] == "succeeded"                                     # manutenção não barra a rede
+    [reinicio] = st.db.query("SELECT * FROM commands WHERE verb='restart'")
+    assert reinicio["state"] == "rejected" and "manutenção" in str(reinicio["reason"])
+    linha = _linha(parque)
+    assert linha["state"] == "configurado" and linha["applied_rev"] == 1         # a evidência segue disponível
+    mem = conv.memoria("android-01")
+    assert mem.reinicios.get(1) == 1                                             # a recusa conta para o teto
+    assert mem.espera_ate == agora[0] + conv_mod._ESPERA_DA_RELEITURA_S == agora[0] + 300.0
+    assert "android-01" not in conv._reinicio_agendado
+    assert await _passo(parque, "varredura") is False                            # na espera: nada de comando por passada
+    assert st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='restart'") == 1
+
+    reg.set_maintenance("worker-lan-01", False)                                  # sem manutenção, nada dispara sozinho
+    await asyncio.sleep(0.2)
+    assert st.db.scalar("SELECT COUNT(*) FROM commands WHERE verb='restart'") == 1
+    conv._pedir_reinicio("android-01", 1, "de novo", 24)                         # o próximo pedido é aceito
+    [_, aceito] = st.db.query("SELECT * FROM commands WHERE verb='restart' ORDER BY created_at, id")
+    assert aceito["state"] != "rejected"
+    assert conv.memoria("android-01").reinicios.get(1) == 2
