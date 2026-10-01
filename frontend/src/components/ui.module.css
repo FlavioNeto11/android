@@ -396,6 +396,14 @@
 .bannerText + .bannerText { margin-top: 2px; }
 .bannerActions { display: flex; gap: var(--sp-2); flex: none; align-self: center; flex-wrap: wrap; justify-content: flex-end; }
 .bannerCompact { padding: 6px 8px; gap: 7px; font-size: var(--fs-sm); }
+/* Celular: a ação do Banner não divide a linha com o texto (M1, rodada 2) — o texto ficava com 127 px e o que ele
+   carrega (a caixa "Responda aqui") ficava espremido. O ícone e o texto ocupam a primeira linha e as ações descem
+   para a segunda, alinhadas à esquerda. */
+@media (max-width: 560px) {
+  .banner { flex-wrap: wrap; }
+  .bannerBody { flex: 1 1 calc(100% - 30px); }
+  .bannerActions { flex: 1 1 100%; align-self: stretch; justify-content: flex-start; }
+}
 
 /* ---------- Spinner ---------- */
 .spinner { color: var(--accent-text); }
