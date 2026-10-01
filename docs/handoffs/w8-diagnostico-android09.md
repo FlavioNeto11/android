@@ -420,8 +420,7 @@ restart manual, política, perfil, cliente, configuração. Commit do acionador:
 nenhum comando novo depois. Rede `trafego_verificado` (`exigida_com_bloqueio`, rev 1, `verified_at` 17:53:29Z), conectividade `healthy`,
 par `10.66.0.2` com handshake. `BASELINE_REACHED = YES` (17:55:50Z pelo monitor; gate completo de 22 itens ok às 17:58:03Z).
 
-**Baseline do 05:** cliente 1.14.2 (739), `pm path` = o do teste de vazamento (`~~sM3KHh…`), pid 1419, `stopped=false`; perfil `piloto`
-(Remote); política `exigida_com_bloqueio`; `always_on=io.nekohasekai.sfa`; `lockdown=1`; `tun0` e VPN CONNECTED; 3 regras de
+**Baseline do 05:** cliente 1.14.2 (739), `pm path` = o do teste de vazamento (`~~sM3KHh…`), pid 1419, `stopped=false`; perfil selecionado não observado (o log mostra um remoto `piloto` no app; ver §18.2); política `exigida_com_bloqueio`; `always_on=io.nekohasekai.sfa`; `lockdown=1`; `tun0` e VPN CONNECTED; 3 regras de
 bloqueio; Q0 sem tile; SystemUI 747; netlink: **12 negações `bind` já no buffer** do cliente (o 05 as acumulava com a VPN
 funcionando). Coletor novo ANTES do force-stop: run `20261001T175604Z`, PID 17360 (lançador 26504), logcat `-b all` PID 4132, amostras a cada 2 s
 (`samples.jsonl`), janela larga `logcat-wide.0.txt`.
@@ -478,3 +477,114 @@ antigo procurava só `ProxyService` e dizia "não iniciou" para o 05: corrigido 
 cliente do 09 diz entre o clique e o início do `ProxyService` (já temos a janela larga; sem novo gesto); (b) o que decide o modo no
 cliente: perfil r2 do 09 vs `piloto` do 05 (ver o conteúdo expõe a chave: não sem decisão do dono); (c) trocar a seleção ou
 reimportar o perfil no 09 (altera configuração: autorização). **`CAUSE_PROVEN = NO`.**
+
+## 18. Por que o tile sobe o `ProxyService` no 09: `serviceMode` do cliente (01/10/2026, 18:00–18:30Z, `real` + código upstream)
+
+### 18.1. Código upstream da versão exata (leitura de código, sem tocar em nada)
+
+`SFA_1_14_2_SOURCE_CONFIRMED = YES (com ressalva)`. Repositório `SagerNet/sing-box-for-android`: não há tag 1.14.2; `version.properties` do
+ramo `main` diz `VERSION_NAME=1.14.2`, `VERSION_CODE=739`, e o commit que fixou isso é **`fc21909df7a3f0fc9435f3866fb6a4960711aa5f`**
+("Bump version 1.14.2", 24/09/2026). Lido nesse commit (checkout raso). Três commits posteriores em `main` (`ef88b1f`, `568b80e`,
+`5cb7414`, 26–28/09: atualização do GitHub, aba Connections) não tocam em nenhum dos arquivos abaixo (a comparação não tem
+`rebuildServiceMode`, `serviceClass`, `startService0`, `selectedProfile` nem `TileService`). Ressalva: o APK da loja não foi
+comparado byte a byte com esse código; a prova de que o código descreve o binário é o comportamento (§18.4). O commit
+`2aef015dad` (20/09, antes do bump, logo dentro do 1.14.2) trocou a detecção do modo de um parse JSON estrito por
+`Libbox.hasTunInbound(...)` e a mensagem do `openTun`; as versões ≤1.14.1 usavam o parse JSON.
+
+Arquivos em `app/src/main/java/io/nekohasekai/sfa/`:
+
+| Pergunta | Onde | O que o código faz |
+|---|---|---|
+| A. tile | `bg/TileService.kt` `onClick` → `toggleService()` | status `Stopped` → `BoxService.start()`; **não** chama `rebuildServiceMode` |
+| B. `BoxService.start` | `bg/BoxService.kt:57-61` | `Settings.dataStore.initialize()`; `Intent(app, Settings.serviceClass())`; `startForegroundService` |
+| C. classe | `database/Settings.kt:138` | `serviceMode == VPN` → `VPNService`; qualquer outro valor → `ProxyService` |
+| (padrão) | `Settings.kt:41` | `serviceMode` **nasce `NORMAL`** (`ServiceMode.NORMAL = "normal"`) |
+| D. recálculo | `Settings.kt:143-163` | `rebuildServiceMode()` → `needVPNService()`: perfil selecionado `-1` ou ausente → `false`; senão `Libbox.hasTunInbound(<conteúdo do arquivo do perfil>)`; exceção → `NORMAL`; grava `serviceMode` só se mudou |
+| E. Start da UI | `compose/MainActivity.kt:353-369` (`startService0`), chamado por `startService()` (FAB e botões) | `Settings.rebuildServiceMode()` (se mudou, `connection.reconnect()`), `prepare()` do VPN se VPN, `startForegroundService(serviceClass())` |
+| F. tile sem rebuild | `TileService.kt` / `BootReceiver.kt:32` | tile e boot chamam `BoxService.start()` direto: **sem** `rebuildServiceMode` |
+| consequência | `bg/PlatformInterfaceWrapper.kt:51` + `BoxService.kt:164-172, 340-352` | `ProxyService` com perfil que tem `tun`: `openTun` lança `"android: tun inbound requires VPN service"` → `stopAndAlert(Alert.CreateService)` → `stopSelf()`: serviço encerra em 1–2 s, sem `tun0`. O texto vai só aos callbacks da UI, não ao logcat |
+| always-on | `AndroidManifest.xml:150-158` | o `VPNService` declara a ação `android.net.VpnService`: o always-on do sistema inicia ESSE componente direto, sem passar por `serviceClass()` |
+| vínculo da UI | `bg/ServiceConnection.kt:39` | `bindService(Intent(ctx, Settings.serviceClass()))` |
+
+**Escritas de `serviceMode`: um único ponto**, `rebuildServiceMode` (`Settings.kt:154`), chamado em dois lugares:
+`MainActivity.startService0` (:355) e `DashboardViewModel.selectProfile` (:283, **só se o serviço está `Started`**). Nenhum outro
+(nem importação, nem atualização remota, nem boot, nem tile, nem troca de pacote).
+**Escritas de `selectedProfile`:** `ProfileManager.create(..., andSelect = true)` (`ProfileManager.kt:47`; chamado por
+`ProfileImportHandler` :243/:271/:358 e `NewProfileViewModel` :276/:310) e `DashboardViewModel.selectProfile` (:279). A importação
+(o fluxo do produto: "OK → Create") seleciona o perfil **sem recalcular o modo**. `UpdateProfileWork` (:83) e
+`EditProfileViewModel` (:265) reescrevem o conteúdo do perfil selecionado, também sem recalcular.
+
+`STALE_SERVICE_MODE_PATH_POSSIBLE = YES`: importar (ou atualizar o conteúdo de) um perfil e depois iniciar pelo **tile ou pelo boot**
+usa o `serviceMode` que existia antes (no cliente recém-instalado, o padrão `NORMAL`) até alguém usar o Start da interface.
+
+### 18.2. Classe iniciada = valor de `serviceMode` (inferência, mesma versão do código)
+
+`ANDROID05_SERVICE_MODE_AT_CLICK = VPN` (o clique iniciou `.bg.VPNService`); `ANDROID09_SERVICE_MODE_AT_CLICK = NORMAL` (iniciou
+`.bg.ProxyService`). O VALOR do setting é inferido pela classe escolhida (`Settings.kt:138`), sem ler o armazenamento privado. Uma
+segunda leitura independente do mesmo valor no 09: o `ServiceRecord` do `ProxyService` que apareceu só vinculado quando a UI foi
+aberta em §16 é o `bindService(serviceClass())` do `ServiceConnection`. Como o 05 chegou a `VPN` **não está nos dados** (hipótese
+fora do escopo: algum Start pela UI nas rodadas do piloto); o 05 tem também um perfil remoto antigo `piloto` (a falha benigna de
+`UpdateProfileWork` no logcat), então "o perfil selecionado do 05" não foi observado (corrige o §17: ali "perfil `piloto`" era a
+leitura apressada do nome que aparece no log, não a seleção).
+
+### 18.3. Histórico do 09 (só eventos persistidos)
+
+Importação por link com `andSelect` → `device.network` aplicar (30/09 22:36, 01/10 12:47, 13:06 `-r1`; 13:20 `-r2`); reinício por
+`rede` para o always-on valer; **nunca** um Start pela UI nem seleção com serviço rodando (a UI só foi aberta em §16, 17:19Z, sem
+tocar). `conectado` em 13:07:38Z e no boot 2 (13:25:35Z) foi o always-on do boot (componente `VPNService` direto, independente de
+`serviceMode`). Todas as falhas do tile (boots 1, 3 e 4; as duas A1 de 01/10) foram `ProxyService`. **Nenhum evento entre o boot 2
+e a primeira falha** mudou nada: a primeira falha do tile (boot 1, 13:21–13:24Z) é ANTERIOR ao boot 2. Nada "pôs" o modo em
+NORMAL: ele nunca saiu do padrão `NORMAL` desde a instalação (30/09 22:34Z). O que fica por saber é só o do 05 (acima).
+
+### 18.4. Teste de runtime UI-START no android-09 (`real`)
+
+Acionador: `scripts/diag-w8-uistart.py` (só o 09; seguro por padrão; gate = as precondições do tile + conectividade `healthy`; árvore da
+UI pela API de leitura; UM toque no Start, UM no Stop; marcador contra segundo toque; 14 testes). Coletor novo antes de tudo: run
+`20261001T182242Z-uistart09` (PIDs 3172/49388, `adb logcat -b all` PID 14028, 70 amostras). Primeira execução às 18:23:02Z **parou
+no gate da árvore sem tocar** (o rótulo "Start" do Compose é filho não clicável do contêiner clicável; corrigido o localizador e
+testado; nada foi tocado, o marcador não existia). Segunda execução às 18:23:50Z:
+
+- Pré-condições ok (QA `qa-user-09`, online, sem tarefa/comando/operador/`device_network`/peer, `always_on=null`, `lockdown=0`, sem
+  `tun0`, VPN desconectada, `healthy`); app aberto; **perfil `plataforma-android-09-r2` selecionado** (lido antes de tocar); API 34, notificações
+  concedidas, `ACTIVATE_VPN: allow` (sem diálogo de permissão).
+- **UM toque no Start** (18:23:57.57Z): `Vpn: setting state=DISCONNECTED, reason=prepare` → `am_foreground_service_start`
+  **`.bg.VPNService`**, tipo 1024, `OP_ACTIVATE_VPN`/`PROC_STATE_TOP`, 0,09 s depois → `Established by io.nekohasekai.sfa on tun0`
+  (15:23:58.516 do aparelho, +0,9 s) → `setting state=CONNECTED, reason=agentConnect`. Leituras de 4 s: `tun0` na 1ª; pid 6512
+  (o mesmo processo), `stopped=false`; a UI mostrou "Started" e "Stop". `ServiceRecord` antes: `ProxyService` (vinculado pela UI);
+  depois: **só `VPNService`** (o `connection.reconnect()` do `startService0` religou a UI à classe nova).
+- Negações SELinux na janela: 3 `avc denied { bind } netlink_route_socket` (15:23:58.248, .520, .676), **com o serviço funcionando**; sem
+  `somaxconn`; sem ANR; sem crash; sem erro na UI (o texto "android: tun inbound requires VPN service" não apareceu).
+- **UM toque no Stop** (18:24:32.98Z, mecanismo normal da UI): `am_foreground_service_stop … VPNService … 35017 ms … STOP_FOREGROUND` e
+  `Vpn: DISCONNECTED, reason=agentDisconnect`. **`STOP_FOREGROUND` aparece também no stop normal pedido pelo usuário**: sozinho ele
+  nunca foi sinal de falha (as tabelas das A1 usam esse campo só junto com o tempo de vida de 1–2 s e a ausência de `tun0`).
+- Rollback/baseline às 18:24:38Z e 18:25Z: `always_on=null`, `lockdown=0`, sem `tun0`, VPN desconectada, tile fora (Q0), pid 6512,
+  `stopped=false`, foco no launcher; central: online, `healthy` (18:25:03Z), sem linha de rede, sem peer, 0 comandos novos (nada do
+  produto agiu durante o teste). Coletor parado pelo arquivo `parar`; nenhum órfão. SSH do coletor ao notebook falhou (lado do
+  worker, não usado).
+
+`UI_START_SERVICE_CLASS = VPNService` · `STALE_SERVICE_MODE_CONFIRMED = YES` (resultado A). Fica provado que o `r2` é reconhecido
+como perfil com `tun`; que o tile do 09 usava `serviceMode` ≠ VPN; que peer, endpoint, LAN e netlink **não** eram a causa da ausência de
+`tun0` (o túnel foi criado sem par no servidor, com o mesmo `bind` negado); e que o defeito está no sincronismo do `serviceMode`.
+**Efeito colateral do teste (a registrar):** o Start da UI gravou `serviceMode=VPN` no armazenamento do cliente do 09 (inferência pelo
+código e pelo `ServiceRecord`); um novo tile no 09 provavelmente já funciona e **o sintoma original deixou de ser reproduzível ali**
+sem reinstalar/limpar o app. Nenhum segundo tile foi feito (pedido do dono).
+
+### 18.5. Fechamento do porquê, e o que NÃO está provado
+
+Provado (`real`): o clique do tile iniciou classes diferentes no 05 e no 09; no 09 a UI iniciou `VPNService` com o mesmo perfil. Provado
+pelo código (leitura, não executado por mim): o `ProxyService` com `tun` aborta pelo `openTun` e o import não recalcula o modo.
+**Não provado:** a mensagem de erro real do `ProxyService` no 09 (não vai ao logcat); o valor do `serviceMode` (inferido pela classe,
+não lido); como o 05 chegou a VPN; se o produto encontra o mesmo estado em todo aparelho novo com cliente recém-instalado
+(pelo código: sim, todo aparelho novo nasce `NORMAL`, e quem só usa import + always-on nunca o recalcula).
+**W8 continua OPEN.** Isto explica por que o `religar_pelo_tile` falhou (as 4 do W8 e as 2 A1: classe errada no 09), e portanto por que o
+túnel não voltou depois do teste de vazamento (13:26:55Z: o produto tentou religar pelo tile). **Não explica** por que nos boots 1, 3 e 4
+o always-on não subiu o túnel sozinho enquanto o boot 2 subiu: isso segue sem causa provada (o always-on inicia o `VPNService` direto).
+
+### 18.6. Correção futura (só desenho; nada escolhido nem implementado)
+
+- **A.** Depois de importar/selecionar o perfil, garantir que o cliente recalcule o modo (hoje só o Start da UI ou a seleção com
+  serviço rodando recalculam).
+- **B.** Usar como Start primário um caminho oficial que reconstrua o `serviceMode` (o `startService0` da UI), em vez do tile.
+- **C.** Não usar o tile como início primário depois de mudança de perfil; reservá-lo a "religar" quando o modo já foi recalculado.
+- **D.** Antes de declarar a sessão pronta, conferir a classe esperada (`VPNService` em primeiro plano / `ServiceRecord`) e não só o `tun0`.
+Todas dependem de decisão do dono; nenhuma foi implementada.

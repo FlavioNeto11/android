@@ -385,6 +385,19 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 18 — 01/10 ~18:30Z — o `serviceMode` do cliente do 09 estava em NORMAL (`real` + código 1.14.2)
+
+- Código upstream (commit `fc21909`, 1.14.2/739): o tile e o boot chamam `BoxService.start()` com `Settings.serviceClass()` sem
+  recalcular o modo; só o Start da UI (`startService0`) e a seleção com serviço rodando chamam `rebuildServiceMode()`; o import do
+  perfil seleciona sem recalcular; `serviceMode` nasce `NORMAL`; `ProxyService` + perfil com `tun` → `openTun` lança e o serviço
+  encerra em 1–2 s. `STALE_SERVICE_MODE_PATH_POSSIBLE = YES`.
+- Teste de runtime no 09 (run `20261001T182242Z-uistart09`, `scripts/diag-w8-uistart.py`): UM toque no Start da UI → **`VPNService`**,
+  `tun0`, VPN CONNECTED (+0,9 s), com o mesmo `bind` negado e sem par no servidor; Stop pela UI; baseline recomposto, `healthy`, 0 comandos.
+  `STALE_SERVICE_MODE_CONFIRMED = YES`. Efeito colateral: o cliente do 09 agora provavelmente tem `serviceMode=VPN` (o tile deve
+  funcionar nele; o sintoma original não reproduz mais sem reinstalar). Netlink, peer e endpoint ficam fora da causa.
+- Sem correção de produto (só desenho A–D em §18.6). **W8 continua OPEN**: explica a falha do tile, não os boots 1/3/4 sem túnel por
+  always-on. Detalhe: `w8-diagnostico-android09.md` §18.
+
 ### Checkpoint 17 — 01/10 ~18:05Z — CONTROL-05: o tile funciona no android-05 (`real`)
 
 - Wake do 05 (17:52:29Z), produto reconvergiu sozinho (`conferir` ok, 0 reinícios), baseline completo, coletor novo (run
