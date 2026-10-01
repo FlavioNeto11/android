@@ -750,3 +750,23 @@ def test_acesso_a_conta_com_dois_candidatos_nao_toca_em_nenhum() -> None:
         'resource-id="com.exemplo.etapas:id/avatar_de_outro" content-desc="" clickable="true" enabled="true" '
         'focused="false" password="false" scrollable="false" bounds="[600,40][700,120]" /></hierarchy>'))
     assert geometria.account_opener(largo, pacote=ETAPAS, prefixos_de_id=("avatar",), rotulos=()) is None
+
+
+def test_nao_salvar_login_aceita_o_texto_sem_clicavel_quando_e_um_so() -> None:
+    """Instagram 447 (android-01, 30/09/2026): no "Save your login info?" o "Not now" é um View sem `clickable` (o
+    contêiner acima trata o toque). Sem clicável que case, vale o texto sozinho, se for UM e o rótulo inteiro for a
+    recusa; dois iguais, ou o texto no meio de outra frase, não são escolhidos."""
+    agora_nao = re.compile(r"^\s*not now\s*$", re.I)
+
+    def arvore(*nos: tuple[str, bool]) -> Any:
+        linhas = "".join(
+            f'<node class="android.view.View" package="com.instagram.android" text="{t}" resource-id="" '
+            f'content-desc="" clickable="{str(c).lower()}" enabled="true" bounds="[100,{900 + 100 * i}][600,{950 + 100 * i}]" />'
+            for i, (t, c) in enumerate(nos))
+        return parse_hierarchy(f"<hierarchy>{linhas}</hierarchy>")
+
+    achado = geometria.save_login_dismiss(arvore(("Save your login info?", False), ("Save", False), ("Not now", False)),
+                                          agora_nao=agora_nao)
+    assert achado is not None and achado.text == "Not now"
+    assert geometria.save_login_dismiss(arvore(("Not now", False), ("Not now", False)), agora_nao=agora_nao) is None
+    assert geometria.save_login_dismiss(arvore(("Tap Not now to skip", False),), agora_nao=agora_nao) is None

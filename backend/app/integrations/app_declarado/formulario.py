@@ -221,7 +221,11 @@ def save_login_dismiss(tree: UiTree, *, agora_nao: re.Pattern[str]) -> UiElement
     for e in tree.elements:
         if e.clickable and agora_nao.search(_rotulo(e)):
             return e
-    return None
+    # Medido em 30/09/2026 no primeiro app operado (android-01): o "Not now" do "salvar login" é um View SEM o atributo
+    # clickable — o toque é tratado pelo contêiner acima dele. Sem clicável que case, vale o texto sozinho, desde que
+    # seja UM elemento e o rótulo inteiro seja a recusa: tocar o centro dele chega ao contêiner certo.
+    soltos = [e for e in tree.elements if _rotulo(e) and _casa_inteiro(agora_nao, e)]
+    return soltos[0] if len(soltos) == 1 else None
 
 
 def profile_tab(tree: UiTree, *, prefixo_de_id: str, rotulos: tuple[str, ...],
