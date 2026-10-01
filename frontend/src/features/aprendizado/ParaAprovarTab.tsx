@@ -117,7 +117,7 @@ export function ParaAprovarTab() {
         <h2 id="aprendizado-fila" className={styles.secaoTitulo}><Inbox size={16} aria-hidden /> Para aprovar</h2>
         <p className={styles.secaoLead}>
           Itens com efeito fora do sistema (mensagem, publicação) ou com texto de pessoa esperam a sua aprovação.{' '}
-          <a className={styles.linkBtn} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
+          <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
         </p>
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>

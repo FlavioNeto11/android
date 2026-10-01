@@ -41,14 +41,14 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
   if (itens.length === 0) {
     return (
       <EmptyState icon={CheckCircle2} title="Nada para aprovar"
-                  hint={<>Ações com aprovação exigida aparecem aqui antes de acontecer. <a href={hashDe('pendencias')}>Ver todas as pendências</a>.</>}>
+                  hint={<>Ações com aprovação exigida aparecem aqui antes de acontecer. <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as pendências</a>.</>}>
         Nenhuma pendência.
       </EmptyState>
     );
   }
   return (
     <>
-    <p className={styles.lead}>Só as desta persona. <a href={hashDe('pendencias')}>Ver todas as pendências</a>.</p>
+    <p className={styles.lead}>Só as desta persona. <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as pendências</a>.</p>
     <div className={styles.grid}>
       {itens.map((a) => (
         <Card key={a.id}>
