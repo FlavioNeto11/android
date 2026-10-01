@@ -1224,7 +1224,7 @@ button.evTile:hover {
   min-width: 0;
 }
 
-/* O id e o tempo têm largura fixa; quem cede é o selo. Sem isto, um estado longo ("Concluída com pendências")
+/* O id e o tempo têm largura fixa; quem cede é o selo. Sem isto, um estado longo ("Concluída com problemas")
    empurrava o tempo para fora do cartão — o item estourava ~17px à direita. */
 .runItemTop .shortId {
   flex: none;

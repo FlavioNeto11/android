@@ -97,7 +97,7 @@ export const RUN_STATUS: Record<RunStatus, StatusMeta> = {
   paused: { label: 'Pausada', tone: 'warning', icon: CirclePause },
   cancelling: { label: 'Cancelando', tone: 'warning', icon: LoaderCircle, spin: true },
   completed: { label: 'Concluída', tone: 'success', icon: CircleCheck },
-  completed_with_issues: { label: 'Concluída com pendências', tone: 'warning', icon: TriangleAlert },
+  completed_with_issues: { label: 'Concluída com problemas', tone: 'warning', icon: TriangleAlert },
   cancelled: { label: 'Cancelada', tone: 'muted', icon: Ban },
   failed: { label: 'Falhou', tone: 'danger', icon: CircleX },
 };
