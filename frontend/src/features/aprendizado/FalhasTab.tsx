@@ -159,8 +159,8 @@ export function FalhasTab() {
       </div>
 
       {rel && rel.outro_pct !== null && rel.outro_pct > OUTRO_MAX_PCT ? (
-        <Banner tone="warning" icon={ScanSearch} compact role="status" title={`${formatDecimal(rel.outro_pct)}% das falhas sem tipo ("outro")`}>
-          Acima de {OUTRO_MAX_PCT}% o classificador precisa de regra nova em backend/app/modules/learning/domain/falhas.py.
+        <Banner tone="warning" icon={ScanSearch} compact role="status" title={`${formatDecimal(rel.outro_pct)}% das falhas ainda sem tipo definido`}>
+          Acima de {OUTRO_MAX_PCT}% o agrupamento de falhas precisa de uma regra nova (tarefa para o desenvolvimento).
         </Banner>
       ) : null}
       {erro && rel ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}

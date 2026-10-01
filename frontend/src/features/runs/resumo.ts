@@ -1,0 +1,93 @@
+/**
+ * O resumo no topo de uma execução (revisão de UX, rodada 2, tarefa 14): o que foi pedido, como terminou e o que
+ * depende da pessoa. Funções puras, para o teste não precisar montar a tela.
+ */
+import type { RunStatus, RunSummary } from '../../api/types';
+import { formatDuration } from '../../lib/time';
+import { EMPTY_COUNTS, objectivesTotal } from './model';
+
+export type AbaDaExecucao = 'plano' | 'instancias' | 'textos' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
+
+/**
+ * A guia com que o detalhe abre quando o link NÃO diz qual (a guia do link, `?aba=`, manda sobre esta):
+ * - concluída: o Relatório, que responde "deu certo? o que foi feito?";
+ * - em andamento (executando, pausada, cancelando): a Linha do tempo, que mostra o que acontece agora;
+ * - planejando, esperando informação ou plano pronto: o Plano;
+ * - terminou com problemas, falhou ou foi cancelada: "Por aparelho", onde estão o que falhou e a correção da etapa.
+ */
+export function abaPadraoDaExecucao(status: RunStatus | undefined): AbaDaExecucao {
+  switch (status) {
+    case 'completed': return 'relatorio';
+    case 'running': case 'paused': case 'cancelling': return 'timeline';
+    case 'planning': case 'needs_input': case 'planned': return 'plano';
+    default: return 'instancias';
+  }
+}
+
+/** Abaixo disto o pedido cabe em duas linhas na maioria das larguras; acima, oferece "Ver pedido completo". */
+export const PEDIDO_LONGO = 100;
+
+export function pedidoEhLongo(comando: string): boolean {
+  return comando.length > PEDIDO_LONGO || comando.includes('\n');
+}
+
+/**
+ * A frase de resultado: "Concluída com sucesso em 2 min 03 s". Sem início registrado, não inventa duração. O formato
+ * da duração é o do resto da tela (`formatSpan`: "2 min 03 s").
+ */
+export function resultadoDaExecucao(run: Pick<RunSummary, 'status' | 'started_at' | 'finished_at'>, agoraMs: number): string {
+  const dur = run.started_at ? formatDuration(run.started_at, run.finished_at, agoraMs) : null;
+  const em = (prefixo: string) => (dur && dur !== '—' ? `${prefixo} ${dur}` : '');
+  switch (run.status) {
+    case 'completed': return `Concluída com sucesso${em(' em')}`;
+    case 'completed_with_issues': return `Concluída com problemas${em(' em')}`;
+    case 'failed': return `Falhou${em(' após')}`;
+    case 'cancelled': return `Cancelada${em(' após')}`;
+    case 'running': return `Em execução${em(' há')}`;
+    case 'paused': return `Pausada${em(' após')}`;
+    case 'cancelling': return 'Cancelando…';
+    case 'planning': return 'Planejando…';
+    case 'planned': return 'Plano pronto. Nada foi executado ainda';
+    case 'needs_input': return 'Parou pedindo informação antes de executar';
+    default: return '';
+  }
+}
+
+/** "1 de 1 objetivo com sucesso" — `null` quando ainda não há objetivos. */
+export function objetivosComSucesso(run: Pick<RunSummary, 'counts' | 'instances_used'>): string | null {
+  const counts = run.counts ?? EMPTY_COUNTS;
+  const total = Math.max(objectivesTotal(counts), run.instances_used, 0);
+  if (total === 0) return null;
+  return `${counts.succeeded} de ${total} ${total === 1 ? 'objetivo' : 'objetivos'} com sucesso`;
+}
+
+/** O que a execução espera de uma pessoa, em linhas curtas; vazio quando nada depende dela. */
+export function oQuePrecisaDaPessoa(a: {
+  status: RunStatus; perguntas: number; bloqueados: number; textosParaAprovar: number; terminal: boolean;
+}): { chave: 'perguntas' | 'bloqueios' | 'textos'; texto: string; aba: AbaDaExecucao | null }[] {
+  const linhas: { chave: 'perguntas' | 'bloqueios' | 'textos'; texto: string; aba: AbaDaExecucao | null }[] = [];
+  if (a.status === 'needs_input') {
+    linhas.push({
+      chave: 'perguntas',
+      texto: a.perguntas > 0
+        ? `Responder ${a.perguntas === 1 ? 'a pergunta' : `às ${a.perguntas} perguntas`} da IA para a execução seguir`
+        : 'Informar o que falta para a execução seguir',
+      aba: null,
+    });
+  }
+  if (a.bloqueados > 0 && !a.terminal) {
+    linhas.push({
+      chave: 'bloqueios',
+      texto: `${a.bloqueados} ${a.bloqueados === 1 ? 'objetivo espera' : 'objetivos esperam'} a sua decisão`,
+      aba: 'instancias',
+    });
+  }
+  if (a.textosParaAprovar > 0) {
+    linhas.push({
+      chave: 'textos',
+      texto: `${a.textosParaAprovar} ${a.textosParaAprovar === 1 ? 'texto espera' : 'textos esperam'} a sua aprovação`,
+      aba: 'textos',
+    });
+  }
+  return linhas;
+}

@@ -5,11 +5,30 @@ import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { InstagramProfile, ProfileAccount } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
+import { useUiStore } from '../../store/ui';
 import { APPS, makeBinding, makeInstance, makeSession } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
 import { ProfileDetail } from './ProfileDetail';
+
+/** Rótulo de cada guia por seção (a seção é o primeiro nível; a guia, a aba dentro dela). */
+const GUIAS_POR_SECAO: [RegExp, string[]][] = [
+  [/^Perfil/, ['Persona', 'Imagens', 'Memória']],
+  [/^Contas e aparelhos/, ['Contas e acesso', 'Aparelhos']],
+  [/^Atividade/, ['Interações', 'Execuções', 'Aprovações']],
+  [/^Avançado/, ['Habilidades', 'Configurações']],
+];
+
+/** Abre uma guia como a pessoa faz: escolhe a seção que a contém (se ainda não é a aberta) e clica na aba. */
+async function irParaGuia(nome: RegExp): Promise<void> {
+  if (allByRole('tab', nome).length === 0) {
+    const secao = GUIAS_POR_SECAO.find(([, guias]) => guias.some((g) => nome.test(g)));
+    if (!secao) throw new Error(`Nenhuma seção tem a guia ${String(nome)}`);
+    await click(byRole('button', secao[0], byRole('navigation', /Seções da persona/)));
+  }
+  await click(byRole('tab', nome));
+}
 
 const SENHA = 'senha-secreta-9!Zk';
 
@@ -59,15 +78,156 @@ async function abrir(p: InstagramProfile = perfil()): Promise<void> {
   await waitFor(() => text().includes('@mariana.costa91182'));
 }
 
-it('mostra as guias da persona na ordem nova e abre na visão geral', async () => {
+const SECOES_NA_TELA = ['Visão geral', 'Perfil', 'Contas e aparelhos', 'Atividade', 'Avançado'];
+
+function rotulosDe(botoes: HTMLElement[]): string[] {
+  return botoes.map((t) => (t.textContent ?? '').replace(/\d+$/, '').trim());
+}
+
+it('mostra 5 seções no primeiro nível e abre na Visão geral, sem abas soltas', async () => {
   await abrir();
-  // "Contas e acesso" funde as antigas Contas + Autenticação; "Aparelho" virou "Aparelhos"; "Imagens" é nova.
-  const guias = allByRole('tab', /./).map((t) => (t.textContent ?? '').replace(/\d+$/, '').trim());
-  expect(guias).toEqual(['Visão geral', 'Persona', 'Contas e acesso', 'Imagens', 'Aparelhos', 'Memória', 'Interações',
-                         'Habilidades', 'Aprovações', 'Execuções', 'Configurações']);
-  expect(byRole('tab', /Visão geral/i).getAttribute('aria-selected')).toBe('true');
+  const nav = byRole('navigation', /Seções da persona/);
+  expect(rotulosDe(allByRole('button', /./, nav))).toEqual(SECOES_NA_TELA);
+  expect(byRole('button', /^Visão geral/, nav).getAttribute('aria-current')).toBe('page');
+  expect(allByRole('button', /./, nav).filter((b) => b.getAttribute('aria-current') === 'page')).toHaveLength(1);
+  // Visão geral é uma guia só: não há faixa de abas (o rótulo da região diz onde se está).
+  expect(allByRole('tab', /./)).toHaveLength(0);
+  expect(byRole('region', /^Visão geral$/)).toBeTruthy();
   expect(text()).not.toContain('Autenticação');
   expect(text()).not.toContain(SENHA);
+});
+
+it('em tela estreita as seções são uma lista suspensa com as mesmas 5 opções', async () => {
+  await abrir();
+  const lista = byRole('combobox', /Seção da persona/) as HTMLSelectElement;
+  expect(Array.from(lista.options).map((o) => o.text)).toEqual(SECOES_NA_TELA);
+  expect(lista.value).toBe('visao');
+  await setValue(lista, 'avancado');
+  expect(byRole('button', /^Avançado/).getAttribute('aria-current')).toBe('page');
+  expect(rotulosDe(allByRole('tab', /./))).toEqual(['Habilidades', 'Configurações']);
+});
+
+it('cada seção abre a sua primeira guia e mostra só as guias dela: as 11 guias continuam alcançáveis', async () => {
+  await abrir();
+  const esperado: [RegExp, string[]][] = [
+    [/^Perfil/, ['Persona', 'Imagens', 'Memória']],
+    [/^Contas e aparelhos/, ['Contas e acesso', 'Aparelhos']],
+    [/^Atividade/, ['Interações', 'Execuções', 'Aprovações']],
+    [/^Avançado/, ['Habilidades', 'Configurações']],
+  ];
+  const vistas = ['Visão geral'];
+  for (const [secao, guias] of esperado) {
+    await click(byRole('button', secao, byRole('navigation', /Seções da persona/)));
+    expect(byRole('button', secao).getAttribute('aria-current')).toBe('page');
+    expect(rotulosDe(allByRole('tab', /./))).toEqual(guias);
+    expect(allByRole('tab', /./)[0]?.getAttribute('aria-selected')).toBe('true');   // abre a primeira
+    vistas.push(...guias);
+  }
+  expect(vistas.sort()).toEqual(['Visão geral', 'Persona', 'Contas e acesso', 'Imagens', 'Aparelhos', 'Memória', 'Interações',
+                                 'Habilidades', 'Aprovações', 'Execuções', 'Configurações'].sort());
+});
+
+it('guia vinda do link abre dentro da seção certa (…/memoria → Perfil > Memória)', async () => {
+  await act(async () => {
+    root.render(<ProfileDetail profile={perfil()} aba="memoria" onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => byRole('tab', /Memória/).getAttribute('aria-selected') === 'true');
+  expect(byRole('button', /^Perfil/).getAttribute('aria-current')).toBe('page');
+  expect(rotulosDe(allByRole('tab', /./))).toEqual(['Persona', 'Imagens', 'Memória']);
+});
+
+it('trocar de seção avisa a tela pela guia (a URL guarda a guia, não a seção)', async () => {
+  const pedidos: string[] = [];
+  await act(async () => {
+    root.render(<ProfileDetail profile={perfil()} aba="visao" onAbaChange={(a) => pedidos.push(a)} onBack={() => {}}
+                               onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('@mariana.costa91182'));
+  await click(byRole('button', /^Atividade/));
+  await click(byRole('button', /^Avançado/));
+  expect(pedidos).toEqual(['interacoes', 'habilidades']);
+});
+
+it('o cabeçalho tem a identidade UMA vez: nome e @ não se repetem na Visão geral', async () => {
+  await abrir();
+  const t = text();
+  expect((t.match(/Mariana Costa/g) ?? []).length).toBe(1);
+  expect((t.match(/@mariana\.costa91182/g) ?? []).length).toBe(1);
+  expect(container.querySelectorAll('h1')).toHaveLength(1);
+  expect(container.querySelector('h1')?.textContent).toBe('Mariana Costa');
+  // O cartão "Identidade" ficou só com atributos.
+  expect(text()).toContain('Idade');
+  expect(text()).toContain('Cidade');
+});
+
+it('estado "Não verificada" é um botão que leva à guia Contas e acesso (e não dispara nada)', async () => {
+  await abrir(perfil({ session: { ...perfil().session, status: 'unknown', verified_at: null, detail: null } }));
+  const antes = backend.calls.filter((c) => c.method !== 'GET').length;
+  await click(byRole('button', /Não verificada.*Verificar conta/));
+  await waitFor(() => byRole('tab', /Contas e acesso/).getAttribute('aria-selected') === 'true');
+  expect(backend.calls.filter((c) => c.method !== 'GET').length).toBe(antes);
+});
+
+it('estado "Conectado" não é botão e diz há quanto tempo a conta foi confirmada', async () => {
+  await abrir();
+  expect(text()).toMatch(/Conectado · confirmada há /);
+  expect(() => byRole('button', /Conectado/)).toThrow();
+});
+
+it('"Conectado" sem data de confirmação mostra só o estado', async () => {
+  await abrir(perfil({ session: { ...perfil().session, status: 'session_ready', verified_at: null } }));
+  expect(text()).toContain('Conectado');
+  expect(text()).not.toMatch(/Conectado · confirmada/);
+});
+
+it('"Abrir no aparelho" abre o Foco do aparelho principal', async () => {
+  await abrir();
+  await click(byRole('button', /^Abrir no aparelho/));
+  expect(useUiStore.getState().focusInstanceId).toBe('android-02');
+  await act(async () => { useUiStore.getState().closeFocus(); });
+});
+
+it('sem aparelho vinculado, "Abrir no aparelho" fica indisponível e explica por quê', async () => {
+  await abrir(perfil({ instance_id: null, locality: null, session: { ...perfil().session, instance_id: null } }));
+  const botao = byRole('button', /Abrir no aparelho/);
+  expect(botao.getAttribute('aria-disabled')).toBe('true');
+  expect(botao.textContent).toContain('Vincule um aparelho');
+  expect(text()).toContain('Sem aparelho vinculado');
+});
+
+it('religião e política ficam num bloco recolhido: fechado por padrão, com aria-expanded, abre e fecha', async () => {
+  backend.on('GET', /capacidades/, () => json({ profile_id: 'ig-1', flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} }));
+  backend.on('GET', /\/interactions$/, () => json([]));
+  await abrir(perfil({ biography: { beliefs: { religion: RELIGIAO, politics: POLITICA } } as InstagramProfile['biography'] }));
+  const botao = byRole('button', /Atributos de personalidade/);
+  expect(botao.getAttribute('aria-expanded')).toBe('false');
+  expect(botao.tagName).toBe('BUTTON');                       // alcançável e acionável pelo teclado (Enter/Espaço)
+  expect(text()).not.toContain('católica');
+  expect(text()).not.toContain('centro-esquerda');
+  expect(text()).not.toContain('Religião');
+  await click(botao);
+  expect(botao.getAttribute('aria-expanded')).toBe('true');
+  expect(text()).toContain('católica · pratica às vezes');
+  expect(text()).toContain('centro-esquerda · engajamento baixo');
+  await click(botao);
+  expect(botao.getAttribute('aria-expanded')).toBe('false');
+  expect(text()).not.toContain('católica');
+});
+
+it('o escopo por app só aparece onde filtra (Memória e Interações) e diz "Mostrando: …" e o que ele filtra', async () => {
+  backend.on('GET', /\/accounts$/, () => json([conta()]));
+  backend.on('GET', /\/memory/, () => json([]));
+  await abrir();
+  await waitFor(() => backend.callsTo('GET', /\/accounts$/).length > 0);
+  expect(() => byRole('group', /Filtrar por app/)).toThrow();     // Visão geral: nada a filtrar
+  await irParaGuia(/Memória/i);
+  const grupo = await waitFor(() => byRole('group', /Filtrar por app/));
+  expect(grupo.textContent).toContain('Mostrando: todos os apps');
+  expect(grupo.textContent).toContain('Filtra só Memória e Interações');
+  await click(byRole('button', /^Instagram/, grupo));
+  expect(grupo.textContent).toContain('Mostrando: Instagram');
+  await irParaGuia(/Contas e acesso/i);
+  expect(() => byRole('group', /Filtrar por app/)).toThrow();
 });
 
 const SEM_SENHA = { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
@@ -106,7 +266,7 @@ async function abrirContas(contas: ProfileAccount[], onChanged: () => Promise<vo
   await act(async () => {
     root.render(<ProfileDetail profile={p} onBack={() => {}} onChanged={onChanged} />);
   });
-  await click(byRole('tab', /Contas e acesso/i));
+  await irParaGuia(/Contas e acesso/i);
   await waitFor(() => text().includes('Senha do Instagram'));
 }
 
@@ -285,7 +445,7 @@ it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com 
     root.render(<ProfileDetail profile={semConta} abaInicial="contas" onBack={() => {}} onChanged={async () => {}} />);
   });
   await waitFor(() => text().includes('ainda não tem @ de cadastro'));
-  expect(text()).toContain('sem conta de cadastro');
+  expect(text()).toContain('Sem conta de cadastro');
   await click(byRole('button', /Adicionar conta/i));
   await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'instagram');
   await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
@@ -314,7 +474,7 @@ it('catálogo de apps indisponível: o formulário espera o catálogo e não cri
   await waitFor(() => text().includes('ainda não tem @ de cadastro'));
   await click(byRole('button', /Adicionar conta/i));
   await waitFor(() => text().includes('Não foi possível carregar os aplicativos'));
-  expect(container.querySelector('select')).toBeNull();
+  expect(() => byRole('combobox', /Aplicativo/i)).toThrow();        // sem catálogo não há seletor de app (o de seção é outro)
 
   backend.on('GET', /app-catalog/, () => json([
     { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
@@ -336,7 +496,7 @@ it('a memória lista o que o perfil sabe e deixa ensinar um fato novo', async ()
   }]));
   backend.on('POST', /\/memory$/, () => json({ id: 'mem-2' }, 201));
   await abrir();
-  await click(byRole('tab', /Memória/i));
+  await irParaGuia(/Memória/i);
   await waitFor(() => text().includes('Corre maratonas'));
   expect(text()).toContain('visto 2x');
   // Fatos agrupados por assunto (item 11.6): o cartão do assunto aparece com o nome dele.
@@ -360,7 +520,7 @@ it('as aprovações mostram o texto que sairá e os três verbos', async () => {
   backend.on('GET', /approvals/, () => json([pendente]));
   backend.on('POST', /approvals\/.*\/decide/, () => json({ ...pendente, status: 'approved' }));
   await abrir();
-  await click(byRole('tab', /Aprovações/i));
+  await irParaGuia(/Aprovações/i);
   await waitFor(() => text().includes('Enviar a mensagem para @ana'));
   expect(byRole('button', /Aprovar/i)).toBeTruthy();
   expect(byRole('button', /Rejeitar/i)).toBeTruthy();
@@ -400,7 +560,7 @@ it('agrupa as ações por natureza (sessão, navegação, leitura, efeito extern
     },
   );
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Curtir a publicação'));
 
   for (const grupo of ['Sessão', 'Navegação', 'Leitura', 'Efeito externo']) {
@@ -432,7 +592,7 @@ it('a política de cada ação é um controle segmentado de três botões, e tro
     loosened: [],
   }));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Curtir a publicação'));
   expect(text()).toContain('Curtidas por hora');
   // não há mais <select>: a política é um grupo de botões de rádio, as três opções sempre visíveis
@@ -477,7 +637,7 @@ it('mais de um app com catálogo: o seletor troca a política e a ação, e o PU
     defaults: { LER_CAIXA: 'autonomous' }, loosened: [],
   }));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   // Por padrão vem o app âncora.
   await waitFor(() => text().includes('Curtir a publicação'));
   await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'com.exemplo.correio');
@@ -512,7 +672,7 @@ it('uma ação em lote de grupo muda todas as ações do grupo em um único PUT'
     loosened: [],
   }));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Curtir a publicação'));
 
   const botoesDoGrupo = Array.from(container.querySelectorAll('button')).filter((b) => b.textContent === 'Com aprovação');
@@ -537,7 +697,7 @@ it('marca visualmente uma ação de risco alto afrouxada abaixo do padrão do ca
     },
   );
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Enviar a mensagem'));
   expect(text()).toContain('mais frouxo que o padrão');
 });
@@ -575,7 +735,7 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
     ],
   );
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Curtidas por hora'));
   await waitFor(() => text().includes('2/10 hoje'));
   expect(byRole('progressbar', /Uso de hoje de Curtidas por hora/i)).toBeTruthy();
@@ -594,7 +754,7 @@ it('Completar com IA manda a instrução do dono ao enrich e mostra a persona co
     ...base, summary: 'Fotógrafa que vai ao culto', voice_gaps: [], updated_at: '2026-09-28T12:00:00Z',
   }));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Completar com IA'));
   expect(text()).toContain('Chamada paga');
   await setValue(byRole('textbox', /Instruções para o que falta/i) as HTMLInputElement, 'é evangélica e vai ao culto toda semana');
@@ -612,7 +772,7 @@ it('Completar com IA sem instrução não manda corpo, e sem lacuna avisa que n�
   backend.on('GET', /\/personas\/ig-1$/, () => json(base));
   backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json(base));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Completar com IA'));
   await click(byRole('button', /^Completar com IA$/i));
   await waitFor(() => backend.callsTo('POST', /enrich$/).length === 1);
@@ -631,7 +791,7 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Faltam 8 campo(s) de voz'));
   expect(text()).toContain('Estilo em mensagem direta');
   expect(text()).toContain('Expressões proibidas');
@@ -655,7 +815,7 @@ it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () 
     refusal_reason: null, memory_candidates: [],
   }));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Testar persona'));
   const tipo = [...container.querySelectorAll('select')].at(-1) as HTMLSelectElement;
   await setValue(tipo, 'dm_initiate');
@@ -679,7 +839,7 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
     refusal_reason: null, memory_candidates: [],
   }));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Testar persona'));
   await click(byRole('button', /Testar persona/i));
   await waitFor(() => text().includes('oi! tudo ótimo por aqui'));
@@ -700,7 +860,7 @@ it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exe
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Observadora e gentil'));
 
   // As réguas marcam o valor certo — e só ele — dentro do espectro fixo.
@@ -731,7 +891,7 @@ it('a memória agrupa os fatos por assunto e ordena por importância', async () 
       created_at: '2026-09-09T10:00:00Z', updated_at: '2026-09-09T10:00:00Z', last_used_at: null },
   ]));
   await abrir();
-  await click(byRole('tab', /Memória/i));
+  await irParaGuia(/Memória/i);
   await waitFor(() => text().includes('Fato A'));
 
   const html = container.innerHTML;
@@ -765,7 +925,7 @@ it('as interações agrupam por dia e o filtro por tipo esconde os outros tipos'
       status: 'confirmed', evidence: null, created_at: ontem.toISOString() },
   ]));
   await abrir();
-  await click(byRole('tab', /Interações/i));
+  await irParaGuia(/Interações/i);
   await waitFor(() => text().includes('bom dia, carla!'));
   expect(text()).toContain('Hoje');
   expect(text()).toContain('Ontem');
@@ -790,7 +950,7 @@ it('o mapa de habilidades desenha a trilha de etapas e a fração sem IA', async
     interactions: { dm_sent: 4, post_liked: 2 },
   }));
   await abrir();
-  await click(byRole('tab', /Habilidades/i));
+  await irParaGuia(/Habilidades/i);
   await waitFor(() => text().includes('Enviar mensagem de boas-vindas'));
   expect(text()).toContain('5×');
 
@@ -847,7 +1007,7 @@ it('Memória recarrega sozinha quando o aparelho do perfil manda evento pelo Web
   backend.on('GET', /^\/api\/session$/, () => json({ operator: 'Ana', token_required: false, expires_at: null }));
   backend.on('GET', /^\/api\/snapshot$/, () => json(makeSnapshot({ last_event_id: 7 })));
   await abrir();
-  await click(byRole('tab', /Memória/i));
+  await irParaGuia(/Memória/i);
   await waitFor(() => expect(text()).toContain("Corre maratonas aos domingos"));
   expect(text()).toContain('ensinado');
 
@@ -909,7 +1069,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
                                               capabilities: { ...politica.capabilities, SEND_MESSAGE: 'manual_only' } }));
   backend.on('PATCH', /\/instagram\/profiles\/ig-1$/, () => json(perfil({ policy_group_id: 'grp-2', policy_group_name: 'Soltos' })));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => expect(text()).toContain('Enviar a mensagem'));
 
   expect(text()).toContain('do grupo Cautelosos');                 // Curtir vem do grupo
@@ -923,7 +1083,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   expect(backend.callsTo('PUT', /\/policy$/)[0]!.body).toEqual({ capabilities: { SEND_MESSAGE: null } });
 
   // trocar o grupo é um PATCH no perfil
-  const select = container.querySelector('select') as HTMLSelectElement;
+  const select = byRole('combobox', /^Grupo$/) as HTMLSelectElement;
   await setValue(select, 'grp-2');
   await waitFor(() => expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)).toHaveLength(1));
   expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)[0]!.body).toEqual({ policy_group_id: 'grp-2' });
@@ -934,7 +1094,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
 it('aba Persona com a API caída mostra o erro com "Tentar de novo" em vez de carregar para sempre', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => apiError(503, 'unavailable', 'banco indisponível'));
   await abrir();
-  await click(byRole('tab', /Persona/i));
+  await irParaGuia(/Persona/i);
   await waitFor(() => text().includes('Não foi possível carregar a persona'));
   expect(text()).toContain('banco indisponível');
 
@@ -952,7 +1112,7 @@ it('aba Configurações com a política indisponível mostra o erro com "Tentar 
   montarConfigBackend([], { limits: {}, capabilities: {}, defaults: {}, loosened: [] });
   backend.on('GET', /\/policy$/, () => apiError(500, 'internal', 'consulta estourou o tempo'));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Não foi possível carregar as políticas'));
   expect(text()).toContain('consulta estourou o tempo');
 
@@ -967,7 +1127,7 @@ it('aba Configurações com o catálogo de apps indisponível mostra o erro com 
   montarConfigBackend([], { limits: {}, capabilities: {}, defaults: {}, loosened: [] });
   backend.on('GET', /app-catalog/, () => apiError(500, 'internal', 'registro indisponível'));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Não foi possível carregar as políticas'));
   expect(text()).toContain('registro indisponível');
   expect(backend.callsTo('GET', /\/policy$/)).toHaveLength(0);
@@ -985,7 +1145,7 @@ it('aba Configurações sem nenhum app com catálogo ainda carrega a política e
   montarConfigBackend([], { limits: { likes_per_hour: 30 }, capabilities: {}, defaults: {}, loosened: [] });
   backend.on('GET', /app-catalog/, () => json([]));
   await abrir();
-  await click(byRole('tab', /Configurações/i));
+  await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Limites'));
   expect(text()).toContain('Grupo de acesso');
   // sem app com catálogo, a política é a do âncora (sem `?package=`) e não se pede catálogo de ações nenhum
@@ -996,7 +1156,7 @@ it('aba Configurações sem nenhum app com catálogo ainda carrega a política e
 it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", não "Carregando…" nem lista vazia', async () => {
   backend.on('GET', /\/accounts$/, () => apiError(503, 'unavailable', 'banco indisponível'));
   await abrir();
-  await click(byRole('tab', /^Contas e acesso/i));
+  await irParaGuia(/^Contas e acesso/i);
   await waitFor(() => text().includes('Não foi possível carregar as contas da persona'));
   expect(text()).not.toContain('Carregando…');
 
@@ -1029,7 +1189,7 @@ const PESSOA = {
 async function abrirPersona(): Promise<void> {
   backend.on('GET', /\/personas\/ig-1$/, () => json(PESSOA));
   await abrir();
-  await click(byRole('tab', /^Persona$/i));
+  await irParaGuia(/^Persona$/i);
   await waitFor(() => text().includes('Origem e casa'));
 }
 
@@ -1141,7 +1301,7 @@ const PESSOA_V2 = { ...PESSOA, biography: { ...PESSOA.biography, schema_version:
 async function abrirCrencas(pessoa: object = PESSOA_V2): Promise<void> {
   backend.on('GET', /\/personas\/ig-1$/, () => json(pessoa));
   await abrir();
-  await click(byRole('tab', /^Persona$/i));
+  await irParaGuia(/^Persona$/i);
   await waitFor(() => text().includes('Crenças'));
 }
 
@@ -1257,6 +1417,8 @@ it('a visão geral resume cada crença numa linha', async () => {
   backend.on('GET', /capacidades/, () => json({ profile_id: 'ig-1', flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} }));
   backend.on('GET', /\/interactions$/, () => json([]));
   await abrir(perfil({ biography: { beliefs: { religion: RELIGIAO, politics: POLITICA } } as InstagramProfile['biography'] }));
+  // As crenças ficam no bloco recolhido "Atributos de personalidade": abre-se para ler.
+  await click(byRole('button', /Atributos de personalidade/));
   await waitFor(() => text().includes('católica · pratica às vezes'));
   expect(text()).toContain('centro-esquerda · engajamento baixo');
 });

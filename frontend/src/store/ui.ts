@@ -134,7 +134,7 @@ function runDaRota(r: Rota): string | null {
   return r.tela === 'execucoes' ? r.segmentos[0] ?? null : null;
 }
 
-function menuRecolhidoInicial(): boolean {
+export function menuRecolhidoInicial(): boolean {
   if (!temJanela) return false;
   // Sem preferência: recolhido onde a largura é disputada (1024–1279 px, com o Foco aberto sobra pouco ao conteúdo).
   return loadJson('menuRecolhido', isBoolean) ?? window.innerWidth < 1280;

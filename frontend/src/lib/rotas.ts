@@ -4,7 +4,7 @@
  *
  *   #/painel                      #/painel?foco=android-01&estado=desconhecido&visao=lista
  *   #/personas                    #/personas?situacao=bloqueada&q=ana&ordem=nome&visao=tabela
- *   #/personas/<id>               #/personas/<id>/<aba>
+ *   #/personas/<persona>          #/personas/<persona>/<guia>   (<persona> = nome legível `lucas-almeida` ou o id antigo)
  *   #/aplicativos                 #/aplicativos/<app_id>?aba=versoes
  *   #/execucoes                   #/execucoes/<id>?aba=linha-do-tempo
  *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções, intervenções)
@@ -20,7 +20,11 @@
  * - `foco=<id do aparelho>`: o aparelho aberto no painel de Foco. É GLOBAL (vale em qualquer tela, não é filtro do
  *   Painel) e acompanha a troca de tela; fechar o Foco tira só ele. Ver `store/ui.ts`.
  * - `aba=<guia>`: a guia ativa da tela ou do objeto aberto (Aplicativos, Execuções, Configuração…). Em Personas a guia
- *   é segmento do caminho (`#/personas/<id>/memoria`).
+ *   é segmento do caminho (`#/personas/lucas-almeida/memoria`). A tela agrupa as 11 guias em 5 seções, mas a URL guarda
+ *   a GUIA: a seção é derivada dela (`features/profiles/abas.ts`), então todo link antigo continua abrindo o mesmo lugar.
+ * - `<persona>` em Personas: o slug do nome (`features/profiles/slugPersona.ts`; homônimos ganham um sufixo curto do id,
+ *   `lucas-almeida-fqg8`) ou o id antigo (`ig-CVG2z6c0Dv9dBrsY`). Os dois abrem a mesma pessoa; quem chega por id é
+ *   levado ao slug por substituição de hash (sem empilhar histórico). Resolve pela lista já carregada, sem endpoint.
  * - Filtros de lista (`situacao`, `q`, `ordem`, `visao`, `estado`): da tela que os lê; quem compõe um hash novo a
  *   partir da rota atual preserva os que não são seus.
  *   - Personas (tarefa UX 05, `features/profiles/filtroPersonas.ts`): `q` (nome ou @), `situacao` = `ativa` |

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { formatClock } from '../../lib/time';
 import type { MeasurementPoint } from './parse';
 import styles from './Diagnostics.module.css';
@@ -6,10 +7,13 @@ interface MeasurementsChartProps {
   points: MeasurementPoint[];
 }
 
-const W = 640;
+/** Largura de projeto do desenho. Em tela estreita o SVG usa a largura do contêiner (abaixo), para o texto sair em 1:1. */
+const W_MAX = 640;
+const W_MIN = 280;
 const H = 200;
-const PAD_L = 36;
-const PAD_R = 36;
+// Folga dos eixos: o rótulo de 13 px ("120s", "16 GB") cabe inteiro dentro dela.
+const PAD_L = 44;
+const PAD_R = 44;
 const PAD_T = 12;
 const PAD_B = 28;
 
@@ -19,6 +23,19 @@ const PAD_B = 28;
  * relance; a tabela completa continua disponível atrás de "ver tabela".
  */
 export function MeasurementsChart({ points }: MeasurementsChartProps) {
+  // Largura real do contêiner (no máximo 640): com `viewBox` fixo o SVG encolhia em 390 px e o rótulo de 13 px saía com
+  // uns 7 px de verdade. Sem `ResizeObserver` (jsdom) vale a largura de projeto.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [W, setW] = useState(W_MAX);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === 'undefined') return undefined;
+    const medir = () => setW(Math.min(W_MAX, Math.max(W_MIN, Math.round(svg.getBoundingClientRect().width))));
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(svg);
+    return () => ro.disconnect();
+  }, [points.length]);
   if (points.length === 0) return null;
   const innerW = W - PAD_L - PAD_R;
   const innerH = H - PAD_T - PAD_B;
@@ -44,8 +61,10 @@ export function MeasurementsChart({ points }: MeasurementsChartProps) {
     + (memMax !== null ? `; memória livre entre ${Math.min(...memValues).toFixed(1)} GB e ${memMax.toFixed(1)} GB` : '');
 
   return (
-    <figure className={styles.chart} role="img" aria-label={`Gráfico de medições de capacidade. ${summary}.`}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="xMidYMid meet" aria-hidden>
+    <figure className={styles.chart}>
+      {/* `role="img"` mora no SVG: `figure` não aceita esse papel (axe: aria-allowed-role). A legenda segue lida. */}
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="xMidYMid meet" role="img"
+           aria-label={`Gráfico de medições de capacidade. ${summary}.`}>
         <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} className={styles.chartAxis} />
         <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} className={styles.chartAxis} />
         {memMax !== null ? <line x1={W - PAD_R} y1={PAD_T} x2={W - PAD_R} y2={H - PAD_B} className={styles.chartAxis} /> : null}

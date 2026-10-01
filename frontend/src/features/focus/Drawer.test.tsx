@@ -171,6 +171,21 @@ describe('Drawer — casca modal do Foco', () => {
     cartao.remove();
   });
 
+  it('tarefa 13: sem quem abriu e sem o botão do cartão, o teclado vai ao contêiner do conteúdo, não ao <body>', async () => {
+    const conteudo = document.createElement('main');
+    conteudo.id = 'conteudo';
+    conteudo.tabIndex = -1;
+    document.body.appendChild(conteudo);
+    const fugaz = document.createElement('button');
+    document.body.appendChild(fugaz);
+    fugaz.focus();
+    await act(async () => root.render(<Casca onClose={() => undefined}><button type="button">Um</button></Casca>));
+    fugaz.remove();                                  // quem abriu sumiu e o seletor ("#origem") não acha nada
+    await act(async () => root.render(<></>));
+    expect(document.activeElement).toBe(conteudo);
+    conteudo.remove();
+  });
+
   it('RF-02: o seletor de devolução do foco acha o botão "Abrir" do cartão e o da linha da Lista', () => {
     const pagina = document.createElement('div');
     pagina.innerHTML = `

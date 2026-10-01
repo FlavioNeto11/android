@@ -209,7 +209,7 @@ describe('nova persona em lote', () => {
     // O resumo conta a que o painel criou (o servidor não sabe dela): 1 criada, 1 rascunho, 1 falha.
     expect(text()).toContain('Terminado: 1 criada(s) · 1 rascunho(s) · 1 com falha.');
     await click(byRole('button', /Abrir Marina Lopes/));
-    await waitFor(() => byRole('tab', /Visão geral/i).getAttribute('aria-selected') === 'true');
+    await waitFor(() => byRole('button', /^Visão geral/).getAttribute('aria-current') === 'page');
   });
 
   it('quantidade fora de 1 a 10 não gera', async () => {

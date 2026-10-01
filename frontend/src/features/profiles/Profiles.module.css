@@ -945,3 +945,78 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 .loteBarraRotulo svg { color: var(--accent-text); }
 .loteSep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border-2); }
+
+/* ================================================================================================
+   Tarefa UX2-12 — detalhe da persona: cabeçalho único, 5 seções, escopo do app e atributos sensíveis.
+   Faixas por @container page (a página é o contêiner; o Foco aberto também a estreita).
+   ================================================================================================ */
+
+/* ---------- cabeçalho único: foto, nome, @, estado, aparelho e a ação principal ---------- */
+.cabecalho { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cabecalhoLinha { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; min-width: 0; }
+.cabecalhoCorpo { display: flex; flex-direction: column; gap: var(--sp-1); flex: 1 1 280px; min-width: 0; }
+.cabecalhoHandle { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.cabecalhoSelos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.cabecalhoAcoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
+/* O selo "Não verificada" vira um botão: o selo e o verbo do passo seguinte, no mesmo alvo de toque. */
+.estadoAcionavel {
+  display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--hit-min); padding: 2px var(--sp-2) 2px 2px;
+  border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-2);
+  color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.estadoAcionavel:hover { background: var(--surface-3); border-color: var(--border-3); }
+.estadoAcao { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-weight: 600; }
+@container page (max-width: 559px) {
+  .cabecalhoAcoes { margin-left: 0; width: 100%; }
+  .cabecalhoAcoes > * { flex: 1 1 auto; }
+}
+
+/* ---------- primeiro nível: as 5 seções ---------- */
+.navSecoes { display: flex; flex-direction: column; }
+.navSecoesLista { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.navSecaoBotao {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 var(--sp-4);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+  color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.navSecaoBotao:hover { background: var(--surface-3); color: var(--text-1); }
+.navSecaoBotao[aria-current='page'] {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); font-weight: 600;
+}
+.navSecaoContagem {
+  min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center;
+  border-radius: var(--radius-pill); background: var(--warning-soft); color: var(--warning-text);
+  border: 1px solid var(--warning-border); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums;
+}
+.navSecoesSelect { display: none; }
+@container page (max-width: 559px) {
+  .navSecoesLista { display: none; }
+  .navSecoesSelect { display: block; }
+}
+
+/* ---------- segundo nível: as guias da seção aberta (abas) ---------- */
+.navGuias { margin-top: calc(-1 * var(--sp-2)); }
+/* O sublinhado da aba ativa passa 1 px da caixa e fazia a faixa rolar na vertical (barra solta à direita). */
+.navGuias [role='tablist'] { padding-bottom: 1px; }
+@container page (max-width: 559px) {
+  /* 3 guias em 358 px: sem ícone nem folga extra os rótulos cabem inteiros. */
+  .navGuias [role='tab'] { padding: 0 8px; gap: 5px; }
+  .navGuias [role='tab'] svg { display: none; }
+}
+
+/* ---------- escopo por app (Memória e Interações) ---------- */
+.appSwitcher { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
+.appEscopo { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); color: var(--text-1); }
+.appChips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+/* ---------- atributos sensíveis, recolhidos ---------- */
+.atributosSensiveis { display: flex; flex-direction: column; gap: var(--sp-2); border-top: 1px solid var(--border-1); padding-top: var(--sp-3); }
+.atributosBotao {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); align-self: flex-start; min-height: var(--hit-min);
+  padding: 0 var(--sp-2) 0 0; border: 0; background: transparent; color: var(--text-1); font: inherit; font-weight: 600; cursor: pointer;
+  border-radius: var(--radius-sm); text-align: left;
+}
+.atributosBotao .muted { font-weight: 400; font-size: var(--fs-sm); }
+.atributosSeta { transition: transform 0.12s ease; }
+.atributosSeta[data-aberto] { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .atributosSeta { transition: none; } }

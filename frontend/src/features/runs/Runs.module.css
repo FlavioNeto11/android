@@ -40,18 +40,6 @@
   color: var(--text-2);
 }
 
-.command {
-  margin-top: 6px;
-  color: var(--text-1);
-  font-size: var(--fs-lg);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
-}
-
 .headMeta {
   display: flex;
   flex-wrap: wrap;

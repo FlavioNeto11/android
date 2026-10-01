@@ -240,7 +240,7 @@
 
 .personaChip {
   height: auto;
-  min-height: 26px;
+  min-height: var(--hit-min);
   max-width: 100%;
   padding: 2px 10px 2px 3px;
 }
@@ -364,7 +364,7 @@
 
 .previaOpcao {
   height: auto;
-  min-height: 26px;
+  min-height: var(--hit-min);
   padding: 2px 10px;
 }
 

@@ -107,7 +107,13 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   - **Operações em lote:** caixa de seleção em cada pessoa e "Selecionar todas"; a barra de ações gera mais fotos,
     completa com IA (instrução opcional), muda o grupo de acesso, bloqueia/reativa e apaga (com "apagar N"
     digitado), três de cada vez, com um resumo por pessoa.
-  - **Guias:** Visão geral (identidade, fotos, contas, aparelhos); Persona — o **mapa da pessoa** (28/09): retrato no topo
+  - **Tela da persona (UX2-12, 01/10):** um cabeçalho único (foto, nome, @, estado, aparelho e "Abrir no aparelho"); "Não verificada"
+    é um botão que leva à guia Contas e acesso e "Conectado" diz há quanto tempo foi confirmada. A navegação tem **5 seções**
+    (Visão geral, Perfil, Contas e aparelhos, Atividade, Avançado; em tela estreita, uma lista suspensa) e, dentro da seção,
+    as guias abaixo. A URL guarda a **guia** (`#/personas/lucas-almeida/memoria`), nunca a seção, então os links antigos
+    valem; a persona aparece pelo nome (homônimos ganham um sufixo curto do id) ou pelo id antigo. O filtro por app só
+    aparece em Memória e Interações, com "Mostrando: …"; religião e política ficam em "Atributos de personalidade", fechado.
+  - **Guias:** Visão geral (atributos, fotos, contas, aparelhos); Persona — o **mapa da pessoa** (28/09): retrato no topo
     (quem ela é num relance, cada fato leva à sua seção, quantas seções estão preenchidas, "Completar com IA" ao
     lado), índice fixo com o estado de cada seção (completa, parcial, vazia) e a marca do que vai ao modelo, e as
     seções Identidade, Origem e casa, Trabalho, Vida, Gostos, Crenças e Voz abrindo em leitura visual (etiquetas,

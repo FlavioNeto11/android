@@ -1,0 +1,18 @@
+/* Uma linha com reticências. `min-width: 0` deixa o texto encolher dentro de um flex em vez de empurrar o vizinho. */
+.linha {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Várias linhas: o limite vem de `style.WebkitLineClamp`; `overflow-wrap` evita que um código sem espaço fure o corte. */
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

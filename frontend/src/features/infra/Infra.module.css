@@ -80,8 +80,9 @@
 
 .aparelho {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 2px var(--sp-2);
   padding: 5px 6px;
   border-radius: var(--radius-1, 6px);
   min-width: 0;
@@ -98,8 +99,8 @@
   background: none;
   border: 0;
   /* área de clique de 32 px sem mexer no ritmo da lista: o respiro entra como padding e sai como margem negativa */
-  padding: 6px 0;
-  margin: -6px 0;
+  padding: 7px 0;
+  margin: -7px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -117,21 +118,40 @@
   font-weight: 600;
 }
 
+/*
+ * O que o aparelho É (API, arquitetura, imagem, renderizador) e o processo: metadado que decide onde rodar, então quebra
+ * em linhas em vez de ser cortado com reticências (o `title` não abre em toque). Cabe na linha do aparelho quando há
+ * espaço (`flex-basis` 14rem); sem espaço, desce para a linha de baixo, na largura toda.
+ */
 .aparelhoMeio {
   display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+/* Telefone: o aparelho e a tarefa ficam juntos na primeira linha e o metadado desce, inteiro, na largura toda. */
+@media (max-width: 640px) {
+  .aparelhoMeio {
+    order: 5;
+    flex-basis: 100%;
+  }
+
+  .recusaDaLinha,
+  .personasDoAparelho {
+    order: 6;
+  }
 }
 
 .tarefa {
-  margin: -6px 0 -6px auto;
+  margin: -7px 0 -7px auto;
   background: none;
   border: 0;
-  padding: 6px 0;
+  /* 7 px: com a linha de 13 px x 1,5 = 19,5 px, 6 + 6 dava 31,5 px, meio pixel abaixo dos 32 px */
+  padding: 7px 0;
   color: var(--accent-text);
   cursor: pointer;
   font: inherit;
@@ -150,10 +170,6 @@
 }
 
 /* A recusa de "Aposentar" desce para a linha de baixo, na largura toda, sem empurrar os outros aparelhos. */
-.aparelhoComRecusa {
-  flex-wrap: wrap;
-}
-
 .recusaDaLinha {
   flex-basis: 100%;
   margin: 2px 0 0;
@@ -181,8 +197,8 @@
   max-width: 100%;
   background: none;
   border: 0;
-  padding: 6px 0;
-  margin: -5px 0;
+  padding: 7px 0;
+  margin: -6px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
