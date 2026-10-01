@@ -385,6 +385,18 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 17 — 01/10 ~18:05Z — CONTROL-05: o tile funciona no android-05 (`real`)
+
+- Wake do 05 (17:52:29Z), produto reconvergiu sozinho (`conferir` ok, 0 reinícios), baseline completo, coletor novo (run
+  `20261001T175604Z`) antes do force-stop. UMA tentativa (17:58:03Z): `force-stop` → gesto instrumentado → **tile funcionou**: `tun0`
+  em <1 s, VPN CONNECTED, handshake do par, pid novo 11498. `CONTROL_05 = PASS`; nada manual, produto não precisou agir.
+- `NETLINK_AS_SOLE_CAUSE = REFUTED`: o 05 tem o mesmo `avc denied { bind } netlink_route_socket` (3 na janela, 12 antes) e conecta.
+- **Diferença nova:** o clique inicia `.bg.VPNService` (tipo 1024) no 05 e `.bg.ProxyService` (`specialUse`) no 09, que encerra
+  sozinho em 1–2 s. A falha do 09 é ANTES do túnel (escolha do serviço pelo cliente: inferência, não verificada); o porquê segue
+  por provar (`CAUSE_PROVEN = NO`). PEER-09 não é necessário para esta pergunta.
+- 05 devolvido ao estado estável e **hibernado** pelo mecanismo normal (18:00:44Z, snapshot salvo, sem emulador, 0 comandos). W8
+  continua **OPEN**. `resumo` agora reconhece `VPNService` (`servico_classe`). Detalhe: `w8-diagnostico-android09.md` §17.
+
 ### Checkpoint 16 — 01/10 ~17:30Z — perfil selecionado no cliente do android-09 (`real`)
 
 - Estado público não diz o perfil (`UNKNOWN`); o `WorkingDirectoryProvider` do cliente não foi usado (expõe arquivos privados). Abri o

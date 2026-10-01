@@ -407,3 +407,74 @@ falhas: o caminho de início (always-on do boot × tile) e o estado do processo 
    aceita. Sem mudar perfil, política, par nem servidor; sem conta real (`qa-user-05`); sem IA paga.
 7. **Fechamento:** provas do produto convergido de novo (tun0, CONNECTED, `always_on=sfa`, `lockdown=1`, regras, handshake, `healthy`),
    tile no Q0; depois, a tabela 05 × 09 (`resumo`) e o `NETLINK_CAUSALITY` pelo que o 05 mostrar.
+
+## 17. CONTROL-05: o tile no android-05 (01/10/2026, 17:52–18:01Z, `real`)
+
+**Autorização do dono:** acordar só o android-05 (QA `qa-user-05`, local, `emulator-5562`), convergência normal do produto, até
+`reinicios_max=2` reinícios automáticos, UMA tentativa depois de reconvergido. Fora: PEER-09, android-09, WireGuard, 02/03/06, IA paga,
+restart manual, política, perfil, cliente, configuração. Commit do acionador: `44731d0` (`scripts/diag-w8-controle05.py`, 25 testes).
+
+**Wake e convergência (sem intervenção):** `POST /api/instances/android-05/actions/wake` às 17:52:29Z (`c-20261001175229-833861`); online às
+17:53:00Z (27 s, do snapshot, com `tun0` já no ar); o produto rodou `device.network` (`conferir`, motivo `ligou`,
+`c-20261001175258-585de1`) e terminou `succeeded` às 17:53:29Z ("mesma saída medida"): **nenhum reinício automático** (0 de 2),
+nenhum comando novo depois. Rede `trafego_verificado` (`exigida_com_bloqueio`, rev 1, `verified_at` 17:53:29Z), conectividade `healthy`,
+par `10.66.0.2` com handshake. `BASELINE_REACHED = YES` (17:55:50Z pelo monitor; gate completo de 22 itens ok às 17:58:03Z).
+
+**Baseline do 05:** cliente 1.14.2 (739), `pm path` = o do teste de vazamento (`~~sM3KHh…`), pid 1419, `stopped=false`; perfil `piloto`
+(Remote); política `exigida_com_bloqueio`; `always_on=io.nekohasekai.sfa`; `lockdown=1`; `tun0` e VPN CONNECTED; 3 regras de
+bloqueio; Q0 sem tile; SystemUI 747; netlink: **12 negações `bind` já no buffer** do cliente (o 05 as acumulava com a VPN
+funcionando). Coletor novo ANTES do force-stop: run `20261001T175604Z`, PID 17360 (lançador 26504), logcat `-b all` PID 4132, amostras a cada 2 s
+(`samples.jsonl`), janela larga `logcat-wide.0.txt`.
+
+**Tentativa única (17:58:03Z):** `am force-stop io.nekohasekai.sfa` (rc 0): pid ausente, `stopped=true`, tun0 e VPN caíram. Gesto
+instrumentado (17:58:06.8–12.3Z): Q0=0, P1=P2=747 (SystemUI estável), remove/add ok, Q=1, T=0, **click exit 0**, stdout e stderr vazios
+(0,023 s no aparelho). Observação de 30 s (8 leituras): `tun0` na 1ª leitura (+4,2 s do fim do gesto), pid novo 11498,
+`stopped=false`. **O tile funcionou.** `CONTROL_05 = PASS`; nenhum reinício, nenhum comando do produto, nada manual.
+
+**Sinais (logcat `-b all`, hora do aparelho 14:58 = 17:58Z):**
+
+| Sinal | ANDROID-05 | ANDROID-09 (A1 17:11Z e 13:39Z) |
+|---|---|---|
+| clique → `TileService` (`sysui_multi_action`) | 11,367 | sim |
+| serviço que o clique inicia | **`.bg.VPNService`**, `OP_ACTIVATE_VPN`, tipo FGS **1024** | **`.bg.ProxyService`**, `OP_ACTIVATE_VPN`, tipo **1073741824** |
+| clique → início do serviço | 0,158 s | 0,29–0,33 s |
+| fim do serviço | não terminou (vivo no fim) | `STOP_FOREGROUND` em 1,1–1,8 s |
+| processo vivo / `stopped` no fim | sim (11498) / `false` | sim / `false` |
+| `tun0` / VPN CONNECTED | `Established by io.nekohasekai.sfa on tun0` 12,279; CONNECTED 12,421; `validation passed` | ausentes |
+| peer `last_connection` | 14:58:16 e 14:58:18 (-0300), +1,7 s do clique | sem handshake |
+| `avc denied { bind } netlink_route_socket` | **sim, 3 (12,123; 12,283; 12,339), em volta do `Established`** | sim (2, uma por A1) |
+| `avc denied { read } somaxconn` | sim (11,487, antes do serviço) | sim |
+| ANR / crash / `FATAL` | não / não / 0 | não / não |
+| `UpdateProfileWork` | falha benigna do perfil `piloto` (10.0.2.2:18090 recusado) | — |
+
+Resumo (`resumo --desde 17:57:55Z --ate 17:59:15Z`): tun +0,7 s, VPN CONNECTED +2,7 s, peer +1,7 s (resolução de 2 s das amostras).
+Classificador (`--bloqueio sim`): `OK_HEALTHY`, F1–F9 PASS.
+
+**Conclusões:**
+
+- `NETLINK_AS_SOLE_CAUSE = REFUTED` (`real`): o 05 mostra o MESMO `avc denied { bind } netlink_route_socket` (e o `somaxconn`) e mesmo assim
+  cria `tun0` e fica CONNECTED; a negação já fazia parte do funcionamento normal dele (12 no buffer antes do teste). Nem como única causa,
+  nem sequer discrimina o 09 (a "ordem repetida" das A1 era coincidência com o auto-stop). Sem tocar em SELinux nem no cliente.
+- **A diferença nova está ANTES da VPN:** o mesmo gesto (mesma versão 1.14.2, mesma imagem, mesmo comando de tile) inicia no 05 o
+  `VPNService` (tipo 1024, o serviço que cria o `tun`) e no 09 o `ProxyService` (tipo `specialUse`, o serviço do modo sem VPN).
+  No 09 o cliente nunca tenta o `VpnService`: o ProxyService sobe, pede rede, e termina sozinho em 1–2 s; sem `tun0`, sem par.
+  **Inferência (não verificada no código do cliente):** o SFA escolhe a classe do serviço pelo "modo" que deriva do perfil selecionado
+  (um `tun` inbound pede o VPNService); o 09 estaria derivando "sem tun". Por que (conteúdo do r2 que o app lê, estado interno do app,
+  4 perfis acumulados no 09 contra 1 no 05, endpoint LAN `192.168.1.81:51820` contra alias `10.0.2.2:51820`) está **por provar**.
+- `PEER_09_STILL_NEEDED = NO` para esta pergunta: a falha acontece antes de existir túnel ou par; um par novo não muda a escolha do
+  serviço (e é gesto de configuração fora desta autorização).
+
+**Fechamento do 05:** tile devolvido ao Q0 (`remove-tile`, único gesto extra). Estado final lido às 18:00:06Z: `trafego_verificado`
+(sem nova medição: o produto não precisou agir), `tun0`, VPN CONNECTED, `always_on=sfa`, `lockdown=1`, 3 regras, par com handshake
+(14:59:55), `healthy`, sem comando aberto, sem reinício pendente. Coletor e monitor parados pelos arquivos `parar`/`parar-monitor`
+(PIDs 17360, 26504, 4132 e 44436 encerrados; sobraram só os logcat da plataforma `-P 5037`). **Hibernado** pelo mecanismo normal
+(`POST …/hibernate` 18:00:44Z, `c-20261001180044-c46991`, `succeeded` 18:00:53Z): `state=hibernated`, "snapshot salvo", sem processo do
+emulador (portas 5562/5563 livres), 0 comandos pendentes. Outros aparelhos: nenhum tocado (01/03/06 continuam online, 09 online).
+
+**Ressalva da coleta:** o SSH do coletor para o notebook falhou (`Permission denied`; só o lado worker-lan-01, que não era usado). O `resumo`
+antigo procurava só `ProxyService` e dizia "não iniciou" para o 05: corrigido nesta rodada (`servico_classe`, teste novo).
+
+**Próximos passos possíveis (nenhum executado; todos exigem autorização do dono):** (a) comparar, só por logcat e UI pública, o que o
+cliente do 09 diz entre o clique e o início do `ProxyService` (já temos a janela larga; sem novo gesto); (b) o que decide o modo no
+cliente: perfil r2 do 09 vs `piloto` do 05 (ver o conteúdo expõe a chave: não sem decisão do dono); (c) trocar a seleção ou
+reimportar o perfil no 09 (altera configuração: autorização). **`CAUSE_PROVEN = NO`.**
