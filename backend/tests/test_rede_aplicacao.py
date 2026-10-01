@@ -44,7 +44,7 @@ from app.config import RedeCfg, RedeServidorCfg
 from app.db import Database, dumps
 from app.devices import emulator as emu
 from app.devices import rede
-from app.devices.rede_aplicacao import (Elemento, Plano, ProxyDoCliente, RedeAplicacaoError, ServidorDeUmaVez,
+from app.devices.rede_aplicacao import (Elemento, NoDaTela, Plano, ProxyDoCliente, RedeAplicacaoError, ServidorDeUmaVez,
                                         TunelWg, comando_de_observacao, config_do_cliente, desfazer, ler_observacao,
                                         observar, provisionar, tocar_importacao)
 from app.devices.rede_servidor import (FAIXAS_RECUSADAS, Par, ServidorDeRede, ServidorDeRedeError,
@@ -466,6 +466,26 @@ class AparelhoFalso:
     sistema_instavel: bool = False
     tile_na_barra: bool = False
     cliques_no_tile: int = 0
+    # O `serviceMode` do SFA 1.14.2 (W8, commit upstream fc21909): o TILE chama BoxService.start() com a classe do modo
+    # SEM recalcular; o Start da UI chama rebuildServiceMode() (o perfil tem `tun` → VPN) e depois a classe. Com o modo
+    # não-VPN (cliente que só importou o perfil: o android-09) o tile inicia o ProxyService, que aborta sem tun0.
+    modo_vpn: bool = True
+    # A interface: o Start religa (`ui_religa`), inicia o ProxyService mesmo assim (`ui_inicia_proxy`: hasTunInbound
+    # falso), sobe o tun0 sem VPN CONNECTED (`ui_tun_sem_vpn`); o app não abre (`abre_app_falha`); o que a tela mostra
+    # (`tela_ui`: start | stop | nada | outro_pacote | start_ambiguo | start_sem_conteiner | start_desabilitado).
+    ui_religa: bool = False
+    ui_inicia_proxy: bool = False
+    ui_tun_sem_vpn: bool = False
+    abre_app_falha: bool = False
+    tela_ui: str = "start"
+    app_aberto: bool = False
+    foco: str = "launcher"
+    toques_ui: list[tuple[int, int]] = field(default_factory=list)
+    starts_na_ui: int = 0
+    homes: int = 0
+    fp: int = 0                                    # am_foreground_service_start do ProxyService
+    fv: int = 0                                    # ... do VPNService
+    servicos: str = ""
     appops: bool = False
     always_on: str = "null"
     lockdown: str = "0"
@@ -489,14 +509,29 @@ class AparelhoFalso:
             return (f"U={self.uid}\nA={self.always_on}\nL={self.lockdown}\nT={int(self.tun)}\nV={int(self.vpn)}\n"
                     f"R={int(self.regras)}\nC={self.relatorios}\nP={int(self.instalado)}\nK={self.linha_do_cliente()}\n"
                     f"S={self.uptime}\n")
+        if comando.startswith("echo F=$(dumpsys window"):                  # o estado da interface do cliente (W8)
+            return (f"F=mCurrentFocus=Window{{1 u0 {self.foco}}}\nT={int(self.tun)}\nSR={self.servicos}\n"
+                    f"FP={self.fp}\nFV={self.fv}\n")
+        if comando.startswith("F=$(dumpsys window"):                       # devolver o foco: HOME só se o foco é do cliente
+            if PKG in self.foco:
+                self.foco, self.homes = "launcher", self.homes + 1
+            return ""
+        if comando.startswith("am start -n "):
+            if self.abre_app_falha:
+                return "Error type 3\nError: Activity class {io.nekohasekai.sfa/.compose.MainActivity} does not exist.\n"
+            self.app_aberto, self.foco = True, f"{PKG}/{PKG}.compose.MainActivity"
+            return "Starting: Intent { cmp=io.nekohasekai.sfa/.compose.MainActivity }\n"
         if comando.startswith("Q0=$(settings get secure sysui_qs_tiles"):
             havia, tun = int(self.tile_na_barra), int(self.tun)
             clicou = not self.sistema_instavel and not self.tun
             self.tile_na_barra = not self.sistema_instavel
             if clicou:
                 self.cliques_no_tile += 1
-                if self.tile_religa:
+                if not self.modo_vpn:                       # o tile não recalcula o modo: ProxyService, sem tun0
+                    self.fp += 1
+                elif self.tile_religa:
                     self.tun = self.vpn = True
+                    self.fv += 1
                     if hasattr(self, "parado"):
                         self.parado = False
             return (f"Q0={havia}\nP1=900\nP2={901 if self.sistema_instavel else 900}\n"
@@ -521,6 +556,7 @@ class AparelhoFalso:
         elif comando.startswith("cmd appops get"):
             return "ACTIVATE_VPN: allow; time=+1s\n" if self.appops else "ACTIVATE_VPN: ignore\n"
         elif comando.startswith("am start"):
+            self.app_aberto = False                                   # a importação usa a árvore de `elementos`, não a da UI
             self._link = comando.split("-d '", 1)[1].rstrip("'")
             self.tela = ["No, thanks"] if self.primeira_execucao else ["OK"]
             return "Starting: Intent { act=android.intent.action.VIEW }\n"
@@ -551,7 +587,49 @@ class AparelhoFalso:
             els.insert(0, Elemento("OK", "com.android.systemui", (5, 5)))
         return els
 
+    async def arvore(self) -> list[NoDaTela]:
+        if not self.app_aberto:
+            return [NoDaTela("", "com.google.android.apps.nexuslauncher", (0, 0, 720, 1280), False)]
+        quadro = NoDaTela("Dashboard", PKG, (32, 84, 247, 140), False)
+        botao = {"start": ("Start", True), "stop": ("Stop", True)}
+        if self.tela_ui in botao:
+            texto, _ = botao[self.tela_ui]
+            return [quadro, NoDaTela("", PKG, (576, 928, 688, 1040), True), NoDaTela(texto, PKG, (608, 960, 656, 1008), False)]
+        if self.tela_ui == "outro_pacote":
+            return [quadro, NoDaTela("", "com.android.systemui", (576, 928, 688, 1040), True),
+                    NoDaTela("Start", "com.android.systemui", (608, 960, 656, 1008), False)]
+        if self.tela_ui == "start_ambiguo":
+            return [quadro, NoDaTela("", PKG, (0, 900, 720, 1100), True), NoDaTela("Start", PKG, (608, 960, 656, 1008), False),
+                    NoDaTela("Start", PKG, (100, 960, 150, 1008), False)]
+        if self.tela_ui == "start_sem_conteiner":
+            return [quadro, NoDaTela("Start", PKG, (608, 960, 656, 1008), False)]
+        if self.tela_ui == "start_desabilitado":
+            return [quadro, NoDaTela("", PKG, (576, 928, 688, 1040), True, False), NoDaTela("Start", PKG, (608, 960, 656, 1008), False)]
+        return [quadro]
+
+    def _start_da_ui(self) -> None:
+        self.starts_na_ui += 1
+        if self.tun:                                                    # o Start/Stop alterna: tocar com a VPN no ar a derruba
+            self.tun = self.vpn = False
+        elif self.ui_inicia_proxy:
+            self.fp += 1
+        elif self.ui_religa or self.ui_tun_sem_vpn:                     # rebuildServiceMode → VPN → VPNService
+            self.modo_vpn = True
+            self.fv += 1
+            self.tun = True
+            self.vpn = not self.ui_tun_sem_vpn
+            self.servicos = f"{PKG}/.bg.VPNService,"
+            if hasattr(self, "parado"):
+                self.parado = False
+
     async def tocar(self, x: int, y: int) -> None:
+        if self.app_aberto and self.tela_ui in ("start", "stop", "start_ambiguo", "start_sem_conteiner", "start_desabilitado"):
+            self.toques_ui.append((x, y))
+            assert PKG in self.foco, "tocou com o foco fora do cliente"
+            if (x, y) == (632, 984) and self.tela_ui == "start":
+                self._start_da_ui()
+                return
+            assert False, f"toque arbitrário na interface: {(x, y)}"
         alvo = next((e.texto for e in await self.elementos() if e.centro == (x, y)), None)
         assert alvo is not None and (x, y) != (5, 5), "tocou fora do cliente"
         self.toques.append(alvo)
@@ -703,7 +781,9 @@ async def parque(tmp_path: Path) -> Iterator[Harness]:
     st.rede_convergencia.atraso_do_reinicio_s = 0.05
     st.rede_convergencia.intervalo_do_reinicio_s = 0.05
     st.rede_convergencia.pausa_da_tela_s = 0.01
-    st.rede_convergencia.espera_do_tile_s = 0
+    st.rede_convergencia.espera_da_interface_s = 0
+    st.rede_convergencia.prazo_do_botao_s = 0.05
+    st.rede_convergencia.pausa_da_interface_s = 0.01
     try:
         yield h
     finally:
@@ -819,30 +899,34 @@ async def test_tunel_que_nao_sobe_reinicia_ate_o_teto_e_depois_espera(parque: Ha
             assert len(reinicios.pedidos) == 2 and _linha(parque)["state"] == "configurado"
     linha = _linha(parque)
     assert linha["state"] == "pendente" and "o túnel não subiu depois de 2 reinício" in str(linha["error"])
-    # Antes de cada reinício (e de desistir), o tile do cliente foi tentado — e aqui ele não religa (item 29.3).
-    assert ap.cliques_no_tile == 2 and ap.tile_na_barra is False
+    # Antes de cada reinício (e de desistir), o Start da interface do cliente foi tentado, UMA vez por passada — e aqui não
+    # religa (W8). O tile nunca é chamado: o motivo conhecido da interface fica na evidência, sem loop novo.
+    assert ap.starts_na_ui == 2 and ap.cliques_no_tile == 0 and ap.tile_na_barra is False
+    assert "religar pela interface: tun_nao_subiu" in str(linha["error"]) and ap.foco == "launcher" and ap.homes == 2
     assert await _passo(parque, "varredura") is False                             # espera antes de repetir
     assert "falhou" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
     [ultimo] = st.db.query("SELECT * FROM commands WHERE verb='device.network' ORDER BY created_at DESC LIMIT 1")
     assert ultimo["state"] == "failed"
 
 
-async def test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio(
+async def test_tunel_que_nao_sobe_no_boot_e_religado_pelo_start_da_interface_sem_outro_reinicio(
         parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Item 29.3. Em 30/09 a primeira tentativa do always-on falhou em 5 de 7 boots (ANR de início do serviço com o
+    """Item 29.3 + W8. Em 30/09 a primeira tentativa do always-on falhou em 5 de 7 boots (ANR de início do serviço com o
     convidado sem CPU), e cada conferência sem `tun0` pedia OUTRO reinício — o mesmo dado, rolado de novo (android-06:
-    6 reinícios e 2 reaplicações). O tile do cliente religa sem reinício, com always-on e bloqueio intactos."""
+    6 reinícios e 2 reaplicações). O Start da interface do cliente religa sem reinício, com always-on e bloqueio
+    intactos, MESMO com o `serviceMode` do cliente em NORMAL (o caso real do android-09: o tile iniciaria o ProxyService)."""
     st = parque.state
     assert st is not None
     ap, reinicios, _ = _preparar(parque, monkeypatch)
+    ap.modo_vpn = False                                                            # o stale do 09: nunca um Start da UI
     assert await _passo(parque, "varredura")                                       # aplicar
     await asyncio.sleep(0.3)
     assert len(reinicios.pedidos) == 1
-    # Sem boot desde a configuração, o bloqueio ainda não vale no sistema: o tile NÃO é tentado, o caminho é o reinício.
-    ap.tile_religa = True
+    # Sem boot desde a configuração, o bloqueio ainda não vale no sistema: a UI NÃO é tocada, o caminho é o reinício.
+    ap.ui_religa = True
     assert await _passo(parque, "varredura")
     await asyncio.sleep(0.3)
-    assert ap.cliques_no_tile == 0 and _linha(parque)["state"] == "configurado"
+    assert ap.starts_na_ui == 0 and not ap.app_aberto and _linha(parque)["state"] == "configurado"
     pedidos = len(reinicios.pedidos)
     # O boot veio e o cliente não subiu (a configuração e as regras de bloqueio estão no lugar; só o túnel falta).
     _envelhecer_configuracao(parque)
@@ -851,19 +935,22 @@ async def test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinici
     assert await _passo(parque, "ligou")
     await asyncio.sleep(0.3)
     linha = _linha(parque)
-    assert linha["state"] == "conectado" and "religado pelo tile do cliente, sem reinício" in str(linha["detail"])
-    assert ap.cliques_no_tile == 1 and len(reinicios.pedidos) == pedidos           # nenhum reinício a mais
-    # O gesto não mexe na configuração: always-on, bloqueio e regras como estavam; a barra volta ao que era.
-    assert ap.always_on == PKG and ap.lockdown == "1" and ap.regras is True and ap.tile_na_barra is False
+    assert linha["state"] == "conectado" and "religado pelo Start da interface do cliente, sem reinício" in str(linha["detail"])
+    assert ap.starts_na_ui == 1 and ap.cliques_no_tile == 0 and len(reinicios.pedidos) == pedidos   # nenhum reinício a mais
+    assert ap.modo_vpn and ap.fv == 1 and ap.fp == 0                               # o caminho da UI recalculou o modo
+    # O gesto não mexe na configuração: always-on, bloqueio e regras como estavam; o foco volta ao launcher.
+    assert ap.always_on == PKG and ap.lockdown == "1" and ap.regras is True and ap.foco == "launcher" and ap.homes == 1
     assert not any(c.startswith("settings put") or c.startswith("settings delete") for c in ap.comandos[comandos:])
-    # Com o túnel no ar o tile nunca é clicado (é um alternador: desligaria a VPN).
-    assert await _passo(parque, "ligou") is True and ap.cliques_no_tile == 1
+    assert not any("statusbar" in c or "Q0=$(settings get secure sysui_qs_tiles" in c for c in ap.comandos[comandos:])
+    # Com o túnel no ar a UI nunca é tocada (Start/Stop alterna: desligaria a VPN).
+    assert await _passo(parque, "ligou") is True and ap.starts_na_ui == 1
 
 
-async def test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue(parque: Harness,
-                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
-    """O SystemUI no laço de ANR do boot renasce sem o tile (medido: 0 de 2 nessa condição): sem clique, e o caminho
-    de antes (outro reinício) continua valendo."""
+async def test_start_que_inicia_o_proxyservice_nao_e_recuperacao_e_o_reinicio_segue(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guard D (W8): num plano com VPN/TUN, o Start que iniciou o ProxyService é incompatibilidade de classe/modo, não
+    "o cliente começou". A linha fica `configurado` (não saudável), a razão vai na evidência e o reinício de sempre
+    continua valendo, sem fallback para o tile e sem laço novo."""
     st = parque.state
     assert st is not None
     ap, reinicios, _ = _preparar(parque, monkeypatch)
@@ -871,11 +958,46 @@ async def test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue(par
     await asyncio.sleep(0.3)
     _envelhecer_configuracao(parque)
     ap.depois_do_boot(uptime=300, tun=False)
-    ap.tile_religa, ap.sistema_instavel = True, True
+    ap.ui_inicia_proxy, ap.tile_religa = True, True
     assert await _passo(parque, "ligou")
     await asyncio.sleep(0.3)
-    assert ap.cliques_no_tile == 0 and _linha(parque)["state"] == "configurado"
-    assert len(reinicios.pedidos) == 2 and "o túnel não subiu depois do boot" in str(reinicios.pedidos[-1][1])
+    linha = _linha(parque)
+    assert linha["state"] == "configurado" and "wrong_service_class_for_tun" in str(linha["detail"])
+    assert ap.starts_na_ui == 1 and ap.fp == 1 and ap.cliques_no_tile == 0 and not ap.tun
+    assert len(reinicios.pedidos) == 2 and "wrong_service_class_for_tun" in str(reinicios.pedidos[-1][1])
+
+
+async def test_app_que_nao_abre_nao_cai_cegamente_no_tile_e_o_reinicio_segue(parque: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=300, tun=False)
+    ap.abre_app_falha, ap.tile_religa = True, True
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    assert ap.starts_na_ui == 0 and ap.cliques_no_tile == 0 and _linha(parque)["state"] == "configurado"
+    assert "abertura_falhou" in str(_linha(parque)["detail"]) and len(reinicios.pedidos) == 2
+
+
+async def test_gesto_desligado_pela_configuracao_nao_toca_na_interface_e_o_reinicio_segue(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    st.rede_convergencia.cfg.cliente_atividade = ""                                # `rede.cliente_atividade` vazio desliga
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    ap.ui_religa = True
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=300, tun=False)
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    assert not ap.app_aberto and ap.starts_na_ui == 0 and ap.cliques_no_tile == 0
+    assert _linha(parque)["state"] == "configurado" and len(reinicios.pedidos) == 2
 
 
 def test_comando_do_tile_so_clica_sem_tun0_com_o_systemui_estavel_e_o_tile_na_barra() -> None:

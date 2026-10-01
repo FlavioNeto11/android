@@ -1168,20 +1168,20 @@ async def test_vazou_fica_parcial_e_a_tarefa_espera(parque: Harness, monkeypatch
     assert await _passo(parque, "tarefa") is False and ap.paradas == 1              # nem teste nem medição de novo
 
 
-async def test_cliente_parado_pelo_teste_e_religado_pelo_tile_sem_reiniciar_o_aparelho(
+async def test_cliente_parado_pelo_teste_e_religado_pelo_start_da_interface_sem_reiniciar_o_aparelho(
         parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Item 29.3: o teste de vazamento deixa o cliente parado. Antes do reinício, o tile; religado, a medição sai na
-    mesma passada e o teste deixa de custar um reinício do aparelho."""
+    """Item 29.3 + W8: o teste de vazamento deixa o cliente parado. Antes do reinício, o Start da interface (o tile não
+    recalcula o `serviceMode`); religado, a medição sai na mesma passada e o teste deixa de custar um reinício."""
     st = parque.state
     assert st is not None
     ap, reinicios = _preparar_sonda(parque, monkeypatch)
     await _ate_conectado(parque, ap)
-    ap.tile_religa = True
+    ap.ui_religa, ap.modo_vpn = True, False                                          # o stale do 09: o tile não serviria
     pedidos = len(reinicios.pedidos)
     assert await _passo(parque, "tarefa")
     await asyncio.sleep(0.2)
     linha = _linha(parque)
-    assert ap.paradas == 1 and ap.cliques_no_tile == 1 and len(reinicios.pedidos) == pedidos
+    assert ap.paradas == 1 and ap.starts_na_ui == 1 and ap.cliques_no_tile == 0 and len(reinicios.pedidos) == pedidos
     assert linha["state"] == "trafego_verificado" and (linha["leak_rev"], linha["leak_result"]) == (1, 1)
     [m] = st.db.query("SELECT leak_blocked FROM network_measurements")
     assert m["leak_blocked"] == 1 and ap.lockdown == "1" and ap.regras is True

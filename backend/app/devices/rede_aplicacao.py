@@ -382,6 +382,32 @@ class Elemento:
     habilitado: bool = True
 
 
+@dataclass(frozen=True)
+class NoDaTela:
+    """Um nó da árvore de tela COMPLETA (com os que não têm texto): é o que prova que um rótulo pertence a um botão. No
+    Compose o `Start` do SFA é um filho de texto NÃO clicável de um contêiner clicável sem texto (android-09, 01/10)."""
+
+    texto: str
+    pacote: str
+    limites: tuple[int, int, int, int]
+    clicavel: bool
+    habilitado: bool = True
+
+    @property
+    def centro(self) -> tuple[int, int]:
+        x0, y0, x1, y1 = self.limites
+        return (x0 + x1) // 2, (y0 + y1) // 2
+
+    @property
+    def area(self) -> int:
+        x0, y0, x1, y1 = self.limites
+        return max(0, x1 - x0) * max(0, y1 - y0)
+
+    def contem(self, outro: NoDaTela) -> bool:
+        return (self.limites[0] <= outro.limites[0] and self.limites[1] <= outro.limites[1]
+                and self.limites[2] >= outro.limites[2] and self.limites[3] >= outro.limites[3])
+
+
 class AparelhoDaRede(Protocol):
     """O que a receita precisa do aparelho. `AparelhoPeloAdb` é o de verdade; o teste passa um dublê."""
 
@@ -391,6 +417,7 @@ class AparelhoDaRede(Protocol):
 
     async def shell(self, comando: str, *, timeout: float = 40) -> str: ...
     async def elementos(self) -> list[Elemento]: ...
+    async def arvore(self) -> list[NoDaTela]: ...
     async def tocar(self, x: int, y: int) -> None: ...
     async def reverso(self, porta: int) -> None: ...
     async def desfazer_reverso(self, porta: int) -> None: ...
@@ -412,6 +439,11 @@ class AparelhoPeloAdb:
         arvore = await self.st.devices.hierarchy(self.rt)
         return [Elemento(texto=(e.text or e.desc or "").strip(), pacote=e.package, centro=e.center,
                          habilitado=e.enabled) for e in arvore.elements if (e.text or e.desc)]
+
+    async def arvore(self) -> list[NoDaTela]:
+        arvore = await self.st.devices.hierarchy(self.rt)
+        return [NoDaTela(texto=(e.text or e.desc or "").strip(), pacote=e.package, limites=tuple(e.bounds),
+                         clicavel=bool(e.clickable), habilitado=bool(e.enabled)) for e in arvore.elements]
 
     async def tocar(self, x: int, y: int) -> None:
         await self.rt.executor.run(self.rt.adb.tap, x, y, timeout=20, label="toque da importação da rede")
@@ -691,7 +723,12 @@ async def observar(ap: AparelhoDaRede, pacote: str, *, esperar_tun_s: float = 0.
         await asyncio.sleep(intervalo_s)
 
 
-# ============================================================================ religar o túnel sem reiniciar (29.3)
+# ============================================================================ o tile do cliente (29.3) — NÃO é o caminho de recuperação
+# ATENÇÃO (W8, 01/10/2026): o que está medido abaixo valeu no android-05 porque o `serviceMode` do cliente ali JÁ era VPN
+# (o tile chama `BoxService.start()` sem recalcular o modo). Num cliente que só importou o perfil (o fluxo da plataforma),
+# o tile inicia o ProxyService e o serviço se encerra sem tun0 (android-09). A convergência usa
+# `religar_pela_interface` (Start da UI); `religar_pelo_tile` e `comando_de_religar` ficam só para o diagnóstico
+# (scripts/diag-w8-tile.py importa o comando) e para um aparelho cujo modo já se provou VPN. Nunca é fallback automático.
 # Medido em 30/09 no android-05 (7 boots, host com carga): o `startAlwaysOnVpn` do sistema roda UMA vez por boot, e em
 # 5 de 7 a primeira tentativa falhou — ANR de início do serviço com o convidado sem CPU (3), ou o serviço subindo e
 # parando sozinho (2). Reiniciar de novo rola o mesmo dado. O que religou sem reinício, 5 de 5 com o SystemUI
@@ -724,7 +761,8 @@ def comando_de_religar(tile: str) -> str:
 
 async def religar_pelo_tile(ap: AparelhoDaRede, pacote: str, tile: str, *, espera_s: float = 20.0) -> tuple[Observacao | None, str]:
     """Tenta subir o túnel pelo tile do cliente, sem reiniciar o aparelho. Devolve a observação com o túnel no ar (ou
-    `None`) e o que aconteceu. Não mexe em always-on nem em bloqueio; a barra volta a como estava."""
+    `None`) e o que aconteceu. Não mexe em always-on nem em bloqueio; a barra volta a como estava.
+    NÃO usar como recuperação: o tile não recalcula o `serviceMode` do cliente (ver a nota da seção)."""
     v = _ler_pares(await ap.shell(comando_de_religar(tile), timeout=60), ("Q0", "P1", "P2", "Q", "T", "CLICOU"))
     try:
         if v.get("CLICOU") != "1":
@@ -748,6 +786,174 @@ async def religar_pelo_tile(ap: AparelhoDaRede, pacote: str, tile: str, *, esper
                 logging.getLogger(__name__).info("tile do cliente VPN não removido da barra — %s", exc)
 
 
+# ============================================================================ religar pela interface do cliente (W8)
+# O tile NÃO é o mecanismo de recuperação (W8, 01/10/2026). Fonte de verdade: SFA 1.14.2, commit upstream
+# fc21909df7a3f0fc9435f3866fb6a4960711aa5f (`app/src/main/java/io/nekohasekai/sfa/`):
+#   TileService.onClick → toggleService → BoxService.start() → Settings.serviceClass()   (NÃO chama rebuildServiceMode);
+#   Settings.serviceClass(): serviceMode == VPN → VPNService; qualquer outro valor → ProxyService (o padrão é NORMAL);
+#   MainActivity.startService() → startService0(): rebuildServiceMode() → Libbox.hasTunInbound(perfil selecionado) →
+#     serviceMode → serviceClass() → startForegroundService;
+#   a importação (ProfileManager.create(andSelect = true)) SELECIONA o perfil sem recalcular o serviceMode.
+# ProxyService com perfil que tem `tun`: openTun lança "android: tun inbound requires VPN service" → stopAndAlert →
+# stopSelf (1 a 2 s, sem tun0). Foi o que o tile fez no android-09 (cliente instalado e perfil importado, nunca um Start
+# pela interface: serviceMode ficou no padrão NORMAL). No android-05 o tile funcionava porque o serviceMode já era VPN.
+# O Start da interface (UM toque) fez o 09 subir o VPNService em menos de 1 s (docs/handoffs/w8-diagnostico-android09.md
+# §18). Não se escreve o serviceMode (é do SFA: sem root, sem banco privado); usa-se o caminho oficial.
+#: O commit upstream do SFA 1.14.2 (versionCode 739) em que a lógica acima foi lida (`version.properties` = 1.14.2/739).
+SFA_COMMIT_DE_REFERENCIA = "fc21909df7a3f0fc9435f3866fb6a4960711aa5f"
+ROTULO_INICIAR = "Start"
+ROTULO_PARAR = "Stop"
+#: O contêiner clicável do botão não pode ser enorme perto do rótulo (um clicável que cobre a tela inteira não prova
+#: nada): no android-09 o contêiner tem ~5x a área do rótulo.
+LIMITE_DO_CONTEINER = 40
+_PACOTE = re.compile(r"^[A-Za-z0-9_.]+$")
+
+RELIGADO = "religado_pela_interface"
+JA_HA_TUN = "ja_ha_tun"
+ABERTURA_FALHOU = "abertura_falhou"
+START_NAO_PROVADO = "start_nao_provado"
+INTERFACE_MOSTRA_STOP = "interface_mostra_stop"
+FOCO_NAO_E_O_CLIENTE = "foco_nao_e_o_cliente"
+TUN_NAO_SUBIU = "tun_nao_subiu"
+VPN_NAO_CONECTADA = "vpn_nao_conectada"
+#: Guard D: o Start da interface iniciou o ProxyService (serviceMode não-VPN) num plano que exige TUN. Não é "o cliente
+#: começou": é incompatibilidade de classe/modo, e a recuperação NÃO está concluída.
+CLASSE_ERRADA_PARA_TUN = "wrong_service_class_for_tun"
+
+
+@dataclass(frozen=True)
+class ReligadoPelaInterface:
+    obs: Observacao | None
+    codigo: str
+    detalhe: str
+
+    @property
+    def religado(self) -> bool:
+        return self.codigo == RELIGADO and self.obs is not None
+
+
+def achar_botao(nos: list[NoDaTela], pacote: str, rotulo: str) -> tuple[NoDaTela | None, str]:
+    """O ponto de toque do botão `rotulo` do cliente, PROVADO pela árvore (nunca coordenada fixa, nunca outro pacote):
+    exatamente UM nó habilitado do `pacote` com esse texto, dentro do menor contêiner clicável e habilitado do MESMO
+    pacote que o contém (e não enorme perto dele). O toque vai no centro do RÓTULO, que está dentro do contêiner.
+    Qualquer dúvida: `(None, motivo)` — falha fechada."""
+    alvo = rotulo.casefold()
+    do_pacote = [n for n in nos if n.pacote == pacote and len(n.limites) == 4]
+    rotulados = [n for n in do_pacote if n.texto.casefold() == alvo]
+    if not rotulados:
+        fora = sum(1 for n in nos if n.pacote != pacote and n.texto.casefold() == alvo)
+        return None, (f"nenhum {rotulo!r} do {pacote} na tela" + (f" ({fora} em outro pacote: não é tocado)" if fora else ""))
+    if len(rotulados) > 1:
+        return None, f"{len(rotulados)} nós {rotulo!r} no {pacote}: ambíguo"
+    rotulo_no = rotulados[0]
+    if not rotulo_no.habilitado:
+        return None, f"o {rotulo!r} do {pacote} está desabilitado"
+    conteineres = [n for n in do_pacote if n.clicavel and n.habilitado and n.contem(rotulo_no)]
+    if not conteineres:
+        return None, f"o {rotulo!r} do {pacote} não está dentro de um contêiner clicável e habilitado"
+    menor = min(conteineres, key=lambda n: n.area)
+    if rotulo_no.area <= 0 or menor.area > LIMITE_DO_CONTEINER * rotulo_no.area:
+        return None, f"o contêiner clicável do {rotulo!r} é grande demais para ser o botão"
+    return rotulo_no, ""
+
+
+def comando_do_estado_da_interface(pacote: str) -> str:
+    """Uma ida ao aparelho: o foco da tela, o `tun0`, as classes de serviço do cliente e QUANTAS vezes o ActivityManager
+    iniciou cada uma em primeiro plano (buffer `events`: o `ProxyService` do 09 vivia 1 a 2 s e só ali ficava rastro)."""
+    if not _PACOTE.match(pacote or ""):
+        raise RedeAplicacaoError(f"pacote do cliente VPN inválido: {pacote!r}")
+    servicos = f"dumpsys activity services {pacote} 2>/dev/null"
+    return (
+        "echo F=$(dumpsys window 2>/dev/null | grep -m1 mCurrentFocus); "
+        "echo T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); "
+        f"echo SR=$({servicos} | grep -o '{pacote}/[.]bg[.][A-Za-z]*' | sort -u | tr '\\n' ','); "
+        "L=$(logcat -b events -d 2>/dev/null | grep am_foreground_service_start); "
+        f"echo FP=$(echo \"$L\" | grep -c '{pacote}/[.]bg[.]ProxyService'); "
+        f"echo FV=$(echo \"$L\" | grep -c '{pacote}/[.]bg[.]VPNService')"
+    )
+
+
+def comando_de_devolver_o_foco(pacote: str) -> str:
+    """HOME, e só se o foco ainda é do cliente (o que ESTE gesto abriu); outro app em primeiro plano não é tocado."""
+    return (f"F=$(dumpsys window 2>/dev/null | grep -m1 mCurrentFocus); case \"$F\" in *{pacote}*) "
+            "input keyevent KEYCODE_HOME;; esac; true")
+
+
+def _lido(saida: str) -> dict[str, str]:
+    return _ler_pares(saida, ("F", "T", "SR", "FP", "FV"))
+
+
+def _inteiro(v: dict[str, str], chave: str) -> int | None:
+    return int(v[chave]) if v.get(chave, "").isdigit() else None
+
+
+async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str, *, espera_s: float = 25.0,
+                                 prazo_do_botao_s: float = 15.0, pausa_s: float = 1.0) -> ReligadoPelaInterface:
+    """Sobe o túnel pelo Start da interface do cliente (`MainActivity.startService0`, que recalcula o serviceMode),
+    sem reiniciar o aparelho: abre a atividade, acha o botão `Start` PELA ÁRVORE, toca UMA vez e observa.
+    Sucesso SÓ com `tun0` E VPN CONNECTED. Nunca toca com `tun0` já no ar (um Start/Stop cego desligaria a VPN), nunca
+    com o foco fora do cliente, nunca em nó de outro pacote; sem fallback para o tile. Devolve o código do desfecho."""
+    if not _TILE.match(atividade or ""):
+        raise RedeAplicacaoError(f"atividade do cliente VPN inválida: {atividade!r}")
+    antes = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+    if antes.get("T", "0") not in ("0", ""):
+        return ReligadoPelaInterface(None, JA_HA_TUN, "Start não tocado: já há tun0 (tocar desligaria a VPN)")
+    abriu = False
+    try:
+        try:
+            saida = await ap.shell(f"am start -n {atividade}", timeout=30)
+        except Exception as exc:  # noqa: BLE001 - o desfecho é um código, e quem chama decide (sem cair no tile)
+            return ReligadoPelaInterface(None, ABERTURA_FALHOU, f"o app não abriu: {type(exc).__name__}: {str(exc)[:160]}")
+        abriu = True
+        if re.search(r"\bError\b|Exception|does not exist", saida or ""):
+            return ReligadoPelaInterface(None, ABERTURA_FALHOU, f"o app não abriu: {(saida or '').strip()[:160]}")
+        fim = time.monotonic() + prazo_do_botao_s
+        while True:
+            nos = await ap.arvore()
+            botao, motivo = achar_botao(nos, pacote, ROTULO_INICIAR)
+            if botao is not None:
+                break
+            parar, _ = achar_botao(nos, pacote, ROTULO_PARAR)
+            if parar is not None:
+                return ReligadoPelaInterface(None, INTERFACE_MOSTRA_STOP, "a interface do cliente mostra Stop sem tun0: "
+                                             "o cliente se acha iniciado; Start/Stop não é alternado às cegas")
+            if time.monotonic() >= fim:
+                vistos = ", ".join(n.texto for n in nos if n.pacote == pacote and n.texto)[:200] or "nada do cliente"
+                return ReligadoPelaInterface(None, START_NAO_PROVADO, f"{motivo} (na tela: {vistos}); nenhum toque")
+            await asyncio.sleep(pausa_s)
+        agora = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+        if pacote not in agora.get("F", ""):
+            return ReligadoPelaInterface(None, FOCO_NAO_E_O_CLIENTE, "o foco da tela não é do cliente VPN; nenhum toque "
+                                         f"(foco: {agora.get('F', 'não lido')[:120]})")
+        if agora.get("T", "0") not in ("0", ""):
+            return ReligadoPelaInterface(None, JA_HA_TUN, "Start não tocado: o tun0 subiu enquanto a tela abria")
+        await ap.tocar(*botao.centro)
+        obs = await observar(ap, pacote, esperar_tun_s=espera_s, intervalo_s=2.0)
+        if obs.tun and not obs.vpn_conectada and espera_s > 0:
+            await asyncio.sleep(2.0)                   # o `tun0` aparece um instante antes do CONNECTED no dumpsys
+            obs = await observar(ap, pacote)
+        depois = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+        proxy_novo = (_inteiro(depois, "FP") or 0) > (_inteiro(agora, "FP") or 0)
+        vpn_novo = (_inteiro(depois, "FV") or 0) > (_inteiro(agora, "FV") or 0)
+        if obs.tun and obs.vpn_conectada:
+            return ReligadoPelaInterface(obs, RELIGADO, "túnel religado pelo Start da interface do cliente, sem reinício"
+                                         + ("" if vpn_novo else " (a classe do serviço não pôde ser observada)"))
+        if proxy_novo and not vpn_novo:
+            return ReligadoPelaInterface(None, CLASSE_ERRADA_PARA_TUN,
+                                         "o Start da interface iniciou o ProxyService (serviceMode não-VPN) num plano que "
+                                         "exige TUN: incompatibilidade de classe/modo, recuperação NÃO concluída")
+        if obs.tun:
+            return ReligadoPelaInterface(None, VPN_NAO_CONECTADA, "o tun0 apareceu e a VPN não ficou CONNECTED no dumpsys")
+        return ReligadoPelaInterface(None, TUN_NAO_SUBIU, f"o Start foi tocado e o túnel não subiu em {espera_s:g} s "
+                                     f"(serviços do cliente: {depois.get('SR') or 'nenhum'})")
+    finally:
+        if abriu:
+            try:
+                await ap.shell(comando_de_devolver_o_foco(pacote), timeout=20)
+            except Exception as exc:  # noqa: BLE001 - arrumação: não muda o desfecho
+                logging.getLogger(__name__).info("foco não devolvido ao launcher — %s", exc)
+
+
 async def apagar_relatorios_de_falha(ap: AparelhoDaRede, pacote: str) -> None:
     await ap.shell(f"rm -rf {_crash_reports(pacote)}", timeout=30)
     await ap.shell("sync", timeout=60)
@@ -758,7 +964,9 @@ def endereco_no_tunel(plano_ou_address: str) -> str:
     return str(ipaddress.ip_interface(plano_ou_address).ip)
 
 
-__all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "Observacao", "Plano", "ProxyDoCliente",
+__all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "NoDaTela", "Observacao", "Plano", "ProxyDoCliente",
+           "ReligadoPelaInterface", "SFA_COMMIT_DE_REFERENCIA", "achar_botao", "religar_pela_interface", "comando_do_estado_da_interface",
+           "comando_de_devolver_o_foco",
            "RedeAplicacaoError", "ServidorDeUmaVez", "TunelWg", "apagar_relatorios_de_falha", "comando_de_observacao",
            "comando_da_instalacao", "config_do_cliente", "desfazer", "endereco_no_tunel", "endpoint_do_central",
            "identidade_do_cliente", "instalado_em", "ler_observacao", "montar_plano", "observar", "origem_do_aparelho",
