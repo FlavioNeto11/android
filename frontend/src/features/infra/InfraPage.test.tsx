@@ -557,3 +557,27 @@ describe('InfraPage — vagas por servidor', () => {
     expect(document.querySelector('[role="note"]')).toBeNull();
   });
 });
+
+// RF-40 (prova simulada 13): o aparelho do servidor fora do ar aparecia "parado" aqui e "Desconhecido" no Painel.
+describe('InfraPage — servidor fora do ar (RF-40)', () => {
+  it('o aparelho do servidor sem canal é "desconhecido", não o estado guardado', async () => {
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ connected: false, state: 'offline' }) },
+      instances: { 'android-14': makeInstance(14, { worker_id: 'worker-lan-01', state: 'stopped', kind: 'external' }) },
+      instanceOrder: ['android-14'],
+    });
+    await render();
+    const linha = byRole('button', /^Abrir android-14 na visão de foco/);
+    expect(text(linha)).toContain('desconhecido');
+    expect(text(linha)).not.toContain('parado');
+  });
+
+  it('servidor no ar: o estado guardado vale', async () => {
+    useAppStore.setState({
+      instances: { 'android-14': makeInstance(14, { worker_id: 'worker-lan-01', state: 'stopped', kind: 'external' }) },
+      instanceOrder: ['android-14'],
+    });
+    await render();
+    expect(text(byRole('button', /^Abrir android-14 na visão de foco/))).toContain('parado');
+  });
+});

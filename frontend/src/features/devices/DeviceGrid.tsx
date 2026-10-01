@@ -19,7 +19,7 @@ import { BarraDeSelecao } from '../painel/BarraDeSelecao';
 import { DeviceCard } from './DeviceCard';
 import { DeviceList } from './DeviceList';
 import { countByServer, serverHintOf } from './deviceState';
-import { ehAparelhoParado } from './selos';
+import { aparelhoDesconhecido, ehAparelhoParado } from './selos';
 import styles from './Devices.module.css';
 
 type Visao = 'cards' | 'lista';
@@ -125,7 +125,16 @@ export function DeviceGrid() {
     return taskOrder.filter((id) => vistos.has(id));
   }, [taskOrder, visiveis]);
   const onRange = useCallback((id: string) => selectRange(id, tarefaVisivel), [selectRange, tarefaVisivel]);
-  const idsDaAcao = useMemo(() => tarefaVisivel.filter((id) => selectedSet.has(id)), [tarefaVisivel, selectedSet]);
+  // RF-40: aparelho de servidor sem resposta também fica fora da ação (o estado dele é desconhecido; Iniciar ou Parar
+  // partiria de um estado velho). Continua marcado e é contado à parte, como o escondido pelo filtro.
+  const marcadosVisiveis = useMemo(() => tarefaVisivel.filter((id) => selectedSet.has(id)), [tarefaVisivel, selectedSet]);
+  const idsDaAcao = useMemo(
+    () => marcadosVisiveis.filter((id) => {
+      const inst = instancesMap[id];
+      return !inst || !aparelhoDesconhecido(inst, workersMap);
+    }),
+    [marcadosVisiveis, instancesMap, workersMap]);
+  const desconhecidosIgnorados = marcadosVisiveis.length - idsDaAcao.length;
   const alvos = useMemo(() => {
     const daAcao = new Set(idsDaAcao);
     return instances.filter((i) => daAcao.has(i.id));
@@ -220,6 +229,7 @@ export function DeviceGrid() {
           ids={idsDaAcao}
           selecionados={selecionados}
           foraDoFiltro={foraDoFiltro}
+          desconhecidos={desconhecidosIgnorados}
           emFoco={focusId !== null}
           hasAbsent={alvos.some((i) => i.state === 'absent')}
           hasHibernated={alvos.some((i) => i.state === 'hibernated')}

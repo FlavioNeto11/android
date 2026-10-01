@@ -14,10 +14,11 @@ import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
-import { ACCOUNT_SESSION_STATUS, INSTANCE_STATE, PROFILE_STATUS, metaOf } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
 import { plural } from '../../lib/format';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { seloDoAparelho } from '../devices/selos';
 import type { Aba } from './abas';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
 import { Linha, useVersaoAoVivo } from './detalheComum';
@@ -36,6 +37,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
   const now = useNow();
   const versao = useVersaoAoVivo(profile);
   const aparelho = useAppStore((s) => (profile.instance_id ? s.instances[profile.instance_id] : undefined));
+  const workers = useAppStore((s) => s.workers);
   // N:N (v0.29): quantos aparelhos e qual é o principal (`instance_id`), sem repetir o aparelho de dois apps.
   const aparelhos = idsDosAparelhos(profile);
   const outros = aparelhos.length - (profile.instance_id ? 1 : 0);
@@ -158,7 +160,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
               <>
                 {plural(aparelhos.length, 'aparelho', 'aparelhos')} · <Star size={12} aria-hidden /> principal{' '}
                 <span className="mono">{profile.instance_id}</span>{' '}
-                {aparelho ? <StatusBadge meta={metaOf(INSTANCE_STATE, aparelho.state)} size="sm" /> : null}
+                {aparelho ? <StatusBadge meta={seloDoAparelho(aparelho, workers)} size="sm" /> : null}
                 {outros > 0 ? <span className={styles.muted}> · também em {aparelhos.filter((a) => a !== profile.instance_id).join(', ')}</span> : null}
               </>
             ) : 'Sem aparelho vinculado.'}

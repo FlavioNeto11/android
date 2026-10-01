@@ -12,15 +12,16 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { toneClass } from '../../components/tone';
 import { cx } from '../../lib/format';
 import type { Gesture } from '../../lib/gesture';
-import { INSTANCE_STATE, metaOf, type Tone } from '../../lib/status';
+import type { Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { comandoAbertoDe, useBusyStore } from '../devices/actions';
 import { CommandHistory, CommandSummary } from '../devices/CommandTrail';
-import { focusActionGroups, serverHintOf } from '../devices/deviceState';
+import { MOTIVO_SERVIDOR_SEM_RESPOSTA, focusActionGroups, serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
+import { aparelhoDesconhecido, seloDoAparelho } from '../devices/selos';
 import { FocusActions, type ManualKey } from './FocusActions';
 import {
   AccountsSection, AppsSection, HealthSection, IdentitySection, PersonasSection, ServerSection, TaskSection,
@@ -164,10 +165,14 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
     );
   }
 
-  const online = instance.state === 'online';
+  // RF-40: servidor fora do ar ou sem canal = estado desconhecido, pela mesma regra da lista, do semáforo e da
+  // contagem. O `state` guardado é velho: não vira selo, não liga a tela ao vivo e não habilita verbo nenhum.
+  const desconhecido = aparelhoDesconhecido(instance, workers);
+  const selo = seloDoAparelho(instance, workers);
+  const online = instance.state === 'online' && !desconhecido;
   const server = serverHintOf(instance, workers);
   const loja = instance.kind === 'store';
-  const groups = focusActionGroups(instance, hibernation, openCmd);
+  const groups = focusActionGroups(instance, hibernation, openCmd, desconhecido);
   const verifyReason = groups.apps.find((i) => i.action === 'verify_app')?.disabledReason ?? null;
 
   // ---- faixa "quem controla" ----
@@ -198,7 +203,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         </div>
         {/* De uma tarefa em foco não dava para descobrir em que máquina ela roda (#61 / E5). */}
         <ServerBadge server={server} size="md" />
-        <StatusBadge meta={metaOf(INSTANCE_STATE, instance.state)} srPrefix="Estado" />
+        <StatusBadge meta={selo} srPrefix="Estado" />
         <span className={styles.headerSpacer} />
         {telaEstreita ? null : <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>}
       </div>
@@ -227,7 +232,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               icon={Hand}
               loading={controlBusy}
               disabledReason={
-                instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o antes de assumir o controle.'
+                desconhecido ? MOTIVO_SERVIDOR_SEM_RESPOSTA
+                : instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o antes de assumir o controle.'
                 : !online ? 'O aparelho precisa estar online para assumir o controle.'
                 : pending ? 'Pedido já enviado — aguardando a IA concluir a ação atual.'
                 : null
@@ -242,7 +248,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
 
       <div className={styles.content}>
         <div className={styles.screenCol}>
-          <Screen ref={screenRef} instance={instance} interactive={mine && online} busy={sending} onGesture={onGesture} highlight={highlight} onShownChange={setShown} />
+          <Screen ref={screenRef} instance={instance} desconhecido={desconhecido} interactive={mine && online} busy={sending} onGesture={onGesture} highlight={highlight} onShownChange={setShown} />
         </div>
 
         <div className={styles.side}>
@@ -253,7 +259,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           {online && !loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} /> : null}
 
           <IdentitySection instance={instance} server={server} appName={defaultApp?.name ?? instance.app_id} />
-          <HealthSection instance={instance} />
+          <HealthSection instance={instance} selo={selo} desconhecido={desconhecido} />
           <ServerSection instance={instance} server={server} />
           <TaskSection instance={instance} openCmd={openCmd} />
           {/* "Sessão" deixou de ser um bloco à parte: a sessão é de uma conta num aparelho, então aparece na persona
@@ -271,6 +277,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             pending={!!pending}
             sending={sending}
             defaultApp={defaultApp}
+            desconhecido={desconhecido}
             contextLoading={contexto.carregando}
             onKey={(key: ManualKey) => void sendInput({ type: 'key', key })}
             onText={(text) => sendInput({ type: 'text', text })}
