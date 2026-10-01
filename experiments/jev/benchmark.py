@@ -39,10 +39,11 @@ HERE = Path(__file__).resolve().parent
 #: `--provider jev` sobre o código real aborta com BLOCKED_PRIVACY, mesmo com chave e `--confirm-external-send`.
 #: Só vira True num commit próprio, citando a autorização EXPLÍCITA do dono (docs/research/jev-pilot.md §35).
 PRIVATE_CODE_SEND_APPROVED = False
-#: TRAVA do benchmark PÚBLICO (Scrapy fixado, licença BSD-3): preparado em 2026-10-01 e NÃO autorizado a rodar com o Jev.
-#: Só vira True num commit próprio, citando a autorização EXPLÍCITA do dono para este benchmark e a chave local disponível.
+#: TRAVA do benchmark PÚBLICO (Scrapy fixado, licença BSD-3). Liberada em 2026-10-01 pela autorização EXPLÍCITA do dono para UMA
+#: rodada real (jev_rerank 20 + jev_map 40, no máximo 60 tentativas, max_retries=0) sobre o checkout público fixado; o código
+#: privado continua proibido. Qualquer outra rodada exige nova autorização (voltar este valor a False depois da rodada).
 #: Não interfere em `PRIVATE_CODE_SEND_APPROVED`: o caminho do código privado continua exigindo o True acima.
-PUBLIC_BENCHMARK_AUTHORIZED = False
+PUBLIC_BENCHMARK_AUTHORIZED = True
 N_SHORTLIST = 30
 BYTES_PER_TOKEN_PROXY = 4.0       # PROXY: o tokenizador do Jev é desconhecido; usado só para estimar custo
 
