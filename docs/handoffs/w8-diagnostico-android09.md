@@ -72,7 +72,7 @@ Memória do notebook é **controle**, não hipótese (`memoria-do-notebook.md`, 
 Ordem do caminho do tile: **F1_SYSTEMUI_RESTART** (pid do SystemUI mudou) → **F2_TILE_NOT_ADDED** (tile ausente em ≥3
 leituras) → **F3_TILE_NOT_CLICKED** (logcat capturado sem sinal do tile e o cliente não nasceu) →
 **F4_PACKAGE_STAYS_STOPPED** (`stopped=true` e nenhum processo) → **F5_VPN_SERVICE_NOT_STARTED** (ANR/`startForeground`, ou
-processo sem serviço no logcat) → **F6_TUN_NOT_CREATED** (serviço subiu, sem `tun0`) → **F7_VPN_NOT_CONNECTED** (`tun0` ≥5 s
+processo sem serviço no logcat) → **F6_TUN_NOT_CREATED_AFTER_TILE** (serviço subiu, sem `tun0`; era `F6_TUN_NOT_CREATED` até 3060cd9) → **F7_VPN_NOT_CONNECTED** (`tun0` ≥5 s
 sem `VPN CONNECTED`) → **F8_LOCKDOWN_MISMATCH** (regras ≠ política) → **F9_NO_WIREGUARD_HANDSHAKE** (peer sem conexão nova).
 Modo `boot`: **F10_BOOT_RECOVERY_FAILED** (180 s de uptime sem `tun0`). **F_OTHER**: tudo passou mas o túnel caiu no fim.
 Regras: estágio sem dado = `UNKNOWN`; falha com estágio anterior desconhecido = `UNKNOWN` com `candidato`; ausência de
@@ -205,7 +205,7 @@ Depois: `dumpsys activity services` sem `ProxyService`; `ACTIVATE_VPN: allow` (o
 `cmd appops`); sem ANR, sem crash (`CrashReport-Application.log` com 0 bytes e data de 10:41 -0300, anterior), sem notificação
 de alerta. O conteúdo de `crash_reports` não foi lido (pode ter chave); só listado.
 
-**Classificador** (`diag-w8.py classificar --bloqueio nao`, 16:39:20Z–16:40:12Z): `F6_TUN_NOT_CREATED`; F1–F5 `PASS`; F7–F9 não
+**Classificador** (`diag-w8.py classificar --bloqueio nao`, 16:39:20Z–16:40:12Z): `F6_TUN_NOT_CREATED` (hoje `F6_TUN_NOT_CREATED_AFTER_TILE`); F1–F5 `PASS`; F7–F9 não
 alcançados (F9 não se aplica: não há peer). **Ressalva:** o `PASS` de F5 casou `startForegroundCount:0` numa linha do
 ActivityManager, não um serviço de VPN estabelecido; a leitura certa da evidência é "o serviço subiu e parou sozinho em 1,8 s, sem
 `tun0`". O motivo do auto-stop não está no logcat (as mensagens do núcleo vão para o arquivo do app, ilegível sem root).
@@ -216,11 +216,50 @@ CONNECTED, tile ausente, cliente vivo (6512) e `stopped=false` como antes, andro
 comando aberto. A última checagem de conectividade do central (`healthy`) é de 16:37:46Z, **anterior** ao A1; não houve uma nova.
 Nenhum reinício; outros aparelhos não tocados.
 
-**Diagnóstico: `TILE_BUG_CONFIRMED`, no sentido do quadro do plano** (o gesto isolado não sobe o túnel neste aparelho, sem force-stop,
-sem always-on e sem lockdown). Mais preciso do que o rótulo: o **clique chega** (F3), o `ProxyService` do cliente **sobe e se
+**Diagnóstico: `F6_TUN_NOT_CREATED_AFTER_TILE`** (o gesto isolado não sobe o túnel neste aparelho, sem force-stop, sem always-on e
+sem lockdown). O rótulo `TILE_BUG_CONFIRMED` usado na primeira redação foi abandonado: o tile não é o ponto quebrado.
+H1–H4 não são a causa principal sem evidência nova. Mais preciso: o **clique chega** (F3), o `ProxyService` do cliente **sobe e se
 desliga em 1,8 s** sem criar o `tun0` (o modo "serviço que sobe e para" do P16/H5), **sem** o force-stop (H4 fora como causa
 única), **sem** o SystemUI reiniciar (H1) e com o tile na barra (H2). Fora do alcance desta execução: (a) por que o serviço para
 (sem log do núcleo); (b) se a falta de peer no servidor, ou o perfil que ficou no app depois do rollback das 13:37Z, faz o cliente
 desistir (A1 foi sem peer por desenho; no W8 original havia peer); (c) um controle no android-05 (religou 5 de 5) para saber se o
 `netlink bind` negado também aparece ali. **W8 = OPEN.** Mudança de código do produto: não recomendada ainda
 (`rede_aplicacao.py`, `rede_convergencia.py`, `config.py` intocados).
+
+## 14. Instrumentação melhorada e o controle no android-05 (01/10/2026, ~17:00Z)
+
+**Coletor (`3060cd9`, `test(diag): preserve VPN client evidence`, `simulated` + um ensaio `real` de 14 s só leitura no android-09).**
+O A1 mostrou que o filtro perdia as linhas úteis: `am_foreground_service_start/stop` e `sysui_multi_action` estão no buffer
+`events`, e o coletor lia o `main`. Agora: `logcat -b all`; o filtro também guarda tudo o que o pid vivo do cliente diz (pid
+repassado pelo amostrador, retido 120 s), `ProxyService`/`VpnService`/`TileServices`, `am_foreground_service_*` e `avc: denied`/
+`netlink` só quando ligados ao cliente (pacote ou pid); janela larga limitada (`logcat-wide.0/1.txt`, rodízio de ~8 MB, só
+durante a coleta); segredos redigidos por formato (`private_key`, `psk`, `password`, `Bearer`); parada limpa pelo arquivo
+`parar` na pasta da coleta; `resumo` (clique, início/fim do `ProxyService`, SELinux, primeiro tun0/CONNECTED, retorno do peer).
+O `PASS` do F5 não casa mais `startForegroundCount:0`. Rodando o `resumo` nas linhas reais do A1: clique→início 0,333 s, início→
+fim 1,796 s, `STOP_FOREGROUND`, `netlink bind` e `somaxconn` negados, sem ANR e sem `Established by`. Nada de root, de arquivo
+privado do app nem de `crash_reports`.
+
+**Órfão:** o `adb logcat` pid 30360 (`-s 127.0.0.1:15555 logcat -v threadtime -T 20`, assinatura do laço do coletor, criado às
+16:21:07Z, antes de qualquer coleta desta sessão, pai inexistente, dono Administrator, sem filhos) foi encerrado só por esse pid;
+o logcat da própria plataforma (pid 24440, `-P 5037`) ficou.
+
+**android-09, releitura às 16:56Z (só leitura):** online, `always_on=null`, `lockdown=0`, sem `tun0`, VPN não conectada, sem
+linha `device_network`, sem peer, sem comando aberto, cliente vivo (6512), `stopped=false`; conectividade `healthy` às
+16:53:06Z (**depois** do A1). Não foi mais tocado.
+
+**CONTROL-05: `NOT_RUN` — BLOCKED na precondição "online".** O android-05 está `hibernated` ("snapshot salvo") desde
+10:05:41Z (comando `hibernate` `succeeded`), sem processo (`emulator-5562` fora do `adb devices`), `readiness not_running`.
+Lido do central: QA (`qa-user-05`), sem conta travada, sem comando ou execução aberta, sem controle manual; `device_network`
+rev 1 = 1, `exigida_com_bloqueio`, `trafego_verificado`, medição `verified_at` 10:02:14Z, `leak_result=1` (30/09 15:26:50Z,
+cliente `1.14.2 (739)`), `leak_pending=0`; peer `10.66.0.2` no servidor com `last_connection=null`. **Não foi possível ler do aparelho:** pids,
+`stopped`, always-on, lockdown, tun0, VPN, regras e Q0 (sem processo). Também não rodou nada no 05.
+
+Por que acordá-lo é decisão do dono: (1) o acordar dispara o motivo `ligou` da convergência → `conferir` em
+`trafego_verificado`; se o túnel não voltar do snapshot, a rede vai a `configurado` e **pede um reinício** (proibido neste
+controle), e a medição de 6 h (`verified_at` 10:02Z) já venceu; (2) a base medida seria a recuperação do próprio produto, não o
+estado "known-good" histórico; (3) sem foco ou controle manual o rodízio pode hibernar o 05 de novo no meio do experimento, e o
+controle manual conflita com "nenhum operador controlando"; (4) o acionador atual (`diag-w8-tile.py`) só aceita o 09, com a
+precondição invertida (sem rede gerenciada): o controle pede um perfil novo, de uma instância só (gate com rede gerenciada,
+rollback por tun0/CONNECTED/`last_connection`). O android-02, o outro QA gerenciado, também está hibernado. Os outros aparelhos
+com rede gerenciada (01/03/06) têm conta real: excluídos.
+

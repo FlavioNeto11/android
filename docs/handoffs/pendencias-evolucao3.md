@@ -385,6 +385,17 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 14 — 01/10 ~17:00Z — coletor melhorado; CONTROL-05 BLOCKED (android-05 hibernado)
+
+- Coletor `3060cd9`: `logcat -b all` (os eventos `am_foreground_service_*` ficam no buffer `events`), filtro também pelo pid vivo do
+  cliente, janela larga com teto, redação de segredos, parada pelo arquivo `parar`, `resumo` dos sinais. O A1 relido: clique→
+  `ProxyService` 0,333 s, `ProxyService` vivo 1,796 s, `STOP_FOREGROUND`, `netlink bind` e `somaxconn` negados, sem ANR.
+- Órfão `adb logcat` pid 30360 encerrado por pid (evidência em `w8-diagnostico-android09.md` §14). android-09 relido às 16:56Z:
+  estado base, conectividade `healthy` às 16:53:06Z (depois do A1).
+- **CONTROL-05 `NOT_RUN`:** o android-05 está `hibernated` desde 10:05:41Z; a precondição "online" não vale e acordá-lo pode
+  provocar o reinício da própria rede (`ligou` → `conferir`). Decisão do dono: acordar o 05 e deixar o produto convergir (com
+  proteção de controle manual na janela), ou outro caminho. Nada foi escrito no 05.
+
 ### Checkpoint 13 — 01/10 ~16:45Z — W8, Fase A1 no android-09 (`real`)
 
 - Acionador separado `scripts/diag-w8-tile.py` (`6696931`; seguro por padrão, só android-09, vocabulário de escrita fechado e
@@ -392,7 +403,7 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   stdout/stderr/exit code do clique capturados (exit 0, saídas vazias, 13 ms), observação de 37 s: **sem `tun0`**.
 - No logcat do aparelho: clique entregue ao tile às 16:39:33.207Z; o `ProxyService` do cliente sobe (FGS permitido por
   `OP_ACTIVATE_VPN`) e **para sozinho 1,789 s depois**, sem `Established by`, ANR ou crash; `ACTIVATE_VPN: allow`. Classificador
-  `F6_TUN_NOT_CREATED` (F1–F5 `PASS`, com a ressalva do F5 em `w8-diagnostico-android09.md` §13).
+  `F6_TUN_NOT_CREATED_AFTER_TILE` (era `F6_TUN_NOT_CREATED`; F1–F5 `PASS`, com a ressalva do F5 em `w8-diagnostico-android09.md` §13).
 - A2 (force-stop) `NOT_RUN` pela regra; rollback: tile ao Q0 (ausente), estado relido (`always_on=null`, `lockdown=0`, sem
   `tun0`/VPN), sem reinício, sem outro aparelho. **W8 = OPEN**; sem mudança de código do produto. Em aberto: o motivo do auto-stop
   do serviço, o efeito da falta de peer neste teste e um controle no android-05.
