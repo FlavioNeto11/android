@@ -92,6 +92,24 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
     expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Personas']);
   });
 
+  it('tarefa 13: cada item tem nome explícito (aria-label), recolhido ou não, e a contagem vai junto no nome', async () => {
+    const backend = new FakeBackend();
+    backend.install();
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [], total: 3 }));
+    useSessionStore.setState({ operator: 'ana' });
+    const el = await renderBar([]);
+    const link = (h: string) => menu(el).querySelector(`a[href="${h}"]`) as HTMLElement;
+    expect(link('#/diagnostico').getAttribute('aria-label')).toBe('Diagnóstico');
+    await waitFor(() => expect(link('#/aprendizado').getAttribute('aria-label')).toBe('Aprendizado, 3 para aprovar'));
+    await act(async () => useUiStore.getState().setMenuRecolhido(true));
+    // Recolhido o rótulo some da vista, mas o nome acessível segue o mesmo e o item atual continua marcado.
+    expect(link('#/diagnostico').getAttribute('aria-label')).toBe('Diagnóstico');
+    expect(link('#/painel').getAttribute('aria-current')).toBe('page');
+    for (const a of Array.from(menu(el).querySelectorAll('a'))) expect(a.getAttribute('aria-label')).toBeTruthy();
+    useSessionStore.setState({ operator: null });
+    useContagemDoAprendizado.setState({ pendentes: null });
+  });
+
   it('o aparelho em Foco vai junto na troca de seção', async () => {
     const el = await renderBar([]);
     await act(async () => useUiStore.getState().openFocus('android-01'));

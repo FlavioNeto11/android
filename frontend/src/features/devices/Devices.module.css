@@ -593,9 +593,9 @@
 .logResumo {
   color: var(--text-2);
   cursor: pointer;
-  /* 32 px de área de clique sem mexer na linha: padding que some na margem negativa */
-  padding: 6px 0;
-  margin: -6px 0;
+  /* 32 px de área de clique sem mexer na linha: padding que some na margem negativa (7 px: 19,5 + 14 = 33,5 px) */
+  padding: 7px 0;
+  margin: -7px 0;
   font-size: var(--fs-xs);
 }
 
@@ -616,9 +616,10 @@
 
 /* 11.5 — contador de estado que seleciona os aparelhos daquele estado. Parece texto até o ponteiro chegar. */
 .stateQuick {
-  /* área de clique de 32 px sem mudar a linha de contadores: padding que some na margem negativa */
-  padding: 6px 2px;
-  margin: -6px 0;
+  /* área de clique de 32 px sem mudar a linha de contadores: padding que some na margem negativa. 7 px e não 6: a
+     linha de 13 px x 1,5 = 19,5 px com 6 + 6 dava 31,5 px, meio pixel abaixo do mínimo (tarefa 13, rodada 2) */
+  padding: 7px 2px;
+  margin: -7px 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
