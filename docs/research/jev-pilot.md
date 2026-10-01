@@ -968,3 +968,75 @@ verdadeiro de 80 % acontece em ~44 % das vezes. H1 com tolerância 1: se cada it
 
 Autorização explícita do dono → commit próprio com `PUBLIC_BENCHMARK_AUTHORIZED = True` → `holdout_bench/freeze.py --check` → `benchmark.py --golden holdout_bench/golden.json --corpus-root data/jev-pilot/public/poetry --provider jev --confirm-external-send --max-calls 60 --max-retries 0` →
 volta a `False`. A chave deve ser **rotacionada** antes (foi colada em conversa: `KEY_ROTATION_RECOMMENDED = YES`).
+
+### 39.7 RESULTADO REAL do holdout (2026-10-01, uma rodada, branch `claude/jev-pilot`) — veredito mecânico `FAIL` (H9)
+
+Prova: **real** (máquina central, 2026-10-01; trava liberada em `89985aa` por autorização explícita do dono em chat e devolvida a `False` no commit seguinte;
+comando `benchmark.py --golden holdout_bench/golden.json --corpus-root data/jev-pilot/public/poetry --provider jev --confirm-external-send --max-calls 60 --max-retries 0`).
+Bruto em `data/jev-pilot/holdout-real/` (ignorado). Antes da rodada: `freeze.py --check` OK; SHA `94b6e35b9091991887aa54feeb3771a86d3bd692`, origem e árvore limpa, MIT,
+0 symlinks escapando, regra híbrida `0a904767…`, `thresholds.json` sha256 `26ef320dce38ca410bd0f1124b95399c6da7e57d172279bf630bfa17773d5815`,
+`PRIVATE_CODE_SEND_APPROVED = False`. Nada do desenho mudou antes, durante ou depois (`freeze.py --check` OK depois). O avaliador `holdout_eval.py` é o congelado.
+
+**Rede:** 60 tentativas (teto 60, `max_retries = 0`), todas HTTP 200, `PARSE_OK`, 0 falhas, rodada não interrompida. Latência por requisição: p50 356 / p95 425 / max 484 ms.
+Entrada 2.010.186 B → **583.649 tokens** reais (`usage`); saída 116.004 tokens (grátis); custo **US$ 0,024513** (previsto US$ 0,0235–0,0438; extrapolação ≈ 0,026).
+**Redações: 2 do tipo `email`** (categoria SOFT; endereços de autor em texto do repositório público, substituídos antes do envio); 0 achados duros (nada bloqueou o payload).
+
+| Grupo | Variante | R@1 | R@3 | R@5 |
+|---|---|---|---|---|
+| EXACT (12) | ripgrep | 0,833 | 1,000 | 1,000 |
+| EXACT (12) | BM25 | 0,917 | 1,000 | 1,000 |
+| EXACT (12) | `jev_map` | 0,667 | 0,750 | 0,833 |
+| EXACT (12) | **híbrido** | 0,833 | **1,000** | 1,000 |
+| SEMANTIC (12) | ripgrep | 0,208 | 0,542 | 0,542 |
+| SEMANTIC (12) | BM25 | 0,250 | 0,500 | 0,583 |
+| SEMANTIC (12) | `jev_map` | 0,583 | 0,917 | 0,958 |
+| SEMANTIC (12) | **híbrido** | 0,583 | **0,917** | 0,958 |
+| MIXED (6) | ripgrep | 0,000 | 0,500 | 0,500 |
+| MIXED (6) | BM25 | 0,500 | 1,000 | 1,000 |
+| MIXED (6) | `jev_map` | 1,000 | 1,000 | 1,000 |
+| MIXED (6) | **híbrido** | **0,000** | **1,000** | 1,000 |
+| ALL (30) | ripgrep | 0,417 | 0,717 | 0,717 |
+| ALL (30) | BM25 | 0,567 | 0,800 | 0,833 |
+| ALL (30) | `jev_map` | 0,700 | 0,867 | 0,917 |
+| ALL (30) | **híbrido** | 0,567 | **0,967** | 0,983 |
+
+Contexto (mediana, bytes PROXY): híbrido 3.415 · `jev_map` 2.765 · ripgrep 4.075 · BM25 8.758 · leitura ingênua 20.106. Latência por pergunta do híbrido (2 requisições + busca local): p50 844 ms, p95 996 ms.
+Critical misses do híbrido: 0 de 30.
+
+| | Observado | Limiar | Resultado |
+|---|---|---|---|
+| H1 EXACT sem regressão | híbrido 12,0 / 12; melhor baseline 12,0 | ≥ melhor − 1 | **PASS** |
+| H2 MIXED | híbrido 6 / 6; melhor baseline 6; `jev_map` 6 | ≥ melhor baseline e ≥ `jev_map` − 1 | **PASS** |
+| H3 ganho SEMANTIC | híbrido 11,0 / 12; melhor baseline 6,5 | ≥ max(8; 9,25) | **PASS** |
+| H4 contexto | 3.415 | ≤ BM25 8.758 e ≤ 0,5 × 20.106 | **PASS** |
+| H5 latência | p50 844 / p95 996 ms | ≤ 1500 / ≤ 4000 | **PASS** |
+| H6 confiabilidade | 0 de 30 | ≤ 1 | **PASS** |
+| H7 custo | US$ 0,0245 total; US$ 0,0008 por pergunta | ≤ 1,00; ≤ 0,05 | **PASS** |
+| H8 critical misses | 0 de 30 | ≤ 2 | **PASS** |
+| H9 proveniência/privacidade | checkout verificado; 60 tentativas; **redações `{"email": 2}`**; hash da regra igual | 0 redações | **FAIL** |
+
+**`HOLDOUT_VERDICT = FAIL`**, como produzido pelo avaliador congelado (H9 está no núcleo: H1, H3, H6, H8, H9).
+
+**Sobre o único critério que falhou (explicação, não reavaliação).** O texto do limiar H9 fala em `hard_redaction_hits_max: 0` ("achado duro de segredo"), mas o avaliador
+que escrevi compara o **total** de redações de qualquer tipo com 0 (`redactions == 0`) e o contador do provedor soma as categorias SOFT. Os 2 achados são e-mails (SOFT, redigidos antes
+do envio, nenhum segredo, nenhum bloqueio). O resultado mecânico **continua FAIL** por instrução do dono ("não reinterpretar", "falha por um único item continua FAIL"), o avaliador
+**não foi alterado** e nada foi re-pontuado. Fica registrado como discrepância entre o texto do limiar e o código do avaliador (defeito meu, descoberto só agora); lida pelo
+texto (só achados duros), H9 também passaria, mas essa leitura NÃO é o veredito. A decisão de tratar isso como falha do protocolo ou como defeito de implementação é do dono.
+
+**Sensibilidade estatística (n pequeno).** H3: 11 contra o necessário 9,25 (folga de ~1,75 itens; com acerto verdadeiro de 80 % a probabilidade de ≥ 10/12 era ~56 %). H1 e H2 passaram
+com resultado perfeito (12/12 e 6/6). Nenhum critério falhou por 1 item de medição; o único FAIL é o de proveniência.
+
+**O que o resultado mostra (e o que não mostra).**
+- Reproduziu o padrão do Scrapy: o `jev_map` sozinho **perde itens EXACT** (R@3 0,750; 3 de 12 perdidos) e a salvaguarda lexical os recupera (R@3 1,000). Isso é o que a regra foi desenhada para fazer;
+  agora medido em corpus novo, mas com a regra escrita depois de ver o Scrapy.
+- A salvaguarda **não dominou indevidamente** o Jev em R@3 nos MIXED (6/6 = `jev_map`), mas **destruiu o R@1 neles**: 0,000 contra 1,000 do `jev_map`, porque o arquivo lexical errado vai sempre em 1º por construção.
+  No ALL o R@1 do híbrido (0,567) é **menor** que o do `jev_map` (0,700). O ganho do híbrido está em R@3/R@5, não em R@1: para um agente que olha só o 1º resultado a regra piora.
+- SEMANTIC: o híbrido é o `jev_map` por construção (0,917 / 0,958 contra 0,50–0,54 das baselines).
+- **Limitação de memorização (não eliminada):** o Poetry é público desde 2018 e pode ter aparecido no treino do modelo. O que se mediu é *utilidade operacional de recuperação* no corpus fixado, **não** recuperação
+  "pura" a partir do payload; o ganho SEMANTIC não prova que o Jev raciocinou só sobre o mapa enviado.
+- Avaliador único (o autor do golden), 30 itens, baselines mecânicas de um disparo, MIXED construído para estressar (não estima a frequência real).
+- `RETRIEVAL_HYBRID_EVIDENCE`: evidência positiva de recuperação em R@3/R@5 nos dois corpora públicos (a do Scrapy foi exploratória), com custo e latência baixos; **não** é evidência de adoção, de ganho no código privado, nem de que o R@1 melhora.
+
+**Regra de parada (dono).** Esta é a última rodada pública autorizada: nenhum terceiro corpus, nenhum ajuste de regra, nenhuma nova rodada. O código privado segue `BLOCKED_PRIVACY`
+(`PRIVATE_CODE_SEND_APPROVED = False`, `STANDARD_API_RETENTION = UNKNOWN`); depende separadamente de ZDR/retenção/contrato. `KEY_ROTATION_RECOMMENDED = YES`.
+`PUBLIC_BENCHMARK_AUTHORIZED` voltou a `False`. O Scrapy permanece `NO_GO` (`ORIGINAL_VERDICT_CHANGED = NO`).

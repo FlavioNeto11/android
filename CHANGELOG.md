@@ -92,6 +92,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Holdout confirmatório do híbrido **preparado, não executado** (Poetry 2.5.1, MIT, 30 perguntas: 12 EXACT, 12 SEMANTIC, 6 MIXED; 60 requisições previstas, ≈ US$ 0,026):
     limiares H1–H9 em itens e congelamento por hash (`experiments/jev/holdout_bench/`), harness com linha `hybrid` sobre a mesma resposta do `jev_map`. Trava `PUBLIC_BENCHMARK_AUTHORIZED = False`;
     código privado segue `BLOCKED_PRIVACY`; chave recomendada para rotação. Detalhe em `docs/research/jev-pilot.md` §39.
+  - Holdout do híbrido **executado** (1 rodada, 60 tentativas, 583.649 tokens, US$ 0,0245): híbrido ALL R@3 0,967 contra `jev_map` 0,867, BM25 0,800 e ripgrep 0,717; EXACT R@3 1,000, SEMANTIC 0,917, MIXED 1,000
+    (mas R@1 do MIXED 0,000 contra 1,000 do `jev_map`). H1–H8 passam; **H9 falha** (2 redações de e-mail, categoria SOFT, contra o limite 0 do avaliador) ⇒ veredito mecânico `FAIL`, não reinterpretado.
+    Scrapy segue `NO_GO`; trava pública de volta a `False`; código privado `BLOCKED_PRIVACY`; rodada final autorizada. Detalhe em `docs/research/jev-pilot.md` §39.7.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 
