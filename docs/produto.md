@@ -56,7 +56,11 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
 - **Menu lateral e cabeçalho (revisão de UX, 30/09).** As nove seções (Painel, Personas, Aplicativos, Execuções, Aprendizado,
   Infraestrutura, Configuração, Diagnóstico e Pendências) ficam num menu lateral recolhível (ícone e rótulo; só ícone quando
-  recolhido; abaixo de 1024 px vira gaveta, aberta pelo botão "Menu", com o Tab preso dentro e Esc para fechar). O item
+  recolhido; **abre expandido a partir de 1280 px** e recolhido abaixo, e a escolha da pessoa fica guardada no navegador e vence
+  o padrão; abaixo de 1024 px vira gaveta, aberta pelo botão "Menu", que traz o selo de pendências, com o Tab preso dentro e Esc
+  para fechar). **No celular (abaixo de 768 px) o cabeçalho é uma linha só de 56 px**: Menu, marca, semáforo de saúde e o botão
+  "Resumo", que abre o painel com as métricas, os custos e a sessão; de 768 a 1023 px, CPU, RAM e custos viram o chip "Recursos".
+  Quando uma origem de pendências falha ao carregar, o total aparece como "4+" (ou "?"), nunca como um número menor sem aviso). O item
   atual tem `aria-current`; o selo de Pendências é o total da caixa. O topo guarda a marca, o chip do modelo de IA, o aviso
   de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque em três grupos (Saúde, Capacidade e
   Custos): o semáforo do ambiente (OK, Atenção ou Crítico, com os motivos e links), aparelhos online/cadastrados e vagas

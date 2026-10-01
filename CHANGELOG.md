@@ -69,6 +69,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
+
+Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `simulated` e `real` contra o backend simulado do
+worktree. Relatórios em [`docs/revisoes-ux/rodada-2/`](docs/revisoes-ux/rodada-2/).
+
+- **Cabeçalho:** uma linha de 56 px no celular (Menu, marca, saúde, "Resumo"); chip "Recursos" no tablet.
+- **Persona:** cabeçalho único, 5 seções, nome legível na URL (`#/personas/lucas-almeida`) com o id antigo aceito.
+- **Execução e pendências:** resumo no topo da execução, aba padrão por situação, regra de pendências testada nas quatro
+  origens; total com "4+" quando uma origem falha.
+- **Acessibilidade e texto:** menu expandido a partir de 1280 px, alvos de 32 px, rótulo do gráfico em 13 px, nome acessível do
+  menu começando pelo texto visível, `TruncatedText` e quebra de linha nos metadados da Infraestrutura.
+- **Correções da revalidação:** caixa "Responda aqui" e barra de seleção legíveis a 390 px; sem contagem de sucesso em plano.
+
 ## 2026-10-01 (madrugada) — Revisão de UX/UI do portal
 
 Integrado na `main`; **não implantado** (exige reiniciar o backend: o `GET /api/snapshot` mudou). Prova `simulated`; leitura

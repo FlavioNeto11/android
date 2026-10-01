@@ -5,6 +5,17 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main`, NÃO IMPLANTADA.** Seis briefings do dono (cabeçalho compacto no
+  celular, texto cortado com tooltip, detalhe da persona em 5 seções e com nome legível na URL, acessibilidade residual,
+  resumo da execução e regra de pendências, revalidação) mais a rodada de correções do revisor. Relatórios em
+  [revisoes-ux/rodada-2/](revisoes-ux/rodada-2/); veredito em [revalidacao-final.md](revisoes-ux/rodada-2/revalidacao-final.md):
+  pronto com ressalvas (0 altos; os 2 médios, M1 e M2, foram corrigidos em `16-correcoes-finais.md`).
+  - **Para o deploy (coordenação):** só o painel (`npm run build` + deploy); a rodada 2 **não** mexe no backend.
+  - **Prova:** `simulated` (frontend 94 arquivos/1133 testes na árvore mesclada com a `main`); `real` só contra o backend simulado
+    do worktree (matriz 9 telas x 6 larguras, axe 4.13, Lighthouse 13.5 em Painel e Personas); `not_run`: semáforo no nível
+    "Atenção", custos no topo, execução em andamento, origem Intervenção, leitor de tela e toque real.
+  - **Abertos (baixos):** B5, B6, B9–B11 da revalidação e RF-07r, 19, 27, 30, 32, 35, 41, 42, 48, 49 da rodada 1.
+
 - **Revisão de UX/UI do portal (01/10, madrugada): INTEGRADA NA `main`, NÃO IMPLANTADA.** Nove tarefas dos briefings do dono
   (menu lateral e rotas por objeto, números e semáforo numa fonte única, barra de seleção e drawer, textos e cards, busca e
   tabela, caixa única de Pendências, tipografia e acessibilidade, varredura de textos, revisão final) mais correções e
