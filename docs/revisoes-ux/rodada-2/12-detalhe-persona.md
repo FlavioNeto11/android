@@ -119,4 +119,9 @@ seções), `ProfilesPage.test.tsx` (hashes com slug), `NovaPersonaLote.test.tsx`
   agente que entre num backend simulado em `localhost` derrubou a minha sessão duas vezes (o RF-47 de novo); refiz a entrada
   pelo próprio `/api/login` do simulado. (2) Editar `lib/rotas.ts` com o vite aberto deixa a aba com o store antigo
   (a navegação por hash para de reagir) até recarregar: é só desenvolvimento.
+- **Deslize de regra**: o primeiro `navigate` saiu sem `tabId` e redirecionou uma aba que já existia no painel (`seed`, a 390x844)
+  para `localhost:5112/#/personas`. Corrigi na hora, abri aba própria (`tab-1`, depois `tab-4`, ambas fechadas ao fim com a
+  emulação de tamanho desfeita) e não usei mais a `seed`.
+- **Textos**: conferi o glossário (08 e 10): Persona, Aparelho, sem "perfil" nem "dispositivo" nas cadeias novas; nada em
+  conflito com o que as rodadas anteriores decidiram.
 - Não alterei `CHANGELOG.md`, `docs/estado-atual.md` nem ADR (o orquestrador consolida).
