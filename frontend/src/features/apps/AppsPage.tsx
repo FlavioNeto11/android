@@ -24,10 +24,12 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
+import { TruncatedText } from '../../components/TruncatedText';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { ACCOUNT_SESSION_STATUS, APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, metaOf, RUN_STATUS } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
+import { tituloCurto } from '../runs/filtroExecucoes';
 import { LojaPage } from '../loja/LojaPage';
 import { ProxyPage } from '../loja/ProxyPage';
 import { RedePage } from '../rede/RedePage';
@@ -254,7 +256,7 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                   <li key={r.id}>
                     <button type="button" className={styles.runRow} onClick={() => abrirExecucao(r.id)}>
                       <StatusBadge meta={metaOf(RUN_STATUS, r.status)} size="sm" />
-                      <span className={styles.runCommand}>{r.command}</span>
+                      <TruncatedText className={styles.runCommand} linhas={2} completo={r.command}>{tituloCurto(r.command).titulo}</TruncatedText>
                       {(r.app_ids ?? []).length > 1 ? <Badge size="sm" tone="accent">{(r.app_ids ?? []).length} apps</Badge> : null}
                       <span className={styles.muted}>{tempoRelativo(r.created_at, now)}</span>
                     </button>

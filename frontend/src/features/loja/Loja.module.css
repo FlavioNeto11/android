@@ -23,8 +23,9 @@
 .icon img { width: 100%; height: 100%; object-fit: cover; }
 .iconBig { flex-basis: 72px; width: 72px; height: 72px; border-radius: 18px; font-size: 30px; }
 .title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.title strong { font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.title code { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title strong { font-size: var(--fs-md); overflow-wrap: anywhere; }
+/* Nome do app e do pacote quebram em vez de cortar: é o dado que distingue um app do outro (sem tooltip em toque). */
+.title code { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .muted { color: var(--text-3); font-size: var(--fs-sm); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }

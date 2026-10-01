@@ -589,7 +589,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
         const recusa = recusas[i.id];
         const aqui = personas.get(i.id) ?? [];
         return (
-          <li key={i.id} className={cx(styles.aparelho, (recusa || aqui.length > 0) && styles.aparelhoComRecusa)}>
+          <li key={i.id} className={styles.aparelho}>
             <button type="button" className={styles.aparelhoBtn} onClick={() => openFocus(i.id)}
                     aria-label={`Abrir ${i.id} na visão de foco`}>
               <span className={styles.aparelhoId}>{i.id}</span>

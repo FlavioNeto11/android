@@ -80,8 +80,9 @@
 
 .aparelho {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 2px var(--sp-2);
   padding: 5px 6px;
   border-radius: var(--radius-1, 6px);
   min-width: 0;
@@ -117,14 +118,32 @@
   font-weight: 600;
 }
 
+/*
+ * O que o aparelho É (API, arquitetura, imagem, renderizador) e o processo: metadado que decide onde rodar, então quebra
+ * em linhas em vez de ser cortado com reticências (o `title` não abre em toque). Cabe na linha do aparelho quando há
+ * espaço (`flex-basis` 14rem); sem espaço, desce para a linha de baixo, na largura toda.
+ */
 .aparelhoMeio {
   display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+/* Telefone: o aparelho e a tarefa ficam juntos na primeira linha e o metadado desce, inteiro, na largura toda. */
+@media (max-width: 640px) {
+  .aparelhoMeio {
+    order: 5;
+    flex-basis: 100%;
+  }
+
+  .recusaDaLinha,
+  .personasDoAparelho {
+    order: 6;
+  }
 }
 
 .tarefa {
@@ -150,10 +169,6 @@
 }
 
 /* A recusa de "Aposentar" desce para a linha de baixo, na largura toda, sem empurrar os outros aparelhos. */
-.aparelhoComRecusa {
-  flex-wrap: wrap;
-}
-
 .recusaDaLinha {
   flex-basis: 100%;
   margin: 2px 0 0;

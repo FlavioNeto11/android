@@ -9,6 +9,7 @@ import { Card, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
+import { TruncatedText } from '../../components/TruncatedText';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { RUN_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, formatDateTime, useNow } from '../../lib/time';
@@ -247,7 +248,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
         <span className={styles.runItemAge} title={formatDateTime(run.created_at)}><Age ts={run.created_at} /></span>
       </span>
       <span className={styles.runItemMeta}>
-        {app ? <span className={styles.runItemApp}>{app}</span> : null}
+        {app ? <TruncatedText className={styles.runItemApp}>{app}</TruncatedText> : null}
         <span className={styles.shortId}>{run.short_id}</span>
         <span><Smartphone size={11} aria-hidden /> {run.instances_used}/{run.instances_requested}</span>
         {c ? (
