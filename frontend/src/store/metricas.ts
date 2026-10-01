@@ -2,7 +2,7 @@ import type { AiBalance, Health, Instance, InstanceState, RunSummary, Worker, Wo
 import { serverHintOf } from '../features/devices/deviceState';
 import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import { hashDe } from '../lib/rotas';
-import { isRunActive, type ConnStatus } from '../lib/status';
+import type { ConnStatus } from '../lib/status';
 import { useMemo } from 'react';
 import { selectInstanceList, useAppStore } from './app';
 import type { DataState } from './reducer';
@@ -25,12 +25,14 @@ import type { Destino } from './ui';
  * - **vagas**: por servidor, nunca somadas no parque (a soma escondia um servidor acima da capacidade atrás da folga
  *   de outro). Ocupa vaga o que come RAM: `online`, `booting`, `stopping` (a loja também, se ligada). A vaga do
  *   central é `max_online_devices`; a de cada worker, `max_slots`.
- * - **aguardando você**: objetivos `waiting_user` + `uncertain` das execuções ativas e das 20 mais recentes (a
- *   mesma janela do snapshot). Não são personas.
+ * - **aguardando você**: NÃO mora aqui. É o total da caixa de Pendências (`features/pendencias/usePendencias`, decisão
+ *   D1 da revisão de UX): aprovações do Aprendizado e de persona, intervenções em sessão e execuções em `needs_input`.
+ *   O chip do topo, o semáforo e o selo do menu leem o mesmo `usePendencias().total`.
  * - **personas bloqueadas**: personas com `status = blocked` (bloqueadas pela plataforma).
  * - **execuções em andamento**: o grupo "Em andamento" de Execuções (planejando, planejada, em execução, pausada,
  *   cancelando). O contador do topo e o chip da tela contam igual, sobre o que o store guarda: o snapshot traz TODAS as
- *   em andamento (não só as 20 recentes) e o teto de `MAX_RUNS` do reducer nunca descarta uma delas.
+ *   em andamento (não só as 20 recentes) e o teto de `MAX_RUNS` do reducer nunca descarta uma delas (nem uma
+ *   `needs_input`, que é pendência).
  */
 
 // ---- Aparelhos ------------------------------------------------------------------------------------
@@ -168,31 +170,6 @@ export function ocupacoesDoParque(instances: readonly Instance[], workers: MapaD
 }
 
 // ---- Execuções e personas -------------------------------------------------------------------------
-
-/** A mesma janela do snapshot (`runs`: ativas + recentes, até 20). */
-export const JANELA_DE_EXECUCOES = 20;
-
-/**
- * Objetivos que esperam uma pessoa (`waiting_user`) ou uma revisão (`uncertain`). A lista de execuções do store
- * CRESCE quando a tela Execuções carrega mais histórico — contar sobre ela inteira fazia o número mudar conforme a
- * tela visitada. Fixar a janela (ativas + as 20 mais recentes) deixa o valor igual em qualquer tela.
- */
-export function execucoesAguardando(runs: readonly RunSummary[]): { run: RunSummary; objetivos: number }[] {
-  const recentes = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const saida: { run: RunSummary; objetivos: number }[] = [];
-  recentes.forEach((r, i) => {
-    if (i >= JANELA_DE_EXECUCOES && !isRunActive(r.status)) return;
-    const n = (r.counts?.waiting_user ?? 0) + (r.counts?.uncertain ?? 0);
-    if (n > 0) saida.push({ run: r, objetivos: n });
-  });
-  return saida;
-}
-
-/** Soma dos objetivos das execuções de `execucoesAguardando` (a caixa de Pendências lista uma linha por execução). */
-export function objetivosAguardando(runs: readonly RunSummary[]): { total: number; primeiraExecucao: string | null } {
-  const lista = execucoesAguardando(runs);
-  return { total: lista.reduce((s, x) => s + x.objetivos, 0), primeiraExecucao: lista[0]?.run.id ?? null };
-}
 
 /**
  * Execuções em andamento: a MESMA regra do chip "Em andamento" de Execuções (`grupoDoStatus`, que inclui `planned`).
@@ -341,11 +318,6 @@ export function useContagemDeAparelhos(): ContagemDeAparelhos {
   const instanceOrder = useAppStore((s) => s.instanceOrder);
   const workers = useAppStore((s) => s.workers);
   return useMemo(() => contarAparelhos({ instances, instanceOrder }, workers), [instances, instanceOrder, workers]);
-}
-
-export function useObjetivosAguardando(): { total: number; primeiraExecucao: string | null } {
-  const runs = useAppStore((s) => s.runs);
-  return useMemo(() => objetivosAguardando(runs), [runs]);
 }
 
 export function useExecucoesEmAndamento(): number {

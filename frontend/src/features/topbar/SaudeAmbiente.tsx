@@ -7,8 +7,9 @@ import { hashDe } from '../../lib/rotas';
 import type { Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import {
-  ROTULO_DO_NIVEL, personasBloqueadas, useObjetivosAguardando, useSaudeDoAmbiente, type Motivo, type NivelDoAmbiente,
+  ROTULO_DO_NIVEL, personasBloqueadas, useSaudeDoAmbiente, type Motivo, type NivelDoAmbiente,
 } from '../../store/metricas';
+import { usePendencias } from '../pendencias/usePendencias';
 import { usePersonas } from '../profiles/usePersonas';
 import styles from './SaudeAmbiente.module.css';
 
@@ -62,7 +63,8 @@ function Detalhes({ nivel, lista, versao, fechar }: {
   nivel: NivelDoAmbiente; lista: Motivo[]; versao: string | null; fechar: () => void;
 }) {
   const bloqueadas = personasBloqueadas(usePersonas());
-  const aguardando = useObjetivosAguardando();
+  // D1: o mesmo total da caixa de Pendências (e do chip do topo e do selo do menu), levando a ela.
+  const aguardando = usePendencias().total;
   const link = (href: string, texto: string) => <a className={styles.link} href={href} onClick={fechar}>{texto}</a>;
 
   return (
@@ -88,7 +90,7 @@ function Detalhes({ nivel, lista, versao, fechar }: {
       ) : null}
       {/* Não mudam a cor do semáforo: são estado de trabalho, não de saúde. Mas o número vem com o nome do que conta
           e leva à lista — o "15 bloqueadas" de antes não dizia se eram personas ou tarefas. */}
-      {(bloqueadas ?? 0) > 0 || aguardando.total > 0 ? (
+      {(bloqueadas ?? 0) > 0 || aguardando > 0 ? (
         <>
           <p className={styles.subtitulo}>Também</p>
           <ul className={styles.avisos}>
@@ -96,9 +98,9 @@ function Detalhes({ nivel, lista, versao, fechar }: {
               <li>{link(hashDe('personas', { query: { situacao: 'bloqueada' } }),
                         `${bloqueadas} ${bloqueadas === 1 ? 'persona bloqueada' : 'personas bloqueadas'} pela plataforma`)}</li>
             ) : null}
-            {aguardando.total > 0 ? (
-              <li>{link(hashDe('execucoes'),
-                        `${aguardando.total} ${aguardando.total === 1 ? 'objetivo aguardando' : 'objetivos aguardando'} você nas execuções`)}</li>
+            {aguardando > 0 ? (
+              <li>{link(hashDe('pendencias'),
+                        `${aguardando} ${aguardando === 1 ? 'pendência esperando' : 'pendências esperando'} você`)}</li>
             ) : null}
           </ul>
         </>

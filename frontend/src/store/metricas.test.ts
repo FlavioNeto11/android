@@ -4,9 +4,10 @@ import { hashDe } from '../lib/rotas';
 import { makeInstance, makeRun, makeSnapshot } from '../test/fixtures';
 import { hydrateFromSnapshot, initialDataState, mergeRuns, MAX_RUNS } from './reducer';
 import { grupoDoStatus } from '../features/runs/filtroExecucoes';
+import { montarPendencias } from '../features/pendencias/modelo';
 import {
-  DESTINO_EM_ANDAMENTO, JANELA_DE_EXECUCOES, contarAparelhos, contarSelecao, execucoesEmAndamento, nivelDoAmbiente,
-  objetivosAguardando, ocupacaoDoServidor, ocupacoesDoParque, personasBloqueadas,
+  DESTINO_EM_ANDAMENTO, contarAparelhos, contarSelecao, execucoesEmAndamento, nivelDoAmbiente,
+  ocupacaoDoServidor, ocupacoesDoParque, personasBloqueadas,
 } from './metricas';
 
 /**
@@ -200,21 +201,25 @@ describe('semáforo do ambiente', () => {
 });
 
 describe('aguardando você e personas bloqueadas', () => {
-  it('a janela é fixa (ativas + 20 mais recentes): carregar mais histórico não muda o número', () => {
-    const antigas = Array.from({ length: 30 }, (_, i) => makeRun({
-      id: `r-${i}`, status: 'completed_with_issues', created_at: `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00:00Z`,
-    }));
-    const doSnapshot = [...antigas].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, JANELA_DE_EXECUCOES);
-    expect(objetivosAguardando(doSnapshot).total).toBe(20);
-    expect(objetivosAguardando(antigas).total).toBe(20);
-  });
+  it('D1: as execuções em `needs_input` contam desde a primeira carga e não somem ao visitar Execuções', () => {
+    // O parque real: 27 `needs_input` de 17/09 a 28/09. O snapshot passou a trazer TODAS; o teto do store
+    // (`MAX_RUNS`) nunca as descarta. Antes a caixa via só as da janela das 20 recentes (4 no parque real).
+    const hora = (n: number) => new Date(Date.UTC(2026, 8, 30) - n * 3_600_000).toISOString();
+    const concluidas = (de: number, ate: number) => Array.from({ length: ate - de }, (_, i) =>
+      makeRun({ id: `r-${de + i}`, short_id: `s${de + i}`, status: 'completed', created_at: hora(de + i) }));
+    const ranks = [25, 60, 120, 180, 230];
+    const paradas = ranks.map((rank) => makeRun({ id: `pergunta-${rank}`, status: 'needs_input', created_at: hora(rank),
+                                                   counts: { ...makeRun().counts, waiting_user: 0 } }));
+    const pendenciasDe = (runs: Parameters<typeof montarPendencias>[0]['execucoes']) =>
+      montarPendencias({ aprendizado: [], aprovacoes: [], execucoes: runs }).length;
 
-  it('execução ativa conta mesmo fora das 20 mais recentes', () => {
-    const recentes = Array.from({ length: 20 }, (_, i) => makeRun({ id: `r-${i}`, status: 'completed', created_at: `2026-09-29T${String(i).padStart(2, '0')}:00:00Z`,
-                                                                    counts: { ...makeRun().counts, waiting_user: 0 } }));
-    const ativaAntiga = makeRun({ id: 'r-ativa', status: 'running', created_at: '2026-09-01T00:00:00Z',
-                                  counts: { ...makeRun().counts, waiting_user: 1, uncertain: 1 } });
-    expect(objetivosAguardando([...recentes, ativaAntiga])).toEqual({ total: 2, primeiraExecucao: 'r-ativa' });
+    const aberto = hydrateFromSnapshot(initialDataState, makeSnapshot({ runs: [...concluidas(0, 20), ...paradas] }));
+    expect(pendenciasDe(aberto.runs)).toBe(5);
+
+    const historico = [...concluidas(0, 250).filter((r) => !ranks.includes(Number(r.id.slice(2)))), ...paradas];
+    const visitado = mergeRuns(aberto, historico);
+    expect(visitado.runs.length).toBeGreaterThan(MAX_RUNS);
+    expect(pendenciasDe(visitado.runs)).toBe(5);
   });
 
   it('RF-05: execuções em andamento têm a regra do chip "Em andamento" (inclui `planned`) e o destino já filtrado', () => {

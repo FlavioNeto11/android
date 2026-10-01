@@ -34,9 +34,8 @@ import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore } from '../../store/ui';
-import {
-  DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento, useObjetivosAguardando,
-} from '../../store/metricas';
+import { DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento } from '../../store/metricas';
+import { usePendencias } from '../pendencias/usePendencias';
 import { SaudeAmbiente } from './SaudeAmbiente';
 import { ID_BOTAO_MENU, ID_MENU } from './MenuLateral';
 import styles from './TopBar.module.css';
@@ -130,14 +129,13 @@ function Counters() {
   const metrics = useAppStore((s) => s.metrics);
   // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM — de cada servidor.
   const rodizio = useAppStore((s) => !!s.settings?.auto_start_devices);
-  const setView = useUiStore((s) => s.setView);
   const navegar = useUiStore((s) => s.navegar);
-  const abrirExecucao = useUiStore((s) => s.abrirExecucao);
 
   // Fonte única (`store/metricas`, tarefa 02 da revisão de UX): o total é o de aparelhos de TAREFA, o mesmo de
   // "N de T selecionados"; a loja fica à parte e o aparelho de servidor fora do ar não conta como online.
   const { online, total, desconhecidos, loja } = useContagemDeAparelhos();
-  const aguardando = useObjetivosAguardando();
+  // D1 (decisões da revisão de UX): o MESMO total da caixa de Pendências e do selo do menu, e o clique leva a ela.
+  const aguardando = usePendencias().total;
   // A mesma conta do chip "Em andamento" de Execuções, e o clique abre a lista já nesse filtro (RF-05).
   const active = useExecucoesEmAndamento();
 
@@ -172,18 +170,15 @@ function Counters() {
           <span className={styles.counterLabel}>{active === 1 ? 'execução' : 'execuções'}</span>
         </button>
       </Tooltip>
-      {/* Era "N bloqueadas", lido como personas bloqueadas. São objetivos de execução que esperam uma pessoa. */}
-      <Tooltip content="Objetivos das execuções recentes que esperam você: aguardando uma ação sua ou com resultado incerto para revisar. Clique para abrir.">
+      {/* Era "N bloqueadas", lido como personas bloqueadas. Hoje é o total da caixa de Pendências (D1). */}
+      <Tooltip content="Pendências: o que depende de você (aprovações do Aprendizado e das personas, contas que pedem intervenção e execuções paradas pedindo informação). O mesmo número da caixa de Pendências. Clique para abrir.">
         <button
           type="button"
-          className={cx(styles.counter, aguardando.total > 0 && styles.counterAlert)}
-          onClick={() => {
-            if (aguardando.primeiraExecucao) abrirExecucao(aguardando.primeiraExecucao);
-            else setView('execucoes');
-          }}
+          className={cx(styles.counter, aguardando > 0 && styles.counterAlert)}
+          onClick={() => navegar({ tela: 'pendencias' })}
         >
           <Hand size={14} aria-hidden />
-          <span className={styles.counterValue}>{formatInt(aguardando.total)}</span>
+          <span className={styles.counterValue}>{formatInt(aguardando)}</span>
           <span className={styles.counterLabel}>aguardando você</span>
         </button>
       </Tooltip>

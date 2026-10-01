@@ -2,6 +2,7 @@ import { LayoutGrid, Rows3, Search, X } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
 import { cx } from '../lib/format';
 import { Select, TextInput } from './Field';
+import { Tooltip } from './Tooltip';
 import styles from './BarraListagem.module.css';
 
 export interface OpcaoListagem {
@@ -9,6 +10,8 @@ export interface OpcaoListagem {
   rotulo: string;
   /** Quantos itens a opção mostraria (com os outros filtros aplicados). */
   contagem?: number;
+  /** Dica do chip (hover e foco de teclado), quando o rótulo sozinho não diz o que entra. */
+  dica?: string;
 }
 
 /** Um filtro da barra: chips (poucas opções, sempre à vista) ou lista (muitas opções). `''` = sem filtro. */
@@ -96,13 +99,16 @@ export function BarraListagem({ nome, busca, filtros = [], ordem, visao, resumo,
       </div>
       {chips.map((f) => (
         <div key={f.chave} className={styles.chips} role="group" aria-label={f.rotulo}>
-          {[{ valor: '', rotulo: f.rotuloTodos, contagem: f.contagemTodos }, ...f.opcoes].map((o) => (
-            <button key={o.valor || '_todos'} type="button" className={styles.chip} aria-pressed={f.valor === o.valor}
-                    onClick={() => f.onChange(f.valor === o.valor ? '' : o.valor)}>
-              {o.rotulo}
-              {typeof o.contagem === 'number' ? <span className={styles.chipContagem}>{o.contagem}</span> : null}
-            </button>
-          ))}
+          {[{ valor: '', rotulo: f.rotuloTodos, contagem: f.contagemTodos } as OpcaoListagem, ...f.opcoes].map((o) => {
+            const chip = (
+              <button key={o.valor || '_todos'} type="button" className={styles.chip} aria-pressed={f.valor === o.valor}
+                      onClick={() => f.onChange(f.valor === o.valor ? '' : o.valor)}>
+                {o.rotulo}
+                {typeof o.contagem === 'number' ? <span className={styles.chipContagem}>{o.contagem}</span> : null}
+              </button>
+            );
+            return o.dica ? <Tooltip key={o.valor} content={o.dica}>{chip}</Tooltip> : chip;
+          })}
         </div>
       ))}
       {resumo || onLimpar ? (

@@ -11,7 +11,7 @@ import { hashDe } from '../../lib/rotas';
 import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
-import { ROTULO_DA_ORIGEM, type OrigemDaPendencia, type Pendencia } from './modelo';
+import { DIAS_PARA_ANTIGA, ROTULO_DA_ORIGEM, ehAntiga, type OrigemDaPendencia, type Pendencia } from './modelo';
 import { usePendenciasStore } from './store';
 import { usePendencias } from './usePendencias';
 import styles from './Pendencias.module.css';
@@ -49,6 +49,8 @@ export function PendenciasPage() {
     return c;
   }, [itens]);
   const visiveis = filtro ? itens.filter((p) => p.origem === filtro) : itens;
+  const antigas = visiveis.filter((p) => ehAntiga(p, agora));
+  const recentes = antigas.length > 0 ? visiveis.filter((p) => !ehAntiga(p, agora)) : visiveis;
 
   return (
     <Page
@@ -82,17 +84,38 @@ export function PendenciasPage() {
           Nenhuma pendência.
         </EmptyState>
       ) : (
-        <ul className={styles.lista} aria-label="Pendências">
-          {visiveis.map((p) => <Linha key={p.chave} p={p} agora={agora} />)}
-        </ul>
+        <>
+          {recentes.length > 0 ? (
+            <ul className={styles.lista} aria-label="Pendências">
+              {recentes.map((p) => <Linha key={p.chave} p={p} agora={agora} />)}
+            </ul>
+          ) : (
+            <p className={styles.nota}>Nada dos últimos {DIAS_PARA_ANTIGA} dias. As antigas estão logo abaixo.</p>
+          )}
+          {antigas.length > 0 ? (
+            <Disclosure summary={`Antigas (${antigas.length})`}
+                        meta={`execuções paradas há mais de ${DIAS_PARA_ANTIGA} dias; contam no total`}>
+              {() => (
+                <ul className={styles.lista} aria-label="Pendências antigas">
+                  {antigas.map((p) => <Linha key={p.chave} p={p} agora={agora} />)}
+                </ul>
+              )}
+            </Disclosure>
+          ) : null}
+        </>
       )}
 
       <Disclosure summary="Como o número é contado" bare>
         <p className={styles.nota}>
-          Cada linha é uma decisão sua: um aprendizado, um texto de persona, uma execução ou uma conta que pede
-          intervenção (a mesma fila &quot;Aguardando intervenção&quot; de Personas). O número no menu é o total
-          desta lista. O &quot;aguardando você&quot; do topo conta os <em>objetivos</em> dentro das execuções, por isso pode
-          ser maior que o número de execuções listadas aqui.
+          Pendência é o que depende de você. Cada linha é uma decisão sua: um aprendizado para aprovar, um texto de
+          persona para aprovar, uma conta que pede intervenção (a mesma fila &quot;Aguardando intervenção&quot; de
+          Personas) ou uma execução que parou pedindo informação. Entram todas, por mais antigas que sejam. As
+          execuções paradas há mais de {DIAS_PARA_ANTIGA} dias ficam em &quot;Antigas&quot;, recolhidas, mas contam igual.
+        </p>
+        <p className={styles.nota}>
+          O número do menu, o &quot;aguardando você&quot; do topo e o aviso na saúde do ambiente são todos o total
+          desta lista. Uma execução que terminou com problema não é pendência: ela aparece em Execuções, no filtro
+          &quot;Pede atenção&quot;.
         </p>
       </Disclosure>
     </Page>

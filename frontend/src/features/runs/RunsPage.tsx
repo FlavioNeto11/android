@@ -17,7 +17,7 @@ import { toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import {
   contagemPorGrupo, filtrarExecucoes, filtroAtivo, filtroLocalAtivo, GRUPOS_STATUS, lerFiltroExecucoes, LIMPAR_FILTROS,
-  PERIODOS, ROTULO_GRUPO, ROTULO_PERIODO, tituloCurto, unirExecucoes,
+  DICA_GRUPO, PERIODOS, ROTULO_GRUPO, ROTULO_PERIODO, tituloCurto, unirExecucoes,
 } from './filtroExecucoes';
 import styles from './Runs.module.css';
 import { RunView } from './RunView';
@@ -168,7 +168,7 @@ export function RunsPage() {
               filtros={[
                 { chave: 'status', rotulo: 'Situação da execução', tipo: 'chips', rotuloTodos: 'Todas',
                   contagemTodos: contagem?.todas, valor: filtro.status ?? '', onChange: (v) => mudar({ status: v || undefined }),
-                  opcoes: GRUPOS_STATUS.map((g) => ({ valor: g, rotulo: ROTULO_GRUPO[g], contagem: contagem?.[g] })) },
+                  opcoes: GRUPOS_STATUS.map((g) => ({ valor: g, rotulo: ROTULO_GRUPO[g], contagem: contagem?.[g], dica: DICA_GRUPO[g] })) },
                 { chave: 'periodo', rotulo: 'Filtrar por período', tipo: 'lista', rotuloTodos: 'Qualquer data',
                   valor: filtro.periodo ?? '', onChange: (v) => mudar({ periodo: v || undefined }),
                   opcoes: PERIODOS.map((p) => ({ valor: p, rotulo: ROTULO_PERIODO[p] })) },
