@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseHash } from '../lib/rotas';
-import { aplicarHash, bindHashRouting, podeVoltarPara, useUiStore } from './ui';
+import { aplicarHash, bindHashRouting, menuRecolhidoInicial, podeVoltarPara, useUiStore } from './ui';
 
 /**
  * Revisão de UX de 30/09 (tarefa 01): a URL passou a dizer onde a pessoa está — tela, objeto, guia e aparelho em
@@ -173,5 +173,49 @@ describe('personas e trocas de parâmetro', () => {
       (de) => de.tela === 'aplicativos' && de.segmentos.length === 0);
     expect(window.location.hash).toBe('#/aplicativos?aba=apps');
     expect(window.history.length).toBe(antes + 1);
+  });
+});
+
+/**
+ * Tarefa 13 da rodada 2 (acessibilidade): sem preferência guardada, o menu abre EXPANDIDO (ícone + rótulo) a partir de
+ * 1280 px e recolhido abaixo; a escolha da pessoa, uma vez guardada, vale em qualquer largura.
+ */
+describe('menuRecolhidoInicial (padrão por largura, preferência vence)', () => {
+  const larguraOriginal = window.innerWidth;
+  const largura = (px: number) => Object.defineProperty(window, 'innerWidth', { configurable: true, value: px });
+
+  beforeEach(() => window.localStorage.removeItem('cda.menuRecolhido'));
+  afterEach(() => {
+    largura(larguraOriginal);
+    window.localStorage.removeItem('cda.menuRecolhido');
+  });
+
+  it('sem preferência: expandido em 1280 px ou mais, recolhido abaixo', () => {
+    largura(1440);
+    expect(menuRecolhidoInicial()).toBe(false);
+    largura(1280);
+    expect(menuRecolhidoInicial()).toBe(false);
+    largura(1279);
+    expect(menuRecolhidoInicial()).toBe(true);
+    largura(1024);
+    expect(menuRecolhidoInicial()).toBe(true);
+  });
+
+  it('a preferência guardada vence o padrão, nos dois sentidos', () => {
+    largura(1440);
+    useUiStore.getState().setMenuRecolhido(true);
+    expect(window.localStorage.getItem('cda.menuRecolhido')).toBe('true');
+    expect(menuRecolhidoInicial()).toBe(true);
+    largura(1100);
+    useUiStore.getState().setMenuRecolhido(false);
+    expect(menuRecolhidoInicial()).toBe(false);
+  });
+
+  it('armazenamento que falha não derruba: cai no padrão da largura', () => {
+    largura(1440);
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('bloqueado'); });
+    expect(menuRecolhidoInicial()).toBe(false);
+    largura(800);
+    expect(menuRecolhidoInicial()).toBe(true);
   });
 });

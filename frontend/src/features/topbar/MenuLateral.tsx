@@ -147,6 +147,9 @@ export function MenuLateral() {
                   href={hashDe(tela, { query: foco ? { [PARAM_FOCO]: foco } : {} })}
                   className={styles.item}
                   aria-current={view === tela ? 'page' : undefined}
+                  // Nome explícito: recolhido, o rótulo só existe como texto fora da vista e o `title` não é nome confiável.
+                  // O aria-label vale no lugar do conteúdo, então leva junto a contagem que o selo mostra.
+                  aria-label={conta !== null ? `${label}, ${formatInt(conta)} ${legenda}` : label}
                   title={recolhido ? label : undefined}
                   onClick={() => {
                     foiNavegacao.current = aberto;

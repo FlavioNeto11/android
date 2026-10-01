@@ -99,8 +99,8 @@
   background: none;
   border: 0;
   /* área de clique de 32 px sem mexer no ritmo da lista: o respiro entra como padding e sai como margem negativa */
-  padding: 6px 0;
-  margin: -6px 0;
+  padding: 7px 0;
+  margin: -7px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -147,10 +147,11 @@
 }
 
 .tarefa {
-  margin: -6px 0 -6px auto;
+  margin: -7px 0 -7px auto;
   background: none;
   border: 0;
-  padding: 6px 0;
+  /* 7 px: com a linha de 13 px x 1,5 = 19,5 px, 6 + 6 dava 31,5 px, meio pixel abaixo dos 32 px */
+  padding: 7px 0;
   color: var(--accent-text);
   cursor: pointer;
   font: inherit;
@@ -196,8 +197,8 @@
   max-width: 100%;
   background: none;
   border: 0;
-  padding: 6px 0;
-  margin: -5px 0;
+  padding: 7px 0;
+  margin: -6px 0;
   color: inherit;
   cursor: pointer;
   font: inherit;

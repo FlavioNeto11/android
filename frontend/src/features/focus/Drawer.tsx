@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { focarConteudo } from '../../lib/scroll';
 import styles from './Focus.module.css';
 
 const FOCAVEIS =
@@ -97,7 +98,10 @@ export function Drawer({ panelRef, ariaLabel, onClose, restoreSelector, children
     panelRef.current?.focus();
     return () => {
       const alvo = origem?.isConnected ? origem : document.querySelector<HTMLElement>(restoreSelector);
-      alvo?.focus?.({ preventScroll: true });
+      // Nem quem abriu nem o botão do cartão existem mais (aparelho fora da lista, link colado numa tela sem cartões): o
+      // teclado vai ao contêiner do conteúdo, e não cai no <body>, de onde a pessoa recomeçaria do topo da página.
+      if (alvo?.focus) alvo.focus({ preventScroll: true });
+      else focarConteudo();
     };
     // Só na montagem e na desmontagem: o painel é remontado por aparelho (`key`), não reage a props.
     // eslint-disable-next-line react-hooks/exhaustive-deps
