@@ -47,6 +47,7 @@
 
 /* Abre a gaveta do menu (MenuLateral) abaixo de 1024 px; acima, a coluna lateral está sempre à vista. */
 .menuBtn {
+  position: relative;
   display: none;
   place-items: center;
   flex: none;
@@ -374,8 +375,10 @@ button.counter:focus-visible {
 }
 
 /* Conectado: discreto, só o ícone guarda a cor. Com problema, o texto também assume o tom. */
-.conn:not(.connWaiting) :global(*) { color: var(--text-2); }
-.conn:not(.connWaiting) svg { color: var(--success-text); }
+.conn:not(.connWaiting) :global(*),
+.connLinha:not(.connWaiting) :global(*) { color: var(--text-2); }
+.conn:not(.connWaiting) svg,
+.connLinha:not(.connWaiting) svg { color: var(--success-text); }
 
 .connRetry {
   color: var(--text-3);
@@ -502,4 +505,242 @@ button.counter:focus-visible {
   .counters > :last-child { grid-column: span 2; }
   .counter, .counters > :first-child .counter { width: 100%; min-width: 0; padding: 0 8px; }
   .counterSlots, .meter { display: none; } /* não cabem na célula; o tooltip continua dizendo */
+}
+
+/* ---- Painéis "Resumo" (celular) e "Recursos" (tablet) — tarefa 10 da rodada 2 ---- */
+
+.resumoBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--hit-touch);
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--border-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.resumoBtn:hover,
+.resumoBtn[aria-expanded='true'] {
+  background: var(--surface-3);
+  border-color: var(--text-3);
+}
+
+.resumoBtn:focus-visible {
+  border-radius: var(--radius-pill);
+}
+
+/* Selo de pendências no botão "Menu": a mesma cor de alerta do contador "aguardando você". */
+.menuSelo {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--warning-text);
+  color: var(--bg);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.resumo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: min(380px, calc(100vw - 48px));
+}
+
+.resumoSecao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.resumoTitulo {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.custosLista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custosLista li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.aiResumo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* o painel só existe no celular: o resumo do detalhe expansível é alvo de toque */
+.aiResumo :global(summary) {
+  min-height: var(--hit-touch);
+}
+
+.aiLinha {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.aiAviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--warning-text);
+  font-size: var(--fs-sm);
+}
+
+.aiAviso svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* Conexão como linha do painel: sem o corte de texto da régua estreita (`.conn` zera a fonte abaixo de 1180 px). */
+.connLinha {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.connRotulo {
+  color: var(--text-3);
+}
+
+.connRotulo::after {
+  content: ':';
+}
+
+/* O painel fica por último no arquivo de propósito: vence as regras de grade e de divisória dos contadores. */
+.counters.countersPainel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  width: 100%;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--border-1);
+  overflow: hidden;
+}
+
+.countersPainel > * {
+  min-width: 0;
+  border-left: 0;
+  background: var(--surface-1);
+}
+
+.countersPainel > :last-child:nth-child(odd) {
+  grid-column: span 2;
+}
+
+.countersPainel .counter,
+.countersPainel > :first-child .counter {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--sp-3);
+}
+
+.countersPainel .meter {
+  display: none;
+}
+
+/* ---- Celular (< 768 px): uma linha de 56 px ---- */
+.barCompacta {
+  /* Sem a borda de 1 px: ela somaria 57 px à linha. O traço vira sombra, que não ocupa lugar. */
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--border-1);
+}
+
+.barCompacta .row {
+  height: var(--topbar-h);
+  min-height: 0;
+  padding: 0 10px;
+  gap: 4px;
+}
+
+/* o último item da linha (o "Resumo") encosta à direita; o semáforo encolhe se faltar largura */
+.barCompacta .row > :last-child {
+  margin-left: auto;
+}
+
+.saudeCelular {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.saudeCelular > span,
+.saudeCelular button {
+  min-width: 0;
+}
+
+/* Folga de largura: "Ambiente em atenção N" é o rótulo mais longo e tem de caber inteiro em 390 px */
+.saudeCelular button {
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.barCompacta .resumoBtn {
+  padding: 0 10px 0 8px;
+}
+
+.barCompacta .menuBtn {
+  margin-left: -8px;
+}
+
+@media (max-width: 380px) {
+  /* o texto "Resumo" basta; o ícone cede a largura ao semáforo */
+  .barCompacta .resumoBtn > svg { display: none; }
+  .barCompacta .resumoBtn { padding: 0 9px; }
+}
+
+@media (max-width: 349px) {
+  .barCompacta .brand { display: none; }
+}
+
+@media (max-width: 639px) {
+  .barCompacta .brandName { display: none; }
+}
+
+/* ---- Alvos de toque (< 1024 px): 40 px de altura ---- */
+@media (max-width: 1023px) {
+  .brand { min-height: var(--hit-touch); }
+  /* Os rótulos "Saúde" e "Capacidade" quebravam a régua do tablet em duas linhas; os grupos já se chamam pelo aria-label. */
+  .grupoRotulo { display: none; }
+  .pillBtn { height: var(--hit-touch); }
+  .counter { height: var(--hit-touch); }
+  .balanceChip { min-height: var(--hit-touch); }
+  .estimado { width: var(--hit-touch); height: var(--hit-touch); }
+  .notice { width: var(--hit-touch); height: var(--hit-touch); }
+  /* o Button pequeno tem largura e altura fixas de 32 px, de uma classe com a mesma força: repetir a classe vence */
+  .alvoToque.alvoToque.alvoToque { min-width: var(--hit-touch); min-height: var(--hit-touch); }
 }

@@ -16,6 +16,18 @@
   white-space: nowrap;
 }
 
+/* Tarefa 10 (rodada 2): abaixo de 1024 px o alvo vai a 40 px; e o texto cede (reticências) antes de a linha estourar
+   em celulares estreitos. O nome acessível segue completo. */
+@media (max-width: 1023px) {
+  .gatilho { height: var(--hit-touch); max-width: 100%; }
+}
+
+.rotulo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .gatilho:hover {
   border-color: var(--tone-text);
 }
