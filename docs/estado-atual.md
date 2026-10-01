@@ -13,7 +13,9 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Para o deploy (coordenação):** **exige reiniciar o backend**, não só `npm run build`: o `GET /api/snapshot` mudou
     (`backend/app/api.py`: as 20 execuções recentes, todas as `needs_input` e as não terminais, exceto `planned`;
     ~+21 KB sobre 77 KB). O reinício do backend custou 11 reinícios de aparelho na Fase 29: escolher a janela.
-  - **Prova:** `simulated` (frontend 84 arquivos/1013 testes; backend 514 testes dos arquivos que citam o snapshot, em SQLite);
+  - **Prova:** `simulated` (frontend 85 arquivos/1027 testes na árvore mesclada com a `main`; backend 514 testes dos arquivos
+    que citam o snapshot, em SQLite; backend simulado na 8765 com axe 4.13 em 54 combinações + 15 visões internas, zero falhas de
+    contraste, e Lighthouse de acessibilidade 99–100) [revisoes-ux/13-prova-simulada.md](revisoes-ux/13-prova-simulada.md);
     `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: pendente,
     quem lê é o cron de 01/10 05:17Z.** O total verdadeiro de pendências (27 `needs_input`, não 4) só aparece depois do deploy.
   - **Para o dono:** 3 execuções `planned` (19/09, 22/09, 27/09; planos de mensagem no Instagram para terceiros, nunca
