@@ -588,3 +588,68 @@ o always-on não subiu o túnel sozinho enquanto o boot 2 subiu: isso segue sem 
 - **C.** Não usar o tile como início primário depois de mudança de perfil; reservá-lo a "religar" quando o modo já foi recalculado.
 - **D.** Antes de declarar a sessão pronta, conferir a classe esperada (`VPNService` em primeiro plano / `ServiceRecord`) e não só o `tun0`.
 Todas dependem de decisão do dono; nenhuma foi implementada.
+
+## 19. A correção de produto: religar pelo Start da interface (01/10/2026, branch `fix/w8-sfa-service-mode`, `simulated`)
+
+Decisão do dono (01/10): `F6_TUN_NOT_CREATED_AFTER_TILE` suficientemente provado (§18); correção **B + D**, sem deploy e sem W8
+completo. B = o Start da interface do SFA (que executa `rebuildServiceMode()`) é o mecanismo primário de religar uma VPN gerenciada;
+D = uma rede que exige TUN que iniciou o `ProxyService` NÃO conta como recuperada. O tile deixa de ser o mecanismo de recuperação.
+
+### 19.1. O que mudou (`backend/app/devices/rede_aplicacao.py`, `rede_convergencia.py`, `config.py`)
+
+- **`religar_pela_interface(ap, pacote, atividade)`** (substitui `religar_pelo_tile` na convergência): (1) lê o foco, o `tun0` e o
+  buffer `events` (quantas vezes o ActivityManager iniciou `ProxyService`/`VPNService` em primeiro plano); com `tun0` já no ar
+  **não toca em nada**; (2) `am start -n <pacote>/.compose.MainActivity` (se falha: código `abertura_falhou`, sem tile); (3) espera o
+  botão pela árvore COMPLETA da plataforma (`AparelhoDaRede.arvore()`, com os nós sem texto); (4) relê o foco (deve ser o cliente) e o
+  `tun0` (se subiu entretanto, não toca); (5) **UM** toque no centro do rótulo `Start`; (6) observa até `tun0` E VPN CONNECTED; (7) lê
+  de novo as classes de serviço; (8) devolve o foco (HOME só se o foco ainda é do cliente).
+- **Localizador (`achar_botao`):** exatamente UM nó habilitado do pacote do cliente com o texto `Start`, dentro do **menor contêiner
+  clicável e habilitado do mesmo pacote** que o contém (e não enorme perto dele: ≤ 40× a área do rótulo). Ausente, repetido,
+  desabilitado, sem contêiner, ou só em outro pacote: **falha fechada, nenhum toque**. Sem coordenada fixa. Se a tela mostra `Stop`
+  sem `tun0`: `interface_mostra_stop`, nenhum toque (nada de alternar às cegas).
+- **Guard D:** `wrong_service_class_for_tun` quando, sem `tun0`, o contador de `am_foreground_service_start` do `ProxyService`
+  subiu e o do `VPNService` não. O código vai na frente do motivo do reinício (`[interface: …]`, ele SUBSTITUI o `detail` da linha, 200
+  caracteres) e a razão completa na evidência; um evento de log é emitido. A linha fica `configurado` (não saudável). Outros códigos:
+  `ja_ha_tun`, `abertura_falhou`, `start_nao_provado`, `interface_mostra_stop`, `foco_nao_e_o_cliente`, `tun_nao_subiu`,
+  `vpn_nao_conectada`. Sem segredo em nenhum.
+- **Sem fallback para o tile, nunca automático** (nem com o motivo desconhecido): a recuperação que sobra é a de sempre, o reinício
+  (always-on), dentro de `rede.reinicios_max`; o Start é UMA tentativa por passada, sem laço novo. `religar_pelo_tile`,
+  `comando_de_religar` e `rede.cliente_tile` ficam como LEGADO (o `scripts/diag-w8-tile.py` importa o comando; histórico do 05
+  preservado e documentado como válido porque o modo ali já era VPN).
+- **Config:** `rede.cliente_atividade` (padrão `io.nekohasekai.sfa/.compose.MainActivity`; vazio desliga o gesto e volta a valer só o
+  reinício). Os dois pontos de chamada (`_conectar` e o pós-teste de vazamento) passam por `_religar_sem_reinicio`, agora sobre a
+  interface. Importação/provisão não mudaram.
+- **O que NÃO se faz:** escrever o `serviceMode`, ler o armazenamento privado do SFA, root, `run-as`, `WorkingDirectoryProvider`,
+  exportar perfil, tocar chave ou peer.
+
+### 19.2. Suposições do SFA 1.14.2 (commit `fc21909df7a3f0fc9435f3866fb6a4960711aa5f`, `SFA_COMMIT_DE_REFERENCIA` no código)
+
+Tile → `BoxService.start()` → `Settings.serviceClass()` sem `rebuildServiceMode`; `serviceClass`: VPN → `VPNService`, senão
+`ProxyService`; Start da UI → `rebuildServiceMode()` → `hasTunInbound(perfil selecionado)` → modo → classe → `startForegroundService`;
+a importação seleciona sem recalcular. Registradas no comentário do módulo e no docstring de
+`tests/test_rede_religar_interface.py`. Não se depende do ramo `dev`; trocar a versão do cliente exige reconferir.
+
+### 19.3. Testes (`simulated`)
+
+`backend/tests/test_rede_religar_interface.py` (22): os dez casos do dono: (1) stale do 09 (tile → `ProxyService`, sem `tun0`; Start da
+UI → rebuild → `VPNService` → `tun0` → CONNECTED, sem restart); (2) modo já VPN; (3) `tun0` presente: nem abre o app; (4) Start não
+encontrado/ambíguo/sem contêiner/desabilitado: nenhum toque; (5) Start de outro pacote: não toca; (6) Start que inicia o `ProxyService`:
+`wrong_service_class_for_tun`, sem sucesso; (7) `tun0` sem CONNECTED: sem sucesso; (8) abertura que falha (inclusive exceção): sem
+tile; (9) aparelho de worker remoto, mesma semântica, e `AparelhoPeloAdb.arvore` entrega a árvore completa; (10) foco devolvido,
+nenhum comando/estado artificial aberto, nunca mais de um toque. `tests/test_rede_aplicacao.py` e `test_rede_sonda.py`: a convergência
+(boot → Start → `conectado` sem reinício e com always-on/bloqueio intactos; teto e laço de reinício inalterados; guard D; abertura que
+falha; gesto desligado; teste de vazamento → Start → medição na mesma passada). Nenhum aparelho real foi tocado.
+
+### 19.4. Revalidação real futura (NÃO executada; exige autorização do dono)
+
+Desenho: no android-09 (serviceMode hoje provavelmente VPN por causa do teste de §18, então o tile já não reproduz o defeito),
+revalidar o **produto**, não o princípio: com coletor novo, deixar a convergência (checkout com este branch implantado em janela
+controlada) religar um túnel derrubado (`force-stop` do cliente), e conferir `religado pelo Start da interface do cliente`, `VPNService`,
+`tun0`, CONNECTED, `healthy`, foco no launcher, 0 comandos abertos e nenhum reinício. Para provar o caso stale de ponta a ponta seria
+preciso um aparelho com cliente recém-instalado e só import (ou limpar os dados do app no 09, que pede outra autorização). O fechamento do
+W8 de ponta a ponta pode exigir ainda o par do 09, uma janela controlada e eventual reinício do WireGuard.
+
+### 19.5. O que fica aberto
+
+`BOOT_RECOVERY_ROOT_CAUSE = OPEN`: os boots 1/3/4 do W8 (always-on sem túnel; o boot 2 subiu) **não** são explicados pelo `serviceMode`
+(o always-on inicia o `VPNService` direto). W8 continua **OPEN**.

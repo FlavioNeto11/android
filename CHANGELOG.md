@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-01 — a rede religa o túnel pelo Start da interface do cliente, não pelo tile (W8) (branch `fix/w8-sfa-service-mode`)
+
+- **Correção (não implantada).** O tile do SFA 1.14.2 não recalcula o `serviceMode`: num cliente que só importou o perfil
+  (o android-09) iniciava o `ProxyService`, que aborta sem `tun0`. A convergência passa a religar pelo Start da interface
+  (`rede_aplicacao.religar_pela_interface`: abre a atividade, acha o `Start` pela árvore, UM toque, sucesso só com `tun0` e
+  VPN CONNECTED), com o guard `wrong_service_class_for_tun` e sem fallback para o tile. `rede.cliente_atividade` novo;
+  `rede.cliente_tile` vira legado. Prova `simulated`; a real do princípio é de 01/10 (android-09, UM Start da UI).
+  W8 segue aberto: os boots 1/3/4 sem túnel por always-on não são explicados. Detalhe: `docs/handoffs/w8-diagnostico-android09.md` §19.
+
 ## 2026-09-28 — o backend troca o Appium órfão sem prova de mascaramento (K-039 fora do deploy) (branch `claude/nifty-feynman-uflykh`)
 
 - **Operação.** Quando o backend morria sozinho (crash, Windows Update), o supervisor o religava, mas o Appium que

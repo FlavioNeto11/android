@@ -681,8 +681,10 @@ Medido em 30/09 no android-05 (QA), 7 reinícios pela plataforma com o host sob 
   causa de um teste de vazamento;
 - `am force-stop` não religa o cliente (0 de 4; o "volta em menos de um segundo" do K-063 não se repetiu), e o serviço
   não é exportado;
-- o **tile de configurações rápidas do cliente** religa sem reinício: 5 de 5 com o tile adicionado na hora e o SystemUI
-  estável, 1 a 4 s depois do clique. Um tile que já estava na barra não responde, e com o SystemUI no laço de ANR do
+- o **tile de configurações rápidas do cliente** religava sem reinício **no android-05**: 5 de 5 com o tile adicionado na
+  hora e o SystemUI estável, 1 a 4 s depois do clique. **Isso valeu porque o `serviceMode` do SFA ali já era VPN** (W8,
+  01/10: o tile não recalcula o modo; num cliente que só importou o perfil, como o android-09, ele inicia o
+  `ProxyService`, que aborta sem `tun0`; ver abaixo). O que está medido no 05 fica como histórico, não como garantia. Um tile que já estava na barra não responde, e com o SystemUI no laço de ANR do
   boot o clique não acontece. Always-on, bloqueio e regras ficaram como estavam nas 6 conferências.
 
 O que a plataforma faz com isso:
@@ -690,18 +692,37 @@ O que a plataforma faz com isso:
 | Medida | Onde |
 |---|---|
 | Espera o `tun0` até `rede.espera_tun_s` **contados do boot** (padrão 180 s, era 60) antes de concluir que não subiu | `rede_convergencia._observar_depois_do_boot` |
-| Com a configuração valendo e só o túnel faltando, tenta o tile antes de reiniciar: tira e põe o tile, confere que o SystemUI não reiniciou, que o tile entrou na barra e que **não há `tun0`** (o tile é um alternador), clica, relê como uid 2000 e devolve a barra ao que era | `rede_aplicacao.religar_pelo_tile`, `rede.cliente_tile` (vazio desliga) |
-| O mesmo tile depois do teste de vazamento: religado, a medição sai na mesma passada e o teste deixa de custar um reinício | `rede_convergencia._prova_ou_ensaio` |
-| Sem boot desde a configuração (o bloqueio ainda não vale no sistema), o tile não é tentado: o caminho é o reinício | `rede_convergencia._conectar` |
+| Com a configuração valendo e só o túnel faltando, tenta o **Start da interface do cliente** antes de reiniciar (W8; substitui o tile): confere que **não há `tun0`** (Start/Stop alterna), abre a `MainActivity`, acha o botão `Start` PELA ÁRVORE (um nó habilitado do pacote do cliente com esse texto, dentro do menor contêiner clicável do mesmo pacote; ambíguo, ausente, desabilitado ou de outro pacote = falha fechada, nenhum toque), confere o foco, toca UMA vez no centro do rótulo, relê como uid 2000 e devolve o foco (HOME só se o foco é do cliente). Sucesso só com `tun0` E VPN CONNECTED | `rede_aplicacao.religar_pela_interface`, `rede.cliente_atividade` (vazio desliga) |
+| **Guard D:** se o Start iniciou o `ProxyService` (serviceMode não-VPN) num plano com TUN (`wrong_service_class_for_tun`, pelo buffer `events` do logcat), não é recuperação: a linha fica `configurado`, o código vai na frente do motivo do reinício e a razão na evidência (`[interface: …]`, sem segredo). Abertura que falha, botão não provado, foco errado: idem, **sem fallback para o tile** | `rede_convergencia._religar_sem_reinicio`, `_motivo_da_interface` |
+| O mesmo Start depois do teste de vazamento: religado, a medição sai na mesma passada e o teste deixa de custar um reinício; senão o boot, como antes | `rede_convergencia._prova_ou_ensaio` |
+| Sem boot desde a configuração (o bloqueio ainda não vale no sistema), a interface não é tentada: o caminho é o reinício. O teto `rede.reinicios_max` e o laço de reinício não mudam: o Start é UMA tentativa por passada | `rede_convergencia._conectar` |
 
-Prova: `simulated` — `tests/test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio`,
-`::test_tile_nao_e_clicado_com_o_systemui_instavel_e_o_reinicio_segue`,
-`::test_comando_do_tile_so_clica_sem_tun0_com_o_systemui_estavel_e_o_tile_na_barra` e
-`tests/test_rede_sonda.py::test_cliente_parado_pelo_teste_e_religado_pelo_tile_sem_reiniciar_o_aparelho`. `real`,
+**Por que o Start da interface e não o tile (W8, `real` 01/10/2026 + código do SFA 1.14.2, commit upstream
+`fc21909df7a3f0fc9435f3866fb6a4960711aa5f`).** `TileService.onClick` → `BoxService.start()` → `Settings.serviceClass()`
+(`serviceMode == VPN` → `VPNService`, senão `ProxyService`), **sem** `rebuildServiceMode()`; só `MainActivity.startService0` (o
+Start da UI) e a seleção de perfil com o serviço rodando recalculam o modo (`Libbox.hasTunInbound(perfil selecionado)`); a
+importação (`create(andSelect = true)`) seleciona o perfil sem recalcular, e o `serviceMode` nasce `NORMAL`. `ProxyService` com
+perfil que tem `tun` → `openTun` lança e o serviço se encerra em 1–2 s sem `tun0` (o `F6_TUN_NOT_CREATED_AFTER_TILE` do
+android-09). Prova real: android-09, UM Start da UI → `VPNService`, `tun0` em < 1 s, VPN CONNECTED (run
+`20261001T182242Z-uistart09`); android-05, o tile subia o `VPNService` porque o modo já era VPN. A plataforma **não** escreve o
+`serviceMode` (é do SFA: sem root, sem banco privado). O tile (`religar_pelo_tile`, `rede.cliente_tile`) é LEGADO: só diagnóstico
+(`scripts/diag-w8-tile.py`) e nunca fallback automático. O Start da UI deixa o cliente com `serviceMode=VPN`: o tile passaria a
+funcionar nele, mas a convergência não depende disso. Importação e provisão não mudaram (a correção é no caminho de recuperação).
+`BOOT_RECOVERY_ROOT_CAUSE = OPEN`: os boots 1, 3 e 4 do W8 sem túnel por always-on **não** são explicados por isto.
+
+Prova: `simulated` — `tests/test_rede_religar_interface.py` (os 10 casos: stale do 09, modo já VPN, `tun0` presente, Start não
+provado/ambíguo/de outro pacote, guard D, `tun0` sem CONNECTED, abertura que falha, worker remoto, foco/rollback),
+`tests/test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_start_da_interface_sem_outro_reinicio`,
+`::test_start_que_inicia_o_proxyservice_nao_e_recuperacao_e_o_reinicio_segue`,
+`::test_app_que_nao_abre_nao_cai_cegamente_no_tile_e_o_reinicio_segue`,
+`::test_gesto_desligado_pela_configuracao_nao_toca_na_interface_e_o_reinicio_segue` e
+`tests/test_rede_sonda.py::test_cliente_parado_pelo_teste_e_religado_pelo_start_da_interface_sem_reiniciar_o_aparelho`.
+O que segue é do tile e é histórico (modo VPN no android-05): `real`,
 30/09 13:30Z, android-05, o código de `religar_pelo_tile` chamado direto pelo adb, duas vezes: cliente parado, sonda
 fora da VPN recusada (`Permission denied`), túnel de volta em ~9 s, always-on e bloqueio intactos, tile fora da barra.
 `not_run`: o gesto com um app em primeiro plano (o android-05 estava no launcher), o gesto logo depois de um boot
-falho pela convergência, e os aparelhos do notebook.
+falho pela convergência, e os aparelhos do notebook. **`not_run` também: o `religar_pela_interface` do PRODUTO em aparelho real**
+(só o toque manual de diagnóstico foi real); revalidação separada e autorizada em `docs/handoffs/w8-diagnostico-android09.md` §19.4.
 
 | O que foi provado | Nível |
 |---|---|
