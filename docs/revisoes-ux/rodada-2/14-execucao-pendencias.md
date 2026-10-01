@@ -94,7 +94,16 @@ situação "concluída" de uma execução (com início e fim de 2 min 03 s). Por
 - Origens Aprendizado e Intervenção no backend simulado (não semeei item de aprendizado nem sessão em desafio); só os
   testes cobrem as quatro origens.
 - Leitura do central real (porta 8000): não consultado.
+- O **Painel** (`#/painel`) com a execução selecionada: o mesmo `RunView`, dentro de um cartão mais estreito; não foi
+  aberto nos quatro tamanhos. A quebra do resumo a 560 px vale para a largura da janela, não do cartão.
+- O selo "Comprovado" do Relatório com `Tooltip` focável (`ResultadoPorInstancia.tsx`): o dado semeado não tem
+  `proven: true`, então não renderizou no simulado e não tem teste próprio; o axe não o viu.
 - Lighthouse e `ui-verificar.mjs` (este não faz login).
+
+## Mudança de comportamento a registrar
+
+A regra que já existia ao fim do planejamento (`planned` virar `running` troca a guia pela padrão) agora leva à Linha do
+tempo, e não mais a "Por aparelho". Decorre da nova regra de guia padrão; a suíte passa.
 
 ## O que ficou de fora
 
