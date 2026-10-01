@@ -1589,3 +1589,24 @@ volta em segundos, sem tocar em always-on nem em bloqueio.
 
 **Aplicabilidade.** Vigente para o cliente sing-box 1.14.2 em Android 14. A causa de fundo é CPU do convidado no boot:
 um host menos carregado falha menos. O gesto com um app em primeiro plano e nos aparelhos do notebook segue `not_run`.
+
+### K-067 — Notebook com RAM livre e emulador paginado: o convidado para de responder ao ADB
+
+**Data:** 01/10/2026 · **Área:** worker do notebook (`worker-lan-01`), rede por aparelho (29.9)
+
+**Sintoma.** No W4 (30/09 22:37–22:53Z) o android-09 subiu com o perfil VPN aplicado, o túnel não apareceu e o adbd do
+convidado ficou `offline` também no adb do próprio notebook; a rede pediu um segundo reinício. As instalações seguintes
+no notebook levaram mais de 7 min e a leitura depois de instalar excedeu 40 s (01/10, android-14 e 15).
+
+**Medido (01/10 10:3xZ, só leitura).** 32,6 GB de RAM livre de 63,7 GB, e o arquivo de paginação com 30,4 GB usados de
+37,1 GB (pico no máximo alocado). Os três emuladores no ar tinham ~4 GB de memória privada e só 0,6–2,9 GB de working
+set: a memória do convidado estava paginada em disco com RAM sobrando. O log do servidor VPN do central não registrou
+par novo entre 22:35 e 22:53Z (o cliente nem chegou a tentar).
+
+**Leitura.** O defeito do W4 não é o desenho da rede remota (o perfil vai por `adb reverse`, o túnel é UDP direto ao
+`rede.servidor.endpoint_lan`): é o convidado sem memória residente — o mesmo efeito do convidado sem CPU do K-066,
+por outra porta. Por que o Windows apara o working set com RAM livre (sessão 0, prioridade de memória, compressão) é
+configuração do host do notebook e não foi tocada.
+
+**Aplicabilidade.** Antes de repetir o W4 ou de pôr mais aparelhos no notebook, medir o working set dos `qemu-system`
+e o arquivo de paginação. Ajuste no sistema do notebook é decisão do dono.

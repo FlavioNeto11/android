@@ -385,6 +385,21 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 10 — 01/10 ~10:50Z — pendências da manhã
+
+- **Rodízio** (`0f76562`, implantado 10:00Z): entrega de app sozinha não tira a vaga de aparelho com conta vinculada
+  (teste que falhava antes). Com tarefa na fila, o rodízio segue girando as contas.
+- **Outlook** `ready` também em 05, 09 e 13; 14 (instalação interrompida) e 15 (leitura lenta) ficam para quando
+  ligarem.
+- **Triagem das execuções paradas:** 17 de teste sem efeito externo canceladas (QA Messenger e leituras de 24/09 a
+  28/09); 10 ficam para o dono decidir (mensagens a terceiros e o site da CETESB).
+- **W4 (29.9) bloqueado com a causa medida** (K-067): memória dos emuladores do notebook paginada com RAM livre.
+- **C1 no android-03 falhou:** o e-mail de teste enviado pela sessão "Github" (Outlook do André → Bruno, autorizado
+  pelo dono) não estava na caixa do Bruno; a etapa de leitura esgotou o teto de 60 chamadas de IA duas vezes
+  (~US$ 0,92). **A autorização paga de 29/09 (US$ 1,50) foi ultrapassada: ~US$ 1,86 no total.** Nada pago roda até o
+  dono decidir. Achado: o teto por objetivo deixa uma etapa que não acha o que procura gastar 60 chamadas, e a
+  repetição gasta outras 60.
+
 ### Checkpoint 9 — 30/09 ~23:10Z — depois da janela: deploy, renderizador em todos, Outlook logado e C1
 
 - **29.4 fechado** (`real`): 6 h 05 min sem reinício de aparelho pela rede, remedição com a prova da linha.
