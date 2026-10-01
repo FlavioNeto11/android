@@ -52,8 +52,9 @@ def validate(items: list[Item], root: Path, meta: dict | None = None) -> list[st
     ids = [i.id for i in items]
     if len(set(ids)) != len(ids):
         problems.append("ids duplicados")
-    if not 10 <= len(items) <= 20:
-        problems.append(f"esperado entre 10 e 20 itens, há {len(items)}")
+    lo, hi = (meta or {}).get("item_count") or (10, 20)               # golden do holdout declara 24..30; o do Scrapy fica em 10..20
+    if not lo <= len(items) <= hi:
+        problems.append(f"esperado entre {lo} e {hi} itens, há {len(items)}")
     cats = {i.category for i in items}
     if required - cats:
         problems.append(f"categorias sem item: {sorted(required - cats)}")
@@ -87,15 +88,17 @@ _TICKS = re.compile(r"`([^`]+)`")
 
 
 def group_of(item: Item) -> str | None:
-    """'EXACT' | 'SEMANTIC' pelo prefixo da categoria (só o golden público usa este esquema)."""
-    for grp in ("EXACT", "SEMANTIC"):
+    """'EXACT' | 'SEMANTIC' | 'MIXED' pelo prefixo da categoria (só o golden público usa este esquema)."""
+    for grp in ("EXACT", "SEMANTIC", "MIXED"):
         if item.category.startswith(grp + "_"):
             return grp
     return None
 
 
-def validate_groups(items: list[Item], meta: dict, root: Path) -> list[str]:
-    """Regras MECÂNICAS que separam EXACT de SEMANTIC no golden público (meta.group_rule). Não usa Jev."""
+def validate_groups(items: list[Item], meta: dict, root: Path, lexical_top=None) -> list[str]:
+    """Regras MECÂNICAS que separam EXACT, SEMANTIC e MIXED no golden público (meta.group_rule). Não usa Jev.
+    `lexical_top(question, terms) -> list[str]`: arquivos do ripgrep baseline, melhor primeiro (só o grupo MIXED precisa)."""
+    import hybrid as hy                                  # só stdlib; a mesma regra de identificador do híbrido congelado
     problems: list[str] = []
     ubiquitous = {w.lower() for w in meta.get("ubiquitous_words", [])}
     for it in items:
@@ -114,11 +117,27 @@ def validate_groups(items: list[Item], meta: dict, root: Path) -> list[str]:
             for t in ticks:
                 if t not in region_text:
                     problems.append(f"{it.id}: literal `{t}` não aparece verbatim nas regiões esperadas")
+        elif grp == "MIXED":
+            ids = hy.explicit_identifiers(it.question)
+            if it.grep_friendly or it.semantic_only:
+                problems.append(f"{it.id}: MIXED exige grep_friendly=false e semantic_only=false")
+            if not ids:
+                problems.append(f"{it.id}: MIXED exige identificador explícito na pergunta (regra do híbrido)")
+            elif lexical_top is None:
+                problems.append(f"{it.id}: MIXED não verificável sem a busca lexical (lexical_top)")
+            else:
+                top = lexical_top(it.question, ids)
+                if not top:
+                    problems.append(f"{it.id}: MIXED exige que a busca lexical ache o identificador")
+                elif top[0] in set(it.expected_files):
+                    problems.append(f"{it.id}: MIXED exige que o melhor arquivo lexical ({top[0]}) NÃO esteja em expected_files")
         else:
             if not it.semantic_only or it.grep_friendly:
                 problems.append(f"{it.id}: SEMANTIC exige semantic_only=true e grep_friendly=false")
             if _TICKS.findall(it.question):
                 problems.append(f"{it.id}: SEMANTIC não pode citar literais entre crases")
+            if hy.explicit_identifiers(it.question):
+                problems.append(f"{it.id}: SEMANTIC não pode ter identificador explícito (a salvaguarda lexical dispararia)")
             sym_tokens = {t for s in it.expected_symbols for part in s.split(".")
                           for t in tokenize(part, keep_compound=False)}
             q_tokens = {t for t in tokenize(it.question, keep_compound=False) if t not in ubiquitous}

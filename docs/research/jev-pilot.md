@@ -885,7 +885,7 @@ nenhuma, então o "roteador" é perfeito no replay e o resultado SEMANTIC do hí
 escrita depois de ver P01. (c) n = 20, avaliador único (o autor). (d) O Scrapy é público e pode estar no treino do Jev. O replay só justifica **testar de
 verdade** em corpus novo; não prova nada sobre produto.
 
-### 38.3 P01 — `Which code sends the `request_dropped` signal?` (esperado: `scrapy/core/engine.py`)
+### 38.3 P01 — "Which code sends the `request_dropped` signal?" (esperado: `scrapy/core/engine.py`)
 
 - **ripgrep:** topo `engine.py` (janela 463–473), depois `scheduler.py`, `signals.py` — acerta.
 - **`jev_map`:** etapa A pôs `signals.py` em primeiro (0,81; onde o sinal é *declarado*), `engine.py` só em 4º (0,03); a etapa B escolheu um docstring do
@@ -894,3 +894,77 @@ verdade** em corpus novo; não prova nada sobre produto.
   `scheduler.py`; R@1 = R@3 = 1,0, REGION_RECALL 1,0. Sem exceção especial para P01: o mesmo código roda nas 20 perguntas.
 - **Por que o Jev errou:** o mapa por arquivo mostra declaração e menções do sinal; a pergunta distingue *quem emite* de *quem declara/descreve*, uma
   distinção que a linha do mapa não carrega. Hipótese, não medida.
+
+## 39. Holdout confirmatório do híbrido (Poetry 2.5.1) — PREPARADO, NÃO EXECUTADO (2026-10-01, sétima rodada)
+
+Prova: `simulated` (provedor falso, rede bloqueada) para o harness; `real` só para o que não usa o Jev (baselines locais, estimativa).
+**Nenhuma chamada ao Jev** (`NEW_NETWORK_ATTEMPTS = 0`). O PASS/FAIL deste teste não altera o `NO_GO` do Scrapy nem autoriza código privado.
+
+### 39.1 Corpus e golden
+
+- **Repositório:** `python-poetry/poetry`, **MIT**, tag `2.5.1`, SHA `94b6e35b9091991887aa54feeb3771a86d3bd692`, 2026-09-20 (11 dias antes da rodada). Escolhido
+  por: Python, licença permissiva, arquitetura não trivial (solver estilo PubGrub, instalador paralelo, gerenciador de ambientes, publicação, autenticação,
+  plugins), 174 arquivos não vazios no mapa (< 255 opções do Choice) e nenhuma relação com o Scrapy. Alternativas olhadas: `mitmproxy` v12.2.3 (MIT) e `pytest`.
+- **Golden:** 30 perguntas, gabarito conferido à mão contra o commit (grep + leitura de cada região), o Jev não participou. **12 EXACT** (literal entre crases
+  verbatim na região esperada), **12 SEMANTIC** (sem identificador, sem token compartilhado com os símbolos esperados), **6 MIXED** (tem identificador, o
+  ripgrep o acha, e o melhor arquivo lexical *não* é o esperado: o caso em que a salvaguarda pode piorar). Todas as regras de grupo são verificadas por teste.
+- **Ordem do trabalho:** golden e perguntas congelados → baselines locais medidas (sem Jev) → H3 revisto uma vez (ver 39.3) → `freeze.json`. Nenhuma pergunta ou
+  região foi alterada depois de medir as baselines.
+- **Baselines sem Jev (medidas):** ripgrep EXACT R@3 1,000 / SEMANTIC 0,542 / MIXED 0,500; BM25 1,000 / 0,500 / 1,000. As baselines acertam **muito mais** SEMANTIC
+  aqui que no Scrapy (0,00–0,08): o vocabulário do Poetry é menos disjunto das perguntas. Isso torna o holdout *mais difícil* para o híbrido.
+
+### 39.2 Congelado antes da primeira chamada
+
+`freeze.json` (`freeze.py --check`, coberto por teste): hash do golden, dos limiares e da regra híbrida (`0a904767…`), constantes e código do pipeline `jev_map`
+(corpus, chunking, mapa do repositório, formato das perguntas Choice/Noul, adaptativo k), árvore Git do corpus e hash do mapa. Pipeline **idêntico** ao do Scrapy;
+nenhum parâmetro foi ajustado para este corpus. Qualquer mudança exige nova versão do holdout registrada aqui. A trava é a mesma `PUBLIC_BENCHMARK_AUTHORIZED = False`.
+
+### 39.3 Limiares pré-registrados (`holdout_bench/thresholds.json`)
+
+Cada um em número de itens (1/12 em EXACT e SEMANTIC, 1/6 em MIXED, 1/30 no total). A estratégia sob teste é o `hybrid`; `jev_map` e as baselines são reportados.
+
+| | Critério | Regra | Justificativa |
+|---|---|---|---|
+| H1 | sem regressão EXACT | híbrido ≥ melhor baseline − 1 item (de 12) | zero faria uma perda idiossincrática reprovar; 2+ itens (≥ 16,7 pontos) é regressão material |
+| H2 | custo da salvaguarda (MIXED) | híbrido ≥ melhor baseline **e** ≥ `jev_map` − 1 (de 6) | itens construídos para a salvaguarda errar o 1º arquivo |
+| H3 | ganho SEMANTIC | híbrido ≥ max(8, melhor baseline + metade da folga) de 12 | "forte" = recuperar ao menos metade do que a baseline gratuita erra, e nunca < 2/3 |
+| H4 | contexto | mediana ≤ BM25 e ≤ 0,5 × leitura ingênua | mesma lógica do T3 |
+| H5 | latência | p50 ≤ 1500 ms, p95 ≤ 4000 ms | limites do T4, inalterados |
+| H6 | confiabilidade | ≤ 1 pergunta com falha em 30 | 5 % do T5 arredondado para baixo em itens |
+| H7 | custo | ≤ US$ 1,00 no total e ≤ US$ 0,05 por pergunta | teto de segurança (T6) |
+| H8 | critical misses | ≤ 2 em 30 | o teto absoluto do Scrapy mantido (mais estrito que a proporção 3), na direção que dificulta o PASS |
+| H9 | proveniência | SHA fixado e limpo, 0 redações, ≤ 60 tentativas, hash da regra igual | — |
+
+Veredito: `PASS` (H1–H9), `PASS_WITH_RESERVATIONS` (H1, H3, H6, H8, H9 passam; falha entre H2, H4, H5, H7), `FAIL` (H1, H3, H6, H8 ou H9 falha),
+`INSUFFICIENT_EVIDENCE` (sem rodada real, interrompida ou sem folga para medir o ganho).
+
+**Revisão única do H3, antes de qualquer chamada Jev (`THRESHOLD_CHANGED_AFTER_RESULTS` não se aplica: nenhum resultado Jev existia):** a primeira redação exigia
++6 itens sobre a melhor baseline *e* ≥ 8/12. Ao medir as baselines sem Jev (melhor SEMANTIC 6,5/12), ela exigiria 12,5/12, **inalcançável**: reprovaria qualquer
+resultado. Trocada por "≥ max(8, metade da folga)". Registrada em `revision_history`. Os demais critérios não mudaram.
+
+**Poder estatístico (n = 12; binomial exato):** exigir 8/12, um recuperador com acerto verdadeiro de 50 % passa em 19 %, de 80 % em 93 %. Com a baseline em 6,5/12 (precisa
+≥ 10/12) esses números caem para 1,9 % e 55,8 %, e 90 % passa em 88,9 %. Logo o holdout só confirma ganhos grandes; um PASS é evidência, não prova, e um FAIL com acerto
+verdadeiro de 80 % acontece em ~44 % das vezes. H1 com tolerância 1: se cada item tem 5 % de chance de regressão, reprova em 11,8 %.
+
+### 39.4 Estimativa (sem rede)
+
+- **60 requisições** = 2 por pergunta × 30 (só `jev_map`); o híbrido não faz requisições próprias; `max_retries = 0`; `--max-calls 60`; `jev_rerank` não roda.
+- **Etapa A (exata):** 1.142.879 B (maior payload 38.177 B). **Etapa B:** 720.392 B (limite inferior, só arquivos esperados) a 2.460.000 B (teto).
+- **Tokens e custo** com as razões bytes/token **medidas no Scrapy** (A 3,172; B 3,604): **560.189–1.042.877 tokens**, **US$ 0,0235–0,0438**. Extrapolando o fator que a etapa B
+  teve no Scrapy (1,33× o limite inferior) ⇒ esperado ≈ 0,63 M tokens ≈ **US$ 0,026**. Calibração de outro corpus: no Scrapy a mesma fórmula deu 513.588–875.504 e o real foi 544.084.
+- **Exposição ao corte da etapa B** (≤ 60 trechos): no melhor caso (2 arquivos esperados no topo) 0 itens perdem trecho esperado; se o 2º arquivo errado for grande (`executor.py` 45
+  trechos + `version_solver.py` 24 = 69 > 60) a exposição aumenta. Medida e documentada, **não corrigida** (seria mudar a pipeline depois de ver o corpus).
+
+### 39.5 Limitações (não eliminadas)
+
+- **Memorização/contaminação:** o Poetry é público desde 2018 e o corte de treino do `jev-1.13.0` é desconhecido. Mitigação parcial: release de 11 dias antes, perguntas sobre
+  relações internas e regiões de um commit específico (não a API pública), comportamento recente (hash com grupos desde a 2.3.0). Um bom resultado **não** distingue recuperação de memorização.
+- **Avaliador único** (o assistente), sem dupla verificação; 30 itens; baselines mecânicas de um disparo.
+- **MIXED é construído** para estressar a regra (rótulo mecânico, não derivado de resultado), então a taxa de MIXED no holdout *não* estima a frequência real dessas perguntas.
+- **SEMANTIC ≡ `jev_map` por construção** no híbrido (sem identificador a regra não ativa): o que o holdout testa de novo no híbrido é EXACT e MIXED.
+- **Privacidade:** público, MIT, nada privado sai. PASS não destrava o código privado; a retenção padrão da API (`STANDARD_API_RETENTION = UNKNOWN`) é um portão à parte.
+
+### 39.6 Como seria executado (NÃO executar sem autorização)
+
+Autorização explícita do dono → commit próprio com `PUBLIC_BENCHMARK_AUTHORIZED = True` → `holdout_bench/freeze.py --check` → `benchmark.py --golden holdout_bench/golden.json --corpus-root data/jev-pilot/public/poetry --provider jev --confirm-external-send --max-calls 60 --max-retries 0` →
+volta a `False`. A chave deve ser **rotacionada** antes (foi colada em conversa: `KEY_ROTATION_RECOMMENDED = YES`).

@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "registered_at": "2026-10-01",
+  "registered_before_any_holdout_jev_call": true,
+  "THRESHOLD_CHANGED_AFTER_RESULTS": "NO",
+  "kind": "CONFIRMATORY_HOLDOUT",
+  "rule": "Limiares do HOLDOUT (python-poetry/poetry 2.5.1, 30 perguntas: 12 EXACT, 12 SEMANTIC, 6 MIXED), escritos ANTES de qualquer chamada Jev nesse corpus. Cada limiar é um NÚMERO DE ITENS (a unidade de medida do golden é 1/12 para EXACT e SEMANTIC, 1/6 para MIXED, 1/30 para o total) e vem do propósito da decisão, não do resultado do Scrapy. O experimento original (Scrapy) continua NO_GO; este teste não o revê.",
+  "decision_purpose": "Decidir se o HÍBRIDO (salvaguarda lexical + jev_map, regra v1 congelada) merece o próximo portão (retenção/ZDR da API, depois piloto no código privado). Um PASS aqui NÃO autoriza enviar código privado: PRIVATE_CODE_SEND_APPROVED continua False e PRIVATE_CODE_BENCHMARK_STATUS = BLOCKED_PRIVACY até a retenção ser provada por escrito e o dono aprovar.",
+  "strategy_under_test": "hybrid",
+  "also_reported_not_gated": [
+    "jev_map",
+    "ripgrep",
+    "code_search",
+    "ALL/EXACT/SEMANTIC/MIXED R@1,R@3,R@5, REGION_RECALL, DELIVERED_RECALL",
+    "tabela por item"
+  ],
+  "hybrid_rule": {
+    "version": "1",
+    "hash": "0a904767ac2b0503ac6546ca71aa991917f5bad80f5164940184e3afbb5eed66"
+  },
+  "criteria": {
+    "H1_exact_no_material_regression": {
+      "group": "EXACT",
+      "n": 12,
+      "metric": "RECALL_AT_3",
+      "rule": "hybrid_items >= best_baseline_items - 1",
+      "tolerance_items": 1,
+      "tolerance_fraction": 0.0833,
+      "why": "Busca exata é o ponto forte do ripgrep. Com n=12 um item vale 0,083; zero de tolerância faria uma única perda idiossincrática reprovar o teste, mas mais de um item abaixo da melhor baseline já é regressão material (>= 16,7 pontos). Se a salvaguarda funciona, o EXACT do híbrido é o do ripgrep na 1ª posição; o risco real é perder o arquivo que o ripgrep tinha na 2ª/3ª posição, porque a partir da 2ª posição o ranking é o do Jev.",
+      "false_fail_if_per_item_regression_probability": {
+        "0.02": 0.023,
+        "0.05": 0.118,
+        "0.10": 0.341,
+        "0.20": 0.725
+      }
+    },
+    "H2_mixed_safeguard_cost": {
+      "group": "MIXED",
+      "n": 6,
+      "metric": "RECALL_AT_3",
+      "rule": "hybrid_items >= best_baseline_items AND hybrid_items >= jev_map_items - 1",
+      "why": "MIXED são perguntas construídas para a salvaguarda errar o 1º arquivo (o melhor arquivo lexical NÃO é o esperado). Exige que o híbrido (a) não fique abaixo das baselines locais nesse grupo e (b) perca no máximo 1 dos 6 itens em relação ao jev_map puro, ou seja, que o custo da salvaguarda seja limitado a 1 item."
+    },
+    "H3_semantic_gain": {
+      "group": "SEMANTIC",
+      "n": 12,
+      "metric": "RECALL_AT_3",
+      "rule": "hybrid_items >= max(8, best_baseline_items + (12 - best_baseline_items) / 2); sem folga (best_baseline_items > 9) o critério não é avaliável (INSUFFICIENT_EVIDENCE)",
+      "absolute_items_min": 8,
+      "gap_closed_fraction_min": 0.5,
+      "why": "'Ganho forte' = recuperar pelo menos METADADE do que a melhor baseline gratuita ainda erra nas perguntas semânticas, e nunca menos de 8 de 12 (2/3): um recuperador que erra um terço das perguntas de comportamento não substitui a busca do agente, e um que só repete o que ripgrep/BM25 já acham não justifica custo, latência e envio externo de código. A forma 'metade da folga' substitui a primeira redação (+6 itens sobre a baseline), que era INALCANÇÁVEL quando a melhor baseline já acerta 6,5/12 (6,5+6 > 12); ver revision_history.",
+      "required_items_by_best_baseline": {
+        "0": 8,
+        "3": 8,
+        "6": 9,
+        "6.5": 9.25,
+        "7": 9.5,
+        "8": 10,
+        "9": 10.5
+      },
+      "pass_probability_of_a_retriever_with_true_recall_p": {
+        "need_8_of_12": {
+          "0.50": 0.194,
+          "0.667": 0.632,
+          "0.75": 0.842,
+          "0.80": 0.927,
+          "0.90": 0.996
+        },
+        "need_10_of_12": {
+          "0.50": 0.019,
+          "0.667": 0.182,
+          "0.75": 0.391,
+          "0.80": 0.558,
+          "0.90": 0.889,
+          "0.95": 0.98
+        }
+      },
+      "reading": "Se a melhor baseline acerta ~6,5/12 (como medido sem Jev), o híbrido precisa de >= 10 itens: um recuperador com acerto verdadeiro de 80 % passa em ~56 % das vezes e um de 90 % em ~89 %. O critério é exigente de propósito (falso positivo gasta o próximo portão, que é jurídico/operacional) e PASS é evidência, não prova."
+    },
+    "H4_context_reduction": {
+      "group": "ALL",
+      "n": 30,
+      "metric": "CONTEXT_BYTES_RETURNED_MEDIAN",
+      "rule": "median <= bm25_median AND median <= 0.5 * naive_read_median",
+      "why": "Mesma lógica do T3 do piloto: reduzir pelo menos pela metade o cenário 'Read dos arquivos inteiros esperados' e não entregar mais que o BM25 local. Métrica PROXY em bytes, não tokens."
+    },
+    "H5_latency": {
+      "metric": "LATENCY_MS (linha do híbrido: duas requisições do jev_map + a busca lexical local)",
+      "p50_ms_max": 1500,
+      "p95_ms_max": 4000,
+      "why": "Os limites do T4 do piloto (acima disso a busca fica mais lenta que ler o arquivo) mantidos sem mudança; a latência medida no Scrapy NÃO entrou na escolha."
+    },
+    "H6_reliability": {
+      "metric": "perguntas com falha do jev_map (timeout, resposta inválida, escolha fora do conjunto, HTTP != 200)",
+      "failed_questions_max": 1,
+      "of": 30,
+      "fraction": 0.0333,
+      "why": "Equivale ao teto de 5 % do T5 arredondado PARA BAIXO em itens inteiros (1,5 -> 1). Toda falha cai no ranking BM25 e é contada. Rodada interrompida (401/403, teto, payload fora do corpus) é INSUFFICIENT_EVIDENCE."
+    },
+    "H7_cost": {
+      "max_usd_for_run": 1.0,
+      "max_usd_per_question": 0.05,
+      "why": "Teto de segurança contra erro de payload (preço oficial US$ 0,042/Mtok de entrada; saída grátis), como o T6. O custo previsto está uma ordem de grandeza abaixo."
+    },
+    "H8_critical_misses": {
+      "max_items": 2,
+      "of": 30,
+      "definition": "item em que o BM25 tinha um arquivo esperado no top-3 e o híbrido o tirou do top-3 (R@3 do híbrido < R@3 do BM25)",
+      "why": "O T8 do Scrapy era 2 de 20 (10 %). Aqui o teto absoluto 2 é MANTIDO em 30 (6,7 %), mais estrito que a proporção (3): como a regra tem uma salvaguarda determinística, perder contexto que a busca barata tinha é o defeito que ela existe para evitar. Escolha na direção que torna o PASS mais difícil, não mais fácil."
+    },
+    "H9_provenance_and_privacy": {
+      "checkout_must_match_pinned_sha_and_be_clean": true,
+      "hard_redaction_hits_max": 0,
+      "network_attempts_max": 60,
+      "hybrid_rule_hash_must_match": true,
+      "private_code_sent": false,
+      "why": "Código PÚBLICO sob MIT; o checkout tem de estar exatamente no SHA fixado. Qualquer desvio invalida a rodada. O teto de 60 requisições = 2 por pergunta (jev_map); o híbrido não faz requisições próprias."
+    }
+  },
+  "verdicts": {
+    "PASS": "H1..H9 passam.",
+    "PASS_WITH_RESERVATIONS": "H1, H3, H6, H8 e H9 passam e pelo menos um entre H2, H4, H5, H7 falha.",
+    "FAIL": "H1, H3, H6, H8 ou H9 falha.",
+    "INSUFFICIENT_EVIDENCE": "Sem rodada real, rodada interrompida, ou menos linhas do híbrido do que perguntas.",
+    "note": "Nenhum veredito deste teste altera o NO_GO do experimento Scrapy nem autoriza código privado."
+  },
+  "pipeline_spec": {
+    "same_as_scrapy_jev_map": "Pipeline do jev_map IDÊNTICO ao do Scrapy (etapa A: Choice sobre arquivos do mapa; etapa B: Choice sobre trechos dos 2 primeiros arquivos, <= 60 trechos e <= 80.000 bytes; entrega pelo k adaptativo com massa 0,8, k entre 2 e 8, teto 16 KiB; falha na etapa A -> BM25, na B -> ranking da etapa A). Nenhum parâmetro foi alterado para este corpus.",
+    "hybrid": "Regra v1 (hybrid.py, hash acima), calculada localmente a partir da MESMA resposta do jev_map: 0 requisições adicionais.",
+    "variants_run": [
+      "jev_map"
+    ],
+    "jev_rerank": "NÃO é executado no holdout (era controle no Scrapy; o produto candidato é o híbrido).",
+    "requests_budget": "60 requisições = 2 por pergunta x 30; max_retries = 0; --max-calls 60.",
+    "frozen_before_first_call": [
+      "corpus (src/poetry, SHA 94b6e35)",
+      "perguntas e gabarito",
+      "chunking",
+      "mapa do repositório",
+      "prompts/formato das perguntas Choice",
+      "regra híbrida v1",
+      "limiares acima",
+      "métricas"
+    ],
+    "known_limitation_stage_b": "A etapa B corta em 60 trechos; em arquivos grandes (executor.py 45 trechos, version_solver.py 24) os dois primeiros arquivos escolhidos podem somar mais de 60 trechos e os últimos ficam de fora. A pipeline NÃO foi ajustada por isso (seria mudar o experimento depois de ver o corpus); a exposição é medida em estimate e documentada em docs/research/jev-pilot.md."
+  },
+  "measured_before_any_jev_call": {
+    "when": "2026-10-01, depois de congelar golden e perguntas e ANTES de qualquer chamada Jev; só ripgrep e BM25 locais (benchmark.py --provider fake não mede o Jev)",
+    "ripgrep": {
+      "EXACT_R3": 1.0,
+      "SEMANTIC_R3": 0.542,
+      "MIXED_R3": 0.5,
+      "EXACT_R1": 0.833,
+      "MIXED_R1": 0.0,
+      "context_median_bytes": 4075
+    },
+    "code_search": {
+      "EXACT_R3": 1.0,
+      "SEMANTIC_R3": 0.5,
+      "MIXED_R3": 1.0,
+      "EXACT_R1": 0.917,
+      "MIXED_R1": 0.5,
+      "context_median_bytes": 8757.5
+    },
+    "note": "As baselines acertam muito mais SEMANTIC aqui (0,50-0,54) que no Scrapy (0,00-0,08): o vocabulário do Poetry é menos disjunto das perguntas. Isso torna o holdout MAIS difícil para o híbrido, não mais fácil. O gabarito e as perguntas NÃO foram alterados por causa disso."
+  },
+  "revision_history": [
+    {
+      "when": "2026-10-01, antes de qualquer chamada Jev no holdout",
+      "changed": "H3 (ganho semântico)",
+      "from": "ganho >= +6 itens sobre a melhor baseline E >= 8 itens",
+      "to": "hybrid >= max(8, metade da folga acima da melhor baseline)",
+      "reason": "defeito lógico descoberto ao medir as baselines SEM Jev: com a melhor baseline em 6,5/12 a primeira redação exigiria 12,5/12 (impossível), reprovando qualquer resultado. Nenhum resultado do Jev existia; os demais critérios não mudaram.",
+      "THRESHOLD_CHANGED_AFTER_RESULTS": "NO (nenhum resultado Jev existia; mudança por inalcançabilidade matemática)"
+    }
+  ]
+}

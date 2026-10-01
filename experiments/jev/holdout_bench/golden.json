@@ -1,0 +1,710 @@
+{
+ "meta": {
+  "version": 1,
+  "frozen_at": "2026-10-01",
+  "kind": "CONFIRMATORY_HOLDOUT",
+  "source_sha": "94b6e35",
+  "source_sha_full": "94b6e35b9091991887aa54feeb3771a86d3bd692",
+  "source_url": "https://github.com/python-poetry/poetry.git",
+  "source_tag": "2.5.1",
+  "source_date": "2026-09-20",
+  "visibility": "public",
+  "license": "MIT",
+  "license_signature": [
+   "Permission is hereby granted, free of charge",
+   "Sébastien Eustace"
+  ],
+  "thresholds_file": "thresholds.json",
+  "evaluation": "holdout",
+  "item_count": [
+   24,
+   30
+  ],
+  "variants": [
+   "jev_map",
+   "hybrid"
+  ],
+  "headline_strategy": "hybrid",
+  "hybrid_rule": {
+   "version": "1",
+   "hash": "0a904767ac2b0503ac6546ca71aa991917f5bad80f5164940184e3afbb5eed66",
+   "lock_file": "../hybrid_rule.lock.json"
+  },
+  "corpus": {
+   "roots": [
+    "src/poetry"
+   ],
+   "extensions": [
+    ".py"
+   ],
+   "note": "Corpus do HOLDOUT: o pacote de produção `src/poetry/` (193 arquivos .py, 174 não vazios) na tag 2.5.1. `tests/` fica fora pelo mesmo motivo do golden do Scrapy: a pergunta é sobre onde o código FAZ algo, e os testes repetem o vocabulário de produção."
+  },
+  "required_categories": [
+   "EXACT_SYMBOL",
+   "EXACT_SETTING",
+   "EXACT_TEXT",
+   "SEMANTIC_BEHAVIOR",
+   "SEMANTIC_CROSS_MODULE",
+   "MIXED_IDENTIFIER_ELSEWHERE"
+  ],
+  "group_rule": {
+   "EXACT": "categoria começa com EXACT_; grep_friendly=true; a pergunta traz entre crases um literal que aparece VERBATIM numa região esperada (verificado por teste).",
+   "SEMANTIC": "categoria começa com SEMANTIC_; semantic_only=true; sem identificador explícito segundo a regra do híbrido (a salvaguarda lexical NÃO dispara); após remover stopwords e as palavras onipresentes (ubiquitous_words), nenhum token da pergunta é igual a um token dos nomes de função/classe esperados (verificado por teste).",
+   "MIXED": "categoria começa com MIXED_; grep_friendly=false e semantic_only=false; a pergunta TEM identificador explícito (a salvaguarda dispara), o ripgrep o encontra, e o melhor arquivo lexical NÃO está em expected_files: é o caso que a salvaguarda pode piorar (verificado por teste com o ripgrep baseline). Construído para estressar o híbrido; não tem rótulo derivado de resultado."
+  },
+  "ubiquitous_words": [
+   "poetry",
+   "python",
+   "dependency",
+   "dependencies",
+   "package",
+   "packages",
+   "project"
+  ],
+  "how_verified": "Gabarito conferido à MÃO contra o código do commit 94b6e35 (grep + leitura de cada trecho); o Jev NÃO foi usado para gerar nem rever expected_*. Regiões são [arquivo, linha_inicial, linha_final], 1-indexadas, relativas à raiz do repositório poetry.",
+  "relevance_rule": "Um resultado é relevante no nível de ARQUIVO se o arquivo está em expected_files; no nível de REGIÃO se o trecho devolvido intersecta alguma expected_regions. Mesmas definições do golden do Scrapy.",
+  "frozen": "NÃO editar depois da primeira chamada Jev real (THRESHOLD_CHANGED_AFTER_RESULTS). Mudança exige nova version e registro no relatório.",
+  "contamination_note": "O Jev pode ter visto o Poetry no treino (repositório público desde 2018; corte de treino do jev-1.13.0 desconhecido). Mitigação PARCIAL, não eliminação: (1) tag 2.5.1 de 2026-09-20, 11 dias antes da rodada; (2) perguntas sobre relações internas e regiões de um commit específico, não sobre a API pública; (3) vários trechos usam comportamento recente (hash com grupos desde a 2.3.0, caminhos de lock-version 2.1). Um bom resultado aqui NÃO distingue recuperação de memorização.",
+  "rater": "avaliador único (o assistente que montou o golden); sem dupla verificação independente"
+ },
+ "items": [
+  {
+   "id": "H01",
+   "question": "Where is `LazyWheelOverHTTP` defined?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/inspection/lazy_wheel.py"
+   ],
+   "expected_symbols": [
+    "LazyWheelOverHTTP"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     488,
+     493
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Definição da classe; o uso (linha 85) está no mesmo arquivo."
+  },
+  {
+   "id": "H02",
+   "question": "Where is `SolverProblemError` raised when version solving fails?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/puzzle/solver.py"
+   ],
+   "expected_symbols": [
+    "Solver._solve"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/puzzle/solver.py",
+     179,
+     186
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Há outras menções (import, except na linha 112, isinstance no executor), mas só o solver LEVANTA o erro."
+  },
+  {
+   "id": "H03",
+   "question": "Where is `IsolatedBuildBackendError` raised?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/utils/isolated_build.py"
+   ],
+   "expected_symbols": [
+    "IsolatedBuildBackendError"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/isolated_build.py",
+     230,
+     231
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "A classe é definida na linha 39 do mesmo arquivo; info.py e executor.py só a capturam/testam."
+  },
+  {
+   "id": "H04",
+   "question": "How does `_validate_archive_hash` pick which hash type to verify an archive with?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/installation/executor.py"
+   ],
+   "expected_symbols": [
+    "Executor._validate_archive_hash"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     807,
+     835
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Método estático único."
+  },
+  {
+   "id": "H05",
+   "question": "Which code reads `include-system-site-packages` from the virtual environment configuration?",
+   "category": "EXACT_TEXT",
+   "expected_files": [
+    "src/poetry/utils/env/virtual_env.py"
+   ],
+   "expected_symbols": [
+    "VirtualEnv.includes_system_site_packages"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     168,
+     178
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Única ocorrência do literal no pacote."
+  },
+  {
+   "id": "H06",
+   "question": "What does `get_credentials_for_git_url` return for URLs that are not HTTP or HTTPS?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/utils/authenticator.py"
+   ],
+   "expected_symbols": [
+    "Authenticator.get_credentials_for_git_url"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     357,
+     368
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "O chamador está em vcs/git/backend.py; a definição só no authenticator."
+  },
+  {
+   "id": "H07",
+   "question": "Where is `installer.max-workers` capped by the CPU-based default?",
+   "category": "EXACT_SETTING",
+   "expected_files": [
+    "src/poetry/config/config.py"
+   ],
+   "expected_symbols": [
+    "Config.installer_max_workers"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/config/config.py",
+     305,
+     318
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "console/commands/config.py só valida/normaliza a chave."
+  },
+  {
+   "id": "H08",
+   "question": "What does `_should_write` compare to decide whether the lock file is rewritten?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/packages/locker.py"
+   ],
+   "expected_symbols": [
+    "Locker._should_write"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     248,
+     259
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Método privado único."
+  },
+  {
+   "id": "H09",
+   "question": "Which responses make `_is_file_exists_error` return true?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/publishing/uploader.py"
+   ],
+   "expected_symbols": [
+    "Uploader._is_file_exists_error"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     368,
+     387
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Chamado na linha 270 do mesmo arquivo."
+  },
+  {
+   "id": "H10",
+   "question": "Where is `get_system_env` implemented?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/utils/env/env_manager.py"
+   ],
+   "expected_symbols": [
+    "EnvManager.get_system_env"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     606,
+     624
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "10 menções em 5 arquivos (a maioria chamadores): o ripgrep pode ranquear um chamador acima da definição."
+  },
+  {
+   "id": "H11",
+   "question": "Where is `_get_pool` implemented in the interactive init flow?",
+   "category": "EXACT_SYMBOL",
+   "expected_files": [
+    "src/poetry/console/commands/init.py"
+   ],
+   "expected_symbols": [
+    "InitCommand._get_pool"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     561,
+     574
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "Definição única; chamadores no mesmo arquivo."
+  },
+  {
+   "id": "H12",
+   "question": "Where is `content-hash` written into the lock metadata?",
+   "category": "EXACT_TEXT",
+   "expected_files": [
+    "src/poetry/packages/locker.py"
+   ],
+   "expected_symbols": [
+    "Locker._compute_lock_data"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     240,
+     244
+    ]
+   ],
+   "grep_friendly": true,
+   "semantic_only": false,
+   "notes": "A leitura/comparação (linha 103) está em is_fresh, no mesmo arquivo."
+  },
+  {
+   "id": "H13",
+   "question": "When the dependency resolver reaches a dead end, how does it derive a new rule from the contradiction and rewind its earlier choices?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/mixology/version_solver.py"
+   ],
+   "expected_symbols": [
+    "_resolve_conflict"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/mixology/version_solver.py",
+     318,
+     468
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Aprendizado de cláusula e retrocesso (estilo PubGrub)."
+  },
+  {
+   "id": "H14",
+   "question": "How does the tool determine that the pinned snapshot of resolved dependencies is out of date relative to the declared requirements, including snapshots written by older releases?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/packages/locker.py"
+   ],
+   "expected_symbols": [
+    "Locker.is_fresh"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Hash do conteúdo relevante; tolera hash de antes da 2.3.0."
+  },
+  {
+   "id": "H15",
+   "question": "Which operations are forced to run one at a time instead of in parallel, and how are source-control checkouts that share a directory serialized?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/installation/executor.py"
+   ],
+   "expected_symbols": [
+    "Executor.execute"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     176,
+     234
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Agrupamento por prioridade; operações seriais; git por diretório."
+  },
+  {
+   "id": "H16",
+   "question": "How is the folder for an isolated interpreter made unique across different checkouts that share the same project title?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/utils/env/env_manager.py"
+   ],
+   "expected_symbols": [
+    "EnvManager.generate_env_name"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     639,
+     646
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Nome sanitizado + sha256 do diretório de trabalho."
+  },
+  {
+   "id": "H17",
+   "question": "Under which conditions is a prebuilt binary distribution rejected, or a source archive rejected, given the user's configured restrictions?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/installation/chooser.py"
+   ],
+   "expected_symbols": [
+    "Chooser.choose_for"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/installation/chooser.py",
+     49,
+     123
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Política no-binary / only-binary."
+  },
+  {
+   "id": "H18",
+   "question": "How are the descriptive fields of a built archive extracted and turned into the form fields sent to the package index?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/publishing/uploader.py"
+   ],
+   "expected_symbols": [
+    "Uploader.post_data"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     139,
+     188
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Hashes, tipo, metadados do wheel/sdist."
+  },
+  {
+   "id": "H19",
+   "question": "How are third-party extensions discovered at startup, and what type check must an extension pass before being registered?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/plugins/plugin_manager.py"
+   ],
+   "expected_symbols": [
+    "PluginManager.load_plugins",
+    "PluginManager._load_plugin_entry_point"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     75,
+     106
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Entry points + issubclass(Plugin, ApplicationPlugin)."
+  },
+  {
+   "id": "H20",
+   "question": "How does the tool decide whether to reuse an already downloaded copy of a source-controlled dependency or fetch it again?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/vcs/git/backend.py"
+   ],
+   "expected_symbols": [
+    "Git.clone"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/vcs/git/backend.py",
+     537,
+     565
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Reuso do diretório local por SHA/ref."
+  },
+  {
+   "id": "H21",
+   "question": "How long does the HTTP client wait before trying again after a failed network call, and can the server override that delay?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/utils/authenticator.py"
+   ],
+   "expected_symbols": [
+    "Authenticator._get_backoff"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     296,
+     309
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Cabeçalho Retry-After ou 0,5 × tentativa."
+  },
+  {
+   "id": "H22",
+   "question": "How does the tool detect where the original interpreter lives when running inside a virtual environment, including those created by legacy tooling?",
+   "category": "SEMANTIC_CROSS_MODULE",
+   "expected_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/script_strings.py"
+   ],
+   "expected_symbols": [
+    "EnvManager.get_base_prefix",
+    "GET_BASE_PREFIX"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     627,
+     636
+    ],
+    [
+     "src/poetry/utils/env/script_strings.py",
+     102,
+     111
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Duas implementações da mesma lógica (código no processo e script enviado a outro interpretador); ambos os arquivos são respostas válidas."
+  },
+  {
+   "id": "H23",
+   "question": "When no combination of releases satisfies the requirements, how does the final explanation suggest adjusting the interpreter constraint?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/mixology/failure.py"
+   ],
+   "expected_symbols": [
+    "_Writer.write"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/mixology/failure.py",
+     36,
+     74
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Dica de `python` quando a causa é a versão do interpretador."
+  },
+  {
+   "id": "H24",
+   "question": "What picks the newest compatible release for a dependency named during interactive scaffolding, and what constraint style does it write?",
+   "category": "SEMANTIC_BEHAVIOR",
+   "expected_files": [
+    "src/poetry/console/commands/init.py"
+   ],
+   "expected_symbols": [
+    "InitCommand._find_best_version_for_package"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     441,
+     460
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": true,
+   "notes": "Seletor de versão + caret."
+  },
+  {
+   "id": "H25",
+   "question": "What does the installer do when it finds `poetry.lock` older than the declared requirements?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/installation/installer.py"
+   ],
+   "expected_symbols": [
+    "Installer._do_install"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/installation/installer.py",
+     264,
+     271
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "O literal aparece em 16 arquivos; o ripgrep põe console/commands/check.py na frente, e o comportamento pedido está no installer."
+  },
+  {
+   "id": "H26",
+   "question": "How is the fingerprint of `pyproject.toml` computed for comparison with the lock?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/packages/locker.py"
+   ],
+   "expected_symbols": [
+    "Locker._get_content_hash"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "O literal aparece em 21 arquivos (textos de ajuda); a lógica do hash está no locker."
+  },
+  {
+   "id": "H27",
+   "question": "What happens in the upload loop when `skip-existing` is on and the index says the file already exists?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/publishing/uploader.py"
+   ],
+   "expected_symbols": [
+    "Uploader._upload_file"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     258,
+     277
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "O literal com hífen só existe na definição da opção (publish.py); o código usa skip_existing."
+  },
+  {
+   "id": "H28",
+   "question": "How is the `keyring` consulted for a web address that matches no configured repository?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/utils/authenticator.py"
+   ],
+   "expected_symbols": [
+    "Authenticator._get_credentials_for_url"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     335,
+     355
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "O ripgrep põe password_manager.py na frente (onde o keyring é chamado); a decisão de quando consultar está no authenticator."
+  },
+  {
+   "id": "H29",
+   "question": "Where is the message built that explains why no archive matched, using `ConsoleMessage`?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/installation/chooser.py"
+   ],
+   "expected_symbols": [
+    "Chooser._no_links_found_error"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/installation/chooser.py",
+     125,
+     197
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "O ripgrep põe console/exceptions.py (definição da classe) na frente; a montagem da mensagem está no chooser."
+  },
+  {
+   "id": "H30",
+   "question": "How are `--with`, `--without` and `--only` combined to pick the active dependency groups?",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "expected_files": [
+    "src/poetry/console/commands/group_command.py"
+   ],
+   "expected_symbols": [
+    "GroupCommand.activated_groups"
+   ],
+   "expected_regions": [
+    [
+     "src/poetry/console/commands/group_command.py",
+     75,
+     110
+    ]
+   ],
+   "grep_friendly": false,
+   "semantic_only": false,
+   "notes": "install.py (primeiro no ripgrep) só sobrescreve activated_groups e delega ao super()."
+  }
+ ]
+}

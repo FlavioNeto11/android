@@ -89,6 +89,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     Código privado segue `BLOCKED_PRIVACY`; trava pública voltou a `False`.
   - Sétima rodada: veredito `NO_GO` aceito e preservado (`ORIGINAL_VERDICT_CHANGED = NO`). Híbrido lexical + `jev_map` avaliado **offline** (regra v1 congelada por hash,
     0 chamadas de rede): EXACT R@3 1,000, SEMANTIC R@3 0,958, 0 critical misses ⇒ `PROMISING` exploratório (por construção do roteador; não é GO). Detalhe em §38.
+  - Holdout confirmatório do híbrido **preparado, não executado** (Poetry 2.5.1, MIT, 30 perguntas: 12 EXACT, 12 SEMANTIC, 6 MIXED; 60 requisições previstas, ≈ US$ 0,026):
+    limiares H1–H9 em itens e congelamento por hash (`experiments/jev/holdout_bench/`), harness com linha `hybrid` sobre a mesma resposta do `jev_map`. Trava `PUBLIC_BENCHMARK_AUTHORIZED = False`;
+    código privado segue `BLOCKED_PRIVACY`; chave recomendada para rotação. Detalhe em `docs/research/jev-pilot.md` §39.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 

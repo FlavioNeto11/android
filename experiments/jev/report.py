@@ -169,6 +169,13 @@ def _comparison_md(result: dict, verdict: dict) -> list[str]:
 
 def write_outputs(out_dir: Path, result: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
+    if result["meta"].get("evaluation") == "holdout":        # holdout confirmatório: critérios H1..H9, não T1..T8
+        import holdout_eval
+        verdict = holdout_eval.evaluate(result)
+        (out_dir / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+        (out_dir / "verdict.json").write_text(json.dumps(verdict, ensure_ascii=False, indent=1), encoding="utf-8")
+        (out_dir / "report.md").write_text(holdout_eval.markdown(result, verdict), encoding="utf-8")
+        return verdict
     headline = result["meta"].get("headline_strategy", "jev_rerank")
     verdict = evaluate(result, strategy=headline)
     variants = [s for s in result.get("summary", {}) if s.startswith("jev_")]

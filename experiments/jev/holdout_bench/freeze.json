@@ -1,0 +1,34 @@
+{
+ "golden_sha256": "04422e8c6af1e38ca6252cc03bcb6fce9fda381570ba26233ea5bd7622f77e7f",
+ "thresholds_sha256": "26ef320dce38ca410bd0f1124b95399c6da7e57d172279bf630bfa17773d5815",
+ "hybrid_rule_hash": "0a904767ac2b0503ac6546ca71aa991917f5bad80f5164940184e3afbb5eed66",
+ "pipeline_constants": {
+  "N_SHORTLIST": 30,
+  "STAGE_B_FILES": 2,
+  "STAGE_B_MAX_CHUNKS": 60,
+  "STAGE_B_CAP_BYTES": 80000,
+  "MAP_REPRESENT_FILES": 8,
+  "ADAPTIVE_MASS": 0.8,
+  "ADAPTIVE_KMIN": 2,
+  "ADAPTIVE_KMAX": 8,
+  "DELIVER_MAX_SPANS": 8,
+  "DELIVER_MAX_BYTES": 16384,
+  "RG_CONTEXT": 5,
+  "PINNED_MODEL": "jev-1.13.0",
+  "PRICE_USD_PER_MTOK_INPUT": 0.042,
+  "chunk_MAX_LINES": 80,
+  "chunk_WINDOW": 60,
+  "chunk_STEP": 50
+ },
+ "pipeline_code_sha256": {
+  "jev_map_and_helpers": "282cd8675c69cadf9df3edd9fafb14f96e71fcdd6ee4f6fba71111d38b9f1367",
+  "prompt_format_retrieval_request": "f28789737c2db1030457c413a6c34bc6fb22a7553aeaf9f09e9bc7a9585cffbe",
+  "repomap": "f732416c011db96e5dd9f17f2d52ebc5eacd57e02a22256b893582eb65a51b9e",
+  "chunking": "7cf9dde27a90b63ee82a984bb7a8a78246e1c2bd886b73903a0139f9576f77d8"
+ },
+ "corpus": {
+  "git_tree_src_poetry": "7bbaef2f801eef8e3cde7880415371004b87268d",
+  "files": 193,
+  "repomap_sha256": "b94ebfab99a8bb388c5e1860e0952fc6943dbcce88c51f20304a49282671f057"
+ }
+}

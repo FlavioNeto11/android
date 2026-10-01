@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import baselines as bl                                   # noqa: E402
 import golden as gd                                      # noqa: E402
+import hybrid as hy                                      # noqa: E402
 import metrics as mt                                     # noqa: E402
 from corpus import Chunk, build_chunks, file_size, list_files, repo_root     # noqa: E402
 import repomap                                           # noqa: E402
@@ -56,6 +57,7 @@ def _row(item: gd.Item, r: bl.Retrieval, delivered: list[bl.Span], root: Path, l
     row = {
         "id": item.id, "category": item.category, "strategy": r.strategy,
         "grep_friendly": item.grep_friendly, "semantic_only": item.semantic_only,
+        "group": gd.group_of(item), "mixed": gd.group_of(item) == "MIXED",
         "variant": r.strategy,
         "expected_files": sorted(expected), "expected_regions": [list(x) for x in item.expected_regions],
         "ranked_files_top10": ranked[:10], "selected_files": ranked[:10],
@@ -300,23 +302,41 @@ def estimate_map(index: bl.Bm25Index, items: list[gd.Item], file_map: dict[str, 
     stage_a = [payload_bytes(request_body(*retrieval_request(it.question, file_map, "map"), PINNED_MODEL)) for it in items]
     lo: list[int] = []
     hi: list[int] = []
+    lost_items: list[str] = []
+    lost_chunks = 0
     for it in items:
         cs = [c for c in index.chunks if c.file in set(it.expected_files)]
         cs = cs[:STAGE_B_MAX_CHUNKS]
         while cs and sum(c.nbytes for c in cs) > STAGE_B_CAP_BYTES:
             cs.pop()
+        kept = {c.id for c in cs}
+        gone = [c for c in index.chunks if c.file in set(it.expected_files) and c.id not in kept
+                and any(c.file == f and c.start <= b and a <= c.end for f, a, b in it.expected_regions)]
+        if gone:
+            lost_items.append(it.id)
+            lost_chunks += len(gone)
         lo.append(payload_bytes(request_body(*retrieval_request(it.question, {c.id: c.text for c in cs}), PINNED_MODEL)))
         hi.append(STAGE_B_CAP_BYTES + 2_000)
     return {"calls": 2 * len(items), "stage_a_bytes": sum(stage_a), "stage_a_max_payload": max(stage_a),
             "stage_b_bytes_lower": sum(lo), "stage_b_bytes_upper": sum(hi), "map_files": len(file_map),
-            "map_bytes": sum(len(v.encode("utf-8")) + len(k.encode("utf-8")) for k, v in file_map.items())}
+            "map_bytes": sum(len(v.encode("utf-8")) + len(k.encode("utf-8")) for k, v in file_map.items()),
+            # exposição do teto de 60 trechos / 80 KB da etapa B, no MELHOR caso (os 2 primeiros arquivos já são os esperados;
+            # com um 2º arquivo errado e grande a exposição só aumenta). Medida, não corrigida: a pipeline é a do Scrapy.
+            "stage_b_expected_chunks_lost_lower_bound": {"items": lost_items, "chunks": lost_chunks}}
+
+
+# Bytes por token medidos na rodada REAL do Scrapy (usage.input_tokens; 2026-10-01): etapa A do jev_map 875.772 B / 276.107 tok,
+# etapa B 445.540 B / 123.621 tok. Calibração de OUTRO corpus: serve de estimativa, não de garantia.
+SCRAPY_BYTES_PER_TOKEN = {"A": 3.172, "B": 3.604, "rerank": 3.794}
 
 
 def estimate(index: bl.Bm25Index, items: list[gd.Item], roots: list[str] | None = None,
-             file_map: dict[str, str] | None = None) -> dict:
-    """ESTIMATED_* de uma rodada Jev sobre o golden, SEM rede. Tokens são PROXY (bytes/4); o preço é o oficial."""
+             file_map: dict[str, str] | None = None, variants: list[str] | None = None) -> dict:
+    """ESTIMATED_* de uma rodada Jev sobre o golden, SEM rede. Tokens são PROXY (bytes/4); o preço é o oficial.
+    `variants` (do golden) sem `jev_rerank` tira a variante de controle do cálculo."""
     per_item = []
-    for it in items:
+    rerank = variants is None or "jev_rerank" in variants
+    for it in (items if rerank else []):
         cands = shortlist_candidates(index, it.question, roots=roots)
         state, questions = retrieval_request(it.question, {c.id: c.text for c in cands})
         per_item.append({"id": it.id, "candidates": len(cands),
@@ -324,14 +344,14 @@ def estimate(index: bl.Bm25Index, items: list[gd.Item], roots: list[str] | None 
     total = sum(p["payload_bytes"] for p in per_item)
     tok_lo, tok_hi = total / 4.0, total / 3.0       # faixa PROXY: 3–4 bytes por token
     _est = {
-        "ESTIMATED_JEV_CALLS": len(items),
+        "ESTIMATED_JEV_CALLS": len(per_item),
         "ESTIMATED_INPUT_BYTES": total,
         "ESTIMATED_INPUT_TOKENS": "UNKNOWN (tokenizador do Jev não documentado); PROXY bytes/4..bytes/3 = "
                                   f"{int(tok_lo)}..{int(tok_hi)}",
         "ESTIMATED_COST": f"US$ {tok_lo * PRICE_USD_PER_MTOK_INPUT / 1e6:.4f}..{tok_hi * PRICE_USD_PER_MTOK_INPUT / 1e6:.4f}"
                           f" (preço OFICIAL US$ {PRICE_USD_PER_MTOK_INPUT}/Mtok de entrada × tokens PROXY; "
                           "free tier UNKNOWN; acesso por waitlist)",
-        "max_payload_bytes": max(p["payload_bytes"] for p in per_item),
+        "max_payload_bytes": max((p["payload_bytes"] for p in per_item), default=0),
         "per_item": per_item,
     }
     return _with_map(_est, index, items, file_map)
@@ -345,6 +365,15 @@ def _with_map(est: dict, index: bl.Bm25Index, items: list[gd.Item], file_map: di
     lo_b, hi_b = v1 + m["stage_a_bytes"] + m["stage_b_bytes_lower"], v1 + m["stage_a_bytes"] + m["stage_b_bytes_upper"]
     cost = lambda by, d: by / d * PRICE_USD_PER_MTOK_INPUT / 1e6                        # noqa: E731
     est["jev_map"] = m
+    tok_lo = (m["stage_a_bytes"] / SCRAPY_BYTES_PER_TOKEN["A"] + m["stage_b_bytes_lower"] / SCRAPY_BYTES_PER_TOKEN["B"]
+              + v1 / SCRAPY_BYTES_PER_TOKEN["rerank"])
+    tok_hi = (m["stage_a_bytes"] / SCRAPY_BYTES_PER_TOKEN["A"] + m["stage_b_bytes_upper"] / SCRAPY_BYTES_PER_TOKEN["B"]
+              + v1 / SCRAPY_BYTES_PER_TOKEN["rerank"])
+    est["TOTAL_CALIBRATED_WITH_SCRAPY_RATIOS"] = {
+        "ESTIMATED_INPUT_TOKENS": f"{int(tok_lo)}..{int(tok_hi)}",
+        "ESTIMATED_COST": f"US$ {tok_lo * PRICE_USD_PER_MTOK_INPUT / 1e6:.4f}..{tok_hi * PRICE_USD_PER_MTOK_INPUT / 1e6:.4f}",
+        "basis": "bytes por token medidos na rodada real do Scrapy, por etapa (A 3,172; B 3,604; rerank 3,794); a etapa B inferior usa só "
+                 "os trechos dos arquivos esperados (limite inferior) e a superior o teto de 80 KB (limite superior)"}
     est["TOTAL"] = {
         "ESTIMATED_JEV_CALLS": est["ESTIMATED_JEV_CALLS"] + m["calls"],
         "ESTIMATED_INPUT_BYTES": f"{lo_b}..{hi_b}",
@@ -380,8 +409,9 @@ def verify_public_checkout(root: Path, meta: dict) -> list[str]:
         problems.append("há arquivos rastreados modificados no checkout")
     lic = root / "LICENSE"
     lic_text = lic.read_text(encoding="utf-8", errors="replace") if lic.is_file() else ""
-    if "Redistribution and use in source and binary forms" not in lic_text or "Neither the name of Scrapy" not in lic_text:
-        problems.append("LICENSE ausente ou diferente da BSD-3-Clause esperada")
+    signature = meta.get("license_signature") or ["Redistribution and use in source and binary forms", "Neither the name of Scrapy"]
+    if not all(sig in lic_text for sig in signature):
+        problems.append(f"LICENSE ausente ou diferente da {meta.get('license', 'BSD-3-Clause')} esperada")
     top = root.resolve()
     escapes = 0
     for r in meta.get("corpus", {}).get("roots", []):
@@ -413,7 +443,8 @@ def make_provider(args: argparse.Namespace, meta: dict | None = None, public: bo
             if not PUBLIC_BENCHMARK_AUTHORIZED:
                 raise SystemExit("BLOCKED_AUTHORIZATION: o benchmark público aguarda autorização EXPLÍCITA do dono. "
                                  "Nada foi enviado.")
-            budget = 3 * n_items                        # jev_rerank (1) + jev_map (2) por pergunta
+            variants = (meta or {}).get("variants") or ["jev_rerank", "jev_map"]
+            budget = n_items * ((1 if "jev_rerank" in variants else 0) + (2 if "jev_map" in variants else 0))
             cap = args.max_calls if args.max_calls is not None else budget
             return RealJevProvider(enabled=True, max_calls=min(cap, budget), max_retries=args.max_retries)
         if not PRIVATE_CODE_SEND_APPROVED:
@@ -433,6 +464,20 @@ def _corpus_index(root: str, roots: tuple[str, ...], exts: tuple[str, ...]):
     return files, chunks, bl.Bm25Index(chunks)
 
 
+def _hybrid_row(it: gd.Item, root: Path, roots: list[str], jev: bl.Retrieval, jm: dict, jev_latency_ms: float) -> dict:
+    """Linha do híbrido (regra congelada em hybrid.py): reaproveita a MESMA resposta do `jev_map` (0 requisições novas) e
+    soma só a busca lexical local. A regra nunca olha o gabarito."""
+    t0 = time.perf_counter()
+    ids = hy.explicit_identifiers(it.question)
+    rg = bl.ripgrep(root, roots, it.question, terms=ids) if ids else bl.Retrieval("ripgrep", [])
+    delivered_jev = bl.deliver(jev.spans, max_spans=jm.get("deliver_k", bl.DELIVER_MAX_SPANS))
+    hr, delivered = hy.hybrid_spans(it.question, rg, jev, delivered_jev)
+    latency = jev_latency_ms + (time.perf_counter() - t0) * 1000
+    return _row(it, hr, delivered, root, latency, failure=jm.get("failure"), fallback=jm.get("fallback", False),
+                safeguard_active=hr.notes.get("safeguard"), identifiers=ids, hybrid_rule_hash=hy.rule_hash(),
+                jev_requests=0, jev_cost_usd=0.0)
+
+
 def run(args: argparse.Namespace) -> dict:
     global index_root
     meta, items = gd.load(Path(args.golden))
@@ -447,7 +492,12 @@ def run(args: argparse.Namespace) -> dict:
         raise SystemExit("golden público exige --corpus-root (o corpus não é o repositório privado).")
     problems = gd.validate(items, root, meta)
     if public:
-        problems += gd.validate_groups(items, meta, root)
+        problems += gd.validate_groups(items, meta, root,
+                                       lexical_top=lambda q, ids: bl.ripgrep(root, meta["corpus"]["roots"], q, terms=ids).ranked_files())
+        if "hybrid" in (meta.get("variants") or []):
+            lock = hy.load_lock()
+            if lock["HYBRID_RULE_HASH"] != hy.rule_hash() or meta["hybrid_rule"]["hash"] != hy.rule_hash():
+                problems.append("a regra híbrida mudou depois do congelamento (hash diferente do lock/golden)")
     if problems:
         raise SystemExit("golden inconsistente com o working tree:\n  " + "\n  ".join(problems))
     corpus = meta["corpus"]
@@ -457,14 +507,14 @@ def run(args: argparse.Namespace) -> dict:
                           "corpus_files": len(files), "corpus_chunks": len(chunks),
                           "corpus_bytes": sum(file_size(root, f) for f in files),
                           "corpus_visibility": "public" if public else "private", "checkout_verified": public or None,
-                          "headline_strategy": meta.get("headline_strategy", "jev_rerank"),
+                          "headline_strategy": meta.get("headline_strategy", "jev_rerank"), "evaluation": meta.get("evaluation"),
                           "thresholds_path": (str(Path(args.golden).resolve().parent / meta["thresholds_file"])
                                               if meta.get("thresholds_file") else None),
                           "provider": args.provider, "fake_mode": args.fake_mode if args.provider == "fake" else None,
                           "deliver_max_spans": bl.DELIVER_MAX_SPANS, "deliver_max_bytes": bl.DELIVER_MAX_BYTES,
                           "rg_context_lines": bl.RG_CONTEXT, "metric_kind": "PROXY_METRIC (bytes)"}}
     if args.estimate_only:
-        out["estimate"] = estimate(index, items, corpus["roots"], file_map)
+        out["estimate"] = estimate(index, items, corpus["roots"], file_map, meta.get("variants"))
         return out
     provider = make_provider(args, meta, public, len(items))
     rows: list[dict] = []
@@ -480,8 +530,9 @@ def run(args: argparse.Namespace) -> dict:
     global allowed_files
     allowed_files = set(files) if public else None
     if provider is not None:
-        phases = [("jev_rerank", lambda q: jev_rerank(index, provider, q, corpus["roots"]))]
-        if file_map:                                             # variante B: só no benchmark público
+        variants = meta.get("variants") or ["jev_rerank", "jev_map"]
+        phases = ([("jev_rerank", lambda q: jev_rerank(index, provider, q, corpus["roots"]))] if "jev_rerank" in variants else [])
+        if file_map and "jev_map" in variants:                   # variante B: só no benchmark público
             phases.append(("jev_map", lambda q: jev_map(index, file_map, provider, q, corpus["roots"])))
         try:
             for name, fn in phases:                              # ordem pré-definida: primeiro TODOS os jev_rerank
@@ -490,6 +541,8 @@ def run(args: argparse.Namespace) -> dict:
                     r, jm = fn(it.question)
                     rows.append(_row(it, r, bl.deliver(r.spans, max_spans=jm.get("deliver_k", bl.DELIVER_MAX_SPANS)), root,
                                      (time.perf_counter() - t0) * 1000, **jm))
+                    if name == "jev_map" and "hybrid" in variants:
+                        rows.append(_hybrid_row(it, root, corpus["roots"], r, jm, rows[-1]["latency_ms"]))
                     fail = jm.get("failure") or ""
                     status = getattr(provider, "last_status", None)
                     if fail.endswith(("not_enabled", "missing_key")) or status in (401, 403):
@@ -508,6 +561,8 @@ def run(args: argparse.Namespace) -> dict:
         sub = [r for r in rows if r["strategy"] == strat]
         out["summary"][strat] = {"all": mt.aggregate(sub), "grep_friendly": mt.aggregate(sub, "grep_friendly"),
                                  "semantic_only": mt.aggregate(sub, "semantic_only")}
+        if any(r.get("mixed") for r in sub):
+            out["summary"][strat]["mixed"] = mt.aggregate(sub, "mixed")
     if isinstance(provider, RealJevProvider):
         out["meta"]["redactions"] = provider.redactions
     return out
