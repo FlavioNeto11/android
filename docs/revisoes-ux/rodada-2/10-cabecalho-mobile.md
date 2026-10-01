@@ -74,7 +74,7 @@ Backend simulado (`AI_PROVIDER=simulated`, porta 8710) com 2 saldos baixos semea
 | 1024 px | 132 px: 56 + 75 | 132 px: 56 + 75 | **idêntico** |
 | 1440 px | 98 px: 56 + 41 | 98 px: 56 + 41 | **idêntico** |
 
-Alvos do cabeçalho com menos de 40 px: 9 em 390, 768 e 1023 px (antes) para **0** (depois). Em 1024 e 1440 px, os
+Alvos do cabeçalho com menos de 40 px: 9 em 390 e 768 px (antes) para **0** (depois). Em 1024 e 1440 px, os
 mesmos 9 de 32 px de antes (inalterados de propósito).
 
 Acima da dobra em 390 px (rota, primeiro título, posição em y): Painel "Painel" em 75 e "Comando" em 93; Personas
