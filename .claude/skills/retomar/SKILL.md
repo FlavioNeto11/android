@@ -15,7 +15,8 @@ Nenhuma obrigatória.
 
 1. `git status` e `git log -5 --oneline` — o que mudou desde o último commit.
 2. `git worktree list` — há outra frente de trabalho rodando em paralelo?
-3. `docs/estado-atual.md` — handoff da última sessão.
+3. `.claude/handoff-current.md` — handoff curto da última sessão (local, não versionado; ler inteiro se existir) e, de `docs/estado-atual.md`, **só o topo**
+   (`sed -n 1,45p`; o arquivo tem ~50 KB). Seções específicas por `grep -n`.
 4. `python scripts/claude-plan-100.py check` — o que falta no plano-100, por modelo. Sem chamar IA.
 5. `docs/roadmap.md`, só a seção que `estado-atual.md` aponta como próxima — não o documento inteiro.
 

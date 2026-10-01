@@ -8,7 +8,8 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
 ## Ordem de leitura
 
-1. [`docs/estado-atual.md`](docs/estado-atual.md): handoff (o que acabou de mudar, bloqueios, próxima ação).
+1. [`.claude/handoff-current.md`](.claude/handoff-current.md): handoff curto e local da sessão (comece por ele; se faltar, só o topo de `docs/estado-atual.md`). Depois, só o topo de
+   [`docs/estado-atual.md`](docs/estado-atual.md) (~50 KB: `sed -n 1,45p`) para o que acabou de mudar, bloqueios e próxima ação.
 2. [`docs/README.md`](docs/README.md): índice, com a fonte principal de cada assunto e quando abri-la.
 3. Só o que a tarefa pede. Um item do plano-100 tem pacote próprio em `.claude/plano-100/pacotes/<id>.md`. Um
    domínio, `docs/dominios/*.md`. Uma decisão, `grep -n "ADR-" docs/decisoes.md`. Uma armadilha conhecida,
@@ -64,6 +65,16 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 - **Não abra sessão Claude aninhada** (`claude -p`: não há CLI nesta máquina). Orquestração pelo Workflow
   `.claude/workflows/plano-100.js` ou por subagentes. Esse `.js` não pode ter quebra de linha literal dentro de
   string e fica em LF.
+
+## Economia de contexto (política completa em [`.claude/politica-de-contexto.md`](.claude/politica-de-contexto.md))
+
+- A conversa é memória temporária; o repositório é a durável. Contexto >400k: `/handoff` e preparar a troca; >500k: sessão nova
+  + `.claude/handoff-current.md`, não retomar a antiga. Registro em `.claude/session-registry.md`; sessões históricas não se reativam.
+- Saída de ferramenta seletiva: `grep`/`head`/`tail`/`wc`, `git diff --stat` antes do diff, `Read` com `offset`/`limit`, teste
+  devolve contagem e falhas (nunca a lista dos aprovados), script grande vira arquivo (não reenviar inline).
+- Subagent só se necessário e pelos agents de `.claude/agents/` (`worker-mecanico`, `-investigacao`, `-impl`, `-arquitetura`),
+  com retorno `Feito / Evidências / Validação / Bloqueios / Mudanças / Próximo`. Opus `xhigh` só por pedido explícito.
+- Atualização intermediária curta (`Feito / Validado / Pendente / Próximo`); estado importante vai para o repositório.
 
 ## Comandos verificados
 
