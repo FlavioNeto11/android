@@ -4398,16 +4398,16 @@
   },
   "29.17": {
    "id": "29.17",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arquivo/; junções desfeitas só como atalho. Nada foi apagado.",
-   "blocker": "Restam os worktrees das frentes (p3-firewall, p3-medicao com junção de node_modules, p3-renderizador, agent-a2c596de1676ca7fa com o catálogo do Outlook fora da main) e as origens do agente no notebook (C:\\farm\\origem-*). Saem com cuidado com as junções; a exclusão definitiva dos arquivos é do dono.",
+   "evidence": "Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\u0007rquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/. Em 01/10, 27 worktrees terminados removidos com git worktree remove (os branches ficam, inclusive o do catálogo do Outlook), cada junção desfeita só como atalho antes; backend/.venv e frontend/node_modules do central conferidos com o mesmo número de itens antes e depois. Nada foi apagado de forma definitiva.",
+   "blocker": null,
    "grupo": "29-pendencias-evolucao3",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T23:15:11+00:00"
+   "quando": "2026-10-01T10:50:15+00:00"
   },
   "29.7": {
    "id": "29.7",
@@ -5389,6 +5389,15 @@
     "29.9",
     "29.12",
     "27.2"
+   ],
+   "grupos": [
+    "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-01T10:50:15+00:00",
+   "itens": [
+    "29.17"
    ],
    "grupos": [
     "29-pendencias-evolucao3"

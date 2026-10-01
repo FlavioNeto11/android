@@ -197,7 +197,7 @@ afetados; o deploy não espera o CI e mantém ensaio e backup; o cron diário (0
 | D5 | ~~Recarga da conta Anthropic~~ **feita** em 30/09 (saldo estimado US$ 22,46); vale a autorização de 29/09 (até US$ 1,50, usados ~US$ 0,56) | — | — | — |
 | D6 | E-mail de teste com assunto inofensivo para a caixa da persona escolhida | conta do dono | 29.13 (C1) | 0 |
 | D7 | ~~Docker/WSL~~ **resolvido pelo CI**: o cron de 01/10 05:17Z roda a suíte em PostgreSQL | — | 29.14 | 0 |
-| D8 | Perfil Public do firewall do **notebook** está desligado (achado, fora do escopo) | notebook | segurança do notebook | 0 |
+| D8 | Perfil Public do firewall do **notebook** está desligado e a Wi-Fi dele está no perfil Public (lido em 01/10). A única entrada de que o parque precisa é o SSH (22), já liberado por regra em qualquer perfil (`OpenSSH SSH Server (sshd)`). Ação do dono, num PowerShell de administrador NO NOTEBOOK: `Set-NetFirewallProfile -Profile Public -Enabled True`; desfazer: `Set-NetFirewallProfile -Profile Public -Enabled False` | notebook | segurança do notebook | 0 |
 | D9 | **Decidido pelo dono em 30/09 (~17:00Z, transmitido pela sessão "Github")**: a alternativa conservadora. O `gpu_mode` de android-01, 03 e 06 (contas reais) **não muda**; a conta Outlook de cada persona (as mesmas contas do Instagram: Lucas, Bruno, André) roda num aparelho de QA com GPU do host. Consequências abaixo, em "D4, D6 e D9" | — | 29.12, 29.13 | 0 |
 
 ## Entregas prontas, à espera da ação do dono
@@ -399,6 +399,10 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   (~US$ 0,92). **A autorização paga de 29/09 (US$ 1,50) foi ultrapassada: ~US$ 1,86 no total.** Nada pago roda até o
   dono decidir. Achado: o teto por objetivo deixa uma etapa que não acha o que procura gastar 60 chamadas, e a
   repetição gasta outras 60.
+- **Limpeza (29.17):** 27 worktrees terminados removidos (os branches ficam; junções desfeitas só como atalho;
+  `backend/.venv` e `frontend/node_modules` do central conferidos intactos). Ficam os das sessões em curso (`evo3`,
+  `github`, `orq`, `ux-promocao`).
+- **D8:** comando exato para o dono religar o perfil Public do firewall do notebook (tabela de pedidos).
 
 ### Checkpoint 9 — 30/09 ~23:10Z — depois da janela: deploy, renderizador em todos, Outlook logado e C1
 

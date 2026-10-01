@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-235 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+236 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -271,7 +271,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.14 | implemented | real | opus | — | Real, 01/10/2026, GitHub Actions hospedado (ubuntu-latest, postgres:17 de serviço): run 36830963968 (workflow_dispatch somente_postgres, commit 7c3b787) — 3962 passed, 28 skipped, 0 failed em 45 min; suíte inteira do ba… | None |
 | 29.15 | implemented | real | opus | — | Real, 30/09 ~16:00Z, central 0d70882, painel servido pelo backend com o dado do parque: android-01 mostra 'sem proxy (legado conferido)'; aparelhos com bloqueio mostram 'bloqueio fora da VPN: provado em … (rev 1, client… | None |
 | 29.16 | implemented | real | opus | — | Pelo mecanismo, em 30/09: índice de pacotes regenerado; 12.3 no vocabulário do aplicar; P15 reescrito com a causa medida (SwiftShader-GL, não recusa do app; K-062); os itens do Outlook e do comando entre apps (23.x, 24.… | None |
-| 29.17 | partial | real | opus | — | Real, 30/09, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Android\arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box movidos para data/arqui… | Restam os worktrees das frentes (p3-firewall, p3-medicao com junção de node_modules, p3-renderizador, agent-a2c596de1676ca7fa com o catálogo do Outlook fora da… |
+| 29.17 | implemented | real | opus | — | Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Androidrquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/.… | None |
 | 29.18 | partial | real | opus | — | Relatório §27 (27.1 a 27.9, com a matriz por aparelho), handoff com checkpoints 1 a 9, CHANGELOG, estado-atual e o livro do plano atualizados em 30/09; resumo real × simulado × não executado entregue ao dono no chat. | Fecha quando o 27.2 tiver o C1 num aparelho com rede verificada (e-mail de teste do dono para o Bruno ou o André) e o cron de PostgreSQL de 01/10 05:17Z (29.14… |
 | 29.19 | blocked | not_run | opus | — | Objetivo do dono de 30/09 (~18:10Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem c… |
 | 29.20 | pendente | — | — | — |  |  |
@@ -280,7 +280,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (38): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.17, 29.18, 29.19, 29.20, T.2
+Pendentes (37): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.18, 29.19, 29.20, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
