@@ -12,7 +12,11 @@ Não existe modo que escreva: nada de `network/assign`, `verify`, `reapply`, man
   - notebook por SSH, só se o SSH responder de verdade (a chave do projeto é restrita a túnel: então só o que o agente
     do worker já reporta ao central).
 
-Subcomandos: `comandos` (mostra o que vai ao aparelho), `preflight`, `coletar`, `classificar`.
+Subcomandos: `comandos` (mostra o que vai ao aparelho), `preflight`, `coletar`, `classificar`, `resumo` (os sinais do
+cliente VPN numa janela: clique, início e fim do ProxyService, negações do SELinux, primeiro tun0, handshake do peer).
+O logcat lê TODOS os buffers (`-b all`: os eventos `am_foreground_service_*` e `sysui_multi_action` não estão no `main`),
+guarda filtrado em `logcat.txt` e mantém uma janela larga e LIMITADA (`logcat-wide.0/1.txt`, rodízio de ~8 MB) só enquanto
+dura a coleta. Parada limpa: criar o arquivo `parar` na pasta da coleta (o Windows não tem sinal limpo).
 O classificador aponta o PRIMEIRO ponto quebrado (F1..F10) a partir do que foi coletado; faltou dado = UNKNOWN,
 nunca "sucesso pela ausência de log".
 """
@@ -159,11 +163,13 @@ def parse_notebook(saida: str) -> dict[str, object]:
 # ---------------------------------------------------------------------------------------------------- classificador
 CLICK_RE = re.compile(rf"{re.escape(PACOTE)}.*(TileService|onClick|onStartListening|handleClick)|"
                       rf"(TileService|onClick|onStartListening|handleClick).*{re.escape(PACOTE)}", re.I)
-SERVICO_RE = re.compile(r"Established by|startForeground|VpnService|onStartCommand|Vpn.*prepare", re.I)
+# `startForegroundCount:0` (linha "Background started FGS: Allowed" do ActivityManager) NÃO é o serviço de VPN subindo.
+SERVICO_RE = re.compile(r"Established by|am_foreground_service_start|startForeground(?!Count)|VpnService|onStartCommand|"
+                        r"Vpn.*prepare", re.I)
 ANR_RE = re.compile(rf"ANR in {re.escape(PACOTE)}|did not then call Service\.startForeground", re.I)
 
 ESTAGIOS = ("F1_SYSTEMUI_RESTART", "F2_TILE_NOT_ADDED", "F3_TILE_NOT_CLICKED", "F4_PACKAGE_STAYS_STOPPED",
-            "F5_VPN_SERVICE_NOT_STARTED", "F6_TUN_NOT_CREATED", "F7_VPN_NOT_CONNECTED", "F8_LOCKDOWN_MISMATCH",
+            "F5_VPN_SERVICE_NOT_STARTED", "F6_TUN_NOT_CREATED_AFTER_TILE", "F7_VPN_NOT_CONNECTED", "F8_LOCKDOWN_MISMATCH",
             "F9_NO_WIREGUARD_HANDSHAKE")
 PASS, FAIL, UNKNOWN = "PASS", "FAIL", "UNKNOWN"
 
@@ -279,7 +285,7 @@ def _f10(am, log, ctx):
 
 
 _FUNCOES = {"F1_SYSTEMUI_RESTART": _f1, "F2_TILE_NOT_ADDED": _f2, "F3_TILE_NOT_CLICKED": _f3,
-            "F4_PACKAGE_STAYS_STOPPED": _f4, "F5_VPN_SERVICE_NOT_STARTED": _f5, "F6_TUN_NOT_CREATED": _f6,
+            "F4_PACKAGE_STAYS_STOPPED": _f4, "F5_VPN_SERVICE_NOT_STARTED": _f5, "F6_TUN_NOT_CREATED_AFTER_TILE": _f6,
             "F7_VPN_NOT_CONNECTED": _f7, "F8_LOCKDOWN_MISMATCH": _f8, "F9_NO_WIREGUARD_HANDSHAKE": _f9}
 
 
@@ -335,22 +341,74 @@ _KEEP_VPN = re.compile(r"vpn|lockdown|always", re.I)
 _KEEP_FORTE = re.compile(r"\bANR\b|FATAL EXCEPTION|force-?stop|startForeground|Start proc.*nekohasekai", re.I)
 
 
-def logcat_mantem(linha: str) -> bool:
-    """O filtro do logcat (nunca o log inteiro): o cliente, tile, VPN/ConnectivityService, ANR e SystemUI que morre."""
+_PID_LINHA = re.compile(r"^\d\d-\d\d \d\d:\d\d:\d\d\.\d+\s+(\d+)\s+\d+\s+[VDIWEF]\s")
+_KEEP_SERVICO = re.compile(r"ProxyService|\bVpnService\b|TileServices?\b|am_foreground_service_(start|stop)|"
+                           r"foreground_service_(start|stop)", re.I)
+_AVC = re.compile(r"avc:\s+denied")
+# Formato, nunca valor conhecido: chave privada/psk/senha/bearer saem do que é gravado (regra de segredos do projeto).
+_SEGREDO = (re.compile(r'(?i)("?(?:private[_-]?key|pre[_-]?shared[_-]?key|psk|password|senha|secret)"?\s*[:=]\s*"?)[^",\s}]+'),
+            re.compile(r"(?i)(authorization:\s*bearer\s+)\S+"))
+
+
+def pid_da_linha(linha: str) -> int | None:
+    m = _PID_LINHA.match(linha)
+    return int(m.group(1)) if m else None
+
+
+def redigir(linha: str) -> str:
+    for rx in _SEGREDO:
+        linha = rx.sub(lambda m: m.group(1) + "<redigido>", linha)
+    return linha
+
+
+def logcat_mantem(linha: str, pids: frozenset[int] | set[int] = frozenset()) -> bool:
+    """O filtro do logcat (nunca o log inteiro): o cliente (pelo pacote E pelo pid vivo), tile, ProxyService/VpnService,
+    `am_foreground_service_*`, ConnectivityService, ANR, negações do SELinux do cliente e SystemUI que morre."""
     if PACOTE in linha or "sing-box" in linha or "singbox" in linha:
         return True
-    if "TileService" in linha or "QSTileHost" in linha or _KEEP_FORTE.search(linha):
+    pid = pid_da_linha(linha)
+    if pid is not None and pid in pids:
+        return True                                                           # tudo o que o próprio cliente diz
+    if "TileService" in linha or "QSTileHost" in linha or _KEEP_FORTE.search(linha) or _KEEP_SERVICO.search(linha):
         return True
-    if ("ConnectivityService" in linha or "VpnService" in linha or re.search(r"\bVpn\b", linha)) and _KEEP_VPN.search(linha):
+    ligado_ao_cliente = any(f"/{p}" in linha or f"pid={p}" in linha for p in pids)
+    if _AVC.search(linha):
+        return ligado_ao_cliente                                              # `avc` de outro app é ruído
+    if "netlink" in linha.lower():
+        return ligado_ao_cliente
+    if ("ConnectivityService" in linha or "VpnService" in linha or re.search(r"\bVpn\b", linha)) and (
+            _KEEP_VPN.search(linha) or ligado_ao_cliente):
         return True
     return bool(re.search(r"systemui", linha, re.I) and re.search(r"died|crash|ANR|restart", linha, re.I))
 
 
+class Pids:
+    """Os pids do cliente vistos pelo amostrador (um reinício do app troca o pid; o antigo vale mais um tempo)."""
+
+    def __init__(self, retencao_s: float = 120.0) -> None:
+        self._vistos: dict[int, float] = {}
+        self._retencao = retencao_s
+        self._lock = threading.Lock()
+
+    def ver(self, pid: int | None, t: float) -> None:
+        if pid:
+            with self._lock:
+                self._vistos[pid] = t
+
+    def ativos(self, t: float | None = None) -> frozenset[int]:
+        t = agora() if t is None else t
+        with self._lock:
+            return frozenset(p for p, visto in self._vistos.items() if t - visto <= self._retencao)
+
+
 # ---------------------------------------------------------------------------------------------------- E/S
 class Saida:
-    def __init__(self, pasta: Path):
+    def __init__(self, pasta: Path, janela_mb: float = 8.0):
         pasta.mkdir(parents=True, exist_ok=True)
         self.pasta = pasta
+        self._ampla_teto = max(1, int(janela_mb * 1_000_000 / 2))                 # por arquivo; são dois
+        self._ampla_n, self._ampla_bytes = 0, 0
+        self._ampla = (pasta / "logcat-wide.0.txt").open("w", encoding="utf-8", buffering=1)
         self._amostras = (pasta / "samples.jsonl").open("a", encoding="utf-8", buffering=1)
         self._logcat = (pasta / "logcat.txt").open("a", encoding="utf-8", buffering=1)
         self._lock = threading.Lock()
@@ -361,7 +419,19 @@ class Saida:
 
     def linha_logcat(self, t: float, linha: str) -> None:
         with self._lock:
-            self._logcat.write(f"{iso(t)} {linha.rstrip()}\n")
+            self._logcat.write(f"{iso(t)} {redigir(linha.rstrip())}\n")
+
+    def linha_ampla(self, t: float, linha: str) -> None:
+        """A janela larga: TODA linha, mas num rodízio de dois arquivos com teto (`--janela-mb`); só vive durante a coleta."""
+        with self._lock:
+            if self._ampla_bytes >= self._ampla_teto:
+                self._ampla.close()
+                self._ampla_n = 1 - self._ampla_n
+                self._ampla = (self.pasta / f"logcat-wide.{self._ampla_n}.txt").open("w", encoding="utf-8", buffering=1)
+                self._ampla_bytes = 0
+            texto = f"{iso(t)} {redigir(linha.rstrip())}\n"
+            self._ampla.write(texto)
+            self._ampla_bytes += len(texto.encode("utf-8", errors="replace"))
 
 
 def achar_adb(informado: str | None) -> str | None:
@@ -457,19 +527,32 @@ def amostra_agente(api: str) -> dict:
         return {"t": t, "ts": iso(t), "src": "agente", "erro": str(exc)[:200]}
 
 
-def laco_logcat(adb: str, serial: str, saida: Saida, parar: threading.Event, max_mb: float) -> None:
-    """Reconecta enquanto a coleta durar: o boot derruba o adb e zera o buffer do aparelho. Só linhas filtradas."""
+def comando_logcat(adb: str, serial: str) -> list[str]:
+    """`-b all`: o `main` não tem `am_foreground_service_*` nem `sysui_multi_action` (estão em `events`); `-T 20` só
+    repete as últimas linhas quando reconecta."""
+    return [adb, "-s", serial, "logcat", "-b", "all", "-v", "threadtime", "-T", "20"]
+
+
+def laco_logcat(adb: str, serial: str, saida: Saida, parar: threading.Event, max_mb: float,
+                pids: Pids | None = None, vivo: dict | None = None) -> None:
+    """Reconecta enquanto a coleta durar: o boot derruba o adb e zera o buffer do aparelho. O arquivo principal só tem
+    linhas filtradas (o cliente, também pelo pid vivo); a janela larga recebe tudo, com teto."""
     escrito = 0
+    pids = pids or Pids()
     while not parar.is_set():
-        p = subprocess.Popen([adb, "-s", serial, "logcat", "-v", "threadtime", "-T", "20"], stdout=subprocess.PIPE,
+        p = subprocess.Popen(comando_logcat(adb, serial), stdout=subprocess.PIPE,
                              stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
+        if vivo is not None:
+            vivo["p"] = p
         try:
             assert p.stdout is not None
             for linha in p.stdout:
                 if parar.is_set():
                     break
-                if logcat_mantem(linha):
-                    saida.linha_logcat(agora(), linha)
+                t = agora()
+                saida.linha_ampla(t, linha)
+                if logcat_mantem(linha, pids.ativos(t)):
+                    saida.linha_logcat(t, linha)
                     escrito += len(linha)
                     if escrito > max_mb * 1_000_000:
                         parar.set()
@@ -485,7 +568,7 @@ def coletar(a: argparse.Namespace) -> int:
         print("adb não encontrado (use --adb)", file=sys.stderr)
         return 2
     pasta = Path(a.saida) if a.saida else ROOT / "data" / "diag-w8" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    saida = Saida(pasta)
+    saida = Saida(pasta, a.janela_mb)
     chave = Path(a.ssh_chave).expanduser()
     ssh = preflight_ssh(chave, a.ssh_usuario, a.ssh_host)
     (pasta / "meta.json").write_text(json.dumps({"args": vars(a), "adb": adb, "ssh": ssh, "inicio": iso(agora())},
@@ -493,7 +576,11 @@ def coletar(a: argparse.Namespace) -> int:
     print(f"coletando em {pasta} (SOMENTE LEITURA); ssh notebook: {ssh['estado']}", file=sys.stderr)
     parar = threading.Event()
     desde = agora()
-    threading.Thread(target=laco_logcat, args=(adb, a.serial, saida, parar, a.max_logcat_mb), daemon=True).start()
+    pids, vivo = Pids(), {}
+    thread_logcat = threading.Thread(target=laco_logcat, args=(adb, a.serial, saida, parar, a.max_logcat_mb, pids, vivo),
+                                     daemon=True)
+    thread_logcat.start()
+    sentinela = pasta / "parar"
 
     def central() -> None:
         vistos: set = set()
@@ -522,17 +609,24 @@ def coletar(a: argparse.Namespace) -> int:
     n = 0
     fim = agora() + a.duracao if a.duracao else None
     try:
-        while not parar.is_set() and (fim is None or agora() < fim):
+        while not parar.is_set() and (fim is None or agora() < fim) and not sentinela.exists():
             pesada = n % max(1, a.pesado_a_cada) == 0
             t = agora()
             rc, out = _executa([adb, "-s", a.serial, "shell", CMD_LEVE + ("; " + CMD_PESADO if pesada else "")], 25)
-            saida.amostra(amostra_do_aparelho(out if rc == 0 else "", t, pesada=pesada))
+            amostra = amostra_do_aparelho(out if rc == 0 else "", t, pesada=pesada)
+            pids.ver(amostra.get("pid_sfa"), t)                                    # type: ignore[arg-type]
+            saida.amostra(amostra)
             n += 1
             parar.wait(max(0.2, a.intervalo - (agora() - t)))
     except KeyboardInterrupt:
         pass
     parar.set()
-    print(f"{n} amostras do aparelho em {pasta}", file=sys.stderr)
+    p = vivo.get("p")
+    if p is not None:
+        p.kill()                                                                  # o laço está bloqueado esperando linha
+    thread_logcat.join(timeout=3.0)
+    motivo = "arquivo `parar`" if sentinela.exists() else "duração/Ctrl-C"
+    print(f"{n} amostras do aparelho em {pasta} (parada: {motivo})", file=sys.stderr)
     return 0
 
 
@@ -568,6 +662,106 @@ def classificar_pasta(a: argparse.Namespace) -> int:
            "bloqueio": {"sim": True, "nao": False}.get(a.bloqueio),
            "handshake_depois": None if ultimo_hs is None else ultimo_hs >= de}
     print(json.dumps(classificar(amostras, logcat, ctx), ensure_ascii=False, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------------- resumo dos sinais
+_HORA_LINHA = re.compile(r"^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d\.\d+)")
+_NEGA_BIND = re.compile(r"avc:\s+denied\s*\{\s*bind\s*\}.*netlink", re.I)
+_NEGA_SOMAXCONN = re.compile(r"avc:\s+denied\s*\{\s*read\s*\}.*somaxconn", re.I)
+
+
+def hora_do_aparelho(linha: str) -> float | None:
+    """`MM-DD hh:mm:ss.mmm` do threadtime em segundos de um ano fixo: só serve para DIFERENÇAS no mesmo aparelho."""
+    m = _HORA_LINHA.match(linha)
+    if not m:
+        return None
+    mes, dia, h, mi, s = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), float(m.group(5))
+    return datetime(2000, mes, dia, h, mi, 0, tzinfo=timezone.utc).timestamp() + s
+
+
+def sinais(logcat: list[tuple[float, str]], amostras: list[dict], peers: list[dict] | None = None) -> dict[str, object]:
+    """Os sinais para comparar dois aparelhos (clique → início do ProxyService → fim, SELinux, tun0, peer).
+    `logcat` = (instante em que o coletor leu, linha do aparelho). Tudo que não foi visto é `None`, nunca zero."""
+    def primeiro(rx, depois: float | None = None, so_com: str | None = None):
+        for t, l in logcat:
+            dev = hora_do_aparelho(l)
+            if depois is not None and (dev is None or dev < depois):
+                continue
+            if so_com and so_com not in l:
+                continue
+            if rx.search(l):
+                return t, dev, l
+        return None
+
+    clique = primeiro(re.compile(r"sysui_multi_action.*bg\.TileService")) or primeiro(CLICK_RE)
+    t_cli, d_cli = (clique[0], clique[1]) if clique else (None, None)
+    inicio = primeiro(re.compile(r"am_foreground_service_start"), d_cli, "ProxyService")
+    d_ini = inicio[1] if inicio else None
+    fim = primeiro(re.compile(r"am_foreground_service_stop"), d_ini, "ProxyService") if inicio else None
+
+    def dif(a, b):
+        return None if a is None or b is None else round(b - a, 3)
+
+    todas = [l for _, l in logcat]
+    ams = [a for a in amostras if a.get("src", "android") == "android" and a.get("adb")]
+    pesadas = [a for a in ams if a.get("stopped") is not None]
+    com_tun = [a for a in ams if a.get("tun")]
+    com_vpn = [a for a in ams if a.get("vpn")]
+    ref = t_cli
+    tun_ap = [a["t"] for a in com_tun if ref is None or a["t"] >= ref]
+    vpn_ap = [a["t"] for a in com_vpn if ref is None or a["t"] >= ref]
+    lcs = [(epoch((p.get("peer") or {}).get("last_connection")), p["t"]) for p in (peers or [])
+           if p.get("src") == "peer" and p.get("peer")]
+    lcs = [(lc, t) for lc, t in lcs if lc is not None]
+    antes = [lc for lc, t in lcs if ref is None or t <= ref]
+    depois = [(lc, t) for lc, t in lcs if ref is not None and t > ref and (not antes or lc > max(antes))]
+    return {
+        "clique_ts": iso(t_cli) if t_cli else None,
+        "proxy_start": bool(inicio), "proxy_stop": bool(fim),
+        "clique_ate_proxy_start_s": dif(d_cli, d_ini),
+        "proxy_start_ate_stop_s": dif(d_ini, fim[1] if fim else None),
+        "proxy_vivo_no_fim": (None if not inicio else (not fim)),
+        "stop_foreground": bool(fim and "STOP_FOREGROUND" in fim[2]),
+        "avc_netlink_bind_negado": any(_NEGA_BIND.search(l) for l in todas),
+        "avc_somaxconn_negado": any(_NEGA_SOMAXCONN.search(l) for l in todas),
+        "anr": any(ANR_RE.search(l) for l in todas),
+        "established_by": any(re.search(r"Established by", l) for l in todas),
+        "primeiro_tun_apos_clique_s": round(min(tun_ap) - ref, 1) if tun_ap and ref else None,
+        "primeiro_vpn_connected_apos_clique_s": round(min(vpn_ap) - ref, 1) if vpn_ap and ref else None,
+        "pid_cliente_primeira_e_ultima": [ams[0].get("pid_sfa"), ams[-1].get("pid_sfa")] if ams else None,
+        "stopped_primeira_e_ultima": [pesadas[0]["stopped"], pesadas[-1]["stopped"]] if pesadas else None,
+        "regras_ultima": next((a["regras"] for a in reversed(ams) if a.get("regras") is not None), None),
+        "peer_last_connection_antes": iso(max(antes)) if antes else None,
+        "peer_voltou_apos_clique_s": round(depois[0][0] - ref, 1) if depois and ref else None,
+        "logcat_linhas": len(logcat),
+    }
+
+
+def carregar_logcat(pasta: Path, de: float, ate: float) -> list[tuple[float, str]]:
+    """O que o coletor gravou (filtrado + janela larga), sem repetir a mesma linha, na janela."""
+    vistos: set[str] = set()
+    saida: list[tuple[float, str]] = []
+    for nome in ("logcat.txt", "logcat-wide.0.txt", "logcat-wide.1.txt"):
+        arq = pasta / nome
+        if not arq.exists():
+            continue
+        for linha in arq.read_text(encoding="utf-8", errors="replace").splitlines():
+            ts, _, resto = linha.partition(" ")
+            t = epoch(ts)
+            if t is not None and de <= t <= ate and resto not in vistos:
+                vistos.add(resto)
+                saida.append((t, resto))
+    return sorted(saida, key=lambda x: (hora_do_aparelho(x[1]) or x[0]))
+
+
+def resumo(a: argparse.Namespace) -> int:
+    de, ate = epoch(a.desde), epoch(a.ate)
+    if de is None or ate is None:
+        print("--desde e --ate precisam de horário ISO UTC", file=sys.stderr)
+        return 2
+    amostras, _, extra = carregar(Path(a.run), de, ate)
+    print(json.dumps(sinais(carregar_logcat(Path(a.run), de, ate), amostras, extra["peers"]), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -610,18 +804,23 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--intervalo-central", type=float, default=5.0)
     c.add_argument("--intervalo-notebook", type=float, default=10.0)
     c.add_argument("--max-logcat-mb", type=float, default=20.0)
+    c.add_argument("--janela-mb", type=float, default=8.0, help="teto da janela larga do logcat (rodízio de 2 arquivos)")
     k = sub.add_parser("classificar", help="primeiro ponto quebrado (F1..F10) numa janela de uma coleta")
     k.add_argument("--run", required=True)
     k.add_argument("--desde", required=True)
     k.add_argument("--ate", required=True)
     k.add_argument("--modo", choices=("tile", "boot"), default="tile")
     k.add_argument("--bloqueio", choices=("sim", "nao", "desconhecido"), default="desconhecido")
+    r = sub.add_parser("resumo", help="sinais do cliente VPN numa janela (clique, ProxyService, SELinux, tun0, peer)")
+    r.add_argument("--run", required=True)
+    r.add_argument("--desde", required=True)
+    r.add_argument("--ate", required=True)
     a = p.parse_args(argv)
     if a.cmd == "comandos":
         print("# aparelho (leve, cada amostra):\n" + CMD_LEVE + "\n# aparelho (pesado, a cada N):\n" + CMD_PESADO
               + "\n# notebook (PowerShell, via SSH só se responder):" + PS_NOTEBOOK)
         return 0
-    return {"preflight": preflight, "coletar": coletar, "classificar": classificar_pasta}[a.cmd](a)
+    return {"preflight": preflight, "coletar": coletar, "classificar": classificar_pasta, "resumo": resumo}[a.cmd](a)
 
 
 if __name__ == "__main__":

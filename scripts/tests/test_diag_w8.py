@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -146,7 +147,7 @@ class Classificador(unittest.TestCase):
         am = [amostra(0, tile=True, sfa=None, stopped=False), amostra(1, tile=True, sfa=500, stopped=False),
               amostra(2, tile=True, sfa=500, stopped=False)]
         r = mod.classificar(am, [CLIQUE, SERVICO], self.ctx())
-        self.assertEqual(r["codigo"], "F6_TUN_NOT_CREATED", r)
+        self.assertEqual(r["codigo"], "F6_TUN_NOT_CREATED_AFTER_TILE", r)
 
     def test_f7_tun_sem_connected(self) -> None:
         am = [amostra(0, tile=True, sfa=500, stopped=False),
@@ -198,6 +199,208 @@ class Classificador(unittest.TestCase):
     def test_sem_adb_na_janela_e_desconhecido(self) -> None:
         am = [amostra(i, adb=False) for i in range(5)]
         self.assertEqual(mod.classificar(am, [], self.ctx())["codigo"], "UNKNOWN")
+
+
+# Linhas REAIS do A1 do android-09 (01/10, 13:39 -0300; logcat -b all): o que o coletor antigo perdeu e o novo precisa guardar.
+L_CLICK = ("10-01 13:39:33.207  2529  2529 I sysui_multi_action: [757,925,758,4,759,268,806,io.nekohasekai.sfa,871,"
+           "io.nekohasekai.sfa.bg.TileService,927,0,928,0,1592,0,1593,0]")
+L_FGS_PERMITIDO = ("10-01 13:39:33.256   544   987 I ActivityManager: Background started FGS: Allowed [callingPackage: "
+                   "io.nekohasekai.sfa; callingUid: 10196; uidState: CEM ; intent: Intent { cmp=io.nekohasekai.sfa/"
+                   ".bg.ProxyService }; code:OP_ACTIVATE_VPN; tempAllowListReason:<null>; targetSdkVersion:37; "
+                   "startForegroundCount:0; bindFromPackage:null: isBindService:false]")
+L_START = ("10-01 13:39:33.540   544  2621 I am_foreground_service_start: [0,io.nekohasekai.sfa/.bg.ProxyService,0,"
+           "OP_ACTIVATE_VPN,37,37,0,0,0,1,UNKNOWN,1073741824]")
+L_STOP = ("10-01 13:39:35.336   544   987 I am_foreground_service_stop: [0,io.nekohasekai.sfa/.bg.ProxyService,0,"
+          "OP_ACTIVATE_VPN,37,37,0,0,1789,1,STOP_FOREGROUND,1073741824]")
+L_AVC_BIND = ('10-01 13:39:35.108  6512  6512 W DefaultDispatch: type=1400 audit(0.0:416): avc:  denied  { bind } for  '
+              'scontext=u:r:untrusted_app:s0:c196,c256,c512,c768 tcontext=u:r:untrusted_app:s0:c196,c256,c512,c768 '
+              'tclass=netlink_route_socket permissive=0 bug=b/155595000 app=io.nekohasekai.sfa')
+L_AVC_SOMAXCONN = ('10-01 13:39:33.452  6512  6512 W DefaultDispatch: type=1400 audit(0.0:415): avc:  denied  { read } for  '
+                   'name="somaxconn" dev="proc" ino=57151 scontext=u:r:untrusted_app:s0:c196,c256,c512,c768 '
+                   'tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=io.nekohasekai.sfa')
+L_PROPRIA_SEM_PACOTE = ("10-01 13:39:34.415  6512  6518 I nekohasekai.sfa: Background young concurrent copying GC freed "
+                        "31642(2336KB) AllocSpace objects")
+L_REQUEST_NETWORK = ("10-01 13:39:33.614   544  2621 D ConnectivityService: requestNetwork for uid/pid:10196/6512 "
+                     "activeRequest: null callbackRequest: 104")
+L_AVC_DE_OUTRO = ('10-01 13:40:00.000   777   777 W DefaultDispatch: type=1400 audit(0.0:9): avc:  denied  { bind } for  '
+                  'scontext=u:r:untrusted_app:s0:c11 tclass=netlink_route_socket permissive=0 app=com.outro.app')
+RUIDO = ["10-01 13:39:36.000  1234  1234 D SurfaceFlinger: frame",
+         "10-01 13:39:36.100   544   683 D ConnectivityService: NetReassign [104 : null → 101] [c 2] [a 5] [i 1]",
+         "10-01 13:39:36.200   900   900 I wifi: scan done", L_AVC_DE_OUTRO]
+
+
+class EvidenciaDoCliente(unittest.TestCase):
+    def test_o_buffer_de_eventos_e_guardado(self) -> None:
+        for linha in (L_CLICK, L_START, L_STOP, L_FGS_PERMITIDO, L_AVC_BIND, L_AVC_SOMAXCONN):
+            self.assertTrue(mod.logcat_mantem(linha), linha)
+
+    def test_linha_do_proprio_cliente_so_pelo_pid_vivo(self) -> None:
+        self.assertFalse(mod.logcat_mantem(L_PROPRIA_SEM_PACOTE))
+        self.assertTrue(mod.logcat_mantem(L_PROPRIA_SEM_PACOTE, {6512}))
+        self.assertFalse(mod.logcat_mantem(L_PROPRIA_SEM_PACOTE, {777}))
+        self.assertTrue(mod.logcat_mantem(L_REQUEST_NETWORK, {6512}))             # `uid/pid:10196/6512` no ConnectivityService
+
+    def test_o_ruido_continua_fora_e_o_avc_de_outro_app_tambem(self) -> None:
+        for linha in RUIDO:
+            self.assertFalse(mod.logcat_mantem(linha, {6512}), linha)
+
+    def test_avc_sem_o_pacote_mas_do_pid_do_cliente(self) -> None:
+        linha = L_AVC_BIND.replace(" app=io.nekohasekai.sfa", "")
+        self.assertFalse(mod.logcat_mantem(linha))
+        self.assertTrue(mod.logcat_mantem(linha, {6512}))
+
+    def test_pids_do_cliente_valem_um_tempo_depois_de_trocar(self) -> None:
+        p = mod.Pids(retencao_s=100)
+        p.ver(6512, 1000.0)
+        p.ver(None, 1001.0)
+        self.assertEqual(p.ativos(1050.0), {6512})
+        p.ver(7001, 1090.0)
+        self.assertEqual(p.ativos(1099.0), {6512, 7001})
+        self.assertEqual(p.ativos(1150.0), {7001})
+
+    def test_o_logcat_le_todos_os_buffers_e_so_le(self) -> None:
+        cmd = mod.comando_logcat("adb", "127.0.0.1:15555")
+        self.assertEqual(cmd[cmd.index("-b") + 1], "all")
+        self.assertTrue(set(cmd) <= {"adb", "-s", "127.0.0.1:15555", "logcat", "-b", "all", "-v", "threadtime", "-T", "20"})
+
+    def test_segredos_saem_por_formato(self) -> None:
+        sujos = ['{"private_key": "AAAA1234bbbb"}', "PrivateKey = AAAA1234bbbb", "wireguard psk=ZZZZ9999", "password: hunter2",
+                 "Authorization: Bearer abc.def.ghi"]
+        for s in sujos:
+            r = mod.redigir(s)
+            self.assertIn("<redigido>", r, s)
+            for resto in ("AAAA1234bbbb", "ZZZZ9999", "hunter2", "abc.def.ghi"):
+                self.assertNotIn(resto, r)
+        self.assertEqual(mod.redigir(L_START), L_START)
+
+    def test_janela_larga_tem_teto_e_so_dois_arquivos(self) -> None:
+        import tempfile
+        pasta = Path(tempfile.mkdtemp(prefix="diagw8-"))
+        saida = mod.Saida(pasta, janela_mb=0.002)                                 # 1000 B por arquivo
+        for i in range(400):
+            saida.linha_ampla(BASE + i, f"10-01 13:39:{i % 60:02d}.000   544   544 D Tag: linha numero {i} " + "x" * 40)
+        arquivos = sorted(p.name for p in pasta.glob("logcat-wide.*.txt"))
+        self.assertEqual(arquivos, ["logcat-wide.0.txt", "logcat-wide.1.txt"])
+        total = sum((pasta / n).stat().st_size for n in arquivos)
+        self.assertLess(total, 2 * 1000 + 2 * 200)
+        texto = "".join((pasta / n).read_text(encoding="utf-8") for n in arquivos)
+        self.assertIn("linha numero 399", texto)
+        self.assertNotIn("linha numero 0 ", texto)
+
+    def test_o_codigo_novo_continua_sem_escrita_no_aparelho(self) -> None:
+        self.assertEqual(mod.comandos_so_leem(), [])
+
+    def test_parada_limpa_pelo_arquivo_parar(self) -> None:
+        import argparse
+        import tempfile
+        import threading
+        pasta = Path(tempfile.mkdtemp(prefix="diagw8-"))
+
+        class Falso:
+            stdout = iter(())
+
+            def kill(self) -> None:
+                pass
+
+        a = argparse.Namespace(adb="adb", saida=str(pasta), ssh_chave="x", ssh_usuario="u", ssh_host="h", serial="s",
+                               instancia="android-09", db="nao-existe.sqlite3", api="http://127.0.0.1:1", duracao=60.0,
+                               intervalo=0.1, pesado_a_cada=2, intervalo_central=0.1, intervalo_notebook=0.1,
+                               max_logcat_mb=1.0, janela_mb=1.0)
+        threading.Timer(0.8, lambda: (pasta / "parar").write_text("", encoding="utf-8")).start()
+        with mock.patch.object(mod, "achar_adb", return_value="adb"), \
+                mock.patch.object(mod, "preflight_ssh", return_value={"estado": "falhou", "detalhe": "x"}), \
+                mock.patch.object(mod, "_executa", return_value=(0, "U=2000\nS=5\nT=0\nPS=6512\nPU=1\nQ=0\n")), \
+                mock.patch.object(mod, "amostra_agente", return_value={"src": "agente"}), \
+                mock.patch.object(mod, "amostra_peer", return_value={"src": "peer"}), \
+                mock.patch.object(mod, "amostra_central", return_value=[]), \
+                mock.patch.object(mod.subprocess, "Popen", return_value=Falso()):
+            t0 = time.time()
+            self.assertEqual(mod.coletar(a), 0)
+        self.assertLess(time.time() - t0, 10)
+        linhas = (pasta / "samples.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(any('"pid_sfa": 6512' in x for x in linhas))
+
+
+class FalsoPassDoF5(unittest.TestCase):
+    """`startForegroundCount:0` do ActivityManager NÃO é o serviço de VPN subindo (o A1 do 09 tinha o serviço de verdade)."""
+
+    def ctx(self) -> dict:
+        return {"modo": "tile", "logcat_ok": True, "bloqueio": False, "handshake_depois": None}
+
+    def am(self) -> list[dict]:
+        return [amostra(i, tile=True, sfa=6512, stopped=False, ui=2529) for i in range(4)]
+
+    def test_so_a_linha_do_activitymanager_nao_aprova_o_f5(self) -> None:
+        self.assertIsNone(mod.SERVICO_RE.search(L_FGS_PERMITIDO))
+        self.assertIsNotNone(mod.SERVICO_RE.search(L_START))
+        r = mod.classificar(self.am(), [CLIQUE, L_FGS_PERMITIDO], self.ctx())
+        self.assertEqual(r["codigo"], "F5_VPN_SERVICE_NOT_STARTED", r)
+
+    def test_servico_que_subiu_e_tun0_ausente_e_f6(self) -> None:
+        r = mod.classificar(self.am(), [CLIQUE, L_FGS_PERMITIDO, L_START, L_STOP], self.ctx())
+        self.assertEqual(r["codigo"], "F6_TUN_NOT_CREATED_AFTER_TILE", r)
+
+
+class Sinais(unittest.TestCase):
+    def setUp(self) -> None:
+        self.t0 = mod.epoch("2026-10-01T16:39:30Z")
+
+    def log(self, *linhas: str) -> list[tuple[float, str]]:
+        return [(self.t0 + 3.2 + i * 0.1, x) for i, x in enumerate(linhas)]
+
+    def test_a1_do_android_09(self) -> None:
+        s = mod.sinais(self.log(L_CLICK, L_FGS_PERMITIDO, L_AVC_SOMAXCONN, L_START, L_AVC_BIND, L_STOP),
+                       [amostra(i, tile=True, sfa=6512, stopped=False) for i in range(5)])
+        self.assertEqual(s["clique_ate_proxy_start_s"], 0.333)
+        self.assertEqual(s["proxy_start_ate_stop_s"], 1.796)
+        self.assertTrue(s["proxy_start"] and s["proxy_stop"] and s["stop_foreground"])
+        self.assertFalse(s["proxy_vivo_no_fim"])
+        self.assertTrue(s["avc_netlink_bind_negado"] and s["avc_somaxconn_negado"])
+        self.assertFalse(s["anr"] or s["established_by"])
+        self.assertIsNone(s["primeiro_tun_apos_clique_s"])
+
+    def test_servico_que_continua_vivo_e_tun0(self) -> None:
+        t_clique = self.t0 + 3.2
+        am = [dict(amostra(0), t=t_clique - 1, tun=False), dict(amostra(1), t=t_clique + 4.0, tun=True, vpn=True, regras=3, stopped=False)]
+        s = mod.sinais(self.log(L_CLICK, L_START, "10-01 13:39:34.100   544   544 I VpnService: Established by io.nekohasekai.sfa on tun0"), am)
+        self.assertFalse(s["proxy_stop"])
+        self.assertTrue(s["proxy_vivo_no_fim"])
+        self.assertTrue(s["established_by"])
+        self.assertEqual(s["primeiro_tun_apos_clique_s"], 4.0)
+        self.assertEqual(s["primeiro_vpn_connected_apos_clique_s"], 4.0)
+        self.assertEqual(s["regras_ultima"], 3)
+
+    def test_o_que_nao_foi_visto_e_none_nunca_zero(self) -> None:
+        s = mod.sinais([], [])
+        self.assertIsNone(s["clique_ate_proxy_start_s"])
+        self.assertIsNone(s["proxy_vivo_no_fim"])
+        self.assertIsNone(s["primeiro_tun_apos_clique_s"])
+        self.assertFalse(s["proxy_start"])
+
+    def test_o_peer_que_volta_depois_do_clique(self) -> None:
+        peers = [{"src": "peer", "t": self.t0, "peer": {"last_connection": "-0300 2026-10-01 13:30:55"}},
+                 {"src": "peer", "t": self.t0 + 20, "peer": {"last_connection": "-0300 2026-10-01 13:39:40"}}]
+        s = mod.sinais(self.log(L_CLICK, L_START), [amostra(0)], peers)
+        self.assertEqual(s["peer_last_connection_antes"], "2026-10-01T16:30:55.000Z")
+        self.assertEqual(s["peer_voltou_apos_clique_s"], 6.8)
+
+    def test_resumo_pela_cli_junta_o_filtrado_e_a_janela_larga_sem_repetir(self) -> None:
+        import json as _json
+        import tempfile
+        from contextlib import redirect_stdout
+        import io
+        pasta = Path(tempfile.mkdtemp(prefix="diagw8-"))
+        t = self.t0 + 3.2
+        (pasta / "samples.jsonl").write_text(_json.dumps(dict(amostra(0), t=t - 1)) + "\n", encoding="utf-8")
+        (pasta / "logcat.txt").write_text(f"{mod.iso(t)} {L_CLICK}\n{mod.iso(t + 0.3)} {L_START}\n", encoding="utf-8")
+        (pasta / "logcat-wide.0.txt").write_text(f"{mod.iso(t)} {L_CLICK}\n{mod.iso(t + 2.1)} {L_STOP}\n", encoding="utf-8")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = mod.main(["resumo", "--run", str(pasta), "--desde", "2026-10-01T16:39:00Z", "--ate", "2026-10-01T16:41:00Z"])
+        self.assertEqual(rc, 0)
+        r = _json.loads(out.getvalue())
+        self.assertEqual(r["logcat_linhas"], 3)                                   # o clique não conta duas vezes
+        self.assertEqual(r["proxy_start_ate_stop_s"], 1.796)
 
 
 if __name__ == "__main__":
