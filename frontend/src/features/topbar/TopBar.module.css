@@ -548,7 +548,7 @@ button.counter:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--warning-text);
   color: var(--bg);
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);   /* 13 px: o contador do selo não é exceção da escala (B2, rodada 2) */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
