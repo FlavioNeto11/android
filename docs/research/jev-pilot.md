@@ -1040,3 +1040,51 @@ com resultado perfeito (12/12 e 6/6). Nenhum critério falhou por 1 item de medi
 **Regra de parada (dono).** Esta é a última rodada pública autorizada: nenhum terceiro corpus, nenhum ajuste de regra, nenhuma nova rodada. O código privado segue `BLOCKED_PRIVACY`
 (`PRIVATE_CODE_SEND_APPROVED = False`, `STANDARD_API_RETENTION = UNKNOWN`); depende separadamente de ZDR/retenção/contrato. `KEY_ROTATION_RECOMMENDED = YES`.
 `PUBLIC_BENCHMARK_AUTHORIZED` voltou a `False`. O Scrapy permanece `NO_GO` (`ORIGINAL_VERDICT_CHANGED = NO`).
+
+### 39.8 Correção do avaliador do H9 e replay OFFLINE (2026-10-01) — `HOLDOUT` corrigido: `PASS`; histórico preservado: `FAIL`
+
+Decisão do dono: `H9_FAIL_CLASSIFICATION = EVALUATOR_BUG`. **Nenhuma chamada nova** (`NEW_NETWORK_ATTEMPTS = 0`, `API_CALLS_REPEATED = NO`); o replay roda sob `no_network()` sobre o
+`results.json` já gravado (sha256 `50913fe03dd19c8c0d1bd7a4c1af94fbbe2ecd8813c1905982693015d2fe01de`, idêntico antes e depois). `THRESHOLD_CHANGED_AFTER_RESULTS = NO`,
+`RULE_CHANGED_AFTER_RESULTS = NO`: `thresholds.json`, `hybrid.py`, golden, perguntas, métricas e `freeze.json` não mudaram (`freeze.py --check` OK).
+
+**O defeito.** Texto congelado antes da rodada (`thresholds.json`, `H9_provenance_and_privacy`): `checkout_must_match_pinned_sha_and_be_clean = true`, `hard_redaction_hits_max = 0`,
+`network_attempts_max = 60`, `hybrid_rule_hash_must_match = true`, `private_code_sent = false`.
+
+- **Lógica antiga** (`holdout_eval.py` v1): `redactions = meta.get("redactions") or 0 … redactions == 0` — comparava o **total de redações de qualquer tipo** com 0 e não verificava o hash da regra nem `private_code_sent`.
+- **Lógica nova** (v2, `_h9`): `hard_redaction_hits = Σ redactions[k] para k ∈ {private_key, bearer, api_key, jwt}` (o conjunto `redact.HARD`) `≤ hard_redaction_hits_max`; redações SOFT (`secret_assign`, `email`,
+  `win_user_path`) continuam registradas, redigidas antes do envio e exibidas, mas **não reprovam**; `network_attempts ≤ 60`; todas as linhas do híbrido com `hybrid_rule_hash` igual ao do `thresholds.json`;
+  `checkout_verified` (SHA fixado, origem, árvore limpa, MIT, sem symlinks); `private_code_sent = false`.
+- **Metadado ausente:** o bruto não persiste `private_code_sent`. Em vez de inventá-lo, o avaliador o **deriva** (`derived_from_existing_artifacts`) de `corpus_visibility = public` e `checkout_verified = true`
+  (o `allowed_files` limitava o payload ao corpus; `PRIVATE_CODE_SEND_APPROVED` ficou `False`) e rotula a origem no relatório. O hash da regra vem das 30 linhas do híbrido (todas `0a904767…`).
+- Revisão rápida dos demais critérios (H1–H8) contra o texto do limiar: nenhuma outra divergência encontrada; só H9 foi corrigido.
+
+**Dados da rodada no H9:** achados duros 0; soft `{email: 2}`; tentativas 60; checkout válido; hash da regra válido; código privado enviado: não (derivado).
+
+**Dois vereditos, os dois registrados:**
+
+| | Avaliador | Resultado |
+|---|---|---|
+| `ORIGINAL_HOLDOUT_MECHANICAL_VERDICT` (`ORIGINAL_VERDICT_SOURCE` = `holdout_eval.py` v1, com o defeito) | v1 | **FAIL** (H9) — §39.7, mantido; arquivos `verdict.original-buggy-evaluator.json` e `report.original-buggy-evaluator.md` ao lado do bruto |
+| `PROTOCOL_CORRECTED_REPLAY_VERDICT` | v2 | **PASS** (H1–H9 todos PASS) — `verdict.corrected-replay.json` |
+
+Observados H1–H9 (iguais ao §39.7, só o H9 muda): H1 12/12 vs 12; H2 6/6; H3 11 vs ≥ 9,25; H4 3.415 B; H5 p50 844 / p95 996 ms; H6 0/30; H7 US$ 0,0245; H8 0/30; H9 PASS.
+Não é ajuste de limiar, nem re-pontuação para passar, nem nova rodada, nem mudança de regra: é a correção da implementação de um critério que já estava congelado antes das chamadas.
+Ressalva de método: o defeito só foi investigado porque o critério falhou; o replay corrigido é, por isso, pós-hoc. Os testes de regressão (33 em `test_holdout.py`) fixam o contrato para qualquer rodada futura.
+
+**O que o PASS significa (escopo estreito).** `RETRIEVAL_HYBRID_EVIDENCE = VALIDATED_ON_PUBLIC_HOLDOUT`:
+- forte para **R@3/R@5** (híbrido ALL R@3 0,967, EXACT 1,000, SEMANTIC 0,917, MIXED 1,000);
+- **não validado como melhoria de R@1** (ALL R@1 0,567, abaixo do `jev_map` puro 0,700; MIXED R@1 0,000);
+- Poetry é público e pode estar no treino (memorização possível; mede-se utilidade operacional de recuperação no corpus fixado, não recuperação pura);
+- avaliador único, 30 itens, só recuperação: não prova roteamento de modelo, seleção de ação, nem uso seguro com código privado.
+O Scrapy permanece `NO_GO` (`ORIGINAL_VERDICT_CHANGED = NO`); o Poetry é experimento separado.
+
+**Arquitetura candidata que os dados sustentam** (não implementada, não integrada ao fluxo do projeto):
+
+```
+consulta → salvaguarda lexical  +  mapa semântico (Jev) → contexto top-3/top-5
+```
+
+Uso candidato: **recuperação de contexto top-K**, não roteador de resposta única. O Jev não substitui o grep (sozinho perdeu 3 de 12 itens EXACT nos dois corpora) e não se otimiza para top-1.
+
+**Próximo portão: exclusivamente privacidade / ZDR / contrato.** `PRIVATE_CODE_SEND_APPROVED = False`, `PRIVATE_CODE_BENCHMARK_STATUS = BLOCKED_PRIVACY`, `STANDARD_API_RETENTION = UNKNOWN`. Nada de benchmark
+privado, plugin comunitário ou integração no fluxo real. Sem novas rodadas públicas. `KEY_ROTATION_RECOMMENDED = YES` (não rotacionada por mim).

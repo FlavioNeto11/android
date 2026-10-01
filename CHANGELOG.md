@@ -95,6 +95,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Holdout do híbrido **executado** (1 rodada, 60 tentativas, 583.649 tokens, US$ 0,0245): híbrido ALL R@3 0,967 contra `jev_map` 0,867, BM25 0,800 e ripgrep 0,717; EXACT R@3 1,000, SEMANTIC 0,917, MIXED 1,000
     (mas R@1 do MIXED 0,000 contra 1,000 do `jev_map`). H1–H8 passam; **H9 falha** (2 redações de e-mail, categoria SOFT, contra o limite 0 do avaliador) ⇒ veredito mecânico `FAIL`, não reinterpretado.
     Scrapy segue `NO_GO`; trava pública de volta a `False`; código privado `BLOCKED_PRIVACY`; rodada final autorizada. Detalhe em `docs/research/jev-pilot.md` §39.7.
+  - Avaliador do H9 corrigido (defeito de implementação: contava e-mail SOFT como achado duro) e replay **offline** do mesmo bruto (0 chamadas): H1–H9 passam ⇒ `PROTOCOL_CORRECTED_REPLAY_VERDICT = PASS`;
+    o `FAIL` histórico da v1 do avaliador fica preservado. Limiares, regra, golden e resultados intactos. Evidência de recuperação top-3/top-5 em corpus público (R@1 não validado); próximo portão: privacidade/ZDR/contrato. §39.8.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 
