@@ -122,7 +122,7 @@ export function ParaAprovarTab() {
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
             O sistema publica sozinho só o que não tem efeito externo e já se repetiu com sucesso. O que tem efeito ou
-            texto escrito por uma pessoa para aqui, já validado, esperando você. Quando um item publicado passa a
+            texto escrito por uma pessoa para aqui, já validado, aguardando você. Quando um item publicado passa a
             falhar, o sistema o desliga sozinho.
           </p>
         </Disclosure>
@@ -149,7 +149,7 @@ export function ParaAprovarTab() {
           />
         ) : null}
         {fila.itens !== null && itensFila.length === 0 ? (
-          <EmptyState icon={Inbox} compact title="Nada esperando você">
+          <EmptyState icon={Inbox} compact title="Nada aguardando você">
             Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui.
           </EmptyState>
         ) : (

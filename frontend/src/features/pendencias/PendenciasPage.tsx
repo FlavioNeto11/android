@@ -55,7 +55,7 @@ export function PendenciasPage() {
   return (
     <Page
       title="Pendências"
-      lead="Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas, execuções que pararam esperando você e contas que pedem uma intervenção (login, desafio de segurança, conta errada)."
+      lead="Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas, execuções que ficaram aguardando você e contas que pedem uma intervenção (login, desafio de segurança, conta errada)."
     >
       {falhou ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status">
@@ -79,7 +79,7 @@ export function PendenciasPage() {
       {!carregado && itens.length === 0 ? (
         <LoadingRegion label="Carregando as pendências…"><Skeleton height={64} radius={8} /><Skeleton height={64} radius={8} /></LoadingRegion>
       ) : visiveis.length === 0 ? (
-        <EmptyState icon={CheckCircle2} title={filtro ? `Nada de ${ROTULO_DA_ORIGEM[filtro].toLowerCase()} esperando você` : 'Nada esperando você'}
+        <EmptyState icon={CheckCircle2} title={filtro ? `Nada de ${ROTULO_DA_ORIGEM[filtro].toLowerCase()} aguardando você` : 'Nada aguardando você'}
                     hint={filtro ? 'Escolha "Todas" para ver as outras origens.' : 'Quando algo precisar da sua decisão, aparece aqui e no contador do menu.'}>
           Nenhuma pendência.
         </EmptyState>

@@ -200,12 +200,12 @@ describe('caixa de pendências', () => {
     expect(text(container)).toContain('Objetivo antigo 12');
   });
 
-  it('caixa vazia diz "Nada esperando você"; leitura que falha avisa que a lista pode estar incompleta', async () => {
+  it('caixa vazia diz "Nada aguardando você"; leitura que falha avisa que a lista pode estar incompleta', async () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [], total: 0 }));
     backend.on('GET', /^\/api\/approvals/, () => json({ detail: 'erro' }, 500));
     useAppStore.setState({ runs: [] });
     await act(async () => { root.render(<PendenciasPage />); });
-    await waitFor(() => expect(text(container)).toContain('Nada esperando você'));
+    await waitFor(() => expect(text(container)).toContain('Nada aguardando você'));
     await waitFor(() => expect(text(container)).toContain('pode estar incompleta'));
     expect(allByRole('listitem', /./, container).filter((l) => l.hasAttribute('data-origem'))).toHaveLength(0);
   });

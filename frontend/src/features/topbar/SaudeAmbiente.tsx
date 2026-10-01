@@ -110,7 +110,7 @@ function Detalhes({ nivel, lista, versao, fechar }: {
             ) : null}
             {aguardando > 0 ? (
               <li>{link(hashDe('pendencias'),
-                        `${aguardando} ${aguardando === 1 ? 'pendência esperando' : 'pendências esperando'} você`)}</li>
+                        `${aguardando} ${aguardando === 1 ? 'pendência' : 'pendências'} aguardando você`)}</li>
             ) : null}
           </ul>
         </>

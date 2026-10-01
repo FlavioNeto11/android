@@ -120,8 +120,8 @@ describe('SaudeAmbiente — semáforo', () => {
     const pop = await abrir();
     await waitFor(() => expect(text(pop)).toContain('2 personas bloqueadas pela plataforma'));
     // D1: o mesmo número e o mesmo destino da caixa de Pendências (antes: objetivos, levando a Execuções).
-    expect(text(pop)).toContain('2 pendências esperando você');
-    const pendencias = [...pop.querySelectorAll('a')].find((a) => text(a).includes('pendências esperando'));
+    expect(text(pop)).toContain('2 pendências aguardando você');
+    const pendencias = [...pop.querySelectorAll('a')].find((a) => text(a).includes('pendências aguardando'));
     expect(pendencias?.getAttribute('href')).toBe(hashDe('pendencias'));
     const bloqueadas = [...pop.querySelectorAll('a')].find((a) => text(a).includes('personas bloqueadas'));
     expect(bloqueadas?.getAttribute('href')).toBe(hashDe('personas', { query: { situacao: 'bloqueada' } }));

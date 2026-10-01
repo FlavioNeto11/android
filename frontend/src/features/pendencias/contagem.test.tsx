@@ -149,7 +149,7 @@ describe('o mesmo número em três lugares', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([PRONTA]));
     useAppStore.setState({ runs: [EXECUCAO_OK] });
     await act(async () => { root.render(<><MenuLateral /><TopBar /><PendenciasPage /></>); });
-    await waitFor(() => expect(text(container)).toContain('Nada esperando você'));
+    await waitFor(() => expect(text(container)).toContain('Nada aguardando você'));
     expect(container.querySelectorAll('li[data-origem]')).toHaveLength(0);
     expect(text(chipDoTopo() as HTMLElement)).toBe('0aguardando você');
     expect(seloDoMenu()?.getAttribute('aria-label')).toBe('Pendências');
