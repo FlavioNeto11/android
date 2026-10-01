@@ -172,12 +172,34 @@ def test_real_soft_redaction_still_sends_without_value():
     assert "k" * 20 not in sent["body"]               # a chave nunca vai no corpo
 
 
-def test_importing_provider_modules_opens_no_connection(monkeypatch):
-    import importlib
+def test_importing_provider_modules_opens_no_connection():
+    """Em processo separado (recarregar o módulo aqui trocaria as classes de erro para os outros testes)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    code = "\n".join([
+        "import socket",
+        "def deny(*a, **k):",
+        "    raise SystemExit('conexao aberta no import')",
+        "socket.socket.connect = deny; socket.create_connection = deny; socket.getaddrinfo = deny",
+        "import provider, fake_provider, smoke, benchmark",
+    ])
+    r = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
 
-    def deny(*a, **k):
-        raise AssertionError("conexão aberta no import")
-    monkeypatch.setattr(socket.socket, "connect", deny)
-    importlib.reload(pv)
-    import fake_provider
-    importlib.reload(fake_provider)
+
+def test_max_calls_counts_retries_too():
+    seq = iter([(429, b"{}"), (429, b"{}"), (200, _ok_body(list(CANDS)))])
+    p = pv.RealJevProvider(enabled=True, max_calls=2, max_retries=2, env={pv.KEY_ENV: "k" * 20},
+                           transport=lambda *a: next(seq), sleep=lambda s: None)
+    with pytest.raises(pv.ProviderNotEnabled):          # 2 tentativas gastaram o teto; a 3ª não sai
+        p.retrieve(Q, CANDS)
+    assert p.calls == 2
+
+
+def test_error_body_is_kept_apart_and_never_in_the_message():
+    p = pv.RealJevProvider(enabled=True, env={pv.KEY_ENV: "k" * 20},
+                           transport=lambda *a: (422, b'{"detail":"bad question"}'))
+    with pytest.raises(pv.ProviderError) as ei:
+        p.choose({"a": 1}, "x", {"A": None})
+    assert "bad question" not in str(ei.value) and "bad question" in p.last_error_body

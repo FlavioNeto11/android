@@ -1,6 +1,8 @@
 # JEV-PILOT: pesquisa e piloto isolado do modelo de decisão Jev (TypeSafe AI)
 
-> **Estado:** pesquisa e laboratório prontos; **nenhuma chamada real ao Jev foi feita** (`REAL_JEV_CALLS_RUN = NO`).
+> **Estado (2ª rodada, 2026-10-01):** Piloto A sobre o código real **`BLOCKED_PRIVACY`** ([§35](#35-privacy-due-diligence-2026-10-01-segunda-rodada));
+> smoke sintético **preparado e travado** ([§36](#36-smoke-test-sintético-preparado-não-executado)); **nenhuma chamada real ao Jev foi feita**
+> (`REAL_JEV_CALLS_RUN = NO`).
 > Frente **independente do W8**: não toca aparelho, banco, scheduler, `RoutingProvider`, `config.yaml`, `.env`, deploy nem conta.
 > Base: `main` = `origin/main` = `3eba639` no início (2026-10-01). Branch `claude/jev-pilot`. Ao fechar, `origin/main` estava em
 > `b395ce6` (+2 commits, só `docs/handoffs/*` do W8, +166 linhas): **não integrado nem rebaseado**; os âncoras do golden não mudam. Tudo se remove apagando
@@ -18,7 +20,7 @@
 | **Q1** Jev reduz contexto no Claude Code sem perder qualidade? | **Plugin publicado (`BorisLeMeec/jev`): NO_GO para instalar agora**, por risco lido no código (hook envia o arquivo inteiro a terceiro sem filtro de caminho; binário ausente no marketplace; sem suporte documentado a Windows). **Pipeline próprio de rerank sobre o nosso repositório: INSUFFICIENT_EVIDENCE**: o laboratório está pronto, o custo previsto é ~US$ 0,01 e o que bloqueia é a aprovação de enviar código-fonte (e a chave/waitlist), não o custo. | CODE; `not_run` |
 | **Q2** Jev como "System 1" de decisões pequenas antes do Sonnet/Opus? | **INSUFFICIENT_EVIDENCE; candidato a SHADOW**. O contrato do Jev (resposta tipada, escolha fechada, `confidence`) casa com o desenho. Mas o histórico real tem só 36 casos rotulados que exigiram forte/humano em 587 rotulados (94 % são "barato"); "sempre barato" já acerta 93,9 %. O ganho possível é pequeno e só um shadow mede. | `MEASURED` (histórico) + `not_run` (Jev) |
 | **Q3** Escolher uma ação entre um conjunto FECHADO já validado? | **Não avaliar agora.** O ator hoje emite `tool+args`, não `action_id`; construir o conjunto fechado é um componente novo. O único conjunto fechado existente é o catálogo de capabilities do planejador (papel `plan`, texto livre em português). Referência arquitetural útil: `jev-android` (comunitário, não oficial). | CODE; `not_run` |
-| **Q4** Custo/latência/privacidade/dependência maiores que o benefício? | **Custo: desprezível** (US$ 0,042 por 1 M de tokens de entrada; piloto A ≈ US$ 0,010–0,013, replay do histórico inteiro ≈ US$ 0,006–0,008, ambos **PROXY**). **Privacidade e fornecedor: dominantes.** Código/estado sai para a TypeSafe (EUA), retenção padrão de entradas da API **UNKNOWN**, sem SLA, os Termos permitem descontinuar sem aviso, limites "ajustados dinamicamente", acesso por waitlist, modelo inglês-primário. | `OFFICIAL` |
+| **Q4** Custo/latência/privacidade/dependência maiores que o benefício? | **Custo: desprezível** (US$ 0,042 por 1 M de tokens de entrada; piloto A ≈ US$ 0,010–0,013, replay do histórico inteiro ≈ US$ 0,006–0,008, ambos **PROXY**). **Privacidade e fornecedor: dominantes.** Código/estado sai para a TypeSafe (EUA), retenção padrão de entradas da API **UNKNOWN**, sem SLA (MCA: "AS IS"), limites "ajustados dinamicamente", acesso por waitlist, modelo inglês-primário. | `OFFICIAL` |
 
 **Veredito geral: `INSUFFICIENT_EVIDENCE`.** Nenhum dos três usos tem número do Jev. O que existe são: documentação oficial lida
 em texto bruto, leitura do código do plugin, um golden set conferido à mão, baselines medidas, limiares escritos **antes**
@@ -117,10 +119,11 @@ Relato de comunidade: conta nova via Vercel AI Gateway recebeu ~98 % de `429` du
 - **Não treina nem faz *fine-tuning* com seus prompts/entradas** (`OFFICIAL`: política de privacidade; reafirmado em
   /models: "not fine-tuned or LoRA-adapted with customer data").
 - Existem **DPA**, Master Customer Agreement e política de privacidade, e **retenção zero (ZDR) para clientes enterprise**
-  sob contato comercial (`OFFICIAL`, [/legal](https://docs.typesafe.ai/legal), lido em texto bruto). **Não li o DPA nem a
-  política**; a retenção **padrão** das entradas da API é **UNKNOWN**.
+  sob contato comercial (`OFFICIAL`, [/legal](https://docs.typesafe.ai/legal)). Na 2ª rodada li os três em texto bruto
+  ([§35](#35-privacy-due-diligence-2026-10-01-segunda-rodada)); a retenção **padrão** das entradas da API continua **UNKNOWN**.
 - Hospedagem nos EUA (`OFFICIAL` política); região UE não documentada. Subprocessadores: **UNKNOWN**.
-- Sem SLA; os Termos "permitem descontinuar sem aviso" (`OFFICIAL` Termos, via resumo).
+- Sem SLA: o MCA fornece o serviço "AS IS" e não garante operação ininterrupta (§9.3). **Correção (§35):** a frase "descontinuar sem
+  aviso" da 1ª rodada é dos Termos de Uso do *site*, não da API.
 - Via Cloudflare Workers AI a Cloudflare anuncia ZDR (`INDEPENDENT`, parceiro, não é política da TypeSafe) — rota possível
   para reduzir risco de retenção, **não avaliada**.
 
@@ -326,7 +329,7 @@ verificação:** o corpus `backend/tests` tem **6 fixtures com padrão de segred
 bloqueadas por construção — se o dono aprovar, o shortlist simplesmente as exclui.
 
 Resíduos sem mitigação do nosso lado: retenção padrão na TypeSafe (**UNKNOWN**), subprocessadores, jurisdição (EUA),
-descontinuação sem aviso, `429` dinâmicos.
+limites `429` dinâmicos, serviço "AS IS".
 
 ## 22. Piloto A (Claude Code)
 
@@ -511,7 +514,7 @@ O custo nunca é o obstáculo. **Não chamar o Jev real mesmo com custo estimado
 | Risco | Severidade | Mitigação |
 |---|---|---|
 | Envio de código/estado a terceiro (EUA) com retenção padrão desconhecida | alta | aprovação do dono, DPA, redação+bloqueio, corpus limitado, ZDR enterprise/Cloudflare como opção |
-| Dependência de fornecedor novo: sem SLA, descontinuação sem aviso, limites dinâmicos, waitlist, `jev-latest` mutável | alta | só *shadow*/ferramenta de dev, sempre *fail-open*, versão fixada |
+| Dependência de fornecedor novo: sem SLA, "AS IS", limites dinâmicos, waitlist, `jev-latest` mutável | alta | só *shadow*/ferramenta de dev, sempre *fail-open*, versão fixada |
 | Plugin oculta contexto (falso negativo) e pode não avisar o modelo | alta (plugin) | **não instalar**; pipeline próprio entrega trechos com caminho e linhas e cai no BM25 |
 | Plugin sem filtro de caminho/segredo | alta (plugin) | idem; se um dia testado: hook off + sandbox + repositório descartável |
 | Português fora do idioma principal | média | medir no golden e no replay antes de qualquer decisão |
@@ -528,8 +531,8 @@ plugin ou binário. `data/jev-pilot/` é ignorado pelo Git (`.gitignore: data/`)
 
 ## 33. Limitações da pesquisa
 
-- A documentação oficial foi lida em texto bruto **apenas** nas páginas listadas em §5; **política de privacidade, Termos, DPA,
-  página de `evals`, blog de preço, SDKs e `jev-android` vieram de resumos de ferramenta/`gh api`** e podem ter imprecisão.
+- A documentação oficial foi lida em texto bruto nas páginas listadas em §5 e, na 2ª rodada, MCA, DPA, política, Termos, AUP e
+  Trust Center (§35); **página de `evals`, blog de preço, SDKs e `jev-android` vieram de resumos de ferramenta/`gh api`** e podem ter imprecisão.
 - O plugin foi analisado só por **leitura**; nada foi executado: fail-open, espera offline, destino do `additionalContext`,
   Windows, `exit 2` em *panic* são **inferências**.
 - Não há medição independente de latência/acurácia do Jev; os números do fornecedor e do autor do plugin são
@@ -541,6 +544,9 @@ plugin ou binário. `data/jev-pilot/` é ignorado pelo Git (`.gitignore: data/`)
   worktree; vocabulário do plano-100): não corrigidos.
 
 ## 34. Próxima decisão do dono
+
+> **Atualizado na 2ª rodada:** o item 2 abaixo está **bloqueado** (`BLOCKED_PRIVACY`, §35). A decisão atual é a de §36 (smoke
+> sintético, 6 chamadas) e, separadamente, como destravar o código real (§35, condições A/B/C).
 
 1. **Plugin `BorisLeMeec/jev`:** recomendo **não instalar** (nem global, usuário, projeto ou hook). Se quiser testá-lo mesmo
    assim: repositório descartável, hook desligado por padrão, sem arquivos sensíveis, com o plano de §Plano abaixo.
@@ -569,3 +575,94 @@ Windows, confirmar o destino do `additionalContext`, e T7 aprovado.
 [github.com/typesafe-ai](https://github.com/typesafe-ai) · [BorisLeMeec/jev](https://github.com/BorisLeMeec/jev) (COMMUNITY) ·
 [dougsong/jev-android](https://github.com/dougsong/jev-android) (COMMUNITY). Código do projeto: `backend/app/planning/routing.py`,
 `provider.py`, `taskqueue/executor.py`, `proofs.py`, `social/policy.py`, `state.py` (commit `3eba639`).
+
+
+## 35. Privacy due diligence (2026-10-01, segunda rodada)
+
+> **Status do Piloto A sobre o código real: `BLOCKED_PRIVACY`.** O repositório é privado, a retenção padrão é `UNKNOWN`, ZDR só
+> para enterprise. Trava no código: `benchmark.py::PRIVATE_CODE_SEND_APPROVED = False` (com chave e `--confirm-external-send`
+> o comando ainda aborta). Só vira `True` num commit próprio citando a autorização **explícita** do dono.
+
+**Fontes (todas lidas em texto bruto em 2026-10-01; cópias em `data/jev-pilot/legal/`, fora do Git):**
+`typesafe.ai/legal/mca` (Master Customer Agreement, atualizado **23/09/2026**), `/legal/data-processing` (DPA, **24/04/2026**),
+`/legal/privacy-policy` (**19/11/2025**), `/legal/terms`, `/legal/acceptable-use`, `trust.typesafe.ai` (página renderizada no
+navegador embutido), `docs.typesafe.ai` (111 páginas varridas por *retention/ZDR/logging/train*; só `/legal` e `/models` tocam
+no assunto) e a página do modelo no catálogo da Cloudflare. **Correção ao §8 da rodada anterior:** os "Termos que permitem
+descontinuar sem aviso" são os **Termos de Uso do *site*** ("modify or discontinue the *Site*"), não os da API.
+Para a API vale o **MCA** (abaixo).
+
+| Item | Achado (fonte) | Estado |
+|---|---|---|
+| **Retenção padrão da API** | Nenhum prazo em lugar nenhum. MCA §4.1: o direito de processar `Input` vale "**durante o Term**" para prestar o serviço; MCA §10.3: TypeSafe "**não tem obrigação de armazenar ou reter** Customer Data e pode apagá-lo a qualquer momento, a seu critério" (backups podem reter informação confidencial). Política: retém dados "pelo tempo **razoavelmente necessário** para prestar os Serviços, **ou em apoio a seus fins comerciais**". DPA Anexo I.8: "pelo tempo necessário considerando a finalidade". Trust Center (AWS): "informações de clientes para requisições ao vivo são **armazenadas** e processadas em bancos de dados, caches e nós de computação na AWS". | **`STANDARD_API_RETENTION = UNKNOWN`** (não é zero: há armazenamento declarado, sem prazo) |
+| **Prazo de retenção** | Não numérico em nenhum documento. | UNKNOWN |
+| **Finalidade da retenção** | MCA §4.1(c): "**em perpetuidade**", qualquer Customer Data para (i) derivar **Telemetry**, (ii) **monitorar fraude e abuso**, (iii) cumprir a lei. Política: melhorar/depurar o serviço, analisar uso, "desenvolver novos produtos", gerar dados anonimizados/agregados, prevenir fraude. | declarado |
+| **Logs** | MCA §4.3: *Telemetry* = "logs técnicos, *hashes*, estatísticas, **classificações**, métricas e **aprendizados** (*learnings*) relacionados ao seu uso"; TypeSafe pode processá-la "**sem restrição**, inclusive para melhorar o serviço **ou outros produtos**". Retenção/escopo dos logs e o que são "learnings": não definidos. | UNKNOWN (e cláusula ampla) |
+| **Abuse monitoring** | Existe e é perpétuo (MCA §4.1(c)(ii); AUP: "pode monitorar a conformidade"). Se envolve revisão humana de conteúdo: não dito. | parcial |
+| **Subprocessadores** | Trust Center, **6**, todos **EUA**: AWS (armazena requisições ao vivo), Modal / Nebius / CoreWeave (infra de IA; "prompts processados, **não armazenados**"), Slack e Google Workspace (suporte; dados de cliente "se enviados por ele"). DPA §3: autorização geral, aviso prévio de novos, **15 dias** para objetar. | conhecido |
+| **Exclusão (*deletion*)** | Sem mecanismo de apagamento de `Input` sob pedido para dado não pessoal. MCA §10.3 só diz que podem apagar quando quiserem. DPA §4.1 só ajuda em pedidos de titulares (dado **pessoal**). Controle de conformidade do Trust Center: "*Customer data deleted upon leaving*" (nome do controle; relatório não lido). | UNKNOWN |
+| **DPA** | Existe, incorporado ao MCA (§4.4). **Só cobre dado pessoal** ("Customer Personal Data"); código-fonte em geral não é. Operador/controlador; instruções documentadas; sem venda/compartilhamento; **aviso de incidente em 72 h**; auditoria 1×/12 meses, **às custas do cliente**; SCCs módulos 2 e 3 (lei da Irlanda) e *UK Addendum*; "dados sensíveis: N/A". | existe, escopo estreito |
+| **ZDR** | docs `/legal`: "oferecemos retenção zero para clientes **enterprise**; fale com sales@typesafe.ai". Condições, preço, prazo de ativação, abrangência (inclui *abuse monitoring*/Telemetry?) e disponibilidade para esta conta: **não documentados**. A Cloudflare lista o modelo (terceiro) com "Zero data retention: **Yes**" (`INDEPENDENT`; o que cobre — só a Cloudflare ou também a TypeSafe — **não está definido** na página; contexto 32 k). | só enterprise; condições UNKNOWN |
+| **Treino / melhoria** | Política: "não treinamos nem fazemos *fine-tuning* com seus *prompts* ou outro *Input*" e "não divulgamos *Input* a terceiros além de prestadores". MCA §4.1: sem incluir Customer Data em *dataset* de **treino de pesos** "sem consentimento prévio". **Lacuna:** Telemetry (inclui "aprendizados" derivados do uso) é livre para "melhorar o serviço e **outros produtos**" — as duas garantias não fecham essa porta. | parcial; lacuna na Telemetry |
+| **Transferência internacional** | Serviços hospedados **nos EUA**; quem usa de fora "transfere dados para os EUA" (Política). DPA §6: SCCs/UK Addendum. Sem região UE/BR. Lei da Califórnia e arbitragem (MCA §15–16). Não há tratamento específico para a **LGPD** (Brasil). | EUA apenas |
+| **Termos da API normal** | MCA: aceito "ao usar os Serviços". §5: o **cliente garante** ter todos os direitos e consentimentos para enviar o `Input`. §9.3: "**AS IS**", sem garantia de operação ininterrupta nem de "manter Customer Data sem perda". §6: suspensão imediata em casos listados. §7: integrações de terceiros (gateways) ficam sob o contrato do terceiro. Confidencialidade (§14) cobre informação "razoavelmente entendida como confidencial", mas §14.2(a) a ressalva "**como permitido neste Agreement, incluindo a Seção 4.1**". | aplicável |
+| **Certificações** | Trust Center lista **SOC 2 Type II – 2026**. Relatório **não revisado** (requer "Request access"). | `OFFICIAL` (alegação), não verificada |
+
+**Leitura honesta.** Existe estrutura contratual real (DPA, SCCs, SOC 2 listado, sem treino de pesos), mas para o *nosso* caso
+— código-fonte privado, não dado pessoal — ela protege **pouco**: o DPA não se aplica, a retenção é indefinida, os direitos
+em perpetuidade (Telemetry/abuso) existem, não há apagamento sob pedido e o ZDR é enterprise. Nada disso prova que a TypeSafe
+fará algo indevido; prova que **o que está escrito não permite afirmar que o código sairia dos servidores deles**. Não fiz
+inferência: onde o texto cala, registrei `UNKNOWN`.
+
+**`UNRESOLVED_PRIVACY_ITEMS`:** (1) prazo de retenção do `Input` e dos logs; (2) por quanto tempo a AWS guarda as "requisições ao vivo";
+(3) o que são os "learnings" da Telemetry e se podem conter trechos de `Input`; (4) se o *abuse monitoring* tem revisão humana
+e quanto retém; (5) condições, custo, prazo e abrangência do ZDR, e se está disponível para esta conta; (6) mecanismo de
+apagamento de `Input` sob pedido; (7) relatório SOC 2 Type II; (8) o que o "Zero data retention: Yes" da Cloudflare cobre;
+(9) opção de região fora dos EUA.
+
+**Pergunta pronta para a TypeSafe (rascunho; eu **não** enviei nada — comunicar-se com o fornecedor é decisão do dono):**
+> Para o uso por API (`/v1/systemone`) sem contrato enterprise: (1) qual é o prazo padrão de retenção do Input e de logs
+> técnicos? (2) por quanto tempo a AWS guarda "live requests"? (3) o que a "Telemetry/learnings" (MCA §4.3) pode conter e pode
+> incluir trechos do Input? (4) o *abuse monitoring* envolve revisão humana e qual a retenção? (5) como ativar ZDR, a que preço,
+> e ele cobre Telemetry e abuse monitoring? (6) há apagamento de Input sob pedido? (7) podem compartilhar o SOC 2 Type II?
+> Contato oficial: sales@typesafe.ai, privacy@typesafe.ai.
+
+**Como destravar o Piloto A (qualquer um):** (A) a TypeSafe esclarecer a retenção padrão de forma que o dono aceite; (B) ZDR
+disponível para esta conta (direto ou por Cloudflare, **confirmando por escrito o que cada um cobre**); (C) o dono autorizar
+explicitamente o envio apesar do `UNKNOWN`. **Alternativa que dispensa o código privado:** o smoke sintético (§36) valida o
+protocolo; e um *benchmark de recuperação* poderia usar um repositório **público** e permissivo como corpus (decisão separada).
+
+## 36. Smoke test sintético (preparado, **não executado**)
+
+Objetivo: validar **autenticação, protocolo, tipos noul/choice/score, confiança, latência, timeout, tratamento de erro e custo
+real** sem enviar nada do repositório. Código: `experiments/jev/smoke.py`, corpus fictício `experiments/jev/synthetic_corpus/`
+(domínio inventado "Harbor": equipes em espera, relançamento com atraso, assinatura humana, teto de gasto, livro de eventos;
+escrito em inglês porque é o idioma principal do Jev). **Nada do corpus vem do projeto**: `tests/test_smoke.py` falha se houver
+nome de função/classe igual ao do repositório privado ou sequência informativa de 12 tokens idêntica, e se houver qualquer achado
+da redação.
+
+| # | Chamada (1 requisição de rede) | Valida | Esperado |
+|---|---|---|---|
+| 1 | `noul_auth_latency` | chave/Bearer, formato `noul`, latência de referência | 200, `noul ∈ [0,1]` |
+| 2 | `choice_closed_set` | `choice` com conjunto fechado `A01..A05`, probabilidades somam 1, `confidence` | 200, escolha ∈ conjunto |
+| 3 | `score_three_levels` | `score` de 3 níveis, `legend`, `probabilities`, `confidence` | 200 |
+| 4 | `rerank_shape` | o formato do Piloto A: `choice` sobre 8 ids + `noul` na **mesma** requisição | 200, 2 respostas |
+| 5 | `error_422` | corpo e status de erro de validação (score de 1 nível); ausência de *retry* em 422 | 422 |
+| 6 | `timeout_probe` | caminho de timeout do cliente (50 ms) sobre a requisição mais simples | timeout (ou 200, se for mais rápido) |
+
+Travas: padrão = **só estima, sem rede**; a rodada real exige `--run --confirm-synthetic-only`, `TYPESAFE_API_KEY` e
+`SMOKE_RUN_AUTHORIZED = True` (hoje `False`); `max_calls = 6` conta **cada tentativa de rede**, e a rodada usa `max_retries = 0`
+(um 429/529 não é repetido, para não gastar as 6). **Não validado por chamada real:** *retry/backoff* em 429/529 (só simulado
+com transporte falso), *rate limits*, carga, português.
+
+**Estimativa (offline, `python experiments/jev/smoke.py`):**
+
+| | |
+|---|---|
+| `ESTIMATED_CALLS` | **6** |
+| `ESTIMATED_INPUT_BYTES` | **4 162** (213 + 500 + 265 + 2 826 + 145 + 213) |
+| `ESTIMATED_TOKENS` | **UNKNOWN** (tokenizador do Jev não documentado); `PROXY` bytes/4..bytes/3 = **1 040 – 1 387** |
+| `ESTIMATED_COST` | **US$ 0,000044 – 0,000058** (preço oficial × tokens PROXY; saída grátis). Free tier UNKNOWN; se não houver, o custo é o saldo mínimo da conta, não o consumo. |
+
+**Para autorizar:** responder explicitamente "autorizo as 6 chamadas do smoke sintético"; então um commit muda
+`SMOKE_RUN_AUTHORIZED` e a chave entra por variável de ambiente (`TYPESAFE_API_KEY`), nunca no chat. Comando:
+`python experiments/jev/smoke.py --run --confirm-synthetic-only --max-calls 6`. Resultado em `data/jev-pilot/smoke/` (ignorado).

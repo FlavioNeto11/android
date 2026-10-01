@@ -265,6 +265,7 @@ class RealJevProvider(DecisionProvider):
     env: Mapping[str, str] = field(default_factory=lambda: os.environ, repr=False)
     calls: int = 0
     redactions: dict[str, int] = field(default_factory=dict)
+    last_error_body: str = field(default="", repr=False)
     name = "jev"
 
     def _key(self) -> str:
@@ -293,13 +294,15 @@ class RealJevProvider(DecisionProvider):
         if not self.enabled:
             raise ProviderNotEnabled("RealJevProvider desabilitado (enabled=False); nenhuma requisição foi feita")
         key = self._key()
-        if self.max_calls and self.calls >= self.max_calls:
-            raise ProviderNotEnabled(f"teto de {self.max_calls} requisições da rodada atingido")
         state, questions = self._sanitize(state, questions)
         body = json.dumps(request_body(state, questions, self.model), ensure_ascii=False).encode("utf-8")
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         espera = 1.0
+        self.last_error_body = ""
         for tentativa in range(self.max_retries + 1):
+            # O teto vale POR TENTATIVA de rede: um retry também gasta uma chamada real.
+            if self.max_calls and self.calls >= self.max_calls:
+                raise ProviderNotEnabled(f"teto de {self.max_calls} requisições da rodada atingido")
             self.calls += 1
             status, corpo = self.transport(API_URL, headers, body, self.timeout_s)
             if status == 200:
@@ -311,7 +314,9 @@ class RealJevProvider(DecisionProvider):
                 self.sleep(espera)
                 espera *= 2
                 continue
-            # Nunca inclui o corpo da resposta nem os cabeçalhos: o erro não carrega segredo nem conteúdo.
+            # A mensagem do erro nunca inclui corpo, cabeçalhos nem chave. O corpo truncado fica só em `last_error_body`,
+            # que o smoke sintético lê para documentar o formato de erro; o benchmark de código real nunca o lê.
+            self.last_error_body = corpo[:400].decode("utf-8", "replace")
             if status in (401, 422):
                 raise ProviderError(f"HTTP {status} (falha dura)")
             raise ProviderError(f"HTTP {status}")

@@ -76,6 +76,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   **inerte**, extração de histórico seguro para replay e limiares pré-registrados. Veredito: `INSUFFICIENT_EVIDENCE`; plugin
   `NO_GO` para instalar. **Nenhuma chamada real ao Jev** (`not_run`); nenhum aparelho, banco, scheduler, config ou deploy.
   - Código em `experiments/jev/` (stdlib, 64 testes `simulated`); relatório em `docs/research/jev-pilot.md`.
+  - 2ª rodada: due diligence de privacidade (MCA, DPA, política, Trust Center; retenção padrão `UNKNOWN`) → Piloto A sobre código
+    privado `BLOCKED_PRIVACY` (trava em `benchmark.py`); smoke sintético de 6 chamadas preparado e travado (`smoke.py`,
+    `synthetic_corpus/`), estimativa offline ~US$ 0,00005. Ainda **nenhuma chamada real**.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 

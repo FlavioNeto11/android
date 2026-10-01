@@ -289,3 +289,13 @@ def test_adaptive_k_rule():
     assert bm.adaptive_k([0.3, 0.3, 0.3, 0.05, 0.05]) == 3       # 0.9 acumulado em 3
     assert bm.adaptive_k([0.1] * 10) == bm.ADAPTIVE_KMAX         # nunca passa do teto
     assert bm.adaptive_k([]) == bm.ADAPTIVE_KMAX
+
+
+def test_private_code_send_is_blocked_even_with_flag_and_key(monkeypatch, tmp_path):
+    """Trava do dono: com chave e confirmação, o código real ainda NÃO sai (BLOCKED_PRIVACY)."""
+    monkeypatch.setenv("TYPESAFE_API_KEY", "k" * 24)
+    assert bm.PRIVATE_CODE_SEND_APPROVED is False
+    with pytest.raises(SystemExit) as e:
+        bm.main(["--provider", "jev", "--confirm-external-send", "--out", str(tmp_path / "o")])
+    assert "BLOCKED_PRIVACY" in str(e.value)
+    assert not (tmp_path / "o").exists()

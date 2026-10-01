@@ -34,6 +34,10 @@ from textutil import scoped_roots                        # noqa: E402
 from redact import redact                                # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+#: TRAVA DO DONO (2026-10-01): o repositório é PRIVADO e a retenção padrão da API é UNKNOWN. Enquanto isto for False,
+#: `--provider jev` sobre o código real aborta com BLOCKED_PRIVACY, mesmo com chave e `--confirm-external-send`.
+#: Só vira True num commit próprio, citando a autorização EXPLÍCITA do dono (docs/research/jev-pilot.md §35).
+PRIVATE_CODE_SEND_APPROVED = False
 N_SHORTLIST = 30
 BYTES_PER_TOKEN_PROXY = 4.0       # PROXY: o tokenizador do Jev é desconhecido; usado só para estimar custo
 
@@ -157,6 +161,10 @@ def make_provider(args: argparse.Namespace) -> DecisionProvider | None:
             raise SystemExit("--provider jev exige --confirm-external-send (código-fonte SAI da máquina). Nada foi enviado.")
         if not os.environ.get(KEY_ENV):
             raise SystemExit(f"variável {KEY_ENV} ausente. Nada foi enviado.")
+        if not PRIVATE_CODE_SEND_APPROVED:
+            raise SystemExit("BLOCKED_PRIVACY: o envio de código privado à TypeSafe não está autorizado "
+                             "(retenção padrão UNKNOWN; ver docs/research/jev-pilot.md §35). Nada foi enviado. "
+                             "Para só validar o protocolo use experiments/jev/smoke.py (corpus sintético).")
         return RealJevProvider(enabled=True, max_calls=args.max_calls)
     raise SystemExit(f"provedor desconhecido: {args.provider}")
 

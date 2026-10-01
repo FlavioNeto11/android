@@ -48,7 +48,16 @@ benchmark usa o binário embutido do Claude Code (`ARGV0=rg`), `JEV_RG_BIN`, ou 
 | `redact.py` | redação e bloqueio de segredo antes de qualquer envio |
 | `metrics.py`, `report.py` | métricas (bytes = `PROXY_METRIC`) e avaliação mecânica dos limiares |
 | `netguard.py` | trava de rede usada pelo benchmark offline |
+| `smoke.py`, `synthetic_corpus/` | smoke sintético (protocolo/erro/latência/custo) sem código do projeto; estimativa offline; rodada real travada |
 | `replay.py` | Piloto B: lista permitida de colunas, rótulos derivados, roteadores de base |
+
+## Estado atual: BLOCKED_PRIVACY e smoke sintético travado
+
+- `--provider jev` sobre o **código real** aborta com `BLOCKED_PRIVACY` (`benchmark.PRIVATE_CODE_SEND_APPROVED = False`): o
+  repositório é privado e a retenção padrão da API é UNKNOWN (relatório §35).
+- `python experiments/jev/smoke.py` **só estima** (sem rede). A rodada real do smoke (6 chamadas, corpus
+  `synthetic_corpus/`, nada do repositório) exige `--run --confirm-synthetic-only`, `TYPESAFE_API_KEY` **e**
+  `smoke.SMOKE_RUN_AUTHORIZED = True`, que só muda após autorização explícita do dono.
 
 ## Como habilitar o provedor real (FUTURO — só com aprovação do dono)
 
