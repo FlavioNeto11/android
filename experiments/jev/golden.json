@@ -1,0 +1,593 @@
+{
+  "meta": {
+    "version": 1,
+    "frozen_at": "2026-10-01",
+    "source_sha": "3eba639",
+    "corpus": {
+      "roots": [
+        "backend/app",
+        "backend/tests"
+      ],
+      "extensions": [
+        ".py"
+      ],
+      "note": "Corpus do piloto A: o código Python do backend e seus testes. Docs ficam fora de propósito (a pergunta é sobre código)."
+    },
+    "how_verified": "Gabarito conferido À MÃO contra o código de 3eba639 (grep + leitura dos trechos). Jev NÃO foi usado para gerar expected_*. Regiões são [arquivo, linha_inicial, linha_final], 1-indexadas, relativas à raiz do repositório.",
+    "relevance_rule": "Um resultado é relevante no nível de ARQUIVO se o arquivo está em expected_files; é relevante no nível de REGIÃO se o trecho devolvido intersecta alguma expected_regions.",
+    "frozen": "NÃO editar depois de ver resultado de Jev real (THRESHOLD_CHANGED_AFTER_RESULTS). Mudança exige novo version e registro no relatório.",
+    "revisions": [
+      {
+        "rev": "1.1",
+        "date": "2026-10-01",
+        "before_any_jev_call": true,
+        "changes": "G04 reclassificado (grep_friendly → misto); G10 e G17 reescritos para eliminar ambiguidade; adicionadas regra de escopo (app/tests) e termo de atribuição (ident='valor') no extrator mecânico de termos. Motivo: defeitos de golden/extrator observados nas baselines (ripgrep, BM25), nunca em resultado de Jev. O gabarito expected_* NÃO mudou."
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "G01",
+      "question": "Onde `_pedir_reinicio` é chamado?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "backend/app/devices/rede_convergencia.py",
+        "backend/tests/test_rede_aplicacao.py"
+      ],
+      "expected_symbols": [
+        "_agendar_reinicio",
+        "_pedir_reinicio"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/devices/rede_convergencia.py",
+          914,
+          915
+        ],
+        [
+          "backend/app/devices/rede_convergencia.py",
+          933,
+          934
+        ],
+        [
+          "backend/tests/test_rede_aplicacao.py",
+          1200,
+          1200
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Símbolo exato. A definição (rede_convergencia.py:919) é resposta parcial; os chamadores são o agendamento (914) e o reagendamento interno (933)."
+    },
+    {
+      "id": "G02",
+      "question": "Quem decide que um worker em manutenção não aceita novos comandos de ciclo de vida (restart, start, stop) de um aparelho?",
+      "category": "BEHAVIOR_SEARCH",
+      "expected_files": [
+        "backend/app/commands/despacho.py",
+        "backend/app/modules/execution/infrastructure/command_bus.py",
+        "backend/app/workers/registry.py"
+      ],
+      "expected_symbols": [
+        "motivo_manutencao"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/commands/despacho.py",
+          627,
+          632
+        ],
+        [
+          "backend/app/modules/execution/infrastructure/command_bus.py",
+          157,
+          158
+        ],
+        [
+          "backend/app/workers/registry.py",
+          752,
+          758
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A pergunta não cita o nome do símbolo; o vocabulário do código é português ('manutencao'). Três pontos: a decisão (registry), e dois chamadores que recusam."
+    },
+    {
+      "id": "G03",
+      "question": "Como o risco e o efeito externo (side_effect) de uma etapa decidem se a decisão do ator sobe para o modelo de escalonamento?",
+      "category": "CROSS_MODULE_FLOW",
+      "expected_files": [
+        "backend/app/taskqueue/executor.py",
+        "backend/app/config.py",
+        "backend/tests/test_cost_levers.py"
+      ],
+      "expected_symbols": [
+        "side_effect_tier",
+        "strong_model_for_side_effect"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/executor.py",
+          2374,
+          2395
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          1211,
+          1214
+        ],
+        [
+          "backend/app/config.py",
+          496,
+          498
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Fluxo entre executor e configuração; testes em test_cost_levers.py:228-241 confirmam o contrato."
+    },
+    {
+      "id": "G04",
+      "question": "Onde cada chamada de IA vira uma linha na tabela ai_calls (quem contabiliza o uso e o custo)?",
+      "category": "STATE_MUTATION",
+      "expected_files": [
+        "backend/app/taskqueue/repository.py",
+        "backend/app/modules/identity/infrastructure/persona_images.py"
+      ],
+      "expected_symbols": [
+        "add_usage"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/repository.py",
+          790,
+          827
+        ],
+        [
+          "backend/app/modules/identity/infrastructure/persona_images.py",
+          140,
+          142
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": false,
+      "notes": "Misto: o texto exato é 'INSERT INTO ai_calls', mas a pergunta cita só 'ai_calls', que aparece em dezenas de arquivos (leitores, relatórios, testes). Revisado em 1.1 (era grep_friendly)."
+    },
+    {
+      "id": "G05",
+      "question": "Onde ocorre o fallback de provedor quando o endpoint de uma função de IA falha, e como se evita o fallback pago silencioso?",
+      "category": "BEHAVIOR_SEARCH",
+      "expected_files": [
+        "backend/app/planning/routing.py",
+        "backend/app/config.py"
+      ],
+      "expected_symbols": [
+        "_call",
+        "_com_provedor",
+        "fallback_provider"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/planning/routing.py",
+          219,
+          238
+        ],
+        [
+          "backend/app/planning/routing.py",
+          312,
+          328
+        ],
+        [
+          "backend/app/config.py",
+          416,
+          418
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "O símbolo 'fallback_provider' aparece, mas a pergunta é de comportamento. Docstring de routing.py:1-22 também descreve a regra."
+    },
+    {
+      "id": "G06",
+      "question": "Onde uma receita que divergiu devolve a etapa para a IA decidir?",
+      "category": "CROSS_MODULE_FLOW",
+      "expected_files": [
+        "backend/app/taskqueue/executor.py",
+        "backend/app/taskqueue/recipes.py"
+      ],
+      "expected_symbols": [
+        "RecipeDiverged",
+        "Replayer"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/executor.py",
+          1400,
+          1409
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          1415,
+          1421
+        ],
+        [
+          "backend/app/taskqueue/recipes.py",
+          46,
+          47
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A exceção nasce em recipes.py e é capturada no laço do executor, que marca rr.diverged e cai para o ator."
+    },
+    {
+      "id": "G07",
+      "question": "Quem emite o evento `network.updated`?",
+      "category": "EVENT_ORIGIN",
+      "expected_files": [
+        "backend/app/devices/rede.py",
+        "backend/app/devices/rede_convergencia.py"
+      ],
+      "expected_symbols": [
+        "network.updated"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/devices/rede.py",
+          374,
+          375
+        ],
+        [
+          "backend/app/devices/rede.py",
+          1253,
+          1254
+        ],
+        [
+          "backend/app/devices/rede.py",
+          1274,
+          1275
+        ],
+        [
+          "backend/app/devices/rede_convergencia.py",
+          994,
+          995
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Texto exato 'network.updated' em código de aplicação; os testes que o consomem (test_rede_por_aparelho.py) não são emissores."
+    },
+    {
+      "id": "G08",
+      "question": "Onde `approval_required` é decidido para uma ação social e como o objetivo fica bloqueado aguardando aprovação?",
+      "category": "GUARDRAIL",
+      "expected_files": [
+        "backend/app/social/policy.py",
+        "backend/app/state.py"
+      ],
+      "expected_symbols": [
+        "Verdict",
+        "needs_approval"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/social/policy.py",
+          318,
+          331
+        ],
+        [
+          "backend/app/social/policy.py",
+          378,
+          380
+        ],
+        [
+          "backend/app/state.py",
+          2155,
+          2172
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": false,
+      "notes": "Misto: o texto 'approval_required' existe em vários arquivos (catálogos YAML, schemas), mas só estes dois decidem e bloqueiam."
+    },
+    {
+      "id": "G09",
+      "question": "Quais testes cobrem o fallback declarado e o não-fallback do provedor de IA?",
+      "category": "TEST_LOCATION",
+      "expected_files": [
+        "backend/tests/test_hub_de_ia.py"
+      ],
+      "expected_symbols": [
+        "test_sem_declaracao_a_falha_do_local_nao_cai_no_pago",
+        "test_fallback_declarado_registra_evento_e_tarifa",
+        "test_fallback_de_recusa_do_servidor_vira_usage"
+      ],
+      "expected_regions": [
+        [
+          "backend/tests/test_hub_de_ia.py",
+          256,
+          311
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Pergunta de localização de teste sem citar o nome do teste."
+    },
+    {
+      "id": "G10",
+      "question": "Em qual código de produção (fora dos testes) se cria um `DecisionRequest`?",
+      "category": "EXACT_SYMBOL",
+      "expected_files": [
+        "backend/app/taskqueue/executor.py",
+        "backend/app/planning/provider.py"
+      ],
+      "expected_symbols": [
+        "DecisionRequest"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/executor.py",
+          1457,
+          1459
+        ],
+        [
+          "backend/app/planning/provider.py",
+          130,
+          139
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Em código de aplicação o único construtor é executor.py:1458; provider.py define a classe. A pergunta exclui testes (que também constroem) para não ser ambígua. Reescrita em 1.1."
+    },
+    {
+      "id": "G11",
+      "question": "Quem escolhe a função `escalation` em vez de `decide` ou `verify` ao despachar uma chamada de IA?",
+      "category": "ARCHITECTURE",
+      "expected_files": [
+        "backend/app/planning/routing.py",
+        "backend/app/taskqueue/executor.py"
+      ],
+      "expected_symbols": [
+        "RoutingProvider.decide",
+        "RoutingProvider.verify"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/planning/routing.py",
+          291,
+          299
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          1422,
+          1422
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "routing.py traduz tier>0 / escalate em papel; o executor decide o tier."
+    },
+    {
+      "id": "G12",
+      "question": "Onde a pós-condição de uma etapa é verificada, e quando a prova local dispensa o modelo?",
+      "category": "CROSS_MODULE_FLOW",
+      "expected_files": [
+        "backend/app/taskqueue/executor.py",
+        "backend/app/taskqueue/proofs.py"
+      ],
+      "expected_symbols": [
+        "_postcondition_holds",
+        "_verify",
+        "_prova_local",
+        "local_proof_holds"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/executor.py",
+          1976,
+          1985
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          2054,
+          2058
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          2169,
+          2186
+        ],
+        [
+          "backend/app/taskqueue/proofs.py",
+          59,
+          100
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Dois mecanismos: atalho barato (_postcondition_holds) e prova local por capability/árvore."
+    },
+    {
+      "id": "G13",
+      "question": "Como as funções de IA (plan, decide, verify, escalation, social) são declaradas na configuração e resolvidas para provedor e modelo?",
+      "category": "CONFIGURATION",
+      "expected_files": [
+        "backend/app/config.py",
+        "backend/app/planning/routing.py"
+      ],
+      "expected_symbols": [
+        "AI_ROLES",
+        "ai_roles",
+        "ResolvedRole",
+        "RoutingProvider.__init__"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/config.py",
+          28,
+          28
+        ],
+        [
+          "backend/app/config.py",
+          948,
+          952
+        ],
+        [
+          "backend/app/config.py",
+          1195,
+          1196
+        ],
+        [
+          "backend/app/planning/routing.py",
+          75,
+          91
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "Configuração (YAML ai.roles) até a instância por função."
+    },
+    {
+      "id": "G14",
+      "question": "Onde o teto de gasto de IA por execução e por dia é conferido antes de uma chamada?",
+      "category": "GUARDRAIL",
+      "expected_files": [
+        "backend/app/planning/routing.py",
+        "backend/app/planning/costs.py"
+      ],
+      "expected_symbols": [
+        "_budget",
+        "spent_usd",
+        "spent_today_usd"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/planning/routing.py",
+          152,
+          172
+        ],
+        [
+          "backend/app/planning/routing.py",
+          202,
+          205
+        ],
+        [
+          "backend/app/planning/costs.py",
+          64,
+          92
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "A conferência mora no roteador (cobre todo caminho de IA); costs.py faz a conta."
+    },
+    {
+      "id": "G15",
+      "question": "Onde o objetivo passa a ter blocked_kind='approval'?",
+      "category": "STATE_MUTATION",
+      "expected_files": [
+        "backend/app/state.py"
+      ],
+      "expected_symbols": [
+        "blocked_kind"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/state.py",
+          2167,
+          2167
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Texto exato; escrita única em código de aplicação."
+    },
+    {
+      "id": "G16",
+      "question": "Onde está a mensagem 'Teto de gasto de IA ... atingido' que barra a chamada?",
+      "category": "EXACT_TEXT",
+      "expected_files": [
+        "backend/app/planning/routing.py",
+        "backend/app/state.py",
+        "backend/app/modules/identity/application/persona_images.py"
+      ],
+      "expected_symbols": [],
+      "expected_regions": [
+        [
+          "backend/app/planning/routing.py",
+          167,
+          168
+        ],
+        [
+          "backend/app/state.py",
+          2836,
+          2837
+        ],
+        [
+          "backend/app/modules/identity/application/persona_images.py",
+          79,
+          80
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Texto exato em 3 arquivos de aplicação (testes também citam; não são a origem)."
+    },
+    {
+      "id": "G17",
+      "question": "Como o executor trata uma conta travada (tela de verificação de humano) antes de a receita ou o ator agirem?",
+      "category": "BEHAVIOR_SEARCH",
+      "expected_files": [
+        "backend/app/taskqueue/executor.py",
+        "backend/app/automation/conhecimento_de_telas.py"
+      ],
+      "expected_symbols": [
+        "_trava_na_tela",
+        "detectar_conta_travada",
+        "parar_na_trava"
+      ],
+      "expected_regions": [
+        [
+          "backend/app/taskqueue/executor.py",
+          982,
+          993
+        ],
+        [
+          "backend/app/taskqueue/executor.py",
+          1291,
+          1297
+        ],
+        [
+          "backend/app/automation/conhecimento_de_telas.py",
+          213,
+          214
+        ]
+      ],
+      "grep_friendly": false,
+      "semantic_only": true,
+      "notes": "O vocabulário do código é 'conta travada'/'trava'. Reescrita em 1.1: a versão com 'Confirm you're human' tinha aspas aninhadas e quebrava a extração mecânica de termos."
+    },
+    {
+      "id": "G18",
+      "question": "Quais testes cobrem `side_effect_tier`?",
+      "category": "TEST_LOCATION",
+      "expected_files": [
+        "backend/tests/test_cost_levers.py"
+      ],
+      "expected_symbols": [
+        "side_effect_tier"
+      ],
+      "expected_regions": [
+        [
+          "backend/tests/test_cost_levers.py",
+          226,
+          242
+        ]
+      ],
+      "grep_friendly": true,
+      "semantic_only": false,
+      "notes": "Símbolo exato; a importação está na linha 16 e os usos entre 228 e 241."
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "registered_at": "2026-10-01",
+  "registered_before_any_real_jev_result": true,
+  "THRESHOLD_CHANGED_AFTER_RESULTS": "NO",
+  "rule": "Estes números foram escritos ANTES de existir qualquer chamada real ao Jev. Se algum mudar depois de ver resultado real, registrar THRESHOLD_CHANGED_AFTER_RESULTS = YES e a razão em docs/research/jev-pilot.md. Baselines (ripgrep, BM25) NÃO são resultados do Jev; os limiares são RELATIVOS a elas para não depender do corpus.",
+  "pilot_a_claude_code_retrieval": {
+    "T1_exact_no_regression": {
+      "group": "grep_friendly",
+      "metric": "RECALL_AT_3",
+      "jev_minus_ripgrep_min": -0.05,
+      "why": "Busca exata é o ponto forte do ripgrep; o rerank não pode piorar isso além de 5 pontos."
+    },
+    "T2_semantic_gain": {
+      "group": "semantic_only",
+      "metric": "RECALL_AT_3",
+      "jev_minus_code_search_min": 0.1,
+      "jev_minus_ripgrep_min": 0.1,
+      "why": "Sem ganho de 10 pontos sobre o BM25 local gratuito E sobre o ripgrep, o Jev só acrescenta custo, latência e envio externo de código."
+    },
+    "T3_context_reduction": {
+      "metric": "CONTEXT_BYTES_RETURNED_MEDIAN",
+      "max_ratio_of_naive_read": 0.5,
+      "max_ratio_of_code_search": 1.0,
+      "why": "Reduzir pelo menos pela metade o cenário 'Read dos arquivos inteiros' e não entregar mais que o BM25 local. É PROXY em bytes, não tokens."
+    },
+    "T4_latency": {
+      "p50_ms_max": 1500,
+      "p95_ms_max": 4000,
+      "why": "Ordem do +1,25 s por leitura que o autor do plugin reporta (AUTHOR-REPORTED); acima disso a busca fica mais lenta que ler o arquivo."
+    },
+    "T5_reliability": {
+      "failure_rate_max": 0.05,
+      "min_requests": 18,
+      "why": "Falha/timeout/resposta inválida acima de 5 % tornaria o fallback o caminho comum. Toda falha DEVE cair no ranking BM25 sem derrubar a rodada."
+    },
+    "T6_cost": {
+      "max_usd_for_golden_run": 1.0,
+      "max_usd_per_query": 0.05,
+      "why": "Preço oficial US$ 0,042/Mtok de entrada; mesmo no pior caso o custo é desprezível — o teto existe para pegar erro de payload (estado gigante)."
+    },
+    "T7_privacy_gate": {
+      "owner_approval_required": true,
+      "hard_redaction_hits_max": 0,
+      "why": "Código-fonte sai da máquina para a TypeSafe (EUA). Requer aprovação do dono, DPA lido e zero achados duros (chave/Bearer/chave privada). Não é medido pelo benchmark."
+    },
+    "T8_critical_misses": {
+      "max_items": 1,
+      "why": "Item em que o BM25 local tinha um arquivo esperado no top-3 e o Jev o tirou do top-3. Mais de 1 em 18 significa que o rerank esconde contexto importante."
+    },
+    "verdicts": {
+      "GO": "T1..T8 passam.",
+      "PARTIAL_GO": "T1, T5, T7, T8 passam e (exatamente um entre T2 e T3 passa, ou T4/T6 falham por margem).",
+      "NO_GO": "T1, T5, T7 ou T8 falham; ou T2 e T3 falham juntos.",
+      "INSUFFICIENT_EVIDENCE": "Sem rodada real, ou menos de min_requests requisições."
+    },
+    "pipeline_spec": {
+      "stage_1": "BM25 local sobre chunks (escopo app/tests por pergunta) → shortlist de até 30 chunks, no máximo 100.000 bytes de payload, excluindo qualquer chunk com achado duro de segredo.",
+      "stage_2": "Jev 1.13.0 (versão fixada): UMA requisição com um Choice sobre os ids do shortlist e um Noul 'existe resposta?'.",
+      "delivery": "Trechos ordenados pela probabilidade do Jev; entrega o menor k (2..8) com probabilidade acumulada ≥ 0,80; teto 16 KiB. Baselines usam k=8 e o mesmo teto.",
+      "fallback": "Qualquer erro/timeout/resposta inválida/escolha fora do conjunto → ordem do BM25 e entrega padrão; a falha é contada.",
+      "confidence": "Registrada, NÃO usada como porta no retrieval: com muitos candidatos igualmente relevantes a confiança do Choice cai por construção (fórmula (N·pico−1)/(N−1)).",
+      "frozen_at": "2026-10-01, antes de qualquer chamada real"
+    }
+  },
+  "pilot_b_runtime_routing_replay": {
+    "min_labeled_cases": 300,
+    "R1_unsafe_under_escalation_max": 0.02,
+    "R1_why": "Casos cujo rótulo derivado é STRONG_AI ou HUMAN que o Jev mandaria para DETERMINISTIC ou CHEAP_AI. Subescalar é o erro perigoso.",
+    "min_positive_cases": 30,
+    "min_positive_cases_why": "Casos rotulados STRONG_AI ou HUMAN. O histórico tem 36 (27+9) de 587 rotulados (94 % CHEAP_AI): amostra de positivos pequena, qualquer taxa tem intervalo largo.",
+    "R2_agreement_min_over_best_trivial_baseline": 0.03,
+    "R2_why": "Concordância com o rótulo derivado precisa superar em 3 pontos o MELHOR entre 'sempre CHEAP_AI' e o roteador por regras que o código já tem (side_effect_tier). Revisado em 2026-10-01, ANTES de qualquer chamada Jev: a versão inicial comparava só com as regras, mas 'sempre barato' (93,9 %) é mais forte que elas (79,4 %) por causa do desbalanceamento.",
+    "R3_calibration": {
+      "confidence_ge": 0.8,
+      "accuracy_min": 0.9
+    },
+    "R4_latency_p95_ms_max": 800,
+    "R5_cost_per_decision_usd_max": 0.0005,
+    "R6_savings_potential_min": 0.25,
+    "R6_why": "Pelo menos 25 % das decisões hoje atendidas por IA forte/barata deveriam poder subir um degrau de economia sem erro.",
+    "verdicts": {
+      "GO_FOR_SHADOW_ONLY": "R1..R6 passam e as respostas são fechadas/tipadas/auditáveis. Nunca vira controle de execução por este critério.",
+      "NO_GO": "Qualquer um entre R1, R2, R3 falha; ou decisão livre; ou custo próximo ao do Sonnet; ou ganho marginal."
+    }
+  },
+  "action_selection": {
+    "status": "NOT_EVALUATED",
+    "note": "Só considerar depois de o routing em shadow passar. Sem limiares numéricos agora; requer desenho próprio."
+  }
+}

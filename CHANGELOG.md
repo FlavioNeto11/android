@@ -69,6 +69,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-01 (noite) — JEV-PILOT: pesquisa e laboratório isolados do modelo de decisão Jev (branch `claude/jev-pilot`)
+
+- **Frente independente do W8; nada do produto muda.** Pesquisa (API, preço, privacidade, plugin Claude Code `BorisLeMeec/jev`,
+  `jev-android`), golden set de 18 perguntas conferido à mão, baselines (ripgrep, BM25), provedor falso, adaptador real
+  **inerte**, extração de histórico seguro para replay e limiares pré-registrados. Veredito: `INSUFFICIENT_EVIDENCE`; plugin
+  `NO_GO` para instalar. **Nenhuma chamada real ao Jev** (`not_run`); nenhum aparelho, banco, scheduler, config ou deploy.
+  - Código em `experiments/jev/` (stdlib, 64 testes `simulated`); relatório em `docs/research/jev-pilot.md`.
+- Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
+  caminhos novos. Base `3eba639`; não integrado em `main`.
+
 ## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
 
 Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `simulated` e `real` contra o backend simulado do
