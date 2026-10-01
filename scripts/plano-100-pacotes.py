@@ -8,6 +8,12 @@ entre ~70 mil e ~1,5 milhão de tokens só para se orientar — antes de ler uma
 
     python scripts/plano-100-pacotes.py            # gera .claude/plano-100/pacotes/
     python scripts/plano-100-pacotes.py --conferir # só confere que plano e apêndice continuam casando
+    python scripts/plano-100-pacotes.py --contexto # EXPERIMENTAL, opt-in: acrescenta sugestões do retrieval de contexto
+
+`--contexto` consulta `backend/app/modules/context_retrieval` (ADR-063) e só escreve algo quando o retrieval está
+ligado na configuração (`context_retrieval.enabled`) ou quando `--contexto-modo` o pede de forma explícita. Sem a flag
+a saída é byte a byte a de sempre; com o retrieval desligado, também. As sugestões dependem da revisão do código e por
+isso NÃO se commitam os pacotes gerados com `--contexto`.
 """
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -160,7 +167,7 @@ def montar() -> tuple[list[dict], dict[str, dict]]:
     return itens, apendice
 
 
-def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
+def escrever(itens: list[dict], apendice: dict[str, dict], sugerir_contexto=None) -> None:
     destino = RAIZ / DESTINO
     destino.mkdir(parents=True, exist_ok=True)
     for antigo in destino.glob('*.md'):
@@ -187,6 +194,10 @@ def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
         if item['arquivos']:
             linhas += ['## Arquivos citados nas evidências', '',
                        *(f'- `{caminho}`' for caminho in item['arquivos']), '']
+        if sugerir_contexto is not None:
+            sugestoes = sugerir_contexto(item)
+            if sugestoes:
+                linhas += ['## Sugestões de contexto (retrieval local; palpite, não é evidência)', '', *sugestoes, '']
         if item['achados']:
             linhas += ['## Achados, na íntegra', '']
             for referencia in item['achados']:
@@ -201,6 +212,48 @@ def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
         dados['pacote'] = str(DESTINO / f'{item_id}.md').replace('\\', '/')
         dados['bytes'] = (destino / f'{item_id}.md').stat().st_size
     gravar(destino / 'indice.json', json.dumps(indice, ensure_ascii=False, indent=1) + '\n')
+
+
+def python_do_backend() -> str:
+    """O Python do venv do backend (tem pydantic e o `app`); sem ele, o que está rodando este script."""
+    for candidato in ('Scripts/python.exe', 'bin/python'):
+        caminho = RAIZ / 'backend' / '.venv' / candidato
+        if caminho.is_file():
+            return str(caminho)
+    return sys.executable
+
+
+def sugerir_contexto_por_retrieval(modo: str | None = None, *, executar=subprocess.run):
+    """Devolve a função `item -> linhas` que consulta a CLI do retrieval de contexto. Nunca levanta.
+
+    Falha (sem venv, timeout, saída ruim) e retrieval desligado dão a MESMA resposta: nenhuma linha. O retrieval é
+    auxílio do pacote, não requisito dele.
+    """
+    avisou = False
+
+    def sugerir(item: dict) -> list[str]:
+        nonlocal avisou
+        pergunta = f"{item['titulo']}. {item['corpo']}"[:600]
+        comando = [python_do_backend(), '-m', 'app.modules.context_retrieval.presentation.cli', pergunta, '--json']
+        if modo:
+            comando += ['--mode', modo]
+        try:
+            saida = executar(comando, cwd=RAIZ / 'backend', capture_output=True, text=True, timeout=90, check=False)
+            dados = json.loads(saida.stdout)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            if not avisou:
+                print('Aviso: o retrieval de contexto não respondeu; os pacotes saem sem sugestões.', file=sys.stderr)
+                avisou = True
+            return []
+        if not isinstance(dados, dict) or dados.get('enabled') is False:
+            return []
+        linhas = [f"- `{f['path']}`" for f in dados.get('files', []) if isinstance(f, dict) and 'path' in f]
+        linhas += [f"- `{r['path']}:{r['start_line']}-{r['end_line']}`" for r in dados.get('regions', [])
+                   if isinstance(r, dict) and {'path', 'start_line', 'end_line'} <= set(r)]
+        origem = f"origem {dados.get('origin')}, revisão {str(dados.get('revision', ''))[:12]}"
+        return [f'_{origem}_', ''] + linhas if linhas else []
+
+    return sugerir
 
 
 def gravar(caminho: Path, conteudo: str) -> None:
@@ -270,12 +323,17 @@ def main(argv=None) -> int:
     parser.add_argument('--conferir', action='store_true', help='Só conferir plano x apêndice, sem gravar nada.')
     parser.add_argument('--fila', action='store_true', help='Imprimir a fila de execução (JSON) em vez do resumo.')
     parser.add_argument('--bloco', help='Limitar a fila a um bloco do mapa.')
+    parser.add_argument('--contexto', action='store_true',
+                        help='EXPERIMENTAL: acrescenta sugestões do retrieval de contexto (só se estiver ligado).')
+    parser.add_argument('--contexto-modo', choices=['local_only', 'shadow', 'hybrid'],
+                        help='Pede um modo do retrieval explicitamente, mesmo com ele desligado na configuração.')
     args = parser.parse_args(argv)
     itens, apendice = montar()
     # `--fila` só gera se ainda não houver pacote. Regenerar apaga e reescreve o diretório inteiro, e pedir a fila
     # de um bloco enquanto agentes de outro estão lendo os pacotes deles tiraria os arquivos debaixo deles.
     if not args.conferir and not (args.fila and (RAIZ / DESTINO / 'indice.json').is_file()):
-        escrever(itens, apendice)
+        escrever(itens, apendice,
+                 sugerir_contexto_por_retrieval(args.contexto_modo) if (args.contexto or args.contexto_modo) else None)
     if args.fila:
         indice = json.loads((RAIZ / DESTINO / 'indice.json').read_text(encoding='utf-8'))
         print(json.dumps(fila(indice, args.bloco), ensure_ascii=False, indent=1))
