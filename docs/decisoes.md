@@ -3740,5 +3740,12 @@ decidir backend antes de ter a abstração certa; entram depois, como mais um `S
 qualidade e custo reais sem alterar o contexto. Mudar a regra ou o formato da seleção exige subir `RETRIEVAL_VERSION`, que
 invalida os caches.
 
+**Adendo (2ª rodada, 01/10/2026): índice persistente.** O índice BM25 passa a morar em disco (`data/context_retrieval/bm25/`, fora do
+Git), chaveado por raiz + revisão + `RETRIEVAL_VERSION` + `INDEX_VERSION` + corpus, com gravação atômica, corrompido = miss e poda
+(3 por raiz). Guarda só vocabulário e contagens, nunca texto; linha com formato de credencial e token com cara de chave nem
+viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. O lote
+(`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
+local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
+
 **Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
 [ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.
