@@ -263,3 +263,82 @@ precondição invertida (sem rede gerenciada): o controle pede um perfil novo, d
 rollback por tun0/CONNECTED/`last_connection`). O android-02, o outro QA gerenciado, também está hibernado. Os outros aparelhos
 com rede gerenciada (01/03/06) têm conta real: excluídos.
 
+## 15. Segundo A1 no android-09, com a instrumentação nova (01/10/2026, 17:11Z, `real`)
+
+Uma única repetição do A1 (sem force-stop, sem peer, sem always-on/lockdown), coletor `3060cd9` em
+`data/diag-w8/20261001T171109Z/` (fora do Git; launcher 50668 → python 23568 → `adb logcat -b all` 27124; 40 amostras; janela larga
+`logcat-wide.0.txt` com 502 linhas, dentro do teto; SSH do notebook `SSH_UNAVAILABLE`). Acionador `6696931`, gate de 17
+precondições ok, baseline igual ao do primeiro A1 (cliente vivo pid 6512, `stopped=false`, tile ausente, uptime 12664 s). Parada
+do coletor pelo arquivo `parar`: nenhum processo seu restou, nenhum logcat órfão novo, o da plataforma (pid 24440) segue.
+
+**Gesto:** `Q0=0 P1=2529 P2=2529 Q=1 T=0 CLICOU=1`; `click-tile` exit 0, stdout e stderr vazios, 17 ms. Observação silenciosa de
+37,8 s: `tun0` ausente em todas as leituras; cliente e SystemUI com os mesmos pids; `stopped=false`; `ACTIVATE_VPN: allow` antes e
+depois; só o `MultiInstanceInvalidationService` do Room como serviço ativo depois. Rollback: nada a desligar, tile removido
+(Q0=0); relido às 17:14Z o estado base inteiro, conectividade `healthy` às 17:13:32Z (**depois** do teste).
+
+**Linha do tempo (hora do aparelho −03; mesmo desfecho do primeiro A1):**
+
+| Hora | Evento |
+|---|---|
+| 14:11:34.575–.698 | add-tile (SystemUI recria o tile); `am_unfreeze` do cliente (6512) |
+| 14:11:37.697 | `sysui_multi_action` do `bg.TileService`: o clique |
+| 14:11:37.762 | `Background started FGS: Allowed … ProxyService; code:OP_ACTIVATE_VPN` |
+| 14:11:37.989 | `am_foreground_service_start` (0,292 s depois do clique); notificação do serviço postada às .015 |
+| 14:11:38.041 | `ConnectivityService: requestNetwork` do uid/pid 10196/6512 (`LISTEN_FOR_BEST`) |
+| 14:11:38.716 | `cache.db` do cliente escrito (o núcleo começou a inicializar; só o mtime, conteúdo não lido) |
+| 14:11:38.820 | `avc: denied { bind } … netlink_route_socket` (pid 6512, bug b/155595000) |
+| 14:11:39.107 | `am_foreground_service_stop`, motivo `STOP_FOREGROUND`, 1123 ms de vida; notificação cancelada às .121 |
+
+Nenhuma linha de `Vpn`, `NetworkAgent`, `netd`, `tun0`, `Established by`, ANR, crash, exceção, `am_proc_died` ou kill. O cliente quase
+não escreve no logcat: no intervalo só `ServiceConnection: request connect/disconnect` (do add-tile), GC e a negação do SELinux; as
+mensagens do núcleo vão para arquivo privado, que não foi lido. O processo 6512 continua vivo e é congelado pelo Android às 14:12:15.
+
+**Motivo do fim do `ProxyService`:** `STOP_REASON_CLASS = A. APP_SELF_STOP` quanto a QUEM (o código do ActivityManager é
+`STOP_FOREGROUND`; sem kill, crash, ANR nem morte do processo; leitura do código de motivo pela semântica do AOSP, não verificada
+neste aparelho) e `UNKNOWN` quanto ao PORQUÊ: nenhuma mensagem de erro explícita, então E/F/G/H (falha de VPN, de configuração, de rede
+ou de permissão) **não** estão provadas. Não escolhi categoria por proximidade temporal.
+
+**Comparação dos dois A1 (a coluna ORIGINAL vem do dump manual `-b all` do primeiro, não do filtro dele):**
+
+| SIGNAL | A1 ORIGINAL (16:39Z) | A1 NOVO (17:11Z) | DIFFERENCE |
+|---|---|---|---|
+| exit/stdout/stderr do `click-tile` | 0 / vazio / vazio, 13 ms | 0 / vazio / vazio, 17 ms | nenhuma |
+| clique → `ProxyService` start | 0,333 s | 0,292 s | ≈ igual |
+| vida do `ProxyService` | 1789 ms | 1123 ms | −0,67 s: varia |
+| processo do cliente | vivo, 6512 | vivo, 6512 (o mesmo) | nenhuma |
+| `stopped` antes/depois | false / false | false / false | nenhuma |
+| `tun0` / VPN CONNECTED | nunca / não | nunca / não | nenhuma |
+| motivo do stop no AM | `STOP_FOREGROUND` | `STOP_FOREGROUND` | nenhuma |
+| `netlink bind` negado | sim, 0,23 s antes do stop | sim, 0,29 s antes do stop | mesma ordem |
+| `somaxconn` negado | sim (0,1 s após o start) | não | só na 1ª vez (mesmo processo; a leitura parece única por processo: hipótese) |
+| `cache.db` escrito | 0,16 s antes do `netlink` | 0,10 s antes do `netlink` | mesma ordem |
+| ANR / crash | não / não | não / não | nenhuma |
+| classificador (código novo) | `F5` (dados antigos sem o buffer de eventos: artefato) | `F6_TUN_NOT_CREATED_AFTER_TILE` | a diferença é da coleta, não do aparelho |
+
+A sequência é a mesma nas duas: `requestNetwork` → `cache.db` → negação do `netlink bind` → `STOP_FOREGROUND` ~0,25 s depois.
+Isso é **ordem repetida, não causa**: sem controle não se sabe se a negação (que o AOSP marca como esperada para apps) também
+ocorre no caminho que funciona. `NETLINK_CAUSALITY = UNKNOWN`.
+
+**Estática 05 × 09 (só o persistido; nada de chave, segredo ou export do app; o 05 está hibernado, então nada foi lido nele):**
+
+| Item | android-05 | android-09 |
+|---|---|---|
+| cliente | `1.14.2 (739)` (registrado no teste de vazamento de 30/09 15:26:50Z) | `1.14.2`, versionCode 739, `installerPackageName=null`, targetSdk 37, bundle com splits |
+| origem/instalação | "já instalado" na 1ª provisão (29/09) | instalado pela loja pelo produto, `firstInstallTime` 30/09 22:36:47Z; `lastUpdateTime` **01/10 13:05:12Z** (mesma versão; autor não identificado nos comandos) |
+| imagem | `android-34;google_apis;x86_64` | idem (API 34, userdebug) |
+| perfis importados no app | **1**: `plataforma-android-05-r1`, 29/09 23:51:09Z | **4**: `-r1` (30/09 22:36:36Z), `-r1` (01/10 12:47:23Z), `-r1` (13:06:11Z), `-r2` (13:20:12Z); o rollback não apaga perfil |
+| endpoint | `10.0.2.2:51820` (alias do host do emulador local), importação por HTTP em `10.0.2.2` | `192.168.1.81:51820` (central pela LAN), importação por HTTP com `adb reverse` |
+| endereço VPN | `10.66.0.2/32` | `10.66.0.6/32` |
+| política/rev | `exigida_com_bloqueio`, rev 1 = 1, `trafego_verificado` | linha removida em 13:41:48Z (rev 3, `livre`); sem linha hoje |
+| par no servidor | `10.66.0.2`, `last_connection=null` (servidor reiniciado 13:43:56Z) | removido no rollback; sem par |
+| fingerprint da chave pública do aparelho | `7d03d3dd7106` | `b0787b99ebbc` |
+| chave do servidor | `fc98b2413169` (a mesma em uso hoje) | idem |
+| tile funcionando | 30/09 15:26:59Z ("túnel religado pelo tile do cliente, sem reinício", com always-on, lockdown 1 e par) | nunca; 4 falhas no W8 e 2 no A1 |
+
+**Diferenças que o estático não resolve:** qual dos 4 perfis está SELECIONADO no cliente do 09 (o id selecionado mora no banco privado
+do app) e se o do 05 é o único; se o `lastUpdateTime` das 13:05Z mexeu em algo; e o que acontece no 05 com o mesmo gesto (controle
+bloqueado). Candidatas a investigar sem tocar produto: perfil selecionado/estado interno do cliente do 09; a ausência de par; o
+endpoint (LAN versus alias do host).
+
+**Caso B** (a falha se repete e o PORQUÊ continua desconhecido): a próxima decisão do dono é **CONTROL-05 versus PEER-09**. Nenhuma
+das duas foi feita; A2 não rodou; produto, perfil, cliente e WireGuard intocados; **W8 = OPEN**.

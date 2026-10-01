@@ -385,6 +385,17 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 15 — 01/10 ~17:20Z — segundo A1 no android-09, instrumentação nova (`real`)
+
+- Mesma falha: sem `tun0`, `click-tile` exit 0 e vazio, cliente vivo (6512). Agora com `-b all` e a janela larga: clique→
+  `ProxyService` 0,292 s; `ProxyService` vive 1123 ms (era 1789) e termina com `STOP_FOREGROUND` (o próprio serviço; sem kill, crash
+  ou ANR); sequência repetida `requestNetwork` → `cache.db` → `netlink bind` negado → stop ~0,25 s depois. O cliente quase não
+  escreve no logcat. Motivo (porquê) **UNKNOWN**; `NETLINK_CAUSALITY = UNKNOWN`.
+- Estática 05 × 09: mesma versão do cliente (1.14.2, 739) e mesma imagem; o 09 tem **4 perfis** importados no app (o 05, só 1),
+  endpoint LAN (`192.168.1.81`) em vez do alias `10.0.2.2`, sem par, e `lastUpdateTime` 13:05:12Z. O perfil SELECIONADO no 09 é
+  desconhecido (banco privado). Tabela completa em `w8-diagnostico-android09.md` §15.
+- Caso B: a decisão passa a ser CONTROL-05 versus PEER-09 (nenhum feito). 05 segue hibernado; A2, produto e servidor intocados.
+
 ### Checkpoint 14 — 01/10 ~17:00Z — coletor melhorado; CONTROL-05 BLOCKED (android-05 hibernado)
 
 - Coletor `3060cd9`: `logcat -b all` (os eventos `am_foreground_service_*` ficam no buffer `events`), filtro também pelo pid vivo do
