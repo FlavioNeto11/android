@@ -49,9 +49,9 @@ function motivoDoBloqueio(quem: string[], action: InstanceAction): string {
 }
 
 /**
- * Barra de seleção: fica presa ao topo da grade (nunca sobre os cartões) e só existe com aparelhos marcados. Em
- * tela intermediária a linha rola para o lado; no celular (até 560 px) ela quebra, com o rótulo em cima e as ações
- * embaixo, para nenhuma ficar fora da tela (M2, rodada 2).
+ * Barra de seleção: fica presa ao topo da grade (nunca sobre os cartões) e só existe com aparelhos marcados. Quando não
+ * cabe numa linha ela quebra (até 900 px, com o rótulo em cima e as ações embaixo), para nenhuma ação ficar fora da
+ * tela (M2, rodada 2).
  */
 export function BarraDeSelecao({
   ids, selecionados, selected, hasAbsent, hasHibernated, hibernation, emFoco, foraDoFiltro = 0, desconhecidos = 0,
