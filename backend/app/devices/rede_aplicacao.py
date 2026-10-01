@@ -935,13 +935,15 @@ async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str
         depois = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
         proxy_novo = (_inteiro(depois, "FP") or 0) > (_inteiro(agora, "FP") or 0)
         vpn_novo = (_inteiro(depois, "FV") or 0) > (_inteiro(agora, "FV") or 0)
-        if obs.tun and obs.vpn_conectada:
-            return ReligadoPelaInterface(obs, RELIGADO, "túnel religado pelo Start da interface do cliente, sem reinício"
-                                         + ("" if vpn_novo else " (a classe do serviço não pôde ser observada)"))
+        # Guard D ANTES do sucesso: o ProxyService iniciado por este Start num plano com TUN não vale como recuperação,
+        # mesmo que um tun0 esteja no ar por outro caminho (o always-on correndo em paralelo).
         if proxy_novo and not vpn_novo:
             return ReligadoPelaInterface(None, CLASSE_ERRADA_PARA_TUN,
                                          "o Start da interface iniciou o ProxyService (serviceMode não-VPN) num plano que "
                                          "exige TUN: incompatibilidade de classe/modo, recuperação NÃO concluída")
+        if obs.tun and obs.vpn_conectada:
+            return ReligadoPelaInterface(obs, RELIGADO, "túnel religado pelo Start da interface do cliente, sem reinício"
+                                         + ("" if vpn_novo else " (a classe do serviço não pôde ser observada)"))
         if obs.tun:
             return ReligadoPelaInterface(None, VPN_NAO_CONECTADA, "o tun0 apareceu e a VPN não ficou CONNECTED no dumpsys")
         return ReligadoPelaInterface(None, TUN_NAO_SUBIU, f"o Start foi tocado e o túnel não subiu em {espera_s:g} s "

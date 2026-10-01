@@ -118,6 +118,18 @@ async def test_caso6_start_que_inicia_o_proxyservice_nao_e_recuperacao() -> None
     assert ap.starts_na_ui == 1 and ap.fp == 1 and ap.fv == 0 and not ap.tun and ap.cliques_no_tile == 0
 
 
+async def test_guard_d_vale_mesmo_com_tun0_e_connected_no_ar_por_outro_caminho() -> None:
+    """O ProxyService iniciado por ESTE Start não é recuperação, ainda que um tun0 apareça (o always-on em paralelo)."""
+    class TunPorOutroCaminho(AparelhoFalso):
+        def _start_da_ui(self) -> None:
+            super()._start_da_ui()
+            self.tun = self.vpn = True
+
+    ap = TunPorOutroCaminho(primeira_execucao=False, modo_vpn=False, ui_inicia_proxy=True)
+    r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
+    assert r.codigo == CLASSE_ERRADA_PARA_TUN and not r.religado and r.obs is None and ap.fp == 1 and ap.fv == 0
+
+
 async def test_caso7_tun0_sem_vpn_connected_nao_e_sucesso() -> None:
     ap = _aparelho(ui_tun_sem_vpn=True)
     r = await religar_pela_interface(ap, PKG, ATIVIDADE, **RAPIDO)
