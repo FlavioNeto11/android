@@ -2024,8 +2024,21 @@ item é o do `aplicar`. Horas em UTC.
 | 30/09 22:56 | `9ff427c` | telas do Outlook depois da senha (23.8) | `real`: logins do Bruno e do Lucas de ponta a ponta |
 | 30/09 23:11 | `9f6acdb` | boas-vindas do Outlook pelo carrossel | `real`: `/api/health` `ok`; agente do notebook `0.1.0+9f6acdb` |
 
-PostgreSQL: `not_run` nesta data. O job `backend-postgres` só roda no cron (05:17); o de 30/09 não iniciou por limite
-de gasto, liberado pelo dono às 12:10. A prova é a do run de 01/10 (29.14).
+**PostgreSQL (29.14, 01/10/2026): `real`, com 3 falhas conhecidas, ainda não verde.** O job `backend-postgres` só roda no
+cron (05:17) e por disparo manual; o de 30/09 não iniciou por limite de gasto (liberado pelo dono às 12:10).
+
+| Run | Commit | Resultado |
+|---|---|---|
+| 36819958569 (cron, `schedule`) | `83af733` | job PostgreSQL **cancelado por timeout de 25 min** (05:28:52→05:54:07Z): **inconclusivo**, não é falha de teste; o log mostra o pytest em 70% sem nenhuma falha até ali. Os outros seis jobs passaram (SQLite 33 min no runner do central, dependências, mypy, frontend, worker, docs) |
+| 36822159704 (`workflow_dispatch`, `somente_postgres=true`, limite de 60 min) | `63b2753` | 05:56:04→06:39:45Z: **3 failed, 3959 passed, 28 skipped em 42m48s** |
+
+As migrações 056–058 e 063 e o `_SQL_RUNS_DO_SNAPSHOT` (RF-05) passaram em PostgreSQL. As 3 falhas, todas fora do código de
+produção do dialeto: (1) `test_interrupcao_entre_apps.py::test_etapa_de_outro_app_nao_conclui_com_o_primeiro_app_na_frente`:
+o próprio teste ordena por `a.rowid` (só existe no SQLite; `UndefinedColumn` no PostgreSQL), troca por `a.id`; (2) e (3)
+`test_rede_worker.py::test_permissao_so_conta_no_perfil_na_porta_e_no_programa_certos` e `::test_leitura_em_cache_forcar_rele_e_falha_e_desconhecido`:
+`regra_obsoleta` em vez de `liberado` num runner Linux, porque `rede_firewall.py:255` compara o programa com
+`os.path.normcase`, que não ignora maiúsculas fora do Windows (passam no SQLite do runner do central, que é Windows).
+O P17 só fecha com um run verde depois dessas três correções.
 
 ### 27.2 Prova durável de vazamento (29.2) e a subida (29.4)
 
