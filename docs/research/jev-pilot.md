@@ -761,3 +761,24 @@ qualquer resultado: `min_requests` 20; T8 com teto de 2 itens em 20; T7 troca "a
 rodar é preciso: (1) o smoke sintético ter passado, (2) a chave local, (3) autorização explícita do dono para as 60 requisições.
 `PRIVATE_CODE_SEND_APPROVED = False` e `SMOKE_RUN_AUTHORIZED = True` não foram tocados. Prova: baselines e estimativa `measured`
 offline; harness com provedor falso `simulated` (`tests/test_public_bench.py`, 17 testes; suíte do experimento 96); Jev real `not_run`.
+
+### 36.2 Resultado REAL do smoke sintético (2026-10-01, 18:48Z, branch `claude/jev-pilot`, commit base `dedc9a8`)
+
+`python experiments/jev/smoke.py --run --confirm-synthetic-only --max-calls 6`, com a chave só no ambiente do processo filho.
+Corpus: `synthetic_corpus/` (nenhum byte do repositório). `SYNTHETIC_ISOLATION_CHECK = PASS`. Detalhe em `data/jev-pilot/smoke/20261001T184815Z-real.json` (ignorado pelo Git). Prova: **real** (máquina central, esta data, comando acima).
+
+| # | Caso | HTTP | Latência (ms) | Entrada (B) | Resposta (B) | Tokens de entrada (usage) | Resultado |
+|---|---|---|---|---|---|---|---|
+| 1 | Noul (autenticação) | 200 | 331,8 | 213 | 114 | 297 | `noul` em [0,1], válido |
+| 2 | Choice A01–A05 | 200 | 318,2 | 500 | 208 | 416 | escolha dentro do conjunto, probabilidades somam 1, confiança 0,83 |
+| 3 | Score, 3 níveis | 200 | 285,2 | 265 | 227 | 314 | score em [0,2], `legend` completa, confiança 0,57 |
+| 4 | Choice + Noul (formato do Piloto A) | 200 | 357,1 | 2.826 | 484 | 1.083 | 2 respostas em 1 requisição, confiança do Choice 1,00 |
+| 5 | Score com 1 nível (esperado 422) | **200** | 310,3 | 145 | 192 | 285 | **a API aceitou**: devolveu score com confiança 1,0 |
+| 6 | Noul com timeout de cliente 50 ms | — | 91,3 | 213 | — | — | `The read operation timed out`; sem retry |
+
+- **Autenticação, modelo e versão:** `Bearer` aceito; `model` devolvido = `jev-1.13.0` (a versão fixada), em todas as respostas 200.
+- **Tentativas de rede:** 6 (teto 6, `max_retries = 0`). Latência de todas as 6: min 91,3 / p50 314,2 / p95 350,8 / max 357,1 ms; só as 5 bem-sucedidas: 285,2 / 318,2 / 352,0 / 357,1 ms.
+- **Uso real:** `usage.input_tokens` somou **2.395** nas 5 respostas 200 (3.949 B de entrada). Custo a US$ 0,042/Mtok = **US$ 0,000101**. Erro e timeout não trazem `usage`: a cobrança da chamada 6 é UNKNOWN. Cada chamada tem uma sobrecarga fixa de ~260 tokens (a menor, 145 B, já gastou 285), então bytes/4 subestima as requisições pequenas; nas grandes (chamada 4) a razão fica perto de 2,6 B/token.
+- **Achado contra a expectativa:** a documentação diz 2–10 níveis para `score`, mas 1 nível **não** deu 422. O erro de validação 422 e o formato do seu corpo **não foram observados** (só simulados). O plano não foi alterado depois da resposta; repetir exigiria nova autorização.
+- **Limitação do registro:** o harness gravou tipo, confiança e validação de cada resposta, mas **não a escolha (A0x) nem o valor do score**; portanto a correção do Jev não foi avaliada. 429/529 e backoff não foram exercitados.
+- **Veredito:** `PROTOCOL_VALIDATED = PARTIAL` (autenticação, os três tipos, 2 perguntas por requisição, `usage`, timeout de cliente); `MODEL_BEHAVIOR_VALIDATED = NO`; `RETRIEVAL_VALUE_VALIDATED = NO`. Não é conclusão de adoção.
