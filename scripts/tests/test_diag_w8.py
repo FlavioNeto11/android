@@ -370,6 +370,15 @@ class Sinais(unittest.TestCase):
         self.assertEqual(s["primeiro_vpn_connected_apos_clique_s"], 4.0)
         self.assertEqual(s["regras_ultima"], 3)
 
+    def test_servico_do_cliente_e_vpnservice_no_controle_05(self) -> None:
+        # CONTROL-05 (01/10): no android-05 o tile sobe `.bg.VPNService`; no 09, `.bg.ProxyService`.
+        l_vpn = L_START.replace("ProxyService", "VPNService")
+        s = mod.sinais(self.log(L_CLICK, l_vpn), [amostra(0)])
+        self.assertEqual(s["servico_classe"], "VPNService")
+        self.assertTrue(s["proxy_start"])
+        s = mod.sinais(self.log(L_CLICK, L_START, L_STOP), [amostra(0)])
+        self.assertEqual(s["servico_classe"], "ProxyService")
+
     def test_o_que_nao_foi_visto_e_none_nunca_zero(self) -> None:
         s = mod.sinais([], [])
         self.assertIsNone(s["clique_ate_proxy_start_s"])

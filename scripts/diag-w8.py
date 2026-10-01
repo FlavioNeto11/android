@@ -680,15 +680,18 @@ def hora_do_aparelho(linha: str) -> float | None:
     return datetime(2000, mes, dia, h, mi, 0, tzinfo=timezone.utc).timestamp() + s
 
 
+SERVICO_DO_CLIENTE = re.compile(r"io\.nekohasekai\.sfa/\.bg\.(ProxyService|VPNService)")
+
+
 def sinais(logcat: list[tuple[float, str]], amostras: list[dict], peers: list[dict] | None = None) -> dict[str, object]:
     """Os sinais para comparar dois aparelhos (clique → início do ProxyService → fim, SELinux, tun0, peer).
     `logcat` = (instante em que o coletor leu, linha do aparelho). Tudo que não foi visto é `None`, nunca zero."""
-    def primeiro(rx, depois: float | None = None, so_com: str | None = None):
+    def primeiro(rx, depois: float | None = None, so_com: re.Pattern[str] | None = None):
         for t, l in logcat:
             dev = hora_do_aparelho(l)
             if depois is not None and (dev is None or dev < depois):
                 continue
-            if so_com and so_com not in l:
+            if so_com and not so_com.search(l):
                 continue
             if rx.search(l):
                 return t, dev, l
@@ -696,9 +699,11 @@ def sinais(logcat: list[tuple[float, str]], amostras: list[dict], peers: list[di
 
     clique = primeiro(re.compile(r"sysui_multi_action.*bg\.TileService")) or primeiro(CLICK_RE)
     t_cli, d_cli = (clique[0], clique[1]) if clique else (None, None)
-    inicio = primeiro(re.compile(r"am_foreground_service_start"), d_cli, "ProxyService")
+    # O cliente sobe `ProxyService` (modo sem VPN) ou `VPNService` (com tun): o 09 sobe o primeiro, o 05 o segundo (CONTROL-05).
+    inicio = primeiro(re.compile(r"am_foreground_service_start"), d_cli, SERVICO_DO_CLIENTE)
     d_ini = inicio[1] if inicio else None
-    fim = primeiro(re.compile(r"am_foreground_service_stop"), d_ini, "ProxyService") if inicio else None
+    fim = primeiro(re.compile(r"am_foreground_service_stop"), d_ini, SERVICO_DO_CLIENTE) if inicio else None
+    classe = SERVICO_DO_CLIENTE.search(inicio[2]) if inicio else None
 
     def dif(a, b):
         return None if a is None or b is None else round(b - a, 3)
@@ -718,6 +723,7 @@ def sinais(logcat: list[tuple[float, str]], amostras: list[dict], peers: list[di
     depois = [(lc, t) for lc, t in lcs if ref is not None and t > ref and (not antes or lc > max(antes))]
     return {
         "clique_ts": iso(t_cli) if t_cli else None,
+        "servico_classe": classe.group(1) if classe else None,
         "proxy_start": bool(inicio), "proxy_stop": bool(fim),
         "clique_ate_proxy_start_s": dif(d_cli, d_ini),
         "proxy_start_ate_stop_s": dif(d_ini, fim[1] if fim else None),
