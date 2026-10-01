@@ -103,6 +103,7 @@ não falha, e já é coberto pelo esqueleto da caixa.
 - **axe 4.13** (`wcag2a/aa`, `wcag21a/aa`, `wcag22aa`, `best-practice`) nas telas afetadas a 1440 px (Painel, Personas, Pendências,
   detalhe de execução planejada), no detalhe `needs_input` a 1440, 768 e 390 px e no Painel com a barra de seleção a 390 px:
   só `region` (toast, RF-27) e, em Personas, `heading-order` (RF-27), os dois já abertos na 15. Nenhuma violação nova.
+- Os scripts de semeio, config, banco, cookie e relatórios do Lighthouse ficaram só no rascunho da sessão, fora do repositório, e foram apagados ao fim.
 - Ao fim: backend (8716), vite (5116) e servidor estático do axe (8746) parados; **a 8000 nunca foi tocada** (dono PID 22060).
 
 ### simulated
@@ -124,6 +125,8 @@ não falha, e já é coberto pelo esqueleto da caixa.
   pelas rotas (a 15 usou `INSERT` no SQLite); fica coberto por `ProfileDetail.test.tsx` e pela mudança de 1 linha de CSS.
 - Lighthouse nas demais telas e larguras (rodado só em `#/painel` a 1350 px de largura, o desktop padrão); o conjunto de 9 telas
   x 6 larguras da 15 não foi repetido: foram medidas as telas afetadas por esta tarefa.
+- axe na barra de seleção a 768 e 1440 px (medida só pelo DOM nessas larguras; o axe rodou a 390 px) e no detalhe `needs_input`
+  do Painel a 768 e 1440 px.
 - Leitor de tela e toque real.
 
 ## Divergências e observações
