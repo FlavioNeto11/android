@@ -55,8 +55,12 @@ def _row(item: gd.Item, r: bl.Retrieval, delivered: list[bl.Span], root: Path, l
     row = {
         "id": item.id, "category": item.category, "strategy": r.strategy,
         "grep_friendly": item.grep_friendly, "semantic_only": item.semantic_only,
-        "ranked_files_top10": ranked[:10],
+        "variant": r.strategy,
+        "expected_files": sorted(expected), "expected_regions": [list(x) for x in item.expected_regions],
+        "ranked_files_top10": ranked[:10], "selected_files": ranked[:10],
+        "selected_regions": [[s.file, s.start, s.end] for s in delivered],
         "p1": mt.precision_at_k(ranked, expected, 1), "p3": mt.precision_at_k(ranked, expected, 3),
+        "r1": mt.recall_at_k(ranked, expected, 1),
         "r3": mt.recall_at_k(ranked, expected, 3), "r5": mt.recall_at_k(ranked, expected, 5),
         "delivered_recall": mt.delivered_recall(delivered, expected),
         "region_recall": mt.region_recall(delivered, item.expected_regions),
@@ -108,27 +112,98 @@ def adaptive_k(probs: list[float], mass: float = ADAPTIVE_MASS, kmin: int = ADAP
     return kmax
 
 
+class RunAborted(Exception):
+    """Interrompe a parte de REDE da rodada (autenticação recusada, teto atingido, payload fora do corpus, defeito de
+    harness). O que já foi medido é gravado; nenhum caso é repetido."""
+
+
+#: Arquivos que podem entrar num payload na rodada PÚBLICA (preenchido em `run`). None = rodada privada/offline.
+allowed_files: set[str] | None = None
+
+
+def _assert_payload_allowed(ids: list[str], kind: str) -> None:
+    if allowed_files is None:
+        return
+    bad = [i for i in ids if (i if kind == "map" else i.rsplit(":", 1)[0]) not in allowed_files]
+    if bad:
+        raise RunAborted(f"payload com {len(bad)} id(s) fora do corpus público; nada foi enviado")
+
+
+def _new_meta() -> dict:
+    return {"jev_requests": 0, "jev_cost_usd": 0.0, "failure": None, "fallback": False, "calls": [],
+            "jev_input_tokens": 0, "jev_output_tokens": 0, "usage_unknown_calls": 0, "input_bytes": 0,
+            "parse_ok": None, "error_class": None, "http_status": []}
+
+
+def _reset_trace(provider: DecisionProvider) -> int:
+    """Zera o rastro da última tentativa (evita ler o valor da requisição anterior) e devolve o nº de tentativas até aqui."""
+    for attr, zero in (("last_status", None), ("last_request_bytes", 0), ("last_response_bytes", None)):
+        if hasattr(provider, attr):
+            setattr(provider, attr, zero)
+    return getattr(provider, "calls", 0)
+
+
+def _log_call(meta: dict, stage: str, provider: DecisionProvider, kind: str, question: str, cands: dict[str, str],
+              t0: float, before: int, res=None, exc: Exception | None = None) -> int:
+    """Registra UMA requisição (só metadados e o top-5 de ids/probabilidades; nunca o texto enviado). Devolve as tentativas feitas."""
+    attempts = getattr(provider, "calls", before + 1) - before
+    real = hasattr(provider, "last_status")
+    in_bytes = getattr(provider, "last_request_bytes", 0) or (
+        payload_bytes(request_body(*retrieval_request(question, cands, kind), PINNED_MODEL)) if attempts else 0)
+    rec = {"stage": stage, "NETWORK_ATTEMPT": getattr(provider, "calls", None),
+           "HTTP_STATUS": (provider.last_status if real else (200 if res is not None else None)),
+           "INPUT_BYTES": in_bytes if attempts else 0, "RESPONSE_BYTES": getattr(provider, "last_response_bytes", None),
+           "LATENCY_MS": round((time.perf_counter() - t0) * 1000, 1), "PARSE_OK": res is not None,
+           "ERROR_CLASS": getattr(exc, "kind", type(exc).__name__) if exc is not None else None,
+           "n_candidates": len(cands)}
+    if res is not None:
+        rec.update(MODEL_RETURNED=res.model, input_tokens=res.usage.input_tokens, output_tokens=res.usage.output_tokens,
+                   confidence=res.confidence, exists=res.exists, top=[[i, round(p, 4)] for i, p in res.ranked[:5]])
+        meta["jev_input_tokens"] += res.usage.input_tokens
+        meta["jev_output_tokens"] += res.usage.output_tokens
+        meta["jev_cost_usd"] += res.usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6
+    elif attempts:
+        meta["usage_unknown_calls"] += 1                      # erro/timeout/inválida: sem `usage` ⇒ tokens e cobrança UNKNOWN
+    meta["calls"].append(rec)
+    meta["input_bytes"] += rec["INPUT_BYTES"]
+    meta["http_status"].append(rec["HTTP_STATUS"])
+    meta["jev_requests"] += attempts
+    meta["parse_ok"] = rec["PARSE_OK"] if meta["parse_ok"] is None else (meta["parse_ok"] and rec["PARSE_OK"])
+    meta["error_class"] = meta["error_class"] or rec["ERROR_CLASS"]
+    return attempts
+
+
+def _harness_failure(exc: Exception) -> RunAborted:
+    return RunAborted(f"defeito de harness ({type(exc).__name__}); rodada de rede interrompida")
+
+
 def jev_rerank(index: bl.Bm25Index, provider: DecisionProvider, question: str,
                roots: list[str] | None = None) -> tuple[bl.Retrieval, dict]:
     """Etapa 1: BM25 local (shortlist). Etapa 2: o provedor reordena por Choice. Qualquer ProviderError cai no
     ranking BM25 (fail-open para o baseline gratuito) e fica registrado — nunca derruba a rodada."""
     cands = shortlist_candidates(index, question, roots=roots)
     base = bl.code_search(index, question, top=N_SHORTLIST, roots=roots)
-    meta: dict = {"jev_requests": 0, "jev_cost_usd": 0.0, "failure": None, "fallback": False}
+    meta = _new_meta()
     if not cands:
         meta["failure"] = "no_candidates"
         meta["fallback"] = True
         return bl.Retrieval("jev_rerank", base.spans, base.files_examined, base.bytes_read, {"shortlist": 0}), meta
     by_id = {c.id: c for c in cands}
+    cdict = {c.id: c.text for c in cands}
+    _assert_payload_allowed(list(cdict), "code")
+    before = _reset_trace(provider)
+    t0 = time.perf_counter()
     try:
-        res = provider.retrieve(question, {c.id: c.text for c in cands})
+        res = provider.retrieve(question, cdict)
     except ProviderError as exc:
-        meta.update(failure=exc.kind, fallback=True, jev_requests=1)
+        _log_call(meta, "rerank", provider, "code", question, cdict, t0, before, exc=exc)
+        meta.update(failure=exc.kind, fallback=True)
         return bl.Retrieval("jev_rerank", base.spans, base.files_examined, base.bytes_read,
                             {"shortlist": len(cands)}), meta
+    except Exception as exc:                                        # noqa: BLE001 - defeito de harness: PARAR, não esconder
+        raise _harness_failure(exc) from exc
+    _log_call(meta, "rerank", provider, "code", question, cdict, t0, before, res=res)
     spans = [bl.Span(by_id[i].file, by_id[i].start, by_id[i].end, by_id[i].text, p) for i, p in res.ranked]
-    meta["jev_requests"] = res.requests
-    meta["jev_cost_usd"] = res.usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6
     meta["confidence"] = res.confidence
     meta["deliver_k"] = adaptive_k([p for _, p in res.ranked])
     meta["exists"] = res.exists
@@ -145,9 +220,10 @@ def jev_map(index: bl.Bm25Index, file_map: dict[str, str], provider: DecisionPro
             roots: list[str] | None = None) -> tuple[bl.Retrieval, dict]:
     """Variante B do benchmark público. Etapa A: UMA requisição com Choice sobre os ARQUIVOS (mapa do repositório).
     Etapa B: UMA requisição com Choice sobre os trechos dos STAGE_B_FILES primeiros arquivos. Qualquer falha cai no BM25
-    (etapa A falhou) ou no ranking da etapa A com o melhor trecho local por arquivo (etapa B falhou); a falha é contada."""
+    (etapa A falhou) ou no ranking da etapa A com o melhor trecho local por arquivo (etapa B falhou); a falha é contada.
+    O gabarito NUNCA entra aqui: só a pergunta, o mapa e os trechos do corpus."""
     base = bl.code_search(index, question, top=N_SHORTLIST, roots=roots)
-    meta: dict = {"jev_requests": 0, "jev_cost_usd": 0.0, "failure": None, "fallback": False}
+    meta = _new_meta()
     scores = _chunk_scores(index, question)
     by_file: dict[str, list[int]] = {}
     for i, c in enumerate(index.chunks):
@@ -158,15 +234,21 @@ def jev_map(index: bl.Bm25Index, file_map: dict[str, str], provider: DecisionPro
         c = index.chunks[i]
         return bl.Span(c.file, c.start, c.end, c.text, 0.0)
 
+    _assert_payload_allowed(list(file_map), "map")
+    before = _reset_trace(provider)
+    t0 = time.perf_counter()
     try:
         a = provider.retrieve(question, file_map, kind="map")
     except ProviderError as exc:
-        meta.update(failure=f"stage_a:{exc.kind}", fallback=True, jev_requests=1)
+        _log_call(meta, "A", provider, "map", question, file_map, t0, before, exc=exc)
+        meta.update(failure=f"stage_a:{exc.kind}", fallback=True)
         return bl.Retrieval("jev_map", base.spans, base.files_examined, base.bytes_read, {"stage": "A_failed"}), meta
-    meta["jev_requests"] = 1
-    meta["jev_cost_usd"] = a.usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6
+    except Exception as exc:                                        # noqa: BLE001
+        raise _harness_failure(exc) from exc
+    _log_call(meta, "A", provider, "map", question, file_map, t0, before, res=a)
     meta["confidence_a"] = a.confidence
     files_a = [f for f, _ in a.ranked if f in by_file]
+    meta["stage_a_top_files"] = files_a[:5]
     top_files = files_a[:STAGE_B_FILES]
     order = {f: n for n, f in enumerate(top_files)}
     pool = sorted((i for f in top_files for i in by_file[f]), key=lambda j: (-scores.get(j, 0.0), j))
@@ -185,14 +267,20 @@ def jev_map(index: bl.Bm25Index, file_map: dict[str, str], provider: DecisionPro
         spans = [best_local(f) for f in files_a[:MAP_REPRESENT_FILES]]
         return bl.Retrieval("jev_map", spans, len({s.file for s in spans}), 0, {"stage": "A_only"}), meta
     by_id = {c.id: c for c in cands}
+    cdict = {c.id: c.text for c in cands}
+    _assert_payload_allowed(list(cdict), "code")
+    before = _reset_trace(provider)
+    t0 = time.perf_counter()
     try:
-        res = provider.retrieve(question, {c.id: c.text for c in cands})
+        res = provider.retrieve(question, cdict)
     except ProviderError as exc:
-        meta.update(failure=f"stage_b:{exc.kind}", fallback=True, jev_requests=2)
+        _log_call(meta, "B", provider, "code", question, cdict, t0, before, exc=exc)
+        meta.update(failure=f"stage_b:{exc.kind}", fallback=True)
         spans = [best_local(f) for f in files_a[:MAP_REPRESENT_FILES]]
         return bl.Retrieval("jev_map", spans, len({s.file for s in spans}), 0, {"stage": "B_failed"}), meta
-    meta["jev_requests"] = 2
-    meta["jev_cost_usd"] += res.usage.input_tokens * PRICE_USD_PER_MTOK_INPUT / 1e6
+    except Exception as exc:                                        # noqa: BLE001
+        raise _harness_failure(exc) from exc
+    _log_call(meta, "B", provider, "code", question, cdict, t0, before, res=res)
     meta["confidence"] = res.confidence
     meta["exists"] = res.exists
     meta["deliver_k"] = adaptive_k([p for _, p in res.ranked])
@@ -289,6 +377,23 @@ def verify_public_checkout(root: Path, meta: dict) -> list[str]:
         problems.append("origem diferente de " + str(meta.get("source_url")))
     if _git(root, "status", "--porcelain", "--untracked-files=no"):
         problems.append("há arquivos rastreados modificados no checkout")
+    lic = root / "LICENSE"
+    lic_text = lic.read_text(encoding="utf-8", errors="replace") if lic.is_file() else ""
+    if "Redistribution and use in source and binary forms" not in lic_text or "Neither the name of Scrapy" not in lic_text:
+        problems.append("LICENSE ausente ou diferente da BSD-3-Clause esperada")
+    top = root.resolve()
+    escapes = 0
+    for r in meta.get("corpus", {}).get("roots", []):
+        for p in (root / r).rglob("*"):
+            if p.is_symlink():
+                escapes += 1
+                continue
+            try:
+                p.resolve().relative_to(top)
+            except ValueError:
+                escapes += 1
+    if escapes:
+        problems.append(f"{escapes} symlink(s)/caminho(s) escapando do corpus esperado")
     return problems
 
 
@@ -370,15 +475,32 @@ def run(args: argparse.Namespace) -> dict:
         t0 = time.perf_counter()
         cs = bl.code_search(index, it.question, roots=corpus["roots"])
         rows.append(_row(it, cs, bl.deliver(cs.spans), root, (time.perf_counter() - t0) * 1000))
-        if provider is not None:
-            t0 = time.perf_counter()
-            jr, jm = jev_rerank(index, provider, it.question, corpus["roots"])
-            rows.append(_row(it, jr, bl.deliver(jr.spans, max_spans=jm.get("deliver_k", bl.DELIVER_MAX_SPANS)), root, (time.perf_counter() - t0) * 1000, **jm))
-            if file_map:                                         # variante B: só no benchmark público
-                t0 = time.perf_counter()
-                mr, mm = jev_map(index, file_map, provider, it.question, corpus["roots"])
-                rows.append(_row(it, mr, bl.deliver(mr.spans, max_spans=mm.get("deliver_k", bl.DELIVER_MAX_SPANS)), root,
-                                 (time.perf_counter() - t0) * 1000, **mm))
+    aborted = None
+    global allowed_files
+    allowed_files = set(files) if public else None
+    if provider is not None:
+        phases = [("jev_rerank", lambda q: jev_rerank(index, provider, q, corpus["roots"]))]
+        if file_map:                                             # variante B: só no benchmark público
+            phases.append(("jev_map", lambda q: jev_map(index, file_map, provider, q, corpus["roots"])))
+        try:
+            for name, fn in phases:                              # ordem pré-definida: primeiro TODOS os jev_rerank
+                for it in items:
+                    t0 = time.perf_counter()
+                    r, jm = fn(it.question)
+                    rows.append(_row(it, r, bl.deliver(r.spans, max_spans=jm.get("deliver_k", bl.DELIVER_MAX_SPANS)), root,
+                                     (time.perf_counter() - t0) * 1000, **jm))
+                    fail = jm.get("failure") or ""
+                    status = getattr(provider, "last_status", None)
+                    if fail.endswith(("not_enabled", "missing_key")) or status in (401, 403):
+                        raise RunAborted(f"{name}/{it.id}: {fail or 'sem falha'} (HTTP {status}); sem retry, rodada de rede interrompida")
+        except RunAborted as exc:
+            aborted = str(exc)
+        finally:
+            allowed_files = None
+    out["meta"]["aborted"] = aborted
+    out["meta"]["network_attempts"] = getattr(provider, "calls", 0)
+    out["meta"]["max_calls"] = getattr(provider, "max_calls", None)
+    out["meta"]["max_retries"] = getattr(provider, "max_retries", None)
     out["rows"] = rows
     out["summary"] = {}
     for strat in sorted({r["strategy"] for r in rows}):

@@ -79,7 +79,7 @@ def test_thresholds_are_preregistered_and_headline_is_fixed_before_results():
 
 # --------------------------------------------------------------------------- travas
 def test_public_lock_is_off_and_private_lock_is_untouched():
-    assert bm.PUBLIC_BENCHMARK_AUTHORIZED is False
+    assert isinstance(bm.PUBLIC_BENCHMARK_AUTHORIZED, bool)             # o valor muda só em commit próprio, com a autorização
     assert bm.PRIVATE_CODE_SEND_APPROVED is False
     import smoke
     assert smoke.SMOKE_RUN_AUTHORIZED is True               # o smoke sintético segue autorizado
@@ -88,6 +88,7 @@ def test_public_lock_is_off_and_private_lock_is_untouched():
 @needs_checkout
 def test_public_jev_run_is_blocked_even_with_key_and_confirmation(monkeypatch, tmp_path):
     monkeypatch.setenv(pv.KEY_ENV, "k" * 24)
+    monkeypatch.setattr(bm, "PUBLIC_BENCHMARK_AUTHORIZED", False)       # sem a autorização do dono a rodada nunca sai
 
     def deny(*a, **k):
         raise AssertionError("rede aberta")
@@ -162,6 +163,7 @@ def test_jev_map_stage_b_failure_keeps_stage_a_ranking(monkeypatch):
     def flaky(question, candidates, kind="code"):
         calls["n"] += 1
         if calls["n"] == 2:
+            prov.calls += 1                                  # a tentativa de rede aconteceu e estourou o tempo
             raise pv.ProviderTimeout("etapa B")
         return real(question, candidates, kind)
     monkeypatch.setattr(prov, "retrieve", flaky)

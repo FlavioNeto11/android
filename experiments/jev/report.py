@@ -22,6 +22,9 @@ def evaluate(result: dict, thresholds: dict | None = None, strategy: str = "jev_
     meta = result["meta"]
     path = Path(meta["thresholds_path"]) if meta.get("thresholds_path") else THRESHOLDS
     th = (thresholds or json.loads(path.read_text(encoding="utf-8")))["pilot_a_claude_code_retrieval"]
+    if meta.get("provider") == "jev" and ("summary" not in result or strategy not in result["summary"]):
+        return {"verdict": "INSUFFICIENT_EVIDENCE", "reason": f"rodada real sem nenhuma linha de `{strategy}` "
+                                                              f"(interrompida: {meta.get('aborted') or 'não'})"}
     if meta.get("provider") != "jev" or "summary" not in result or strategy not in result["summary"]:
         return {"verdict": "NOT_EVALUATED", "reason": f"provider={meta.get('provider')}: só a rodada real avalia"}
     s = result["summary"]
@@ -65,6 +68,34 @@ def evaluate(result: dict, thresholds: dict | None = None, strategy: str = "jev_
     else:
         verdict = "PARTIAL_GO"
     out["verdict"] = verdict
+    ok = lambda v: "PASS" if v else "FAIL"                                                     # noqa: E731
+    g = lambda grp, key, d=jev: d[grp][key]                                                     # noqa: E731
+    out["detail"] = {
+        "T1": {"status": ok(out["T1"]), "observed": round(g("grep_friendly", "RECALL_AT_3") - g("grep_friendly", "RECALL_AT_3", rg), 4),
+               "limit": f">= {t1['jev_minus_ripgrep_min']}", "what": "EXACT RECALL@3: variante − ripgrep"},
+        "T2": {"status": ok(out["T2"]),
+               "observed": {"vs_bm25": round(g("semantic_only", "RECALL_AT_3") - g("semantic_only", "RECALL_AT_3", cs), 4),
+                            "vs_ripgrep": round(g("semantic_only", "RECALL_AT_3") - g("semantic_only", "RECALL_AT_3", rg), 4)},
+               "limit": f">= {t2['jev_minus_code_search_min']} sobre ambos", "what": "SEMANTIC RECALL@3"},
+        "T3": {"status": ok(out["T3"]),
+               "observed": {"context_median": jev["all"]["CONTEXT_BYTES_RETURNED_MEDIAN"],
+                            "naive_read_median": jev["all"]["NAIVE_READ_BYTES_MEDIAN"],
+                            "bm25_context_median": cs["all"]["CONTEXT_BYTES_RETURNED_MEDIAN"]},
+               "limit": f"<= {t3['max_ratio_of_naive_read']} x naive e <= {t3['max_ratio_of_code_search']} x BM25",
+               "what": "bytes entregues (PROXY)"},
+        "T4": {"status": ok(out["T4"]), "observed": {"p50_ms": round(jev["all"]["LATENCY_MS_P50"], 1),
+                                                     "p95_ms": round(jev["all"]["LATENCY_MS_P95"], 1)},
+               "limit": f"p50 <= {t4['p50_ms_max']}, p95 <= {t4['p95_ms_max']}", "what": "latência por pergunta (todas as etapas)"},
+        "T5": {"status": ok(out["T5"]), "observed": {"requests": n_req, "failures": jev["all"]["FAILURES"], "n": jev["all"]["n"],
+                                                     "failure_rate": round(jev["all"]["FAILURES"] / max(1, jev["all"]["n"]), 4)},
+               "limit": f"requests >= {t5['min_requests']}, taxa <= {t5['failure_rate_max']}", "what": "confiabilidade"},
+        "T6": {"status": ok(out["T6"]), "observed": {"cost_usd": round(cost, 6), "per_query_usd": round(cost / max(1, jev["all"]["n"]), 6)},
+               "limit": f"<= {t6['max_usd_for_golden_run']} total, <= {t6['max_usd_per_query']} por pergunta", "what": "custo (usage real)"},
+        "T7": {"status": ok(out["T7"]), "observed": {"hard_redaction_hits": hard, "checkout_verified": meta.get("checkout_verified")},
+               "limit": "0 achados duros e checkout fixado e íntegro", "what": "privacidade do corpus público"},
+        "T8": {"status": ok(out["T8"]), "observed": crit, "limit": f"<= {th['T8_critical_misses']['max_items']}",
+               "what": "itens em que o BM25 tinha arquivo esperado no top-3 e a variante o tirou"},
+    }
     out["note"] = ("T7: checkout fixado e íntegro (corpus público)." if meta.get("corpus_visibility") == "public"
                    else "T7 também exige aprovação do dono e DPA lido (fora do benchmark).")
     return out
@@ -92,8 +123,48 @@ def markdown(result: dict, verdict: dict) -> str:
             g = groups[group]
             lines.append(f"| {strat} | " + " | ".join(_fmt(g.get(c, "")) for c in cols) + " |")
         lines.append("")
+    lines += _comparison_md(result, verdict)
     lines += ["## Veredito mecânico", "", f"`{verdict['verdict']}`" + (f" — {verdict['reason']}" if "reason" in verdict else "")]
     return "\n".join(lines) + "\n"
+
+
+def _comparison_md(result: dict, verdict: dict) -> list[str]:
+    s = result.get("summary", {})
+    strats = [x for x in ("ripgrep", "code_search", "jev_rerank", "jev_map") if x in s]
+    if not any(x.startswith("jev_") for x in strats):
+        return []
+    names = {"ripgrep": "ripgrep", "code_search": "BM25", "jev_rerank": "jev_rerank (controle)", "jev_map": "jev_map (principal)"}
+    lines = ["## Comparação principal (RECALL)", "", "| estratégia | EXACT R@1 | EXACT R@3 | EXACT R@5 | SEMANTIC R@1 | SEMANTIC R@3 | SEMANTIC R@5 | ALL R@3 |",
+             "|---|---|---|---|---|---|---|---|"]
+    for st in strats:
+        e, m, a = s[st]["grep_friendly"], s[st]["semantic_only"], s[st]["all"]
+        lines.append(f"| {names[st]} | " + " | ".join(_fmt(x) for x in (
+            e.get("RECALL_AT_1", ""), e.get("RECALL_AT_3", ""), e.get("RECALL_AT_5", ""), m.get("RECALL_AT_1", ""), m.get("RECALL_AT_3", ""), m.get("RECALL_AT_5", ""), a.get("RECALL_AT_3", ""))) + " |")
+    lines.append("")
+    head = result["meta"].get("headline_strategy", "jev_rerank")
+    if head in s and "ripgrep" in s and "code_search" in s:
+        lines += [f"Delta `{head}` (SEMANTIC / EXACT / ALL, RECALL@3):", ""]
+        for base_name, key in (("ripgrep", "ripgrep"), ("BM25", "code_search")):
+            d = {grp: s[head][grp]["RECALL_AT_3"] - s[key][grp]["RECALL_AT_3"] for grp in ("semantic_only", "grep_friendly", "all")}
+            lines.append(f"- vs {base_name}: SEMANTIC {d['semantic_only']:+.3f} · EXACT {d['grep_friendly']:+.3f} · ALL {d['all']:+.3f}")
+        lines.append("")
+    meta = result["meta"]
+    tot_in = sum(v["all"].get("JEV_INPUT_TOKENS", 0) for k, v in s.items() if k.startswith("jev_"))
+    tot_out = sum(v["all"].get("JEV_OUTPUT_TOKENS", 0) for k, v in s.items() if k.startswith("jev_"))
+    cost = sum(v["all"].get("JEV_COST_USD_PROXY", 0.0) for k, v in s.items() if k.startswith("jev_"))
+    unk = sum(v["all"].get("JEV_USAGE_UNKNOWN_CALLS", 0) for k, v in s.items() if k.startswith("jev_"))
+    lines += ["## Rede e custo (usage real da API)", "",
+              f"- tentativas de rede: {meta.get('network_attempts')} (teto {meta.get('max_calls')}, max_retries {meta.get('max_retries')})",
+              f"- tokens de entrada: {tot_in} · saída: {tot_out} · custo: US$ {cost:.6f}"
+              + (f" · chamadas sem usage (cobrança UNKNOWN): {unk}" if unk else ""),
+              f"- rodada interrompida: {meta.get('aborted') or 'não'}", ""]
+    detail = verdict.get("detail")
+    if detail:
+        lines += [f"## Limiares pré-registrados (`{head}`)", "", "| T | status | observado | limite |", "|---|---|---|---|"]
+        for k, v in detail.items():
+            lines.append(f"| {k} | {v['status']} | {json.dumps(v['observed'], ensure_ascii=False)} | {v['limit']} |")
+        lines.append("")
+    return lines
 
 
 def write_outputs(out_dir: Path, result: dict) -> dict:
