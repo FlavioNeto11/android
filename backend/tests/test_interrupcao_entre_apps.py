@@ -285,7 +285,7 @@ async def test_etapa_de_outro_app_nao_conclui_com_o_primeiro_app_na_frente(harne
     assert any("step_done REJEITADA" in h and PKG_CONTAS in h for h in fora[1][1])
     confirma = _etapas(harness, obj["id"])["v1:confirm_account"]
     acoes = st.db.query("SELECT a.tool, a.status FROM actions a JOIN attempts t ON t.id=a.attempt_id"
-                        " WHERE t.step_id=? ORDER BY a.rowid", (confirma["id"],))
+                        " WHERE t.step_id=? ORDER BY a.id", (confirma["id"],))
     assert [(r["tool"], r["status"]) for r in acoes][:2] == [("step_done", "rejected"), ("open_app", "done")]
     assert confirma["status"] == "succeeded" and confirma["attempts"] == 1
     assert fake.foreground == PKG_CONTAS and [m.contact for m in fake.messages] == [LIDO]

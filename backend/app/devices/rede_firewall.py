@@ -45,6 +45,7 @@ import fnmatch
 import ipaddress
 import json
 import logging
+import ntpath
 import os
 import subprocess
 import time
@@ -252,7 +253,10 @@ def _mesmo_programa(programa: str, binario: Path) -> bool:
     p = os.path.expandvars((programa or "").strip())
     if not p or p.casefold() == "any":
         return True
-    return os.path.normcase(os.path.normpath(p)) == os.path.normcase(os.path.normpath(str(binario)))
+    # O programa de uma regra do Firewall do Windows é sempre caminho do Windows: compara-se com as regras DELE
+    # (`ntpath`, sem diferenciar caixa), e não as do sistema em que o código roda — no Linux do CI, `os.path.normcase`
+    # mantinha a caixa e a regra certa virava `regra_obsoleta` (run 36822159704, PostgreSQL, 01/10/2026).
+    return ntpath.normcase(ntpath.normpath(p)) == ntpath.normcase(ntpath.normpath(str(binario)))
 
 
 def _cobre_a_porta(portas: Sequence[str], porta: int) -> bool:
