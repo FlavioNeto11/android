@@ -3,7 +3,7 @@ import {
   Pause, Pencil, Play, Repeat, RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { RetryFailedResponse, RunDetail, RunStatus, RunSummary } from '../../api/types';
+import type { RetryFailedResponse, RunDetail, RunSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -31,6 +31,8 @@ import {
 } from './model';
 import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
+import { ResumoDaExecucao } from './ResumoDaExecucao';
+import { abaPadraoDaExecucao, type AbaDaExecucao } from './resumo';
 import { AssistenteDoComando } from '../command/AssistenteDoComando';
 import { repeatRun, responderExecucao, retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
@@ -41,11 +43,10 @@ import { TimelineTab } from './TimelineTab';
 /** O campo de cada pergunta, em português (os de destino vêm do roteamento por persona, ADR-044). */
 const CAMPO_DA_PERGUNTA: Record<string, string> = { profile_id: 'persona', instance_id: 'aparelho' };
 
-type TabId = 'plano' | 'instancias' | 'textos' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
+type TabId = AbaDaExecucao;
 
-function defaultTab(status: RunStatus | undefined): TabId {
-  return status === 'planning' || status === 'needs_input' || status === 'planned' ? 'plano' : 'instancias';
-}
+/** A guia padrão por situação (`resumo.ts`): Relatório se concluída, Linha do tempo se em andamento. */
+const defaultTab = abaPadraoDaExecucao;
 
 /** Nome da guia no link (`#/execucoes/<id>?aba=linha-do-tempo`): português, estável, independente do id interno. */
 const ABA_NA_URL: Record<TabId, string> = {
@@ -183,9 +184,10 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const [tab, setTabLocal] = useState<TabId>(() => abaDaUrl(abaUrl) ?? defaultTab(run.status));
   // Link colado ou Voltar/Avançar com outra guia: a visão acompanha.
+  // Sem `?aba=` no link (Voltar até o link sem guia), vale a guia padrão da situação: a do link manda quando existe.
+  // Só a mudança do link troca a guia aqui; a mudança de situação não (quem olhava a linha do tempo não é arrancado).
   useEffect(() => {
-    const t = abaDaUrl(abaUrl);
-    if (t) setTabLocal(t);
+    setTabLocal(abaDaUrl(abaUrl) ?? defaultTab(run.status));
   }, [abaUrl]);
   /** Troca de guia: substitui o link (sem empilhar). A guia padrão do estado da execução não entra no link. */
   const setTab = (t: TabId) => {
@@ -273,7 +275,6 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               <StatusBadge meta={status} size="lg" srPrefix="Status" />
               {run.simulated ? <Badge tone="warning" solid icon={FlaskConical}>SIMULADO</Badge> : null}
             </div>
-            <p className={styles.command} title={run.command}>{run.command}</p>
             <div className={styles.headMeta}>
               <span><Smartphone size={12} aria-hidden /> {plural(run.instances_requested, 'aparelho solicitado', 'aparelhos solicitados')} · {plural(run.instances_used, 'utilizado', 'utilizados')}</span>
               <span><Clock size={12} aria-hidden /> criada em {formatDateTime(run.created_at)}</span>
@@ -334,6 +335,15 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             </Button>
           </div>
         </div>
+
+        <ResumoDaExecucao
+          run={run}
+          perguntas={perguntas.length}
+          bloqueados={blockedCount}
+          textosParaAprovar={pendentes}
+          terminal={terminal}
+          irParaAba={setTab}
+        />
 
         <div className={styles.progressRow}>
           <div className={styles.progressBlock}>

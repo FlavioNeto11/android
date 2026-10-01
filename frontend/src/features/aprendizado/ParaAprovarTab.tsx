@@ -172,7 +172,7 @@ export function ParaAprovarTab() {
       <section className={styles.secao} aria-labelledby="aprendizado-revisar">
         <h2 id="aprendizado-revisar" className={styles.secaoTitulo}><History size={16} aria-hidden /> Revisar</h2>
         <Banner tone="warning" icon={ShieldAlert} compact role="note">
-          Itens antigos com efeito externo, ainda ativos. Você decide se continuam valendo.
+          Itens antigos com efeito externo, ainda ativos.
         </Banner>
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>

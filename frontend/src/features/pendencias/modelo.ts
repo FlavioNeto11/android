@@ -168,7 +168,24 @@ export interface EntradasDaCaixa {
   nomeDaPersona?: (id: string | null) => string | null;
 }
 
-/** A lista e o total do menu: a mesma conta. Mais antigas primeiro (é o que está esperando há mais tempo). */
+/**
+ * A REGRA DE CONTAGEM DAS PENDÊNCIAS — o único lugar onde ela existe (ADR-062, D1). Pendência é o que depende de uma
+ * pessoa, e só entra aqui o que cabe numa destas quatro origens:
+ *
+ * 1. Aprendizado: cada item da fila "Para aprovar" (`GET /aprendizado/pendentes`). O "Revisar" (legado ativo) fica de
+ *    fora de propósito: continua valendo até a pessoa decidir, não espera ninguém para seguir;
+ * 2. Persona: cada aprovação de texto com status `pending` (a decidida, aprovada ou recusada, não conta);
+ * 3. Execução: cada execução com status `needs_input`, por mais antiga que seja (a de um objetivo `waiting_user`
+ *    dentro de uma execução que já terminou não conta: está em Execuções, no chip "Pede atenção");
+ * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio ou conta errada (`PRECISA_DE_PESSOA`).
+ *
+ * O total é `montarPendencias(...).length`. O selo do menu, o chip "aguardando você" do topo, o aviso do semáforo e as
+ * linhas da caixa leem `usePendencias()`, que chama esta função: não há segunda conta em lugar nenhum. Quem somar por
+ * fora (por exemplo "Para aprovar" + aprovações) vai divergir da caixa; mude a regra aqui e o teste
+ * `contagem.test.tsx` mostra o que muda. A idade (`ehAntiga`) só separa "Antigas" na tela: continua contando.
+ *
+ * A lista e o total do menu: a mesma conta. Mais antigas primeiro (é o que está esperando há mais tempo).
+ */
 export function montarPendencias(e: EntradasDaCaixa): Pendencia[] {
   const todas = [
     ...pendenciasDeAprendizado(e.aprendizado ?? []),
