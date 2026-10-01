@@ -47,7 +47,8 @@ export function renderizadorMeta(r: Instance['renderer']): { label: string; titl
   const selecionado = `selecionado pelo emulador: GLES ${r.gles}${r.vulkan ? `, Vulkan ${r.vulkan}` : ''}`;
   if (r.fallback) {
     return { label: `renderizador: ${nomeDoRenderizador(r.gles)} (pediu ${r.configured ?? '?'})`, fallback: true,
-             title: `${pedido}; ${selecionado}. O emulador trocou de renderizador sem avisar.` };
+             title: `${pedido}; ${selecionado}. Se o gpu_mode mudou depois da subida, vale no próximo reinício; `
+               + 'se não, o emulador trocou de renderizador sem avisar.' };
   }
   return { label: `renderizador: ${nomeDoRenderizador(r.gles)}`, fallback: false, title: `${pedido}; ${selecionado}.` };
 }
