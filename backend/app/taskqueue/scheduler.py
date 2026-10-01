@@ -1000,7 +1000,13 @@ class Scheduler:
             bloqueio = impedido.get(p)
             victims: list[DeviceRuntime] = []
             if bloqueio is None and livre + em_voo < len(fila):
-                victims = sorted((d for d in devs.devices.values() if evictable(d, 0, p)),
+                # Só ENTREGA de app na fila (ninguém pediu tarefa): aparelho com conta vinculada não cede a vaga. Em
+                # 30/09/2026 uma distribuição com `eager` ligou um aparelho de QA e o rodízio hibernou de uma vez os
+                # três com conta real; instalar app não justifica derrubar a sessão de uma conta. Tarefa na fila
+                # continua girando as contas sobre as vagas, que é para isso que o rodízio existe.
+                so_entrega = all(obj is None for _, obj in fila)
+                com_conta = self._aparelhos_com_conta() if so_entrega else set()
+                victims = sorted((d for d in devs.devices.values() if evictable(d, 0, p) and d.id not in com_conta),
                                  key=lambda d: d.last_activity_mono)
                 if victims:
                     devs.request_stop(victims[0], f"vaga para {fila[0][0].id}")
@@ -1033,6 +1039,12 @@ class Scheduler:
                 if idle:
                     devs.request_stop(min(idle, key=lambda d: d.last_activity_mono),
                                       f"ocioso há mais de {s.idle_stop_s}s")
+
+    def _aparelhos_com_conta(self) -> set[str]:
+        """Aparelhos com vínculo ativo de persona: conta vinculada é conta real logada até prova em contrário (a
+        mesma regra do reparo em escada do ADR-055 e do `real_account` da rede)."""
+        return {str(r["instance_id"]) for r in
+                self.repo.db.query("SELECT DISTINCT instance_id FROM device_profile_bindings WHERE active=1")}
 
     def _ocupacao(self, p: str | None, s: Any) -> tuple[int, int]:
         """`(ligados, teto)` daquele conjunto de vagas, para a frase da espera dizer de qual máquina se fala."""

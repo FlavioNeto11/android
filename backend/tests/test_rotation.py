@@ -82,6 +82,50 @@ async def test_rodizio_cede_so_as_vagas_necessarias_e_nao_esvazia_o_parque(harne
     assert len(paradas) == 1, f"o rodízio despejou {paradas} para abrir UMA vaga"
 
 
+async def test_entrega_de_app_nao_tira_a_vaga_de_aparelho_com_conta(harness: Harness) -> None:
+    """30/09/2026: uma distribuição com `eager` ligou um aparelho de QA e o rodízio hibernou de uma vez os três
+    aparelhos com conta real. Entrega de app sozinha não derruba a sessão de uma conta: cede a vaga só quem não tem
+    conta vinculada; tarefa na fila continua girando as contas, como sempre."""
+    from app.util import now_iso
+
+    devs = harness.state.devices                        # type: ignore[union-attr]
+    sched = harness.state.scheduler                     # type: ignore[union-attr]
+    db = harness.state.db                               # type: ignore[union-attr]
+    _rotation(harness, slots=2)
+    alvo = devs.get("android-03")                       # o que vai receber o app
+    await devs.stop_instance(alvo)
+    for rt in devs.devices.values():
+        if rt is not alvo:
+            rt.state = InstanceState.online
+            rt.online_since_mono = rt.last_activity_mono = 0.0
+    agora = now_iso()
+    db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+               ("ig-real", "conta.real", "active", agora, agora))
+    db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at) VALUES (?,?,1,?)",
+               ("ig-real", "android-01", agora))
+
+    paradas: list[str] = []
+
+    def parada_falsa(rt, why: str) -> None:             # type: ignore[no-untyped-def]
+        paradas.append(rt.id)
+        rt.state = InstanceState.stopping
+
+    devs.request_stop = parada_falsa                    # type: ignore[assignment]
+    devs.request_start = lambda rt, why: False          # type: ignore[assignment] - sem vaga: entra na espera
+    sched.repo.dispatchable_objectives = lambda: []     # type: ignore[assignment]
+    s = harness.state.settings.get()                    # type: ignore[union-attr]
+
+    sched._rotate(s, entrega=[alvo.id], tarefas=True)
+    assert paradas == ["android-02"]                    # cede quem não tem conta, nunca o android-01
+
+    # Só o aparelho com conta ligado: a entrega espera, em vez de derrubá-lo.
+    paradas.clear()
+    devs.get("android-02").state = InstanceState.stopped
+    _rotation(harness, slots=1)
+    sched._rotate(harness.state.settings.get(), entrega=[alvo.id], tarefas=True)  # type: ignore[union-attr]
+    assert paradas == []
+
+
 async def test_sem_rodizio_aparelho_parado_bloqueia_como_antes(harness: Harness) -> None:
     devs = harness.state.devices                        # type: ignore[union-attr]
     await devs.stop_instance(devs.get("android-02"))
