@@ -44,7 +44,7 @@ PRIVATE_CODE_SEND_APPROVED = False
 #: 2026-10-01 (jev_rerank 20 + jev_map 40, 60 tentativas, max_retries=0; commit a655952); a rodada foi feita e a trava VOLTOU a
 #: False. Qualquer outra rodada exige nova autorização explícita.
 #: Não interfere em `PRIVATE_CODE_SEND_APPROVED`: o caminho do código privado continua exigindo o True acima.
-PUBLIC_BENCHMARK_AUTHORIZED = False
+PUBLIC_BENCHMARK_AUTHORIZED = True
 N_SHORTLIST = 30
 BYTES_PER_TOKEN_PROXY = 4.0       # PROXY: o tokenizador do Jev é desconhecido; usado só para estimar custo
 
