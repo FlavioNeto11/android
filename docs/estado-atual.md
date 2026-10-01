@@ -45,8 +45,13 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Prova:** `simulated` (frontend 85 arquivos/1027 testes na árvore mesclada com a `main`; backend 514 testes dos arquivos
     que citam o snapshot, em SQLite; backend simulado na 8765 com axe 4.13 em 54 combinações + 15 visões internas, zero falhas de
     contraste, e Lighthouse de acessibilidade 99–100) [revisoes-ux/13-prova-simulada.md](revisoes-ux/13-prova-simulada.md);
-    `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: ainda não revalidado
-    (lacuna aberta, não verificada nesta sessão; quem lê é o cron de 01/10 05:17Z).**
+    `real` só de leitura no central (30/09, 1440/1024/390 px, sem login). **PostgreSQL do SQL novo do snapshot: PROVADO (`real`).**
+    Run 36830963968 (`workflow_dispatch`, `somente_postgres=true`, commit `7c3b787`, 01/10 07:33–08:19Z, `postgres:17`): 3962 passed,
+    28 skipped, 0 failed; `368b575`, `cade559` e `8bcedc5` são ancestrais de `7c3b787`, que é ancestral do runtime `5d8b545`.
+    O teste `test_tools_and_api.py::test_snapshot_traz_as_recentes_e_todas_as_em_andamento` (sem skip) está nessa suíte, e o
+    `_SQL_RUNS_DO_SNAPSHOT` não mudou depois. O run anterior, 36822159704 (`63b2753`), teve 3 falhas alheias ao snapshot (`rowid` no
+    teste, `normcase` e `abspath` em Linux), corrigidas até o verde; ver [relatório §27.1](relatorio-validacao.md). O run em si
+    não foi relido nesta sessão além do `gh run view`; a prova é a do relatório. **Não é mais lacuna do snapshot.**
   - **Para o dono:** 3 execuções `planned` (19/09, 22/09, 27/09; planos de mensagem no Instagram para terceiros, nunca
     executados) e 27 `needs_input` de 17/09 a 28/09 ficaram intactas: decidir se cancela; achados baixos abertos
     (RF-11, 16, 17, 23, 07r, 14, 27, 30, 32–35, 37, 38) em [revisao-final.md](revisoes-ux/revisao-final.md).
