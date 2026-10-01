@@ -12,7 +12,8 @@
   background: var(--accent-soft); color: var(--accent-text); font-weight: 700; font-size: 18px;
 }
 .appCardTitle { display: flex; flex-direction: column; min-width: 0; }
-.appCardTitle code { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nome do pacote (com.empresa.app): quebra em vez de cortar, é o dado que distingue dois apps parecidos. */
+.appCardTitle code { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin: 0; }
 .stat { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2); border-radius: var(--radius-md); background: var(--surface-1); min-width: 0; }
@@ -33,7 +34,14 @@
   background: transparent; color: var(--text-1); font: inherit; text-align: left; cursor: pointer; min-width: 0;
 }
 .runRow:hover, .failRow:hover, .runRow:focus-visible, .failRow:focus-visible { background: var(--surface-3); }
-.runCommand { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* O objetivo da execução em até 2 linhas (título curto); o texto inteiro vai no `title` (TruncatedText). */
+.runCommand { flex: 1 1 auto; min-width: 0; }
+/* Telefone: situação e idade na primeira linha, o objetivo na largura toda embaixo (o `title` não abre em toque). */
+@media (max-width: 520px) {
+  .runRow { flex-wrap: wrap; row-gap: var(--sp-1); }
+  .runRow .runCommand { order: 5; flex-basis: 100%; }
+  .runRow .muted { margin-left: auto; }
+}
 .failRow { flex-direction: column; align-items: flex-start; gap: 2px; }
 .failDetail { color: var(--text-2); font-size: var(--fs-sm); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .simpleList li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; min-width: 0; overflow-wrap: anywhere; }
