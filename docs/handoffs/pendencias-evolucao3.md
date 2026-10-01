@@ -385,6 +385,13 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 20 — 01/10 ~22:00Z — smoke real da função de produto: PASS; incidente de host separado
+
+- `PRODUCT_FUNCTION_REAL_SMOKE = PASS` (W8 §20.4, `real`, android-09, um Start, VPNService, tun0 em 2,7 s, CONNECTED, rollback pela UI). W8 segue OPEN;
+  boots 1/3/4 OPEN. Sem merge, sem deploy, sem PR.
+- Incidente do host (§21, fora do W8): notebook trocou de IP (.19→.11), túnel apontava para o velho; recuperado sem reinscrever o worker. Pendências
+  operacionais: reserva DHCP para B8-9A-2A-FD-EA-7B (autorização do dono), relógio do worker +8,1 s (`degraded`), pwsh da Store no central (instalar MSI).
+
 ### Checkpoint 19 — 01/10 ~20:00Z — correção de produto: religar pelo Start da interface (branch `fix/w8-sfa-service-mode`, `simulated`)
 
 - Decisão do dono: B + D. `religar_pela_interface` substitui o tile na convergência (abre a atividade, `Start` pela árvore, UM toque,

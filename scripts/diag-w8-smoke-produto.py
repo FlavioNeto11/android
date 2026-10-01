@@ -37,6 +37,18 @@ ui = _carregar("diag_w8_uistart_base", "diag-w8-uistart.py")
 tile = ui.tile
 coletor = tile.coletor
 PACOTE, IID, SERIAL = tile.PACOTE, tile.IID, tile.SERIAL
+
+
+def raiz_do_central(inicio: Path = ROOT) -> Path:
+    """O checkout que tem o banco do central (`data/poc.sqlite3`): rodando deste worktree o `data/` não existe aqui, e o gate
+    (leitura do banco) falhava por isso. Sobe os ancestrais até achar o banco; sem achar, fica onde está."""
+    for d in (inicio, *inicio.parents):
+        if (d / "data" / "poc.sqlite3").exists():
+            return d
+    return inicio
+
+
+tile.ROOT = raiz_do_central()                                                     # o `sql` do tile lê `ROOT/data/poc.sqlite3`
 ATIVIDADE = f"{PACOTE}/.compose.MainActivity"
 MARCADOR = "smoke-produto-09.tentativa"
 

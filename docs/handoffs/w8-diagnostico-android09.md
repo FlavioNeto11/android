@@ -693,13 +693,54 @@ outro idioma, locale ilegível, rótulo desconhecido, elemento de outro pacote, 
 VPNService novo, corrida, classe inobservável e comando da janela que falha. `tests/test_rede_aplicacao.py`: o aparelho falso ganhou
 locale, eventos com hora, relógio, buffer que gira e janela sem leitura.
 
-### 20.4. Revalidação real (UM Start, android-09): ver o registro abaixo
+### 20.4. Revalidação real: UM Start do `religar_pela_interface` do branch no android-09 (`real`, 01/10/2026 21:52Z, PASS)
 
-`not_run` (01/10/2026 ~21:45Z). Autorizado UM smoke com a função real do branch (`scripts/diag-w8-smoke-produto.py`, que chama
-`religar_pela_interface` por um adaptador de adb + árvore do central; sem cópia do algoritmo), mas a pré-condição "android-09 online"
-não valeu: `worker-lan-01` `connected=false`/`transport=down` por vários minutos, o android-09 `stopped`, `diag-w8.py preflight` com
-o adb do 09 sem resposta e o SSH ao notebook (192.168.1.19) em timeout (ping com perda). Nada foi tocado no aparelho, nenhum
-marcador de tentativa foi gravado, e não houve improviso (sem ligar/reiniciar o notebook ou o agente). A suíte do backend
-(4077 passados, 1 skip) só falhou `test_backup` por falta de `config/config.yaml` no worktree novo; o mesmo teste passa (5/5) no
-checkout com `config.yaml`, então não é regressão. Retomar o smoke com o worker de volta: `python scripts/diag-w8.py coletar` +
-`backend/.venv/Scripts/python.exe scripts/diag-w8-smoke-produto.py --execute --instance android-09 --run <pasta do coletor>`.
+`scripts/diag-w8-smoke-produto.py` chama a função REAL do branch (commit-base `50592fe`) por um adaptador de adb + árvore do central.
+Coletor `data/diag-w8/20261001T215204Z-smoke09/` (fora do Git; `logcat -b all`). Gate (todas as pré-condições por leitura) OK: QA, online,
+sem tarefa/comando/operador/`device_network`/peer, `always_on=null`, `lockdown=0`, sem `tun0`, VPN desconectada, conectividade healthy.
+(A primeira chamada do script parou no gate por `banco_ro_responde`: rodado de um worktree o `data/` não existe; nada foi escrito no aparelho
+e a tentativa não foi consumida. O script agora sobe os ancestrais até achar `data/poc.sqlite3`.)
+
+| Campo | Valor |
+|---|---|
+| `DEVICE_LOCALE` | `en-US` |
+| `UI_TARGET_METHOD` | árvore: rótulo `action_start` (recurso `en`) + menor contêiner clicável do pacote |
+| `UI_TARGET_LABEL` | `Start` |
+| `SERVICE_CLASS` | `VPNService` (na janela deste Start) |
+| `TUN_TIME` | 2,7 s depois do toque |
+| `VPN_CONNECTED` | sim (`tun0` + VPN CONNECTED) |
+| `RESULT_CODE` | `religado_pela_interface` (chamada de 5,1 s, um toque, sem tile, sem reinício) |
+
+Rollback pela UI (UM toque no `Stop` achado pela mesma árvore, rótulo do locale), sem o rollback extraordinário do tile: `always_on=null`,
+`lockdown=0`, sem `tun0`, VPN desconectada, foco no launcher, sem peer, sem `device_network`, 0 comandos abertos, conectividade healthy.
+Limite do que isto prova: o android-09 já estava com `serviceMode=VPN` desde o Start manual do §18, então esta prova valida a MECÂNICA da
+função (locale, árvore, um toque, janela de classe, sucesso só com `tun0` + CONNECTED), NÃO o caso stale (tile → ProxyService), que o §18
+e os testes simulados cobrem. `PRODUCT_FUNCTION_REAL_SMOKE = PASS`. W8 segue **OPEN** (boots 1/3/4 sem túnel por always-on não explicados).
+
+## 21. Incidente do host: o notebook mudou de IP no reboot e o túnel apontava para o antigo (01/10/2026, `real`; NÃO é do W8)
+
+Separado do W8: o reboot do notebook (worker-lan-01) não conta como evidência contra a correção.
+
+- **Causa:** o notebook recebeu por DHCP `192.168.1.11` (Wi-Fi, MAC `B8-9A-2A-FD-EA-7B`); antes era `192.168.1.19`. A tarefa `farm-tunel-192.168.1.19`
+  continuou tentando `192.168.1.19:22` (`Connection timed out` no `data/logs/tunel-192.168.1.19.log`), então nem os 6 `-L` de ADB nem o `-R 18000:8010`
+  subiam. O agente (`farm-agente`) estava vivo — autostart OK — e repetia `WinError 1225` em `ws://127.0.0.1:18000`.
+- **O ssh.exe:** existe em `C:\Windows\System32\OpenSSH\ssh.exe` e está no PATH do shell do central (`where.exe ssh` o acha); o que o dono viu foi o
+  shell interativo dele, não o host. Nenhum reparo do OpenSSH foi necessário.
+- **Identidade:** as três chaves de host do `192.168.1.11` (RSA, ECDSA, ED25519) têm a MESMA impressão digital das gravadas no `known_hosts`
+  para `192.168.1.19` (ED25519 `wtLix8ag…`, ECDSA `iaU1b9Ra…`, RSA `XUkP3SZ6…`) e o login com a chave `worker_ed25519` passou com
+  `StrictHostKeyChecking=yes`: é o mesmo host. As linhas do `.11` entraram no `known_hosts` (backup antes), sem afrouxar a verificação.
+- **Correção mínima:** `Stop`/`Unregister` da tarefa `farm-tunel-192.168.1.19` e encerramento do laço e do `ssh` ligados SÓ ao `.19`;
+  `scripts/worker-tunnel.ps1 -Instalar -Worker 192.168.1.11 … -AceitarStore` registrou `farm-tunel-192.168.1.11` (mesmo usuário, chave, mapa de 6 portas,
+  `-MapaArquivo` absoluto, `-R 18000:8010`). Dívida registrada: o único `pwsh` do central é o da Store (`WindowsApps\…7.6.6.0…`), que some numa atualização
+  da Store; instalar o MSI (`winget install --id Microsoft.PowerShell`) e reinstalar a tarefa. Sem token novo, sem reinscrição, outro worker intocado.
+- **Prova:** 6 listeners `15555…15565` no central (um `ssh` com os 6 `-L` e o `-R`), `127.0.0.1:18000` em LISTEN no worker, o agente conectou
+  (`conectado; batendo a cada 10 s`), `worker-lan-01 connected=true transport=up`. O central abriu sozinho o `start` do android-09 (estado desejado
+  `online`): `online`/`healthy` em ~75 s. Os outros 5 aparelhos continuam `stopped` (estado desejado deles).
+- **Aberto 1 — relógio:** o worker ficou `degraded` ("relógio desalinhado: +8,1 s"; o agente mede uma vez por conexão). Não foi corrigido: mexer no
+  relógio exige autorização do dono (`hora-certa.ps1` no notebook).
+- **Aberto 2 — IP dinâmico (risco de repetição ALTO):** o túnel e o `known_hosts` são amarrados ao IP. Recomendação, em ordem: (1) **reserva DHCP** no
+  roteador para o MAC acima (o roteador não foi alterado: precisa de autorização do dono); (2) depois, `-Worker` por nome (mDNS/DNS local) com
+  `known_hosts` por alias, para o IP deixar de ser identidade; (3) a longo prazo, túnel iniciado pelo worker, como o `-R` já inverte o canal do agente.
+  Nada disto foi implementado aqui (sem refatoração na recuperação).
+- `WORKER_AUTOSTART_EXPECTED=YES`, `WORKER_AUTOSTART_WORKED=YES` para o agente (a tarefa `AtStartup` subiu); o túnel do central também é `AtStartup`,
+  mas aponta para um IP fixo: é o ponto frágil, não o autostart.

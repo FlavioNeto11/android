@@ -62,6 +62,17 @@ class SmokeProduto(unittest.TestCase):
         asyncio.run(ap.tocar(632, 984))
         self.assertEqual(amb.cmds, ["input tap 632 984"])
 
+    def test_a_raiz_do_central_sobe_ate_o_banco(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            raiz = Path(d)
+            (raiz / "data").mkdir()
+            (raiz / "data" / "poc.sqlite3").write_bytes(b"")
+            filho = raiz / ".claude" / "worktrees" / "w"
+            filho.mkdir(parents=True)
+            self.assertEqual(mod.raiz_do_central(filho), raiz)
+            self.assertEqual(mod.raiz_do_central(Path(d) / "x-nao-existe"), raiz)
+
     def test_shell_que_falha_levanta(self) -> None:
         with self.assertRaises(RuntimeError):
             asyncio.run(mod.AparelhoDoSmoke(AmbFalso(rc=1)).shell("echo x"))
