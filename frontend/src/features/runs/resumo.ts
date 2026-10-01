@@ -53,8 +53,12 @@ export function resultadoDaExecucao(run: Pick<RunSummary, 'status' | 'started_at
   }
 }
 
-/** "1 de 1 objetivo com sucesso" — `null` quando ainda não há objetivos. */
-export function objetivosComSucesso(run: Pick<RunSummary, 'counts' | 'instances_used'>): string | null {
+/** Estados em que nada foi executado ainda: contar "0 de N com sucesso" leria como fracasso de algo que não rodou. */
+const SEM_EXECUCAO: readonly RunStatus[] = ['planning', 'planned', 'needs_input'];
+
+/** "1 de 1 objetivo com sucesso" — `null` quando ainda não há objetivos ou quando nada foi executado (B4, rodada 2). */
+export function objetivosComSucesso(run: Pick<RunSummary, 'status' | 'counts' | 'instances_used'>): string | null {
+  if (SEM_EXECUCAO.includes(run.status)) return null;
   const counts = run.counts ?? EMPTY_COUNTS;
   const total = Math.max(objectivesTotal(counts), run.instances_used, 0);
   if (total === 0) return null;

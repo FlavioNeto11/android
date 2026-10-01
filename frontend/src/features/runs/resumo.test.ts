@@ -44,6 +44,16 @@ describe('objetivosComSucesso e pedidoEhLongo', () => {
     expect(objetivosComSucesso(makeRun({ counts: { ...CONTAGEM, succeeded: 2, failed: 1 }, instances_used: 3 }))).toBe('2 de 3 objetivos com sucesso');
     expect(objetivosComSucesso(makeRun({ counts: CONTAGEM, instances_used: 0 }))).toBeNull();
   });
+  it('B4: nada foi executado (planejando, plano pronto, esperando informação): não conta sucesso', () => {
+    for (const status of ['planning', 'planned', 'needs_input'] as const) {
+      expect(objetivosComSucesso(makeRun({ status, counts: CONTAGEM, instances_used: 1 }))).toBeNull();
+    }
+    // Em andamento ou terminada, o "0 de N" é informação (algo rodou).
+    expect(objetivosComSucesso(makeRun({ status: 'running', counts: { ...CONTAGEM, running: 1 }, instances_used: 1 })))
+      .toBe('0 de 1 objetivo com sucesso');
+    expect(objetivosComSucesso(makeRun({ status: 'failed', counts: { ...CONTAGEM, failed: 1 }, instances_used: 1 })))
+      .toBe('0 de 1 objetivo com sucesso');
+  });
   it('o pedido é longo por tamanho ou por quebra de linha', () => {
     expect(pedidoEhLongo('Abra o app')).toBe(false);
     expect(pedidoEhLongo('x'.repeat(101))).toBe(true);
