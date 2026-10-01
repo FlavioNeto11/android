@@ -14,7 +14,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
 
 from ..domain.model import RETRIEVAL_VERSION
 
@@ -44,7 +43,7 @@ class SemanticCache:
             return None
         return self._dir / f"{key}.json"
 
-    def get(self, key: str) -> dict[str, Any] | None:
+    def get(self, key: str) -> dict[str, object] | None:
         arq = self._arquivo(key)
         if arq is None:
             return None
@@ -59,7 +58,7 @@ class SemanticCache:
         self.hits += 1
         return valor
 
-    def put(self, key: str, value: dict[str, Any]) -> None:
+    def put(self, key: str, value: dict[str, object]) -> None:
         arq = self._arquivo(key)
         if arq is None:
             return

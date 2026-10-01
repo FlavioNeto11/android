@@ -8,10 +8,25 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import lru_cache
 
-from app.security.redaction import redact
+
+#: Redação central (`app.security.redaction.redact`). O domínio não pode importar `app.security`, então ela chega pela
+#: porta `registrar_redator`, chamada UMA vez no `__init__` do pacote (que roda antes de qualquer submódulo). Sem redator
+#: registrado o portão falha FECHADO (levanta), nunca em silêncio: segredo "mole" não pode passar por falta de ligação.
+_redator: Callable[[str], str] | None = None
+
+
+def registrar_redator(redator: Callable[[str], str]) -> None:
+    global _redator
+    _redator = redator
+
+
+def _redigir(text: str) -> str:
+    if _redator is None:
+        raise RuntimeError("redator de segredo nao registrado (import app.modules.context_retrieval primeiro)")
+    return _redator(text)
 
 # ---------------------------------------------------------------- caminhos sensíveis
 #: Pastas na RAIZ do repositório que guardam dado do parque, prova, cópia ou conta. Fora do Git por desenho.
@@ -131,4 +146,4 @@ _ATRIBUICAO_SECRETA = re.compile(
 def has_soft_secret(text: str | None) -> bool:
     """Par chave/valor com cara de segredo (o que a redação central mascararia, ou literal atribuído a nome de segredo).
     O trecho sai do payload; o pedido segue."""
-    return bool(text) and (redact(text) != text or _ATRIBUICAO_SECRETA.search(text) is not None)
+    return bool(text) and (_redigir(text) != text or _ATRIBUICAO_SECRETA.search(text) is not None)

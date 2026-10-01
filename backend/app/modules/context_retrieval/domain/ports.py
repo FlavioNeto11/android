@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .model import Chunk, ContextSelection, FilesReply, RegionsReply, RepoMap, RetrievalRequest
 
@@ -55,7 +55,18 @@ class MapSource(Protocol):
     def repo_map(self) -> RepoMap: ...
 
 
+class ResponseCache(Protocol):
+    """Cache da resposta semântica (JSON, por revisão). Quem implementa é a infraestrutura; a aplicação só vê esta porta."""
+
+    def key(self, *, revision: str, query: str, scope: tuple[str, ...], provider: str, model: str, stage: str,
+            extra: str = "") -> str: ...
+
+    def get(self, key: str) -> dict[str, object] | None: ...
+
+    def put(self, key: str, value: dict[str, object]) -> None: ...
+
+
 class MetricsSink(Protocol):
-    def record(self, event: dict[str, Any]) -> None:
+    def record(self, event: dict[str, object]) -> None:
         """Evento já saneado (sem código, sem segredo, sem a pergunta crua). Não pode levantar."""
         ...

@@ -87,7 +87,7 @@ def main() -> int:
 
     from app.config import EnvSettings, load_config
     from app.modules.context_retrieval.domain.model import RetrievalMode
-    from app.modules.context_retrieval.infrastructure.providers.jev import JevSemanticProvider
+    from app.modules.context_retrieval.adapters.jev import JevSemanticProvider
     from app.modules.context_retrieval.wiring import ambiente_do_provedor, build_service
     import httpx
 

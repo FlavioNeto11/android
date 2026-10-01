@@ -30,7 +30,7 @@ from app.modules.context_retrieval.domain.ports import ContextRetriever, Provide
 from app.modules.context_retrieval.infrastructure.cache import SemanticCache
 from app.modules.context_retrieval.infrastructure.providers.factory import build_provider
 from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider, tokenize
-from app.modules.context_retrieval.infrastructure.providers.jev import (
+from app.modules.context_retrieval.adapters.jev import (
     DEFAULT_MODEL, JevSemanticProvider, PRICE_USD_PER_MTOK_INPUT,
 )
 

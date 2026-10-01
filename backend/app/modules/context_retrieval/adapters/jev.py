@@ -19,18 +19,17 @@ import json
 import os
 import time
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 import httpx
 
-from ...domain.errors import (
+from ..domain.errors import (
     ProviderError, ProviderInvalidResponse, ProviderKeyMissing, ProviderOffline, ProviderOverloaded,
     ProviderRateLimited, ProviderTimeout, ProviderUnavailable,
 )
-from ...domain.model import (
+from ..domain.model import (
     Chunk, FileChoice, FilesReply, ProviderUsage, RegionChoice, RegionsReply, RepoMap,
 )
-from ...domain.ports import ProviderLocality
+from ..domain.ports import ProviderLocality
 
 DEFAULT_BASE_URL = "https://api.typesafe.ai"
 ENDPOINT = "/v1/systemone"
@@ -48,7 +47,7 @@ _INSTR_REGIOES = ("Each entry of `entries` is a snippet of code from a codebase,
                   "Which snippets most directly answer `question`? Rank the snippet ids.")
 
 
-def _entrada_do_mapa(e: Any) -> str:
+def _entrada_do_mapa(e: object) -> str:
     simbolos = ", ".join(e.symbols)
     return f"[{e.language}, {e.size}B]" + (f" {simbolos}" if simbolos else "") + (f" - {e.summary}" if e.summary else "")
 
@@ -108,7 +107,7 @@ class JevSemanticProvider:
         ranking = self._ranking(answers.get("best"), set(entradas), limite)
         return ranking, usage
 
-    def _postar(self, corpo: bytes, timeout_s: float) -> tuple[Any, float]:
+    def _postar(self, corpo: bytes, timeout_s: float) -> tuple[object, float]:
         chave = self._chave()
         if not chave:
             raise ProviderKeyMissing("chave ausente")
@@ -139,7 +138,7 @@ class JevSemanticProvider:
             raise ProviderOverloaded(f"HTTP {status}")
         if status != 200:
             raise ProviderError(f"HTTP {status}")
-        corpo_json: Any = None
+        corpo_json: object = None
         valido = True
         try:
             corpo_json = r.json()
@@ -150,7 +149,7 @@ class JevSemanticProvider:
         return corpo_json, latencia
 
     @staticmethod
-    def _interpretar(raw: Any, bytes_enviados: int, latencia_ms: float) -> tuple[Mapping[str, Any], ProviderUsage]:
+    def _interpretar(raw: object, bytes_enviados: int, latencia_ms: float) -> tuple[Mapping[str, object], ProviderUsage]:
         if not isinstance(raw, Mapping) or not isinstance(raw.get("answers"), Mapping):
             raise ProviderInvalidResponse("resposta sem `answers`")
         u = raw.get("usage") if isinstance(raw.get("usage"), Mapping) else {}
@@ -163,7 +162,7 @@ class JevSemanticProvider:
         return raw["answers"], usage
 
     @staticmethod
-    def _ranking(resposta: Any, permitidos: set[str], limite: int) -> list[tuple[str, float]]:
+    def _ranking(resposta: object, permitidos: set[str], limite: int) -> list[tuple[str, float]]:
         """Distribuição de probabilidade → ranking. Opção fora do conjunto enviado é resposta inválida, nunca ação."""
         if not isinstance(resposta, Mapping) or resposta.get("type") != "choice":
             raise ProviderInvalidResponse("resposta nao e `choice`")
@@ -181,5 +180,5 @@ class JevSemanticProvider:
         return [(k, p) for k, p in pares if p > 0][:limite]
 
 
-def _inteiro(v: Any) -> int | None:
+def _inteiro(v: object) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None

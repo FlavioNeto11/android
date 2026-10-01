@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 #: Versão do conjunto retriever+regra híbrida. Entra na chave dos caches: mudar a regra invalida o que foi guardado.
 RETRIEVAL_VERSION = "1"
@@ -117,10 +116,10 @@ class ContextSelection:
     fallback_used: bool = False
     fallback_reason: FallbackReason | None = None
     warnings: tuple[str, ...] = ()
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
     @staticmethod
-    def empty(source: str, **kw: Any) -> "ContextSelection":
+    def empty(source: str, **kw: object) -> "ContextSelection":
         return ContextSelection(selected_files=(), selected_regions=(), source=source, **kw)
 
 
@@ -201,14 +200,14 @@ class ContextPack:
     files: tuple[FileHit, ...]
     regions: tuple[Region, ...]
     confidence: float | None
-    budget: dict[str, Any]
-    metadata: dict[str, Any]
+    budget: dict[str, object]
+    metadata: dict[str, object]
     warnings: tuple[str, ...] = ()
     retrieval_version: str = RETRIEVAL_VERSION
 
-    def to_dict(self, *, with_text: bool = False) -> dict[str, Any]:
-        def regiao(r: Region) -> dict[str, Any]:
-            d: dict[str, Any] = {"path": r.path, "start_line": r.start_line, "end_line": r.end_line}
+    def to_dict(self, *, with_text: bool = False) -> dict[str, object]:
+        def regiao(r: Region) -> dict[str, object]:
+            d: dict[str, object] = {"path": r.path, "start_line": r.start_line, "end_line": r.end_line}
             if with_text and r.text is not None:
                 d["text"] = r.text
             return d

@@ -7,7 +7,6 @@ devolve código, a pergunta ou caminhos de arquivo.
 """
 from __future__ import annotations
 
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -18,7 +17,7 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/context-retrieval/status")
-def status(request: Request) -> dict[str, Any]:
+def status(request: Request) -> dict[str, object]:
     poc: object = getattr(request.app.state, "poc", None)
     cfg = getattr(poc, "cfg", None)
     if not isinstance(cfg, Config):

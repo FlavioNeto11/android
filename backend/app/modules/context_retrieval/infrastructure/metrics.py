@@ -18,7 +18,6 @@ import threading
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
 
 from ....metricas import metricas as _metricas
 
@@ -35,8 +34,8 @@ CAMPOS: dict[str, tuple[tuple[type, ...], int]] = {
 }
 
 
-def sanear(evento: dict[str, Any]) -> dict[str, Any]:
-    limpo: dict[str, Any] = {}
+def sanear(evento: dict[str, object]) -> dict[str, object]:
+    limpo: dict[str, object] = {}
     for campo, valor in evento.items():
         regra = CAMPOS.get(campo)
         if regra is None or valor is None:
@@ -64,7 +63,7 @@ class RetrievalMetrics:
     def arquivo(self) -> Path | None:
         return None if self._dir is None else self._dir / "events.jsonl"
 
-    def record(self, event: dict[str, Any]) -> None:
+    def record(self, event: dict[str, object]) -> None:
         try:
             limpo = sanear({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **event})
             self._contar(limpo)
@@ -73,7 +72,7 @@ class RetrievalMetrics:
         except Exception:  # noqa: BLE001
             return
 
-    def _contar(self, e: dict[str, Any]) -> None:
+    def _contar(self, e: dict[str, object]) -> None:
         motivo = e.get("fallback_reason", "none")
         _metricas.contar("context_retrieval.pedidos", mode=e.get("mode", "?"),
                          resultado="fallback" if e.get("fallback") else "ok", motivo=motivo)
@@ -82,7 +81,7 @@ class RetrievalMetrics:
         if e.get("cost_usd"):
             _metricas.contar("context_retrieval.custo_usd", float(e["cost_usd"]), provider=e.get("provider", "?"))
 
-    def _gravar(self, e: dict[str, Any]) -> None:
+    def _gravar(self, e: dict[str, object]) -> None:
         assert self._dir is not None
         linha = json.dumps(e, ensure_ascii=False, separators=(",", ":")) + "\n"
         with self._lock:
@@ -93,11 +92,11 @@ class RetrievalMetrics:
             with arq.open("a", encoding="utf-8") as f:
                 f.write(linha)
 
-    def recentes(self, limite: int = 500) -> list[dict[str, Any]]:
+    def recentes(self, limite: int = 500) -> list[dict[str, object]]:
         arq = self.arquivo
         if arq is None or not arq.is_file():
             return []
-        eventos: list[dict[str, Any]] = []
+        eventos: list[dict[str, object]] = []
         try:
             with arq.open("r", encoding="utf-8") as f:
                 for linha in f:
@@ -112,7 +111,7 @@ class RetrievalMetrics:
         return eventos[-limite:]
 
 
-def resumir(eventos: Iterable[dict[str, Any]]) -> dict[str, Any]:
+def resumir(eventos: Iterable[dict[str, object]]) -> dict[str, object]:
     """O que o painel mostra: pedidos, cache, latência, custo, fallbacks e bloqueios de privacidade."""
     lista = list(eventos)
     n = len(lista)

@@ -24,7 +24,7 @@ from .infrastructure.bm25 import BM25Retriever
 from .infrastructure.cache import SemanticCache
 from .infrastructure.chunker import Chunker
 from .infrastructure.lexical import LexicalRetriever
-from .infrastructure.metrics import RetrievalMetrics
+from .infrastructure.metrics import RetrievalMetrics, resumir
 from .infrastructure.providers.factory import build_provider
 from .infrastructure.repomap import RepoMapProvider
 from .infrastructure.workspace import Workspace
@@ -116,7 +116,6 @@ def build_service(cfg: Config, *, root: Path | None = None, mode: RetrievalMode 
 
 def estado_do_retrieval(cfg: Config) -> dict[str, object]:
     """Para a API de status: configuração efetiva, disponibilidade do provedor (sem rede) e o resumo das métricas."""
-    from .infrastructure.metrics import resumir
     cc = cfg.file.context_retrieval
     prov = criar_provedor(cfg) if cc.semantic.provider != "none" else None
     disponivel, motivo = prov.available() if prov is not None else (False, "no_provider")

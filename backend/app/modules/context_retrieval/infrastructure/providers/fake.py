@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from ...domain.errors import ProviderError
 from ...domain.model import (
@@ -73,7 +73,7 @@ class FakeSemanticProvider:
         self.tokens_per_call = tokens_per_call
         self.available_override = available_override
         #: Um dict por chamada: o que "saiu" do processo. `paths` e `text` existem só neste fake de teste.
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
 
     # ------------------------------------------------------------------ porta
     def available(self) -> tuple[bool, str | None]:
@@ -131,7 +131,7 @@ class FakeSemanticProvider:
                              cost_usd=self.cost_usd_per_call, latency_ms=self.latency_ms)
 
     @staticmethod
-    def _enlatado(query: str, tabela: Mapping[str, Any]) -> Any:
+    def _enlatado(query: str, tabela: Mapping[str, object]) -> object:
         q = query.lower()
         for trecho, resposta in tabela.items():
             if trecho in q:
@@ -151,6 +151,6 @@ class FakeSemanticProvider:
         return acertos / len(termos)
 
     @staticmethod
-    def _melhores(pontos: list[tuple[float, str]], limite: int, tipo: Any) -> tuple[Any, ...]:
+    def _melhores(pontos: list[tuple[float, str]], limite: int, tipo: object) -> tuple[object, ...]:
         ordenado = sorted((p for p in pontos if p[0] > 0), key=lambda p: (-p[0], p[1]))
         return tuple(tipo(path, round(score, 4)) for score, path in ordenado[:limite])

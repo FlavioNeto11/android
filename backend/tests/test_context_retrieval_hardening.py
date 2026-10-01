@@ -210,3 +210,12 @@ def test_arquivo_sensivel_nao_aparece_no_mapa_externo_nem_no_cache(tmp_path: Pat
     assert not enviados & {".env", "data/dump.json"}
     bruto = "".join(f.read_text(encoding="utf-8") for f in (tmp_path / "dados").rglob("*.json"))
     assert ".env" not in bruto and "data/dump.json" not in bruto
+
+
+def test_portao_de_segredo_mole_falha_fechado_sem_redator_registrado(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.context_retrieval.domain import sensitive
+
+    assert sensitive.has_soft_secret("password=abc12345") is True          # ligado pelo __init__ do pacote
+    monkeypatch.setattr(sensitive, "_redator", None)
+    with pytest.raises(RuntimeError):                                      # nunca "sem segredo" por falta de ligação
+        sensitive.has_soft_secret("qualquer texto")

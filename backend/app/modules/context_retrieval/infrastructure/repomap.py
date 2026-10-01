@@ -14,7 +14,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
 
 from app.modules.context_retrieval.domain.model import RETRIEVAL_VERSION, MapEntry, RepoMap
 from app.modules.context_retrieval.infrastructure.workspace import Workspace
@@ -135,7 +134,7 @@ def build_repo_map(workspace: Workspace, *, max_symbols: int = 12) -> RepoMap:
 
 
 # ---------------------------------------------------------------- cache em disco
-def _para_dict(mapa: RepoMap, max_symbols: int) -> dict[str, Any]:
+def _para_dict(mapa: RepoMap, max_symbols: int) -> dict[str, object]:
     return {
         "revision": mapa.revision, "version": RETRIEVAL_VERSION, "max_symbols": max_symbols,
         "entries": [{"path": e.path, "language": e.language, "size": e.size, "symbols": list(e.symbols),
@@ -143,7 +142,7 @@ def _para_dict(mapa: RepoMap, max_symbols: int) -> dict[str, Any]:
     }
 
 
-def _de_dict(d: Any, revisao: str, max_symbols: int) -> RepoMap | None:
+def _de_dict(d: object, revisao: str, max_symbols: int) -> RepoMap | None:
     """`RepoMap` do JSON, ou `None` se a versão, a revisão ou a forma não baterem (cache corrompido = descartado)."""
     try:
         if d["revision"] != revisao or d["version"] != RETRIEVAL_VERSION or d["max_symbols"] != max_symbols:

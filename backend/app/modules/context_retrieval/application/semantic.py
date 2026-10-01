@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..domain.errors import ProviderError
 from ..domain.model import (
@@ -24,10 +24,9 @@ from ..domain.model import (
     RetrievalRequest,
 )
 from ..domain.policy import ExternalContextPolicy
-from ..domain.ports import ChunkSource, MapSource, ProviderLocality, SemanticProvider
+from ..domain.ports import ChunkSource, MapSource, ProviderLocality, ResponseCache, SemanticProvider
 
 if TYPE_CHECKING:  # só tipos: o retriever recebe as instâncias prontas, não constrói orçamento nem cache
-    from ..infrastructure.cache import SemanticCache
     from .budget import BudgetLedger, RequestBudget
 
 
@@ -47,7 +46,7 @@ class _Corrida:
     cost_usd: float = 0.0
     input_tokens: int = 0
     rb: "RequestBudget | None" = None
-    meta: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, object] = field(default_factory=dict)
 
     def gastar(self, usage: ProviderUsage) -> None:
         self.cost_usd += usage.cost_usd
@@ -67,7 +66,7 @@ class SemanticRetriever:
     name = "semantic"
 
     def __init__(self, *, provider: SemanticProvider | None, policy: ExternalContextPolicy, map_source: MapSource,
-                 chunk_source: ChunkSource, ledger: "BudgetLedger", cache: "SemanticCache",
+                 chunk_source: ChunkSource, ledger: "BudgetLedger", cache: ResponseCache,
                  limits: PayloadLimits) -> None:
         self.provider = provider
         self.policy = policy
@@ -298,20 +297,20 @@ class SemanticRetriever:
                               provider=prov.name, model=prov.model, stage=etapa,
                               extra=f"{extra}|{self.policy.fingerprint()}")
 
-    def _cache_get(self, chave: str) -> dict[str, Any] | None:
+    def _cache_get(self, chave: str) -> dict[str, object] | None:
         try:
             return self.cache.get(chave)
         except Exception:
             return None
 
-    def _cache_put(self, chave: str, valor: dict[str, Any]) -> None:
+    def _cache_put(self, chave: str, valor: dict[str, object]) -> None:
         try:
             self.cache.put(chave, valor)
         except Exception:
             pass  # cache é otimização: nunca derruba o retrieval
 
     @staticmethod
-    def _ler_arquivos(valor: dict[str, Any] | None, permitidos: set[str]) -> list[tuple[str, float]] | None:
+    def _ler_arquivos(valor: dict[str, object] | None, permitidos: set[str]) -> list[tuple[str, float]] | None:
         """Cache corrompido, de outra forma ou com caminho fora do mapa atual é miss silencioso."""
         try:
             itens = [(str(p), float(s)) for p, s in (valor or {})["files"]]
@@ -321,7 +320,7 @@ class SemanticRetriever:
         return itens or None
 
     @staticmethod
-    def _ler_regioes(valor: dict[str, Any] | None, validas: set[tuple[str, int, int]]
+    def _ler_regioes(valor: dict[str, object] | None, validas: set[tuple[str, int, int]]
                      ) -> list[tuple[str, int, int, float]] | None:
         try:
             itens = [(str(p), int(a), int(b), float(s)) for p, a, b, s in (valor or {})["regions"]]

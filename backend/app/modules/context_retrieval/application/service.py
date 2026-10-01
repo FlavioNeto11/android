@@ -15,7 +15,6 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any
 
 from ..domain.model import (Budget, ContextPack, ContextSelection, FallbackReason, Region, RetrievalMode,
                             RetrievalRequest)
@@ -171,7 +170,7 @@ class ContextRetrievalService:
         if isinstance(cache, dict):
             estado = str(cache.get("stage_a_cache", ""))
             cache_estado = estado if estado in ("hit", "miss") else None
-        evento: dict[str, Any] = {
+        evento: dict[str, object] = {
             "retriever": delivered.source, "mode": self.mode.value, "query_fp": query_fingerprint(request.query),
             "revision": request.revision[:24], "provider": self._provider, "model": self._model,
             "files_considered": int(delivered.metadata.get("files_considered", 0) or 0),
