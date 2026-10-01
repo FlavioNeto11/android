@@ -219,6 +219,80 @@ def dropbox_do_app(entradas: list[dict[str, Any]], pacote: str = PACOTE) -> list
     return [e for e in entradas if e["tag"] in tags and (e["tag"] in ("SYSTEM_BOOT",) or e["processo"] == pacote)]
 
 
+def _duracao_s(txt: str) -> float:
+    """`+2m11s863ms` / `+5s891ms` / `+964ms` -> segundos."""
+    t = 0.0
+    for n, u in re.findall(r"(\d+)(ms|m|s)", txt):
+        t += int(n) * {"m": 60.0, "s": 1.0, "ms": 0.001}[u]
+    return round(t, 3)
+
+
+def parse_broadcasts(texto: str, pacote: str = PACOTE) -> list[dict[str, Any]]:
+    """`dumpsys activity broadcasts history` (já filtrado no aparelho: cabeçalho do registro, `enqueueClockTime`, estado de cada receptor,
+    `name=`/`packageName=`, `reason:`; sem os extras). Devolve, para os broadcasts de BOOT/LOCKED_BOOT/MY_PACKAGE_REPLACED, o que
+    aconteceu com os receptores do pacote: `DELIVERED` (rodou no processo) ou `SKIPPED` (com a razão). É a única fonte legível de que a
+    SEGUNDA chance (o `BootReceiver` -> `BoxService.start()`) foi entregue; ausência de `am_proc_start` não prova nada com o processo vivo."""
+    r: list[dict[str, Any]] = []
+    acao = enq = None
+    estado: dict[str, Any] | None = None
+    for l in texto.splitlines():
+        m = re.match(r"\s+BroadcastRecord\{\w+ (\S+)/u(-?\d+)\}", l)
+        if m:
+            acao, enq, estado = m.group(1), None, None
+            continue
+        m = re.search(r"enqueueClockTime=(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})", l)
+        if m and enq is None:
+            enq = m.group(1)
+            continue
+        m = re.match(r"\s+(DELIVERED|SKIPPED|\w+) (?:scheduled \+(\S+) )?(?:terminal \+(\S+) )?\((-?\d+)\) #(\d+): ", l)
+        if m:
+            estado = {"estado": m.group(1), "agendado_s": _duracao_s(m.group(2)) if m.group(2) else None,
+                      "terminal_s": _duracao_s(m.group(3)) if m.group(3) else None, "razao": None}
+            continue
+        m = re.match(r"\s+name=(\S+)", l)
+        if m and estado is not None:
+            estado["receptor"] = m.group(1)
+            continue
+        m = re.match(r"\s+packageName=(\S+)", l)
+        if m and estado is not None:
+            estado["pacote"] = m.group(1)
+            continue
+        m = re.match(r"\s+reason: (.*)", l)
+        if m and estado is not None:
+            estado["razao"] = m.group(1)[:200]
+            if estado.get("pacote") == pacote and acao and re.search(r"BOOT_COMPLETED|MY_PACKAGE_REPLACED", acao) and enq:
+                r.append(_registro_broadcast(acao, enq, estado))
+            estado = None
+    return r
+
+
+def _registro_broadcast(acao: str, enq: str, e: dict[str, Any]) -> dict[str, Any]:
+    d = {"acao": acao.rsplit(".", 1)[-1], "enfileirado": enq, "receptor": e.get("receptor"), "estado": e["estado"],
+         "agendado_s": e["agendado_s"], "terminal_s": e["terminal_s"], "razao": e["razao"]}
+    if e["agendado_s"] is not None:
+        ini = segundos(enq[5:])                                                                       # `2026-10-01 19:29:13.355` -> rótulo do logcat
+        d["entregue_em"] = _rotulo_com_segundos(ini + e["agendado_s"])
+        if e["terminal_s"] is not None:
+            d["terminou_em"] = _rotulo_com_segundos(ini + e["agendado_s"] + e["terminal_s"])
+    return d
+
+
+def _rotulo_com_segundos(seg: float) -> str:
+    """Inverso de `segundos` para o rótulo `MM-DD HH:MM:SS.mmm` (o mesmo ano relativo de `segundos`)."""
+    dias, resto = divmod(seg, 86400)
+    mes, d = 1, int(dias)
+    while d >= calendar.monthrange(2001, mes)[1]:
+        d -= calendar.monthrange(2001, mes)[1]
+        mes += 1
+    h, resto = divmod(resto, 3600)
+    mi, s = divmod(resto, 60)
+    ms = int(round((s % 1) * 1000))
+    s = int(s)
+    if ms == 1000:
+        ms, s = 0, s + 1
+    return f"{mes:02d}-{d + 1:02d} {int(h):02d}:{int(mi):02d}:{s:02d}.{ms:03d}"
+
+
 # ───────────────────────────── amostras do host (o jsonl do coletor) ─────────────────────────────
 def parse_amostras(linhas: list[dict[str, Any]]) -> dict[str, Any]:
     """PID do cliente (mudanças), `tun0` e as interfaces de rede vistas do host, a cada ~2 s."""
@@ -327,7 +401,7 @@ def troca_durante(padrao: list[dict[str, Any]], inicio: str | None, fim: str | N
     return saida
 
 
-def resumir(pasta: Path, kind: str) -> dict[str, Any]:
+def resumir(pasta: Path, kind: str, saida: dict[str, Any] | None = None) -> dict[str, Any]:
     """O resumo de UM ensaio já capturado em `pasta` (`boot-<kind>.*`). Falta de arquivo vira `lacunas`, nunca erro."""
     lacunas: list[str] = []
 
@@ -348,17 +422,23 @@ def resumir(pasta: Path, kind: str) -> dict[str, Any]:
     else:
         lacunas.append("amostras.jsonl")
     am = parse_amostras(linhas)
-    saida = {}
     ps = pasta / f"boot-{kind}.saida.json"
-    if ps.exists():
-        saida = json.loads(ps.read_text(encoding="utf-8"))
+    if saida is None:                                                                                 # `rodar` passa o dict em memória (o json só sai depois)
+        saida = json.loads(ps.read_text(encoding="utf-8")) if ps.exists() else {}
     ass = classificar(ev, rede, am)
     exit_txt = ler("exit-info.txt")
     exitinfo = parse_exit_info(exit_txt or "")
     pacote_txt = (pasta / f"boot-{kind}.pacote.txt")
-    pacote = parse_pacote(pacote_txt.read_text(encoding="utf-8", errors="replace")) if pacote_txt.exists() else None
-    if pacote is None:
+    pacote_fim = parse_pacote(pacote_txt.read_text(encoding="utf-8", errors="replace")) if pacote_txt.exists() else None
+    if pacote_fim is None:
         lacunas.append("pacote.txt")
+    pacote_boot = (saida.get("boot") or {}).get("pacote")                                             # 1º adb / boot_completed / fim, lidos DURANTE o boot
+    if not pacote_boot:
+        lacunas.append("pacote_no_boot")
+    btxt = pasta / f"boot-{kind}.broadcasts.txt"
+    bcast = parse_broadcasts(btxt.read_text(encoding="utf-8", errors="replace")) if btxt.exists() else None
+    if bcast is None:
+        lacunas.append("broadcasts.txt")
     # Tempo relativo (convidado): o always-on e o serviço contra a primeira rede / a rede padrão.
     ao = rede["always_on_start"][0] if rede["always_on_start"] else None
     proc = next((p for p in ev["proc_start"] if "VPNService" in p["componente"]), None)
@@ -393,19 +473,34 @@ def resumir(pasta: Path, kind: str) -> dict[str, Any]:
                      "crash": ev["crash"], "died": [m for m in ev["proc_died"] if not m["benigno"]], "freeze": ev["freeze"][:2]},
         "amostras": {"t_tun": am["t_tun"], "t_wlan0": am["t_wlan0"], "t_eth0": am["t_eth0"], "t_boot_completed": am["t_boot_completed"]},
         "exit_info": {"persistido_em": exitinfo["persistido_em"], "n": len(exitinfo["entradas"]), "entradas": exitinfo["entradas"][:6]},
-        "pacote": pacote,
+        "pacote_fim": pacote_fim, "pacote_no_boot": pacote_boot,
+        "boot_receiver": _boot_receiver(bcast, fg),
         "preparo": saida.get("preparo"),
     }
 
 
+def _boot_receiver(bcast: list[dict[str, Any]] | None, fg: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A 2ª chance do cliente: o `BootReceiver` foi ENTREGUE (rodou) ou pulado, e quando, contra o `startForeground` do serviço."""
+    if bcast is None:
+        return None
+    b = next((x for x in bcast if x["acao"] == "BOOT_COMPLETED" and (x["receptor"] or "").endswith("BootReceiver")), None)
+    if b is None:
+        return {"estado": "AUSENTE"}
+    d = dict(b)
+    if fg and b.get("terminou_em"):
+        d["terminou_ate_fgs_s"] = atraso(b["terminou_em"], fg["t"])
+    return d
+
+
 def tabela(resumos: list[dict[str, Any]]) -> str:
     """Uma linha por boot, para comparar os pares do experimento (os x os+stopped) de relance."""
-    cab = ("ensaio", "codigo", "ordem_rede", "fgs_s", "fim", "pid", "ao_ate_fgs_s", "troca_padrao", "stopped")
+    cab = ("ensaio", "codigo", "ordem_rede", "fgs_s", "fim", "pid", "ao_ate_fgs_s", "troca_padrao", "stopped_1o_adb", "boot_receiver")
     linhas = [" | ".join(cab)]
     for r in resumos:
         a = r["assinatura"]
-        stp = (r.get("pacote") or {}).get("stopped")
+        stp = ((r.get("pacote_no_boot") or {}).get("primeiro_adb") or {}).get("stopped")
+        br = (r.get("boot_receiver") or {}).get("estado", "-")
         linhas.append(" | ".join(str(x) for x in (r["ensaio"], a["codigo"], ">".join(r["rede"]["ordem"]) or "-", a.get("fgs_duracao_s", "-"),
                                                    a.get("motivo_fim", "-"), ",".join(r["processo"]["pids"]) or "-",
-                                                   r["servico"]["always_on_ate_fgs_s"], len(r["troca_padrao_durante_o_inicio"]), "-" if stp is None else stp)))
+                                                   r["servico"]["always_on_ate_fgs_s"], len(r["troca_padrao_durante_o_inicio"]), "-" if stp is None else stp, br)))
     return "\n".join(linhas)

@@ -128,6 +128,36 @@ PACOTE_TXT = ("    versionCode=739 minSdk=32 targetSdk=37\n    lastUpdateTime=20
               "      firstInstallTime=2026-09-30 19:36:47\n    User 0:\n")
 
 
+BROADCASTS_E2 = """\
+      BroadcastRecord{49bd38a android.intent.action.BOOT_COMPLETED/u0} to user 0
+      enqueueClockTime=2026-10-01 19:29:13.355 dispatchClockTime=1969-12-31 21:00:00.000
+      DELIVERED scheduled +5s891ms terminal +2s830ms (7) #8: (manifest)
+          name=io.nekohasekai.sfa.bg.BootReceiver
+          packageName=io.nekohasekai.sfa
+        reason: remote app
+      DELIVERED scheduled +11s890ms terminal +4ms (10) #91: (manifest)
+          name=androidx.work.impl.background.systemalarm.RescheduleReceiver
+          packageName=io.nekohasekai.sfa
+        reason: remote app
+      DELIVERED scheduled +9s25ms terminal +175ms (9) #9: (manifest)
+          name=com.android.dialer.app.calllog.CallLogReceiver
+          packageName=com.google.android.dialer
+        reason: remote app
+      BroadcastRecord{a57f98e android.intent.action.TIME_TICK/u-1} to user -1
+      enqueueClockTime=2026-10-01 19:31:00.000 dispatchClockTime=2026-10-01 19:31:00.001
+      SKIPPED terminal +23m46s665ms (-1) #3: (manifest)
+          name=io.nekohasekai.sfa.bg.BootReceiver
+          packageName=io.nekohasekai.sfa
+        reason: skipped por política
+      BroadcastRecord{bb1 android.intent.action.MY_PACKAGE_REPLACED/u0} to user 0
+      enqueueClockTime=2026-10-01 19:40:00.000 dispatchClockTime=2026-10-01 19:40:00.001
+      SKIPPED terminal +23m46s665ms (-1) #0: (manifest)
+          name=io.nekohasekai.sfa.bg.BootReceiver
+          packageName=io.nekohasekai.sfa
+        reason: Background execution not allowed
+"""
+
+
 def _amostras(*pares):
     return [{"t": f"2026-10-01T22:29:{s:02d}Z", "u": float(s), "pid": pid, "tun": tun, "wlan0": w, "eth0": e, "boot": b}
             for s, pid, tun, w, e, b in pares]
@@ -203,6 +233,20 @@ class ObservacaoBoot(unittest.TestCase):
                          [("SYSTEM_BOOT", None), ("data_app_crash", "io.nekohasekai.sfa"), ("system_app_anr", "com.android.systemui")])
         self.assertEqual([e["tag"] for e in obs.dropbox_do_app(ent)], ["SYSTEM_BOOT", "data_app_crash"], "o ANR do systemui não é do app")
 
+    def test_broadcasts_a_segunda_chance_entregue_ou_pulada(self) -> None:
+        b = obs.parse_broadcasts(BROADCASTS_E2)
+        boot = [x for x in b if x["acao"] == "BOOT_COMPLETED"]
+        self.assertEqual([x["receptor"].rsplit(".", 1)[-1] for x in boot], ["BootReceiver", "RescheduleReceiver"])
+        self.assertEqual(boot[0]["estado"], "DELIVERED")
+        self.assertEqual((boot[0]["agendado_s"], boot[0]["terminal_s"]), (5.891, 2.83))
+        self.assertEqual((boot[0]["entregue_em"], boot[0]["terminou_em"]), ("10-01 19:29:19.246", "10-01 19:29:22.076"))
+        self.assertEqual(boot[1]["entregue_em"], "10-01 19:29:25.245", "o RescheduleReceiver bate com o log do WorkManager (25,247)")
+        self.assertTrue(all(x["pacote"] if "pacote" in x else True for x in b))
+        self.assertEqual([x["acao"] for x in b if x["estado"] == "SKIPPED"], ["MY_PACKAGE_REPLACED"], "o TIME_TICK não é de boot; o dialer não é do pacote")
+        self.assertEqual(obs._duracao_s("+2m11s863ms"), 131.863)
+        self.assertEqual(obs._duracao_s("+964ms"), 0.964)
+        self.assertEqual(obs.parse_broadcasts(""), [])
+
     def test_amostras_pid_tun_e_interfaces(self) -> None:
         a = obs.parse_amostras(_amostras((3, "", "0", "0", "0", ""), (5, "", "0", "0", "1", ""), (10, "1879", "0", "0", "1", "1"),
                                          (12, "1879", "0", "1", "1", "1"), (15, "1879 2000", "1", "1", "1", "1")))
@@ -259,6 +303,10 @@ class ObservacaoBoot(unittest.TestCase):
             (run / "boot-os+stopped.main-system.txt").write_text(MAIN_E2, encoding="utf-8")
             (run / "boot-os+stopped.exit-info.txt").write_text(EXIT_INFO, encoding="utf-8")
             (run / "boot-os+stopped.pacote.txt").write_text(PACOTE_TXT, encoding="utf-8")
+            (run / "boot-os+stopped.broadcasts.txt").write_text(BROADCASTS_E2, encoding="utf-8")
+            (run / "boot-os+stopped.saida.json").write_text(json.dumps({"boot": {"pacote": {
+                "primeiro_adb": {"t": "x", "u": 18.1, "stopped": False, "not_launched": False, "enabled": 0},
+                "boot_completed": {"t": "y", "u": 39.0, "stopped": False}}}}), encoding="utf-8")
             (run / "boot-os+stopped.relogio.json").write_text(json.dumps({"ano": 2026, "gmtoff_s": -10800, "offset_s": -0.066, "incerteza_s": 0.05}), encoding="utf-8")
             (run / "boot-os+stopped.amostras.jsonl").write_text("\n".join(json.dumps(x) for x in _amostras((10, "1879", "0", "0", "1", "1"))), encoding="utf-8")
             r = obs.resumir(run, "os+stopped")
@@ -268,12 +316,22 @@ class ObservacaoBoot(unittest.TestCase):
             self.assertEqual(r["servico"]["always_on_ate_fgs_s"], 7.784)
             self.assertEqual(r["servico"]["proc_ate_fgs_s"], 7.26)
             self.assertEqual(r["momentos"]["fgs_stop"]["central_utc"], "2026-10-01T22:29:23.991Z", "convidado -0,066 s do central")
-            self.assertTrue(r["pacote"]["stopped"])
+            self.assertTrue(r["pacote_fim"]["stopped"], "o dumpsys completo é do FIM do boot")
+            self.assertFalse(r["pacote_no_boot"]["primeiro_adb"]["stopped"], "o que discrimina H1 é o `stopped` no 1º adb, lido DURANTE o boot")
+            self.assertEqual(r["boot_receiver"]["estado"], "DELIVERED")
+            self.assertEqual(r["boot_receiver"]["terminou_em"], "10-01 19:29:22.076")
+            self.assertEqual(r["boot_receiver"]["terminou_ate_fgs_s"], 0.048, "o BootReceiver terminou 48 ms antes do startForeground")
             self.assertEqual(r["exit_info"]["n"], 3)
             self.assertEqual(r["lacunas"], [], r["lacunas"])
+            tab = obs.tabela([r])
+            self.assertIn("SILENT_STOP", tab)
+            self.assertTrue(tab.rstrip().endswith("False | DELIVERED"), "a tabela mostra stopped_1o_adb e o BootReceiver")
             (run / "boot-os+stopped.pacote.txt").unlink()
             self.assertEqual(obs.resumir(run, "os+stopped")["lacunas"], ["pacote.txt"])
-            self.assertIn("SILENT_STOP", obs.tabela([r]))
+            (run / "boot-os+stopped.saida.json").unlink()
+            self.assertEqual(obs.resumir(run, "os+stopped")["lacunas"], ["pacote.txt", "pacote_no_boot"])
+            em_memoria = obs.resumir(run, "os+stopped", {"boot": {"pacote": {"primeiro_adb": {"stopped": True}}}})
+            self.assertTrue(em_memoria["pacote_no_boot"]["primeiro_adb"]["stopped"], "`rodar` passa o dict em memória: o json só sai depois")
 
     def test_resumo_offline_nao_toca_aparelho_nem_central(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -299,6 +357,14 @@ class ObservacaoBoot(unittest.TestCase):
                 self.assertNotIn(p, limpo, f"{p!r} em {cmd[:70]!r}")
             self.assertNotIn(">", limpo, cmd[:70])
         self.assertTrue(all("dumpsys" in c or "logcat" in c or c.startswith(("echo", "for t in")) for c in todos))
+
+    def test_o_historico_de_broadcasts_sai_sem_os_extras(self) -> None:
+        """Os extras dos broadcasts carregam valores de outros apps: o filtro mantém só cabeçalho, estados, nomes e razões."""
+        cmd = mod.PEDIDOS_CAPTURA["broadcasts"]
+        self.assertIn("dumpsys activity broadcasts history", cmd)
+        self.assertNotIn("extras", cmd)
+        self.assertIn("grep -E", cmd)
+        self.assertIn("head -c", cmd, "com teto de tamanho")
 
     def test_a_captura_nao_le_o_armazenamento_privado_do_cliente(self) -> None:
         for cmd in [*mod.PEDIDOS_CAPTURA.values(), mod.CMD_AMOSTRA, mod.CMD_PACOTE]:

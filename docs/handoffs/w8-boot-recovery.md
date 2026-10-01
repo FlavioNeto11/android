@@ -58,9 +58,9 @@ captura dos buffers `events/main/system/crash/kernel` logo depois, desfazer. Evi
 
 | Ensaio | Variável | Resultado (`real`, 01/10) |
 |---|---|---|
-| **E1 `os`** (22:13Z) | só a 1ª chance, convidado ocioso, SFA parado pela UI antes | **`tun0` aos 73 s de uptime.** T1 às 19:14:08,76 (`startAlwaysOnVpn`); processo "for service" 09,06; main presa até 29,00 (`Skipped 436 frames`; `PrivilegeSettingsClient` falhou às 28,57, só então o `Libbox.setup` pôde rodar); `am_foreground_service_start` 29,56 (**20,5 s** depois do processo); agente VPN 34,7. Sem BootReceiver start (`startedByUser=false`). Rede padrão: **Wi-Fi primeiro**. Carga do convidado 0,5→11,6. |
+| **E1 `os`** (22:13Z) | convidado ocioso, SFA parado pela UI antes (a 2ª chance, o `BootReceiver`, **não foi observada**: sem histórico de broadcasts guardado) | **`tun0` aos 73 s de uptime.** T1 às 19:14:08,76 (`startAlwaysOnVpn`); processo "for service" 09,06; main presa até 29,00 (`Skipped 436 frames`; `PrivilegeSettingsClient` falhou às 28,57, só então o `Libbox.setup` pôde rodar); `am_foreground_service_start` 29,56 (**20,5 s** depois do processo); agente VPN 34,7. Sem BootReceiver start (`startedByUser=false`). Rede padrão: **Wi-Fi primeiro**. Carga do convidado 0,5→11,6. |
 | **E3 `os-starved`** (22:20Z) | + 8 laços de CPU no convidado desde o 1º adb (carga até 36) | **sem `tun0` em 300 s.** T1 19:21:11,6; **`am_anr` 19:21:45,5 "executing service …VPNService"** (32 s depois do `bound`), morto "bg anr" 46,9. O `BootReceiver` só rodou às 19:21:52 (BOOT_COMPLETED atrasado) e o processo novo **crashou** às 19:21:57: `go.Universe$proxyerror: open /storage/emulated/0/Android/data/io.nekohasekai.sfa/files/CrashReport-Application.log: transport endpoint is not connected` em `Libbox.setup` (FUSE do storage fora: o `MediaProvider` tinha tomado ANR e sido morto 19:21:52). |
-| **E2 `os+stopped`** (22:28Z) | VPN ligada pela UI, `am force-stop` (pacote `stopped`), restart: a precondição do boot 3 | **sem `tun0` em 300 s, sem ANR, sem crash, silencioso.** T1 19:29:14,34 (só a 1ª chance: BootReceiver não entregue ao pacote `stopped`); `am_foreground_service_start` 22,12; **`am_foreground_service_stop … STOP_FOREGROUND` 23,93** (1,8 s depois; `notification_canceled reason=8` = o próprio app fechou a notificação); nenhum `registerNetworkAgent … VPN`. Convidado com carga normal (pico 9,6). Rede padrão: **celular primeiro** (`MOBILE[HSPA]` 12,9; Wi-Fi só 17,7). |
+| **E2 `os+stopped`** (22:28Z) | VPN ligada pela UI, `am force-stop`, restart 3,3 s depois (o `stopped` **provavelmente não persistiu**: §10), a tentativa de reproduzir a precondição do boot 3 | **sem `tun0` em 300 s, sem ANR, sem crash, silencioso.** T1 19:29:14,34; **o `BootReceiver` FOI entregue** (histórico de broadcasts: 19:29:19,25 → 22,08; a leitura anterior, "só a 1ª chance", estava errada: §10); `am_foreground_service_start` 22,12; **`am_foreground_service_stop … STOP_FOREGROUND` 23,93** (1,8 s depois; `notification_canceled reason=8` = o próprio app fechou a notificação); nenhum `registerNetworkAgent … VPN`. Convidado com carga normal (pico 9,6). Rede padrão: **celular primeiro** (`MOBILE[HSPA]` 12,9; Wi-Fi só 17,7). |
 
 Leituras:
 
@@ -107,7 +107,7 @@ logs (normalizados pelas horas do convidado), não toca TLS (o túnel sem peer n
 
 ## 9. Artefatos
 
-`scripts/diag-w8-boot-obs.py` (parsers puros; o `resumir` offline) e `scripts/diag-w8-boot.py` (+ `scripts/tests/test_diag_w8_boot.py`, 23 testes): ensaios `os`, `os+receiver`, `os-starved`, `os+stopped`; seguro por padrão, só o android-09, um marcador por ensaio, vocabulário de escrita fechado.
+`scripts/diag-w8-boot-obs.py` (parsers puros; o `resumir` offline) e `scripts/diag-w8-boot.py` (+ `scripts/tests/test_diag_w8_boot.py`, 25 testes): ensaios `os`, `os+receiver`, `os-starved`, `os+stopped`; seguro por padrão, só o android-09, um marcador por ensaio, vocabulário de escrita fechado.
 Evidência bruta (fora do Git): `data/diag-w8-boot/run1-os`, `run2-os-stopped`, `run3-os-starved`, `20261001-boot21Z-dump`, `usagestats.txt`, `dropbox-all.txt`. O ensaio `os+receiver` existe no script e **não** foi executado (limite de 3).
 
 ## 10. A assinatura E2, formalizada (rodada offline de 01/10; zero boot novo)
@@ -122,6 +122,7 @@ Reproduzida, em condições controladas, no E2 (`REPRODUCED`, n=1 neste boot; B4
 | carga | normal (loadavg ≤ 9,6, pico no início do boot; sem laço de CPU) |
 | pré-estado | VPN ligada pela UI, `am force-stop` (`stopped=true` lido logo depois), restart |
 | T1 (sistema) | `startAlwaysOnVpn` 19:29:14,340 |
+| **2ª chance** | **`BootReceiver` `DELIVERED`** (`dumpsys activity broadcasts history`, `BOOT_COMPLETED` enfileirado 19:29:13,355): entregue 19:29:19,246 (+5,891 s), terminou **22,076** (+2,830 s), **48 ms antes** do `am_foreground_service_start` |
 | processo | `am_proc_start … for service … VPNService` 14,864 (PID **1879**) |
 | FGS | `am_foreground_service_start` 22,124 (**+7,26 s** do processo) |
 | fim | `notification_canceled reason=8` 23,923; `am_foreground_service_stop … STOP_FOREGROUND` 23,925 (**1,801 s** em primeiro plano) |
@@ -147,7 +148,9 @@ Fatos novos tirados dos mesmos logs pelos parsers (`resumir`), E1 × E2 × E3:
 
 - O always-on do sistema **não espera rede** (nos dois boots o T1 veio antes da rede padrão; o código AOSP também não verifica rede, §13).
 - **A única diferença de rede que coincide com a falha** é uma troca de transporte da rede padrão durante a partida do serviço. n=1: é correlação, **não** causa.
-- **E1 × E2 não é um contraste limpo.** Mudam juntos: o pré-estado (E1 sem Start prévio e sem `force-stop`; E2 com Start + `force-stop`), o `stopped`, o `startedByUser` persistido, o processo anterior morto de forma abrupta, a ordem das redes e o `BootReceiver` (não entregue em E2: `BOOT_COMPLETED` foi postado 19:29:13,334, antes do T1, com o pacote ainda `stopped`).
+- **E1 × E2 não é um contraste limpo.** Mudam juntos: o pré-estado (E1 sem Start prévio e sem `force-stop`; E2 com Start + `force-stop`), o `stopped`, o `startedByUser` persistido, o processo anterior morto de forma abrupta, a ordem das redes e o `BootReceiver` (**entregue** no E2; no E1 e no E3 não há histórico guardado para dizer).
+
+**Correção ao que eu tinha escrito (2ª rodada, `PROVED`):** eu concluí que, com o pacote `stopped`, o `BootReceiver` não era entregue e o E2 teria só a 1ª chance. O histórico de broadcasts mostra o contrário: **foi entregue e rodou** (`BOOT_COMPLETED` → `BootReceiver` → `Settings.startedByUser` era `true` → `BoxService.start()` → `startForegroundService(serviceClass())`, `INFERRED` do código do SFA), a 2ª partida do mesmo `VPNService` enquanto o 1º `onStartCommand` ainda corria. Dois fatos amarram o resto: (1) o `BootReceiver` só pôde terminar quando a main liberou (`Skipped 331 frames` às 22,047), e o `startForeground` veio 48 ms depois; (2) se ele foi entregue, o pacote **não estava `stopped`** quando o `BOOT_COMPLETED` foi resolvido (§13, F3). A explicação mais simples (`INFERRED`, não observada): o `stopped` **nunca chegou ao disco**: o PMS grava o `package-restrictions.xml` **10 s depois** (`WRITE_SETTINGS_DELAY`, fonte lida) e o restart foi pedido **3,3 s** após o `force-stop` (22:28:33,0 → 22:28:36,3, ver `acionador-boot-os+stopped.jsonl`). **O E2 foi um `force-stop` efêmero, não um boot de pacote `stopped`.** O coletor novo lê o `stopped` no 1º adb e o confirma ou refuta.
 
 ## 11. Observáveis novos (`scripts/diag-w8-boot.py` + `scripts/diag-w8-boot-obs.py`; só leitura, sem root, sem o armazenamento privado do SFA)
 
@@ -155,7 +158,8 @@ Cada pergunta A–E da rodada, a fonte e o que existe no android-09 (Android 14,
 
 | | Pergunta | Fonte (chave da captura) | Disponível? |
 |---|---|---|---|
-| A | pacote `stopped`? | `dumpsys package` linha `User 0: … stopped= notLaunched= enabled=` (`pacote`; e **3 leituras no boot**: 1º adb, `boot_completed`, fim) | **sim**. `package-restrictions.xml` é ilegível ao `shell` (`Permission denied`) |
+| A | pacote `stopped`? | `dumpsys package` linha `User 0: … stopped= notLaunched= enabled=` (`pacote`; e **3 leituras no boot**: 1º adb, `boot_completed`, fim; o 1º adb vai para a coluna `stopped_1o_adb` do resumo) | **sim**. `package-restrictions.xml` é ilegível ao `shell` (`Permission denied`): só o estado em memória, lido **depois** do reboot, diz se o flag sobreviveu |
+| 2ª chance | o `BootReceiver` foi **entregue**? quando? | `dumpsys activity broadcasts history` filtrado no aparelho (`broadcasts`: cabeçalho, `enqueueClockTime`, `DELIVERED`/`SKIPPED` com `scheduled`/`terminal`, nomes, razões; **sem os extras**) → `boot_receiver` no resumo | **sim**: com o processo **vivo** a entrega não deixa `am_proc_start`, então a ausência dele **não prova** nada; só este histórico prova |
 | B | ordem e hora das redes, rede padrão, Wi-Fi/celular | `main`: `registerNetworkAgent`, `Switching to new default network` (ms); `wlan0`/`eth0` com IPv4 a cada ~2 s no host (`amostras.jsonl`); `dumpsys connectivity` (`rede`, com `created=` em UTC) | **sim** |
 | C | ciclo exato do `VPNService` | `events`: `am_proc_start`, `am_foreground_service_start/stop` (com motivo), `notification_canceled`; `usagestats` `FOREGROUND_SERVICE_START/STOP` por classe (sobrevive ao reboot, atraso ~9 s); `dumpsys activity services` | **sim**, até o limite do que o sistema vê |
 | D | processo morto pelo framework | `events`: `am_kill`, `am_proc_died`, `am_anr`, `am_crash`; `exit-info`; `dropbox` (`data_app_anr/crash`, `SYSTEM_BOOT`) | **sim** (§12) |
@@ -182,13 +186,13 @@ Saída por boot: `boot-<ensaio>.resumo.json` (assinatura, ordem de rede, ciclo d
 
 | # | Fato | Fonte | Estado |
 |---|---|---|---|
-| F1 | `force-stop` marca o pacote `stopped` (`setPackageStoppedState(pkg, true)`) e agenda a gravação em `package-restrictions.xml` (`scheduleWritePackageRestrictions`): **persiste no disco**, sobrevive ao reboot se já gravado | `ActivityManagerService.forceStopPackage` (l. 3842); `PackageManagerService.setPackageStoppedState` (l. 4608) | VERIFICADO NO FONTE; OBSERVADO que `stopped=true` logo após o `force-stop` (E2). **Não observado**: o `stopped` no 1º adb do boot (o coletor novo lê) |
+| F1 | `force-stop` marca o pacote `stopped` (`setPackageStoppedState(pkg, true)`) e agenda a gravação em `package-restrictions.xml` (`scheduleWritePackageRestrictions`, **atraso de 10 s**: `WRITE_SETTINGS_DELAY`): **persiste no disco**, mas só sobrevive ao reboot se a gravação ocorreu antes dele | `ActivityManagerService.forceStopPackage` (l. 3842); `PackageManagerService.setPackageStoppedState` (l. 4608) | VERIFICADO NO FONTE; OBSERVADO que `stopped=true` logo após o `force-stop` (E2). **Não observado**: o `stopped` no 1º adb do boot (o coletor novo lê) |
 | F2 | **O que limpa o `stopped`**: subir um serviço do pacote (`ActiveServices.bringUpServiceLocked`, comentário "Service is now being launched, its package can't be stopped", **antes** de iniciar o processo), iniciar processo persistente, backup agent, **entregar broadcast** ao pacote, lançar provider | `ActiveServices` l. 5120; `AMS` l. 6955 e 13538; `BroadcastQueueImpl` l. 1445; `BroadcastQueueModernImpl` l. 1931; `ContentProviderHelper` l. 495 | VERIFICADO NO FONTE. OBSERVADO: `stopped=false` quando o `desfazer` leu |
-| F3 | Broadcast **não** vai a pacote `stopped`: `broadcastIntentLocked` faz `intent.addFlags(FLAG_EXCLUDE_STOPPED_PACKAGES)` por padrão; o `BOOT_COMPLETED` não usa `FLAG_INCLUDE_STOPPED_PACKAGES` | `AMS` l. 14437; `UserController` (l. 824–845) | VERIFICADO NO FONTE. OBSERVADO no E2: `BOOT_COMPLETED` postado 19:29:13,334, **antes** do T1; sem nenhuma atividade do `BootReceiver` |
+| F3 | Broadcast **não** vai a pacote `stopped`: `broadcastIntentLocked` faz `intent.addFlags(FLAG_EXCLUDE_STOPPED_PACKAGES)` por padrão; o `BOOT_COMPLETED` não usa `FLAG_INCLUDE_STOPPED_PACKAGES` | `AMS` l. 14437; `UserController` (l. 824–845) | VERIFICADO NO FONTE. **OBSERVADO no E2 o oposto do esperado para um pacote `stopped`: o `BootReceiver` foi entregue** (§10). Logo o pacote não estava `stopped` ao ser resolvido o `BOOT_COMPLETED` (flag não persistido, `INFERRED`: restart 3,3 s após o `force-stop`, gravação em 10 s) |
 | F4 | O always-on é iniciado **uma vez por boot**: `VpnManagerService.onUserUnlocked` → `Vpn.startAlwaysOnVpn`, que checa `isAlwaysOnPackageSupported` e `getNetworkInfo().isConnected()` (do próprio VPN), dá a lista branca temporária de 60 s e faz `startService(Intent(VpnConfig.SERVICE_INTERFACE).setPackage(pkg))`. **Sem checagem de pacote `stopped`, sem checagem de rede padrão** (um `startService` explícito a pacote `stopped` é permitido: F2). Nova tentativa só por `ACTION_PACKAGE_REPLACED` e mudança da configuração; **não encontrei** retry por mudança de rede nem por saída do serviço | `Vpn.java` l. 1245–1290; `VpnManagerService.java` l. 576–590, 720–775, 925–935 | VERIFICADO NO FONTE (ausência de retry = leitura dirigida, não prova exaustiva) |
 | F5 | **`am stop-app`** (API 34) mata processos e serviços (`REASON_USER_REQUESTED`/`SUBREASON_STOP_APP`) **sem** marcar o pacote `stopped` (`stopAppForUserInternal` não chama `setPackageStoppedState`; as únicas chamadas com `true` no AMS são o `forceStopPackage`) e **sem** cancelar alarmes/jobs (texto do `am help` do próprio aparelho) | `AMS.stopAppForUserInternal` (l. 4258–4297); `am help` no android-09 | VERIFICADO NO FONTE + OBSERVADO (help). **O efeito no aparelho não foi testado** (seria escrita) |
 
-O que isto muda na hipótese H1 (§14): o **flag `stopped` em si não chega ao caminho do serviço**, porque o sistema o limpa antes de existir processo (F2). Em E2 ele só pode ter tido um efeito: excluir o `BootReceiver` (F3, a "segunda chance"). O que o `force-stop` ainda deixa de diferente **para o app** é o resto do pacote de efeitos: a **morte abrupta** do processo anterior (sem fechar libbox/`CommandServer`/Room), alarmes/jobs/notificações cancelados e o `startedByUser` persistido em `true`. Nenhum deles foi isolado.
+O que isto muda na hipótese H1 (§14): o **flag `stopped` em si não chega ao caminho do serviço**, porque o sistema o limpa antes de existir processo (F2). Em E2 ele **nem chegou a existir no boot** (o `BootReceiver` foi entregue; F1/F3). O que o `force-stop` ainda deixa de diferente **para o app** é o resto do pacote de efeitos: a **morte abrupta** do processo anterior (sem fechar libbox/`CommandServer`/Room), alarmes/jobs/notificações cancelados e o `startedByUser` persistido em `true`. Nenhum deles foi isolado.
 
 **Hipóteses específicas do android-09 (`HIPÓTESE`, não provadas):** que a morte abrupta deixe artefato do libbox (socket do `CommandServer`, `cache.db`) que a partida seguinte tropeça; que a troca celular → Wi-Fi durante `DefaultNetworkMonitor.start()`/`openTun` faça o núcleo fechar o serviço. Ambas explicariam um `stopAndAlert` silencioso; nenhuma tem log.
 
@@ -196,10 +200,11 @@ O que isto muda na hipótese H1 (§14): o **flag `stopped` em si não chega ao c
 
 | | Hipótese | Predição | Estado agora |
 |---|---|---|---|
-| **H1** | o **estado pós-`force-stop`** é causal | falha em todo boot com o pré-estado `force-stop`, em qualquer ordem de rede; nenhuma falha no controle limpo | **ABERTA, reformulada**: o flag `stopped` em si é **implausível** como causa no caminho do serviço (F2: limpo antes do processo); resta a **morte abrupta/alarmes/`startedByUser`** (H1b). Evidência: 1 boot (E2), confundido com a ordem de rede |
+| **H1** | o **estado pós-`force-stop`** é causal | falha em todo boot com o pré-estado `force-stop`, em qualquer ordem de rede; nenhuma falha no controle limpo | **ABERTA, reformulada**: o flag `stopped` em si **não foi testado** (no E2 provavelmente nem persistiu, F1) e é **implausível** no caminho do serviço (F2: limpo antes do processo). Resta o **`force-stop` efêmero**: morte abrupta + alarmes/jobs cancelados (H1b). Evidência: 1 boot (E2), confundido com a ordem de rede e com a 2ª partida |
+| **H4** | a **2ª partida** (`BootReceiver` → `BoxService.start()` com `startedByUser=true`) sobre a 1ª ainda em curso é causal | falha em todo boot com `startedByUser=true` (R e K), não no controle limpo (C) | **ABERTA, nova, `INFERRED`**: `BootReceiver` entregue e terminando 48 ms antes do `startForeground` no E2; o `onStartCommand` #2 volta cedo (`status != Stopped`), então o mecanismo não é óbvio; só o R × C separa |
 | **H2** | a **ordem das redes** (e a troca celular → Wi-Fi na partida) é causal | falha só quando a rede padrão troca de transporte durante a partida, com ou sem `force-stop` | **ABERTA, plausível, n=1**: único boot com troca na janela falhou; E1/E3 sem troca não. Mecanismo é `INFERRED`, sem log |
 | **H3** | **ambos só correlacionados**; a causa é o ciclo interno do app (corrida de init, `stopAndAlert` por erro do `openTun`/`startOrReload`) | taxa de falha parecida em todas as células (`force-stop` × controle, celular × Wi-Fi) | **ABERTA, sem teste possível hoje**: sem instrumentar o app não se vê o motivo do `stopForeground` |
-| H1∧H2 | só falha com `force-stop` **e** troca de rede (interação) | falha só na célula (`force-stop`, troca) | **ABERTA**; é o que o E2 mostra, mas o desenho abaixo a distingue |
+| H1∧H2 | só falha com `force-stop` **e** troca de rede (interação) | falha só na célula (K, troca) | **ABERTA**; é o que o E2 mostra, mas o desenho da §15 a distingue |
 
 `BOOT_ROOT_CAUSE` continua **NARROWED**: sabemos **que** o app para o próprio serviço (não o framework), com `serviceMode=VPN`, sem carga, e **o que coincide** (troca de rede, `force-stop`); não sabemos **por quê**. Nenhuma correção cabe: nenhuma hipótese passa do n=1, e a mitigação por sleep/retry/convergência seria marcar sintoma (proibido por regra: sem sleep arbitrário, sem retry infinito).
 
@@ -207,47 +212,50 @@ O que isto muda na hipótese H1 (§14): o **flag `stopped` em si não chega ao c
 
 **Desfecho Y** (automático, `classificar`): `SILENT_STOP` (falha) × `TUN_OK`. Qualquer outro código (`ANR_OU_KILL`, `SERVICO_SEM_FOREGROUND`, `FGS_SEM_TUN`, boot não visto, gate falho) é **outro desfecho**: registrado, não conta como sucesso nem como falha da hipótese, e **não se repete** na mesma rodada.
 
-**Fator controlado F** (os dois braços fazem os MESMOS passos de preparo, só o passo que encerra o cliente muda):
+**Os braços formam uma escada em que cada par vizinho difere em UMA coisa.** Os dois primeiros **já existem** no ator (nenhuma mudança de código para o estágio 1):
 
-| Braço | Preparo | Existe no script? |
-|---|---|---|
-| **S** `os+stopped` | always-on, UI Start (tun no ar), **`am force-stop`**, restart | **sim** (é o E2) |
-| **C** `os+uistop` (controle limpo) | always-on, UI Start (tun no ar), **UI Stop** (`startedByUser=false`), restart | **não**: acrescentar o ensaio (≈10 linhas, mesmas funções) **depois da aprovação**. O `os` do E1 **não serve**: não fez o Start prévio |
-
-**Covariável observada O** (**não controlável** sem mexer na rede do emulador, que é configuração declarada, ADR-056; **fora desta matriz**): `ordem` das redes e `troca_padrao_durante_o_inicio`, lidas automaticamente de cada boot (`resumir`). Em 3 boots a ordem variou (Wi-Fi, celular, Wi-Fi): há variação natural suficiente para amostrar as duas.
-
-**Células que decidem** (H1 × H2): (S, **sem** troca de rede) e (C, **com** troca):
-
-| Resultado | H1 (`force-stop`) | H2 (rede) | H3 |
+| Braço | Preparo | Difere do anterior em | Existe? |
 |---|---|---|---|
-| S falha **sem** troca de rede | sobrevive | **falsifica H2 como causa necessária** | sobrevive |
-| S funciona (`TUN_OK`), qualquer O | **falsifica H1 como suficiente** | (se houve troca) também falsifica H2 como suficiente | — |
-| C falha, qualquer O | **falsifica H1 como necessária** | (se com troca, sobrevive) | sobrevive |
-| C funciona **com** troca de rede | — | **falsifica H2 como suficiente** | — |
-| S falha e C funciona, **ambos com a mesma O** | **apoia H1** | indiferente | enfraquece |
-| falha só em (S, com troca) | — | — | interação H1∧H2 |
+| **C** `os+uistop` | always-on, UI Start (tun no ar), **UI Stop**, restart | — (`startedByUser=false`: o `BootReceiver` não faz 2ª partida) | **não** (≈10 linhas; só no estágio 2) |
+| **R** `os+receiver` | always-on, UI Start (tun no ar), HOME, restart | `startedByUser=true`: o `BootReceiver` é **entregue** e faz a **2ª partida** (§10) | **sim** |
+| **K** `os+stopped` (= E2) | R + **`am force-stop` 3 s antes do restart** | o `force-stop`: processo morto abruptamente, alarmes/jobs cancelados; o `stopped` **provavelmente não persiste** (§10), por isso **não** é "pacote `stopped` no boot" | **sim** |
 
-**Desenho:** blocos de 2 boots, um S e um C, **ordem sorteada antes** (semente registrada no resumo, sem espiar), baseline conferido e devolvido entre boots (`desfazer`), um marcador por boot, **nada** além do restart muda entre boots. Estágio 2 **só se H1 sobreviver**: braço **S′ `os+killed`** (`am stop-app`: mata o processo sem marcar `stopped` e sem cancelar alarmes/jobs, F5) separa o flag/alarmes (S × S′) da morte abrupta e do `startedByUser` (S′ × C); exige um **P0 sem boot** para confirmar no aparelho que `stop-app` deixa `stopped=false` (uma escrita leve, com autorização).
+**Estágio 1 (K × R)** testa o `force-stop` com a 2ª partida presente nos dois. **Estágio 2 (R × C)** só roda se R falhar (ES1): testa a 2ª partida sozinha. Um estágio 3 opcional **S** (K + espera ≥ 15 s antes do restart, para o `stopped` ser gravado: o 10 s do `WRITE_SETTINGS_DELAY` do PMS) separaria o flag do resto do `force-stop`; só se H1 sobreviver.
 
-**Número de boots reais:**
+**Covariáveis observadas** (automáticas, `resumir`; **não controláveis** sem mexer na rede do emulador, que é configuração declarada, ADR-056, **fora desta matriz**): ordem das redes e `troca_padrao_durante_o_inicio`; `stopped` no **1º adb** (se o flag sobreviveu ao reboot); `BootReceiver` entregue ou pulado e quando; hora do `startForeground`. Em 3 boots a ordem de rede variou (Wi-Fi, celular, Wi-Fi): há variação natural para amostrar as duas.
+
+**Predições por célula:**
+
+| Hipótese | K | R | C |
+|---|---|---|---|
+| H1 `force-stop` causal | **falha** | ok | ok |
+| H2 troca de rede causal | falha **só com troca** | idem | idem |
+| H3 ciclo interno (nenhuma das duas) | independe | independe | independe |
+| H4 2ª partida do `BootReceiver` (`startedByUser=true`) | falha | **falha** | ok |
+| H1∧H2 interação | só (K, com troca) | ok | ok |
+
+**Desenho:** estágio 1 em **blocos de 2 boots (um K, um R), ordem sorteada antes** (semente gravada, sem espiar), baseline conferido e devolvido entre boots (`desfazer`), um marcador por boot, nada além do restart muda entre boots.
+
+**Boots reais:**
 
 | | Boots | Por quê |
 |---|---|---|
-| **Mínimo útil** | **4** (2 blocos) | cada boot que cai numa célula decisiva falsifica uma hipótese **sozinho** (predições determinísticas); com 2 blocos há boas chances de uma célula decisiva e de um par com a mesma O |
-| **Esperado** | 6 (3 blocos) | 3 × 3: separação perfeita dá Fisher exato unilateral p = 0,05 |
-| **Teto** | **8** (4 blocos) | 4 × 4 com separação perfeita: p = 1/70 ≈ 0,014. **Não 20**: com efeito intermediário o desenho não resolve, e o resultado honesto passa a ser `INCONCLUSIVE`, não "mais boots" |
+| **Mínimo útil** | **4** (2 blocos K×R) | as predições são determinísticas: **um** boot numa célula decisiva falsifica uma hipótese sozinho; 2 blocos dão chance razoável de uma célula decisiva e de pares com a mesma troca de rede |
+| **Esperado** | 6 | 3 × 3 com separação perfeita: Fisher exato unilateral p = 1/20 = 0,05 |
+| **Teto global** | **8** (estágios 1 e 2 somados) | 4 × 4 com separação perfeita: p = 1/70 ≈ 0,014. **Não 20**: com efeito intermediário o desenho não resolve e o desfecho honesto é `INCONCLUSIVE`, não "mais boots" |
 
-**Regra de parada antecipada** (avaliada após cada boot; vale a primeira que disparar):
+**Regra de parada antecipada** (após cada boot; vale a primeira que disparar):
 
-1. **ES1**: um boot C termina em `SILENT_STOP` → H1 não é necessária: **parar** os blocos S × C (o `force-stop` deixa de ser a variável) e usar o que sobrar do teto só se uma célula de H2 estiver aberta.
-2. **ES2**: um boot S termina em `TUN_OK` → H1 não é suficiente; segue **só** para a pergunta H2 (interação ou H3).
-3. **ES3**: falha **sem** troca de rede na janela (qualquer braço) → H2 não é necessária; `TUN_OK` **com** troca → H2 não é suficiente. Se H1 **e** H2 já estão falsificadas como causa única: **parar e declarar H3/interação**, sem mais boots.
-4. **ES4 (todos iguais)**: após os 2 primeiros blocos (4 boots), se **todos** falharam ou **todos** funcionaram, nenhuma variável explica: **parar** (`H3` ou "E2 não reproduz").
-5. **ES5 (anulação)**: gate falho, adb que não volta em 420 s, `BOOT_NAO_VISTO`: o boot é **anulado**, a rodada **para**, sem retry (regra do dono).
-6. **Teto**: 8 boots reais, sem exceção; o que sobrar fica `INCONCLUSIVE`.
+1. **ES1**: um boot **R** termina em `SILENT_STOP` → o `force-stop` **não é necessário** (H1 morta como causa necessária): **encerrar K × R** e, se sobrar teto, passar ao estágio 2 (R × C) para H4.
+2. **ES2**: um boot **K** termina em `TUN_OK` → o `force-stop` **não é suficiente** (o E2 não reproduz nas mesmas condições): H1 forte morta; encerrar K × R.
+3. **ES3** (rede): falha **sem** troca de transporte na janela → H2 não é necessária; `TUN_OK` **com** troca → H2 não é suficiente.
+4. **ES4 (todos iguais)**: após 4 boots, se **todos** falharam ou **todos** funcionaram, nenhuma variável do desenho explica: **parar** (H3, ou "o E2 não reproduz").
+5. **ES5 (anulação)**: gate falho, adb que não volta em 420 s ou `BOOT_NAO_VISTO` anulam o boot e **param** a rodada, sem retry.
+6. **ES6 (estágio 2)**: R falha e C funciona → apoia H4; R falha e C falha → H4 não é suficiente: **parar** e propor instrumentar o app (decisão do dono).
+7. **Teto**: 8 boots reais, sem exceção; o que sobrar fica `INCONCLUSIVE`.
 
-Custo: ≈ 10 min por boot (≤ 80 min para o teto) + análise offline; só o android-09; sem conta real, sem perfil, sem peer, sem WireGuard, lockdown 0. **Antes de qualquer boot:** (a) acrescentar ao ator `os+uistop` (e `os+killed` para o estágio 2) e o sorteio da ordem, com testes; (b) o dono autorizar o número de boots.
+Custo: ≈ 10 min por boot (≤ 80 min no teto) + análise offline; só o android-09; sem conta real, sem perfil, sem peer, sem WireGuard, lockdown 0. **Antes de qualquer boot:** o dono autorizar o número de boots e o sorteio da ordem (a semente e o registro por bloco ainda não existem no ator); para o estágio 2, acrescentar `os+uistop` com testes.
 
 ## 16. Estado após a rodada offline
 
-`BOOT_ROOT_CAUSE = NARROWED`. Entregue (todos `simulated`/leitura, nenhum boot novo): parsers e resumo automático (`scripts/diag-w8-boot-obs.py`), captura ampliada, modo `resumir` offline, testes (`scripts/tests/test_diag_w8_boot.py`: 23), achados do framework (§13), a matriz (§15). **Não** mexi no PR #17 (só o corpo do PR foi corrigido: o always-on direto não depende do `serviceMode`, mas o `BootReceiver` → `BoxService.start()` → `serviceClass()` usa o `serviceMode` persistido; o E2 prova a falha também com `serviceMode=VPN`), não toquei outros aparelhos, não reiniciei o WireGuard, não implantei.
+`BOOT_ROOT_CAUSE = NARROWED`. Leituras ao vivo no android-09 nesta rodada (`real`, **sem boot e sem escrita de estado**): `dumpsys package/activity/connectivity/usagestats/dropbox/broadcasts`, `logcat -d`, `date`, `getprop`, `settings get`; o `dry.py` rodou a captura completa uma vez fora de um ensaio, e uma primeira tentativa de leitura criou e apagou um arquivo temporário em `/data/local/tmp`. Entregue (todos `simulated`/leitura, nenhum boot novo): parsers e resumo automático (`scripts/diag-w8-boot-obs.py`), captura ampliada, modo `resumir` offline, testes (`scripts/tests/test_diag_w8_boot.py`: 25), achados do framework (§13), a matriz (§15). **Não** mexi no PR #17 (só o corpo do PR foi corrigido: o always-on direto não depende do `serviceMode`, mas o `BootReceiver` → `BoxService.start()` → `serviceClass()` usa o `serviceMode` persistido; o E2 prova a falha também com `serviceMode=VPN`), não toquei outros aparelhos, não reiniciei o WireGuard, não implantei.

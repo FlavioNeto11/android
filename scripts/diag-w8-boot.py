@@ -100,6 +100,10 @@ PEDIDOS_CAPTURA = {
     "dropbox": ("for t in SYSTEM_BOOT data_app_anr data_app_crash system_app_anr system_app_crash; do "
                 "dumpsys dropbox --print $t 2>/dev/null | head -c 40000; done"),
     "rede": "dumpsys connectivity 2>/dev/null | grep -E 'Active default network|NetworkAgentInfo' | cut -c1-360",
+    # A 2ª chance (BootReceiver -> BoxService.start): ENTREGUE ou pulado. Só cabeçalhos, estados, nomes e razões; os extras dos broadcasts
+    # (valores de outros apps) ficam de fora de propósito.
+    "broadcasts": ("dumpsys activity broadcasts history 2>/dev/null | grep -E 'BroadcastRecord[{]|enqueueClockTime|^ +(DELIVERED|SKIPPED) |"
+                   "^ +name=|^ +packageName=|^ +reason:' | cut -c1-260 | head -c 1500000"),
     "ambiente": ("echo ANDROID=$(getprop ro.build.version.release); echo SDK=$(getprop ro.build.version.sdk); "
                  "echo ALWAYSON=$(settings get secure always_on_vpn_app); echo LOCKDOWN=$(settings get secure always_on_vpn_lockdown); "
                  "echo BOOTID=$(cat /proc/sys/kernel/random/boot_id)"),
@@ -290,16 +294,12 @@ def capturar_relogio(amb: Ambiente, run: Path, kind: str) -> int:
     return len(json.dumps(j))
 
 
-def resumir_ensaio(run: Path, kind: str) -> dict[str, Any]:
-    """O resumo (assinatura, ordem de rede, ciclo do serviço, PID, pacote) de um ensaio capturado; grava `boot-<kind>.resumo.json`.
-    Melhor esforço: falha de parser nunca derruba o desfazer."""
+def resumir_ensaio(run: Path, kind: str, saida: dict[str, Any]) -> dict[str, Any]:
+    """O resumo (assinatura, ordem de rede, ciclo do serviço, PID, `stopped` no 1º adb, BootReceiver) de um ensaio capturado; grava
+    `boot-<kind>.resumo.json`. Recebe o dict em memória (o `saida.json` só é escrito depois). Melhor esforço: falha de parser nunca
+    derruba o desfazer."""
     try:
-        r = obs.resumir(run, kind)
-        pj = run / f"boot-{kind}.saida.json"
-        if pj.exists():                                                            # `pacote` medido DURANTE o boot (o dumpsys completo é do fim)
-            pk = (json.loads(pj.read_text(encoding="utf-8")).get("boot") or {}).get("pacote")
-            if pk:
-                r["pacote_no_boot"] = pk
+        r = obs.resumir(run, kind, saida)
         (run / f"boot-{kind}.resumo.json").write_text(json.dumps(r, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         return {"codigo": r["assinatura"]["codigo"], "ordem_rede": r["rede"]["ordem"], "lacunas": r["lacunas"]}
     except Exception as exc:  # noqa: BLE001
@@ -349,7 +349,7 @@ def rodar(amb: Ambiente, run: Path, kind: str, reg: Any) -> dict[str, Any]:
         r["boot"] = observar_boot(amb, run, kind, uptime_antes, reg)
         if r["boot"]["boot_visto"]:
             r["capturado"] = capturar(amb, run, kind)
-            r["resumo"] = resumir_ensaio(run, kind)
+            r["resumo"] = resumir_ensaio(run, kind, r)
         else:
             r["parada"] = "BOOT_NAO_VISTO_ESTADO_INCERTO"
     except Exception as exc:  # noqa: BLE001 - o desfazer roda de qualquer jeito
