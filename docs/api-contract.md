@@ -250,7 +250,7 @@ interface Snapshot {
 | Método e rota | Corpo | Resposta |
 |---|---|---|
 | `GET /api/health` | – | `Health` (inclui `commit` e `migration`: qual código e qual esquema estão no ar) |
-| `GET /api/snapshot` | – | `Snapshot` |
+| `GET /api/snapshot` | – | `Snapshot`; `runs` traz as 20 execuções mais recentes **e todas as em andamento** (planejando, planejada, em execução, pausada, cancelando), por mais antigas que sejam: o painel as conta, e uma `planned` fora das 20 fazia o contador do topo abrir em 0 (RF-05 da revisão final de UX) |
 | `POST /api/admin/shutdown?stop_emulators=0|1` | – | `202` — encerramento gracioso usado por `scripts/stop.ps1`. DUAS trancas: par de rede em `127.0.0.1`/`::1` **e** o segredo local de `data/shutdown.token` no cabeçalho (o par de loopback sozinho deixou de valer quando o túnel SSH reverso passou a chegar como loopback de verdade). Recusa vira evento `log` — e o segredo recebido nunca entra nele |
 | `GET /api/diagnostics?refresh=0|1` | – | objeto livre `{collected_at, host:{...}, tools:{...}, acceleration:{...}, capacity:{...}, measurements:[...]}` |
 | `GET /api/metrics` | – | `Metrics` |

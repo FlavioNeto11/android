@@ -29,7 +29,8 @@ import type { Destino } from './ui';
  *   mesma janela do snapshot). Não são personas.
  * - **personas bloqueadas**: personas com `status = blocked` (bloqueadas pela plataforma).
  * - **execuções em andamento**: o grupo "Em andamento" de Execuções (planejando, planejada, em execução, pausada,
- *   cancelando). O contador do topo e o chip da tela contam igual.
+ *   cancelando). O contador do topo e o chip da tela contam igual, sobre o que o store guarda: o snapshot traz TODAS as
+ *   em andamento (não só as 20 recentes) e o teto de `MAX_RUNS` do reducer nunca descarta uma delas.
  */
 
 // ---- Aparelhos ------------------------------------------------------------------------------------

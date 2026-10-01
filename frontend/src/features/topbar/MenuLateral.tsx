@@ -8,6 +8,7 @@ import { hashDe, type Tela } from '../../lib/rotas';
 import { useSessionStore } from '../../store/session';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { useContagemDoAprendizado } from '../aprendizado/contagem';
+import { elementosFocaveis } from '../focus/Drawer';
 import { usePendencias, useReleituraDasPendencias } from '../pendencias/usePendencias';
 import styles from './MenuLateral.module.css';
 
@@ -33,6 +34,11 @@ export const ID_MENU = 'menu-principal';
 export const ID_BOTAO_MENU = 'botao-menu';
 /** O `<main>` do App (`App.tsx`), que recebe o foco quando a gaveta fecha por troca de seção. */
 const ID_CONTEUDO = 'conteudo';
+
+/** A gaveta só existe abaixo de 1024 px (`MenuLateral.module.css`). Sem `matchMedia` (jsdom), vale como gaveta. */
+function ehGaveta(): boolean {
+  return typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches;
+}
 
 /** A contagem "Para aprovar" do Aprendizado (ADR-054, D1). A releitura é a da caixa de Pendências (uma leitura a cada
  *  minuto alimenta as duas); sem sessão não há leitura, e falha é silenciosa (o store explica por quê). */
@@ -73,6 +79,47 @@ export function MenuLateral() {
     abertoAntes.current = aberto;
   }, [aberto]);
 
+  // Gaveta aberta = modal: o Tab fica preso nela e o Esc a fecha com o foco em QUALQUER lugar (RF-26 da revisão final:
+  // o Tab saía para "Reconectar agora", atrás do fundo escurecido, e dali o Esc deixava de valer, porque o ouvinte
+  // morava no `<nav>`). Ouvinte no documento enquanto estiver aberta; o foco volta ao botão "Menu" pelo efeito acima.
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const aoTeclar = (e: KeyboardEvent) => {
+      const nav = navRef.current;
+      if (!nav || e.defaultPrevented || !ehGaveta()) return;
+      const alvo = e.target instanceof HTMLElement ? e.target : null;
+      // Esc de uma caixa de diálogo é dela (aberta por cima da gaveta, ou no portal de um popover).
+      if (e.key === 'Escape') {
+        if (alvo?.closest('dialog, [role="dialog"]')) return;
+        e.preventDefault();
+        setMenuAberto(false);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const lista = elementosFocaveis(nav);
+      const primeiro = lista[0];
+      const ultimo = lista[lista.length - 1];
+      if (!primeiro || !ultimo) {
+        e.preventDefault();
+        nav.focus();
+        return;
+      }
+      const dentro = alvo !== null && nav.contains(alvo);
+      if (!dentro) {                         // o foco já escapou (clique no fundo, no topo): volta para dentro
+        e.preventDefault();
+        (e.shiftKey ? ultimo : primeiro).focus();
+      } else if (!e.shiftKey && alvo === ultimo) {
+        e.preventDefault();
+        primeiro.focus();
+      } else if (e.shiftKey && alvo === primeiro) {
+        e.preventDefault();
+        ultimo.focus();
+      }
+    };
+    document.addEventListener('keydown', aoTeclar);
+    return () => document.removeEventListener('keydown', aoTeclar);
+  }, [aberto, setMenuAberto]);
+
   return (
     <>
       {aberto ? <div className={styles.fundo} aria-hidden onClick={() => setMenuAberto(false)} /> : null}
@@ -83,12 +130,6 @@ export function MenuLateral() {
         className={styles.menu}
         data-recolhido={recolhido || undefined}
         data-aberto={aberto || undefined}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape' && aberto) {
-            e.preventDefault();
-            setMenuAberto(false);
-          }
-        }}
       >
         <div className={styles.cabecalhoGaveta}>
           <span className={styles.tituloGaveta}>Seções</span>
