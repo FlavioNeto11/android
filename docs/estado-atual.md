@@ -5,7 +5,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
-- **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main`, NÃO IMPLANTADA até a conferência de 01/10 (tarde); implantação só do painel em curso.** Seis briefings do dono (cabeçalho compacto no
+- **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main` e IMPLANTADA (só o frontend, 01/10 12:23, hora local do build).** Seis briefings do dono (cabeçalho compacto no
   celular, texto cortado com tooltip, detalhe da persona em 5 seções e com nome legível na URL, acessibilidade residual,
   resumo da execução e regra de pendências, revalidação) mais a rodada de correções do revisor. Relatórios em
   [revisoes-ux/rodada-2/](revisoes-ux/rodada-2/); veredito em [revalidacao-final.md](revisoes-ux/rodada-2/revalidacao-final.md):
@@ -13,6 +13,18 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Delta contra o runtime (conferido em 01/10, tarde):** `git diff --name-only 5d8b545 main -- backend` dá 0 arquivos e não há migração
     nova; o delta é só `frontend/src` (66 arquivos), docs e `scripts/ui-truncamento.js`. A implantação exige **somente reconstruir
     `frontend/dist`** (`npm run build`), sem `deploy.ps1`, sem reinício do backend e sem tocar nos aparelhos.
+  - **Prova `real` mínima do deploy (01/10, tarde, sem ação em conta ou aparelho):**
+    - SOURCE MAIN: `689d611` (código-fonte do painel idêntico ao `89dbc91`; os dois commits desde o `73fef1b` são docs).
+    - BACKEND RUNTIME: `5d8b545`, migração `063_prova_de_vazamento`, `/api/health` ok e `problems: []`; os processos `app.main` seguem os
+      mesmos (pids 52380 e 22060, início 10:43:39): **backend não reiniciado**; sem `deploy.ps1`, migração ou toque nos aparelhos.
+      O `/api/health` continua devolvendo `5d8b545` porque o commit que ele reporta é o do processo Python, não o do `dist`.
+    - FRONTEND BUILD: `npm run build` (typecheck + vite) na `main` atual, 01/10 12:23. Servido em `http://127.0.0.1:8000/`:
+      `index-DLhgeA_e.js` e `index-Cq9EBtZT.css` (antes: `index-lmjapcAt.js` e `index-BGwg5pnm.css`), ambos 200 e com o tamanho do arquivo.
+    - Sinais da rodada 2 no bundle servido: "aguardando você" 14x e "esperando você" 0x (B7; antes 6x); chip "Planejadas" da rodada 1
+      mantido; CSS do `TruncatedText` (`_clamp_`/`_linha_`, módulo `feaoa`) presente. `GET /api/snapshot` 200 (72 KB). Conferido por HTTP,
+      não por aba aberta (há cache heurístico do `index.html`: abas antigas pedem recarga forçada).
+    - `not_run`: o que já estava `not_run` na prova da rodada 2 (semáforo "Atenção", custos no topo, execução em andamento, origem
+      Intervenção, leitor de tela e toque real) e a navegação autenticada no painel servido.
   - **Prova:** `simulated` (frontend 94 arquivos/1133 testes na árvore mesclada com a `main`); `real` só contra o backend simulado
     do worktree (matriz 9 telas x 6 larguras, axe 4.13, Lighthouse 13.5 em Painel e Personas); `not_run`: semáforo no nível
     "Atenção", custos no topo, execução em andamento, origem Intervenção, leitor de tela e toque real.
