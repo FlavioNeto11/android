@@ -504,3 +504,16 @@ por decisão do dono.
    próximo item de código de risco baixo (B4 foi implantado em `57a155f`).
 7. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
    entre os reais; o procedimento está em [`worker.md`](worker.md).
+
+## Datas e verificações marcadas (frente GitHub/CI, 01/10/2026)
+
+| Quando | O quê |
+|---|---|
+| 02/10 | Ler o cron diário do `CI` (05:17 UTC, o primeiro com `timeout-minutes: 60` no `backend-postgres`); `gh run list --workflow ci.yml --event schedule`. O PostgreSQL já passou inteiro em 01/10 (run 36830963968, 3962 passed) |
+| 19/10 | O label `ubuntu-latest` migra para o Ubuntu 26 (anúncio da GitHub): reconferir `backend-postgres` e o workflow `Contêiner`; o Gmail do dono também para de enviar/receber em 19/10 por armazenamento cheio (assunto dele) |
+| fim de outubro | Conferir se o gasto adicional do Actions ficou em US$ 0 (Billing → Usage por repositório; orçamento de Actions em US$ 15 com Stop usage); o ciclo reinicia no dia 1 |
+| antes de março/2027 | Página de preços do GitHub: a taxa de plataforma de US$ 0,002/min para runner próprio foi adiada em 2026, não cancelada |
+| sem data | Versões novas de `actions/checkout` (v7.0.1), `actions/setup-python` (v7.0.0), `actions/setup-node` (v7.0.0) e `actions/cache` (v6.1.0): os workflows usam v4/v5 (forçados ao Node 24 pelo runner, funcionando). Subir junto com um disparo de `ci.yml` completo e um `somente_postgres`, para a mudança nascer testada |
+
+Detalhe e registros: [`handoffs/github-e-ci.md`](handoffs/github-e-ci.md). PRs #15 e #16 (K-039, Appium órfão) integrados na `main`
+em 01/10 (`b5b9833`); entram em vigor no próximo deploy do backend e do `stop.ps1`.
