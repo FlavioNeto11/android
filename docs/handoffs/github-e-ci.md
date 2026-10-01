@@ -172,3 +172,13 @@ com o CI do runner como a suíte inteira oficial antes do deploy.
 `pytest --durations=50` para achar os testes lentos e avaliar `pytest-xdist` (porta base 5640, banco e arquivos
 compartilhados podem não ser seguros em paralelo). Nada disso foi executado. Quem cita no fechamento da Fase 29 é a
 coordenação.
+
+## 11. Fechamento da limpeza (01/10/2026)
+
+| Item | Resultado |
+|---|---|
+| PRs #15 e #16 (K-039, Appium órfão) | **integrados na `main`** (merges `216b79a` e `fa8736a`, consolidados em `b5b9833`); o GitHub os marcou como mesclados; **0 PRs abertos**. Dois testes de `scripts/tests/test_stop_appium_orfao.py` falhavam ao integrar por decodificação do console (OEM 850) e pela moldura de erro do pwsh 7.6; corrigidos no mesmo push (24 passed). Backend: `test_saude_do_appium` e `test_supervisao_do_central` 40 passed (3 skipped). Efeito no central só no próximo deploy |
+| Branches remotas | **19 apagadas** com o "sim" do dono nesta sessão (100% mescladas em `origin/main`, sem worktree, com mais de 48 h): sobram 17 (`main`, `ux/*`, `claude/ux-portal`, `claude/evolucao3` e as recentes). **Restauração:** `C:\temp\branches-remotas-20261001.tsv` (nome, SHA, data, mesclada, worktree, idade em horas) e `git push origin <sha>:refs/heads/<nome>` |
+| Datas e verificações | `docs/estado-atual.md`, seção "Datas e verificações marcadas" (02/10, 19/10, fim de outubro, março/2027, versões de actions) |
+| Versões das actions (`checkout` v7, `setup-python` v7, `setup-node` v7, `cache` v6) | **não alteradas**: os workflows usam v4/v5, forçados ao Node 24 e funcionando; trocar sem um run de teste mudaria o CI às cegas. Subir junto com um `ci.yml` completo e um `somente_postgres` |
+| Worktrees desta frente (`github`, `pr-appium`; o `ux-portal` já saiu) | removidos ao fim, sem junções (nenhum `node_modules` ou `venv` ligado) |
