@@ -2050,6 +2050,13 @@ o caminho já é absoluto, nada muda. Correção sugerida: só chamar `os.path.a
 `ntpath.isabs`). O P17 segue **real com 1 falha conhecida, ainda não verde**; um terceiro run `somente_postgres` depois dessa
 correção fecha.
 
+**Terceira rodada, VERDE (01/10):** run 36830963968 (`workflow_dispatch`, `somente_postgres=true`, commit `7c3b787`,
+job 110267224464, 07:33:02→08:19:08Z): **3962 passed, 28 skipped, 0 failed em 45m04s**, em `ubuntu-latest` hospedado com
+`postgres:17` de serviço. É a prova `real` do P17 (29.14): a suíte inteira do backend, as migrações 056–058 e 063 e o
+`_SQL_RUNS_DO_SNAPSHOT` (RF-05) passam em PostgreSQL. Histórico dos três runs: cron 36819958569 inconclusivo por timeout de
+25 min → 36822159704 com 3 falhas (`rowid` no teste, `normcase` e `abspath` em Linux, todas fora do dialeto) → 36830963968 verde.
+Custo hospedado das três corridas: ~25 + 44 + 46 min (≈ US$ 0,7 brutos, dentro dos 3.000 min incluídos).
+
 ### 27.2 Prova durável de vazamento (29.2) e a subida (29.4)
 
 Antes (o defeito, `real`, banco do central): um reinício do backend às 02:40 de 30/09 → entre 06:52 e 07:59, um teste
