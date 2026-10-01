@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ABAS, abaDoPedido, abaPadraoDaSecao, secaoDaAba, SECOES } from './abas';
+import { ABAS, abaAoEscolherSecao, abaDoPedido, abaPadraoDaSecao, secaoDaAba, SECOES } from './abas';
 
 describe('seções da persona', () => {
   it('são 5 no primeiro nível, na ordem do briefing', () => {
@@ -23,6 +23,15 @@ describe('seções da persona', () => {
 
   it('escolher a seção abre a primeira guia dela', () => {
     expect(SECOES.map(abaPadraoDaSecao)).toEqual(['visao', 'persona', 'contas', 'interacoes', 'habilidades']);
+  });
+
+  it('B3: com aprovação pendente a Atividade abre as Aprovações (o que o selo conta); as outras seções não mudam', () => {
+    const atividade = SECOES.find((s) => s.id === 'atividade')!;
+    expect(abaAoEscolherSecao(atividade, 2)).toBe('aprovacoes');
+    expect(abaAoEscolherSecao(atividade, 0)).toBe('interacoes');
+    expect(abaAoEscolherSecao(atividade, null)).toBe('interacoes');
+    expect(SECOES.filter((s) => s.id !== 'atividade').map((s) => abaAoEscolherSecao(s, 3)))
+      .toEqual(SECOES.filter((s) => s.id !== 'atividade').map(abaPadraoDaSecao));
   });
 
   it('o pedido de outra tela só vale se for uma guia desta tela', () => {

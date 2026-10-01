@@ -7,7 +7,7 @@ import { api } from '../../api/client';
 import { Select } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { abaPadraoDaSecao, SECOES, secaoDaAba, type Aba, type SecaoId } from './abas';
+import { abaAoEscolherSecao, SECOES, secaoDaAba, type Aba, type SecaoId } from './abas';
 import { AbaAparelho } from './GuiaAparelhos';
 import { AbaAprovacoes } from './GuiaAprovacoes';
 import { AbaConfiguracoes } from './GuiaConfiguracoes';
@@ -27,6 +27,11 @@ import styles from './Profiles.module.css';
 const ICONE_DA_SECAO: Record<SecaoId, LucideIcon> = {
   visao: UserRound, perfil: Sparkles, contas: KeyRound, atividade: Activity, avancado: Wrench,
 };
+
+/** O que o selo da seção Atividade conta: as aprovações de texto que esperam a pessoa (a guia Aprovações). */
+function textoDasAprovacoes(n: number | null): string {
+  return `${n} ${n === 1 ? 'aprovação aguardando' : 'aprovações aguardando'} você`;
+}
 
 /**
  * Tela de uma persona: o cabeçalho único (`PersonaHeader`), as 5 seções (`abas.ts`) e as guias da seção aberta. Cada
@@ -117,10 +122,17 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
             return (
               <button key={sec.id} type="button" className={styles.navSecaoBotao}
                       aria-current={atual ? 'page' : undefined}
-                      onClick={() => { if (!atual) setAba(abaPadraoDaSecao(sec)); }}>
+                      aria-label={alerta ? `${sec.rotulo}, ${textoDasAprovacoes(pendentes)}` : undefined}
+                      onClick={() => { if (!atual) setAba(abaAoEscolherSecao(sec, pendentes)); }}>
                 <Icone size={14} aria-hidden />
                 {sec.rotulo}
-                {alerta ? <span className={styles.navSecaoContagem} title="Aprovações esperando você">{pendentes}</span> : null}
+                {alerta ? (
+                  <>
+                    {/* O espaço separa o rótulo do número no texto visível, de que o nome acessível parte (WCAG 2.5.3). */}
+                    {' '}
+                    <span className={styles.navSecaoContagem} title={textoDasAprovacoes(pendentes)}>{pendentes}</span>
+                  </>
+                ) : null}
               </button>
             );
           })}
@@ -130,11 +142,11 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
           <Select aria-label="Seção da persona" value={secao.id}
                   onChange={(e) => {
                     const alvo = SECOES.find((sec) => sec.id === e.target.value);
-                    if (alvo && alvo.id !== secao.id) setAba(abaPadraoDaSecao(alvo));
+                    if (alvo && alvo.id !== secao.id) setAba(abaAoEscolherSecao(alvo, pendentes));
                   }}>
             {SECOES.map((sec) => (
               <option key={sec.id} value={sec.id}>
-                {sec.rotulo}{sec.id === 'atividade' && pendentes ? ` (${pendentes} para decidir)` : ''}
+                {sec.rotulo}{sec.id === 'atividade' && pendentes ? ` (${textoDasAprovacoes(pendentes)})` : ''}
               </option>
             ))}
           </Select>
