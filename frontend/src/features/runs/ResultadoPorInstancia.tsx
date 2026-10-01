@@ -5,11 +5,13 @@ import { Banner } from '../../components/Banner';
 import { Disclosure } from '../../components/Disclosure';
 import { JsonTree, KvList, KvRow } from '../../components/JsonTree';
 import { StatusBadge } from '../../components/StatusBadge';
+import { Tooltip } from '../../components/Tooltip';
 import { toneClass } from '../../components/tone';
 import { cx, formatInt, humanizeKey, scalarToText } from '../../lib/format';
 import { DELIVERY_LEVEL, OBJECTIVE_STATUS, type Tone, metaOf } from '../../lib/status';
 import { formatClock } from '../../lib/time';
 import { type ResultadoDaInstancia, lerResultados, seloDaProva } from './resultadoDaInstancia';
+import { LEGENDA_DE_SUCESSO_COMPROVADO } from './ResumoDaExecucao';
 import styles from './Runs.module.css';
 
 /** Acima disto, os cartões já comprovados começam recolhidos: sobra à vista o que deu errado (bateria de 8 aparelhos). */
@@ -62,7 +64,12 @@ function CartaoDaInstancia({ r, n, recolhido }: { r: ResultadoDaInstancia; n: nu
         <h4 id={tituloId} className={styles.irId}>{r.instanceId ?? 'Instância sem id'}</h4>
         {r.status ? <StatusBadge meta={metaOf(OBJECTIVE_STATUS, r.status)} size="sm" /> : null}
         {selo === 'comprovado' ? (
-          <Badge tone="success" icon={ShieldCheck} size="sm" title="Todas as etapas comprovadas pela tela, sem confirmação à mão.">Comprovado</Badge>
+          // Focável: a legenda abre também por teclado e por toque (o `title` só abria com o mouse).
+          <Tooltip content={LEGENDA_DE_SUCESSO_COMPROVADO} placement="bottom">
+            <span tabIndex={0}>
+              <Badge tone="success" icon={ShieldCheck} size="sm">Comprovado</Badge>
+            </span>
+          </Tooltip>
         ) : selo === 'a_mao' ? (
           <Badge tone="warning" icon={Hand} size="sm" title="Alguma etapa foi confirmada à mão: o sucesso não foi comprovado pela tela.">Com etapa confirmada à mão</Badge>
         ) : selo === 'sem_prova' ? (
