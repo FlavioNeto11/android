@@ -14,6 +14,8 @@ import os
 import stat
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
 from app.modules.context_retrieval.domain.sensitive import SensitivePathMatcher, default_matcher
@@ -61,6 +63,10 @@ def path_in_scope(path: str, scope: tuple[str, ...]) -> bool:
     return not scope or any(path.startswith(p) for p in scope)
 
 
+#: Teto de texto guardado em memória durante um lote (`pinned()`). Passado dele, lê do disco como sempre.
+_TETO_DE_TEXTOS_DO_LOTE = 96 * 1024 * 1024
+
+
 class Workspace:
     """Raiz de um repositório e o universo de arquivos de texto que o retrieval pode tocar."""
 
@@ -74,6 +80,9 @@ class Workspace:
         self._tamanhos: dict[str, int] = {}
         self._git: bool | None = None
         self._ultima_revisao: str | None = None
+        self._fixa: str | None = None          # revisão congelada por `pinned()` (lote)
+        self._textos: dict[str, str] = {}      # textos lidos durante o lote (só vive dentro de `pinned()`)
+        self._textos_bytes = 0
 
     # ------------------------------------------------------------------ git
     def _git_bytes(self, *args: str) -> bytes | None:
@@ -186,11 +195,18 @@ class Workspace:
         self._garantir()
         if rel not in self._universo:
             return None
+        if self._fixa is not None and rel in self._textos:
+            return self._textos[rel]
         try:
             dados = (self.root / rel).read_bytes()
         except OSError:
             return None
-        return dados.decode("utf-8", errors="replace").replace("\r\n", "\n")
+        texto = dados.decode("utf-8", errors="replace").replace("\r\n", "\n")
+        # No lote o mesmo arquivo é lido uma vez por consulta (léxico e janelas): guarda, com teto, só enquanto congelado.
+        if self._fixa is not None and self._textos_bytes + len(dados) <= _TETO_DE_TEXTOS_DO_LOTE:
+            self._textos[rel] = texto
+            self._textos_bytes += len(dados)
+        return texto
 
     def size_of(self, path: str) -> int | None:
         """Tamanho em bytes de um arquivo do universo (do momento em que o universo foi montado)."""
@@ -232,6 +248,25 @@ class Workspace:
                 h.update(f"\n{caminho}\0gone".encode())
         return f"{tree}+{h.hexdigest()[:12]}"
 
+    def corpus_digest(self) -> str:
+        """Resumo do que define o CORPUS além da revisão: padrões sensíveis e teto de tamanho. Entra na chave dos índices em
+        disco, para que mudar a política de caminhos nunca reaproveite um índice feito com a antiga."""
+        return hashlib.sha256(f"{self._sensitive.fingerprint()}|{self._max_file_bytes}".encode()).hexdigest()[:16]
+
+    @contextmanager
+    def pinned(self) -> Iterator[str]:
+        """Congela a revisão (e, com ela, o universo) durante um lote. Sem isto, cada pedido paga ~0,1 s de `git status` e
+        um arquivo gerado no meio do lote mudaria a revisão e invalidaria o cache entre um item e outro."""
+        antiga = self._fixa
+        self._fixa = antiga if antiga is not None else self.revision()
+        try:
+            yield self._fixa
+        finally:
+            self._fixa = antiga
+            if antiga is None:                  # saiu do lote mais externo: nada fica na memória
+                self._textos = {}
+                self._textos_bytes = 0
+
     def revision(self) -> str:
         """Identidade do conteúdo atual: árvore do git (`+digest` se suja) ou hash de caminho/tamanho/mtime.
 
@@ -239,6 +274,8 @@ class Workspace:
         refeito. Quem monta o pedido deve chamá-la antes de buscar. Limite assumido: edição que preserva tamanho E
         mtime não é vista (o mesmo vale para o git `status`, que também olha o stat).
         """
+        if self._fixa is not None:
+            return self._fixa
         rev = self._revisao_git() if self._is_git() else None
         if rev is None:
             rev = self._revisao_por_stat()

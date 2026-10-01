@@ -6,6 +6,7 @@ DSN com senha. O que é DURO bloqueia o pedido inteiro; o mole só tira o trecho
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Iterable
 from functools import lru_cache
@@ -84,6 +85,12 @@ class SensitivePathMatcher:
     def is_sensitive(self, path: str) -> bool:
         return self.reason(path) is not None
 
+    def fingerprint(self) -> str:
+        """Identidade da política de caminhos (fixos + configurados). Entra na chave de qualquer cache que dependa dela."""
+        base = "|".join(_PADROES_BASE + _EXCECOES + _PASTAS_DA_RAIZ + _PASTAS_EM_QUALQUER_NIVEL)
+        extras = "|".join(sorted(p.pattern for p in (*self._extra_nome, *self._extra_caminho)))
+        return hashlib.sha256((base + "#" + extras).encode("utf-8")).hexdigest()[:16]
+
 
 @lru_cache(maxsize=1)
 def default_matcher() -> SensitivePathMatcher:
@@ -113,6 +120,15 @@ def hard_secret_kind(text: str | None) -> str | None:
     return None
 
 
+#: Atribuição de LITERAL a um nome que fala de segredo (`SENHA_ADMIN = "x..."`, `"api_key": "x..."`). A redação central só
+#: reconhece a palavra no FIM do nome (`DB_PASSWORD`) ou isolada; aqui ela pode vir no começo (`PASSWORD_ADMIN`), e o valor é
+#: um literal entre aspas, o que mantém `token = obter_token()` fora (isso é código, não segredo).
+_ATRIBUICAO_SECRETA = re.compile(
+    r"""(?ix)(?:passw\w*|senha\w*|secret\w*|segredo\w*|token\w*|api[_-]?key\w*|credencia\w*|private[_-]?key\w*)
+        ["']?\s*[:=]\s*["'][^"'\s]{6,}["']""")
+
+
 def has_soft_secret(text: str | None) -> bool:
-    """Par chave/valor com cara de segredo, que a redação central mascararia. O trecho sai do payload; o pedido segue."""
-    return bool(text) and redact(text) != text
+    """Par chave/valor com cara de segredo (o que a redação central mascararia, ou literal atribuído a nome de segredo).
+    O trecho sai do payload; o pedido segue."""
+    return bool(text) and (redact(text) != text or _ATRIBUICAO_SECRETA.search(text) is not None)

@@ -11,7 +11,8 @@ do próprio local vira pacote vazio com aviso — o retrieval é auxílio, nunca
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
@@ -38,12 +39,21 @@ class DisabledContextRetrieval:
                with_text: bool = False) -> ContextPack | None:
         return None
 
+    @contextmanager
+    def session(self) -> Iterator[None]:
+        yield
+
+    def gather_many(self, queries: Sequence[str], *, scope: tuple[str, ...] = (), top_k: int | None = None,
+                    with_text: bool = False) -> list[ContextPack | None]:
+        return [None for _ in queries]
+
 
 class ContextRetrievalService:
     def __init__(self, *, mode: RetrievalMode, root: Path, top_k: int, local: LocalRetriever,
                  hybrid: HybridRetriever | None, revision: Callable[[], str],
                  read_text: Callable[[str], str | None], sink: MetricsSink, budget: Budget,
-                 provider: str = "none", model: str = "") -> None:
+                 provider: str = "none", model: str = "",
+                 pinned: Callable[[], AbstractContextManager[str]] | None = None) -> None:
         self.mode = mode
         self._root = root
         self._top_k = top_k
@@ -55,10 +65,26 @@ class ContextRetrievalService:
         self._budget = budget
         self._provider = provider
         self._model = model
+        self._pinned = pinned or (lambda: nullcontext(""))
 
     @property
     def enabled(self) -> bool:
         return self.mode is not RetrievalMode.DISABLED
+
+    @contextmanager
+    def session(self) -> Iterator[None]:
+        """Um lote: a revisão e o universo ficam congelados e TODOS os pedidos dividem o índice, o mapa, o cache e o orçamento
+        de sessão. É o que torna viável consultar centenas de itens sem reconstruir nada por item."""
+        if not self.enabled:
+            yield
+            return
+        with self._pinned():
+            yield
+
+    def gather_many(self, queries: Sequence[str], *, scope: tuple[str, ...] = (), top_k: int | None = None,
+                    with_text: bool = False) -> list[ContextPack | None]:
+        with self.session():
+            return [self.gather(q, scope=scope, top_k=top_k, with_text=with_text) for q in queries]
 
     def gather(self, query: str, *, scope: tuple[str, ...] = (), top_k: int | None = None,
                with_text: bool = False) -> ContextPack | None:
@@ -70,7 +96,8 @@ class ContextRetrievalService:
         t0 = time.monotonic()
         delivered, observed = self._select(request)
         warnings = list(delivered.warnings)
-        regioes = list(delivered.selected_regions)
+        # O retriever local anexa o texto da janela; ele só sai no pacote quando pedido e DEPOIS do filtro de segredo.
+        regioes = [Region(r.path, r.start_line, r.end_line) for r in delivered.selected_regions]
         if with_text:
             regioes, avisos = self._materializar(regioes)
             warnings += avisos

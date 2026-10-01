@@ -345,6 +345,7 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
   mode: disabled                  # disabled | local_only (léxico+BM25) | shadow (mede o semântico, entrega o local) | hybrid
   top_k: 5                        # arquivos no contexto entregue (top-3/top-5)
   # lexical_preserve: 1           # arquivos lexicais mantidos no topo pela regra híbrida v1 (o que o piloto validou)
+  # lexical: {use_ripgrep: true, ripgrep_path: null}   # rg é opcional: caminho > RIPGREP_PATH > PATH; sem rg, o motor é o Python (mesmo resultado)
   # sensitive_paths: []           # globs que NUNCA entram em índice, mapa ou chunk, além dos fixos (.env, data/, secrets/ ...)
   # cache: {enabled: true, directory: context_retrieval}   # em `paths.data_dir`; fora do Git
   semantic:

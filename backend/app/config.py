@@ -843,6 +843,7 @@ class LearningCfg(BaseModel):
 
 class ContextRetrievalLexicalCfg(BaseModel):
     use_ripgrep: bool = True       # false força o caminho Python puro (mesmo resultado, mais lento)
+    ripgrep_path: str | None = None  # opcional; sem ele, RIPGREP_PATH e depois o PATH; sem rg, o motor é o Python
     window_lines: int = Field(7, ge=1, le=200)
 
 

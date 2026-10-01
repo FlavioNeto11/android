@@ -85,8 +85,9 @@ def build_service(cfg: Config, *, root: Path | None = None, mode: RetrievalMode 
     sensivel = SensitivePathMatcher(cc.sensitive_paths)
     ws = Workspace(raiz, sensitive=sensivel)
     local = LocalRetriever(
-        LexicalRetriever(ws, use_ripgrep=cc.lexical.use_ripgrep, window_lines=cc.lexical.window_lines),
-        BM25Retriever(ws, k1=cc.bm25.k1, b=cc.bm25.b))
+        LexicalRetriever(ws, use_ripgrep=cc.lexical.use_ripgrep, window_lines=cc.lexical.window_lines,
+                         ripgrep_path=cc.lexical.ripgrep_path),
+        BM25Retriever(ws, k1=cc.bm25.k1, b=cc.bm25.b, cache_dir=dados / "bm25" if cc.cache.enabled else None))
 
     s = cc.semantic
     budget = Budget(max_calls_per_request=s.max_calls, max_calls_per_session=s.max_calls_per_session,
@@ -109,7 +110,7 @@ def build_service(cfg: Config, *, root: Path | None = None, mode: RetrievalMode 
             hibrido = HybridRetriever(local=local, semantic=semantico, lexical_preserve=cc.lexical_preserve)
     return ContextRetrievalService(
         mode=efetivo, root=raiz, top_k=cc.top_k, local=local, hybrid=hibrido, revision=ws.revision,
-        read_text=ws.read_text, sink=sink if sink is not None else RetrievalMetrics(dados),
+        read_text=ws.read_text, pinned=ws.pinned, sink=sink if sink is not None else RetrievalMetrics(dados),
         budget=budget, provider=nome, model=modelo)
 
 
