@@ -310,7 +310,7 @@ isso). Pontos que já causaram incidente:
 | Sintoma | Causa | Ação |
 |---|---|---|
 | `config/config.yaml` some depois de um checkout | Arquivo deixou de ser rastreado entre commits; git apaga da árvore ao trocar de commit | Restaurar de `data/backups/<carimbo>/config/`; `start.ps1` já recusa subir nesse estado (§2) |
-| Health `degraded` depois do deploy, com `appium_log_masking_off` ou `appium_down` "readotado" | Appium do backend anterior ficou na porta e foi readotado (K-039) | O `stop.ps1` já o encerra; se voltar, leia os avisos do `stop.ps1` (shell sem elevação, outro programa na porta) e rode `stop.ps1 -Simular` |
+| Health `degraded` depois do deploy ou de um reinício pelo supervisor, com `appium_log_masking_off` ou `appium_down` "readotado" | Appium do backend anterior ficou na porta e foi readotado (K-039) | O `stop.ps1` já o encerra, e o backend troca sozinho o órfão deste projeto que não prova o mascaramento; se voltar, leia os avisos do `stop.ps1` (shell sem elevação, outro programa na porta), rode `stop.ps1 -Simular` e veja o "não foi trocado: <motivo>" no detalhe do Appium |
 | `data/poc.sqlite3` "malformed database schema" após reboot | Um `-wal` velho ao lado de um banco recopiado | `scripts/restore.ps1 -De <backup> -Confirmar` com backend parado; nunca copiar o `.sqlite3` por cima à mão |
 | Cerca (`commands.fence`) regredida depois de restaurar o banco | `fence` é MAX+1 por aparelho; restaurar volta o contador | Subir o `fence` do aparelho no SQLite até o valor que o agente citou na recusa; reemitir o comando |
 | Agente do worker não volta depois do boot do notebook | Tarefa agendada registrada sem gatilho de boot (script antigo) | Reinstalar com `scripts/worker-agent.ps1 -Instalar` (gera a tarefa com `AtStartup`) |

@@ -11,7 +11,9 @@ O que este arquivo trava, sem subir processo nenhum (tudo entra pelo construtor 
   coleta de lixo, não travamento;
 * `degraded` NÃO reinicia: é resposta, e reiniciar trocaria um problema visível por um laço de reinício (e
   apagaria o Appium que o próprio backend acabou de subir);
-* a espera entre reinícios cresce e volta ao mínimo quando a saúde volta.
+* a espera entre reinícios cresce e volta ao mínimo quando a saúde volta;
+* o Appium que um backend morto deixou na porta é trocado pelo backend seguinte quando não prova o mascaramento, e
+  nada de fora do projeto (nem emulador) é encerrado (K-039; estes, com processos `node` de verdade).
 """
 from __future__ import annotations
 
@@ -395,3 +397,187 @@ def test_a_varredura_de_filhos_mata_o_appium_e_poupa_os_emuladores(monkeypatch: 
     monkeypatch.setattr(psutil, "Process", _PaiFalso)
     _matar_filhos(4242)
     assert [f.morto for f in filhos] == [True, False, False, True]
+
+
+# ---------------------------------------------------------------- o Appium órfão de um backend que morreu sozinho
+# K-039 fora do deploy. Quando o backend morre sozinho (crash, Windows Update), `ciclo` só sobe outro: não há pai
+# para `_matar_filhos` varrer, e o Appium que o morto subiu fica na porta. O backend seguinte o readotava pelo
+# `data/appium.pid` e, sem prova de mascaramento, subia `degraded` com a credencial bloqueada. Decisão: quem troca
+# esse órfão é o `AppiumServer.start` do backend seguinte, não o supervisor (ver `_reuse_running`). Estes testes
+# usam processos `node` de verdade, com um Appium falso que responde `/status` como o de verdade.
+_APPIUM_FALSO = r"""
+const http = require('http');
+const { spawn } = require('child_process');
+const a = process.argv.slice(2);
+const opt = (n, d) => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : d; };
+// O que o Appium de verdade registra quando aceita as regras (`LOADED_RULES_MARKER`).
+if (a.includes('--log-filters')) console.log('Loaded 2 filtering rule(s)');
+for (const f of (process.env.APPIUM_FALSO_FILHOS || '').split(require('path').delimiter).filter(Boolean)) {
+  spawn(f, ['300'], { stdio: 'ignore' });
+}
+http.createServer((req, res) => {
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ value: { ready: true } }));
+}).listen(Number(opt('--port', '4723')), opt('--address', '127.0.0.1'));
+"""
+
+
+def _porta_livre() -> int:
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+class _ArvoreComAppium:
+    """Uma árvore do projeto com `tools/appium` (o Appium falso) e o `data/` de um `AppiumServer` de verdade."""
+
+    def __init__(self, raiz: Path, porta: int) -> None:
+        from app.automation.appium_server import AppiumServer
+        from app.devices.sdk import SdkTools
+
+        from .conftest import make_config
+
+        self.node = shutil.which("node") or ""
+        self.pasta = raiz / "tools" / "appium"
+        self.entrada = self.pasta / "node_modules" / "appium" / "index.js"
+        self.entrada.parent.mkdir(parents=True)
+        self.entrada.write_text(_APPIUM_FALSO, encoding="utf-8")
+        self.cfg = make_config(raiz / "data")
+        self.cfg.file.appium.dir = str(self.pasta)
+        self.cfg.file.appium.port = porta
+        self.cfg.data_dir.mkdir(parents=True, exist_ok=True)
+        self.servidor = AppiumServer(self.cfg, SdkTools(self.cfg))
+        self._vivos: list[subprocess.Popen[bytes]] = []
+
+    def subir_sem_regras(self, filhos: list[str] | None = None) -> subprocess.Popen[bytes]:
+        """O Appium que o backend morto deixou: desta árvore, com o PID gravado e SEM `--log-filters`, que é o
+        caso em que `_prove_masking` não consegue provar nada."""
+        env = {**os.environ, "APPIUM_FALSO_FILHOS": os.pathsep.join(filhos or [])}
+        proc = subprocess.Popen([self.node, str(self.entrada), "server", "--address", "127.0.0.1",
+                                 "--port", str(self.cfg.file.appium.port)], env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._vivos.append(proc)
+        (self.cfg.data_dir / "appium.pid").write_text(str(proc.pid), encoding="ascii")
+        _esperar(lambda: self.servidor.is_up(timeout=0.5), "o Appium órfão não subiu")
+        return proc
+
+    def limpar(self) -> None:
+        self.servidor.stop()
+        for p in self._vivos:
+            if p.poll() is None:
+                p.kill()
+                p.wait(timeout=10)
+
+
+def _esperar(cond, falha: str, prazo_s: float = 15.0) -> None:  # type: ignore[no-untyped-def]
+    import time
+    limite = time.monotonic() + prazo_s
+    while not cond():
+        if time.monotonic() > limite:
+            raise AssertionError(falha)
+        time.sleep(0.1)
+
+
+@pytest.fixture()
+def arvore(tmp_path: Path):  # type: ignore[no-untyped-def]
+    if not shutil.which("node"):
+        pytest.skip("sem node nesta máquina: o Appium falso é um script node")
+    a = _ArvoreComAppium(tmp_path, _porta_livre())
+    try:
+        yield a
+    finally:
+        a.limpar()
+
+
+def test_backend_que_morre_sozinho_nao_deixa_o_seguinte_readotar_o_appium_sem_prova(arvore: _ArvoreComAppium) -> None:
+    orfao: list[subprocess.Popen[bytes]] = []
+    backends: list[ProcessoFalso] = []
+
+    def iniciar() -> ProcessoFalso:
+        if not backends:
+            orfao.append(arvore.subir_sem_regras())   # o backend 1 sobe o Appium, sem prova de mascaramento
+        else:
+            arvore.servidor.start(wait_s=15)         # o backend 2, no lifespan: é ali que o órfão é decidido
+        backends.append(ProcessoFalso(pid=1000 + len(backends)))
+        return backends[-1]
+
+    sup = Supervisor(iniciar=iniciar, saudavel=lambda: bool(backends) and backends[-1].poll() is None,
+                     dormir=lambda _s: None)
+    sup.run(ciclos=1)
+    backends[0].morrer()                            # crash: sem `terminate`, sem `_matar_filhos`
+    sup.run(ciclos=1)
+
+    assert sup.relatorio.reiniciou_por_morte == 1 and len(backends) == 2
+    assert orfao[0].wait(timeout=10) is not None, "o Appium órfão sem prova continuou vivo"
+    s = arvore.servidor
+    assert s.pid and s.pid != orfao[0].pid, "readotou o órfão em vez de subir outro"
+    assert s.log_masking_active is True, s.detail
+    assert s.is_up()
+    assert (arvore.cfg.data_dir / "appium.pid").read_text(encoding="ascii") == str(s.pid)
+
+
+def test_orfao_desta_arvore_com_mascaramento_comprovado_e_readotado_sem_reinicio(arvore: _ArvoreComAppium) -> None:
+    """Com a prova (cmdline com `--log-filters` + regras em disco), readotar é o certo: nada é encerrado."""
+    arvore.servidor.start(wait_s=15)
+    primeiro = arvore.servidor.pid
+    assert primeiro and arvore.servidor.log_masking_active
+    arvore.servidor.pid = None                     # o backend que o subiu morreu sem `stop()`
+
+    from app.automation.appium_server import AppiumServer
+    from app.devices.sdk import SdkTools
+    seguinte = AppiumServer(arvore.cfg, SdkTools(arvore.cfg))
+    assert seguinte.start(wait_s=15) is True
+    assert seguinte.pid == primeiro and seguinte.log_masking_active is True
+    assert "readotado" in (seguinte.detail or "")
+    arvore.servidor.pid = primeiro                 # a limpeza da fixture encerra o que ela subiu
+
+
+def test_node_de_outra_arvore_na_porta_nunca_e_encerrado(arvore: _ArvoreComAppium, tmp_path: Path) -> None:
+    """O PID gravado aponta para ele, e ele responde na porta, mas a linha de comando é de outra árvore: é de outro
+    projeto e fica. O backend o reutiliza sem mascaramento, como antes."""
+    outra = _ArvoreComAppium(tmp_path / "outra", arvore.cfg.file.appium.port)
+    try:
+        estranho = outra.subir_sem_regras()
+        (arvore.cfg.data_dir / "appium.pid").write_text(str(estranho.pid), encoding="ascii")
+        assert arvore.servidor.start(wait_s=15) is True
+        assert estranho.poll() is None, "encerrou um node de outra árvore"
+        assert arvore.servidor.pid is None and arvore.servidor.log_masking_active is False
+        assert "externo" in (arvore.servidor.detail or "")
+    finally:
+        outra.limpar()
+
+
+def _morto(p) -> bool:  # type: ignore[no-untyped-def]
+    """Zumbi conta como morto: o órfão que o criou morreu, e quem o recolhe depende do contêiner."""
+    import psutil
+    try:
+        return not p.is_running() or p.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+
+
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("sleep"),
+                    reason="o filho com nome de emulador é uma cópia do `sleep` (POSIX)")
+def test_trocar_o_orfao_poupa_o_filho_emulador_e_encerra_os_outros(arvore: _ArvoreComAppium,
+                                                                    tmp_path: Path) -> None:
+    import psutil
+
+    binarios = tmp_path / "bin"
+    binarios.mkdir()
+    emulador, adb = binarios / "emulator", binarios / "adb"
+    for destino in (emulador, adb):
+        shutil.copy2(shutil.which("sleep") or "", destino)
+    orfao = arvore.subir_sem_regras(filhos=[str(emulador), str(adb)])
+    _esperar(lambda: len(psutil.Process(orfao.pid).children()) == 2, "o órfão não subiu os filhos")
+    filhos = {p.name(): p for p in psutil.Process(orfao.pid).children()}
+    try:
+        assert arvore.servidor.start(wait_s=15) is True
+        assert arvore.servidor.log_masking_active is True, arvore.servidor.detail
+        assert orfao.wait(timeout=10) is not None
+        _esperar(lambda: _morto(filhos["adb"]), "o filho que não é emulador continuou vivo")
+        assert not _morto(filhos["emulator"]), "a troca do Appium encerrou um emulador"
+    finally:
+        for p in filhos.values():
+            if p.is_running():
+                p.kill()

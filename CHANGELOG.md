@@ -19,6 +19,56 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — o backend troca o Appium órfão sem prova de mascaramento (K-039 fora do deploy) (branch `claude/nifty-feynman-uflykh`)
+
+- **Operação.** Quando o backend morria sozinho (crash, Windows Update), o supervisor o religava, mas o Appium que
+  ele tinha subido ficava na porta, sem pai para `_matar_filhos` varrer. O backend seguinte o readotava `degraded`
+  (`appium_log_masking_off`, credencial bloqueada). Agora o `AppiumServer.start` troca esse órfão quando ele é desta
+  árvore (PID de `data/appium.pid` vivo, linha de comando em `<appium.dir>/node_modules/appium`) e o mascaramento não
+  se comprova: encerra-o com os filhos, menos os emuladores, e sobe outro com as regras.
+  - Com prova, o órfão continua readotado.
+  - Servidor de fora do projeto na porta continua reutilizado e nunca é encerrado.
+  - Sem Appium instalado para subir outro, ou sem permissão, o órfão fica readotado, com o motivo no detalhe.
+- **Decisão.** A troca fica no backend, e não no supervisor, porque cobre todo caminho até a subida. E é segura por
+  construção: a porta da Farm é ligada antes do lifespan, então nenhum outro backend desta árvore está vivo.
+- Inclui por merge o branch do PR #15 (`stop.ps1`, na entrada abaixo).
+- Prova: `simulated`.
+  - `backend/tests/test_supervisao_do_central.py`: 4 testes novos com `node` de verdade. O backend morto e religado
+    pelo supervisor troca o órfão sem prova; o órfão com prova é readotado; o `node` de outra árvore fica; o filho
+    `emulator` fica vivo e o `adb` é encerrado.
+  - `test_saude_do_appium.py`: 4 testes novos das travas (sem Appium instalado, PID reciclado, emulador e nome
+    ilegível poupados, sem permissão).
+  - Tirar cada trava faz um teste falhar (checagem de mutação, 5 de 5).
+  - `not_run`: o central.
+
+## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
+
+- **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
+  `appium_down` "readotado", porque o `node` do Appium do backend anterior ficava na porta. O `stop.ps1`, e com ele o
+  `deploy.ps1`, agora encerra esse Appium depois que a Farm para de responder. Só o `node.exe` na porta de `appium:`
+  do config cuja linha de comando aponta para `tools\appium` desta árvore; outro processo na porta fica, com aviso.
+  Há uma carência de 10 s para o backend que ainda está saindo, e a porta é conferida depois do encerramento.
+  `stop.ps1 -Simular` mostra o que seria encerrado. A lógica fica em `scripts/lib/appium-do-projeto.ps1`.
+- Prova: `simulated`, em `scripts/tests/test_stop_appium_orfao.py` (23 passaram e 1 pulou, no Linux com pwsh 7.4 e
+  node 22). Cobre a seleção, a leitura do config, um `node` de verdade encerrado com o de outra árvore poupado, a
+  carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
+  teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
+
+
+## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
+
+- **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
+  `appium_down` "readotado", porque o `node` do Appium do backend anterior ficava na porta. O `stop.ps1`, e com ele o
+  `deploy.ps1`, agora encerra esse Appium depois que a Farm para de responder. Só o `node.exe` na porta de `appium:`
+  do config cuja linha de comando aponta para `tools\appium` desta árvore; outro processo na porta fica, com aviso.
+  Há uma carência de 10 s para o backend que ainda está saindo, e a porta é conferida depois do encerramento.
+  `stop.ps1 -Simular` mostra o que seria encerrado. A lógica fica em `scripts/lib/appium-do-projeto.ps1`.
+- Prova: `simulated`, em `scripts/tests/test_stop_appium_orfao.py` (23 passaram e 1 pulou, no Linux com pwsh 7.4 e
+  node 22). Cobre a seleção, a leitura do config, um `node` de verdade encerrado com o de outra árvore poupado, a
+  carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
+  teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
+
+
 ## 2026-10-01 (madrugada) — Revisão de UX/UI do portal
 
 Integrado na `main`; **não implantado** (exige reiniciar o backend: o `GET /api/snapshot` mudou). Prova `simulated`; leitura

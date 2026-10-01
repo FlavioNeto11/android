@@ -908,7 +908,7 @@ cabia.
 
 ### K-039 — Appium órfão sobrevive ao deploy e o backend novo sobe `degraded` (credencial bloqueada)
 
-**Data:** 27/09/2026 · **Área:** operação, `deploy.ps1`, `stop.ps1`
+**Data:** 27/09/2026 · **Área:** operação, `deploy.ps1`, `stop.ps1`, `supervisor.py`, `automation/appium_server.py`
 
 **Sintoma.** Depois do deploy de `524471d`, `/api/health` ficou `degraded` com `appium_log_masking_off`
 ("Mascaramento de log do Appium não comprovado nesta sessão"), e o preenchimento de credencial ficou bloqueado. Os
@@ -941,13 +941,41 @@ porta ficou livre dele e apaga o `data\appium.pid` que apontava para o processo 
 o que seria encerrado, sem encerrar nada. Com a pasta vazia, a seleção casava com qualquer `node` (achado nos
 testes: `Join-Path` com um drive inexistente devolve vazio); agora isso é erro.
 
-**Aplicabilidade.** Vigente até a primeira implantação com a correção subir `ok` sem intervenção; aí, marcar
+**Fora do deploy: correção no backend (28/09).** Sobrava o backend que morre sozinho (crash, Windows Update). O
+`Supervisor.ciclo` só sobe outro, e sem pai vivo o `_matar_filhos` não alcança o Appium que o morto subiu; o backend
+seguinte o readotava pelo `data/appium.pid` e, sem prova de mascaramento, subia `degraded`. Havia duas saídas: o
+supervisor encerrar o órfão antes de subir, ou o `AppiumServer.start` trocá-lo. Ficou a segunda
+(`_reuse_running` e `_kill_orphan`). Ela cobre todo caminho até a subida: supervisor, `start.ps1` e deploy cujo
+`stop.ps1` não leu a linha de comando. Também mantém o critério e as regras num lugar só e deixa o supervisor sem
+`Config` nem `psutil`. É segura por construção: `main()` liga a porta da Farm antes do lifespan, então nenhum outro
+backend desta árvore está vivo usando aquele Appium. As regras:
+
+- órfão desta árvore (PID gravado vivo, linha de comando em `<appium.dir>/node_modules/appium`) COM mascaramento
+  comprovado continua readotado, sem reinício;
+- SEM prova, é encerrado com os filhos e o backend sobe outro com as regras; ficam o filho emulador
+  (`supervisor.e_emulador`, o mesmo critério da varredura do supervisor) e o de nome ilegível;
+- antes do tiro, precisa haver Appium instalado para subir outro, e a linha de comando é conferida de novo no mesmo
+  processo, porque o PID pode ter sido reciclado. Se uma trava falha, ou falta permissão para encerrar, o órfão fica
+  readotado `degraded`, e o detalhe do Appium diz "não foi trocado: <motivo>";
+- qualquer outro servidor na porta (outra árvore, outro programa, PID gravado que não confere) continua reutilizado
+  e nunca é encerrado.
+
+Não cobre o órfão readotado COM prova que depois para de responder (`appium_down`). Fora do deploy isso não foi visto,
+e no deploy o `stop.ps1` o encerra antes.
+
+**Aplicabilidade.** Vigente até a primeira implantação com as duas correções subir `ok` sem intervenção e, depois
+dela, um backend encerrado à força (só o `python -m app.main`, filho do supervisor) voltar `ok` sozinho; aí, marcar
 superado. Até lá, depois de todo deploy, conferir `problems` no health. Se voltar `appium_log_masking_off` ou
-`appium_down` com "readotado", ler a saída do `stop.ps1`. Um aviso "linha de comando ilegível" pede o deploy num
-shell elevado. Um aviso "não é o Appium de …" significa que a porta está com outro programa. Prova da correção:
-`simulated`, em `scripts/tests/test_stop_appium_orfao.py` (seleção, leitura do config, `node` de verdade encerrado
-e o de outra árvore poupado, carência, `stop.ps1 -Simular`); `not_run` no Windows (o teste com
-`Get-NetTCPConnection` de verdade se pula fora dele) e no deploy do central.
+`appium_down` com "readotado", ler a saída do `stop.ps1` e o detalhe do Appium no health. Um aviso "linha de
+comando ilegível" pede o deploy num shell elevado. Um aviso "não é o Appium de …" significa que a porta está com
+outro programa. "Não foi trocado: <motivo>" diz por que o backend não trocou o órfão.
+
+Prova do `stop.ps1`: `simulated`, em `scripts/tests/test_stop_appium_orfao.py` (seleção, leitura do config, `node`
+de verdade encerrado e o de outra árvore poupado, carência, `stop.ps1 -Simular`). Prova do backend: `simulated`, com
+`node` de verdade em `backend/tests/test_supervisao_do_central.py`. Ali, o backend morto e religado pelo supervisor
+troca o órfão sem prova, o órfão com prova é readotado, o `node` de outra árvore fica, e o filho `emulator` fica vivo
+enquanto o `adb` é encerrado. As travas, com `psutil` falso, estão em `test_saude_do_appium.py`. `not_run`: o
+Windows (o teste com `Get-NetTCPConnection` de verdade se pula fora dele) e o central.
 
 **Fonte.** Deploy de `524471d` em 27/09 (~22:24, horário local); deploys de `58bfd13` e `a71e809` em 28/09
 ([relatório de validação](../relatorio-validacao.md) §16).
