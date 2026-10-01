@@ -675,7 +675,10 @@ class FirewallDoCentral:
     def _ler(self) -> LeituraDoFirewall:
         cfg = self._cfg()
         endpoint = (cfg.endpoint_lan or "").strip() or None
-        binario = Path(os.path.abspath(self._binario()))
+        # Caminho do Windows já absoluto fica como veio: fora do Windows (o CI em Linux) `os.path.abspath` não o reconhece
+        # como absoluto, prefixa o diretório de trabalho e a regra certa vira `regra_obsoleta` (run 36826258680).
+        bruto = str(self._binario())
+        binario = Path(bruto if ntpath.isabs(bruto) else os.path.abspath(bruto))
         porta = cfg.porta_wireguard
 
         def nao_lido(detalhe: str) -> LeituraDoFirewall:
