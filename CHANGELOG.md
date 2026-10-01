@@ -87,6 +87,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Benchmark público Scrapy 2.19.0 **executado** (1 rodada, 60 tentativas, 544.084 tokens, US$ 0,0229): `jev_map` SEMANTIC R@3 0,958 contra ripgrep 0,083 e BM25 0,000,
     mas EXACT R@3 0,875 < ripgrep 1,000 (T1 −0,125 < −0,05) ⇒ veredito mecânico `NO_GO`; `jev_rerank` `PARTIAL_GO` (controle). Detalhe em `docs/research/jev-pilot.md` §37.8.
     Código privado segue `BLOCKED_PRIVACY`; trava pública voltou a `False`.
+  - Sétima rodada: veredito `NO_GO` aceito e preservado (`ORIGINAL_VERDICT_CHANGED = NO`). Híbrido lexical + `jev_map` avaliado **offline** (regra v1 congelada por hash,
+    0 chamadas de rede): EXACT R@3 1,000, SEMANTIC R@3 0,958, 0 critical misses ⇒ `PROMISING` exploratório (por construção do roteador; não é GO). Detalhe em §38.
 - Documentação e processo: `docs/research/jev-pilot.md` (novo) e a linha no índice `docs/README.md`. Reverte apagando os dois
   caminhos novos. Base `3eba639`; não integrado em `main`.
 

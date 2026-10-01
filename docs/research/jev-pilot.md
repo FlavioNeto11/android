@@ -837,3 +837,60 @@ pela cobertura 0 % do shortlist BM25; não é evidência contra o Jev).
 - **API_CONTRACT_MISMATCH:** documentação diz `score` com 2–10 níveis; observado no smoke (6 tentativas, chamada 5): 1 nível aceito com HTTP 200 (§36.2). Não reproduzido nesta rodada.
 - **Conclusão permitida:** `RETRIEVAL_VALUE_VALIDATED = NO` (veredito mecânico NO_GO; sinal semântico forte e isolado a um item EXACT). O benchmark privado segue
   `BLOCKED_PRIVACY` (retenção padrão da API UNKNOWN); nada aqui autoriza enviar código privado. `PUBLIC_BENCHMARK_AUTHORIZED` voltou a `False`.
+
+## 38. Híbrido (lexical + `jev_map`): replay OFFLINE, pós-hoc e exploratório (2026-10-01, sétima rodada)
+
+**Veredito do experimento original, aceito e preservado:** `ORIGINAL_EXPERIMENT_VERDICT = NO_GO`, `ORIGINAL_VERDICT_CHANGED = NO`. Limiares T1–T8, golden,
+perguntas, resultados históricos, relatório da rodada real e a interpretação mecânica não foram tocados; o experimento Scrapy está **encerrado**. O que segue é
+um experimento NOVO, rotulado `POST_HOC_EXPLORATORY_HYBRID`: a hipótese nasceu depois de ver os resultados do Scrapy, portanto **não pode produzir GO** e só
+classifica em `PROMISING | NOT_PROMISING | INCONCLUSIVE`.
+
+**Zero chamadas:** `NEW_NETWORK_ATTEMPTS = 0`. O replay roda dentro de `netguard.no_network()` e só lê `data/jev-pilot/public-run-real/results.json`
+(ripgrep, BM25 e `jev_map` já calculados), o checkout público fixado (para recompor tamanhos de trecho; a recomposição é conferida contra os bytes gravados) e o
+golden (somente para pontuar).
+
+### 38.1 A regra (uma só, congelada antes de qualquer pontuação)
+
+`experiments/jev/hybrid.py`, bloco `RULE` · `HYBRID_RULE_VERSION = 1` · `HYBRID_RULE_HASH =
+0a904767ac2b0503ac6546ca71aa991917f5bad80f5164940184e3afbb5eed66` (sha256 do bloco, em `hybrid_rule.lock.json`; um teste falha se o bloco mudar).
+
+1. Identificador explícito = trecho entre crases (≥ 3 caracteres), snake_case, CamelCase (≥ 2 partes) ou dotted.path (os três últimos com ≥ 4 caracteres).
+2. Pergunta com identificador explícito **e** ripgrep (com esses termos) achando ao menos um arquivo ⇒ salvaguarda **ativa**; senão o híbrido é exatamente o `jev_map`.
+3. Ativa: ranking = [melhor arquivo lexical] + ranking do `jev_map` sem duplicatas.
+4. Ativa: entrega = até 2 janelas do melhor arquivo lexical + trechos do `jev_map`, mesmo teto de 8 trechos / 16 KiB.
+5. A regra só olha a pergunta e as saídas dos retrievers; nunca `expected_files`, `expected_regions` nem a categoria EXACT/SEMANTIC (teste).
+
+Critérios de classificação (também congelados antes do scoring, `hybrid_rule.lock.json`): PROMISING = EXACT R@3 ≥ melhor baseline − 0,05, **e** ganho SEMANTIC R@3
+≥ +0,25 sobre a melhor baseline, **e** mediana de contexto ≤ a do BM25, **e** ≤ 2 critical misses; NOT_PROMISING = EXACT regride ou ganho SEMANTIC < +0,10;
+senão INCONCLUSIVE.
+
+### 38.2 Resultado do replay (`real` sobre dados brutos já gravados; nenhuma chamada nova)
+
+| Grupo | Variante | R@1 | R@3 | R@5 | contexto (mediana, B) |
+|---|---|---|---|---|---|
+| EXACT (8) | ripgrep | 0,875 | 1,000 | 1,000 | 1.330 |
+| EXACT (8) | BM25 | 0,750 | 1,000 | 1,000 | 8.018 |
+| EXACT (8) | `jev_map` | 0,750 | 0,875 | 1,000 | 1.497 |
+| EXACT (8) | **híbrido** | 0,875 | **1,000** | 1,000 | 2.366 |
+| SEMANTIC (12) | ripgrep | 0,000 | 0,083 | 0,083 | 5.022 |
+| SEMANTIC (12) | BM25 | 0,000 | 0,000 | 0,000 | 6.347 |
+| SEMANTIC (12) | `jev_map` | 0,958 | 0,958 | 0,958 | 2.332 |
+| SEMANTIC (12) | **híbrido** | 0,958 | **0,958** | 0,958 | 2.332 |
+| ALL (20) | **híbrido** | 0,925 | 0,975 | 0,975 | 2.332 (BM25 7.283) |
+
+Critical misses do híbrido: 0. `HYBRID_EXPLORATORY_RESULT = PROMISING` pelos critérios congelados.
+
+**Leitura honesta (o PROMISING é fraco por construção):** (a) as perguntas EXACT do Scrapy são exatamente as que têm identificador entre crases e as SEMANTIC
+nenhuma, então o "roteador" é perfeito no replay e o resultado SEMANTIC do híbrido **é** o do `jev_map`; só um item mudou de verdade (P01). (b) A regra foi
+escrita depois de ver P01. (c) n = 20, avaliador único (o autor). (d) O Scrapy é público e pode estar no treino do Jev. O replay só justifica **testar de
+verdade** em corpus novo; não prova nada sobre produto.
+
+### 38.3 P01 — `Which code sends the `request_dropped` signal?` (esperado: `scrapy/core/engine.py`)
+
+- **ripgrep:** topo `engine.py` (janela 463–473), depois `scheduler.py`, `signals.py` — acerta.
+- **`jev_map`:** etapa A pôs `signals.py` em primeiro (0,81; onde o sinal é *declarado*), `engine.py` só em 4º (0,03); a etapa B escolheu um docstring do
+  `scheduler.py` (100–112, 0,80) que menciona o sinal. Topo `scheduler.py`; `engine.py` fora do top-3 ⇒ R@3 = 0.
+- **híbrido:** salvaguarda ativa (identificador `request_dropped`, ripgrep achou), topo `engine.py`, entrega = janela `engine.py:463–473` + trechos do
+  `scheduler.py`; R@1 = R@3 = 1,0, REGION_RECALL 1,0. Sem exceção especial para P01: o mesmo código roda nas 20 perguntas.
+- **Por que o Jev errou:** o mapa por arquivo mostra declaração e menções do sinal; a pergunta distingue *quem emite* de *quem declara/descreve*, uma
+  distinção que a linha do mapa não carrega. Hipótese, não medida.
