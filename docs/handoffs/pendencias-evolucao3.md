@@ -385,6 +385,17 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 16 — 01/10 ~17:30Z — perfil selecionado no cliente do android-09 (`real`)
+
+- Estado público não diz o perfil (`UNKNOWN`); o `WorkingDirectoryProvider` do cliente não foi usado (expõe arquivos privados). Abri o
+  app (única mutação) e li a Dashboard sem tocar em nada: o seletor mostra **`plataforma-android-09-r2`**, Remote, "3 hours ago"
+  (= 13:20:12Z, a importação do r2), serviço parado, sem aviso nem erro. `ACTIVE_PROFILE_MATCHES_R2 = YES`.
+- Os três `-r1` são importações legítimas de três ciclos de atribuição (o contador de revisão recomeça quando a linha sai), não retry.
+  O r2 é o perfil com o qual o boot 2 do W8 chegou a `conectado`: "perfil errado selecionado" não explica o auto-stop. Falha do tile
+  também com a linha ativa e o par no servidor no W8 (inferência): "falta de par" sozinha também não.
+- android-09 voltou ao base (healthy 17:23:45Z); resíduo: um `ProxyService` só vinculado pela UI. CONTROL-05 recomendado, com plano
+  em `w8-diagnostico-android09.md` §16 (não executado; wake exige autorização). PEER-09 não recomendado agora.
+
 ### Checkpoint 15 — 01/10 ~17:20Z — segundo A1 no android-09, instrumentação nova (`real`)
 
 - Mesma falha: sem `tun0`, `click-tile` exit 0 e vazio, cliente vivo (6512). Agora com `-b all` e a janela larga: clique→

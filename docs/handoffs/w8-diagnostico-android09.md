@@ -342,3 +342,68 @@ endpoint (LAN versus alias do host).
 
 **Caso B** (a falha se repete e o PORQUÊ continua desconhecido): a próxima decisão do dono é **CONTROL-05 versus PEER-09**. Nenhuma
 das duas foi feita; A2 não rodou; produto, perfil, cliente e WireGuard intocados; **W8 = OPEN**.
+
+## 16. Qual perfil está selecionado no cliente do android-09 (01/10/2026, 17:19Z, `real`)
+
+**Estado público (só leitura):** `dumpsys package/activity/connectivity/notification` não dizem qual perfil está selecionado
+(`PROFILE_FROM_PUBLIC_STATE = UNKNOWN`). O cliente expõe um `WorkingDirectoryProvider` (DocumentsProvider do diretório de trabalho):
+**não foi usado**, porque lista os arquivos privados do app (configurações com chave).
+
+**Inspeção da interface (a única mutação: abrir o app; coletor read-only ligado, run `20261001T171935Z`, 29 amostras, `tun0` e VPN
+nunca vistos, parada pelo arquivo `parar`, nenhum órfão).** Gate de 17 precondições ok. `am start -n io.nekohasekai.sfa/.compose.MainActivity`
+às 17:19:56Z; árvore pelo `GET /api/instances/android-09/hierarchy` (leitura, sem controle) mais uma captura de tela só para
+conferir. Nada foi tocado no app (sem Expand, Edit, Update, Start, tile, force-stop). A Dashboard mostra:
+
+- cartão **Profiles** com um seletor suspenso (ícone de abrir/fechar) cujo valor é **`plataforma-android-09-r2`**, tipo **Remote**,
+  "**3 hours ago**", botões Edit / Update profile / Share, e o botão **Start** (serviço parado; nenhum cartão de status);
+- nenhum aviso, erro ou texto de configuração inválida. Perfis visíveis: **1** (os outros ficam dentro do seletor, não aberto).
+
+`ACTIVE_PROFILE_MATCHES_R2 = YES`, com dois indícios independentes: o nome e a idade. "3 hours ago" bate com a importação do r2
+(13:20:12Z → 17:20:02Z = 3 h 59 min); uma importação `-r1` das 13:06Z já diria "4 hours ago". Ressalva: que o valor do seletor
+fechado é o perfil selecionado é a leitura normal da interface, sem ter aberto o seletor para conferir os outros três.
+
+Depois: HOME pelo `input keyevent`; foco no launcher, `always_on=null`, `lockdown=0`, sem `tun0`, sem VPN CONNECTED, cliente vivo
+(6512, `stopped=false`), `ACTIVATE_VPN: allow`, sem linha de rede, sem par, sem comando aberto, conectividade `healthy` às
+17:23:45Z (**depois** da inspeção). **Resíduo:** abrir a UI criou um `ServiceRecord` do `ProxyService` só **vinculado** (sem
+`isForeground`, sem start pedido, sem `tun0`), que antes não existia; some quando o Android soltar o vínculo; não foi limpo.
+
+**As quatro importações (todas: endpoint `192.168.1.81:51820`, endereço `10.66.0.6/32`, HTTP de uso único com `adb reverse`; comando
+sempre `device.network` ação `aplicar`, motivo `varredura`, pedido pela `rede`):**
+
+| Nome | Importado (UTC) | Rev | Comando | Ciclo de atribuição |
+|---|---|---|---|---|
+| `-r1` | 30/09 22:36:36 | 1 | `c-20260930223636-13ed84` (instalou o cliente pela loja, 1.14.2) | 1º: sem bloqueio; `desfazer` rev 2 às 22:49 |
+| `-r1` | 01/10 12:47:23 | 1 | `c-20261001124723-88b048` | 2º: `conectar`…; `desfazer` rev 2 às 12:56 |
+| `-r1` | 01/10 13:06:11 | 1 | `c-20261001130611-ac0740` | 3º: `conectado` 13:07:38, `trafego_verificado` 13:08:11 |
+| `-r2` | 01/10 13:20:12 | 2 | `c-20261001132012-58049e` | 3º ciclo, política → `exigida_com_bloqueio` |
+
+Os três `-r1` são **importações legítimas de três ciclos de atribuição diferentes**, não retry nem importação depois de reinício: o
+contador de revisão recomeça em 1 quando a linha `device_network` é removida (no `livre`), então o nome se repete; dentro de um
+ciclo cada `aplicar` veio da varredura uma vez, e o reinício vem DEPOIS dela (para o always-on valer). Origem conhecida.
+
+**O que isto muda:** o r2 é o selecionado e é o perfil com o qual o boot 2 do W8 (13:25:35Z) chegou a `conectado` (tun0 e VPN CONNECTED).
+Nenhum comando do produto troca a seleção desde então; logo "perfil errado/velho selecionado" **não** explica o auto-stop
+(`PROFILE_STATE_CAUSALITY`: hipótese do perfil selecionado errado descartada; o CONTEÚDO/estado interno do r2 não foi verificado).
+Também enfraquece a hipótese "falta de par": as 4 falhas do tile no W8 foram com a linha de rede ativa e o par no servidor
+(inferência: o par só saiu no rollback `livre`; não há evento de par no banco). Fica de pé o que difere entre o boot 2 (funcionou) e as
+falhas: o caminho de início (always-on do boot × tile) e o estado do processo do cliente.
+
+### Plano do CONTROL-05 (NÃO executado; nada foi acordado)
+
+1. **Autorização do dono separada para o wake**, aceitando que a reconvergência do próprio produto pode reiniciar a rede ao acordar
+   (`ligou` → `conferir`; `reinicios_max=2`) e que o 05 volte, depois, a hibernado ou fique ligado (decidir).
+2. **Antes de acordar:** perfil novo do acionador só para o 05 (`--perfil controle-05`; gate com rede gerenciada, rollback por
+   tun0/CONNECTED/`last_connection`), com testes e commit; coletor novo ligado para o serial `emulator-5562` e a instância
+   `android-05`, mais um monitor só de leitura de `commands`/`events` do 05.
+3. **Re-hibernação:** o rodízio só hiberna para ceder vaga (`idle_stop_s=0`); o worker local tem 4 vagas e 3 estão ocupadas (01/03/06),
+   então o 05 ocupa a quarta e só sai se alguém pedir um quinto aparelho: nenhum start, tarefa ou foco no parque durante a janela. Não
+   usar `control/take` (a varredura só age com o aparelho livre, e conflita com "nenhum operador").
+4. **Acordar** pelo gesto do produto (`POST /api/instances/android-05/actions/…`), medir, não intervir; esperar a convergência até
+   `trafego_verificado` com `tun0`, VPN CONNECTED, regras de bloqueio, par com `last_connection` recente, conectividade `healthy`, nenhum
+   comando aberto por 2 varreduras; só então registrar o baseline (versão, pids, `stopped`, Q0, always-on, lockdown, regras).
+5. **Uma única tentativa:** início da janela logo depois de uma conferência (a deriva é 900 s; a sonda de internet 300 s), `force-stop` →
+   pid/tun0 ausentes → o MESMO gesto instrumentado → 30 s de observação; sem segundo force-stop, sem repetição.
+6. **Se o tile falhar:** sem improviso; o produto recupera por reinício na próxima conferência (≤ 15 min): decisão prévia do dono se
+   aceita. Sem mudar perfil, política, par nem servidor; sem conta real (`qa-user-05`); sem IA paga.
+7. **Fechamento:** provas do produto convergido de novo (tun0, CONNECTED, `always_on=sfa`, `lockdown=1`, regras, handshake, `healthy`),
+   tile no Q0; depois, a tabela 05 × 09 (`resumo`) e o `NETLINK_CAUSALITY` pelo que o 05 mostrar.
