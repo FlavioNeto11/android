@@ -158,6 +158,15 @@ Supervisor, `deploy.ps1`, `start.ps1`, `stop.ps1`, `restore.ps1` e `loja-janela.
 responde (`Health.service`, ver `backend/app/identidade.py` e `scripts/lib/farm-health.ps1`); o `stop.ps1` também
 só envia o token de encerramento para a Farm identificada.
 
+**O Appium do backend anterior não fica para o próximo** (K-039, 28/09/2026). Três deploys seguidos deixaram o
+`node` do Appium na 4723 depois do `stop.ps1`; o backend novo o readotava e subia `degraded`
+(`appium_log_masking_off`, com o preenchimento de credencial bloqueado, ou `appium_down`). Agora o `stop.ps1`, depois
+que a Farm para de responder, encerra o Appium **deste projeto** que sobrou na porta de `appium:` do
+`config/config.yaml`. Só o `node.exe` cuja linha de comando aponta para `tools\appium` desta árvore: outro processo
+na porta fica, com aviso (`scripts/lib/appium-do-projeto.ps1`). Antes, ele dá 10 s para um backend que ainda está
+saindo desligar o próprio Appium. `pwsh -File scripts\stop.ps1 -Simular` diz o que seria encerrado, sem encerrar
+nada. Um aviso "linha de comando ilegível" quer dizer shell sem elevação: rode o deploy elevado.
+
 Conferir **o resultado**, não só o código de saída (lição registrada em 24/09 depois de três defeitos da família
 "deploy ok, usuário vê código/config velho" no mesmo dia — dist não rebuildado, config recriado do exemplo,
 `index.html` sem `Cache-Control`):
@@ -266,7 +275,7 @@ isso). Pontos que já causaram incidente:
 |---|---|---|
 | `diagnose.ps1` | S | Diagnóstico do host, não altera nada |
 | `install-prereqs.ps1` | P | Instala Android SDK + Appium; aceita licenças em nome do usuário |
-| `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto |
+| `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto; o `stop.ps1` também encerra o Appium órfão deste projeto (K-039) e tem `-Simular` |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
 | `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
@@ -301,6 +310,7 @@ isso). Pontos que já causaram incidente:
 | Sintoma | Causa | Ação |
 |---|---|---|
 | `config/config.yaml` some depois de um checkout | Arquivo deixou de ser rastreado entre commits; git apaga da árvore ao trocar de commit | Restaurar de `data/backups/<carimbo>/config/`; `start.ps1` já recusa subir nesse estado (§2) |
+| Health `degraded` depois do deploy, com `appium_log_masking_off` ou `appium_down` "readotado" | Appium do backend anterior ficou na porta e foi readotado (K-039) | O `stop.ps1` já o encerra; se voltar, leia os avisos do `stop.ps1` (shell sem elevação, outro programa na porta) e rode `stop.ps1 -Simular` |
 | `data/poc.sqlite3` "malformed database schema" após reboot | Um `-wal` velho ao lado de um banco recopiado | `scripts/restore.ps1 -De <backup> -Confirmar` com backend parado; nunca copiar o `.sqlite3` por cima à mão |
 | Cerca (`commands.fence`) regredida depois de restaurar o banco | `fence` é MAX+1 por aparelho; restaurar volta o contador | Subir o `fence` do aparelho no SQLite até o valor que o agente citou na recusa; reemitir o comando |
 | Agente do worker não volta depois do boot do notebook | Tarefa agendada registrada sem gatilho de boot (script antigo) | Reinstalar com `scripts/worker-agent.ps1 -Instalar` (gera a tarefa com `AtStartup`) |
