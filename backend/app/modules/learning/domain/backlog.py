@@ -584,6 +584,11 @@ class Proposta:
     titulo: str
     detalhe: str
     fragmento: str
+    #: Só as propostas do diagnóstico de um grupo de falha (item 30.13, `domain/diagnostico.py`): o alvo citável
+    #: (`receita:12`, `li-…`), a causa provável e o grupo `fk-*` de que nasceram (`learning_backlog.parent_id`).
+    alvo: str | None = None
+    causa: str | None = None
+    parent_id: str | None = None
 
     @property
     def cluster_key(self) -> str:
@@ -596,7 +601,8 @@ class Proposta:
 
 def linha_de_proposta(p: Proposta, agora: str) -> LinhaDoBacklog:
     return LinhaDoBacklog(id=p.id, category=CategoriaDoBacklog.PROPOSTA, cluster_key=p.cluster_key, title=p.titulo,
-                          state=EstadoDoBacklog.OPEN, first_seen=agora, last_seen=agora, app_package=p.app)
+                          state=EstadoDoBacklog.OPEN, first_seen=agora, last_seen=agora, app_package=p.app,
+                          parent_id=p.parent_id)
 
 
 @dataclass(frozen=True, slots=True)
