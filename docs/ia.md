@@ -260,6 +260,35 @@ Duas regras que tornam seguro um ator ou verificador baratos (Haiku, `gpt-6-luna
 - **Custo:** a regra 1 só custa quando o ator barato bloqueou (antes era uma pessoa); a 2 soma uma verificação do modelo forte (US$ 0,004 a 0,010 pelos preços observados em 02/10) por etapa com efeito aprovada. Os dois botões existem para a bateria poder medir com e sem.
 - **Prova:** `simulated`, `backend/tests/test_cascata_ator_barato.py` (12): sobe ao tier 1 e resolve, uma subida só, os três kinds de pessoa não sobem, chave desligada, forte concordando fecha, forte discordando não conta, mesmo modelo não rejulga. Mutações das duas regras derrubam os testes. **`real`: `not_run`** — a medição do `gpt-6-luna` como ator (a pré-condição que este item destrava) é a próxima bateria paga, autorizada pelo dono e ainda não executada.
 
+## 10c. Perfil de IA por execução e canário (item 17.7)
+
+Trocar o modelo de uma função para **algumas** execuções, sem reiniciar o central e sem mexer no que as outras usam:
+
+- **`ai.profiles.<nome>.roles.<função>`** vale por cima de `ai.roles`, **campo a campo**: o perfil que só troca o
+  modelo do `decide` deixa as outras quatro funções e os outros campos do `decide` iguais ao padrão. A diferença entre
+  os braços do A/B é só o que está escrito no perfil.
+- **Escolha por execução:** `POST /api/runs` com `ai_profile` (nome de `ai.profiles`; desconhecido = `422
+  ai_profile_desconhecido`, antes de criar a execução). Na bateria, `scripts/eval_run.py --profile <nome>` (grava
+  `ai_profile` em `data/eval-results.jsonl`).
+- **Canário:** `ai.canary: {profile, fraction}` sorteia, por execução, a fração das execuções SEM perfil escolhido. O
+  sorteio é injetável (`RunService.sorteio`) e o resultado fica na execução.
+- **A execução guarda o perfil e a origem** (`runs.ai_profile`, `runs.ai_profile_source` = `explicit`|`canary`,
+  migração 064; também em `RunSummary`). A comparação junta `ai_calls` por `run_id`.
+- **Um hub só** (`planning/routing.py`): os perfis são outras linhas de função dentro do mesmo `RoutingProvider`, com o
+  mesmo teto em US$ por execução e por dia, as mesmas vagas por função (divididas entre perfis) e as mesmas instâncias
+  de provedor quando a combinação coincide. O perfil vale para TODA chamada que leva o `run_id` (plano, ação,
+  verificação, escalonamento); a prévia de persona e o refino do comando não têm execução e ficam no padrão.
+- **Conferido na partida:** função desconhecida, provedor ausente, modelo sem capacidade declarada e canário apontando
+  para perfil inexistente recusam a configuração, como em `ai.roles`. Perfil gravado numa execução que **sumiu** da
+  configuração depois não cai no padrão em silêncio: a chamada falha com `not_configured` dizendo o nome do perfil
+  (cair no padrão faria a execução dizer que rodou no candidato sem ter rodado).
+- **Aviso de dados:** um perfil que manda função para fora desta máquina entra no aviso do `GET /api/ai`
+  ("Perfis de IA que enviam dados para fora desta máquina: …") e liga `sends_data_externally`.
+- **O que NÃO muda:** o modelo que a aba IA mostra é o do padrão (o `/api/ai` não conhece a execução); a do perfil está
+  em `ai_calls.model`. O painel não tem seletor de perfil ainda (só API e bateria).
+- **Prova:** `simulated`, `backend/tests/test_perfil_de_ia.py` (16) e `scripts/tests/test_eval_run.py`. **`real`:
+  `not_run`** — o primeiro uso real é a bateria do 17.10 (`gpt-6-luna` como ator), que depende de saldo e autorização.
+
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
 O exemplo é a POC "neutra"; os valores entre parênteses no próprio arquivo já documentam o padrão de código.

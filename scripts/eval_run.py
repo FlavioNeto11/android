@@ -102,9 +102,19 @@ def check(case: dict, run: dict, serials: dict[str, str]) -> tuple[bool, str]:
     return ok, "; ".join(notes)
 
 
+def corpo_da_execucao(case: dict, ids: list[str], perfil: str | None) -> dict:
+    """O POST de `/api/runs` de um caso. `perfil` (item 17.7) escolhe `ai.profiles.<nome>` só para esta execução: o
+    braço B da comparação roda no MESMO backend, sem reiniciar o central e sem mexer no que as outras execuções usam."""
+    corpo = {"command": case["command"], "instance_ids": ids, "mode": "execute", "idempotency_key": f"eval-{uuid.uuid4()}"}
+    if perfil:
+        corpo["ai_profile"] = perfil
+    return corpo
+
+
 def plano(cases: list[dict], spec: dict, a: argparse.Namespace) -> str:
     """O que a bateria FARIA, sem fazer nada: casos, aparelhos e cada efeito colateral, por caso."""
-    linhas = [f"PLANO (nada foi executado; rode de novo com --yes para executar) — backend {a.base}, rótulo '{a.label}'",
+    linhas = [f"PLANO (nada foi executado; rode de novo com --yes para executar) — backend {a.base}, rótulo '{a.label}'"
+              + (f", perfil de IA '{a.profile}'" if getattr(a, "profile", "") else ", funções de IA padrão"),
               "Efeitos de cada caso: POST /api/runs no backend vivo (e POST .../cancel no estouro de prazo); adb nos "
               "aparelhos para conferir o resultado; com provedor real, chamadas pagas de IA."]
     for case in cases:
@@ -127,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default="http://127.0.0.1:8000")
     ap.add_argument("--cases", default="", help="ids separados por vírgula (padrão: todos)")
     ap.add_argument("--instances", default="", help="sobrescreve as instâncias de todos os casos (a,b,c)")
+    ap.add_argument("--profile", default="", help="perfil de IA (ai.profiles.<nome>) das execuções desta bateria; vazio = "
+                                                  "as funções padrão (item 17.7: A/B sem reiniciar o central)")
     ap.add_argument("--yes", action="store_true",
                     help="confirma a execução de verdade: POST /api/runs no backend vivo, adb nos aparelhos (flags, "
                          "force-stop, conferência), provision-qa.ps1 quando o caso pede e, com provedor real, gasto "
@@ -166,8 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             if case.get("flags"):
                 adb(serial, "shell", "am", "force-stop", "com.pocqa.messenger")
         t0 = time.monotonic()
-        run = http.post("/api/runs", json={"command": case["command"], "instance_ids": ids, "mode": "execute",
-                                           "idempotency_key": f"eval-{uuid.uuid4()}"}).json()
+        run = http.post("/api/runs", json=corpo_da_execucao(case, ids, a.profile or None)).json()
         deadline = t0 + case.get("timeout_s", spec["defaults"]["timeout_s"])
         detail = None
         while True:
@@ -208,7 +219,9 @@ def main(argv: list[str] | None = None) -> int:
                "instances": len(ids), "expected": case["expect"], "got": got_s, "pass": bool(state_ok and data_ok),
                "note": note, "seconds": secs, "ai_calls": calls, "tokens_in": tokens_in,
                "tokens_out": sum(g["output"] for g in usage["groups"]), "usd": usage["total_usd"],
-               "driven_by": usage["steps_driven_by"], "models": ai.get("models"), "simulated": ai["simulated"]}
+               "driven_by": usage["steps_driven_by"], "models": ai.get("models"), "simulated": ai["simulated"],
+               # `models` é o do PADRÃO (o /api/ai não conhece a execução); com perfil, o que valeu é o do perfil.
+               "ai_profile": run.get("ai_profile"), "ai_profile_source": run.get("ai_profile_source")}
         results.append(rec)
         with out_file.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
