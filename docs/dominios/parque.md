@@ -219,6 +219,23 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
 - **Medição:** `captura.total`, `captura.evitada{motivo}`, `captura.ms`, `captura.bytes`, `codificacao.ms` e
   `observacao.ms` em `GET /api/desempenho`.
 
+### Sessão de automação morta por baixo (01/10/2026)
+
+`ensure_automation` confia em `automation.state == "ready"` e na sessão conectada; um reboot do aparelho mata a
+instrumentation do UiAutomator2 sem que o central saiba. Dois pontos fecham o buraco, os dois no `DeviceManager`:
+
+- **`hierarchy`** (`GET /api/instances/{id}/hierarchy`): se a leitura volta com erro de **sessão perdida** (o mesmo
+  critério do executor, `automation.driver.sessao_perdida`) e a plataforma ainda acreditava "pronta" (`state ready`,
+  aparelho `online`), invalida a sessão, faz **uma** `ensure_automation` e **uma** releitura. Falhou de novo: o erro sobe
+  como antes (503 `automation_unavailable`). UI ocupada (`DriverBusy`) não é sessão morta e não recria. Com a sessão já
+  em `error`, quem retenta é o monitor, espaçado. Uma leitura soma no máximo **uma** falha de sessão: não alcança sozinha
+  o teto de 3 (`FALHAS_DE_SESSAO_PARA_DEGRADAR`) que degrada o aparelho e aciona a escada de reparo.
+- **Desfecho remoto bem-sucedido** (`readotar_depois_do_worker`, verbos `start`, `wake`, `restart`, `reset`): fecha a
+  sessão do Appium e zera `automation`, como o `stop_instance` local já fazia, e, com o aparelho `online`, dispara a
+  abertura da nova sessão. Cobre o aparelho que o central nunca viu cair (o restart do worker é mais rápido que o monitor).
+
+Prova: `simulated` (`tests/test_hierarquia_sessao_morta.py`, aparelho e driver falsos); `not_run` em aparelho real.
+
 ## Reparo automático
 
 `despacho.remediar(s, instance_id, motivo)` (`commands/despacho.py`) decide o DEGRAU quando um aparelho com

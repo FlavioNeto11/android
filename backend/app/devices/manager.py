@@ -20,7 +20,7 @@ from PIL import Image
 
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
-from ..automation.driver import DeviceIO, DriverError, DriverTimeout, FalhaDeLeitura
+from ..automation.driver import DeviceIO, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import AndroidCfg, Config
 from ..db import INTEGRITY_ERRORS, Database, dumps, loads
@@ -2970,7 +2970,22 @@ class DeviceManager:
         publicado — é o que impede o alarme falso —, mas prender o `finished_at` do comando (e o cadeado que dá
         exclusividade ao aparelho) à latência do ADB seria trocar uma mentira por uma espera."""
         if outcome == "succeeded" and verb in ("start", "wake", "restart", "reset"):
+            await self._esquecer_a_sessao_de_antes_do_boot(rt)
             await self._readotar_agora(rt)
+            # Aparelho que o central NUNCA viu cair (o restart do worker é mais rápido que o monitor de 30 s) segue `online`,
+            # e a readoção não o "coloca no ar" de novo: sem isto a sessão recriada só viria numa leitura ou execução.
+            if (self.io_factory is None and rt.state == InstanceState.online and rt.automation.state == "none"
+                    and not rt.store and ("automation" not in rt.tasks or rt.tasks["automation"].done())):
+                rt.tasks["automation"] = asyncio.create_task(self._automacao_depois_de_arrumar(rt),
+                                                             name=f"automation-{rt.id}")
+
+    async def _esquecer_a_sessao_de_antes_do_boot(self, rt: DeviceRuntime) -> None:
+        """O que `stop_instance` faz no caminho local (`session.close` + automação zerada) e o caminho remoto não fazia: o reboot
+        feito pelo worker mata a instrumentation do UiAutomator2, mas a sessão do Appium daqui seguia "pronta" (android-09,
+        01/10/2026: a hierarquia deu 503 por horas depois de um restart que o central não viu como queda)."""
+        if self.io_factory is None:                # testes: aparelho falso, sem Appium
+            await asyncio.to_thread(rt.session.close)
+        self.invalidate_automation(rt, "o aparelho reiniciou na máquina do worker; a sessão de antes do boot não vale mais")
 
     # ------------------------------------------------------------------ automação
     @staticmethod
@@ -3880,7 +3895,19 @@ class DeviceManager:
     async def hierarchy(self, rt: DeviceRuntime) -> UiTree:
         if not await self.ensure_automation(rt):
             raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False)
-        xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
+        try:
+            xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
+        except DriverError as exc:
+            # `ensure_automation` confia no "pronta": uma sessão que morreu por baixo (reboot, instrumentation encerrada) devolvia
+            # 503 para sempre. Leitura que recebe o erro DE SESSÃO PERDIDA recria UMA vez e relê; UI ocupada ou outro erro
+            # seguem como estavam. Só quando a plataforma ainda acredita "pronta": se já está em `error`, quem retenta é
+            # o monitor (espaçado), e uma leitura não gasta o orçamento de falhas que degrada o aparelho.
+            if not sessao_perdida(exc) or rt.automation.state != "ready" or rt.state != InstanceState.online:
+                raise
+            self.invalidate_automation(rt, str(exc).splitlines()[0][:300])
+            if not await self.ensure_automation(rt):
+                raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False) from exc
+            xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
         return self.arvore(rt, xml, max_elements=400)
 
 
