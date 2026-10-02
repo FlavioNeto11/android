@@ -444,6 +444,18 @@ Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002-r3/` (`i1`, `i2`
 
 **Contagem:** reinícios reais contados 3 de 6 (1 do r2 + iterações 1 e 2 do r3); rollback fora da conta: 2 no r2, 1 no r3. **Reinícios do servidor WireGuard:** 2 no r2 e 2 no r3 (par entra e sai), todos em janela ociosa, todos com reconexão de 03/06 em 20 a 30 s. Nenhum sinal em 02/03/05/06 além do piscar esperado. **Não foi feita uma 4ª rodada:** exigiria +2 reinícios do servidor WireGuard, que não estão autorizados além dos já usados; sobra espaço de 3 boots (3 + 3 <= 6 permitiria UMA iteração).
 
+### 17.9 Pré-registro da rodada r4 (**gravado ANTES do 1º boot do r4**, 02/10/2026; `not_run` até o disparo)
+
+Decisão do dono (02/10, via sessão orquestradora): "Sim, r4 + pausar os vizinhos". Seed nova: `w8-mitigacao-20261002-r4`.
+
+- **Orçamento:** 3 reinícios reais já usados (1 do r2, 2 do r3). Pela regra `usados + (1 + rede.reinicios_max) <= 6`, o r4 tem **EXATAMENTE 1 iteração** (3 + 3 = 6) e nenhuma outra. `BOOTS_JA_USADOS = 3` no script.
+- **Critério do W8, fixado antes do boot:** **PASS** se a iteração do r4 for `RECOVERED_BY_UI` válida, somada à `RECOVERED_BY_UI` válida do r3 (2 no total). **PARTIAL** se for `NO_FAILURE` (o túnel subiu sozinho; a mitigação não foi exercitada). **FAIL** se for `NOT_RECOVERED` ou `RECOVERED_BY_RESTART`. **`BOOT_INVALID` ou `UNKNOWN` = W8 PARTIAL e nenhuma nova rodada.** (Muda a regra de r2/r3, em que `BOOT_INVALID`/`UNKNOWN` valiam `FAIL`: o r3 já tem a recuperação válida e a invalidação do r3 veio de um vizinho, não da mitigação.)
+- **Vizinhos pausados (mudança pré-registrada, NÃO um afrouxamento da regra de bystander):** durante o r4 o reparo automático de **android-01, android-03 e android-06** fica pausado (`PUT /api/instances/{id}/repair-pause`, TTL 900 s, renovado durante a janela e antes do rollback), **conferido em `GET /api/health` → `features.repair_pause` antes do boot** (senão `BOOT_INVALID` sem mexer na rede), e **encerrado no fim** (`DELETE`). Comando explícito de pessoa continua passando (A2). A regra de invalidação por `restart`/`reset`/`stop` de outro aparelho na janela **continua a mesma**.
+- **Servidor WireGuard:** +2 reinícios autorizados (par entra e sai), em janela ociosa, mesmas condições de reconexão (≤ 120 s) e de parada; firewall só lido.
+- **Rollback:** `force-stop` do SFA antes do `assign vpn=null` (§17.7); 1 reinício fora da conta.
+- **Estado de partida (declarado):** baseline do 09 restaurado pelo rollback do r3 (SFA `stopped=true`, always-on null, sem `tun0`, sem linha, 4 peers).
+- **Prova:** `simulated` (`scripts/tests/test_diag_w8_mitigacao.py`, 76 com o `test_diag_w8_boot.py`); o resultado real vai em §17.10.
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
