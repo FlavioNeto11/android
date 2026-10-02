@@ -50,6 +50,10 @@ class EnvSettings(BaseSettings):
     #: Chave do provedor semântico de retrieval de contexto (`context_retrieval.semantic.provider: jev`). Só do ambiente
     #: ou do `.env`, nunca do `config.yaml`; ausente = provedor indisponível e o retrieval cai no local (ADR-063).
     typesafe_api_key: SecretStr | None = Field(default=None, alias="TYPESAFE_API_KEY")
+    #: Aviso fora do painel (item 28.11): o token do bot criado no @BotFather e o chat para onde ele escreve. Nomes
+    #: FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. `SecretStr`: não aparecem em repr nem em log.
+    telegram_bot_token: SecretStr | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: SecretStr | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -902,6 +906,25 @@ class LearningCfg(BaseModel):
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
 
 
+class AvisosCfg(BaseModel):
+    """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062):
+    tipo do evento e link, nunca dado de persona. Desligado de fábrica; ligar exige `TELEGRAM_BOT_TOKEN` e
+    `TELEGRAM_CHAT_ID` no `.env` (procedimento em `docs/operacao.md`). Os valores nunca moram aqui."""
+
+    enabled: bool = False
+    canal: Literal["telegram"] = "telegram"
+    #: Base pública do painel para o link `<base>/#/pendencias`. Vazia: a mensagem leva só o texto.
+    url_painel: str | None = None
+    intervalo_s: int = Field(15, ge=5, le=3600)             # de quanto em quanto tempo o laço olha a fila
+    lote: int = Field(5, ge=1, le=50)                       # avisos por volta (o limite do Telegram é ~1 msg/s por chat)
+    timeout_s: float = Field(10.0, gt=0, le=60)
+    max_tentativas: int = Field(5, ge=1, le=20)
+    backoff_s: float = Field(30.0, gt=0, le=3600)
+    validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
+    incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
+    retencao_dias: float = Field(30.0, gt=0, le=3650)
+
+
 class ContextRetrievalLexicalCfg(BaseModel):
     use_ripgrep: bool = True       # false força o caminho Python puro (mesmo resultado, mais lento)
     ripgrep_path: str | None = None  # opcional; sem ele, RIPGREP_PATH e depois o PATH; sem rg, o motor é o Python
@@ -1001,6 +1024,7 @@ class AppConfigFile(BaseModel):
     provisioning: ProvisioningCfg = ProvisioningCfg()
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
+    avisos: AvisosCfg = AvisosCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 
