@@ -3745,7 +3745,7 @@ invalida os caches.
 **Adendo (2ª rodada, 01/10/2026): índice persistente.** O índice BM25 passa a morar em disco (`data/context_retrieval/bm25/`, fora do
 Git), chaveado por raiz + revisão + `RETRIEVAL_VERSION` + `INDEX_VERSION` + corpus, com gravação atômica, corrompido = miss e poda
 (3 por raiz). Guarda só vocabulário e contagens, nunca texto; linha com formato de credencial e token com cara de chave nem
-viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. O lote
+viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. **Reconstrução incremental (02/10/2026):** o índice guarda o digest do texto de cada arquivo e, com um índice anterior compatível (memória ou o mais recente em disco), só os arquivos alterados ou novos são reanalisados; o resultado é idêntico ao do índice cheio (testado) e `INDEX_VERSION` passou a 3. O lote
 (`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
 local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
 

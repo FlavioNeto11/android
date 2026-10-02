@@ -81,6 +81,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Retrieval: proposta de orçamento da etapa B (J6, só doc)
+
+- `docs/dominios/context-retrieval.md` ganha a seção "Proposta: orçamento da etapa B": a regra do teto (`gasto da A + len(payload)//4 > 24.000` barra a B, ~33 KB de payload), os números reais do smoke (A ~15,6 mil tokens, B ~7,6 mil, US$ 0,00066 a 0,00098 por pergunta), cinco opções com custo estimado, e a recomendação: medir antes o valor da B (ablação A x A + B com métrica de região) e conferir se a A cobre o escopo (`files_considered = 195`). Nada foi alterado nem habilitado; a decisão de habilitar o remoto é do dono.
+
+## 2026-10-02 — Retrieval: índice BM25 incremental por arquivo (J5)
+
+- **`infrastructure/bm25.py`**: o índice guarda o digest do texto de cada arquivo (`INDEX_VERSION` 3, o que invalida os índices em disco antigos uma vez). Com a revisão nova e um índice anterior compatível (memória ou o mais recente em disco), só os arquivos alterados ou novos são higienizados e tokenizados; o resto reaproveita as contagens. O índice sai IDÊNTICO ao cheio. Semente de outro corpus, versão ou raiz, ou corrompida, nunca é usada. Sem mudança de pontuação, de política nem de API.
+- **Medição `real`** (02/10, central, 1.415 arquivos, `scripts/context-retrieval-incremental-bench.py`, antes = `main` `0da61af`): uma edição 5,3 s → 1,3 s; processo novo com índice em disco 5,3 s → 1,6 s; trocar para `HEAD~10` 5,0 s → 1,7 s; a frio sem índice, igual (13,3 s → 12,5 s). `simulated`: `test_context_retrieval_bm25_incremental.py` (22, comparação com o índice cheio em 7 tipos de mudança, semente incompatível ou corrompida; duas mutações do código falham os testes).
+
 ## 2026-10-02 — Retrieval: medição local de qualidade neste repositório (J4)
 
 - **`scripts/context-retrieval-local-eval.py`** (novo, só mede): avalia lexical, BM25 e híbrido local em 40 commits `feat`/`fix` da `main`, com o índice no estado do pai do commit (sem vazar a resposta). Zero rede e zero chamada paga. `real` (02/10, central, `--ate 40316ba`): com escopo de código o BM25 chega a 82,5% hit@3 e 0,652 MRR@10; sem escopo cai para 30%; o `hybrid_local` fica abaixo do BM25 puro (72,5%); a primeira consulta de cada revisão custa ~5,5 s. Números, limites e propostas (não aplicadas) em `docs/dominios/context-retrieval.md`. `simulated`: `scripts/tests/test_context_retrieval_local_eval.py` (8, git real em pasta temporária; o anti-vazamento falha se o índice usar o commit em vez do pai).
