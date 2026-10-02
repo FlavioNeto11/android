@@ -31,7 +31,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 import httpx
 import pytest
@@ -423,25 +423,84 @@ def test_perfil_do_cliente_compoe_vpn_e_proxy_como_no_piloto() -> None:
 
 
 # ============================================================================ o HTTP de uso único
-def _get(url: str) -> tuple[int, bytes]:
+def _get(url: str, timeout: float = 5) -> tuple[int, bytes]:
     try:
-        with urllib.request.urlopen(url, timeout=5) as r:                         # noqa: S310 - 127.0.0.1 do teste
+        with urllib.request.urlopen(url, timeout=timeout) as r:                   # noqa: S310 - 127.0.0.1 do teste
             return r.status, r.read()
     except urllib.error.HTTPError as exc:
         return exc.code, b""
 
 
-def test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token() -> None:
+def _ate_o_fato(cond: Callable[[], bool], o_que: str, prazo_s: float = 5.0) -> None:
+    """Espera o FATO (o contador do servidor que roda noutra thread), nunca um tempo fixo."""
+    fim = time.monotonic() + prazo_s
+    while not cond() and time.monotonic() < fim:
+        time.sleep(0.005)
+    assert cond(), f"não aconteceu em {prazo_s} s: {o_que}"
+
+
+def _atrasar_depois_do_corpo(srv: ServidorDeUmaVez, atraso_s: float) -> None:
+    """Faz o servidor demorar `atraso_s` depois de CADA gravação no socket — como uma thread de servidor que perdeu a CPU
+    entre entregar o corpo e contar a entrega (o que o `-n 8` provoca) — sem tocar no código de produção."""
+    classe = srv._srv.RequestHandlerClass
+    setup = classe.setup
+
+    class _Lento:
+        def __init__(self, real: object) -> None:
+            self._real = real
+
+        def write(self, dados: bytes) -> int:
+            n = self._real.write(dados)                                           # type: ignore[attr-defined]
+            time.sleep(atraso_s)
+            return n
+
+        def __getattr__(self, nome: str) -> object:
+            return getattr(self._real, nome)
+
+    def setup_lento(self: object) -> None:
+        setup(self)                                                               # type: ignore[arg-type]
+        self.wfile = _Lento(self.wfile)                                           # type: ignore[attr-defined]
+
+    classe.setup = setup_lento                                                    # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize("atraso_s", [0.0, 0.3], ids=["servidor_ligeiro", "servidor_sem_cpu_depois_do_corpo"])
+def test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token(atraso_s: float) -> None:
+    """K-072: o servidor entrega o corpo e SÓ DEPOIS conta (`entregues`); o cliente volta com o corpo antes da contagem.
+    Afirmar `entregues == 1` ao receber a resposta é corrida (falhava com `-n 8`): o teste espera o fato. Com o atraso
+    de 0,3 s depois do corpo a corrida deixa de ser rara e passa a ser certa para quem não espera."""
     srv = ServidorDeUmaVez(host_do_aparelho="10.0.2.2", serial="emulator-5640", prazo_s=10)
+    _atrasar_depois_do_corpo(srv, atraso_s)
     url = srv.gravar_arquivo_privado("perfil-abc.json", b'{"k": 1}')
     assert url == f"http://10.0.2.2:{srv.porta}/perfil-abc.json"
     local = url.replace("10.0.2.2", "127.0.0.1")
     assert _get(local.replace("perfil-abc", "outro"))[0] == 404                   # caminho errado não conta
-    assert _get(local) == (200, b'{"k": 1}') and srv.entregues == 1
+    _ate_o_fato(lambda: srv.recusados == 1, "o 404 do caminho errado contado")
+    assert srv.entregues == 0                                                     # o 404 não é entrega
+    assert _get(local) == (200, b'{"k": 1}')
+    _ate_o_fato(lambda: srv.entregues == 1, "a entrega contada depois do corpo")
     with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
-        _get(local)                                                                # depois do GET, fechou
+        _get(local, timeout=1)                                                     # depois do GET, fechou
+    assert srv.entregues == 1 and srv.recusados == 1
     srv.apagar_arquivo_privado("perfil-abc.json")
     srv.apagar_arquivo_privado("perfil-abc.json")                                  # idempotente
+
+
+def test_dois_servidores_de_uma_vez_ao_mesmo_tempo_nao_colidem_na_porta() -> None:
+    """Descarta a hipótese da porta fixa: cada servidor pede a porta 0 (efêmera) e lê de volta a que o SO deu."""
+    a = ServidorDeUmaVez(host_do_aparelho="10.0.2.2", serial="emulator-5640", prazo_s=10)
+    b = ServidorDeUmaVez(host_do_aparelho="10.0.2.2", serial="emulator-5642", prazo_s=10)
+    try:
+        assert a.porta != b.porta and a.porta > 0 and b.porta > 0
+        ua = a.gravar_arquivo_privado("a.json", b"A").replace("10.0.2.2", "127.0.0.1")
+        ub = b.gravar_arquivo_privado("b.json", b"B").replace("10.0.2.2", "127.0.0.1")
+        assert _get(ub.replace("b.json", "a.json"))[0] == 404                     # o caminho de A não existe em B
+        assert _get(ua) == (200, b"A") and _get(ub) == (200, b"B")
+        _ate_o_fato(lambda: a.entregues == 1 and b.entregues == 1, "uma entrega em cada servidor")
+        assert (a.recusados, b.recusados) == (0, 1)
+    finally:
+        a.apagar_arquivo_privado("a.json")
+        b.apagar_arquivo_privado("b.json")
 
 
 @pytest.fixture(autouse=True)
