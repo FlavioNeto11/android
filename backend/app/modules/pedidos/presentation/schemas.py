@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.execution.presentation.schemas import DevicePolicy, RunTarget, RunTargetsResolveBody
 from app.modules.pedidos.infrastructure.servico import CorpoDoPedido
@@ -121,6 +121,20 @@ class PausarCorpo(_Corpo):
 
 class RetomarCorpo(_Corpo):
     modo: Literal["daqui", "recuperar"] | None = None
+
+
+class LerAvisosCorpo(_Corpo):
+    """`POST /api/pedidos/avisos/ler`: marca ids exatos, ou `todos` os informativos (os da caixa), opcionalmente só os de
+    um pedido (`pedido_id`, extensão do adendo). Sem um dos dois não há o que marcar."""
+    ids: list[str] | None = Field(default=None, max_length=200)
+    todos: bool = False
+    pedido_id: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _algo_para_marcar(self) -> LerAvisosCorpo:
+        if not self.ids and not self.todos:
+            raise ValueError("informe `ids` ou `todos`")
+        return self
 
 
 class CancelarCorpo(_Corpo):

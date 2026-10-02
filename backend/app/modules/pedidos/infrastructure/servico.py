@@ -12,8 +12,9 @@ todas dos módulos de domínio (`domain/previa.py`, `estados.py`) e das ações 
 * os eventos `pedido.updated`, `pedido.ocorrencia.updated` e `pedido.aviso` saem das MARCAS que o repositório anota
   (`RepositorioDePedidos.marcar`) e são descarregadas depois do commit, por quem escreveu.
 
-Os avisos NÃO têm tabela (a 067 não a criou e a 28.9 não abre migração): saem como evento persistido, e a rota os lê de
-`events`. Sem `lido_em` e sem dedupe por chave: ver o adendo.
+Os avisos são linhas de `pedido_avisos` (migração 072): TODO `pedido.aviso` é gravado antes de ser emitido, com
+`chave_dedupe` (`CaixaDeAvisos.registrar`), venha da API ou do laço; a rota os lê da tabela e `POST /avisos/ler` marca
+`lido_em`.
 """
 from __future__ import annotations
 
@@ -27,10 +28,11 @@ from app.config import PedidosCfg
 from app.db import Database, Row, dumps, loads
 from app.models import RunTargetsPreview
 from app.modules.execution.presentation.schemas import RunTargetsResolveBody
+from app.modules.pedidos.domain import avisos as dominio_avisos
 from app.modules.pedidos.domain import previa
-from app.modules.pedidos.domain.chave import formatar_instante
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, PEDIDO_ATORES, TransicaoInvalida, transicionar_pedido
 from app.modules.pedidos.infrastructure.acoes import AcaoInvalida
+from app.modules.pedidos.infrastructure.avisos import MAXIMO_DE_IDS, CaixaDeAvisos
 from app.modules.pedidos.infrastructure.laco import LacoDePedidos
 from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.modules.pedidos.infrastructure.repositorio import novo_id
@@ -101,6 +103,8 @@ class PedidosApi:
         self.emitir = emitir
         self.cfg = cfg
         self.memoria = RepositorioDeMemoria(db)
+        #: O ponto único dos avisos: o laço (`AppState`: `avisar`) e esta API gravam e emitem pelo MESMO objeto.
+        self.caixa = CaixaDeAvisos(db, emitir, self.agora)
 
     def agora(self) -> datetime:
         return self.laco.relogio()
@@ -540,7 +544,7 @@ class PedidosApi:
         v["ocorrencias_por_estado"] = por_estado
         v["gasto_usd"] = round(gasto, 6)
         v["orcamento_usado"] = round(gasto / total, 4) if total else None
-        v["avisos_nao_lidos"] = 0       # sem tabela de avisos (sem `lido_em`): ver o adendo v0.45
+        v["avisos_nao_lidos"] = self.caixa.nao_lidos(pid)
         v["acoes_permitidas"] = previa.acoes_permitidas(p["estado"])
         return v
 
@@ -657,7 +661,8 @@ class PedidosApi:
             onde.append("(LOWER(titulo) LIKE ? ESCAPE '\\' OR LOWER(objetivo) LIKE ? ESCAPE '\\')")
             params += [f"%{esc}%", f"%{esc}%"]
         if pede_atencao:
-            onde.append("estado IN ('pausado','aguardando_pessoa')")
+            onde.append("(estado IN ('pausado','aguardando_pessoa') OR id IN (SELECT pedido_id FROM pedido_avisos"
+                        " WHERE lido_em IS NULL AND requer_pessoa=0))")
         ordenar = {"atualizado": "atualizado_em DESC, id", "criado": "criado_em DESC, id",
                    "proxima": "(CASE WHEN proxima_em IS NULL THEN 1 ELSE 0 END), proxima_em, id"}[ordem]
         linhas = self.db.query(f"SELECT * FROM pedidos WHERE {' AND '.join(onde)} ORDER BY {ordenar}", tuple(params))
@@ -717,30 +722,31 @@ class PedidosApi:
         return self.db.query("SELECT * FROM runs WHERE pedido_id=? ORDER BY created_at DESC, id DESC LIMIT ?",
                              (pedido_id, limit))
 
-    # ------------------------------------------------------------------ avisos (eventos persistidos)
-    def avisos(self, *, pedido_id: str | None, requer_pessoa: bool | None, limit: int, cursor: str | None) -> JsonObject:
-        onde, params = ["kind='pedido.aviso'"], []
-        if cursor and cursor.isdigit():
-            onde.append("id < ?")
-            params.append(int(cursor))
-        linhas = self.db.query(f"SELECT id, ts, data FROM events WHERE {' AND '.join(onde)} ORDER BY id DESC LIMIT 1000",
-                               tuple(params))
-        itens: list[JsonObject] = []
-        ultimo = None
-        for r in linhas:
-            aviso = (loads(r["data"], {}) or {}).get("aviso")
-            if not isinstance(aviso, dict):
-                continue
-            if pedido_id and aviso.get("pedido_id") != pedido_id:
-                continue
-            if requer_pessoa is not None and bool(aviso.get("requer_pessoa")) != requer_pessoa:
-                continue
-            if len(itens) == limit:
-                break
-            itens.append({**aviso, "lido_em": None})
-            ultimo = r["id"]
-        mais = len(itens) == limit and any(True for r in linhas if r["id"] < (ultimo or 0))
-        return {"items": itens, "nao_lidos": None, "proximo_cursor": str(ultimo) if mais else None}
+    # ------------------------------------------------------------------ avisos (tabela `pedido_avisos`)
+    def avisos(self, *, pedido_id: str | None, requer_pessoa: bool | None, lido: bool | None, limit: int,
+               cursor: str | None) -> JsonObject:
+        """`nao_lidos` é o contador da caixa (informativos não lidos), do pedido filtrado ou de todos: não muda com os
+        outros filtros, para o selo do menu e a lista dizerem o mesmo número."""
+        ini = self._offset(cursor)
+        itens, mais = self.caixa.listar(pedido_id=pedido_id, requer_pessoa=requer_pessoa, lido=lido, limite=limit,
+                                        inicio=ini)
+        return {"items": itens, "nao_lidos": self.caixa.nao_lidos(pedido_id),
+                "proximo_cursor": self._cursor(ini + limit) if mais else None}
+
+    def ler_avisos(self, *, ids: Sequence[str] | None, todos: bool, pedido_id: str | None) -> JsonObject:
+        """Marca como lido. Sem `ids` nem `todos` é 422; id que não existe é 404 e nada é gravado. Repetir é seguro
+        (`lidos` conta só o que mudou agora)."""
+        if not ids and not todos:
+            raise ErroDeApi(422, "limite_invalido", "Informe `ids` ou `todos`.")
+        if ids and len(ids) > MAXIMO_DE_IDS:
+            raise ErroDeApi(422, "limite_invalido", f"No máximo {MAXIMO_DE_IDS} ids por chamada.")
+        if pedido_id:
+            self._pedido(pedido_id)
+        faltam = self.caixa.inexistentes(list(ids or ()))
+        if faltam:
+            raise ErroDeApi(404, "not_found", "Aviso não existe.", kind="aviso", ids=faltam)
+        lidos = self.caixa.ler(ids=ids, todos=todos, pedido_id=pedido_id)
+        return {"lidos": lidos, "nao_lidos": self.caixa.nao_lidos(pedido_id)}
 
     # ------------------------------------------------------------------ snapshot
     def snapshot(self) -> JsonObject:
@@ -752,7 +758,7 @@ class PedidosApi:
             por[r["estado"]] = int(r["n"])
         espera = [{**self.view(r), "pendencias": self.pendencias(r["id"])} for r in self.db.query(
             "SELECT * FROM pedidos WHERE estado='aguardando_pessoa' ORDER BY atualizado_em, id")]
-        return {"por_estado": por, "avisos_nao_lidos": 0, "aguardando_pessoa": espera}
+        return {"por_estado": por, "avisos_nao_lidos": self.caixa.nao_lidos(), "aguardando_pessoa": espera}
 
     # ================================================================== eventos
     def _descarregar(self) -> None:
@@ -767,6 +773,8 @@ class PedidosApi:
             try:
                 if tipo == "pedido":
                     self._publicar_pedido(ident, pessoa)
+                elif tipo == "relatorio":
+                    self._publicar_relatorio(ident)
                 else:
                     self._publicar_ocorrencia(ident)
             except Exception:  # noqa: BLE001
@@ -780,11 +788,19 @@ class PedidosApi:
         nivel = "warn" if estado == "aguardando_pessoa" or (estado == "pausado" and not pessoa) else "info"
         self.emitir("pedido.updated", f"Pedido '{p['titulo']}': {estado}", level=nivel, data={"pedido": self.view(p)})
         if estado == "pausado" and not pessoa:
-            self._aviso(p, None, "pausa_automatica", "warn", f"O pedido '{p['titulo']}' foi pausado: "
-                        f"{p['pausado_motivo'] or 'sem motivo registrado'}.", {"motivo": p["pausado_motivo"]})
+            # a MESMA chave que o laço usa (`atualizado_em` é o instante da pausa): um aviso só, venha de onde vier
+            self._aviso(p, None, "pausa_automatica", dominio_avisos.chave_da_pausa(pid, p["atualizado_em"]),
+                        f"O pedido '{p['titulo']}' foi pausado: {p['pausado_motivo'] or 'sem motivo registrado'}.",
+                        {"motivo": p["pausado_motivo"]})
         elif estado == "encerrado" and not pessoa:
-            self._aviso(p, None, "encerramento", "info", f"O pedido '{p['titulo']}' foi encerrado "
-                        f"({p['encerrado_motivo'] or 'sem motivo'}).", {"motivo": p["encerrado_motivo"]})
+            if p["encerrado_motivo"] == "orcamento":
+                # o orçamento esgotado já diz por que encerrou: um aviso só, não dois para a mesma notícia
+                self._aviso(p, None, "orcamento_esgotado", dominio_avisos.chave_do_orcamento_esgotado(pid),
+                            f"O pedido '{p['titulo']}' foi encerrado: o orçamento acabou.", {"motivo": "orcamento"})
+            else:
+                self._aviso(p, None, "encerramento", dominio_avisos.chave_do_encerramento(pid),
+                            f"O pedido '{p['titulo']}' foi encerrado ({p['encerrado_motivo'] or 'sem motivo'}).",
+                            {"motivo": p["encerrado_motivo"]})
 
     def _publicar_ocorrencia(self, oid: str) -> None:
         o = self.db.one(self._SQL_OCORRENCIA + " WHERE o.id=?", (oid,))
@@ -796,16 +812,29 @@ class PedidosApi:
         if o["estado"] == "perdida":
             p = self.repo.pedido(o["pedido_id"])
             if p is not None:
-                self._aviso(p, o["id"], "ocorrencia_perdida", "warn", f"Uma ocorrência de '{p['titulo']}' foi perdida: "
-                            f"{o['motivo'] or 'sem motivo registrado'}.", {"previsto_para": o["previsto_para"]})
+                self._aviso(p, o["id"], "ocorrencia_perdida", dominio_avisos.chave_da_ocorrencia_perdida(o["id"]),
+                            f"Uma ocorrência de '{p['titulo']}' foi perdida: {o['motivo'] or 'sem motivo registrado'}.",
+                            {"previsto_para": o["previsto_para"]})
 
-    def _aviso(self, p: Row, ocorrencia_id: str | None, tipo: str, nivel: str, mensagem: str,
+    def _publicar_relatorio(self, rid: str) -> None:
+        """Relatório gravado pelo 28.7 (encerramento ou período): o aviso `relatorio_pronto`, sem o conteúdo."""
+        r = self.memoria.relatorio(rid)
+        p = self.repo.pedido(r["pedido_id"]) if r is not None else None
+        if r is None or p is None:
+            return
+        self._aviso(p, None, "relatorio_pronto", dominio_avisos.chave_do_relatorio(rid),
+                    f"O relatório {r['sequencia']} do pedido '{p['titulo']}' está pronto.",
+                    {"relatorio_id": rid, "sequencia": int(r["sequencia"]), "gatilho": r["gatilho"]})
+
+    def _aviso(self, p: Row, ocorrencia_id: str | None, tipo: str, chave: str, mensagem: str,
                dados: Mapping[str, object]) -> None:
-        aviso: JsonObject = {"id": f"{tipo}:{p['id']}:{ocorrencia_id or '-'}:{formatar_instante(self.agora())}",
-                             "pedido_id": p["id"], "pedido_titulo": p["titulo"], "ocorrencia_id": ocorrencia_id,
-                             "tipo": tipo, "nivel": nivel, "mensagem": mensagem, "dados": dict(dados),
-                             "requer_pessoa": False, "criado_em": to_iso(self.agora())}
-        self.emitir("pedido.aviso", mensagem, level=nivel, data={"aviso": aviso})
+        """Grava e emite pelo ponto único (`CaixaDeAvisos.registrar`): repetir a chave não duplica nem reemite."""
+        self.caixa.registrar(pedido_id=p["id"], tipo=tipo, nivel=None, mensagem=mensagem, chave=chave,
+                             ocorrencia_id=ocorrencia_id, dados=dados)
+
+    def registrar_aviso(self, aviso: Mapping[str, object]) -> JsonObject | None:
+        """O `avisar` do laço: o `AvisoDTO` do 28.5/28.6 passa pelo MESMO caminho que os avisos da API."""
+        return self.caixa.registrar_dto(aviso)
 
 
 __all__ = ["CorpoDoPedido", "ErroDeApi", "PedidosApi", "ESTADOS", "PEDIDO_ATORES"]

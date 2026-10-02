@@ -2,7 +2,7 @@
 
 `/previa` e `/avisos` são declaradas ANTES de `/{pedido_id}` (o mesmo cuidado de `POST /api/runs/targets/suggest`). A
 API solicita e acompanha: nenhuma rota materializa, despacha ou fecha ocorrência. Não implementadas no 28.9 (ver o
-adendo): `executar`, `backfill` e `POST /avisos/ler`."""
+adendo): `executar` e `backfill`."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,8 +13,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.modules.pedidos.infrastructure.servico import ESTADOS, ErroDeApi, PedidosApi
-from app.modules.pedidos.presentation.schemas import (AtivarCorpo, CancelarCorpo, CriarCorpo, EdicaoCorpo, PausarCorpo,
-                                                      PreviaCorpo, RetomarCorpo, selecao, utc)
+from app.modules.pedidos.presentation.schemas import (AtivarCorpo, CancelarCorpo, CriarCorpo, EdicaoCorpo, LerAvisosCorpo,
+                                                      PausarCorpo, PreviaCorpo, RetomarCorpo, selecao, utc)
 from app.security.sessions import operador_atual
 
 router = APIRouter(prefix="/api/pedidos")
@@ -44,9 +44,16 @@ async def previa(request: Request, corpo: PreviaCorpo) -> dict[str, object]:
 
 @router.get("/avisos")
 async def avisos(request: Request, pedido_id: str | None = None, requer_pessoa: bool | None = None,
-                 limit: int = Query(50, ge=1, le=200), cursor: str | None = None) -> dict[str, object]:
-    return _chamar(lambda: _api(request).avisos(pedido_id=pedido_id, requer_pessoa=requer_pessoa, limit=limit,
-                                                cursor=cursor))
+                 lido: bool | None = None, limit: int = Query(50, ge=1, le=200),
+                 cursor: str | None = None) -> dict[str, object]:
+    return _chamar(lambda: _api(request).avisos(pedido_id=pedido_id, requer_pessoa=requer_pessoa, lido=lido,
+                                                limit=limit, cursor=cursor))
+
+
+@router.post("/avisos/ler")
+async def ler_avisos(request: Request, corpo: LerAvisosCorpo) -> dict[str, object]:
+    """Idempotente: repetir não muda a data de leitura e devolve `lidos: 0`."""
+    return _chamar(lambda: _api(request).ler_avisos(ids=corpo.ids, todos=corpo.todos, pedido_id=corpo.pedido_id))
 
 
 @router.post("")

@@ -451,10 +451,10 @@ class AppState:
             custo_da_execucao=lambda run_id: costs.spent_usd(self.db, cfg.file.ai.prices, run_id=run_id),
             # 28.6: saldo da conta de IA abaixo do mínimo (ADR-051) ADIA o despacho; é a mesma leitura de /api/ai/balances.
             adiar_por_saldo=lambda: motivo_de_adiamento(self.db, cfg, cfg.file.pedidos.saldo_minimo_usd),
-            # 28.5: o `AvisoDTO` da pausa por falhas seguidas e da ocorrência incerta sai como `pedido.aviso` (contrato 28.9),
-            # que o canal de fora (28.11) assina no barramento. O `nivel` do aviso é o do evento.
-            avisar=lambda aviso: self.bus.emit("pedido.aviso", str(aviso["mensagem"]), level=str(aviso["nivel"]),
-                                               data={"aviso": dict(aviso)}))
+            # 28.5/28.6: o `AvisoDTO` da pausa por falhas seguidas, da ocorrência incerta e do orçamento a 80% é GRAVADO em
+            # `pedido_avisos` (072) e só então sai como `pedido.aviso` (contrato 28.9), que o canal de fora (28.11) assina no
+            # barramento. É o MESMO caminho dos avisos da API (`PedidosApi.registrar_aviso`): chave igual, um evento só.
+            avisar=lambda aviso: self.pedidos_api.registrar_aviso(aviso))
         # API de pedidos (28.9): prévia, criação, ações, leitura e os eventos `pedido.*` (as marcas do laço e das ações).
         self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos)
         self.pedidos.notificar = self.pedidos_api.publicar

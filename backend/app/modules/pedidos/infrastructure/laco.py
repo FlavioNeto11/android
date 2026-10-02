@@ -39,6 +39,7 @@ from app.modules.pedidos.infrastructure.acoes import AcoesDePedidos
 from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
+from app.modules.pedidos.domain import avisos as dominio_avisos
 from app.modules.pedidos.domain import gatilhos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
@@ -108,7 +109,7 @@ class LacoDePedidos:
         #: Observações do fechamento, memória e relatório (28.7). O resumo por IA só existe com `resumo_ia` ligado E um
         #: `resumidor` injetado; sem os dois, nada de IA é chamado.
         self.relatorios = ServicoDeRelatorios(db, lambda: self.relogio(), resumidor=resumidor, resumo_ia=cfg.resumo_ia,
-                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd)
+                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd, marcar=self.repo.marcar)
         self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None
@@ -329,7 +330,7 @@ class LacoDePedidos:
                 if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "pausado", em, pausado_motivo=motivo):
                     r.pausados += 1
                     avisos.append(tentativas.aviso(
-                        tipo="pausa_automatica", aviso_id=f"{p['id']}:pausa_automatica:{o['id']}", pedido_id=p["id"],
+                        tipo="pausa_automatica", aviso_id=dominio_avisos.chave_da_pausa(p["id"], em), pedido_id=p["id"],
                         pedido_titulo=titulo, ocorrencia_id=o["id"], criado_em=em,
                         mensagem=f"O pedido «{titulo}» foi pausado depois de {seguidas} falhas seguidas.",
                         dados={"falhas_seguidas": seguidas}))
@@ -411,6 +412,8 @@ class LacoDePedidos:
         total, gasto, necessario = self._situacao_do_orcamento(p)
         motivo = motivo_sem_orcamento(total, gasto, necessario)
         if motivo is None:
+            if dominio_avisos.passou_de_80(gasto, total):
+                self._avisar_orcamento_80(p, float(total), gasto, agora)
             return False
         for linha in self.repo.ids_prevista_devida(p["id"]):
             self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
@@ -421,6 +424,16 @@ class LacoDePedidos:
                                                     encerrado_motivo="orcamento"):
                     r.encerrados += 1
         return True
+
+    def _avisar_orcamento_80(self, p: Row, total: float, gasto: float, agora: datetime) -> None:
+        """`orcamento_80`: uma vez por pedido ATÉ o teto subir (a chave leva o teto). O `esgotado` não nasce aqui: quem
+        encerra o pedido é a mudança de estado acima, e a API o avisa a partir do `encerrado_motivo` (um só caminho)."""
+        titulo = p["titulo"] or p["id"]
+        self._emitir(tentativas.aviso(
+            tipo="orcamento_80", aviso_id=dominio_avisos.chave_do_orcamento_80(p["id"], total), pedido_id=p["id"],
+            pedido_titulo=titulo, ocorrencia_id=None, criado_em=to_iso(agora),
+            mensagem=f"O pedido «{titulo}» já gastou 80% do orçamento (US$ {gasto:.4f} de US$ {total:.4f}).",
+            dados={"gasto_usd": round(gasto, 6), "orcamento_total_usd": total}))
 
     # ------------------------------------------------------------------ 2. materialização
     def _materializar(self, token: int, agora: datetime, r: Resumo) -> None:
