@@ -1,5 +1,6 @@
 import { BookOpen, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toApiError } from '../../api/client';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
@@ -8,10 +9,11 @@ import { formatInt } from '../../lib/format';
 import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, type FiltroDoLivro } from './api';
+import { hashDe } from '../../lib/rotas';
 import type { VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
-  ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type ListaDoLivro, acoesDoItem, isEstadoDoLivro, isLivroKind,
+  ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type EntradaDoLivro, type ListaDoLivro, type LivroKind, acoesDoItem, isEstadoDoLivro, isLivroKind,
   rotuloDoEstado, rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
@@ -37,6 +39,52 @@ function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']
   );
 }
 
+/** `?item=<kind>:<ref>`: o item que um link (uma relação, uma versão) quer mostrar; o `ref` pode ter `@` (habilidade). */
+export function itemDoLink(valor: string | undefined): { kind: LivroKind; ref: string } | null {
+  if (!valor) return null;
+  const i = valor.indexOf(':');
+  const kind = valor.slice(0, i);
+  const ref = valor.slice(i + 1);
+  return i > 0 && ref && isLivroKind(kind) ? { kind, ref } : null;
+}
+
+/**
+ * O item que o link apontou, aberto no topo do catálogo (o Livro não tem rota por item: a lista é filtrada por
+ * tipo, estado, app e origem, e o item pode nem estar nela). Lê o detalhe e mostra a mesma linha do catálogo.
+ */
+function ItemDoLink({ kind, refDoItem, onMudou }: { kind: LivroKind; refDoItem: string; onMudou: () => void }) {
+  const [entrada, setEntrada] = useState<EntradaDoLivro | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [vez, setVez] = useState(0);
+  useEffect(() => {
+    const ctl = new AbortController();
+    setEntrada(null);
+    setErro(null);
+    apiAprendizado.detalhe(kind, refDoItem, ctl.signal)
+      .then((d) => setEntrada(d.item))
+      .catch((e: unknown) => {
+        if (!ctl.signal.aborted) setErro(toApiError(e).message);
+      });
+    return () => ctl.abort();
+  }, [kind, refDoItem, vez]);
+  return (
+    <section className={styles.secao} aria-label="Item aberto pelo link">
+      <p className={styles.secaoLead}>
+        Item aberto pelo link: {rotuloDoKind(kind)} <span className={styles.mono}>{refDoItem}</span>.{' '}
+        <a className={styles.linkAlvo} href={hashDe('aprendizado', { query: { aba: 'aprendido' } })}>Fechar</a>
+      </p>
+      {erro ? <p className={styles.erroInline}>{erro}</p> : null}
+      {entrada ? (
+        <ul className={styles.lista} aria-label="Item aberto">
+          <ItemDoLivro entrada={entrada} acoes={acoesDoItem(entrada)} abrirDetalhe
+                       onMudou={() => { setVez((v) => v + 1); onMudou(); }}
+                       extra={entrada.kind === 'habilidade' ? <AvisoDaHabilidade naFila={false} /> : null} />
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * O catálogo unificado (ADR-054, decisão 3): receitas, fluxos, habilidades, memória (só a contagem) e os itens do
  * livro, com o estado, o efeito medido, o último uso e as decisões da pessoa — desligar, aposentar e reativar, sempre
@@ -48,6 +96,7 @@ export function AprendidoTab() {
   // O app vem do link (`?aba=aprendido&app=<pacote>`), para a navegação do detalhe do app ao catálogo e de volta.
   const app = useUiStore((s) => s.rota.query.app) || undefined;
   const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const doLink = itemDoLink(useUiStore((s) => s.rota.query.item));
   const filtro = useMemo<FiltroDoLivro>(() => ({ ...outros, app }), [outros, app]);
   const [visao, setVisao] = useState<VisaoDeApps | null>(null);
   const [lista, setLista] = useState<ListaDoLivro | null>(null);
@@ -131,6 +180,7 @@ export function AprendidoTab() {
         </div>
       </div>
 
+      {doLink ? <ItemDoLink kind={doLink.kind} refDoItem={doLink.ref} onMudou={() => void carregar(filtro)} /> : null}
       {erro && lista ? <LoadErrorBanner error={erro} onRetry={() => void carregar(filtro)} /> : null}
       {!lista ? (
         erro ? <LoadErrorState what="o livro de aprendizado" error={erro} onRetry={() => void carregar(filtro)} /> : (

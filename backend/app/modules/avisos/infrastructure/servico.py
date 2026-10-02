@@ -34,7 +34,8 @@ from app.taskqueue.travas import AVISOS, Lideranca, TravaPerdida
 log = logging.getLogger("poc.avisos")
 
 #: Eventos que podem virar aviso. O filtro barato antes de montar a mensagem.
-KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso"})
+KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso",
+                              "learning.needs_person"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 
@@ -93,7 +94,8 @@ class ServicoDeAvisos:
         """Transforma um evento em aviso e o enfileira. Devolve se entrou linha nova."""
         if kind not in KINDS_QUE_AVISAM or not self.ligado or self.canal() is None:
             return False
-        aviso = aviso_de_evento(kind, data, evento_id, self.cfg.file.avisos.url_painel)
+        cfg = self.cfg.file.avisos
+        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas))
         if aviso is None:
             return False
         try:

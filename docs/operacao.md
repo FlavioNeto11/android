@@ -506,11 +506,12 @@ o antigo **parado antes**: nunca os dois no ar.
 ## 15. Aviso fora do painel (Telegram, item 28.11)
 
 O aviso externo é o **espelho** da caixa de Pendências (`#/pendencias`, ADR-062): uma mensagem curta por pendência nova
-(aprovação de persona, execução que parou pedindo informação, conta que pede intervenção e, quando o 28.9 chegar, o
-`pedido.aviso`). A mensagem leva só o **tipo** e o link da caixa: nunca nome de persona, conta, conteúdo de mensagem ou
+(aprovação de persona, execução que parou pedindo informação, conta que pede intervenção, o `pedido.aviso` e, desde o
+28.14, o conhecimento do Livro que entrou na espera da pessoa: `learning.needs_person`, só a faixa C por padrão, com
+`avisos.aprendizado_faixas: [B, C]` para incluir a faixa B, que é aprovação em lote). A mensagem leva só o **tipo** e o link da caixa: nunca nome de persona, conta, conteúdo de mensagem ou
 dado de terceiro. É só saída (sem webhook, sem rota de entrada). Desligado de fábrica (`avisos.enabled: false`). Só o
 líder da trava `avisos` envia, e a fila durável (`avisos_entregas`, migração 068) deduplica por fato: o mesmo evento nunca
-vira duas mensagens, e um envio interrompido por queda vira `incerto` e **não** é reenviado.
+vira duas mensagens (chave comum `<família>:<fato>`: `approval`, `run`, `session`, `pedido`, `learning`), e um envio interrompido por queda vira `incerto` e **não** é reenviado.
 
 Procedimento (o dono faz; sem ele a prova real fica `not_run`):
 

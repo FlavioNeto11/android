@@ -36,7 +36,7 @@ export function AprendizadoPage() {
     void useContagemDoAprendizado.getState().atualizar();
   }, []);
 
-  const trocar = (a: Aba) => trocarQuery({ aba: a === 'apps' ? undefined : a, app: undefined }, 'replace');
+  const trocar = (a: Aba) => trocarQuery({ aba: a === 'apps' ? undefined : a, app: undefined, item: undefined }, 'replace');
 
   const tabs: TabDef<Aba>[] = [
     { id: 'apps', label: 'Aplicativos', icon: AppWindow },

@@ -386,7 +386,7 @@ e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o mod
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
 decide é `application/espera.py::AvisadorDeEspera` (compara o item antes e depois, memória do último aviso por `kind:ref`); a
-faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.10 a estende). A porta é `PortaDeEventos`
+faixa e o motivo saem de `domain/espera.py::classificar_espera`, tradução da política de risco (30.10). A porta é `PortaDeEventos`
 (`ports.py`), o adaptador sobre o `EventBus` é `infrastructure/eventos.py`, e o catálogo entra como fatos de risco
 (`CatalogoDeRisco`, nunca texto de ação). Os pontos de chamada: `mudar_estado`, `propor`, `avisar_item` (a tela absorvida) e
 `avisar_mudanca_nativa` (os ouvintes das lojas de receita e fluxo). Contrato do payload: `api-contract.md`, adendo v0.49.
@@ -464,6 +464,69 @@ TEXTUAL (o `handle`, com e sem `@`, e o `account_id`) para o marcador exato `[co
   `account_id` casa exato (hífen conta como parte). Handle vazio ou só `@` não faz nada.
 - **Limite conhecido**: `learning_evidence.origin_ref` entra num índice único; se a troca colidisse com outra linha, ela é PULADA para não derrubar a
   transação do chamador (o rastro fica naquela coluna). Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (SQLite); PostgreSQL e uso real: `not_run`.
+
+## Curador, domínio e política de risco (30.10)
+
+Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, o laço e o orçamento são do 30.11.
+
+- **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
+  `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
+  e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
+  em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
+  `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+- **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
+  lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
+  intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
+  `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
+  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
+- **Contrato de saída** (`validar_saida`): escolha entre RÓTULOS FECHADOS, pensada para um adaptador de `choice` (provedor Jev):
+  `decisao` (obrigatória), `faixa`, `causa`, `riscos`, `inconsistencias`, `falta`, com as opções em `OPCOES_FECHADAS`; `alvo` e
+  `evidencias_citadas` escolhem entre os ids do dossiê (`opcoes_do_dossie`). Citação inventada, rótulo fora do conjunto ou campo extra
+  invalidam. A confiança vem da `probabilidade` da escolha que o adaptador mede (entrada opcional; limiares 0,60 e 0,85); sem ela, um
+  rótulo categórico; nunca número dito pela IA. A `conclusao` (≤ 300) é o único texto livre, opcional, e não entra na decisão. A
+  `faixa` da IA nunca afrouxa a da política (`faixa_efetiva`). A falha vira `invalida:<motivo>` (vocabulário fechado, cabe em
+  `learning_reviews.validade`); o `Parecer` válido serializa na forma de `learning_reviews.saida`. Nenhum prompt no módulo: o template
+  é do hub.
+- Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
+  `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
+
+## Saúde do item (30.4)
+
+Cada item do Livro (lista, `pendentes`, `revisar` e detalhe) traz `saude`: dimensões medidas, UM rótulo por regra e os `motivos[]` que o
+produziram (contrato no adendo v0.52 de `api-contract.md`; desenho em `design/aprendizado-vivo.md` §5, com as regras da proposta D-5
+medidas no banco real). A regra é pura (`domain/saude.py`); `LearningService.saude_de` é a única fonte do cálculo e `saudes` a aplica à
+lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura: não é estado, não move nada.
+
+- **Ordem (o primeiro que casa vence):** `inativo`, `em_prova`, `degradando` (`consecutive_fail ≥ 2`, eficácia `< 0,8` com `≥ 5` usos, ou
+  contra/conflito em 7 dias), `sem_evidencia` (publicado há ≥ 14 dias e nunca usado), `parado` (sem uso há mais de 14 dias),
+  `pouca_amostra` (< 5 usos), `saudavel`. Limiares em `aprendizado.saude` (`Ajustes.saude`).
+- **Sem dado não é bom nem ruim.** Dimensão sem medida sai `desconhecida` (`valor: null`, nunca 0); publicado sem contador de uso, sem data
+  do último uso ou sem eficácia/contestação medida é `indeterminado`. Habilidade e itens sem contador de uso (tela, lição, voz,
+  preferência) ficam `indeterminado` até haver fonte de uso por item.
+- **Eficácia acumulada.** Receita: `replay_ok/(ok+fail)`; fluxo e itens: evidências a favor/contra. Não há janela dos últimos N usos por item.
+- **Lacunas conhecidas.** `obsoleto_provavel`
+  veio no 30.14 (seção abaixo); `intervencao_humana` e `versao` ficam `desconhecida`; `acoes[]` não traz `motivo_de_bloqueio`. A lista lê a evidência de cada
+  publicado (uma consulta indexada por item): trocar por consulta em lote se a lista crescer.
+
+## Obsolescência (30.14)
+
+`obsoleto_provavel` entra na ordem da saúde depois de `degradando` e antes de `sem_evidencia`, só para o publicado (contrato no adendo
+v0.54; desenho §9.2). A regra é pura (`domain/obsolescencia.py`, `domain/saude.py`); a leitura é `application/obsolescencia.py`
+(`LeitorDeObsolescencia`, pendurado no serviço por `infrastructure/ligar_obsolescencia.py`), e a lista e o detalhe usam o mesmo
+`ContextoDeObsolescencia.sinais`. Sinais com fonte: substituta viva, versão fora do parque ou versão viva sem reprodução (o quadro do
+30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo, fluxo nunca casado há `sem_uso_dias` e tela
+absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
+
+- **Rebaixamento `catalogo_sem_efeito`** (passo da curadoria `RebaixamentoPorCatalogo`, sem IA, idempotente): receita ou fluxo vivo com
+  `commit` num app com catálogo (o do registro de apps) que não respalda o efeito — catálogo sem nenhuma ação com efeito (`*`, o Outlook
+  hoje) ou capability conhecida, sem ambiguidade, cuja ação não tem efeito. App sem catálogo nunca; capability ambígua ou desconhecida
+  num catálogo com efeito vira só o sinal (`duvidoso`). Vai por `LearningService.mudar_estado(by='sistema')`, o mesmo caminho do Livro
+  (CAS, trilha, aviso de espera): em prova → `disabled`, publicado → `deprecated` (fluxo: `disabled`). `recipes.py` não foi tocado.
+- **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
+  varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
+- **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
 
 ## Pendências conhecidas
 

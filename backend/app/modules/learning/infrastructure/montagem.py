@@ -24,8 +24,10 @@ from app.modules.learning.application.ports import Ajustes, Retencao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.camada import ModosDeRuntime
+from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
-from app.modules.learning.infrastructure import ligar_costuras, ligar_licoes, ligar_nativos, ligar_telas, ligar_voz
+from app.modules.learning.infrastructure import (ligar_costuras, ligar_licoes, ligar_nativos, ligar_obsolescencia,
+                                                 ligar_telas, ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.eventos import Barramento, EventosNoBarramento, RiscoDoRegistro
 from app.modules.learning.infrastructure.fontes import FontesSql
@@ -49,7 +51,11 @@ def ajustes_do_config(cfg: LearningCfg) -> Ajustes:
                    retencao=Retencao(sinais_dias=r.sinais_dias, feedback_dias=r.feedback_dias,
                                      exposicoes_dias=r.exposicoes_dias, evidencias_por_item=r.evidencias_por_item,
                                      diario_dias=r.diario_dias,
-                                     candidata_sem_evidencia_dias=r.candidata_sem_evidencia_dias))
+                                     candidata_sem_evidencia_dias=r.candidata_sem_evidencia_dias),
+                   saude=LimiaresDeSaude(sem_uso_dias=cfg.saude.sem_uso_dias,
+                                         amostra_minima=cfg.saude.amostra_minima, taxa_minima=cfg.saude.taxa_minima,
+                                         falhas_seguidas=cfg.saude.falhas_seguidas,
+                                         contestacao_dias=cfg.saude.contestacao_dias))
 
 
 class GuardaDoFluxo:
@@ -130,4 +136,6 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_licoes.ligar(servico, repo, db, config=lambda: config().licoes, precos=precos, relogio=relogio)
     # A8 (fatia 5): as telas aprendidas precisam do repositório e do banco, e penduram-se nas extensões das costuras.
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
+    # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
+    ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
     return servico

@@ -416,6 +416,7 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
+  # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
@@ -478,6 +479,13 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   voz: {modo: "off"}              # a voz é sempre publicada pelo dono
   preferencias: {modo: "off"}
   backlog: {minimo_ocorrencias: 3, pessoa_usd: 0.25, aparelho_usd_min: 0, prova_minimo: 10, prova_fator: 0.5}
+  # Saúde do item do Livro (30.4): rótulo derivado por regra, só leitura (nada é gravado, nada se move).
+  saude:
+    sem_uso_dias: 14              # nunca usado há isto = sem_evidencia; sem uso há mais que isto = parado; é a janela de "usado recentemente"
+    amostra_minima: 5             # usos para a eficácia valer (abaixo: pouca_amostra)
+    taxa_minima: 0.8              # eficácia acumulada replay_ok/(ok+fail); abaixo disto, com amostra, = degradando
+    falhas_seguidas: 2            # consecutive_fail a partir do qual o item degrada
+    contestacao_dias: 7           # janela da evidência contra/conflito (contestação recente = degradando)
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,
