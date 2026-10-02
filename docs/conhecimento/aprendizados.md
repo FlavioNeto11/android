@@ -1783,3 +1783,25 @@ receber a resposta. Um teste à parte confirma que dois servidores ao mesmo temp
 **Aplicabilidade.** Todo teste que lê estado mantido por uma thread do servidor sob teste (contador, fila, flag): a volta do
 cliente não ordena nada em relação a ele. Espere o fato com prazo; `sleep` fixo só como janela negativa. Para provar a causa,
 injete o atraso no ponto da corrida em vez de repetir até falhar.
+
+### K-073 — Prova gravada no banco sobrevive ao processo que ela provou: compare o marco de boot, não só a validade
+
+**Data:** 02/10/2026 · **Área:** rede por aparelho (`devices/rede.py`, `rede_convergencia.py`), item 29.22
+
+**Sintoma.** android-05 (`exigida_com_bloqueio`) estava `trafego_verificado` pela medição #134 das 19:20. Parado e ligado a frio às
+19:50, a linha continuou verificada com a MESMA medição, nenhum evento "Rede de android-05" apareceu depois do `start` e a porta
+liberou a tarefa às 19:52, quando o aparelho acusava "sem internet: DNS não responde" (o túnel só subiu depois). O bloqueio evitou o
+vazamento; a prova de tráfego atravessou o boot sem reverificação.
+
+**Causa.** `verificacao_invalida` só conhecia a idade (`vencida`) e os apps. A prova mora na linha de `device_network`, que
+sobrevive ao boot; o que ela provava (túnel, DNS, regras) não. Ao ligar, a convergência de um `trafego_verificado` só CONFERIA (não mede, não
+grava evento).
+
+**O que funcionou.** Guardar nada novo: comparar `verified_at` com o marco de boot que já existe (`instances.emulator_started_at`, no banco, que
+sobrevive ao restart do central; `online_since_mono` para o aparelho de worker, renovado onde o agente conclui o boot) e tratar boot
+mais novo que a medição como inválida na porta, igual a `vencida`, com a medição como único caminho de volta. Testar com o boot 1 ms
+depois da medição velha: só uma medição nova (posterior) libera, sem mexer no marco no meio do teste.
+
+**Aplicabilidade.** Toda prova durável atrelada a um runtime (túnel, sessão, hierarquia, classificação de tela) precisa declarar a que
+geração do runtime pertence e comparar com a de agora; validade por relógio não substitui isso. Atenção ao aparelho remoto: o central só
+vê o boot pelo desfecho do agente, e `_adopt` põe `online` sem passar pelo `_set_state`.

@@ -223,10 +223,41 @@ class RepositorioDePedidos:
                         " estado='devida'", (resumo, ocorrencia_id))
 
     def marcar_despachada(self, ocorrencia_id: str, run_id: str, tentativa: int) -> bool:
+        # `terminada_em` volta a NULL: numa nova tentativa ele guardava o instante `nao_antes_de` (ver `retentar`).
         cur = self.db.execute(
-            "UPDATE pedido_ocorrencias SET estado='despachada', run_id=?, tentativa=?, iniciada_em=NULL, dono=NULL,"
-            " prazo_posse=NULL, resumo=NULL WHERE id=? AND estado='devida'", (run_id, tentativa, ocorrencia_id))
+            "UPDATE pedido_ocorrencias SET estado='despachada', run_id=?, tentativa=?, iniciada_em=NULL,"
+            " terminada_em=NULL, dono=NULL, prazo_posse=NULL, resumo=NULL WHERE id=? AND estado='devida'",
+            (run_id, tentativa, ocorrencia_id))
         return (cur.rowcount or 0) == 1
+
+    def retentar(self, ocorrencia_id: str, de: str, *, motivo: str, nao_antes_de: str, custo_usd: float) -> bool:
+        """`despachada`/`rodando` → `devida` NA MESMA LINHA, para a nova tentativa do 28.5 (§7.6): o CAS de estado, o
+        custo da tentativa que falhou SOMADO (como em `mover`) e a falha como `motivo`, tudo no mesmo `UPDATE`.
+
+        Sem coluna própria (a 067 não a tem e o 28.5 não leva migração), `terminada_em` carrega o instante `nao_antes_de`
+        (`to_iso`) enquanto a ocorrência é `devida` com `tentativa > 0`: o laço só a despacha depois dele, e a janela de
+        recuperação conta a partir dele. `tentativa` e `run_id` ficam: a próxima chave é `chave:t<tentativa+1>` e a
+        ocorrência segue contando em `max_ocorrencias` (já virou execução)."""
+        cur = self.db.execute(
+            "UPDATE pedido_ocorrencias SET estado='devida', motivo=?, terminada_em=?, custo_usd=custo_usd+?,"
+            " dono=NULL, prazo_posse=NULL, resumo=NULL WHERE id=? AND estado=?",
+            (motivo, nao_antes_de, float(custo_usd or 0.0), ocorrencia_id, de))
+        return (cur.rowcount or 0) == 1
+
+    def efeito_possivel(self, run_id: str) -> bool:
+        """Alguma ação da execução PODE ter chegado ao aparelho (`actions.effect_possible`, o que `_reconciliar` deixa
+        marcado), ou ficou `intended`/`unknown` sem resultado? Qualquer tentativa de qualquer etapa."""
+        return bool(self.db.scalar(
+            "SELECT 1 FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id"
+            " WHERE s.run_id=? AND (a.effect_possible=1 OR a.status IN ('intended','unknown')) LIMIT 1", (run_id,)))
+
+    def desfechos_recentes(self, pedido_id: str, excluindo: str, limite: int) -> list[str]:
+        """Estado das últimas ocorrências COM execução que fecharam (`concluida`, `falhou`, `incerta`, `cancelada`), a
+        mais recente primeiro, sem `excluindo` (a que está fechando agora). Base da contagem de falhas seguidas."""
+        return [r["estado"] for r in self.db.query(
+            "SELECT estado FROM pedido_ocorrencias WHERE pedido_id=? AND id<>? AND run_id IS NOT NULL AND estado IN"
+            " ('concluida','falhou','incerta','cancelada') ORDER BY terminada_em DESC, id DESC LIMIT ?",
+            (pedido_id, excluindo, limite))]
 
     def gravar_resumo(self, ocorrencia_id: str, resumo: str) -> None:
         self.db.execute("UPDATE pedido_ocorrencias SET resumo=? WHERE id=?", (resumo, ocorrencia_id))
@@ -238,8 +269,13 @@ class RepositorioDePedidos:
                               " ('prevista','devida')", (versao, pedido_id))
         return int(cur.rowcount or 0)
 
-    def ids_prevista_devida(self, pedido_id: str, gatilho_id: str | None = None) -> list[Row]:
+    def ids_prevista_devida(self, pedido_id: str, gatilho_id: str | None = None, *,
+                            sem_retentativas: bool = False) -> list[Row]:
+        """`sem_retentativas`: deixa de fora a `devida` que já virou execução (`tentativa > 0`, uma nova tentativa do
+        28.5): ela já foi contada em `max_ocorrencias`, e pular o que o máximo "barra" não vale para ela."""
         sql = "SELECT id, estado FROM pedido_ocorrencias WHERE pedido_id=? AND estado IN ('prevista','devida')"
+        if sem_retentativas:
+            sql += " AND tentativa=0"
         params: list[object] = [pedido_id]
         if gatilho_id is not None:
             sql += " AND gatilho_id=?"

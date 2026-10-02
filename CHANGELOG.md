@@ -28,6 +28,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   rebaixado pelo sistema (sempre → `disabled`, para a pessoa poder reativar) pelo caminho do Livro, com o motivo
   `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
   Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
+
+- `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
+  marco é `instances.emulator_started_at` (boot a frio e acordar do snapshot, sobrevive ao restart do central) ou, no aparelho
+  de worker, `online_since_mono`. Achado: android-05 ficou `trafego_verificado` pela medição #134 (19:20) através do boot a frio
+  de 19:50, e a porta liberou a tarefa às 19:52 com o aparelho sem DNS. Sem coluna nova, sem migração.
+- `backend/app/devices/rede_convergencia.py`: frase de espera do `boot`; ao ligar e na varredura a convergência mede (antes só
+  conferia). `backend/app/devices/manager.py`: `readotar_depois_do_worker` renova `online_since_mono` quando o agente conclui
+  um boot novo. Não toca `taskqueue/`, `state.py` nem `scheduler.py`.
+- Decisão: wake quente também invalida (uma medição a mais por acordar); a linha não regride de estado, a porta é que não aceita.
+- Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
+- Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
+
+## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
+
+- Nova tentativa por ocorrência: `modules/pedidos/domain/tentativas.py` (puro) decide, a partir do desfecho da execução, entre repetir (a MESMA linha volta `falhou → devida`, `tentativa+1`, despacho `chave:t<n>` depois de um atraso exponencial com teto), `incerta` ou falha definitiva. Só repete sem ação com `effect_possible` (e sem execução purgada) e sem etapa `uncertain` (a regra de `_reconciliar`); falha COM efeito possível (ou execução purgada) fecha `incerta` e leva o pedido a `aguardando_pessoa`, nunca `falhou` (decisão do coordenador: um `falhou` deixaria a próxima ocorrência refazer o efeito); `max_tentativas` é o total por ocorrência (padrão 2). Sem migração: o instante da espera mora em `terminada_em` enquanto a ocorrência é `devida` com `tentativa > 0`. A repetição passa por sobreposição, orçamento e saldo.
+- `incerta` leva o pedido `ativo` a `aguardando_pessoa` (mesma transação) e nunca repete sozinha; N falhas seguidas (coluna `pausa_por_falha`, padrão 3) pausam o pedido (ator `sistema`). Os dois emitem `pedido.aviso` (`AvisoDTO` do contrato 28.9) no barramento (`state.py`), que o 28.11 já assina.
+- Configuração: `pedidos.max_tentativas`, `falhas_para_pausar` (padrões globais; a coluna do pedido vale), `retentativa_base_s`, `retentativa_teto_s`.
+- 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
+- Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
 
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
@@ -51,6 +71,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `EntradaDoLivro.falhas_seguidas` novo (opcional), preenchido de `recipes.consecutive_fail`. Limiares = D-5, aprovada pelo dono em 02/10.
 - Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
   lista = detalhe); `not_run` no central.
+## 2026-10-02 — Aprendizado: esquecer_conta (29.23, branch feat/29-23-esquecer-conta-aprendizado)
+
+- `app.modules.learning.esquecer_conta(db, *, profile_id, account_id, handle, app_id)` reescreve o rastro textual da conta (handle com e sem `@`, `account_id`) para `[conta removida]` em `learning_items`, `learning_evidence`, `learning_transitions`, `learning_backlog`, `learning_reviews` e `learning_signals`; roda na transação de quem chama (sem commit), não apaga linha nem muda hash/id, é idempotente e casa por fronteira de palavra (handle `ana` não estraga "banana"). Parte Aprendizado do 29.23; a frente Android (`memory_items`, chamada) é outra. Sem migração e sem rota. Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (13); PostgreSQL: `not_run`. Detalhe em `docs/dominios/aprendizado.md` ("Conta removida (29.23)").
+
+## 2026-10-02 — Aprendizado: curador, domínio e política de risco (30.10, branch feat/30-10-curador-dominio)
+
+- `domain/politica_de_risco.py` (puro) é a fonte única da classe A/B/C do §8.4 (aprovada pelo dono em 02/10): vale a mais
+  restritiva entre o catálogo da etapa e o `commit` do conteúdo; o `commit` numa etapa que o catálogo declara sem efeito (a receita 100
+  do Outlook) é C. Na classe A a IA só opina com sobra de orçamento
+  (`ia_permitida = so_com_sobra`) e o parecer é só registro; `conferir_aceite` torna impossível a decisão automática por parecer e o lote na C.
+  `domain/espera.py::classificar_espera` (30.21) passou a ser tradução dela (mesmo payload do evento; `FatosDoCatalogo` e
+  `MotivoDeEntrada` mudaram para lá e são reexportados).
+- `domain/curador.py` (puro): dossiê de fatos por lista branca (sem valor de parâmetro, texto digitado, texto de tela ou de pessoa;
+  item de sessão sem conteúdo), ids citáveis, `dossie_hash` estável (chave da 069), e validação do contrato de saída do §8.3
+  em rótulos fechados (decisão, faixa, causa, riscos, inconsistências, falta; opções prontas para um adaptador de `choice`), com a
+  confiança derivada da probabilidade da escolha e a conclusão como único texto livre, opcional (`invalida:<motivo>` em vocabulário
+  fechado). Sem rota, sem migração, sem chamada de IA nem prompt. Prova `simulated`
+  (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
 
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
