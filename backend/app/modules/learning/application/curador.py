@@ -224,6 +224,8 @@ class CuradorPorIA:
             quando = parse_iso(ultima) if ultima else None
             if quando is not None and quando > corte_do_cooldown:
                 continue
+            if ultima is not None and self._ja_revisado_menor(e, ref):
+                continue
             x = _Elegivel(e, gatilho, dossie, estimar_custo(dossie.tamanho_em_bytes(), precos))
             if self._recusa_o_conteudo(dossie):
                 # §8.2: o dossiê passa pela triagem antes de sair; recusa = não revisa e registra (sem o dossiê).
@@ -233,7 +235,19 @@ class CuradorPorIA:
                 continue
             elegiveis.append(x)
         self._cortar_os_caros(elegiveis, aj, precos)
+        # O dossiê refeito menor tem OUTRO hash: se ele já foi revisado, o item sai aqui, antes de chamar o provedor
+        # (senão cada volta pagaria uma chamada para o INSERT recusar depois).
+        elegiveis = [x for x in elegiveis if not self._registro.existe(x.entrada.trail_ref, x.dossie.dossie_hash)]
         return elegiveis, recusadas
+
+    def _ja_revisado_menor(self, e: EntradaDoLivro, ref: str) -> bool:
+        """O mesmo estado já foi revisado com o dossiê CORTADO por custo (outro hash): sem isto, a volta em que o item
+        fica sozinho (sem corte) o mandaria de novo à IA com o dossiê inteiro. Só para item já revisado alguma vez."""
+        for n in EVIDENCIAS_NO_CORTE:
+            menor = self._dossies.dossie(e, max_evidencias=n)
+            if menor is not None and self._registro.existe(ref, menor.dossie_hash):
+                return True
+        return False
 
     def _recusa_o_conteudo(self, d: Dossie) -> bool:
         """A triagem de credencial nas folhas de texto do CONTEÚDO (o resto do dossiê é id, hash, data e rótulo

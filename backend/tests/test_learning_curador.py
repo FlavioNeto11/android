@@ -195,6 +195,33 @@ def test_mesmo_dossie_nao_revisa_de_novo_e_evidencia_nova_revisa(db: Database) -
     assert len(hashes) == 2
 
 
+def test_dossie_estavel_entre_dias_nao_revisa_de_novo(db: Database) -> None:
+    m = Mundo(db)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    m.evidencia(ref, "run:r1")
+    assert m.volta().revisadas == (ref,)
+    assert m.volta(horas=30).revisadas == () and len(m.ia.pedidos) == 1   # sem fato novo, o relógio não muda o hash
+
+
+def test_dossie_cortado_por_custo_nao_chama_o_provedor_de_novo(db: Database) -> None:
+    m = Mundo(db, gasto_da_operacao=1000.0)
+    pequenos = [m.licao(efeito=False, fonte=SourceKind.MANUAL, capability=f"P{i}", sufixo=f"-{i}") for i in range(3)]
+    grande = m.licao(efeito=False, fonte=SourceKind.MANUAL, capability="GRANDE", sufixo="-g")
+    for i in range(30):                                         # muitas evidências: o dossiê passa de 4× a mediana
+        m.evidencia(grande, f"run:corrida-de-numero-{i:04d}-com-id-bem-comprido")
+    m.cfg = CuradorCfg(modo="shadow", cooldown_h=0, m_cmax=1.05)
+    for _ in range(6):                                          # o teto da hora deixa passar uma por volta
+        m.volta(horas=2)
+    assert {r["item_ref"] for r in m.revisoes()} == {*pequenos, grande}   # revisado, ou `recusada:custo`
+    do_grande = [p for p in m.ia.pedidos if p.dossie["item"]["id"] == f"licao:{grande}"]
+    assert len(do_grande) <= 1
+    linhas = len(m.revisoes())
+    m.volta(horas=30)
+    m.volta(horas=2)
+    assert len([p for p in m.ia.pedidos if p.dossie["item"]["id"] == f"licao:{grande}"]) == len(do_grande)
+    assert len(m.revisoes()) == linhas                         # nem pedido nem linha nova sem fato novo
+
+
 def test_cooldown_segura_o_item_mesmo_com_dossie_novo(db: Database) -> None:
     m = Mundo(db)
     m.cfg = CuradorCfg(modo="shadow", cooldown_h=24)
