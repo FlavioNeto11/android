@@ -515,6 +515,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   falhas_para_pausar: 3           # ocorrências seguidas que terminam `falhou` pausam o pedido, com aviso (28.5)
   retentativa_base_s: 60          # atraso da nova tentativa: base * 2**(n-1) ...
   retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
+  piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
+  piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

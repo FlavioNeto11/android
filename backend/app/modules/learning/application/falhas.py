@@ -19,16 +19,17 @@ marcado retroativo).
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.modules.learning.application.ports import RepositorioDeAprendizado, TriagemDeTexto
 from app.modules.learning.application.servico import NOTA_MAX
 from app.modules.learning.domain.backlog import (BASE_DIAS, IDS_DA_PROVA, AcaoLivre, ChamadaDeTela, ChaveDoGrupo,
-                                                 GrupoDeFalha, ItemParaPromover, LinhaDoBacklog, Medida, Ocorrencia,
-                                                 ParteDeOutro, Proposta, RegrasDoBacklog, Saude, SaudeDasExecucoes,
+                                                 FonteDaOcorrencia, GrupoDeFalha, ItemParaPromover, LinhaDoBacklog,
+                                                 Medida, Ocorrencia, ParteDeOutro, Proposta, RegrasDoBacklog, Saude, SaudeDasExecucoes,
                                                  TelaQueChamou, TipoDeVerificacao, Veredito, agrupar,
                                                  chave_do_grupo, conferir_alteracao, entra_no_topo, excesso_sem_tela,
                                                  linha_de_grupo,
@@ -37,6 +38,8 @@ from app.modules.learning.domain.backlog import (BASE_DIAS, IDS_DA_PROVA, AcaoLi
                                                  tentativas_da_reincidencia)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState)
+from app.modules.learning.domain.diagnostico import (AMOSTRA, ContextoDaTentativa, Diagnostico, EstatisticaDaLicao,
+                                                     diagnosticar, proposta_do_diagnostico)
 from app.modules.learning.domain.falhas import Camada
 from app.modules.learning.domain.vocabulario import (CategoriaDoBacklog, EstadoDoBacklog, LivroKind, Posicao)
 from app.modules.skills.domain.document import JsonObject
@@ -51,6 +54,8 @@ JANELA_DA_CURADORIA_DIAS = 14
 JANELA_DE_RESOLUCAO_DIAS = 30
 #: Etapa livre comprovada: quantos dias para trás a proposta de ação olha.
 JANELA_DAS_ACOES_DIAS = 30
+#: Quantos grupos a curadoria diagnostica por passo (os de maior custo): o contexto é lido em lote, mas tem custo.
+MAX_DIAGNOSTICOS = 50
 #: Estados que o relatório mostra em "Backlog em andamento".
 EM_ANDAMENTO = (EstadoDoBacklog.TRIAGED, EstadoDoBacklog.PLANNED, EstadoDoBacklog.FIXED_PENDING_PROOF,
                 EstadoDoBacklog.FIXED, EstadoDoBacklog.REOPENED)
@@ -77,6 +82,16 @@ class FontesDeFalha(Protocol):
         """O registro mais antigo que a purga de logs apaga com o MESMO corte de `ai_calls` e que existe todo dia (os
         eventos sem execução): o último corte não passa dele. `None` quando não há nenhum."""
         ...
+
+
+@runtime_checkable
+class FontesDeContexto(Protocol):
+    """O contexto das tentativas de um grupo, para o diagnóstico (item 30.13). Porta À PARTE de `FontesDeFalha`: a fonte
+    que não a implementa (um dublê de teste) deixa o diagnóstico só com o tipo da falha, `indeterminada` onde o tipo não
+    basta — nunca um palpite."""
+
+    def contextos(self, attempt_ids: Sequence[str]) -> dict[str, ContextoDaTentativa]: ...
+    def licoes(self, refs: Sequence[str]) -> dict[str, EstatisticaDaLicao]: ...
 
 
 class RepositorioDoBacklog(Protocol):
@@ -119,6 +134,7 @@ class LinhaDoRelatorio:
     registrado: bool
     plan_item: str | None
     licoes_ativas: int
+    diagnostico: Diagnostico | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +168,7 @@ class DetalheDoBacklog:
     registrado: bool
     grupo: GrupoDeFalha | None
     proposta: Proposta | None
+    diagnostico: Diagnostico | None = None
 
 
 # ------------------------------------------------------------------ o serviço
@@ -197,13 +214,16 @@ class ServicoDeFalhas:
         topo = ordenar((g for g in candidatos if g.ocorrencias >= regras.minimo_ocorrencias), regras)
         gravadas = {x.id: x for x in self._backlog.linhas()}
         licoes = self._licoes_publicadas()
+        mostrados = topo[:max(1, int(limite))]
+        diagnosticos = self._diagnosticar(mostrados, ocorrencias, desde)
         itens = tuple(LinhaDoRelatorio(g, gravadas[g.id].state if g.id in gravadas else EstadoDoBacklog.OPEN,
                                        g.id in gravadas, gravadas[g.id].plan_item if g.id in gravadas else None,
-                                       _licoes_do_grupo(licoes, g.chave))
-                      for g in topo[:max(1, int(limite))])
+                                       _licoes_do_grupo(licoes, g.chave), diagnosticos.get(g.id))
+                      for g in mostrados)
         propostas = tuple(LinhaDaProposta(p, gravadas[p.id].state if p.id in gravadas else EstadoDoBacklog.OPEN,
                                           p.id in gravadas)
-                          for p in self._propostas(agora) if not app or p.app == app)
+                          for p in self._propostas(agora, _propostas_dos(mostrados, diagnosticos))
+                          if not app or p.app == app)
         s = self._fontes.saude(desde, ate, simulados=simulados)
         saude = Saude(itens_por_tipo=self._contagem_do_livro(), execucoes=s.execucoes,
                       execucoes_com_fluxo=s.execucoes_com_fluxo, fluxos_distintos=s.fluxos_distintos,
@@ -224,12 +244,18 @@ class ServicoDeFalhas:
         """A linha gravada ou, se a curadoria ainda não a gravou, a que o relatório de 30 dias mostra (sem gravar)."""
         gravada = self._backlog.linha(backlog_id)
         agora = self._relogio()
-        grupo = self._grupo(backlog_id, agora)
-        proposta = next((p for p in self._propostas(agora) if p.id == backlog_id), None)
-        if gravada is not None:
-            return DetalheDoBacklog(gravada, True, grupo, proposta)
+        grupo, ocorrencias = self._grupo(backlog_id, agora)
+        diagnostico = None
         if grupo is not None:
-            return DetalheDoBacklog(linha_de_grupo(grupo), False, grupo, None)
+            desde = to_iso(agora - timedelta(days=JANELA_DE_RESOLUCAO_DIAS))
+            diagnostico = self._diagnosticar([grupo], ocorrencias, desde).get(grupo.id)
+        proposta = next((p for p in self._propostas(agora) if p.id == backlog_id), None)
+        if proposta is None and (gravada is None or gravada.category is CategoriaDoBacklog.PROPOSTA):
+            proposta = self._proposta_do_diagnostico(backlog_id, gravada, agora)
+        if gravada is not None:
+            return DetalheDoBacklog(gravada, True, grupo, proposta, diagnostico)
+        if grupo is not None:
+            return DetalheDoBacklog(linha_de_grupo(grupo), False, grupo, None, diagnostico)
         if proposta is not None:
             return DetalheDoBacklog(linha_de_proposta(proposta, to_iso(agora)), False, None, proposta)
         raise NaoEncontrado(f"Não há '{backlog_id}' no backlog nem no que falhou nos últimos "
@@ -288,10 +314,15 @@ class ServicoDeFalhas:
         quando = to_iso(agora)
         _, ocorrencias = self._ler(agora, JANELA_DA_CURADORIA_DIAS, simulados=False, retroativo=True)
         escritas = 0
+        gravaveis: list[GrupoDeFalha] = []
         for g in agrupar(ocorrencias, desde=desde, agora=agora, elegiveis={}):
             if entra_no_topo(g, camada=None) and g.ocorrencias >= regras.minimo_ocorrencias:
                 escritas += int(self._backlog.registrar(linha_de_grupo(g), agora=quando))
-        for p in self._propostas(agora):
+                gravaveis.append(g)
+        # As propostas do diagnóstico entram DEPOIS do grupo (o `parent_id` aponta para uma linha que já existe).
+        mais_caros = ordenar(gravaveis, regras)[:MAX_DIAGNOSTICOS]
+        do_diagnostico = _propostas_dos(mais_caros, self._diagnosticar(mais_caros, ocorrencias, desde))
+        for p in self._propostas(agora, do_diagnostico):
             escritas += int(self._backlog.registrar(linha_de_proposta(p, quando), agora=quando))
         for linha in self._backlog.linhas((EstadoDoBacklog.FIXED_PENDING_PROOF, EstadoDoBacklog.FIXED)):
             try:
@@ -417,19 +448,61 @@ class ServicoDeFalhas:
         unicos = tuple(dict.fromkeys(i for i in ids if i))[:IDS_DA_PROVA]
         return Medida(desde, ate, elegiveis, len(ocorrencias), unicos, sum(o.usd for o in ocorrencias))
 
-    def _grupo(self, backlog_id: str, agora: datetime) -> GrupoDeFalha | None:
+    def _grupo(self, backlog_id: str, agora: datetime) -> tuple[GrupoDeFalha | None, list[Ocorrencia]]:
         desde = to_iso(agora - timedelta(days=JANELA_DE_RESOLUCAO_DIAS))
         _, ocorrencias = self._ler(agora, JANELA_DE_RESOLUCAO_DIAS, simulados=False, retroativo=True)
         alvo = [o for o in ocorrencias if o.chave.id == backlog_id]
         if not alvo:
-            return None
+            return None, []
         grupos = agrupar(alvo, desde=desde, agora=agora,
                          elegiveis=self._fontes.elegiveis(desde, to_iso(agora), simulados=False))
-        return grupos[0] if grupos else None
+        return (grupos[0] if grupos else None), alvo
 
-    def _propostas(self, agora: datetime) -> list[Proposta]:
+    # ------------------------------------------------------------------ diagnóstico (item 30.13)
+    def _diagnosticar(self, grupos: Sequence[GrupoDeFalha], ocorrencias: Sequence[Ocorrencia],
+                      desde: str) -> dict[str, Diagnostico]:
+        """O diagnóstico determinístico de cada grupo, lendo o contexto das últimas `AMOSTRA` tentativas dele em UMA ida
+        à fonte. Sem fonte de contexto, ou se ela falhar, só o tipo decide — escrito (`sem_contexto`), nunca um palpite;
+        o relatório não cai por causa do diagnóstico."""
+        por_chave: dict[ChaveDoGrupo, list[Ocorrencia]] = defaultdict(list)
+        for o in ocorrencias:
+            if o.fonte is FonteDaOcorrencia.TENTATIVA and o.attempt_id and o.quando >= desde:
+                por_chave[o.chave].append(o)
+        amostras = {g.id: [o.attempt_id for o in sorted(por_chave.get(g.chave, ()), key=lambda o: o.quando)[-AMOSTRA:]
+                           if o.attempt_id] for g in grupos}
+        contextos: dict[str, ContextoDaTentativa] = {}
+        estatisticas: dict[str, EstatisticaDaLicao] = {}
+        if isinstance(self._fontes, FontesDeContexto):
+            try:
+                contextos = self._fontes.contextos(sorted({i for ids in amostras.values() for i in ids}))
+                refs = sorted({r for c in contextos.values() for r in c.licoes})
+                estatisticas = self._fontes.licoes(refs) if refs else {}
+            except Exception:                                  # noqa: BLE001 — o relatório não depende do diagnóstico
+                log.exception("aprendizado: o contexto das falhas não pôde ser lido; o diagnóstico usa só o tipo")
+                contextos, estatisticas = {}, {}
+        return {g.id: diagnosticar(g.chave, [contextos[i] for i in amostras[g.id] if i in contextos],
+                                   licoes=estatisticas, erros_de_ia=g.erros_de_ia) for g in grupos}
+
+    def _proposta_do_diagnostico(self, backlog_id: str, gravada: LinhaDoBacklog | None,
+                                 agora: datetime) -> Proposta | None:
+        """A proposta do diagnóstico com este id: pelo grupo-pai da linha gravada; sem linha, varrendo os grupos do período."""
+        desde = to_iso(agora - timedelta(days=JANELA_DE_RESOLUCAO_DIAS))
+        regras = self._regras()
+        if gravada is not None and gravada.parent_id:
+            grupo, ocorrencias = self._grupo(gravada.parent_id, agora)
+            grupos = [grupo] if grupo is not None else []
+        else:
+            _, ocorrencias = self._ler(agora, JANELA_DE_RESOLUCAO_DIAS, simulados=False, retroativo=True)
+            grupos = ordenar((g for g in agrupar(ocorrencias, desde=desde, agora=agora, elegiveis={})
+                              if entra_no_topo(g, camada=None) and g.ocorrencias >= regras.minimo_ocorrencias),
+                             regras)[:MAX_DIAGNOSTICOS]
+        propostas = _propostas_dos(grupos, self._diagnosticar(grupos, ocorrencias, desde))
+        return next((p for p in propostas if p.id == backlog_id), None)
+
+    def _propostas(self, agora: datetime, do_diagnostico: Sequence[Proposta] = ()) -> list[Proposta]:
+        """As propostas do diagnóstico vêm primeiro: são as que têm custo medido atrás."""
         acoes = self._fontes.acoes_livres(to_iso(agora - timedelta(days=JANELA_DAS_ACOES_DIAS)), to_iso(agora))
-        saida = [p for p in (proposta_de_acao(a) for a in acoes) if p is not None]
+        saida = [*do_diagnostico, *(p for p in (proposta_de_acao(a) for a in acoes) if p is not None)]
         for item in self._itens_para_promover():
             proposta = proposta_de_item(item, agora)
             if proposta is not None:
@@ -449,6 +522,11 @@ class ServicoDeFalhas:
     def _licoes_publicadas(self) -> list[tuple[str, str]]:
         return [(i.escopo.app, i.escopo.capability)
                 for i in self._livro.itens(kind=LivroKind.LICAO, state=SkillState.PUBLISHED)]
+
+
+def _propostas_dos(grupos: Sequence[GrupoDeFalha], diagnosticos: Mapping[str, Diagnostico]) -> list[Proposta]:
+    return [p for g in grupos if g.id in diagnosticos
+            if (p := proposta_do_diagnostico(g.chave, diagnosticos[g.id])) is not None]
 
 
 def _licoes_do_grupo(licoes: Sequence[tuple[str, str]], chave: ChaveDoGrupo) -> int:
@@ -473,5 +551,5 @@ def _instante(iso: str, padrao: datetime) -> datetime:
         return padrao
 
 
-__all__ = ["DetalheDoBacklog", "Filtros", "FontesDeFalha", "Janela", "LinhaDaProposta", "LinhaDoRelatorio",
+__all__ = ["DetalheDoBacklog", "Filtros", "FontesDeContexto", "FontesDeFalha", "Janela", "LinhaDaProposta", "LinhaDoRelatorio",
            "RelatorioDeFalhas", "RepositorioDoBacklog", "ServicoDeFalhas"]

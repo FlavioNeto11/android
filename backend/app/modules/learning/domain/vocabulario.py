@@ -169,6 +169,34 @@ class TipoDeProposta(StrEnum):
     ACAO_DE_CATALOGO = "acao_de_catalogo"
     PROMOVER_LICAO = "promover_licao"
     PROMOVER_TELA = "promover_tela"
+    # Item 30.13: nascem do diagnóstico de um grupo de falha (a causa e o alvo vão na proposta; `parent_id` = o grupo).
+    # São recomendação para a pessoa: nenhuma muda conhecimento ou código.
+    REBAIXAR_RECEITA = "rebaixar_receita"
+    REVISAR_LICAO = "revisar_licao"
+    REAPRENDER_TELA = "reaprender_tela"
+    AJUSTAR_CATALOGO = "ajustar_catalogo"
+    INVESTIGAR = "investigar"
+
+
+class CausaProvavel(StrEnum):
+    """A hipótese DETERMINÍSTICA de um grupo de falha (item 30.13, `docs/design/aprendizado-vivo.md` §9.1). Fechada:
+    cada valor tem as regras e os fatos em `domain/diagnostico.py`. `indeterminada` é o "não sei" escrito — é o dado que
+    o curador lê para decidir se vale pedir a IA; nunca vira outra causa por palpite."""
+
+    TETO_DE_IA = "teto_de_ia"                           # orçamento de chamadas, tokens ou US$
+    PROVEDOR_DE_IA = "provedor_de_ia"                   # indisponível, recusa por política ou sem saldo
+    SESSAO_OU_AUTENTICACAO = "sessao_ou_autenticacao"   # login, conta errada (a conta é da pessoa)
+    APARELHO = "aparelho"                               # camada aparelho/automação/execução, ou só um aparelho falha
+    PLANO = "plano"                                     # o plano ligou mal as etapas
+    INFORMACAO_DA_PESSOA = "informacao_da_pessoa"       # falta o dado que só quem pediu tem
+    CATALOGO_RECUSOU = "catalogo_recusou"               # a guarda do efeito, do catálogo, não foi atendida
+    VERIFICADOR = "verificador"                         # a comprovação (pós-condição, efeito) ou a pessoa a desmente
+    RECEITA_DIVERGIU = "receita_divergiu"               # a receita conduziu e falhou em todos os aparelhos que tentaram
+    VERSAO_NOVA = "versao_nova"                         # receita quarentenada na versão nova, havendo comprovada na anterior
+    LICAO_ATRAPALHA = "licao_atrapalha"                 # lição exposta nas falhas e com taxa pior que o controle
+    TELA_DESCONHECIDA = "tela_desconhecida"             # a tela da falha não é reconhecida pelo conhecimento declarado
+    FALTA_CONHECIMENTO = "falta_conhecimento"           # só a IA conduziu, sem receita nem lição para o passo
+    INDETERMINADA = "indeterminada"
 
 
 class Modo(StrEnum):

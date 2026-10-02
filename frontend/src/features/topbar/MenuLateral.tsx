@@ -1,5 +1,5 @@
 import {
-  GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
+  CalendarClock, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
   Stethoscope, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -11,6 +11,7 @@ import { useContagemDoAprendizado } from '../aprendizado/contagem';
 import { elementosFocaveis } from '../focus/Drawer';
 import { falaDoTotal, numeroExibido } from '../pendencias/exibicao';
 import { usePendenciasStore } from '../pendencias/store';
+import { usePedidosStore, useReleituraDosPedidos } from '../pedidos/store';
 import { usePendencias, useReleituraDasPendencias } from '../pendencias/usePendencias';
 import styles from './MenuLateral.module.css';
 
@@ -25,6 +26,7 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
   { tela: 'personas', label: 'Personas', icon: UserRound },
   { tela: 'aplicativos', label: 'Aplicativos', icon: Package },
   { tela: 'execucoes', label: 'Execuções', icon: ListChecks },
+  { tela: 'pedidos', label: 'Pedidos', icon: CalendarClock },
   { tela: 'pendencias', label: 'Pendências', icon: Inbox },
   { tela: 'aprendizado', label: 'Aprendizado', icon: GraduationCap },
   { tela: 'infraestrutura', label: 'Infraestrutura', icon: Server },
@@ -57,6 +59,9 @@ export function MenuLateral() {
   const setMenuAberto = useUiStore((s) => s.setMenuAberto);
   const paraAprovar = usePendentesDoAprendizado();
   useReleituraDasPendencias();
+  useReleituraDosPedidos();
+  // Avisos não lidos da caixa de avisos dos pedidos: contador próprio, que nunca se chama pendência (ADR-062).
+  const avisosNaoLidos = usePedidosStore((s) => s.naoLidos);
   // O número do item Pendências é o total da lista da própria tela (mesma função), não uma soma à parte.
   const { total: pendencias, falhou: pendenciasIncompleto } = usePendencias();
   // B8: se a fila do Aprendizado não carregou, o "Para aprovar" também é um piso (a contagem guardada pode ser velha).
@@ -141,10 +146,11 @@ export function MenuLateral() {
         <ul className={styles.lista}>
           {NAV.map(({ tela, label, icon: Icon }) => {
             const incompleto = tela === 'aprendizado' ? aprendizadoIncompleto : tela === 'pendencias' ? pendenciasIncompleto : false;
-            const n = tela === 'aprendizado' ? (paraAprovar ?? (incompleto ? 0 : null)) : tela === 'pendencias' ? pendencias : null;
+            const n = tela === 'aprendizado' ? (paraAprovar ?? (incompleto ? 0 : null)) : tela === 'pendencias' ? pendencias
+              : tela === 'pedidos' ? avisosNaoLidos : null;
             // Zero só some se a leitura foi completa: com uma origem fora, "0" não é número, e o selo vira "?".
             const conta = n !== null && (n > 0 || incompleto) ? n : null;
-            const legenda = tela === 'pendencias' ? 'aguardando você' : 'para aprovar';
+            const legenda = tela === 'pendencias' ? 'aguardando você' : tela === 'pedidos' ? 'avisos não lidos' : 'para aprovar';
             return (
               <li key={tela}>
                 {/* O `foco` vai junto: trocar de tela não fecha o aparelho aberto no painel de Foco. */}

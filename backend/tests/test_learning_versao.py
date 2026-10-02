@@ -27,7 +27,7 @@ from app.modules.learning.domain import versao as dominio
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.livro import Escopo, NovoItem
 from app.modules.learning.domain.versao import EstadoDeVersao as E
-from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva
+from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva, nome_da_versao, versao_canonica
 from app.modules.learning.domain.vocabulario import LivroKind, SourceKind
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.montagem import GuardaDoFluxo
@@ -130,9 +130,9 @@ def _receita(db: Database, app_version: str, *, versao: int = 1, status: str = "
 
 
 def _observa(db: Database, aparelho: str, versao: str | None, *, estado: str = "installed",
-             pacote: str = PACOTE) -> None:
-    db.execute("INSERT INTO device_app_state(instance_id, package_name, observed_version_name, state)"
-               " VALUES (?,?,?,?)", (aparelho, pacote, versao, estado))
+             pacote: str = PACOTE, codigo: int | None = None) -> None:
+    db.execute("INSERT INTO device_app_state(instance_id, package_name, observed_version_name, observed_version_code,"
+               " state) VALUES (?,?,?,?,?)", (aparelho, pacote, versao, codigo, estado))
 
 
 class Mundo:
@@ -253,3 +253,30 @@ async def test_rota_devolve_versao_em_receita_licao_e_memoria(mundo: Mundo, clie
                      " updated_at) VALUES (?,?,?,?,?,?,?,?)", ("m0", "p1", "@ana", "x", "operator", "fp", TS, TS))
     m = await cliente.get("/api/aprendizado/memoria/p1")
     assert m.status_code == 200 and m.json()["versao"]["estado"] == "independente"
+
+
+def test_formato_real_receita_com_codigo_e_aparelho_com_nome_e_codigo(mundo: Mundo) -> None:
+    """Medido no central (03/10): a receita grava `nome(código)` e o aparelho guarda nome e código separados. Comparar
+    só o nome marcava TODA receita como versão fora do parque (78 de 160 itens `obsoleto_provavel`)."""
+    _observa(mundo.db, "android-01", "447.0.0.55.81", codigo=385311929)
+    rid = _receita(mundo.db, "447.0.0.55.81(385311929)")
+    v = mundo.versao(LivroKind.RECEITA, rid)
+    assert v["estado"] == "comprovado" and v["nao_testada_em"] == []
+    assert v["vivas"] == [{"versao": "447.0.0.55.81(385311929)", "aparelhos": 1}]
+
+
+def test_tela_grava_so_o_nome_e_casa_com_a_viva_de_nome_e_codigo(mundo: Mundo) -> None:
+    _observa(mundo.db, "android-01", "5.2635.3", codigo=72635119)
+    tela = mundo.repo.criar_item(
+        NovoItem(kind=LivroKind.TELA, escopo=Escopo(app=PACOTE),
+                 content={"tela": "aprendida:caixa", "tipo": "regra_de_tela", "ids_todos": ["a"], "casa": True},
+                 summary="caixa", source_kind=SourceKind.SCREEN_OBSERVATION, side_effect=False, app_version="5.2635.3"),
+        by="sistema", estado=SkillState.CANDIDATE, detalhe=None, reason="teste")
+    assert mundo.versao(LivroKind.TELA, tela.id)["estado"] != "versao_aposentada"
+
+
+def test_nome_da_versao_e_versao_canonica() -> None:
+    assert versao_canonica("447.0.0.55.81", 385311929) == "447.0.0.55.81(385311929)"
+    assert versao_canonica("1.0.0", None) == "1.0.0"
+    assert nome_da_versao("447.0.0.55.81(385311929)") == "447.0.0.55.81"
+    assert nome_da_versao("14(34)") == "14" and nome_da_versao("5.2635.3") == "5.2635.3"

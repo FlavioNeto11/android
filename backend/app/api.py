@@ -306,6 +306,9 @@ async def snapshot(request: Request) -> Any:
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
             "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),
             "workers": s.workers.dtos(),
+            # Pedidos persistentes (28.9): por estado, avisos e os que esperam uma pessoa, completo e sem janela. Cada
+            # `aguardando_pessoa` é UM item da caixa de Pendências, com a aprovação e a `needs_input` dele agrupadas.
+            "pedidos": s.pedidos_api.snapshot(),
             # Comandos em voo E os que acabaram sem desfecho. Os primeiros, porque recarregar a página no meio
             # de um `start` remoto fazia o painel esquecer que o aparelho está ocupado e reoferecer o botão — o
             # clique duplo que o aceite 9 proíbe. Os segundos, porque um `uncertain` só existia enquanto o toast
@@ -1584,6 +1587,25 @@ async def add_profile_account(request: Request, profile_id: str, body: ProfileAc
 async def patch_profile_account(request: Request, profile_id: str, account_id: str, body: ProfileAccountPatch) -> Any:
     try:
         return st(request).social.update_account(profile_id, account_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+class RetirarContaBody(BaseModel):
+    """Corpo opcional de `…/accounts/{id}/retire`: o que a pessoa viu (o @ é cortado do evento)."""
+    evidencia: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/retire")
+async def retire_profile_account(request: Request, profile_id: str, account_id: str,
+                                 body: RetirarContaBody | None = None) -> dict[str, object]:
+    """Bloqueio confirmado (29.23, ADR-068): a conta SAI na hora (credencial, cofre, sessão, vínculo, linha) e a
+    persona fica. Vale também para a âncora, que a remoção comum recusa. Idempotente: a conta que já saiu é 200 com
+    `retirada: false`. O aparelho não é tocado."""
+    try:
+        return st(request).social.retirar_conta_bloqueada(
+            profile_id, account_id, origem="declarado", autor=quem(request),
+            evidencia=body.evidencia if body else None)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
