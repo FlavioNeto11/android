@@ -10,10 +10,10 @@ import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, linhaDeUso, modosEmTexto, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
+  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, linhaDeUso, modosEmTexto, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
   temMedidoNaoUsado, type Contagem, type DetalheDoApp, type ResumoDoApp, type VisaoDeApps,
 } from './apps';
-import { agruparPorCapability, doApp, rotuloDaCapability } from './atencao';
+import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
 import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import { acoesDoItem, rotuloDoKind, type EntradaDoLivro } from './model';
 import { ChipsDeSaude, FalhasDoApp, FilaDeAtencao, quantosPedemAtencao } from './SaudeDoApp';
@@ -32,6 +32,8 @@ function LinhaDeContagem({ rotulo, c }: { rotulo: string; c: Contagem }) {
     </div>
   );
 }
+
+const textoDeAtencao = (n: number) => `${formatInt(n)} ${n === 1 ? 'pede' : 'pedem'} atenção`;
 
 /** Um app no Global: o que se declarou, o que se aprendeu, o que foi absorvido e como o aprendido é usado. */
 /**
@@ -62,7 +64,8 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
       </div>
       <div className={styles.cartaoLinha}>
         <span className={styles.cartaoRotulo}>Como é usado</span>
-        <span className={styles.cartaoUso}>{linhaDeUso(app.uso)}</span>
+        {usoPorTipo(app.uso).length === 0 ? <span className={styles.cartaoUso}>{linhaDeUso(app.uso)}</span>
+          : usoPorTipo(app.uso).map((t) => <span key={t.tipo} className={styles.cartaoUso}><strong>{t.tipo}</strong>: {t.texto}</span>)}
       </div>
       {itens ? (
         <div className={styles.cartaoLinha}>
@@ -70,7 +73,7 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
           <ChipsDeSaude itens={itens} />
           {quantosPedemAtencao(itens) > 0 ? (
             <span><Badge tone="warning" size="sm" title="Degradando, provavelmente obsoleto ou sem evidência: veja a fila Atenção.">
-              {formatInt(quantosPedemAtencao(itens))} pedem atenção
+              {textoDeAtencao(quantosPedemAtencao(itens))}
             </Badge></span>
           ) : null}
         </div>
@@ -82,6 +85,19 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
         <Button size="sm" variant="secondary" onClick={() => abrirApp(app.pacote)}>Ver {balde ? 'o balde' : 'o app'}</Button>
       </div>
     </li>
+  );
+}
+
+/** Como o aprendido do app é usado, um chip por tipo (a frase longa de `linhaDeUso` não se lê de relance). */
+function UsoEmChips({ uso }: { uso: Contagem }) {
+  const tipos = usoPorTipo(uso);
+  if (tipos.length === 0) return <span>Nada aprendido para usar ainda.</span>;
+  return (
+    <span className={styles.resumo} role="group" aria-label="Como é usado">
+      {tipos.map((t) => (
+        <span key={t.tipo} className={styles.resumoChip}><strong>{t.tipo}</strong><span>{t.texto}</span></span>
+      ))}
+    </span>
   );
 }
 
@@ -165,7 +181,7 @@ function Declarado({ d }: { d: DetalheDoApp }) {
       {d.declarado.length === 0 ? <p className={styles.secaoLead}>Nada foi declarado para este app.</p> : (
         <ul className={styles.tabelaDeclarado}>
           {d.declarado.map((i) => (
-            <li key={i.tipo} className={styles.item}>
+            <li key={i.tipo} className={styles.itemCompacto}>
               <div className={styles.itemHead}>
                 <span className={styles.itemTitulo}>{rotuloDoArquivo(i.tipo)}</span>
                 <Badge tone={i.presente ? 'success' : 'neutral'} size="sm">{i.presente ? 'presente' : 'ausente'}</Badge>
@@ -183,61 +199,73 @@ function Declarado({ d }: { d: DetalheDoApp }) {
   );
 }
 
-function ListaDoApp({ titulo, lead, itens, vazio, onMudou }: {
-  titulo: string; lead: string; itens: DetalheDoApp['aprendido']; vazio: string; onMudou?: () => void;
-}) {
+/** Os itens de um app, sem repetir o pacote em cada um (a página já é do app). */
+function ItensDoApp({ itens, rotulo, onMudou }: { itens: DetalheDoApp['aprendido']; rotulo: string; onMudou?: () => void }) {
+  return (
+    <ul className={styles.lista} aria-label={rotulo}>
+      {itens.map((e) => (
+        <ItemDoLivro
+          key={chaveDoItem(e)}
+          entrada={e}
+          ocultarApp
+          acoes={onMudou ? acoesDoItem(e) : []}
+          onMudou={onMudou ?? (() => undefined)}
+          uso={e.uso ? { rotulo: rotuloDoUso(e.uso.camada), porque: e.uso.porque } : undefined}
+          extra={e.absorvida_em ? <p className={styles.secaoLead}>Absorvido em {e.absorvida_em}</p> : null}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function ListaDoApp({ titulo, lead, itens, vazio }: { titulo: string; lead: string; itens: DetalheDoApp['aprendido']; vazio: string }) {
   return (
     <section className={styles.secao} aria-label={titulo}>
       <h3 className={styles.secaoTitulo}>{titulo} ({formatInt(itens.length)})</h3>
       <p className={styles.secaoLead}>{lead}</p>
-      {itens.length === 0 ? <p className={styles.secaoLead}>{vazio}</p> : (
-        <ul className={styles.lista} aria-label={titulo}>
-          {itens.map((e) => (
-            <ItemDoLivro
-              key={chaveDoItem(e)}
-              entrada={e}
-              acoes={onMudou ? acoesDoItem(e) : []}
-              onMudou={onMudou ?? (() => undefined)}
-              extra={e.uso ? (
-                <p className={styles.secaoLead} title={e.uso.porque ?? undefined}>
-                  {rotuloDoKind(e.kind)} · uso: {rotuloDoUso(e.uso.camada)}{e.absorvida_em ? ` · absorvido em ${e.absorvida_em}` : ''}
-                </p>
-              ) : null}
-            />
-          ))}
-        </ul>
-      )}
+      {itens.length === 0 ? <p className={styles.secaoLead}>{vazio}</p> : <ItensDoApp itens={itens} rotulo={titulo} />}
     </section>
   );
 }
 
 /**
- * O aprendido do app, agrupado por capability quando o backend a manda na linha. Hoje ele só a manda no detalhe de cada
- * item (`conteudo.capability`), não na lista: sem o campo, a lista segue plana e a tela diz por quê, em vez de agrupar
- * por palpite. As falhas, que sempre trazem a capability, ficam agrupadas no bloco "O que falha".
+ * O aprendido do app no nível Capability da hierarquia: um bloco recolhível por capability, com quantos itens tem e a
+ * saúde deles no resumo; abre sozinho o bloco que tem item pedindo atenção. O fluxo (comando inteiro) e o item sem
+ * capability conhecida ficam em blocos próprios, por último.
  */
 function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['aprendido']; onMudou: () => void }) {
-  const grupos = agruparPorCapability(itens);
-  const lead = 'O que o sistema aprendeu deste app, com o estado e a decisão da pessoa.';
-  if (!grupos) {
-    return (
-      <>
-        <ListaDoApp titulo="Aprendido" lead={lead} itens={itens} vazio="Nada aprendido para este app." onMudou={onMudou} />
-        {itens.length > 0 ? (
-          <p className={styles.secaoLead} data-sem-capability>
-            Os itens ainda não vêm agrupados por capability: o backend só informa a capability no detalhe de cada item.
-          </p>
-        ) : null}
-      </>
-    );
-  }
+  const grupos = gruposDoAprendido(itens, rotuloDoKind);
   return (
-    <>
-      {grupos.map((g) => (
-        <ListaDoApp key={g.capability} titulo={`Aprendido — ${rotuloDaCapability(g.capability)}`} lead={lead} itens={g.itens}
-                    vazio="Nada aprendido para este app." onMudou={onMudou} />
-      ))}
-    </>
+    <section className={styles.secao} aria-label="Aprendido">
+      <h3 className={styles.secaoTitulo}>Aprendido ({formatInt(itens.length)})</h3>
+      <p className={styles.secaoLead}>
+        O que o sistema aprendeu deste app, por capability, com o estado, a saúde e a decisão da pessoa.
+      </p>
+      {itens.length === 0 ? <EmptyState icon={AppWindow} compact title="Nada aprendido para este app" /> : (
+        <div className={styles.grupos} data-grupos>
+          {grupos.map((g) => {
+            const atencao = quantosPedemAtencao(g.itens);
+            return (
+              <Disclosure
+                key={g.chave}
+                className={styles.grupo}
+                defaultOpen={atencao > 0 || grupos.length === 1}
+                summary={<span className={g.ehCapability ? styles.mono : undefined}>{g.titulo}</span>}
+                meta={(
+                  <span className={styles.grupoMeta}>
+                    <span>{formatInt(g.itens.length)} {g.itens.length === 1 ? 'item' : 'itens'}</span>
+                    {atencao > 0 ? <Badge tone="warning" size="sm">{textoDeAtencao(atencao)}</Badge> : null}
+                    {contarPorRotulo(g.itens).length > 0 ? <ChipsDeSaude itens={g.itens} /> : null}
+                  </span>
+                )}
+              >
+                {() => <ItensDoApp itens={g.itens} rotulo={`Aprendido: ${g.titulo}`} onMudou={onMudou} />}
+              </Disclosure>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -274,16 +302,22 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
         )
       ) : (
         <>
-          <p className={styles.secaoLead}>Como é usado: {linhaDeUso(d.app.uso)}</p>
-          <div className={styles.cartaoLinha} data-saude-do-app>
-            <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
-            {doLivro ? <ChipsDeSaude itens={doLivro} /> : livro.erro
-              ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : <span>Carregando…</span>}
+          <div className={styles.painelDoApp}>
+            <div className={styles.cartaoLinha} data-uso-do-app>
+              <span className={styles.cartaoRotulo}>Como é usado</span>
+              <UsoEmChips uso={d.app.uso} />
+            </div>
+            <div className={styles.cartaoLinha} data-saude-do-app>
+              <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
+              {doLivro ? <ChipsDeSaude itens={doLivro} /> : livro.erro
+                ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : <span>Carregando…</span>}
+            </div>
           </div>
-          {!balde ? <Declarado d={d} /> : null}
+          {/* Do que pede ação ao que é referência: atenção, o aprendido, o que falha; o declarado e o absorvido depois. */}
           {doLivro ? <FilaDeAtencao itens={doLivro} /> : null}
           <AprendidoPorCapability itens={aprendido} onMudou={() => { void carregar(); void livro.carregar(); }} />
           <FalhasDoApp pacote={pacote} />
+          {!balde ? <Declarado d={d} /> : null}
           <ListaDoApp
             titulo="Absorvido"
             lead="O que já virou conhecimento declarado do repositório: não conta mais como aprendido."

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ageMs, computeServerOffset, duracaoHumana, formatDuration, formatSpan, tempoRelativo } from './time';
+import { ageMs, computeServerOffset, duracaoHumana, formatDuration, formatQuando, formatSpan, tempoRelativo } from './time';
 
 describe('computeServerOffset', () => {
   it('calcula servidor − local', () => {
@@ -76,5 +76,21 @@ describe('tempoRelativo — ordem de grandeza, sem precisão de máquina', () =>
     expect(tempoRelativo(null, AGORA)).toBe('—');
     expect(tempoRelativo('lixo', AGORA)).toBe('—');
     expect(duracaoHumana(-1)).toBe('—');
+  });
+});
+
+describe('formatQuando — o dia sempre aparece quando não é hoje', () => {
+  // Meio-dia local: hoje/ontem não dependem do fuso de quem roda o teste.
+  const agora = new Date(2026, 9, 2, 12, 0, 0).getTime();
+  const iso = (d: Date) => d.toISOString();
+  it('hoje e ontem por extenso, outro dia com a data', () => {
+    expect(formatQuando(iso(new Date(2026, 9, 2, 9, 5)), agora)).toBe('hoje, 09:05');
+    expect(formatQuando(iso(new Date(2026, 9, 1, 20, 47)), agora)).toBe('ontem, 20:47');
+    expect(formatQuando(iso(new Date(2026, 8, 29, 20, 47)), agora)).toBe('29/09 20:47');
+    expect(formatQuando(iso(new Date(2025, 8, 29, 20, 47)), agora)).toBe('29/09/2025');
+  });
+  it('sem instante válido: travessão', () => {
+    expect(formatQuando(null, agora)).toBe('—');
+    expect(formatQuando('lixo', agora)).toBe('—');
   });
 });

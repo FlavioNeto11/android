@@ -407,6 +407,9 @@ export function rotuloDoDetalhe(d: string | null | undefined): string | null {
   };
   if (fixos[d]) return fixos[d] ?? d;
   if (d.startsWith('absorvida:')) return `absorvida pelo YAML (${d.slice('absorvida:'.length)})`;
+  // A receita manda "sombra <iguais>/<total>": a comparação com a IA no modo sombra. Sem comparação, não há o que dizer.
+  const sombra = /^sombra (\d+)\/(\d+)$/.exec(d);
+  if (sombra) return Number(sombra[2]) === 0 ? null : `na sombra, concordou com a IA em ${sombra[1]} de ${sombra[2]}`;
   return d;
 }
 

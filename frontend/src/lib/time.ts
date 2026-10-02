@@ -158,3 +158,22 @@ export function formatDateTime(iso: string | null | undefined): string {
   const t = parseTs(iso);
   return t === null ? '—' : dateTimeFmt.format(t);
 }
+
+const horaFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const diaFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const diaCurtoFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+
+/**
+ * Um instante que pode ser de qualquer dia: "hoje, 20:47", "ontem, 09:12", "29/09 20:47" (outro ano: "29/09/2025").
+ * `formatClock` sozinho num registro antigo engana: "último uso 20:47" de três dias atrás parece de hoje.
+ */
+export function formatQuando(iso: string | null | undefined, agoraMs: number = Date.now()): string {
+  const t = parseTs(iso);
+  if (t === null) return '—';
+  const dia = (ms: number) => diaFmt.format(ms);
+  const hora = horaFmt.format(t);
+  if (dia(t) === dia(agoraMs)) return `hoje, ${hora}`;
+  if (dia(t) === dia(agoraMs - 86_400_000)) return `ontem, ${hora}`;
+  const mesmoAno = new Date(t).getFullYear() === new Date(agoraMs).getFullYear();
+  return mesmoAno ? `${diaCurtoFmt.format(t)} ${hora}` : dia(t);
+}

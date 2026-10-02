@@ -25,7 +25,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
-from app.modules.learning.domain.conteudo import licao_legivel, tela_legivel
+from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
@@ -218,6 +218,25 @@ class LearningService:
             saude = self.saude_de(e, tuple(evidencias), contexto=contexto)
             if saude is not None:
                 saida[e.trail_ref] = saude
+        return saida
+
+    def capabilities(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, str | None]:
+        """A capability de cada entrada, pela ref da trilha, para a hierarquia App → Capability → Item do painel. Em
+        lote (uma leitura por tipo, nunca por linha), como `saudes`. Receita: a derivação do detalhe; lição e tela
+        (itens): a `scope_capability` do item. Fluxo, habilidade, memória e o resto: `None` (o fluxo é um comando
+        inteiro). O que não se sabe é `None`; nunca palpite."""
+        refs_de_receita = [e.ref for e in entradas if e.kind is LivroKind.RECEITA]
+        refs_de_item = [e.ref for e in entradas if e.kind in KINDS_DE_ITEM]
+        da_receita = self._fontes.capabilities_das_receitas(refs_de_receita) if refs_de_receita else {}
+        do_item = self._repo.capabilities_dos_itens(refs_de_item) if refs_de_item else {}
+        saida: dict[str, str | None] = {}
+        for e in entradas:
+            if e.kind is LivroKind.RECEITA:
+                saida[e.trail_ref] = da_receita.get(e.ref)
+            elif e.kind in KINDS_DE_ITEM:
+                saida[e.trail_ref] = capability_unica(do_item.get(e.ref))
+            else:
+                saida[e.trail_ref] = None
         return saida
 
     def _contexto_de_obsolescencia(self) -> ContextoDeObsolescencia | None:
