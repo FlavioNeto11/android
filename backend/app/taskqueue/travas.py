@@ -47,7 +47,9 @@ RENOVAR_TRAVA_S = 20.0
 SALDOS = "saldos"
 CURADORIA = "curadoria"
 RETENCAO = "retencao"
-TRAVAS_DOS_LACOS = (SALDOS, CURADORIA, RETENCAO)
+#: O envio do aviso fora do painel (28.11) NÃO é idempotente (duas mensagens são duas mensagens): só o líder envia.
+AVISOS = "avisos"
+TRAVAS_DOS_LACOS = (SALDOS, CURADORIA, RETENCAO, AVISOS)
 
 
 class TravaPerdida(RuntimeError):

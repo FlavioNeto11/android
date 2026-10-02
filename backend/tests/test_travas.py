@@ -107,7 +107,7 @@ def test_reinicio_com_o_mesmo_dono_assume_na_hora(tmp_path: Path) -> None:
     assert caiu.manter(TRAVAS_DOS_LACOS) == {n: 1 for n in TRAVAS_DOS_LACOS}
     voltou = Lideranca(db_, dono=AQUI, relogio=r)      # processo novo, mesmo OWNER_ID, sem o prazo vencer
     assert voltou.tomar(SALDOS) is None               # sem a faxina de partida, esperaria o prazo
-    assert voltou.soltar_da_queda() == 3
+    assert voltou.soltar_da_queda() == len(TRAVAS_DOS_LACOS)
     assert voltou.tomar(SALDOS) == 2
     assert Lideranca(da, dono=LAH, relogio=r).tomar(SALDOS) is None
 
