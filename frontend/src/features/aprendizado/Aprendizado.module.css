@@ -408,3 +408,50 @@
 /* 30.15: a contagem por rótulo de saúde (cartão e detalhe do app) e o subtítulo de cada grupo por capability. */
 .chipsDeSaude { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
 .subtitulo { font-size: var(--fs-md); font-weight: 600; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* Passe de design (30.15/30.16): título longo (o comando inteiro de um fluxo) cabe em duas linhas; o texto todo fica
+   no title e no detalhe. A referência é para quem procura, não para quem lê: discreta. */
+.itemTitulo {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.refDoItem {
+  margin-left: auto;
+  max-width: 28ch;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+.avisoDoItem,
+.notaDoItem {
+  margin: 0;
+  padding: 4px var(--sp-2);
+  border-left: 2px solid var(--border-1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.avisoDoItem { border-left-color: var(--warning-text); color: var(--warning-text); }
+
+/* O nível Capability no detalhe do app: um bloco recolhível por capability, com contagem e saúde no resumo. */
+.grupos { display: flex; flex-direction: column; gap: var(--sp-2); }
+.grupo { border: 1px solid var(--border-1); border-radius: var(--radius-md); }
+.grupoMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-3); }
+
+.painelDoApp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}

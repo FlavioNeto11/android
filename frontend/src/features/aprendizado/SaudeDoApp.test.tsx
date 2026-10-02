@@ -163,7 +163,7 @@ describe('saúde por app', () => {
     expect(saudeDoApp).toContain('1 saudável');
     expect(saudeDoApp).toContain('1 degradando');
     // O selo do item vem da lista do Livro: a linha de /apps/{pacote} chegou sem `saude`.
-    const lista = container.querySelector('ul[aria-label="Aprendido"]') as HTMLElement;
+    const lista = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
     expect(text(lista)).toContain('Saúde: Degradando');
     expect(text(lista)).toContain('Saúde: Saudável');
   });
@@ -236,12 +236,15 @@ describe('falhas e capability no detalhe do app', () => {
     expect(useUiStore.getState().rota.query).toMatchObject({ aba: 'falhas' });
   });
 
-  it('o aprendido segue plano e a tela diz por quê quando o backend não manda a capability na lista', async () => {
+  it('sem a capability na lista (backend anterior), o aprendido é agrupado por tipo e nunca fica plano', async () => {
     await montar();
     await abrirDetalhe();
-    expect(container.querySelector('[data-sem-capability]')).toBeTruthy();
-    expect(text(container)).toContain('o backend só informa a capability no detalhe de cada item');
-    expect(container.querySelector('ul[aria-label="Aprendido"]')).toBeTruthy();
+    const secao = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
+    expect(Array.from(secao.querySelectorAll('[data-grupos] > details > summary')).map((s) => text(s as HTMLElement))).toEqual([
+      expect.stringContaining('Fluxo'), expect.stringContaining('Lição'), expect.stringContaining('Receita'),
+    ]);
+    // O grupo com item pedindo atenção já abre; o resto fica recolhido até a pessoa abrir.
+    expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy();
   });
 
   it('quando a linha traz `capability`, o aprendido é agrupado por ela', async () => {
@@ -256,10 +259,17 @@ describe('falhas e capability no detalhe do app', () => {
     backend.on('GET', new RegExp(`^/api/aprendizado/apps/${CHEIO.replace(/\./g, '\\.')}$`), () => json(comCapability));
     await montar();
     await abrirDetalhe();
-    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido — enviar_mensagem"]')).toBeTruthy());
-    expect(container.querySelector('ul[aria-label="Aprendido — abrir_conversa"]')).toBeTruthy();
-    expect(container.querySelector('ul[aria-label="Aprendido — Etapa livre (sem capability)"]')).toBeTruthy();
-    expect(container.querySelector('[data-sem-capability]')).toBeNull();
+    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido: enviar_mensagem"]')).toBeTruthy());
+    const secao = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
+    const resumos = Array.from(secao.querySelectorAll('[data-grupos] > details > summary')).map((s) => text(s as HTMLElement));
+    // Capability primeiro, em ordem; o fluxo (comando inteiro) no seu bloco, por último.
+    expect(resumos).toEqual([
+      expect.stringContaining('abrir_conversa'), expect.stringContaining('enviar_mensagem'),
+      expect.stringContaining('Fluxos (o comando inteiro)'),
+    ]);
+    expect(resumos[1]).toContain('1 pedem atenção');
+    // Sem item pedindo atenção, o bloco fica recolhido.
+    expect(container.querySelector('ul[aria-label="Aprendido: abrir_conversa"]')).toBeNull();
   });
 });
 

@@ -8,7 +8,7 @@ import { Checkbox, Field, TextInput } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
-import { formatClock } from '../../lib/time';
+import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { DetalheRico } from './DetalheRico';
@@ -144,10 +144,14 @@ interface ItemDoLivroProps {
   extra?: ReactNode;
   /** Abre o detalhe já na primeira vista (o link de uma relação leva direto ao item). */
   abrirDetalhe?: boolean;
+  /** Dentro da página de um app, repetir o pacote em cada item só ocupa a linha. */
+  ocultarApp?: boolean;
+  /** Como o item é usado hoje (camada de uso), quando a lista sabe. */
+  uso?: { rotulo: string; porque?: string | null };
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const porQue = porQueOSistemaNaoPublica(e);
   const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
@@ -164,14 +168,14 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           <Checkbox aria-label={`Selecionar ${e.title}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
         ) : null}
         <Badge tone="neutral" size="sm">{rotuloDoKind(e.kind)}</Badge>
-        <span className={styles.itemTitulo}>{e.title || e.ref}</span>
+        <span className={styles.itemTitulo} title={e.title || e.ref}>{e.title || e.ref}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
-        {e.app ? (
+        {e.app && !ocultarApp ? (
           <span>App:{' '}
             <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(e.app as string)}>
               <span className={styles.mono}>{e.app}</span>
@@ -180,13 +184,15 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         ) : null}
         <span>{ORIGEM_LABEL[e.origin] ?? e.origin}</span>
         {!memoria ? <span>Evidência: {e.evidence.for} a favor · {e.evidence.against} contra</span> : null}
-        {typeof e.uses === 'number' ? <span>Usos: {formatInt(e.uses)}</span> : null}
-        {e.last_used_at ? <span>Último uso: {formatClock(e.last_used_at)}</span> : null}
+        {typeof e.uses === 'number' && e.uses > 0 ? <span>Usos: {formatInt(e.uses)}</span> : null}
+        {e.last_used_at ? <span title={formatDateTime(e.last_used_at)}>Último uso: {formatQuando(e.last_used_at)}</span>
+          : e.uses === 0 && !memoria ? <span>Nunca usado</span> : null}
         {detalhe ? <span>{detalhe}</span> : null}
-        {espera ? <span className={styles.aviso}>Espera o dono: {espera}</span> : null}
-        {naoPublica ? <span>O sistema não publica sozinho: {naoPublica}</span> : null}
-        <span className={styles.mono}>{chaveDoItem(e)}</span>
+        {uso ? <span title={uso.porque ?? undefined}>Uso: {uso.rotulo}</span> : null}
+        <span className={styles.refDoItem} title="A referência do item no Livro">{chaveDoItem(e)}</span>
       </div>
+      {espera ? <p className={styles.avisoDoItem}>Espera o dono: {espera}</p> : null}
+      {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
       {extra}
       {acoes.length > 0 && !aberta ? (
         <div className={styles.itemAcoes}>

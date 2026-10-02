@@ -107,7 +107,7 @@ describe('Aprendizado por aplicativo', () => {
     const solto = text(cartao('com.exemplo.solto'));
     expect(solto).toContain('Só aprendido');
     expect(solto).toContain('2 candidatos');
-    expect(solto).toContain('Receita: decide sem a IA (2)');
+    expect(solto).toContain('Receita: decide sem a IA 2');
     expect(solto).toContain('Nada declarado');
 
     const cheio = text(cartao('com.exemplo.cheio'));
@@ -144,7 +144,8 @@ describe('Aprendizado por aplicativo', () => {
     expect(t).toContain('ausente');                        // telas.yaml não existe
     expect(t).toContain('Abrir o app');                    // aprendido
     expect(t).toContain('Receita absorvida');              // absorvido
-    expect(t).toContain('uso: inerte · absorvido em abc1234');
+    expect(t).toContain('Uso: inerte');
+    expect(t).toContain('Absorvido em abc1234');
     expect(backend.callsTo('GET', /\/aprendizado\/apps\/com\.exemplo\.cheio$/).length).toBe(1);
 
     await click(byRole('button', /Todos os aplicativos/, container));

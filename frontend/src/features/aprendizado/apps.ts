@@ -222,6 +222,14 @@ export function linhaDeUso(uso: Contagem): string {
   return partes.length > 0 ? partes.join('; ') : 'Nada aprendido para usar ainda.';
 }
 
+/** O mesmo que `linhaDeUso`, um item por tipo ("Receita" → "decide sem a IA 19 · inerte 4"), para chips e linhas. */
+export function usoPorTipo(uso: Contagem): { tipo: string; texto: string }[] {
+  return tiposComConteudo(uso).map(([tipo, porCamada]) => ({
+    tipo: rotuloDoKind(tipo),
+    texto: Object.entries(porCamada).filter(([, n]) => n > 0).map(([c, n]) => `${rotuloDoUso(c)} ${n}`).join(' · '),
+  }));
+}
+
 /** Há algo que o sistema mede e não usa (shadow e observe)? Vira um aviso no cartão. */
 export function temMedidoNaoUsado(uso: Contagem): boolean {
   return Object.values(uso).some((m) => (m.medido_nao_usado ?? 0) > 0);
