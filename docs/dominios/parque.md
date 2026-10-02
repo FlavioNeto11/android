@@ -906,6 +906,17 @@ isso). Com `exigida`/`exigida_com_bloqueio`, só libera `trafego_verificado` **q
 - **apps**: a medição que verificou tem de ter `ok` para cada app de `apps_exigidos` de HOJE. A conta vinculada
   depois da medição segura a tarefa ("a medição … não cobre <pacote>") até a sonda provar o app dela. O C4 recebe só
   o aparelho: o "por app" é o das contas vinculadas a ele, não o pacote da tarefa;
+- **boot** (29.22): o `trafego_verificado` é do Android que foi medido; túnel, DNS e bloqueio se refazem a cada boot. Se o
+  aparelho subiu DEPOIS de `verified_at`, a verificação não vale (`rede.verificacao_invalida` → `boot`, frase "o aparelho
+  subiu depois da medição…") e a porta espera a medição nova. O marco é `instances.emulator_started_at` (o processo do
+  emulador nasceu: boot a frio e acordar do snapshot; está no banco, então o restart do central NÃO invalida quem não
+  rebootou) ou, sem processo local (worker), `online_since_mono`, renovado quando o agente conclui `start`/`wake`/`restart`/
+  `reset` com boot novo (`readotar_depois_do_worker`); o restart do central conta como entrada nova ali (uma medição a mais,
+  o lado seguro). A linha NÃO regride de estado (como `vencida` e `apps`: o estado é da medição, e a invalidez é da porta);
+  ao ligar e na varredura a convergência passa a **verificar** em vez de só conferir. **Wake quente também invalida**: o
+  processo do emulador é novo e o snapshot restaura o túnel de antes da pausa, e distinguir exigiria um sinal que o
+  manager não guarda; o custo é uma medição por acordar. O achado: android-05, 02/10, verificado às 19:20 (#134), ligado a
+  frio às 19:50 e liberado às 19:52 com o aparelho acusando "sem internet: DNS não responde";
 - **quando é perguntado**: no despacho (`_tick`, antes das portas de app e de sessão) e **entre as etapas** de um
   objetivo em curso — na troca de app (`_portas_na_troca`, com as outras portas) e também entre etapas do MESMO app
   (`_porta_da_rede` no laço de `_work`). A queda observada no meio (a deriva, o wipe ou a reatribuição regridem a

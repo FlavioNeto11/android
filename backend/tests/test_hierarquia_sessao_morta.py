@@ -208,8 +208,11 @@ async def test_desfecho_remoto_so_invalida_quando_o_aparelho_subiu_de_novo(harne
     rt = d.get("android-01")
     rt.automation_failures, rt.automation_last_error = 2, "falha de antes do boot"
     recriacoes = _espiar(d)
+    entrada = rt.online_since_mono = rt.online_since_mono - 100.0
     await d.readotar_depois_do_worker(rt, verbo, "succeeded", dados)
     assert len(recriacoes) == (1 if invalida else 0)
+    # O boot novo também renova o marco que a rede compara com a medição (29.22); sem boot novo, o marco não anda.
+    assert (rt.online_since_mono > entrada) == invalida
     if invalida:
         assert "reiniciou" in recriacoes[0]
         assert (rt.automation_failures, rt.automation_last_error) == (0, None)     # contador é da vida anterior
