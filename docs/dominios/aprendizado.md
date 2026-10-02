@@ -414,7 +414,7 @@ tela saem do `content` do item) e `DetalheDoLivro.conteudo` o carrega até `pres
 
 ## Estado de versão no detalhe (30.6)
 
-O detalhe do Livro devolve `versao` (contrato no adendo v0.52 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §7): em que
+O detalhe do Livro devolve `versao` (contrato no adendo v0.51 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §7): em que
 versões do app o item foi validado, quais estão vivas no parque e o estado por versão. A regra é pura e mora em `domain/versao.py`;
 `FontesSql.vivas` lê `device_app_state` (aparelho ativo, app presente) e `FontesSql.versao` junta a chave exata da receita em todas as
 versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra `sem_casar`, o resto `independente`).

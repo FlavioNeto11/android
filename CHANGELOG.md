@@ -42,7 +42,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-02 — Aprendizado: estado de versão por item (30.6, branch feat/30-6-versao)
 
-- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `versao` (`api-contract.md`, adendo v0.52): o estado de versão do item (§7 do desenho),
+- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `versao` (`api-contract.md`, adendo v0.51): o estado de versão do item (§7 do desenho),
   as versões do app vivas no parque (`device_app_state`, só aparelho ativo com o app) e, na receita, uma linha por versão pela chave exata
   (pacote, assinatura, variante, `step_hash`): `comprovado`, `nao_testado` (viva sem receita), `em_prova`, `falhando`, `incompativel`,
   `superseded`, `versao_aposentada`. Tela entra pela regra `sem_casar`; os demais tipos são `independente`. O que não se sabe é

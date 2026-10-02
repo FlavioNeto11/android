@@ -3534,7 +3534,7 @@ edição continuam nas rotas das habilidades).
 
 Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_conteudo.py`); `not_run` no central.
 
-## Adendo v0.52 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `versao` (item 30.6)
+## Adendo v0.51 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `versao` (item 30.6)
 
 O detalhe do Livro ganha `versao` (objeto, sempre presente), ao lado de `conteudo` (v0.50). Só leitura, montado de `device_app_state` (as
 versões do app vivas no parque) e das chaves de `recipes` (a receita não cruza versão do app). Nenhuma migração. Desenho: `design/aprendizado-vivo.md` §7.
