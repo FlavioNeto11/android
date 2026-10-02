@@ -74,6 +74,12 @@ origem.
   intactos, antes da purga de `ai_calls`), as provas do backlog, os vereditos das lições, as propostas, a voz e as
   preferências.
 - `aprendizado.enabled: false` desliga o digest, a curadoria e o consumo; a leitura do livro continua.
+- **Backfill único das lições** (`scripts/aprendizado-backfill-licoes.py`): as execuções reais fechadas antes da 055
+  nunca passaram pelo digest. `--banco <poc.sqlite3> --antes-da-055` (ou `--run-id ID`) roda SÓ `licoes.contraste` e
+  `licoes.plano`, pela mesma lógica de produção, em modo fixo `shadow` (nada publica, sem IA, sem rede). O padrão é o
+  ENSAIO numa cópia do banco; `--aplicar` grava (faça backup antes). Idempotente (índices `ux_learning_items_vivo` e
+  `ux_learning_evidence`): rodar de novo não duplica nada. Aborta sem escrever se a maior migração do banco difere da
+  do código (nunca migra). Código em `infrastructure/backfill_licoes.py`; é para rodar uma vez.
 
 ## Costuras nos arquivos quentes (A2)
 
