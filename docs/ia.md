@@ -153,6 +153,33 @@ Conclusão `real`: **o cache do verificador funciona** (`cache_read > 0` na 2ª 
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`). **Item 17.12:** o teto de chamadas é proporcional aos itens do `for_each`: `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))` (padrões 60 / 12 / 300; 8 itens = 144; sem lista ou com 1 item, 60 como antes). Os itens saem das etapas gravadas (`item_index` em `steps.variables`, `executor.py::_teto_de_chamadas`), o rejulgamento continua contando e a mensagem diz de onde veio o teto ("60 + 12 × 7 itens do for_each") | por objetivo |
 | Por etapa, medido (item 18.3) | `taskqueue/projecao.py` + `executor.py::_conferir_orcamento_da_etapa`: mediana e p90 de chamadas por (app, ação) nas etapas concluídas da janela; acima do p90, aviso na linha do tempo; acima de `max(p90 × ai.step_budget.p90_factor, p90 + slack)`, a etapa para (`budget`). Ação sem `min_samples` amostras não tem orçamento próprio. A mesma medição projeta o plano (`GET /api/runs/{id}/projection`) | por etapa |
 
+### Rubrica única de gasto e fatias por origem (31.2 e 31.6)
+
+Toda recusa por dinheiro do hub sai como `AIError(kind="budget", motivo=<régua>)`. O `motivo` é um vocabulário FECHADO
+(`planning/provider.py::MOTIVOS_DE_ORCAMENTO`) e só existe com `kind="budget"`: o painel, o aviso e a 30.13 leem o
+motivo, nunca a frase. A ordem em que `RoutingProvider._budget` confere (a primeira que estourar vence) e o que cada
+motivo quer dizer:
+
+| Ordem | `motivo` | Régua | Aplica a |
+|---|---|---|---|
+| 1 | `pedido` | orçamento do pedido persistente (28.6), por ocorrência | só execução nascida de pedido com orçamento |
+| 2 | `execucao` | `ai_max_usd_per_run` | só chamada com `run_id` |
+| 3 | `dia` | `ai_max_usd_per_day`, o mesmo número para todos | toda chamada |
+| 4 | `fatia_curador` | `ai.limits.curador_max_usd_per_day`; sem valor, `curador_fracao_do_dia` (α = 0,10) × teto do dia | `origem='curador'` |
+| 4 | `fatia_jev` | `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50; D-J3 a confirmar pelo dono) | `origem='decisao_fechada'` |
+| (fora de `_budget`) | `saldo` | saldo da conta (ADR-051), em `RoutingProvider._saldo` | hoje sai com `kind="balance"`; o valor já está no vocabulário para a etapa que o unificar |
+
+- A fatia é PARTE do teto do dia, nunca soma por fora: a chamada passa no dia E na fatia da própria origem, e uma fatia
+  estourada barra só aquela origem. O gasto da fatia é o do dia filtrado por origem (`costs.spent_today_usd(origem=)`,
+  `ai_calls.origem`, migração 073). `0` desliga a fatia; curador sem valor explícito e sem teto do dia fica sem fatia.
+- O vocabulário de `origem` (`ORIGENS_DE_IA`): `execucao` (padrão com `run_id`), `ensino` (`generalize`),
+  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` e `decisao_fechada`. Linha antiga
+  fica NULL. Quem pede passa `origem=`/`ref=` a `RoutingProvider._call`; o `Usage` leva os dois e `add_usage` grava.
+- Os tetos de CHAMADAS e de tokens do executor (17.12 e 18.3) continuam em `kind="budget"` sem `motivo`: protegem
+  contra laço, não contra preço, e não são uma régua de dinheiro.
+- Passos seguintes, não feitos aqui: levar o saldo da conta (ADR-051) para dentro da mesma ordem, com `motivo="saldo"`,
+  e α sobre `min(saldo, teto do dia)`. Desenho: `docs/design/hub-de-ia-fora-de-execucao.md` §3.
+
 ## 7. Receitas, fluxos e provas locais
 
 Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, resumido:
@@ -322,6 +349,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
+| `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
