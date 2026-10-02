@@ -476,7 +476,7 @@ observed_username, verified_at, detail}`.
 | `GET/POST /api/instagram/profiles/{id}/memory` | `MemoryInput` | `MemoryItem[]` / 201 `MemoryItem` |
 | `DELETE /api/instagram/profiles/{id}/memory/{memoryId}` | – | 204 |
 | `GET /api/instagram/profiles/{id}/interactions?counterparty=&thread_key=&limit=` | – | `SocialInteraction[]` |
-| `GET /api/instagram/profiles/{id}/context?counterparty=&thread_key=&content=` | – | `SocialContext` |
+| `POST /api/instagram/profiles/{id}/context` | `{counterparty?, thread_key?, content?}` (era `GET` com query até o 29.26) | `SocialContext` |
 | `GET /api/instagram/profiles/{id}/auth-attempts?limit=` | – | `AuthAttempt[]` |
 | `GET /api/instagram/profiles/{id}/runs?limit=` | – | `RunSummary[]` |
 
@@ -1130,7 +1130,7 @@ só o que a máquina declara (o `worker.yaml` aceita até 8).
 receita ativa para a versão promovida do app (os "caminhos mapeados" do parque) e o custo de IA esperado ao
 repetir (zero/parcial/total); só leitura, sem efeito.
 
-**Prévia de distribuição entre servidores (item 10.5)** — `GET /api/runs/distribution?count=&app_id=`
+**Prévia de distribuição entre servidores (item 10.5)** — `POST /api/runs/distribution` com corpo `{count, app_id?, command?}` (era `GET …?count=&app_id=` até o 29.26)
 (`api.py:2429-2434`) — quais aparelhos uma execução distribuída pegaria AGORA, por servidor, sem criar nada;
 usa o mesmo `taskqueue/balanceamento.py::distribuir` que `POST /api/runs` usaria de verdade.
 
@@ -2823,7 +2823,7 @@ com "credencial" é tratado como segredo pela redação.
 - **Etapas e apps do plano:** `PlanStep.app_id` diz o app de cada etapa. Todo plano do planejador preenche
   `Plan.required_apps`: os apps em que as etapas rodam, e o app dos aparelhos só quando todos estão no mesmo. No início
   da execução, o pré-voo confere esses apps em cada aparelho.
-- **Distribuição:** `GET /api/runs/distribution` aceita `command` no lugar de `app_id` (422 `distribution_sem_alvo`
+- **Distribuição:** `POST /api/runs/distribution` (corpo; era `GET`) aceita `command` no lugar de `app_id` (422 `distribution_sem_alvo`
   sem os dois); a criação distribuída sem app recusa com 409 `distribution_sem_app`.
 - **Saídas de etapa (C2):**
   - A etapa que lê declara `saidas` e as seguintes citam `{{saida:<nome>}}`. O planejador declara e cita; citar um
@@ -3205,7 +3205,7 @@ link e a chamada serem a mesma coisa (ADR-062, item 4).
 | `estado` | um ou mais dos sete, separados por vírgula |
 | `autonomia`, `tipo` | `Autonomia`; `TipoDeGatilho` (qualquer gatilho do pedido) |
 | `profile_id` | pedidos que têm essa persona em `alvos` |
-| `q` | texto em `titulo` e `objetivo` (≤ 80 caracteres) |
+| `q` | **não vai mais na query (29.26)**: com `q` na URL a rota responde 422 `busca_no_corpo`; o termo vai em `POST /api/pedidos/busca` (corpo `{q, …}`, ver o adendo do 29.26) |
 | `pede_atencao=1` | `pausado`, `aguardando_pessoa`, ou com aviso não lido |
 | `ordem` | `atualizado` (padrão), `proxima` (a de `proxima_em` mais cedo primeiro, sem data por último) ou `criado` |
 | `limit`, `cursor` | 1–200 (padrão 50); cursor opaco devolvido em `proximo_cursor` |
@@ -3820,3 +3820,19 @@ e portanto no log de acesso; é o mesmo vazamento e pede o mesmo tratamento (POS
 Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/instagram/policy-groups`) ganha `name` (nome da pessoa: exibição, nome e
 sobrenome ou o @; `null` se nada existir). `username` continua `""`/nulo para quem teve a conta retirada (29.23); o painel mostra "nome · sem conta".
 Prova `simulated` (`test_intencao_chamadores.py`, `test_grupos_de_acesso.py`); `not_run` no central.
+
+## Adendo v0.6x (número definido no merge) (02/10/2026) — texto livre fora da query string; `has_avatar` (item 29.26)
+
+**Quebra de contrato só para o painel do mesmo commit.** Continuação do v0.59: nenhuma rota `GET` carrega mais comando, mensagem ou busca de conteúdo na URL (query string vira linha de log de acesso e o texto pode ter e-mail ou nome).
+
+| Antes | Agora | Corpo (`extra="forbid"`; fora do contrato: 422) |
+|---|---|---|
+| `GET /api/runs/distribution?count=&app_id=&command=` | `POST /api/runs/distribution` (o `GET` responde 405 `metodo_removido`, `Allow: POST`) | `{count: 1–64, app_id?: ≤80, command?: 1–4000}`; sem `app_id` nem `command`: 422 `distribution_sem_alvo`; senha no texto: 409 `credencial_no_comando`, como antes |
+| `GET /api/instagram/profiles/{id}/context?counterparty=&thread_key=&content=` | `POST /api/instagram/profiles/{id}/context` (sem efeito; o `GET` responde 405) | `{counterparty?, thread_key?: ≤200, content?: ≤4000}`; corpo ausente vale `{}` |
+| `GET /api/pedidos?q=` | `POST /api/pedidos/busca` (a resposta é a da listagem). `GET /api/pedidos` com `q` na URL responde 422 `busca_no_corpo` (ignorar `q` em silêncio devolveria a lista inteira como se fosse a busca) | `{q: 1–80, estado?, autonomia?, tipo?, profile_id?, pede_atencao?: bool, ordem?, limit?: 1–200, cursor?}` |
+
+O resto da classe ficou na URL de propósito (varredura em `CHANGELOG.md`): ids, status, enums, paginação e nomes de app, capability ou handle curtos, que não são texto livre. O link do painel (`#/pedidos?q=…`) segue igual: o fragmento nunca vai ao servidor.
+
+Adição (compatível): `has_avatar: bool` em `PersonaDTO`/`InstagramProfileDTO` (`/api/personas`, `/api/instagram/profiles`), em `PersonaOnDeviceDTO` (`GET /api/instances/{id}/personas`) e em `profiles[]` do contexto operacional: verdadeiro quando há imagem principal pronta, a que `GET /api/instagram/profiles/{id}/avatar` serve. O painel só pede a foto com ele e, sem foto, mostra as iniciais sem requisição (antes: um 404 por persona sem foto). A rota não mudou (404 sem foto); o jpg legado ainda não importado para a 048 (o import roda na partida) conta como sem foto no campo.
+
+Prova `simulated` (`test_distribuicao_pelo_comando.py`, `test_limites_por_servidor.py`, `test_social_memory.py`, `test_pedidos_api.py`, `test_persona_imagens.py`, `Avatar.test.tsx`, `ProfilesPage.test.tsx`, `CommandPanel.test.tsx`, `PedidosPage.test.tsx`); `not_run` no central e no navegador.

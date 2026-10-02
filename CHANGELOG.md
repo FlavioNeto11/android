@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.26: texto livre fora da query string e persona sem foto sem requisição (branch feat/29-26-texto-fora-da-query)
+
+- **Privacidade (varredura da classe, adendo v0.6x, número definido no merge):** `GET /api/runs/distribution?command=` virou `POST /api/runs/distribution`
+  (corpo `{count, app_id?, command?}`; o GET responde 405 `metodo_removido`). A varredura de todas as rotas `GET`/`DELETE` com parâmetro de query achou mais
+  duas com texto livre: `GET /instagram/profiles/{id}/context` (`content` é a mensagem recebida; virou `POST` com `{counterparty?, thread_key?, content?}`) e a busca `q`
+  de `GET /api/pedidos` (procura no título e no objetivo; virou `POST /api/pedidos/busca`, e `GET` com `q` na URL responde 422 `busca_no_corpo`). Ficaram na URL, por serem
+  id, status, enum, paginação ou nome curto de app/capability/handle: `/diagnostics`, `/ai/balances`, `/apps-overview`, `/apps/{id}/overview`, `/training`, `/desempenho`,
+  `/usage`, `/capabilities`, `/releases`, `/store`, `/app-state`, `/approvals`, `/commands`, `/runs`, `/runs/{id}/events`, `/instances/{id}/frame`, `/instagram/profiles/{id}/{memory,interactions,
+  policy,runs,auth-attempts,operational-context}`, `/instagram/policy-groups`, `/personas/{id}/devices/{iid}` (DELETE `app_id`), `/falhas`, `/aprendizado/sinais`, `/licoes/previa`, `/export`,
+  `/voz/previa`, `/preferencias/sugestoes`, `/skills`, `/teaching-sessions`, as listas de `/pedidos/*` (sem `q`) e `/avisos`. Quebra só para o painel do mesmo commit (`api.previewDistribution`, `apiPedidos.listar`).
+- **Avatar:** persona sem foto fazia `GET /instagram/profiles/{id}/avatar` e recebia 404 (cinco erros no console). `has_avatar` entrou no `PersonaDTO`, no `PersonaOnDeviceDTO` e em `profiles[]`
+  do contexto operacional (só adição); `profileAvatarUrl(id, temFoto)` devolve `undefined` sem foto e o `Avatar` mostra as iniciais, sem `<img>`.
+- Prova `simulated`: `test_distribuicao_pelo_comando.py`, `test_limites_por_servidor.py`, `test_social_memory.py`, `test_pedidos_api.py`, `test_persona_imagens.py`, `test_personas_aparelhos_api.py`,
+  `Avatar.test.tsx`, `ProfilesPage.test.tsx`, `CommandPanel.test.tsx`, `PedidosPage.test.tsx`, `app.integration.test.tsx`. Real: `not_run` (o console sem 404 de `/avatar` precisa ser visto no Chrome).
+
 ## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
 
 - **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o

@@ -249,7 +249,7 @@ parque quando a pessoa não escolhia, e o comando entre apps era repartido pelos
 | `DistributeSpec.app_id` | opcional. Sem ele, os apps são os que o **comando** usa; com ele, restringe a esse app, como antes |
 | `RunService._apps_da_distribuicao` | o app escolhido; senão o conjunto já resolvido (modo Automático); senão `_app_do_comando` e, para o app sem conta citado sozinho, a citação (`apps_citados`). Vazio: prévia vazia com o motivo, e a criação recusa com `distribution_sem_app` (409) |
 | `RunService._candidatos_dos_apps` | um app: `Scheduler.candidatos_do_app`, a regra de sempre. Vários: a **união** dos aparelhos cujo app principal é um deles (não os do primeiro citado, que dependeria da ordem do texto); se algum exige conta (provedor de sessão), só aparelho com perfil ativo vinculado; sai o aparelho em que algum app do conjunto se sabe fora de pronto, dito app por app |
-| `GET /runs/distribution` | `app_id` ou `command` (um dos dois; nenhum = 422 `distribution_sem_alvo`); comando com credencial recebe a recusa da criação (`credencial_no_comando`) |
+| `POST /runs/distribution` (corpo JSON; o GET responde 405) | `app_id` ou `command` (um dos dois; nenhum = 422 `distribution_sem_alvo`); comando com credencial recebe a recusa da criação (`credencial_no_comando`) |
 | painel (`DistributeTarget`, `CommandPanel`) | o padrão do seletor é "os que o comando usa"; a prévia vai pelo comando (com o atraso da digitação e nunca com texto que parece senha) e o envio manda `distribute: { count }`; escolher um app manda `app_id` |
 
 - **Prova.** `simulated`: `tests/test_distribuicao_pelo_comando.py` (harness na porta 5640, aparelhos falsos) e
