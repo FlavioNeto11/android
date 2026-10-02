@@ -124,11 +124,31 @@ def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espe
     ocupado travaria os dois para sempre. Um objetivo que volta a rodar sai dessa espera (`set_objective` zera o
     `wait_reason`), e o worker ocupado é conferido à parte por quem pergunta.
     """
-    return state.db.one(
-        "SELECT 1 FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
+    return objetivo_que_segura(state, instance_id, exceto_quem_espera_a_rede=exceto_quem_espera_a_rede) is not None
+
+
+def objetivo_que_segura(state: AppState, instance_id: str, *, exceto_quem_espera_a_rede: bool = False) -> str | None:
+    """O id do objetivo que `objetivo_em_andamento` conta (o primeiro), para quem precisa DIZER quem segurou o
+    aparelho (29.21: o reinício da rede que não saía não dizia por quê)."""
+    row = state.db.one(
+        "SELECT o.id FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
         " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')"
-        + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else ""),
-        (instance_id,)) is not None
+        + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else "")
+        + " ORDER BY o.id LIMIT 1",
+        (instance_id,))
+    return str(row["id"]) if row is not None else None
+
+
+def objetivo_esperando_a_rede(state: AppState, instance_id: str) -> str | None:
+    """O id de um objetivo de execução não encerrada parado à espera da rede deste aparelho (`wait_reason='rede'`):
+    `pending` (a porta de despacho o segurou) ou `running` (suspenso entre etapas, item 25.6). É quem está esperando o
+    reinício que a convergência da rede pede (29.21)."""
+    row = state.db.one(
+        "SELECT o.id FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
+        " AND o.status IN ('pending','running') AND COALESCE(o.wait_reason,'')='rede'"
+        " AND r.status NOT IN ('completed','cancelled','failed') ORDER BY o.id LIMIT 1",
+        (instance_id,))
+    return str(row["id"]) if row is not None else None
 
 
 def pendentes_ao_ligar(state: AppState, rt: Any) -> list[tuple[str, str]]:

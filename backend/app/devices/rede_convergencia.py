@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Literal
 from ..commands import despacho
 from ..models import ControlOwner, InstanceState
 from ..util import now, now_iso, parse_iso
-from ..vitrine import objetivo_em_andamento
+from ..vitrine import objetivo_em_andamento, objetivo_esperando_a_rede, objetivo_que_segura
 from . import rede
 from .rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError,
                              apagar_relatorios_de_falha, desfazer, endereco_no_tunel, instalado_em, montar_plano,
@@ -73,6 +73,8 @@ _FOLGA_S = 5.0
 _INTERVALO_DA_PORTA_S = 30.0
 #: Depois de uma leitura que falhou ou de um reinício recusado, quanto esperar antes de a varredura tentar de novo.
 _ESPERA_DA_RELEITURA_S = 300.0
+#: Tentativas de 5 s do reinício pedido com o aparelho ocupado (2 min) antes de o pedido esgotar (29.21).
+_TENTATIVAS_DO_REINICIO = 24
 #: Quanto o relógio do aparelho pode estar longe do servidor para a data do APK do cliente servir de prova na adoção
 #: da transição (item 29.2). O emulador acerta o relógio pelo host; mais que isto é relógio quebrado.
 _DESVIO_DE_RELOGIO_S = 120.0
@@ -111,6 +113,11 @@ class _Memoria:
     # A sonda de IP do aparelho sem rede pedida (29.20): monotonic da próxima vez em que a varredura pode disparar uma.
     # Separada de `espera_ate` de propósito: uma rede atribuída depois não pode esperar por causa da sonda.
     sonda_sem_rede_ate: float = 0.0
+    # O reinício pedido que o aparelho ocupado não deixou sair (29.21): o termo de `_quem_segura_o_reinicio` já
+    # registrado na linha (só se grava de novo quando o termo muda) e se o esgotamento das tentativas já foi dito.
+    # Em memória como o resto: zera no restart do central, e a linha `configurado` persistida reabre o ciclo.
+    reinicio_segurado: str = ""
+    reinicio_esgotado: bool = False
 
 
 def _vazio(row: Row) -> bool:
@@ -140,6 +147,10 @@ class ConvergenciaDeRede:
         #: quanto em quanto tempo tentar de novo enquanto ele segue ocupado.
         self.atraso_do_reinicio_s = 1.0
         self.intervalo_do_reinicio_s = 5.0
+        #: Esgotadas as tentativas com um objetivo parado esperando a rede NESTE aparelho (29.21), quanto esperar para
+        #: tentar de novo. Os 300 s da releitura (`_ESPERA_DA_RELEITURA_S`) deixavam a porta e a varredura mudas por 5
+        #: min enquanto a execução esperava, e a execução é quem paga por cada minuto.
+        self.retentativa_do_reinicio_s = 30.0
         #: Entre uma leitura da tela e a próxima, na importação do perfil (o SFA leva um instante para trocar de tela).
         self.pausa_da_tela_s = 1.5
         #: Quanto esperar o túnel depois do Start da interface do cliente (medido no android-09, 01/10: tun0 em menos de 1 s).
@@ -987,7 +998,9 @@ class ConvergenciaDeRede:
         self._reinicio_agendado.add(instance_id)
         try:
             asyncio.get_running_loop().call_later(self.atraso_do_reinicio_s, self._pedir_reinicio, instance_id, rev,
-                                                  motivo, 24)
+                                                  motivo, _TENTATIVAS_DO_REINICIO)
+            # Ciclo novo: o `detail` foi reescrito por quem pediu (`registrar_observacao`), diga de novo o que segurar.
+            self._limpar_reinicio_segurado(instance_id)
         except RuntimeError:
             self._reinicio_agendado.discard(instance_id)
 
@@ -995,22 +1008,45 @@ class ConvergenciaDeRede:
         row = self._linha(instance_id)
         rt = self.st.devices.devices.get(instance_id)
         if row is None or int(row["desired_rev"]) != rev or row["state"] != "configurado" or rt is None \
-                or rt.state != InstanceState.online or self.st.quarentena(instance_id) is not None:
+                or self.st.quarentena(instance_id) is not None:
+            # Pedido velho (a revisão mudou, a linha saiu de `configurado`, o aparelho sumiu): nada a dizer na linha.
+            log.info("%s: reinício da rede descartado: o pedido da rev %s já não vale", instance_id, rev)
             self._reinicio_agendado.discard(instance_id)
+            if row is not None and rt is not None:
+                self._limpar_reinicio_segurado(instance_id)
             return
-        # O objetivo suspenso entre etapas pela porta da rede (25.6) espera ESTE reinício: não conta como ocupado (o
-        # worker, que é quem mexe no aparelho, é conferido à parte). Contá-lo travaria o objetivo e a rede juntos.
-        ocupado = (rt.id in self.st.scheduler.workers or rt.control != ControlOwner.none
-                   or objetivo_em_andamento(self.st, instance_id, exceto_quem_espera_a_rede=True)
-                   or self.st.commands.open_for_instance(instance_id, verbs=despacho.VERBOS_EXCLUSIVOS) is not None)
-        if ocupado:
+        if rt.state != InstanceState.online:
+            self._reinicio_agendado.discard(instance_id)
+            self._dizer_reinicio_segurado(instance_id, rev, f"estado {rt.state.value}",
+                                          f"reinício da rede não saiu: aparelho {rt.state.value}, não online; "
+                                          "pede de novo quando ligar")
+            self._limpar_reinicio_segurado(instance_id)
+            return
+        segura = self._quem_segura_o_reinicio(rt)
+        if segura is not None:
             if restantes > 0:
+                # Não ruidoso: só a PRIMEIRA recusa e cada mudança de termo vão para a linha (tentativa é de 5 em 5 s).
+                self._dizer_reinicio_segurado(instance_id, rev, segura, f"reinício da rede aguarda o aparelho: {segura}")
                 asyncio.get_running_loop().call_later(self.intervalo_do_reinicio_s, self._pedir_reinicio,
                                                       instance_id, rev, motivo, restantes - 1)
-            else:
-                # Ocupado o tempo todo (tarefas seguidas com política livre): a varredura volta a tentar depois.
-                self._reinicio_agendado.discard(instance_id)
-                self.memoria(instance_id).espera_ate = self._agora() + _ESPERA_DA_RELEITURA_S
+                return
+            esperando = objetivo_esperando_a_rede(self.st, instance_id)
+            if esperando is not None:
+                # Um objetivo espera ESTE reinício (29.21): 5 min de mudez deixavam a execução presa (android-05,
+                # 02/10). Fica agendado e tenta de novo logo, enquanto o objetivo seguir esperando a rede.
+                self._dizer_reinicio_segurado(
+                    instance_id, rev, segura, f"reinício da rede não saiu em {_TENTATIVAS_DO_REINICIO + 1} tentativas: "
+                    f"{segura}; o objetivo {esperando} espera a rede, nova tentativa em "
+                    f"{round(self.retentativa_do_reinicio_s)} s", esgotou=True)
+                asyncio.get_running_loop().call_later(self.retentativa_do_reinicio_s, self._pedir_reinicio,
+                                                      instance_id, rev, motivo, _TENTATIVAS_DO_REINICIO)
+                return
+            # Ocupado o tempo todo (tarefas seguidas com política livre): a varredura volta a tentar depois.
+            self._dizer_reinicio_segurado(
+                instance_id, rev, segura, f"reinício da rede não saiu em {_TENTATIVAS_DO_REINICIO + 1} tentativas: "
+                f"{segura}; a varredura tenta de novo em {round(_ESPERA_DA_RELEITURA_S / 60)} min", esgotou=True)
+            self._reinicio_agendado.discard(instance_id)
+            self.memoria(instance_id).espera_ate = self._agora() + _ESPERA_DA_RELEITURA_S
             return
         self._reinicio_agendado.discard(instance_id)
         cid = despacho.pedir_ciclo_de_vida(self.st, instance_id, "restart", f"rede: {motivo}", requested_by=QUEM)
@@ -1018,13 +1054,54 @@ class ConvergenciaDeRede:
         # Recusado também conta para o teto (`rede.reinicios_max`): um worker sem o verbo recusaria para sempre.
         mem.reinicios[rev] = mem.reinicios.get(rev, 0) + 1
         if cid is None:
-            # Recusado (verbo que o worker não tem, manutenção, quarentena): a recusa já está no histórico do aparelho.
-            log.info("%s: o reinício da rede não foi aceito agora; a varredura pede de novo", instance_id)
+            # Recusado (verbo que o worker não tem, manutenção, quarentena): a recusa já está no histórico do aparelho,
+            # EXCETO o verbo ausente e a pausa do reparo, que não abrem linha (`pedir_ciclo_de_vida` devolve None).
+            causa = ("o worker do aparelho não tem o verbo restart" if "restart" not in (rt.worker_verbs or [])
+                     else "recusado no pré-voo ou pela pausa de reparo; veja o histórico do aparelho")
+            log.info("%s: o reinício da rede não foi aceito agora (%s); a varredura pede de novo", instance_id, causa)
+            self._dizer_reinicio_segurado(instance_id, rev, f"recusa: {causa}",
+                                          f"reinício da rede não foi aceito: {causa}")
+            self._limpar_reinicio_segurado(instance_id)
             mem.espera_ate = self._agora() + _ESPERA_DA_RELEITURA_S
             return
+        self._limpar_reinicio_segurado(instance_id)
         # O que foi importado e relido fica no desfecho do comando `device.network`; aqui, o porquê e o id do reinício.
         rede.registrar_observacao(self.st, instance_id, rev=rev, estado="configurado",
                                   evidencia=f"{motivo[:300]}; reinício {cid} pedido")
+
+    def _quem_segura_o_reinicio(self, rt: DeviceRuntime) -> str | None:
+        """Por que o reinício ainda não pode sair (None: livre). O objetivo suspenso pela porta da rede espera ESTE
+        reinício: não conta (25.6, `exceto_quem_espera_a_rede`); o worker, que é quem mexe no aparelho, é conferido à
+        parte. Contá-lo travaria o objetivo e a rede juntos. Cada termo diz o que o segurou (29.21)."""
+        iid = rt.id
+        if iid in self.st.scheduler.workers:
+            do_objetivo = getattr(self.st.scheduler, "_objetivo_do_worker", {}).get(iid)
+            return "worker no scheduler" + (f" (objetivo {do_objetivo})" if do_objetivo else "")
+        if rt.control != ControlOwner.none:
+            return "controle da IA" if rt.control == ControlOwner.ai else "controle de uma pessoa"
+        if (oid := objetivo_que_segura(self.st, iid, exceto_quem_espera_a_rede=True)) is not None:
+            return f"objetivo {oid} em andamento"
+        if (aberto := self.st.commands.open_for_instance(iid, verbs=despacho.VERBOS_EXCLUSIVOS)) is not None:
+            return f"comando exclusivo aberto {aberto['id']} ({aberto['verb']})"
+        return None
+
+    def _dizer_reinicio_segurado(self, instance_id: str, rev: int, termo: str, texto: str, *,
+                                 esgotou: bool = False) -> None:
+        """Grava na linha (`detail`) por que o reinício não saiu, UMA vez por termo (e uma para o esgotamento): a
+        tentativa é de 5 em 5 s e o `detail` é o que o painel mostra."""
+        mem = self.memoria(instance_id)
+        if mem.reinicio_segurado == termo and (mem.reinicio_esgotado or not esgotou):
+            return
+        mem.reinicio_segurado, mem.reinicio_esgotado = termo, esgotou
+        log.info("%s: %s", instance_id, texto)
+        try:
+            rede.registrar_observacao(self.st, instance_id, rev=rev, estado="configurado", evidencia=texto)
+        except (rede.RedeError, ValueError):
+            log.info("%s: a linha de rede sumiu antes de registrar o reinício parado", instance_id)
+
+    def _limpar_reinicio_segurado(self, instance_id: str) -> None:
+        mem = self.memoria(instance_id)
+        mem.reinicio_segurado, mem.reinicio_esgotado = "", False
 
     def _falhou(self, instance_id: str, rev: int, exc: BaseException) -> None:
         mem = self.memoria(instance_id)
