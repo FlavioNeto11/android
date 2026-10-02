@@ -421,7 +421,8 @@ está em `worker_verbs`; `backend/app/worker/executor.py:197` executa `_v_restar
 
 Achado #142 também tem uma parte de código, sem depender de autorização: o agente agora calcula o desvio contra
 `Welcome.server_time` e manda em toda batida (`Heartbeat.clock_offset_s`,
-`backend/app/worker/agent.py:clock_offset_seconds`); o central marca o worker `degraded` acima de 5 s de desvio
+`backend/app/worker/agent.py:clock_offset_seconds`; desde o A9 de 02/10/2026 a batida também leva `sent_at` e o central
+re-mede o desvio a cada batida, `WorkerRegistry.desvio_de_relogio`, em vez de repetir a fotografia da conexão); o central marca o worker `degraded` acima de 5 s de desvio
 e mostra o motivo em `state_detail`, sem coluna nova (`backend/app/workers/registry.py:on_heartbeat`,
 `CLOCK_OFFSET_LIMIT_S`). O que ficou de fora, porque o achado descreve como latente hoje (só há um backend em
 SQLite): o backend recusar subir como segundo dono por desvio de relógio.

@@ -390,6 +390,87 @@ Executor: `scripts/diag-w8-mitigacao.py` (testes `scripts/tests/test_diag_w8_mit
   `python scripts/diag-w8-mitigacao.py --execute --instance android-09 --run data/diag-w8-boot/mitigacao-<data> --aplicar-politica --aceito-reinicio-do-servidor-wireguard --deploy-conferido` (a pasta precisa existir e estar vazia).
 - **Prova:** `not_run` (nenhum aparelho tocado). Resultado real, quando houver: §17.6.
 
+### 17.6 Resultado da validação real da mitigação, 1º disparo completo (02/10/2026; **real**: central WIN-7S2UASNLFOP, commit `bcea158`, scripts em `317e5b6`)
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002/` (tentativa 0, parou em `INCONCLUSIVE`/BLOQUEADO sem escrever nada) e `data/diag-w8-boot/mitigacao-20261002-r2/` (execução), mais `…-r2/pos/estado-apos-rollback.txt`. Autorização do dono, 02/10, via sessão orquestradora (§17.5).
+
+**Tentativa 0 (15:25:55Z), defeito do executor achado ANTES de qualquer escrita.** `Api` montava `/api/api/...` (a base já termina em `/api`): o `firewall-check` deu 405, o ator leu `estado=None` e parou em "BLOQUEADO", sem política, par, pausa nem boot. Corrigido no PR #36 (teste `UrlsDoApi`; saída em UTF-8). O protocolo não mudou.
+
+**Execução r2 (15:28:03Z a 15:32:25Z), veredito pré-comprometido `FAIL` pela regra fechada, mas por defeito do executor, NÃO por desfecho da mitigação.**
+
+| Passo | Resultado | Prova |
+|---|---|---|
+| Deploy da `main` | `bcea158` no ar, migração 063, `problems []`; backup `data\backups\20261002-122408` | real |
+| Pré-voo + firewall-check | `liberado` (UDP 51820 da LAN 192.168.1.0/24, Wi-Fi, perfil Public); regra do dono, o script só leu | real |
+| Janela ociosa (par entrando) | ok em 15 s; nenhuma execução nem comando aberto em 02/03/05/06 | real |
+| Pausa do reparo | ligada e conferida no health antes do boot (`features.repair_pause`) | real |
+| Política `livre` + `vpn-central-wireguard` no 09 | `POST /api/network/assign` 200 às 15:28:21Z; servidor WG reiniciou 37,6 s depois; **03 e 06 reconectaram em 20,1 s**; 02/05 hibernados = `sem_evidencia` | real |
+| **Iteração 1** (boot 1 de 6, `restart` `c-20261002152908-00600d`, requested_by `rede`) | **`NO_FAILURE`**: `tun0` subiu sem o Start da interface (`ui_ok=false`, 1 reinício, nenhuma falha da interface); linha `conectado`, always-on `io.nekohasekai.sfa`, o servidor viu o par 10.66.0.6 | real |
+| **Iteração 2** | **`BOOT_INVALID` por defeito do executor**: ao pedir `reapply`+`apply` (apply = 409 `device_busy`) o ator reaplicou o **baseline do estágio 1** (sem peer, sem linha de rede, `always_on` null, sem `tun0`), que por construção não vale com a política já aplicada. Nenhum boot aconteceu na iteração 2 | real |
+| Rollback | `assign vpn null` 200; janela ociosa ok; servidor WG reiniciou 40,6 s depois e **03/06 reconectaram em 20,1 s**; pausa encerrada (200); peers de volta a 4 (02/03/05/06) | real |
+
+Contagem de reinícios reais do android-09: **1 dos 6** (boot 1). Fora da conta, do rollback: `c-20261002153829-9d02cd` (o `desfazer` da plataforma, 15:38:29Z) e `c-20261002153937-24819f` (15:39:37Z, pedido pela própria convergência, ver abaixo): **2 reinícios de rollback**, registrados à parte. Nenhum outro aparelho teve reinício, reset, stop nem escada de reparo na janela; 02/03/05/06 não reportaram sinal além do piscar esperado do servidor WireGuard (2 reinícios, reconexão em 20 s cada).
+
+**Leitura honesta.** `PROVED` (n=1): com a política aplicada, o boot 1 chegou a `NO_FAILURE`. A mitigação do PR #17 **não foi exercitada**: não houve `SILENT_STOP` nesse boot, então nada prova nem refuta o Start da interface. O veredito pré-comprometido, `FAIL`, vem de `BOOT_INVALID` na iteração 2, defeito do executor (o baseline do estágio 1 reaproveitado onde não vale), e o desfecho substantivo é `INCONCLUSIVE` (1 `NO_FAILURE`; sobram 5 dos 6 boots). Não se reclassifica o `FAIL` registrado; a correção do baseline por iteração e uma nova rodada dependem de decisão (o protocolo foi alterado depois de um boot).
+
+**Achado de produto no rollback (`OBSERVED`; causa `INFERRED`).** Depois de `assign vpn null`, a plataforma tirou o always-on e reiniciou o 09, mas **o SFA reiniciou sozinho no boot** (`tun0` no ar, `VPN CONNECTED`, processo `io.nekohasekai.sfa`) com o par do 09 já removido do servidor: a convergência leu "o always-on ou o bloqueio continuam depois do boot (… always-on=null; … tun0 no ar …)" e pediu **mais um** `restart` (o 2º reinício do rollback). A causa provável é o próprio auto-início do SFA (o serviço estava ligado quando o aparelho foi desligado), `INFERRED`, não verificada nas preferências do app. O baseline foi restaurado à mão em 15:41:06Z: `am force-stop io.nekohasekai.sfa` (só no android-09) → `tun0` ausente, SFA `stopped=true`, always-on null, sem linha em `device_network`, 4 peers, `health` ok e `problems []`, hierarquia 200, Instagram `ready`. Dívida de produto: o `desfazer` da rede não para o cliente VPN, e o aparelho fica com um túnel para um par que não existe mais (sem tráfego) até alguém parar o app; ver item de correção na fila.
+
+**Reclassificação do r2 (02/10 ~16:00Z; decisão do dono via sessão orquestradora, conferida por mim contra o código e a evidência): `INCONCLUSIVE_HARNESS_DEFECT`.** O `FAIL` gravado em `mitigacao.estado.json` é o que a regra fechada produz para `BOOT_INVALID` e fica como está no arquivo (não se reescreve evidência); a leitura correta é a do defeito do instrumento: o baseline da iteração 2 cobrava o estado inicial da 1ª. Foi medida **1 iteração válida (`NO_FAILURE`)**, com **1 boot contado** (o `restart` `c-20261002152908-00600d`); a iteração 2 não chegou a bootar. Os 2 reinícios do rollback ficam fora da conta, como o dono aprovou (o 2º só existiu porque o SFA religou sozinho, abaixo).
+
+### 17.7 Protocolo corrigido, rodada r3 (**gravado ANTES do 1º boot do r3**; `not_run` até o disparo)
+
+Desvio declarado: o protocolo §17.5 foi alterado **depois de 1 boot**, por **defeito do instrumento** (não por causa do resultado) e com autorização do dono (02/10, via sessão orquestradora: corrigir, nova seed, repetir com os boots que sobram, +2 reinícios do servidor WireGuard em janela ociosa com as mesmas condições de parada e reconexão).
+
+- **Seed nova:** `w8-mitigacao-20261002-r3` (a anterior, `…20261002`, vale para o r2). Mesmo desenho (um braço, o ator só observa), mesmas categorias e regras de veredito.
+- **Baseline por iteração (com teste discriminante em `scripts/tests/test_diag_w8_mitigacao.py::BaselineDaIteracao`):** a **1ª iteração exige o estado limpo** (sem linha de rede, sem par, `always_on` null, sem `tun0`, mais worker, aparelho online, automação). As **iterações ≥ 2** esperam o aparelho **assentar** do boot anterior (até 600 s, duas leituras seguidas; esgotado = `BOOT_INVALID`, nunca um boot sobre aparelho ocupado) e exigem: worker up, 09 online, sem execução nem comando aberto, nenhuma ação da escada, **a linha de rede com a política desta revisão e o par do 09 no servidor presentes**; o que a política inverte (sem peer/always-on/`tun0`) deixa de ser exigido.
+- **Teto:** a regra `reinícios_usados + (1 + rede.reinicios_max) <= 6` **não muda**, agora com `BOOTS_JA_USADOS = 1` (o boot do r2): 1+3, 2+3, 3+3 → **até 3 iterações** se tudo der `NO_FAILURE`; nunca mais de 6 reinícios reais no total. O reinício do rollback segue fora da conta.
+- **Rollback (ajuste pedido pelo dono):** imediatamente ANTES do `assign vpn=null`, `am force-stop io.nekohasekai.sfa` no android-09 e ~10 s para o estado `stopped` persistir (§13, F1); app parado não recebe `BOOT_COMPLETED`, então sem always-on nada deve religar o SFA no boot do rollback. É a **única escrita do ator no aparelho** (só no rollback, só no android-09). Se mesmo assim a convergência pedir um 2º reinício de rollback, conta-se e registra-se, sem tentar evitá-lo à mão.
+- **Servidor WireGuard:** +2 reinícios autorizados (par entra, par sai) em janela ociosa, mesmas condições: reconexão em ≤ 120 s ou PARAR e tirar o par; firewall só lido.
+- **Estado do 09 no início do r3 (declarado):** baseline restaurado à mão em 15:41:06Z (§17.6): SFA em `stopped=true` (`force-stop`), always-on null, sem `tun0`, sem linha de rede. O primeiro boot do r3 parte, portanto, com o SFA parado (equivale ao braço K do estágio 1); isso é uma condição do ponto de partida, registrada, e não do protocolo.
+- **Prova:** `simulated` (scripts/tests, 72 passam); o resultado real do r3 vai em §17.8.
+
+### 17.8 Resultado real da rodada r3 (02/10/2026 15:46:35Z a 15:56:23Z; seed `w8-mitigacao-20261002-r3`; central `bcea158`, scripts `817ccec`; **real**)
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002-r3/` (`i1`, `i2`, `acionador-mitigacao.jsonl`, `mitigacao.estado.json`). Pré-voo, firewall (`liberado`, só lido), janela ociosa (31 s) e pausa conferida no health: ok.
+
+| Passo | Resultado |
+|---|---|
+| Par do 09 (servidor WG, 1º reinício) | `POST /api/network/assign` 200 às 15:47:10Z; **03/06 reconectaram em 30,1 s** (≤ 120 s); 02/05 hibernados = `sem_evidencia` |
+| **Iteração 1** (boot 2 de 6; `restart` `c-20261002154809-79b2f2`, 15:48:09Z, `rede`) | **`RECOVERED_BY_UI`**: o `tun0` NÃO subiu sozinho; 198 s depois do boot (180 s de espera + passada) o produto fez UM Start pela interface do cliente e o túnel subiu: "túnel religado pelo Start da interface do cliente, sem reinício" (15:51:27Z), linha `conectado`; nenhum reinício extra, nenhuma falha da interface |
+| **Iteração 2** (boot 3; `restart` `c-20261002155200-40a061`, 15:52:00Z) | **`BOOT_INVALID`** pela regra fechada: `android-01` recebeu um `restart` **automático por saúde** (`c-20261002155143-1a3a79`, 15:51:43Z, "17% da CPU em interrupção com o aparelho ocioso, 3 sondas seguidas"), dentro da janela. Os dados do 09 nessa iteração são os mesmos da 1ª (túnel religado pelo Start em 15:55:16Z, sem reinício extra), mas são **inadmissíveis** pelo protocolo e **não** entram na contagem |
+| Rollback | `force-stop` do SFA (`stopped=true` lido) → `assign vpn=null` → servidor WG reiniciou (15,9 s) e **03/06 reconectaram em 20,1 s**; **UM só** reinício de rollback (`c-20261002155559-6eb43f`); o SFA **não** religou (sem `tun0`, sem processo, always-on null), a linha de rede saiu sozinha, 4 peers, pausa encerrada, `health` ok, hierarquia 200. O `force-stop` antes do `assign` funcionou: no r2 houve 2 reinícios de rollback, aqui 1 |
+
+**Veredito formal pré-comprometido (r3): `FAIL`** (`BOOT_INVALID` na iteração 2 → regra fechada). **Leitura honesta (`PROVED`, n=1 válido):** em 1 boot válido a falha ocorreu (o `tun0` não subiu sozinho com a política e o always-on) e a mitigação do PR #17 a recuperou com UM Start pela interface, sem reinício extra; uma 2ª iteração concordante foi invalidada por um reinício de saúde de outro aparelho (coincidência, não causada pelo experimento: a causa é o monitor de interrupções acumuladas do ADR-053 no android-01; que ele não foi provocado pela carga do experimento é `INFERRED`, não medido). Pelo critério pré-comprometido o desfecho substantivo é **PARTIAL** (1 `RECOVERED_BY_UI` válido e nenhum desfecho ruim do 09), **não PASS** (exige 2).
+
+**Contagem:** reinícios reais contados 3 de 6 (1 do r2 + iterações 1 e 2 do r3); rollback fora da conta: 2 no r2, 1 no r3. **Reinícios do servidor WireGuard:** 2 no r2 e 2 no r3 (par entra e sai), todos em janela ociosa, todos com reconexão de 03/06 em 20 a 30 s. Nenhum sinal em 02/03/05/06 além do piscar esperado. **Não foi feita uma 4ª rodada:** exigiria +2 reinícios do servidor WireGuard, que não estão autorizados além dos já usados; sobra espaço de 3 boots (3 + 3 <= 6 permitiria UMA iteração).
+
+### 17.9 Pré-registro da rodada r4 (**gravado ANTES do 1º boot do r4**, 02/10/2026; `not_run` até o disparo)
+
+Decisão do dono (02/10, via sessão orquestradora): "Sim, r4 + pausar os vizinhos". Seed nova: `w8-mitigacao-20261002-r4`.
+
+- **Orçamento:** 3 reinícios reais já usados (1 do r2, 2 do r3). Pela regra `usados + (1 + rede.reinicios_max) <= 6`, o r4 tem **EXATAMENTE 1 iteração** (3 + 3 = 6) e nenhuma outra. `BOOTS_JA_USADOS = 3` no script.
+- **Critério do W8, fixado antes do boot:** **PASS** se a iteração do r4 for `RECOVERED_BY_UI` válida, somada à `RECOVERED_BY_UI` válida do r3 (2 no total). **PARTIAL** se for `NO_FAILURE` (o túnel subiu sozinho; a mitigação não foi exercitada). **FAIL** se for `NOT_RECOVERED` ou `RECOVERED_BY_RESTART`. **`BOOT_INVALID` ou `UNKNOWN` = W8 PARTIAL e nenhuma nova rodada.** (Muda a regra de r2/r3, em que `BOOT_INVALID`/`UNKNOWN` valiam `FAIL`: o r3 já tem a recuperação válida e a invalidação do r3 veio de um vizinho, não da mitigação.)
+- **Vizinhos pausados (mudança pré-registrada, NÃO um afrouxamento da regra de bystander):** durante o r4 o reparo automático de **android-01, android-03 e android-06** fica pausado (`PUT /api/instances/{id}/repair-pause`, TTL 900 s, renovado durante a janela e antes do rollback), **conferido em `GET /api/health` → `features.repair_pause` antes do boot** (senão `BOOT_INVALID` sem mexer na rede), e **encerrado no fim** (`DELETE`). Comando explícito de pessoa continua passando (A2). A regra de invalidação por `restart`/`reset`/`stop` de outro aparelho na janela **continua a mesma**.
+- **Servidor WireGuard:** +2 reinícios autorizados (par entra e sai), em janela ociosa, mesmas condições de reconexão (≤ 120 s) e de parada; firewall só lido.
+- **Rollback:** `force-stop` do SFA antes do `assign vpn=null` (§17.7); 1 reinício fora da conta.
+- **Estado de partida (declarado):** baseline do 09 restaurado pelo rollback do r3 (SFA `stopped=true`, always-on null, sem `tun0`, sem linha, 4 peers).
+- **Prova:** `simulated` (`scripts/tests/test_diag_w8_mitigacao.py`, 76 com o `test_diag_w8_boot.py`); o resultado real vai em §17.10.
+
+### 17.10 Resultado real da rodada r4 (02/10/2026 16:08:22Z a 16:14:32Z; seed `w8-mitigacao-20261002-r4`; central `bcea158`, scripts `1e49bdf`; **real**): **W8 = PASS**
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002-r4/`. Pré-registro: §17.9 (gravado antes do boot, PR #45).
+
+| Passo | Resultado |
+|---|---|
+| Pré-voo, firewall (`liberado`, só lido), janela ociosa (31 s), pausa do 09 e **dos vizinhos 01/03/06 conferidas no health** | ok |
+| Par do 09 (servidor WG, 1º reinício) | `assign` 200 às 16:08:58Z; **03/06 reconectaram em 30,1 s** |
+| **Iteração 1 (boot 4 de 6; `restart` `c-20261002161008-5a2fcc`, 16:10:08Z, `rede`)** | **`RECOVERED_BY_UI`**: o `tun0` não subiu sozinho; aos 193 s o produto fez UM Start pela interface e o túnel subiu ("túnel religado pelo Start da interface do cliente, sem reinício", 16:13:22Z); nenhum reinício extra, nenhuma falha da interface; nenhum ciclo de vida de outro aparelho na janela |
+| Rollback | janela ociosa ok; `force-stop` do SFA (`stopped=true`) → `assign vpn=null` → servidor WG reiniciou (12,2 s), **03/06 reconectaram em 30,1 s**; **UM só** reinício de rollback (`c-20261002161400-02392a`); SFA não religou; pausas do 09 e dos vizinhos encerradas (200 nos quatro); linha de rede removida, 4 peers, `health` ok `problems []`, hierarquia 200 |
+
+**Veredito (critério pré-registrado: a `RECOVERED_BY_UI` válida do r4 somada à do r3): `PASS`.** `PROVED` (n=2 boots válidos, ambos com falha real e recuperação pelo produto): com a política `livre` + `vpn-central-wireguard` e o always-on no android-09, o `tun0` **não subiu sozinho** (2 de 2 boots válidos) e a mitigação do PR #17 o religou com UM Start pela interface do cliente, sem reinício extra e sem falha da interface (r3 iteração 1: 198 s; r4: 193 s). Uma 3ª ocorrência concordante (r3 iteração 2) foi invalidada pela regra e não conta. **Escopo e limites:** só o android-09, SFA 1.14.2, o produto em `bcea158`; a causa raiz do `SILENT_STOP` segue `NARROWED` (não determinada); o PASS prova a **mitigação**, não a causa. A correção do rollback (A11, PR #44) está na `main` e **não** implantada.
+
+**Contagem final:** reinícios reais contados 4 de 6 (1 do r2, 2 do r3, 1 do r4); reinícios de rollback fora da conta: 2 (r2), 1 (r3), 1 (r4). Reinícios do servidor WireGuard: 2 por rodada (r2, r3, r4), todos em janela ociosa com reconexão de 03/06 em 20 a 30 s. Nenhum ciclo de vida de outro aparelho no r4 (com os vizinhos pausados; a regra de bystander não mudou).
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.

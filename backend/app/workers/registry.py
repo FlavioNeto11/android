@@ -440,6 +440,24 @@ class WorkerRegistry:
         return link is not None and feature in link.features_aceitas
 
     # ------------------------------------------------------------------ batida e saúde
+    def desvio_de_relogio(self, hb: Heartbeat) -> float | None:
+        """Desvio do relógio do worker contra o do central, em segundos (positivo = worker ATRASADO).
+
+        Com `sent_at` na batida (agente novo), mede AGORA: relógio do banco (o mesmo que o `welcome` entrega e que
+        escreve os leases) na chegada menos o relógio do agente na saída. Inclui a latência de ida, de dezenas de
+        ms, contra um limite de 5 s. Sem `sent_at` (agente antigo) ou com ele ilegível, cai no `clock_offset_s`
+        que o agente mediu no `welcome`, que era o comportamento de sempre — por isso agente antigo + central
+        novo e o inverso seguem funcionando. Medido de novo a cada batida, o `degraded` por relógio some sozinho
+        quando o relógio volta ao limite (a cláusula `CASE` do `UPDATE` limpa o prefixo `relógio desalinhado`)."""
+        if hb.sent_at:
+            try:
+                enviado = parse_iso(hb.sent_at)
+            except ValueError:
+                enviado = None
+            if enviado is not None:
+                return (self.db.agora() - enviado).total_seconds()
+        return hb.clock_offset_s
+
     def on_heartbeat(self, worker_id: str, hb: Heartbeat, link: WorkerLink | None = None) -> None:
         """`degraded` por desvio de relógio (achado #142) é um estado à parte de manutenção e de offline: o
         worker segue batendo e aceitando comando, só o desvio contra o relógio do central passou do limite em que
@@ -465,7 +483,7 @@ class WorkerRegistry:
         # `worker.updated` gravado no banco: 57% do log de eventos era isto, e a janela de replay do painel
         # (5000 eventos) estourava em menos de 2 h com o parque ligado.
         antes = self.db.one("SELECT state, state_detail, devices FROM workers WHERE id=?", (worker_id,))
-        desvio = hb.clock_offset_s
+        desvio = self.desvio_de_relogio(hb)
         relogio = (f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central"
                    if desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S else None)
         # Segunda causa de `degraded`, no mesmo lugar e pela mesma regra (achado #41): a máquina no limite de RAM
