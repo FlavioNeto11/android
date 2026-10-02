@@ -37,8 +37,9 @@ export const usePedidosStore = create<PedidosStore>((set) => ({
       try {
         const r = await apiPedidos.avisos({ lido: 0, requer_pessoa: 0, limit: LIMITE_DA_CAIXA });
         const itens = Array.isArray(r?.items) ? r.items : [];
-        // Lista completa: o tamanho dela é o que a pessoa vê. Só com mais páginas o total do backend é o que vale.
-        const naoLidos = r?.proximo_cursor ? Math.max(r.nao_lidos ?? 0, itens.length) : itens.length;
+        // O selo vem de `nao_lidos` (o contador real do backend, `avisos_nao_lidos` do snapshot); a lista só entra quando a
+        // resposta vier sem ele (backend antigo).
+        const naoLidos = typeof r?.nao_lidos === 'number' ? r.nao_lidos : itens.length;
         set({ avisos: itens, naoLidos, falhou: false });
       } catch {
         set({ falhou: true });

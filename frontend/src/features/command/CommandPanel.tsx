@@ -442,10 +442,11 @@ export function CommandPanel() {
     !hydrated ? 'Aguardando a conexão com o servidor.'
     : trimmed.length < 3 ? 'Escreva o comando (ao menos 3 letras).'
     : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
+    : distribuir ? 'O pedido persistente não distribui por contas (o backend recusa `alvos.distribute`): escolha as personas ou os aparelhos.'
     : alvoInvalido;
   /** Quem faz e onde, do jeito que o Comando está agora, no formato dos alvos do pedido. */
   const alvosDoPedido = async (): Promise<PedidoCorpo['alvos']> => {
-    if (distribuir) return { distribute: appId ? { count: count ?? 1, app_id: appId } : { count: count ?? 1 } };
+    if (distribuir) throw new Error('Distribuir por contas não vale em pedido persistente.');   // `pedidoImpede` já barra
     if (porPersona) return { profile_ids: selecionadas, instance_ids: estreitarValido, device_policy: politica };
     if (!automatico) return { instance_ids: [...selectedIds] };
     // Automático: a sugestão é a mesma do Executar (pode custar uma chamada de IA do papel `plan`); só vai o que ela

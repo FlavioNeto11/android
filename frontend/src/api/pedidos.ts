@@ -140,7 +140,7 @@ export interface PedidoCorpo {
   criterios_sucesso?: string[];
   alvos: { instance_ids?: string[]; profile_ids?: string[];
            targets?: { profile_id: string; instance_ids?: string[]; app_id?: string | null }[];
-           device_policy?: 'one' | 'primary' | 'all'; distribute?: { count: number; app_id?: string } };
+           device_policy?: 'one' | 'primary' | 'all' };   // sem `distribute`: o backend recusa (422)
   autonomia?: Autonomia;
   fuso?: string;
   gatilhos: { tipo: TipoDeGatilho; spec: GatilhoSpec }[];

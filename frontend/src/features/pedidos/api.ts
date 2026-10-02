@@ -47,6 +47,7 @@ export const apiPedidos = {
   avisos: (q: { lido?: 0 | 1; requer_pessoa?: 0 | 1; pedido_id?: string; limit?: number; cursor?: string } = {},
            signal?: AbortSignal) =>
     apiRequest<ListaDeAvisos>('GET', '/pedidos/avisos', { query: q, signal }),
-  lerAvisos: (corpo: { ids?: string[]; todos?: true }) =>
+  /** Idempotente. `todos` marca os informativos (os da caixa), só os de `pedido_id` quando ele vem; `ids` marca exatamente os dados. */
+  lerAvisos: (corpo: { ids?: string[]; todos?: true; pedido_id?: string }) =>
     apiRequest<{ lidos: number; nao_lidos: number }>('POST', '/pedidos/avisos/ler', { body: corpo }),
 };

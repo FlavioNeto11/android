@@ -288,4 +288,10 @@ describe('caixa de avisos', () => {
     await act(async () => { await usePedidosStore.getState().atualizar(); });
     expect(usePedidosStore.getState().naoLidos).toBe(1);
   });
+
+  it('o selo vem de `nao_lidos` do backend (o total real), não do tamanho da página', async () => {
+    backend.on('GET', /^\/api\/pedidos\/avisos$/, () => json({ items: [makeAviso()], nao_lidos: 7, proximo_cursor: null }));
+    await act(async () => { await usePedidosStore.getState().atualizar(); });
+    expect(usePedidosStore.getState().naoLidos).toBe(7);
+  });
 });
