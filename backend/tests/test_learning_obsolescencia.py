@@ -151,16 +151,16 @@ def test_cada_sinal_vira_obsoleto_provavel_com_fato_e_fonte(obs: SinaisDeObsoles
     assert calcular(_sinais(obsolescencia=SinaisDeObsolescencia())).rotulo is Rotulo.SAUDAVEL  # type: ignore[union-attr]
 
 
-def test_fluxo_nunca_casado_ha_sem_uso_dias() -> None:
+def test_fluxo_nunca_usado_tem_o_mesmo_rotulo_da_receita_nunca_usada() -> None:
+    """O mesmo fato (publicado há `sem_uso_dias` e nunca usado) dá o mesmo rótulo e o mesmo motivo no fluxo e na
+    receita: `sem_evidencia`/`nunca_usado`. Antes o fluxo saía `obsoleto_provavel` (`fluxo_nunca_casado`)."""
     nunca = {"usos": 0, "ultimo_uso": None, "a_favor": 0, "contra": 0}
-    velho = calcular(_sinais(LivroKind.FLUXO, estado_desde="2026-09-18T12:00:00Z", **nunca))
-    assert velho is not None and velho.rotulo is Rotulo.OBSOLETO_PROVAVEL
-    assert [(m.codigo, m.valor, m.limite) for m in velho.motivos] == [(C.FLUXO_NUNCA_CASADO, 14, 14)]
-    novo = calcular(_sinais(LivroKind.FLUXO, estado_desde="2026-09-25T12:00:00Z", **nunca))
-    assert novo is not None and novo.rotulo is Rotulo.POUCA_AMOSTRA
-    # a receita nunca usada continua `sem_evidencia` (o sinal é só do fluxo)
-    receita = calcular(_sinais(estado_desde="2026-09-18T12:00:00Z", **nunca))
-    assert receita is not None and receita.rotulo is Rotulo.SEM_EVIDENCIA
+    for kind in (LivroKind.FLUXO, LivroKind.RECEITA):
+        velho = calcular(_sinais(kind, estado_desde="2026-09-18T12:00:00Z", **nunca))
+        assert velho is not None and velho.rotulo is Rotulo.SEM_EVIDENCIA, kind
+        assert [(m.codigo, m.valor, m.limite) for m in velho.motivos] == [(C.NUNCA_USADO, 14, 14)], kind
+        novo = calcular(_sinais(kind, estado_desde="2026-09-25T12:00:00Z", **nunca))
+        assert novo is not None and novo.rotulo is Rotulo.POUCA_AMOSTRA, kind
 
 
 def test_ordem_do_rotulo_publicado_degradando_vence_e_em_prova_nao_e_obsoleto() -> None:

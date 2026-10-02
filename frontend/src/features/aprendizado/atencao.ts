@@ -60,8 +60,31 @@ export function motivoPrincipal(e: Pick<EntradaDoLivro, 'saude'>): string | null
 /** `*` é a etapa livre (sem capability definida), como nas falhas. */
 export const ETAPA_LIVRE = '*';
 
-export function rotuloDaCapability(c: string): string {
-  return c === ETAPA_LIVRE ? 'Etapa livre (sem capability)' : c;
+/** O nome do grupo: o nome em português do catálogo (`capability_nome`) quando o backend o manda; senão o código. */
+export function rotuloDaCapability(c: string, nome?: string | null): string {
+  return c === ETAPA_LIVRE ? 'Etapa livre (sem capability)' : nome || c;
+}
+
+/** Primeiro `capability_nome` não vazio da lista (todos do grupo têm a mesma capability e o mesmo app). */
+function nomeDoGrupo(itens: readonly object[]): string | null {
+  for (const e of itens) {
+    const n = (e as { capability_nome?: unknown }).capability_nome;
+    if (typeof n === 'string' && n) return n;
+  }
+  return null;
+}
+
+/**
+ * O título de uma linha numa lista curta (Atenção): o fluxo tem por título o comando inteiro, de duas linhas ou mais.
+ * Corta na última palavra que cabe em `max` e põe reticências; o texto inteiro vai no `title` e no detalhe do item.
+ */
+export function resumirTitulo(titulo: string, max = 80): string {
+  const t = titulo.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const corte = t.slice(0, max + 1);
+  const espaco = corte.lastIndexOf(' ');
+  const base = (espaco > max * 0.6 ? corte.slice(0, espaco) : t.slice(0, max)).replace(/[\s,.;:–—-]+$/, '');
+  return `${base}…`;
 }
 
 /**
@@ -86,22 +109,26 @@ export function agruparPorCapability<T extends object>(itens: readonly T[]): { c
 }
 
 /** Os grupos de falha agrupados pela capability (que o backlog sempre traz; `*` = etapa livre). */
-export function falhasPorCapability<T extends { capability: string }>(grupos: readonly T[]): { capability: string; itens: T[] }[] {
+export function falhasPorCapability<T extends { capability: string }>(
+  grupos: readonly T[],
+): { capability: string; nome: string | null; itens: T[] }[] {
   const por = new Map<string, T[]>();
   for (const g of grupos) {
     const c = g.capability || ETAPA_LIVRE;
     por.set(c, [...(por.get(c) ?? []), g]);
   }
   return [...por.entries()].sort(([a], [b]) => Number(a === ETAPA_LIVRE) - Number(b === ETAPA_LIVRE) || a.localeCompare(b))
-    .map(([capability, itens]) => ({ capability, itens }));
+    .map(([capability, itens]) => ({ capability, nome: nomeDoGrupo(itens), itens }));
 }
 
 /** Um grupo do aprendido de um app: a capability (ou o que faz as vezes dela) e os itens, com quantos pedem atenção. */
 export interface GrupoDoAprendido<T> {
   chave: string;
   titulo: string;
-  /** `true` quando o título é uma capability do catálogo (vai em fonte mono, como nas falhas). */
+  /** `true` quando o título é o CÓDIGO da capability (sem nome no catálogo): vai em fonte mono, como nas falhas. */
   ehCapability: boolean;
+  /** O código da capability quando o título é o nome em português (vai no `title`, para quem desenvolve). */
+  codigo: string | null;
   itens: T[];
 }
 
@@ -128,12 +155,18 @@ export function gruposDoAprendido<T extends Pick<EntradaDoLivro, 'kind'>>(
   }
   const peso = (k: string) => (k === FLUXOS ? 1 : k === SEM_CAPABILITY ? 2 : 0);
   return [...por.entries()]
-    .sort(([a], [b]) => peso(a) - peso(b) || a.localeCompare(b))
-    .map(([chave, lista]) => ({
-      chave,
-      titulo: chave === FLUXOS ? 'Fluxos (o comando inteiro)' : chave === SEM_CAPABILITY ? 'Sem capability conhecida'
-        : chave.startsWith('tipo:') && lista[0] ? rotuloDoTipo(lista[0].kind) : chave,
-      ehCapability: comCapability && peso(chave) === 0,
-      itens: lista,
-    }));
+    // Pela ordem do que a pessoa lê: o nome em português quando há, senão o código.
+    .sort(([a, la], [b, lb]) => peso(a) - peso(b) || (nomeDoGrupo(la) ?? a).localeCompare(nomeDoGrupo(lb) ?? b, 'pt-BR'))
+    .map(([chave, lista]) => {
+      const ehCap = comCapability && peso(chave) === 0;
+      const nome = ehCap ? nomeDoGrupo(lista) : null;
+      return {
+        chave,
+        titulo: chave === FLUXOS ? 'Fluxos (o comando inteiro)' : chave === SEM_CAPABILITY ? 'Sem capability conhecida'
+          : chave.startsWith('tipo:') && lista[0] ? rotuloDoTipo(lista[0].kind) : nome ?? chave,
+        ehCapability: ehCap && nome === null,
+        codigo: ehCap && nome !== null ? chave : null,
+        itens: lista,
+      };
+    });
 }

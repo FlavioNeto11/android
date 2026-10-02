@@ -58,6 +58,7 @@ async def test_relatorio_em_json_com_chave_estavel(mundo: Mundo, cliente: httpx.
     anr = tipos["app_anr"]
     assert anr["id"].startswith("fk-") and len(anr["id"]) == 13
     assert anr["app"] == PACOTE and anr["capability"] == "OPEN_POST" and anr["camada"] == "aparelho"
+    assert anr["capability_nome"] == "Abrir a publicação"              # o nome do catálogo, para o grupo do painel
     assert anr["ocorrencias"] == 3 and anr["retroativas"] == 3 and anr["estado"] == "open"
     assert abs(anr["usd_perdido"] - 0.06) < 1e-9 and anr["onde_alterar"]["arquivos"]
     assert anr["onde_alterar"]["prova"] and anr["exemplos"][0]["run_id"].startswith("r-anr")

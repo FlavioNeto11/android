@@ -10,7 +10,10 @@ import { formatInt } from '../../lib/format';
 import { LoadErrorBanner } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
-import { ROTULOS_DE_ATENCAO, contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal, pedeAtencao, rotuloDaCapability } from './atencao';
+import {
+  ROTULOS_DE_ATENCAO, contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal, pedeAtencao, resumirTitulo,
+  rotuloDaCapability,
+} from './atencao';
 import { hrefDoItem } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { LinhaDeFalha } from './FalhasTab';
@@ -113,7 +116,7 @@ function ListaDeAtencao({ itens, nomes }: { itens: readonly EntradaDoLivro[]; no
           return (
             <li key={chaveDoItem(e)} className={styles.item} data-atencao={chaveDoItem(e)}>
               <div className={styles.itemHead}>
-                <span className={styles.itemTitulo} title={e.title}>{rotuloDoKind(e.kind)} — {e.title}</span>
+                <span className={styles.itemTitulo} title={e.title}>{rotuloDoKind(e.kind)} — {resumirTitulo(e.title)}</span>
                 {nomes && app ? <Badge tone="neutral" size="sm" title="O aplicativo do item">{app}</Badge> : null}
               </div>
               <div className={styles.itemMeta}>
@@ -158,9 +161,11 @@ export function FalhasDoApp({ pacote }: { pacote: string }) {
       ) : grupos.length === 0 ? (
         <EmptyState icon={Flame} compact title="Nenhum grupo de falha neste app" />
       ) : grupos.map((c) => (
-        <div key={c.capability} className={styles.secao} role="group" aria-label={`Falhas de ${rotuloDaCapability(c.capability)}`}>
-          <h4 className={styles.subtitulo}>{rotuloDaCapability(c.capability)} ({formatInt(c.itens.length)})</h4>
-          <ol className={styles.lista} aria-label={`Falhas de ${rotuloDaCapability(c.capability)}`}>
+        <div key={c.capability} className={styles.secao} role="group" aria-label={`Falhas de ${rotuloDaCapability(c.capability, c.nome)}`}>
+          <h4 className={styles.subtitulo} title={c.nome ? c.capability : undefined}>
+            {rotuloDaCapability(c.capability, c.nome)} ({formatInt(c.itens.length)})
+          </h4>
+          <ol className={styles.lista} aria-label={`Falhas de ${rotuloDaCapability(c.capability, c.nome)}`}>
             {c.itens.map((g, i) => <LinhaDeFalha key={g.id} g={g} posicao={i + 1} />)}
           </ol>
         </div>

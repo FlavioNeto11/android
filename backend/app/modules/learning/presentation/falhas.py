@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.learning.application.falhas import (DetalheDoBacklog, LinhaDaProposta, LinhaDoRelatorio,
                                                      RelatorioDeFalhas, ServicoDeFalhas)
+from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import GrupoDeFalha, LinhaDoBacklog, Proposta, RegrasDoBacklog
 from app.modules.learning.domain.diagnostico import Diagnostico
 from app.modules.learning.domain.falhas import Camada
@@ -277,7 +278,22 @@ async def o_que_mais_falha(request: Request, dias: int = Query(14, ge=1, le=90),
                            retroativo=retroativo)
     if formato == "md":
         return PlainTextResponse(relatorio_md(rel), media_type="text/markdown; charset=utf-8")
-    return relatorio_json(rel)
+    return _com_nomes(relatorio_json(rel), _servico(request))
+
+
+def _com_nomes(corpo: JsonObject, servico: LearningService) -> JsonObject:
+    """`capability_nome` em cada grupo (o nome em português do catálogo, para o painel não mostrar `OPEN_PROFILE`),
+    só no JSON do painel: o Markdown e o `grupo_json` dos scripts seguem com o código."""
+    vistos: dict[tuple[str, str], str | None] = {}
+    for chave in ("itens", "verificacao"):
+        for g in corpo.get(chave) or []:
+            if isinstance(g, dict):
+                app, cap = g.get("app"), g.get("capability")
+                par = (app, cap) if isinstance(app, str) and isinstance(cap, str) else None
+                if par is not None and par not in vistos:
+                    vistos[par] = servico.nome_da_capability(*par)
+                g["capability_nome"] = vistos.get(par) if par is not None else None
+    return corpo
 
 
 @router.get("/backlog/{backlog_id}", response_model=None)

@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { agruparPorCapability, contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal } from './atencao';
+import {
+  agruparPorCapability, contarPorRotulo, falhasPorCapability, filaDeAtencao, gruposDoAprendido, motivoPrincipal, resumirTitulo,
+} from './atencao';
 import type { EntradaDoLivro, RotuloDeSaude, SaudeDoItem } from './model';
 
 /**
@@ -188,7 +190,7 @@ describe('fila Atenção', () => {
     expect(degradando).toContain('3 falhas seguidas (o limite é 2)');
     expect(degradando).toContain('Exemplo Cheio');                      // no Global a fila mostra o app
     expect(text(fila.querySelector('[data-atencao="licao:li-1"]') as HTMLElement)).toContain('Há uma versão mais nova em uso (9)');
-    expect(text(fila.querySelector('[data-atencao="fluxo:3"]') as HTMLElement)).toContain('nunca usado');
+    expect(text(fila.querySelector('[data-atencao="fluxo:3"]') as HTMLElement)).toContain('Nunca usado');
 
     const link = byRole('link', /Abrir o item/, fila.querySelector('[data-atencao="receita:8"]') as HTMLElement);
     expect(link.getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=receita%3A8');
@@ -302,6 +304,33 @@ describe('funções puras', () => {
     expect(agruparPorCapability([{ a: 1 }, { a: 2 }])).toBeNull();
     const g = agruparPorCapability([{ capability: 'b' }, { x: 1 }, { capability: 'a' }, { capability: '*' }]);
     expect(g?.map((x) => [x.capability, x.itens.length])).toEqual([['a', 1], ['b', 1], ['*', 2]]);
+  });
+
+  it('o grupo mostra o nome em português do catálogo e guarda o código; sem nome, o código em mono', () => {
+    const g = gruposDoAprendido([
+      { kind: 'receita' as const, capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' },
+      { kind: 'receita' as const, capability: 'CREATE_COMMENT', capability_nome: 'Comentar na publicação' },
+      { kind: 'licao' as const, capability: 'NOVA_ACAO', capability_nome: null },
+      { kind: 'fluxo' as const, capability: null },
+    ], (k) => k);
+    // em ordem do que a pessoa lê (o nome), o código sem nome no meio pela mesma regra, os fluxos por último
+    expect(g.map((x) => [x.titulo, x.ehCapability, x.codigo])).toEqual([
+      ['Abrir o perfil', false, 'OPEN_PROFILE'], ['Comentar na publicação', false, 'CREATE_COMMENT'],
+      ['NOVA_ACAO', true, null], ['Fluxos (o comando inteiro)', false, null],
+    ]);
+    const f = falhasPorCapability([{ capability: 'OPEN_POST', capability_nome: 'Abrir a publicação' }, { capability: '*', capability_nome: null }]);
+    expect(f.map((x) => [x.capability, x.nome])).toEqual([['OPEN_POST', 'Abrir a publicação'], ['*', null]]);
+  });
+
+  it('resumirTitulo corta o comando longo na palavra e deixa o curto como está', () => {
+    expect(resumirTitulo('Abrir o feed')).toBe('Abrir o feed');
+    const longo = 'No Outlook, na caixa de entrada, leia o remetente e o assunto da mensagem mais recente, sem abrir a mensagem.';
+    const r = resumirTitulo(longo);
+    expect(r.length).toBeLessThanOrEqual(81);
+    expect(r.endsWith('…')).toBe(true);
+    expect(longo.startsWith(r.slice(0, -1))).toBe(true);
+    expect(r).not.toMatch(/[ ,]…$/);
+    expect(resumirTitulo(`${'x'.repeat(120)}`)).toBe(`${'x'.repeat(80)}…`);
   });
 
   it('falhasPorCapability junta pelo nome e deixa `*` (e o vazio) por último', () => {

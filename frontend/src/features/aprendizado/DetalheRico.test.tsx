@@ -150,7 +150,10 @@ describe('detalhe rico: saúde', () => {
 
   it('textoDoMotivo e valorDaDimensao: desconhecido nunca vira número', () => {
     expect(textoDoMotivo({ codigo: 'nunca_usado', dimensao: 'uso', valor: 20, limite: 14, detalhe: 'dias publicado' }))
-      .toBe('Publicado há 20 dias e nunca usado (limite: 14 dias)');
+      .toBe('Nunca usado desde que foi publicado, há 20 dias (prazo: 14 dias)');
+    // o mesmo fato no fluxo (backend anterior) sai com o mesmo texto
+    expect(textoDoMotivo({ codigo: 'fluxo_nunca_casado', dimensao: 'uso', valor: 20, limite: 14, detalhe: null }))
+      .toBe('Nunca usado desde que foi publicado, há 20 dias (prazo: 14 dias)');
     expect(textoDoMotivo({ codigo: 'eficacia_desconhecida', dimensao: 'eficacia', valor: null, limite: null, detalhe: null }))
       .toMatch(/^Sem dado/);
     expect(textoDoMotivo({ codigo: 'codigo_novo', dimensao: null, valor: 3, limite: null, detalhe: null })).toBe('codigo_novo: 3');

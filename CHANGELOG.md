@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
+
+- **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a
+  receita, em vez de `obsoleto_provavel`/`fluxo_nunca_casado` (motivo removido; `domain/saude.py`, adendo v0.63 provisório). O
+  texto passa a "Nunca usado desde que foi publicado, há N dias (prazo: 14 dias)", sem o "(limite: 14)" que parecia contradição.
+  Na Atenção do central (b5baf3e5), os 4 fluxos que estavam em "provavelmente obsoleto" só por isso passam a "sem evidência"
+  (11 itens antes e depois: 4 degradando, 7 sem evidência).
+- **O grupo diz o nome, não o código.** `capability_nome` em cada linha do Livro, de `/apps/{pacote}` e em cada grupo de
+  `/falhas`: o `title` do catálogo do app sem as lacunas (`OPEN_PROFILE` → "Abrir o perfil"; porta `TitulosDoCatalogo`,
+  adaptador `TitulosDoRegistro`). O painel mostra o nome nos grupos do Aprendido e nas falhas, com o código no `title`; sem
+  catálogo, o código em mono como antes.
+- **Título curto na Atenção.** O fluxo, cujo título é o comando inteiro, aparece cortado na palavra (80 caracteres) com o texto
+  inteiro no `title` (`resumirTitulo`).
+- Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `test_learning_obsolescencia.py`,
+  `test_learning_rotas_falhas.py`; `SaudeDoApp.test.tsx`, `DetalheRico.test.tsx`. Navegador: preview com cópia do banco do central.
+
 ## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
 
 - Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.
