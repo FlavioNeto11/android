@@ -1,12 +1,16 @@
 import { Flame, ShieldAlert } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
+import { Disclosure } from '../../components/Disclosure';
+import { Field, Select } from '../../components/Field';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
 import { LoadErrorBanner } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
-import { contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal, pedeAtencao, rotuloDaCapability } from './atencao';
+import { ROTULOS_DE_ATENCAO, contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal, pedeAtencao, rotuloDaCapability } from './atencao';
 import { hrefDoItem } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { LinhaDeFalha } from './FalhasTab';
@@ -42,10 +46,32 @@ export function ChipsDeSaude({ itens }: { itens: readonly EntradaDoLivro[] }) {
  * `nomes` (pacote → nome) só entra no Global, onde a fila mistura apps.
  */
 export function FilaDeAtencao({ itens, nomes }: { itens: readonly EntradaDoLivro[]; nomes?: ReadonlyMap<string, string> }) {
-  const fila = filaDeAtencao(itens);
+  const [app, setApp] = useState('');
+  const todos = filaDeAtencao(itens);
+  // O filtro de app só existe no Global (onde a fila mistura apps) e só quando há mais de um app na fila.
+  const apps = nomes ? [...new Set(todos.map((e) => e.app).filter((a): a is string => !!a))] : [];
+  const fila = app ? todos.filter((e) => e.app === app) : todos;
+  const grupos = ROTULOS_DE_ATENCAO.map((rotulo) => ({ rotulo, itens: fila.filter((e) => e.saude?.rotulo === rotulo) }))
+    .filter((g) => g.itens.length > 0);
+  // Fila curta abre toda; longa abre só o grupo mais grave, para a página não virar um rolo de cartões.
+  const abrirTodos = fila.length <= POUCOS;
   return (
     <section className={styles.secao} aria-label="Atenção">
-      <h3 className={styles.secaoTitulo}>Atenção ({formatInt(fila.length)})</h3>
+      <div className={styles.toolbar}>
+        <h3 className={styles.secaoTitulo}>Atenção ({formatInt(fila.length)}{app ? ` de ${formatInt(todos.length)}` : ''})</h3>
+        {apps.length > 1 ? (
+          <div className={styles.toolbarFim}>
+            <Field label="Aplicativo" className={styles.filtro}>
+              {({ id }) => (
+                <Select id={id} small value={app} onChange={(ev) => setApp(ev.target.value)}>
+                  <option value="">Todos</option>
+                  {apps.map((a) => <option key={a} value={a}>{nomes?.get(a) ?? a}</option>)}
+                </Select>
+              )}
+            </Field>
+          </div>
+        ) : null}
+      </div>
       <p className={styles.secaoLead}>
         O que o sistema mediu como degradando, provavelmente obsoleto ou sem evidência. É só leitura: nada é desligado nem
         avisado por estar aqui; a decisão continua sendo da pessoa, no item.
@@ -53,32 +79,55 @@ export function FilaDeAtencao({ itens, nomes }: { itens: readonly EntradaDoLivro
       {fila.length === 0 ? (
         <EmptyState icon={ShieldAlert} compact title="Nada pede atenção agora" />
       ) : (
-        <ul className={styles.lista} aria-label="Itens que pedem atenção">
-          {fila.map((e) => {
-            const meta = metaDeSaude(e.saude?.rotulo);
-            const motivo = motivoPrincipal(e);
-            const app = e.app ? (nomes?.get(e.app) ?? e.app) : null;
+        <div className={styles.grupos} data-grupos-de-atencao>
+          {grupos.map((g, n) => {
+            const meta = metaDeSaude(g.rotulo);
             return (
-              <li key={chaveDoItem(e)} className={styles.item} data-atencao={chaveDoItem(e)}>
-                <div className={styles.itemHead}>
-                  {meta ? (
-                    <Badge tone={meta.tone} size="sm" icon={meta.icon} title={meta.description} className={styles.seloDeSaude}>
-                      <span className="sr-only">Saúde: </span>{meta.label}
-                    </Badge>
-                  ) : null}
-                  <span className={styles.itemTitulo}>{rotuloDoKind(e.kind)} — {e.title}</span>
-                  {nomes && app ? <Badge tone="neutral" size="sm" title="O aplicativo do item">{app}</Badge> : null}
-                </div>
-                <div className={styles.itemMeta}>
-                  <span>{motivo ?? 'O backend não informou o motivo.'}</span>
-                  <a className={styles.linkAlvo} href={hrefDoItem(e.kind, e.ref)}>Abrir o item</a>
-                </div>
-              </li>
+              <Disclosure key={g.rotulo} className={styles.grupo} defaultOpen={abrirTodos || n === 0}
+                          summary={meta ? meta.label : g.rotulo}
+                          meta={<span className={styles.grupoMeta}>{formatInt(g.itens.length)} {g.itens.length === 1 ? 'item' : 'itens'}</span>}>
+                {() => <ListaDeAtencao itens={g.itens} nomes={nomes} />}
+              </Disclosure>
             );
           })}
-        </ul>
+        </div>
       )}
     </section>
+  );
+}
+
+/** Quantos itens a fila mostra de uma vez em cada grupo; o resto vem em "Mostrar todos". */
+const PAGINA = 10;
+/** Até aqui a fila abre todos os grupos. */
+const POUCOS = 8;
+
+function ListaDeAtencao({ itens, nomes }: { itens: readonly EntradaDoLivro[]; nomes?: ReadonlyMap<string, string> }) {
+  const [todos, setTodos] = useState(false);
+  const visiveis = todos ? itens : itens.slice(0, PAGINA);
+  return (
+    <>
+      <ul className={styles.lista} aria-label="Itens que pedem atenção">
+        {visiveis.map((e) => {
+          const motivo = motivoPrincipal(e);
+          const app = e.app ? (nomes?.get(e.app) ?? e.app) : null;
+          return (
+            <li key={chaveDoItem(e)} className={styles.item} data-atencao={chaveDoItem(e)}>
+              <div className={styles.itemHead}>
+                <span className={styles.itemTitulo} title={e.title}>{rotuloDoKind(e.kind)} — {e.title}</span>
+                {nomes && app ? <Badge tone="neutral" size="sm" title="O aplicativo do item">{app}</Badge> : null}
+              </div>
+              <div className={styles.itemMeta}>
+                <span>{motivo ?? 'O backend não informou o motivo.'}</span>
+                <a className={styles.linkAlvo} href={hrefDoItem(e.kind, e.ref)}>Abrir o item</a>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {itens.length > PAGINA && !todos ? (
+        <div><Button size="sm" variant="ghost" onClick={() => setTodos(true)}>Mostrar todos ({formatInt(itens.length)})</Button></div>
+      ) : null}
+    </>
   );
 }
 

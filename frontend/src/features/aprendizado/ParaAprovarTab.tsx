@@ -12,6 +12,7 @@ import { usePendenciasStore } from '../pendencias/store';
 import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
 import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
+import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
 } from './model';
@@ -162,7 +163,7 @@ export function ParaAprovarTab() {
                 selecionado={selFila.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelFila)(e, sim)}
                 onMudou={() => void carregar()}
-                extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila /> : null}
+                extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila /> : <ResumoParaDecidir entrada={e} />}
               />
             ))}
           </ul>

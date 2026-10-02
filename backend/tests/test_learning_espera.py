@@ -140,7 +140,7 @@ def test_o_vocabulario_do_payload_e_o_da_especificacao() -> None:
     assert {m.value for m in MotivoDeEntrada} == {"efeito_externo", "texto_de_pessoa", "commit_sem_catalogo",
                                                   "alto_risco", "sessao_ou_autenticacao", "parecer_da_ia"}
     assert {m.value for m in MotivoDeSaida} == {"decidido_por_pessoa", "rebaixado_pelo_sistema", "substituido"}
-    assert href_do_item("receita", "100") == "#/aprendizado?item=receita:100"
+    assert href_do_item("receita", "100") == "#/aprendizado?aba=aprendido&item=receita:100"
 
 
 # ------------------------------------------------------------------ serviço: entra, sai, não repete
@@ -151,7 +151,7 @@ def test_item_de_pessoa_entra_e_sai_da_espera(db: Database) -> None:
     tipo, mensagem, nivel, dados = m.barramento.emitidos[0]
     assert tipo == TIPO_DO_EVENTO == "learning.needs_person" and tipo not in EPHEMERAL_KINDS
     assert dados == {"kind": "licao", "ref": criado.id, "app": PACOTE, "faixa": "B", "aguardando": True,
-                     "motivo": "texto_de_pessoa", "href": f"#/aprendizado?item=licao:{criado.id}",
+                     "motivo": "texto_de_pessoa", "href": f"#/aprendizado?aba=aprendido&item=licao:{criado.id}",
                      "desde": "2026-10-02T12:00:00.000Z"}
     assert nivel == "info" and criado.id in mensagem
 
@@ -240,7 +240,7 @@ def test_receita_com_commit_entra_pela_transicao_do_livro_e_sai_pela_pessoa(db: 
     rid = _receita(db, status="candidate", commit=True, passo="curtir")
     m.servico.mudar_estado(LivroKind.RECEITA, str(rid), S.VALIDATED, by=SYSTEM_ACTOR, reason="prova")
     assert m.barramento.dados == [{"kind": "receita", "ref": str(rid), "app": PACOTE, "faixa": "B", "aguardando": True,
-                                   "motivo": "commit_sem_catalogo", "href": f"#/aprendizado?item=receita:{rid}",
+                                   "motivo": "commit_sem_catalogo", "href": f"#/aprendizado?aba=aprendido&item=receita:{rid}",
                                    "desde": "2026-10-02T12:00:00.000Z"}]
     m.servico.mudar_estado(LivroKind.RECEITA, str(rid), S.PUBLISHED, by=PESSOA, reason="aprovo")
     assert m.barramento.dados[-1]["aguardando"] is False and m.barramento.dados[-1]["motivo"] == "decidido_por_pessoa"

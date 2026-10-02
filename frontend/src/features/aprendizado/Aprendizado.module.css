@@ -467,3 +467,28 @@
   background: var(--surface-2);
   min-width: 0;
 }
+
+/* "Para aprovar": o que o item faz, onde foi aprendido e a versão, ao lado de Aprovar/Rejeitar (B3). */
+.resumoParaDecidir {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-1, transparent);
+  border: 1px dashed var(--border-1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.resumoParaDecidir strong { color: var(--text-1); font-weight: 600; }
+
+/* Sinais: o dia como cabeçalho da lista. */
+.separadorDeDia {
+  padding: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  list-style: none;
+}

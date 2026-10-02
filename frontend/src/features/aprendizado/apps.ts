@@ -164,7 +164,7 @@ export function lerDetalheDoApp(raw: unknown): DetalheDoApp {
 
 export const EXISTENCIA_META: Record<Existencia, { label: string; tone: Tone; dica: string }> = {
   declarado: { label: 'Declarado', tone: 'success', dica: 'Está no registro de apps do sistema (arquivos declarados).' },
-  loja: { label: 'Só na loja', tone: 'neutral', dica: 'Está na tabela de apps da loja, sem declaração própria.' },
+  loja: { label: 'Sem declaração', tone: 'neutral', dica: 'Conhecido pela loja (ou é do sistema), mas sem arquivos declarados: o que se sabe dele foi aprendido.' },
   so_aprendido: { label: 'Só aprendido', tone: 'warning', dica: 'Só existe porque algo foi aprendido; nada foi declarado nem instalado pela loja.' },
 };
 
