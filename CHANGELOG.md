@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: backfill único e idempotente das lições anteriores à 055 (branch feat/aprendizado-backfill-licoes)
+
+- `scripts/aprendizado-backfill-licoes.py` + `learning/infrastructure/backfill_licoes.py`: passa só `licoes.contraste` e
+  `licoes.plano` pelas execuções reais anteriores ao `applied_at` da 055 (ou por `--run-id`), em `shadow`, sem IA e sem
+  rede; ensaio numa cópia por padrão, `--aplicar` grava; aborta se a migração do banco difere da do código. Prova
+  `simulated` (`test_aprendizado_backfill_licoes.py`, 11 testes); a rodada no banco do central é `not_run` até a
+  coordenadora fazer backup e rodar.
+
 ## 2026-10-02 — Ações permitidas calculadas no backend (30.5, branch feat/30-5-acoes-no-backend)
 
 - 30.5: a `Entrada` do livro traz `acoes` e `por_que_nao_publica`, calculadas em `domain/livro.py` sobre `ciclo.TRANSICOES`
