@@ -82,10 +82,38 @@ class Parada(unittest.TestCase):
         self.assertIsNone(mod.avaliar_parada(seis[:3], 3))                         # abaixo do teto e sem desfecho: segue
 
     def test_o_teto_conta_reinicios_reais_inclusive_os_do_produto(self) -> None:
-        self.assertTrue(mod.pode_iniciar(5, 5))
-        self.assertFalse(mod.pode_iniciar(6, 3))
-        self.assertFalse(mod.pode_iniciar(2, 6))
         self.assertEqual(mod.MAX_BOOTS, 6)
+        self.assertFalse(mod.pode_iniciar(6, 3))
+        self.assertFalse(mod.pode_iniciar(2, 6))                                  # o limite de iterações também vale
+
+    def test_iteracao_nova_so_comeca_se_o_pior_caso_cabe_no_teto_do_dono(self) -> None:
+        """Discriminante: 4 reinícios usados e só NO_FAILURE NÃO começa a 5ª (4 + 3 > 6); com 3 usados começa (3 + 3 <= 6)."""
+        self.assertEqual(mod.PIOR_CASO_PADRAO, 3)
+        self.assertTrue(mod.pode_iniciar(3, 3))
+        self.assertFalse(mod.pode_iniciar(4, 4))
+        self.assertFalse(mod.pode_iniciar(5, 5))
+        self.assertTrue(mod.pode_iniciar(0, 0))
+        quatro = [_reg(i, "NO_FAILURE") for i in range(1, 5)]
+        p = mod.avaliar_parada(quatro, 4)
+        self.assertIsNotNone(p, "com 4 usados o protocolo para por TETO")
+        self.assertEqual(p[0], "INCONCLUSIVE")
+        self.assertIn("teto", p[1])
+        self.assertIsNone(mod.avaliar_parada(quatro[:3], 3), "com 3 usados segue")
+
+    def test_o_pior_caso_acompanha_o_reinicios_max_da_config(self) -> None:
+        self.assertFalse(mod.pode_iniciar(3, 3, 4))                               # reinicios_max=3 → pior caso 4: 3 + 4 > 6
+        self.assertTrue(mod.pode_iniciar(2, 2, 4))
+        with tempfile.TemporaryDirectory() as d:
+            raiz = Path(d)
+            self.assertEqual(mod.reinicios_max_da_config(raiz), 2, "sem config: o padrão do produto")
+            (raiz / "config").mkdir()
+            cfg = raiz / "config" / "config.yaml"
+            cfg.write_text("rede:\n  reinicios_max: 4\n", encoding="utf-8")
+            self.assertEqual(mod.reinicios_max_da_config(raiz), 4)
+            cfg.write_text("rede:\n  reinicios_max: 99\n", encoding="utf-8")
+            self.assertEqual(mod.reinicios_max_da_config(raiz), 2, "fora de 1..10: padrão")
+            cfg.write_text("rede: [quebrado", encoding="utf-8")
+            self.assertEqual(mod.reinicios_max_da_config(raiz), 2, "ilegível: padrão")
 
 
 class SegurancaDoScript(unittest.TestCase):
