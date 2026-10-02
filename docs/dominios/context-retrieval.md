@@ -328,6 +328,13 @@ A diferença contra a tabela completa abaixo (17,5% e 72,5%) vem de cortar a per
 3. **Verificar a cobertura da A antes de qualquer coisa:** `files_considered = 195` nos casos H13 e H14 com `max_map_files = 400`. Se o escopo `src/poetry/` tem mais de 195 arquivos, o corte em bytes deixa a A sem ver o resto. Conferir contando os arquivos do escopo no clone público no SHA fixado (não feito aqui: exigiria baixar o repositório de novo).
 4. **Próxima medição paga (precisa de autorização do dono):** rodada pequena no `python-poetry/poetry` (no máximo 6 perguntas, dentro do teto de 12 chamadas por execução e com `--cases`/`--max-calls`) com a opção escolhida, registrando por etapa.
 
+### Painel (J8): cartão só de leitura
+
+A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retrieval de contexto" (`frontend/src/features/settings/ContextRetrievalSection.tsx`, textos e tons em `frontend/src/lib/contextRetrieval.ts`), que lê `GET /api/context-retrieval/status` e mostra: um veredito (desligado, só local, envio externo bloqueado ou permitido), a configuração (modo, interruptor, provedor e se está disponível), a proveniência do envio (decisão, motivo em português, classe e visibilidade do repositório, e as três provas: remoto público, commit público e worktree limpo; `null` aparece como "Sem resposta"), o orçamento por pedido e as métricas recentes (pedidos, cache, latência p50/p95, custo, tokens, voltas ao local e bloqueios por razão).
+- **Só leitura, por desenho:** o único botão é "Atualizar"; não há interruptor, campo nem chamada além do `GET`, e o texto diz que ligar o envio externo é decisão de configuração (`context_retrieval.enabled` e `semantic.*` no `config.yaml`). "Envio externo permitido" só aparece quando a política permite E o provedor está disponível; em qualquer outro caso a resposta é "nada sai".
+- **Por que na guia IA e não numa tela nova:** uma tela nova mudaria o contrato de rotas e o menu, já revisados; o assunto (provedor, orçamento, chave) é o da guia IA, ao lado do saldo das contas.
+- **Prova:** `simulated`, `frontend/src/features/settings/ContextRetrievalSection.test.tsx` (7) e `frontend/src/lib/contextRetrieval.test.ts` (9): desligado, híbrido bloqueado com as três provas, métricas, `null` sem resposta, só leitura (um botão, nada além de `GET`), 503. `npm run typecheck`, `npm test` (96 arquivos, 1.149 testes) e `npm run build` passaram. **Verificação no navegador: `not_run`** (o preview do projeto serve o `frontend` do checkout central, que não tem este código, e o backend central ainda não tem a rota; o deploy é da sessão Android).
+
 ## Limites conhecidos
 
 - **Primeira consulta de uma revisão nova** paga a construção do índice. Sem índice nenhum (a frio), são vários segundos no repositório inteiro (1,4 mil arquivos). Com um índice anterior compatível, a reconstrução é **incremental por arquivo** (abaixo) e custa cerca de 1,3 a 1,7 s.
@@ -346,6 +353,6 @@ A diferença contra a tabela completa abaixo (17,5% e 72,5%) vem de cortar a per
 
 ## Próximas fatias
 
-Tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
+`shadow` em repositório público para medir qualidade e
 custo reais; outros `SemanticProvider` (embeddings locais, Ollama, banco vetorial); consumo do `ContextPack` por skills,
 planejamento e subagentes.

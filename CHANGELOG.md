@@ -81,6 +81,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Painel: cartão "Retrieval de contexto" na guia IA, só leitura (J8)
+
+- **`frontend/src/features/settings/ContextRetrievalSection.tsx`** (novo) na guia IA de Configuração: lê `GET /api/context-retrieval/status` (ADR-063) e mostra veredito, configuração, proveniência do envio externo com as três provas, orçamento e métricas recentes. Só leitura: um botão "Atualizar", nenhuma escrita, nenhum controle que ligue o remoto. Novos: `api.contextRetrievalStatus`, o tipo `ContextRetrievalStatus` e `lib/contextRetrieval.ts`. `simulated`: 16 testes novos; frontend inteiro 96 arquivos e 1.149 testes, typecheck e build ok. **Verificação visual no navegador: `not_run`**. Sem backend; sem deploy.
+
 ## 2026-10-02 — Retrieval: escopo padrão de código no consumidor do plano-100 (J7)
 
 - **`scripts/plano-100-pacotes.py --contexto`** passa a consultar só `backend/app/`, `frontend/src/` e `scripts/` por padrão (`--contexto-escopo PREFIXO`, repetível, troca o padrão; `--contexto-sem-escopo` consulta tudo). Vale só para este consumidor opt-in: serviço, CLI do módulo e API não mudam; sem a flag `--contexto` a saída continua byte a byte a de sempre. `real` (02/10, `context-retrieval-local-eval.py --consumidor`, 40 commits): hit@3 22,5% → 70,0%, hit@5 37,5% → 77,5%, MRR@10 0,195 → 0,555. `simulated`: `scripts/tests/test_pacotes_contexto.py` (11 → 15 testes; o de saída idêntica segue verde) e `test_context_retrieval_local_eval.py` (9). O `local-eval` ganhou `--consumidor`.

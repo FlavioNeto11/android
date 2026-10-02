@@ -132,6 +132,7 @@ import type {
   AiBalanceRechargeIn,
   AiBalanceRuleIn,
   AiBalancesReport,
+  ContextRetrievalStatus,
   RunTargetsSuggestRequest,
   RunTargetsSuggestion,
 } from './types';
@@ -460,6 +461,8 @@ export const api = {
       query: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
+  /** Estado do retrieval de contexto (ADR-063): só leitura, sem rede e sem gasto. */
+  contextRetrievalStatus: (signal?: AbortSignal) => request<ContextRetrievalStatus>('GET', '/context-retrieval/status', { signal }),
   /** Saldo estimado das contas de IA (ADR-051) e os dois ajustes: nova leitura do console e limites. */
   aiBalances: (refresh = false, signal?: AbortSignal) =>
     request<AiBalancesReport>('GET', '/ai/balances', { query: refresh ? { refresh: 1 } : undefined, signal, timeoutMs: 45_000 }),
