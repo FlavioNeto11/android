@@ -49,6 +49,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
 - Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
 
+## 2026-10-02 — Porta `DecisaoFechada` no hub e trava de 255 opções no Jev (31.1 e 31.4, branch feat/31-4-decisao-fechada)
+
+- 31.1: o `choice` do adaptador Jev (`modules/context_retrieval/adapters/jev.py`) recusa localmente, antes de montar o corpo, mais de 255 opções
+  (contando a `nenhuma`; novo `ProviderOptionLimit`) e sempre leva a opção `nenhuma`, de id opaco, que nunca vira arquivo ou região.
+- 31.4: nova porta `backend/app/planning/decisao_fechada/` (ADR-069), **desligada e sem decisor real**:
+  - contrato puro (`PedidoDeDecisao`, `Pergunta`, `RespostaDeDecisao`, vocabulários fechados), `DecisorNulo` (padrão) e `DecisorFalso`;
+  - `Privacidade.validar` falha fechada antes de qualquer corpo: `JEV_RUNTIME_SEND_APPROVED = False`, `JEV_ALLOWED_CLASSES` com o teto do
+    ADR-069 (C0 a C3; a C3 só na origem `intencao` e só em `shadow`), C7 e social/persona recusam o pedido inteiro, `redact` em toda string;
+  - modos `off` (padrão), `shadow` (fora do caminho crítico) e `on` por consumidor; timeout de 1 s e 5 s, sem retentativa, fallback fechado
+    que nunca conta como acerto; fan-out de um estado e N perguntas em uma chamada;
+  - config `ai.decisao_fechada` (`enabled: false`, `consumidores`, `classes_permitidas`; o YAML só restringe), no `config.example.yaml`.
+- Teste de cliente único: só o adaptador de retrieval contém o host da TypeSafe.
+- Prova `simulated`: `backend/tests/test_decisao_fechada.py` (40), `test_context_retrieval_semantic.py` (+3). Real: `not_run` (nenhuma chamada ao Jev).
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:

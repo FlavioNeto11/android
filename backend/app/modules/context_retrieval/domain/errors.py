@@ -41,3 +41,9 @@ class ProviderOffline(ProviderError):
 
 class ProviderInvalidResponse(ProviderError):
     reason = FallbackReason.INVALID_RESPONSE
+
+
+class ProviderOptionLimit(ProviderError):
+    """Pergunta com mais opções do que o provedor aceita: recusada localmente, sem montar corpo nem tocar a rede."""
+
+    reason = FallbackReason.PROVIDER_ERROR
