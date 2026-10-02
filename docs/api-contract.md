@@ -3455,7 +3455,7 @@ se o pacote não está em nenhuma das três fontes. As duas rotas entram antes d
 foi lido). Vale o modo GLOBAL (`ai.recipes`, `ai.flows`, `skills.enabled`, `aprendizado.licoes.modo`, `aprendizado.telas.modo`);
 o modo por app é o item 30.20.
 
-## Adendo v0.47 (02/10/2026) — Papel de IA `persona` (item 17.8)
+## Adendo v0.48 (02/10/2026) — Papel de IA `persona` (item 17.8)
 
 - `GET /api/ai`: `roles` ganha uma linha `role: "persona"` (a ordem é a de `AI_ROLES`: plan, decide, verify, escalation, social, persona) e `models.persona`. Sem `ai.roles.persona` a linha é idêntica à do `social`.
 - `GET /api/usage`: as chamadas de geração e enriquecimento de persona passam a vir com `role="persona"` (antes `social`); consumidores que filtravam por `social` para somar custo de persona devem somar os dois.
