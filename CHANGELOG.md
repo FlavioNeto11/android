@@ -66,6 +66,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
   Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
 
+## 2026-10-02 — Aprendizado: saúde, falhas, capability e fila Atenção por app no painel (30.15 restante, branch feat/30-15-painel-resto)
+
+- A aba Aplicativos ganha, só no painel (`frontend/src/features/aprendizado/`): a contagem por rótulo de saúde no cartão e no detalhe do
+  app ("1 degradando, 2 saudáveis"), a fila **Atenção** (degradando, provavelmente obsoleto e sem evidência, só leitura, com o motivo
+  principal em português e o link `?aba=aprendido&item=<tipo>:<ref>`), global abaixo dos cartões e por app no detalhe, e o bloco "O que
+  falha" no detalhe do app (as falhas do backlog filtradas por `app`, agrupadas por capability). A saúde é CONTADA da lista do Livro
+  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude`; as linhas de `/apps/{pacote}` passam a trazer a `saude`
+  da mesma função do Livro (`presentation/apps.py`, `LearningService.saudes`). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
+  (só existe em `conteudo.capability` do detalhe do item): o aprendido segue plano e a tela diz por quê; agrupa sozinho se a linha
+  passar a trazer `capability`. Prova `simulated` (`frontend/src/features/aprendizado/SaudeDoApp.test.tsx`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: detalhe rico do item do Livro no painel (30.16, branch feat/30-16-detalhe-rico)
 
 - O detalhe do item (Aprendido, "Detalhes, evidência e trilha") ganha as seções do §11.2 do desenho, só as aplicáveis: Identidade,

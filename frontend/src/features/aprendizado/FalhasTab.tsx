@@ -42,7 +42,7 @@ function Tendencia({ t }: { t: GrupoDeFalha['tendencia'] }) {
   );
 }
 
-function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number }) {
+export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number }) {
   const abrirExecucao = (runId: string) => {
     useUiStore.getState().selectRun(runId);
     useUiStore.getState().setView('execucoes');
