@@ -28,6 +28,7 @@ import {
   META_DA_OCORRENCIA, META_DO_PEDIDO, ROTULO_DA_AUTONOMIA, ROTULO_DA_ORIGEM, ROTULO_DA_SOBREPOSICAO, ROTULO_DO_ENCERRAMENTO,
   formatUsd, mensagemDoErro,
 } from './modelo';
+import { AvisoDoLacoDesligado } from './LacoDesligado';
 import { ProximasDatas } from './PreviaDoPedido';
 import { usePedidosStore } from './store';
 import styles from './Pedidos.module.css';
@@ -38,13 +39,18 @@ const ehAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readon
 const ID = 'pedido';
 
 const TITULO_MAX = 90;
+/** Quantas ocorrências o `GET /api/pedidos/{id}` traz em `ocorrencias_recentes` (o `LIMIT 20` de `servico.detalhe`). */
+const RECENTES_NO_DETALHE = 20;
 
 /**
- * O título do cabeçalho: `titulo` quando a pessoa deu um; sem ele o backend usa o começo do objetivo, que pode ser longo
- * e repetir o Resumo. Aqui vira UMA linha curta; o objetivo inteiro mora no Resumo (e no `title` do cabeçalho).
+ * O título do cabeçalho: `titulo` quando a pessoa deu um, inteiro (o backend limita a 120 e o cabeçalho quebra a linha:
+ * cortar escondia o fim do nome que ela escreveu). Sem ele, o começo do objetivo, que pode ser longo e repetir o Resumo:
+ * esse vira uma linha curta, e o objetivo inteiro mora no Resumo (e no `title` do cabeçalho).
  */
 function tituloDoPedido(p: Pick<PedidoDetalhe, 'titulo' | 'objetivo'>): string {
-  const t = (p.titulo?.trim() || p.objetivo).replace(/\s+/g, ' ');
+  const dado = p.titulo?.trim();
+  if (dado) return dado.replace(/\s+/g, ' ');
+  const t = p.objetivo.replace(/\s+/g, ' ');
   return t.length > TITULO_MAX ? `${t.slice(0, TITULO_MAX - 1).trimEnd()}…` : t;
 }
 
@@ -83,7 +89,8 @@ export function DetalheDoPedido({ id }: { id: string }) {
       <Page title="Pedido" actions={voltar}>
         {erro ? (
           erro.nao_existe
-            ? <EmptyState icon={ListChecks} title="Este pedido não existe">O link pode estar velho. Volte à lista.</EmptyState>
+            ? <EmptyState icon={ListChecks} title="Este pedido não existe" hint="O link pode estar velho."
+                        actions={<Button variant="primary" icon={ArrowLeft} onClick={() => navegar({ tela: 'pedidos' })}>Ver todos os pedidos</Button>} />
             : (
               <Banner tone="warning" icon={TriangleAlert} compact role="status"
                       actions={<Button size="sm" onClick={reler}>Tentar de novo</Button>}>
@@ -117,6 +124,7 @@ export function DetalheDoPedido({ id }: { id: string }) {
           )}
           actions={voltar}>
       <AcoesDoPedido pedido={pedido} onMudou={reler} exceto={pedido.estado === 'aguardando_pessoa' ? ['retomar'] : undefined} />
+      {pedido.laco?.ligado === false ? <AvisoDoLacoDesligado /> : null}
       {pedido.estado === 'aguardando_pessoa' ? <AvisoQueEsperaVoce p={pedido} onMudou={reler} /> : null}
       {pedido.estado === 'pausado' && pedido.pausado_motivo ? <p className={styles.nota}>Pausado: {pedido.pausado_motivo}</p> : null}
       <Tabs tabs={tabs} active={aba} onChange={(a) => trocarQuery({ aba: a === 'resumo' ? undefined : a })} idBase={ID} label="Pedido" />
@@ -204,7 +212,11 @@ function Resumo({ p }: { p: PedidoDetalhe }) {
             <div><dt>Próxima</dt>
               <dd>
                 {proxima ? <span title={proxima.iso}>{dataCurta(proxima.iso, p.fuso)}</span> : <span className={styles.dim}>sem data prevista</span>}
-                {proxima?.calculada ? <span className={styles.dim}> (calculada pela agenda; o laço ainda não a gerou)</span> : null}
+                {proxima?.calculada ? (
+                  <span className={styles.dim}>
+                    {p.laco?.ligado === false ? ' (prevista pela agenda; o laço está desligado)' : ' (calculada pela agenda; o laço ainda não a gerou)'}
+                  </span>
+                ) : null}
               </dd>
             </div>
             <div><dt>Prazo final</dt><dd>{p.fim_em ? dataCurta(p.fim_em, p.fuso) : 'sem prazo'}</dd></div>
@@ -297,6 +309,8 @@ function Ocorrencias({ p }: { p: PedidoDetalhe }) {
   const recentes = p.ocorrencias_recentes ?? [];
   const lista = [...recentes, ...extra.filter((e) => !recentes.some((r) => r.id === e.id))];
   const maisAntiga = lista[lista.length - 1]?.previsto_para;
+  // O detalhe traz até RECENTES_NO_DETALHE; com menos, não há mais antigas e o botão só sumiria depois de um clique vazio.
+  const semMais = fim || (extra.length === 0 && recentes.length < RECENTES_NO_DETALHE);
 
   const maisAntigas = async () => {
     if (!maisAntiga) return;
@@ -318,7 +332,7 @@ function Ocorrencias({ p }: { p: PedidoDetalhe }) {
     <>
       <ul className={styles.lista} aria-label="Ocorrências">{lista.map((o) => <LinhaDaOcorrencia key={o.id} o={o} agora={agora} />)}</ul>
       {erro ? <Banner tone="warning" icon={TriangleAlert} compact role="status">{erro}</Banner> : null}
-      {!fim ? <Button onClick={() => void maisAntigas()} loading={carregando}>Carregar mais antigas</Button> : null}
+      {!semMais ? <Button onClick={() => void maisAntigas()} loading={carregando}>Carregar mais antigas</Button> : null}
     </>
   );
 }

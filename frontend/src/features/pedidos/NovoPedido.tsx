@@ -12,7 +12,7 @@ import { uuid } from '../../lib/ids';
 import { useUiStore } from '../../store/ui';
 import { toast } from '../../store/toasts';
 import { apiPedidos } from './api';
-import { fusoDoNavegador } from './formato';
+import { dataCurtaDeCampo, fusoDoNavegador } from './formato';
 import {
   DIAS_DA_SEMANA, falaDoQuando, gatilhoDoQuando, quandoInicial, type EstadoDoQuando, type Frequencia, type ModoQuando,
 } from './gatilho';
@@ -38,6 +38,12 @@ interface Props {
   /** Uma frase com quem fará o pedido pelo Comando de agora ("android-01", "persona Ana", "a IA escolhe"). */
   quemFaz?: string;
   onFechar: () => void;
+}
+
+/** O seletor nativo de data e hora escreve no formato do navegador ("10/02/2026 08:00 PM"): aqui, a leitura em português. */
+export function LeituraDaData({ valor }: { valor: string }) {
+  if (!valor) return null;
+  return <p className={styles.leituraDaData} aria-live="polite">Fica assim: {dataCurtaDeCampo(valor)}</p>;
 }
 
 /** Uma seção do formulário: título curto e os campos dela, sem moldura própria (o cartão já é a moldura). */
@@ -191,8 +197,11 @@ export function NovoPedido({ comando, resolverAlvos, impede, quemFaz, onFechar }
               <Field label={agendado ? 'Começa em' : 'Quando'}
                      hint={fusoEfetivo === relogio ? 'Hora do seu relógio.' : `Hora local, no fuso do pedido (${fusoEfetivo}).`}>
                 {({ id, describedBy }) => (
-                  <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={quando.inicio}
-                             onChange={(e) => { mudou(); setQuando({ ...quando, inicio: e.target.value }); }} />
+                  <>
+                    <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={quando.inicio}
+                               onChange={(e) => { mudou(); setQuando({ ...quando, inicio: e.target.value }); }} />
+                    <LeituraDaData valor={quando.inicio} />
+                  </>
                 )}
               </Field>
               {agendado ? (
@@ -223,8 +232,13 @@ export function NovoPedido({ comando, resolverAlvos, impede, quemFaz, onFechar }
           ) : null}
           {quando.modo !== 'agora' ? (
             <Field label="Prazo final" unit="opcional" hint="Depois dele o pedido se encerra sozinho. Hora do navegador.">
-              {({ id, describedBy }) => <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={fim}
-                                                   onChange={(e) => { mudou(); setFim(e.target.value); }} />}
+              {({ id, describedBy }) => (
+                <>
+                  <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={fim}
+                             onChange={(e) => { mudou(); setFim(e.target.value); }} />
+                  <LeituraDaData valor={fim} />
+                </>
+              )}
             </Field>
           ) : null}
         </Secao>

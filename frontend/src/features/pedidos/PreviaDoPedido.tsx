@@ -1,10 +1,14 @@
-import { CalendarClock, CircleAlert, Coins, ShieldCheck, TriangleAlert, Users } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { CalendarClock, CircleAlert, Coins, Info, ShieldCheck, TriangleAlert, Users } from 'lucide-react';
+import { useId, useState, type ReactNode } from 'react';
 import type { PedidoPrevia, ProximaData } from '../../api/pedidos';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
-import { dataCurta, fusoParaMostrar } from './formato';
-import { duracaoCurta, formatUsd, ROTULO_DA_AUTONOMIA } from './modelo';
+import { Button } from '../../components/Button';
+import { cx } from '../../lib/format';
+import { useAppStore } from '../../store/app';
+import { usePersonas } from '../profiles/usePersonas';
+import { comNomesDePersonas, dataCurta, fusoParaMostrar, rotuloDoAlvo } from './formato';
+import { AVISO_DA_AUTONOMIA, duracaoCurta, formatUsd, ROTULO_DA_AUTONOMIA } from './modelo';
 import styles from './Pedidos.module.css';
 
 /**
@@ -39,6 +43,31 @@ function Bloco({ icone: Icone, titulo, children }: { icone: typeof Users; titulo
   );
 }
 
+/** Acima disto (linhas escritas) ou deste tamanho, o objetivo da prévia abre recolhido: o que importa são os cartões. */
+const LINHAS_DO_OBJETIVO = 4;
+const CARACTERES_DO_OBJETIVO = 280;
+
+/**
+ * O objetivo como foi escrito (com as quebras de linha: "Objetivo / Passos / Concluído quando…"), depois dos cartões e
+ * recolhido em poucas linhas quando é longo, com "Ver o objetivo inteiro". Sem medir a tela: o texto é que diz se é longo.
+ */
+export function ObjetivoDaPrevia({ texto }: { texto: string }) {
+  const [aberto, setAberto] = useState(false);
+  const id = useId();
+  const longo = texto.split('\n').filter((l) => l.trim() !== '').length > LINHAS_DO_OBJETIVO || texto.length > CARACTERES_DO_OBJETIVO;
+  return (
+    <div className={styles.previaObjetivo}>
+      <h4 className={styles.dim}>Objetivo</h4>
+      <p id={id} className={cx(styles.nota, styles.objetivoTexto, longo && !aberto && styles.objetivoRecolhido)}>{texto}</p>
+      {longo ? (
+        <Button size="sm" variant="ghost" aria-expanded={aberto} aria-controls={id} onClick={() => setAberto((a) => !a)}>
+          {aberto ? 'Recolher o objetivo' : 'Ver o objetivo inteiro'}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * A prévia do pedido (`POST /api/pedidos/previa`): o que a criação decidiria, sem efeito e sem custo, em blocos: quando,
  * quem faz e onde, as próximas datas, autonomia (com o que fica recusado) e custo. O custo nunca é inventado: sem
@@ -46,13 +75,18 @@ function Bloco({ icone: Icone, titulo, children }: { icone: typeof Users; titulo
  */
 export function PreviaDoPedido({ previa, resumoQuando, fuso }: { previa: PedidoPrevia; resumoQuando?: string; fuso?: string }) {
   const { custo, autonomia, alvos } = previa;
+  // Quem faz e onde pelo NOME (persona e app), como o Comando mostra; o id interno só quando a lista não o conhece.
+  const pessoas = usePersonas();
+  const apps = useAppStore((s) => s.apps);
+  const idsDePersonas = [...new Set(alvos.targets.flatMap((t) => (t.profile_id ? [t.profile_id] : [])))];
+  const avisoDaAutonomia = AVISO_DA_AUTONOMIA[autonomia.teto];
   return (
     <section className={styles.previa} aria-label="Prévia do pedido">
       <div className={styles.topo}>
         <h3 className={styles.previaCabeca}>Prévia</h3>
         <Badge size="sm" tone={previa.valido ? 'success' : 'danger'}>{previa.valido ? 'Pronta para criar' : 'Com bloqueios'}</Badge>
       </div>
-      <p className={styles.nota}>{previa.objetivo_sem_destinos}</p>
+      {avisoDaAutonomia ? <Banner tone="info" icon={Info} compact>{avisoDaAutonomia}</Banner> : null}
 
       {previa.bloqueios.length > 0 ? (
         <Banner tone="danger" icon={TriangleAlert} compact title="Não dá para criar assim">
@@ -83,17 +117,17 @@ export function PreviaDoPedido({ previa, resumoQuando, fuso }: { previa: PedidoP
             <ul aria-label="Alvos" className={styles.listaSimples}>
               {alvos.targets.map((t, i) => (
                 <li key={`${t.instance_id}-${t.profile_id ?? ''}-${i}`}>
-                  {t.instance_id}{t.profile_id ? ` · persona ${t.profile_id}` : ''}{t.app_id ? ` · ${t.app_id}` : ''}
+                  {rotuloDoAlvo(t, pessoas, apps)}
                 </li>
               ))}
             </ul>
           )}
           {alvos.questions.length > 0 ? (
             <ul aria-label="Perguntas sobre os alvos" className={`${styles.listaSimples} ${styles.bloqueio}`}>
-              {alvos.questions.map((q, i) => <li key={`${q.code}-${i}`}>{q.question}</li>)}
+              {alvos.questions.map((q, i) => <li key={`${q.code}-${i}`}>{comNomesDePersonas(q.question, idsDePersonas, pessoas)}</li>)}
             </ul>
           ) : null}
-          {alvos.warnings.map((w) => <p key={w} className={styles.nota}>{w}</p>)}
+          {alvos.warnings.map((w) => <p key={w} className={styles.nota}>{comNomesDePersonas(w, idsDePersonas, pessoas)}</p>)}
         </Bloco>
 
         <Bloco icone={ShieldCheck} titulo={`Autonomia: ${ROTULO_DA_AUTONOMIA[autonomia.teto]?.rotulo ?? autonomia.teto}`}>
@@ -111,6 +145,8 @@ export function PreviaDoPedido({ previa, resumoQuando, fuso }: { previa: PedidoP
           </p>
         </Bloco>
       </div>
+
+      <ObjetivoDaPrevia texto={previa.objetivo_sem_destinos} />
     </section>
   );
 }

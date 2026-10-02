@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { agendaLegivel, dataCompacta, dataCurta, fusoDoNavegador, fusoParaMostrar, horaEscrita } from './formato';
+import { makePersona } from '../../test/fixtures';
+import { agendaLegivel, comNomesDePersonas, dataCompacta, dataCurta, fusoDoNavegador, fusoParaMostrar, horaEscrita, nomeDaPersonaNoPedido, rotuloDoAlvo } from './formato';
 import { formatUsd } from './modelo';
 
 describe('formato da tela Pedidos', () => {
@@ -47,5 +48,29 @@ describe('formato da tela Pedidos', () => {
     expect(formatUsd(0)).toBe('US$ 0,00');
     expect(formatUsd(1.5)).toBe('US$ 1,50');
     expect(formatUsd(null)).toBe('—');
+  });
+});
+
+describe('o alvo da prévia pelo nome (I2)', () => {
+  const pessoas = [makePersona('ig-z7SD', 'Bruno Ferreira', { username: 'bruno' }), makePersona('ig-2', 'Ana Lima')];
+  const apps = [{ id: 'outlook', name: 'Outlook' }];
+
+  it('persona com @ vira "Nome (@conta)"; sem @ fica só o nome; desconhecida (ou lista ainda não lida) cai no id', () => {
+    expect(nomeDaPersonaNoPedido('ig-z7SD', pessoas)).toBe('Bruno Ferreira (@bruno)');
+    expect(nomeDaPersonaNoPedido('ig-2', pessoas)).toBe('Ana Lima');
+    expect(nomeDaPersonaNoPedido('ig-x', pessoas)).toBe('ig-x');
+    expect(nomeDaPersonaNoPedido('ig-z7SD', null)).toBe('ig-z7SD');
+  });
+
+  it('rotuloDoAlvo: aparelho, persona e app pelo nome; sem persona ou app, só o que existe', () => {
+    expect(rotuloDoAlvo({ instance_id: 'android-03', profile_id: 'ig-z7SD', app_id: 'outlook' }, pessoas, apps))
+      .toBe('android-03 · Bruno Ferreira (@bruno) · Outlook');
+    expect(rotuloDoAlvo({ instance_id: 'android-03', profile_id: null, app_id: null }, pessoas, apps)).toBe('android-03');
+    expect(rotuloDoAlvo({ instance_id: 'android-03', profile_id: null, app_id: 'x', app_ids: ['outlook', 'x'] }, pessoas, apps))
+      .toBe('android-03 · Outlook, x');
+  });
+
+  it('comNomesDePersonas troca o id citado num aviso do backend pelo nome', () => {
+    expect(comNomesDePersonas('mais de um aparelho (ig-2)', ['ig-2'], pessoas)).toBe('mais de um aparelho (Ana Lima)');
   });
 });

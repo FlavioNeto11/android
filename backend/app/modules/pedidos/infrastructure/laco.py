@@ -30,7 +30,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.config import PedidosCfg
 from app.db import Database, Row, loads
@@ -79,6 +79,11 @@ class Resumo:
     pausados: int = 0
     erros: int = 0
     lider: bool = True
+
+
+def _instante_legivel(instante: datetime) -> str:
+    """O instante como a pessoa lê no motivo de uma ocorrência (`02/10 22:17 UTC`); o valor gravado segue ISO."""
+    return f"{instante.astimezone(timezone.utc):%d/%m %H:%M} UTC"
 
 
 class LacoDePedidos:
@@ -296,7 +301,8 @@ class LacoDePedidos:
         somado; o despacho a pega depois de `em` e usa `chave:t<n+1>`. Não grava observação: a da última tentativa é a
         que vale (a chave `(ocorrência, alvo, nome)` é única e a da tentativa anterior a tomaria)."""
         quando = to_iso(em)
-        motivo = f"tentativa {o['tentativa']} falhou ({motivo_da_falha}); nova tentativa depois de {quando}"[:500]
+        # `terminada_em` (a coluna) continua ISO; só o TEXTO do motivo, que a pessoa lê, ganha o instante legível em UTC.
+        motivo = f"tentativa {o['tentativa']} falhou ({motivo_da_falha}); nova tentativa a partir de {_instante_legivel(em)}"[:500]
         transicionar_ocorrencia(o["estado"], "falhou", motivo=motivo)
         transicionar_ocorrencia("falhou", "devida")
         with self.lideranca.cercada(PEDIDOS, token):

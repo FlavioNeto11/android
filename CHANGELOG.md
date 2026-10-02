@@ -77,6 +77,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - **Navegador, simulado** (backend 8766 com cópia nova do banco do central, 02/10 ~22:20Z): Global com Atenção em 3 blocos (593 px; antes, ~6.700 px) e filtro por app (7 de 11); link antigo sem aba abrindo a receita 73; Para aprovar com o diferencial de 108 × 106; Rejeitar (106); aprovar em lote (108); desligar em lote no Revisar (22); filtros do Aprendido (fluxo + Instagram = 12); janela das falhas (16 → 8 grupos); bloco "Para quem desenvolve" com o Copiar; "Ver no catálogo Aprendido"; estado de erro com o backend parado e "Tentar de novo" recuperando; celular 375 px com a aba Sinais visível e sem rolagem horizontal.
   - **Não exercitado:** o balde "não resolvido", que não existe nos dados; está coberto pelo vitest.
 
+## 2026-10-02 — Pedidos: data prevista na lista e sinal do laço desligado (28.12, ajustes de API; branch feat/28-12-sinais-da-lista)
+
+- Achados da validação do deploy 2 na tela Pedidos (só painel, mais o texto do motivo de nova tentativa): erro na primeira carga mostra só o aviso (sem "0 pedidos" nem estado vazio); a prévia mostra persona e app pelo nome, avisa o que Observar/Preparar significam e põe o objetivo (com as quebras) depois dos cartões, recolhido; cabeçalho de cartão sem espremer o texto abaixo de 720 px; leitura em português dos seletores de data; barra de filtros some sem pedidos; botão no link velho; título longo do detalhe quebra; Pendências sem frase repetida; avisos e personas pedidos juntos viram uma leitura só; o motivo "nova tentativa a partir de 02/10 22:17 UTC" (a coluna `terminada_em` segue ISO). Na validação no navegador (02/10, backend simulado, 1366/600/386/375 px): o título que a pessoa deu aparece inteiro no detalhe (o corte em 90 só vale para o derivado do objetivo), o objetivo do Resumo mantém as quebras, o X do cabeçalho de cartão volta ao canto em 375–386 px (base do texto 12rem) e "Carregar mais antigas" só aparece quando o detalhe veio cheio (20). Prova `simulated` (vitest 1273, pytest de pedidos 458); navegador percorrido (lista, filtros, Avisos, erro e nova tentativa, novo pedido, datas, prévia nas três autonomias, detalhe e abas, link velho, Pendências).
+- `PedidoView.proxima_prevista`: sem `proxima_em` (laço desligado ou ainda sem gerar) e com agenda, a lista traz a 1ª data
+  CALCULADA pelos gatilhos; a linha mostra "prevista … (pela agenda)" em vez de "próxima data ainda não calculada".
+- `laco: {ligado}` na lista e no detalhe (`pedidos.enabled` desta instalação). Desligado, a tela mostra o aviso
+  "O laço de pedidos está desligado nesta instalação" no topo e o detalhe diz "prevista pela agenda; o laço está desligado".
+- Validado no navegador contra o backend simulado isolado (8765/5188), em 1366 e 375 px, com o laço desligado e ligado
+  (ligado: o laço grava `proxima_em`, a prevista some e o aviso também). Testes: `test_pedidos_api.py` (novo caso),
+  `PedidosPage.test.tsx` (2 novos); pedidos 467 e frontend 1245 verdes. Real: `not_run` (a prova real do 28.12 segue).
+
 ## 2026-10-02 — Origem das chamadas de IA e rubrica única de gasto (31.2 e 31.6, branch feat/31-2-origem-rubrica)
 
 - Migração 073 (`ai_calls.origem`, `ai_calls.ref`, índice `(origem, ts)`); as 071 e 072 estão em outros branches e entram antes, e a lacuna de número é tolerada pelo executor.

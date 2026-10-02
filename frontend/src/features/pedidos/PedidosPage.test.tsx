@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -8,7 +10,8 @@ import { useUiStore } from '../../store/ui';
 import { makeAviso, makeOcorrencia, makePedido, makePedidoDetalhe } from '../../test/fixtures';
 import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { PedidosPage } from './PedidosPage';
-import { usePedidosStore } from './store';
+import { apiPedidos } from './api';
+import { LIMITE_DA_CAIXA, usePedidosStore } from './store';
 
 /**
  * Item 28.9: a tela Pedidos (lista, detalhe, ações, caixa de avisos e navegação por hash) contra o backend simulado.
@@ -59,6 +62,27 @@ const modal = () => document.querySelector('dialog') as HTMLElement;
 const toasts = () => useToastStore.getState().toasts.map((t) => `${t.title} ${t.message ?? ''}`).join(' | ');
 
 describe('lista', () => {
+  it('28.12: sem a data do laço mostra a PREVISTA pela agenda, e o laço desligado vira aviso no topo', async () => {
+    const semData = makePedido({ id: 'ped_c3', titulo: 'Preço do café', proxima_em: null, proxima_local: null,
+                                 proxima_prevista: { gatilho: 0, nominal: '2026-10-04T08:00:00', local: '2026-10-04T08:00:00-03:00',
+                                                     utc: '2026-10-04T11:00:00+00:00', desviado: false, repetido: false } });
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ ...LISTA, items: [semData], laco: { ligado: false } }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Preço do café'));
+    expect(text(container)).toContain('O laço de pedidos está desligado nesta instalação');
+    const [linha] = container.querySelectorAll('ul[aria-label="Pedidos"] > li');
+    expect(text(linha as HTMLElement)).toContain('prevista');
+    expect(text(linha as HTMLElement)).toContain('dom 04/10 08:00');
+    expect(text(linha as HTMLElement)).toContain('(pela agenda)');
+  });
+
+  it('28.12: laço ligado não mostra aviso', async () => {
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ ...LISTA, laco: { ligado: true } }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    expect(text(container)).not.toContain('laço de pedidos está desligado');
+  });
+
   it('mostra uma linha por pedido com estado, gatilho, persona, próxima data e avisos novos; os chips contam todos', async () => {
     await montar();
     await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
@@ -132,6 +156,22 @@ describe('detalhe e navegação por hash', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/pedidos'));
   });
 
+  it('"Carregar mais antigas" só aparece quando o detalhe veio cheio (20); com menos, não há mais antigas', async () => {
+    const ocorrencias = (n: number) => Array.from({ length: n }, (_, i) => makeOcorrencia({
+      id: `oc_${i}`, estado: 'concluida', run_id: null, run: null,
+      previsto_para: new Date(Date.UTC(2026, 8, 30 - i, 12)).toISOString() }));
+    let n = 1;
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, { ocorrencias_recentes: ocorrencias(n) })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'], query: { aba: 'ocorrencias' } });
+    await montar();
+    await waitFor(() => expect(container.querySelector('ul[aria-label="Ocorrências"]')).not.toBeNull());
+    expect(text(container)).not.toContain('Carregar mais antigas');
+    await act(async () => { root.render(<></>); });
+    n = 20;
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Carregar mais antigas'));
+  });
+
   it('memória, relatórios e observações: null diz "ainda não disponível", [] diz "vazio"', async () => {
     backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, { memoria: null, relatorios_recentes: [], observacoes_recentes: null })));
     await irPara({ tela: 'pedidos', segmentos: ['ped_a1'], query: { aba: 'memoria' } });
@@ -144,7 +184,7 @@ describe('detalhe e navegação por hash', () => {
   it('cabeçalho curto e Resumo em cartões: Agenda com a hora, aparelhos do alvo e próxima calculada', async () => {
     const objetivo = 'Resuma o feed do Instagram e me conte as novidades mais importantes dos perfis que sigo, com tudo detalhado e organizado por assunto';
     backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
-      titulo: objetivo, objetivo, personas: [], proxima_em: null, proxima_local: null,
+      titulo: '', objetivo, personas: [], proxima_em: null, proxima_local: null,
       alvos: { targets: [{ instance_id: 'android-01', profile_id: 'p1', app_id: null, origem: 'ui' }], device_policy: 'one' },
       gatilhos_resumo: [{ tipo: 'recorrencia', descricao: 'Todo dia (America/Sao_Paulo)' }],
       gatilhos: [{ id: 'g1', tipo: 'recorrencia', ativo: true, criado_em: '2026-10-01T10:00:00Z', cursor: null, spec: { dtstart: '2026-10-02T19:00:00', rrule: 'FREQ=DAILY' } }],
@@ -162,6 +202,15 @@ describe('detalhe e navegação por hash', () => {
     expect(text(container.querySelector('section[aria-label="Quem faz"]') as HTMLElement)).toContain('android-01');
     expect(text(container.querySelector('section[aria-label="Objetivo"]') as HTMLElement)).toContain(objetivo);
     for (const nome of ['Custos e limites', 'Comportamento', 'Autoria']) expect(container.querySelector(`section[aria-label="${nome}"]`)).not.toBeNull();
+  });
+
+  it('o título que a pessoa deu aparece inteiro no cabeçalho, mesmo acima de 90 caracteres (o backend limita a 120)', async () => {
+    const titulo = 'Conferência diária das conversas não lidas no QA Messenger com resumo e lista de remetentes urgentes';
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, { titulo })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(container.querySelector('section[aria-label="Agenda"]')).not.toBeNull());
+    expect(text(container.querySelector('h1') as HTMLElement)).toBe(titulo);
   });
 
   it('aguardando você: aviso acima das guias com o motivo da ocorrência incerta, o link e o Retomar ali perto', async () => {
@@ -355,5 +404,97 @@ describe('caixa de avisos', () => {
     backend.on('GET', /^\/api\/pedidos\/avisos$/, () => json({ items: [makeAviso()], nao_lidos: 7, proximo_cursor: null }));
     await act(async () => { await usePedidosStore.getState().atualizar(); });
     expect(usePedidosStore.getState().naoLidos).toBe(7);
+  });
+});
+
+describe('achados da validação do deploy 2 (lista, avisos, link velho)', () => {
+  const barra = () => container.querySelector('[role="search"]');
+
+  it('I1: erro na primeira carga mostra só o aviso com "Tentar de novo": nem "0 pedidos", nem o estado vazio, nem os filtros', async () => {
+    backend.on('GET', /^\/api\/pedidos$/, () => apiError(500, 'erro_interno', 'Falha no servidor'));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Não foi possível ler os pedidos agora'));
+    expect(text(container)).not.toContain('0 pedidos');
+    expect(text(container)).not.toContain('Nenhum pedido');
+    expect(barra()).toBeNull();
+    // "Tentar de novo" lê outra vez; chegando a lista, o aviso sai.
+    backend.on('GET', /^\/api\/pedidos$/, () => json(LISTA));
+    await click(byRole('button', 'Tentar de novo'));
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    expect(text(container)).not.toContain('Não foi possível ler os pedidos agora');
+  });
+
+  it('I1: erro depois de já ter lista mantém a lista na tela, com o aviso', async () => {
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    backend.on('GET', /^\/api\/pedidos$/, () => apiError(500, 'erro_interno', 'Falha no servidor'));
+    await act(async () => usePedidosStore.getState().bater());
+    await waitFor(() => expect(text(container)).toContain('Não foi possível ler os pedidos agora'));
+    expect(text(container)).toContain('Resumo diário do feed');
+    expect(text(container)).toContain('2 pedidos');
+  });
+
+  it('I1: a caixa de avisos com erro e sem dado não diz "Nenhum aviso"', async () => {
+    backend.on('GET', /^\/api\/pedidos\/avisos$/, () => apiError(500, 'erro_interno', 'Falha no servidor'));
+    await irPara({ tela: 'pedidos', query: { aba: 'avisos' } });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Não foi possível ler os avisos agora'));
+    expect(text(container)).not.toContain('Nenhum aviso');
+    expect(byRole('button', /Marcar todos como lidos/).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('polimento (a): sem nenhum pedido e sem filtro, a barra de filtros some e fica só o estado vazio', async () => {
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ items: [], proximo_cursor: null, total_por_estado: {} }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nenhum pedido ainda'));
+    expect(barra()).toBeNull();
+  });
+
+  it('polimento (a): com filtro ativo a barra fica (para limpar), mesmo sem resultado', async () => {
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ items: [], proximo_cursor: null, total_por_estado: {} }));
+    await irPara({ tela: 'pedidos', query: { estado: 'pausado' } });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nenhum pedido neste filtro'));
+    expect(barra()).not.toBeNull();
+  });
+
+  it('polimento (a): com pedidos a barra aparece', async () => {
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    expect(barra()).not.toBeNull();
+  });
+
+  it('polimento (c): no link velho o estado vazio tem um botão que leva à lista', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_zzz$/, () => apiError(404, 'not_found', 'Pedido não encontrado'));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_zzz'] });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Este pedido não existe'));
+    expect(text(container)).not.toContain('Volte à lista');
+    await click(byRole('button', 'Ver todos os pedidos'));
+    expect(window.location.hash).toBe('#/pedidos');
+  });
+
+  it('polimento (e): a mesma leitura de avisos pedida junto (menu e caixa) vira uma chamada só', async () => {
+    await irPara({ tela: 'pedidos', query: { aba: 'avisos' } });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Marcar todos como lidos'));
+    const antes = backend.callsTo('GET', /^\/api\/pedidos\/avisos$/).length;
+    await act(async () => { await Promise.all([usePedidosStore.getState().atualizar(), apiPedidos.avisos({ lido: 0, requer_pessoa: 0, limit: LIMITE_DA_CAIXA })]); });
+    expect(backend.callsTo('GET', /^\/api\/pedidos\/avisos$/).length - antes).toBe(1);
+  });
+
+  it('o título longo do detalhe quebra a linha (a classe não corta com reticências) e a prévia não perde as quebras', async () => {
+    const css = readFileSync(resolve(__dirname, 'Pedidos.module.css'), 'utf8');
+    const regra = (nome: string) => css.match(new RegExp(`\\.${nome}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    expect(regra('tituloLinha')).toContain('overflow-wrap: anywhere');
+    expect(regra('tituloLinha')).not.toContain('nowrap');
+    expect(regra('tituloLinha')).not.toContain('ellipsis');
+    expect(regra('objetivoTexto')).toContain('white-space: pre-line');
+    expect(regra('objetivoCompleto')).toContain('white-space: pre-line');
+    // I4: o texto do cabeçalho de cartão tem prioridade em tela estreita; a ação vai para o canto.
+    const ui = readFileSync(resolve(__dirname, '../../components/ui.module.css'), 'utf8');
+    const estreito = ui.slice(ui.indexOf('@media (max-width: 720px)'));
+    expect(estreito).toMatch(/\.cardHeaderText\s*\{[^}]*flex:\s*1 1 min\(100%/);
+    expect(estreito).toMatch(/\.cardActions\s*\{[^}]*margin-left:\s*auto/);
   });
 });
