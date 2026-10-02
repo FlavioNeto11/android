@@ -309,5 +309,5 @@ def test_acao_declara_o_que_pode_entregar_e_a_descricao_ao_planejador_diz(tmp_pa
     """24.3 (ADR-065): `saidas` é dado do catálogo; o planejador as vê na linha da ação (e só nela)."""
     catalogo = carregar_catalogo(_arquivo(tmp_path, _doc(_acao(key="LER", saidas=["remetente", "assunto"]), _acao())))
     assert catalogo.get("LER").saidas == ("remetente", "assunto") and catalogo.get("ABRIR").saidas == ()
-    assert "[pode entregar em `saidas`: remetente, assunto]" in catalogo.get("LER").describe()
+    assert "[entrega em `saidas`: remetente, assunto]" in catalogo.get("LER").describe()
     assert "entregar" not in catalogo.get("ABRIR").describe()

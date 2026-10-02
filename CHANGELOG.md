@@ -35,6 +35,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
   Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
 
+## 2026-10-02 — 12.4: etapa que declara saídas só é comprovada com elas (branch fix/12-4-saidas-obrigatorias)
+
+- `backend/app/taskqueue/executor.py`: `saidas_exigidas` (o que o planejador escolheu em `steps.saidas` ou, sem escolha, o que a
+  ação declara em `Capability.saidas`) passa a valer em `run_step` e `_run_step`, no lugar de só `steps.saidas`. Achado real:
+  r-20261002204347-8c3f6e, Outlook no android-01, `OPEN_MAIL_INBOX` com a caixa aberta, "1 de 1 com sucesso comprovado" e nenhum
+  remetente nem assunto: o plano não escolheu saída, então nada foi exigido e a verificação comprovou a tela. Agora a etapa lê
+  (`read_value`) ou falha com o nome que faltou; com efeito disparado seria `uncertain`. Coleta sem item continua falha, salvo
+  vazio comprovado pela tela (`_prova_de_vazio`, julgamento "a lista está vazia" explícito), marcado em `StepResult.vazio_comprovado`.
+  Mensagem de `step_done` sem leitura passa a citar os nomes. Núcleo tocado: `taskqueue/executor.py` e `models.py` (um campo em
+  `StepResult`); não toca `scheduler.py`, `state.py`, eventos, config, api, `planning/` nem pedidos.
+- Prova `simulated`: `tests/test_saidas_obrigatorias.py` (9 casos: caso real reconstruído, saída faltando, saídas lidas, subconjunto
+  do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
+- Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:

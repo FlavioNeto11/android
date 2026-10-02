@@ -1844,3 +1844,22 @@ do 30.6 nunca casava. Os testes usavam versões sintéticas sem código (`"447"`
 
 **Aplicabilidade.** Toda comparação de versão de app entre fontes do projeto. Antes de comparar, meça o formato real das
 duas colunas; dado sintético sem o formato real esconde o erro. Aceite visual com cópia do banco pega o que o teste não pega.
+
+### K-075 — Verificação que comprova a tela não comprova a extração
+
+**Data:** 02/10/2026 · **Área:** execução (`taskqueue/executor.py`), item 12.4
+
+**Sintoma.** r-20261002204347-8c3f6e (Outlook, android-01): a etapa `OPEN_MAIL_INBOX`, cuja ação declara `saidas: [remetente, assunto]`,
+ficou `succeeded` ("1 de 1 com sucesso comprovado") com a caixa de entrada aberta e nenhum remetente nem assunto no resultado.
+
+**Causa.** O executor só exigia leitura do que o PLANEJADOR escolhera em `steps.saidas` (24.3: a ação "pode entregar", o plano
+escolhe). Plano sem nenhuma citação `{{saida:…}}` → `saidas=[]` → `step_done` aceito → o verificador julgou a pós-condição ("inbox
+aberta"), que é sobre a TELA. Nenhuma guarda dizia que a ação existia para entregar valor.
+
+**O que funcionou.** Uma fonte só para "o que esta etapa tem de entregar" (`saidas_exigidas`: escolha do plano, ou o que a ação
+declara) usada nos dois pontos que decidem (receita desligada e laço do ator). Para a lista, vazio só com prova explícita do vazio
+(pergunta própria ao julgamento) e marca no resultado.
+
+**Aplicabilidade.** Quando uma etapa existe para extrair algo, a pós-condição de tela é necessária e insuficiente: o critério de
+sucesso tem de conferir o ARTEFATO (valor, itens). Ao declarar um contrato novo no catálogo, pergunte quem o cobra quando o
+consumidor (a etapa seguinte) não existe.
