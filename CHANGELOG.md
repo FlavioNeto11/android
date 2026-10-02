@@ -53,6 +53,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
 
+## 2026-10-02 — Aprendizado: conteúdo legível no detalhe do Livro (30.3, branch feat/30-3-conteudo-legivel)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `conteudo`: o que a receita, o fluxo, a habilidade, a lição e a tela FAZEM, montado só
+  do que já está no banco (sem migração, sem coluna nova; `api-contract.md`, adendo v0.50). Receita: identidade, ações (ferramenta, alvo por
+  seletor, `commit`, NOMES dos parâmetros), efeito e qual ação o faz, capability derivada (origem, ou mesmo `step_hash` no app; `ambigua`),
+  origem (`execucao`/`treino`/`desconhecida`), uso, sombra e versões vizinhas. Nunca sai valor de parâmetro nem texto digitado; `type_secret`
+  e parâmetro sigiloso saem só como `segredo`.
+- `domain/conteudo.py` (puro), `FontesSql.conteudo` (leituras de `steps` e das versões vizinhas) e `DetalheDoLivro.conteudo`.
+- Prova `simulated`: `tests/test_learning_conteudo.py`. `not_run` no central.
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
