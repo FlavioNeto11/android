@@ -72,6 +72,16 @@ class SqlLearningRepository:
             params.append(state.value)
         return [_item(r) for r in self._db.query(sql + " ORDER BY created_at, id", tuple(params))]
 
+    def capabilities_dos_itens(self, item_ids: Sequence[str]) -> dict[str, str]:
+        ids = sorted(set(item_ids))
+        saida: dict[str, str] = {}
+        for lote in linhas.lotes(ids):
+            for r in self._db.query(
+                    f"SELECT id, scope_capability FROM learning_items WHERE id IN ({linhas.marcas(len(lote))})",
+                    tuple(lote)):
+                saida[linhas.texto(r, "id")] = linhas.texto(r, "scope_capability")
+        return saida
+
     def item_vivo(self, novo: NovoItem) -> ItemDeAprendizado | None:
         e = novo.escopo
         row = self._db.one(

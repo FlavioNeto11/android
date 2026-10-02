@@ -1,6 +1,7 @@
-import { CheckCheck, ChevronRight, Hand, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, Wand2, X } from 'lucide-react';
+import { CalendarClock, CheckCheck, ChevronRight, Hand, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, Wand2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { api, toApiError, type ApiError } from '../../api/client';
+import { ApiError, api, toApiError } from '../../api/client';
+import type { PedidoCorpo } from '../../api/pedidos';
 import type {
   CreateRunRequest, DevicePolicy, FlowCoverage, PreflightRefusal, ResolvedTarget, ResolveTargetsRequest,
   ResolveTargetsResponse, RunMode, RunTargetsSuggestion, TargetQuestion,
@@ -17,6 +18,7 @@ import { isString, isStringArray, loadJson, saveJson } from '../../lib/storage';
 import { aiAvailable, selectTaskOrder, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
+import { NovoPedido } from '../pedidos/NovoPedido';
 import { handleDe, idsDosAparelhos, nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { AssistenteDoComando } from './AssistenteDoComando';
@@ -137,6 +139,8 @@ export function CommandPanel() {
   const clearSelection = useUiStore((s) => s.clearSelection);
   const selectRun = useUiStore((s) => s.selectRun);
   const draftRequest = useUiStore((s) => s.commandDraftRequest);
+  const novoPedidoRequest = useUiStore((s) => s.novoPedidoRequest);
+  const novoPedidoAtendido = useUiStore((s) => s.novoPedidoAtendido);
   const apps = useAppStore((s) => s.apps);
 
   // Alvo do comando: os aparelhos marcados na grade, as personas (ADR-044: o sistema escolhe o aparelho delas, com
@@ -194,6 +198,8 @@ export function CommandPanel() {
   const [sugestao, setSugestao] = useState<Sugestao | null>(null);
   // ADR-047: o assistente aberto (a chave remonta a conversa a cada "Refinar com IA").
   const [assistente, setAssistente] = useState<number | null>(null);
+  // Item 28.9: "Repetir ou acompanhar…" abre a criação de um pedido persistente (prévia obrigatória, sem custo).
+  const [pedidoAberto, setPedidoAberto] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fieldId = useId();
 
@@ -225,6 +231,15 @@ export function CommandPanel() {
     textRef.current?.focus();
     scrollToElement(textRef.current, 'center');
   }, [draftRequest]);
+
+  // "Novo pedido" da tela Pedidos: abre o painel "Repetir ou acompanhar" e leva o foco ao texto do comando.
+  useEffect(() => {
+    if (novoPedidoRequest === null) return;
+    setPedidoAberto(true);
+    novoPedidoAtendido();
+    textRef.current?.focus();
+    scrollToElement(textRef.current, 'center');
+  }, [novoPedidoRequest, novoPedidoAtendido]);
 
   const trimmed = command.trim();
   const total = order.length;
@@ -432,6 +447,37 @@ export function CommandPanel() {
     : null;
   const contextoDoAssistente = porPersona ? { profile_ids: selecionadas }
     : distribuir ? {} : { instance_ids: [...selectedIds] };
+
+  // O pedido persistente não gasta IA para ver a prévia (só o Automático pergunta à sugestão, como o Executar já faz).
+  const pedidoImpede: string | null =
+    !hydrated ? 'Aguardando a conexão com o servidor.'
+    : trimmed.length < 3 ? 'Escreva o comando (ao menos 3 letras).'
+    : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
+    : distribuir ? 'O pedido persistente não distribui por contas (o backend recusa `alvos.distribute`): escolha as personas ou os aparelhos.'
+    : alvoInvalido;
+  /** Em uma frase, quem fará o pedido do jeito que o Comando está agora (a prévia mostra o resultado de verdade). */
+  const quemFazDoPedido: string = distribuir ? 'distribuir por contas (não vale em pedido)'
+    : porPersona ? (selecionadas.length > 0 ? `persona ${selecionadas.map((id) => nomeDaPersona(id).nome).join(', ')}` : 'nenhuma persona escolhida')
+    : automatico ? 'a IA escolhe (confira na prévia)'
+    : selectedIds.length > 0 ? `${selectedIds.join(', ')}` : 'nenhum aparelho marcado';
+  /** Quem faz e onde, do jeito que o Comando está agora, no formato dos alvos do pedido. */
+  const alvosDoPedido = async (): Promise<PedidoCorpo['alvos']> => {
+    if (distribuir) throw new Error('Distribuir por contas não vale em pedido persistente.');   // `pedidoImpede` já barra
+    if (porPersona) return { profile_ids: selecionadas, instance_ids: estreitarValido, device_policy: politica };
+    if (!automatico) return { instance_ids: [...selectedIds] };
+    // Automático: a sugestão é a mesma do Executar (pode custar uma chamada de IA do papel `plan`); só vai o que ela
+    // resolveu sem pergunta nem alerta de conduta, fixado em `targets` para o backend não re-escolher.
+    const dados = await api.suggestRunTargets({ command: trimmed });
+    const eco = ecoDosAlvos(dados.targets);
+    // A pergunta que o backend fez é o que a pessoa precisa responder: vai inteira, não resumida.
+    const pergunta = dados.questions[0]?.question ?? dados.perguntas[0];
+    const impede = dados.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
+      : pergunta ? `A IA não sabe quem deve fazer isto: «${pergunta}»`
+      : dados.questions.length > 0 || dados.perguntas.length > 0 ? 'Há uma pergunta sobre quem faz.'
+      : eco.erro;
+    if (impede || !eco.eco) throw new ApiError(422, 'alvos_a_decidir', impede ?? 'Nenhum aparelho sugerido.');
+    return { instance_ids: eco.eco.instance_ids, targets: eco.eco.targets };
+  };
 
   const blocked = reason ?? (cooldown ? 'Execução criada agora há pouco — aguarde um instante para enviar de novo.' : null);
 
@@ -702,6 +748,19 @@ export function CommandPanel() {
           <strong>Refinar</strong> (opcional) organiza o texto e pergunta o que faltar · <strong>Planejar</strong> só
           mostra o plano, sem mexer nos aparelhos · <strong>Executar</strong> faz o trabalho em cada aparelho.
         </p>
+        <div className={styles.actions}>
+          {/* Só o que NUNCA vai funcionar tira o botão (senha no texto, distribuir por contas); comando curto, não: o painel abre e a prévia espera o texto. */}
+          <Button size="sm" variant="outline" icon={CalendarClock} aria-expanded={pedidoAberto}
+                  disabledReason={pareceCredencial(trimmed) ? SENHA_NO_COMANDO : distribuir ? pedidoImpede : null}
+                  onClick={() => setPedidoAberto((a) => !a)}>
+            Repetir ou acompanhar…
+          </Button>
+          <span className={styles.shortcut}>vira um pedido com agenda, com prévia antes de criar</span>
+        </div>
+        {pedidoAberto ? (
+          <NovoPedido comando={trimmed} resolverAlvos={alvosDoPedido} impede={pedidoImpede} quemFaz={quemFazDoPedido}
+                      onFechar={() => setPedidoAberto(false)} />
+        ) : null}
         {sugestao ? (
           <SugestaoDeAlvos
             sugestao={sugestao.dados}

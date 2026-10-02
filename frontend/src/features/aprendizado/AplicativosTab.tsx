@@ -1,20 +1,23 @@
 import { AppWindow, ArrowLeft, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
-import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
+import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, linhaDeUso, modosEmTexto, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
+  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, linhaDeUso, modosEmTexto, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
   temMedidoNaoUsado, type Contagem, type DetalheDoApp, type ResumoDoApp, type VisaoDeApps,
 } from './apps';
+import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
 import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
-import { acoesDoItem, rotuloDoKind } from './model';
+import { acoesDoItem, rotuloDoKind, type EntradaDoLivro } from './model';
+import { ChipsDeSaude, FalhasDoApp, FilaDeAtencao, quantosPedemAtencao } from './SaudeDoApp';
+import { useCarga } from './useCarga';
 import styles from './Aprendizado.module.css';
 
 /** O nome do balde `nao_resolvido` (o que o backend não conseguiu ligar a um pacote). */
@@ -30,8 +33,14 @@ function LinhaDeContagem({ rotulo, c }: { rotulo: string; c: Contagem }) {
   );
 }
 
+const textoDeAtencao = (n: number) => `${formatInt(n)} ${n === 1 ? 'pede' : 'pedem'} atenção`;
+
 /** Um app no Global: o que se declarou, o que se aprendeu, o que foi absorvido e como o aprendido é usado. */
-function CartaoDoApp({ app, balde }: { app: ResumoDoApp; balde?: boolean }) {
+/**
+ * `itens` são os itens do Livro deste app (a lista traz a saúde de cada um); `undefined` = a lista não carregou, e o
+ * cartão não mostra a linha de saúde em vez de inventar um zero.
+ */
+function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean; itens?: EntradaDoLivro[] }) {
   const meta = app.existencia ? EXISTENCIA_META[app.existencia] : null;
   const declarado = resumoDoDeclarado(app.declarado);
   const vazio = app.aprendido.total === 0 && app.absorvido === 0 && !app.declarado;
@@ -55,8 +64,20 @@ function CartaoDoApp({ app, balde }: { app: ResumoDoApp; balde?: boolean }) {
       </div>
       <div className={styles.cartaoLinha}>
         <span className={styles.cartaoRotulo}>Como é usado</span>
-        <span className={styles.cartaoUso}>{linhaDeUso(app.uso)}</span>
+        {usoPorTipo(app.uso).length === 0 ? <span className={styles.cartaoUso}>{linhaDeUso(app.uso)}</span>
+          : usoPorTipo(app.uso).map((t) => <span key={t.tipo} className={styles.cartaoUso}><strong>{t.tipo}</strong>: {t.texto}</span>)}
       </div>
+      {itens ? (
+        <div className={styles.cartaoLinha}>
+          <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
+          <ChipsDeSaude itens={itens} />
+          {quantosPedemAtencao(itens) > 0 ? (
+            <span><Badge tone="warning" size="sm" title="Degradando, provavelmente obsoleto ou sem evidência: veja a fila Atenção.">
+              {textoDeAtencao(quantosPedemAtencao(itens))}
+            </Badge></span>
+          ) : null}
+        </div>
+      ) : null}
       {temMedidoNaoUsado(app.uso) ? (
         <div><Badge tone="warning" size="sm" title="Em modo sombra ou observação o sistema mede, mas não usa.">medido, não usado</Badge></div>
       ) : null}
@@ -64,6 +85,19 @@ function CartaoDoApp({ app, balde }: { app: ResumoDoApp; balde?: boolean }) {
         <Button size="sm" variant="secondary" onClick={() => abrirApp(app.pacote)}>Ver {balde ? 'o balde' : 'o app'}</Button>
       </div>
     </li>
+  );
+}
+
+/** Como o aprendido do app é usado, um chip por tipo (a frase longa de `linhaDeUso` não se lê de relance). */
+function UsoEmChips({ uso }: { uso: Contagem }) {
+  const tipos = usoPorTipo(uso);
+  if (tipos.length === 0) return <span>Nada aprendido para usar ainda.</span>;
+  return (
+    <span className={styles.resumo} role="group" aria-label="Como é usado">
+      {tipos.map((t) => (
+        <span key={t.tipo} className={styles.resumoChip}><strong>{t.tipo}</strong><span>{t.texto}</span></span>
+      ))}
+    </span>
   );
 }
 
@@ -84,37 +118,13 @@ function ForaDoEixo({ c }: { c: Contagem }) {
   );
 }
 
-/** Carrega com cancelamento por geração: a resposta velha nunca sobrescreve a nova. */
-function useCarga<T>(buscar: (signal: AbortSignal) => Promise<T>, chave: string) {
-  const [dado, setDado] = useState<T | null>(null);
-  const [erro, setErro] = useState<LoadError | null>(null);
-  const [carregando, setCarregando] = useState(true);
-  const vez = useRef(0);
-  const buscarRef = useRef(buscar);
-  buscarRef.current = buscar;
-  const carregar = useCallback(async () => {
-    const minha = ++vez.current;
-    setCarregando(true);
-    try {
-      const res = await buscarRef.current(new AbortController().signal);
-      if (minha !== vez.current) return;
-      setDado(res);
-      setErro(null);
-    } catch (e) {
-      if (minha === vez.current) setErro(toLoadError(e));
-    } finally {
-      if (minha === vez.current) setCarregando(false);
-    }
-  }, []);
-  useEffect(() => {
-    setDado(null);
-    void carregar();
-  }, [carregar, chave]);
-  return { dado, erro, carregando, carregar };
-}
-
 function Global() {
   const { dado: visao, erro, carregando, carregar } = useCarga<VisaoDeApps>((s) => apiAprendizado.apps(s), 'global');
+  // A saúde vem da lista do Livro (a visão por app não a traz). Se ela falhar, os cartões seguem sem a linha de saúde.
+  const livro = useCarga((s) => apiAprendizado.livro({}, s), 'livro-global');
+  const todos = livro.dado ? (Array.isArray(livro.dado.itens) ? livro.dado.itens : []) : undefined;
+  const nomes = useMemo(() => new Map((visao?.apps ?? []).map((a) => [a.pacote, a.nome] as const)), [visao]);
+  const recarregar = () => { void carregar(); void livro.carregar(); };
   return (
     <section className={styles.secao} aria-label="Aplicativos">
       <div className={styles.toolbar}>
@@ -123,10 +133,11 @@ function Global() {
           cada coisa é usada. Um app sem nada aparece com zeros.
         </p>
         <div className={styles.toolbarFim}>
-          <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando} onClick={() => void carregar()}>Atualizar</Button>
+          <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando || livro.carregando} onClick={recarregar}>Atualizar</Button>
         </div>
       </div>
       {erro && visao ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}
+      {livro.erro && visao ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : null}
       {!visao ? (
         erro ? <LoadErrorState what="a visão por aplicativo" error={erro} onRetry={() => void carregar()} /> : (
           <LoadingRegion label="Carregando os aplicativos…" className={styles.secao}>
@@ -149,11 +160,13 @@ function Global() {
             <EmptyState icon={AppWindow} compact title="Nenhum aplicativo conhecido" />
           ) : null}
           <ul className={styles.cartoes} aria-label="Aplicativos">
-            {visao.apps.map((a) => <CartaoDoApp key={a.pacote} app={a} />)}
+            {visao.apps.map((a) => <CartaoDoApp key={a.pacote} app={a} itens={todos ? doApp(todos, a.pacote) : undefined} />)}
             {visao.nao_resolvido && visao.nao_resolvido.aprendido.total + visao.nao_resolvido.absorvido > 0
-              ? <CartaoDoApp app={{ ...visao.nao_resolvido, pacote: visao.nao_resolvido.pacote || NAO_RESOLVIDO }} balde /> : null}
+              ? <CartaoDoApp app={{ ...visao.nao_resolvido, pacote: visao.nao_resolvido.pacote || NAO_RESOLVIDO }} balde
+                             itens={todos ? doApp(todos, visao.nao_resolvido.pacote || NAO_RESOLVIDO) : undefined} /> : null}
             <ForaDoEixo c={visao.fora_do_eixo} />
           </ul>
+          {todos ? <FilaDeAtencao itens={todos} nomes={nomes} /> : null}
         </>
       )}
     </section>
@@ -168,7 +181,7 @@ function Declarado({ d }: { d: DetalheDoApp }) {
       {d.declarado.length === 0 ? <p className={styles.secaoLead}>Nada foi declarado para este app.</p> : (
         <ul className={styles.tabelaDeclarado}>
           {d.declarado.map((i) => (
-            <li key={i.tipo} className={styles.item}>
+            <li key={i.tipo} className={styles.itemCompacto}>
               <div className={styles.itemHead}>
                 <span className={styles.itemTitulo}>{rotuloDoArquivo(i.tipo)}</span>
                 <Badge tone={i.presente ? 'success' : 'neutral'} size="sm">{i.presente ? 'presente' : 'ausente'}</Badge>
@@ -186,29 +199,71 @@ function Declarado({ d }: { d: DetalheDoApp }) {
   );
 }
 
-function ListaDoApp({ titulo, lead, itens, vazio, onMudou }: {
-  titulo: string; lead: string; itens: DetalheDoApp['aprendido']; vazio: string; onMudou?: () => void;
-}) {
+/** Os itens de um app, sem repetir o pacote em cada um (a página já é do app). */
+function ItensDoApp({ itens, rotulo, onMudou }: { itens: DetalheDoApp['aprendido']; rotulo: string; onMudou?: () => void }) {
+  return (
+    <ul className={styles.lista} aria-label={rotulo}>
+      {itens.map((e) => (
+        <ItemDoLivro
+          key={chaveDoItem(e)}
+          entrada={e}
+          ocultarApp
+          acoes={onMudou ? acoesDoItem(e) : []}
+          onMudou={onMudou ?? (() => undefined)}
+          uso={e.uso ? { rotulo: rotuloDoUso(e.uso.camada), porque: e.uso.porque } : undefined}
+          extra={e.absorvida_em ? <p className={styles.secaoLead}>Absorvido em {e.absorvida_em}</p> : null}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function ListaDoApp({ titulo, lead, itens, vazio }: { titulo: string; lead: string; itens: DetalheDoApp['aprendido']; vazio: string }) {
   return (
     <section className={styles.secao} aria-label={titulo}>
       <h3 className={styles.secaoTitulo}>{titulo} ({formatInt(itens.length)})</h3>
       <p className={styles.secaoLead}>{lead}</p>
-      {itens.length === 0 ? <p className={styles.secaoLead}>{vazio}</p> : (
-        <ul className={styles.lista} aria-label={titulo}>
-          {itens.map((e) => (
-            <ItemDoLivro
-              key={chaveDoItem(e)}
-              entrada={e}
-              acoes={onMudou ? acoesDoItem(e) : []}
-              onMudou={onMudou ?? (() => undefined)}
-              extra={e.uso ? (
-                <p className={styles.secaoLead} title={e.uso.porque ?? undefined}>
-                  {rotuloDoKind(e.kind)} · uso: {rotuloDoUso(e.uso.camada)}{e.absorvida_em ? ` · absorvido em ${e.absorvida_em}` : ''}
-                </p>
-              ) : null}
-            />
-          ))}
-        </ul>
+      {itens.length === 0 ? <p className={styles.secaoLead}>{vazio}</p> : <ItensDoApp itens={itens} rotulo={titulo} />}
+    </section>
+  );
+}
+
+/**
+ * O aprendido do app no nível Capability da hierarquia: um bloco recolhível por capability, com quantos itens tem e a
+ * saúde deles no resumo; abre sozinho o bloco que tem item pedindo atenção. O fluxo (comando inteiro) e o item sem
+ * capability conhecida ficam em blocos próprios, por último.
+ */
+function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['aprendido']; onMudou: () => void }) {
+  const grupos = gruposDoAprendido(itens, rotuloDoKind);
+  return (
+    <section className={styles.secao} aria-label="Aprendido">
+      <h3 className={styles.secaoTitulo}>Aprendido ({formatInt(itens.length)})</h3>
+      <p className={styles.secaoLead}>
+        O que o sistema aprendeu deste app, por capability, com o estado, a saúde e a decisão da pessoa.
+      </p>
+      {itens.length === 0 ? <EmptyState icon={AppWindow} compact title="Nada aprendido para este app" /> : (
+        <div className={styles.grupos} data-grupos>
+          {grupos.map((g) => {
+            const atencao = quantosPedemAtencao(g.itens);
+            return (
+              <Disclosure
+                key={g.chave}
+                className={styles.grupo}
+                defaultOpen={atencao > 0 || grupos.length === 1}
+                summary={<span className={g.ehCapability ? styles.mono : undefined}>{g.titulo}</span>}
+                meta={(
+                  <span className={styles.grupoMeta}>
+                    <span>{formatInt(g.itens.length)} {g.itens.length === 1 ? 'item' : 'itens'}</span>
+                    {atencao > 0 ? <Badge tone="warning" size="sm">{textoDeAtencao(atencao)}</Badge> : null}
+                    {contarPorRotulo(g.itens).length > 0 ? <ChipsDeSaude itens={g.itens} /> : null}
+                  </span>
+                )}
+              >
+                {() => <ItensDoApp itens={g.itens} rotulo={`Aprendido: ${g.titulo}`} onMudou={onMudou} />}
+              </Disclosure>
+            );
+          })}
+        </div>
       )}
     </section>
   );
@@ -218,6 +273,11 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
   const { dado: d, erro, carregando, carregar } = useCarga<DetalheDoApp>((s) => apiAprendizado.app(pacote, s), pacote);
   const voltar = () => useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps' } });
   const balde = pacote === NAO_RESOLVIDO;
+  // A saúde de cada item vem da lista do Livro filtrada pelo app: as linhas de /apps/{pacote} chegam sem `saude`.
+  const livro = useCarga((s) => apiAprendizado.livro({ app: pacote }, s), `livro:${pacote}`);
+  const doLivro = useMemo(() => (livro.dado && Array.isArray(livro.dado.itens) ? livro.dado.itens : undefined), [livro.dado]);
+  const saudePorItem = useMemo(() => new Map((doLivro ?? []).map((e) => [chaveDoItem(e), e.saude ?? null] as const)), [doLivro]);
+  const aprendido = useMemo(() => (d?.aprendido ?? []).map((e) => (e.saude ? e : { ...e, saude: saudePorItem.get(chaveDoItem(e)) ?? null })), [d, saudePorItem]);
   const nome = d ? (balde ? 'App não resolvido' : d.app.nome) : balde ? 'App não resolvido' : pacote;
   const meta = d?.app.existencia ? EXISTENCIA_META[d.app.existencia] : null;
   return (
@@ -242,15 +302,22 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
         )
       ) : (
         <>
-          <p className={styles.secaoLead}>Como é usado: {linhaDeUso(d.app.uso)}</p>
+          <div className={styles.painelDoApp}>
+            <div className={styles.cartaoLinha} data-uso-do-app>
+              <span className={styles.cartaoRotulo}>Como é usado</span>
+              <UsoEmChips uso={d.app.uso} />
+            </div>
+            <div className={styles.cartaoLinha} data-saude-do-app>
+              <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
+              {doLivro ? <ChipsDeSaude itens={doLivro} /> : livro.erro
+                ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : <span>Carregando…</span>}
+            </div>
+          </div>
+          {/* Do que pede ação ao que é referência: atenção, o aprendido, o que falha; o declarado e o absorvido depois. */}
+          {doLivro ? <FilaDeAtencao itens={doLivro} /> : null}
+          <AprendidoPorCapability itens={aprendido} onMudou={() => { void carregar(); void livro.carregar(); }} />
+          <FalhasDoApp pacote={pacote} />
           {!balde ? <Declarado d={d} /> : null}
-          <ListaDoApp
-            titulo="Aprendido"
-            lead="O que o sistema aprendeu deste app, com o estado e a decisão da pessoa."
-            itens={d.aprendido}
-            vazio="Nada aprendido para este app."
-            onMudou={() => void carregar()}
-          />
           <ListaDoApp
             titulo="Absorvido"
             lead="O que já virou conhecimento declarado do repositório: não conta mais como aprendido."

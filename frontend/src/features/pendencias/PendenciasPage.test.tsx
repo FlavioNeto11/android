@@ -119,6 +119,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
+  backend.on('GET', /^\/api\/pedidos$/, () => json({ items: [], proximo_cursor: null, total_por_estado: {} }));
   backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [ITEM('1'), ITEM('2')], total: 2 }));
   backend.on('GET', /^\/api\/approvals/, () => json([APROVACAO('a1')]));
   backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Ana Lima')]));

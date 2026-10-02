@@ -6,9 +6,23 @@ erro aqui, na borda — nunca um `None` que o domínio confundiria com "não inf
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator, Sequence
 
 from app.db import Row
 from app.modules.skills.domain.document import JsonObject, JsonValue, NotJson, as_json_value, parse_json_object
+
+#: Tamanho do lote de `IN (...)` (abaixo do limite de variáveis do SQLite).
+LOTE = 400
+
+
+def lotes[T](itens: Sequence[T]) -> Iterator[Sequence[T]]:
+    for i in range(0, len(itens), LOTE):
+        yield itens[i:i + LOTE]
+
+
+def marcas(n: int) -> str:
+    """`?,?,?` para um `IN (...)` de `n` valores."""
+    return ",".join("?" for _ in range(n))
 
 
 def texto(row: Row, coluna: str) -> str:

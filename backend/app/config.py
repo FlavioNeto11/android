@@ -509,6 +509,22 @@ class ImageCfg(BaseModel):
     timeout_s: float = Field(180.0, ge=1, le=900)
 
 
+class AiLimitsCfg(BaseModel):
+    """Fatias do teto de gasto DO DIA para usos fora de execução (item 31.6; hub-de-ia-fora-de-execucao.md §3).
+
+    São PARTES do teto do dia (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: a chamada
+    precisa passar no teto do dia E na fatia da própria origem. Uma fatia estourada barra só aquela origem
+    (`AIError.motivo` = `fatia_curador` ou `fatia_jev`); as demais seguem. `0` desliga a fatia."""
+
+    #: Curador do Livro (`origem='curador'`). Sem valor, a fatia é `curador_fracao_do_dia × teto do dia`; sem teto
+    #: do dia (`0`), não há fatia e nada muda. A fração é o α = 10 % decidido pelo dono (30.11).
+    curador_max_usd_per_day: float | None = Field(None, ge=0, le=100_000)
+    curador_fracao_do_dia: float = Field(0.10, ge=0, le=1)
+    #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a D-J3, aprovada pelo
+    #: dono no ADR-069; vale para as chamadas da porta `DecisaoFechada` (31.4).
+    jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+
+
 class DecisaoFechadaCfg(BaseModel):
     """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
 
@@ -628,6 +644,8 @@ class AiCfg(BaseModel):
     #: modelo de UMA execução não exige reiniciar o central nem mexer no que as outras usam.
     profiles: dict[str, AiProfileCfg] = {}
     canary: AiCanaryCfg = AiCanaryCfg()
+    #: Fatias do teto do dia por origem de chamada (item 31.6). Vazio = os padrões da classe.
+    limits: AiLimitsCfg = AiLimitsCfg()
     decisao_fechada: DecisaoFechadaCfg = DecisaoFechadaCfg()
 
 
@@ -1106,6 +1124,11 @@ class PedidosCfg(BaseModel):
     #: Atraso exponencial da nova tentativa: `base * 2**(n-1)`, no máximo `retentativa_teto_s`. Chega até `tick_s` tarde.
     retentativa_base_s: float = Field(60.0, ge=1.0, le=86_400.0)
     retentativa_teto_s: float = Field(900.0, ge=1.0, le=86_400.0)
+    #: Piso de frequência da criação e da edição (28.9, adendo v0.45, decisão do dono 02/10): o menor intervalo entre
+    #: ocorrências por teto de autonomia. `observar` e `preparar` leem e preparam (15 min); `agir` tem efeito externo e
+    #: custo por ocorrência (1 h). Abaixo, a criação recusa com `frequencia_abaixo_do_piso`.
+    piso_observar_s: int = Field(900, ge=60, le=86_400)
+    piso_agir_s: int = Field(3600, ge=60, le=86_400)
 
 
 class AppConfigFile(BaseModel):

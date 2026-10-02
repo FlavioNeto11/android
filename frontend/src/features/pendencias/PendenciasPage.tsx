@@ -17,9 +17,9 @@ import { usePendenciasStore } from './store';
 import { usePendencias } from './usePendencias';
 import styles from './Pendencias.module.css';
 
-const ORIGENS: readonly OrigemDaPendencia[] = ['aprendizado', 'persona', 'execucao', 'intervencao'];
+const ORIGENS: readonly OrigemDaPendencia[] = ['aprendizado', 'persona', 'execucao', 'intervencao', 'pedido'];
 const TOM: Record<OrigemDaPendencia, 'accent' | 'info' | 'warning' | 'danger'> = {
-  aprendizado: 'accent', persona: 'info', execucao: 'warning', intervencao: 'danger',
+  aprendizado: 'accent', persona: 'info', execucao: 'warning', intervencao: 'danger', pedido: 'warning',
 };
 const ehOrigem = (v: string | undefined): v is OrigemDaPendencia => !!v && (ORIGENS as readonly string[]).includes(v);
 
@@ -45,7 +45,7 @@ export function PendenciasPage() {
   }, []);
 
   const contagem = useMemo(() => {
-    const c: Record<OrigemDaPendencia, number> = { aprendizado: 0, persona: 0, execucao: 0, intervencao: 0 };
+    const c: Record<OrigemDaPendencia, number> = { aprendizado: 0, persona: 0, execucao: 0, intervencao: 0, pedido: 0 };
     for (const p of itens) c[p.origem] += 1;
     return c;
   }, [itens]);
@@ -138,6 +138,11 @@ function Linha({ p, agora }: { p: Pendencia; agora: number }) {
         </div>
         <strong className={styles.titulo} title={p.titulo}>{p.titulo}</strong>
         <span className={styles.detalhe}>{p.detalhe}</span>
+        {p.filhas?.length ? (
+          <ul className={styles.filhas} aria-label={`Dentro do pedido ${p.titulo}`}>
+            {p.filhas.map((f) => <li key={f.chave}><strong>{ROTULO_DA_ORIGEM[f.origem]}</strong>: {f.titulo}</li>)}
+          </ul>
+        ) : null}
       </div>
       <a className={styles.acao} href={href} aria-label={`${p.acao}: ${p.titulo}`}>
         {p.acao} <ExternalLink size={14} aria-hidden />

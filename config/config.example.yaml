@@ -349,6 +349,14 @@ ai:
   #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
   # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
   #
+  # Item 31.6 — fatias do teto de gasto DO DIA para usos fora de execução (docs/ia.md §6). São PARTES do teto do dia
+  # (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: uma fatia estourada barra só a origem dela
+  # (`AIError.motivo` = fatia_curador | fatia_jev) e as outras seguem. 0 desliga a fatia. Os valores abaixo são os padrões.
+  # limits:
+  #   curador_max_usd_per_day:        # (vazio) curador do Livro: sem valor = curador_fracao_do_dia × teto do dia; sem teto do dia, sem fatia
+  #   curador_fracao_do_dia: 0.10     # (0.10) o α do dono (30.11)
+  #   jev_max_usd_per_day: 0.50       # (0.50) decisão por conjunto fechado (D-J3, ADR-069)
+  #
   # Item 17.8 — Flex para trabalho OFFLINE (a OpenAI cobra ~metade, mas responde 429 "Resource Unavailable" quando
   # não há capacidade ociosa e pode levar minutos). A entrada de provedor é um endpoint como outro qualquer, com o
   # campo no corpo; quem aponta para ela é um papel com prazo longo e `max_retries` (que repete 429 e 5xx, com
@@ -517,6 +525,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   falhas_para_pausar: 3           # ocorrências seguidas que terminam `falhou` pausam o pedido, com aviso (28.5)
   retentativa_base_s: 60          # atraso da nova tentativa: base * 2**(n-1) ...
   retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
+  piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
+  piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

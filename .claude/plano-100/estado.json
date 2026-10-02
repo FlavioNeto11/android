@@ -2217,14 +2217,16 @@
    "id": "12.3",
    "status": "partial",
    "proof": "real",
-   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto.",
-   "blocker": "Falta o critério do item: uma execução com efeito no app, com login pela credencial da conta. Depende do Outlook abrir no parque (renderizador do emulador, 29.10 a 29.12; o P15 NÃO é recusa do app ao emulador) e do login real com consentimento (29.13).",
-   "grupo": "29-registros-12.3",
-   "modelo": "opus",
-   "esforco": "high",
+   "arquivos": [],
+   "testes": "",
+   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto. REAL 02/10/2026 no central c11f8217 (android-01, conta Outlook do lucas): verify so de leitura c-20261002204249-081af1 levou a sessao de unknown a session_ready (verified_at 20:43:32Z), sem senha nem Conectar; execucao r-20261002204347-8c3f6e (OPEN_MAIL_INBOX, side_effect=false) navegou ate a caixa de entrada e foi comprovada (US$ 0,2045). Leitura de remetente e assunto NAO extraida (result.items=[]): defeito geral virou o 12.4.",
+   "blocker": "Leitura real de remetente e assunto not_run: depende do 12.4 (etapa com saidas so comprovada com elas preenchidas). Depois de implantado: repetir a leitura no 01 e, provada, no 03 e no 06 (autorizado pelo dono 02/10 ~21:00Z, so leitura, verify antes, nunca Conectar).",
+   "grupo": "12-3-outlook-leitura",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T12:23:08+00:00"
+   "quando": "2026-10-02T21:53:18+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -4672,24 +4674,23 @@
   "17.12": {
    "id": "17.12",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed. Merge PR #61 (c82a5210), implantado no central 02/10 ~19:05Z.",
-   "blocker": "Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede exigida_com_bloqueio vpn-central-wireguard acordou sem tun0; a Android investiga), US$ 0,1346, nenhum envio, teto nao exercitado -> not_run. Uma nova tentativa autorizada (teto US$ 0,80) no android-07 (sem conta real, sem rede pedida). 2a tentativa 02/10 19:57Z r-20261002195703-1b94e3 no android-07: barrada na 1a etapa (Abrir o QA Messenger) por auth_challenge conta_travada 'confirm you're human' (nada tocado), US$ 0,1027 (so o plano); cancelada e 07 hibernado. Total gasto no 17.12 real: US$ 0,2373 (teto 0,80). Segue not_run por bloqueio de ambiente; nova tentativa so com nova autorizacao, depois da captura do 07 pela Android.",
+   "proof": "real",
+   "evidence": "Real 02/10/2026 ~20:48-20:57Z, central WIN-7S2UASNLFOP, main implantada c11f8217 (070). eval_run label 17-12-real-02-10-d, caso msg-todos-os-contatos (bateria congelada, 8 contatos do QA Messenger, app nosso) no android-05: execucao r-20261002204836-dcb516 succeeded (run completed, 43 etapas succeeded, 5 skipped do plano v1), verificacao independente por ContentProvider: 8 mensagens desta execucao para 8 contatos. 78 chamadas de IA, ACIMA da base ai_max_calls_per_objective=60 e abaixo do teto calculado 60+12x7=144 (foreach.teto_de_chamadas). US$ 0,7335 (530.899 tokens in). Tentativas anteriores do dia: r-20261002185832-7385f3 (rede, android-05), r-20261002195703-1b94e3 (bloqueio real do Instagram no android-07), r-20261002202101-eab933 (cortada pelo vigia de custo em 49 chamadas, nao prova o teto); total do 17.12 no dia US$ 1,5317, autorizado pela orquestradora.",
+   "blocker": "",
    "files": [
     "backend/app/taskqueue/foreach.py",
     "backend/app/taskqueue/executor.py",
-    "backend/app/config.py",
-    "backend/tests/test_teto_proporcional_for_each.py",
-    "docs/ia.md",
-    "config/config.example.yaml"
+    "backend/app/config.py"
    ],
-   "testes": "backend/tests/test_teto_proporcional_for_each.py -> 8 passed (simulated)",
-   "grupo": "sessao:jev-28-11-real",
+   "testes": [
+    "backend/tests/test_teto_proporcional_for_each.py"
+   ],
+   "grupo": "sessao:jev-17-12-real",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:02:41+00:00"
+   "quando": "2026-10-02T21:19:30+00:00"
   },
   "28.1": {
    "id": "28.1",
@@ -4774,21 +4775,30 @@
   },
   "28.9": {
    "id": "28.9",
-   "status": "partial",
-   "proof": "not_run",
-   "evidence": "Adendo do contrato v0.45 (docs/api-contract.md, 16 rotas, DTOs alinhados a 067 e estados.py, eventos, erros) e tela Pedidos em docs/produto.md: PR #60. Decisoes tomadas em 02/10 (PR #62): emenda a ADR-062 e piso confirmados pelo dono; POST /api/pedidos/previa; 200 sem_mudanca; retomar sem retorno automatico; id deterministico pelo hash inteiro da idempotency_key; chave do backfill pelo instante do slot.",
-   "blocker": "Implementacao (rotas, tela, caixa de avisos) pendente; depende do 28.4 (feito) e do 28.7; migracao da caixa de avisos pela regra do numero maior.",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #106, merge f35a816d (02/10/2026, sessao jev). API /api/pedidos (previa, criacao idempotente, acoes, leitura, eventos, snapshot), migracao 072 pedido_avisos (dedupe, lido/nao lidos, POST /avisos/ler, emissores orcamento_80/esgotado/relatorio_pronto), tela Pedidos + Comando com previa + Pendencias agrupadas (emenda ADR-062). Suite inteira na arvore combinada 4484d15c: 5596 passed / 0 failed; apos UX e main e9de6697: backend afetados 605 passed, frontend typecheck + 1241 testes. UX validada no navegador contra backend simulado isolado (8765/5188) em 1366 e 375 px, todos os fluxos. Real (central apos deploy, laco ligado): not_run; validacao da orquestradora no navegador apos o deploy pendente.",
+   "blocker": "",
    "files": [
-    "docs/api-contract.md",
-    "docs/produto.md"
+    "backend/app/modules/pedidos/presentation/router.py",
+    "backend/app/modules/pedidos/infrastructure/servico.py",
+    "backend/app/modules/pedidos/infrastructure/avisos.py",
+    "backend/migrations/072_pedido_avisos.sql",
+    "frontend/src/features/pedidos/",
+    "frontend/src/features/command/CommandPanel.tsx"
    ],
-   "testes": "not_run (so documento)",
-   "grupo": "sessao:jev-fase28",
+   "testes": [
+    "backend/tests/test_pedidos_api.py",
+    "backend/tests/test_pedidos_avisos.py",
+    "frontend/src/features/pedidos/PedidosPage.test.tsx",
+    "frontend/src/features/pedidos/NovoPedido.test.tsx"
+   ],
+   "grupo": "sessao:jev-28-9",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T19:30:15+00:00"
+   "quando": "2026-10-02T21:38:16+00:00"
   },
   "28.11": {
    "id": "28.11",
@@ -5109,6 +5119,96 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "31.3": {
+   "id": "31.3",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Telemetria do MCA aceita), D-J2 (C0/C1 em F1, C2 em F2, C3 em F3 so na sombra da intencao), D-J3 (fatia US$ 0,50/dia; prova real 31.10/31.11 autorizada CONDICIONADA a troca da chave TypeSafe pelo dono antes de qualquer chamada), D-J5 (Jev fora de social/persona). Sem codigo: prova de ambiente nao se aplica.",
+   "blocker": "",
+   "files": [
+    "docs/decisoes.md"
+   ],
+   "testes": [],
+   "grupo": "sessao:jev-31",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:19:30+00:00"
+  },
+  "29.23": {
+   "id": "29.23",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/29-23-conta-bloqueada-sai (3cbbffe1, f1c83b56, 5126a414, 41f7204c, 827e038d + merges): acao retirar_conta_bloqueada + rota POST /api/instagram/profiles/{p}/accounts/{a}/retire (credencial da conta + legada + ciphertext do cofre, sessoes, vinculos do app, @ do perfil esvaziado, persona de volta a active, memory_items reescritos para '[conta removida]', gancho limpezas_ao_retirar com esquecer_conta do Aprendizado na mesma transacao); lapide contas_retiradas (migracao 071, so sha256 do @) e eh_conta_nossa() no _fleet_gate (efeito sobre conta nossa viva ou aposentada recusado; resposta a terceiro em post nosso permitida); gatilho automatico so para app que declara atividades_de_conta_perdida no app.yaml (hoje Instagram) e so com sinal forte (janela declarada em foco, lida do dumpsys, ou declaracao do dono). ADR-068 (opcao A do dono: historico intacto), K-074. Simulado: tests/test_conta_bloqueada_sai.py (20+), costura com esquecer_conta real; suite 3c 4484d15c (inclui 827e038d): 5596 passed, 9 skipped, 0 failed.",
+   "blocker": "Prova real not_run: deploy com ensaio da 071 e retire nas 5 contas bloqueadas pela rota (declaracao do dono como sinal), com antes/depois; PostgreSQL not_run.",
+   "arquivos": [
+    "backend/app/social/service.py",
+    "backend/app/social/repository.py",
+    "backend/app/social/memory.py",
+    "backend/app/social/contas_nossas.py",
+    "backend/app/social/policy.py",
+    "backend/app/api.py",
+    "backend/app/state.py",
+    "backend/app/devices/manager.py",
+    "backend/app/integrations/app_declarado/pacote.py",
+    "backend/app/integrations/app_declarado/sessao.py",
+    "backend/app/modules/applications/domain/definition.py",
+    "backend/app/conhecimento/apps/com.instagram.android/app.yaml",
+    "backend/migrations/071_contas_retiradas.sql",
+    "backend/tests/test_conta_bloqueada_sai.py"
+   ],
+   "testes": "suite 3c 4484d15c 5596/0; afetados 465",
+   "grupo": "29-23-conta-bloqueada",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:27:38+00:00"
+  },
+  "28.14": {
+   "id": "28.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #100, merge e22098c5 (02/10/2026, sessao jev). modules/avisos/domain/mensagem.py: learning.needs_person avisa so na entrada da espera, faixa C por padrao (avisos.aprendizado_faixas), chave learning:{kind}:{ref}:{desde}, sem identificador na mensagem; chave_do_fato comum (approval, run, session, pedido, learning). Payload combinado com a frente Aprendizado. Suite combinada a08298fb: 0 falhas deste item. Real (Telegram com evento do Livro): not_run.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/avisos/domain/mensagem.py",
+    "backend/app/modules/avisos/infrastructure/servico.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_avisos_aprendizado.py"
+   ],
+   "grupo": "sessao:jev-28-9",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:38:16+00:00"
+  },
+  "12.4": {
+   "id": "12.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/12-4-saidas-obrigatorias (eaa94e7f, a08abd53, 8a8c57db da Jev, eace8f30 + merges): saidas_exigidas (a escolha do plano ou, sem escolha, tudo o que a acao declara em Capability.saidas) em run_step/_run_step e na retomada (scheduler); step_done sem ler recusado; etapa comprovada pela tela mas sem valor vira retry/failed ou uncertain se houve efeito; coleta vazia so com vazio_comprovado (julgamento explicito do estado vazio). Causa real confirmada no banco: steps.saidas NULL nas duas versoes do r-20261002204347-8c3f6e (OPEN_MAIL_INBOX 'comprovado' sem remetente nem assunto). Textos do planejador alinhados pela Jev (describe 'entrega', prompt). K-075. Simulado: tests/test_saidas_obrigatorias.py (9 casos) + afetados 238; suite 4 jev/integ-suite-4 @ 2533bbd8: 5746 passed, 7 skipped, 0 failed.",
+   "blocker": "Prova real not_run: depois do deploy, UMA nova leitura do Outlook no android-01 (verify antes, nunca Conectar) deve terminar succeeded so com remetente e assunto lidos em step_outputs, ou failed com o nome que faltou; com isso, 03 e 06 (autorizados pelo dono).",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/models.py",
+    "backend/app/planning/capabilities.py",
+    "backend/app/planning/prompts.py",
+    "backend/tests/test_saidas_obrigatorias.py"
+   ],
+   "testes": "suite 4 2533bbd8 5746/0; afetados 238",
+   "grupo": "12-4-saidas",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:53:18+00:00"
   }
  },
  "rodadas": [
@@ -6181,6 +6281,54 @@
    ],
    "grupos": [
     "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:19:30+00:00",
+   "itens": [
+    "17.12"
+   ],
+   "grupos": [
+    "sessao:jev-17-12-real"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:19:30+00:00",
+   "itens": [
+    "31.3"
+   ],
+   "grupos": [
+    "sessao:jev-31"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:27:38+00:00",
+   "itens": [
+    "29.23"
+   ],
+   "grupos": [
+    "29-23-conta-bloqueada"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:38:16+00:00",
+   "itens": [
+    "28.9",
+    "28.14"
+   ],
+   "grupos": [
+    "sessao:jev-28-9"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:53:18+00:00",
+   "itens": [
+    "12.3",
+    "12.4"
+   ],
+   "grupos": [
+    "12-3-outlook-leitura",
+    "12-4-saidas"
    ]
   }
  ]
