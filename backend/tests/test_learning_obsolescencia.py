@@ -81,6 +81,7 @@ def test_nao_se_aplica_sem_commit_ou_sem_catalogo() -> None:
     (_cap("LIKE_POST", "COMMENT_POST"), Respaldo.RESPALDADO, "LIKE_POST,COMMENT_POST"),
     (_cap("OPEN_POST", ambigua=True), Respaldo.DUVIDOSO, "OPEN_POST"),    # marcada ambígua nunca rebaixa
     ({"capability": None}, Respaldo.DUVIDOSO, QUALQUER),
+    (_cap("*"), Respaldo.DUVIDOSO, QUALQUER),                             # a etapa livre não é um nome do catálogo
     (None, Respaldo.DUVIDOSO, QUALQUER),
 ])
 def test_catalogo_com_efeito_so_rebaixa_capability_conhecida_sem_efeito(

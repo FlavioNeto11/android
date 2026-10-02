@@ -99,7 +99,8 @@ def respaldo_da_receita(conteudo: JsonObject | None, catalogo: CatalogoDoApp | N
     if not catalogo.tem_efeito:
         return _sem_efeito_no_catalogo()
     cap = (conteudo or {}).get("capability")
-    nomes = [n for n in cap.get("nomes", []) if isinstance(n, str) and n] if isinstance(cap, dict) else []
+    # `*` é a etapa livre (sem ação do catálogo): conta como capability desconhecida, nunca como um nome.
+    nomes = [n for n in cap.get("nomes", []) if isinstance(n, str) and n and n != QUALQUER] if isinstance(cap, dict) else []
     if not nomes:
         return VereditoDoCatalogo(Respaldo.DUVIDOSO, QUALQUER, "a capability da etapa é desconhecida")
     if len(nomes) == 1 and not (isinstance(cap, dict) and cap.get("ambigua") is True):
@@ -123,7 +124,7 @@ def respaldo_do_fluxo(conteudo: JsonObject | None, catalogo: CatalogoDoApp | Non
         if not isinstance(etapa, dict) or etapa.get("efeito") is not True:
             continue
         cap = etapa.get("capability")
-        vereditos.append(_uma(cap, catalogo) if isinstance(cap, str) and cap else
+        vereditos.append(_uma(cap, catalogo) if isinstance(cap, str) and cap and cap != QUALQUER else
                          VereditoDoCatalogo(Respaldo.DUVIDOSO, QUALQUER, "uma etapa com efeito não tem capability"))
     if not vereditos:
         return VereditoDoCatalogo(Respaldo.DUVIDOSO, QUALQUER, "as etapas com efeito não foram lidas")
