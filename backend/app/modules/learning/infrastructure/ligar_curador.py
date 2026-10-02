@@ -5,6 +5,8 @@ O adaptador padrão é o SIMULADO: o do hub de IA é do 30.12 (frente Jev) e ent
 é `off` e nada roda; o modo é lido a cada volta."""
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Callable
 from datetime import datetime
 
@@ -18,6 +20,26 @@ from app.modules.learning.domain.vocabulario import Modo
 from app.modules.learning.infrastructure.curador_simulado import CuradorSimulado
 from app.modules.learning.infrastructure.dossies import DossiesSql
 from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesSql
+
+log = logging.getLogger("poc.aprendizado")
+
+
+class LacoDoCurador:
+    """O laço periódico do curador (§8.6), à parte do `PassoDeCuradoria`. Lê `intervalo_s` e `modo` a cada volta: mudar
+    o config com o processo no ar vale na próxima. A trava (`lider`) é conferida dentro da volta."""
+
+    nome = "curador"
+
+    def __init__(self, curador: CuradorPorIA) -> None:
+        self.curador = curador
+
+    async def laco(self, lider: Callable[[], int | None]) -> None:
+        while True:
+            await asyncio.sleep(self.curador.intervalo_s)
+            try:
+                await asyncio.to_thread(self.curador.uma_volta, lider)
+            except Exception:  # noqa: BLE001 - o curador nunca derruba o processo
+                log.exception("aprendizado: curador por IA")
 
 
 def ajustes_do_curador(cfg: CuradorCfg) -> AjustesDoCurador:
@@ -33,8 +55,8 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
                            RegistroDeRevisoesSql(db), triagem, ajustes=lambda: ajustes_do_curador(config()),
                            precos=precos, relogio=relogio)
     servico.anexar(curador)
-    servico.registrar_laco(curador)
+    servico.registrar_laco(LacoDoCurador(curador))
     return curador
 
 
-__all__ = ["ajustes_do_curador", "ligar"]
+__all__ = ["LacoDoCurador", "ajustes_do_curador", "ligar"]

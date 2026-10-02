@@ -324,8 +324,8 @@ def test_repartir_ordem_estrita_e_motivo_proprio() -> None:
 
 def test_pico_de_entrada_deixa_so_as_prioridades_1_e_2() -> None:
     janela = Janela(gasto_da_operacao=1000.0, revisoes_antes_de_hoje=6)   # média de 1 por dia na janela
-    todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C), _p("f", Prioridade.FALHA_RECORRENTE),
-             _p("b", Prioridade.CLASSE_B), _p("a", Prioridade.CLASSE_A)]
+    todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C),
+             _p("f", Prioridade.FALHA_RECORRENTE), _p("b", Prioridade.CLASSE_B), _p("a", Prioridade.CLASSE_A)]
     partilha = repartir(todos, janela, ParametrosDoOrcamento(k=100))
     assert partilha.pico is True
     assert set(partilha.aprovados) == {"x", "c"}

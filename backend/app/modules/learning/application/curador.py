@@ -17,7 +17,6 @@ e `pedido_da_pessoa` existem no vocabulário e ainda não têm fonte (backlog e 
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -116,15 +115,10 @@ class CuradorPorIA:
         self._precos = precos
         self._relogio = relogio
 
-    # ------------------------------------------------------------------ o laço (ADR-064)
-    async def laco(self, lider: Callable[[], int | None]) -> None:
-        """Lê `intervalo_s` e `modo` a cada volta: mudar o config com o processo no ar vale na próxima."""
-        while True:
-            await asyncio.sleep(max(60, int(self._ajustes().intervalo_s)))
-            try:
-                await asyncio.to_thread(self.uma_volta, lider)
-            except Exception:  # noqa: BLE001 - o curador nunca derruba o processo
-                log.exception("aprendizado: curador por IA")
+    # ------------------------------------------------------------------ uma volta (o laço assíncrono é da composição)
+    @property
+    def intervalo_s(self) -> int:
+        return max(60, int(self._ajustes().intervalo_s))
 
     def uma_volta(self, lider: Callable[[], int | None]) -> ResultadoDaVolta:
         aj = self._ajustes()
