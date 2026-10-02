@@ -3814,8 +3814,6 @@ catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcio
 
 ## Adendo v0.63 (02/10/2026) — mesmo rótulo para o mesmo fato e o nome da capability
 
-Número provisório: a orquestradora renumera no merge se outro adendo chegar antes.
-
 - **`saude`: sai o motivo `fluxo_nunca_casado`.** O fluxo publicado e nunca usado há `sem_uso_dias` passa a sair como
   `sem_evidencia`, com o motivo `nunca_usado`, igual à receita. Antes, o mesmo fato era `obsoleto_provavel` no fluxo e
   `sem_evidencia` na receita, e o dono via o rótulo mudar sem saber por quê (validação no Chrome do deploy 2). A obsolescência
@@ -3829,7 +3827,7 @@ Número provisório: a orquestradora renumera no merge se outro adendo chegar an
 
 ## Adendo v0.64 (02/10/2026) — o modo por app de lições e telas na visão por app
 
-Número provisório: a orquestradora renumera no merge se outro adendo chegar antes. Só campos novos; nada muda de tipo.
+Só campos novos; nada muda de tipo.
 
 - `GET /api/aprendizado/apps` e `/apps/{pacote}`: o resumo de cada app (`apps[]`, `nao_resolvido`, `app`) ganha
   **`modos_do_app`**: `{licoes: {modo, origem}, telas: {modo, origem}}`. `modo` é o efetivo no pacote (`off|shadow|on` para
@@ -3839,3 +3837,4 @@ Número provisório: a orquestradora renumera no merge se outro adendo chegar an
   ordenadas pelo pacote; `{}` quando todo app segue o global.
 
 Só leitura: o config é da instalação e é lido ao iniciar o central. Mudar um modo é editar o `config.yaml` e reiniciar.
+O `modos` do detalhe (`/apps/{pacote}`) continua sendo o GLOBAL, como na visão; o do app é o `modos_do_app`.

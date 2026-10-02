@@ -10,8 +10,9 @@ import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, chaveDoConfig, excecoesPorApp, linhaDeUso, modosDoAppEmTexto, modosEmTexto,
-  modosProprios, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso, temMedidoNaoUsado, type Contagem,
+  EXISTENCIA_META, TIPOS_COM_MODO_POR_APP, abrirApp, abrirAprendidoDoApp, excecoesPorApp, linhaDeUso, modosDoAppEmTexto,
+  modosEmTexto, modosProprios, trechoDeConfig, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
+  temMedidoNaoUsado, valoresDoModo, type Contagem,
   type DetalheDoApp, type ModosDoApp, type ResumoDoApp, type VisaoDeApps,
 } from './apps';
 import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
@@ -329,21 +330,38 @@ function ModosNesteApp({ pacote, modos }: { pacote: string; modos: ModosDoApp | 
           </li>
         ))}
       </ul>
-      <Disclosure bare summary="Como mudar">
+      <Disclosure bare summary="Como mudar o modo deste app">
         {() => (
-          <div className={styles.comoMudar}>
-            <p>
-              É configuração da instalação: o painel mostra, não grava. Edite <span className={styles.mono}>config/config.yaml</span> e
-              reinicie o central, que lê o config ao iniciar. Sem a chave, o app segue o modo global.
-            </p>
-            <ul>
-              {linhas.map((m) => (
-                <li key={m.chave}>
-                  <span className={styles.mono}>{chaveDoConfig(m.chave, pacote)}</span>
-                  {': '}{m.chave === 'licoes' ? 'off, shadow ou on' : 'off, observe ou on'}
-                </li>
+          <div className={styles.comoMudar} data-como-mudar>
+            <p>O painel só mostra o modo. Quem decide é o arquivo de configuração do central.</p>
+            <ol className={styles.passosDeConfig}>
+              <li>
+                No computador central, abra o arquivo <strong className={styles.mono}>config/config.yaml</strong>, na pasta
+                do central.
+              </li>
+              <li>
+                Dentro de <span className={styles.mono}>aprendizado</span>, mude o valor na linha deste app. O trecho abaixo
+                já traz o modo que vale hoje:
+                <pre className={styles.trechoDeConfig} aria-label="Trecho do config.yaml">{trechoDeConfig(pacote, modos)}</pre>
+              </li>
+              <li>
+                Reinicie o central: no Agendador de Tarefas do Windows, encerre e execute de novo a tarefa{' '}
+                <span className={styles.mono}>farm-central</span>. O arquivo só é lido quando o central inicia.
+              </li>
+            </ol>
+            <div className={styles.valoresDoModo}>
+              {TIPOS_COM_MODO_POR_APP.map(({ chave, nome }) => (
+                <div key={chave}>
+                  <span className={styles.cartaoRotulo}>Valores para {nome.toLowerCase()}</span>
+                  <ul>
+                    {valoresDoModo(chave).map((v) => (
+                      <li key={v.valor}><span className={styles.mono}>{v.valor}</span>: {v.rotulo} — {v.efeito}</li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
+            <p>Para o app voltar a seguir o modo global, apague a linha dele.</p>
           </div>
         )}
       </Disclosure>

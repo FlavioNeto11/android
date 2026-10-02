@@ -230,10 +230,16 @@ describe('modo por app de lições e telas (30.20, só leitura)', () => {
     expect(text(licoes)).toContain('definido para este app');
     expect(text(licoes)).toContain('não coleta nem usa lições neste app');
     expect(text(bloco.querySelector('[data-modo="telas"]') as HTMLElement)).toContain('as telas publicadas são entregues à sessão do app');
-    await click(Array.from(bloco.querySelectorAll('summary')).find((s) => text(s as HTMLElement) === 'Como mudar') as HTMLElement);
-    expect(text(bloco)).toContain('aprendizado.licoes.por_app.com.exemplo.cheio');
-    expect(text(bloco)).toContain('aprendizado.telas.por_app.com.exemplo.cheio');
-    expect(text(bloco)).toContain('reinicie o central');
+    await click(Array.from(bloco.querySelectorAll('summary')).find((s) => text(s as HTMLElement) === 'Como mudar o modo deste app') as HTMLElement);
+    const como = bloco.querySelector('[data-como-mudar]') as HTMLElement;
+    expect(text(como)).toContain('config/config.yaml');
+    expect(text(como)).toContain('farm-central');
+    expect(text(como)).toContain('apague a linha dele');
+    // o trecho traz o modo que vale hoje, no formato do bloco `aprendizado:`
+    expect(como.querySelector('pre')?.textContent).toBe(
+      'aprendizado:\n  licoes:\n    por_app:\n      com.exemplo.cheio: off\n  telas:\n    por_app:\n      com.exemplo.cheio: on');
+    expect(text(como)).toContain('shadow: só mede (sombra)');
+    expect(text(como)).toContain('observe: só observa');
   });
 
   it('sem override o detalhe diz "segue o global"; sem o campo (backend anterior) o bloco não aparece', async () => {
