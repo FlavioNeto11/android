@@ -3891,3 +3891,12 @@ retirada não valeu; `info`), `falhou` (`error`, o aviso de atenção: a quarent
 `antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). O evento e o log não carregam o @ da conta. Nada
 roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
 
+## Adendo v0.69 (02/10/2026, número PROVISÓRIO) — D2-a também ao ganhar a conta (item 29.29, emenda do ADR da 051)
+
+Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas que já existiam, sempre ANTES de criar qualquer linha.
+
+- `POST /api/instagram/profiles` com `persona_id` de pessoa sem conta: 409 quando algum vínculo SEM app da pessoa (ou o `instance_id` do corpo)
+  está num aparelho onde outra persona já serve o app da conta. Antes só o `instance_id` do corpo era conferido.
+- `POST /api/instagram/profiles/{id}/accounts` (conta de outro app): 409 quando um vínculo sem app da persona passaria a servir esse app num aparelho
+  onde outra persona já o serve. O vínculo COM app não é reconferido (já foi no vínculo) e quem já tem conta no app não muda de sentido.
+- A mensagem do 409 nomeia o aparelho e a outra persona. Nada é criado: nem perfil, nem conta, nem senha no cofre.

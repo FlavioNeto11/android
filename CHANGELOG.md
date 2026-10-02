@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
+
+- **Furo (revisão adversarial do 29.27):** pessoa sem conta, vinculada SEM app a aparelho que já tinha o Instagram de outra persona, passava a servir o
+  mesmo app ao ganhar a conta (`create_profile` com `persona_id` e sem `instance_id`; `add_account` de outro app), porque `profiles_of_instance`
+  conta o vínculo sem app de quem tem conta no app e o vínculo, feito antes, não tinha app a conferir. Agora `SocialRepository.conflito_da_conta_nova`
+  confere o aparelho do cadastro e cada aparelho de vínculo sem app da pessoa ANTES de criar qualquer linha (409 `conta_do_app_ja_no_aparelho`,
+  "nada foi criado"). Portas mapeadas: `create_profile` e `add_account` tinham o furo; `bind_device`, `_rebind` e vínculo no cadastro já
+  passavam por `repo.bind`. `simulated`: `tests/test_d2a_conta_nova_com_vinculo_sem_app.py` (6). `not_run` no central. Sem migração.
+
 ## 2026-10-02 — 29.28: contas nossas podem interagir entre si, em ritmo baixo (emenda do ADR-050, branch feat/29-27-limpeza-e-adr050)
 
 - **Decisão do dono de 02/10 (relatada às 23:10Z):** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,

@@ -2102,6 +2102,9 @@ dentro do mesmo aparelho (achado #115, frágil); usuários Android múltiplos no
   manual) e no máximo um principal por persona.
 - `bind` não toma aparelho de ninguém: colisão é 409 `conta_do_app_ja_no_aparelho`. Um vínculo sem app de uma
   persona que tem conta no app conta para a regra.
+- **Emenda 29.29, 02/10/2026:** a regra vale também quando a pessoa GANHA a conta tendo vínculo sem app; conferida
+  antes de criar (cadastro com `persona_id` e `POST …/accounts`), pelo mesmo 409 `conta_do_app_ja_no_aparelho`.
+  O vínculo feito antes da conta não tinha app a conferir, e o índice da 051 não enxerga vínculo sem `app_id`.
 - A sessão continua em `account_sessions` (conta × aparelho), sem tabela nova; a mesma conta em N aparelhos é
   permitida (D3), protegida pelo ADR-029.
 - O **principal** é o alvo padrão de conectar, verificar, sair e do contexto operacional; `?instance_id=` escolhe
