@@ -22,6 +22,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
+from .contas_nossas import hash_do_handle, registrar_lapide
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
@@ -107,6 +108,9 @@ class SocialRepository:
         self.on_status_changed: Callable[[str, str, str, str, str, str | None], None] | None = None
         #: Marcador de conta travada criado ou resolvido: `(linha do marcador, "marcado" | "resolvido", autor)`.
         self.on_locked_account: Callable[[Row, str, str], None] | None = None
+        #: Bloqueio CONFIRMADO numa conta (29.23, ADR-068): `(profile_id, app_id, handle, instance_id, evidencia)`. É
+        #: o que o `SocialService` liga à retirada da conta; o marcador já foi gravado quando isto dispara.
+        self.on_conta_bloqueada: Callable[[str, str | None, str, str, str | None], None] | None = None
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
@@ -252,6 +256,58 @@ class SocialRepository:
     def delete_account(self, profile_id: str, account_id: str) -> None:
         self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
         self._sincronizar_rotulos_da_persona(profile_id)
+
+    def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, ancora: bool, motivo: str) -> list[str]:
+        """Tira do banco TUDO o que faz a conta existir para a plataforma, sem tocar a persona (29.23, ADR-068).
+        Devolve as referências de segredo que a conta tinha, para quem chama apagar no cofre (depois de conferir que
+        nenhuma outra linha as usa). Quem chama já está numa transação.
+
+        - credencial da conta e, na âncora, a LEGADA (`instagram_credentials`, só leitura desde a 049: era ela que
+          segurava o ciphertext no cofre); sessões da conta, e a legada na âncora;
+        - o vínculo de aparelho que serviria à conta (o do app dela e o sem app, que serve ao app âncora pela conta
+          da persona); o de OUTRO app fica — a persona segue ligada ao que não é a conta bloqueada;
+        - a linha da conta (mesmo sendo âncora: a regra "âncora não se remove" é da remoção comum);
+        - na âncora, o `username` esvazia: a pessoa vira persona sem conta, como as `ig-persona-*` (`list_profile_ids`
+          deixa de listá-la; `list_persona_ids` continua).
+        O marcador de conta travada do APARELHO (054) fica: a conta segue logada lá até alguém limpar o app."""
+        conta = self.account_row(profile_id, account_id)
+        if conta is None:
+            return []
+        refs: list[str] = []
+        if (cred := self.account_credential_row(profile_id, account_id)) is not None:
+            refs.append(str(cred["secret_ref"]))
+        self.db.execute("DELETE FROM account_credentials WHERE account_id=?", (account_id,))
+        if ancora:
+            legada = self.db.one("SELECT secret_ref FROM instagram_credentials WHERE profile_id=?", (profile_id,))
+            if legada is not None:
+                refs.append(str(legada["secret_ref"]))
+            self.db.execute("DELETE FROM instagram_credentials WHERE profile_id=?", (profile_id,))
+            self.db.execute("DELETE FROM instagram_sessions WHERE profile_id=?", (profile_id,))
+        # Explícito, sem esperar a cascata: a sessão é da conta, e a conta vai embora.
+        self.db.execute("DELETE FROM account_sessions WHERE account_id=?", (account_id,))
+        aparelhos = {str(b["instance_id"]) for b in self.bindings_of_profile(profile_id)
+                     if b["app_id"] is None or b["app_id"] == conta["app_id"]}
+        if aparelhos:
+            self.db.execute("UPDATE device_profile_bindings SET active=0, unbound_at=?, reason=?, is_primary=0"
+                            " WHERE profile_id=? AND active=1 AND (app_id IS NULL OR app_id=?)",
+                            (now_iso(), motivo[:200], profile_id, conta["app_id"]))
+            restantes = self.bindings_of_profile(profile_id)
+            if restantes and not any(b["is_primary"] for b in restantes):
+                self.db.execute("UPDATE device_profile_bindings SET is_primary=1 WHERE id=?", (restantes[0]["id"],))
+        # A lápide: o produto segue sabendo que o @ foi NOSSO (`eh_conta_nossa`), só pelo hash (migração 071). O
+        # @ de cadastro entra também quando difere do da conta (a âncora o tem nos dois lugares).
+        perfil = self.profile_row(profile_id)
+        for h in dict.fromkeys([conta["handle"], perfil["username"] if perfil is not None and ancora else None]):
+            if hash_do_handle(h):
+                registrar_lapide(self.db, app_id=str(conta["app_id"]), handle=h, profile_id=profile_id)
+        self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
+        if ancora:
+            self.db.execute("UPDATE instagram_profiles SET username='', updated_at=? WHERE id=?",
+                            (now_iso(), profile_id))
+        self._sincronizar_rotulos_da_persona(profile_id)
+        for iid in sorted(aparelhos):
+            self._sincronizar_rotulo(iid)
+        return refs
 
     def _pacote_da_conta_ancora(self) -> str | None:
         """O pacote do app que provê a conta do perfil: o que a composição injetou (`app_package`) ou, fora dela
@@ -745,12 +801,18 @@ class SocialRepository:
             return False                   # outro chamador marcou no mesmo instante: o marcador existe
         if pid is not None and self._trava_a_persona(pid, app):
             perfil = self.profile_row(pid)
-            if perfil is not None and (perfil["status"] or "active") == "active":
+            # Persona SEM conta (29.23: a conta bloqueada já saiu, `username = ''`) não tem o que bloquear: a trava
+            # vista depois da retirada não pode devolver `blocked` a quem acabou de voltar a `active`.
+            if (perfil is not None and (perfil["status"] or "active") == "active"
+                    and (dona is not None or perfil["username"])):
                 self.mudar_status(pid, "blocked", origem=origem, autor=visto_por,
                                   evidencia=f"{instance_id}: {texto}" if texto else f"conta travada em {instance_id}")
         self._sincronizar_rotulo(instance_id)
         if self.on_locked_account is not None and (linha := self.conta_travada_no_aparelho(instance_id)) is not None:
             self.on_locked_account(linha, "marcado", visto_por)
+        if pid is not None and self.on_conta_bloqueada is not None:
+            # Por último: o marcador, o bloqueio e o aviso já saíram; a retirada só tira a conta de cena (29.23).
+            self.on_conta_bloqueada(pid, app, conta, instance_id, texto)
         return True
 
     def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,

@@ -273,8 +273,8 @@ async def test_sessao_para_na_trava_sem_tocar_em_nenhum_idioma(tmp_path: Path, l
         r = await auth.ensure_session(FakeRt(app), pid)
         assert r.outcome is Outcome.AUTH_CHALLENGE, r.detail
         assert _depois_da_trava(app) == [], app.calls
-        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
-        assert repo.profile_row(pid)["status"] == "blocked"
+        assert repo.session_row(pid) is None      # a conta saiu na hora (29.23): sem conta, sem sessão
+        assert (repo.profile_row(pid)["status"], repo.profile_row(pid)["username"]) == ("active", "")   # bloqueou e a conta saiu (29.23, ADR-068): a persona fica, sem @
         eventos = [json.loads(e["data"] or "{}") for e in db.query("SELECT data FROM events WHERE kind='log'")]
         assert any(e.get("subtipo") == "conta_travada" and "human" in (e.get("trecho") or "") for e in eventos)
     finally:
@@ -291,7 +291,7 @@ async def test_ler_conta_para_na_trava_sem_tocar(tmp_path: Path) -> None:
         r = await auth.ensure_session(FakeRt(app), pid)
         assert r.outcome is Outcome.AUTH_CHALLENGE, r.detail
         assert _depois_da_trava(app) == [], app.calls
-        assert repo.profile_row(pid)["status"] == "blocked"
+        assert (repo.profile_row(pid)["status"], repo.profile_row(pid)["username"]) == ("active", "")   # bloqueou e a conta saiu (29.23, ADR-068): a persona fica, sem @
     finally:
         db.close()
 
@@ -482,8 +482,8 @@ async def test_trava_no_meio_da_etapa_nao_toca_e_bloqueia_o_perfil(tmp_path: Pat
         tentativa = s.db.one("SELECT t.error FROM attempts t JOIN steps p ON p.id=t.step_id WHERE p.run_id=?"
                              " ORDER BY t.id DESC LIMIT 1", (run.id,))
         assert tentativa is not None and "conta_travada" in (tentativa["error"] or "")
-        assert s.social_repo.session_row(pid, IID)["status"] == SessionStatus.auth_challenge.value
-        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        assert s.social_repo.session_row(pid, IID) is None   # a conta saiu na hora (29.23)
+        assert (s.social_repo.profile_row(pid)["status"], s.social_repo.profile_row(pid)["username"]) == ("active", "")   # bloqueou e a conta saiu (29.23, ADR-068): a persona fica, sem @
         # O ator nunca recebeu a tela de verificação para decidir.
         assert not any("human" in t.casefold() or "humano" in t.casefold() for t in _ator(h).telas)
         decisoes = [json.loads(e["data"] or "{}") for e in s.db.query("SELECT data FROM events WHERE kind='decision'"
@@ -518,7 +518,7 @@ async def test_receita_e_ator_nunca_veem_a_trava(parque: Harness, monkeypatch: p
     assert not any("human" in t.casefold() for t in vistas_pela_receita)
     assert not any("human" in t.casefold() for t in _ator(parque).telas)
     assert _depois_da_trava(fake) == [], fake.calls
-    assert s.social_repo.profile_row(pid)["status"] == "blocked"
+    assert (s.social_repo.profile_row(pid)["status"], s.social_repo.profile_row(pid)["username"]) == ("active", "")   # bloqueou e a conta saiu (29.23, ADR-068): a persona fica, sem @
 
 
 async def test_codigo_no_meio_da_etapa_pede_pessoa_sem_bloquear(tmp_path: Path) -> None:
@@ -565,7 +565,7 @@ async def test_codigo_nao_bloqueia_e_trava_depois_do_codigo_bloqueia(tmp_path: P
         assert s.social_repo.profile_row(pid)["status"] == "active" and marcadas == []
 
         s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada")
-        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        assert (s.social_repo.profile_row(pid)["status"], s.social_repo.profile_row(pid)["username"]) == ("active", "")   # bloqueou e a conta saiu (29.23, ADR-068): a persona fica, sem @
         assert len(marcadas) == 1 and marcadas[0]["instance_id"] == IID and marcadas[0]["handle"] == USUARIO
         assert "human" in str(marcadas[0]["evidencia"])
         # O contrato com a quarentena: a origem é COMO se sabe (a tela foi lida); quem viu vai em `visto_por`.

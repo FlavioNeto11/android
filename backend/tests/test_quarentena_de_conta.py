@@ -218,10 +218,13 @@ async def test_marcador_sobrevive_ao_desvinculo_e_bloqueia_o_perfil_com_rastro(h
     assert _marcar(h, origem="observado") is True
     assert _marcar(h, origem="observado") is False                  # idempotente: um marcador aberto por conta
     perfil = s.social_repo.profile_row(felipe)
-    assert perfil["status"] == "blocked" and perfil["blocked_origin"] == "observado"
-    assert perfil["blocked_at"] and "Confirm you are human" in perfil["blocked_evidence"]
+    # 29.23 (ADR-068): o bloqueio confirmado retira a conta na hora e a persona volta a `active`, sem @. O rastro do
+    # bloqueio fica nos eventos `profile.status` (blocked e, logo depois, o retorno) e o marcador no aparelho.
+    assert perfil["status"] == "active" and perfil["username"] == "" and perfil["blocked_origin"] is None
     assert [(e["status"], e["origem"], e["autor"]) for e in _eventos(h, "profile.status")] == [
-        ("blocked", "observado", "dono")]
+        ("blocked", "observado", "dono"), ("active", "observado", "sistema")]
+    assert "Confirm you are human" in str(_eventos(h, "profile.status")[0]["evidencia"])
+    assert s.social_repo.list_accounts(felipe) == []
     assert [e["instance_id"] for e in _eventos(h, "device.locked_account")] == ["android-02"]
 
     s.social.update_profile(felipe, ProfilePatch(instance_id=None))  # desvincula
@@ -567,8 +570,8 @@ async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> Non
     linha = s.db.one("SELECT resolved_by, resolution FROM device_locked_accounts WHERE instance_id='android-02'")
     assert linha["resolved_by"] == "reset do aparelho" and "dados apagados (reset)" in linha["resolution"]
     assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado", "resolvido"]
-    # O perfil NÃO é reativado pelo wipe: reativar é decisão de pessoa.
-    assert s.social_repo.profile_row(felipe)["status"] == "blocked"
+    # O wipe não mexe na persona (29.23: a retirada da conta já a devolveu a `active`, sem @).
+    assert s.social_repo.profile_row(felipe)["status"] == "active"
 
 
 async def test_reset_concluido_pelo_agente_resolve_o_marcador_e_o_incerto_nao(h: Harness) -> None:

@@ -1783,3 +1783,25 @@ receber a resposta. Um teste à parte confirma que dois servidores ao mesmo temp
 **Aplicabilidade.** Todo teste que lê estado mantido por uma thread do servidor sob teste (contador, fila, flag): a volta do
 cliente não ordena nada em relação a ele. Espere o fato com prazo; `sleep` fixo só como janela negativa. Para provar a causa,
 injete o atraso no ponto da corrida em vez de repetir até falhar.
+
+---
+### K-074 — A senha "apagada" da conta continuava no cofre: a linha legada segurava o ciphertext
+
+**Data:** 02/10/2026 · **Área:** credenciais (`social/service.py::_apagar_credencial`, `instagram_credentials`)
+
+**Sintoma.** Apagar só `account_credentials` de uma conta do Instagram deixava o segredo no cofre: `secrets.exists(ref)` seguia
+verdadeiro, e a senha de uma conta que saiu da plataforma continuava cifrada, sem dono visível.
+
+**Causa.** Desde a 049 `instagram_credentials` é só leitura, mas a linha legada REUSA o mesmo `secret_ref` da conta âncora.
+`_apagar_credencial` poupa o segredo enquanto qualquer linha (a legada ou outra conta) ainda aponta para ele, e isso está certo
+para a remoção comum; para a retirada por bloqueio (29.23) a ordem é que importa.
+
+**O que funcionou.** Na retirada, apagar as DUAS linhas (conta e legada) ANTES de chamar `_apagar_credencial`; com nada mais
+apontando, o `delete_secret` roda. Teste: o segredo some do cofre mesmo com a legada apontando para a mesma referência.
+
+**Armadilha vizinha.** A retirada devolve a persona a `active` no mesmo gesto, então o agendador (que só vê `blocked`) nunca
+dispara o disjuntor de conta (ADR-055): a retirada o aciona direto. E `marcar_conta_travada` re-bloqueava a persona sem conta
+(`_trava_a_persona` não olha se a conta ainda existe): agora só bloqueia se a conta existe.
+
+**Aplicabilidade.** Vigente. Toda ação que remove credencial por perfil precisa tirar a linha legada junto, e todo código que
+muda `status` por observação tem de lembrar que "persona sem conta" não tem o que bloquear.

@@ -1588,6 +1588,25 @@ async def patch_profile_account(request: Request, profile_id: str, account_id: s
         raise _social_error(exc) from exc
 
 
+class RetirarContaBody(BaseModel):
+    """Corpo opcional de `…/accounts/{id}/retire`: o que a pessoa viu (o @ é cortado do evento)."""
+    evidencia: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/retire")
+async def retire_profile_account(request: Request, profile_id: str, account_id: str,
+                                 body: RetirarContaBody | None = None) -> dict[str, Any]:
+    """Bloqueio confirmado (29.23, ADR-068): a conta SAI na hora (credencial, cofre, sessão, vínculo, linha) e a
+    persona fica. Vale também para a âncora, que a remoção comum recusa. Idempotente: a conta que já saiu é 200 com
+    `retirada: false`. O aparelho não é tocado."""
+    try:
+        return st(request).social.retirar_conta_bloqueada(
+            profile_id, account_id, origem="declarado", autor=quem(request),
+            evidencia=body.evidencia if body else None)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
 @router.delete("/instagram/profiles/{profile_id}/accounts/{account_id}", status_code=204)
 async def delete_profile_account(request: Request, profile_id: str, account_id: str) -> None:
     try:

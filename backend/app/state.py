@@ -322,6 +322,10 @@ class AppState:
             self.provider.attach(repo=self.repo, settings_getter=self.settings.get)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.scheduler.session_gate = self._session_gate
+        # Conta bloqueada que sai (29.23): a persona volta a `active`, então o agendador nunca VÊ o `blocked` que dispara
+        # o disjuntor de conta (ADR-055); a retirada o aciona direto, na hora.
+        self.social.ao_retirar_conta = (
+            lambda pid, _conta, estava: self.scheduler.disjuntor_de_conta(pid) if estava else None)
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
         # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece
@@ -921,6 +925,8 @@ class AppState:
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.
+        if self.social_repo.account_row(profile_id, str(conta["id"])) is None:
+            return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
                                  detail=detail[:300], account_id=str(conta["id"]))

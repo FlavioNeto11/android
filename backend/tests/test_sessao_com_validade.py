@@ -77,7 +77,7 @@ async def test_desafio_e_conta_errada_passam_a_depender_de_pessoa(tmp_path: Path
         assert s.social_repo.session_row(pid)["status"] == SessionStatus.wrong_account.value
 
         s._sessao_desmentida("android-01", "auth_challenge", "Confirm you're human")
-        assert s.social_repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+        assert s.social_repo.session_row(pid) is None          # 29.23 (ADR-068): a conta saiu na hora, com a sessão
         rt = s.devices.get("android-01")
         # Desde o ADR-029 (27/09) o desafio também BLOQUEIA o perfil: a porta recusa já pelo status do perfil, antes
         # de olhar a sessão — nada de tentar sozinho, e agora nem depois de a sessão ser relida. Com a quarentena do
@@ -86,7 +86,8 @@ async def test_desafio_e_conta_errada_passam_a_depender_de_pessoa(tmp_path: Path
         motivo, trabalho = s._session_gate(rt)
         esperado = "em quarentena" if isinstance(s.social_repo, QuarentenaDeContas) else "'blocked'"
         assert trabalho is None and esperado in motivo, motivo
-        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        # 29.23: bloqueou e a conta saiu; a persona volta a `active`, sem @ (o aparelho segue em quarentena acima).
+        assert (s.social_repo.profile_row(pid)["status"], s.social_repo.profile_row(pid)["username"]) == ("active", "")
     finally:
         await h.state.stop()
 
@@ -179,7 +180,7 @@ async def test_desafio_visto_na_execucao_bloqueia_o_perfil_uma_vez(tmp_path: Pat
                                   verified_at=to_iso(now()))
         s._sessao_desmentida("android-01", "auth_challenge", "Confirm it's you")
         s._sessao_desmentida("android-01", "auth_challenge", "Confirm it's you")
-        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        assert s.social_repo.profile_row(pid)["status"] == "active"      # 29.23: bloqueou, e a conta saiu na hora
         avisos = [r for r in s.db.query("SELECT data FROM events WHERE kind='log' AND message LIKE ?",
                                         ("%bloqueado automaticamente%",))]
         assert len(avisos) == 1
