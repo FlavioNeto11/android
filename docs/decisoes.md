@@ -2555,7 +2555,7 @@ backend simulado com três personas de teste. `real`: uma chamada no central em 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
-**Emenda de 02/10/2026 (~23:45Z, decisão do dono; item 29.28): contas e personas NOSSAS podem interagir entre si.** O filtro de
+**Emenda de 02/10/2026 (decisão do dono relatada pelo orquestrador às 23:10Z; item 29.28): contas e personas NOSSAS podem interagir entre si.** O filtro de
 frota (`PolicyEngine._fleet_gate`, ADR-055/ADR-068) citava este ADR para recusar todo efeito cujo alvo fosse conta nossa ("engajamento
 simulado"). O dono decidiu o contrário: no Instagram, comentar, responder e editar nos posts umas das outras; no Outlook, trocar e-mails.
 Os limites: **ritmo baixo** (no mínimo 600 s entre gestos públicos da MESMA conta quando o alvo é conta nossa), **uma interação por vez**,
@@ -2569,6 +2569,12 @@ comentário de terceiro, 8.3) e a proteção da conta retirada. Nada no prompt d
 contas nossas (varredura de `ADR-050`/`eh_conta_nossa` em `backend/app`: só o `_fleet_gate`). Prova `simulated`:
 `tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central. A
 conduta do conteúdo (sem ofensa, sem fake news, sem link) é do texto gerado, não do filtro: este item não a afrouxa nem a reforça.
+**Post do lucas (8.3; decisão do dono relatada às 23:18Z do mesmo dia):** o dono autorizou UM post simples da conta do lucas,
+com imagem gerada pela plataforma (o caminho de imagem real da Fase 17) e legenda curta e neutra em português, sem link, sem
+hashtag em excesso e sem nada de terceiro. Ele é a base do comentário de outra conta nossa e da resposta do lucas. Tudo passa
+por aprovação, com texto e imagem mostrados ao dono antes de cada decisão, ≥ 10 min entre gestos públicos, uma coisa por vez e
+parada em qualquer desafio. O catálogo do app não tem capability de publicar nem verbo que ponha mídia no aparelho; o meio do
+post fica no roteiro da prova 8.3, não neste ADR.
 
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
@@ -3987,7 +3993,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    Os avisos (frase da quarentena, recusa, start confirmado, anúncio e saída do `device.locked_account`, problem do
    `/health`) dizem "conta retirada (bloqueada)" quando o handle é o marcador ou está na lápide
    (`contas_nossas.foi_retirada`); conta VIVA em quarentena continua com o @. Evento antigo fica (opção A).
-11. **Emenda de 02/10/2026 (~23:25Z, decisão do dono; item 29.27): a retirada limpa o app sozinha.** A "ideia de backlog"
+11. **Emenda de 02/10/2026 (decisão do dono relatada pelo orquestrador às 23:10Z; item 29.27): a retirada limpa o app sozinha.** A "ideia de backlog"
    abaixo deixa de ser só proposta para o caso da conta RETIRADA: quando a conta de um app que DECLARA
    `limpar_ao_retirar: true` no `app.yaml` (hoje só o âncora do perfil) sai da plataforma, a própria plataforma faz
    `pm clear` SÓ desse pacote em cada aparelho onde a conta estava logada, com captura de tela antes e depois, nenhum

@@ -21,7 +21,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-02 — 29.28: contas nossas podem interagir entre si, em ritmo baixo (emenda do ADR-050, branch feat/29-27-limpeza-e-adr050)
 
-- **Decisão do dono de ~23:45Z:** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,
+- **Decisão do dono de 02/10 (relatada às 23:10Z):** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,
   sem `retry_at`; conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos, uma conta por alvo do ADR-055) e por um
   espaçamento mínimo desde o último gesto com efeito DESTA conta (maior entre `limits.fleet_min_spacing_to_own_account_s`, padrão 600, e o
   cooldown do perfil), com `retry_at`. Config nova em `LimitsCfg` e `config/config.example.yaml`. Nenhum outro ponto bloqueava (varredura).
@@ -29,7 +29,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-02 — 29.27: retirada de conta bloqueada limpa o app nos aparelhos (branch feat/29-27-limpeza-e-adr050)
 
-- **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de ~23:25Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no
+- **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no
   Instagram; `AppDefinition.clear_on_account_retire`). Retirada de conta (gatilho ou rota `retire`) de app que declara isso faz, em tarefa de fundo, um
   aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo + sessão, capturados antes de a retirada mascarar o @): acorda se
   hibernado/parado, captura de tela, `pm clear` SÓ do pacote declarado (comando `session.logout` em `run_device_job`), captura de tela, resolve a

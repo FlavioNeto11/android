@@ -641,7 +641,7 @@ receber contas novas.
   `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
 - **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).
 - **Dívida:** `DELETE /api/instagram/profiles/{id}` ainda apaga a persona inteira (os dados da pessoa moram na linha do perfil).
-- **Limpeza do app ao retirar (29.27, emenda do ADR-068, decisão do dono de 02/10 ~23:25Z).** Conta de app que declara `limpar_ao_retirar: true`
+- **Limpeza do app ao retirar (29.27, emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z).** Conta de app que declara `limpar_ao_retirar: true`
   no `app.yaml` (hoje o Instagram; lido em `AppDefinition.clear_on_account_retire`) leva os dados do app embora dos aparelhos onde estava
   logada: `pm clear` SÓ desse pacote, captura de tela antes e depois, nenhum toque na tela, e a quarentena do aparelho resolvida pelo caminho do
   29.24 com a nota "limpeza automática autorizada pelo dono em 02/10". Os aparelhos são os marcadores abertos do @ da conta, o vínculo que
