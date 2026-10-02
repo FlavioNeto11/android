@@ -219,6 +219,31 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
 - **Medição:** `captura.total`, `captura.evitada{motivo}`, `captura.ms`, `captura.bytes`, `codificacao.ms` e
   `observacao.ms` em `GET /api/desempenho`.
 
+### Sessão de automação morta por baixo (01/10/2026)
+
+`ensure_automation` confia em `automation.state == "ready"` e na sessão conectada; um reboot do aparelho mata a
+instrumentation do UiAutomator2 sem que o central saiba. Dois pontos fecham o buraco, os dois no `DeviceManager`:
+
+- **`hierarchy`** (`GET /api/instances/{id}/hierarchy`): se a leitura volta com erro de **sessão perdida** (o mesmo
+  critério do executor, `automation.driver.sessao_perdida`) e a plataforma ainda acreditava "pronta" (`state ready`,
+  aparelho `online`), invalida a sessão, faz **uma** `ensure_automation` e **uma** releitura. Falhou de novo: o erro sobe
+  como antes (503 `automation_unavailable`). UI ocupada (`DriverBusy`), erro que não é de sessão e sessão já em `error`
+  (quem retenta é o monitor, espaçado) não recriam. A invalidação só vale se a sessão ainda é a que a leitura usou
+  (`rt.automation` é trocado a cada transição): se outra coroutine já abriu a nova, o erro é da antiga e a nova não
+  é derrubada. Uma requisição soma no máximo **uma** falha de sessão: não alcança sozinha o teto de 3
+  (`FALHAS_DE_SESSAO_PARA_DEGRADAR`) que degrada o aparelho e aciona a escada de reparo.
+- **Desfecho remoto bem-sucedido** (`readotar_depois_do_worker`, que agora recebe os dados do desfecho): `restart` e
+  `reset` do agente desligam e religam a frio (`_v_restart`, `_v_reset`), então a sessão de antes do boot sempre deixou de
+  valer. `start` e `wake` só a invalidam quando o agente afirma `started: true` (boot a frio ou volta do snapshot, como o
+  `_boot` local, que também descarta a sessão ao acordar); com o emulador já no ar o agente responde `started: false` e
+  não toca em nada, e a sessão (talvez no meio de uma tarefa) segue valendo. Invalidar = `automation` volta a `none` e o
+  contador de falhas, que é da vida anterior, zera; **quem fecha e reabre é `ensure_automation`**, dentro do estado
+  `starting` (`session.close`, `delete_stale`, `remove_forward`, `connect`), que é também a exclusão contra duas aberturas
+  juntas. Com o aparelho ainda `online` (o central nunca o viu cair, e `_adopt_external` só liga as tarefas na transição
+  para online), a abertura é agendada na hora.
+
+Prova: `simulated` (`tests/test_hierarquia_sessao_morta.py`, aparelho e driver falsos); `not_run` em aparelho real.
+
 ## Reparo automático
 
 `despacho.remediar(s, instance_id, motivo)` (`commands/despacho.py`) decide o DEGRAU quando um aparelho com
