@@ -27,6 +27,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
 - Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
 
+## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,
+  `substituida_por`, `derivado_de`, `absorvida` e `contradiz`, cada uma lida do que já existe (versão vizinha da receita, `parent_version`,
+  `parent_id`, `flow:<id>` do fluxo legado, `absorvida:<commit>`, mesmo `scope_key` com `content_hash` diferente e os dois vivos). Sem tabela
+  de arestas e sem migração.
+- Sem inventar: `contradiz` só em receita (chave exata) e tela (mesmo nome de regra); fluxo, habilidade, lição, voz e preferência ficam sem ele
+  (sem critério seguro). `nasceu de`, `complementa / depende de` e `revisado por` ficam fora.
+- `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
+  Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.

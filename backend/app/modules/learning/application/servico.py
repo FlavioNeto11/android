@@ -19,6 +19,7 @@ from app.modules.learning.application.espera import AvisadorDeEspera
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
                                                     NovoSinal, PassoDeCuradoria, PortaDeEventos,
                                                     RepositorioDeAprendizado, TriagemDeTexto)
+from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
@@ -43,6 +44,13 @@ NOTA_MAX = 500
 EXPOSICOES_NO_DETALHE = 50
 
 
+def _tema_do_item(kind: LivroKind, conteudo: JsonObject | None) -> str | None:
+    """O que separa dois itens de mesmo `scope_key` (ver `rel.Parente`): o nome da regra de tela. Os outros tipos de
+    item não têm critério seguro e ficam `None` (sem contradição derivada)."""
+    nome = (conteudo or {}).get("tela") if kind is LivroKind.TELA else None
+    return nome if isinstance(nome, str) and nome else None
+
+
 @dataclass(frozen=True, slots=True)
 class Livro:
     itens: tuple[EntradaDoLivro, ...]
@@ -63,6 +71,9 @@ class DetalheDoLivro:
     #: O estado de versão do item (30.6, `domain/versao.py`, §7): em que versões foi validado, quais estão vivas no
     #: parque e o estado por versão. Sempre presente; o que não se sabe é `desconhecido`, nunca inventado.
     versao: JsonObject | None = None
+    #: As relações derivadas do item (30.7, `domain/relacoes.py`, §6): substitui, substituída por, derivado de,
+    #: absorvida e contradiz, montadas na leitura, sem tabela de arestas. Vazio quando nada se deriva.
+    relacoes: tuple[JsonObject, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,8 +186,40 @@ class LearningService:
             todas = self._repo.exposicoes(e.ref, limite=100_000)
             exposicoes = tuple(exposicao_json(x) for x in todas[-EXPOSICOES_NO_DETALHE:])
         evidencias = tuple(self._repo.evidencias(e.trail_ref))
-        return DetalheDoLivro(e, evidencias, tuple(self._repo.trilha(e.trail_ref)), exposicoes,
-                              self._conteudo(kind, e.ref), self._versao(e, evidencias))
+        conteudo = self._conteudo(kind, e.ref)
+        return DetalheDoLivro(e, evidencias, tuple(self._repo.trilha(e.trail_ref)), exposicoes, conteudo,
+                              self._versao(e, evidencias), self._relacoes(e, conteudo))
+
+    def _relacoes(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[JsonObject, ...]:
+        """O `relacoes` do detalhe (30.7): da leitura que o `conteudo` já fez (vizinhas da receita, `parent_version`),
+        dos itens (`parent_id`, `absorvida:`) e das entradas do mesmo tipo (contradição). Só o que tem fonte."""
+        achadas: list[JsonObject] = []
+        tema: str | None = ""                       # receita, fluxo e habilidade: o `scope_key` já é exato
+        if e.kind is LivroKind.RECEITA:
+            achadas += rel.da_receita(conteudo)
+        elif e.kind is LivroKind.HABILIDADE:
+            skill_id, versao = (conteudo or {}).get("skill_id"), (conteudo or {}).get("versao")
+            sucessoras = (self._fontes.sucessoras_da_habilidade(skill_id, versao)
+                          if isinstance(skill_id, str) and isinstance(versao, int) else [])
+            achadas += rel.da_habilidade(conteudo, sucessoras)
+        elif e.kind in KINDS_DE_ITEM:
+            tema = _tema_do_item(e.kind, conteudo)
+            item = self._repo.item(e.ref)
+            irmaos = self._repo.itens(kind=e.kind)
+            pai = self._repo.item(item.parent_id) if item is not None and item.parent_id else None
+            achadas += rel.do_item(parent_id=item.parent_id if item is not None else None,
+                                   pai=entrada_do_item(pai) if pai is not None else None,
+                                   filhos=[entrada_do_item(i) for i in irmaos if i.parent_id == e.ref])
+            achadas += rel.absorvida(e, tema)
+            if tema is not None and e.state in rel.VIVOS:
+                achadas += rel.contradiz(e, tema, [rel.Parente(entrada_do_item(i), _tema_do_item(e.kind, i.content))
+                                                   for i in irmaos])
+        if e.kind is LivroKind.RECEITA and e.state in rel.VIVOS:
+            # o `scope_key` da receita é a chave exata da etapa, e a versão nova já aposenta as vivas da chave: duas
+            # vivas com caminho diferente é anomalia. Fluxo (`match_key` único) e habilidade (as versões da mesma
+            # habilidade têm o mesmo comando) não têm critério seguro: ficam sem contradição derivada.
+            achadas += rel.contradiz(e, tema, [rel.Parente(o, "") for o in self._todas(e.kind)])
+        return tuple(rel.ordenar(achadas))
 
     def _versao(self, e: EntradaDoLivro, evidencias: Sequence[Evidencia]) -> JsonObject:
         """O `versao` do detalhe (30.6): a receita pela chave nas versões vivas; a tela pela regra `sem_casar`; os
