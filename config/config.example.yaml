@@ -350,7 +350,7 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
   # cache: {enabled: true, directory: context_retrieval}   # em `paths.data_dir`; fora do Git
   semantic:
     provider: none                # none | fake | jev. A chave do jev é TYPESAFE_API_KEY (ambiente ou .env), nunca aqui
-    repository_class: private     # private é NEGADO a provedor remoto (PRIVATE_CODE_SEND_APPROVED = False, constante de código)
+    repository_class: private     # a provedor remoto: private e synthetic são NEGADOS (constantes de código); só public + allow_public passa
     # allow_public: false         # repositório público só segue a provedor remoto com isto ligado
     # timeout_ms: 5000
     # max_calls: 2                # por pedido (etapa A mapa + etapa B trechos)

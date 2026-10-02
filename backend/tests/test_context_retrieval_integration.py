@@ -201,10 +201,10 @@ def test_repositorio_privado_a_provedor_remoto_nao_envia_nada(tmp_path: Path) ->
     assert pack.files                                                      # e o local entregou mesmo assim
 
 
-def test_repositorio_sintetico_a_provedor_remoto_segue_mas_o_segredo_duro_barra_a_etapa_b(tmp_path: Path) -> None:
+def test_repositorio_publico_a_provedor_remoto_segue_mas_o_segredo_duro_barra_a_etapa_b(tmp_path: Path) -> None:
     remoto = FakeSemanticProvider(locality=ProviderLocality.REMOTE, concepts={"login": ["login"]})
     servico = _servico(tmp_path, remoto, enabled=True, mode="hybrid",
-                       semantic={"provider": "fake", "repository_class": "synthetic"})
+                       semantic={"provider": "fake", "repository_class": "public", "allow_public": True})
     pack = servico.gather("login de usuário")
     assert pack is not None
     assert all(c["stage"] == "A" or "sk-" + "z" * 24 not in c["text"] for c in remoto.calls)
@@ -222,7 +222,7 @@ def test_publico_sem_allow_public_e_negado(tmp_path: Path) -> None:
 
 def test_jev_sem_chave_e_indisponivel_e_cai_no_local(tmp_path: Path) -> None:
     servico = _servico(tmp_path, None, enabled=True, mode="hybrid",
-                       semantic={"provider": "jev", "repository_class": "synthetic"})
+                       semantic={"provider": "jev", "repository_class": "public", "allow_public": True})
     pack = servico.gather("login de usuário")
     assert pack is not None and pack.metadata["fallback_reason"] == "key_missing"   # e o fixture prova: zero rede
 

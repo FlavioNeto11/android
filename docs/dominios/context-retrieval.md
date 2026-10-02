@@ -62,8 +62,11 @@ Não se otimiza para top-1; o contrato é top-3/top-5 de contexto.
 
 - A política responde `can_send_repository/file/chunk/query/payload` e olha **onde o provedor executa** e a **classe do
   repositório**, nunca o nome do provedor. Local: tudo passa. Falso: caminho e segredo valem como se fosse externo.
-  Remoto: privado negado; público só com `allow_public`; sintético permitido.
-- `PRIVATE_CODE_SEND_APPROVED = False` é constante de **código**. Mudar é decisão do dono, com ADR. Nenhum YAML liga.
+  Remoto (matriz): **privado NEGADO, sintético NEGADO, público só com `allow_public: true` explícito**. FAKE e LOCAL não sofrem o
+  bloqueio de classe. `synthetic` é útil para fixtures e testes (com provedor FAKE ou LOCAL); **não** constitui autorização para
+  enviar código a um serviço remoto.
+- `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são constantes de **código**. Mudar é decisão do
+  dono, com ADR. Nenhum YAML liga.
 - Caminhos que nunca entram em índice, mapa ou chunk: `.env*`, `config.yaml`, `secrets/`, chaves, credenciais, cookies,
   tokens, bancos, logs, `data/`, `evidence/`, `backups/`, `personas/`, `apks/`, mais `context_retrieval.sensitive_paths`.
 - Portão duro (chave privada, JWT, bearer, chave de API, DSN com senha) **bloqueia o pedido**. Segredo "mole" (par
@@ -109,9 +112,10 @@ Registrados, não corrigidos nesta fatia; nenhum deles bloqueia o uso atual (CLI
 - **Uso por mais de uma thread**: `Workspace.pinned()` guarda a revisão congelada na instância, sem trava; duas sessões em
   threads diferentes podem deixá-la congelada. O orçamento (`BudgetLedger`) já é atômico. Antes de ligar o serviço a um
   endpoint, dar a cada thread o seu `Workspace` ou travar o `pinned`.
-- **A classe do repositório é declarada na configuração** (`semantic.repository_class`): `synthetic` com provedor remoto
-  libera o envio. A política não confere a classe com o repositório de fato. É escolha de desenho do ADR-063 (quem declara
-  responde); uma verificação por `git remote` fica para quando houver o primeiro uso remoto real.
+- **A classe do repositório é declarada na configuração** (`semantic.repository_class`) e a política não a confere com o
+  repositório de fato. Por isso a classe sozinha nunca autoriza envio remoto: só `public` + `allow_public: true` passa, e um
+  repositório privado marcado `synthetic` (ou `public` sem `allow_public`) continua bloqueado. Marcar como `public` um
+  repositório que não é público segue sendo erro do operador; uma verificação por `git remote` fica para o primeiro uso remoto real.
 - **Segredo "mole" no mapa da etapa A** (título de markdown, símbolo, primeira linha de docstring) só passa pelo portão
   duro; a regra "mole tira só o trecho" vale para chunks da etapa B.
 - **`query_fp` é sha256 de 12 hex sem sal**: serve para agrupar eventos, não é anônimo contra força bruta de pergunta curta.

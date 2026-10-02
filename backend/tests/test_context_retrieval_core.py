@@ -133,13 +133,37 @@ def test_repositorio_privado_e_negado_a_provedor_remoto() -> None:
     assert not d.allowed and d.code is FallbackReason.PRIVACY_BLOCK and d.hard
 
 
-def test_publico_so_com_allow_public_e_sintetico_sempre() -> None:
+def test_publico_remoto_so_com_allow_public_explicito() -> None:
     nega = ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE)
-    assert not nega.can_send_repository().allowed
+    assert not nega.can_send_repository().allowed and nega.can_send_repository().reason == "public_repository_not_enabled"
     assert ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE,
                                  allow_public=True).can_send_repository().allowed
-    assert ExternalContextPolicy(repository=RepositoryClass.SYNTHETIC,
-                                 locality=ProviderLocality.REMOTE).can_send_repository().allowed
+
+
+@pytest.mark.parametrize("allow_public", [False, True])
+def test_sintetico_remoto_e_negado_com_ou_sem_allow_public(allow_public: bool) -> None:
+    d = ExternalContextPolicy(repository=RepositoryClass.SYNTHETIC, locality=ProviderLocality.REMOTE,
+                              allow_public=allow_public).can_send_repository()
+    assert not d.allowed and d.hard and d.code is FallbackReason.PRIVACY_BLOCK and d.reason == "synthetic_repository"
+
+
+def test_privado_remoto_e_negado_mesmo_com_allow_public() -> None:
+    d = ExternalContextPolicy(repository=RepositoryClass.PRIVATE, locality=ProviderLocality.REMOTE,
+                              allow_public=True).can_send_repository()
+    assert not d.allowed and d.reason == "private_repository"
+
+
+def test_sintetico_com_fake_ou_local_nao_sofre_o_bloqueio_externo() -> None:
+    for loc in (ProviderLocality.FAKE, ProviderLocality.LOCAL):
+        assert ExternalContextPolicy(repository=RepositoryClass.SYNTHETIC, locality=loc).can_send_repository().allowed
+
+
+def test_a_classe_sintetica_nao_pode_ser_liberada_por_configuracao() -> None:
+    """A permissão é constante de código, como a do código privado: não há campo de config que a ligue."""
+    assert policy_mod.SYNTHETIC_REMOTE_SEND_APPROVED is False
+    from app.config import ContextRetrievalSemanticCfg
+
+    assert not [c for c in ContextRetrievalSemanticCfg.model_fields if "synthetic" in c.lower()]
 
 
 def test_provedor_local_nao_envia_nada_para_fora_e_tudo_passa() -> None:
@@ -156,7 +180,7 @@ def test_fake_exercita_os_portoes_de_caminho_e_segredo_mas_nao_o_de_repositorio(
 
 
 def test_chunk_com_segredo_duro_e_mole_e_arquivo_sensivel() -> None:
-    p = ExternalContextPolicy(repository=RepositoryClass.SYNTHETIC, locality=ProviderLocality.REMOTE)
+    p = ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE, allow_public=True)
     duro = p.can_send_chunk("a.py", "k = 'sk-" + "b" * 24 + "'")
     assert not duro.allowed and duro.hard and duro.code is FallbackReason.SECRET_BLOCK
     mole = p.can_send_chunk("a.py", "password=hunter2hunter2")

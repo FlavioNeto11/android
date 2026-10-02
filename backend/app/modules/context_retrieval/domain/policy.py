@@ -6,11 +6,14 @@ Nenhum `if provider == "jev"` espalhado pelo código: a política olha onde o pr
 - provedor LOCAL: nada sai da máquina, tudo permitido;
 - provedor FAKE (teste): o gate de caminho e de segredo vale como se fosse externo (para exercitar o pipeline), a
   classe do repositório não;
-- provedor REMOTE: repositório PRIVADO → NEGADO; PÚBLICO → só se `allow_public`; SINTÉTICO → permitido. Em todos,
+- provedor REMOTE: repositório PRIVADO → NEGADO; SINTÉTICO → NEGADO; PÚBLICO → só com `allow_public` explícito. Em todos,
   caminho sensível e segredo duro negam.
 
-`PRIVATE_CODE_SEND_APPROVED` é constante de CÓDIGO, não de configuração, de propósito: mudar este valor é decisão do
-dono, registrada num ADR, e não um `true` esquecido num YAML (ADR-063).
+`PRIVATE_CODE_SEND_APPROVED` e `SYNTHETIC_REMOTE_SEND_APPROVED` são constantes de CÓDIGO, não de configuração, de propósito:
+mudar um deles é decisão do dono, registrada num ADR, e não um `true` esquecido num YAML (ADR-063). A classe do repositório
+vem do YAML, então ela sozinha nunca basta para autorizar envio externo: `synthetic` serve a fixtures e testes (provedor FAKE
+ou LOCAL), não é autorização para mandar código a um serviço remoto, e um repositório privado marcado "synthetic" por engano
+não contorna `PRIVATE_CODE_SEND_APPROVED`.
 """
 from __future__ import annotations
 
@@ -22,6 +25,8 @@ from .ports import ProviderLocality
 from .sensitive import SensitivePathMatcher, default_matcher, hard_secret_kind, has_soft_secret
 
 PRIVATE_CODE_SEND_APPROVED = False
+#: `synthetic` + provedor REMOTE também é negado. Constante de código, sem leitura de configuração (ver o docstring do módulo).
+SYNTHETIC_REMOTE_SEND_APPROVED = False
 
 
 class RepositoryClass(str, Enum):
@@ -65,6 +70,8 @@ class ExternalContextPolicy:
             return _ALLOW
         if self.repository is RepositoryClass.PRIVATE and not PRIVATE_CODE_SEND_APPROVED:
             return Decision(False, "private_repository", FallbackReason.PRIVACY_BLOCK)
+        if self.repository is RepositoryClass.SYNTHETIC and not SYNTHETIC_REMOTE_SEND_APPROVED:
+            return Decision(False, "synthetic_repository", FallbackReason.PRIVACY_BLOCK)
         if self.repository is RepositoryClass.PUBLIC and not self.allow_public:
             return Decision(False, "public_repository_not_enabled", FallbackReason.PRIVACY_BLOCK)
         return _ALLOW

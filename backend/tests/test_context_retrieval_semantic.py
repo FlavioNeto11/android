@@ -115,8 +115,8 @@ class ChunksFalsos:
         return [c for p in paths for c in self.por_caminho.get(p, [])]
 
 
-def _politica(repo: RepositoryClass = RepositoryClass.SYNTHETIC, loc: ProviderLocality = REMOTE,
-              allow_public: bool = False) -> ExternalContextPolicy:
+def _politica(repo: RepositoryClass = RepositoryClass.PUBLIC, loc: ProviderLocality = REMOTE,
+              allow_public: bool = True) -> ExternalContextPolicy:
     return ExternalContextPolicy(repository=repo, locality=loc, allow_public=allow_public)
 
 
@@ -313,12 +313,35 @@ def test_privado_com_provedor_remoto_bloqueia_sem_montar_o_mapa():
 def test_publico_depende_de_allow_public():
     bloqueado = Montagem(_fake(), politica=_politica(RepositoryClass.PUBLIC, REMOTE, allow_public=False))
     assert bloqueado.pedir().fallback_reason is FallbackReason.PRIVACY_BLOCK and bloqueado.mapa.chamadas == 0
+    assert bloqueado.chunks.pedidos == []
     liberado = Montagem(_fake(), politica=_politica(RepositoryClass.PUBLIC, REMOTE, allow_public=True)).pedir()
     assert not liberado.fallback_used and liberado.selected_files
 
 
-def test_sintetico_segue_e_local_em_repositorio_privado_segue():
-    assert not Montagem(_fake()).pedir().fallback_used
+def test_sintetico_remoto_e_negado_sem_mapa_sem_chunk_sem_chamada():
+    fake = _fake()
+    m = Montagem(fake, politica=_politica(RepositoryClass.SYNTHETIC, REMOTE, allow_public=True))
+    sel = m.pedir()
+    assert sel.fallback_reason is FallbackReason.PRIVACY_BLOCK
+    assert m.mapa.chamadas == 0 and m.chunks.pedidos == [] and fake.calls == []
+
+
+def test_privado_remoto_e_negado_sem_mapa_sem_chunk_sem_chamada():
+    fake = _fake()
+    m = Montagem(fake, politica=_politica(RepositoryClass.PRIVATE, REMOTE, allow_public=True))
+    sel = m.pedir()
+    assert sel.fallback_reason is FallbackReason.PRIVACY_BLOCK
+    assert m.mapa.chamadas == 0 and m.chunks.pedidos == [] and fake.calls == []
+
+
+def test_sintetico_com_provedor_fake_continua_exercitando_o_pipeline():
+    fake = _fake(locality=ProviderLocality.FAKE)
+    m = Montagem(fake, politica=_politica(RepositoryClass.SYNTHETIC, ProviderLocality.FAKE, allow_public=False))
+    sel = m.pedir()
+    assert not sel.fallback_used and sel.selected_files and fake.calls
+
+
+def test_local_em_repositorio_privado_segue():
     local = Montagem(_fake(locality=LOCAL), politica=_politica(RepositoryClass.PRIVATE, LOCAL)).pedir()
     assert not local.fallback_used and local.selected_files
 

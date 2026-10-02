@@ -3710,9 +3710,10 @@ contexto antes de implementar" é o gerador de pacotes do plano-100 mais a leitu
 4. Modos: `disabled` (padrão; o pipeline antigo segue e o serviço nem toca o disco), `local_only`, `shadow` (o semântico roda
    para medir; o contexto entregue é o local) e `hybrid`. `context_retrieval.enabled: false` vence qualquer `mode`.
 5. **Política única** (`ExternalContextPolicy`): olha onde o provedor executa (local/remoto/falso) e a classe do repositório
-   (privado/público/sintético), nunca o nome do provedor. Repositório **privado** a provedor **remoto** é negado.
-   `PRIVATE_CODE_SEND_APPROVED = False` é **constante de código**, de propósito: liberar código privado é decisão do dono, com
-   ADR novo, e não um valor esquecido num YAML.
+   (privado/público/sintético), nunca o nome do provedor. A provedor **remoto**: **privado negado, sintético negado** e público
+   só com `allow_public` explícito. `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são
+   **constantes de código**, de propósito: liberar um deles é decisão do dono, com ADR novo, e não um valor esquecido num YAML.
+   "Sintético" serve a fixtures e testes (provedor FAKE ou LOCAL); não é autorização para mandar código a um serviço remoto.
 6. Caminho sensível (`.env`, `config.yaml`, `secrets/`, `data/`, `evidence/`, `backups/`, `personas/`, chaves, bancos, logs…)
    nunca entra em índice, mapa ou chunk. **Portão duro de segredo** (chave privada, JWT, bearer, chave de API, DSN com senha)
    bloqueia o pedido inteiro, não só redige; segredo "mole" (par chave/valor que a redação central mascararia) tira só o
@@ -3746,6 +3747,13 @@ Git), chaveado por raiz + revisão + `RETRIEVAL_VERSION` + `INDEX_VERSION` + cor
 viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. O lote
 (`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
 local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
+
+**Adendo (endurecimento de privacidade, PR #18).** `synthetic` + provedor REMOTE passou de permitido a **negado** (antes bastava
+`repository_class: synthetic` no YAML, e um repositório privado marcado assim por engano contornava `PRIVATE_CODE_SEND_APPROVED`).
+Matriz a provedor remoto: privado negado; sintético negado; público negado até `allow_public: true`. Provedor LOCAL e FAKE não
+sofrem o bloqueio de classe (FAKE continua exercitando o pipeline nos testes, com os portões de caminho e de segredo). Não há
+campo de configuração que libere `synthetic`; se um dia for preciso, exige mudar a constante no código com ADR. O smoke público
+(`python-poetry/poetry`) continua permitido como `public` + `allow_public: true`.
 
 **Adendo (revisão final do PR #18).** O orçamento conta a chamada quando ela é AUTORIZADA (reserva atômica), não quando responde:
 falha de provedor também gasta a cota. O hit de cache do mapa corrompido (número absurdo, aninhamento profundo) é miss. Gravações

@@ -59,7 +59,7 @@ def _arquivos(raiz: Path) -> Path:
 def _servico(tmp_path: Path, provider: FakeSemanticProvider | None, *, mode: str = "hybrid", **semantic: Any):
     raiz = _arquivos(tmp_path / "repo")
     cfg = _cfg(tmp_path, enabled=True, mode=mode,
-               semantic={"provider": "fake", "repository_class": "synthetic", **semantic},
+               semantic={"provider": "fake", "repository_class": "public", "allow_public": True, **semantic},
                cache={"enabled": semantic.pop("cache", False)})
     return wiring.build_service(cfg, root=raiz, provider=provider)
 
@@ -185,7 +185,7 @@ def test_contrato_e_top_k_nao_top_1(tmp_path: Path) -> None:
 def test_cache_nunca_reintroduz_arquivo_que_a_politica_passou_a_bloquear(tmp_path: Path) -> None:
     pergunta = "como funciona a autenticacao do sistema"
     falso = FakeSemanticProvider(locality=ProviderLocality.REMOTE, concepts={"autenticacao": ["login", "token"]})
-    cfg1 = _cfg(tmp_path, enabled=True, mode="hybrid", semantic={"provider": "fake", "repository_class": "synthetic"})
+    cfg1 = _cfg(tmp_path, enabled=True, mode="hybrid", semantic={"provider": "fake", "repository_class": "public", "allow_public": True})
     raiz = _arquivos(tmp_path / "repo")
     antes = wiring.build_service(cfg1, root=raiz, provider=falso).gather(pergunta)
     assert antes is not None and "app/auth.py" in _caminhos(antes)
@@ -193,7 +193,7 @@ def test_cache_nunca_reintroduz_arquivo_que_a_politica_passou_a_bloquear(tmp_pat
 
     # agora a instalação passa a tratar `app/auth.py` como sensível; o MESMO cache em disco continua lá
     cfg2 = _cfg(tmp_path, enabled=True, mode="hybrid", sensitive_paths=["app/auth.py"],
-                semantic={"provider": "fake", "repository_class": "synthetic"})
+                semantic={"provider": "fake", "repository_class": "public", "allow_public": True})
     depois = wiring.build_service(cfg2, root=raiz, provider=falso).gather(pergunta)
     assert depois is not None
     assert len(falso.calls) > chamadas                                       # outra política = outra chave: não serviu do cache
@@ -279,3 +279,112 @@ def test_falha_ao_gravar_nao_deixa_tmp_orfao(tmp_path: Path, monkeypatch: pytest
         wiring.build_service(cfg, root=raiz).gather("onde fica `verify_token`")
     sobras = [p.name for p in tmp_path.rglob("*.tmp")]
     assert sobras == []
+
+
+
+# ---------------------------------------------------------------- política de envio: classe do repositório x localidade
+def _contar_mapa_e_chunks(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Conta quantas vezes o mapa foi construído e quantos pedidos de chunk houve (o que a política tem de impedir)."""
+    from app.modules.context_retrieval.infrastructure.chunker import Chunker
+    from app.modules.context_retrieval.infrastructure.repomap import RepoMapProvider
+
+    n = {"mapa": 0, "chunks": 0}
+    mapa, chunks = RepoMapProvider.repo_map, Chunker.chunks_for
+
+    def contar_mapa(self: Any, *a: Any, **k: Any) -> Any:
+        n["mapa"] += 1
+        return mapa(self, *a, **k)
+
+    def contar_chunks(self: Any, *a: Any, **k: Any) -> Any:
+        n["chunks"] += 1
+        return chunks(self, *a, **k)
+
+    monkeypatch.setattr(RepoMapProvider, "repo_map", contar_mapa)
+    monkeypatch.setattr(Chunker, "chunks_for", contar_chunks)
+    return n
+
+
+def _build(tmp_path: Path, provider: FakeSemanticProvider, classe: str, allow_public: bool, **extra: Any):
+    cfg = _cfg(tmp_path, enabled=True, mode="hybrid", **extra,
+               semantic={"provider": "fake", "repository_class": classe, "allow_public": allow_public})
+    raiz = tmp_path / "repo"
+    if not raiz.exists():                      # não reescrever: o mtime entra na revisão e invalidaria o cache sozinho
+        _arquivos(raiz)
+    return wiring.build_service(cfg, root=raiz, provider=provider)
+
+
+@pytest.mark.parametrize("classe,allow_public", [("private", False), ("private", True),
+                                                 ("synthetic", False), ("synthetic", True),
+                                                 ("public", False)])
+def test_remoto_bloqueado_nao_monta_mapa_nem_chunk_nem_chama(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                              classe: str, allow_public: bool) -> None:
+    falso = FakeSemanticProvider(locality=ProviderLocality.REMOTE, concepts={"autenticacao": ["login", "token"]})
+    n = _contar_mapa_e_chunks(monkeypatch)
+    pack = _build(tmp_path, falso, classe, allow_public).gather("como funciona a autenticacao do sistema")
+    assert pack is not None and pack.metadata["fallback_reason"] == "privacy_block"
+    assert falso.calls == [] and n == {"mapa": 0, "chunks": 0}
+    assert pack.files                                                      # e o local entregou mesmo assim
+
+
+def test_publico_remoto_com_allow_public_explicito_e_permitido(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    falso = FakeSemanticProvider(locality=ProviderLocality.REMOTE, concepts={"autenticacao": ["login", "token"]})
+    n = _contar_mapa_e_chunks(monkeypatch)
+    pack = _build(tmp_path, falso, "public", True).gather("como funciona a autenticacao do sistema")
+    assert pack is not None and not pack.metadata["fallback_used"]
+    assert falso.calls and n["mapa"] >= 1
+
+
+def test_sintetico_com_fake_e_local_nao_sofrem_bloqueio_externo(tmp_path: Path) -> None:
+    for loc in (ProviderLocality.FAKE, ProviderLocality.LOCAL):
+        falso = FakeSemanticProvider(locality=loc, concepts={"autenticacao": ["login", "token"]})
+        pack = _build(tmp_path / loc.value, falso, "synthetic", False).gather("como funciona a autenticacao do sistema")
+        assert pack is not None and not pack.metadata["fallback_used"], loc
+        assert falso.calls, loc                                            # o pipeline de teste continua exercitável
+
+
+def test_privado_local_nao_sofre_bloqueio_externo(tmp_path: Path) -> None:
+    falso = FakeSemanticProvider(locality=ProviderLocality.LOCAL, concepts={"autenticacao": ["login", "token"]})
+    pack = _build(tmp_path, falso, "private", False).gather("como funciona a autenticacao do sistema")
+    assert pack is not None and not pack.metadata["fallback_used"] and falso.calls
+
+
+@pytest.mark.parametrize("de,para", [("synthetic", "public"), ("private", "public")])
+def test_mudar_a_classe_do_repositorio_nao_reaproveita_resposta_de_politica_antiga(tmp_path: Path, de: str,
+                                                                                    para: str) -> None:
+    pergunta = "como funciona a autenticacao do sistema"
+    falso = FakeSemanticProvider(locality=ProviderLocality.FAKE, concepts={"autenticacao": ["login", "token"]})
+    antes = _build(tmp_path, falso, de, False, cache={"enabled": True}).gather(pergunta)
+    assert antes is not None and falso.calls
+    chamadas = len(falso.calls)
+    # a MESMA pergunta, o MESMO cache em disco, outra classe: é outra política, então outra chave (nada servido do cache)
+    depois = _build(tmp_path, falso, para, True, cache={"enabled": True}).gather(pergunta)
+    assert depois is not None and len(falso.calls) > chamadas
+    # e repetir sob a política NOVA agora vem do cache
+    apos_nova = len(falso.calls)
+    de_novo = _build(tmp_path, falso, para, True, cache={"enabled": True}).gather(pergunta)
+    assert de_novo is not None and len(falso.calls) == apos_nova
+    from app.modules.context_retrieval.domain.policy import ExternalContextPolicy, RepositoryClass
+
+    f = [ExternalContextPolicy(repository=RepositoryClass(c), locality=ProviderLocality.FAKE).fingerprint()
+         for c in (de, para)]
+    assert f[0] != f[1]
+
+
+def test_status_reflete_a_regra_nova_de_envio_externo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.context_retrieval.wiring import estado_do_retrieval
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "valor-de-teste-nao-e-uma-chave")
+
+    def envio(classe: str, allow_public: bool) -> dict[str, Any]:
+        cfg = _cfg(tmp_path, enabled=True, mode="shadow",
+                   semantic={"provider": "jev", "repository_class": classe, "allow_public": allow_public})
+        return estado_do_retrieval(cfg)["external_send"]  # type: ignore[return-value]
+
+    assert envio("private", False) == {"allowed": False, "reason": "private_repository", "repository_class": "private"}
+    assert envio("private", True)["allowed"] is False
+    assert envio("synthetic", False) == {"allowed": False, "reason": "synthetic_repository",
+                                         "repository_class": "synthetic"}
+    assert envio("synthetic", True)["allowed"] is False                    # allow_public não libera synthetic
+    assert envio("public", False) == {"allowed": False, "reason": "public_repository_not_enabled",
+                                      "repository_class": "public"}
+    assert envio("public", True) == {"allowed": True, "reason": "allowed", "repository_class": "public"}

@@ -93,6 +93,8 @@ mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, tr
   `--contexto` usa um serviço só no lote (orçamento de sessão compartilhado); motor léxico Python por contagem (paridade com `rg`);
   `rg` opcional com descoberta robusta; `docs-check` não exige mais o handoff local; regressão contra o piloto (30 casos públicos).
   Medido no plano-100 inteiro: 96,7 s contra ~1.550 s (16x). Prova: `test_context_retrieval_{bm25_cache,hardening,pilot_regression}.py`.
+- **Privacidade (PR #18)**: `synthetic` + provedor remoto passa de permitido a NEGADO (constante de código `SYNTHETIC_REMOTE_SEND_APPROVED = False`,
+  sem campo de configuração). Remoto: privado negado, sintético negado, público só com `allow_public` explícito. Prova: `test_context_retrieval_{core,semantic,hardening}.py`.
 - **Revisão final do PR #18** (duas revisões independentes, só leitura): a chamada ao provedor passa a contar quando autorizada (falha
   também gasta a cota da sessão); cache do mapa corrompido é miss; `.tmp` único e sem sobra; texto de região com a mesma numeração
   de linha dos retrievers (`\x0c`); `sk-proj-…` é segredo duro. Limites abertos em `docs/dominios/context-retrieval.md`.

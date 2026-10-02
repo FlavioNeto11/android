@@ -862,8 +862,9 @@ class ContextRetrievalSemanticCfg(BaseModel):
 
     provider: Literal["none", "fake", "jev"] = "none"
     model: str = ""                                 # vazio = o padrão do adaptador
-    #: Classe do repositório para a política de envio. `private` é o default e é NEGADO a provedor remoto
-    #: (`PRIVATE_CODE_SEND_APPROVED = False`, constante de código, não deste arquivo; ADR-063).
+    #: Classe do repositório para a política de envio. A provedor REMOTO `private` e `synthetic` são NEGADOS (constantes de
+    #: código `PRIVATE_CODE_SEND_APPROVED` e `SYNTHETIC_REMOTE_SEND_APPROVED`, não deste arquivo); só `public` com
+    #: `allow_public` passa. `synthetic` serve a fixtures e testes com provedor fake ou local (ADR-063).
     repository_class: Literal["private", "public", "synthetic"] = "private"
     allow_public: bool = False                      # repositório público só segue a provedor remoto com isto ligado
     timeout_ms: int = Field(5_000, ge=100, le=60_000)
