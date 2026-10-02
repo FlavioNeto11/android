@@ -38,6 +38,8 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
+from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
@@ -234,6 +236,8 @@ class AppState:
         # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
+        # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
+        self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -2254,6 +2258,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
+            # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
+            self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura (e a rede de cada
@@ -2937,6 +2943,7 @@ class AppState:
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         problems.extend(self._problemas_de_saldo())
+        problems.extend(self.avisos.problemas())
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

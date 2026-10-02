@@ -15,7 +15,8 @@
 --
 --     estado           pendente -> enviando -> enviado | pendente (nova tentativa, com `proximo_envio_em`)
 --                                            | falhou (esgotou `tentativas`) | incerto (queda no meio do envio)
---                      descartado = o aviso nasceu com o canal desligado ou foi recusado por política; fica o registro.
+--                      descartado = `pendente` que venceu (`avisos.validade_h`): notícia velha não sai; fica o registro.
+--                      Com o canal desligado ou sem segredo NADA é enfileirado (não há linha `descartado` por isso).
 --     tentativas       quantas vezes a rede foi chamada; o teto é `avisos.max_tentativas`.
 --     proximo_envio_em UTC; adia a próxima tentativa (backoff, `Retry-After` do 429). NULL = já.
 --     ultimo_erro      texto curto e REDIGIDO (nunca o token, nunca a URL do bot).

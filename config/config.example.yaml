@@ -397,6 +397,19 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
     # max_candidate_files: 5      # arquivos que a etapa A escolhe
     # max_chunks: 16              # trechos que a etapa B recebe (janelas do início dos candidatos; ver ADR-063)
 
+avisos:                           # aviso fora do painel (item 28.11): espelho da caixa de Pendências no Telegram, só saída
+  enabled: false                  # (false) desligado = nada é enfileirado nem enviado. Ligar exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env
+  canal: telegram                 # o único canal; o token e o chat_id NUNCA moram aqui (nomes fixos no .env; docs/operacao.md)
+  # url_painel: http://192.168.1.10:8000   # base pública do painel p/ o link <base>/#/pendencias; sem ela a mensagem leva só o texto
+  # intervalo_s: 15               # de quanto em quanto tempo o laço olha a fila
+  # lote: 5                       # avisos por volta
+  # timeout_s: 10                 # por chamada ao Telegram
+  # max_tentativas: 5             # esgotadas, a linha vira `falhou`
+  # backoff_s: 30                 # base do backoff exponencial (o Retry-After do 429 manda se for maior)
+  # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
+  # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
+  # retencao_dias: 30             # purga das linhas finais
+
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
 
