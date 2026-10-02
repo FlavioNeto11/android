@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Worker } from '../../api/types';
+import type { EventRecord, Worker } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
@@ -579,5 +579,94 @@ describe('InfraPage — servidor fora do ar (RF-40)', () => {
     });
     await render();
     expect(text(byRole('button', /^Abrir android-14 na visão de foco/))).toContain('parado');
+  });
+});
+
+// T.2 (achado #166): a tela vive de dois eventos do backend. Os testes acima montam o estado e leem; estes
+// aplicam o EVENTO ao vivo, pelo mesmo caminho do WebSocket (`applyEvent` do store), e conferem que o cartão e a
+// aba Registros mudam sem recarregar nada. O envelope é o que `AppState._publish_worker` e `publicar_comando`
+// gravam (backend/tests/test_eventos_comando_e_worker.py).
+describe('InfraPage — reage a worker.updated e command.updated ao vivo', () => {
+  let proximoId = 500;
+  const evento = (kind: string, data: Record<string, unknown>, over: Partial<EventRecord> = {}): EventRecord => ({
+    id: proximoId++, ts: '2026-09-22T10:00:00Z', kind, level: 'info', run_id: null, instance_id: null,
+    objective_id: null, step_id: null, attempt_id: null, message: kind, data, ...over,
+  });
+  const aplicar = (ev: EventRecord) => act(async () => useAppStore.getState().applyEvent(ev));
+
+  it('a lista traz um cartão por servidor, cada um com o seu estado', async () => {
+    useAppStore.setState({
+      workers: {
+        'worker-lan-01': worker(),
+        'worker-b': worker({ id: 'worker-b', name: 'Servidor B', state: 'offline', observed_state: 'offline',
+                             connected: false }),
+      },
+    });
+    await render();
+    expect(text()).toContain('Notebook da LAN');
+    expect(text()).toContain('Servidor B');
+    expect(text()).toContain('online');
+    expect(text()).toContain('offline');
+  });
+
+  it('worker.updated troca o estado do cartão e mostra o detalhe, sem recarregar', async () => {
+    await render();
+    expect(text()).not.toContain('em manutenção');
+
+    await aplicar(evento('worker.updated', {
+      worker: worker({ state: 'maintenance', maintenance: true, state_detail: 'troca de disco' }),
+    }));
+    await waitFor(() => text().includes('em manutenção'));
+    expect(text()).toContain('troca de disco');
+
+    await aplicar(evento('worker.updated', {
+      worker: worker({ state: 'offline', observed_state: 'offline', connected: false,
+                       state_detail: 'sem batida há mais de 30 s' }),
+    }));
+    await waitFor(() => text().includes('sem batida há mais de 30 s'));
+    expect(text()).not.toContain('em manutenção');
+  });
+
+  it('worker.updated de um servidor novo faz o cartão aparecer', async () => {
+    await render();
+    expect(text()).not.toContain('Servidor C');
+    await aplicar(evento('worker.updated', { worker: worker({ id: 'worker-c', name: 'Servidor C' }) }));
+    await waitFor(() => text().includes('Servidor C'));
+    expect(text()).toContain('Notebook da LAN');
+  });
+
+  it('worker.metrics (efêmero) renova o "último contato" e some o aviso de dado velho', async () => {
+    await render();                                          // last_seen_at de ontem
+    expect(text()).toContain('os dados abaixo podem estar desatualizados');
+    await aplicar(evento('worker.metrics', {
+      worker_id: 'worker-lan-01', last_seen_at: new Date().toISOString(),
+      resources: { cpu_percent: 55, cpu_count: 12, ram_total_mb: 65273, ram_free_mb: 40000, disk_free_gb: 400 },
+    }, { id: null }));
+    await waitFor(() => !text().includes('os dados abaixo podem estar desatualizados'));
+  });
+
+  it('command.updated entra na aba Registros do servidor que hospeda o aparelho, e só nela', async () => {
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ devices: [{ serial: 'emulator-5554', state: 'running', instance_id: 'android-13' }] }) },
+      instances: { 'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'stopped' }),
+                   'android-01': makeInstance(1, { state: 'online' }) },
+      instanceOrder: ['android-13', 'android-01'],
+    });
+    await render();
+    await click(byRole('tab', /^Registros/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    const doServidor = () => text(document.getElementById('infra-worker-lan-01-panel-logs')!);
+    expect(doServidor()).not.toContain('restart — failed');
+
+    await aplicar(evento('command.updated', { command: { id: 'cmd-1', instance_id: 'android-13', verb: 'restart', state: 'failed' } }, {
+      instance_id: 'android-13', level: 'error', message: 'android-13: restart — failed (sem ADB)',
+    }));
+    await aplicar(evento('command.updated', { command: { id: 'cmd-2', instance_id: 'android-01', verb: 'stop', state: 'succeeded' } }, {
+      instance_id: 'android-01', message: 'android-01: stop — succeeded',
+    }));
+
+    await waitFor(() => doServidor().includes('android-13: restart — failed (sem ADB)'));
+    // O comando do aparelho do central fica na aba do central (outro cartão), nunca na deste servidor.
+    expect(doServidor()).not.toContain('android-01: stop — succeeded');
+    expect(text(document.getElementById('infra-central-panel-logs')!)).toContain('android-01: stop — succeeded');
   });
 });
