@@ -13,7 +13,9 @@ revisão barata de prioridade baixa não passa na frente de uma cara de priorida
 1. conflito ou evidência contra em item publicado B ou C (inclui `degradando` e `obsoleto_provavel` de publicado);
 2. classe C; 3. falha recorrente do backlog; 4. classe B; 5. classe A, só com sobra (`ia_permitida(A) = so_com_sobra`).
 
-Salvaguardas relativas: gasto da última hora ≤ `B_W / W / 2`; entrada do dia > 3× a média diária da janela → só as
+Salvaguardas relativas: gasto da última hora ≤ `B_W / W / 2` (conferido ANTES de cada revisão, sobre o que já se
+gastou: com N_W pequeno o teto da hora fica abaixo do custo de uma revisão, e a regra lida como "mais esta cabe"
+nunca deixaria a primeira passar); entrada do dia > 3× a média diária da janela → só as
 prioridades 1 e 2 (e alerta, de quem chama); revisão mais cara que `c_max = m × mediana` é recusada (`recusada:custo`).
 """
 from __future__ import annotations
@@ -58,6 +60,9 @@ class Prioridade(IntEnum):
 #: No pico de entrada, só estas passam (§8.7).
 PRIORIDADES_NO_PICO = frozenset({Prioridade.CONTRA_EM_PUBLICADO, Prioridade.CLASSE_C})
 FATOR_DO_PICO = 3.0
+#: Piso de amostra do pico: com volume pequeno, "3× a média" dispara com um item só (média de 1/6 por dia e uma
+#: entrada já é pico). Escolha do 30.11, a confirmar com o dono; o volume medido é ~10/dia (§8.6).
+ENTRADA_MINIMA_DO_PICO = 5
 
 
 class MotivoDoCorte(StrEnum):
@@ -175,9 +180,9 @@ def orcamento_da_janela(gasto_da_operacao: float, n: int, c_barra: float, p: Par
 
 def e_pico(entrada_de_hoje: int, janela: Janela, p: ParametrosDoOrcamento) -> bool:
     """Entrada do dia acima de 3× a média diária da janela. Sem histórico (média 0), nunca é pico: senão o primeiro dia
-    seria sempre pico."""
+    seria sempre pico; abaixo de `ENTRADA_MINIMA_DO_PICO`, também não."""
     media = janela.revisoes_antes_de_hoje / max(1, p.janela_dias - 1)
-    return media > 0 and entrada_de_hoje > FATOR_DO_PICO * media
+    return media > 0 and entrada_de_hoje >= ENTRADA_MINIMA_DO_PICO and entrada_de_hoje > FATOR_DO_PICO * media
 
 
 def repartir(pretendentes: Sequence[Pretendente], janela: Janela, p: ParametrosDoOrcamento) -> Partilha:
@@ -208,7 +213,7 @@ def repartir(pretendentes: Sequence[Pretendente], janela: Janela, p: ParametrosD
         if gasto + x.custo_estimado > b:
             parou = cortados[x.chave] = MotivoDoCorte.ORCAMENTO_DA_JANELA
             continue
-        if hora + x.custo_estimado > teto_hora:
+        if hora > teto_hora:
             parou = cortados[x.chave] = MotivoDoCorte.GASTO_DA_HORA
             continue
         aprovados.append(x.chave)
@@ -218,7 +223,7 @@ def repartir(pretendentes: Sequence[Pretendente], janela: Janela, p: ParametrosD
                     custo_maximo=c_max, teto_da_hora=teto_hora, pico=pico)
 
 
-__all__ = ["BYTES_POR_TOKEN", "FATOR_DO_PICO", "FORCA_DO_GATILHO", "GATILHOS_CONTRA_PUBLICADO", "PRIORIDADES_NO_PICO",
+__all__ = ["BYTES_POR_TOKEN", "ENTRADA_MINIMA_DO_PICO", "FATOR_DO_PICO", "FORCA_DO_GATILHO", "GATILHOS_CONTRA_PUBLICADO", "PRIORIDADES_NO_PICO",
            "TOKENS_DE_SAIDA", "Gatilho", "Janela", "MotivoDoCorte", "ParametrosDoOrcamento", "Partilha", "Pretendente",
            "Prioridade", "custo_maximo", "custo_medio", "e_pico", "estimar_custo", "mais_forte", "orcamento_da_janela",
            "preco_mais_caro", "prioridade", "repartir"]
