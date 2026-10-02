@@ -118,6 +118,25 @@ async def _ip(ap: AparelhoDaRede, hosts: list[str], familia: int) -> tuple[str |
     return None, "; ".join(motivos)
 
 
+async def medir_saida(ap: AparelhoDaRede, cfg: RedeSondaCfg) -> tuple[str | None, str | None, str]:
+    """Só os IPs de saída v4 e v6, pela MESMA sonda (eco HTTP/1.0 por `nc`, uid 2000), para o aparelho SEM rede pedida
+    (item 29.20): sem app aberto, sem DNS, sem UDP, sem vazamento, sem contabilidade. Devolve `(ipv4, ipv6, detalhe)`;
+    uma família que falhou (inclusive uid diferente de 2000 ou resposta truncada) fica `None`, com o motivo no detalhe:
+    falha de sonda nunca vira IP nem "ok"."""
+    saidas: dict[int, str | None] = {}
+    partes: list[str] = []
+    for familia, hosts in ((4, cfg.hosts_ipv4), (6, cfg.hosts_ipv6)):
+        try:
+            ip, de_onde = await _ip(ap, hosts, familia)
+        except Exception as exc:  # noqa: BLE001 - uma família que falha não derruba a outra; vira motivo
+            saidas[familia], de_onde = None, f"falhou ({str(exc)[:120]})"
+        else:
+            saidas[familia] = ip
+        partes.append(f"IPv{familia} {saidas[familia]} (via {de_onde})" if saidas[familia]
+                      else f"IPv{familia} sem IP: {de_onde}")
+    return saidas[4], saidas[6], "; ".join(partes)[:480]
+
+
 async def contabilidade(ap: AparelhoDaRede) -> Contabilidade:
     """A contabilidade por UID agora, lida como uid 2000. A convergência a guarda quando o túnel conecta: é o começo
     da janela dos apps na primeira medição (o tráfego desde que o túnel subiu conta)."""

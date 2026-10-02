@@ -782,3 +782,170 @@ async def test_visao_por_aparelho_com_legado_rebaixado_e_pendencias(parque: Harn
     assert visao["android-03"]["last_measurement"]["egress_ipv4"] == "45.162.8.4"
     # A medição de base não mexeu no estado.
     assert _linha(parque, "android-03")["state"] == "pendente"              # type: ignore[index]
+
+
+# ==================================================================== "nenhum aparelho pela saída da casa" (item 29.20)
+CASA4, CASA6 = "177.10.20.30", "2804:14c:1:2::9"
+
+
+async def _central_medido(h: Harness, v4: str | None = CASA4, v6: str | None = CASA6) -> None:
+    """Liga a medida do central (o harness a desliga) com um medidor falso: nenhum teste abre socket."""
+    from app.devices.sonda_rede import IpDeSaida
+    st = h.state
+    assert st is not None
+    st.cfg.file.rede.sonda.medir_central = True
+
+    async def _medidor(hosts: list[str], versao: int, prazo: float) -> IpDeSaida:
+        ip = v4 if versao == 4 else v6
+        return IpDeSaida(ip, "ok") if ip else IpDeSaida(None, f"sem IPv{versao} no central de teste")
+
+    st.rede_saida_central.medidor = _medidor
+    await st.rede_saida_central.atualizar_se_vencida()
+
+
+async def test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida(parque: Harness) -> None:
+    st = parque.state
+    assert st is not None
+    st.rede_convergencia.trabalho = lambda _rt, motivo: None
+    async with _cliente(parque) as c:
+        # Central ainda não medido (a medida está desligada no harness): nada é "limpo", e o motivo aparece.
+        corpo = (await c.get("/api/network/devices")).json()
+        assert corpo["central_egress"]["ipv4"] is None and "desligada" in corpo["central_egress"]["reason"]
+        # Sem rede pedida o aparelho sai pela casa por definição: PRESUMIDO (nunca nulo nem neutro), mesmo sem medida.
+        assert {(d["egress_home"]["leaves_by_home"], d["egress_home"]["basis"]) for d in corpo["devices"]} == {
+            (True, "presumed")}
+        sem_rede = next(d for d in corpo["devices"] if d["instance_id"] == "android-03")["egress_home"]
+        assert "presumido: sem rede pedida" in sem_rede["reason"] and sem_rede["measured"] is None
+
+        await _central_medido(parque)
+        # 01: WireGuard externo só com IPv4 (como o vpn-central-wireguard) e saída IGUAL à do central → casa.
+        # 02: VPN dedicada, saída própria no IPv4 e um IPv6 medido que o perfil não leva → IPv6 fora do perfil.
+        # 03: sem rede pedida → presumido.
+        wg_casa = await _perfil(c, "vpn-central-wireguard", params={"peer_public_key": "x", "address": "10.9.0.2/32"})
+        dedicada = await _perfil(c, "Dedicada", params={"egress_esperado": DEDICADA, "address": "10.9.0.3/32"})
+        await _conectar(parque, c, "android-01", vpn_profile_id=wg_casa["id"])
+        await _conectar(parque, c, "android-02", vpn_profile_id=dedicada["id"])
+        _, d1 = registrar_medicao(st, "android-01", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=CASA4, per_app=APP_OK), rev=1)                  # type: ignore[arg-type]
+        _, d2 = registrar_medicao(st, "android-02", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4=DEDICADA, egress_ipv6="2804:99:1:2::9", per_app=APP_OK), rev=1)  # type: ignore[arg-type]
+        assert d1 is not None and d1.state == "trafego_verificado" and d2 is not None and d2.state == "trafego_verificado"
+
+        corpo = (await c.get("/api/network/devices")).json()
+        assert corpo["central_egress"]["ipv4"] == CASA4 and corpo["central_egress"]["ipv6"] == CASA6
+        assert corpo["central_egress"]["measured_at"] and corpo["central_egress"]["reason"] == "ok"
+        casas = {d["instance_id"]: d["egress_home"] for d in corpo["devices"]}
+        assert casas["android-01"]["ipv4"] is True and casas["android-01"]["leaves_by_home"] is True
+        assert casas["android-01"]["ipv6_outside_profile"] is False        # sem IPv6 medido: nada fora do perfil
+        assert casas["android-02"]["ipv4"] is False and casas["android-02"]["ipv6"] is False
+        assert casas["android-02"]["ipv6_outside_profile"] is True and casas["android-02"]["leaves_by_home"] is True
+        assert "fora do túnel" in casas["android-02"]["reason"]
+        assert casas["android-03"]["leaves_by_home"] is True and casas["android-03"]["basis"] == "presumed"
+        assert casas["android-01"]["basis"] == "measured" and casas["android-02"]["basis"] == "measured"
+
+        # O android-03 recebe um perfil que LEVA IPv6 (endereço e rota ::/0 padrão): o mesmo tipo de IPv6 não é acusado.
+        com_v6 = await _perfil(c, "WG com IPv6", params={"peer_public_key": "z",
+                                                          "address": "10.9.0.5/32, fd00::5/128"})
+        await _conectar(parque, c, "android-03", vpn_profile_id=com_v6["id"])
+        registrar_medicao(st, "android-03", NetworkMeasurementInput(
+            method="app_qa", egress_ipv4="45.162.8.77", egress_ipv6="2804:99:1:2::77", per_app=APP_OK),
+            rev=1)                                                                       # type: ignore[arg-type]
+        v3 = {d["instance_id"]: d["egress_home"] for d in rede.listar_aparelhos(st)["devices"]}["android-03"]  # type: ignore[union-attr]
+        assert v3["ipv6_outside_profile"] is False and v3["leaves_by_home"] is False
+
+        # Central SEM IPv6 (e agora medido): o IPv4 do aparelho 01 ainda é acusado; o IPv6 do 02 fica incerto, não limpo.
+        st.rede_saida_central._fam[6].ip = None
+        st.rede_saida_central._fam[6].motivo = "sem IPv6 no central de teste"
+        visto = {d["instance_id"]: d["egress_home"] for d in rede.listar_aparelhos(st)["devices"]}  # type: ignore[union-attr]
+        assert visto["android-01"]["leaves_by_home"] is True
+        assert visto["android-02"]["ipv6"] is None
+        assert "sem IPv6 no central de teste" in rede.listar_aparelhos(st)["central_egress"]["reason"]  # type: ignore[index]
+
+        # Reatribuir o 01 a outro perfil: a revisão nova ainda não foi medida. A saída velha ERA casa e continua acusada
+        # (lado seguro); a do 02, que era "limpa", passa a incerta.
+        outro = await _perfil(c, "Outra", params={"peer_public_key": "y", "address": "10.9.0.4/32"})
+        r = await c.post("/api/network/assign", json={"instance_ids": ["android-01", "android-02"],
+                                                      "vpn_profile_id": outro["id"]})
+        assert r.status_code == 200, r.text
+        de_novo = {d["instance_id"]: d["egress_home"] for d in rede.listar_aparelhos(st)["devices"]}  # type: ignore[union-attr]
+        assert de_novo["android-01"]["ipv4"] is True and de_novo["android-01"]["leaves_by_home"] is True
+        assert de_novo["android-02"]["ipv4"] is None                      # era "não é casa": a revisão nova não foi medida
+        assert de_novo["android-02"]["ipv6_outside_profile"] is True      # o IPv6 medido segue sem perfil que o leve
+
+
+class _AparelhoSemRede:
+    """O aparelho que só responde à sonda de IP (eco por `nc`): o que o `medir_saida` pergunta, como o uid 2000."""
+
+    def __init__(self, ipv4: str | None, ipv6: str | None = None, uid: int = 2000) -> None:
+        self.ipv4, self.ipv6, self.uid, self.comandos = ipv4, ipv6, uid, []
+
+    async def shell(self, comando: str, *, timeout: float = 40) -> str:
+        self.comandos.append(comando)
+        host = comando.split(" nc ", 1)[1].split()[0]
+        ip = self.ipv6 if ("api6" in host or "ipv6" in host) else self.ipv4
+        corpo, x = (f"HTTP/1.1 200 OK\r\n\r\n{ip}", 0) if ip else ("nc: connect: Network is unreachable", 1)
+        return f"U={self.uid}\n==SONDA-INICIO==\n{corpo}\n\n==SONDA-FIM==\nX={x}\n"
+
+
+async def test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le(parque: Harness) -> None:
+    """Os quatro casos do aparelho sem rede: presumido (sem medida), medido igual ao central, medido diferente e falha
+    de sonda — e a sonda é só leitura: nenhuma linha em `device_network`, nenhum comando, nenhum aviso."""
+    st = parque.state
+    assert st is not None
+    await _central_medido(parque)
+    st.cfg.file.rede.sonda.medir_sem_rede = True
+    aparelhos = {"android-01": _AparelhoSemRede(CASA4), "android-02": _AparelhoSemRede("45.162.8.9"),
+                 "android-03": _AparelhoSemRede(None, None, uid=1)}        # uid 1: a sonda recusa (adb em root)
+    conv = st.rede_convergencia
+    conv._aparelho = lambda _st, rt: aparelhos[rt.id]                      # type: ignore[assignment]
+    antes_cmds = st.db.scalar("SELECT COUNT(*) FROM commands")
+    antes_ev = st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated'")
+
+    # 1. Presumido: ainda sem medida nenhuma, o aparelho sai pela casa por definição.
+    for iid in aparelhos:
+        casa = rede.listar_aparelhos(st)["devices"]                        # type: ignore[index]
+        v = next(d for d in casa if d["instance_id"] == iid)["egress_home"]  # type: ignore[union-attr]
+        assert (v["leaves_by_home"], v["basis"], v["measured"]) == (True, "presumed", None), v
+
+    # A varredura dispara a sonda (aparelho ligado, livre, sem rede pedida) e só uma vez por intervalo.
+    for iid in aparelhos:
+        trabalho = conv.trabalho(st.devices.devices[iid], motivo="varredura")
+        assert trabalho is not None
+        await trabalho()
+        assert conv.trabalho(st.devices.devices[iid], motivo="varredura") is None
+    # A porta da tarefa e o pedido manual nunca passam pela sonda de aparelho sem rede.
+    assert conv.trabalho(st.devices.devices["android-01"], motivo="tarefa") is None
+    assert conv.trabalho(st.devices.devices["android-01"], motivo="pedido") is None
+
+    visao = {d["instance_id"]: d["egress_home"] for d in rede.listar_aparelhos(st)["devices"]}  # type: ignore[union-attr]
+    # 2. Medido igual ao central: "sai pela casa (medido)", com o IP que a sonda viu.
+    assert visao["android-01"]["leaves_by_home"] is True and visao["android-01"]["basis"] == "measured"
+    assert visao["android-01"]["ipv4"] is True and visao["android-01"]["measured"]["ipv4"] == CASA4
+    assert visao["android-01"]["measured"]["source"] == "probe_no_network"
+    # 3. Medido diferente: mostra o medido, e não é a casa.
+    assert visao["android-02"]["leaves_by_home"] is False and visao["android-02"]["basis"] == "measured"
+    assert visao["android-02"]["measured"]["ipv4"] == "45.162.8.9"
+    # 4. Falha de sonda: nunca "ok" — segue presumido, com o motivo, e sem IP medido.
+    assert visao["android-03"]["leaves_by_home"] is True and visao["android-03"]["basis"] == "presumed"
+    assert visao["android-03"]["measured"] is None and "a última sonda de IP falhou" in visao["android-03"]["reason"]
+    assert "uid 1" in visao["android-03"]["reason"]
+
+    # Só leitura: sem linha em device_network, sem comando, sem evento, e nada pendente na convergência.
+    assert st.db.scalar("SELECT COUNT(*) FROM device_network") == 0
+    assert st.db.scalar("SELECT COUNT(*) FROM commands") == antes_cmds
+    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE kind='network.updated'") == antes_ev
+    assert all(d["pending"] is None and d["network"] is None for d in rede.listar_aparelhos(st)["devices"])  # type: ignore[union-attr]
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None
+
+    # A medida vence: passada a validade (3 x reverificar_s), o aparelho volta a "presumido".
+    st.cfg.file.rede.sonda.reverificar_s = 30
+    st.db.execute("UPDATE network_measurements SET measured_at='2020-01-01T00:00:00.000Z'")
+    velho = {d["instance_id"]: d["egress_home"] for d in rede.listar_aparelhos(st)["devices"]}  # type: ignore[union-attr]
+    assert velho["android-01"]["basis"] == "presumed" and velho["android-01"]["measured"] is None
+    # E uma rede pedida depois tira o aparelho da sonda: a medida da rede é a da convergência.
+    assert rede.registrar_saida_sem_rede(st, "android-01", CASA4, None, "x") is not None
+    async with _cliente(parque) as c:
+        vpn = await _perfil(c, "Depois", params={"peer_public_key": "k", "address": "10.9.0.9/32"})
+        await _conectar(parque, c, "android-01", vpn_profile_id=vpn["id"])
+    assert rede.registrar_saida_sem_rede(st, "android-01", CASA4, None, "x") is None
+    assert next(d for d in rede.listar_aparelhos(st)["devices"] if d["instance_id"] == "android-01")["egress_home"]["basis"] is None  # type: ignore[union-attr]

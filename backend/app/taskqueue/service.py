@@ -1179,6 +1179,7 @@ class RunService:
             self.repo.cancel_open_steps(run_id, reason="execução cancelada")
             for o in self.repo.db.query("SELECT id FROM objectives WHERE run_id=?", (run_id,)):
                 self.repo.set_objective(o["id"], ObjectiveStatus.cancelled, detail="Cancelado antes de iniciar.")
+                self.scheduler._expirar_aprovacoes(o["id"], "execução cancelada")  # noqa: SLF001
             self.repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada antes de iniciar")
         else:
             self.repo.set_run_status(run_id, RunStatus.cancelling,
@@ -1286,6 +1287,8 @@ class RunService:
             self.repo.cancel_open_steps(run_id, objective_id=objective_id, reason="abandonado pelo usuário")
             self.repo.set_objective(objective_id, ObjectiveStatus.failed, detail="Abandonado pelo usuário." + note,
                                     blocked_reason=obj["blocked_reason"])
+            # Achado #109: abandonar o item que espera aprovação não pode deixar o pedido na fila "Aguardando aprovação".
+            self.scheduler._expirar_aprovacoes(objective_id, "item abandonado pelo usuário")  # noqa: SLF001
         elif body.resolution == "retry":
             self._requeue(obj, "Usuário decidiu repetir este item." + note)
         elif obj["blocked_kind"] == "approval":

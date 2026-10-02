@@ -2159,3 +2159,77 @@ releitura do campo sensível no WebView (`48efc82`), telas depois da senha (`9ff
 ### 27.8 Custos
 
 Nenhuma chamada paga de IA nesta fase. GitHub Actions: jobs no runner do central. Provedores: nada contratado.
+
+## 28. Fechamento da Fase 29: resumo real × simulado × não executado por pendência (02/10/2026)
+
+Item 29.18. Só leitura e documentação: nenhum código de produto, nenhum teste de produto, nenhuma ação em aparelho,
+conta ou IA paga. A fonte de cada linha é o registro do `aplicar` (`.claude/plano-100/estado.json`), as provas das
+seções 27.1 a 27.9 e o handoff [pendencias-evolucao3.md](handoffs/pendencias-evolucao3.md); onde esta seção ficou mais
+nova que o registro, a linha diz de onde veio. Base lida: integração `a0a03b7` (`origin/main` `d372a4c` mais o 29.20 e o
+8.3, ainda não mergeados). Runtime do central em `GET /api/health` conforme [estado-atual.md](estado-atual.md):
+`f9eed71`, migração 063. Horas em UTC.
+
+### 28.1 Os 20 itens
+
+Três níveis que não se misturam: `real` (data, máquina, commit e ids), `simulated` (`arquivo::teste`) e `not_run`. Nos
+itens com dois níveis, cada um vem separado. Máquina é o central, salvo onde a linha diz outra.
+
+| Item | Estado | Prova | O que há (e, se não fechou, a ação exata) |
+|---|---|---|---|
+| 29.1 CI: Appium empacotado | feito | `real` | 30/09, runner `central`, `9428a6a`, run 36713946044 verde às 13:03Z (job `dependências` com `npm audit --audit-level=high`, `npm ci` e `corrigir-empacotados.mjs --conferir`); antes, run 36673606572 reprovado (brace-expansion 5.0.9). Não conferido nesta rodada: a troca da cópia 5.0.9 no `node_modules` do Appium do central, que o `npm ci` faz na janela de um deploy (execução, só leitura para confirmar). |
+| 29.2 Prova durável de vazamento (P16) | feito | `simulated` | `tests/test_rede_sonda.py::test_reinicio_do_backend_com_prova_valida_nao_para_o_cliente_nem_reinicia_o_aparelho` e mais 15 casos (revisão independente incluída); `tests/test_db.py::test_migracao_063_acrescenta_a_prova_de_vazamento_sem_mexer_na_linha_que_ja_existe`. A prova real do item é o 29.4; PostgreSQL é o 29.14. |
+| 29.3 Túnel que não sobe no boot | feito | `simulated` + `real` do gesto | `tests/test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_tile_sem_outro_reinicio` e outros 3. Real: medição de 30/09 12:28 a 13:17Z, android-05, `6997091` (7 reinícios: o always-on falhou em 5 de 7; o tile religou 5 de 5) e o gesto pelo adb às 13:30Z (túnel de volta em ~9 s). Complemento real posterior, de outro mecanismo (Start pela interface do SFA, PR #17): W8 `PASS` de 02/10 com política `livre` no android-09 ([w8-boot-recovery.md](handoffs/w8-boot-recovery.md) §17.10). `not_run`: o tile disparado pela convergência depois de boot falho. |
+| 29.4 Primeira implantação do P16, 6 h | feito | `real` | 30/09, `0d70882`, deploy 15:24:44Z, backend sem reinício até 21:30Z (6 h 05 min, 36 leituras em `data/rede/observacao-p16/janela-20260930.md`); prova anterior adotada em android-02, 03 e 06 sem parar o cliente; remedição a 90% às 20:51:13Z e 20:52:15Z (#62 a #65) com `leak_blocked=1` da linha; nenhum teste de vazamento e nenhum reinício pedido pela rede em 02, 03 e 06. |
+| 29.5 Sonda UDP por perna | feito | `real` + `simulated` | Real: 30/09 ~13:44Z, android-05 e android-02 como uid 2000 (ida de 4,4 s, antes ~10 s) e medições #58 a #61 com o detalhe por perna. Simulado: `tests/test_rede_sonda.py::test_falha_transitoria_de_udp_nao_derruba_a_perna_e_a_persistente_fica_registrada` e outros 3; `RedePage.test.tsx`. `not_run`: a falha transitória provocada em aparelho real. |
+| 29.6 Saída esperada por aparelho (P1) | feito | `simulated`; real `not_run` | `tests/test_rede_por_aparelho.py::test_saida_medida_diferente_da_esperada_vira_parcial_e_a_igual_verifica` e outros 4; `tests/test_rede_sonda.py::test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera`. Implantado em `0d70882`. Falta o perfil externo com saída esperada num aparelho real: é o piloto do 29.7 (dono). |
+| 29.7 Piloto de saída distinta (V1) | adiado pelo dono | `not_run` | Pronto: `scripts/rede-saida-externa.sh` (conferido com `bash -n`), roteiro D3 do handoff e a comparação do 29.6 no ar. Adiado pelo dono em 30/09 ~18:15Z ("pode ser feita depois"). Ação exata: dono cria os dois servidores pelo bloco D3 (Oracle gratuito ou Lightsail São Paulo, ~US$ 5 por mês cada, a conferir) e a execução roda o V1 em android-08 e android-02 (QA, sem conta real). |
+| 29.8 Firewall do central para a LAN | feito | `simulated` + leitura `real` | `tests/test_rede_worker.py::test_regra_de_outra_interface_ou_de_outra_sub_rede_e_fechado` e 8 casos novos. Leitura real de 30/09 12:45Z (`sem_regra`); depois a regra criada pelo dono (D1, 30/09 ~17:20Z) foi lida `liberado` (W0), de novo em 01/10 (D8, UDP 51820 `liberado`) e no pré-voo do r4 de 02/10 16:08Z. O fechamento do que dependia do aparelho do notebook é o 29.9. |
+| 29.9 Aparelho do worker com rede (W0 a W8) | parcial | `real` | 01/10, android-09 (QA, notebook), `658e5bb`: W0 a W7 `real` (causa do W4 era código, o comando contava o cabeçalho "Lockdown filtering rules:"; túnel `trafego_verificado` na medição #76 às 13:08:37Z; modo avião e religação do agente sem reinício). W8: com `exigida_com_bloqueio` o túnel não voltou depois do teste de vazamento (4 reinícios, rollback 13:37Z). Depois: mitigação do PR #17 provada em `livre`, `PASS` (02/10, `bcea158`, `c-20261002161008-5a2fcc`, boot recuperado por UM Start, 2 de 2 boots válidos). Falta: o W8 com bloqueio e teste de vazamento em aparelho remoto, que o PASS não cobre (a causa raiz do `SILENT_STOP` segue `NARROWED`). Ação exata: execução repete o W8 com `exigida_com_bloqueio` no android-09, com a pausa do reparo e em janela sem tarefa (cadastrar o par reinicia o servidor VPN do central e tira 03 e 06 por ~30 s), com o dono avisado. |
+| 29.10 Renderizador para o Outlook | feito | `real` | 30/09, `0d70882` e notebook, emulador 37.1.11, Outlook 5.2635.3: E3 (`skiavk` refutado, 14:08 a 14:36Z), E4 no central (android-07, 15:30 a 15:50Z, canário `c-20260930153719-d11a00`, `gles_mode_selected:host`) e no notebook (android-09, 15:51 a 15:58Z), E7. `not_run`: E5 e E6 (corrida do NLS e armazenamento rasgado do Hx; não bloqueiam o app com a GPU do host) e E8 (opcional). |
+| 29.11 Renderizador por aparelho e worker | feito | `real` | 30/09, `f6c7df2` em diante (deploy 21:33Z) e agente `0.1.0+f6c7df2`: `renderer` lido pela API; distribuição do Outlook recusada em 01, 03 e 06 enquanto rodavam SwiftShader (dry_run 21:44Z) e aceita depois do reinício; parque ligado inteiro em `host`. |
+| 29.12 Outlook no parque | feito, com resto | `real` | 30/09 a 01/10: release promovida (21:42Z) e `ready` em android-01, 02, 03, 05, 06, 07, 08, 09, 10, 12 e 13; rodízio não tira vaga de conta real para entregar app desde `0f76562` (teste em `test_rotation.py`). Resto: android-14 (instalação interrompida) e android-15 (leitura de 40 s). Ação exata: execução entrega o Outlook neles quando ligarem; o notebook está com a memória dos emuladores paginada (K-067). |
+| 29.13 Conta, login e fluxo entre apps | parcial | `real` | 30/09: consentimento das 3 contas e Outlook logado no aparelho do Instagram de cada persona (android-06 André `session_ready` 22:56Z, android-03 Bruno 23:01Z, android-01 Lucas 23:04Z); C1 Outlook para Instagram, só leitura, `r-20260930230500-f52eec` (android-01, 1 de 1). Falta o C1 num aparelho com `trafego_verificado` (27.2): em 01/10 duas tentativas no android-03 falharam por produto (`r-20261001123433-09ff22` e `r-20261001124036-996716`, `read_value` recusado, a lista do Outlook não expõe texto; ~US$ 0,51). Ação exata: dono envia o e-mail de teste igual ao do Lucas para a caixa do Bruno ou do André; e a execução precisa ler o assunto pela captura ou abrir o e-mail (mudança de produto), sob autorização de gasto de IA do dono. |
+| 29.14 PostgreSQL (P17) | feito | `real` | 01/10, GitHub Actions hospedado (postgres:17), run 36830963968 (`workflow_dispatch` `somente_postgres`, `7c3b787`): 3962 passed, 28 skipped, 0 failed em 45 min; migrações 056 a 058 e 063 e a consulta do snapshot incluídas. |
+| 29.15 Painel da rede e das contas | feito | `real` + `simulated` | Real: 30/09 ~16:00Z, `0d70882`, a 800 px e 375 px com o dado do parque, console sem erro. Simulado, para os estados que o dado real não mostra (`regra_obsoleta`, `vazou`, `inconclusiva`, saída divergente): `frontend/src/features/rede/RedePage.test.tsx`. |
+| 29.16 Mecanismo e registros | feito | `real` | 30/09, pelo `aplicar`: índice de pacotes, 12.3 no vocabulário, P15 reescrito com a causa medida, sem bloqueio por assinatura (era o 23.2 contado duas vezes); `check` sem interrupção, `docs-check` com 0 erros. |
+| 29.17 Limpeza reversível | feito | `real` | 30/09 e 01/10, central: SDKs beta e canary, imagem android-36 e `diag-outlook-36` movidos para `C:\Android\arquivo-diagnostico-20260930` (11,3 GB); 27 worktrees terminados removidos com `git worktree remove` (branches ficam); nada apagado de forma definitiva. |
+| 29.18 Fechamento | feito | `real` (comandos) | Esta seção, handoff, CHANGELOG e estado pelo mecanismo; `docs-check` e `check` em 02/10 no central (28.4). Fechar a documentação não fecha a fase (28.2). |
+| 29.19 Saída própria por aparelho, em escala | adiado pelo dono | `not_run` | Pronto: desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail ~US$ 65 por mês para 13; Vultr ~US$ 41, a conferir), script com N pares, modelo de perfis com `egress_esperado` próprio. Ação exata: dono decide a escala (aparelhos por IPv4 e custo) e autoriza a troca de saída de cada conta real; depende do 29.7. |
+| 29.20 Nenhum aparelho pela saída da casa | feito no código | `simulated`; real `not_run` | `d02e316e` e `3a12502c` (merge `a0a03b7`, não está em `origin/main`): `tests/test_rede_saida_central.py` (veredito, TTL, falha de medida, caso notebook da LAN e `vpn-central-wireguard` acusados, `presumed` nunca limpo), `tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida` e `::test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le`, `RedePage.test.tsx`. Ação exata: mergear, implantar (`deploy.ps1`, permitido) e então ler `GET /api/network/devices` com a saída do central medida de verdade e conferir o android-09 com `vpn-central-wireguard` (execução, só leitura). |
+
+Resumo por nível: `real` sem ressalva em 29.1, 29.4, 29.10, 29.11, 29.14, 29.16 e 29.17; `real` com resto em 29.9,
+29.12 e 29.13; `real` junto de `simulated` em 29.5, 29.8 e 29.15; só `simulated` em 29.2, 29.3 (o complemento do W8 é
+de outro mecanismo), 29.6 e 29.20; `not_run` em 29.7 e 29.19, ambos adiados por decisão do dono.
+
+### 28.2 A fase fecha?
+
+O critério "Fecha quando" de [plano-100.md](plano-100.md), cláusula a cláusula:
+
+| Cláusula | Resultado |
+|---|---|
+| CI verde no commit publicado | **Não confirmado.** Últimos runs verdes: push `9428a6a` (run 36713946044, 30/09), push `d197fec` (36753830379, 30/09) e o `workflow_dispatch` de PostgreSQL `7c3b787` (01/10). O cron de 02/10 05:28Z, run 36969076830 em `52237c4`, passou em mypy, pytest SQLite e PostgreSQL, frontend, dependências e worker, e reprovou só no job de documentação: `CLAUDE.md:11` apontava para `.claude/handoff-current.md` (local, fora do Git) e havia aviso de vocabulário no estado. As correções estão na integração (`3a48efdc` e `c1109079`, `docs-check` com 0 erros e 0 avisos aqui), mas **nenhum run de CI os cobriu**: desde 30/09 o código sobe com `[skip ci]` por decisão do dono, e o commit implantado (`f9eed71`) não tem run. |
+| 6 h sem reinício com prova válida e remedição | **Cumprida**, `real` (29.4). |
+| Outlook abre e chega ao login pelo serviço num aparelho do parque | **Cumprida**, `real` (29.10 E4 e 29.13: login automático ponta a ponta no 01 e no 03). |
+| Cada pendência restante com o que ficou pronto e a ação exata | **Cumprida** por 28.1 e 28.3. |
+
+**A fase não fecha ainda, por uma razão só: a primeira cláusula.** Ação exata (dono ou execução, custo zero, sem
+aparelho): disparar um `workflow_dispatch` do CI na `main` depois do merge da integração, ou esperar o cron de 03/10
+05:17Z; verde, a fase fecha pelo critério escrito. O 27.2 (C1 com rede verificada) e o 29.9 (W8 com bloqueio) não
+entram no critério, e por isso não seguram a fase; seguem como pendências com dono.
+
+### 28.3 O que falta, por quem decide
+
+| Quem | O quê | Itens |
+|---|---|---|
+| Dono | Servidores de saída própria e a escala; autorizar a troca de saída de conta real | 29.7, 29.19 |
+| Dono | E-mail de teste igual ao do Lucas para a caixa do Bruno ou do André; autorizar o gasto pago do C1 | 29.13 (27.2) |
+| Execução, com autorização | Ler o assunto pela captura ou abrir o e-mail no C1; repetir o C1 num aparelho com rede | 29.13 |
+| Execução, janela sem tarefa | W8 com `exigida_com_bloqueio` no android-09 | 29.9 |
+| Execução, sem pedir | Merge, deploy e leitura real do 29.20; entrega do Outlook ao android-14 e 15 quando ligarem; confirmar a troca do `brace-expansion` no `node_modules` do Appium do central | 29.20, 29.12, 29.1 |
+| Execução ou cron | Um run de CI na `main` depois das correções de `docs-check` | critério da fase |
+
+### 28.4 Validação deste fechamento
+
+`python scripts/docs-check.py` e `python scripts/claude-plan-100.py check` rodados em 02/10 no worktree
+`29-18-fechamento` (central), além do `aplicar` e do `relatorio` do estado: resultado no commit de estado do 29.18.
+Nenhum teste de produto foi rodado, de propósito: o item é documental.
