@@ -26,6 +26,7 @@ async def _stop_all(h: Harness) -> None:
 
 
 async def test_tres_contas_em_uma_vaga(harness: Harness) -> None:
+    harness.pular_o_tempo()           # T.2: o rodízio não custa nada; o que custava era ~2,9 s de assentamento por conta
     await _stop_all(harness)
     _rotation(harness, slots=1)
     devs = harness.state.devices                        # type: ignore[union-attr]
@@ -127,6 +128,7 @@ async def test_entrega_de_app_nao_tira_a_vaga_de_aparelho_com_conta(harness: Har
 
 
 async def test_sem_rodizio_aparelho_parado_bloqueia_como_antes(harness: Harness) -> None:
+    harness.pular_o_tempo()
     devs = harness.state.devices                        # type: ignore[union-attr]
     await devs.stop_instance(devs.get("android-02"))
     run = harness.run(["android-01", "android-02"])
@@ -136,12 +138,13 @@ async def test_sem_rodizio_aparelho_parado_bloqueia_como_antes(harness: Harness)
 
 
 async def test_nao_desliga_aparelho_em_foco_nem_com_usuario_no_controle(harness: Harness) -> None:
+    harness.pular_o_tempo()
     devs = harness.state.devices                        # type: ignore[union-attr]
     a1, a2 = devs.get("android-01"), devs.get("android-02")
     await devs.stop_instance(a2)
     await devs.stop_instance(devs.get("android-03"))
     _rotation(harness, slots=1)
-    devs.set_focus("android-01", ttl_s=2.5)              # o usuário está olhando o android-01 no painel
+    devs.set_focus("android-01", ttl_s=600)              # o usuário está olhando o android-01 no painel
     run = harness.run(["android-02"])
     # Esperar a RECUSA aparecer, em vez de dormir: o que prova a regra é o despacho ter olhado e dito "aguardando
     # vaga" enquanto o foco vale — dormir 0,8 s só prova que o relógio andou (achado #164).
@@ -155,7 +158,11 @@ async def test_nao_desliga_aparelho_em_foco_nem_com_usuario_no_controle(harness:
     assert a1.state == InstanceState.online and a2.state == InstanceState.stopped
     obj = harness.state.repo.objective_row(f"{run.id}:android-02")            # type: ignore[union-attr]
     assert obj["status"] == "pending"
-    detail = await harness.wait_run(run.id, timeout=60)  # o foco expira → a vaga é cedida → a conta é atendida
+    # O foco expira → a vaga é cedida → a conta é atendida. T.2: em vez de esperar o TTL passar (2,5 s reais), vence-se
+    # o prazo que o scheduler lê (`focus_until_mono`, em `rt.focused`): a regra provada é a mesma, "foco vencido".
+    a1.focus_until_mono = time.monotonic() - 1
+    assert not a1.focused
+    detail = await harness.wait_run(run.id, timeout=60)
     assert detail.status == "completed" and a1.state == InstanceState.stopped
 
 
@@ -172,6 +179,7 @@ async def test_recusa_de_ram_nao_vira_martelada(harness: Harness) -> None:
 
 # ---------------------------------------------------------------------------------- hibernação por snapshot
 async def test_rodizio_com_hibernacao_acorda_do_snapshot_e_ele_e_de_uso_unico(harness: Harness) -> None:
+    harness.pular_o_tempo()           # T.2: 6 passos de mensagem × ~2,9 s de assentamento eram 17 dos 20 s
     harness.cfg.file.android.hibernation = True
     await _stop_all(harness)
     _rotation(harness, slots=1)

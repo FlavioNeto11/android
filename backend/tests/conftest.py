@@ -17,6 +17,7 @@ from app.planning.simulated_provider import SimulatedProvider
 from app.state import AppState
 
 from .fake_device import FakeQaDevice
+from .relogio_virtual import RelogioVirtual
 
 COMMAND = ('Abra o QA Messenger, entre na conversa com o contato de teste identificado como QA-001 e envie '
            '"Teste POC {instance_id} {run_id}". Confirme que a mensagem apareceu como enviada.')
@@ -241,16 +242,44 @@ class Harness:
         # boots de forma intermitente justamente nesta máquina, que roda emuladores. Quem quer provar a recusa
         # baixa `harness.emulator.free_mb`.
         self.emulator = FakeEmulatorBackend()
+        # T.2: ligado por `pular_o_tempo()`; sem isso, tudo corre em tempo real como sempre.
+        self.relogio: RelogioVirtual | None = None
+
+    def pular_o_tempo(self) -> RelogioVirtual:
+        """As ferramentas deixam de DORMIR e passam a avançar o relógio do aparelho falso (`relogio_virtual.py`).
+
+        Opt-in por teste: o padrão da suíte segue em tempo real, porque ligar isto em todo teste muda quantas voltas o
+        verificador dá em cada um e só se confirma com a suíte inteira. Vale para os aparelhos já criados, para os que
+        nascerem depois e para o executor de cada `boot()` (o teste de reinício sobe outro backend)."""
+        if self.relogio is None:
+            self.relogio = RelogioVirtual()
+        for fake in self.fakes.values():
+            if hasattr(fake, "relogio"):
+                fake.relogio = self.relogio.agora
+        if self.state is not None:
+            self.state.scheduler.executor.dormir = self.relogio.dormir
+        return self.relogio
+
+    def encurtar_verificacao(self, segundos: float = 1.5) -> None:
+        """Encurta o ORÇAMENTO de `_verify` (normal, paciente e piso) para o teste que prova "sem a mensagem na tela até
+        o prazo → incerto". Sem isto ele paga os 60 s do paciente em tempo real. Só o prazo muda: o que vale como prova
+        (a tela não mostrou a mensagem dentro do orçamento) é a mesma; o piso (0,5 s) é o da validação do campo."""
+        ai = self.cfg.file.ai
+        ai.verify_budget_min_s = ai.verify_budget_s = ai.verify_budget_patient_s = float(segundos)
 
     def _factory(self, rt: Any) -> Any:
         if rt.id not in self.fakes:                       # o "aparelho" sobrevive a reinícios do backend
             self.fakes[rt.id] = (self._fabrica(rt) if self._fabrica is not None
                                  else FakeQaDevice(account=f"qa-user-{rt.index:02d}"))
+            if self.relogio is not None and hasattr(self.fakes[rt.id], "relogio"):
+                self.fakes[rt.id].relogio = self.relogio.agora
         return self.fakes[rt.id]
 
     async def boot(self) -> AppState:
         self.state = AppState(self.cfg, provider=self.ai, io_factory=self._factory, manage_appium=False,
                               emulator=self.emulator)
+        if self.relogio is not None:                      # o executor do backend NOVO (reinício) pula o tempo também
+            self.state.scheduler.executor.dormir = self.relogio.dormir
         await self.state.start()
         # A variante de interface (idioma/densidade) é a única parte da identidade da receita que `variant_of` lê do
         # aparelho REAL, por adb — todo o resto passa pelo IO falso. Sem declará-la aqui, a suíte fica presa a quais

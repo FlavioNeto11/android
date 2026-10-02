@@ -20,6 +20,7 @@ ALL = ["android-01", "android-02", "android-03"]
 
 # ---------------------------------------------------------------- isolamento entre dispositivos
 async def test_cada_aparelho_recebe_apenas_a_sua_mensagem(harness: Harness) -> None:
+    harness.pular_o_tempo()
     run = harness.run(ALL)
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed" and detail.counts.succeeded == 3 and detail.instances_used == 3
@@ -35,6 +36,7 @@ async def test_cada_aparelho_recebe_apenas_a_sua_mensagem(harness: Harness) -> N
 
 
 async def test_falha_e_tela_inesperada_em_um_aparelho_nao_param_os_demais(harness: Harness) -> None:
+    harness.pular_o_tempo()                                  # T.2: ~3 s de assentamento por passo, para 3 aparelhos
     harness.fakes["android-01"].interstitial = True          # tela inesperada: a automação dispensa e segue
     harness.fakes["android-02"].require_login = True         # autenticação adicional: bloqueia só este
     harness.fakes["android-03"].action_delay_s = 0.05        # aparelho lento
@@ -86,6 +88,7 @@ async def test_executor_serializa_e_timeout_nao_libera_o_aparelho() -> None:
 
 # ---------------------------------------------------------------- efeito externo e reconciliação
 async def test_erro_apos_o_toque_de_enviar_reconcilia_sem_reenviar(harness: Harness) -> None:
+    harness.pular_o_tempo()
     fake = harness.fakes["android-01"]
     fake.send_fault = "error_after_effect"                    # a mensagem saiu, mas o driver devolveu erro
     run = harness.run(["android-01"])
@@ -100,6 +103,12 @@ async def test_erro_apos_o_toque_de_enviar_reconcilia_sem_reenviar(harness: Harn
 
 
 async def test_resultado_ambiguo_vira_incerto_e_nao_reenvia(harness: Harness) -> None:
+    # T.2: o que prova o "incerto" é a tela NÃO ter mostrado a mensagem até o fim do orçamento da verificação, não o
+    # orçamento ter 60 s — com o padrão de produção o teste pagava esse minuto inteiro em tempo real (63,6 s).
+    harness.encurtar_verificacao()
+    # E o `wait_for` de 4 s do verificador simulado (3 voltas, 12 s) também não é esperado: o relógio do aparelho
+    # avança o mesmo tanto, e a mensagem continua ausente porque o toque se perdeu, não porque faltou tempo.
+    harness.pular_o_tempo()
     fake = harness.fakes["android-01"]
     fake.send_fault = "error_lost"                             # erro no toque e a mensagem NÃO aparece
     run = harness.run(["android-01"])
@@ -158,6 +167,8 @@ async def test_reinicio_do_backend_reconcilia_etapa_com_efeito_ja_disparado(harn
 
 
 async def test_reinicio_com_acao_de_efeito_pendente_e_sem_prova_fica_incerto(harness: Harness) -> None:
+    harness.encurtar_verificacao()                             # T.2: a conferência sem prova esgotava 15 s reais
+    harness.pular_o_tempo()                                    # e o `wait_for` de 4 s (3 voltas) mais 12 s
     st = harness.state
     run = harness.run(["android-01"], mode="plan")
     await harness.wait_run(run.id, statuses=("planned",))
