@@ -355,7 +355,7 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
     # timeout_ms: 5000
     # max_calls: 2                # por pedido (etapa A mapa + etapa B trechos)
     # max_cost_usd: 0.05
-    # max_input_tokens: 28000     # por pedido (A ~15,7 mil + B ~6 a 7 mil medidos no poetry; a B no teto de bytes também cabe)
+    # max_input_tokens: 32000     # por pedido (A ~15,7 mil + B ~6 a 7 mil medidos no poetry; mapa de 48 KB + B também cabem)
     # max_candidate_files: 5      # arquivos que a etapa A escolhe
     # max_chunks: 16              # trechos que a etapa B recebe (janelas do início dos candidatos; ver ADR-063)
 

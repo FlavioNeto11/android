@@ -86,9 +86,12 @@ class SemanticProvider(Protocol):
 
 
 class ChunkSource(Protocol):
-    """Quem corta os chunks (etapa B) — só dos arquivos pedidos, com teto de quantidade e de bytes."""
+    """Quem corta os chunks (etapa B) — só dos arquivos pedidos, com teto de quantidade e de bytes.
 
-    def chunks_for(self, paths: Sequence[str], *, max_chunks: int, max_bytes: int) -> list[Chunk]: ...
+    `query`, quando dada, deixa a fonte escolher as janelas pela pergunta e repartir o teto entre os candidatos (J13); sem ela,
+    vale o corte original, do início de cada arquivo, na ordem pedida."""
+
+    def chunks_for(self, paths: Sequence[str], *, max_chunks: int, max_bytes: int, query: str | None = None) -> list[Chunk]: ...
 
 
 class MapSource(Protocol):

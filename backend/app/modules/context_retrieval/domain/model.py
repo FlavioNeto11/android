@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 
 #: Versão do conjunto retriever+regra híbrida. Entra na chave dos caches: mudar a regra invalida o que foi guardado.
+CHUNK_SELECTION_VERSION = "rr-lex1"  # seleção de chunks da etapa B (entra na chave do cache dela); ver infrastructure/chunker.py
 RETRIEVAL_VERSION = "3"  # 3: envio remoto exige worktree limpo e HEAD público; 2: mapa da etapa A omite entrada com segredo
 
 
@@ -70,7 +71,7 @@ class Budget:
 
     max_calls_per_request: int = 2
     max_calls_per_session: int = 40
-    max_input_tokens: int = 28_000
+    max_input_tokens: int = 32_000
     max_cost_usd: float = 0.05
     timeout_ms: int = 5_000
 
