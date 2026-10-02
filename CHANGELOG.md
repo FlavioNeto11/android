@@ -81,6 +81,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Testes: sondas do `_wait_boot` (T.2, J10)
+
+- `backend/tests/test_wait_boot_sondas.py` (novo, 7 testes `simulated`): `boot_completed` antes de `ui_ready`, a interface só sondada depois do boot, `AdbError`/`DriverError` nas sondas engolidos e repetidos, os 120 s sem interface depois do boot (relógio injetável em `manager`, sem dormir), prazo estourado sem `boot_completed`, preparo que falha rápido sem impedir a entrada no ar e o ajuste de apps de fundo virando evento. Só dublês nas três chamadas ao `Adb`; o laço, a fase de prontidão e o estado são os de produção. Mutação (120 s→12000 s; ordem das sondas) derruba os testes. Nenhum código de produção mudou (`manager.py`, `despacho.py` intocados). Ainda de fora: o veredito do snapshot no boot e a extração no agente remoto. Sem deploy.
+
 ## 2026-10-02 — W8: teto de 6 reinícios respeita o pior caso de uma iteração (antes do 1º boot)
 
 - `scripts/diag-w8-mitigacao.py`: uma iteração nova só começa se `reinícios_usados + 1 + rede.reinicios_max (config real; 3 se ilegível) <= 6`, para que nem o `FAIL` da última passe do limite do dono. Prova `simulated` (`scripts/tests/test_diag_w8_mitigacao.py`: com 4 usados não começa a 5ª, com 3 começa). `docs/handoffs/w8-boot-recovery.md` §17.5 registra o ajuste, feito antes de qualquer boot (`not_run`).
