@@ -4814,8 +4814,8 @@
    "id": "29.21",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071. Observacao real 02/10/2026 19:50-19:53Z no central (main a1fa730, migracao 068, ja com o 29.21 implantado): android-05 parado (c-20261002195039-aa9df5) e ligado a frio (c-20261002195048-48cd93) com objetivo de QA Messenger (r-20261002195048-7963c2, ~US$0,097); o tunel subiu sozinho e nenhum reinicio foi pedido, logo o caminho do 29.21 NAO foi exercitado. Achado colateral virou o 29.22 (trafego_verificado da medicao #134 atravessou o boot).",
-   "blocker": "Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reproduziu). Observar a proxima ocorrencia espontanea no parque; causa exata do 'ocupado' de 19:00 nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria.",
+   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071.",
+   "blocker": "Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~30 s e tunel conectado (teto US$ 0,30, autorizado pelo orquestrador). Causa exata do 'ocupado' nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria (zeram no restart do central).",
    "arquivos": [
     "backend/app/devices/rede_convergencia.py",
     "backend/app/vitrine.py",
@@ -4827,7 +4827,7 @@
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:19:34+00:00"
+   "quando": "2026-10-02T19:47:17+00:00"
   },
   "17.8": {
    "id": "17.8",
@@ -4850,6 +4850,79 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T20:02:41+00:00"
+  },
+  "28.5": {
+   "id": "28.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #90, merge 04998b0e na main (02/10/2026, sessao jev). backend/app/modules/pedidos/domain/tentativas.py (puro): repetir so a falha sem efeito possivel (mesma linha falhou->devida, tentativa+1, chave:t<n>, atraso exponencial retentativa_base_s/teto_s), incerta com efeito possivel -> pedido aguardando_pessoa + pedido.aviso, nunca repete; falhas_para_pausar pausa com aviso (ator sistema). Predicado de efeito LARGO (decisao do coordenador 02/10; contagem a revisitar no 28.12, pedidos-laco.md par. 13). Suite inteira na arvore combinada 761f0c30 (main 14ec911c + 28.5 + 29.22): 5476 passed, 9 skipped, 0 failed (-n 8, Idle); depois da main 73945eb2: afetados 494 passed.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/tentativas.py",
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio.py",
+    "backend/app/state.py",
+    "backend/app/config.py",
+    "docs/design/pedidos-laco.md"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_tentativas.py",
+    "backend/tests/test_pedidos_retentativa.py",
+    "backend/tests/test_pedidos_orcamento.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
+  },
+  "28.6": {
+   "id": "28.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #85, merge d75ca783 (02/10/2026, sessao jev), acrescimos no PR #90. Custo da ocorrencia por costs.spent_usd no mesmo UPDATE do fechamento; domain/orcamento.py (estimativa pela mediana, encerra com encerrado_motivo=orcamento); AIRouter._budget barra pelo teto da ocorrencia; infrastructure/saldo.py adia pelo saldo (ADR-051), alem da janela vira perdida; prioridade em dispatchable_objectives. Sem migracao. Suite efd39d3e: 5414 passed / 9 skipped / 0 failed; suite 761f0c30: 5476/9/0. Real (laco ligado, 28.12) e PostgreSQL: not_run.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/orcamento.py",
+    "backend/app/modules/pedidos/infrastructure/saldo.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/repository.py"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_orcamento.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
+  },
+  "28.7": {
+   "id": "28.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #85, merge d75ca783 (02/10/2026, sessao jev); migracao 070_pedidos_memoria implantada no central (health 070, deploy da sessao Android ~20:20Z). domain/memoria.py (versionada, segredo recusado, compactar sem IA), observacao.py, relatorio.py (deterministico, sha256; incerteza/falha/ausencia nunca viram conclusao); o laco grava observacoes na transacao cercada do fechamento; resumo por IA so como ponto de extensao (pedidos.resumo_ia=false). Suite efd39d3e: 5414/9/0. Real com o laco ligado (28.12): not_run.",
+   "blocker": "",
+   "files": [
+    "backend/migrations/070_pedidos_memoria.sql",
+    "backend/app/modules/pedidos/domain/memoria.py",
+    "backend/app/modules/pedidos/domain/observacao.py",
+    "backend/app/modules/pedidos/domain/relatorio.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio_memoria.py",
+    "backend/app/modules/pedidos/infrastructure/relatorios.py"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_memoria.py",
+    "backend/tests/test_pedidos_relatorio.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
   }
  },
  "rodadas": [
@@ -5882,12 +5955,14 @@
    ]
   },
   {
-   "quando": "2026-10-02T20:19:34+00:00",
+   "quando": "2026-10-02T20:37:37+00:00",
    "itens": [
-    "29.21"
+    "28.5",
+    "28.6",
+    "28.7"
    ],
    "grupos": [
-    "29-21-rede"
+    "sessao:jev-28-567"
    ]
   }
  ]

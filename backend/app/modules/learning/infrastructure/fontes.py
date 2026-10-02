@@ -18,6 +18,8 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
+from app.modules.learning.domain.relacoes import Sucessora
+from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
 from app.modules.skills.domain.document import JsonObject, content_hash
@@ -119,6 +121,47 @@ class FontesSql:
         seguinte = self._db.one(base + ">? ORDER BY version ASC LIMIT 1", (*chave, r.versao))
         return receita_legivel(r, etapa=etapa, do_mesmo_template=mesmos,
                                anterior=_vizinha(anterior), seguinte=_vizinha(seguinte))
+
+    # ------------------------------------------------------------------ versão (30.6)
+    def vivas(self, app: str) -> tuple[VersaoViva, ...]:
+        """As versões do app observadas HOJE em aparelho ativo, com o número de aparelhos (§7). Aparelho aposentado
+        (`instances.retired_at`) e app ausente (`missing`) não contam; a linha sem `instances` (teste, aparelho já
+        removido) conta como viva: o `NOT EXISTS` só exclui o que se sabe aposentado."""
+        return agrupar_vivas(
+            (linhas.texto(r, "v"), linhas.inteiro(r, "n")) for r in self._db.query(
+                "SELECT d.observed_version_name AS v, COUNT(*) AS n FROM device_app_state d WHERE d.package_name=?"
+                " AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> '' AND d.state <> 'missing'"
+                " AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id = d.instance_id AND i.retired_at IS NOT NULL)"
+                " GROUP BY d.observed_version_name", (app,)))
+
+    def versao(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O quadro de versão de uma receita (`domain/versao.py`): a chave exata (pacote, assinatura, variante,
+        `step_hash`) em TODAS as versões do app, contra as versões vivas. `None`: o tipo não tem quadro nativo aqui
+        ou a linha sumiu."""
+        if kind is not LivroKind.RECEITA:
+            return None
+        try:
+            recipe_id = int(ref)
+        except ValueError:
+            return None
+        row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        if row is None:
+            return None
+        pacote = linhas.texto(row, "app_package")
+        da_chave = [_receita_da_chave(r) for r in self._db.query(
+            "SELECT id, app_version, version, status, replay_ok, consecutive_fail, created_at FROM recipes"
+            " WHERE app_package=? AND app_signature=? AND variant=? AND step_hash=? ORDER BY app_version, version",
+            (pacote, linhas.texto(row, "app_signature"), linhas.texto(row, "variant"), linhas.texto(row, "step_hash")))]
+        propria = next(o for o in da_chave if o.ref == str(recipe_id))
+        return quadro_da_receita(propria, app=pacote, da_chave=da_chave, vivas=self.vivas(pacote))
+
+    # ------------------------------------------------------------------ relações (30.7)
+    def sucessoras_da_habilidade(self, skill_id: str, versao: int) -> list[Sucessora]:
+        """As versões do mesmo `skill_id` cujo `parent_version` é esta. A leitura do pai (`parent_version` da própria
+        versão) já vem no `conteudo`; só o caminho de volta precisa de uma consulta."""
+        return [Sucessora(linhas.texto(r, "id"), linhas.inteiro(r, "version"), linhas.texto(r, "state"))
+                for r in self._db.query("SELECT id, version, state FROM skill_versions WHERE skill_id=?"
+                                        " AND parent_version=? ORDER BY version", (skill_id, versao))]
 
     def _etapa_de_origem(self, step_id: str) -> EtapaDeOrigem | None:
         row = self._db.one("SELECT id, run_id, capability FROM steps WHERE id=?", (step_id,))
@@ -239,6 +282,13 @@ def _receita_lida(r: Row) -> ReceitaLida:
         replay_ok=linhas.inteiro(r, "replay_ok"), replay_fail=linhas.inteiro(r, "replay_fail"),
         consecutive_fail=linhas.inteiro(r, "consecutive_fail"), shadow_agree=linhas.inteiro(r, "shadow_agree"),
         shadow_total=linhas.inteiro(r, "shadow_total"), last_used_at=linhas.texto_ou_nulo(r, "last_used_at"))
+
+
+def _receita_da_chave(r: Row) -> ReceitaDaChave:
+    return ReceitaDaChave(
+        ref=str(linhas.inteiro(r, "id")), app_version=linhas.texto(r, "app_version"), versao=linhas.inteiro(r, "version"),
+        status=linhas.texto(r, "status"), replay_ok=linhas.inteiro(r, "replay_ok"),
+        consecutive_fail=linhas.inteiro(r, "consecutive_fail"), criada_em=linhas.texto(r, "created_at"))
 
 
 def _vizinha(r: Row | None) -> Vizinha | None:

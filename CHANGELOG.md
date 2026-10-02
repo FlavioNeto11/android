@@ -49,6 +49,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `GET /api/snapshot` ganha `pedidos` (`por_estado`, `avisos_nao_lidos`, `aguardando_pessoa` com as `pendencias` agrupadas); `RunSummary` ganha `pedido_id` e `ocorrencia_id`. `AcoesDePedidos.editar` passa a aceitar autonomia, alvos, fuso, orçamentos e demais campos validados pela API.
 - Prova `simulated`: `tests/test_pedidos_api.py` (14). `real`: `not_run` (o laço segue desligado de fábrica).
 
+## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,
+  `substituida_por`, `derivado_de`, `absorvida` e `contradiz`, cada uma lida do que já existe (versão vizinha da receita, `parent_version`,
+  `parent_id`, `flow:<id>` do fluxo legado, `absorvida:<commit>`, mesmo `scope_key` com `content_hash` diferente e os dois vivos). Sem tabela
+  de arestas e sem migração.
+- Sem inventar: `contradiz` só em receita (chave exata) e tela (mesmo nome de regra); fluxo, habilidade, lição, voz e preferência ficam sem ele
+  (sem critério seguro). `nasceu de`, `complementa / depende de` e `revisado por` ficam fora.
+- `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
+  Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
@@ -69,6 +80,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — 28.11 provado em real: aviso de teste chegou ao Telegram do dono
 
 - Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
+
+## 2026-10-02 — Aprendizado: estado de versão por item (30.6, branch feat/30-6-versao)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `versao` (`api-contract.md`, adendo v0.51): o estado de versão do item (§7 do desenho),
+  as versões do app vivas no parque (`device_app_state`, só aparelho ativo com o app) e, na receita, uma linha por versão pela chave exata
+  (pacote, assinatura, variante, `step_hash`): `comprovado`, `nao_testado` (viva sem receita), `em_prova`, `falhando`, `incompativel`,
+  `superseded`, `versao_aposentada`. Tela entra pela regra `sem_casar`; os demais tipos são `independente`. O que não se sabe é
+  `desconhecido`, escrito (a receita sem nenhum aparelho observado não vira `comprovado`). Sem migração.
+- `domain/versao.py` (puro), `FontesSql.versao`/`vivas`, `DetalheDoLivro.versao`. Prova `simulated` (`tests/test_learning_versao.py`:
+  duas versões vivas e receita só na antiga = `nao_testado` na nova); `not_run` no central.
 
 ## 2026-10-02 — Aprendizado: conteúdo legível no detalhe do Livro (30.3, branch feat/30-3-conteudo-legivel)
 

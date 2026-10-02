@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-249 de 298 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+252 de 297 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -247,9 +247,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.2 | implemented | simulated | sessao | — | PR #55 via #61 (merge c82a5210). Migracao 067_pedidos (pedidos, gatilhos, ocorrencias; runs.pedido_id/ocorrencia_id), modules/pedidos/domain/estados.py e chave.py (chave deterministica, formatar_instante). Implantado no… | Uso real dos dados so com o laco ligado (28.6/28.12). |
 | 28.3 | implemented | simulated | sessao | — | PR #54 (d372a4c7). modules/pedidos/domain/recorrencia.py puro (RRULE parcial, zoneinfo, tzdata declarado em requirements.in). |  |
 | 28.4 | implemented | simulated | sessao | — | Desenho PR #59 (docs/design/pedidos-laco.md); implementacao PR #73 (merge e6e9cd13, 02/10) junto com o 28.11. ADR-066. Laco desligado de fabrica (pedidos.enabled=false; D1 confirmada pelo dono), origem interna (pedido_i… | Laco desligado ate o orcamento do 28.6; prova real no 28.12; PostgreSQL not_run. |
-| 28.5 | pendente | — | — | — |  |  |
-| 28.6 | pendente | — | — | — |  |  |
-| 28.7 | pendente | — | — | — |  |  |
+| 28.5 | implemented | simulated | sessao | — | PR #90, merge 04998b0e na main (02/10/2026, sessao jev). backend/app/modules/pedidos/domain/tentativas.py (puro): repetir so a falha sem efeito possivel (mesma linha falhou->devida, tentativa+1, chave:t<n>, atraso expon… |  |
+| 28.6 | implemented | simulated | sessao | — | PR #85, merge d75ca783 (02/10/2026, sessao jev), acrescimos no PR #90. Custo da ocorrencia por costs.spent_usd no mesmo UPDATE do fechamento; domain/orcamento.py (estimativa pela mediana, encerra com encerrado_motivo=or… |  |
+| 28.7 | implemented | simulated | sessao | — | PR #85, merge d75ca783 (02/10/2026, sessao jev); migracao 070_pedidos_memoria implantada no central (health 070, deploy da sessao Android ~20:20Z). domain/memoria.py (versionada, segredo recusado, compactar sem IA), obs… |  |
 | 28.8 | pendente | — | — | — |  |  |
 | 28.9 | partial | not_run | sessao | — | Adendo do contrato v0.45 (docs/api-contract.md, 16 rotas, DTOs alinhados a 067 e estados.py, eventos, erros) e tela Pedidos em docs/produto.md: PR #60. Decisoes tomadas em 02/10 (PR #62): emenda a ADR-062 e piso confirm… | Implementacao (rotas, tela, caixa de avisos) pendente; depende do 28.4 (feito) e do 28.7; migracao da caixa de avisos pela regra do numero maior. |
 | 28.10 | pendente | — | — | — |  |  |
@@ -276,8 +276,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.18 | implemented | real |  | — | Real, 02/10/2026, central, commit 40aa08fd (branch docs/29-18-fechamento, base a0a03b7): docs/relatorio-validacao.md §28 (os 20 itens 29.1 a 29.20 com estado e nível de prova, veredito por cláusula do 'Fecha quando' e q… |  |
 | 29.19 | blocked | not_run | opus | — | Objetivo do dono de 30/09 (~18:10Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem c… |
 | 29.20 | implemented | simulated |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… | Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitu… |
-| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reprodu… |
-| 29.22 | pendente | — | — | — |  |  |
+| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~… |
 | 30.1 | pendente | — | — | — |  |  |
 | 30.2 | pendente | — | — | — |  |  |
 | 30.3 | pendente | — | — | — |  |  |
@@ -305,7 +304,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.22, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
+Pendentes (45): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.9, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
