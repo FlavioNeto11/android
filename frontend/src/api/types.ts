@@ -105,6 +105,8 @@ interface Instance {
   readiness?: ReadinessInfo;
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
+  /** Pausa do reparo AUTOMÁTICO deste aparelho (experimento/manutenção); nulo/ausente = o reparo age normalmente. */
+  repair_pause?: { until: string; since: string; reason: string; by: string; remaining_s: number } | null;
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
   // v0.6 — 'store' = aparelho-loja (Play Store): o projeto o liga e desliga, mas NUNCA lhe despacha tarefa.
   kind: 'emulator' | 'external' | 'store';

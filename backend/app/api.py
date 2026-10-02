@@ -48,7 +48,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceProvisionBody, InstanceState, TrainingSaveBody, TrainingStartBody,
+                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialClone, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
@@ -2757,6 +2757,27 @@ async def hierarchy(request: Request, instance_id: str) -> Any:
 
 
 # ---------------------------------------------------------------------- controle manual
+@router.put("/instances/{instance_id}/repair-pause")
+async def set_repair_pause(request: Request, instance_id: str, body: RepairPauseBody) -> RepairPauseInfo | None:
+    """Pausa o reparo AUTOMÁTICO deste aparelho (a escada e o reinício por saúde do central) por `ttl_s` (obrigatório,
+    60 s a 3 h). Para experimento ou manutenção de UM aparelho: não afeta os outros nem a manutenção do worker; comando
+    de pessoa e o `restart` da rede continuam passando. Expira sozinha; repetir o PUT renova o prazo."""
+    s = st(request)
+    rt = device(s, instance_id)
+    s.devices.pausar_reparo(rt, body.ttl_s, body.reason.strip(), quem(request))
+    return s.devices.dto(rt).repair_pause
+
+
+@router.delete("/instances/{instance_id}/repair-pause")
+async def clear_repair_pause(request: Request, instance_id: str) -> dict[str, str]:
+    """Encerra a pausa antes do prazo. Sem pausa em vigor, responde 404 `no_repair_pause`."""
+    s = st(request)
+    rt = device(s, instance_id)
+    if not s.devices.retomar_reparo(rt, quem(request)):
+        raise err(404, "no_repair_pause", f"{instance_id} não tem pausa de reparo")
+    return {"status": "resumed"}
+
+
 @router.post("/instances/{instance_id}/control/take")
 async def take_control(request: Request, instance_id: str) -> Any:
     s = st(request)

@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — pausa do reparo automático por aparelho (W8, quase-acidente do §17.4) (branch `feat/pausa-de-reparo`)
+
+- **Plataforma.** `PUT`/`DELETE /api/instances/{id}/repair-pause`: o central deixa de emitir `restart`/`reset` AUTOMÁTICOS
+  (escada de reparo e reinício por saúde) para UM aparelho marcado em experimento ou manutenção. Desligada por padrão,
+  prazo (`ttl_s`, 60 s a 3 h) obrigatório, expira sozinha, aparece em `instances[].repair_pause` e em
+  `GET /api/health` → `features.repair_pause` (informativo, não é problema). Comando de pessoa, o `restart` da rede e os
+  outros aparelhos passam; não mexe na manutenção do worker.
+- **Por quê.** No estágio 1 do W8 a escada pediu um `restart` do android-09 15 s depois do restart do experimento; só a
+  rejeição `device_busy` (acidental) o barrou (`docs/handoffs/w8-boot-recovery.md` §17.4).
+- Prova: `simulated` (`backend/tests/test_pausa_de_reparo.py`, 8 testes). Docs: `docs/dominios/parque.md`, `docs/api-contract.md`.
+
 ## 2026-10-01 — a rede religa o túnel pelo Start da interface do cliente, não pelo tile (W8) (branch `fix/w8-sfa-service-mode`)
 
 - **Correção (não implantada).** O tile do SFA 1.14.2 não recalcula o `serviceMode`: num cliente que só importou o perfil
