@@ -56,7 +56,7 @@ def test_so_o_que_e_pendencia_vira_aviso() -> None:
     assert aviso_de_evento("run.updated", {"run": {"id": "r1", "status": "needs_input"}}, 4).chave == "run:r1:needs_input"  # type: ignore[union-attr]
     # sessão: entrar em intervenção avisa; sair não
     assert aviso_de_evento("session.needs_person", {"active": False}, 5) is None
-    assert aviso_de_evento("session.needs_person", {"active": True}, 6).chave == "evento:6"  # type: ignore[union-attr]
+    assert aviso_de_evento("session.needs_person", {"active": True}, 6).chave == "session:6"  # type: ignore[union-attr]
     assert aviso_de_evento("approval.pending", {"approval": {"id": "ap9"}}, 7).chave == "approval:ap9"  # type: ignore[union-attr]
 
 

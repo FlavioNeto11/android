@@ -12,6 +12,9 @@ precisa_de_internet: true
 # A conta da persona vive neste app: credencial, sessão e "Conectado" do perfil são os dele (`pacote_ancora()`).
 # Um app âncora só; persona com login gerenciado em mais de um app é o item 12.3.
 ancora_do_perfil: true
+# A janela que, EM FOCO, prova a conta perdida ("Confirm you're human", ADR-055): sinal forte da retirada
+# automática da conta bloqueada (29.23, ADR-068). Texto parecido na tela, sem esta janela, não retira nada.
+atividades_de_conta_perdida: [com.instagram.android/com.instagram.challenge.activity.ChallengeActivity]
 # Link de perfil para o parâmetro `handle` das skills: `instagram.com/<usuario>` é perfil; `/p/<código>` é post, e
 # `/reel/`, `/stories/`, `/explore/`... também não são perfil.
 links_de_perfil:

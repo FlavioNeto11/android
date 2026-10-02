@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-252 de 297 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+265 de 313 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -144,7 +144,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.8 | implemented | simulated | sessao | — | Flex (PR #50: OpenAICompatProvider honra max_retries, Retry-After) e papel de IA `persona` (decisao do dono 02/10; PR #80, merge 1779bf74): sem config persona herda exatamente o social; a geracao de persona usa role=per… | Chamada real ao flex not_run (sem bateria paga autorizada para isso). |
 | 17.10 | implemented | simulated | sessao | — | PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10).… | Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com… |
 | 17.11 | implemented | simulated | sessao | — | PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simu… |  |
-| 17.12 | implemented | simulated | sessao | — | Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos e… | Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede… |
+| 17.12 | implemented | real | sessao | — | Real 02/10/2026 ~20:48-20:57Z, central WIN-7S2UASNLFOP, main implantada c11f8217 (070). eval_run label 17-12-real-02-10-d, caso msg-todos-os-contatos (bateria congelada, 8 contatos do QA Messenger, app nosso) no android… |  |
 | 17.9 | pendente | — | — | — |  |  |
 | 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
 | 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
@@ -256,6 +256,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.11 | implemented | real | sessao | — | Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila durave… | Fonte pedido.aviso so com o 28.9; o 'Para aprovar' do Aprendizado sem evento no barramento (avisado a frente Aprendizado). |
 | 28.12 | pendente | — | — | — |  |  |
 | 28.13 | pendente | — | — | — |  |  |
+| 28.14 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -275,36 +276,51 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.17 | implemented | real | opus | — | Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Androidrquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/.… | None |
 | 29.18 | implemented | real |  | — | Real, 02/10/2026, central, commit 40aa08fd (branch docs/29-18-fechamento, base a0a03b7): docs/relatorio-validacao.md §28 (os 20 itens 29.1 a 29.20 com estado e nível de prova, veredito por cláusula do 'Fecha quando' e q… |  |
 | 29.19 | blocked | not_run | opus | — | Objetivo do dono de 30/09 (~18:10Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem c… |
-| 29.20 | implemented | simulated |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… | Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitu… |
-| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~… |
-| 30.1 | pendente | — | — | — |  |  |
-| 30.2 | pendente | — | — | — |  |  |
-| 30.3 | pendente | — | — | — |  |  |
+| 29.20 | implemented | real |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… |  |
+| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reprodu… |
+| 29.22 | implemented | simulated |  | — | Branch fix/29-22-boot-invalida-verificacao (67fd075f + merges): devices/rede.py inicio_do_boot/boot_depois_da_medicao e motivo 'boot' em verificacao_invalida (marco = instances.emulator_started_at; aparelho de worker us… | Prova real not_run: parar e ligar a frio um aparelho exigida/exigida_com_bloqueio no central e ver a porta segurar ('subiu depois da medicao') ate a medicao no… |
+| 29.23 | implemented | simulated |  | — | Branch feat/29-23-conta-bloqueada-sai (3cbbffe1, f1c83b56, 5126a414, 41f7204c, 827e038d + merges): acao retirar_conta_bloqueada + rota POST /api/instagram/profiles/{p}/accounts/{a}/retire (credencial da conta + legada +… | Prova real not_run: deploy com ensaio da 071 e retire nas 5 contas bloqueadas pela rota (declaracao do dono como sinal), com antes/depois; PostgreSQL not_run. |
+| 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
+| 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
+| 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
 | 30.4 | pendente | — | — | — |  |  |
-| 30.5 | pendente | — | — | — |  |  |
-| 30.6 | pendente | — | — | — |  |  |
-| 30.7 | pendente | — | — | — |  |  |
+| 30.5 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #72 merge 9336088a e PR #79 merge e86b4a33: acoes_da_pessoa e por_que_o_sistema_nao_publica no backend (domain/livro.py), veto e modo na rota; adendo v0.46; prova simulated; not_run no central (nada implantado) |  |
+| 30.6 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #87 merge 73945eb2: estado de versão por item (domain/versao.py, device_app_state), adendo v0.51; 444 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
+| 30.7 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #89 merge f82185fc: relações derivadas no detalhe (domain/relacoes.py), adendo v0.53; 459 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
 | 30.8 | pendente | — | — | — |  |  |
-| 30.9 | pendente | — | — | — |  |  |
+| 30.9 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy) |  |
 | 30.10 | pendente | — | — | — |  |  |
 | 30.11 | pendente | — | — | — |  |  |
 | 30.12 | pendente | — | — | — |  |  |
 | 30.13 | pendente | — | — | — |  |  |
 | 30.14 | pendente | — | — | — |  |  |
-| 30.15 | pendente | — | — | — |  |  |
+| 30.15 | partial | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #82 merge 312808d1: 1ª fatia, aba Aplicativos (Global → App) como visão inicial, detalhe por app, filtro de app (frontend/src/features/aprendizado/AplicativosTab.tsx, apps.ts); falta saúde, falhas no detalhe do app,… | resto depende do 30.4 (PR #88) e do 30.13 |
 | 30.16 | pendente | — | — | — |  |  |
 | 30.17 | pendente | — | — | — |  |  |
 | 30.18 | pendente | — | — | — |  |  |
 | 30.19 | pendente | — | — | — |  |  |
-| 30.20 | pendente | — | — | — |  |  |
-| 30.21 | pendente | — | — | — |  |  |
-| 30.22 | pendente | — | — | — |  |  |
+| 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
+| 30.21 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_r… |  |
+| 30.22 | implemented | real | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoff… |  |
+| 31.1 | pendente | — | — | — |  |  |
+| 31.2 | pendente | — | — | — |  |  |
+| 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
+| 31.4 | pendente | — | — | — |  |  |
+| 31.5 | pendente | — | — | — |  |  |
+| 31.6 | pendente | — | — | — |  |  |
+| 31.7 | pendente | — | — | — |  |  |
+| 31.8 | pendente | — | — | — |  |  |
+| 31.9 | pendente | — | — | — |  |  |
+| 31.10 | pendente | — | — | — |  |  |
+| 31.11 | pendente | — | — | — |  |  |
+| 31.12 | pendente | — | — | — |  |  |
+| 31.13 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (45): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.9, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
+Pendentes (48): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.9, 28.10, 28.12, 28.13, 28.14, 29.7, 29.9, 29.13, 29.19, 29.21, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.1, 31.2, 31.4, 31.5, 31.6, 31.7, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

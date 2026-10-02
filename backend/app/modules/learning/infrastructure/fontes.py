@@ -19,7 +19,8 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
 from app.modules.learning.domain.relacoes import Sucessora
-from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita
+from app.modules.learning.domain.versao import (ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita,
+                                                versao_canonica)
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
 from app.modules.skills.domain.document import JsonObject, content_hash
@@ -127,12 +128,15 @@ class FontesSql:
         """As versões do app observadas HOJE em aparelho ativo, com o número de aparelhos (§7). Aparelho aposentado
         (`instances.retired_at`) e app ausente (`missing`) não contam; a linha sem `instances` (teste, aparelho já
         removido) conta como viva: o `NOT EXISTS` só exclui o que se sabe aposentado."""
+        # Nome E código: a receita grava `nome(código)` (`domain/versao.py`), e comparar só o nome a marcava fora do parque.
         return agrupar_vivas(
-            (linhas.texto(r, "v"), linhas.inteiro(r, "n")) for r in self._db.query(
-                "SELECT d.observed_version_name AS v, COUNT(*) AS n FROM device_app_state d WHERE d.package_name=?"
-                " AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> '' AND d.state <> 'missing'"
+            (versao_canonica(linhas.texto(r, "v"), linhas.inteiro_ou_nulo(r, "c")), linhas.inteiro(r, "n"))
+            for r in self._db.query(
+                "SELECT d.observed_version_name AS v, d.observed_version_code AS c, COUNT(*) AS n FROM device_app_state d"
+                " WHERE d.package_name=? AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> ''"
+                " AND d.state <> 'missing'"
                 " AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id = d.instance_id AND i.retired_at IS NOT NULL)"
-                " GROUP BY d.observed_version_name", (app,)))
+                " GROUP BY d.observed_version_name, d.observed_version_code", (app,)))
 
     def versao(self, kind: LivroKind, ref: str) -> JsonObject | None:
         """O quadro de versão de uma receita (`domain/versao.py`): a chave exata (pacote, assinatura, variante,
@@ -269,7 +273,7 @@ def _receita(r: Row) -> EntradaDoLivro:
         scope_key=escopo_da_receita(linhas.texto(r, "app_package"), linhas.texto(r, "app_version"),
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
-        app_version=linhas.texto(r, "app_version"))
+        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"))
 
 
 def _receita_lida(r: Row) -> ReceitaLida:

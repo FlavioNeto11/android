@@ -331,3 +331,80 @@
   padding: 0;
   list-style: none;
 }
+
+/* ---- Detalhe rico do item (30.16): uma seção por assunto, só as que se aplicam ---- */
+
+.detalhe { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+
+.detalheSecao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+}
+
+.detalheSecao:first-child { padding-top: 0; border-top: 0; }
+
+.detalheTitulo { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text-1); }
+
+.detalheSub { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+
+.fatos {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px var(--sp-4);
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.fatos dt { color: var(--text-3); }
+.fatos dd { margin: 0; overflow-wrap: anywhere; }
+
+.passos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.passos li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.passoTitulo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--text-1); }
+.passoLinha { color: var(--text-3); overflow-wrap: anywhere; }
+.passoLinha code, .fatos code { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-2); }
+
+.citacao {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--border-2, var(--border-1));
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.motivos { margin: 0; padding-left: var(--sp-4); font-size: var(--fs-sm); color: var(--text-2); }
+
+.tabelaDetalhe {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.tabelaDetalhe caption { text-align: left; padding-bottom: var(--sp-1); color: var(--text-3); }
+.tabelaDetalhe th { text-align: left; font-weight: 500; color: var(--text-3); }
+.tabelaDetalhe th, .tabelaDetalhe td { padding: 3px var(--sp-3) 3px 0; vertical-align: top; }
+
+.semDado { color: var(--text-3); font-style: italic; }
+
+.seloDeSaude { flex: none; }
+
+/* 30.15: a contagem por rótulo de saúde (cartão e detalhe do app) e o subtítulo de cada grupo por capability. */
+.chipsDeSaude { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
+.subtitulo { font-size: var(--fs-md); font-weight: 600; color: var(--text-2); overflow-wrap: anywhere; }
