@@ -28,7 +28,7 @@ from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
-from .saidas import como_texto, referencias, resolver, sem_sufixo_de_item
+from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
@@ -433,6 +433,16 @@ class Repository:
         com isto, se a etapa pode seguir sozinha ou espera a pessoa (efeito externo)."""
         return {str(r["name"]) for r in self.db.query(
             "SELECT name FROM step_outputs WHERE objective_id=? AND origem='visual'", (objective_id,))}
+
+    def saidas_visuais_citadas(self, row: Row) -> list[str]:
+        """Dos nomes que a etapa PRONTA cita (`{{saida:<nome>}}`), os que foram lidos da IMAGEM no objetivo (item 12.5). Lida
+        ANTES de `resolver_saidas`, que troca a referência pelo valor e apaga o rastro de quem a citou."""
+        post = Postcondition.model_validate_json(row["postcondition"])
+        textos = [row["title"], row["goal"], row["precondition"], post.value, post.description,
+                  *(loads(row["commit_guard"], []) or []), *(loads(row["band_guard"], []) or []),
+                  *(loads(row["bindings"], {}) or {}).values(), *(loads(row["variables"], {}) or {}).values()]
+        citados = {n for t in textos for n in nomes_citados(t)}
+        return sorted(citados & self.saidas_visuais(row["objective_id"]))
 
     def saidas_da_etapa(self, step_id: str) -> list[str]:
         """Os nomes que a etapa declara entregar (`steps.saidas`, migração 056); vazio no legado."""
