@@ -6,6 +6,7 @@ Segredos das fixtures são valores obviamente falsos montados em runtime.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import socket
 from collections.abc import Sequence
@@ -19,7 +20,7 @@ from app.modules.context_retrieval.application.budget import BudgetLedger
 from app.modules.context_retrieval.application.semantic import SemanticRetriever
 from app.modules.context_retrieval.domain import policy as policy_mod
 from app.modules.context_retrieval.domain.errors import (
-    ProviderError, ProviderInvalidResponse, ProviderOffline, ProviderOverloaded, ProviderRateLimited,
+    ProviderError, ProviderInvalidResponse, ProviderOffline, ProviderOptionLimit, ProviderOverloaded, ProviderRateLimited,
     ProviderTimeout, ProviderUnavailable,
 )
 from app.modules.context_retrieval.domain.model import (
@@ -32,7 +33,7 @@ from app.modules.context_retrieval.infrastructure.providers.factory import build
 from app.modules.context_retrieval.infrastructure.providers.fake import (FakeSemanticProvider, FixedVisibilityVerifier,
                                                                           tokenize)
 from app.modules.context_retrieval.adapters.jev import (
-    DEFAULT_MODEL, JevSemanticProvider, PRICE_USD_PER_MTOK_INPUT,
+    DEFAULT_MODEL, ID_NENHUMA, JevSemanticProvider, MAX_OPCOES, PRICE_USD_PER_MTOK_INPUT,
 )
 
 REMOTE, LOCAL, FAKE = ProviderLocality.REMOTE, ProviderLocality.LOCAL, ProviderLocality.FAKE
@@ -598,7 +599,8 @@ def test_jev_formato_do_request_e_parse_de_usage_e_custo():
     assert req.headers["authorization"] == f"Bearer {CHAVE_FALSA}" and req.headers["content-type"] == "application/json"
     corpo = json.loads(req.content)
     assert corpo["model"] == DEFAULT_MODEL == "jev-1.13.0" and corpo["state"]["question"] == "onde fica o login"
-    assert set(corpo["state"]["entries"]) == {"app/auth/login.py", "app/billing/invoice.py", "app/utils/strings.py"}
+    assert set(corpo["state"]["entries"]) == {"app/auth/login.py", "app/billing/invoice.py", "app/utils/strings.py",
+                                             ID_NENHUMA}
     assert corpo["questions"]["best"]["type"] == "choice"
     assert set(corpo["questions"]["best"]["criteria"]) == set(corpo["state"]["entries"])
     assert CHAVE_FALSA not in req.content.decode()  # a chave vai só no cabeçalho
@@ -630,7 +632,7 @@ def test_jev_regioes_viram_ids_path_linhas():
 
     chunks = _chunks()["app/auth/login.py"]
     resp = _jev(handler).select_regions("q", chunks, max_regions=1, timeout_s=1.0)
-    assert set(vistos[0]["state"]["entries"]) == {"app/auth/login.py:1-20", "app/auth/login.py:21-40"}
+    assert set(vistos[0]["state"]["entries"]) == {"app/auth/login.py:1-20", "app/auth/login.py:21-40", ID_NENHUMA}
     assert [(r.path, r.start_line, r.end_line, r.score) for r in resp.choices] == [("app/auth/login.py", 21, 40, 0.7)]
 
 
@@ -737,6 +739,47 @@ def test_jev_chave_some_entre_available_e_chamada():
     from app.modules.context_retrieval.domain.errors import ProviderKeyMissing
     with pytest.raises(ProviderKeyMissing):
         prov.select_files("q", _mapa_pequeno(), max_files=1, timeout_s=1.0)
+
+
+def _mapa_de(n: int) -> RepoMap:
+    e = ENTRADAS[0]
+    return RepoMap("rev-n", [dataclasses.replace(e, path=f"app/m{i:04d}.py") for i in range(n)])
+
+
+def test_jev_choice_sempre_leva_a_opcao_nenhuma_e_ela_nunca_vira_arquivo():
+    """31.1: `nenhuma` (id opaco) vai em `state` e em `criteria`; escolhê-la é abster-se e não produz candidato."""
+    vistos: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        vistos.append(req)
+        return _ok({ID_NENHUMA: 0.7, "app/auth/login.py": 0.3})
+
+    resp = _jev(handler).select_files("q", _mapa_pequeno(), max_files=3, timeout_s=3.0)
+    corpo = json.loads(vistos[0].content)
+    assert ID_NENHUMA in corpo["state"]["entries"] and ID_NENHUMA in corpo["questions"]["best"]["criteria"]
+    assert ID_NENHUMA not in {"app/auth/login.py", "app/billing/invoice.py", "app/utils/strings.py"}
+    assert [c.path for c in resp.choices] == ["app/auth/login.py"]  # só a escolha real; a nenhuma some do ranking
+
+
+def test_jev_choice_recusa_local_acima_de_255_opcoes_sem_montar_corpo_nem_rede():
+    """31.1: a nenhuma conta no teto. 254 entradas + nenhuma = 255 passa; 255 entradas + nenhuma = 256 é recusado antes do fio."""
+    chamadas: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        return _ok({ID_NENHUMA: 1.0})
+
+    prov = _jev(handler)
+    prov.select_files("q", _mapa_de(MAX_OPCOES - 1), max_files=3, timeout_s=1.0)
+    assert len(chamadas) == 1 and len(json.loads(chamadas[0].content)["questions"]["best"]["criteria"]) == MAX_OPCOES
+    with pytest.raises(ProviderOptionLimit):
+        prov.select_files("q", _mapa_de(MAX_OPCOES), max_files=3, timeout_s=1.0)
+    assert len(chamadas) == 1  # a recusada não chegou ao transporte
+
+
+def test_jev_choice_id_reservado_da_nenhuma_nao_pode_colidir_com_uma_entrada():
+    with pytest.raises(ProviderInvalidResponse):
+        _jev(lambda r: _ok({"a": 1.0}))._ranquear("q", {ID_NENHUMA: "x"}, "i", 1, 1.0)
 
 
 def test_jev_pipeline_completo_com_mock_e_sem_caminho_sensivel_no_fio():
