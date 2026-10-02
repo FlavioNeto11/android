@@ -570,7 +570,10 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
   `EFFECT_CAPABLE` e gravam `effect_possible = 1` até quando deram certo, inclusive em etapa de navegação (sem `side_effect`);
   logo toda falha DEPOIS de um toque desses vira `incerta`, e a nova tentativa fica para as falhas antes do primeiro toque
   (planejamento, aparelho indisponível, leitura) e para as provadas sem efeito. Restringir o predicado às ações de commit
-  (`actions.side_effect = 1`) é uma linha em `RepositorioDePedidos.efeito_possivel`, se o dono achar o critério largo demais.
+  (`actions.side_effect = 1`) é uma linha em `RepositorioDePedidos.efeito_possivel`. DECISÃO (coordenador, 02/10): MANTER o
+  predicado largo ("na dúvida, `incerta`"); com os pedidos desligados o custo só aparece no 28.12. PARÂMETRO A REVISITAR com
+  números no 28.12: a contagem de ocorrências `incerta` cuja falha veio depois de toque SEM `side_effect`. Se for alta,
+  restringir às ações de commit passa a ser decisão com dado, não suposição.
   Testes: `test_pedidos_retentativa.py` (efeito → `incerta`, `aguardando_pessoa` e aviso, sem nova tentativa; antes de qualquer
   ação com efeito → repete; driver provou ausência → repete e esgotada vira `falhou`; `unknown`/`intended`; purgada; pedido pausado).
 - **A nova tentativa é a MESMA linha.** `retentar` faz `despachada|rodando → devida` num só `UPDATE` (CAS de estado, custo da
