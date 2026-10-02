@@ -14,8 +14,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class AparelhoDaLimpeza:
     """Um aparelho onde a conta estava logada. `marcadores` são os ids (`device_locked_accounts`) ABERTOS do @ da conta
-    ali — o que a limpeza resolve no fim; vazio quando só o vínculo ou a sessão da conta apontavam para o aparelho.
-    `origens` diz por onde o aparelho foi achado (`marcador`, `vinculo`, `sessao`), para o evento e a conferência."""
+    ali — o que a limpeza resolve no fim; vazio quando só o vínculo da conta apontava para o aparelho.
+    `origens` diz por onde o aparelho foi achado (`marcador`, `vinculo`; a sessão não é pista, ver `aparelhos_da_conta`), para o evento e a conferência."""
 
     instance_id: str
     marcadores: tuple[int, ...] = ()

@@ -17,7 +17,7 @@ import pytest
 
 from app.commands.limpeza_ao_retirar import NOTA, QUEM
 from app.devices.adb import Adb, AdbError
-from app.models import InstanceState, SessionStatus
+from app.models import InstanceState, PersonaCreate, PersonaDeviceBody, ProfileCreate, SessionStatus
 from app.social.contas_nossas import MARCADOR
 from app.util import now_iso
 
@@ -283,3 +283,106 @@ def test_o_app_yaml_do_app_ancora_declara_a_limpeza_e_o_carregador_recusa_valor_
     assert definicao_de_dados({**base, "limpar_ao_retirar": True}, "x").clear_on_account_retire is True
     with pytest.raises(PacoteInvalido):
         definicao_de_dados({**base, "limpar_ao_retirar": "sim"}, "x")
+
+
+# ---------------------------------------------------------------------- travas contra apagar conta VIVA de outra persona
+# Revisão adversarial do 29.27: o `pm clear` apaga o app inteiro, e a plataforma só protege o que conhece. A sessão deixou
+# de ser pista de aparelho; a hora de executar confere "outra conta" antes de limpar; a energia confere os marcadores.
+
+async def _persona_viva_no_aparelho(s: Any, usuario: str) -> str:
+    """Persona B com conta VIVA do app âncora, vinculada e logada em `IID`; devolve o id dela."""
+    pid = s.social.create_profile(ProfileCreate(username=usuario, password="Viva#Senha1", instance_id=IID)).id
+    s.social_repo.set_account_session(pid, str(s.social_repo.conta_ancora(pid)["id"]), IID,
+                                      status=SessionStatus.session_ready, verified_at=now_iso())
+    return pid
+
+
+@pytest.mark.parametrize("status_antigo", [SessionStatus.session_ready, SessionStatus.wrong_account,
+                                           SessionStatus.needs_person])
+async def test_sessao_velha_de_aparelho_desvinculado_nao_e_pista_e_nao_limpa_conta_viva(
+        harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch,
+        status_antigo: SessionStatus) -> None:
+    s = estado(harness)
+    g = _armar(s, monkeypatch)
+    pid_a, ancora_a, _ = persona_com_duas_contas(s)
+    s.social_repo.set_account_session(pid_a, ancora_a, IID, status=status_antigo, verified_at=now_iso())
+    s.social_repo.unbind(pid_a, IID)                    # `unbind` não apaga a sessão: ela sobra como pista falsa
+    pid_b = await _persona_viva_no_aparelho(s, "bia.viva")
+    assert [str(b["profile_id"]) for b in s.social_repo.profiles_of_instance(IID)] == [pid_b]
+    res = s.social.retirar_conta_bloqueada(pid_a, ancora_a, origem="declarado", autor="dono")
+    # sem marcador nem vínculo, o aparelho nem entra no pedido: sessão não é fonte
+    assert res["limpeza_dos_aparelhos"] == {"agendada": False, "aparelhos": 0}
+    await _esperar_a_limpeza(s)
+    assert g.pacotes == [] and g.ordem == [] and _eventos(s) == []
+
+
+async def test_vinculo_sem_app_de_pessoa_que_ganhou_conta_depois_nao_limpa_conta_viva_de_outra(
+        harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O furo antigo da D2-a: pessoa vinculada SEM app ganha a conta do app depois (`create_profile(persona_id=...)` sem
+    `instance_id`), e duas personas servem o mesmo app no mesmo aparelho. A limpeza de uma não pode apagar a outra."""
+    s = estado(harness)
+    g = _armar(s, monkeypatch)
+    pid_c = await _persona_viva_no_aparelho(s, "caio.vivo")
+    pid_a = s.social.create_persona(PersonaCreate(name="Ana Sem Conta")).id
+    s.social.bind_device(pid_a, PersonaDeviceBody(instance_id=IID))
+    s.social.create_profile(ProfileCreate(username="ana.depois", password="Depois#Senha1", persona_id=pid_a))
+    ancora_a = str(s.social_repo.conta_ancora(pid_a)["id"])
+    res = s.social.retirar_conta_bloqueada(pid_a, ancora_a, origem="declarado", autor="dono")
+    assert res["limpeza_dos_aparelhos"] == {"agendada": True, "aparelhos": 1}     # o vínculo de A aponta para IID
+    await _esperar_a_limpeza(s)
+    assert g.pacotes == []                                                         # mas a trava recusa: C é viva ali
+    [ev] = _eventos(s)
+    assert ev["level"] == "error" and ev["data"]["resultado"] == "falhou" and ev["data"]["passo"] == "outra_conta"
+    assert [str(b["profile_id"]) for b in s.social_repo.profiles_of_instance(IID, "instagram")] == [pid_c]
+    assert "ana.depois" not in json.dumps(ev) and ARROBA not in json.dumps(ev)
+
+
+@pytest.mark.parametrize("pista", ["vinculo", "sessao"])
+async def test_outra_persona_no_mesmo_app_do_aparelho_recusa_a_limpeza_e_a_quarentena_fica_aberta(
+        harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch, pista: str) -> None:
+    """O aparelho da retirada (com o marcador dela aberto) também serve a OUTRA persona viva. Com a quarentena aberta o
+    serviço já recusa vínculo novo ali, então B chega antes: pela D2-a (vínculo sem app, conta do app depois) ou com
+    só a sessão que o desvínculo deixou."""
+    s = estado(harness)
+    g = _armar(s, monkeypatch)
+    pid, ancora = _cenario(s, marcador=False)
+    if pista == "vinculo":
+        pid_b = s.social.create_persona(PersonaCreate(name="Bia Sem Conta")).id
+        s.social.bind_device(pid_b, PersonaDeviceBody(instance_id=IID))
+        s.social.create_profile(ProfileCreate(username="bia.viva", password="Viva#Senha1", persona_id=pid_b))
+    else:
+        pid_b = s.social.create_profile(ProfileCreate(username="bia.viva", password="Viva#Senha1")).id
+        s.social_repo.set_account_session(pid_b, str(s.social_repo.conta_ancora(pid_b)["id"]), IID,
+                                          status=SessionStatus.unknown)    # qualquer status: houve app aberto ali
+        assert [str(b["profile_id"]) for b in s.social_repo.profiles_of_instance(IID)] == [pid]
+    # a quarentena abre depois, com B já servida ali: o aparelho entra no pedido pelo marcador e pelo vínculo de A
+    s.social_repo.marcar_conta_travada(IID, ARROBA, "tela de verificação", "observado", profile_id=pid)
+    res = s.social.retirar_conta_bloqueada(pid, ancora, origem="declarado", autor="dono")
+    assert res["limpeza_dos_aparelhos"] == {"agendada": True, "aparelhos": 1}
+    await _esperar_a_limpeza(s)
+    assert g.pacotes == []                                                         # nenhum pm clear
+    assert [m["resolved_at"] for m in _marcadores(s)] == [None]                    # quarentena segue aberta
+    [ev] = _eventos(s)
+    assert ev["level"] == "error" and ev["data"]["resultado"] == "falhou" and ev["data"]["passo"] == "outra_conta"
+    assert ev["data"]["resolvidos"] == 0 and ARROBA not in json.dumps(ev) and "bia.viva" not in json.dumps(ev)
+    # uma tentativa e fim: esperar de novo não limpa depois
+    await _esperar_a_limpeza(s)
+    assert g.pacotes == [] and len(_eventos(s)) == 1
+
+
+async def test_marcador_de_outra_conta_com_aparelho_hibernado_nao_acorda_nem_limpa(
+        harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acordar vai com `confirm_locked_account=True`, que passa por cima de QUALQUER marcador do aparelho: com marcador
+    aberto de outra conta ali, a limpeza não acorda."""
+    s = estado(harness)
+    g = _armar(s, monkeypatch, partida=InstanceState.hibernated)
+    pid, ancora = _cenario(s)
+    assert s.social_repo.marcar_conta_travada(IID, "outra.pessoa", "tela de verificação", "observado") is True
+    s.social.retirar_conta_bloqueada(pid, ancora, origem="declarado", autor="dono")
+    await _esperar_a_limpeza(s)
+    assert g.energia == [] and g.pacotes == [] and g.ordem == []                   # nem acordou, nem capturou
+    assert s.devices.devices[IID].state == InstanceState.hibernated
+    assert [m["resolved_at"] for m in _marcadores(s)] == [None, None]
+    [ev] = _eventos(s)
+    assert ev["level"] == "error" and ev["data"]["passo"] == "outra_conta" and ev["data"]["energia"] == "nao_alterada"
+    assert "outra.pessoa" not in json.dumps(ev) and ARROBA not in json.dumps(ev)

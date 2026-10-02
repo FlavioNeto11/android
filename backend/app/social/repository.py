@@ -66,10 +66,6 @@ class BindingConflict(RuntimeError):
 #: De onde vem a afirmação de que uma conta travou (ADR-055, migração 054): a tela foi LIDA (`observado`), uma
 #: pessoa DISSE (`declarado`) ou uma regra DECIDIU (`regra`, como o bloqueio do ADR-029 por desafio).
 ORIGENS_DE_BLOQUEIO = ("observado", "declarado", "regra")
-#: Estados de `account_sessions` que só existem com o app ABERTO numa conta (`unknown` e `auth_required` não dizem que há
-#: conta logada): é por eles que a limpeza da retirada acha um aparelho sem marcador (29.27).
-_SESSAO_COM_CONTA_LOGADA = (SessionStatus.session_ready.value, SessionStatus.auth_challenge.value,
-                            SessionStatus.wrong_account.value, SessionStatus.needs_person.value)
 #: A origem do `instances.account_label` quando é a plataforma que o deriva (054). NULL = configuração ou digitado.
 _ROTULO_DERIVADO = ("vinculo", "marcador")
 
@@ -860,12 +856,15 @@ class SocialRepository:
         return True
 
     def aparelhos_da_conta(self, profile_id: str, conta: Row, handles: Sequence[str | None]) -> list[AparelhoDaLimpeza]:
-        """Os aparelhos onde a conta estava LOGADA, para a limpeza da retirada (29.27). Três pistas, juntas:
+        """Os aparelhos onde a conta estava LOGADA, para a limpeza da retirada (29.27). Duas pistas, juntas:
         - o marcador de quarentena ABERTO de um dos `handles` da conta (o @ da conta e o do cadastro, na âncora), do app
           dela ou sem app: é o que prova a conta logada de verdade;
-        - o vínculo ativo da persona que serve ao app da conta (o do app, ou o sem app da âncora);
-        - a sessão da conta com um estado que só existe com o app aberto na conta (`session_ready`, desafio, conta
-          errada, intervenção): `unknown` e `auth_required` não dizem que há conta logada.
+        - o vínculo ativo da persona que serve ao app da conta (o do app, ou o sem app da âncora).
+        A SESSÃO não é pista: ela sobrevive ao desvínculo (`unbind` não a apaga) e `wrong_account`/`needs_person` dizem
+        "outra conta aberta" ou "pessoa precisa agir", não "esta conta está aqui"; o aparelho de uma sessão velha
+        podia ter passado a servir OUTRA persona viva, e o `pm clear` a apagaria. Perder um aparelho aqui é recuperável
+        (a rota manual do 29.24); apagar conta viva não é. A trava de quem executa (`limpeza_ao_retirar`) ainda confere
+        o aparelho, na hora, antes de limpar.
         Chamar ANTES da retirada: ela troca o @ do marcador por `MARCADOR` e apaga sessão e vínculo. Ordem estável
         (por aparelho). Só leitura."""
         achados: dict[str, tuple[list[int], list[str]]] = {}
@@ -884,12 +883,31 @@ class SocialRepository:
         for b in self.bindings_of_profile(profile_id):
             if b["app_id"] is None or b["app_id"] == conta["app_id"]:
                 _anotar(str(b["instance_id"]), "vinculo")
-        for sessao in self.db.query("SELECT instance_id, status FROM account_sessions WHERE account_id=?",
-                                    (conta["id"],)):
-            if str(sessao["status"]) in _SESSAO_COM_CONTA_LOGADA:
-                _anotar(str(sessao["instance_id"]), "sessao")
         return [AparelhoDaLimpeza(instance_id=iid, marcadores=tuple(ids), origens=tuple(origens))
                 for iid, (ids, origens) in sorted(achados.items())]
+
+    def outra_conta_no_aparelho(self, instance_id: str, *, account_id: str, app_id: str, package: str,
+                                marcadores_do_pedido: Sequence[int] = ()) -> str | None:
+        """O que, neste aparelho, mostra que o app serve a OUTRA conta que não a retirada (`account_id`)? É a trava de
+        quem vai dar `pm clear` (29.27): o `pm clear` apaga o app inteiro, e a plataforma só protege o que conhece.
+        Devolve a pista (`vinculo`, `sessao` ou `marcador`) ou `None`. Lê o banco DE AGORA, depois da retirada, que já
+        apagou as sessões e os vínculos da conta retirada em todos os aparelhos; o que sobra é de outra conta.
+        - vínculo ativo que serve ao app (o do app, ou o sem app de persona com conta nele: `profiles_of_instance`);
+        - sessão de outra conta do app, em QUALQUER status (até `unknown`: houve app aberto nela);
+        - marcador aberto de conta que não é a do pedido, do app ou sem app."""
+        apps = {app_id, package, *(str(x["id"]) for x in self.db.query("SELECT id FROM apps WHERE package=?", (package,)))}
+        for app in sorted(apps):
+            if self.profiles_of_instance(instance_id, app):
+                return "vinculo"
+        for app in sorted(apps):
+            if self.db.one("SELECT 1 FROM account_sessions s JOIN profile_accounts a ON a.id=s.account_id"
+                           " WHERE s.instance_id=? AND s.account_id<>? AND a.app_id=?",
+                           (instance_id, account_id, app)) is not None:
+                return "sessao"
+        if any(int(m["id"]) not in marcadores_do_pedido and m["app_id"] in (None, *apps)
+               for m in self.contas_travadas_abertas() if str(m["instance_id"]) == instance_id):
+            return "marcador"
+        return None
 
     def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,
                                handle: str | None = None, marcadores: Sequence[int] | None = None) -> int:

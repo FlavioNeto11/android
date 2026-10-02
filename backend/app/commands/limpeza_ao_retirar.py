@@ -13,8 +13,8 @@ então não há segundo caminho. Não usa `_despachar_trabalho`: ele recusa verb
 é exatamente esse aparelho que a limpeza precisa tocar. A confirmação de quarentena que a pessoa daria
 (`confirm_locked_account`) só é dada pelo SISTEMA aqui, para acordar o aparelho e para mais nada.
 
-Por aparelho, uma vez, em sequência: acorda se estiver hibernado ou parado → captura antes → `pm clear` → captura depois
-→ resolve a quarentena → devolve a energia ao que era. Falha em qualquer passo: a quarentena continua aberta, sai o
+Por aparelho, uma vez, em sequência: acorda se estiver hibernado ou parado (só se todo marcador aberto dali é do pedido)
+→ captura antes → trava "outra conta" → `pm clear` → captura depois → resolve a quarentena → devolve a energia ao que era. Falha em qualquer passo: a quarentena continua aberta, sai o
 evento `device.account_cleanup` em erro (o aviso de atenção) e NADA é repetido: uma tentativa por retirada. Nem o evento
 nem o log carregam o @ da conta (29.24): só ids, o pacote e o aparelho.
 """
@@ -127,10 +127,11 @@ class LimpezaAoRetirar:
         acordou = False
         try:
             if partida != InstanceState.online:
+                self._so_marcadores_do_pedido(iid, aparelho)      # antes de acordar: ver abaixo
                 acordou = await self._pedir_energia_de_partida(rt, partida)
             await self._esperar_online(rt)
             resultado = await self._no_aparelho(
-                rt, lambda: self._limpar(rt, pedido), params={"package": pedido.package, "origem": "retirada_de_conta",
+                rt, lambda: self._limpar(rt, pedido, aparelho), params={"package": pedido.package, "origem": "retirada_de_conta",
                                                               "account_id": pedido.account_id})
             assert isinstance(resultado, dict)
             desfecho.antes, desfecho.depois = resultado.get("antes"), resultado.get("depois")
@@ -151,6 +152,15 @@ class LimpezaAoRetirar:
         """Algum dos marcadores capturados ainda está aberto neste aparelho?"""
         return any(int(m["id"]) in aparelho.marcadores for m in self.s.social_repo.contas_travadas_abertas()
                    if str(m["instance_id"]) == instance_id)
+
+    def _so_marcadores_do_pedido(self, instance_id: str, aparelho: AparelhoDaLimpeza) -> None:
+        """Trava de energia: acordar/ligar vai com `confirm_locked_account=True`, que passa por cima de QUALQUER marcador
+        do aparelho, e não só dos da conta retirada. Se há marcador aberto de OUTRA conta ali, quem confirmou a
+        quarentena (o dono, ao mandar retirar) não falou dessa: não acorda, e a quarentena segue para uma pessoa."""
+        alheios = [m for m in self.s.social_repo.contas_travadas_abertas()
+                   if str(m["instance_id"]) == instance_id and int(m["id"]) not in aparelho.marcadores]
+        if alheios:
+            raise LimpezaFalhou("outra_conta", "o aparelho tem quarentena aberta de outra conta: não acordei nem limpei")
 
     # ------------------------------------------------------------------ energia
     async def _pedir_energia_de_partida(self, rt: DeviceRuntime, partida: InstanceState) -> bool:
@@ -225,10 +235,19 @@ class LimpezaAoRetirar:
         except Exception as exc:  # noqa: BLE001 - qualquer falha do comando é falha do passo
             raise LimpezaFalhou("limpar", f"{type(exc).__name__}: {str(exc)[:200]}") from exc
 
-    async def _limpar(self, rt: DeviceRuntime, pedido: PedidoDeLimpeza) -> dict[str, str | None]:
+    async def _limpar(self, rt: DeviceRuntime, pedido: PedidoDeLimpeza,
+                      aparelho: AparelhoDaLimpeza) -> dict[str, str | None]:
         """Captura antes, `pm clear` do pacote do pedido (e de nenhum outro), captura depois. Sem toque na tela.
         A captura de antes que falha PARA aqui: não se apaga o que não ficou provado."""
         antes = await self._capturar(rt, "antes")
+        # A trava, DENTRO do trabalho exclusivo do aparelho e logo antes do `pm clear`: o pedido foi montado na hora da
+        # retirada e o aparelho pode ter passado a servir OUTRA conta desde então (vínculo novo, sessão, marcador). O
+        # `pm clear` apaga o app todo, inclusive a conta viva de outra persona, e isso não se desfaz. Dúvida = recusa.
+        if (pista := self.s.social_repo.outra_conta_no_aparelho(
+                rt.id, account_id=pedido.account_id, app_id=pedido.app_id, package=pedido.package,
+                marcadores_do_pedido=aparelho.marcadores)) is not None:
+            raise LimpezaFalhou("outra_conta", f"o aparelho serve a outra conta do mesmo app ({pista}): não limpei; "
+                                               "confira e resolva pela rota do aparelho")
         await rt.executor.run(rt.adb.clear_data, pedido.package, timeout=120, label="apagar dados do app")
         rt.app_versions.clear()
         depois = await self._capturar(rt, "depois")
