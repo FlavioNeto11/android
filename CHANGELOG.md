@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: migração `learning_reviews` (30.9, branch feat/30-9-learning-reviews)
+
+- Migração **069 provisória** (`backend/migrations/069_revisoes_do_aprendizado.sql`): tabela `learning_reviews`, a trilha auditável das revisões do curador por IA (`aprendizado-vivo.md` §8.5), sem FK e sem CHECK, nunca purgada, com `UNIQUE (item_ref, dossie_hash)` como salvaguarda do orçamento (§8.7). Só a forma; o curador é 30.10/30.11. `simulated`: `test_migracao_069_revisoes.py` (SQLite); PostgreSQL `not_run` (P17).
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
