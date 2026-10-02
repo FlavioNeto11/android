@@ -94,8 +94,9 @@ async def test_previa_lista_bloqueios_e_nao_da_selo(h: Harness) -> None:
         gatilhos=[{"tipo": "evento", "spec": {}}, {"tipo": "recorrencia", "spec": {"dtstart": "x", "rrule": "FREQ=NUNCA"}}])).json()
     codigos = {x["codigo"] for x in ruins["bloqueios"]}
     assert {"fuso_desconhecido", "sobreposicao_incompativel", "limite_invalido"} <= codigos
+    # 28.8: o evento existe; a spec vazia é que não serve.
     assert c.post("/api/pedidos/previa", json=_corpo(gatilhos=[{"tipo": "evento", "spec": {}}])).json()["bloqueios"][0][
-        "codigo"] == "gatilho_nao_suportado"
+        "codigo"] == "gatilho_invalido"
 
 
 async def test_previa_recusa_credencial_no_objetivo_sem_eco(h: Harness) -> None:

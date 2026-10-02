@@ -1,4 +1,4 @@
-"""Vocabulário e identidade dos avisos do pedido (item 28.9; adendo v0.45, "Avisos").
+"""Vocabulário e identidade dos avisos do pedido (item 28.9; adendo v0.45, "Avisos"; 28.8 acrescenta dois, migração 076).
 
 Puro: stdlib. Quem grava, lê e emite o aviso é `infrastructure/avisos.py`; aqui ficam só as palavras (as mesmas do CHECK de
 `pedido_avisos.tipo`, migração 072, conferidas em `tests/test_pedidos_avisos.py`) e as chaves de deduplicação, para o
@@ -21,6 +21,9 @@ TIPOS: Mapping[str, tuple[str, bool]] = {
     "aprovacao_pendente": ("warn", True),
     "pergunta": ("warn", True),
     "ocorrencia_incerta": ("warn", True),
+    # 28.8 (migração 076): fatos dos gatilhos de evento e de condição; vão à caixa do dono, não às Pendências.
+    "eventos_perdidos": ("warn", False),
+    "condicao_atendida": ("warn", False),
 }
 NIVEIS = frozenset({"info", "warn", "error"})
 

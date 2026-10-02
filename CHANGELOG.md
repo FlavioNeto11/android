@@ -92,6 +92,28 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `test_learning_obsolescencia.py`,
   `test_learning_rotas_falhas.py`; `SaudeDoApp.test.tsx`, `DetalheRico.test.tsx`. Navegador: preview com cópia do banco do central.
 
+## 2026-10-02 — Gatilhos de evento, condição e persona nos pedidos (28.8, branch feat/28-8-gatilhos-evento)
+
+- `PedidoCorpo` aceita `evento`, `condicao` e `persona` (adendo v0.67 do contrato; antes, `gatilho_nao_suportado`). Os
+  códigos novos são `gatilho_invalido` e `condicao_sem_observacao`, e a persona com `intervalo_min_s` abaixo do piso dá
+  `frequencia_abaixo_do_piso`.
+- **Evento:** cursor `ev:<events.id>`, com a linha de base na ativação e na retomada `daqui`.
+  - Lê só eventos com mais de 5 s (ordem de COMMIT no PostgreSQL) e respeita o piso da autonomia.
+  - Ignora `pedido.*` e as execuções do próprio pedido.
+  - Faz uma ocorrência por volta, sem texto do evento.
+  - Buraco da retenção: registra (memória `pendencia`) e não dispara.
+- **Persona:** a primeira visita é na ativação. A seguinte vem quando a anterior fecha, depois da saída
+  `proxima_visita_s` presa a [mínimo, máximo], ou do máximo.
+- **Condição:** avaliada por borda sobre as observações; grava a memória `descoberta` e não cria ocorrência.
+- Passado `fim_em`, evento e persona encerram o pedido.
+- Migração `076_pedido_avisos_gatilhos`: o CHECK de `pedido_avisos.tipo` ganha `eventos_perdidos` e `condicao_atendida`.
+  No SQLite a tabela é reconstruída (molde da 047, sem perder aviso); no PostgreSQL, DROP/ADD da constraint. O buraco e
+  a condição atendida viram aviso gravado.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (23 testes) e os de pedidos e arquitetura; no painel, as mensagens de `gatilho_invalido` e
+  `condicao_sem_observacao`. PostgreSQL: `not_run`.
+  No navegador, a lista, o filtro "Quando acontecer" e as ocorrências "Por evento" e "Por persona" foram conferidos a
+  1366 e 375 px contra o backend simulado. `real`: `not_run`.
+
 ## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
 
 - Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.

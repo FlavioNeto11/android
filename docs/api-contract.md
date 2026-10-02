@@ -3899,3 +3899,31 @@ idempotente por (`kind:ref`, `aguardando`): cada parecer novo avisa uma vez (a c
 espera continua avisada normalmente. Parecer da faixa A, inválido ou recusado não publica. Em `shadow` também publica (o parecer não
 decide nada; o aceite é da pessoa). Nenhuma rota, nenhuma migração, nenhum código de erro novo. Prova `simulated`
 (`tests/test_learning_curador.py`); `not_run` no central.
+
+## Adendo v0.67 (02/10/2026) — gatilhos `evento`, `condicao` e `persona` no `PedidoCorpo` (item 28.8)
+
+Aditivo para quem lê; muda a resposta para quem já mandava esses tipos. Antes, `evento`, `condicao` e `persona` davam sempre
+`gatilho_nao_suportado` (adendo v0.45). Agora são aceitos, com a `spec` validada (desenho em `docs/design/pedidos-laco.md` §14):
+
+| tipo | `spec` | o que faz |
+|---|---|---|
+| `evento` | `{"kinds": ["run.failed", ...], "niveis": ["warn", "error"]?}`: de 1 a 10 tipos de evento; nunca `pedido.*` nem um tipo efêmero (`frame`, `metrics`...) | cada volta que acha eventos novos que casam cria UMA ocorrência (origem `evento`), respeitando o piso da autonomia; os eventos das execuções do próprio pedido não contam |
+| `persona` | `{"intervalo_min_s": N, "intervalo_max_s": M}`, `300 ≤ N ≤ M ≤ 30 dias` | a primeira visita na ativação; a seguinte quando a anterior fecha, depois da saída `proxima_visita_s` da visita (presa a [N, M]) ou de M |
+| `condicao` | `{"observacao": "<saída>", "op": "<", "valor": 3500}` (`op` em `<`, `<=`, `>`, `>=`, `==`, `!=`, `mudou`; `mudou` sem `valor`) | avalia a observação mais nova; só a passagem de falso para verdadeiro avisa; não cria ocorrência |
+
+Códigos novos (em `previa`, viram `bloqueios[]`):
+
+| HTTP | `codigo` | Quando | `campo` |
+|---|---|---|---|
+| 422 | `gatilho_invalido` | a `spec` de um dos três não serve (a mensagem diz o quê) | `gatilhos[i].spec.<campo>` |
+| 422 | `condicao_sem_observacao` | o pedido só tem gatilhos `condicao`: nada observaria | `gatilhos` |
+| 422 | `frequencia_abaixo_do_piso` | (já existia) também `persona` com `intervalo_min_s` abaixo do piso da autonomia | `gatilhos[i].spec.intervalo_min_s` |
+
+- `gatilhos_resumo[].descricao` ganha os textos "Quando acontecer: …", "A persona volta entre … e …" e "Avisa quando …".
+- `proximas` (prévia) mostra a primeira visita da persona e nenhuma data para evento e condição: elas dependem do que acontecer.
+- A edição (`PATCH`) continua trocando só `agora`, `horario` e `recorrencia`. Os gatilhos dos três tipos novos ficam como
+  foram criados.
+- Dois tipos novos de aviso (`pedido.aviso` e `GET /api/pedidos/avisos`), migração 076: `eventos_perdidos` (warn;
+  `dados`: `de_id`, `ate_id`) e `condicao_atendida` (warn; `dados`: `gatilho_id`, `observacao`, `op`). Os dois com
+  `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
+  `condicao.<gatilho>`, `descoberta`).

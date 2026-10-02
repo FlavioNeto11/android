@@ -40,9 +40,10 @@ from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
 from app.modules.pedidos.domain import avisos as dominio_avisos
-from app.modules.pedidos.domain import gatilhos, tentativas
+from app.modules.pedidos.domain import gatilhos, gatilhos_dinamicos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
+from app.modules.pedidos.domain.memoria import MemoriaInvalida
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
 from app.modules.pedidos.domain.materializar import janela_padrao_s, materializar, truncar
@@ -57,6 +58,21 @@ from app.util import parse_iso, to_iso
 log = logging.getLogger("poc.pedidos")
 
 _UM_SEGUNDO = timedelta(seconds=1)
+#: O gatilho de evento só lê eventos com `ts` até `agora - MARGEM_DOS_EVENTOS`: dá tempo de a transação que gravou um id
+#: menor terminar (no PostgreSQL a ordem do COMMIT não é a dos ids). Atraso aceito de poucos segundos (§14.2).
+MARGEM_DOS_EVENTOS = timedelta(seconds=5)
+#: Quantos eventos um gatilho lê por volta (o resto fica para a seguinte; coalescem do mesmo jeito).
+LOTE_DE_EVENTOS = 500
+#: Estados em que a visita da persona ainda não acabou (a seguinte espera).
+_ABERTAS = ("prevista", "devida", "despachada", "rodando")
+
+
+def _observada(x: Row) -> gatilhos_dinamicos.Observada:
+    return gatilhos_dinamicos.Observada(x["tipo"], x["situacao"], x["valor"], x["sha256"])
+
+
+class _Colidiu(Exception):
+    """A ocorrência do evento colidiu com a de outra volta no mesmo segundo: desfaz o avanço do cursor."""
 
 #: Prioridade da execução de uma ocorrência (`runs.prioridade`, 28.6). A 067 não deu campo de prioridade ao pedido, então
 #: todas valem 0 (o que o comando de hoje também vale) e nada muda de ordem; `_prioridade` é a costura para quando o
@@ -77,6 +93,8 @@ class Resumo:
     retentadas: int = 0
     aguardando: int = 0
     pausados: int = 0
+    buracos: int = 0
+    condicoes: int = 0
     erros: int = 0
     lider: bool = True
 
@@ -191,6 +209,7 @@ class LacoDePedidos:
             self._fechar(token, agora, r)
             self._fechar_dos_parados(token, agora, r)
             self._materializar(token, agora, r)
+            self._gatilhos_dinamicos(token, agora, r)
             self._orcamentos(token, agora, r)       # DEPOIS de materializar: a `devida` nascida agora também é barrada
             self._despachar(token, agora, r)
             self._agendar(token, agora, r)
@@ -512,6 +531,226 @@ class LacoDePedidos:
             if novos:
                 self.repo.avancar_cursor(g["id"], formatar_instante(max(novos)))
 
+    # ------------------------------------------------------------------ 2a. evento, persona e condição (28.8, §14)
+    def _gatilhos_dinamicos(self, token: int, agora: datetime, r: Resumo) -> None:
+        """O passo 4 do §7.2, sobre TODOS os pedidos `ativo` (e não só os de `pedidos_para_cuidar`): um pedido com
+        recorrência tem `proxima_em` da recorrência, e o evento ou a visita da persona não podem esperar por ela."""
+        for tipo, passo in (("evento", self._gatilho_de_evento), ("persona", self._gatilho_de_persona),
+                            ("condicao", self._gatilho_de_condicao)):
+            for g in self.repo.gatilhos_dinamicos_ativos(tipo):
+                try:
+                    passo(g, token, agora, r)
+                except TravaPerdida:
+                    raise
+                except (gatilhos_dinamicos.SpecInvalida, KeyError, TypeError, ValueError) as e:
+                    log.warning("pedidos: gatilho %s (%s) do pedido %s: %s", g["id"], tipo, g["pedido_id"], e)
+                    r.erros += 1
+                except Exception:  # noqa: BLE001 - um gatilho com defeito não para os outros
+                    log.exception("pedidos: gatilho %s (%s) do pedido %s", g["id"], tipo, g["pedido_id"])
+                    r.erros += 1
+
+    def _sem_mais_ocorrencias(self, g: Row, agora: datetime) -> bool:
+        if g["pedido_fim_em"] and agora >= parse_iso(g["pedido_fim_em"]):
+            return True
+        return g["pedido_max_ocorrencias"] is not None and self.repo.executadas(g["pedido_id"]) >= g["pedido_max_ocorrencias"]
+
+    def _gatilho_de_evento(self, g: Row, token: int, agora: datetime, r: Resumo) -> None:
+        spec = gatilhos_dinamicos.normalizar("evento", loads(g["spec"], {}) or {})
+        cursor = gatilhos_dinamicos.cursor_de_evento(g["cursor"])
+        if cursor is None:
+            # Sem linha de base (gatilho anterior ao 28.8, ou cursor estragado): o log de agora é a base; nada dispara.
+            base = gatilhos_dinamicos.formatar_cursor_de_evento(self.repo.maior_evento())
+            with self.lideranca.cercada(PEDIDOS, token):
+                self.repo.cas_cursor(g["id"], g["cursor"], base)
+            return
+        maior = self.repo.maior_evento()
+        if cursor > maior:
+            # O log voltou para trás (banco restaurado de backup: a sequência regride). Sem refazer a base, `teto <= cursor`
+            # calaria o gatilho para sempre, sem sinal. Refaz e registra; o que houve no meio não dispara.
+            em = to_iso(agora)
+            with self.lideranca.cercada(PEDIDOS, token):
+                if self.repo.cas_cursor(g["id"], g["cursor"], gatilhos_dinamicos.formatar_cursor_de_evento(maior)):
+                    self._lembrar(g, f"evento.base.{g['id']}", "pendencia",
+                                  f"o log de eventos voltou de #{cursor} para #{maior} (banco restaurado?); o gatilho "
+                                  f"{g['id']} recomeçou dali e nada foi disparado pelo intervalo", em)
+            return
+        antes = g["cursor"]
+        buraco = gatilhos_dinamicos.buraco(cursor, self.repo.menor_evento())
+        if buraco is not None:
+            self._registrar_buraco(g, buraco, token, agora, r)
+            antes = gatilhos_dinamicos.formatar_cursor_de_evento(buraco[1])
+            cursor = buraco[1]
+        teto = self.repo.teto_dos_eventos(to_iso(agora - MARGEM_DOS_EVENTOS))
+        if teto <= cursor:
+            return
+        kinds = [str(k) for k in spec["kinds"]] if isinstance(spec["kinds"], list) else []
+        niveis = [str(n) for n in spec["niveis"]] if isinstance(spec.get("niveis"), list) else None
+        casados = self.repo.eventos_depois(cursor, teto, kinds, niveis, g["pedido_id"], LOTE_DE_EVENTOS)
+        # Lote cheio: o cursor para no último lido (o resto vem na volta seguinte). Senão vai ao teto: os eventos que não
+        # casam também ficam para trás (sem isso, a purga deles pareceria um buraco).
+        novo = int(casados[-1]["id"]) if len(casados) >= LOTE_DE_EVENTOS else teto
+        depois = gatilhos_dinamicos.formatar_cursor_de_evento(novo)
+        if not casados or self._sem_mais_ocorrencias(g, agora):
+            with self.lideranca.cercada(PEDIDOS, token):
+                self.repo.cas_cursor(g["id"], antes, depois)
+            return
+        ultima = self.repo.ultima_do_gatilho(g["id"])
+        piso = self.cfg.piso_agir_s if g["pedido_autonomia"] == "agir" else self.cfg.piso_observar_s
+        if ultima is not None and parse_iso(ultima["previsto_para"]) + timedelta(seconds=piso) > agora:
+            return              # dentro do piso da autonomia: os eventos esperam (e coalescem) sem mover o cursor
+        instante = truncar(agora)
+        ids = [int(e["id"]) for e in casados]
+        motivo = gatilhos_dinamicos.motivo_do_evento(ids, (e["kind"] for e in casados))
+        em = to_iso(agora)
+        try:
+            with self.lideranca.cercada(PEDIDOS, token):
+                atual = self.repo.pedido(g["pedido_id"])
+                if atual is None or atual["estado"] != "ativo" or not self.repo.cas_cursor(g["id"], antes, depois):
+                    return      # pausado/cancelado no meio, ou outro laço já leu estes eventos
+                chave = chave_da_ocorrencia(g["pedido_id"], g["id"], instante, origem="evento")
+                if not self.repo.inserir_ocorrencia(pedido_id=g["pedido_id"], versao=atual["versao"], gatilho_id=g["id"],
+                                                    previsto_para=formatar_instante(instante), chave=chave,
+                                                    origem="evento", estado="devida", motivo=motivo, token=token,
+                                                    criada_em=em, terminada_em=None):
+                    raise _Colidiu()
+                r.materializadas += 1
+        except _Colidiu:
+            pass                # outra ocorrência do gatilho neste segundo: o cursor volta e a volta seguinte as pega
+
+    def _registrar_buraco(self, g: Row, faixa: tuple[int, int], token: int, agora: datetime, r: Resumo) -> None:
+        """A retenção apagou eventos que o gatilho não leu: grava o FATO (memória `pendencia` e aviso), leva o cursor ao
+        começo do que existe e NÃO dispara nada pelo buraco (§7.8)."""
+        de, ate = faixa
+        em = to_iso(agora)
+        texto = (f"eventos #{de} a #{ate} foram apagados pela retenção antes de o gatilho {g['id']} os ler; nada foi "
+                 "disparado por eles")
+        with self.lideranca.cercada(PEDIDOS, token):
+            if not self.repo.cas_cursor(g["id"], g["cursor"], gatilhos_dinamicos.formatar_cursor_de_evento(ate)):
+                return
+            self._lembrar(g, f"evento.buraco.{g['id']}", "pendencia", texto, em)
+        r.buracos += 1
+        log.warning("pedidos: gatilho %s do pedido %s perdeu os eventos #%s a #%s para a retenção", g["id"],
+                    g["pedido_id"], de, ate)
+        self._avisar_do_gatilho(g, "eventos_perdidos", f"eventos_perdidos:{g['id']}:{ate}", em,
+                                lambda titulo: f"Parte dos eventos que o pedido «{titulo}» acompanha foi apagada antes "
+                                "de ser lida; nada foi disparado por eles.", {"de_id": de, "ate_id": ate})
+
+    def _lembrar(self, g: Row, chave: str, tipo: str, valor: str, em: str, ocorrencia_id: str | None = None) -> None:
+        """Grava o fato na memória do pedido sem nunca travar o gatilho: memória recusada (tamanho, formato) fica no log,
+        e o cursor avança do mesmo jeito (senão o mesmo buraco seria redetectado em toda volta)."""
+        try:
+            self.relatorios.gravar_memoria(g["pedido_id"], chave, tipo, valor, agora=em, ocorrencia_id=ocorrencia_id)
+        except MemoriaInvalida as e:
+            log.warning("pedidos: memória %s do gatilho %s recusada: %s", chave, g["id"], e)
+
+    def _avisar_do_gatilho(self, g: Row, tipo: str, chave: str, em: str, mensagem: Callable[[str], str],
+                           dados: Mapping[str, object], ocorrencia_id: str | None = None) -> None:
+        """O aviso só existe com o tipo no CHECK de `pedido_avisos` (migração do 28.8); antes dela, a memória e o log já
+        guardam o fato. `mensagem` recebe o título (texto da pessoa: nunca passa por `str.format`)."""
+        if tipo not in dominio_avisos.TIPOS:
+            return
+        p = self.repo.pedido(g["pedido_id"])
+        titulo = (p["titulo"] if p is not None else None) or g["pedido_id"]
+        self._emitir(tentativas.aviso(tipo=tipo, aviso_id=chave, pedido_id=g["pedido_id"], pedido_titulo=titulo,
+                                      ocorrencia_id=ocorrencia_id, criado_em=em,
+                                      mensagem=mensagem(titulo), dados=dados))
+
+    def _gatilho_de_persona(self, g: Row, token: int, agora: datetime, r: Resumo) -> None:
+        """A próxima visita nasce quando a anterior FECHOU (§14.3). Uma `prevista` cuja hora chegou passa pelas regras
+        de janela de `materializar`, como as da agenda."""
+        spec = gatilhos_dinamicos.normalizar("persona", loads(g["spec"], {}) or {})
+        p = self.repo.pedido(g["pedido_id"])
+        if p is None:
+            return
+        anterior = self.repo.ultima_do_gatilho(g["id"])
+        if anterior is not None and anterior["estado"] in _ABERTAS:
+            if anterior["estado"] == "prevista" and parse_iso(anterior["previsto_para"]) <= agora:
+                self._decidir_visita(p, g, spec, parse_iso(anterior["previsto_para"]), anterior, token, agora, r)
+            return
+        if self._sem_mais_ocorrencias(g, agora):
+            return
+        proposta = None
+        if anterior is not None:
+            obs = self.repo.observacao(anterior["id"], gatilhos_dinamicos.NOME_DA_PROPOSTA)
+            if obs is not None:
+                proposta = gatilhos_dinamicos.proposta_valida(obs["tipo"], obs["situacao"], obs["valor"])
+        fechou = parse_iso(anterior["terminada_em"]) if anterior is not None and anterior["terminada_em"] else None
+        if anterior is not None and fechou is None:
+            fechou = parse_iso(anterior["previsto_para"])
+        quando = gatilhos_dinamicos.proxima_visita(
+            anterior_terminada_em=fechou, criado_em=parse_iso(g["criado_em"]), proposta_s=proposta, spec=spec,
+            fim_em=parse_iso(p["fim_em"]) if p["fim_em"] else None)
+        if quando is None:
+            return
+        if anterior is not None and quando <= parse_iso(anterior["previsto_para"]):
+            quando = parse_iso(anterior["previsto_para"]) + _UM_SEGUNDO      # o UNIQUE (gatilho, instante) não repete
+        self._decidir_visita(p, g, spec, quando, None, token, agora, r)
+
+    def _decidir_visita(self, p: Row, g: Row, spec: dict, quando: datetime, linha: Row | None, token: int,
+                        agora: datetime, r: Resumo) -> None:
+        d = materializar([quando], agora=agora, janela_s=self._janela(p, g, spec), coalescer=False,
+                         tick_s=self.cfg.tick_s)[0]
+        em = to_iso(agora)
+        fim_de_linha = d.estado in ("pulada", "perdida")
+        with self.lideranca.cercada(PEDIDOS, token):
+            atual = self.repo.pedido(p["id"])
+            if atual is None or atual["estado"] != "ativo":
+                return
+            if linha is not None:
+                if d.estado != "prevista":
+                    transicionar_ocorrencia("prevista", d.estado, motivo=d.motivo)
+                    self.repo.mover(linha["id"], "prevista", d.estado, motivo=d.motivo,
+                                    terminada_em=em if fim_de_linha else None)
+                return
+            chave = chave_da_ocorrencia(p["id"], g["id"], d.instante, origem="persona")
+            if self.repo.inserir_ocorrencia(pedido_id=p["id"], versao=atual["versao"], gatilho_id=g["id"],
+                                            previsto_para=formatar_instante(d.instante), chave=chave, origem="persona",
+                                            estado=d.estado, motivo=d.motivo, token=token, criada_em=em,
+                                            terminada_em=em if fim_de_linha else None):
+                r.materializadas += 1
+                self.repo.avancar_cursor(g["id"], formatar_instante(d.instante))
+
+    def _gatilho_de_condicao(self, g: Row, token: int, agora: datetime, r: Resumo) -> None:
+        """Avalia a condição na observação mais nova (de qualquer ocorrência do pedido) que ainda não deu veredito.
+        Borda: só falso → verdadeiro avisa (§14.4). Não cria ocorrência."""
+        spec = gatilhos_dinamicos.normalizar("condicao", loads(g["spec"], {}) or {})
+        linhas = self.repo.observacoes_recentes(g["pedido_id"], str(spec["observacao"]))
+        if not linhas:
+            return
+        por_ocorrencia: dict[str, list[Row]] = {}
+        for x in linhas:
+            por_ocorrencia.setdefault(x["ocorrencia_id"], []).append(x)
+        ordem = list(por_ocorrencia)                      # já vem da mais nova para a mais velha
+        atual_id = ordem[0]
+        cursor = gatilhos_dinamicos.cursor_de_condicao(g["cursor"])
+        if cursor is not None and cursor[1] == atual_id:
+            return                                         # esta ocorrência já deu o veredito
+        anteriores = {x["alvo"]: x for x in por_ocorrencia[ordem[1]]} if len(ordem) > 1 else {}
+        vereditos = []
+        for x in por_ocorrencia[atual_id]:
+            ant = anteriores.get(x["alvo"])
+            vereditos.append(gatilhos_dinamicos.avaliar(spec, _observada(x), _observada(ant) if ant else None))
+        veredito = True if True in vereditos else (False if False in vereditos else None)
+        if veredito is None:
+            return                                         # incerto/ausente: sem veredito, o cursor fica
+        dispara = gatilhos_dinamicos.disparou(veredito, cursor)
+        em = to_iso(agora)
+        with self.lideranca.cercada(PEDIDOS, token):
+            if not self.repo.cas_cursor(g["id"], g["cursor"],
+                                        gatilhos_dinamicos.formatar_cursor_de_condicao(veredito, atual_id)):
+                return
+            if dispara:
+                self._lembrar(g, f"condicao.{g['id']}", "descoberta",
+                              f"{gatilhos_dinamicos.descrever('condicao', spec)}: atendida na ocorrência {atual_id}", em,
+                              ocorrencia_id=atual_id)
+        if dispara:
+            r.condicoes += 1
+            regra = gatilhos_dinamicos.descrever("condicao", spec).removeprefix("Avisa quando ")
+            self._avisar_do_gatilho(g, "condicao_atendida", f"condicao_atendida:{g['id']}:{atual_id}", em,
+                                    lambda titulo: f"A condição do pedido «{titulo}» foi atendida: {regra}.",
+                                    {"gatilho_id": g["id"], "observacao": spec["observacao"], "op": spec["op"]},
+                                    ocorrencia_id=atual_id)
+
     # ------------------------------------------------------------------ 3. despacho
     def _despachar(self, token: int, agora: datetime, r: Resumo) -> None:
         por_pedido: dict[str, list[Row]] = {}
@@ -626,6 +865,11 @@ class LacoDePedidos:
                de: str = "devida") -> None:
         for oid, motivo in pular:
             transicionar_ocorrencia(de, "pulada", motivo=motivo)
+            antes = self.repo.ocorrencia(oid)
+            if antes is not None and antes["origem"] == "evento" and antes["motivo"]:
+                # O motivo da ocorrência de evento é a faixa de eventos que a gerou (28.8): a razão do pulo se ANEXA a
+                # ela, senão a pessoa vê que pulou mas não o que tinha acontecido.
+                motivo = f"{motivo}; eventos: {antes['motivo']}"[:500]
             with self.lideranca.cercada(PEDIDOS, token):
                 if self.repo.mover(oid, de, "pulada", motivo=motivo, terminada_em=to_iso(agora)):
                     r.puladas += 1
@@ -722,9 +966,17 @@ class LacoDePedidos:
         suportados = esgotados = 0
         vivo_fora_do_28_4 = False
         fim = parse_iso(p["fim_em"]) if p["fim_em"] else None
+        passou_do_fim = fim is not None and agora >= fim
         for g in self.repo.gatilhos_ativos(p["id"]):
             if g["tipo"] not in gatilhos.SUPORTADOS:
-                vivo_fora_do_28_4 = True
+                # Evento e persona (28.8) não têm "próximo instante" de regra: vivem até `fim_em` (ou o máximo de
+                # ocorrências). A condição só avisa e não segura o pedido sozinha.
+                if passou_do_fim:
+                    suportados += 1
+                    esgotados += 1
+                    motivos.append("prazo")
+                elif g["tipo"] != "condicao":
+                    vivo_fora_do_28_4 = True
                 continue
             suportados += 1
             spec = loads(g["spec"], {}) or {}

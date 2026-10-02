@@ -131,6 +131,72 @@ class RepositorioDePedidos:
         self.db.execute("INSERT INTO pedido_gatilhos(id, pedido_id, tipo, spec, cursor, ativo, criado_em)"
                         " VALUES (?,?,?,?,?,1,?)", (gatilho_id, pedido_id, tipo, spec, cursor, criado_em))
 
+    # ------------------------------------------------------------------ gatilhos do 28.8 (§14)
+    def base_dos_eventos(self, pedido_id: str, *, so_sem_cursor: bool = False) -> None:
+        """Leva o cursor dos gatilhos `evento` do pedido ao fim do log (`ev:<MAX(events.id)>`): o que veio antes não
+        dispara. `so_sem_cursor` = só onde ainda não há linha de base (a retomada `recuperar` mantém a que existe)."""
+        maior = self.maior_evento()
+        filtro = " AND cursor IS NULL" if so_sem_cursor else ""
+        self.db.execute(f"UPDATE pedido_gatilhos SET cursor=? WHERE pedido_id=? AND tipo='evento' AND ativo=1{filtro}",
+                        (f"ev:{maior}", pedido_id))
+
+    def gatilhos_dinamicos_ativos(self, tipo: str) -> list[Row]:
+        """Os gatilhos `tipo` ativos de pedidos `ativo`, com o que o laço precisa do pedido (o passo 4 do §7.2)."""
+        return self.db.query(
+            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.fim_em AS pedido_fim_em,"
+            " p.max_ocorrencias AS pedido_max_ocorrencias FROM pedido_gatilhos g JOIN pedidos p ON p.id = g.pedido_id"
+            " WHERE g.tipo=? AND g.ativo=1 AND p.estado='ativo' ORDER BY p.criado_em, g.criado_em, g.id", (tipo,))
+
+    def maior_evento(self) -> int:
+        return int(self.db.scalar("SELECT COALESCE(MAX(id), 0) FROM events") or 0)
+
+    def menor_evento(self) -> int | None:
+        v = self.db.scalar("SELECT MIN(id) FROM events")
+        return None if v is None else int(v)
+
+    def eventos_depois(self, depois_de: int, ate: int, kinds: Sequence[str], niveis: Sequence[str] | None,
+                       pedido_id: str, limite: int) -> list[Row]:
+        """Os eventos que casam, em ordem de id, SEM os da execução do próprio pedido (laço fechado, §14.2). Só id, kind
+        e ts: o gatilho nunca lê `message` nem `data`."""
+        sql = (f"SELECT id, kind, ts FROM events WHERE id > ? AND id <= ? AND kind IN ({_marcas(kinds)})"
+               " AND (run_id IS NULL OR run_id NOT IN (SELECT id FROM runs WHERE pedido_id=?))")
+        args: list[object] = [depois_de, ate, *kinds, pedido_id]
+        if niveis:
+            sql += f" AND level IN ({_marcas(niveis)})"
+            args += list(niveis)
+        return self.db.query(sql + " ORDER BY id LIMIT ?", (*args, limite))
+
+    def teto_dos_eventos(self, ts_ate: str) -> int:
+        """O maior `events.id` com `ts <= ts_ate`. O laço só lê até aqui: no PostgreSQL um id menor pode ficar visível
+        DEPOIS de um maior (a sequência não segue a ordem do COMMIT), e o cursor não pode passar por cima dele (§14.2)."""
+        return int(self.db.scalar("SELECT COALESCE(MAX(id), 0) FROM events WHERE ts <= ?", (ts_ate,)) or 0)
+
+    def observacoes_recentes(self, pedido_id: str, nome: str, ocorrencias: int = 2) -> list[Row]:
+        """As observações `nome` das `ocorrencias` ocorrências mais recentes que a gravaram (todas as linhas, de todos os
+        alvos), da mais nova para a mais velha."""
+        return self.db.query(
+            "SELECT * FROM pedido_observacoes WHERE pedido_id=? AND nome=? AND ocorrencia_id IN ("
+            " SELECT ocorrencia_id FROM pedido_observacoes WHERE pedido_id=? AND nome=? GROUP BY ocorrencia_id"
+            " ORDER BY MAX(capturado_em) DESC, ocorrencia_id DESC LIMIT ?) ORDER BY capturado_em DESC, id DESC",
+            (pedido_id, nome, pedido_id, nome, ocorrencias))
+
+    def observacao(self, ocorrencia_id: str, nome: str) -> Row | None:
+        return self.db.one("SELECT * FROM pedido_observacoes WHERE ocorrencia_id=? AND nome=? ORDER BY capturado_em DESC,"
+                           " id DESC LIMIT 1", (ocorrencia_id, nome))
+
+    def cas_cursor(self, gatilho_id: str, antes: str | None, depois: str) -> bool:
+        """Troca o cursor só se ele ainda é `antes` (outro laço, ou a mesma volta repetida, já o moveu: nada a fazer)."""
+        if antes is None:
+            cur = self.db.execute("UPDATE pedido_gatilhos SET cursor=? WHERE id=? AND cursor IS NULL", (depois, gatilho_id))
+        else:
+            cur = self.db.execute("UPDATE pedido_gatilhos SET cursor=? WHERE id=? AND cursor=?", (depois, gatilho_id, antes))
+        return (cur.rowcount or 0) == 1
+
+    def ultima_do_gatilho(self, gatilho_id: str) -> Row | None:
+        """A ocorrência mais recente do gatilho (a visita anterior da persona)."""
+        return self.db.one("SELECT * FROM pedido_ocorrencias WHERE gatilho_id=? ORDER BY previsto_para DESC, id DESC"
+                           " LIMIT 1", (gatilho_id,))
+
     def desativar_gatilhos(self, pedido_id: str) -> None:
         self.db.execute("UPDATE pedido_gatilhos SET ativo=0 WHERE pedido_id=? AND ativo=1", (pedido_id,))
 

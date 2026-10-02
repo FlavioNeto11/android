@@ -618,3 +618,159 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
   efeito agora ganharia uma repetição. O padrão de verdade (2) é exercido em `test_pedidos_retentativa.py`.
 - Não feito (fora do 28.5): `needs_input` → `aguardando_pessoa` (`fechamento.py` o deixa para depois; ainda sem código), as rotas
   de resolver a `incerta` e a tabela de avisos (28.9).
+
+## 14. 28.8: gatilhos de evento, condição e persona (02/10/2026, branch `feat/28-8-gatilhos-evento`)
+
+Desenho do §7.8 de `pedidos-persistentes.md`, escrito antes do código. A 067 já aceita os três tipos (`pedido_gatilhos.tipo`),
+as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede migração é o aviso: o CHECK de
+`pedido_avisos.tipo` (072) é fechado e não tem `eventos_perdidos` nem `condicao_atendida` (§14.5).
+
+### 14.1 Cursor: um texto, três formatos
+
+| tipo | `cursor` | quem lê |
+|---|---|---|
+| `agora`, `horario`, `recorrencia`, `persona` | `formatar_instante` (último instante materializado) | `repo.cursor(g)` |
+| `evento` | `ev:<events.id>` (último evento lido, inclusive) | `gatilhos_dinamicos.cursor_de_evento` |
+| `condicao` | `cond:<0\|1>:<ocorrencia>` (último veredito e quem o deu) | `gatilhos_dinamicos.cursor_de_condicao` |
+
+`repo.cursor(g)` só é chamado para os tipos de instante. O laço ramifica por tipo ANTES de ler o cursor, em
+`_materializar_gatilho`, `_agendar_pedido` e `_pular_o_da_pausa`. Um `ev:`/`cond:` lido como instante quebraria ali.
+
+### 14.2 Evento
+
+- **Spec:** `{"kinds": ["run.finished", ...], "niveis": ["warn", "error"]?}`. São de 1 a 10 kinds, cada um em
+  `^[a-z][a-z0-9_.]{0,63}$`, e a criação recusa:
+  - o que está em `events.EPHEMERAL_KINDS` (nunca persistido: o gatilho nunca dispararia);
+  - o que começa com `pedido.` (o pedido se dispararia com os próprios eventos).
+- **Laço fechado, segunda cerca:** o evento de uma execução DO PRÓPRIO pedido não conta
+  (`events.run_id IN (SELECT id FROM runs WHERE pedido_id=?)` fica de fora). Sem isso, um gatilho sobre `run.*`
+  dispararia com a execução que ele mesmo criou.
+- **Linha de base:** na ativação (`_ativar_na_transacao`) e na retomada, o cursor vira `ev:<MAX(events.id)>`. Antes
+  disso, só se o cursor estiver NULL. O histórico anterior à ativação nunca dispara. Na retomada `daqui`, o que
+  aconteceu durante a pausa também não dispara (pausa = não observar). Na retomada `recuperar`, o cursor fica onde
+  estava e os eventos da pausa coalescem numa ocorrência.
+- **Uma volta, no máximo uma ocorrência por gatilho:** os eventos novos que casam (`id > cursor`, até
+  `lote_eventos`) coalescem numa ocorrência `devida`, de origem `evento`. `previsto_para` é o instante da volta, no
+  segundo. O motivo traz só contagem, kinds e o intervalo de ids, nunca a `message` nem o `data` do evento (podem
+  ter texto de terceiro).
+  - O cursor avança na MESMA transação da inserção e só se a linha nasceu ou já existia com a mesma chave.
+  - Duas voltas no mesmo segundo colidem no `UNIQUE (pedido, gatilho, previsto_para)`. Nesse caso a segunda não
+    avança o cursor, e a volta seguinte, já em outro segundo, pega os mesmos eventos. Nada se perde nem duplica.
+- **Buraco da retenção:** se `cursor < MIN(events.id) - 1`, os eventos entre os dois foram purgados sem ser lidos.
+  O laço então:
+  1. grava o fato (aviso `eventos_perdidos` com a faixa de ids, §14.5, e a memória `pendencia` `evento.buraco`);
+  2. leva o cursor a `MIN(events.id) - 1`;
+  3. **não dispara nada pelo buraco.**
+
+  Os eventos que existem depois do buraco seguem a regra normal. A reconciliação "pela tabela dona do fato"
+  (§7.8) fica para quando um consumidor concreto disser qual tabela é essa: um kind genérico não tem dona única.
+  - Falso positivo possível: um id pulado pela sequência (rollback), exatamente na fronteira da purga, gera aviso
+    sem perda real.
+  - Erra do lado seguro: avisa a mais, nunca dispara a mais.
+- **Margem e lote:** o laço só lê eventos com `ts <= agora - 5 s` (`MARGEM_DOS_EVENTOS`). No PostgreSQL, um id menor pode
+  ficar visível DEPOIS de um maior (a sequência não segue a ordem do COMMIT), e o cursor não pode passar por cima dele.
+  Lê no máximo 500 por volta. Sem casar nada, o cursor vai ao teto lido: sem isso, a purga dos eventos que não casam
+  pareceria um buraco.
+- **Piso:** um evento novo dentro do piso da autonomia (`piso_observar_s` ou `piso_agir_s`), contado da última
+  ocorrência do gatilho, espera sem mover o cursor; quando o piso passa, os que esperaram coalescem numa ocorrência.
+  É o mesmo piso que a prévia aplica à recorrência.
+- **Log que volta:** se o cursor passa do `MAX(events.id)` (banco restaurado de backup: a sequência regride), o laço
+  refaz a base em `MAX`, grava a memória `pendencia` `evento.base.<gatilho>` e não dispara nada pelo intervalo. Sem
+  isso, o gatilho emudeceria sem sinal.
+- **Memória recusada não trava o gatilho:** `_lembrar` registra no log a `MemoriaInvalida`, e o cursor avança assim
+  mesmo.
+- **PostgreSQL:** a margem de 5 s é o que protege o cursor da ordem de COMMIT. Uma transação que segure o INSERT do
+  evento por mais tempo que isso perde o evento sem buraco. O SQL novo só rodou em SQLite (o PostgreSQL de teste do
+  projeto sobe por Docker). UNKNOWN até a suíte em PostgreSQL.
+- **Ritmo:** o pedido só com gatilho de evento fica com `proxima_em` NULL, e `pedidos_para_cuidar` o devolve em toda
+  volta (`tick_s`). O pedido com recorrência e evento tem `proxima_em` da recorrência. Por isso os gatilhos de evento
+  são lidos num passo próprio (`_avaliar_eventos`, o passo 4 do §7.2), sobre todos os pedidos `ativo`, e não dentro de
+  `_materializar_pedido`.
+- **Limites do pedido:** `max_ocorrencias`, `fim_em` e o orçamento valem como em qualquer ocorrência (despacho e
+  agenda já os aplicam). Passado o `fim_em`, eventos não materializam. Evento não esgota sozinho: o pedido só com
+  evento encerra por `fim_em` ou `max_ocorrencias`, ou cancelado.
+
+### 14.3 Persona ("volto quando fizer sentido")
+
+- **Spec:** `{"intervalo_min_s": N, "intervalo_max_s": M}`, com `300 <= N <= M <= 30 dias`.
+- **Instantes:** a primeira visita é a ativação (como `agora`). Cada visita seguinte só nasce quando a anterior FECHOU,
+  em `terminada_em + intervalo`:
+  - a proposta é a observação `proxima_visita_s` (tipo `number`, `situacao='observado'`) que a ocorrência anterior
+    gravou. É o canal das `saidas` da execução (12.4), que o fechamento do 28.7 já transforma em observação;
+  - sem proposta (ou proposta `incerto`/`ausente`), vale `intervalo_max_s`;
+  - a proposta é presa a `[intervalo_min_s, intervalo_max_s]` e a `fim_em`.
+- **Rotulagem:** origem `persona` e a chave determinística de sempre (`ped:<pedido>:<gatilho>:<instante>`). O cursor é
+  o de instante, e o caminho é o mesmo de `_materializar_gatilho` (janela, coalescência, perdida).
+- **Orçamento:** o despacho já barra a ocorrência sem verba (28.6). A persona não fura o teto: propor uma visita mais
+  cedo só antecipa dentro do intervalo, e a visita custa o mesmo que qualquer ocorrência.
+- **Limite honesto:** nenhum plano de hoje emite `proxima_visita_s`, e a proposta só existe se o objetivo pedir essa
+  saída. Na prática, esta fatia visita a cada `intervalo_max_s` até um plano aprender a propor.
+
+### 14.4 Condição
+
+- **Spec:** `{"observacao": "<nome>", "op": "<|<=|>|>=|==|!=|mudou", "valor": <número ou texto>}`.
+  - `mudou` não leva `valor`: compara o `sha256` com o da observação anterior de mesmo nome.
+  - Os ops de ordem exigem número dos dois lados.
+- **Quando:** no passo 4 de cada volta, sobre a observação mais nova do nome (de qualquer ocorrência do pedido) que ainda
+  não deu veredito. Não custa execução nem IA. É durável: a observação já está gravada, e uma queda no meio só adia o
+  veredito para a volta seguinte. Avaliar dentro de `_fechar_uma` perderia o veredito numa queda logo depois do fechamento.
+- **Vários alvos:** cada alvo da ocorrência é avaliado contra a observação de mesmo alvo da ocorrência anterior (a do
+  `mudou`). O veredito é verdadeiro se algum alvo é verdadeiro, falso se algum é falso e nenhum verdadeiro, e nenhum nos
+  outros casos.
+- **Avaliação:** só observação `situacao='observado'` com tipo compatível. `incerto` e `ausente` não dão veredito
+  (o cursor não muda), e o predicado largo do 28.5 não vira fato.
+- **Disparo por borda, não por nível:** só a passagem de falso para verdadeiro gera o aviso `condicao_atendida`
+  (§14.5) e a memória `descoberta` `condicao.<gatilho>`. Verdadeiro seguido de verdadeiro não repete. O cursor
+  `cond:<0|1>:<ocorrencia>` guarda o último veredito, e repetir o fechamento (reentrante) não avisa duas vezes:
+  - a chave do aviso é `condicao_atendida:<gatilho>:<ocorrencia>`;
+  - a ocorrência que já deu o veredito é ignorada.
+- **A condição não cria ocorrência.** "Quando cair abaixo de X, faça Y" seria efeito disparado por observação, e o
+  §12.2 só pede o aviso; comprar é proibido em qualquer grau. A origem `condicao` da 067 fica sem uso nesta fatia.
+
+### 14.5 Avisos e migração
+
+- `eventos_perdidos` (warn) e `condicao_atendida` (warn), os dois com `requer_pessoa=0`.
+  - Chaves: `eventos_perdidos:<gatilho>:<ate_id>` e `condicao_atendida:<gatilho>:<ocorrencia>`.
+  - O texto do aviso não leva valor observado de terceiro: só o nome da observação, o operador e o limiar que a própria
+    pessoa escreveu. O título do pedido entra por função, nunca por `str.format`, porque um `{` no título derrubaria o
+    aviso.
+- **Migração `076_pedido_avisos_gatilhos.sql`** (número dado pela coordenação em 02/10; 074 e 075 entram antes):
+  - SQLite: reconstrói `pedido_avisos` com o CHECK ampliado (molde da 047). A FK para `pedidos` com CASCADE e o
+    índice `ix_pedido_avisos_pedido` ficam; nada aponta para a tabela;
+  - PostgreSQL: `DROP CONSTRAINT pedido_avisos_tipo_check` / `ADD CONSTRAINT`.
+- O laço grava a memória E emite o aviso pelo ponto único (`CaixaDeAvisos.registrar`, dedupe pela chave). `avisos.TIPOS`
+  é conferido contra o CHECK da 076 em `test_pedidos_avisos.py`.
+
+### 14.6 Edição e encerramento
+
+- `PATCH` (`acoes.editar`) continua trocando só os gatilhos de `agora`, `horario` e `recorrencia`. Os três novos ficam
+  como foram criados; para mudá-los, cancela-se e cria-se outro pedido. Pedir a troca por um deles é
+  `422 gatilho_nao_suportado`, com `campo` `gatilhos[0].tipo`.
+- `_agendar_pedido`: passado `fim_em`, evento e persona contam como esgotados (motivo `prazo`), e o pedido encerra. Antes
+  disso, o pedido segue vivo. A condição não segura o pedido sozinha: com a recorrência esgotada, o pedido encerra mesmo
+  que a condição exista.
+
+### 14.7 O que foi feito (02/10/2026, branch `feat/28-8-gatilhos-evento`)
+
+- **Domínio:** `domain/gatilhos_dinamicos.py` (puro), com validação da `spec`, cursores, `buraco`, `proxima_visita`,
+  `avaliar`, `disparou` e `descrever`.
+- **Prévia:** `normalizar_gatilho` aceita os três, com os códigos `gatilho_invalido` e `condicao_sem_observacao` e o
+  piso da persona. `_datas` dá à persona a data da ativação.
+- **Laço:** o passo `_gatilhos_dinamicos`, entre materializar e orçamentos; `_agendar_pedido` passou a tratar `fim_em`.
+- **Linha de base:** `RepositorioDePedidos.base_dos_eventos` é chamado na ativação e na retomada `daqui`.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (23 testes). O aceite "cursor abaixo do menor
+  evento gera aviso de buraco, não disparo" está em `test_buraco_e_condicao_viram_aviso_gravado_uma_vez` (com a 076) e
+  em `test_buraco_da_retencao_registra_e_nao_dispara`. A migração está em `test_pedidos_avisos.py` (reconstrução sem
+  perder aviso, tipos novos aceitos, cascata e índice). PostgreSQL e `real`: `not_run`.
+- **Ocorrência de evento pulada pela sobreposição:** o motivo do pulo se anexa à faixa de eventos (`…; eventos: N
+  evento(s) …`), sem substituí-la.
+
+### 14.8 Tela
+
+- A criação pelo painel (`NovoPedido.tsx`) não oferece os tipos novos nesta fatia: o 28.8 é API.
+- O que renderiza é o `gatilhos_resumo` na lista e no detalhe. `descrever_gatilho` ganha texto para os três tipos:
+  - "Quando acontecer: run.finished";
+  - "Avisa quando preco_total < 3500";
+  - "A persona volta entre 1 h e 1 dia".
+
+  Isso é conferido no navegador a 1366 e 375 px, contra o backend simulado.

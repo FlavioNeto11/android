@@ -36,6 +36,14 @@ from .test_travas import Relogio
 
 UTC = timezone.utc
 MIGRACAO = Path(db_mod.__file__).resolve().parents[1] / "migrations" / "072_pedido_avisos.sql"
+#: A migração que tem o CHECK de `tipo` em vigor (076, 28.8). O vocabulário do domínio é o DELA.
+MIGRACAO_ATUAL = MIGRACAO.parent / "076_pedido_avisos_gatilhos.sql"
+
+
+def _tipos_do_check(caminho: Path) -> set[str]:
+    check = re.search(r"tipo\s+TEXT NOT NULL CHECK \(tipo IN \((.*?)\)\)", caminho.read_text(encoding="utf-8"), re.S)
+    assert check, caminho.name
+    return set(re.findall(r"'([a-z_0-9]+)'", check.group(1)))
 T0 = "2026-10-02T10:00:00.000Z"
 
 
@@ -71,8 +79,44 @@ def test_migracao_072_aplica_sobre_o_banco_existente_e_o_vocabulario_do_dominio_
     shutil.copy2(MIGRACAO, destino / MIGRACAO.name)
     assert db.migrate() == ["072_pedido_avisos"] and db.divergencias() == [] and db.migrate() == []
     assert db.one("SELECT COUNT(*) AS n FROM pedido_avisos")["n"] == 0
-    check = re.search(r"tipo\s+TEXT NOT NULL CHECK \(tipo IN \((.*?)\)\)", MIGRACAO.read_text(encoding="utf-8"), re.S)
-    assert check and set(re.findall(r"'([a-z_0-9]+)'", check.group(1))) == set(dominio_avisos.TIPOS)
+    # A 072 trazia nove; a 076 (28.8) acrescentou dois. O domínio é o vocabulário da ÚLTIMA.
+    assert _tipos_do_check(MIGRACAO) < set(dominio_avisos.TIPOS)
+    assert _tipos_do_check(MIGRACAO_ATUAL) == set(dominio_avisos.TIPOS)
+    db.close()
+
+
+def test_migracao_076_reconstroi_sem_perder_aviso_e_aceita_os_tipos_do_28_8(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    destino = _copia_ate(tmp_path, monkeypatch, "075_zzz_inexistente")
+    for extra in destino.glob("07[6-9]_*.sql"):
+        extra.unlink()
+    db = _banco(tmp_path)
+    db.migrate()
+    _pedido(db, "p1")
+    db.execute("INSERT INTO pedido_avisos(id, pedido_id, ocorrencia_id, tipo, nivel, mensagem, dados, requer_pessoa,"
+               " chave_dedupe, criado_em, lido_em) VALUES ('a1','p1','o1','pergunta','warn','m','{\"x\": 1}',1,'k1',?,?)",
+               (T0, T0))
+    with pytest.raises(INTEGRITY_ERRORS):
+        db.execute("INSERT INTO pedido_avisos(id, pedido_id, tipo, nivel, mensagem, chave_dedupe, criado_em)"
+                   " VALUES ('a2','p1','eventos_perdidos','warn','m','k2',?)", (T0,))
+    shutil.copy2(MIGRACAO_ATUAL, destino / MIGRACAO_ATUAL.name)
+    assert db.migrate() == ["076_pedido_avisos_gatilhos"] and db.divergencias() == [] and db.migrate() == []
+    velho = db.one("SELECT * FROM pedido_avisos WHERE id='a1'")
+    assert (velho["ocorrencia_id"], velho["tipo"], velho["dados"], velho["requer_pessoa"], velho["lido_em"]) == (
+        "o1", "pergunta", '{"x": 1}', 1, T0), "a reconstrução não perde nada"
+    for i, tipo in enumerate(("eventos_perdidos", "condicao_atendida")):
+        db.execute("INSERT INTO pedido_avisos(id, pedido_id, tipo, nivel, mensagem, chave_dedupe, criado_em)"
+                   " VALUES (?,?,?,?,?,?,?)", (f"n{i}", "p1", tipo, "warn", "m", f"kn{i}", T0))
+    with pytest.raises(INTEGRITY_ERRORS):
+        db.execute("INSERT INTO pedido_avisos(id, pedido_id, tipo, nivel, mensagem, chave_dedupe, criado_em)"
+                   " VALUES ('n9','p1','inventado','warn','m','kn9',?)", (T0,))
+    with pytest.raises(INTEGRITY_ERRORS):
+        db.execute("INSERT INTO pedido_avisos(id, pedido_id, tipo, nivel, mensagem, chave_dedupe, criado_em)"
+                   " VALUES ('n8','p1','pergunta','warn','m','k1',?)", (T0,))        # chave_dedupe segue UNIQUE
+    if db.dialect == "sqlite":
+        assert db.scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_pedido_avisos_pedido'") == 1
+    db.execute("DELETE FROM pedidos WHERE id='p1'")
+    assert db.one("SELECT COUNT(*) AS n FROM pedido_avisos")["n"] == 0, "a cascada com o pedido continua"
     db.close()
 
 

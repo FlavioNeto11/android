@@ -2,8 +2,8 @@ import type { GatilhoSpec, TipoDeGatilho } from '../../api/pedidos';
 import { dataCurtaDeCampo } from './formato';
 
 /**
- * O "Quando" da criação (produto.md §3): agora, em um horário, repetir, acompanhar. "Quando acontecer" (evento,
- * condição) depende do item 28.8 e o backend responde `gatilho_nao_suportado`, então a tela nem o oferece.
+ * O "Quando" da criação (produto.md §3): agora, em um horário, repetir, acompanhar. Evento, condição e persona (28.8)
+ * existem na API, mas a tela ainda não os oferece: a criação deles é por API nesta fatia (pedidos-laco.md §14.8).
  * O painel monta a `rrule` a partir de poucas escolhas (o subconjunto da RFC 5545 que o backend aceita: FREQ, INTERVAL,
  * BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE, COUNT, UNTIL); quem valida é sempre o backend.
  */
