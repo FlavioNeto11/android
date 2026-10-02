@@ -72,8 +72,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   app ("1 degradando, 2 saudáveis"), a fila **Atenção** (degradando, provavelmente obsoleto e sem evidência, só leitura, com o motivo
   principal em português e o link `?aba=aprendido&item=<tipo>:<ref>`), global abaixo dos cartões e por app no detalhe, e o bloco "O que
   falha" no detalhe do app (as falhas do backlog filtradas por `app`, agrupadas por capability). A saúde é CONTADA da lista do Livro
-  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude` e as linhas de `/apps/{pacote}` chegam com `saude: null`
-  (o painel completa o selo do item pela lista do Livro do app). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
+  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude`; as linhas de `/apps/{pacote}` passam a trazer a `saude`
+  da mesma função do Livro (`presentation/apps.py`, `LearningService.saudes`). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
   (só existe em `conteudo.capability` do detalhe do item): o aprendido segue plano e a tela diz por quê; agrupa sozinho se a linha
   passar a trazer `capability`. Prova `simulated` (`frontend/src/features/aprendizado/SaudeDoApp.test.tsx`); `not_run` no central.
 
