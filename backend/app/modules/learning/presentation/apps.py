@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.modules.learning.application.apps import (DetalheDoApp, ItemDeclarado, LinhaDoAprendido, ResumoDoApp,
                                                    VisaoDeApps, VisaoPorApp)
+from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.camada import ModosDeUso, Uso
 from app.modules.learning.infrastructure.montagem import modos_de_runtime
 from app.modules.learning.presentation.livro import _chamar, _entrada, _servico
@@ -68,14 +69,14 @@ def _item_declarado(i: ItemDeclarado) -> JsonObject:
             "quantidade": i.quantidade, "uso": _uso(i.uso)}
 
 
-def _linha(x: LinhaDoAprendido) -> JsonObject:
-    return {**_entrada(x.entrada), "origem_na_visao": x.origem.value, "uso": _uso(x.uso),
+def _linha(x: LinhaDoAprendido, servico: LearningService) -> JsonObject:
+    return {**_entrada(x.entrada, servico), "origem_na_visao": x.origem.value, "uso": _uso(x.uso),
             "absorvida_em": x.absorvida_em}
 
 
-def _detalhe(d: DetalheDoApp) -> JsonObject:
+def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
     return {"app": _resumo(d.resumo), "declarado": [_item_declarado(i) for i in d.declarado],
-            "aprendido": [_linha(x) for x in d.aprendido], "absorvido": [_linha(x) for x in d.absorvido],
+            "aprendido": [_linha(x, servico) for x in d.aprendido], "absorvido": [_linha(x, servico) for x in d.absorvido],
             "modos": _modos(d.modos)}
 
 
@@ -88,4 +89,4 @@ async def listar_apps(request: Request) -> JsonObject:
 async def ler_app(request: Request, pacote: str) -> JsonObject:
     visao = _visao(request)
     runtime = modos_de_runtime(_cfg(request))
-    return _detalhe(_chamar(lambda: visao.detalhe(pacote, runtime)))
+    return _detalhe(_chamar(lambda: visao.detalhe(pacote, runtime)), _servico(request))

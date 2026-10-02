@@ -92,7 +92,7 @@ beforeEach(() => {
     state: (c.body as { to: string }).to, history: [],
   }));
   useToastStore.setState({ toasts: [] });
-  useUiStore.getState().navegar({ tela: 'aprendizado' }, 'replace');
+  useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'aprovar' } }, 'replace');
   clipboard = vi.fn(async () => undefined);
   Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: clipboard }, configurable: true });
@@ -118,10 +118,10 @@ const HAB = 'habilidade:instagram.abrir-conversa@2';
 const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
 describe('página Aprendizado', () => {
-  it('tem as quatro abas, e cada uma lê a sua rota', async () => {
+  it('tem as cinco abas, e cada uma lê a sua rota', async () => {
     await montar();
     const nomes = allByRole('tab', /.*/, container).map((t) => t.textContent?.replace(/\d+$/, '').trim());
-    expect(nomes).toEqual(['Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais']);
+    expect(nomes).toEqual(['Aplicativos', 'Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais']);
     await waitFor(() => expect(text(container)).toContain('Enviar oi para o contato'));
 
     await click(byRole('tab', /^Aprendido/, container));

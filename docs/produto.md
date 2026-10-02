@@ -170,7 +170,11 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Aprendizado** ([ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
   [domínio](dominios/aprendizado.md); `frontend/src/features/aprendizado/`). O que o sistema aprendeu com as execuções e
   com quem monitora. Sem efeito externo e com repetição, ele publica sozinho; com efeito ou texto de pessoa, espera o
-  dono; rebaixar é sempre automático. A seção tem quatro abas:
+  dono; rebaixar é sempre automático. A seção tem cinco abas:
+  - **Aplicativos** (a inicial, 30.15): um cartão por app (existência declarado, loja ou só aprendido; o declarado, o aprendido
+    por tipo e estado, o absorvido e como o aprendido é usado, inclusive "medido, não usado"), os baldes "App não resolvido" e
+    "Fora do eixo" e, por app (`?aba=apps&app=<pacote>`), o detalhe Declarado, Aprendido e Absorvido, com link de volta nos dois
+    sentidos. O filtro de app do Aprendido vem dessa lista.
   - **Para aprovar:** a fila do D1 (receita com commit, fluxo com efeito, texto de pessoa, habilidade validada), com a
     evidência ao lado, motivo obrigatório e aprovação em lote ("Selecionar todos", "Aprovar selecionados"). A
     habilidade se decide ali pela rota das habilidades. Embaixo, **Revisar**: receitas e fluxos ativos com efeito,

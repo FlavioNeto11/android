@@ -291,3 +291,43 @@
   padding-left: var(--sp-4);
   color: var(--text-2);
 }
+
+/* Aplicativos (30.15): a grade de cartões do Global e o detalhe de um app. */
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.cartaoVazio { border-style: dashed; }
+
+.cartaoHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.cartaoNome { font-weight: 600; color: var(--text-1); overflow-wrap: anywhere; }
+.cartaoLinha { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.cartaoRotulo { color: var(--text-3); font-size: var(--fs-xs); }
+.cartaoUso { font-size: var(--fs-sm); color: var(--text-3); }
+
+.migalhas { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-3); }
+
+.tabelaDeclarado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

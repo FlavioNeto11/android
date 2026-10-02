@@ -84,9 +84,15 @@ def _chamar(fn: Callable[[], T]) -> T:
 
 
 # ------------------------------------------------------------------ JSON
-def _entrada(e: EntradaDoLivro) -> JsonObject:
-    """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`."""
-    motivo = por_que_o_sistema_nao_publica(e)
+def _entrada(e: EntradaDoLivro, servico: LearningService | None = None) -> JsonObject:
+    """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`.
+    Com o `servico`, o motivo conhece o modo do tipo e do pacote e o veto (`vetado`, `modo_desligado`); sem ele, só o
+    que o próprio item diz (efeito externo, texto de pessoa, habilidade)."""
+    if servico is None:
+        motivo = por_que_o_sistema_nao_publica(e)
+    else:
+        modo_publica, veto = servico.contexto_de_publicacao(e)
+        motivo = por_que_o_sistema_nao_publica(e, modo_publica=modo_publica, veto=veto)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
             "native_status": e.native_status, "title": e.title, "app": e.app, "app_ref": e.app_ref,
             "origin": e.origin.value,
@@ -109,13 +115,13 @@ def _transicao(t: Transicao) -> JsonObject:
             "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id}
 
 
-def _detalhe(d: DetalheDoLivro) -> JsonObject:
-    return {"item": _entrada(d.entrada), "evidencias": [_evidencia(e) for e in d.evidencias],
+def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
+    return {"item": _entrada(d.entrada, servico), "evidencias": [_evidencia(e) for e in d.evidencias],
             "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes)}
 
 
-def _lista(entradas: tuple[EntradaDoLivro, ...]) -> JsonObject:
-    return {"itens": [_entrada(e) for e in entradas], "total": len(entradas)}
+def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:
+    return {"itens": [_entrada(e, servico) for e in entradas], "total": len(entradas)}
 
 
 class CorpoDeStatus(BaseModel):
@@ -129,25 +135,28 @@ class CorpoDeStatus(BaseModel):
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
                     app: str | None = None, origem: Origem | None = None) -> JsonObject:
-    livro = _servico(request).livro(kind=kind, state=state, app=app, origem=origem)
+    servico = _servico(request)
+    livro = servico.livro(kind=kind, state=state, app=app, origem=origem)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
-    return {"itens": [_entrada(e) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
+    return {"itens": [_entrada(e, servico) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
 
 
 @router.get("/pendentes", response_model=None)
 async def pendentes(request: Request) -> JsonObject:
-    return _lista(_servico(request).pendentes())
+    servico = _servico(request)
+    return _lista(servico.pendentes(), servico)
 
 
 @router.get("/revisar", response_model=None)
 async def revisar(request: Request) -> JsonObject:
-    return _lista(_servico(request).revisar())
+    servico = _servico(request)
+    return _lista(servico.revisar(), servico)
 
 
 @router.get("/{kind}/{ref}", response_model=None)
 async def ler_item(request: Request, kind: LivroKind, ref: str) -> JsonObject:
     servico = _servico(request)
-    return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)))
+    return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)), servico)
 
 
 @router.post("/{kind}/{ref}/status", response_model=None)
@@ -155,4 +164,4 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
     servico = _servico(request)
     quem = _quem(request)
     entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
-    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)

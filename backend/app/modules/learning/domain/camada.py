@@ -1,17 +1,19 @@
 """A camada de uso em runtime (aprendizado vivo §3.3, 30.1): o que cada conhecimento FAZ hoje, derivado do tipo, do
 estado e dos modos vigentes. É uma função pura e só no backend; o painel exibe o rótulo e o "porquê".
 
-Os modos são os GLOBAIS (`aprendizado.licoes.modo`, `aprendizado.telas.modo`, `ai.recipes`, `ai.flows`,
-`skills.enabled`). O modo por app (§8.10, item 30.20) ainda não existe: quando existir, `modo_efetivo(tipo, pacote)`
-entra aqui e a função continua a mesma. Um modo que a composição não soube ler vem `None`, e a camada que depende dele
+Os modos são os do pacote: `aprendizado.licoes.modo` e `aprendizado.telas.modo` com o override de `por_app` (§8.10,
+30.20; `ModosDeUso.do_pacote`); `ai.recipes`, `ai.flows` e `skills.enabled` só existem globais. Um modo que a
+composição não soube ler vem `None`, e a camada que depende dele
 sai `desconhecida`: nunca um palpite.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, absorvida_em
 
 
@@ -74,6 +76,16 @@ class ModosDeUso:
     habilidades: bool | None = None
     licoes: Modo | None = None
     telas: ModoDeTelas | None = None
+    #: `aprendizado.licoes.por_app` e `aprendizado.telas.por_app` (§8.10): o override de cada pacote.
+    licoes_por_app: Mapping[str, Modo] = field(default_factory=dict)
+    telas_por_app: Mapping[str, ModoDeTelas] = field(default_factory=dict)
+
+    def do_pacote(self, pacote: str) -> ModosDeUso:
+        """Os mesmos modos com lições e telas no modo EFETIVO do pacote (o override, senão o global); um modo global
+        que a composição não soube ler (`None`) continua desconhecido: o override não o adivinha."""
+        return replace(
+            self, licoes=None if self.licoes is None else modo_efetivo(self.licoes, self.licoes_por_app, pacote),
+            telas=None if self.telas is None else modo_efetivo(self.telas, self.telas_por_app, pacote))
 
 
 def _desconhecida(modo: str) -> Uso:

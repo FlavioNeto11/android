@@ -85,7 +85,7 @@ class _Duble:
         saida = self.resposta(req)
         if isinstance(saida, Exception):
             raise saida
-        return saida, Usage(calls=1, role="social", model="m", provider="duble")
+        return saida, Usage(calls=1, role="persona", model="m", provider="duble")
 
 
 def _lotes(svc: SocialService) -> LotesDePersona:
