@@ -66,20 +66,34 @@ class Classificacao(unittest.TestCase):
 
 
 class Parada(unittest.TestCase):
-    def test_qualquer_desfecho_ruim_e_fail(self) -> None:
-        for ruim in mod.RUINS:
-            self.assertEqual(mod.avaliar_parada([_reg(1, "NO_FAILURE"), _reg(2, ruim)], 2)[0], "FAIL", ruim)
+    """Critério do r4 (fixado ANTES do boot): PASS = a RECOVERED_BY_UI válida desta rodada + a do r3 (2); PARTIAL = NO_FAILURE, BOOT_INVALID ou UNKNOWN (sem
+    nova rodada); FAIL = NOT_RECOVERED ou RECOVERED_BY_RESTART."""
 
-    def test_dois_recuperados_pelo_start_e_pass_sem_gastar_o_resto(self) -> None:
-        self.assertIsNone(mod.avaliar_parada([_reg(1, "RECOVERED_BY_UI")], 1))
-        self.assertEqual(mod.avaliar_parada([_reg(1, "NO_FAILURE"), _reg(2, "RECOVERED_BY_UI"), _reg(3, "RECOVERED_BY_UI")], 3)[0], "PASS")
+    def test_falha_da_mitigacao_e_fail_e_invalida_e_partial(self) -> None:
+        for ruim in mod.FALHAS_DA_MITIGACAO:
+            self.assertEqual(mod.avaliar_parada([_reg(1, ruim)], 4)[0], "FAIL", ruim)
+        for invalida in mod.INVALIDAS:
+            p = mod.avaliar_parada([_reg(1, invalida)], 4)
+            self.assertEqual(p[0], "PARTIAL", invalida)
+            self.assertIn("sem nova rodada", p[1])
+        self.assertEqual(set(mod.RUINS), set(mod.FALHAS_DA_MITIGACAO) | set(mod.INVALIDAS))
 
-    def test_o_teto_decide_partial_ou_inconclusive(self) -> None:
-        seis = [_reg(i, "NO_FAILURE") for i in range(1, 7)]
-        self.assertEqual(mod.avaliar_parada(seis, 6)[0], "INCONCLUSIVE")           # a mitigação não foi exercitada
-        um = seis[:5] + [_reg(6, "RECOVERED_BY_UI")]
-        self.assertEqual(mod.avaliar_parada(um, 6)[0], "PARTIAL")
-        self.assertIsNone(mod.avaliar_parada(seis[:3], 3))                         # abaixo do teto e sem desfecho: segue
+    def test_a_recuperacao_do_r3_mais_uma_do_r4_e_pass(self) -> None:
+        self.assertEqual(mod.RECUPERACOES_ANTERIORES, 1)
+        p = mod.avaliar_parada([_reg(1, "RECOVERED_BY_UI")], 4)
+        self.assertEqual(p[0], "PASS")
+        self.assertEqual(mod.desfecho([_reg(1, "RECOVERED_BY_UI")]), "PASS")
+
+    def test_no_failure_no_r4_e_partial_porque_a_mitigacao_nao_foi_exercitada(self) -> None:
+        self.assertEqual(mod.avaliar_parada([_reg(1, "NO_FAILURE")], 4)[0], "PARTIAL")      # 4 usados: teto, a 2ª iteração não cabe
+        self.assertEqual(mod.desfecho([_reg(1, "NO_FAILURE")]), "PARTIAL")
+
+    def test_r4_tem_exatamente_uma_iteracao(self) -> None:
+        self.assertEqual(mod.BOOTS_JA_USADOS, 3)
+        self.assertTrue(mod.pode_iniciar(mod.BOOTS_JA_USADOS, 0), "a 1ª iteração cabe (3 + 3 <= 6)")
+        for usados in (4, 5, 6):                                                      # depois de 1 reinício já não cabe a 2ª
+            self.assertFalse(mod.pode_iniciar(usados, 1))
+        self.assertIsNone(mod.avaliar_parada([], mod.BOOTS_JA_USADOS))
 
     def test_o_teto_conta_reinicios_reais_inclusive_os_do_produto(self) -> None:
         self.assertEqual(mod.MAX_BOOTS, 6)
@@ -87,18 +101,16 @@ class Parada(unittest.TestCase):
         self.assertFalse(mod.pode_iniciar(2, 6))                                  # o limite de iterações também vale
 
     def test_iteracao_nova_so_comeca_se_o_pior_caso_cabe_no_teto_do_dono(self) -> None:
-        """Discriminante: 4 reinícios usados e só NO_FAILURE NÃO começa a 5ª (4 + 3 > 6); com 3 usados começa (3 + 3 <= 6)."""
+        """Discriminante: com 4 reinícios usados NÃO começa outra (4 + 3 > 6); com 3 usados começa (3 + 3 <= 6)."""
         self.assertEqual(mod.PIOR_CASO_PADRAO, 3)
         self.assertTrue(mod.pode_iniciar(3, 3))
         self.assertFalse(mod.pode_iniciar(4, 4))
         self.assertFalse(mod.pode_iniciar(5, 5))
         self.assertTrue(mod.pode_iniciar(0, 0))
-        quatro = [_reg(i, "NO_FAILURE") for i in range(1, 5)]
-        p = mod.avaliar_parada(quatro, 4)
+        p = mod.avaliar_parada([_reg(1, "NO_FAILURE")], 4)
         self.assertIsNotNone(p, "com 4 usados o protocolo para por TETO")
-        self.assertEqual(p[0], "INCONCLUSIVE")
         self.assertIn("teto", p[1])
-        self.assertIsNone(mod.avaliar_parada(quatro[:3], 3), "com 3 usados segue")
+        self.assertIsNone(mod.avaliar_parada([], 3), "com 3 usados segue")
 
     def test_o_pior_caso_acompanha_o_reinicios_max_da_config(self) -> None:
         self.assertFalse(mod.pode_iniciar(3, 3, 4))                               # reinicios_max=3 → pior caso 4: 3 + 4 > 6
@@ -123,8 +135,10 @@ class SegurancaDoScript(unittest.TestCase):
             self.assertEqual(mod.main([]), 0)
         p = json.loads(out.getvalue())
         self.assertEqual(p["modo"], "plano (nenhuma chamada)")
-        self.assertEqual((p["instancia"], p["seed"], p["max_boots_reais"]), ("android-09", "w8-mitigacao-20261002-r3", 6))
-        self.assertEqual(p["boots_ja_usados"], 1)
+        self.assertEqual((p["instancia"], p["seed"], p["max_boots_reais"]), ("android-09", "w8-mitigacao-20261002-r4", 6))
+        self.assertEqual(p["boots_ja_usados"], 3)
+        self.assertEqual(tuple(p["vizinhos_com_reparo_pausado"]["aparelhos"]), ("android-01", "android-03", "android-06"))
+        self.assertEqual(p["vizinhos_com_reparo_pausado"]["ttl_s"], 900)
         self.assertEqual(p["politica_a_aplicar"]["instance_ids"], ["android-09"])
 
     def test_recusa_outro_aparelho_falta_de_confirmacao_e_pasta_suja(self) -> None:
@@ -240,7 +254,7 @@ class _gate_ok:
 class _Api:
     def __init__(self) -> None:
         self.chamadas: list[tuple[str, str, Any]] = []
-        self.saude: dict[str, Any] = {"features": {"repair_pause": {"android-09": {}}}}
+        self.saude: dict[str, Any] = {"features": {"repair_pause": {"android-09": {}, "android-01": {}, "android-03": {}, "android-06": {}}}}
         self.resposta_firewall: dict[str, Any] = {"firewall": {"state": "liberado"}}
         self.ao_postar: Callable[[], None] | None = None
 
@@ -376,11 +390,37 @@ class BaselineDaIteracao(unittest.TestCase):
         self.assertEqual(b["falhas"], ["sem_comando_aberto"])
         self.assertGreaterEqual(amb.t - amb.T0, mod.ASSENTAR_LIMITE_S)
 
-    def test_o_teto_parte_do_boot_ja_usado_no_r2(self) -> None:
-        """1 boot já usado: 1+3, 2+3 e 3+3 <= 6 → até 3 iterações se tudo der NO_FAILURE; com 4 usados a seguinte não começa."""
-        self.assertEqual(mod.BOOTS_JA_USADOS, 1)
-        self.assertTrue(all(mod.pode_iniciar(u, i) for u, i in ((1, 0), (2, 1), (3, 2))))
-        self.assertFalse(mod.pode_iniciar(4, 3))
+    def test_o_teto_parte_dos_3_boots_ja_usados(self) -> None:
+        """3 usados (1 do r2 + 2 do r3): 3+3 <= 6 → UMA iteração; com o 4º usado nenhuma outra começa."""
+        self.assertEqual(mod.BOOTS_JA_USADOS, 3)
+        self.assertTrue(mod.pode_iniciar(3, 0))
+        self.assertFalse(mod.pode_iniciar(4, 1))
+
+
+class VizinhosPausados(unittest.TestCase):
+    """Decisão do dono (02/10): no r4 o reparo automático de android-01/03/06 fica pausado (TTL 900 s), conferido no health, e encerrado no fim. A regra de
+    invalidação por ciclo de vida alheio NÃO muda."""
+
+    def test_pausa_os_tres_vizinhos_por_900_s(self) -> None:
+        api = _Api()
+        self.assertEqual(mod.pausar_vizinhos(api), [])                           # type: ignore[arg-type]
+        self.assertEqual([(m, c, b["ttl_s"]) for m, c, b in api.chamadas],
+                         [("PUT", f"/api/instances/{v}/repair-pause", 900) for v in ("android-01", "android-03", "android-06")])
+
+    def test_vizinho_fora_do_health_invalida_o_boot_antes_de_qualquer_rede(self) -> None:
+        amb, api = _AmbWG(), _Api()
+        api.saude = {"features": {"repair_pause": {"android-09": {}, "android-01": {}, "android-03": {}}}}      # falta o android-06
+        with tempfile.TemporaryDirectory() as d:
+            r = mod.uma_iteracao(amb, api, Path(d), 1, True, lambda *_a, **_k: None)   # type: ignore[arg-type]
+        self.assertEqual(r["RESULT"], "BOOT_INVALID")
+        self.assertIn("android-06", r["motivo"])
+        self.assertNotIn("/api/network/assign", [c for _m, c, _b in api.chamadas])
+
+    def test_a_regra_de_ciclo_de_vida_alheio_continua_a_mesma(self) -> None:
+        amb = _AmbWG()
+        amb.sql = lambda consulta, params=(): [("android-01", "restart", "saude")]     # type: ignore[assignment]
+        self.assertEqual(mod.outros_aparelhos(amb, "2026-10-02T00:00:00.000Z"), ["android-01:restart:saude"])     # type: ignore[arg-type]
+        self.assertEqual(mod.avaliar_parada([_reg(1, "BOOT_INVALID")], 4)[0], "PARTIAL")
 
 
 class Executor(unittest.TestCase):
@@ -401,8 +441,9 @@ class Executor(unittest.TestCase):
         api.ao_postar = amb.restart                                               # o assign reinicia o servidor (e o par reconecta)
         amb.reconecta_apos_s = 20.0
         r = mod.reverter(amb, api, lambda *_a, **_k: None)                       # type: ignore[arg-type]
-        self.assertEqual([(m, c) for m, c, _ in api.chamadas], [("POST", "/api/network/assign"), ("DELETE", "/api/instances/android-09/repair-pause")])
-        self.assertEqual(api.chamadas[0][2], mod.ROLLBACK)
+        self.assertEqual([(m, c) for m, c, _ in api.chamadas], [("PUT", "/api/instances/android-01/repair-pause"), ("PUT", "/api/instances/android-03/repair-pause"), ("PUT", "/api/instances/android-06/repair-pause"), ("POST", "/api/network/assign"), ("DELETE", "/api/instances/android-09/repair-pause"), ("DELETE", "/api/instances/android-01/repair-pause"), ("DELETE", "/api/instances/android-03/repair-pause"), ("DELETE", "/api/instances/android-06/repair-pause")])
+        self.assertEqual(api.chamadas[3][2], mod.ROLLBACK)
+        self.assertEqual(api.chamadas[0][2]["ttl_s"], 900)
         self.assertEqual(r["http"], 202)
         self.assertTrue(r["par_removido"])
         self.assertIn("fora dos 6 boots", r["reinicio_do_09_pelo_rollback"])
@@ -413,7 +454,7 @@ class Executor(unittest.TestCase):
     def test_sem_par_aplicado_so_encerra_a_pausa(self) -> None:
         api = _Api()
         r = mod.reverter(None, api, lambda *_a, **_k: None, desfazer=False)      # type: ignore[arg-type]
-        self.assertEqual([(m, c) for m, c, _ in api.chamadas], [("DELETE", "/api/instances/android-09/repair-pause")])
+        self.assertEqual([(m, c) for m, c, _ in api.chamadas], [("PUT", "/api/instances/android-01/repair-pause"), ("PUT", "/api/instances/android-03/repair-pause"), ("PUT", "/api/instances/android-06/repair-pause"), ("DELETE", "/api/instances/android-09/repair-pause"), ("DELETE", "/api/instances/android-01/repair-pause"), ("DELETE", "/api/instances/android-03/repair-pause"), ("DELETE", "/api/instances/android-06/repair-pause")])
         self.assertFalse(r["par_removido"])
 
 
@@ -509,7 +550,7 @@ class SeguraDoServidorWireGuard(unittest.TestCase):
         api.ao_postar = amb.restart
         r = mod.reverter(amb, api, lambda *_a, **_k: None, urgente=True)        # type: ignore[arg-type]
         self.assertTrue(r["par_removido"])
-        self.assertEqual(api.chamadas[0][1], "/api/network/assign")
+        self.assertIn("/api/network/assign", [c for _m, c, _b in api.chamadas])
 
     def test_rollback_sem_janela_fica_pendente_e_diz_o_que_fazer(self) -> None:
         amb, api = _AmbWG(), _Api()
@@ -517,7 +558,8 @@ class SeguraDoServidorWireGuard(unittest.TestCase):
         r = mod.reverter(amb, api, lambda *_a, **_k: None)                       # type: ignore[arg-type]
         self.assertFalse(r["par_removido"])
         self.assertIn("CONTINUA no servidor", r["rollback_pendente"])
-        self.assertEqual([c for _m, c, _b in api.chamadas], ["/api/instances/android-09/repair-pause"], "não interrompeu ninguém")
+        self.assertNotIn("/api/network/assign", [c for _m, c, _b in api.chamadas], "não interrompeu ninguém")
+        self.assertIn(("DELETE", "/api/instances/android-09/repair-pause"), [(m, c) for m, c, _b in api.chamadas])
 
     def test_pausa_ausente_do_health_invalida_o_boot_antes_de_qualquer_escrita_de_rede(self) -> None:
         amb, api = _AmbWG(), _Api()

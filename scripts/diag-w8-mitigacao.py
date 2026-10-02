@@ -46,8 +46,8 @@ IID = boot.IID
 API = boot.API
 
 # ------------------------------------------------------------------------------------------------ o compromisso (antes do 1º boot)
-SEED = "w8-mitigacao-20261002-r3"                                                 # identifica este protocolo (3ª versão, depois do defeito do r2); sem sorteio (braço único)
-BOOTS_JA_USADOS = 1                                                               # o boot da iteração 1 do r2 (02/10 15:29Z, NO_FAILURE) conta no teto de 6 do dono
+SEED = "w8-mitigacao-20261002-r4"                                                 # identifica este protocolo (3ª versão, depois do defeito do r2); sem sorteio (braço único)
+BOOTS_JA_USADOS = 3                                                               # 1 do r2 (iteração 1) + 2 do r3 (iterações 1 e 2): contam no teto de 6 do dono; 3+3=6 => o r4 tem EXATAMENTE 1 iteração
 MAX_BOOTS = 6                                                                     # REINÍCIOS REAIS, contando os que o produto pede
 MAX_ITERACOES = 6
 PIOR_CASO_PADRAO = 3                                                              # 1 reinício da reaplicação + rede.reinicios_max (2); lido da config em `rodar`
@@ -62,7 +62,12 @@ ROLLBACK = {"instance_ids": [IID], "vpn_profile_id": None, "proxy_profile_id": N
 MARCA_DO_START = "religado pelo Start da interface do cliente"
 VERDITOS = ("PASS", "PARTIAL", "FAIL", "INCONCLUSIVE")
 BONS = ("NO_FAILURE", "RECOVERED_BY_UI")
-RUINS = ("RECOVERED_BY_RESTART", "NOT_RECOVERED", "BOOT_INVALID", "UNKNOWN")
+FALHAS_DA_MITIGACAO = ("RECOVERED_BY_RESTART", "NOT_RECOVERED")                   # r4: W8 = FAIL
+INVALIDAS = ("BOOT_INVALID", "UNKNOWN")                                           # r4: W8 = PARTIAL e nada de nova rodada
+RUINS = FALHAS_DA_MITIGACAO + INVALIDAS
+RECUPERACOES_ANTERIORES = 1                                                       # a RECOVERED_BY_UI válida do r3 (iteração 1); com a do r4 são 2 = PASS
+VIZINHOS = ("android-01", "android-03", "android-06")                             # reparo pausado também neles durante o r4 (decisão do dono, 02/10)
+VIZINHOS_PAUSA_TTL_S = 900
 
 
 # ------------------------------------------------------------------------------------------------ lógica pura (testada sem rede)
@@ -88,13 +93,19 @@ def classificar_iteracao(o: dict[str, Any]) -> tuple[str, str]:
 
 
 def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots: int = MAX_BOOTS, pior_caso: int = PIOR_CASO_PADRAO) -> tuple[str, str] | None:
-    """Regra de parada depois de cada iteração. (veredito, motivo) ou None para seguir. FAIL em qualquer ruim; PASS com 2 RECOVERED_BY_UI."""
-    ruins = [r for r in regs if r["RESULT"] in RUINS]
-    if ruins:
-        u = ruins[0]
+    """Regra de parada depois de cada iteração (critério do r4, fixado ANTES do boot). (veredito, motivo) ou None para seguir.
+    FAIL: `RECOVERED_BY_RESTART` ou `NOT_RECOVERED` (a mitigação falhou). `BOOT_INVALID`/`UNKNOWN`: PARTIAL e nada de nova rodada. PASS: a
+    `RECOVERED_BY_UI` válida desta rodada somada à do r3 (`RECUPERACOES_ANTERIORES`) chega a 2. Teto: o desfecho."""
+    falhas = [r for r in regs if r["RESULT"] in FALHAS_DA_MITIGACAO]
+    if falhas:
+        u = falhas[0]
         return "FAIL", f"iteração {u['ITERACAO']} terminou em {u['RESULT']}: {u.get('motivo', '')}"[:300]
-    if sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI") >= 2:
-        return "PASS", "2 recuperações pelo Start da interface, sem desfecho ruim"
+    invalidas = [r for r in regs if r["RESULT"] in INVALIDAS]
+    if invalidas:
+        u = invalidas[0]
+        return "PARTIAL", f"iteração {u['ITERACAO']} inválida ({u['RESULT']}: {u.get('motivo', '')}); sem nova rodada"[:300]
+    if RECUPERACOES_ANTERIORES + sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI") >= 2:
+        return "PASS", "2 recuperações válidas pelo Start da interface (1 do r3 + as desta rodada), sem desfecho ruim"
     if not pode_iniciar(boots_consumidos, len(regs), pior_caso, max_boots):
         return desfecho(regs, "TETO"), (f"teto: {boots_consumidos} reinícios usados + pior caso de uma iteração nova ({pior_caso}) > {max_boots}"
                                         f" ou {len(regs)} iterações")
@@ -102,11 +113,11 @@ def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots:
 
 
 def desfecho(regs: list[dict[str, Any]], motivo: str = "") -> str:
-    """O veredito final dado o que foi observado (usado no teto): PARTIAL com 1 recuperação pelo Start; INCONCLUSIVE sem nenhuma (a
-    mitigação não foi exercitada: só prova não-regressão); PASS/FAIL já saem de `avaliar_parada`."""
-    if any(r["RESULT"] in RUINS for r in regs):
+    """O veredito final dado o que foi observado: FAIL com falha da mitigação; PASS com 2 recuperações válidas (somando as anteriores); senão
+    PARTIAL (a anterior do r3 existe: `NO_FAILURE`, `BOOT_INVALID` e `UNKNOWN` desta rodada não derrubam)."""
+    if any(r["RESULT"] in FALHAS_DA_MITIGACAO for r in regs):
         return "FAIL"
-    n = sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI")
+    n = RECUPERACOES_ANTERIORES + sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI")
     return "PASS" if n >= 2 else "PARTIAL" if n == 1 else "INCONCLUSIVE"
 
 
@@ -194,6 +205,12 @@ def pausa_vigente(health: dict[str, Any] | None, iid: str = IID) -> bool:
     return bool(health) and iid in ((health or {}).get("features", {}) or {}).get("repair_pause", {})
 
 
+def pausar_vizinhos(api: Any) -> list[str]:
+    """Liga (ou renova) a pausa do reparo AUTOMÁTICO nos vizinhos (android-01/03/06, TTL 900 s); devolve os que NÃO aceitaram. Comando explícito de pessoa
+    segue passando (A2). É mudança PRÉ-REGISTRADA do r4, não afrouxamento da regra de bystander: a invalidação por ciclo de vida alheio continua."""
+    return [v for v in VIZINHOS if api.put(f"/api/instances/{v}/repair-pause", {"ttl_s": VIZINHOS_PAUSA_TTL_S, "reason": "validação da mitigação W8 (r4): vizinhos"})[0] != 200]
+
+
 def firewall_liberado(resposta: dict[str, Any] | None) -> tuple[bool, str, list[str]]:
     """`POST /api/network/server/firewall-check` (só leitura): o par remoto chega pela LAN e só passa com a regra do dono. Qualquer estado
     que não seja `liberado` bloqueia: o script NÃO cria regra; devolve os comandos que o dono roda."""
@@ -202,7 +219,8 @@ def firewall_liberado(resposta: dict[str, Any] | None) -> tuple[bool, str, list[
 
 
 def plano_json() -> dict[str, Any]:
-    return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "boots_ja_usados": BOOTS_JA_USADOS, "max_iteracoes": MAX_ITERACOES,
+    return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "boots_ja_usados": BOOTS_JA_USADOS, "vizinhos_com_reparo_pausado": {"aparelhos": VIZINHOS, "ttl_s": VIZINHOS_PAUSA_TTL_S},
+            "recuperacoes_anteriores": RECUPERACOES_ANTERIORES, "max_iteracoes": MAX_ITERACOES,
             "regra_do_teto": "iteração NOVA só começa se reinícios_usados + (1 + rede.reinicios_max da config; 3 se ilegível) <= 6",
             "um_braco": "mitigação ligada (o padrão do produto); o ator só observa",
             "politica_a_aplicar": POLITICA, "rollback": ROLLBACK, "pausa_do_reparo": {"ttl_s": PAUSA_TTL_S, "rota": f"PUT /api/instances/{IID}/repair-pause"},
@@ -216,12 +234,12 @@ def plano_json() -> dict[str, Any]:
                          f"/api/network/devices/{IID}/reapply + /apply", "observar até o estado final ou {JANELA_DO_BOOT_S:.0f} s",
                          "ler tun0 e a linha de rede", "classificar", "regra de parada"],
             "categorias": CATEGORIAS,
-            "criterios": {"PASS": "≥ 2 RECOVERED_BY_UI e nenhum desfecho ruim", "PARTIAL": "1 RECOVERED_BY_UI e nenhum ruim ao fim do teto",
-                          "FAIL": "qualquer RECOVERED_BY_RESTART, NOT_RECOVERED, BOOT_INVALID ou UNKNOWN",
-                          "INCONCLUSIVE": "só NO_FAILURE até o teto: a mitigação não foi exercitada (apenas não-regressão)"},
+            "criterios": {"PASS": "a RECOVERED_BY_UI válida desta rodada somada à do r3 (2 no total) e nenhuma falha",
+                          "PARTIAL": "NO_FAILURE (a mitigação não foi exercitada), BOOT_INVALID ou UNKNOWN: sem nova rodada",
+                          "FAIL": "RECOVERED_BY_RESTART ou NOT_RECOVERED"},
             "boot_invalido_se": ["comando requested_by='system' não rejeitado na janela", "baseline falho", "evento de outro aparelho",
                                  "automação perdida que impeça a leitura final"],
-            "nao_faz": ["toque, force-stop, Start ou Stop do ator", "estágio 2", "outro aparelho", "DHCP/relógio/túnel SSH/firewall", "conta real",
+            "nao_faz": ["toque, Start ou Stop do ator (o force-stop do SFA só no rollback)", "estágio 2", "outro aparelho", "DHCP/relógio/túnel SSH/firewall", "conta real",
                         "chamada paga de IA", "sleep/retry/watchdog novo"]}
 
 
@@ -429,6 +447,13 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
     st_h, saude = api.get("/api/health")                                          # a pausa é só em memória (um reinício do central a apaga)
     if st_h != 200 or not pausa_vigente(saude if isinstance(saude, dict) else None):
         return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": "a pausa não consta em features.repair_pause do health antes do boot", "reinicios_da_rede": 0}
+    recusaram = pausar_vizinhos(api)
+    st_h, saude = api.get("/api/health")
+    faltam = [v for v in VIZINHOS if not pausa_vigente(saude if isinstance(saude, dict) else None, v)]
+    if recusaram or st_h != 200 or faltam:
+        return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": f"a pausa dos vizinhos não consta no health antes do boot (recusaram: {recusaram}; faltam: {faltam})",
+                "reinicios_da_rede": 0}
+    ultima_renovacao = amb.agora()
     b = baseline_assentado(amb, politica_aplicada=not primeira)
     (d / "baseline.json").write_text(json.dumps(b, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if not b["ok"]:
@@ -453,6 +478,10 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
         ultimo_u: float | None = None
         with (d / "amostras.jsonl").open("a", encoding="utf-8") as fh:
             while amb.agora() < fim:
+                if amb.agora() - ultima_renovacao > 480.0:                                  # TTL de 900 s: renova antes de vencer
+                    pausar_vizinhos(api)
+                    api.put(f"/api/instances/{IID}/repair-pause", {"ttl_s": PAUSA_TTL_S, "reason": f"validação da mitigação W8, iteração {n}"})
+                    ultima_renovacao = amb.agora()
                 v = boot.lido(amb, boot.CMD_AMOSTRA, 15)
                 if v and v.get("U"):
                     u = float(v["U"])
@@ -540,6 +569,7 @@ def reverter(amb: Any, api: Api, reg: Callable[..., None], *, desfazer: bool = T
     servidor WireGuard) e encerra a pausa. O rollback do par espera a janela ociosa (nunca interrompe): sem ela fica PENDENTE e o relatório
     traz o que fazer. `urgente` (depois de uma falha de reconexão) não espera. Sem par aplicado (`desfazer` False) só encerra a pausa."""
     saida: dict[str, Any] = {"par_removido": False, "reinicio_do_09_pelo_rollback": "fora dos 6 boots; contado e registrado à parte"}
+    pausar_vizinhos(api)                                                          # o rollback também espera janela ociosa: não deixa a pausa vencer no meio
     if desfazer:
         def _acao() -> tuple[int, Any]:
             saida["cliente"] = parar_cliente_antes_do_rollback(amb, reg)
@@ -550,6 +580,7 @@ def reverter(amb: Any, api: Api, reg: Callable[..., None], *, desfazer: bool = T
         if not wg["ok"] and not wg.get("acao_executada"):
             saida["rollback_pendente"] = f"o par do {IID} CONTINUA no servidor: {wg['fase']}; refazer o POST /api/network/assign {json.dumps(ROLLBACK)} numa janela ociosa"
     saida["pausa_encerrada"] = api.delete(f"/api/instances/{IID}/repair-pause")[0]
+    saida["pausa_dos_vizinhos_encerrada"] = {v: api.delete(f"/api/instances/{v}/repair-pause")[0] for v in VIZINHOS}
     return saida
 
 
