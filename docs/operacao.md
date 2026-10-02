@@ -305,6 +305,7 @@ isso). Pontos que já causaram incidente:
 | `aceites-remotos.ps1 -Yes` | P | Despacha comandos reais no parque |
 | `test-restart-recovery.ps1` | P | Reinicia o backend com fila carregada, real |
 | `personas_criar.py` / `personas_completar.py` | P | Escreve personas no banco do ambiente central |
+| `avisos-telegram.py descobrir` / `testar` | S / P | Aviso fora do painel (28.11): `descobrir` só lê (`getUpdates` sem offset) e lista id, tipo, nome e @usuário dos chats que escreveram ao bot, sem imprimir o token; `testar` manda UMA mensagem real ao `TELEGRAM_CHAT_ID` (só o dono roda). Lê o `.env` na hora, sem reiniciar o backend |
 | `aprendizado-backlog.py` | S | Só GET em `/api/aprendizado/falhas?formato=md`: grava o "o que mais falha" em `data/aprendizado/backlog-AAAA-MM-DD.md` e imprime o topo; `--retroativo` inclui o legado classificado na leitura. Sem IA; o `API_TOKEN` nunca é impresso (ADR-054) |
 | `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
 
@@ -501,3 +502,33 @@ o antigo **parado antes**: nunca os dois no ar.
   normalização. Não testado.
 - **Ollama nativo do host** por `http://host.docker.internal:11434/v1`: não verificado.
 - **A imagem leva `pytest`**: o lock é um só (`requirements.txt`) e não foi dividido.
+
+## 15. Aviso fora do painel (Telegram, item 28.11)
+
+O aviso externo é o **espelho** da caixa de Pendências (`#/pendencias`, ADR-062): uma mensagem curta por pendência nova
+(aprovação de persona, execução que parou pedindo informação, conta que pede intervenção e, quando o 28.9 chegar, o
+`pedido.aviso`). A mensagem leva só o **tipo** e o link da caixa: nunca nome de persona, conta, conteúdo de mensagem ou
+dado de terceiro. É só saída (sem webhook, sem rota de entrada). Desligado de fábrica (`avisos.enabled: false`). Só o
+líder da trava `avisos` envia, e a fila durável (`avisos_entregas`, migração 068) deduplica por fato: o mesmo evento nunca
+vira duas mensagens, e um envio interrompido por queda vira `incerto` e **não** é reenviado.
+
+Procedimento (o dono faz; sem ele a prova real fica `not_run`):
+
+1. No Telegram, fale com **@BotFather** → `/newbot` → escolha o nome e o username (termina em `bot`). Ele devolve o token.
+2. Cole `TELEGRAM_BOT_TOKEN=<token>` no `.env` do central (`C:\git\android\.env`, fora do Git) e reinicie a tarefa
+   `farm-central` (`Stop-ScheduledTask farm-central; Start-ScheduledTask farm-central`): o `.env` é lido só na partida.
+   O cofre DPAPI não é usado: ele guarda credencial de conta, e este token é configuração do ambiente, como as chaves de IA.
+3. No Telegram, abra o seu bot e mande `/start` (para um grupo: adicione o bot e escreva nele).
+4. Rode a descoberta e confirme qual `id` é o seu chat (ela só lê; pode repetir):
+   `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py descobrir`
+   A saída lista `id`, `tipo`, `nome` e `@usuario` de cada chat; o token não aparece.
+5. Grave `TELEGRAM_CHAT_ID=<id>` no mesmo `.env` (grupo tem id negativo; copie com o sinal) e reinicie a `farm-central`.
+6. Ligue `avisos.enabled: true` em `config/config.yaml` (opcional: `avisos.url_painel: http://<ip-do-central>:8000` para o
+   link; sem ela a mensagem vai só com o texto) e reinicie a `farm-central`. Teste com
+   `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py testar` (manda uma mensagem de teste real). Confira
+   que `GET /api/health` não traz o problema `avisos_sem_segredo`.
+
+Se o canal estiver ligado e faltar `TELEGRAM_BOT_TOKEN` ou `TELEGRAM_CHAT_ID`, a saúde acusa `avisos_sem_segredo` e nada é
+enviado. Estados da fila para diagnóstico: `SELECT estado, COUNT(*) FROM avisos_entregas GROUP BY estado` (`falhou` e
+`incerto` trazem o `ultimo_erro`, já sem segredo). O que o backend perde por estar parado não é reenviado na partida: a
+caixa do painel é a fonte da verdade.
