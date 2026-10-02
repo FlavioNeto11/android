@@ -43,6 +43,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
   `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
 
+## 2026-10-02 — Aprendizado: follow-up do modo por app e do veto na rota (30.20 e 30.5, branch feat/30-servico-modo-e-veto)
+
+- 30.20: o D1 de lição e tela usa o modo efetivo do pacote do item (`_modo_publica(kind, app)`; `Ajustes.por_licoes` e
+  `por_telas`), o portão de `licoes_para` consulta o fornecedor com algum pacote ligado, e a camada de uso da visão por
+  app usa o modo do pacote; os dois `xfail(strict)` de `test_learning_modo_por_app.py` viraram testes normais.
+- 30.5: `por_que_nao_publica` passa a trazer `vetado` e `modo_desligado` nas rotas do livro e da visão por app
+  (`LearningService.contexto_de_publicacao`). Prova `simulated` (`test_learning_rota_publicacao.py`); nada implantado.
+
 ## 2026-10-02 — Aprendizado: modo por app para lições e telas (30.20, branch feat/30-20-modo-por-app)
 
 - `aprendizado.licoes.por_app` e `aprendizado.telas.por_app` (padrão vazio = modo global; chave = pacote Android validado)

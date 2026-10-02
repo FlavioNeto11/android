@@ -9,10 +9,6 @@ vale. A regra é uma só (`domain/modo_por_app.modo_efetivo`) e o pacote vem só
   a validação seguem o modo do pacote; o D1 não publica no pacote em `shadow` mesmo com o global em `on`;
 - TELAS: a observação, o minerador, a publicação sozinha (D1) e o fornecedor da sessão seguem o modo do pacote.
 
-Limite conhecido, provado como `xfail(strict)`: o D1 de um pacote MAIS permissivo que o global (global `shadow` ou
-`observe`, pacote `on`) ainda é recusado porque `LearningService._modo_publica` (`servico.py`) lê só o modo global.
-Quando ele receber o app do item, os dois testes passam e o `strict` obriga a tirar a marca.
-
 Nível de prova: `simulated` (banco de teste, aparelhos falsos, nenhuma IA).
 """
 from __future__ import annotations
@@ -37,8 +33,6 @@ from .test_learning_telas import CORREIO, PASTA_NOVA, _aprender, mundo  # noqa: 
 from .test_learning_telas import Mundo as MundoDeTelas
 
 OUTRO = "com.exemplo.outro"
-XFAIL_D1 = ("30.20: o D1 por app precisa de `servico.py` `_modo_publica(kind, app)`; hoje lê só o modo global "
-            "(servico.py:173)")
 
 
 # ==================================================================== config e função pura
@@ -157,7 +151,6 @@ def test_o_global_off_com_um_pacote_ligado_coleta_so_nele(db) -> None:  # type: 
     assert licao.escopo.app == IG and licao.state is SkillState.CANDIDATE
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_D1)
 def test_d1_do_pacote_em_on_com_o_global_em_shadow_publica(db) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     m = MundoDeLicoes(db, modo="shadow")
     m.cfg.licoes.por_app = {IG: "on"}
@@ -234,7 +227,6 @@ def test_o_outro_pacote_em_on_nao_publica_o_do_global_observe(mundo: MundoDeTela
     assert item.state is SkillState.VALIDATED and item.escopo.app == CORREIO
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_D1)
 def test_d1_do_pacote_em_on_com_o_global_em_observe_publica(mundo: MundoDeTelas) -> None:  # noqa: F811
     mundo.cfg.modo = "observe"
     mundo.cfg.por_app = {CORREIO: "on"}

@@ -24,6 +24,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
+from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem)
 from app.modules.skills.domain.document import JsonValue
@@ -170,17 +171,28 @@ class LearningService:
         return tuple(e for e in self._fontes.receitas() + self._fontes.fluxos() if a_revisar(e, decididos))
 
     # ================================================================== transições
-    def _modo_publica(self, kind: LivroKind) -> bool:
+    def _modo_publica(self, kind: LivroKind, app: str = "") -> bool:
+        """O modo do TIPO (e, em lição e tela, o do PACOTE do item, §8.10) deixa o sistema publicar sozinho?"""
         a = self.ajustes
         if kind is LivroKind.LICAO:
-            return a.modo_licoes is Modo.ON
+            return modo_efetivo(a.modo_licoes, a.por_licoes, app) is Modo.ON
         if kind is LivroKind.TELA:
-            return a.modo_telas is ModoDeTelas.ON
+            return modo_efetivo(a.modo_telas, a.por_telas, app) is ModoDeTelas.ON
         if kind is LivroKind.PREFERENCIA:
             return a.modo_preferencias is Modo.ON
         if kind is LivroKind.VOZ:
             return False                                # a voz é sempre do dono (side_effect=1)
         return True                                     # receita e fluxo: os interruptores são os deles
+
+    def contexto_de_publicacao(self, e: EntradaDoLivro) -> tuple[bool, str | None]:
+        """O que a rota precisa para dizer por que o SISTEMA não publica `e`: `(modo_publica, veto)`. O modo é o do
+        tipo e do pacote dele (`_modo_publica`); o veto é o `motivo_do_veto` do conteúdo no escopo, ou `None`. Só
+        leitura: a mesma conta de `_mover_item`/`_mover_nativo`, sem mover nada (item sem conteúdo não tem veto)."""
+        veto: str | None = None
+        if e.content_hash:
+            veto = motivo_do_veto(self._repo.desligamentos(e.content_hash, e.scope_key), agora=self._relogio(),
+                                  app_version=e.app_version)
+        return self._modo_publica(e.kind, e.app), veto
 
     def mudar_estado(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str,
                      run_id: str | None = None, detalhe: str | None = None) -> EntradaDoLivro:
@@ -234,7 +246,7 @@ class LearningService:
         if item is None or item.kind is not kind:
             raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
         actor = conferir_transicao(item.state, para, by, side_effect=item.side_effect,
-                                   human_origin=item.human_origin, modo_publica=self._modo_publica(kind))
+                                   human_origin=item.human_origin, modo_publica=self._modo_publica(kind, item.escopo.app))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED):
             self._conferir_veto(item.content_hash, item.escopo.chave(kind), item.app_version)
         return self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
@@ -250,7 +262,7 @@ class LearningService:
         if e.kind is LivroKind.RECEITA and e.state is SkillState.DEPRECATED:
             raise TransicaoProibida("Receita substituída não volta: a versão nova da mesma etapa é a que vale.")
         actor = conferir_transicao(e.state, para, by, side_effect=e.side_effect, human_origin=e.human_origin,
-                                   modo_publica=self._modo_publica(e.kind))
+                                   modo_publica=self._modo_publica(e.kind, e.app))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED) and e.content_hash:
             self._conferir_veto(e.content_hash, e.scope_key, e.app_version)
         self._repo.transicionar_nativo(
