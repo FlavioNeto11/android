@@ -1,10 +1,11 @@
 # Golden set e limiares pré-registrados do Jev (31.7)
 
-**Estado:** PRÉ-REGISTRADO em 03/10/2026, antes de qualquer resultado do Jev (nenhuma chamada real feita; envio fechado no
+**Estado:** PRÉ-REGISTRADO em 02/10/2026 (UTC; texto dos limiares no commit `ae2e5370`, branch `feat/31-8-curador-sombra`), antes de qualquer resultado do Jev (nenhuma chamada real feita; envio fechado no
 código, `JEV_RUNTIME_SEND_APPROVED = False`). Frente Jev com a frente Aprendizado (resposta dela em
 `.claude/handoffs/aprendizado/resposta-golden-31-7.md`). Base: ADR-069 item 6 ("`on` só por consumidor, com GO pré-registrado:
 limiares escritos antes do primeiro resultado"). Mudar um número aqui depois do primeiro resultado exige registro datado e
-diz por quê; o número antigo continua no histórico do Git.
+diz por quê; o número antigo continua no histórico do Git. (Correção de 02/10 ~22:46Z: a primeira versão dizia "03/10"
+por erro de data da sessão; os números não mudaram.)
 
 ## 1. Regras que valem para todo consumidor
 
@@ -24,7 +25,7 @@ diz por quê; o número antigo continua no histórico do Git.
 
 1. **Decisão da pessoa** sobre o item, em `learning_transitions` (`decided_by` ≠ `sistema`, `decided_at`, `from_state` →
    `to_state`), mapeada para a triagem: publicar ou manter → `manter`; rebaixar → `rebaixar`; desligar → `descartar`.
-   Medido em 03/10 no central (só leitura): 48 transições, 2 de pessoa. O golden por decisão humana é quase vazio e cresce
+   Medido em 02/10 no central (só leitura): 48 transições, 2 de pessoa. O golden por decisão humana é quase vazio e cresce
    com a fila "Para aprovar" (30.17).
 2. **Desfecho medido** depois da triagem (`learning_reviews.resultado_posterior`, 14 e 30 dias): receita reativada que
    reproduz bem → `manter` era certo; de volta à quarentena → `rebaixar`/`descartar` era certo; item rebaixado pelo sistema
