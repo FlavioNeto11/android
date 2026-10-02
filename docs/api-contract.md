@@ -3422,3 +3422,41 @@ O painel deixou de espelhar o `ciclo.py`: só traduz as chaves para texto.
 
 Prova `simulated`: `backend/tests/test_learning_acoes.py` percorre `TRANSICOES` × D1 × tipo × estado e confere que `acoes`
 só tem transições válidas para `by=pessoa` e que nenhuma válida falta (salvo as exceções acima). `real`: `not_run`.
+
+## Adendo v0.47 (02/10/2026) — Aprendizado vivo: visão por app e chave de app canônica (Fase 30, itens 30.1 e 30.2)
+
+Compatível para trás: duas rotas novas, só leitura, sem tabela nova e sem cópia de conteúdo (composição de leitura sobre o
+registro de apps, a tabela `apps` e o Livro); no Livro, `app` passa a ser o PACOTE também em fluxo e habilidade, e entra o
+campo `app_ref`. Prova: `simulated` (`backend/tests/test_learning_apps.py`, registro de apps falso). `real` (leitura no
+central depois do deploy): `not_run`.
+
+**Chave canônica (30.2).** `GET /api/aprendizado` (e o item) mostram `app` = pacote. O `app_id` de fluxo e habilidade vira
+pacote pela tabela `apps` e pelo registro de apps; sem principal, os apps exigidos valem só se derem um pacote único. O que
+não resolve vai ao balde `app = "nao_resolvido"` (filtrável: `?app=nao_resolvido`), com o id cru em `app_ref` (`null` nas
+demais linhas). A memória é da persona: `app = null`, nunca no balde.
+
+**`GET /api/aprendizado/apps`** — a lista: registro de apps ∪ apps da loja ∪ pacotes com linha no Livro. Um app sem linha
+aparece com zeros.
+
+| Campo | Significado |
+|---|---|
+| `apps[]` | por app: `pacote`, `nome`, `existencia` (`declarado`, `loja` ou `so_aprendido`), `declarado` (`arquivos{app,catalogo,telas,sessao}`, `acoes`, `telas`, `login_gerenciado`; `null` fora do registro), `loja` (`nome`, `nav_hints`, `known_selectors`; `null` fora da tabela `apps`), `aprendido{total, contagem{tipo:{estado:n}}}`, `absorvido` (n; o que o repositório absorveu não entra no aprendido) e `uso{tipo:{camada:n}}` |
+| `nao_resolvido` | o balde, no mesmo formato de um app (`existencia: null`) |
+| `fora_do_eixo` | contagem por tipo e estado do que não tem eixo de app (memória, voz, preferência, lição sem app) |
+| `modos` | os modos usados na camada: `receitas`, `fluxos`, `habilidades`, `licoes`, `telas` (`null` = não lido) |
+
+**`GET /api/aprendizado/apps/{pacote}`** — o detalhe (também de `nao_resolvido`): `app` (o resumo acima), `declarado[]`
+(`tipo` `app`/`catalogo`/`telas`/`sessao`/`loja`, `arquivo`, `presente`, `quantidade` de ações ou telas, `uso`), `aprendido[]`
+e `absorvido[]` (cada linha é a do Livro mais `origem_na_visao`, `uso` e `absorvida_em`, o commit) e `modos`. `404 not_found`
+se o pacote não está em nenhuma das três fontes. As duas rotas entram antes de `/{kind}/{ref}`.
+
+**Camada de uso** (`uso.camada`, com `uso.porque`): `decide_sem_ia`, `vai_ao_prompt`, `classifica_tela`, `login_fora_da_ia`,
+`pre_preenche`, `contexto_da_persona`, `medido_nao_usado`, `nao_medido`, `inerte` e `desconhecida` (o modo de que depende não
+foi lido). Vale o modo GLOBAL (`ai.recipes`, `ai.flows`, `skills.enabled`, `aprendizado.licoes.modo`, `aprendizado.telas.modo`);
+o modo por app é o item 30.20.
+
+## Adendo v0.48 (02/10/2026) — Papel de IA `persona` (item 17.8)
+
+- `GET /api/ai`: `roles` ganha uma linha `role: "persona"` (a ordem é a de `AI_ROLES`: plan, decide, verify, escalation, social, persona) e `models.persona`. Sem `ai.roles.persona` a linha é idêntica à do `social`.
+- `GET /api/usage`: as chamadas de geração e enriquecimento de persona passam a vir com `role="persona"` (antes `social`); consumidores que filtravam por `social` para somar custo de persona devem somar os dois.
+- Sem mudança de rota, corpo ou código de erro; `POST /api/personas/generate` e `.../enrich` seguem pagos e sob o teto do dia.

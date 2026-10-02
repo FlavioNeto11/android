@@ -215,6 +215,9 @@ class EntradaDoLivro:
     content_hash: str | None = None
     scope_key: str = ""
     app_version: str | None = None
+    #: O `app_id` CRU do fluxo ou da habilidade quando ele não casou com nenhum pacote (`app` = `APP_NAO_RESOLVIDO`):
+    #: o dono vê o que não resolveu. `None` em tudo que resolveu e nos tipos que não têm eixo de app.
+    app_ref: str | None = None
 
     @property
     def requires_owner(self) -> bool:

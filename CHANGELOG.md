@@ -36,6 +36,35 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Resumo por IA: só o ponto de extensão (`ResumidorDeRelatorio`, `pedidos.resumo_ia: false`); nenhuma chamada paga.
 - Prova `simulated`: `backend/tests/test_pedidos_memoria.py` (23) e `test_pedidos_relatorio.py` (28); a corrida contra PostgreSQL é pulada sem `TEST_DATABASE_URL`. `real`: `not_run` (o 28.12 liga o laço no central). Desenho: `docs/design/pedidos-laco.md` §11.
 
+## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
+
+- `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
+  da porta fixa não se sustenta (`ServidorDeUmaVez` já usa a porta 0 efêmera); a corrida era o teste afirmar `entregues == 1` no
+  instante em que o cliente recebe o corpo, enquanto o servidor conta DEPOIS de gravá-lo. Agora o teste espera o fato
+  (`_ate_o_fato`) e roda também com um atraso de 0,3 s depois do corpo (`_atrasar_depois_do_corpo`), que torna a corrida
+  certa para quem não espera; um teste novo confirma que dois servidores ao mesmo tempo não colidem na porta. Só teste e doc;
+  `backend/app/` intacto. Aprendizado K-072.
+
+## 2026-10-02 — 29.21: reinício pedido pela rede que nunca sai (retentativa de 30 s e termo que segurou, branch fix/29-21-reinicio-da-rede)
+
+- `backend/app/devices/rede_convergencia.py`: `_pedir_reinicio` diz na linha (`detail`) QUAL termo do "ocupado" segurou o reinício (worker, controle, objetivo, comando exclusivo, estado do aparelho, verbo `restart` ausente ou recusa), uma vez por termo e uma no esgotamento das 24 tentativas, sem ruído a cada 5 s; com objetivo parado em `wait_reason='rede'` neste aparelho o esgotamento retenta em `retentativa_do_reinicio_s` (30 s) em vez de pôr 300 s de mudez (android-05, 02/10: a execução ficou presa 7 min).
+- `backend/app/vitrine.py`: `objetivo_que_segura` (o id que `objetivo_em_andamento` conta) e `objetivo_esperando_a_rede`.
+- Dívida registrada: o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e zeram no restart do central. Causa exata do "ocupado" no android-05 NÃO provada.
+- Prova `simulated`: `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` (4 casos) e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; `tests/test_rede_*.py` e os testes da vitrine passam. Real `not_run`: reproduzir no android-05.
+- Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.21), `docs/conhecimento/aprendizados.md` (K-071).
+
+## 2026-10-02 — Papel de IA `persona` para a geração de persona (17.8, branch jev/17-8-papel-persona)
+
+- `backend/app/config.py`: `AI_ROLES` ganha `persona`; `Config.ai_role` resolve `persona` SEM `ai.roles.persona` como o `social` (o bloco dele e, nos perfis do 17.7, a camada `social` e depois a `persona`); com bloco próprio o do `social` não vale para ela. `ROLE_DEFAULTS`, `ai_model_for` e `ai_effort_for` tratam `persona` como `social`: instalação existente não muda sem mexer na configuração.
+- `routing.py::generate_persona` chama o papel `persona` (mesmo semáforo do `social` enquanto `ai.roles.persona.concurrency` não for escrito); `anthropic_provider.py`/`openai_provider.py` gravam `role="persona"` no uso. A resposta social da execução segue `social`. Sem migração: `ai_calls.role` é texto livre (linhas antigas de persona ficam `social`).
+- Painel: `custos.ts` lê o papel `persona` (cai no `social` em backend antigo), rótulos e tipos da aba IA e dos custos.
+- Docs: `docs/ia.md` §1 e o parágrafo do 17.8 (como apontar a persona para `openai-flex`), `docs/dominios/persona.md`, `config/config.example.yaml`, `docs/api-contract.md` (adendo v0.48).
+- Prova `simulated`: `backend/tests/test_papel_persona.py` (20 testes: herança do social, bloco próprio, perfis do 17.7, validação da partida, roteamento e papel no uso, vagas compartilhadas) e `frontend/src/features/profiles/custos.test.ts`. `real`: `not_run` (sem chamada ao flex).
+
+## 2026-10-02 — Aprendizado por aplicativo no painel (30.15, primeira fatia, branch feat/30-15-painel-por-app)
+
+- `frontend/src/features/aprendizado/`: nova aba **Aplicativos**, a visão inicial (Global → App, `docs/design/aprendizado-vivo.md` §11): um cartão por app de `GET /api/aprendizado/apps` (existência, declarado, aprendido por tipo e estado, absorvido, "como é usado" pela camada de uso, com o selo "medido, não usado"), mais os cartões "App não resolvido" e "Fora do eixo de app" quando > 0; app com zeros aparece. Detalhe em `#/aprendizado?aba=apps&app=<pacote>` (Declarado, Aprendido, Absorvido) e navegação nos dois sentidos: o item do Livro leva ao app e o app, ao Aprendido filtrado. Filtro "Aplicativo" na aba Aprendido, alimentado por `/apps`, passa `app` ao Livro. Saúde, capability e a fila Atenção ficam para depois (os contratos de saúde ainda não existem). Prova `simulated`: `AplicativosTab.test.tsx` (7); `real`: `not_run`.
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
@@ -60,6 +89,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
   `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
 
+## 2026-10-02 — Aprendizado: follow-up do modo por app e do veto na rota (30.20 e 30.5, branch feat/30-servico-modo-e-veto)
+
+- 30.20: o D1 de lição e tela usa o modo efetivo do pacote do item (`_modo_publica(kind, app)`; `Ajustes.por_licoes` e
+  `por_telas`), o portão de `licoes_para` consulta o fornecedor com algum pacote ligado, e a camada de uso da visão por
+  app usa o modo do pacote; os dois `xfail(strict)` de `test_learning_modo_por_app.py` viraram testes normais.
+- 30.5: `por_que_nao_publica` passa a trazer `vetado` e `modo_desligado` nas rotas do livro e da visão por app
+  (`LearningService.contexto_de_publicacao`). Prova `simulated` (`test_learning_rota_publicacao.py`); nada implantado.
+
+## 2026-10-02 — Aprendizado: modo por app para lições e telas (30.20, branch feat/30-20-modo-por-app)
+
+- `aprendizado.licoes.por_app` e `aprendizado.telas.por_app` (padrão vazio = modo global; chave = pacote Android validado)
+  e `domain/modo_por_app.modo_efetivo`, usado na coleta, na validação, no consumo e na publicação sozinha das telas.
+  Nada liga `on` na instalação. Prova `simulated` (`test_learning_modo_por_app.py`, 16 testes + 2 `xfail` do D1 de um
+  pacote mais permissivo que o global, que pede `servico.py`); ligar no central é `not_run`.
+
 ## 2026-10-02 — Aprendizado: backfill único e idempotente das lições anteriores à 055 (branch feat/aprendizado-backfill-licoes)
 
 - `scripts/aprendizado-backfill-licoes.py` + `learning/infrastructure/backfill_licoes.py`: passa só `licoes.contraste` e
@@ -73,6 +117,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 30.5: a `Entrada` do livro traz `acoes` e `por_que_nao_publica`, calculadas em `domain/livro.py` sobre `ciclo.TRANSICOES`
   (adendo v0.46 do `api-contract.md`); o painel apaga o espelho manual (`model.ts`) e só traduz as chaves. Teste de paridade
   `test_learning_acoes.py` (`simulated`). Veto e modo do tipo no motivo: pendentes do serviço.
+
+## 2026-10-02 — Aprendizado vivo: chave de app canônica e visão por app (30.1 e 30.2, branch feat/30-1-visao-por-app)
+
+- Livro: fluxo e habilidade saem pelo PACOTE (tabela `apps` e registro de apps); o que não resolve cai no balde `nao_resolvido`, com o id cru em `app_ref`; a memória fica fora do eixo de app. Rotas novas, só leitura: `GET /api/aprendizado/apps` e `/apps/{pacote}` (registro ∪ loja ∪ Livro; declarado, aprendido, absorvido e camada de uso por tipo), sem tabela nova nem cópia de YAML (adendo v0.47). Prova `simulated` (`test_learning_apps.py`); `real` `not_run`.
 
 ## 2026-10-02 — Teste da fila de boot do worker espera o fato e não lê os processos do host (fix/teste-fila-de-boot)
 
