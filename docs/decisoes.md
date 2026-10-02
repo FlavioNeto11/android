@@ -2565,7 +2565,10 @@ tudo (ADR-009). No código: (a) alvo conta nossa RETIRADA por bloqueio (`contas_
 ADR-055, que vale também entre contas nossas) e por um espaçamento desde o último gesto com efeito DESTA conta: o maior entre
 `limits.fleet_min_spacing_to_own_account_s` (padrão 600, também em `config/config.example.yaml`) e `cooldown_between_external_actions_s`
 do perfil, devolvendo `retry_at` (espera, não recusa). Ficam como estavam: a exclusão de conta nossa como "terceiro" (elegibilidade de
-comentário de terceiro, 8.3) e a proteção da conta retirada. Nada no prompt da persona ou da decisão social bloqueava a interação entre
+comentário de terceiro, 8.3: regra do roteiro julgada pela sessão executora, sem filtro em código) e a proteção da conta retirada.
+Limite conhecido (2ª revisão adversarial, 03/10): o espaçamento é conferido na execução (a retomada depois da aprovação passa de novo
+pelo `check`), mas nada reserva o gesto entre o `check` e o `_open_effect`; duas execuções simultâneas da MESMA persona em dois aparelhos
+poderiam passar juntas. A regra operacional ("uma interação por vez") cobre isso hoje; reservar o gesto seria item novo. Nada no prompt da persona ou da decisão social bloqueava a interação entre
 contas nossas (varredura de `ADR-050`/`eh_conta_nossa` em `backend/app`: só o `_fleet_gate`). Prova `simulated`:
 `tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central. A
 conduta do conteúdo (sem ofensa, sem fake news, sem link) é do texto gerado, não do filtro: este item não a afrouxa nem a reforça.

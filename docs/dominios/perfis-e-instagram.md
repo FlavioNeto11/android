@@ -654,3 +654,5 @@ receber contas novas.
   comando `session.logout` dentro de `run_device_job`; hibernado ou parado é acordado com a confirmação de quarentena do SISTEMA e devolvido ao
   estado de antes. Falha em qualquer passo: quarentena aberta, evento `device.account_cleanup` em erro, sem nova tentativa. Idempotente (não repete
   se uma pessoa já resolveu), sem retroativo na subida (retirada anterior ao deploy segue pela rota manual do 29.24), sem o @ em evento ou log.
+  **Antes do deploy:** um marcador velho e já mascarado (retirada anterior ao deploy) aberto num aparelho faz a limpeza nova recusar ali
+  (`outra_conta`, recusa segura, evento de erro); resolva-o antes pela rota do 29.24 (em 03/10: o do android-04).
