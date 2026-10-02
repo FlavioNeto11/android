@@ -5210,6 +5210,36 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T21:53:18+00:00"
+  },
+  "28.12": {
+   "id": "28.12",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #118, merge 26eee424 na main (02/10/2026, sessao jev). Ajustes de API: PedidoView.proxima_prevista (data calculada pela agenda quando o laco ainda nao gerou) e laco{ligado} na lista (sinal do laco desligado). Achados da validacao do deploy 2 na tela Pedidos: erro na primeira carga so com o aviso e Tentar de novo; previa com persona e app pelo nome, aviso de autonomia (Observar/Preparar) e objetivo recolhido com as quebras; cabecalho de cartao compartilhado (ui.module.css, <=720 px, texto com base 12rem e acao no canto); leitura em portugues das datas; barra de filtros some sem pedidos; botao no link velho; titulo dado pela pessoa inteiro no detalhe; objetivo do Resumo com pre-line; 'Carregar mais antigas' so com detalhe cheio (20); motivo de nova tentativa legivel (UTC). Prova simulated: vitest 1279/106 arquivos, typecheck limpo, pytest de pedidos 458 (Idle, -n 3), docs-check 0/0; navegador contra backend simulado a 1366/600/386/375 px (lista, filtros, Avisos, erro e nova tentativa, novo pedido, datas, previa nas tres autonomias, detalhe e abas, link velho, Pendencias). Persona e app pelo nome na previa: so vitest (o simulado nao tem persona). Suite inteira do backend: not_run neste PR.",
+   "blocker": "Prova real pendente: so depois do deploy 3, com pedidos.enabled ligado no central (e desligado no fim), teto US$ 1,00 no total e US$ 0,30 por pedido, aparelho sem conta real, navegador so leitura percorrendo o detalhe de um pedido.",
+   "files": [
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/servico.py",
+    "frontend/src/features/pedidos/ListaDePedidos.tsx",
+    "frontend/src/features/pedidos/DetalheDoPedido.tsx",
+    "frontend/src/features/pedidos/PreviaDoPedido.tsx",
+    "frontend/src/features/pedidos/NovoPedido.tsx",
+    "frontend/src/features/pedidos/CaixaDeAvisos.tsx",
+    "frontend/src/components/ui.module.css"
+   ],
+   "testes": [
+    "frontend/src/features/pedidos/PedidosPage.test.tsx",
+    "frontend/src/features/pedidos/NovoPedido.test.tsx",
+    "frontend/src/features/pedidos/formato.test.ts",
+    "backend/tests/test_pedidos_api.py",
+    "backend/tests/test_pedidos_retentativa.py"
+   ],
+   "grupo": "sessao:jev-28-12",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T23:44:10+00:00"
   }
  },
  "rodadas": [
@@ -6339,6 +6369,15 @@
    ],
    "grupos": [
     "8-operacao:8.3+8.4"
+   ]
+  },
+  {
+   "quando": "2026-10-02T23:44:10+00:00",
+   "itens": [
+    "28.12"
+   ],
+   "grupos": [
+    "sessao:jev-28-12"
    ]
   }
  ]
