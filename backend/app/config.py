@@ -1062,6 +1062,14 @@ class PedidosCfg(BaseModel):
     resumo_ia: bool = False
     #: Teto por relatório, em USD, que o resumidor deve respeitar (e que o 28.6 conta no orçamento do pedido).
     resumo_ia_teto_usd: float = Field(0.05, ge=0.0, le=5.0)
+    #: Tentativas e falhas seguidas (28.5, §7.6). Cada pedido tem as próprias colunas (`max_tentativas`, `pausa_por_falha`,
+    #: 067); estes dois são o PADRÃO global, usado quando a coluna não vem (e o que a criação pela API do 28.9 grava).
+    #: `max_tentativas` é o total de execuções por ocorrência (2 = a primeira e UMA repetição).
+    max_tentativas: int = Field(2, ge=1, le=10)
+    falhas_para_pausar: int = Field(3, ge=1, le=100)
+    #: Atraso exponencial da nova tentativa: `base * 2**(n-1)`, no máximo `retentativa_teto_s`. Chega até `tick_s` tarde.
+    retentativa_base_s: float = Field(60.0, ge=1.0, le=86_400.0)
+    retentativa_teto_s: float = Field(900.0, ge=1.0, le=86_400.0)
 
 
 class AppConfigFile(BaseModel):

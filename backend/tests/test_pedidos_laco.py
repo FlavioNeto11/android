@@ -50,12 +50,14 @@ def _laco(h: Harness, r: Relogio, *, dono: str = "laco-a", **cfg) -> LacoDePedid
 
 def _pedido(db, pid: str = "ped1", *, criado: datetime, estado: str = "ativo", autonomia: str = "observar",
             sobreposicao: str = "pular", coalescer: int = 1, janela: int | None = None, max_oc: int | None = None,
-            fuso: str = "UTC") -> None:
+            fuso: str = "UTC", max_tentativas: int = 1, pausa_por_falha: int = 3) -> None:
+    # `max_tentativas=1` por padrão: os testes do 28.4 medem o fechamento, e uma falha sem efeito agora ganharia uma nova
+    # tentativa (28.5; `test_pedidos_tentativas.py` cobre isso com o padrão de verdade, 2).
     db.execute("INSERT INTO pedidos(id, titulo, objetivo, alvos, autonomia, sobreposicao, coalescer,"
-               " janela_recuperacao_s, max_ocorrencias, fuso, estado, versao, criado_em, atualizado_em)"
-               " VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
-               (pid, "teste", COMMAND, ALVOS, autonomia, sobreposicao, coalescer, janela, max_oc, fuso, estado,
-                to_iso(criado), to_iso(criado)))
+               " janela_recuperacao_s, max_ocorrencias, fuso, max_tentativas, pausa_por_falha, estado, versao,"
+               " criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+               (pid, "teste", COMMAND, ALVOS, autonomia, sobreposicao, coalescer, janela, max_oc, fuso, max_tentativas,
+                pausa_por_falha, estado, to_iso(criado), to_iso(criado)))
 
 
 def _gatilho(db, gid: str, pid: str, tipo: str, spec: dict, criado: datetime, cursor: str | None = None) -> None:
