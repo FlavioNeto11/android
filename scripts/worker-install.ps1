@@ -98,12 +98,44 @@ if (Test-Path -LiteralPath $pyDaOrigem) {
 }
 if (-not $versao) {
   # Sem o venv do central à mão (o caso de copiar de um compartilhamento), lê o `.git` da árvore de origem.
-  $cabeca = (Get-Content -LiteralPath (Join-Path $Origem '.git\HEAD') -ErrorAction SilentlyContinue)
+  # Espelha `app/version.py::_pastas_do_git`: num `git worktree` o `.git` é um ARQUIVO `gitdir: <caminho>`; o HEAD
+  # fica na pasta do worktree e as refs na pasta comum (arquivo `commondir`) ou em `packed-refs`.
+  $git = Join-Path $Origem '.git'
+  if (Test-Path -LiteralPath $git -PathType Leaf) {
+    $alvo = (Get-Content -LiteralPath $git -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($alvo -and $alvo.StartsWith('gitdir:')) {
+      $git = $alvo.Substring(7).Trim()
+      if (-not [System.IO.Path]::IsPathRooted($git)) { $git = [System.IO.Path]::GetFullPath((Join-Path $Origem $git)) }
+    }
+  }
+  $comum = $git
+  $arqComum = Join-Path $git 'commondir'
+  if (Test-Path -LiteralPath $arqComum -PathType Leaf) {
+    $c = (Get-Content -LiteralPath $arqComum -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($c) {
+      $c = $c.Trim()
+      $comum = if ([System.IO.Path]::IsPathRooted($c)) { $c } else { [System.IO.Path]::GetFullPath((Join-Path $git $c)) }
+    }
+  }
+  $sha = $null
+  $cabeca = (Get-Content -LiteralPath (Join-Path $git 'HEAD') -ErrorAction SilentlyContinue | Select-Object -First 1)
   if ($cabeca -and $cabeca.StartsWith('ref:')) {
     $ref = $cabeca.Substring(4).Trim()
-    $sha = (Get-Content -LiteralPath (Join-Path $Origem ".git\$ref") -ErrorAction SilentlyContinue)
+    foreach ($pasta in @($git, $comum)) {
+      $arq = Join-Path $pasta $ref
+      if (-not $sha -and (Test-Path -LiteralPath $arq -PathType Leaf)) {
+        $sha = (Get-Content -LiteralPath $arq -ErrorAction SilentlyContinue | Select-Object -First 1)
+      }
+    }
+    $empacotadas = Join-Path $comum 'packed-refs'      # `git gc` move as refs soltas para cá
+    if (-not $sha -and (Test-Path -LiteralPath $empacotadas -PathType Leaf)) {
+      foreach ($linha in (Get-Content -LiteralPath $empacotadas -ErrorAction SilentlyContinue)) {
+        if ($linha -notmatch '^[#^]' -and $linha.Trim().EndsWith(" $ref")) { $sha = $linha.Trim().Split(' ')[0]; break }
+      }
+    }
   } else { $sha = $cabeca }
-  $versao = if ($sha) { "0.1.0+$($sha.Substring(0, 7))" } else { '0.1.0+desconhecido' }
+  $sha = if ($sha) { $sha.Trim() } else { $null }
+  $versao = if ($sha -and $sha.Length -ge 7) { "0.1.0+$($sha.Substring(0, 7))" } else { '0.1.0+desconhecido' }
 }
 $versao = $versao.Trim()
 
