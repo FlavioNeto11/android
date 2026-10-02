@@ -864,9 +864,10 @@ class ContextRetrievalSemanticCfg(BaseModel):
     model: str = ""                                 # vazio = o padrão do adaptador
     #: Classe do repositório para a política de envio. A provedor REMOTO `private` e `synthetic` são NEGADOS (constantes de
     #: código `PRIVATE_CODE_SEND_APPROVED` e `SYNTHETIC_REMOTE_SEND_APPROVED`, não deste arquivo); só `public` com
-    #: `allow_public` passa. `synthetic` serve a fixtures e testes com provedor fake ou local (ADR-063).
+    #: `allow_public` E a prova independente de visibilidade pública (git remote + GitHub anônimo) passa. `synthetic` serve a
+    #: fixtures e testes com provedor fake ou local (ADR-063).
     repository_class: Literal["private", "public", "synthetic"] = "private"
-    allow_public: bool = False                      # repositório público só segue a provedor remoto com isto ligado
+    allow_public: bool = False                      # necessário, mas NÃO suficiente: o repositório real tem de provar ser público
     timeout_ms: int = Field(5_000, ge=100, le=60_000)
     max_calls: int = Field(2, ge=1, le=10)          # por pedido (etapa A + etapa B)
     max_calls_per_session: int = Field(40, ge=1, le=10_000)

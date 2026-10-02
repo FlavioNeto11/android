@@ -26,10 +26,11 @@ from app.modules.context_retrieval.domain.model import (
     Budget, Chunk, FallbackReason, MapEntry, PayloadLimits, ProviderUsage, RepoMap, RetrievalRequest,
 )
 from app.modules.context_retrieval.domain.policy import ExternalContextPolicy, RepositoryClass
-from app.modules.context_retrieval.domain.ports import ContextRetriever, ProviderLocality, SemanticProvider
+from app.modules.context_retrieval.domain.ports import ContextRetriever, ProviderLocality, SemanticProvider, Visibility
 from app.modules.context_retrieval.infrastructure.cache import SemanticCache
 from app.modules.context_retrieval.infrastructure.providers.factory import build_provider
-from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider, tokenize
+from app.modules.context_retrieval.infrastructure.providers.fake import (FakeSemanticProvider, FixedVisibilityVerifier,
+                                                                          tokenize)
 from app.modules.context_retrieval.adapters.jev import (
     DEFAULT_MODEL, JevSemanticProvider, PRICE_USD_PER_MTOK_INPUT,
 )
@@ -116,8 +117,9 @@ class ChunksFalsos:
 
 
 def _politica(repo: RepositoryClass = RepositoryClass.PUBLIC, loc: ProviderLocality = REMOTE,
-              allow_public: bool = True) -> ExternalContextPolicy:
-    return ExternalContextPolicy(repository=repo, locality=loc, allow_public=allow_public)
+              allow_public: bool = True, visibilidade: Visibility = Visibility.PUBLIC) -> ExternalContextPolicy:
+    return ExternalContextPolicy(repository=repo, locality=loc, allow_public=allow_public,
+                                 verifier=FixedVisibilityVerifier(visibilidade))
 
 
 class Montagem:

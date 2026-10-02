@@ -21,7 +21,8 @@ from app.modules.context_retrieval.domain.identifiers import explicit_identifier
 from app.modules.context_retrieval.domain.model import (Budget, ContextSelection, FallbackReason, FileHit,
                                                         ProviderUsage, Region, RetrievalMode, RetrievalRequest)
 from app.modules.context_retrieval.domain.policy import ExternalContextPolicy, RepositoryClass
-from app.modules.context_retrieval.domain.ports import ProviderLocality
+from app.modules.context_retrieval.domain.ports import ProviderLocality, Visibility
+from app.modules.context_retrieval.infrastructure.providers.fake import FixedVisibilityVerifier
 from app.modules.context_retrieval.domain.sensitive import (SensitivePathMatcher, hard_secret_kind, has_soft_secret)
 from app.modules.context_retrieval.infrastructure.cache import SemanticCache
 from app.modules.context_retrieval.infrastructure.metrics import RetrievalMetrics, resumir, sanear
@@ -134,10 +135,13 @@ def test_repositorio_privado_e_negado_a_provedor_remoto() -> None:
 
 
 def test_publico_remoto_so_com_allow_public_explicito() -> None:
-    nega = ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE)
+    nega = ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE,
+                                 verifier=FixedVisibilityVerifier(Visibility.PUBLIC))
     assert not nega.can_send_repository().allowed and nega.can_send_repository().reason == "public_repository_not_enabled"
-    assert ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE,
-                                 allow_public=True).can_send_repository().allowed
+    assert not nega.configured_for_remote().allowed
+    liberado = ExternalContextPolicy(repository=RepositoryClass.PUBLIC, locality=ProviderLocality.REMOTE, allow_public=True,
+                                     verifier=FixedVisibilityVerifier(Visibility.PUBLIC))
+    assert liberado.can_send_repository().allowed and liberado.configured_for_remote().allowed
 
 
 @pytest.mark.parametrize("allow_public", [False, True])

@@ -134,7 +134,7 @@ class SemanticRetriever:
     # ------------------------------------------------------------------ etapa A
     def _etapa_a(self, request: RetrievalRequest, prov: SemanticProvider, run: _Corrida) -> list[tuple[str, float]]:
         assert run.rb is not None
-        mapa = self._mapa_filtrado(request)
+        mapa = self._mapa_filtrado(request, run)
         run.meta["files_considered"] = len(mapa.entries)
         run.meta["stage_a_cache"] = "miss"
         if not mapa.entries:
@@ -174,11 +174,12 @@ class SemanticRetriever:
         self._cache_put(chave, {"files": [[p, s] for p, s in validos]})
         return validos
 
-    def _mapa_filtrado(self, request: RetrievalRequest) -> RepoMap:
+    def _mapa_filtrado(self, request: RetrievalRequest, run: _Corrida | None = None) -> RepoMap:
         mapa = self.map_source.repo_map()
         prefixos = tuple(p for p in (_normalizar_prefixo(x) for x in request.scope) if p)
         mantidas: list[MapEntry] = []
         usados = 0
+        omitidas = 0
         for e in mapa.entries:
             if len(mantidas) >= self.limits.max_map_files:
                 break
@@ -187,11 +188,20 @@ class SemanticRetriever:
             if not self.policy.can_send_file(e.path).allowed:
                 continue
             # O corte em bytes é por ENTRADA inteira: o que conta em `files_considered` é exatamente o que vai.
-            tam = len(RepoMap(mapa.revision, (e,)).render().encode("utf-8")) + 1
+            renderizada = RepoMap(mapa.revision, (e,)).render()
+            c = self.policy.can_send_map_entry(renderizada)
+            if not c.allowed:
+                if c.hard:  # segredo duro no mapa derruba o pedido, como no payload serializado
+                    raise _Parar(c.code or FallbackReason.SECRET_BLOCK, (f"secret_block:{c.reason}",))
+                omitidas += 1  # segredo mole: a entrada some do payload (sem trocar por marcador, que viraria termo de ranking)
+                continue
+            tam = len(renderizada.encode("utf-8")) + 1
             if usados + tam > self.limits.max_bytes:
                 break
             usados += tam
             mantidas.append(e)
+        if run is not None and omitidas:
+            run.meta["map_entries_withheld_secret"] = omitidas
         return RepoMap(mapa.revision, tuple(mantidas))
 
     # ------------------------------------------------------------------ etapa B

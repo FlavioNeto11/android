@@ -15,7 +15,8 @@ from app.modules.context_retrieval import wiring
 from app.modules.context_retrieval.domain.errors import ProviderTimeout
 from app.modules.context_retrieval.domain.model import RetrievalMode
 from app.modules.context_retrieval.domain.ports import ProviderLocality
-from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider
+from app.modules.context_retrieval.domain.ports import Visibility
+from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider, FixedVisibilityVerifier
 
 from .test_context_retrieval_integration import _cfg, _eventos
 
@@ -61,7 +62,7 @@ def _servico(tmp_path: Path, provider: FakeSemanticProvider | None, *, mode: str
     cfg = _cfg(tmp_path, enabled=True, mode=mode,
                semantic={"provider": "fake", "repository_class": "public", "allow_public": True, **semantic},
                cache={"enabled": semantic.pop("cache", False)})
-    return wiring.build_service(cfg, root=raiz, provider=provider)
+    return wiring.build_service(cfg, root=raiz, provider=provider, visibility=FixedVisibilityVerifier(Visibility.PUBLIC))
 
 
 def _caminhos(pack: Any) -> list[str]:
@@ -187,14 +188,14 @@ def test_cache_nunca_reintroduz_arquivo_que_a_politica_passou_a_bloquear(tmp_pat
     falso = FakeSemanticProvider(locality=ProviderLocality.REMOTE, concepts={"autenticacao": ["login", "token"]})
     cfg1 = _cfg(tmp_path, enabled=True, mode="hybrid", semantic={"provider": "fake", "repository_class": "public", "allow_public": True})
     raiz = _arquivos(tmp_path / "repo")
-    antes = wiring.build_service(cfg1, root=raiz, provider=falso).gather(pergunta)
+    antes = wiring.build_service(cfg1, root=raiz, provider=falso, visibility=FixedVisibilityVerifier()).gather(pergunta)
     assert antes is not None and "app/auth.py" in _caminhos(antes)
     chamadas = len(falso.calls)
 
     # agora a instalação passa a tratar `app/auth.py` como sensível; o MESMO cache em disco continua lá
     cfg2 = _cfg(tmp_path, enabled=True, mode="hybrid", sensitive_paths=["app/auth.py"],
                 semantic={"provider": "fake", "repository_class": "public", "allow_public": True})
-    depois = wiring.build_service(cfg2, root=raiz, provider=falso).gather(pergunta)
+    depois = wiring.build_service(cfg2, root=raiz, provider=falso, visibility=FixedVisibilityVerifier()).gather(pergunta)
     assert depois is not None
     assert len(falso.calls) > chamadas                                       # outra política = outra chave: não serviu do cache
     assert "app/auth.py" not in _caminhos(depois)
@@ -310,7 +311,7 @@ def _build(tmp_path: Path, provider: FakeSemanticProvider, classe: str, allow_pu
     raiz = tmp_path / "repo"
     if not raiz.exists():                      # não reescrever: o mtime entra na revisão e invalidaria o cache sozinho
         _arquivos(raiz)
-    return wiring.build_service(cfg, root=raiz, provider=provider)
+    return wiring.build_service(cfg, root=raiz, provider=provider, visibility=FixedVisibilityVerifier(Visibility.PUBLIC))
 
 
 @pytest.mark.parametrize("classe,allow_public", [("private", False), ("private", True),
@@ -368,23 +369,3 @@ def test_mudar_a_classe_do_repositorio_nao_reaproveita_resposta_de_politica_anti
     f = [ExternalContextPolicy(repository=RepositoryClass(c), locality=ProviderLocality.FAKE).fingerprint()
          for c in (de, para)]
     assert f[0] != f[1]
-
-
-def test_status_reflete_a_regra_nova_de_envio_externo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.modules.context_retrieval.wiring import estado_do_retrieval
-
-    monkeypatch.setenv("TYPESAFE_API_KEY", "valor-de-teste-nao-e-uma-chave")
-
-    def envio(classe: str, allow_public: bool) -> dict[str, Any]:
-        cfg = _cfg(tmp_path, enabled=True, mode="shadow",
-                   semantic={"provider": "jev", "repository_class": classe, "allow_public": allow_public})
-        return estado_do_retrieval(cfg)["external_send"]  # type: ignore[return-value]
-
-    assert envio("private", False) == {"allowed": False, "reason": "private_repository", "repository_class": "private"}
-    assert envio("private", True)["allowed"] is False
-    assert envio("synthetic", False) == {"allowed": False, "reason": "synthetic_repository",
-                                         "repository_class": "synthetic"}
-    assert envio("synthetic", True)["allowed"] is False                    # allow_public não libera synthetic
-    assert envio("public", False) == {"allowed": False, "reason": "public_repository_not_enabled",
-                                      "repository_class": "public"}
-    assert envio("public", True) == {"allowed": True, "reason": "allowed", "repository_class": "public"}

@@ -6,7 +6,9 @@ cache -> resultado híbrido. Só código PÚBLICO, no checkout fixado do piloto 
 repositório deste projeto: a política de envio bloqueia código privado de qualquer forma (`PRIVATE_CODE_SEND_APPROVED = False`)
 e este script ainda recusa rodar se a raiz não for o checkout público íntegro.
 
-Limites (travados no código, não em argumento): 6 perguntas, 12 chamadas, sem nova tentativa. As perguntas são escolhidas por regra
+Limites (travados no código, não em argumento): 6 perguntas, 12 chamadas ao Jev, sem nova tentativa.
+O envio passa pela MESMA regra de produção: `public` + `allow_public` + prova de que o repositório real é público (uma consulta
+anônima à `api.github.com` pelo remoto do checkout; não conta entre as 12 do Jev). Sem atalho e sem verificador injetado. As perguntas são escolhidas por regra
 ANTES de qualquer execução e vêm intactas do holdout do piloto: as 2 primeiras de cada grupo, na ordem do `golden.json`.
 
 A chave `TYPESAFE_API_KEY` vem só do ambiente/`.env` pelo `EnvSettings`; este script nunca a lê, imprime ou grava. Sem chave:

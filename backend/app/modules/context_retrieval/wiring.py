@@ -11,6 +11,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from ...config import Config, EnvSettings
+from .adapters.github_visibility import GitHubVisibilityVerifier
 from .application.budget import BudgetLedger
 from .application.hybrid import HybridRetriever
 from .application.local import LocalRetriever
@@ -18,7 +19,7 @@ from .application.semantic import SemanticRetriever
 from .application.service import ContextRetrievalService, DisabledContextRetrieval
 from .domain.model import Budget, PayloadLimits, RetrievalMode
 from .domain.policy import ExternalContextPolicy, RepositoryClass
-from .domain.ports import MetricsSink, ProviderLocality, SemanticProvider
+from .domain.ports import MetricsSink, ProviderLocality, RepositoryVisibilityVerifier, SemanticProvider, Visibility
 from .domain.sensitive import SensitivePathMatcher
 from .infrastructure.bm25 import BM25Retriever
 from .infrastructure.cache import SemanticCache
@@ -71,10 +72,20 @@ def criar_provedor(cfg: Config) -> SemanticProvider | None:
     return build_provider(s.provider, model=s.model, env=ambiente_do_provedor(cfg))
 
 
+def criar_verificador(cfg: Config, raiz: Path, locality: ProviderLocality) -> RepositoryVisibilityVerifier | None:
+    """A prova de visibilidade só existe para provedor REMOTE com a configuração já pedindo repositório público: em qualquer outro
+    caso ela nunca é construída (nada de git nem de rede para quem é local, fake ou privado)."""
+    s = cfg.file.context_retrieval.semantic
+    if locality is not ProviderLocality.REMOTE or s.repository_class != "public" or not s.allow_public:
+        return None
+    return GitHubVisibilityVerifier(raiz, store_dir=pasta_de_dados(cfg))
+
+
 def build_service(cfg: Config, *, root: Path | None = None, mode: RetrievalMode | None = None,
                   provider: SemanticProvider | None = None, sink: MetricsSink | None = None,
+                  visibility: RepositoryVisibilityVerifier | None = None,
                   ) -> ContextRetrievalService | DisabledContextRetrieval:
-    """`mode` e `provider` só existem para teste e CLI; sem eles, vale o que a configuração diz."""
+    """`mode`, `provider` e `visibility` só existem para teste e CLI; sem eles, vale o que a configuração diz."""
     cc = cfg.file.context_retrieval
     efetivo = mode or RetrievalMode(cc.effective_mode)
     if efetivo is RetrievalMode.DISABLED:
@@ -99,7 +110,9 @@ def build_service(cfg: Config, *, root: Path | None = None, mode: RetrievalMode 
         if prov is not None:
             nome, modelo = prov.name, prov.model
             politica = ExternalContextPolicy(repository=RepositoryClass(s.repository_class), locality=prov.locality,
-                                             allow_public=s.allow_public, sensitive=sensivel)
+                                             allow_public=s.allow_public, sensitive=sensivel,
+                                             verifier=visibility if visibility is not None
+                                             else criar_verificador(cfg, raiz, prov.locality))
             semantico = SemanticRetriever(
                 provider=prov, policy=politica,
                 map_source=RepoMapProvider(ws, cache_dir=dados / "repomap"),
@@ -119,16 +132,24 @@ def estado_do_retrieval(cfg: Config) -> dict[str, object]:
     cc = cfg.file.context_retrieval
     prov = criar_provedor(cfg) if cc.semantic.provider != "none" else None
     disponivel, motivo = prov.available() if prov is not None else (False, "no_provider")
+    locality = prov.locality if prov is not None else ProviderLocality.REMOTE
     politica = ExternalContextPolicy(
-        repository=RepositoryClass(cc.semantic.repository_class),
-        locality=prov.locality if prov is not None else ProviderLocality.REMOTE, allow_public=cc.semantic.allow_public)
-    envio = politica.can_send_repository()
+        repository=RepositoryClass(cc.semantic.repository_class), locality=locality,
+        allow_public=cc.semantic.allow_public, verifier=criar_verificador(cfg, cfg.root.resolve(), locality))
+    configurado = politica.configured_for_remote()
+    envio, visibilidade = politica.peek_repository()      # `peek`: só o que já está provado; o status nunca vai à rede
+    if visibilidade is None:
+        estado = "not_applicable" if locality is not ProviderLocality.REMOTE or not configurado.allowed else "unverified"
+    else:
+        estado = visibilidade.value if visibilidade is not Visibility.UNKNOWN else "unverified"
     return {
         "enabled": cc.enabled, "mode": cc.effective_mode, "top_k": cc.top_k,
         "provider": {"name": cc.semantic.provider, "model": prov.model if prov is not None else "",
                      "available": disponivel, "unavailable_reason": None if disponivel else motivo},
         "external_send": {"allowed": envio.allowed, "reason": envio.reason,
-                          "repository_class": cc.semantic.repository_class},
+                          "repository_class": cc.semantic.repository_class,
+                          "configured_for_remote": configurado.allowed and locality is ProviderLocality.REMOTE,
+                          "visibility_verified": visibilidade is Visibility.PUBLIC, "visibility": estado},
         "budget": {"timeout_ms": cc.semantic.timeout_ms, "max_calls": cc.semantic.max_calls,
                    "max_cost_usd": cc.semantic.max_cost_usd},
         "summary": resumir(RetrievalMetrics(pasta_de_dados(cfg)).recentes(500)),

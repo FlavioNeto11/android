@@ -17,7 +17,7 @@ from ...domain.errors import ProviderError
 from ...domain.model import (
     Chunk, FileChoice, FilesReply, ProviderUsage, RegionChoice, RegionsReply, RepoMap,
 )
-from ...domain.ports import ProviderLocality
+from ...domain.ports import ProviderLocality, Visibility
 
 #: Palavras que não distinguem arquivo nenhum (português e inglês). Lista curta de propósito: é um fake, não um NLP.
 STOPWORDS = frozenset({
@@ -40,6 +40,27 @@ def tokenize(text: str) -> list[str]:
 
 def _serializar_chunks(chunks: Sequence[Chunk]) -> str:
     return "\n".join(f"### {c.path}:{c.start_line}-{c.end_line}\n{c.text}" for c in chunks)
+
+
+class FixedVisibilityVerifier:
+    """`RepositoryVisibilityVerifier` de teste: devolve sempre a mesma visibilidade (ou levanta) e conta as chamadas.
+    Nunca vai à rede nem lê o git."""
+
+    def __init__(self, visibility: Visibility = Visibility.PUBLIC, *, raises: Exception | None = None) -> None:
+        self.visibility = visibility
+        self.raises = raises
+        self.verify_calls = 0
+        self.peek_calls = 0
+
+    def verify(self) -> Visibility:
+        self.verify_calls += 1
+        if self.raises is not None:
+            raise self.raises
+        return self.visibility
+
+    def peek(self) -> Visibility:
+        self.peek_calls += 1
+        return self.visibility
 
 
 class FakeSemanticProvider:

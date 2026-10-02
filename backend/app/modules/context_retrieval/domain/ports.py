@@ -16,6 +16,30 @@ class ProviderLocality(str, Enum):
     FAKE = "fake"      # determinístico, para teste
 
 
+class Visibility(str, Enum):
+    """O que se PROVOU sobre a visibilidade do repositório real. `UNKNOWN` é o valor de qualquer dúvida e bloqueia o envio."""
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+    UNKNOWN = "unknown"
+
+
+class RepositoryVisibilityVerifier(Protocol):
+    """Evidência INDEPENDENTE da configuração de que o repositório real é público.
+
+    A política não sabe como se prova (GitHub, git remote, ...): só pergunta. Erro, remoto ausente, remoto de host não
+    suportado, resposta ambígua: tudo é `UNKNOWN`, nunca `PUBLIC`.
+    """
+
+    def verify(self) -> Visibility:
+        """Pode ir à rede. Só é chamada quando o provedor é REMOTE e a configuração já pede envio de repositório público."""
+        ...
+
+    def peek(self) -> Visibility:
+        """Só o que já está provado e vigente (cache); NUNCA vai à rede. Serve ao endpoint de status."""
+        ...
+
+
 @runtime_checkable
 class ContextRetriever(Protocol):
     name: str

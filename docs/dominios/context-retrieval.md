@@ -62,9 +62,11 @@ Não se otimiza para top-1; o contrato é top-3/top-5 de contexto.
 
 - A política responde `can_send_repository/file/chunk/query/payload` e olha **onde o provedor executa** e a **classe do
   repositório**, nunca o nome do provedor. Local: tudo passa. Falso: caminho e segredo valem como se fosse externo.
-  Remoto (matriz): **privado NEGADO, sintético NEGADO, público só com `allow_public: true` explícito**. FAKE e LOCAL não sofrem o
-  bloqueio de classe. `synthetic` é útil para fixtures e testes (com provedor FAKE ou LOCAL); **não** constitui autorização para
-  enviar código a um serviço remoto.
+  Remoto (matriz): **privado NEGADO; sintético NEGADO; público só com `allow_public: true` E prova independente de que o
+  repositório real é público**. Sem prova (privado, desconhecido, erro de rede, remoto ausente ou não suportado) a política falha
+  FECHADA: nenhum mapa, nenhum chunk, nenhuma chamada. FAKE e LOCAL não sofrem o bloqueio de classe nem a verificação.
+  `synthetic` é útil para fixtures e testes (com provedor FAKE ou LOCAL); **não** constitui autorização para enviar código
+  remoto.
 - `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são constantes de **código**. Mudar é decisão do
   dono, com ADR. Nenhum YAML liga.
 - Caminhos que nunca entram em índice, mapa ou chunk: `.env*`, `config.yaml`, `secrets/`, chaves, credenciais, cookies,
@@ -112,12 +114,8 @@ Registrados, não corrigidos nesta fatia; nenhum deles bloqueia o uso atual (CLI
 - **Uso por mais de uma thread**: `Workspace.pinned()` guarda a revisão congelada na instância, sem trava; duas sessões em
   threads diferentes podem deixá-la congelada. O orçamento (`BudgetLedger`) já é atômico. Antes de ligar o serviço a um
   endpoint, dar a cada thread o seu `Workspace` ou travar o `pinned`.
-- **A classe do repositório é declarada na configuração** (`semantic.repository_class`) e a política não a confere com o
-  repositório de fato. Por isso a classe sozinha nunca autoriza envio remoto: só `public` + `allow_public: true` passa, e um
-  repositório privado marcado `synthetic` (ou `public` sem `allow_public`) continua bloqueado. Marcar como `public` um
-  repositório que não é público segue sendo erro do operador; uma verificação por `git remote` fica para o primeiro uso remoto real.
-- **Segredo "mole" no mapa da etapa A** (título de markdown, símbolo, primeira linha de docstring) só passa pelo portão
-  duro; a regra "mole tira só o trecho" vale para chunks da etapa B.
+- **A verificação de visibilidade só conhece o GitHub.** Remoto de outro host (GitLab, servidor próprio) é `UNKNOWN` e fica
+  bloqueado; suportar outro host exige outro verificador. A prova vale 15 min e a API anônima tem limite de uso (403 = `UNKNOWN`).
 - **`query_fp` é sha256 de 12 hex sem sal**: serve para agrupar eventos, não é anônimo contra força bruta de pergunta curta.
 - **Teto de sessão** vale pela vida do serviço e não zera; a estimativa de tokens (bytes/4) pode subestimar o Jev em até ~2x
   (o payload leva cada id duas vezes); o custo que conta é o que o provedor reporta.
@@ -126,6 +124,38 @@ Registrados, não corrigidos nesta fatia; nenhum deles bloqueia o uso atual (CLI
 - Poda do índice BM25 é por raiz (3 por raiz); o diretório não tem teto global.
 - Fora do módulo: `test_instalacao_do_worker::test_o_instalador_windows_grava_a_versao_derivada_do_commit` falha em qualquer
   `git worktree` (inclusive da `main`): `worker-install.ps1` lê `.git\HEAD` como arquivo. Dívida separada.
+
+## Prova de que o repositório é público
+
+`repository_class: public` no YAML é só uma declaração. O envio a provedor REMOTE exige a prova independente de uma porta do
+domínio, `RepositoryVisibilityVerifier` (`verify()` pode ir à rede; `peek()` nunca vai). A política não sabe como se prova.
+Implementação: `adapters/github_visibility.py`.
+- Lê TODOS os remotos do git (`git remote -v`, que aplica `insteadOf`), canoniza cada um para `github.com/dono/repo` (https, ssh,
+  `git@`, `git://`; credencial na URL é descartada) e pergunta ao GitHub, **anonimamente** (sem token, sem proxy do ambiente, sem
+  seguir redirecionamento), `GET /repos/{dono}/{repo}`. `PUBLIC` só com 200, `private: false`, `visibility` pública se vier e o
+  nome da resposta igual ao pedido, para todos os remotos.
+- **`UNKNOWN` bloqueia**: remoto ausente, host que não é github.com, URL fora do formato, 404, 301, 403, 5xx, rede, TLS, tempo,
+  corpo inesperado. Não presume público porque o clone funciona sem senha nem pelo nome.
+- Só roda com provedor REMOTE e a configuração já pedindo `public` + `allow_public`. Desligado, `local_only`, FAKE e LOCAL: nenhuma
+  rede e nenhum `git` (o verificador nem é construído). Privado e sintético não têm o que provar e continuam negados pela configuração.
+- Cache curto da prova: só `PUBLIC`, TTL de 15 min, na memória e em `data/context_retrieval/visibility.json` (para o status ler
+  sem rede); chave = identidade canônica do conjunto de remotos, então trocar o `origin` invalida. `UNKNOWN` nunca vira `PUBLIC` e
+  não vai ao disco (só é lembrado por 60 s para um laço de pedidos não bater no GitHub a cada item).
+- **Status** (`GET /api/context-retrieval/status`) não faz chamada externa: `external_send` traz `configured_for_remote`,
+  `visibility_verified`, `visibility` (`public`, `private`, `unverified`, `not_applicable`), `allowed` e `reason`. Com `public` no
+  YAML e sem prova vigente: `allowed: false`, `reason: repository_visibility_unverified`.
+- O smoke público (`python-poetry/poetry`) passa pela MESMA regra: `public` + `allow_public` + prova de visibilidade (uma ida à
+  `api.github.com`, além das chamadas ao Jev). Não há atalho nem campo de configuração que dispense a verificação.
+- Limite: a prova é sobre o repositório REMOTO. Alteração local não commitada (ou um clone cujo remoto é público mas que guarda
+  arquivos privados) não é detectada: a política de caminho sensível e o portão de segredo seguem valendo, e nada mais.
+
+## Mapa da etapa A e segredo
+
+O mapa (`caminho`, linguagem, tamanho, símbolos, resumo da docstring, títulos de markdown) também é conteúdo derivado do
+repositório. Nenhum segredo, duro ou mole, sai nele: a entrada que o contém é OMITIDA (sem trocar por marcador, que viraria termo de
+ranking), tanto na construção do mapa (`repomap.py`: nem fica na memória nem no cache em disco) quanto na saída
+(`SemanticRetriever._mapa_filtrado`, que confere cada entrada renderizada). Segredo duro numa entrada vinda de outra fonte de mapa
+ainda derruba o pedido. Isto é só filtro de SAÍDA externa: BM25 e léxico locais continuam vendo o corpus permitido.
 
 ## Cache da resposta semântica
 

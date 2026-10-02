@@ -3711,7 +3711,8 @@ contexto antes de implementar" é o gerador de pacotes do plano-100 mais a leitu
    para medir; o contexto entregue é o local) e `hybrid`. `context_retrieval.enabled: false` vence qualquer `mode`.
 5. **Política única** (`ExternalContextPolicy`): olha onde o provedor executa (local/remoto/falso) e a classe do repositório
    (privado/público/sintético), nunca o nome do provedor. A provedor **remoto**: **privado negado, sintético negado** e público
-   só com `allow_public` explícito. `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são
+   só com `allow_public` explícito E prova independente de que o repositório real é público (`RepositoryVisibilityVerifier`; sem
+   prova a política falha fechada). `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são
    **constantes de código**, de propósito: liberar um deles é decisão do dono, com ADR novo, e não um valor esquecido num YAML.
    "Sintético" serve a fixtures e testes (provedor FAKE ou LOCAL); não é autorização para mandar código a um serviço remoto.
 6. Caminho sensível (`.env`, `config.yaml`, `secrets/`, `data/`, `evidence/`, `backups/`, `personas/`, chaves, bancos, logs…)
@@ -3747,6 +3748,14 @@ Git), chaveado por raiz + revisão + `RETRIEVAL_VERSION` + `INDEX_VERSION` + cor
 viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. O lote
 (`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
 local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
+
+**Adendo (fechamento de privacidade, PR #18).** `public` no YAML deixou de bastar: o envio remoto de repositório público exige
+`allow_public` E a prova independente de que o repositório REAL é público (`RepositoryVisibilityVerifier`, domínio; implementação
+no GitHub em `adapters/github_visibility.py`, anônima, todos os remotos, `UNKNOWN` bloqueia; cache de 15 min só de `PUBLIC`,
+chaveado pela identidade canônica dos remotos). O status não faz rede e não afirma autorização sem prova vigente. Matriz final a
+provedor remoto: privado NEGADO, sintético NEGADO, público = opt-in de configuração + visibilidade pública verificada. Segredo mole
+(e duro) no mapa da etapa A passa a ser omitido, na construção do mapa e na saída (`RETRIEVAL_VERSION` 2). Quem muda um destes
+portões muda código com ADR; nenhum campo de configuração os dispensa.
 
 **Adendo (endurecimento de privacidade, PR #18).** `synthetic` + provedor REMOTE passou de permitido a **negado** (antes bastava
 `repository_class: synthetic` no YAML, e um repositório privado marcado assim por engano contornava `PRIVATE_CODE_SEND_APPROVED`).

@@ -22,8 +22,8 @@ from app.modules.context_retrieval import wiring
 from app.modules.context_retrieval.application.service import DisabledContextRetrieval
 from app.modules.context_retrieval.domain.errors import ProviderTimeout
 from app.modules.context_retrieval.domain.model import RetrievalMode
-from app.modules.context_retrieval.domain.ports import ProviderLocality
-from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider
+from app.modules.context_retrieval.domain.ports import ProviderLocality, Visibility
+from app.modules.context_retrieval.infrastructure.providers.fake import FakeSemanticProvider, FixedVisibilityVerifier
 from app.modules.context_retrieval.presentation import cli
 from app.modules.context_retrieval.presentation.router import router
 
@@ -102,7 +102,8 @@ def _eventos(tmp_path: Path) -> list[dict[str, Any]]:
 
 def _servico(tmp_path: Path, provider: FakeSemanticProvider | None = None, **cfg: Any):
     raiz = _repo(tmp_path) if not (tmp_path / "repo").exists() else tmp_path / "repo"
-    return wiring.build_service(_cfg(tmp_path, **cfg), root=raiz, provider=provider)
+    return wiring.build_service(_cfg(tmp_path, **cfg), root=raiz, provider=provider,
+                                visibility=FixedVisibilityVerifier(Visibility.PUBLIC))
 
 
 # ---------------------------------------------------------------- feature desligada

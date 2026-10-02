@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from app.modules.context_retrieval.domain.model import RETRIEVAL_VERSION, MapEntry, RepoMap
+from app.modules.context_retrieval.domain.sensitive import hard_secret_kind, has_soft_secret
 from app.modules.context_retrieval.infrastructure.workspace import Workspace
 
 MAX_RESUMO = 80
@@ -123,8 +124,17 @@ def _entrada(ws: Workspace, caminho: str, max_symbols: int) -> MapEntry:
     return MapEntry(path=caminho, language=lang, size=ws.size_of(caminho) or 0, symbols=simbolos, summary=resumo)
 
 
+def _com_segredo(e: MapEntry) -> bool:
+    """Resumo de docstring, título de markdown ou símbolo com cara de credencial. Só o mapa da etapa A (saída para provedor
+    externo) usa estas entradas; o retrieval local não passa por aqui."""
+    texto = RepoMap("", (e,)).render()
+    return bool(hard_secret_kind(texto)) or has_soft_secret(texto)
+
+
 def _construir(ws: Workspace, revisao: str, max_symbols: int) -> RepoMap:
-    entradas = tuple(_entrada(ws, p, max_symbols) for p in sorted(ws.files()))
+    # A entrada com segredo (duro ou mole) é OMITIDA do mapa: nem fica em cache no disco, nem entra no payload, e não é
+    # trocada por marcador (que viraria termo de ranking). `SemanticRetriever` ainda confere cada entrada na saída.
+    entradas = tuple(e for e in (_entrada(ws, p, max_symbols) for p in sorted(ws.files())) if not _com_segredo(e))
     return RepoMap(revision=revisao, entries=entradas)
 
 

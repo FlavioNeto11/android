@@ -2912,7 +2912,7 @@ Compatível para trás: uma rota nova, só leitura, sem efeito colateral e sem m
 | `mode` | texto | modo efetivo: `disabled`, `local_only`, `shadow` ou `hybrid` (`disabled` sempre que `enabled` é falso) |
 | `top_k` | inteiro | arquivos no contexto entregue |
 | `provider` | objeto | `name`, `model`, `available` (booleano) e `unavailable_reason` (`key_missing`, `no_provider`…); nunca a chave |
-| `external_send` | objeto | `allowed`, `reason` e `repository_class`: o que a política de envio decide para este repositório |
+| `external_send` | objeto | o que a política de envio decide, SEM rede: `allowed`, `reason`, `repository_class`, `configured_for_remote` (a configuração pede envio a provedor remoto), `visibility_verified` (há prova vigente de que o repositório real é público) e `visibility` (`public`, `private`, `unverified`, `not_applicable`). `public` no YAML sem prova vigente é `allowed: false`, `reason: repository_visibility_unverified` |
 | `budget` | objeto | `timeout_ms`, `max_calls` (por pedido) e `max_cost_usd` |
 | `summary` | objeto | dos eventos recentes: `requests`, `by_mode`, `cache` (`hit`/`miss`), `latency_ms` (`p50`, `p95`, `n`), `cost_usd`, `input_tokens`, `fallbacks` (por razão) e `privacy_blocks` |
 
