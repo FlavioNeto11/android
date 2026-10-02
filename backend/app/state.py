@@ -2906,7 +2906,11 @@ class AppState:
                                 "flows": self.cfg.file.ai.flows, "image_policy": self.cfg.file.ai.image_policy,
                                 "system_image": self.cfg.file.android.system_image,
                                 # Fase F: o painel só oferece o ensino v2 e a lista de habilidades com isto ligado.
-                                "skills": self.cfg.file.skills.enabled})
+                                "skills": self.cfg.file.skills.enabled,
+                                # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
+                                # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
+                                "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self.devices.devices.values()
+                                                 if (dto := self.devices.pausa_dto(rt)) is not None}})
 
     def ultima_migracao(self) -> str | None:
         """A migração mais recente aplicada NESTE banco. Lido a cada chamada: é uma linha e responde "o esquema que

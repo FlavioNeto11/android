@@ -12,6 +12,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,10 +28,11 @@ from ..db import INTEGRITY_ERRORS, Database, dumps, loads
 from ..events import EventBus
 from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
-                      InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics, RendererInfo)
+                      InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics, RendererInfo,
+                      RepairPauseInfo)
 # A porta do aprendizado (ADR-054): só o contrato, do kernel — `devices` não conhece a fila nem o livro.
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
-from ..util import new_token, now_iso
+from ..util import new_token, now, now_iso, to_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
 from .apps_de_fundo import AjusteDosApps
@@ -282,6 +284,17 @@ def _col(row: Any, nome: str) -> Any:
         return None
 
 
+@dataclass(frozen=True)
+class PausaDeReparo:
+    """O aparelho está em experimento ou manutenção: o central NÃO emite `restart`/`reset` automáticos para ele
+    (a escada de reparo e o reinício por saúde). Comando de pessoa e o `restart` da rede (o produto) passam."""
+
+    until: datetime
+    since: datetime
+    reason: str
+    by: str
+
+
 class DeviceRuntime:
     def __init__(self, cfg: Config, tools: SdkTools, row: Any, io_factory: Callable[["DeviceRuntime"], DeviceIO] | None):
         self.cfg = cfg
@@ -395,6 +408,9 @@ class DeviceRuntime:
         # virar um laço de reinício em cima de um aparelho que não volta.
         self.restart_attempts = 0
         self.restart_backoff_until: float = 0.0
+        #: Pausa do reparo AUTOMÁTICO deste aparelho (`PausaDeReparo`): só em memória e sempre com prazo. Reiniciar o central
+        #: a apaga, e o efeito é o de sempre (a escada volta); quem precisa dela confere o `repair_pause` no status.
+        self.repair_pause: PausaDeReparo | None = None
         # controle
         self.control = ControlOwner.none
         self.control_since: str | None = None
@@ -746,7 +762,8 @@ class DeviceManager:
             # último (o despacho escreve "Bloqueado: …" e depois o zera; o controle manual também), e um fato que vale
             # enquanto o processo do emulador viver sumiria no primeiro desses. Assim ele cede a vez a qualquer outro
             # assunto do cartão e volta sozinho.
-            attention=rt.attention or self._aviso_do_renderizador(rt), resources=rt.resources,
+            attention=rt.attention or self._aviso_do_renderizador(rt), repair_pause=self.pausa_dto(rt),
+            resources=rt.resources,
             renderer=self._renderizador_dto(rt),
             kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,
             # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
@@ -1257,6 +1274,49 @@ class DeviceManager:
         """Quem esgotou a escada não é abandonado: volta a ser tentado depois deste prazo."""
         rt.restart_backoff_until = time.monotonic() + segundos
 
+    # ------------------------------------------------------------------ pausa do reparo automático (experimento/manutenção)
+    @staticmethod
+    def pausa_de_reparo(rt: DeviceRuntime) -> PausaDeReparo | None:
+        """A pausa em vigor deste aparelho, ou `None`. Puro: o prazo vencido vale como "sem pausa" aqui mesmo, sem
+        depender de o monitor ter limpado (quem limpa e avisa é `_expirar_pausa_de_reparo`)."""
+        p = rt.repair_pause
+        return p if p is not None and now() < p.until else None
+
+    def pausar_reparo(self, rt: DeviceRuntime, ttl_s: int, motivo: str, quem: str) -> PausaDeReparo:
+        """Liga a pausa deste aparelho (e só deste) por `ttl_s`, trocando a anterior se houver. O prazo é obrigatório:
+        quem chama valida (`RepairPauseBody`); aqui `ttl_s <= 0` é erro de programação."""
+        if ttl_s <= 0:
+            raise ValueError("a pausa do reparo precisa de prazo (ttl_s > 0)")
+        agora = now()
+        rt.repair_pause = PausaDeReparo(until=agora + timedelta(seconds=ttl_s), since=agora, reason=motivo, by=quem)
+        self.bus.emit("instance.repair_pause", f"{rt.id}: reparo automático PAUSADO por {ttl_s} s — {motivo} ({quem})",
+                      level="warn", instance_id=rt.id,
+                      data={"paused": True, "until": to_iso(rt.repair_pause.until), "reason": motivo, "by": quem})
+        self.publish(rt)
+        return rt.repair_pause
+
+    def retomar_reparo(self, rt: DeviceRuntime, quem: str, *, motivo: str = "pausa encerrada") -> bool:
+        """Desliga a pausa antes do prazo. `False` se não havia nenhuma."""
+        if rt.repair_pause is None:
+            return False
+        rt.repair_pause = None
+        self.bus.emit("instance.repair_pause", f"{rt.id}: reparo automático RETOMADO — {motivo} ({quem})", level="info",
+                      instance_id=rt.id, data={"paused": False, "reason": motivo, "by": quem})
+        self.publish(rt)
+        return True
+
+    def _expirar_pausa_de_reparo(self, rt: DeviceRuntime) -> None:
+        """O monitor limpa a pausa vencida e diz, uma vez, que o reparo volta ao normal."""
+        if rt.repair_pause is not None and now() >= rt.repair_pause.until:
+            self.retomar_reparo(rt, "sistema", motivo="prazo da pausa venceu")
+
+    def pausa_dto(self, rt: DeviceRuntime) -> RepairPauseInfo | None:
+        p = self.pausa_de_reparo(rt)
+        if p is None:
+            return None
+        return RepairPauseInfo(until=to_iso(p.until), since=to_iso(p.since), reason=p.reason, by=p.by,
+                               remaining_s=max(0, int((p.until - now()).total_seconds())))
+
     def marcar_atencao(self, rt: DeviceRuntime, texto: str) -> None:
         if rt.attention != texto:
             rt.attention = texto
@@ -1560,6 +1620,7 @@ class DeviceManager:
                             and rt.control == ControlOwner.none and now_m > rt.restart_backoff_until
                             and not rt.executor.queue_depth):
                         self._pedir_reparo(rt, rt.attention)
+                    self._expirar_pausa_de_reparo(rt)
                     if rt.control == ControlOwner.user and now_m > rt.lease_expires_mono:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
                     # Saúde do CONVIDADO em quem já está no ar — local e remoto. O android-03, emulador desta

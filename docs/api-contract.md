@@ -274,6 +274,8 @@ interface Snapshot {
 | `GET /api/instances/{id}/hierarchy` | – | `{ts, elements: {id,text,desc,resource_id,class_name,bounds:[x1,y1,x2,y2],clickable,enabled,focused}[]}` |
 | `POST /api/instances/{id}/control/take` | – | `{status:'granted'|'pending', lease_id}` |
 | `POST /api/instances/{id}/control/release` | `{lease_id}` | `{status:'released'}` |
+| `PUT /api/instances/{id}/repair-pause` | `{ttl_s: 60..10800, reason: string(3..200)}` | `RepairPauseInfo` `{until, since, reason, by, remaining_s}`; pausa o reparo AUTOMÁTICO (escada e reinício por saúde) só deste aparelho; `ttl_s` obrigatório, expira sozinha, repetir renova; `422` sem prazo ou fora dos limites, `404` aparelho desconhecido |
+| `DELETE /api/instances/{id}/repair-pause` | – | `{status:'resumed'}`; `404 {code:'no_repair_pause'}` sem pausa em vigor |
 | `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'not_controller'}` |
 | `POST /api/runs` | `{command, instance_ids, idempotency_key, mode:'plan'|'execute'}` | `RunSummary` (`deduplicated:true` se a chave já existia) |
 | `GET /api/runs?limit=20` | – | `RunSummary[]` |
