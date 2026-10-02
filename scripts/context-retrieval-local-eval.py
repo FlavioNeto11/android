@@ -15,6 +15,8 @@ gabarito entre os k primeiros), MRR@10 (1/posição do primeiro acerto, 0 se for
 
     backend/.venv/Scripts/python.exe scripts/context-retrieval-local-eval.py [--ate <commit>] [--n 40] [--out resumo.json]
     ... --listar        # só mostra o conjunto (sem rodar o retrieval)
+    ... --consumidor    # só o modo e a pergunta de `plano-100-pacotes.py --contexto`: hybrid_local, pergunta cortada em 600 caracteres,
+                        # sem escopo (`completa`, o antes) e com o escopo de código (`codigo`, o padrão do consumidor)
 
 Só mede: não altera ranking nem política. Limite assumido: a pergunta é a mensagem de commit, que costuma citar o símbolo ou o
 arquivo (mais fácil que uma pergunta livre), então os números são um TETO para o léxico e não um benchmark de perguntas abertas.
@@ -41,6 +43,9 @@ EXTENSOES_DE_CODIGO = {'.py', '.ts', '.tsx', '.js', '.ps1', '.sh', '.sql'}
 ESCOPO_CODIGO = ('backend/app/', 'frontend/src/', 'scripts/')
 MODOS = ('lexical', 'bm25', 'hybrid_local')
 VARIANTES = ('completa', 'assunto', 'codigo')
+MODOS_DO_CONSUMIDOR = ('hybrid_local',)
+VARIANTES_DO_CONSUMIDOR = ('completa', 'codigo')
+LIMITE_DA_PERGUNTA_DO_CONSUMIDOR = 600
 _TIPO = re.compile(r'^(feat|fix)(\([^)]*\))?!?:\s*', re.IGNORECASE)
 _RUIDO = re.compile(r'\[skip ci\]', re.IGNORECASE)
 
@@ -86,12 +91,12 @@ def metricas(ranking: list[str], gabarito: set[str]) -> dict:
             'recall5': len(gabarito & set(ranking[:5])) / len(gabarito) if gabarito else 0.0}
 
 
-def agregar(linhas: list[dict]) -> dict:
+def agregar(linhas: list[dict], modos: tuple[str, ...] = MODOS, variantes: tuple[str, ...] = VARIANTES) -> dict:
     """Médias por modo e variante, a partir das linhas por commit (`linha['resultados'][variante][modo]`)."""
     saida: dict = {}
-    for variante in VARIANTES:
+    for variante in variantes:
         saida[variante] = {}
-        for modo in MODOS:
+        for modo in modos:
             itens = [c['resultados'][variante][modo] for c in linhas if modo in c['resultados'].get(variante, {})]
             n = len(itens)
             if not n:
@@ -143,7 +148,8 @@ def _recuperadores(raiz: Path, cache: Path):
     return ws, lex, bm, LocalRetriever(lex, bm)
 
 
-def avaliar(repo: Path, commits: list[dict], scratch: Path) -> list[dict]:
+def avaliar(repo: Path, commits: list[dict], scratch: Path, modos: tuple[str, ...] = MODOS,
+            variantes_pedidas: tuple[str, ...] = VARIANTES, limite_da_pergunta: int | None = None) -> list[dict]:
     """Roda os modos locais por commit, com o índice no estado do pai. `scratch` é uma pasta que ainda não existe."""
     from app.modules.context_retrieval.domain.model import RetrievalRequest
 
@@ -155,16 +161,18 @@ def avaliar(repo: Path, commits: list[dict], scratch: Path) -> list[dict]:
             git(scratch, 'clean', '-fdxq')
             with tempfile.TemporaryDirectory() as cache:
                 ws, lex, bm, local = _recuperadores(scratch, Path(cache))
-                resultados: dict = {v: {} for v in VARIANTES}
+                resultados: dict = {v: {} for v in variantes_pedidas}
                 gab = set(c['gabarito'])
                 assunto_apenas = c['assunto']
-                variantes = {'completa': (c['pergunta'], ()), 'assunto': (assunto_apenas, ()), 'codigo': (c['pergunta'], ESCOPO_CODIGO)}
+                completa = c['pergunta'][:limite_da_pergunta] if limite_da_pergunta else c['pergunta']
+                todas = {'completa': (completa, ()), 'assunto': (assunto_apenas, ()), 'codigo': (completa, ESCOPO_CODIGO)}
+                variantes = {v: todas[v] for v in variantes_pedidas}
                 with ws.pinned() as rev:
                     arquivos = len(ws.files())
                     primeira_bm25_ms = None
                     for variante, (pergunta, escopo) in variantes.items():
                         req = RetrievalRequest(query=pergunta, root=scratch, revision=rev, scope=escopo, top_k=TOP_K)
-                        for modo in MODOS:
+                        for modo in modos:
                             t0 = time.perf_counter()
                             erro = None
                             try:
@@ -189,10 +197,10 @@ def avaliar(repo: Path, commits: list[dict], scratch: Path) -> list[dict]:
     return linhas
 
 
-def tabela(agregado: dict) -> str:
+def tabela(agregado: dict, modos: tuple[str, ...] = MODOS, variantes: tuple[str, ...] = VARIANTES) -> str:
     saida = ['| Variante | Modo | n | hit@3 | hit@5 | MRR@10 | recall@5 | latência mediana | p95 |', '|---|---|---|---|---|---|---|---|---|']
-    for variante in VARIANTES:
-        for modo in MODOS:
+    for variante in variantes:
+        for modo in modos:
             a = agregado.get(variante, {}).get(modo)
             if a:
                 saida.append(f"| {variante} | {modo} | {a['n']} | {a['hit3']:.1%} | {a['hit5']:.1%} | {a['mrr10']:.3f} | {a['recall5']:.1%} "
@@ -206,6 +214,8 @@ def main() -> int:
     ap.add_argument('--ate', default='HEAD', help='último commit a considerar (o resumo grava o SHA)')
     ap.add_argument('--n', type=int, default=40)
     ap.add_argument('--listar', action='store_true', help='só mostra o conjunto de avaliação')
+    ap.add_argument('--consumidor', action='store_true',
+                    help='só o modo e a pergunta de plano-100-pacotes.py --contexto (hybrid_local, 600 caracteres), sem escopo x escopo de código')
     ap.add_argument('--out', type=Path, default=None)
     args = ap.parse_args()
 
@@ -218,9 +228,11 @@ def main() -> int:
         return 0
     with tempfile.TemporaryDirectory() as pasta:
         t0 = time.perf_counter()
-        linhas = avaliar(args.repo, commits, Path(pasta) / 'indice-do-pai')
+        modos, variantes = (MODOS_DO_CONSUMIDOR, VARIANTES_DO_CONSUMIDOR) if args.consumidor else (MODOS, VARIANTES)
+        linhas = avaliar(args.repo, commits, Path(pasta) / 'indice-do-pai', modos, variantes,
+                         LIMITE_DA_PERGUNTA_DO_CONSUMIDOR if args.consumidor else None)
         total_s = time.perf_counter() - t0
-    agregado = agregar(linhas)
+    agregado = agregar(linhas, modos, variantes)
     primeiras = sorted(l['primeira_consulta_bm25_ms'] for l in linhas)
     resumo = {'ate': ate, 'commits': len(linhas), 'top_k': TOP_K, 'agregado': agregado,
               'indice_bm25_primeira_consulta_ms': {'mediana': round(statistics.median(primeiras), 1), 'max': primeiras[-1]},
@@ -228,9 +240,9 @@ def main() -> int:
               'duracao_total_s': round(total_s, 1), 'por_commit': linhas}
     if args.out:
         args.out.write_text(json.dumps(resumo, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-    print(tabela(agregado))
-    print(f"commits={len(linhas)} ate={ate[:12]} indice(1a consulta bm25) mediana={resumo['indice_bm25_primeira_consulta_ms']['mediana']} ms "
-          f"arquivos={resumo['arquivos_no_indice_mediana']} total={resumo['duracao_total_s']} s")
+    print(tabela(agregado, modos, variantes))
+    indice = '' if args.consumidor else f" indice(1a consulta bm25) mediana={resumo['indice_bm25_primeira_consulta_ms']['mediana']} ms"
+    print(f"commits={len(linhas)} ate={ate[:12]}{indice} arquivos={resumo['arquivos_no_indice_mediana']} total={resumo['duracao_total_s']} s")
     return 0
 
 

@@ -54,12 +54,14 @@ class ServicoFalso:
         self.pack = pack
         self.falha = falha
         self.consultas: list[str] = []
+        self.escopos: list[tuple[str, ...]] = []
         self.sessoes = 0
 
-    def gather(self, pergunta: str):
+    def gather(self, pergunta: str, scope: tuple[str, ...] = ()):
         if self.falha:
             raise RuntimeError('indice quebrado')
         self.consultas.append(pergunta)
+        self.escopos.append(tuple(scope))
         return self.pack if self.enabled else None
 
     def session(self):
@@ -133,6 +135,32 @@ class PacotesComContextoTest(unittest.TestCase):
             with patch('sys.stderr'):
                 quebrado = gerar(Path(b), pacotes.SugestorDeContexto(servico=ServicoFalso(falha=True)))
         self.assertEqual(base, quebrado)
+
+    def test_escopo_padrao_e_o_codigo_e_chega_ao_servico_so_neste_consumidor(self) -> None:
+        falso = ServicoFalso()
+        pacotes.SugestorDeContexto(servico=falso)(ITENS[0])
+        self.assertEqual(falso.escopos, [('backend/app/', 'frontend/src/', 'scripts/')])
+        self.assertEqual(pacotes.ESCOPO_DO_CONTEXTO, ('backend/app/', 'frontend/src/', 'scripts/'))
+
+    def test_escopo_pode_ser_trocado_ou_removido(self) -> None:
+        falso = ServicoFalso()
+        pacotes.SugestorDeContexto(servico=falso, escopo=('docs/',))(ITENS[0])
+        pacotes.SugestorDeContexto(servico=falso, escopo=())(ITENS[0])
+        self.assertEqual(falso.escopos, [('docs/',), ()])
+
+    def test_flags_do_escopo(self) -> None:
+        from types import SimpleNamespace as NS
+        self.assertEqual(pacotes.escopo_do_contexto(NS(contexto_sem_escopo=False, contexto_escopo=None)), pacotes.ESCOPO_DO_CONTEXTO)
+        self.assertEqual(pacotes.escopo_do_contexto(NS(contexto_sem_escopo=False, contexto_escopo=['a/', 'b/'])), ('a/', 'b/'))
+        self.assertEqual(pacotes.escopo_do_contexto(NS(contexto_sem_escopo=True, contexto_escopo=['a/'])), ())   # sem escopo vence
+
+    def test_o_escopo_do_consumidor_e_o_mesmo_que_a_medicao_usa(self) -> None:
+        import importlib.util
+        caminho = Path(__file__).resolve().parents[1] / 'context-retrieval-local-eval.py'
+        spec = importlib.util.spec_from_file_location('local_eval_para_escopo', caminho)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertEqual(tuple(mod.ESCOPO_CODIGO), pacotes.ESCOPO_DO_CONTEXTO)
 
     def test_o_modo_explicito_chega_ao_servico(self) -> None:
         chamadas = []
