@@ -66,9 +66,13 @@ class RelatorioPreparado:
 
 class ServicoDeRelatorios:
     def __init__(self, db: Database, relogio: Callable[[], datetime], *, resumidor: ResumidorDeRelatorio | None = None,
-                 resumo_ia: bool = False, resumo_ia_teto_usd: float = 0.05):
+                 resumo_ia: bool = False, resumo_ia_teto_usd: float = 0.05,
+                 marcar: Callable[[str, str], None] | None = None):
         self.db = db
         self.relogio = relogio
+        #: Anota "relatório novo" (`RepositorioDePedidos.marcar`): quem escreveu o relatório descarrega as marcas DEPOIS do
+        #: commit e a API grava o aviso `relatorio_pronto` (28.9). Sem ele (teste, serviço isolado) nada é anotado.
+        self._marcar = marcar
         self.repo = RepositorioDeMemoria(db)
         self.resumidor: ResumidorDeRelatorio = resumidor if (resumo_ia and resumidor is not None) else SemResumo()
         self.resumo_ia_teto_usd = resumo_ia_teto_usd
@@ -191,6 +195,8 @@ class ServicoDeRelatorios:
                 resumo_texto=p.resumo_texto, resumo_por=p.resumo_por, custo_usd=p.custo_usd,
                 gerado_por="deterministico")
             if linha is not None:
+                if self._marcar is not None and p.gatilho != "sob_demanda":      # a pessoa que pediu já o tem na mão
+                    self._marcar("relatorio", str(linha["id"]))
                 return linha
             if p.gatilho == "encerramento":
                 ja = self.repo.relatorio_de_encerramento(p.pedido_id)

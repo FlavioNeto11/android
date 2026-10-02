@@ -1,0 +1,100 @@
+/* Tela Pedidos (item 28.9). Só tokens; sem cor fixa. */
+
+.tabBody { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.lista { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+
+.linha {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  min-width: 0;
+}
+.corpo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; flex: 1; }
+.topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.titulo { color: var(--text-1); font-size: var(--fs-md); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.titulo:hover { text-decoration: underline; }
+.meta { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); }
+.dim { color: var(--text-3); font-size: var(--fs-xs); }
+.nota { margin: 0; color: var(--text-2); font-size: var(--fs-sm); max-width: 80ch; }
+.motivo { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.acoes { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); margin: 0; }
+.grade dt { color: var(--text-3); font-size: var(--fs-xs); }
+.grade dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.formulario { display: flex; flex-direction: column; gap: var(--sp-3); }
+.duas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); }
+.segmentado { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.dias { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.previa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.previa h3 { margin: 0; font-size: var(--fs-sm); color: var(--text-1); }
+.previa ul { margin: 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+.bloqueio { color: var(--danger-text, var(--text-1)); }
+
+.filhas { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+
+@media (max-width: 560px) {
+  .linha { flex-direction: column; }
+}
+
+/* Formulário em seções (Quando, O que conta como feito, Limites) */
+.secao { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border-1); }
+.secaoCabeca { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
+.secaoTitulo { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
+.secaoDica { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+.quemFaz { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.quemFaz strong { color: var(--text-1); font-weight: 600; }
+
+/* Seletor segmentado: uma posição sempre marcada (mesmo desenho do Automático | Manual do Comando) */
+.seletor { display: inline-flex; flex-wrap: wrap; align-self: flex-start; padding: 2px; border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-1); }
+.seletorItem {
+  display: inline-flex; align-items: center; gap: 5px; height: var(--hit-min); padding: 0 14px; border: 0;
+  border-radius: var(--radius-pill); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.seletorItem:hover:not(:disabled) { color: var(--text-1); }
+.seletorItem:disabled { cursor: not-allowed; opacity: 0.5; }
+.seletorAtivo, .seletorAtivo:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-border); font-weight: 600; }
+
+/* Prévia em blocos */
+.previaCabeca { margin: 0; font-size: var(--fs-md); color: var(--text-1); }
+.previaGrade { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); }
+.previaBloco { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1); min-width: 0; }
+.previaTitulo { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-sm); color: var(--text-1); }
+.listaSimples { margin: 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+.datas { margin: 0; padding-left: var(--sp-4); color: var(--text-1); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
+
+/* Cartão da lista */
+.agenda { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin: 0; color: var(--text-1); font-size: var(--fs-sm); }
+.agenda svg { color: var(--text-3); flex: none; }
+.metaDiscreta { display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); color: var(--text-3); font-size: var(--fs-xs); }
+.acaoDoCartao { align-self: center; flex: none; }
+
+/* Esqueleto do cartão e seletor de filtro dos avisos */
+.esqueletoLinha { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1); }
+.esqueletoChips { display: flex; gap: var(--sp-2); }
+
+/* Resumo do detalhe em cartões */
+.resumoGrade { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--sp-3); align-items: start; }
+.cartaoResumo { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1); min-width: 0; }
+.cartaoResumo h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-sm); color: var(--text-1); }
+.cartaoResumo dl { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; }
+.cartaoResumo dt { color: var(--text-3); font-size: var(--fs-xs); }
+.cartaoResumo dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.objetivoCompleto { margin: 0; color: var(--text-1); font-size: var(--fs-sm); max-width: 90ch; overflow-wrap: anywhere; }
+.tituloLinha { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barraDeAvisos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }

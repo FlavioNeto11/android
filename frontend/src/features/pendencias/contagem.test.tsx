@@ -106,12 +106,13 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
+  backend.on('GET', /^\/api\/pedidos$/, () => json({ items: [], proximo_cursor: null, total_por_estado: {} }));
   const snap = makeSnapshot();
   useAppStore.setState({
     ...initialDataState, hydrated: true, health: snap.health, settings: snap.settings, runs: [EXECUCAO_PARADA, EXECUCAO_OK],
   });
-  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, falhou: false,
-                               falhas: { aprendizado: false, aprovacoes: false, personas: false } });
+  usePendenciasStore.setState({ aprendizado: null, aprovacoes: null, personas: null, pedidos: null, falhou: false,
+                               falhas: { aprendizado: false, aprovacoes: false, personas: false, pedidos: false } });
   useContagemDoAprendizado.setState({ pendentes: null });
   useSessionStore.setState({ operator: 'ana' });
   useUiStore.getState().navegar({ tela: 'pendencias' }, 'replace');

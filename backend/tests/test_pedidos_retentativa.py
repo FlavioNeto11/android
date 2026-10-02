@@ -430,7 +430,9 @@ async def test_o_estado_liga_o_aviso_ao_barramento_como_pedido_aviso(h: Harness)
     """A costura de produção (`AppState`): o aviso vira o evento `pedido.aviso` com `{aviso: AvisoDTO}`, que o 28.11 assina."""
     import json
     from app.modules.avisos.domain.mensagem import aviso_de_evento
+    from .test_pedidos_modelo import _pedido
     db = h.state.db
+    _pedido(db, "p1")                   # o aviso é GRAVADO em `pedido_avisos` (072), que tem FK para o pedido
     assert h.state.pedidos.avisar is not None
     h.state.pedidos.avisar({"id": "o1:ocorrencia_incerta", "pedido_id": "p1", "pedido_titulo": "t", "ocorrencia_id": "o1",
                             "tipo": "ocorrencia_incerta", "nivel": "warn", "mensagem": "Algo incerto", "dados": {},
