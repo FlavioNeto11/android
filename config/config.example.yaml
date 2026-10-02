@@ -496,6 +496,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
                                   # (fica devida, sem falha); 0 desliga o mínimo (o bloqueio do dono na conta adia mesmo assim)
   resumo_ia: false                # resumo do relatório por IA (28.7): só o ponto de extensão; o relatório determinístico sai sempre
   resumo_ia_teto_usd: 0.05        # teto por relatório que o resumidor deve respeitar (o 28.6 conta no orçamento do pedido)
+  piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
+  piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
