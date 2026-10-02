@@ -1718,3 +1718,24 @@ relógio (`tests/relogio_virtual.py`, `Harness.pular_o_tempo()`).
 
 **Aplicabilidade.** Só em teste opt-in: o `time.monotonic()` de prazos de etapa segue real, e testes de corrida com
 `action_delay_s` dependem da janela real. Ligar no harness inteiro pede a suíte completa.
+
+### K-070 — Teste que espera tempo fixo enquanto o código lê processo real do host oscila de máquina para máquina
+
+**Data:** 02/10/2026 · **Área:** testes (`test_worker_executor.py`)
+
+**Sintoma.** `test_a_espera_na_fila_de_boot_e_dita_em_progresso` falhava neste host (e passava no CI): o recado "fila de boot" não
+tinha chegado quando o teste olhava, 50 ms depois de criar as tarefas.
+
+**Causa.** Antes do recado, cada `start` faz `avd.exists` e `_varrer` -> `_no_ar` -> `pid_do_avd`: `psutil.process_iter` e
+`p.cmdline()` sobre os processos REAIS do host com "qemu"/"emulator" no nome (só leitura; 8 processos aqui), ~60 ms sob pytest.
+Provado por intervenção: `process_iter` vazio passa 3/3; 0,2 s injetados falha 3/3. O aparelho falso não protegia: `_estado_falso`
+trocava `estado`, mas `pid_do_avd` seguia lendo o host.
+
+**O que não funcionou.** Aumentar o `sleep` (continua dependendo do número de processos do host) e conferir só no CI.
+
+**O que funcionou.** Esperar o FATO (`_ate(...)` sobre o recado ou o `subidos`), isolar `pid_do_avd` junto de `estado`
+(`_sem_processos_reais`, aplicado por `_estado_falso`) e um teste que injeta 0,2 s na varredura SEM o isolamento, tirando a
+fotografia dos recados antes de drenar as tarefas (senão o recado chega durante a drenagem e a mutação para `sleep(0.05)` passa).
+
+**Aplicabilidade.** Todo teste do executor que não testa a varredura; quem testa `pid_do_avd` atribui o seu depois ou usa
+`processos_reais=True`. `sleep` fixo só como janela NEGATIVA (nada deve acontecer), nunca para esperar que algo aconteça.
