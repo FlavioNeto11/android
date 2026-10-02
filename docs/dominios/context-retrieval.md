@@ -90,6 +90,7 @@ O índice BM25 mora em disco, em `data/context_retrieval/bm25/bm25-<raiz>-<chave
 - **Chave**: identidade da raiz (hash do caminho) + revisão do repositório (hash de árvore do git, com resumo do que está sujo) +
   `RETRIEVAL_VERSION` + `INDEX_VERSION` (tokenização, higiene e formato) + resumo do corpus (política de caminhos sensíveis e teto
   de tamanho). O cabeçalho dentro do arquivo repete a identidade e é conferido ao carregar: nome igual com identidade diferente é miss.
+- **Reconstrução incremental por arquivo (J5)**: o índice guarda o digest (blake2b de 128 bits) do texto de cada arquivo. Quando a revisão muda e há um índice anterior COMPATÍVEL (o da memória, ou o mais recente em disco desta raiz: mesmos `INDEX_VERSION`, `RETRIEVAL_VERSION`, corpus e raiz, só a revisão difere), os arquivos de texto igual reaproveitam as contagens do índice anterior e só os alterados ou novos são higienizados e tokenizados; apagado some. O resultado é IDÊNTICO ao do índice cheio (mesmos documentos na mesma ordem, mesmos postings, tamanhos e média, logo a mesma pontuação): os testes comparam o índice incremental com o cheio depois de editar, acrescentar, apagar, renomear, esvaziar, só mexer no mtime e em cadeia. Semente de outro corpus, versão ou raiz, ou corrompida (lixo, truncada, sem digests, postings fora da faixa), nunca é usada: cai na construção completa. Renomear conta como arquivo novo (o caminho entra na pontuação). `INDEX_VERSION` subiu para 3 (o arquivo ganhou `digests`), o que invalida os índices em disco antigos uma vez.
 - **Seguro por construção**: gravação atômica (`.tmp` + `os.replace`); arquivo corrompido, truncado, adulterado ou com id de
   documento fora da faixa é miss silencioso e o índice é refeito; revisão nova gera outro arquivo e a antiga nunca é carregada; a
   limpeza mantém os 3 mais recentes por raiz.
@@ -165,7 +166,7 @@ Implementação do remoto:
 - O smoke público (`python-poetry/poetry`) passa pela MESMA regra: `public` + `allow_public` + prova de visibilidade (duas idas à
   `api.github.com`: repositório e commit pinado, além das chamadas ao Jev); clone limpo no SHA pinado satisfaz as três partes. Não há atalho nem campo de configuração que dispense a verificação.
 - Limites que restam: a conferência é por pedido (uma edição entre a decisão e a leitura dos arquivos, dentro do MESMO pedido, não é
-  vista); `git update-index --assume-unchanged/--skip-worktree` esconde alteração do `git status`; e um commit que só existe numa
+  vista); e um commit que só existe numa
   rede de forks do repositório público conta como público (é o que o GitHub serve a qualquer anônimo).
 
 ## Mapa da etapa A e segredo
@@ -228,6 +229,9 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 | Regra híbrida nova x regra v1 do piloto (30 perguntas públicas) | `simulated` | `backend/tests/test_context_retrieval_pilot_regression.py` |
 | Integração com o gerador de pacotes (saída idêntica com a flag desligada) | `simulated` | `scripts/tests/test_pacotes_contexto.py` |
 | Chamada real ao Jev, só em código PÚBLICO | `real` | 02/10/2026, máquina central, `python-poetry/poetry` @ `94b6e35`, commits `a07ff80` (rodada 1) e `a88d609` (rodada 2, por etapa); `scripts/context-retrieval-public-smoke.py` (rodada 1: `--run`; rodada 2: `--cases H13,H14 --max-calls 4 --run`). 11 de 12 chamadas, todas HTTP 200, 0 fallbacks, US$ 0,0043 + 0,0016 (~0,006). Passou pela MESMA política de produção (remoto público, HEAD público, worktree limpo), sem atalho. Detalhe abaixo |
+| Qualidade do retrieval LOCAL neste repositório (40 commits, hit@k e MRR por modo) | `real` | 02/10/2026, central, `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40`; teste sem rede em `scripts/tests/test_context_retrieval_local_eval.py` (`simulated`). Tabela abaixo |
+| Índice BM25 incremental: idêntico ao cheio e só reanalisa o que mudou | `simulated` | `backend/tests/test_context_retrieval_bm25_incremental.py` (22; mutação conferida) |
+| Custo do índice antes e depois do incremental | `real` | 02/10/2026, central, `scripts/context-retrieval-incremental-bench.py`; tabela "Custo do índice" abaixo |
 | Chamada real ao Jev em código PRIVADO (este repositório) | `not_run` | negado por constante de código (`PRIVATE_CODE_SEND_APPROVED = False`); sem autorização |
 
 ### Smoke real público (02/10/2026)
@@ -244,25 +248,95 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 - **Total acumulado: 11 de 12 chamadas.** Isto valida o adaptador e o pipeline, não é benchmark.
 - **Leitura:** a etapa B só roda quando o payload cabe no teto de entrada por pedido (`max_input_tokens`, padrão 24.000) e a etapa A já consome cerca de 15,6k tokens; neste repositório a B é a exceção. É o comportamento esperado do orçamento, não bug. Que as 7 chamadas da rodada 1 foram 6 de A e 1 de B (só o H14, que gastou ~23,3k tokens) é inferência, não medição por etapa.
 
+### Medição local neste repositório (02/10/2026, `real`, gratuita, sem rede)
+
+- **Como:** `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40` (máquina central, Windows, ripgrep presente; 374 s no total).
+  Conjunto: os 40 commits `feat`/`fix` mais recentes sem merge até esse SHA, com 1 a 8 arquivos de código modificados ou apagados. A pergunta é o assunto
+  (sem `tipo(escopo):`) mais o corpo do commit, sem `[skip ci]` e trailers; o gabarito são esses arquivos de código (docs, testes, `CHANGELOG`, `.claude/` e arquivo novo ficam de fora).
+  O índice é o do estado do PAI do commit (worktree descartável em `--detach <pai>`), então a resposta não vaza. Teste do anti-vazamento: `scripts/tests/test_context_retrieval_local_eval.py` (com o commit no lugar do pai, ele falha).
+- **Resultado** (n = 40 em cada linha, 0 erros; top-10 por pedido; só mede, nada foi alterado):
+
+  | Variante da pergunta | Modo | hit@3 | hit@5 | MRR@10 | recall@5 | latência mediana |
+  |---|---|---|---|---|---|---|
+  | completa, repositório inteiro | lexical | 12,5% | 22,5% | 0,134 | 15,1% | 670 ms |
+  | completa, repositório inteiro | bm25 | 30,0% | 40,0% | 0,213 | 26,3% | 5.533 ms (inclui construir o índice) |
+  | completa, repositório inteiro | hybrid_local | 17,5% | 35,0% | 0,182 | 23,8% | 423 ms |
+  | só o assunto | lexical | 10,0% | 17,5% | 0,096 | 13,8% | 324 ms |
+  | só o assunto | bm25 | 32,5% | 47,5% | 0,238 | 28,8% | 46 ms |
+  | só o assunto | hybrid_local | 30,0% | 47,5% | 0,229 | 29,0% | 373 ms |
+  | completa, escopo de código | lexical | 37,5% | 45,0% | 0,321 | 25,7% | 116 ms |
+  | completa, escopo de código | bm25 | **82,5%** | **87,5%** | **0,652** | 60,0% | 44 ms |
+  | completa, escopo de código | hybrid_local | 72,5% | 80,0% | 0,559 | 51,0% | 194 ms |
+
+  O escopo de código é `backend/app/`, `frontend/src/` e `scripts/`. Índice BM25: 1.339 arquivos no universo, primeira consulta de cada revisão 5,5 s de mediana (máx. 6,1 s); depois, dezenas de ms.
+- **Leitura (o que os números dizem):**
+  1. **O maior efeito é o escopo, não o modo:** restringir ao código leva o BM25 de 30% para 82,5% de hit@3. A documentação (1,3 mil arquivos, boa parte `docs/` e `.claude/`) ocupa o topo quando a pergunta fala do mesmo assunto. Como o gabarito é só código, parte dessa diferença é por construção: um doc relevante conta como erro aqui.
+  2. **O BM25 vence o léxico** em todas as variantes (o léxico exige o nome exato, e a mensagem de commit quase nunca o traz inteiro).
+  3. **O `hybrid_local` perde para o BM25 puro neste conjunto:** 72,5% contra 82,5% de hit@3 no escopo de código; em 4 dos 40 casos o híbrido erra o hit@3 onde o BM25 acerta e em nenhum acontece o contrário. A regra de fusão v1 dá a vez ao léxico quando a pergunta cita um identificador, e aqui isso piorou.
+  4. A primeira consulta de uma revisão custa ~5,5 s (construir o índice); é o gargalo medido que motiva o índice incremental (J5).
+- **Limites da medição:** a pergunta é a mensagem de commit, que costuma citar o símbolo ou o arquivo, então os números são um teto para o léxico e não um benchmark de perguntas abertas; 19 dos 40 commits são de frontend (a UX recente), e o conjunto inclui os commits do próprio retrieval; n = 40 dá intervalo largo (±12 pontos); só local, então nada diz do semântico (ver o smoke do Jev, que mede outra coisa).
+- **Propostas (NÃO aplicadas; exigem decisão e nova medição):** (a) escopo padrão de código, ou peso menor para `docs/`, `.claude/` e `CHANGELOG`, no pedido de tarefa de código; (b) rever a regra "o léxico manda quando há identificador" (a salvaguarda v1) ou medir um híbrido que parta do BM25 e use o léxico só para promover o arquivo que contém o identificador; (c) repetir a medição com perguntas que não sejam mensagem de commit (por exemplo, as do holdout público do piloto) antes de tirar conclusão sobre o modo.
+
+### Custo do índice, antes e depois do incremental (02/10/2026, `real`, sem rede)
+
+- **Como:** `scripts/context-retrieval-incremental-bench.py --backend <backend> --repo <worktree>` num worktree descartável do repositório (1.415 arquivos no índice; 3 repetições; máquina central), o MESMO script contra o código da `main` (`0da61af`, antes) e o do J5 (depois). Tempo da primeira consulta depois da mudança:
+
+  | Cenário | Antes (mediana) | Depois (mediana) | Arquivos reaproveitados / analisados (depois) |
+  |---|---|---|---|
+  | a frio, sem nenhum índice | 13,3 s | 12,5 s (igual; o hash dos textos custa poucos ms) | 0 / 1.415 |
+  | um arquivo editado, mesmo processo | 5,3 s | **1,3 s** | 1.414 / 1 (semente na memória) |
+  | outra edição, processo novo (índice só em disco) | 5,3 s | **1,6 s** | 1.414 / 1 (semente em disco) |
+  | trocar para `HEAD~10`, mesmo processo | 5,0 s | **1,7 s** | 1.340 / 23 (e 52 arquivos a menos) |
+
+  Os ~1,3 s que sobram, pelo perfil (só a leitura dos textos foi medida: ~0,3 s), são ler e hashear todos os textos, consultar a árvore do git (~0,2 s), inverter os postings e remontar a lista; esta parte final não foi medida em separado. Remontar só o que mudou (postings incrementais) seria o passo seguinte, mas exigiria renumerar documentos; não foi feito.
+- **Limites:** mede a primeira consulta de cada cenário, não a vazão; a frio inclui o custo de um worktree recém-criado; o ganho vale quando existe índice anterior compatível (memória ou disco), e não quando o cache em disco está desligado e o processo é novo.
+
+### Proposta: orçamento da etapa B (J6, 02/10/2026; só proposta, nada foi alterado nem habilitado)
+
+**Problema.** Com `max_input_tokens = 24.000` por pedido e a etapa A em ~15,6 mil tokens, a etapa B quase nunca roda.
+
+- **A regra (código):** `BudgetLedger._reservar` barra a chamada quando `tokens já gastos no pedido + estimativa da chamada > max_input_tokens`, e a estimativa é `len(payload) // 4` sobre o texto enviado.
+  Depois da A (tokens REAIS informados pelo provedor), a B só passa se a estimativa dela for menor ou igual a `24.000 − gasto da A`, ou seja, cerca de **8,3 mil tokens, ~33 KB de payload**.
+  O teto de payload da B, porém, é `max_bytes = 48.000` (~12 mil tokens estimados). Os padrões se contradizem: a A (~15,6 mil) mais a B no teto de payload (~12 mil estimados) dá mais de 27 mil, acima de 24 mil.
+- **Medido (smoke real de 02/10, `python-poetry/poetry` @ `94b6e35`):** nos casos em que só a etapa A rodou (H01, H02, H13, H25 e H26) ela gastou 15.652 a 15.663 tokens, US$ 0,000657 a 0,000658. O H14 foi o único a rodar a B (21 chunks, 2 chamadas): 23.283 tokens no total, US$ 0,000978. A divisão A/B do H14 é INFERIDA por subtração (o resumo só tem o total do pedido): a B teria custado ~7,6 mil tokens e US$ 0,000321. O H13 teve a B bloqueada por `budget_exceeded`.
+  Preço implícito nos dados do provedor: ~US$ 4,2 por 100 milhões de tokens de entrada (observado em A e em B). Observado, não contratual.
+- **A estimativa subestima a A:** o mapa da A é cortado em `max_bytes = 48.000`, que estima ≤ 12 mil tokens, e o provedor contou 15,6 mil: a razão real é de pelo menos 1,3 vez. É um segundo motivo para o teto de 24 mil ser curto.
+- **O dinheiro não é o limite:** US$ 0,001 por pergunta com A e B, contra um teto de US$ 0,05 por pedido (50 vezes). O que trava é o teto de TOKENS, e ele foi posto por prudência, não por custo.
+
+**Opções** (custo estimado por pergunta com os números acima; estimativas, não medições; "B" abaixo = a etapa B chamada):
+
+| Opção | Mudança | Tokens por pergunta (A + B) | Custo por pergunta | Risco / o que falta medir |
+|---|---|---|---|---|
+| 0. Hoje | nenhuma | A 15,7 mil; B só se o payload couber em ~33 KB | US$ 0,00066 (só A) a 0,00098 (A + B) | B quase nunca roda; regiões só em casos de payload pequeno |
+| 1. Teto único maior | `max_input_tokens` 24.000 → 32.000 | até ~31 mil no pior caso (A 15,7 + B no teto de payload, que não foi medido em tokens reais) | até ~US$ 0,0013 | simples; o pior caso de B é limite superior, não medido; a B passa a rodar sempre |
+| 2. Teto por etapa | `max_input_tokens_a` ~20.000 e `max_input_tokens_b` ~16.000, em vez de um teto por pedido | igual à opção 1 no pior caso | até ~US$ 0,0015 | explícito e sem a contradição entre padrões; é a que melhor documenta a intenção; muda o contrato do orçamento e da configuração |
+| 3. Compactar o mapa da A | menos símbolos e resumos por entrada, alvo ~8 mil tokens | A ~8 mil + B 7,6 mil a ~15 mil = 16 a 23 mil | US$ 0,00067 a 0,00097 (MENOR que hoje com B) | risco de qualidade da A (menos informação por arquivo): só decidir depois de medir hit@k no holdout |
+| 4. Menos candidatos | `max_candidate_files` 8 → 5 e `max_chunks` 24 → 12 | B cai pela metade (~3,8 mil): A + B ~19,5 mil, cabe no teto atual | ~US$ 0,00082 | menos recall potencial na B; é só configuração, sem código |
+
+**Recomendação (de quem escreveu; a decisão é do dono):** primeiro medir se a B vale o gasto, depois ajustar o orçamento.
+1. **Valor da B não está medido.** No smoke, os 6 casos acertaram o arquivo (hit@3 e hit@5 em 6/6) com a B rodando em 1 só, e o H13 acertou com a B bloqueada. A B entrega REGIÕES (faixas de linha), não arquivos, então o ganho dela é custo de leitura a jusante, que o hit@k por arquivo não vê. Falta uma ablação A versus A + B, com métrica de região, antes de pagar para destravá-la.
+2. **Se a B for desejada:** a opção 2 (teto por etapa) é a mais honesta, e a 4 é a mais barata de testar, porque é só configuração. A opção 3 só depois de uma medição de qualidade da A.
+3. **Verificar a cobertura da A antes de qualquer coisa:** `files_considered = 195` nos casos H13 e H14 com `max_map_files = 400`. Se o escopo `src/poetry/` tem mais de 195 arquivos, o corte em bytes deixa a A sem ver o resto. Conferir contando os arquivos do escopo no clone público no SHA fixado (não feito aqui: exigiria baixar o repositório de novo).
+4. **Próxima medição paga (precisa de autorização do dono):** rodada pequena no `python-poetry/poetry` (no máximo 6 perguntas, dentro do teto de 12 chamadas por execução e com `--cases`/`--max-calls`) com a opção escolhida, registrando por etapa.
+
 ## Limites conhecidos
 
-- **Primeira consulta de uma revisão nova** paga a construção do índice (alguns segundos no repositório inteiro, 1,4 mil arquivos).
-  Reconstrução incremental por arquivo (só o que mudou) fica para depois: hoje qualquer edição muda a revisão e refaz o índice.
+- **Primeira consulta de uma revisão nova** paga a construção do índice. Sem índice nenhum (a frio), são vários segundos no repositório inteiro (1,4 mil arquivos). Com um índice anterior compatível, a reconstrução é **incremental por arquivo** (abaixo) e custa cerca de 1,3 a 1,7 s.
 - **`rg`**: não é requisito. Descoberta em ordem: `context_retrieval.lexical.ripgrep_path`, variável `RIPGREP_PATH`, PATH
   (`shutil.which`, que no Windows aplica o PATHEXT: acha `rg.exe` e `rg.cmd`). Nenhum caminho de instalação é presumido, e candidato que não
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
 - **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
-  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda. Decidir o teto, ou a divisão por etapa, antes de ligar (proposta em J6).
-  2. **Rótulo `cache_b: miss`** também sai quando a B é bloqueada pelo orçamento (é gravado antes de `check_call`): ler `stage_b_reason` e `chunks_sent`.
+  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda. Decidir o teto, ou a divisão por etapa, antes de ligar (opções, números e recomendação na seção "Proposta: orçamento da etapa B", acima).
+  2. ~~Rótulo `cache_b: miss` também saía quando a B era bloqueada pelo orçamento~~ **Fechada (J3a):** o rótulo só vira `miss` depois de `check_call` aprovar a chamada; bloqueada pelo orçamento fica `skipped`, com `stage_b_reason`.
   3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
-  4. **`assume-unchanged` / `skip-worktree`** escondem alterações do `git status`, logo o gate de worktree limpo não as vê.
+  4. ~~`assume-unchanged` / `skip-worktree` escondiam alterações do `git status`~~ **Fechada (J3b):** o gate lê também `git ls-files -v -z` e trata qualquer arquivo marcado (minúscula = `assume-unchanged`, `S` = `skip-worktree`) como worktree sujo, mesmo sem alteração (fail closed); `ls-files` que falha vale `None`. Efeito colateral aceito: um sparse-checkout, que usa `skip-worktree`, também bloqueia o envio remoto.
   5. **Rede de forks**: não há prova de que o commit também não vive só num fork privado.
   6. **Só GitHub**: outro host de remoto é negado.
   7. **Data dir dentro do worktree** pode sujá-lo sozinho.
 
 ## Próximas fatias
 
-Índice BM25 incremental por arquivo; tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
+Tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
 custo reais; outros `SemanticProvider` (embeddings locais, Ollama, banco vetorial); consumo do `ContextPack` por skills,
 planejamento e subagentes.

@@ -739,9 +739,13 @@ class RedeCfg(BaseModel):
     # o teste de vazamento vale para a revisão) e a varredura a antecipa com o aparelho livre, então quase nunca é
     # a tarefa que espera por ela. Sem 0: uma verificação que nunca vence seria o "confia" que o ADR-056 recusa.
     validade_verificacao_s: float = Field(21_600, ge=300, le=604_800)
-    # O tile de configurações rápidas do cliente VPN (`pacote/.Classe`): é por ele que a plataforma religa o túnel sem
-    # reiniciar o aparelho quando o cliente não sobe no boot ou fica parado depois do teste de vazamento (item 29.3).
-    # Vazio desliga o gesto (volta a valer só o reinício).
+    # A atividade principal do cliente VPN (`pacote/.Classe`): é pelo botão Start DELA que a plataforma religa o túnel sem
+    # reiniciar o aparelho quando o cliente não sobe no boot ou fica parado depois do teste de vazamento (W8, 01/10/2026:
+    # só o Start da interface recalcula o `serviceMode` do SFA 1.14.2; o tile inicia o ProxyService num cliente que só
+    # importou o perfil). Vazio desliga o gesto (volta a valer só o reinício).
+    cliente_atividade: str = "io.nekohasekai.sfa/.compose.MainActivity"
+    # O tile de configurações rápidas do cliente (`pacote/.Classe`). LEGADO: a convergência NÃO o usa mais (não recalcula o
+    # `serviceMode`); fica como dado do diagnóstico (scripts/diag-w8-tile.py) e do aparelho cujo modo se provou VPN.
     cliente_tile: str = "io.nekohasekai.sfa/.bg.TileService"
     # Quanto esperar o `tun0` depois do boot, contado do boot. Medido em 30/09 (android-05, 7 boots com o host sob
     # carga): quando sobe, o túnel aparece entre 92 e 176 s de ligado (a segunda chance é o receptor de boot do
@@ -749,7 +753,7 @@ class RedeCfg(BaseModel):
     # reinício por um túnel que ainda ia subir.
     espera_tun_s: float = Field(180, ge=5, le=600)
     # Reinícios pedidos por revisão antes de desistir. Em 30/09 a primeira tentativa do always-on falhou em 5 de 7
-    # boots (ANR de início do serviço com o convidado sem CPU); antes do reinício vem o tile (`cliente_tile`).
+    # boots (ANR de início do serviço com o convidado sem CPU); antes do reinício vem o Start da interface (`cliente_atividade`).
     reinicios_max: int = Field(2, ge=1, le=10)
     # O DNS que o cliente usa pelo túnel (o `hijack-dns` do sing-box resolve por ele).
     dns: str = "1.1.1.1"

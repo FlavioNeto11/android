@@ -2878,8 +2878,10 @@ da esperada leva a `parcial`, com o motivo no `detail`, e emite `network.updated
 profile_id, shared_with?}]` com `saida_dedicada_compartilhada` e `saida_dedicada_trocada_por_compartilhada`; são avisos
 e não recusam (a confirmação por aparelho com conta real não muda).
 
-**Configuração.** `rede.cliente_tile` (tile do cliente VPN usado para religar o túnel sem reinício; vazio desliga) e
-`rede.espera_tun_s` com padrão 180 (era 60), contados do boot.
+**Configuração.** `rede.cliente_atividade` (atividade principal do cliente VPN; o Start dela religa o túnel sem reinício, W8:
+só o Start da interface recalcula o `serviceMode` do SFA; vazio desliga), `rede.cliente_tile` (LEGADO: tile do cliente, não é
+mais usado pela convergência) e `rede.espera_tun_s` com padrão 180 (era 60), contados do boot. Compatível para trás: campo
+novo com padrão; `config.yaml` antigo, sem `cliente_atividade`, passa a usar o Start da interface.
 
 **Renderizador do emulador (29.11).** Compatível para trás: campos novos com padrão e um código de recusa novo. Prova:
 `simulated` (`backend/tests/test_renderizador.py`, `test_contratos_do_worker.py`); a configuração por aparelho e por
