@@ -363,9 +363,10 @@ rede:                             # rede por aparelho (ADR-056): aplicação no 
   cliente_pacote: io.nekohasekai.sfa   # cliente VPN no aparelho (sing-box), instalado pela versão promovida na loja
   deriva_s: 900                   # releitura periódica da rede aplicada (settings, tun0); 0 desliga
   validade_verificacao_s: 21600   # trafego_verificado vence depois disto (política exigida: a tarefa espera medir de novo)
-  cliente_tile: io.nekohasekai.sfa/.bg.TileService   # tile do cliente: religa o túnel sem reiniciar (29.3); vazio desliga
+  cliente_atividade: io.nekohasekai.sfa/.compose.MainActivity   # Start da interface do cliente: religa o túnel sem reiniciar (W8: só ele recalcula o serviceMode); vazio desliga
+  cliente_tile: io.nekohasekai.sfa/.bg.TileService   # LEGADO: tile do cliente, só diagnóstico (inicia o ProxyService se o serviceMode não é VPN); a convergência não o usa
   espera_tun_s: 180               # espera pelo tun0 contada do boot (medido em 30/09: sobe entre 92 e 176 s, nunca depois de 180)
-  reinicios_max: 2                # reinícios por revisão antes de desistir (o tile é tentado antes de cada um)
+  reinicios_max: 2                # reinícios por revisão antes de desistir (o Start da interface é tentado antes de cada um)
   dns: 1.1.1.1                    # DNS do cliente pelo túnel
   servidor:                       # sing-box do central em modo usuário: sobe só com aparelho atribuído a perfil `servidor: central`
     binario: data/rede/sing-box-1.14.2-windows-amd64/sing-box.exe   # fora do Git; a config vai em arquivo com ACL do usuário
