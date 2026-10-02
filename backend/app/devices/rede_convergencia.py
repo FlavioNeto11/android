@@ -11,7 +11,7 @@ rastro (comando `device.network` no histórico do aparelho; reinício como coman
 | `pendente`, pedido vazio (tirou tudo) | **desfazer**: tira always-on e bloqueio; → `configurado` e pede o reinício |
 | `configurado` | **conectar**: lê como uid 2000 (depois de um boot, esperando o `tun0` até `rede.espera_tun_s` contados do boot); túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; a configuração valendo e só o túnel faltando → o Start da interface do cliente (`rede.cliente_atividade`, W8: o tile não recalcula o `serviceMode` do SFA) e, se ele não religar, outro reinício; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
 | `conectado`, `parcial` | **verificar** (25.5; ao ligar, a pedido, pela porta da tarefa, e na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s`): relê como o conferir e, com o túnel no ar, roda a sonda de saída (`rede_medicao.medir`) e grava a medição — só ela leva a `trafego_verificado` ou `parcial`. Com bloqueio, antes, a prova de vazamento: a que a linha guarda para a revisão e para a instalação do cliente VPN (colunas `leak_*`, item 29.2) ou, sem ela, o teste (`rede_medicao.sondar_vazamento`: o cliente VPN parado, com a intenção gravada antes); sem o túnel de volta, → `configurado` e reinicia (o boot religa o cliente), e a medição vem depois |
-| `trafego_verificado` | **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
+| `trafego_verificado` | **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando o aparelho subiu depois dela (boot a frio ou acordar, item 29.22: a prova é do Android de antes), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
 
 Quem chama:
 - `vitrine.trabalho_ao_ligar` (aparelho que entrou no ar: boot, wake, readoção depois do reinício do backend ou do
@@ -254,7 +254,8 @@ class ConvergenciaDeRede:
         return rede.verificacao_vencida(row, float(self.cfg.validade_verificacao_s))
 
     def invalida(self, row: Row) -> str | None:
-        """`vencida`, `apps` (conta vinculada depois da medição) ou `None`: o `trafego_verificado` vale para a porta."""
+        """`vencida`, `boot` (o aparelho subiu depois da medição, 29.22), `bloqueio`, `apps` (conta vinculada depois da
+        medição) ou `None`: o `trafego_verificado` vale para a porta."""
         return rede.verificacao_invalida(self.st, row)
 
     def _validade_pede_medicao(self, row: Row, motivo: Motivo) -> bool:
@@ -372,6 +373,9 @@ class ConvergenciaDeRede:
                 apps = ", ".join(rede.apps_sem_prova(self.st, row))
                 frase = (f"rede exigida ({politica}): a medição que verificou o aparelho não cobre {apps} (conta "
                          "vinculada depois dela); ")
+            elif invalida == "boot":
+                frase = (f"rede exigida ({politica}): o aparelho subiu depois da medição que o verificou (a prova de "
+                         f"tráfego é de {row['verified_at']}, do Android de antes); ")
             elif invalida == "bloqueio":
                 porque = str(row["leak_detail"] or "sem prova gravada para esta revisão")[:160]
                 frase = (f"rede exigida ({politica}): o bloqueio fora da VPN não tem prova que valha para a rev {rev} "
