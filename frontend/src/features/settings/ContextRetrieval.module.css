@@ -1,0 +1,68 @@
+/* Retrieval de contexto (ADR-063): quatro cartões só de leitura; uma coluna no celular. */
+.inlineIcon {
+  flex: none;
+  vertical-align: -2px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--sp-4);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.proofs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proofs li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.counts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}

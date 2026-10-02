@@ -360,3 +360,61 @@ def test_decisao_no_sonnet_pede_cache_com_o_system_real(tmp_path: Path) -> None:
     kwargs = p._kwargs(model="claude-sonnet-5", system=prompts.ACTOR_SYSTEM, content=[], effort="low",  # noqa: SLF001
                        max_tokens=100, tools=True, schema=None)
     assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"} and kwargs["tools"]
+
+
+def _resp_com_cache(texto: str, *, entrada: int, lido: int, gravado: int) -> Any:
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text=texto)], stop_reason="end_turn", model="claude-haiku-4-5",
+                           usage=SimpleNamespace(input_tokens=entrada, output_tokens=40, cache_read_input_tokens=lido,
+                                                 cache_creation_input_tokens=gravado))
+
+
+_VEREDITO = json.dumps({"satisfied": "yes", "evidence": "ok", "delivery_level": "sent"})
+
+
+async def test_verificador_pede_o_ponto_de_cache_e_o_uso_le_os_campos_de_cache(tmp_path: Path) -> None:
+    """J9 (achado #100, parte de código). O verificador pede o `cache_control` no system (prefixo estável: o texto fixo
+    do verificador; a tela e a pós-condição vão na mensagem, depois do ponto) e o custo lê `cache_read`/`cache_creation`
+    da resposta: `input_tokens` soma tudo o que entrou e `cache_*` é a parte lida/gravada. `simulated`: o fake não
+    prova que a API cacheou, só que a requisição pede e que o uso devolvido carrega os campos."""
+    p, fake = provider(tmp_path, [_resp_com_cache(_VEREDITO, entrada=40, lido=0, gravado=2100),
+                                  _resp_com_cache(_VEREDITO, entrada=40, lido=2100, gravado=0)])
+    _, u1 = await p.verify(VerifyRequest(ctx=ctx(), screen=SCREEN))
+    _, u2 = await p.verify(VerifyRequest(ctx=ctx(), screen=SCREEN))
+    for chamada in fake.calls:
+        assert chamada["system"][0]["cache_control"] == {"type": "ephemeral"}
+        assert chamada["system"][0]["text"].startswith("Você é um verificador independente")
+        assert "cache_control" not in json.dumps(chamada["messages"])        # o ponto é só no prefixo estável
+    assert (u1.cache_write_tokens, u1.cache_read_tokens, u1.input_tokens) == (2100, 0, 2140)
+    assert (u2.cache_write_tokens, u2.cache_read_tokens, u2.input_tokens) == (0, 2100, 2140)
+
+
+def test_uso_com_cache_vai_para_ai_calls_sem_contar_o_cache_como_entrada_nova(tmp_path: Path) -> None:
+    """O que o provedor devolve chega ao relatório de custo: `input_tokens` da linha é só a entrada NÃO cacheada."""
+    from app.db import Database
+    from app.planning.provider import Usage
+    from app.taskqueue.repository import Repository
+
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    db = Database(cfg.db_dsn)
+    db.migrate()
+
+    from app.events import EventBus
+
+    fila = Repository(db, EventBus(db), cfg.evidence_dir)
+    fila.add_usage(None, None, Usage(calls=1, input_tokens=2140, output_tokens=40, cache_read_tokens=2100,
+                                     cache_write_tokens=0, role="verify", model="claude-haiku-4-5"))
+    linha = db.query("SELECT input_tokens, cache_read, cache_write FROM ai_calls WHERE role=?", ("verify",))[0]
+    assert (linha["input_tokens"], linha["cache_read"], linha["cache_write"]) == (40, 2100, 0)
+
+
+def test_prefixo_do_verificador_fica_abaixo_do_minimo_do_haiku(tmp_path: Path) -> None:
+    """Explica as 49 verificações de 25/09 com cache_read = 0: o Haiku 4.5 só cacheia a partir de 4096 tokens, e o
+    prefixo do verificador (system + esquema da saída) mediu 1 290 com a API de verdade (02/10, `docs/ia.md` §5). O ponto
+    de cache é pedido e ignorado sem erro e sem custo. A conta `len//4` do system sozinho SUBCONTA (≈560 contra os ~710
+    medidos só do system), então aqui só se fixa o que vale em qualquer contagem: o system já passa folgado de 4096/8."""
+    from app.planning import prompts
+
+    cfg = make_config(tmp_path)
+    assert cfg.model_caps("claude-haiku-4-5").min_cache_tokens == 4096
+    assert len(prompts.VERIFIER_SYSTEM) // 4 < 4096

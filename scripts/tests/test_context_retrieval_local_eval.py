@@ -121,6 +121,19 @@ class ConjuntoEAvaliacao(unittest.TestCase):
                 self.assertIsNone(r[variante][modo]['erro'], (variante, modo))
         self.assertEqual(linhas[0]['arquivos_no_indice'], 3)                   # billing, auth, guia: o estado do pai, sem novo.py
 
+    def test_modo_consumidor_roda_so_o_hibrido_local_sem_e_com_escopo_de_codigo(self) -> None:
+        cs = [c for c in ev.escolher_commits(self.repo, 'HEAD', 10) if c['sha'] == self.alvo]
+        linhas = ev.avaliar(self.repo, cs, Path(self._tmp.name) / 'pai2', ev.MODOS_DO_CONSUMIDOR, ev.VARIANTES_DO_CONSUMIDOR,
+                            ev.LIMITE_DA_PERGUNTA_DO_CONSUMIDOR)
+        r = linhas[0]['resultados']
+        self.assertEqual({v: set(m) for v, m in r.items()}, {'completa': {'hybrid_local'}, 'codigo': {'hybrid_local'}})
+        self.assertTrue(r['completa']['hybrid_local']['hit5'])        # sem escopo acha billing.py
+        self.assertFalse(r['codigo']['hybrid_local']['hit5'])         # o repositório de teste não tem backend/app/: o escopo é aplicado
+        self.assertEqual(r['codigo']['hybrid_local']['top3'], [])
+        a = ev.agregar(linhas, ev.MODOS_DO_CONSUMIDOR, ev.VARIANTES_DO_CONSUMIDOR)
+        self.assertEqual(set(a), {'completa', 'codigo'})
+        self.assertEqual(ev.tabela(a, ev.MODOS_DO_CONSUMIDOR, ev.VARIANTES_DO_CONSUMIDOR).count('hybrid_local'), 2)
+
     def test_falha_do_retriever_conta_como_erro_e_nunca_como_acerto(self) -> None:
         m = ev.metricas([], {'app/billing.py'})
         self.assertFalse(m['hit3'] or m['hit5'])

@@ -14,6 +14,7 @@ import { aiFeatureRows, aiModelRows, aiRoleRows, spendLabel } from '../../lib/ai
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
 import { AiBalances } from './AiBalances';
+import { ContextRetrievalSection } from './ContextRetrievalSection';
 import styles from './Settings.module.css';
 
 export function AiSection() {
@@ -143,6 +144,8 @@ export function AiSection() {
       </div>
 
       <AiBalances />
+
+      <ContextRetrievalSection />
 
       {papeis.length > 0 ? (
         <PageSection

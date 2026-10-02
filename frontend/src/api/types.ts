@@ -2509,6 +2509,43 @@ export interface AiBalance {
   message: string;
 }
 
+/**
+ * `GET /api/context-retrieval/status` (ADR-063). Só leitura: não consulta código, não chama provedor, não gasta nada e
+ * nunca devolve a chave, a pergunta, código ou caminhos de arquivo. A visão do painel é a mesma que o backend decide.
+ */
+export type ContextRetrievalMode = 'disabled' | 'local_only' | 'shadow' | 'hybrid' | string;
+export type ContextRetrievalVisibility = 'public' | 'private' | 'unverified' | 'not_applicable' | string;
+
+export interface ContextRetrievalStatus {
+  enabled: boolean;
+  mode: ContextRetrievalMode;
+  top_k: number;
+  provider: { name: string; model: string; available: boolean; unavailable_reason: string | null };
+  external_send: {
+    allowed: boolean;
+    reason: string;
+    repository_class: string;
+    configured_for_remote: boolean;
+    visibility: ContextRetrievalVisibility;
+    visibility_verified: boolean;
+    remote_visibility_verified: boolean;
+    head_public_verified: boolean;
+    /** `null` quando não se aplica ou o git não respondeu. */
+    worktree_clean: boolean | null;
+  };
+  budget: { timeout_ms: number; max_calls: number; max_cost_usd: number };
+  summary: {
+    requests: number;
+    by_mode: Record<string, number>;
+    cache: { hit: number; miss: number };
+    latency_ms: { p50: number | null; p95: number | null; n: number };
+    cost_usd: number;
+    input_tokens: number;
+    fallbacks: Record<string, number>;
+    privacy_blocks: Record<string, number>;
+  };
+}
+
 export interface AiBalancesReport {
   accounts: AiBalance[];
   blocked: AiBalanceAccount[];

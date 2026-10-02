@@ -20,9 +20,7 @@ snapshot foi salvo é `EmulatorBackend.save_snapshot` (real chama o console pelo
 `_wait_boot` só roda no caminho REAL (o `_boot` do aparelho falso continua retornando antes de chegar nele); o
 ramo de prazo estourado agora tem teste, chamando o método direto — o mesmo padrão de
 `test_a_decisao_depende_so_da_memoria_declarada` sobre `_recusa_por_capacidade` — com `boot_timeout_s=0`, que
-estoura ANTES de qualquer sonda por `adb`. O que ainda falta: as sondas em si (`boot_completed`, `ui_ready`,
-`prepare_for_automation`, o veredito do snapshot durante o boot) não têm backend fake, e a mesma extração no
-agente remoto (`worker/executor.py`) também não foi feita nesta fatia (T.2).
+estoura ANTES de qualquer sonda por `adb`. As sondas em si (`boot_completed`, `ui_ready`, `prepare_for_automation`) têm teste em `test_wait_boot_sondas.py` (J10), com dublês só nas três chamadas ao `Adb`; o veredito do snapshot durante o boot e a extração no agente remoto (`worker/executor.py`) seguem de fora (T.2).
 """
 from __future__ import annotations
 
@@ -289,7 +287,7 @@ async def test_wait_boot_estoura_prazo_e_marca_erro(harness: Harness) -> None:
     listado no achado como o que falta extrair. Chamado direto, como já se faz com `_recusa_por_capacidade`,
     prova o ramo de prazo estourado sem emulador nenhum: `boot_timeout_s=0` estoura na PRIMEIRA volta do laço,
     antes de qualquer sonda por `adb` — é por isso que este teste não precisa de um backend mais fake do que já
-    existe. As sondas em si (`boot_completed`/`ui_ready`/`prepare_for_automation`) continuam sem cobertura."""
+    existe. As sondas em si: `test_wait_boot_sondas.py`."""
     import time
 
     st = harness.state

@@ -92,6 +92,35 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Testes: sondas do `_wait_boot` (T.2, J10)
+
+- `backend/tests/test_wait_boot_sondas.py` (novo, 7 testes `simulated`): `boot_completed` antes de `ui_ready`, a interface só sondada depois do boot, `AdbError`/`DriverError` nas sondas engolidos e repetidos, os 120 s sem interface depois do boot (relógio injetável em `manager`, sem dormir), prazo estourado sem `boot_completed`, preparo que falha rápido sem impedir a entrada no ar e o ajuste de apps de fundo virando evento. Só dublês nas três chamadas ao `Adb`; o laço, a fase de prontidão e o estado são os de produção. Mutação (120 s→12000 s; ordem das sondas) derruba os testes. Nenhum código de produção mudou (`manager.py`, `despacho.py` intocados). Ainda de fora: o veredito do snapshot no boot e a extração no agente remoto. Sem deploy.
+
+## 2026-10-02 — W8: teto de 6 reinícios respeita o pior caso de uma iteração (antes do 1º boot)
+
+- `scripts/diag-w8-mitigacao.py`: uma iteração nova só começa se `reinícios_usados + 1 + rede.reinicios_max (config real; 3 se ilegível) <= 6`, para que nem o `FAIL` da última passe do limite do dono. Prova `simulated` (`scripts/tests/test_diag_w8_mitigacao.py`: com 4 usados não começa a 5ª, com 3 começa). `docs/handoffs/w8-boot-recovery.md` §17.5 registra o ajuste, feito antes de qualquer boot (`not_run`).
+
+## 2026-10-02 — W8: protocolo da validação real com as condições do servidor WireGuard (A3, `not_run`)
+
+- **`scripts/diag-w8-mitigacao.py`**: antes de cada reinício do servidor WireGuard (par do android-09 entrando e saindo) espera a **janela ociosa** de 02/03/05/06 (sem execução nem comando aberto; nunca interrompe), observa o reinício e mede a **reconexão** (handshake novo dos pares online em ≤ 120 s; senão para, tira o par e relata); lê o firewall (`firewall-check`, nunca cria regra: sem `liberado` o resultado é BLOQUEADO com os comandos do dono); confere a **pausa do reparo no health antes de cada boot**; o reinício do 09 pelo rollback fica fora dos 6 boots e é registrado à parte. Prova `simulated`: `scripts/tests/test_diag_w8_mitigacao.py` (29 testes). Nada foi executado no parque (`not_run`).
+- `docs/handoffs/w8-boot-recovery.md` §17.5: autorização do dono (02/10, via sessão orquestradora), condições e sequência registradas antes do 1º boot.
+
+## 2026-10-02 — Retrieval: ablação A × A+B por região, medida (J12, `real`)
+
+- `scripts/context-retrieval-ablation.py` (`--analise` grátis; `--run` paga) e a seção "Ablação A × A+B por região" em `docs/dominios/context-retrieval.md`. **`real` 02/10:** `python-poetry/poetry` @ `94b6e35`, 6 perguntas × (A + B) = 12 chamadas, todas 200, zero retry, **US$ 0,005573**, nenhum código do repositório enviado. Config só da execução (5 candidatos, 16 chunks): a B achou a região esperada em **5 de 6** (o local, 2 de 6), ~88% menos linhas a ler que os arquivos inteiros, ~+40% de custo por pergunta; maior pedido 22.748 tokens de 24.000. A única falha (H25) é do chunker (os chunks acabam no 1º candidato). Cobertura da A: 195 entradas de 193 `.py`, todas enviadas, sem corte (dívida fechada). Recomendação de padrão (5 candidatos, 16 chunks) fica para PR separado e medido; os padrões do produto não mudaram. Sem deploy.
+
+## 2026-10-02 — IA: cache de prompt do verificador — prova simulada e prova REAL (J9, achado #100)
+
+- O ponto de cache (`cache_control`) já era pedido no verificador e o custo já lia `cache_read`/`cache_creation`. Três testes `simulated` novos em `backend/tests/test_anthropic_provider.py` e `scripts/verifier-cache-probe.py` (teto, zero retry, sem código do repositório, chave lida só pelo `EnvSettings`). **`real` 02/10 (US$ 0,0241):** prefixo medido ~1 290 tokens; Sonnet 5 e Opus 5.5 gravam na 1ª chamada e **leem 1 290 na 2ª**; Haiku 4.5 (padrão) fica em 0/0 (mínimo 4096). Corrige a leitura anterior ("≈ 560 tokens, nem o Sonnet chega"), que vinha de `len//4`. Padrão do verificador inalterado: o Haiku sem cache ainda é o mais barato. Nenhum código de produção mudou. `docs/ia.md` §5 atualizado.
+
+## 2026-10-02 — Painel: cartão "Retrieval de contexto" na guia IA, só leitura (J8)
+
+- **`frontend/src/features/settings/ContextRetrievalSection.tsx`** (novo) na guia IA de Configuração: lê `GET /api/context-retrieval/status` (ADR-063) e mostra veredito, configuração, proveniência do envio externo com as três provas, orçamento e métricas recentes. Só leitura: um botão "Atualizar", nenhuma escrita, nenhum controle que ligue o remoto. Novos: `api.contextRetrievalStatus`, o tipo `ContextRetrievalStatus` e `lib/contextRetrieval.ts`. `simulated`: 16 testes novos; frontend inteiro 96 arquivos e 1.149 testes, typecheck e build ok. **Verificação visual no navegador: `not_run`**. Sem backend; sem deploy.
+
+## 2026-10-02 — Retrieval: escopo padrão de código no consumidor do plano-100 (J7)
+
+- **`scripts/plano-100-pacotes.py --contexto`** passa a consultar só `backend/app/`, `frontend/src/` e `scripts/` por padrão (`--contexto-escopo PREFIXO`, repetível, troca o padrão; `--contexto-sem-escopo` consulta tudo). Vale só para este consumidor opt-in: serviço, CLI do módulo e API não mudam; sem a flag `--contexto` a saída continua byte a byte a de sempre. `real` (02/10, `context-retrieval-local-eval.py --consumidor`, 40 commits): hit@3 22,5% → 70,0%, hit@5 37,5% → 77,5%, MRR@10 0,195 → 0,555. `simulated`: `scripts/tests/test_pacotes_contexto.py` (11 → 15 testes; o de saída idêntica segue verde) e `test_context_retrieval_local_eval.py` (9). O `local-eval` ganhou `--consumidor`.
+
 ## 2026-10-02 — Retrieval: proposta de orçamento da etapa B (J6, só doc)
 
 - `docs/dominios/context-retrieval.md` ganha a seção "Proposta: orçamento da etapa B": a regra do teto (`gasto da A + len(payload)//4 > 24.000` barra a B, ~33 KB de payload), os números reais do smoke (A ~15,6 mil tokens, B ~7,6 mil, US$ 0,00066 a 0,00098 por pergunta), cinco opções com custo estimado, e a recomendação: medir antes o valor da B (ablação A x A + B com métrica de região) e conferir se a A cobre o escopo (`files_considered = 195`). Nada foi alterado nem habilitado; a decisão de habilitar o remoto é do dono.
