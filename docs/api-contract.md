@@ -3293,7 +3293,7 @@ Quem age é sempre a **pessoa** (`ator = pessoa`, de `estados.py`); as arestas d
   PedidoView[]}`, completo desde a primeira carga e sem janela (a regra 2 da ADR-062). Os `aguardando_pessoa` alimentam a
   caixa de Pendências como uma origem nova. **Para não contar duas vezes** a decisão que já tem item próprio (a aprovação
   e a execução `needs_input`), o item do pedido é o que conta, e os itens daquele pedido aparecem agrupados sob ele
-  (`pedido_id`) sem contar de novo. Isso muda a definição de Pendência e **exige emenda à ADR-062** (decisão em aberto 1).
+  (`pedido_id`) sem contar de novo. Isso muda a definição de Pendência e **pede emenda à ADR-062**, confirmada pelo dono em 02/10 (decisão 1).
 ```ts
 type AvisoTipo = 'pausa_automatica' | 'orcamento_80' | 'orcamento_esgotado' | 'ocorrencia_perdida'
                | 'relatorio_pronto' | 'encerramento'                         // informativos: vão para a caixa de avisos
@@ -3312,8 +3312,9 @@ interface AvisoDTO {
 - `GET /api/pedidos/avisos?lido=0` alimenta a caixa; `requer_pessoa=0` é o filtro do painel (o aviso de aprovação,
   pergunta ou incerteza existe para o canal de fora e não repete na caixa de avisos). `POST /api/pedidos/avisos/ler` marca
   lido e é idempotente.
-- **Ponto de extensão do 28.11** (aviso fora do painel, decisão do dono: canal e conta): o canal externo assina o evento
-  `pedido.aviso`, que sai para TODOS os tipos, `requer_pessoa` ou não. O 28.9 não envia nada para fora do painel.
+- **Ponto de extensão do 28.11** (aviso fora do painel; o dono escolheu o **Telegram** em 02/10, com token e chat_id só
+  pelo cofre/.env): o canal externo assina o evento `pedido.aviso`, que sai para TODOS os tipos, `requer_pessoa` ou não. O
+  28.9 não envia nada para fora do painel.
 
 ### Eventos (WebSocket `/api/ws`, `EventRecord.kind`)
 
@@ -3377,21 +3378,20 @@ nunca vence. A prévia não grava, mas passa pelo mesmo portão (ela resolve alv
 | re-resolução dos alvos a cada ocorrência (a persona pode ter mudado de aparelho) | fora deste contrato | 28.4 |
 | `estados.py`: `aguardando_pessoa` não vai a `pausado`, e `fim_em` que passa nessa espera não encerra (linhas 20–24) | a API não inventa a aresta; `pausar` ali é `409 invalid_state` | 28.4 e 28.5 |
 
-### Decisões em aberto (do dono ou do coordenador)
+### Decisões tomadas (02/10/2026)
 
-1. **ADR-062:** o pedido `aguardando_pessoa` vira uma origem da caixa de Pendências, agrupando a aprovação e a execução
-   `needs_input` dele para não contar em dobro? É a recomendação; muda a definição e pede emenda ao ADR.
-2. **Prévia como `POST`** (divergência do §11, que escreve `GET`).
-3. **Repetir ação de estado:** `200 sem_mudanca` (proposto, como `retomar` repetido e o `cancel` de comando) ou `409`.
-4. **Retomar de `aguardando_pessoa`:** pela mesma rota `retomar`, sem rota `responder` (proposto), e sem retorno automático
-   (a aresta é só da pessoa em `estados.py`).
-5. **Idempotência de criação:** `id` determinístico (proposto, sem migração) ou coluna `idempotency_key` UNIQUE.
-6. **`backfill`:** a chave leva o instante de cada slot (proposto, repetir não duplica), enquanto o §6.3 diz "o instante do
-   pedido do dono, arredondado ao segundo".
-7. **Avisos:** a lista de tipos é a do §11 mais `ocorrencia_perdida` e `encerramento` (acréscimos desta proposta); e o
-   padrão `pausar` sem motivo.
-8. **Piso de frequência de `preparar`:** o §10 diz "efeito externo ≥ 1 h"; esta proposta trata `preparar` (só rascunho, com
-   aprovação) como `observar`, 15 min, e põe a hora cheia só em `agir`.
+O coordenador decidiu todas com a recomendação desta proposta; o dono confirmou em chat as marcadas com **(dono)**.
+
+1. **(dono) Emenda à ADR-062:** o pedido `aguardando_pessoa` é uma origem da caixa de Pendências, agrupando a aprovação e a
+   execução `needs_input` dele para não contar em dobro (texto da emenda na própria ADR-062).
+2. **Prévia como `POST /api/pedidos/previa`** (o texto do comando não vai em query string); o `GET` do §11 fica superado.
+3. **Repetir ação de estado:** `200 sem_mudanca`.
+4. **Retomar de `aguardando_pessoa`:** pela mesma rota `retomar`, sem rota `responder` e sem retorno automático.
+5. **Idempotência de criação:** `id` determinístico a partir da `idempotency_key`, sem migração, com o hash INTEIRO
+   (`uuid5` ou `sha256`), nunca truncado a ponto de colidir.
+6. **`backfill`:** a chave leva o instante de cada slot (repetir não duplica); o §6.3 do desenho é ajustado.
+7. **Avisos:** os tipos do §11 mais `ocorrencia_perdida` e `encerramento`; `pausar` sem motivo usa "Pausado pela pessoa".
+8. **(dono) Piso de frequência:** `observar` e `preparar` ≥ 15 min; `agir` ≥ 1 h.
 
 ### Aceite proposto e prova
 
