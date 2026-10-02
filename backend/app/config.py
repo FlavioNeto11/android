@@ -728,6 +728,10 @@ class RedeSondaCfg(BaseModel):
     medir_central: bool = True
     central_ttl_s: float = Field(600, ge=60, le=86_400)
     central_prazo_s: float = Field(6, ge=1, le=30)
+    # O aparelho SEM rede pedida (nem linha em `device_network`) também é medido, só nos IPs v4/v6 (a mesma sonda do
+    # uid 2000, sem app, DNS, UDP nem vazamento), ligado e livre, a cada `reverificar_s`: sem perfil, a saída é a da casa
+    # (presumida) até a medida dizer o contrário. `false` desliga (o harness de testes não fala com adb).
+    medir_sem_rede: bool = True
 
     @field_validator("hosts_ipv4", "hosts_ipv6")
     @classmethod

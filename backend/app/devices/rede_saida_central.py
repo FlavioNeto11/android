@@ -267,16 +267,27 @@ class SaidaPelaCasa:
     ipv6: bool | None
     ipv6_outside_profile: bool | None
     reason: str
+    #: Aparelho SEM rede pedida e sem medida que o contradiga: "sai pela casa" é PRESUMIDO (sem perfil, a saída é a da
+    #: rede de quem hospeda), não medido. É um estado próprio: `leaves_by_home` é `True`, `basis` é "presumed".
+    presumed: bool = False
 
     @property
     def leaves_by_home(self) -> bool | None:
-        if self.ipv4 or self.ipv6 or self.ipv6_outside_profile:
+        if self.presumed or self.ipv4 or self.ipv6 or self.ipv6_outside_profile:
             return True
         return False if self.ipv4 is False and self.ipv6 is not None else None
 
+    @property
+    def basis(self) -> str | None:
+        """Em que o veredito se apoia: "measured" (saída medida do aparelho contra a do central), "presumed" (sem rede
+        pedida e sem medida que valha) ou `None` (sem veredito: faltou medida)."""
+        if self.presumed:
+            return "presumed"
+        return "measured" if self.leaves_by_home is not None else None
+
     def como_dict(self) -> dict[str, object]:
         return {"ipv4": self.ipv4, "ipv6": self.ipv6, "ipv6_outside_profile": self.ipv6_outside_profile,
-                "leaves_by_home": self.leaves_by_home, "reason": self.reason}
+                "leaves_by_home": self.leaves_by_home, "basis": self.basis, "reason": self.reason}
 
 
 def veredito(*, medido: bool, ipv4: str | None, ipv6: str | None, central: Mapping[str, object],
@@ -314,3 +325,34 @@ def veredito(*, medido: bool, ipv4: str | None, ipv6: str | None, central: Mappi
         fora = True if fora else None
         motivos.append("a revisão de rede pedida ainda não foi medida: só o que acusa vale")
     return SaidaPelaCasa(v4, v6, fora, "; ".join(motivos) if motivos else "a saída medida não é a do central")
+
+
+def veredito_sem_rede(*, ipv4: str | None, ipv6: str | None, central: Mapping[str, object],
+                      falha: str | None) -> SaidaPelaCasa:
+    """Aparelho SEM rede pedida (item 29.20). `ipv4`/`ipv6` são a última medida VÁLIDA da sonda de IP (`None, None` = não
+    há); `falha` é o motivo da última tentativa que falhou, se foi a mais recente.
+
+    - medida e igual à do central: "sai pela casa (medido)";
+    - medida, diferente e com o central também medido: `False` ("não casa"): quem sai por outro IP sem perfil é um proxy
+      legado ou outra rede do host, e a sonda mostra qual;
+    - sem medida, com falha de sonda, ou com o central sem medida: PRESUMIDO. Falha ou incerteza nunca limpam o aparelho:
+      sem perfil, a saída é a da rede de quem hospeda até a medida provar outra."""
+    if ipv4 or ipv6:
+        c4, c6 = central.get("ipv4"), central.get("ipv6")
+        v4 = mesma_saida(4, ipv4, str(c4) if c4 else None)
+        v6 = mesma_saida(6, ipv6, str(c6) if c6 else None) if ipv6 else (False if ipv4 else None)
+        if v4 or v6:
+            como = ([f"IPv4 {ipv4}"] if v4 else []) + ([f"o /64 IPv6 de {ipv6}"] if v6 and ipv6 else [])
+            return SaidaPelaCasa(v4, v6, None, "medido: o aparelho, sem rede pedida, sai pelo mesmo " + " e ".join(como)
+                                 + " do central")
+        if v4 is False and v6 is not None:
+            return SaidaPelaCasa(False, v6, None, f"medido: sem rede pedida, o aparelho sai por {ipv4 or ipv6}, diferente do "
+                                                  "central (proxy legado ou outra rede do host)")
+        sem = "IPv4" if v4 is None and ipv4 else "IPv6"
+        return SaidaPelaCasa(None, None, None, f"presumido: sem rede pedida; medido {ipv4 or ipv6}, mas a saída {sem} do "
+                                               f"central está sem medida ({central.get('reason')})", presumed=True)
+    if falha:
+        return SaidaPelaCasa(None, None, None, f"presumido: sem rede pedida; a última sonda de IP falhou ({falha[:200]}), "
+                                               "então não há saída medida", presumed=True)
+    return SaidaPelaCasa(None, None, None, "presumido: sem rede pedida (sem perfil, a saída é a da rede de quem hospeda) e a "
+                                           "saída do aparelho ainda não foi medida", presumed=True)

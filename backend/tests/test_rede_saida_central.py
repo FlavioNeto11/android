@@ -18,7 +18,7 @@ import pytest
 
 from app.config import RedeSondaCfg
 from app.devices import rede_saida_central as rsc
-from app.devices.rede_saida_central import (SaidaDoCentral, mesma_saida, perfil_leva_ipv6, veredito)
+from app.devices.rede_saida_central import (SaidaDoCentral, mesma_saida, perfil_leva_ipv6, veredito, veredito_sem_rede)
 from app.devices.sonda_rede import IpDeSaida, ip_da_resposta_http, ler_ip_de_saida
 
 CASA4, CASA6 = "177.10.20.30", "2804:14c:1:2::9"
@@ -275,7 +275,7 @@ def _v(**kw: Any) -> dict[str, Any]:
 def test_veredito_acusa_ipv4_ipv6_e_ipv6_fora_do_perfil() -> None:
     limpo = _v()
     assert limpo == {"ipv4": False, "ipv6": False, "ipv6_outside_profile": False, "leaves_by_home": False,
-                     "reason": "a saída medida não é a do central"}
+                     "basis": "measured", "reason": "a saída medida não é a do central"}
     v4 = _v(ipv4=CASA4)
     assert v4["ipv4"] is True and v4["leaves_by_home"] is True and CASA4 in str(v4["reason"])
     v6 = _v(ipv6="2804:14c:1:2::77")
@@ -321,3 +321,43 @@ def test_caso_notebook_da_lan_e_vpn_central_wireguard_sao_acusados() -> None:
     assert r["ipv4"] is True and r["ipv6"] is True and r["ipv6_outside_profile"] is True
     assert r["leaves_by_home"] is True
 
+
+
+# ---------------------------------------------------------------------------- aparelho sem rede pedida (29.20, extensão)
+def _vs(**kw: Any) -> dict[str, Any]:
+    base: dict[str, Any] = dict(ipv4=None, ipv6=None, central=_CENTRAL, falha=None)
+    base.update(kw)
+    return veredito_sem_rede(**base).como_dict()
+
+
+def test_sem_rede_pedida_sem_medida_e_presumido_nunca_nulo_nem_limpo() -> None:
+    r = _vs()
+    assert r["leaves_by_home"] is True and r["basis"] == "presumed"
+    assert r["ipv4"] is None and r["ipv6"] is None and r["ipv6_outside_profile"] is None
+    assert "presumido: sem rede pedida" in str(r["reason"]) and "ainda não foi medida" in str(r["reason"])
+    # Com o central também sem medida: nada vira "limpo" (continua presumido).
+    assert _vs(central=_CENTRAL_SEM)["basis"] == "presumed"
+
+
+def test_sem_rede_pedida_medido_igual_ao_central_e_medido_nao_presumido() -> None:
+    r = _vs(ipv4=CASA4)
+    assert r["leaves_by_home"] is True and r["basis"] == "measured" and r["ipv4"] is True
+    assert CASA4 in str(r["reason"]) and str(r["reason"]).startswith("medido:")
+    v6 = _vs(ipv4=OUTRO4, ipv6="2804:14c:1:2::77")                    # IPv4 diferente, mas IPv6 no /64 do central
+    assert v6["leaves_by_home"] is True and v6["basis"] == "measured" and v6["ipv6"] is True
+
+
+def test_sem_rede_pedida_medido_diferente_mostra_que_nao_e_casa() -> None:
+    r = _vs(ipv4=OUTRO4)
+    assert r["leaves_by_home"] is False and r["basis"] == "measured" and r["ipv4"] is False
+    assert OUTRO4 in str(r["reason"]) and "diferente do central" in str(r["reason"])
+    # Central sem medida: não dá para dizer que é diferente. Medido, mas presumido.
+    incerto = _vs(ipv4=OUTRO4, central=_CENTRAL_SEM)
+    assert incerto["leaves_by_home"] is True and incerto["basis"] == "presumed"
+    assert "sem medida" in str(incerto["reason"])
+
+
+def test_sem_rede_pedida_com_falha_de_sonda_continua_presumido_com_o_motivo() -> None:
+    r = _vs(falha="IPv4 sem IP: api.ipify.org: sem resposta (tempo esgotado)")
+    assert r["leaves_by_home"] is True and r["basis"] == "presumed" and r["ipv4"] is None
+    assert "a última sonda de IP falhou" in str(r["reason"]) and "tempo esgotado" in str(r["reason"])

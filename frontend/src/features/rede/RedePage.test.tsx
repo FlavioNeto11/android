@@ -624,3 +624,34 @@ it('sem egress_home (backend de antes do 29.20) o resumo da casa não aparece', 
   await waitFor(() => text().includes('android-01'));
   expect(text()).not.toContain('Saída pela casa');
 });
+
+it('aparelho sem rede pedida aparece como "sai pela casa (presumido)" e, medido, mostra o IP da sonda (29.20)', async () => {
+  const base = { ipv4: null, ipv6: null, ipv6_outside_profile: null };
+  backend.on('GET', /\/network\/profiles/, () => json({ profiles: [perfil()] }));
+  backend.on('GET', /\/network\/devices/, () => json({
+    central_egress: { ipv4: '177.10.20.30', ipv6: null, measured_at: '2026-10-02T12:00:00+00:00', reason: 'IPv6: sem rota' },
+    devices: [
+      linha({ instance_id: 'android-01', egress_home: { ...base, leaves_by_home: true, basis: 'presumed', measured: null,
+                                                        reason: 'presumido: sem rede pedida' } }),
+      linha({ instance_id: 'android-02', egress_home: { ...base, ipv4: true, leaves_by_home: true, basis: 'measured',
+                                                        measured: { ipv4: '177.10.20.30', ipv6: null, measured_at: '2026-10-02T12:01:00+00:00', source: 'probe_no_network' },
+                                                        reason: 'medido: igual ao central' } }),
+      linha({ instance_id: 'android-03', egress_home: { ...base, ipv4: false, leaves_by_home: false, basis: 'measured',
+                                                        measured: { ipv4: '198.51.100.9', ipv6: null, measured_at: '2026-10-02T12:01:00+00:00', source: 'probe_no_network' },
+                                                        reason: 'medido: diferente do central' } }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-03'));
+  expect(text()).toContain('2 aparelhos ainda saem pela casa (android-01, android-02) · 1 presumido (sem rede pedida) · 0 sem medida.');
+  const tabela = Array.from(container.querySelectorAll('table')).find((t) => t.textContent?.includes('IP de saída'))!;
+  const celula = (id: string) => Array.from(tabela.querySelectorAll('tbody tr'))
+    .find((tr) => tr.textContent?.includes(id))!.querySelectorAll('td')[5]!;
+  expect(celula('android-01').textContent).toContain('sai pela casa (presumido: sem rede pedida)');
+  expect(celula('android-01').textContent).toContain('não medido');
+  expect(celula('android-02').textContent).toContain('177.10.20.30');
+  expect(celula('android-02').textContent).toContain('sai pela casa: IPv4 igual ao do central');
+  expect(celula('android-02').textContent).not.toContain('presumido');
+  expect(celula('android-03').textContent).toContain('198.51.100.9');
+  expect(celula('android-03').textContent).toContain('não sai pela casa');
+});

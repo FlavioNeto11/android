@@ -61,7 +61,9 @@ const PREVIA: Record<NetworkAssignDevice['outcome'], { rotulo: string; tom: Tone
 
 /** Os IPs de saída medidos de um aparelho: o IPv4 e o IPv6 (um aparelho pode sair só por um deles). */
 function ipsMedidos(a: NetworkDeviceRow): string[] {
-  return [a.network?.egress_ipv4, a.network?.egress_ipv6].filter((ip): ip is string => !!ip);
+  // Sem rede pedida não há `network`: a saída medida é a da sonda de IP do aparelho (29.20), em `egress_home.measured`.
+  const m = a.network ? { ipv4: a.network.egress_ipv4, ipv6: a.network.egress_ipv6 } : a.egress_home?.measured;
+  return [m?.ipv4, m?.ipv6].filter((ip): ip is string => !!ip);
 }
 
 /** IPs medidos que aparecem em mais de um aparelho — ADR-056 §1: "dois aparelhos com o mesmo IP geram aviso". Os
@@ -294,6 +296,14 @@ function acusacoesDaCasa(h: NetworkEgressHome): string[] {
 /** "Sai pela casa" (29.20) ao lado do IP medido: o que ACUSA em destaque (com o motivo no `title`), "não sai" só com
  *  medida dos dois lados, e "sem medida" quando falta uma delas — nunca um "limpo" presumido. */
 function SaiPelaCasa({ home }: { home: NetworkEgressHome }) {
+  if (home.basis === 'presumed') {
+    // Um estado próprio, nunca neutro: sem rede pedida a saída é a da casa até uma medida provar outra.
+    return (
+      <div className={`${s.rowNote} ${s.dupe}`} title={home.reason}>
+        <Home size={12} aria-hidden /> sai pela casa (presumido: sem rede pedida)
+      </div>
+    );
+  }
   const acusa = acusacoesDaCasa(home);
   if (acusa.length > 0) {
     return (
@@ -315,12 +325,14 @@ function ResumoDaCasa({ aparelhos, central }: { aparelhos: NetworkDeviceRow[]; c
   const veredictos = aparelhos.map((a) => a.egress_home).filter((h): h is NetworkEgressHome => !!h);
   if (veredictos.length === 0) return null;
   const saem = aparelhos.filter((a) => a.egress_home?.leaves_by_home === true);
+  const presumidos = saem.filter((a) => a.egress_home?.basis === 'presumed').length;
   const semMedida = veredictos.filter((h) => h.leaves_by_home === null).length;
   const saidaCentral = central ? [central.ipv4, central.ipv6].filter((ip): ip is string => !!ip).join(' e ') : '';
   return (
     <Banner tone={saem.length > 0 ? 'danger' : 'info'} icon={Home} compact title="Saída pela casa">
       <strong>{saem.length === 1 ? '1 aparelho ainda sai' : `${saem.length} aparelhos ainda saem`} pela casa</strong>
-      {saem.length > 0 ? ` (${saem.map((a) => a.instance_id).join(', ')})` : ''} · {semMedida} sem medida.{' '}
+      {saem.length > 0 ? ` (${saem.map((a) => a.instance_id).join(', ')})` : ''}
+      {presumidos > 0 ? ` · ${presumidos} presumido${presumidos === 1 ? '' : 's'} (sem rede pedida)` : ''} · {semMedida} sem medida.{' '}
       {saidaCentral
         ? <>Saída medida do central: <code>{saidaCentral}</code>.</>
         : <span title={central?.reason}>Saída do central ainda não medida{central ? ` (${central.reason})` : ''}.</span>}

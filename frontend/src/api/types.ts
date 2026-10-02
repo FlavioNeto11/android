@@ -2303,6 +2303,13 @@ export interface NetworkEgressHome {
   ipv6: boolean | null;
   ipv6_outside_profile: boolean | null;
   leaves_by_home: boolean | null;
+  /** Em que `leaves_by_home` se apoia: `measured` = a saída medida contra a do central; `presumed` = aparelho SEM rede
+   *  pedida e sem medida que o contradiga (sem perfil, a saída é a da casa; `leaves_by_home` é `true`); `null` = sem
+   *  veredito. Ausente = backend de antes da extensão do 29.20. */
+  basis?: 'measured' | 'presumed' | null;
+  /** Os IPs em que o veredito se apoia e de onde vieram: `device_network` (rede pedida) ou `probe_no_network` (a sonda de
+   *  IP do aparelho sem rede). `null` = nada medido que valha. */
+  measured?: { ipv4: string | null; ipv6: string | null; measured_at: string | null; source: 'device_network' | 'probe_no_network' } | null;
   reason: string;
 }
 

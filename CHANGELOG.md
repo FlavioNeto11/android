@@ -23,7 +23,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `backend/app/devices/rede_saida_central.py` (novo): mede a saída do próprio central (mesmos ecos da sonda, família forçada por socket, em segundo plano, cache com TTL `rede.sonda.central_ttl_s`, sem bloquear a API) e dá o veredito por aparelho (`mesma_saida`, `perfil_leva_ipv6`, `veredito`). `sonda_rede.ip_da_resposta_http` fatorada de `ler_ip_de_saida`.
 - `GET /api/network/devices`: `central_egress` no topo e `egress_home` por aparelho (IPv4 igual, IPv6 no mesmo /64, IPv6 fora do perfil, resumo `leaves_by_home`); sem medida = `null`, nunca "limpo". Config nova com padrão: `rede.sonda.medir_central`, `central_ttl_s`, `central_prazo_s`. Sem migração.
-- Painel Rede: selo "sai pela casa" por aparelho e resumo "N aparelhos ainda saem pela casa · M sem medida" com a saída do central.
+- Painel Rede: selo "sai pela casa" por aparelho e resumo "N aparelhos ainda saem pela casa · K presumidos · M sem medida" com a saída do central.
+- Aparelho SEM rede pedida: `egress_home.basis: "presumed"` (sai pela casa, presumido, estado próprio) até a sonda de IP medir (`rede_medicao.medir_saida`, só IPv4/IPv6 pelo uid 2000, na varredura, ligado e livre, a cada `reverificar_s`; `rede.sonda.medir_sem_rede`). Medido igual ao central: `measured`; medido diferente: não casa, com o IP; falha de sonda: segue presumido. Grava em `network_measurements` (método próprio), só leitura, sem migração.
 - Prova `simulated`: `tests/test_rede_saida_central.py`, `tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida`, `RedePage.test.tsx`. Medir o central real e conferir o android-09 com `vpn-central-wireguard`: `not_run`.
 - Docs: `docs/dominios/parque.md` ("Nenhum aparelho pela saída da casa"), `docs/api-contract.md`.
 
