@@ -69,6 +69,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-01 (noite) — hierarquia lida de sessão UiAutomator2 morta recria a sessão (branch `fix/uia2-sessao-morta`)
+
+- **Correção.** `DeviceManager.hierarchy` só devolvia 503 quando a sessão morria por baixo (reboot pelo worker no
+  android-09): só o executor invalidava a sessão. Agora, com erro de sessão perdida (`sessao_perdida`) e a sessão ainda
+  "pronta", invalida, reabre **uma** vez e relê **uma** vez. Um `restart`/`reset` do worker concluído com sucesso (e `start`/`wake` quando o agente afirma `started: true`) também
+  descarta a sessão de antes do boot e dispara a nova; `ensure_automation` fecha e reabre, sem `close` fora da exclusão.  Contrato em `docs/dominios/parque.md`.
+- Prova: `simulated`, `tests/test_hierarquia_sessao_morta.py` (23 casos, incluindo a corrida readoção × leitura) e os testes
+  vizinhos. `not_run`: aparelho real, deploy.
+
 ## 2026-10-01 (tarde) — Revisão de UX/UI do portal, rodada 2
 
 Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `simulated` e `real` contra o backend simulado do
