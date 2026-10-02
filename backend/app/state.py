@@ -80,7 +80,7 @@ from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, gu
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
-from .modules.pedidos.application.laco import LacoDePedidos
+from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService

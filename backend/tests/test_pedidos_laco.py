@@ -21,8 +21,8 @@ import pytest_asyncio
 
 from app.config import PedidosCfg
 from app.models import RunStatus
-from app.modules.pedidos.application.laco import LacoDePedidos
-from app.modules.pedidos.application.acoes import AcaoInvalida
+from app.modules.pedidos.infrastructure.laco import LacoDePedidos
+from app.modules.pedidos.infrastructure.acoes import AcaoInvalida
 from app.taskqueue.service import RunError
 from app.taskqueue.travas import PEDIDOS, TRAVA_TTL_S, Lideranca
 from app.util import to_iso

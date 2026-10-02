@@ -35,8 +35,8 @@ from datetime import datetime, timedelta
 from app.config import PedidosCfg
 from app.db import Database, Row, loads
 from app.models import RunCreate, RunTarget
-from app.modules.pedidos.application.acoes import AcoesDePedidos
-from app.modules.pedidos.application.repositorio import RepositorioDePedidos
+from app.modules.pedidos.infrastructure.acoes import AcoesDePedidos
+from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain import gatilhos
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
