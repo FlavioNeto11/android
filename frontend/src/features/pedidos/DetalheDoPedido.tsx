@@ -28,6 +28,7 @@ import {
   META_DA_OCORRENCIA, META_DO_PEDIDO, ROTULO_DA_AUTONOMIA, ROTULO_DA_ORIGEM, ROTULO_DA_SOBREPOSICAO, ROTULO_DO_ENCERRAMENTO,
   formatUsd, mensagemDoErro,
 } from './modelo';
+import { AvisoDoLacoDesligado } from './LacoDesligado';
 import { ProximasDatas } from './PreviaDoPedido';
 import { usePedidosStore } from './store';
 import styles from './Pedidos.module.css';
@@ -117,6 +118,7 @@ export function DetalheDoPedido({ id }: { id: string }) {
           )}
           actions={voltar}>
       <AcoesDoPedido pedido={pedido} onMudou={reler} exceto={pedido.estado === 'aguardando_pessoa' ? ['retomar'] : undefined} />
+      {pedido.laco?.ligado === false ? <AvisoDoLacoDesligado /> : null}
       {pedido.estado === 'aguardando_pessoa' ? <AvisoQueEsperaVoce p={pedido} onMudou={reler} /> : null}
       {pedido.estado === 'pausado' && pedido.pausado_motivo ? <p className={styles.nota}>Pausado: {pedido.pausado_motivo}</p> : null}
       <Tabs tabs={tabs} active={aba} onChange={(a) => trocarQuery({ aba: a === 'resumo' ? undefined : a })} idBase={ID} label="Pedido" />
@@ -204,7 +206,11 @@ function Resumo({ p }: { p: PedidoDetalhe }) {
             <div><dt>Próxima</dt>
               <dd>
                 {proxima ? <span title={proxima.iso}>{dataCurta(proxima.iso, p.fuso)}</span> : <span className={styles.dim}>sem data prevista</span>}
-                {proxima?.calculada ? <span className={styles.dim}> (calculada pela agenda; o laço ainda não a gerou)</span> : null}
+                {proxima?.calculada ? (
+                  <span className={styles.dim}>
+                    {p.laco?.ligado === false ? ' (prevista pela agenda; o laço está desligado)' : ' (calculada pela agenda; o laço ainda não a gerou)'}
+                  </span>
+                ) : null}
               </dd>
             </div>
             <div><dt>Prazo final</dt><dd>{p.fim_em ? dataCurta(p.fim_em, p.fuso) : 'sem prazo'}</dd></div>

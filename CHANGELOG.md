@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Pedidos: data prevista na lista e sinal do laço desligado (28.12, ajustes de API; branch feat/28-12-sinais-da-lista)
+
+- `PedidoView.proxima_prevista`: sem `proxima_em` (laço desligado ou ainda sem gerar) e com agenda, a lista traz a 1ª data
+  CALCULADA pelos gatilhos; a linha mostra "prevista … (pela agenda)" em vez de "próxima data ainda não calculada".
+- `laco: {ligado}` na lista e no detalhe (`pedidos.enabled` desta instalação). Desligado, a tela mostra o aviso
+  "O laço de pedidos está desligado nesta instalação" no topo e o detalhe diz "prevista pela agenda; o laço está desligado".
+- Validado no navegador contra o backend simulado isolado (8765/5188), em 1366 e 375 px, com o laço desligado e ligado
+  (ligado: o laço grava `proxima_em`, a prevista some e o aviso também). Testes: `test_pedidos_api.py` (novo caso),
+  `PedidosPage.test.tsx` (2 novos); pedidos 467 e frontend 1245 verdes. Real: `not_run` (a prova real do 28.12 segue).
+
 ## 2026-10-02 — Origem das chamadas de IA e rubrica única de gasto (31.2 e 31.6, branch feat/31-2-origem-rubrica)
 
 - Migração 073 (`ai_calls.origem`, `ai_calls.ref`, índice `(origem, ts)`); as 071 e 072 estão em outros branches e entram antes, e a lacuna de número é tolerada pelo executor.

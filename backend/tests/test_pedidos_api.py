@@ -187,6 +187,29 @@ async def test_lista_com_filtros_detalhe_e_404(h: Harness) -> None:
     assert c.get("/api/pedidos/avisos").status_code == 200, "/avisos vem antes de /{id}"
 
 
+async def test_lista_traz_a_proxima_prevista_e_o_sinal_do_laco(h: Harness) -> None:
+    """28.12: sem `proxima_em` (o laço ainda não gravou, ou está desligado) a lista mostra a próxima data CALCULADA pela
+    agenda, igual à primeira das `proximas` do detalhe; e a lista e o detalhe dizem se o laço roda nesta instalação."""
+    c = _cliente(h)
+    a = _criar(c, "chave-prevista-0001").json()
+    lista = c.get("/api/pedidos").json()
+    [item] = lista["items"]
+    d = c.get(f"/api/pedidos/{a['id']}").json()
+    assert item["proxima_em"] is None and item["proxima_prevista"] is not None
+    assert item["proxima_prevista"]["utc"] == d["proximas"][0]["utc"] and item["proxima_prevista"]["local"]
+    assert lista["laco"] == {"ligado": False} and d["laco"] == {"ligado": False}       # harness: `pedidos.enabled` falso
+    h.state.pedidos_api.cfg = PedidosCfg(enabled=True)
+    assert c.get("/api/pedidos").json()["laco"] == {"ligado": True}
+    # Com a data do laço gravada, vale a dele: a prevista some.
+    h.state.db.execute("UPDATE pedidos SET proxima_em=? WHERE id=?", (d["proximas"][1]["utc"], a["id"]))
+    [item] = c.get("/api/pedidos").json()["items"]
+    assert item["proxima_em"] and item["proxima_prevista"] is None
+    # Encerrado não tem agenda.
+    assert c.post(f"/api/pedidos/{a['id']}/cancelar", json={"confirmar": True}).status_code == 200
+    [item] = c.get("/api/pedidos").json()["items"]
+    assert item["proxima_prevista"] is None
+
+
 # =============================================================================================== ações
 async def test_acoes_repetidas_sao_200_sem_mudanca_e_o_invalido_e_409(h: Harness) -> None:
     c = _cliente(h)

@@ -15,7 +15,8 @@ import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { apiPedidos } from './api';
 import { EsqueletoDaLista } from './Esqueleto';
-import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, horaNoFuso, quemFazDoPedido } from './formato';
+import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, horaNoFuso, proximaDoPedido, quemFazDoPedido } from './formato';
+import { AvisoDoLacoDesligado } from './LacoDesligado';
 import {
   AUTONOMIAS, ORDENS, ROTULO_DA_ORDEM, TIPOS_DE_GATILHO, chaveDoFiltro, filtroDoLink, temFiltro, type FiltroDoLink,
 } from './filtro';
@@ -32,6 +33,7 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
   const epoch = usePedidosStore((s) => s.epoch);
   const [itens, setItens] = useState<PedidoView[] | null>(null);
   const [totais, setTotais] = useState<Lista['total_por_estado']>({});
+  const [laco, setLaco] = useState<Lista['laco'] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [maisCarregando, setMaisCarregando] = useState(false);
@@ -49,6 +51,7 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
       .then((r) => {
         setItens(Array.isArray(r?.items) ? r.items : []);
         setTotais(r?.total_por_estado ?? {});
+        setLaco(r?.laco ?? null);
         setCursor(r?.proximo_cursor ?? null);
         setErro(null);
       })
@@ -74,7 +77,7 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
     }
   }, [cursor]);
 
-  return { itens, totais, cursor, erro, maisCarregando, maisUm };
+  return { itens, totais, laco, cursor, erro, maisCarregando, maisUm };
 }
 
 /** A lista (`#/pedidos`): uma linha por pedido, com os filtros no link (ADR-062, item 4). */
@@ -82,7 +85,7 @@ export function ListaDePedidos() {
   const query = useUiStore((s) => s.rota.query);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const filtro = useMemo(() => filtroDoLink(query), [query]);
-  const { itens, totais, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
+  const { itens, totais, laco, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
   const pessoas = usePersonas();
   const agora = useNow();
 
@@ -126,6 +129,8 @@ export function ListaDePedidos() {
 
   return (
     <>
+      {/* Vale para a instalação inteira: vem antes dos filtros, não entre a contagem e a lista. */}
+      {laco?.ligado === false ? <AvisoDoLacoDesligado /> : null}
       <BarraListagem
         nome="pedidos"
         busca={{ valor: busca, onChange: setBusca, placeholder: 'Buscar por título ou objetivo' }}
@@ -171,9 +176,10 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
   const quem = personas.length > 0 ? personas.join(', ') : aparelhos.join(', ');
   // A hora fica no texto da agenda ("Todo dia às 19:00"); o backend só a escreve quando a regra a traz, então completa-se
   // com a hora da próxima data (escrita no fuso do pedido). O fuso vai uma vez, e só se difere do navegador.
-  const hora = horaEscrita(p.proxima_local) ?? horaNoFuso(p.proxima_em, p.fuso);
+  // Sem a data do laço (desligado ou ainda não gerou), vale a PREVISTA pela agenda, que a API calcula (28.12).
+  const proxima = proximaDoPedido(p, p.proxima_prevista ? [p.proxima_prevista] : null);
+  const hora = horaEscrita(p.proxima_local) ?? horaEscrita(p.proxima_prevista?.local) ?? horaNoFuso(proxima?.iso, p.fuso);
   const agenda = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : null;
-  const proxima = p.proxima_em ?? p.proxima_local;
   const fusoMostrado = fusoParaMostrar(p.fuso);
   const usado = p.orcamento_usado !== null && p.orcamento_usado !== undefined ? ` (${Math.round(p.orcamento_usado * 100)}% do orçamento)` : '';
   return (
@@ -189,8 +195,12 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
         <p className={styles.agenda}>
           <CalendarClock size={13} aria-hidden />
           {agenda ? <span>{agenda}</span> : null}
-          {proxima ? <span>{agenda ? '· ' : ''}próxima <strong title={proxima}>{dataCompacta(proxima, p.fuso)}</strong></span>
-            : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}próxima data ainda não calculada</span> : null}
+          {proxima ? (
+            <span>
+              {agenda ? '· ' : ''}{proxima.calculada ? 'prevista' : 'próxima'} <strong title={proxima.iso}>{dataCompacta(proxima.iso, p.fuso)}</strong>
+              {proxima.calculada ? <span className={styles.dim} title="Calculada pela agenda: o laço ainda não gerou esta ocorrência."> (pela agenda)</span> : null}
+            </span>
+          ) : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}sem data prevista</span> : null}
           {fusoMostrado ? <span className={styles.dim}>(fuso {fusoMostrado})</span> : null}
         </p>
         ) : null}

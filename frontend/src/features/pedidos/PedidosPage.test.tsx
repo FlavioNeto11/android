@@ -59,6 +59,27 @@ const modal = () => document.querySelector('dialog') as HTMLElement;
 const toasts = () => useToastStore.getState().toasts.map((t) => `${t.title} ${t.message ?? ''}`).join(' | ');
 
 describe('lista', () => {
+  it('28.12: sem a data do laço mostra a PREVISTA pela agenda, e o laço desligado vira aviso no topo', async () => {
+    const semData = makePedido({ id: 'ped_c3', titulo: 'Preço do café', proxima_em: null, proxima_local: null,
+                                 proxima_prevista: { gatilho: 0, nominal: '2026-10-04T08:00:00', local: '2026-10-04T08:00:00-03:00',
+                                                     utc: '2026-10-04T11:00:00+00:00', desviado: false, repetido: false } });
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ ...LISTA, items: [semData], laco: { ligado: false } }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Preço do café'));
+    expect(text(container)).toContain('O laço de pedidos está desligado nesta instalação');
+    const [linha] = container.querySelectorAll('ul[aria-label="Pedidos"] > li');
+    expect(text(linha as HTMLElement)).toContain('prevista');
+    expect(text(linha as HTMLElement)).toContain('dom 04/10 08:00');
+    expect(text(linha as HTMLElement)).toContain('(pela agenda)');
+  });
+
+  it('28.12: laço ligado não mostra aviso', async () => {
+    backend.on('GET', /^\/api\/pedidos$/, () => json({ ...LISTA, laco: { ligado: true } }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    expect(text(container)).not.toContain('laço de pedidos está desligado');
+  });
+
   it('mostra uma linha por pedido com estado, gatilho, persona, próxima data e avisos novos; os chips contam todos', async () => {
     await montar();
     await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));

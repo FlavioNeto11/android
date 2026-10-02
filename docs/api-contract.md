@@ -3057,6 +3057,8 @@ interface PedidoView extends PedidoDTO {    // o que a lista e o detalhe devolve
   gatilhos_resumo: { tipo: TipoDeGatilho; descricao: string }[];   // 'Todo dia às 08:00 (America/Sao_Paulo)'
   personas: { profile_id: string; nome: string }[];                // lidas de `alvos`
   proxima_local: string | null;             // `proxima_em` no fuso do pedido, com o deslocamento
+  proxima_prevista: ProximaData | null;     // (28.12) sem `proxima_em` e com agenda (ativo, pausado, aguardando_pessoa,
+                                            // rascunho): a 1ª data CALCULADA pelos gatilhos; com `proxima_em`, null
   ultima_ocorrencia: { id: string; estado: EstadoOcorrencia; terminada_em: string | null; motivo: string | null;
                        run_id: string | null } | null;
   ocorrencias_por_estado: Partial<Record<EstadoOcorrencia, number>>;
@@ -3069,6 +3071,7 @@ interface PedidoView extends PedidoDTO {    // o que a lista e o detalhe devolve
 interface PedidoDetalhe extends PedidoView {
   gatilhos: GatilhoDTO[];
   proximas: ProximaData[];                  // as próximas 5, calculadas com `recorrencia.proximas`
+  laco: { ligado: boolean };                // (28.12) o laço de pedidos roda nesta instalação (`pedidos.enabled`)
   ocorrencias_recentes: OcorrenciaDTO[];    // as últimas 20; a lista completa é a rota de ocorrências
   execucoes_em_curso: { run_id: string; ocorrencia_id: string; status: RunStatus }[];
   pendencias: PendenciaDoPedido[];          // só com estado = 'aguardando_pessoa'; lido do estado vivo
@@ -3103,7 +3106,7 @@ local aconteceu duas vezes e o pedido roda só na primeira. O painel diz isso ao
 |---|---|---|
 | `POST /api/pedidos/previa` | `PedidoCorpo` + `proximas?` | `200 PedidoPrevia`; sem efeito, sem gravação, **sem chamada de IA** |
 | `POST /api/pedidos` | `PedidoCorpo` + `idempotency_key` + `titulo?` + `confirmacao?` | `201 PedidoView` (`ativo` se veio `confirmacao`, senão `rascunho`); `200 {…, deduplicated: true}` se a chave já existia |
-| `GET /api/pedidos` | filtros em query | `200 {items: PedidoView[], proximo_cursor, total_por_estado}` |
+| `GET /api/pedidos` | filtros em query | `200 {items: PedidoView[], proximo_cursor, total_por_estado, laco: {ligado}}` |
 | `GET /api/pedidos/{id}` | – | `PedidoDetalhe`; `404 not_found` |
 | `PATCH /api/pedidos/{id}` | `PedidoEdicao` | `200 PedidoEdicaoResultado` (`dry_run: true` = prévia da edição, nada grava) |
 | `POST /api/pedidos/{id}/ativar` | `{confirmacao}` | `200 PedidoView` (`rascunho` → `ativo`) |
@@ -3211,7 +3214,9 @@ link e a chamada serem a mesma coisa (ADR-062, item 4).
 | `limit`, `cursor` | 1–200 (padrão 50); cursor opaco devolvido em `proximo_cursor` |
 
 `total_por_estado` conta TODOS os pedidos por estado, ignorando `estado` e `cursor` (os chips da tela), no mesmo espírito
-do snapshot completo da ADR-062. Estado fora dos sete → `422`.
+do snapshot completo da ADR-062. Estado fora dos sete → `422`. `laco.ligado` (28.12) é `pedidos.enabled` desta instalação:
+a tarefa do laço só sobe no boot com ele, e desligado nenhum gatilho dispara (a tela diz isso em vez de prometer a próxima
+data).
 
 **`GET /api/pedidos/{id}/ocorrencias`** pagina pelo tempo, do mais novo ao mais antigo: `antes_de` é um `previsto_para`
 canônico, e `proximo` é o valor para a página seguinte (`null` no fim). `limit` 1–500 (padrão 50). Uma `pulada` ou `perdida`
