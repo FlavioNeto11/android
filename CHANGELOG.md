@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — A8/A9/A10 executados em real: túnel em PowerShell 5.1, relógio do notebook e agente `f9eed71`
+
+- Real (02/10, central + `worker-lan-01`, deploy `f9eed71`, backup `20261002-132234`/`132239`, com a pausa de reparo do android-09 conferida no health): tarefa `farm-tunel-192.168.1.11` reinstalada com `powershell.exe` 5.1 (forwards 15555..15565 e reverso `18000 → 8010`, worker `up`, hierarquia do android-09 200); agente do notebook `0.1.0+5d8b545` → `0.1.0+f9eed71`; relógio do notebook +8,857 s → +0,002 s pela tarefa `farm-relogio` (`C:\farm\relogio`), 1ª execução agendada com resultado 0, e o `degraded` por relógio saiu sozinho.
+- `docs/worker.md`: seção "O relógio do worker e as tarefas do notebook".
+
 ## 2026-10-02 — W8: rodada r4 real: `PASS` (a mitigação do PR #17 religou o túnel em 2 de 2 boots válidos)
 
 - `docs/handoffs/w8-boot-recovery.md` §17.10 (real, `bcea158`): o `tun0` não subiu sozinho e o Start pela interface o religou aos 193 s, sem reinício extra; vizinhos 01/03/06 com reparo pausado, sem ciclo de vida alheio; rollback com `force-stop` do SFA fez 1 reinício; servidor WireGuard reiniciado 2x (03/06 reconectaram em 30 s). Veredito pelo critério pré-registrado (§17.9): `PASS` (a recuperação válida do r3 + a do r4). Causa raiz segue `NARROWED`. `docs/estado-atual.md` atualizado.
