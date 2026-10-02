@@ -393,7 +393,7 @@ Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ 
 2. alto risco (faixa C);
 3. falha recorrente, ordenada por US$ perdido + intervenções;
 4. risco médio (faixa B);
-5. baixo risco (faixa A): **nunca gasta IA**.
+5. baixo risco (faixa A): a regra determinística decide; a IA **nunca decide** e só opina (registro) se sobrar orçamento depois de 1–4.
 
 **Salvaguardas relativas** (decisão do dono):
 - 1 revisão por (item, `dossie_hash`);
@@ -655,7 +655,7 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
    com a decisão final no `ciclo.py`. A IA nunca transiciona. Modos `off` (fábrica) / `shadow` / `on`; laço sob a trava de líder; porta própria
    (independente de `context_retrieval`).
    - **Política de risco (decisão do dono, 02/10)**, valendo a mais restritiva entre catálogo e `commit`: (a) navegação e leitura publica pela
-     regra determinística atual e nunca gasta IA; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
+     regra determinística atual, e a IA só opina (registro) se sobrar orçamento; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
      (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
    - **Orçamento proporcional (decisão do dono, 02/10)**: `B_W = min(α·G_W, k·N_W·c̄)`, α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana(c_rev)`;
      prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.
