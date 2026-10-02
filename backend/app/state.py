@@ -2404,6 +2404,8 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
+        if self.runs.sombra_intencao is not None:
+            self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento

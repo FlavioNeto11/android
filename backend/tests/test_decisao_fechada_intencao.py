@@ -359,3 +359,42 @@ async def test_plan_com_a_config_padrao_nao_chama_ninguem(harness: Harness, monk
     await st.runs.sombra_intencao.aguardar()
     st.decisao_fechada.aguardar_sombras()
     assert decisor.chamadas == [] and st.db.scalar("SELECT COUNT(*) FROM decisao_fechada_sombra") == 0
+
+
+# ------------------------------------------------------------------ desligamento (pedidos da frente Android, 02/10)
+async def test_plano_cancelado_nao_agenda_a_sombra(harness: Harness) -> None:
+    """O `stop()` do central cancela a tarefa do plano: o callback não pode ler o banco nem agendar sombra nessa hora."""
+    import asyncio  # noqa: PLC0415
+
+    chamados: list[str] = []
+    runs = harness.state.runs
+    runs._intencao_em_sombra = chamados.append                                # type: ignore[method-assign]  # noqa: SLF001
+    cancelada: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    cancelada.cancel()
+    runs._depois_do_plano(cancelada, "r-cancelada")                            # noqa: SLF001
+    concluida: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    concluida.set_result(None)
+    runs._depois_do_plano(concluida, "r-ok")                                   # noqa: SLF001
+    assert chamados == ["r-ok"]
+
+
+async def test_cancelar_derruba_as_sombras_soltas() -> None:
+    import asyncio  # noqa: PLC0415
+
+    class Consumidor:
+        def ativo(self) -> bool:
+            return True
+
+        def observar(self, **_: Any) -> None:
+            time.sleep(0.3)
+
+    sombra = SombraDaIntencao(Consumidor(),  # type: ignore[arg-type]
+                              resolver=lambda c, p: IntentResolution(status=ResolutionStatus.NO_MATCH),
+                              catalogo=lambda: ())
+    sombra.agendar("r-1", "abrir o app", [None], None)
+    [solta] = list(sombra._soltas)                                            # noqa: SLF001
+    sombra.cancelar()
+    await asyncio.wait([solta], timeout=2)
+    assert solta.cancelled()
+    await sombra.aguardar()
+    assert not sombra._soltas                                                 # noqa: SLF001

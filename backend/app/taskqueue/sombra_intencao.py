@@ -73,6 +73,12 @@ class SombraDaIntencao:
         self._soltas.add(tarefa)
         tarefa.add_done_callback(self._soltas.discard)
 
+    def cancelar(self) -> None:
+        """Desligamento: cancela as sombras soltas (o `stop()` do `AppState`, como o `_bg`). A thread que já chamou a porta
+        termina sozinha; o resultado dela é descartado."""
+        for tarefa in list(self._soltas):
+            tarefa.cancel()
+
     async def aguardar(self) -> None:
         """Espera as sombras soltas terminarem (testes e desligamento limpo)."""
         if self._soltas:

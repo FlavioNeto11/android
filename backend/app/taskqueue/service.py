@@ -831,7 +831,12 @@ class RunService:
         # planejamento pago da mesma execução ao subir com ela ainda em `planning`.
         self.repo.db.execute("UPDATE runs SET planned_by=? WHERE id=?", (self.repo.owner_id, run_id))
         self._planning[run_id] = asyncio.create_task(self._plan(run_id), name=f"plan-{run_id}")
-        self._planning[run_id].add_done_callback(lambda _t: self._intencao_em_sombra(run_id))   # 31.9: só observa
+        self._planning[run_id].add_done_callback(lambda t: self._depois_do_plano(t, run_id))   # 31.9: só observa
+
+    def _depois_do_plano(self, tarefa: asyncio.Future[None], run_id: str) -> None:
+        """Tarefa CANCELADA (o `stop()` do central cancela o plano) não lê o banco nem agenda sombra no desligamento."""
+        if not tarefa.cancelled():
+            self._intencao_em_sombra(run_id)
 
     def _intencao_em_sombra(self, run_id: str) -> None:
         """Depois do `_plan` (qualquer desfecho): entrega a sombra da intenção (31.9, ADR-069) e esquece. Só observa: não
