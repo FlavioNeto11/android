@@ -45,6 +45,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from .modules.learning import esquecer_conta
 from .modules.learning.infrastructure import ligar_voz
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -322,6 +323,14 @@ class AppState:
             self.provider.attach(repo=self.repo, settings_getter=self.settings.get)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.scheduler.session_gate = self._session_gate
+        # Conta bloqueada que sai (29.23): a persona volta a `active`, então o agendador nunca VÊ o `blocked` que dispara
+        # o disjuntor de conta (ADR-055); a retirada o aciona direto, na hora.
+        self.social.sinal_de_desafio = lambda iid: self.devices.tem_atividade_de_desafio(iid)
+        self.social.ao_retirar_conta = (
+            lambda pid, _conta, estava: self.scheduler.disjuntor_de_conta(pid) if estava else None)
+        # O rastro textual da conta no Livro (o @ e o id em texto) sai na MESMA transação da retirada (contrato combinado
+        # com o Aprendizado, 29.23): uma falha ali desfaz a retirada inteira, nada pela metade.
+        self.social.limpezas_ao_retirar.append(esquecer_conta)
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
         # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece
@@ -925,6 +934,8 @@ class AppState:
         # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.
+        if self.social_repo.account_row(profile_id, str(conta["id"])) is None:
+            return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
                                  detail=detail[:300], account_id=str(conta["id"]))

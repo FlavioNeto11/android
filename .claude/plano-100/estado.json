@@ -5125,6 +5125,36 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T21:19:30+00:00"
+  },
+  "29.23": {
+   "id": "29.23",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/29-23-conta-bloqueada-sai (3cbbffe1, f1c83b56, 5126a414, 41f7204c, 827e038d + merges): acao retirar_conta_bloqueada + rota POST /api/instagram/profiles/{p}/accounts/{a}/retire (credencial da conta + legada + ciphertext do cofre, sessoes, vinculos do app, @ do perfil esvaziado, persona de volta a active, memory_items reescritos para '[conta removida]', gancho limpezas_ao_retirar com esquecer_conta do Aprendizado na mesma transacao); lapide contas_retiradas (migracao 071, so sha256 do @) e eh_conta_nossa() no _fleet_gate (efeito sobre conta nossa viva ou aposentada recusado; resposta a terceiro em post nosso permitida); gatilho automatico so para app que declara atividades_de_conta_perdida no app.yaml (hoje Instagram) e so com sinal forte (janela declarada em foco, lida do dumpsys, ou declaracao do dono). ADR-068 (opcao A do dono: historico intacto), K-074. Simulado: tests/test_conta_bloqueada_sai.py (20+), costura com esquecer_conta real; suite 3c 4484d15c (inclui 827e038d): 5596 passed, 9 skipped, 0 failed.",
+   "blocker": "Prova real not_run: deploy com ensaio da 071 e retire nas 5 contas bloqueadas pela rota (declaracao do dono como sinal), com antes/depois; PostgreSQL not_run.",
+   "arquivos": [
+    "backend/app/social/service.py",
+    "backend/app/social/repository.py",
+    "backend/app/social/memory.py",
+    "backend/app/social/contas_nossas.py",
+    "backend/app/social/policy.py",
+    "backend/app/api.py",
+    "backend/app/state.py",
+    "backend/app/devices/manager.py",
+    "backend/app/integrations/app_declarado/pacote.py",
+    "backend/app/integrations/app_declarado/sessao.py",
+    "backend/app/modules/applications/domain/definition.py",
+    "backend/app/conhecimento/apps/com.instagram.android/app.yaml",
+    "backend/migrations/071_contas_retiradas.sql",
+    "backend/tests/test_conta_bloqueada_sai.py"
+   ],
+   "testes": "suite 3c 4484d15c 5596/0; afetados 465",
+   "grupo": "29-23-conta-bloqueada",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:27:38+00:00"
   }
  },
  "rodadas": [
@@ -6215,6 +6245,15 @@
    ],
    "grupos": [
     "sessao:jev-31"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:27:38+00:00",
+   "itens": [
+    "29.23"
+   ],
+   "grupos": [
+    "29-23-conta-bloqueada"
    ]
   }
  ]
