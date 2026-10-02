@@ -444,6 +444,12 @@ def test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token() -> None:
     srv.apagar_arquivo_privado("perfil-abc.json")                                  # idempotente
 
 
+@pytest.fixture(autouse=True)
+def _sem_espera_do_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A espera de ~10 s do desfazer (stopped persistir) é real em produção; nos testes é zero, salvo o que a mede."""
+    monkeypatch.setattr("app.devices.rede_aplicacao.PARADA_PERSISTIR_S", 0.0)
+
+
 # ============================================================================ o aparelho falso da receita
 @dataclass
 class AparelhoFalso:
@@ -504,6 +510,9 @@ class AparelhoFalso:
     tun: bool = False
     vpn: bool = False
     regras: bool = False
+    # `am force-stop` do cliente: marca o estado `stopped` e (com `force_stop_derruba_tun`) derruba o túnel, como o Android.
+    forcado: bool = False
+    force_stop_derruba_tun: bool = False
     relatorios: int = 1
     uptime: int = 500
     primeira_execucao: bool = True
@@ -591,6 +600,12 @@ class AparelhoFalso:
             self.always_on = "null"
         elif comando.startswith("rm -rf /sdcard/Android/data/"):
             self.relatorios = 0
+        elif comando.startswith("am force-stop "):
+            self.forcado = True
+            if self.force_stop_derruba_tun:
+                self.tun = self.vpn = False
+        elif comando.startswith("dumpsys package ") and "stopped=" in comando:
+            return "stopped=true\n" if self.forcado else "stopped=false\n"
         return ""
 
     def linha_do_cliente(self) -> str:
@@ -1102,6 +1117,41 @@ async def test_deriva_regride_e_wipe_invalida(parque: Harness, monkeypatch: pyte
     assert linha["state"] == "pendente" and "dados do aparelho apagados" in str(linha["detail"])
 
 
+async def test_desfazer_espera_o_stopped_persistir_e_le_o_estado(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W8 r2/r3: o force-stop só vale no boot se o estado stopped chegou ao disco; o desfazer espera (rede.parada_persistir_s) e lê."""
+    ap = AparelhoFalso(always_on=PKG, lockdown="1")
+    esperas: list[float] = []
+    original = asyncio.sleep
+
+    async def _sleep(s: float, *a, **k):
+        esperas.append(s)
+        return await original(0, *a, **k)
+
+    import app.devices.rede_aplicacao as mod
+    mod.asyncio.sleep = _sleep                                                    # type: ignore[assignment]
+    monkeypatch.setattr(mod, "PARADA_PERSISTIR_S", 10.0)
+    try:
+        evidencia = await desfazer(ap, RedeCfg())
+    finally:
+        mod.asyncio.sleep = original                                              # type: ignore[assignment]
+    assert esperas == [10.0], "esperou ~10 s depois do force-stop e antes de devolver (o reinício vem depois)"
+    assert any(c.startswith(f"dumpsys package {PKG}") and "stopped=" in c for c in ap.comandos)
+    assert ap.comandos.index(f"am force-stop {PKG}") < len(ap.comandos) - 1
+    assert "(stopped=true)" in evidencia
+    # Desligada (0): nenhuma espera nem leitura (o comportamento antigo).
+    ap2 = AparelhoFalso(always_on=PKG, lockdown="1")
+    monkeypatch.setattr(mod, "PARADA_PERSISTIR_S", 0.0)
+    assert "stopped=" not in await desfazer(ap2, RedeCfg())
+
+
+def test_cliente_solto_so_com_a_rede_tirada_e_o_tun_no_ar() -> None:
+    solto = ler_observacao("U=2000\nA=null\nL=0\nT=1\nV=1\nR=0\nC=0\nP=0\nK=\nS=42\n")
+    assert solto.cliente_solto() and not solto.removida()
+    assert not ler_observacao("U=2000\nA=null\nL=0\nT=0\nV=0\nR=0\nC=0\nP=0\nK=\nS=42\n").cliente_solto()       # removida
+    assert not ler_observacao("U=2000\nA=io.nekohasekai.sfa\nL=0\nT=1\nV=1\nR=0\nC=0\nP=0\nK=\nS=42\n").cliente_solto()  # always-on ainda no lugar
+    assert not ler_observacao("U=2000\nA=null\nL=1\nT=1\nV=1\nR=1\nC=0\nP=0\nK=\nS=42\n").cliente_solto()       # bloqueio ainda em vigor
+
+
 async def test_desfazer_tira_a_rede_e_apaga_a_linha(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     st = parque.state
     assert st is not None
@@ -1127,6 +1177,57 @@ async def test_desfazer_tira_a_rede_e_apaga_a_linha(parque: Harness, monkeypatch
     acoes = [json.loads(c["params"])["acao"] for c in st.db.query(
         "SELECT params FROM commands WHERE verb='device.network' ORDER BY created_at")]
     assert acoes == ["aplicar", "conectar", "desfazer", "conectar"]
+
+
+async def test_cliente_que_religou_sozinho_depois_do_desfazer_e_parado_sem_novo_reinicio(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """W8 r2 (02/10): depois de tirar a rede o SFA religou sozinho no boot (tun0 para um par que saiu) e a convergência pedia MAIS um reinício
+    (que o religaria de novo). Agora: force-stop do cliente, sem reinício, e a linha sai."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45)
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
+    await asyncio.sleep(0.3)
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=["android-01"], vpn_profile_id=None, policy="livre"), "teste")
+    assert await _passo(parque, "varredura")                                       # desfazer
+    await asyncio.sleep(0.3)
+    antes = len(reinicios.pedidos)
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45, tun=True)                                         # o cliente religou sozinho no boot
+    ap.regras = False
+    ap.force_stop_derruba_tun = True
+    ap.forcado = False
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    assert ap.forcado and not ap.tun, "o cliente foi parado"
+    assert len(reinicios.pedidos) == antes, "nenhum reinício extra por tun0 sem par"
+    assert _linha(parque) is None
+
+
+async def test_cliente_que_nao_para_com_o_force_stop_ainda_cai_no_reinicio_ate_o_teto(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rede de segurança: se o force-stop não derrubou o túnel, o caminho de antes (reiniciar até o teto) continua valendo."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios, _ = _preparar(parque, monkeypatch)
+    assert await _passo(parque, "varredura")
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45)
+    assert await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    rede.atribuir(st, rede.NetworkAssignBody(instance_ids=["android-01"], vpn_profile_id=None, policy="livre"), "teste")
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    antes = len(reinicios.pedidos)
+    _envelhecer_configuracao(parque)
+    ap.depois_do_boot(uptime=45, tun=True)
+    ap.regras = False
+    ap.force_stop_derruba_tun = False                                              # o force-stop não derruba o túnel
+    await _passo(parque, "ligou")
+    await asyncio.sleep(0.3)
+    assert len(reinicios.pedidos) == antes + 1
+    assert _linha(parque) is not None
 
 
 async def test_loja_quarentena_e_ocupado_ficam_fora(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:

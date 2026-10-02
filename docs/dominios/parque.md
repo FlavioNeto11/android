@@ -539,6 +539,7 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   o worker ocupado continua segurando. Por estado da linha:
   `pendente` → aplicar (plano, chave do aparelho e par no servidor, cliente pela versão promovida na loja, receita) ou
   desfazer (pedido vazio) → `configurado` e o reinício (always-on e bloqueio só valem no boot); `configurado` →
+  **Desfazer sem religar o cliente (A11, 02/10/2026, W8 r2/r3):** o `desfazer` faz `am force-stop` do cliente VPN, ESPERA ~10 s (`PARADA_PERSISTIR_S`, em `rede_aplicacao.py`) para o estado `stopped` chegar ao disco e só então o reinício é pedido (reiniciar na hora o perdia: o cliente, que lembra que estava ligado, religava sozinho no boot com um `tun0` para um par que já saiu do servidor). Se mesmo assim, depois do boot, o always-on e o bloqueio estão fora mas o `tun0` está no ar (`Observacao.cliente_solto`), a convergência para o cliente (`force-stop`, sem reinício) e apaga a linha em vez de pedir outro reinício (que o religaria de novo); se o túnel não cai, vale o caminho de antes (reiniciar até `rede.reinicios_max`).
   conectar (espera o `tun0` até `rede.espera_tun_s` contados do boot; no ar → `conectado` com a evidência lida e a
   última conexão do par no log do servidor; sem boot desde a configuração → reinício; reiniciou e não subiu → novo
   reinício; o teto `rede.reinicios_max` conta os reinícios PEDIDOS na revisão — aceitos ou recusados, com boot
