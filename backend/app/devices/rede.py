@@ -515,6 +515,42 @@ def verificacao_vencida(row: Row, validade_s: float, agora: float | None = None)
     return idade is None or idade >= validade_s
 
 
+def inicio_do_boot(st: AppState, instance_id: str) -> float | None:
+    """Quando o Android deste aparelho começou a subir pela última vez (epoch), ou `None` se não se sabe (item 29.22).
+
+    A fonte é `instances.emulator_started_at`: o instante em que o processo do emulador nasceu (boot a frio OU acordar
+    do snapshot), que sobrevive ao restart do backend — por isso um reinício do central não invalida a verificação
+    de quem não rebootou. Aparelho sem processo local (worker remoto, físico) cai na entrada em `online` que este
+    backend viu (`online_since_mono`): ali o restart do central conta como entrada nova, e o custo é uma medição a
+    mais, o lado seguro. Aparelho que não está no ar e sem processo: sem marco (nada a invalidar; ao entrar no ar
+    o marco passa a existir)."""
+    iniciado = st.db.scalar("SELECT emulator_started_at FROM instances WHERE id=?", (instance_id,))
+    if iniciado:
+        try:
+            return parse_iso(str(iniciado)).timestamp()
+        except (ValueError, TypeError):
+            pass
+    rt = st.devices.devices.get(instance_id)
+    if rt is None or rt.state != "online":
+        return None
+    return time.time() - max(0.0, time.monotonic() - rt.online_since_mono)
+
+
+def boot_depois_da_medicao(st: AppState, row: Row) -> bool:
+    """O aparelho subiu DEPOIS da medição que verificou a linha (item 29.22). A prova de tráfego era do Android de
+    antes: túnel, DNS e regras de bloqueio são refeitos a cada boot, e o `trafego_verificado` não pode atravessá-lo
+    (android-05, 02/10: verificado às 19:20, desligado e ligado a frio às 19:50, a porta liberou a tarefa às 19:52
+    com o aparelho acusando "sem internet: DNS não responde"). Sem data legível da medição, `vencida` já responde."""
+    if row["state"] != "trafego_verificado" or row["policy"] == "livre" or not row["verified_at"]:
+        return False
+    try:
+        medido = parse_iso(str(row["verified_at"])).timestamp()
+    except (ValueError, TypeError):
+        return False
+    boot = inicio_do_boot(st, str(row["instance_id"]))
+    return boot is not None and boot > medido
+
+
 def apps_sem_prova(st: AppState, row: Row) -> list[str]:
     """Apps exigidos HOJE (`apps_exigidos`) que a medição que verificou o aparelho não provou (`ok` no `per_app`).
     É o vínculo feito depois da verificação: uma conta nova no aparelho não desfaz o `trafego_verificado` (o estado
@@ -535,10 +571,13 @@ def apps_sem_prova(st: AppState, row: Row) -> list[str]:
 
 def verificacao_invalida(st: AppState, row: Row) -> str | None:
     """Por que um `trafego_verificado` com política exigida não vale para a porta da tarefa (item 25.6): `vencida`
-    (`rede.validade_verificacao_s`), `bloqueio` (política com bloqueio sem prova de vazamento que valha para a revisão,
-    item 29.2) ou `apps` (`apps_sem_prova`). `None` = vale (ou a pergunta não se aplica)."""
+    (`rede.validade_verificacao_s`), `boot` (o aparelho subiu depois da medição, item 29.22), `bloqueio` (política com
+    bloqueio sem prova de vazamento que valha para a revisão, item 29.2) ou `apps` (`apps_sem_prova`). `None` = vale
+    (ou a pergunta não se aplica)."""
     if verificacao_vencida(row, _validade(st)):
         return "vencida"
+    if boot_depois_da_medicao(st, row):
+        return "boot"
     if row["state"] == "trafego_verificado" and not bloqueio_provado(row):
         return "bloqueio"
     if apps_sem_prova(st, row):
