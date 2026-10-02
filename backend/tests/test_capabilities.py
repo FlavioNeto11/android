@@ -652,6 +652,32 @@ async def test_cancelar_a_execucao_expira_a_aprovacao_pendente(harness: Any) -> 
     assert state.approvals.get(pedido.id).status == "expired"
 
 
+async def test_abandonar_o_item_expira_a_aprovacao_pendente(harness: Any) -> None:
+    """Achado #109, o outro caminho: "abandonar" um item que espera aprovação (`resolve`) fechava o objetivo e deixava
+    o pedido pendente — uma pessoa ainda podia aprovar um texto cuja etapa já foi encerrada."""
+    state = harness.state
+    db = state.db
+    post_json = '{"kind":"model_judged","value":"x","description":"y"}'
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-a','ka','responda','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, blocked_kind)"
+               " VALUES ('run-a:android-01','run-a','android-01','waiting_user',1,'{}','approval')")
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+        " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status)"
+        " VALUES ('run-a:android-01:v1:send_1','run-a','run-a:android-01','android-01',1,1,'send_1','Enviar',"
+        "'g','[]',1,'[]',?,180,1,'waiting_user')", (post_json,))
+    pedido = state.approvals.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                                  run_id="run-a", objective_id="run-a:android-01",
+                                  step_id="run-a:android-01:v1:send_1")
+    assert state.approvals.get(pedido.id).status == "pending"
+
+    state.runs.resolve("run-a", "run-a:android-01", ResolveBody(resolution="abandon"))
+
+    depois = state.approvals.get(pedido.id)
+    assert depois.status == "expired" and "abandonado" in (depois.decided_note or "")
+
+
 def test_o_tempo_de_quem_decide_nao_conta_contra_o_prazo_do_objetivo(tmp_path: Path) -> None:
     """Medido no banco real: seis aprovações decididas às 13:12 de 19/09 e NENHUMA publicada. O objetivo voltou
     à fila, o scheduler pegou o aparelho e matou a etapa no mesmo segundo — "Tempo total do objetivo esgotado",
