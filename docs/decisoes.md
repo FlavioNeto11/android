@@ -71,6 +71,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | proposto (Fase 24) | 29/09 |
 | [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
+| [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 
 ---
 
@@ -3771,3 +3772,53 @@ limites que ficaram abertos estão em [dominios/context-retrieval.md](dominios/c
 
 **Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
 [ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.
+
+## ADR-064 — Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState`
+
+**Data:** 02/10/2026 · **Estado:** aceito · **Decisão técnica** (Fase 28, item 28.1; número e escopo confirmados pelo
+orquestrador em 02/10). Desenho de partida: [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §7.3 e o
+[ADR-059](decisoes.md#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução).
+
+**Contexto.** A retenção, a curadoria do aprendizado e o livro-caixa das contas de IA rodam em todo backend que tem o
+scheduler (`ROLE=all/scheduler`). Com dois desses no mesmo banco, cada um rodava o seu: o relatório pago do provedor era
+consultado duas vezes e — o que não é só desperdício — dois "fechamentos do dia" eram gravados na mesma conta. O papel do
+processo era a única coisa que impedia o laço em dobro. O laço de pedidos (28.4) precisa da mesma garantia: só um backend
+materializa e despacha.
+
+**Decisão.**
+
+1. **Uma linha por trava** (`travas.nome`, migração `066_travas.sql`), tomada por compare-and-swap
+   (`UPDATE … WHERE nome=? AND (dono IS NULL OR expira_em < agora)`), nunca por "ler quem é o dono e decidir". A linha nasce
+   sob demanda (`INSERT … ON CONFLICT DO NOTHING`): travas novas da Fase 28 não pedem migração.
+2. **O tempo é o relógio do banco** (`Database.agora`, item 5.3), injetável no teste. Com o relógio de cada máquina, um
+   backend adiantado tomaria a trava viva de outro.
+3. **Prazo e cadência da posse de etapa:** mandato de 120 s (`TRAVA_TTL_S`), renovado a cada 20 s (`RENOVAR_TRAVA_S`). Errar
+   para o lado de nunca haver dois líderes; o preço é o laço ficar parado até 2 min quando o líder cai sem sair.
+4. **O token é a cerca** (Kleppmann). Cada mandato novo recebe `token + 1`; renovar devolve o MESMO token. Escrita que não é
+   idempotente por construção (o fechamento do dia nos saldos) acontece dentro de `Lideranca.cercada()`, que confere o
+   mandato na MESMA transação (`FOR UPDATE` no PostgreSQL, `BEGIN IMMEDIATE` no SQLite) e recusa com `TravaPerdida`. Fora
+   dessas escritas a trava é por eficiência; a correção vem das chaves únicas e das escritas idempotentes. `soltar` nunca
+   apaga a linha nem zera o token.
+5. **A renovação mora num laço próprio do `AppState`** (`_laco_das_travas`), e não no `Scheduler._manter_posse` como o §7.3
+   propunha. As travas são de quem tem os laços (o `AppState`); prendê-las ao tick do scheduler acoplaria a fila a laços que
+   não são dela. Desvio consciente do desenho.
+6. **O dono é o `OWNER_ID` (a máquina), não o PID**, como nas vagas de IA. Na partida, `soltar_da_queda()` devolve o que
+   ficou no nome deste backend; a retomada é imediata, sem esperar o prazo vencer (senão a primeira volta da retenção, que
+   só se repete em 6 h, seria pulada). Consequência aceita: dois processos com o mesmo `OWNER_ID` no mesmo banco são erro de
+   instalação, como já eram para as vagas de IA.
+7. **Quem é guardado:** saldos, curadoria e retenção (`TRAVAS_DOS_LACOS`). Outbox (filtrado por `hosted_by`), loja (por
+   aparelho hospedado), saúde e métricas (por processo) não precisam. O laço de pedidos (28.4) entra como trava nova.
+
+**Limites aceitos (registrados, não resolvidos aqui).** O seguidor que vira líder só age na próxima volta do PRÓPRIO laço
+(até 10 min nos saldos, 15 na curadoria, 6 h na retenção): são faxina e conciliação, não trabalho com prazo — o laço de
+pedidos, que tem prazo, define a própria cadência no 28.4. `saldos.CONCILIACOES` é memória do processo: no seguidor, com
+chave de administrador, a saúde mostra a conciliação velha (`ai_balance_stale`), como já acontecia na réplica `ROLE=api`.
+
+**Consequências.** Dois backends com scheduler no mesmo banco deixam de rodar os laços em dobro; o fechamento do dia de uma
+conta é gravado uma vez mesmo com pausa longa do líder. Prova `simulated`: `backend/tests/test_travas.py` (dois "processos"
+no mesmo banco com relógio falso: tomada, renovação, queda, cerca recusando o mandato velho, retomada com o mesmo
+`OWNER_ID`). Prova real com dois backends: `not_run`.
+
+**Relação.** [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §7.3; `backend/app/taskqueue/travas.py`;
+`backend/app/state.py` (`_laco_das_travas`, `_lider`, `_fechar_dia_cercado`); [banco.md](banco.md) (migração 066);
+vagas de IA (`ai_slots.py`, migração 027) como molde.
