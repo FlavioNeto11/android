@@ -6,6 +6,8 @@ Regra por tipo (sem palpite: o que não se sabe é `null`):
 - lição e tela (`learning_items`): `escopo.capability`, exceto vazio e `*` (etapa livre);
 - fluxo, habilidade, memória: `null` (o fluxo é um comando inteiro, não pertence a uma capability).
 A leitura é em LOTE (uma consulta por tipo, como `saudes`): dobrar as receitas não dobra as consultas.
+`capability_nome` (deploy 2): o nome em português da capability, do `title` do catálogo do app sem as lacunas de
+parâmetro, para o grupo do painel não mostrar o código; sem catálogo ou capability desconhecida, `null`.
 
 Nível de prova: `simulated` (banco de teste, sem aparelho nem IA).
 """
@@ -104,6 +106,16 @@ def _item(db: Database, id_: str, kind: str, *, capacidade: str, state: str = "p
                 "system", TS))
 
 
+class TitulosFalsos:
+    """O catálogo do app de exemplo: três capabilities com título; `COMMENT` e o outro app não têm."""
+
+    TITULOS = {"LIKE_POST": "Curtir a publicação", "FOLLOW": "Seguir {username}",
+               "SEND_MESSAGE": "Enviar a mensagem para {username}"}
+
+    def titulo(self, app: str, capability: str) -> str | None:
+        return self.TITULOS.get(capability) if app == PACOTE else None
+
+
 class RegistroVazio:
     def declarados(self) -> list[Declarado]:
         return []
@@ -141,7 +153,8 @@ class Mundo:
         _item(db, "li-tela-abs", "tela", capacidade="ABSORVIDA", state="deprecated", detalhe="absorvida:abc1234")
         repo = SqlLearningRepository(db, precos=dict)
         self.servico = LearningService(repo, FontesSql(db), TriagemDeCredencial(), ajustes=Ajustes,
-                                       relogio=lambda: AGORA, retencao_de_logs_dias=lambda: 14)
+                                       relogio=lambda: AGORA, retencao_de_logs_dias=lambda: 14,
+                                       titulos=TitulosFalsos())
         self.servico.anexar(VisaoPorApp(self.servico, RegistroVazio(), LojaSql(db)))
 
     def esperado(self) -> dict[tuple[str, str], str | None]:
@@ -237,3 +250,55 @@ def test_a_leitura_e_em_lote_e_nao_uma_consulta_por_linha(mundo: Mundo, monkeypa
     resultado = mundo.servico.capabilities(entradas)
     assert len(chamadas) == primeiras and primeiras <= 6
     assert sum(1 for e in entradas if e.kind is LivroKind.RECEITA and resultado[e.trail_ref] == "FOLLOW") == 13
+
+
+# ------------------------------------------------------------------ o nome em português (deploy 2)
+@pytest.mark.parametrize(("titulo", "nome"), [
+    ("Abrir o perfil de {username}", "Abrir o perfil"),
+    ("Abrir a conversa com {username}", "Abrir a conversa"),
+    ("Enviar a mensagem para {username}", "Enviar a mensagem"),
+    ('Buscar "{query}" no Outlook', "Buscar no Outlook"),
+    ("Seguir {username}", "Seguir"),
+    ("Abrir o feed", "Abrir o feed"),
+    ("{username}", None), ("", None), (None, None),
+])
+def test_nome_da_capability_tira_as_lacunas_de_parametro(titulo: str | None, nome: str | None) -> None:
+    assert dominio.nome_da_capability(titulo) == nome
+
+
+def test_titulos_do_registro_le_o_catalogo_real_com_as_internas() -> None:
+    from app.modules.learning.infrastructure.eventos import TitulosDoRegistro
+    t = TitulosDoRegistro()
+    assert t.titulo("com.instagram.android", "OPEN_PROFILE") == "Abrir o perfil de {username}"
+    assert t.titulo("com.microsoft.office.outlook", "OPEN_MAIL_INBOX") == "Abrir a caixa de entrada do Outlook"
+    assert t.titulo("com.instagram.android", "NAO_EXISTE") is None
+    assert t.titulo("com.exemplo.sem.catalogo", "OPEN_PROFILE") is None and t.titulo("", "X") is None
+
+
+async def test_linhas_e_grupos_trazem_o_nome_da_capability(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    esperado = {("receita", mundo.com_origem): "Curtir a publicação", ("receita", mundo.so_por_hash): "Seguir",
+                ("licao", "li-licao"): "Enviar a mensagem", ("tela", "li-tela"): None, ("fluxo", "f-1"): None,
+                ("receita", mundo.ambigua): None}
+    itens = (await cliente.get("/api/aprendizado")).json()["itens"]
+    nomes = {(str(i["kind"]), str(i["ref"])): i["capability_nome"] for i in itens}
+    for chave, nome in esperado.items():
+        assert nomes[chave] == nome, chave
+    d = (await cliente.get(f"/api/aprendizado/receita/{mundo.com_origem}")).json()
+    assert d["item"]["capability_nome"] == "Curtir a publicação"
+    corpo = (await cliente.get(f"/api/aprendizado/apps/{PACOTE}")).json()
+    linhas = {(str(x["kind"]), str(x["ref"])): x["capability_nome"] for x in corpo["aprendido"] + corpo["absorvido"]}
+    assert linhas[("licao", "li-licao")] == "Enviar a mensagem" and linhas[("tela", "li-tela-abs")] is None
+
+
+def test_nomes_sao_lidos_uma_vez_por_par_app_e_capability(mundo: Mundo) -> None:
+    contagem: dict[tuple[str, str], int] = {}
+
+    class Contando(TitulosFalsos):
+        def titulo(self, app: str, capability: str) -> str | None:
+            contagem[(app, capability)] = contagem.get((app, capability), 0) + 1
+            return super().titulo(app, capability)
+
+    mundo.servico._titulos = Contando()
+    entradas = mundo.servico.livro().itens
+    mundo.servico.nomes_das_capabilities(entradas, mundo.servico.capabilities(entradas))
+    assert contagem and max(contagem.values()) == 1

@@ -382,6 +382,14 @@ rota do livro traz `por_que_nao_publica` com `modo_desligado` e `vetado` (30.5, 
 e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o modo efetivo do pacote
 (`ModosDeUso.do_pacote`). O pacote vem só do config (ADR-052). Prova `simulated`; nada foi ligado no central.
 
+**Interface do modo por app (30.20, só leitura; adendo v0.64).** Cada app de `/apps` e o `app` de `/apps/{pacote}` trazem
+`modos_do_app`: lições e telas com o modo EFETIVO e a origem (`app` quando o pacote está em `por_app`, senão `global`;
+`ModosDeUso.definidos_no_app`). Os `modos` da visão ganham `licoes_por_app` e `telas_por_app`. No painel: o detalhe do
+app mostra "Lições e telas neste app" com o modo, a marca "definido para este app" ou "segue o global" e o que o modo
+faz; "Como mudar" diz a chave do config e que é preciso reiniciar o central (o config é lido uma vez, em `state.py`). O
+cartão mostra só o modo próprio, e o Global lista as exceções. O painel não grava o config: editar pela tela é decisão
+pendente da orquestradora (gravar o `config.yaml` ou levar o override para o banco; as duas mexem em núcleo).
+
 ## Evento `learning.needs_person` (30.21)
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
@@ -516,8 +524,8 @@ lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura
 v0.54; desenho §9.2). A regra é pura (`domain/obsolescencia.py`, `domain/saude.py`); a leitura é `application/obsolescencia.py`
 (`LeitorDeObsolescencia`, pendurado no serviço por `infrastructure/ligar_obsolescencia.py`), e a lista e o detalhe usam o mesmo
 `ContextoDeObsolescencia.sinais`. Sinais com fonte: substituta viva, versão fora do parque ou versão viva sem reprodução (o quadro do
-30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo, fluxo nunca casado há `sem_uso_dias` e tela
-absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
+30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo e tela absorvida. O fluxo nunca usado
+há `sem_uso_dias` é `sem_evidencia`, como a receita (o mesmo fato com o mesmo rótulo; adendo v0.63). Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
 
 - **Rebaixamento `catalogo_sem_efeito`** (passo da curadoria `RebaixamentoPorCatalogo`, sem IA, idempotente): receita ou fluxo vivo com
   `commit` num app com catálogo (o do registro de apps) que não respalda o efeito — catálogo sem nenhuma ação com efeito (`*`, o Outlook

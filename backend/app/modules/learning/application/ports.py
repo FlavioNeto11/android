@@ -213,6 +213,13 @@ class CatalogoDeRisco(Protocol):
     def da_capability(self, app: str, capability: str) -> FatosDoCatalogo | None: ...
 
 
+class TitulosDoCatalogo(Protocol):
+    """O `title` que o catálogo do app dá a uma capability (inclusive as internas), para o painel nomear o grupo em
+    português. É texto do catálogo, não da execução. App sem catálogo ou capability desconhecida: `None`."""
+
+    def titulo(self, app: str, capability: str) -> str | None: ...
+
+
 class PassoDeCuradoria(Protocol):
     """Roda a cada passo da curadoria periódica. Idempotente (chaves únicas e CAS). Nunca chama IA."""
 

@@ -24,7 +24,8 @@ const ACAO = (to: EstadoDoLivro, rotulo: RotuloDaAcao): AcaoPermitida => ({ to, 
 
 function grupo(over: Partial<GrupoDeFalha> = {}): GrupoDeFalha {
   return {
-    id: 'fk-0000000001', app: 'com.instagram.android', capability: 'abrir_perfil', failure_kind: 'app_anr',
+    id: 'fk-0000000001', app: 'com.instagram.android', capability: 'abrir_perfil', capability_nome: null,
+    failure_kind: 'app_anr',
     failure_screen: null, titulo: 'App sem resposta', camada: 'aparelho', onde_alterar: ['backend/app/devices/manager.py'],
     doc: 'docs/dominios/parque.md', prova: 'a mesma etapa no mesmo aparelho', ocorrencias: 5, taxa: 0.2, execucoes: 3,
     aparelhos: 2, usd_perdido: 0.1, min_perdidos: 4, intervencoes: 1, custo_total: 0.35, tendencia: null,

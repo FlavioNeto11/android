@@ -325,7 +325,10 @@ async def test_rotas_da_visao_por_app(visao: VisaoPorApp, mundo: Mundo) -> None:
         assert por_pacote[LOJA]["uso"]["fluxo"] == {"decide_sem_ia": 1}
         assert corpo["nao_resolvido"]["aprendido"]["total"] == 4 and corpo["fora_do_eixo"]["memoria"] == {"-": 2}
         assert corpo["modos"] == {"receitas": "replay", "fluxos": True, "habilidades": True, "licoes": "shadow",
-                                  "telas": "observe"}
+                                  "telas": "observe", "licoes_por_app": {}, "telas_por_app": {}}
+        # sem override no config, cada app segue o global (30.20)
+        assert por_pacote[LOJA]["modos_do_app"] == {"licoes": {"modo": "shadow", "origem": "global"},
+                                                    "telas": {"modo": "observe", "origem": "global"}}
         # `/apps/{pacote}` NÃO cai na rota genérica `{kind}/{ref}` (que recusaria o `kind` com 422).
         d = await c.get(f"/api/aprendizado/apps/{LOJA}")
         assert d.status_code == 200, d.text

@@ -98,11 +98,12 @@ def _saude(s: Saude | None) -> JsonObject | None:
 
 
 def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: Saude | None = None,
-             capability: str | None = None) -> JsonObject:
+             capability: str | None = None, capability_nome: str | None = None) -> JsonObject:
     """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`.
     Com o `servico`, o motivo conhece o modo do tipo e do pacote e o veto (`vetado`, `modo_desligado`); sem ele, só o
     que o próprio item diz (efeito externo, texto de pessoa, habilidade). `capability`: a da hierarquia App → Capability
-    → Item (`servico.capabilities`, em lote); `None` quando a linha não tem ou não se sabe."""
+    → Item (`servico.capabilities`, em lote); `None` quando a linha não tem ou não se sabe. `capability_nome`: o nome
+    dela em português, do catálogo do app (`servico.nomes_das_capabilities`); `None` sem catálogo."""
     if servico is None:
         motivo = por_que_o_sistema_nao_publica(e)
     else:
@@ -110,7 +111,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
         motivo = por_que_o_sistema_nao_publica(e, modo_publica=modo_publica, veto=veto)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
             "native_status": e.native_status, "title": e.title, "app": e.app, "app_ref": e.app_ref,
-            "capability": capability,
+            "capability": capability, "capability_nome": capability_nome,
             "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
             "created_at": e.created_at, "state_at": e.state_at, "last_used_at": e.last_used_at, "uses": e.uses,
@@ -134,7 +135,8 @@ def _transicao(t: Transicao) -> JsonObject:
 
 def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     capability = servico.capabilities([d.entrada]).get(d.entrada.trail_ref)
-    return {"item": _entrada(d.entrada, servico, d.saude, capability), "evidencias": [_evidencia(e) for e in d.evidencias],
+    nome = servico.nome_da_capability(d.entrada.app, capability)
+    return {"item": _entrada(d.entrada, servico, d.saude, capability, nome), "evidencias": [_evidencia(e) for e in d.evidencias],
             "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
             "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes)}
 
@@ -142,7 +144,9 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
 def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:
     saudes = servico.saudes(entradas)
     capabilities = servico.capabilities(entradas)
-    return {"itens": [_entrada(e, servico, saudes.get(e.trail_ref), capabilities.get(e.trail_ref)) for e in entradas],
+    nomes = servico.nomes_das_capabilities(entradas, capabilities)
+    return {"itens": [_entrada(e, servico, saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
+                               nomes.get(e.trail_ref)) for e in entradas],
             "total": len(entradas)}
 
 
@@ -161,8 +165,9 @@ async def ler_livro(request: Request, kind: LivroKind | None = None, state: Skil
     livro = servico.livro(kind=kind, state=state, app=app, origem=origem)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
     capabilities = servico.capabilities(livro.itens)
-    return {"itens": [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref))
-                      for e in livro.itens],
+    nomes = servico.nomes_das_capabilities(livro.itens, capabilities)
+    return {"itens": [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
+                               nomes.get(e.trail_ref)) for e in livro.itens],
             "total": len(livro.itens), "contagem": contagem}
 
 

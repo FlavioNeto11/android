@@ -55,7 +55,6 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
       ? { tone: 'success', title: `${g.id} copiado`, message: 'Cole na sessão de desenvolvimento: traz onde alterar e como provar.' }
       : { tone: 'danger', title: 'Não foi possível copiar', hint: 'O navegador recusou a área de transferência nesta página.' });
   };
-  const onde = g.capability === '*' ? g.app : `${g.app} › ${g.capability}`;
   return (
     <li className={styles.item} data-item={g.id}>
       <div className={styles.itemHead}>
@@ -69,7 +68,12 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
         <Tendencia t={g.tendencia} />
       </div>
       <div className={styles.itemMeta}>
-        <span><span className={styles.mono}>{onde}</span>{g.failure_screen ? <> · tela <span className={styles.mono}>{g.failure_screen}</span></> : null}</span>
+        <span>
+          <span className={styles.mono}>{g.app}</span>
+          {g.capability !== '*' ? <> › {g.capability_nome
+            ? <span title={g.capability} data-capability={g.capability}>{g.capability_nome}</span>
+            : <span className={styles.mono}>{g.capability}</span>}</> : null}
+          {g.failure_screen ? <> · tela <span className={styles.mono}>{g.failure_screen}</span></> : null}</span>
       </div>
       <div className={styles.numeros}>
         <Numero valor={formatInt(g.ocorrencias)} rotulo={g.taxa !== null ? `ocorrências (${formatPercent(g.taxa * 100)})` : 'ocorrências'} />

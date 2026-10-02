@@ -87,6 +87,13 @@ class ModosDeUso:
             self, licoes=None if self.licoes is None else modo_efetivo(self.licoes, self.licoes_por_app, pacote),
             telas=None if self.telas is None else modo_efetivo(self.telas, self.telas_por_app, pacote))
 
+    def definidos_no_app(self, pacote: str | None) -> frozenset[str]:
+        """Quais modos por app (`licoes`, `telas`) o pacote sobrescreve no config; vazio = os dois seguem o global. É o
+        que o painel mostra como "definido para este app" (30.20); o modo em si sai de `do_pacote`."""
+        if not pacote:
+            return frozenset()
+        return frozenset(t for t, m in (("licoes", self.licoes_por_app), ("telas", self.telas_por_app)) if pacote in m)
+
 
 def _desconhecida(modo: str) -> Uso:
     return Uso(Camada.DESCONHECIDA, f"não foi possível ler {modo} neste processo")

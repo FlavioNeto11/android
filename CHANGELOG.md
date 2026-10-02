@@ -19,6 +19,40 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: "Como mudar o modo deste app" legível (30.20, branch fix/30-20-como-mudar)
+
+- O passo a passo diz o arquivo (`config/config.yaml`), mostra o trecho do bloco `aprendizado:` com o modo que vale hoje,
+  explica cada valor (`on`, `shadow`/`observe`, `off`) e manda reiniciar a tarefa `farm-central`. Antes era uma chave
+  pontilhada e "off, shadow ou on" sem explicação.
+- Os adendos v0.63 e v0.64 deixam de ser provisórios (regra nova: quem mergeia usa o próximo número livre da main).
+- A ideia de editar o modo pelo painel fica registrada no §8.10 do desenho, com as duas formas e o conflito com o §8.10.
+
+## 2026-10-02 — Aprendizado: interface do modo por app de lições e telas (30.20, branch feat/30-20-modo-por-app-painel)
+
+- O detalhe do app mostra "Lições e telas neste app": o modo que vale, "definido para este app" ou "segue o global", o que
+  o modo faz e, em "Como mudar", a chave `aprendizado.<tipo>.por_app.<pacote>` com o aviso de que é preciso reiniciar o
+  central. O cartão do app mostra só o modo próprio; o Global lista as exceções com link para o app.
+- API (adendo v0.64, provisório): `modos_do_app` em cada app de `/apps` e `/apps/{pacote}`; `licoes_por_app` e
+  `telas_por_app` em `modos`. Só leitura: o painel não grava o config.
+- Prova `simulated`: `tests/test_learning_modo_por_app.py`, `test_learning_apps.py`; `AplicativosTab.test.tsx`.
+  Navegador: preview com cópia do banco do central e overrides só no config do ensaio.
+
+## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
+
+- **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a
+  receita, em vez de `obsoleto_provavel`/`fluxo_nunca_casado` (motivo removido; `domain/saude.py`, adendo v0.63 provisório). O
+  texto passa a "Nunca usado desde que foi publicado, há N dias (prazo: 14 dias)", sem o "(limite: 14)" que parecia contradição.
+  Na Atenção do central (b5baf3e5), os 4 fluxos que estavam em "provavelmente obsoleto" só por isso passam a "sem evidência"
+  (11 itens antes e depois: 4 degradando, 7 sem evidência).
+- **O grupo diz o nome, não o código.** `capability_nome` em cada linha do Livro, de `/apps/{pacote}` e em cada grupo de
+  `/falhas`: o `title` do catálogo do app sem as lacunas (`OPEN_PROFILE` → "Abrir o perfil"; porta `TitulosDoCatalogo`,
+  adaptador `TitulosDoRegistro`). O painel mostra o nome nos grupos do Aprendido e nas falhas, com o código no `title`; sem
+  catálogo, o código em mono como antes.
+- **Título curto na Atenção.** O fluxo, cujo título é o comando inteiro, aparece cortado na palavra (80 caracteres) com o texto
+  inteiro no `title` (`resumirTitulo`).
+- Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `test_learning_obsolescencia.py`,
+  `test_learning_rotas_falhas.py`; `SaudeDoApp.test.tsx`, `DetalheRico.test.tsx`. Navegador: preview com cópia do banco do central.
+
 ## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
 
 - Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.

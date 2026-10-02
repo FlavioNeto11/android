@@ -52,4 +52,18 @@ class RiscoDoRegistro:
                                efeito_externo=bool(c.side_effect))
 
 
-__all__ = ["TIPO_DO_EVENTO", "Barramento", "EventosNoBarramento", "RiscoDoRegistro"]
+class TitulosDoRegistro:
+    """`TitulosDoCatalogo` sobre o registro de apps: o `title` da capability, com as internas (o `/api/capabilities`
+    só lista as oferecidas). Fica separado do `RiscoDoRegistro` porque aquela porta só leva fatos de risco."""
+
+    def titulo(self, app: str, capability: str) -> str | None:
+        catalogo = registry.get(app) if app else None
+        if catalogo is None:
+            return None
+        try:
+            return catalogo.get(capability).title
+        except UnknownCapability:
+            return None
+
+
+__all__ = ["TIPO_DO_EVENTO", "Barramento", "EventosNoBarramento", "RiscoDoRegistro", "TitulosDoRegistro"]
