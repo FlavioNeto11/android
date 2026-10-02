@@ -180,11 +180,12 @@ class SocialService:
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
         app_da_conta = self._app_do_pacote(pacote_ancora())
-        if body.instance_id and app_da_conta and (conflito := self.repo.quem_ja_serve(
-                str(pessoa["id"]) if pessoa is not None else None, body.instance_id, app_da_conta)) is not None:
+        if app_da_conta:
             # D2-a conferida ANTES de qualquer linha: o 409 quer dizer "nada foi criado", e não "a pessoa nasceu
-            # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos.
-            raise SocialError(BindingConflict.code, str(BindingConflict(body.instance_id, *conflito)), 409)
+            # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos. Vale para o
+            # aparelho do cadastro E para os vínculos sem app que a pessoa já tinha (29.29).
+            self._recusar_conta_que_quebra_d2a(str(pessoa["id"]) if pessoa is not None else None, app_da_conta,
+                                               body.instance_id)
 
         display_name = body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None)
         if pessoa is not None:
@@ -410,6 +411,14 @@ class SocialService:
             self.repo.bind(profile_id, instance_id, app_id=app_id, primary=primary, reason=reason)
         except (BindingConflict, AparelhoEmQuarentena) as exc:
             raise SocialError(exc.code, str(exc), 409) from exc
+
+    def _recusar_conta_que_quebra_d2a(self, profile_id: str | None, app_id: str,
+                                      instance_id: str | None = None) -> None:
+        """409 `conta_do_app_ja_no_aparelho` quando a persona, ao ganhar a conta em `app_id`, passaria a servir (por
+        um vínculo sem app, ou pelo aparelho do cadastro) um app que outra persona já serve naquele aparelho."""
+        if (conflito := self.repo.conflito_da_conta_nova(profile_id, app_id, instance_id)) is not None:
+            iid, app, outra = conflito
+            raise SocialError(BindingConflict.code, str(BindingConflict(iid, app, outra)), 409)
 
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
         """`PATCH instance_id` (o painel de hoje, "trocar de aparelho"): o vínculo da conta âncora sai do aparelho
@@ -1311,6 +1320,8 @@ class SocialService:
         if self.repo.account_by_app(profile_id, app["id"], host):
             onde = f"{app['name']} ({host})" if host else app["name"]
             raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {onde}.", 409)
+        # D2-a antes de criar qualquer linha: o vínculo sem app da pessoa passa a servir este app com a conta nova.
+        self._recusar_conta_que_quebra_d2a(profile_id, str(app["id"]))
         clonar_de = getattr(body, "clonar_de", None)
         if clonar_de:
             # Tudo conferido ANTES de criar a conta, pela mesma razão do consentimento abaixo. A recusa é do serviço
