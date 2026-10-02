@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — A8: o instalador do túnel nunca registra o pwsh da Microsoft Store (branch `feat/a8-a9-codigo`)
+
+- **Achado real.** No central a tarefa `farm-tunel-192.168.1.11` foi instalada com `-AceitarStore` e executava
+  `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`, caminho com a versão do
+  MSIX que some quando a Store atualiza: no boot seguinte o túnel não sobe e o worker (e o android-09) cai.
+- **Código** (`scripts/worker-tunnel.ps1`): `Resolve-Pwsh` virou `Resolve-Interpretador` (MSI estável → outro pwsh fora
+  do WindowsApps → Windows PowerShell 5.1 do sistema → falha clara); trava final antes do `New-ScheduledTaskAction`;
+  `-AceitarStore` agora é erro explicado; BOM no arquivo para o 5.1 ler UTF-8. Arquitetura do túnel intacta
+  (`-R 18000:8010`, nunca 8000; forwards ADB inalterados).
+- Prova: `simulated` (`backend/tests/test_tunel_restrito.py`, 23 testes; escolha da função extraída do script com caminhos
+  falsos em pwsh 7 e no 5.1, parser do 5.1, `-Instalar -Simular` no 5.1). `not_run`: reinstalar a tarefa real no central
+  (exige autorização: mexe no túnel). Docs: `docs/worker.md`.
+
 ## 2026-10-02 — W8: 1º disparo real da validação da mitigação (real, `bcea158`): NO_FAILURE no boot 1, FAIL por defeito do executor, rollback incompleto no produto
 
 - `docs/handoffs/w8-boot-recovery.md` §17.6: deploy `bcea158`; política `livre` + `vpn-central-wireguard` só no android-09; 2 reinícios do servidor WireGuard em janela ociosa (03/06 reconectaram em 20 s cada); **iteração 1 `NO_FAILURE`** (mitigação NÃO exercitada); iteração 2 `BOOT_INVALID` por defeito do executor (baseline do estágio 1 reaproveitado) → veredito pré-comprometido `FAIL`, desfecho substantivo `INCONCLUSIVE`; 1 de 6 boots usados. Achado de produto: o rollback da rede não para o SFA, que religa sozinho no boot (`tun0` para um par removido) e a convergência pede mais um reinício; baseline restaurado à mão (`force-stop` do SFA no 09).
