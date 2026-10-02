@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Flex para trabalho offline (17.8, branch jev/17-8-flex)
+
+- `backend/app/planning/openai_provider.py`: o `OpenAICompatProvider` passa a honrar `ai.roles.<papel>.max_retries`
+  (antes só o provedor da Anthropic o usava): repete 429 (menos `insufficient_quota`) e 5xx, com `Retry-After` ou 5 s
+  dobrando até 60 s; padrão 0, então nada muda no caminho interativo. É o que faz o `service_tier: flex` (429
+  "Resource Unavailable" esperado) funcionar como entrada de provedor com `extra_body`.
+- `config/config.example.yaml` e `docs/ia.md` §13: bloco comentado `openai-flex` e o desenho. `timeout_s` já não tinha
+  teto de validação. O rejulgamento offline (`scripts/eval_rejudge.py --sobrepor`) já aceitava a entrada, sem mudar o
+  script.
+- **Não feito, por decisão pendente:** a geração de persona fica de fora. `generate_persona` e
+  `generate_social_response` usam o mesmo papel `social`, e o segundo roda dentro da execução; separar exige um papel
+  novo (`persona`), que não foi criado.
+- Prova `simulated`: `backend/tests/test_openai_provider.py::test_flex_*` e afins (25 passam) e
+  `scripts/tests/test_eval_rejudge.py::test_sobreposicao_flex_*` (9 passam), transporte e `sleep` falsos. Chamada real
+  ao flex: `not_run`.
+
+## 2026-10-02 — T.2: o tempo da suíte deixa de ser esperado (relógio virtual e orçamento do verificador configurável, branch jev/t2-relogio)
+
+- Causa medida (`--durations=15`, 02/10): `test_resultado_ambiguo_vira_incerto_e_nao_reenvia` pagava 63,6 s porque `_verify` tinha o orçamento (8/15/60 s) em literais e, com o efeito disparado, sondava 60 s reais até "incerto"; `test_rotation.py` e as execuções pagavam ~2,9 s de assentamento por passo de mensagem (`asyncio.sleep` fixo nas ferramentas: 0,4 + 0,5 + `wait_for` 2 s) e o `wait_for` de 4 s do verificador simulado, 3 voltas, onde a mensagem nunca aparece.
+- Código: `ai.verify_budget_s`/`verify_budget_patient_s`/`verify_budget_min_s` (`backend/app/config.py`, padrões 15/60/8 = o comportamento de antes), lidos em `StepExecutor._verify`; `ToolContext.dormir` (padrão `asyncio.sleep`) em todas as esperas de assentamento de `backend/app/automation/tools.py` (exceto o recuo de foco do `open_app`) e `StepExecutor.dormir`, injetado no contexto. Produção não muda.
+- Testes: `tests/relogio_virtual.py` (`RelogioVirtual`: `dormir` avança o deslocamento em vez de bloquear), `FakeQaDevice.relogio` (a mensagem envelhece pelo mesmo relógio), `Harness.pular_o_tempo()` e `Harness.encurtar_verificacao()` (opt-in por teste, sobrevivem a `crash()`/`boot()`). A prova é a mesma: o `wait_for` esperou os mesmos segundos, só que virtuais, e o aparelho envelheceu a mensagem o mesmo tanto; "incerto" continua exigindo a tela sem a mensagem até o fim do orçamento. `test_nao_desliga_aparelho_em_foco...` vence `focus_until_mono` em vez de esperar o TTL.
+- Antes → depois (simulated, `pytest tests/test_execution.py tests/test_rotation.py`, 22 testes, mesma máquina): 158,3 s → 56,3 s. Por teste: `resultado_ambiguo` 63,6 → 2,1 s; `rotation::hibernacao` 20,0 → 2,6 s; `reinicio_com_acao_de_efeito_pendente` 12,5 → <1 s; `rotation::tres_contas` 10,0 → 1,3 s; `falha_e_tela_inesperada` 6,6 → 2,6 s; `rotation::nao_desliga...foco` 5,8 → 0,5 s; `test_observacao_arvore_primeiro::falha_grava_evidencia_com_imagem_tardia` 61 → 1,7 s. Ficaram em tempo real de propósito: `test_timeout_no_toque...` (8,3 s, `hang_s` e `driver_call_timeout_s` reais) e os testes de corrida com `action_delay_s` (pausa, controle manual, queda do backend).
+- Prova (simulated): 194 passed nos arquivos direcionados (test_execution, test_rotation, test_arquitetura, test_hub_de_ia, test_anr_sinal_proprio, test_digitacao_atomica, test_plan_defect, test_cost_levers, test_credenciais_da_conta, test_observacao_arvore_primeiro, test_wait_boot_sondas, test_ciclo_de_vida_do_emulador). Suíte inteira `not_run`. Real: nada (só aparelho falso).
+- Veredito do snapshot (`DeviceManager._snapshot_verdict`): `backend/tests/test_snapshot_verdict.py`, 6 passed (simulated, só arquivo de log em `tmp_path`): `True` ("Successfully loaded"), `False` nas duas frases de recusa ("cannot load snapshot", "Failed to load snapshot"), `None` com log sem veredito ou vazio, `None` com o "carregado" ANTES do `boot_log_offset` (e o contrário: recusa velha não condena o boot novo; com offset 0 ela vale) e `None` com o arquivo ausente. O teste do ciclo de vida deixou de listá-lo como lacuna.
+- Levantamento (só leitura, texto, `backend/app/api.py`): 175 rotas (`router` e `worker_router`); 174 têm chamada `client.<método>("<caminho>")` em `backend/tests/`; a que não tem é `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect`, coberta pelo apelido `POST /api/instagram/profiles/{id}/connect` que delega a ela. A frase "38 das 85 rotas sem teste HTTP" do plano está defasada. Limite: confere o caminho e o método na chamada, não o que cada teste afirma, e não cobre os routers de `app/modules/*/presentation`.
+- Fora do T.2 desta rodada: eventos `command.updated`/`worker.updated` e a tela de Infraestrutura (frontend); ligar `pular_o_tempo` no harness inteiro (exige a suíte completa).
+
 ## 2026-10-02 — T.2: testes dos eventos `command.updated`/`worker.updated`, da tela de Infraestrutura e da última rota sem teste HTTP (T.2, branch `jev/t2-eventos-infra`)
 
 - `backend/tests/test_eventos_comando_e_worker.py` (14): payload (`data.command`, `data.worker`, `instance_id` no envelope), nível por estado (falha/recusa `error`, incerto `warn`, worker offline `warn`), mensagem com e sem motivo, aviso de comando em voo na reconexão (`inflight`), não efêmero, a trilha de um comando remoto pelo caminho real (despachado, ack, running, progresso, concluído) e o worker (canal sobe/cai, sem batida, manutenção, batida igual só gera `worker.metrics`, inventário novo gera `worker.updated`, rotação de credencial).
