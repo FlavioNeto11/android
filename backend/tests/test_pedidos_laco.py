@@ -275,7 +275,7 @@ async def test_a6_editar_nao_perde_ocorrencia_e_troca_a_versao_no_lugar(h: Harne
     nova = [o for o in _ocs(db) if o["gatilho_id"] == novo["id"]]
     assert [(o["previsto_para"], o["estado"], o["pedido_versao"]) for o in nova] == [("2026-10-02T12:30:00Z", "prevista", 3)]
     with pytest.raises(AcaoInvalida):
-        laco.acoes.editar("ped1", {"autonomia": "agir"})        # campo que a edição não muda
+        laco.acoes.editar("ped1", {"estado": "ativo"})        # campo que a edição não muda (28.9 abriu `autonomia`, alvos, fuso e orçamentos)
 
 
 # =============================================================================================== líderes e voltas

@@ -306,6 +306,9 @@ async def snapshot(request: Request) -> Any:
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
             "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),
             "workers": s.workers.dtos(),
+            # Pedidos persistentes (28.9): por estado, avisos e os que esperam uma pessoa, completo e sem janela. Cada
+            # `aguardando_pessoa` é UM item da caixa de Pendências, com a aprovação e a `needs_input` dele agrupadas.
+            "pedidos": s.pedidos_api.snapshot(),
             # Comandos em voo E os que acabaram sem desfecho. Os primeiros, porque recarregar a página no meio
             # de um `start` remoto fazia o painel esquecer que o aparelho está ocupado e reoferecer o botão — o
             # clique duplo que o aceite 9 proíbe. Os segundos, porque um `uncertain` só existia enquanto o toast

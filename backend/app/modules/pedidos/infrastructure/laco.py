@@ -103,6 +103,9 @@ class LacoDePedidos:
         self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None
+        #: Publica as mudanças marcadas no repositório (eventos `pedido.*`, 28.9). Injetado por `AppState`; sem ele o
+        #: laço não emite nada (teste, laço isolado).
+        self.notificar: Callable[[list[tuple[str, str, bool]]], None] | None = None
 
     # ------------------------------------------------------------------ acordar e ritmo
     def acordar(self) -> None:
@@ -179,7 +182,17 @@ class LacoDePedidos:
         except TravaPerdida as e:
             log.warning("pedidos: o mandato acabou no meio da volta (%s); nada mais é escrito", e)
             r.lider = False
+        finally:
+            self._publicar()
         return r
+
+    def _publicar(self) -> None:
+        marcas = self.repo.descarregar()
+        if marcas and self.notificar is not None:
+            try:
+                self.notificar(marcas)
+            except Exception:  # noqa: BLE001 - evento é espelho: nunca derruba a volta
+                log.exception("pedidos: publicação dos eventos da volta")
 
     # ------------------------------------------------------------------ 1. fechamento
     def _fechar(self, token: int, agora: datetime, r: Resumo) -> None:

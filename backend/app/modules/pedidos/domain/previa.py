@@ -202,6 +202,23 @@ def _datas(g: GatilhoPedido, indice: int, fuso: str, agora: datetime, limite: in
     return [DataPrevista(indice, i) for i in recorrencia.proximas(regra, inicio, fuso, depois_de=agora, limite=limite)]
 
 
+def proximas_do_pedido(gatilhos: Sequence[GatilhoPedido], fuso: str, agora: datetime, quantas: int,
+                       fim_em: datetime | None = None) -> list[DataPrevista]:
+    """As próximas datas de um pedido JÁ criado: o gatilho `agora` não conta (já foi materializado na ativação)."""
+    todas: list[DataPrevista] = []
+    for i, g in enumerate(gatilhos):
+        if g.tipo == "agora":
+            continue
+        try:
+            todas.extend(_datas(g, i, fuso, agora, quantas))
+        except (recorrencia.ErroRecorrencia, ValueError, KeyError):
+            continue                  # spec que o laço também recusa: sem data, nunca um erro na leitura
+    todas.sort(key=lambda d: (d.instante.utc, d.gatilho))
+    if fim_em is not None:
+        todas = [d for d in todas if d.instante.utc <= fim_em]
+    return todas[:quantas]
+
+
 def descrever_gatilho(g: GatilhoPedido | tuple[str, Mapping[str, object]], fuso: str) -> str:
     """Texto curto para a pessoa ("Todo dia às 08:00 (America/Sao_Paulo)"). Cobre os casos comuns; o resto cai na
     regra em forma canônica, que é fiel mesmo quando não é bonita."""
@@ -374,4 +391,4 @@ def ocorrencias_por_mes(intervalo_s: int | None) -> float | None:
 __all__ = ["Analise", "Bloqueio", "DATAS_DO_INTERVALO", "DataPrevista", "ErroDeCorpo", "GatilhoPedido",
            "LIMITE_DE_GATILHOS", "PAUSADO_PELA_PESSOA", "ParametrosDoPedido", "PROXIMAS_PADRAO", "acoes_permitidas",
            "analisar", "autonomia_da_previa", "conferir_fuso", "custo_da_previa", "descrever_gatilho",
-           "forma_canonica", "id_do_pedido", "normalizar_gatilho", "ocorrencias_por_mes", "selo", "MOTIVO_MAXIMO"]
+           "forma_canonica", "id_do_pedido", "normalizar_gatilho", "ocorrencias_por_mes", "proximas_do_pedido", "selo", "MOTIVO_MAXIMO"]

@@ -16,6 +16,7 @@ o `UNIQUE (pedido_id, gatilho_id, previsto_para)` de uma vez).
 from __future__ import annotations
 
 import secrets
+import threading
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
@@ -39,6 +40,20 @@ def _marcas(valores: Sequence[object]) -> str:
 class RepositorioDePedidos:
     def __init__(self, db: Database):
         self.db = db
+        self._local = threading.local()
+
+    # ------------------------------------------------------------------ marcas de mudança (eventos pedido.*)
+    def marcar(self, tipo: str, ident: str, *, pessoa: bool = False) -> None:
+        """Anota que o pedido ou a ocorrência mudou, para quem chamar `descarregar` DEPOIS do commit publicar o evento
+        (28.9). Por thread: a volta do laço e o pedido de uma rota nunca descarregam as marcas um do outro (um evento
+        emitido antes do commit de quem escreveu mostraria o estado velho)."""
+        marcas: list[tuple[str, str, bool]] = self._local.__dict__.setdefault("marcas", [])
+        marcas.append((tipo, ident, pessoa))
+
+    def descarregar(self) -> list[tuple[str, str, bool]]:
+        marcas: list[tuple[str, str, bool]] = self._local.__dict__.get("marcas", [])
+        self._local.marcas = []
+        return marcas
 
     # ------------------------------------------------------------------ pedido
     def pedido(self, pedido_id: str) -> Row | None:
@@ -76,7 +91,8 @@ class RepositorioDePedidos:
             (pedido_id, quantos))]
 
     def mudar_estado_do_pedido(self, pedido_id: str, de: str, para: str, em: str, *, versao: int | None = None,
-                               pausado_motivo: str | None = None, encerrado_motivo: str | None = None) -> bool:
+                               pausado_motivo: str | None = None, encerrado_motivo: str | None = None,
+                               pessoa: bool = False) -> bool:
         sql = ("UPDATE pedidos SET estado=?, atualizado_em=?, proxima_em=NULL,"
                " pausado_motivo=COALESCE(?, pausado_motivo), encerrado_motivo=COALESCE(?, encerrado_motivo)"
                " WHERE id=? AND estado=?")
@@ -84,7 +100,10 @@ class RepositorioDePedidos:
         if versao is not None:
             sql += " AND versao=?"
             params.append(versao)
-        return (self.db.execute(sql, tuple(params)).rowcount or 0) == 1
+        mudou = (self.db.execute(sql, tuple(params)).rowcount or 0) == 1
+        if mudou:
+            self.marcar("pedido", pedido_id, pessoa=pessoa)
+        return mudou
 
     # ------------------------------------------------------------------ gatilhos
     def gatilhos_ativos(self, pedido_id: str) -> list[Row]:
@@ -188,13 +207,17 @@ class RepositorioDePedidos:
                            criada_em: str, terminada_em: str | None) -> bool:
         """`ON CONFLICT DO NOTHING` sem alvo: cobre a chave UNIQUE e o `UNIQUE (pedido, gatilho, instante)`. Devolve
         se a linha nasceu agora; `False` = já existia (outro laço, ou a mesma volta repetida)."""
+        oid = novo_id("o")
         cur = self.db.execute(
             "INSERT INTO pedido_ocorrencias(id, pedido_id, pedido_versao, gatilho_id, previsto_para, chave, origem,"
             " estado, motivo, materializada_token, criada_em, terminada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT DO NOTHING",
-            (novo_id("o"), pedido_id, versao, gatilho_id, previsto_para, chave, origem, estado, motivo, token,
+            (oid, pedido_id, versao, gatilho_id, previsto_para, chave, origem, estado, motivo, token,
              criada_em, terminada_em))
-        return (cur.rowcount or 0) == 1
+        nasceu = (cur.rowcount or 0) == 1
+        if nasceu:
+            self.marcar("ocorrencia", oid)
+        return nasceu
 
     def mover(self, ocorrencia_id: str, de: str, para: str, *, motivo: str | None = None,
               iniciada_em: str | None = None, terminada_em: str | None = None,
@@ -209,7 +232,10 @@ class RepositorioDePedidos:
             "UPDATE pedido_ocorrencias SET estado=?, motivo=COALESCE(?, motivo), iniciada_em=COALESCE(?, iniciada_em),"
             " terminada_em=?, custo_usd=custo_usd+?, dono=NULL, prazo_posse=NULL WHERE id=? AND estado=?",
             (para, motivo, iniciada_em, terminada_em, float(custo_usd or 0.0), ocorrencia_id, de))
-        return (cur.rowcount or 0) == 1
+        mudou = (cur.rowcount or 0) == 1
+        if mudou:
+            self.marcar("ocorrencia", ocorrencia_id)
+        return mudou
 
     def reservar(self, ocorrencia_id: str, dono: str, prazo_posse: str, agora: str) -> bool:
         """Eficiência, não correção: só um laço de cada vez gasta o planejador numa ocorrência. A posse vence sozinha."""
@@ -226,7 +252,10 @@ class RepositorioDePedidos:
         cur = self.db.execute(
             "UPDATE pedido_ocorrencias SET estado='despachada', run_id=?, tentativa=?, iniciada_em=NULL, dono=NULL,"
             " prazo_posse=NULL, resumo=NULL WHERE id=? AND estado='devida'", (run_id, tentativa, ocorrencia_id))
-        return (cur.rowcount or 0) == 1
+        mudou = (cur.rowcount or 0) == 1
+        if mudou:
+            self.marcar("ocorrencia", ocorrencia_id)
+        return mudou
 
     def gravar_resumo(self, ocorrencia_id: str, resumo: str) -> None:
         self.db.execute("UPDATE pedido_ocorrencias SET resumo=? WHERE id=?", (resumo, ocorrencia_id))
