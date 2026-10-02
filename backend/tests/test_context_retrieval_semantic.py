@@ -453,6 +453,22 @@ def test_orcamento_estoura_na_etapa_b_e_preserva_a():
     sel = Montagem(fake, budget=Budget(max_calls_per_request=1)).pedir()
     assert not sel.fallback_used and sel.selected_files and sel.selected_regions == ()
     assert sel.warnings == ("stage_b_failed:budget_exceeded",) and sel.metadata["calls"] == 1
+    # o rótulo não pode dizer "miss" (que sugere chamada feita) quando o orçamento barrou a etapa B antes dela
+    assert sel.metadata["stage_a_cache"] == "miss" and sel.metadata["stage_b_cache"] == "skipped"
+    assert [c["stage"] for c in fake.calls] == ["A"]
+
+
+def test_etapa_b_chamada_e_que_leva_o_rotulo_miss():
+    fake = _fake()
+    sel = Montagem(fake, budget=Budget(max_calls_per_request=2)).pedir()
+    assert [c["stage"] for c in fake.calls] == ["A", "B"] and sel.metadata["stage_b_cache"] == "miss"
+
+
+def test_etapa_b_que_falha_no_provedor_depois_de_chamada_fica_miss():
+    # o orçamento deixou chamar; a falha é do provedor, então a chamada existiu e o rótulo é "miss"
+    fake = _fake(fail_with=ProviderTimeout("t"), fail_on="regions")
+    sel = Montagem(fake).pedir()
+    assert sel.metadata["stage_b_cache"] == "miss" and sel.metadata["stage_b_reason"] == "timeout"
 
 
 def test_orcamento_de_sessao_e_compartilhado_entre_pedidos():

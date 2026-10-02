@@ -88,7 +88,7 @@ class LinhaDoCaso(unittest.TestCase):
         self.assertEqual(linha['http_calls'], 0)
 
     def test_falha_da_etapa_b_aparece_com_o_motivo_e_sem_chunks_enviados(self) -> None:
-        sem = {'stage_a_cache': 'miss', 'stage_b_cache': 'miss', 'calls': 1, 'stage_b_reason': 'budget_exceeded',
+        sem = {'stage_a_cache': 'miss', 'stage_b_cache': 'skipped', 'calls': 1, 'stage_b_reason': 'budget_exceeded',
                'chunks_sent': 0}
         linha = smoke.linha_do_caso(self.CASO, pack(sem), [{'status': 200, 'ms': 1.0}])
         self.assertEqual((linha['stage_b_reason'], linha['chunks_sent'], linha['http_calls']), ('budget_exceeded', 0, 1))
