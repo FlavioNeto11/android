@@ -281,6 +281,47 @@ class UrlsDoApi(unittest.TestCase):
         self.assertTrue(all("/api/api/" not in v for v in vistas))
 
 
+class BaselineDaIteracao(unittest.TestCase):
+    """Defeito do 1º disparo real (02/10): a iteração 2 reaproveitou o baseline do estágio 1, que exige 'sem peer/always-on/tun0', o contrário do que a política aplicada produz."""
+
+    def test_separa_o_que_a_politica_inverte_do_que_continua_valendo(self) -> None:
+        reais, esperadas = mod.separar_falhas(["sem_execucao_ativa_no_snapshot", "sem_linha_de_rede", "sem_comando_aberto", "sem_peer_no_servidor",
+                                               "always_on_null", "tun0_ausente", "vpn_nao_conectada", "worker_conectado (x)"])
+        self.assertEqual(reais, ["sem_execucao_ativa_no_snapshot", "sem_comando_aberto", "worker_conectado (x)"])
+        self.assertEqual(set(esperadas), set(mod.FALHAS_ESPERADAS_COM_A_POLITICA))
+
+    def _com_baseline(self, leituras: list[list[str]]):
+        orig = mod.est1.baseline
+        it = iter(leituras)
+        mod.est1.baseline = lambda _a: {"ok": False, "falhas": next(it, leituras[-1]), "gate": {}}      # type: ignore[assignment]
+        return orig
+
+    def test_espera_o_aparelho_assentar_e_passa_com_duas_leituras_limpas(self) -> None:
+        amb = _AmbWG()
+        ocupado = ["sem_execucao_ativa_no_snapshot", "sem_comando_aberto", "tun0_ausente"]
+        limpo = ["sem_peer_no_servidor", "always_on_null", "tun0_ausente", "vpn_nao_conectada", "sem_linha_de_rede"]
+        orig = self._com_baseline([ocupado, ocupado, limpo, limpo])
+        try:
+            b = mod.baseline_assentado(amb)                                       # type: ignore[arg-type]
+        finally:
+            mod.est1.baseline = orig                                              # type: ignore[assignment]
+        self.assertTrue(b["ok"])
+        self.assertEqual(b["falhas"], [])
+        self.assertEqual(len(b["falhas_esperadas_com_a_politica"]), 5)
+        self.assertGreaterEqual(amb.t - amb.T0, 45.0, "esperou as leituras ocupadas antes de passar")
+
+    def test_aparelho_que_nao_assenta_no_limite_invalida_em_vez_de_iniciar_o_boot(self) -> None:
+        amb = _AmbWG()
+        orig = self._com_baseline([["sem_comando_aberto"]])
+        try:
+            b = mod.baseline_assentado(amb)                                       # type: ignore[arg-type]
+        finally:
+            mod.est1.baseline = orig                                              # type: ignore[assignment]
+        self.assertFalse(b["ok"])
+        self.assertEqual(b["falhas"], ["sem_comando_aberto"])
+        self.assertGreaterEqual(amb.t - amb.T0, mod.ASSENTAR_LIMITE_S)
+
+
 class Executor(unittest.TestCase):
     def test_pre_voo_falho_nao_escreve_nada(self) -> None:
         amb, api = _Amb(), _Api()

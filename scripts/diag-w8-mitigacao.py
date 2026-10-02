@@ -359,6 +359,33 @@ def mexer_no_servidor(amb: Any, reg: Callable[..., None], rotulo: str, acao: Cal
     return {"ok": rec["ok"], "fase": "reconexao", "acao_executada": True, "http": st, "reinicio_apos_s": round(t_restart - t_acao, 1), **rec}
 
 
+#: Itens do baseline do estágio 1 que, com a política JÁ aplicada (iteração >= 2), são o contrário do esperado: há peer, linha de rede, always-on e
+#: túnel. Os demais (comando/execução abertos, worker, aparelho online, automação) continuam valendo.
+FALHAS_ESPERADAS_COM_A_POLITICA = frozenset({"sem_linha_de_rede", "sem_peer_no_servidor", "always_on_null", "tun0_ausente", "vpn_nao_conectada"})
+ASSENTAR_LIMITE_S = 600.0
+
+
+def separar_falhas(falhas: list[str]) -> tuple[list[str], list[str]]:
+    """(reais, esperadas_com_a_politica). Cada item de `falhas` pode trazer detalhe depois do nome; vale o nome (até o primeiro espaço)."""
+    esperadas = [f for f in falhas if str(f).split(" ")[0] in FALHAS_ESPERADAS_COM_A_POLITICA]
+    return [f for f in falhas if f not in esperadas], esperadas
+
+
+def baseline_assentado(amb: Any, limite_s: float = ASSENTAR_LIMITE_S) -> dict[str, Any]:
+    """Baseline da iteração >= 2: espera o aparelho ASSENTAR do boot anterior (o produto ainda reconcilia o app, mede a rede e fecha comandos logo
+    depois do boot) e só então confere o que vale com a política aplicada. Duas leituras seguidas sem falha real; esgotado o limite, o baseline
+    é falho (e a iteração, BOOT_INVALID): nunca se inicia um boot sobre um aparelho ocupado."""
+    fim, seguidas, b = amb.agora() + limite_s, 0, {}
+    while True:
+        b = est1.baseline(amb)
+        reais, esperadas = separar_falhas(list(b["falhas"]))
+        b = {**b, "ok": not reais, "falhas": reais, "falhas_esperadas_com_a_politica": esperadas}
+        seguidas = seguidas + 1 if b["ok"] else 0
+        if seguidas >= 2 or amb.agora() >= fim:
+            return b
+        amb.dormir(15.0)
+
+
 def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Callable[..., None]) -> dict[str, Any]:
     d = run / f"i{n}"
     d.mkdir(parents=True, exist_ok=False)
@@ -371,7 +398,7 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
     st_h, saude = api.get("/api/health")                                          # a pausa é só em memória (um reinício do central a apaga)
     if st_h != 200 or not pausa_vigente(saude if isinstance(saude, dict) else None):
         return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": "a pausa não consta em features.repair_pause do health antes do boot", "reinicios_da_rede": 0}
-    b = est1.baseline(amb) if not primeira else {"ok": True, "falhas": [], "nota": "a 1ª iteração parte do baseline do pré-voo"}
+    b = baseline_assentado(amb) if not primeira else {"ok": True, "falhas": [], "nota": "a 1ª iteração parte do baseline do pré-voo"}
     (d / "baseline.json").write_text(json.dumps(b, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if not b["ok"] and not primeira:
         invalidos.append(f"baseline: {b['falhas']}")
