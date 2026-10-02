@@ -185,6 +185,19 @@ def capability_unica(valor: str | None) -> str | None:
     return valor if valor and valor != "*" else None
 
 
+_LACUNA = re.compile(r'\s*(?:\b(?:de|com|para)\s+)?"?\{[^{}]*\}"?')
+
+
+def nome_da_capability(titulo: str | None) -> str | None:
+    """O nome em português que o GRUPO mostra no lugar do código (`OPEN_PROFILE` → "Abrir o perfil"): o `title` do
+    catálogo sem as lacunas de parâmetro, que no grupo não têm valor ("Abrir o perfil de {username}", "Buscar "{query}"
+    no Outlook" → "Buscar no Outlook"). Sem título ou só lacuna, `None`: quem mostra cai no código."""
+    if not titulo:
+        return None
+    nome = " ".join(_LACUNA.sub("", titulo).split())
+    return nome or None
+
+
 def capability_da_linha_da_receita(derivada: JsonObject | None) -> str | None:
     """A capability de UMA receita na lista, da mesma derivação do detalhe (`capability_da_receita`): só quando há
     exatamente um nome e ele não é ambíguo; ambígua ou sem fonte, `None`."""

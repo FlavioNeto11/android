@@ -71,8 +71,9 @@ def _item_declarado(i: ItemDeclarado) -> JsonObject:
 
 
 def _linha(x: LinhaDoAprendido, servico: LearningService, saudes: dict[str, Saude],
-           capabilities: dict[str, str | None]) -> JsonObject:
-    return {**_entrada(x.entrada, servico, saudes.get(x.entrada.trail_ref), capabilities.get(x.entrada.trail_ref)),
+           capabilities: dict[str, str | None], nomes: dict[str, str | None]) -> JsonObject:
+    ref = x.entrada.trail_ref
+    return {**_entrada(x.entrada, servico, saudes.get(ref), capabilities.get(ref), nomes.get(ref)),
             "origem_na_visao": x.origem.value,
             "uso": _uso(x.uso), "absorvida_em": x.absorvida_em}
 
@@ -82,9 +83,11 @@ def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
     entradas = [x.entrada for x in (*d.aprendido, *d.absorvido)]
     saudes = servico.saudes(entradas)
     capabilities = servico.capabilities(entradas)       # em lote, como a saúde: nunca uma consulta por linha
+    nomes = servico.nomes_das_capabilities(entradas, capabilities)
     return {"app": _resumo(d.resumo), "declarado": [_item_declarado(i) for i in d.declarado],
-            "aprendido": [_linha(x, servico, saudes, capabilities) for x in d.aprendido],
-            "absorvido": [_linha(x, servico, saudes, capabilities) for x in d.absorvido], "modos": _modos(d.modos)}
+            "aprendido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.aprendido],
+            "absorvido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.absorvido],
+            "modos": _modos(d.modos)}
 
 
 @router.get("/apps", response_model=None)

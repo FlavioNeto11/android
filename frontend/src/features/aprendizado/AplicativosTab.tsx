@@ -250,7 +250,10 @@ function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['apren
                 key={g.chave}
                 className={styles.grupo}
                 defaultOpen={atencao > 0 || grupos.length === 1}
-                summary={<span className={g.ehCapability ? styles.mono : undefined}>{g.titulo}</span>}
+                summary={(
+                  <span className={g.ehCapability ? styles.mono : undefined} title={g.codigo ?? undefined}
+                    data-capability={g.codigo ?? undefined}>{g.titulo}</span>
+                )}
                 meta={(
                   <span className={styles.grupoMeta}>
                     <span>{formatInt(g.itens.length)} {g.itens.length === 1 ? 'item' : 'itens'}</span>

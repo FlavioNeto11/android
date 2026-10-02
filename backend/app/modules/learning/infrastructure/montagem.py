@@ -29,7 +29,8 @@ from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
 from app.modules.learning.infrastructure import (ligar_costuras, ligar_licoes, ligar_nativos, ligar_obsolescencia,
                                                  ligar_telas, ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
-from app.modules.learning.infrastructure.eventos import Barramento, EventosNoBarramento, RiscoDoRegistro
+from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
+                                                         TitulosDoRegistro)
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -118,7 +119,7 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
                               eventos=EventosNoBarramento(eventos) if eventos is not None else None,
-                              catalogo_de_risco=RiscoDoRegistro())
+                              catalogo_de_risco=RiscoDoRegistro(), titulos=TitulosDoRegistro())
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

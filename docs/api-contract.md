@@ -3723,7 +3723,7 @@ Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py
 | `versao_fora_do_parque` | receita, tela | a versão do item, que nenhum aparelho ativo tem (`versao.estado = versao_aposentada`); `device_app_state` |
 | `versao_viva_sem_reproducao` | receita, tela | as versões vivas em que a chave não tem receita e que não são provadamente mais antigas (tela: `incompativel`) |
 | `efeito_sem_respaldo_no_catalogo` | receita, fluxo | a capability (ou `*`); `catalogo.yaml (<sem_respaldo\|duvidoso>): <fato>` |
-| `fluxo_nunca_casado` | fluxo | dias publicado sem nenhum uso (`limite` = `sem_uso_dias`); `flows.uses`. Toma o lugar de `sem_evidencia` no fluxo |
+| ~~`fluxo_nunca_casado`~~ | fluxo | **removido na v0.63**: o fluxo nunca usado é `sem_evidencia`/`nunca_usado`, como a receita |
 | `absorvida` | item | o commit de `state_detail = absorvida:<commit>` |
 
 Fora (sem fonte hoje): "sem uso enquanto a etapa roda por outro caminho", "duplicado" em chaves vizinhas e "habilidade publicada com a
@@ -3811,3 +3811,18 @@ Muda o VALOR de um campo, não o tipo. O `href` de `learning.needs_person` (30.2
 `#/aprendizado?item=<kind>:<ref>` para **`#/aprendizado?aba=aprendido&item=<kind>:<ref>`**. Sem a aba, o painel caía na visão
 Aplicativos e não abria o item (validação no Chrome de 02/10, I1). O painel aceita os dois formatos: `item` sem `aba` abre o
 catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcionando. "Revisar" das Pendências usa o mesmo link.
+
+## Adendo v0.63 (02/10/2026) — mesmo rótulo para o mesmo fato e o nome da capability
+
+Número provisório: a orquestradora renumera no merge se outro adendo chegar antes.
+
+- **`saude`: sai o motivo `fluxo_nunca_casado`.** O fluxo publicado e nunca usado há `sem_uso_dias` passa a sair como
+  `sem_evidencia`, com o motivo `nunca_usado`, igual à receita. Antes, o mesmo fato era `obsoleto_provavel` no fluxo e
+  `sem_evidencia` na receita, e o dono via o rótulo mudar sem saber por quê (validação no Chrome do deploy 2). A obsolescência
+  do fluxo continua sendo a `substituta_viva`. Um cliente que ainda recebe `fluxo_nunca_casado` de um backend anterior mostra o
+  mesmo texto do `nunca_usado`.
+- **`capability_nome`** (texto ou `null`), campo novo ao lado de `capability` em cada linha de `GET /api/aprendizado`,
+  `/pendentes`, `/revisar`, no `item` do detalhe, nas linhas de `/apps/{pacote}` e em cada grupo de `GET /api/aprendizado/falhas`
+  (`itens[]` e `verificacao[]`, só no JSON; o Markdown segue com o código). É o `title` da capability no catálogo do app, com as
+  internas, sem as lacunas de parâmetro: `OPEN_PROFILE` → "Abrir o perfil", `SEARCH_MAIL` → "Buscar no Outlook". Vem `null` se o
+  app não tem catálogo, se a capability é desconhecida ou se a linha não tem capability. Nesses casos o painel mostra o código.

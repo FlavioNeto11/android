@@ -516,8 +516,8 @@ lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura
 v0.54; desenho §9.2). A regra é pura (`domain/obsolescencia.py`, `domain/saude.py`); a leitura é `application/obsolescencia.py`
 (`LeitorDeObsolescencia`, pendurado no serviço por `infrastructure/ligar_obsolescencia.py`), e a lista e o detalhe usam o mesmo
 `ContextoDeObsolescencia.sinais`. Sinais com fonte: substituta viva, versão fora do parque ou versão viva sem reprodução (o quadro do
-30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo, fluxo nunca casado há `sem_uso_dias` e tela
-absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
+30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo e tela absorvida. O fluxo nunca usado
+há `sem_uso_dias` é `sem_evidencia`, como a receita (o mesmo fato com o mesmo rótulo; adendo v0.63). Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
 
 - **Rebaixamento `catalogo_sem_efeito`** (passo da curadoria `RebaixamentoPorCatalogo`, sem IA, idempotente): receita ou fluxo vivo com
   `commit` num app com catálogo (o do registro de apps) que não respalda o efeito — catálogo sem nenhuma ação com efeito (`*`, o Outlook

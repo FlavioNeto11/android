@@ -65,7 +65,10 @@ export function textoDoMotivo(m: MotivoDeSaude): string {
     case 'eficacia_abaixo_do_minimo':
       return com(`Acerta ${pct(valor)} das vezes, abaixo do mínimo de ${pct(limite)}`, detalhe);
     case 'contestado_recentemente': return com(`${num(valor)} contestação(ões) recente(s)`, detalhe);
-    case 'nunca_usado': return `Publicado há ${dias(valor)} e nunca usado (limite: ${dias(limite)})`;
+    // O mesmo texto no fluxo e na receita: o fato é o mesmo e o rótulo também (`sem_evidencia`). `fluxo_nunca_casado`
+    // fica só para o backend anterior, que ainda o manda.
+    case 'nunca_usado':
+    case 'fluxo_nunca_casado': return `Nunca usado desde que foi publicado, há ${dias(valor)} (prazo: ${dias(limite)})`;
     case 'sem_uso_recente': return `Último uso há ${dias(valor)} (limite: ${dias(limite)})`;
     case 'amostra_pequena': return `Só ${num(valor)} usos; precisa de ${num(limite)} para julgar`;
     case 'usado_recentemente': return `Usado há ${dias(valor)} (limite: ${dias(limite)})`;
@@ -81,7 +84,6 @@ export function textoDoMotivo(m: MotivoDeSaude): string {
     case 'versao_viva_sem_reproducao': return `Nunca reproduzido na versão do app em uso (${String(valor ?? '')})`;
     case 'efeito_sem_respaldo_no_catalogo':
       return `Age fora da máquina, mas o catálogo atual do app não permite esse efeito (${String(valor ?? '*')})`;
-    case 'fluxo_nunca_casado': return `Publicado há ${dias(valor)} e nunca usado (limite: ${dias(limite)})`;
     case 'absorvida': return 'Já faz parte do conhecimento declarado do app';
     case 'estado_desconhecido': return 'Sem dado: o estado do item não é conhecido';
     default: return com(`${m.codigo}${valor !== null ? `: ${num(valor)}` : ''}${limite !== null ? ` (limite ${num(limite)})` : ''}`, detalhe);

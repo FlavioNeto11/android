@@ -12,7 +12,9 @@ As regras e os limiares são os medidos no banco real (proposta D-5 ao dono), qu
 a ACUMULADA (`replay_ok/(ok+fail)`; não há fonte por item para a "janela dos últimos N usos"), `parado` e `pouca_amostra`
 separam o que o §5.3 chamava de saudável sem distinguir. `obsoleto_provavel` (30.14) vem depois de `degradando` e antes de
 `sem_evidencia`, com os sinais do §9.2 que têm fonte hoje (`domain/obsolescencia.py`); cada motivo leva o fato em `valor` e a
-fonte em `detalhe`.
+fonte em `detalhe`. O fluxo nunca usado cai em `sem_evidencia`, como a receita (o `fluxo_nunca_casado` de antes dava
+`obsoleto_provavel` ao mesmo fato, e o dono via o rótulo mudar sem saber por quê); o que é obsolescência no fluxo é a
+substituta viva.
 
 O rótulo NÃO é estado e não move nada: quem move é o `ciclo.py` (ou a pessoa).
 """
@@ -70,7 +72,6 @@ class CodigoDoMotivo(StrEnum):
     VERSAO_FORA_DO_PARQUE = "versao_fora_do_parque"
     VERSAO_VIVA_SEM_REPRODUCAO = "versao_viva_sem_reproducao"
     EFEITO_SEM_RESPALDO_NO_CATALOGO = "efeito_sem_respaldo_no_catalogo"
-    FLUXO_NUNCA_CASADO = "fluxo_nunca_casado"
     ABSORVIDA = "absorvida"
     # sem_evidencia, parado, pouca_amostra
     NUNCA_USADO = "nunca_usado"
@@ -233,10 +234,6 @@ def _obsoleto(s: SinaisDeSaude, lim: LimiaresDeSaude) -> list[Motivo]:
     if o is not None and o.efeito is not None:
         motivos.append(Motivo(_C.EFEITO_SEM_RESPALDO_NO_CATALOGO, None, o.efeito.capability, None,
                               f"catalogo.yaml ({o.efeito.respaldo.value}): {o.efeito.fato}"))
-    if s.kind is LivroKind.FLUXO and s.usos == 0 and not s.ultimo_uso:
-        idade = _dias_desde(s.estado_desde or s.criado_em, s.agora)
-        if idade is not None and idade >= lim.sem_uso_dias:
-            motivos.append(Motivo(_C.FLUXO_NUNCA_CASADO, _D.USO, idade, lim.sem_uso_dias, "flows.uses: dias publicado"))
     if o is not None and o.absorvida_em is not None:
         motivos.append(Motivo(_C.ABSORVIDA, None, o.absorvida_em, None, "learning_items.state_detail: absorvida:<commit>"))
     return motivos
