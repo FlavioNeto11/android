@@ -3591,3 +3591,41 @@ dividem o comando) nem `licao`, `voz` e `preferencia` (o `scope_key` não nomeia
 e `revisado por` (IA, §8.5) ficam fora: o primeiro já existe, os outros dois não têm fonte hoje. `memoria` devolve `relacoes: []`.
 
 Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
+
+## Adendo v0.56 (02/10/2026) — `GET /api/aprendizado/falhas` e `/backlog/{id}`: `diagnostico`; propostas do diagnóstico (item 30.13)
+
+Aditivo: nenhum campo some nem muda de tipo, nenhum código de erro novo. (A v0.54 e a v0.55 são de outras frentes; a v0.55 é do 30.11.)
+Desenho: `design/aprendizado-vivo.md` §9.1. Só o determinístico: **nenhuma chamada de IA, prompt ou porta nova**; a causa `indeterminada` é dado.
+
+**`diagnostico`** em cada item de `itens` do relatório (os grupos mostrados no topo) e no `GET /api/aprendizado/backlog/{id}` de um grupo `fk-*`
+(chave `diagnostico` ao lado de `grupo`); `null` quando o grupo é só de verificação (seção 2) ou nada foi lido.
+
+```json
+{"causa": "receita_divergiu", "indeterminada": false, "amostra": 12,
+ "fatos": [{"codigo": "conduzidas_por_receita", "valor": "12 de 12 tentativas lidas"}],
+ "conhecimento_envolvido": [{"ref": "receita:12", "kind": "receita", "papel": "conduziu", "etapas": 4,
+                             "aproximado": true, "estado": "falhando"}],
+ "proposta": {"tipo": "rebaixar_receita", "alvo": "receita:12", "causa": "receita_divergiu"}}
+```
+
+- `causa` (vocabulário fechado, `CausaProvavel`): `teto_de_ia`, `provedor_de_ia`, `sessao_ou_autenticacao`, `aparelho`, `plano`, `informacao_da_pessoa`,
+  `catalogo_recusou`, `verificador`, `receita_divergiu`, `versao_nova`, `licao_atrapalha`, `tela_desconhecida`, `falta_conhecimento`, `indeterminada`.
+  O tipo da falha decide as causas que não dependem de contexto; só os tipos de navegação e conhecimento olham as últimas 30 tentativas do grupo.
+- `fatos`: o que sustenta a causa (`codigo` curto, `valor` texto com números e refs; nunca texto de tela, comando ou segredo).
+- `conhecimento_envolvido` (do mais presente ao menos): `kind` `receita | licao | tela | fluxo | habilidade`; `ref` citável (`receita:<id>`, `li-…`,
+  `tela:<pacote>/<nome>`, `fluxo:<id>`, `habilidade:<id>@<v>`); `papel` `conduziu | exposta | tela_da_falha | fluxo_da_execucao |
+  habilidade_da_execucao`; `etapas` = etapas distintas do grupo; **`aproximado: true`** quando a junção não é exata (a receita sem
+  `attempts.recipe_id` é achada por pacote + `template_hash`); `estado` = estado de versão da receita (`domain/versao.py`), `status` do item da tela ou `null`.
+- `proposta`: `{tipo, alvo, causa}` ou `null` (causa de ambiente, de IA ou de conta não propõe nada). É recomendação: **nada executa, rebaixa ou altera**.
+
+**Propostas** (`propostas[]` do relatório e `proposta` do detalhe) ganham `alvo`, `causa` e `parent_id` (`null` nas três propostas de antes) e `tipo` ganha cinco
+valores: `rebaixar_receita`, `revisar_licao`, `reaprender_tela`, `ajustar_catalogo`, `investigar`. A do diagnóstico tem `ref` = `<fk-do-grupo>|<alvo>`,
+`fragmento` vazio e `parent_id` = o grupo; a curadoria a grava como linha `proposta` do backlog com `parent_id` (idempotente pela `cluster_key`).
+Quem consome o `tipo` (painel) deve tolerar valor desconhecido.
+
+**Teto de IA pelo tipo.** O tipo de falha `ia_orcamento` passa a vir também de `AIError.kind` (`ai_calls.error_kind`: `budget`; e `billing`/`balance`,
+`refusal`, `not_configured` para `ia_saldo`, `ia_recusa`, `ia_indisponivel`) quando a tentativa tem as chamadas em `ai_calls`; o casamento por texto segue como
+legado para a que não tem. Na leitura retroativa (`retroativo=true`) o tipo vence o `failure_kind` gravado, e a ocorrência conta em `retroativas`.
+
+Prova `simulated` (`tests/test_learning_diagnostico.py`); `not_run` no central.

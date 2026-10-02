@@ -492,6 +492,34 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
   `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 
+## Falhas com diagnóstico determinístico (30.13)
+
+Desenho: `docs/design/aprendizado-vivo.md` §9.1, só a parte determinística. A revisão por IA quando a causa é `indeterminada` **não está feita** (espera o
+hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamada, prompt nem porta de IA.
+
+- **Onde:** `domain/diagnostico.py` (puro: regras, `CausaProvavel`, conhecimento envolvido, proposta), `infrastructure/contexto_sql.py` (a leitura do
+  contexto das tentativas, nos dois dialetos), `application/falhas.py` (`_diagnosticar`; porta `FontesDeContexto`, à parte de `FontesDeFalha`: a fonte
+  que não a implementa deixa só o tipo decidir) e `presentation/falhas.py` (JSON `diagnostico`, linha "causa provável" no md).
+- **Conhecimento envolvido** por grupo, das últimas 30 tentativas: receita (`attempts.recipe_id` = exato; senão por pacote + `template_hash` quando a etapa foi
+  conduzida por receita = `aproximado`), lições expostas (`learning_exposures`, braço `with`, na etapa), tela da falha (`failure_screen`; a aprendida acha o item
+  do livro), fluxo e habilidade da execução. Refs: `receita:<id>`, `li-…`, `tela:<pacote>/<nome>`, `fluxo:<id>`, `habilidade:<id>@<v>`.
+- **Causa**, na ordem das regras (primeira que casa): o TIPO decide `teto_de_ia`, `provedor_de_ia`, `sessao_ou_autenticacao`, `aparelho`, `plano`,
+  `informacao_da_pessoa`, `catalogo_recusou` (guarda do efeito), `verificador`; `outro` e tipos sem regra são `indeterminada`. Os de navegação e conhecimento
+  olham o contexto: maioria conduzida por receita → `versao_nova` (receita `incompativel`), `aparelho` (a mesma etapa terminou bem noutro aparelho da execução,
+  a regra de `taskqueue/aproveitamento.py`), `receita_divergiu` (falhou em todos os aparelhos que tentaram, ou a receita está em quarentena/falhando) ou
+  `indeterminada` (aparelho único sem quarentena; comparação mista); depois `licao_atrapalha` (≥3 etapas do grupo, ≥3 unidades por braço e taxa de falha ≥10 pp
+  acima do controle: indício, não o veredito oficial de 8 por braço), `tela_desconhecida` (falha fora de toda tela declarada, ou `tela_desconhecida_chamou_pessoa`),
+  `falta_conhecimento` (só a IA conduziu, sem receita nem lição) e, sem sinal que feche, `indeterminada` com os números.
+- **Proposta** (`TipoDeProposta`: `rebaixar_receita`, `revisar_licao`, `reaprender_tela`, `ajustar_catalogo`, `investigar`) com alvo e causa; vira linha `proposta`
+  do backlog com `parent_id` = o grupo (`ref` = `<fk>|<alvo>`). É dado para a pessoa: nada rebaixa nem altera. Só rebaixam sozinhos os gatilhos que já existiam.
+- **Teto atingido pelo tipo** (`AIError.kind == 'budget'` em `ai_calls.error_kind`, `classificar_pelo_tipo_da_ia`), não pelo texto: o teto do pedido
+  ("Orçamento do pedido atingido…") nunca casou com a regra por trecho e caía em `outro`. O tipo vence o texto, inclusive o `failure_kind` gravado (também
+  derivado de texto em `repository.finish_attempt`), só na leitura retroativa; o texto fica como `# legado` para a tentativa sem `ai_calls`.
+- **Limites conhecidos:** `attempts.error_kind` não existe: o tipo do erro chega só por `ai_calls`, que a purga apaga. Gravar o `AIError.kind` na tentativa
+  (`failure_kind` em `repository.finish_attempt`, a partir do `StepOutcome` do `executor.py`) é do taskqueue e fica para a frente dele. `steps` não guarda a versão do
+  app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a mesma execução.
+- Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
