@@ -499,6 +499,14 @@ class AiCfg(BaseModel):
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
     # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
+    # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
+    # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
+    # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.
+    cascade_blocked_to_tier1: bool = True
+    # Item 17.10 (como o B14/7.10, mas para o "sim"): em etapa com EFEITO externo, o "sim" do verificador barato é rejulgado
+    # UMA vez pelo modelo de escalonamento, e quem vale é o mais forte (discordou → não conta como prova). Só age quando o
+    # modelo do verificador é DIFERENTE do de escalonamento (senão seria a mesma pergunta ao mesmo modelo).
+    rejudge_yes_on_side_effect: bool = True
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de
@@ -875,11 +883,11 @@ class ContextRetrievalSemanticCfg(BaseModel):
     timeout_ms: int = Field(5_000, ge=100, le=60_000)
     max_calls: int = Field(2, ge=1, le=10)          # por pedido (etapa A + etapa B)
     max_calls_per_session: int = Field(40, ge=1, le=10_000)
-    max_input_tokens: int = Field(24_000, ge=100)
+    max_input_tokens: int = Field(32_000, ge=100)
     max_cost_usd: float = Field(0.05, ge=0)
     max_map_files: int = Field(400, ge=1, le=5_000)
-    max_candidate_files: int = Field(8, ge=1, le=50)
-    max_chunks: int = Field(24, ge=1, le=200)
+    max_candidate_files: int = Field(5, ge=1, le=50)
+    max_chunks: int = Field(16, ge=1, le=200)
     max_bytes: int = Field(48_000, ge=1_000, le=1_000_000)
 
 

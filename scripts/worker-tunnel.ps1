@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Mantém de pé o túnel SSH que traz os aparelhos de uma máquina worker para o servidor central.
 
@@ -61,11 +61,12 @@ param(
   # no caminho da LAN no momento da primeira conexão vira o worker, para sempre, sem aviso.
   [switch]$RegistrarChaveDeHost,
   [switch]$Instalar,
-  # Aceita registrar a tarefa apontando para o pwsh do pacote da MICROSOFT STORE. Não faça isso: o caminho do
-  # MSIX carrega a versão (`...\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`) e some na próxima
-  # atualização da Store — no boot seguinte a ação registrada aponta para um executável que não existe, o túnel
-  # não sobe, e `RestartCount` não ajuda porque não há o que reiniciar. Existe para o caso de uma máquina em que
-  # instalar o MSI não é possível AGORA e alguém aceita o risco sabendo que ele é esse.
+  # OBSOLETO e agora é ERRO. Aceitava registrar a tarefa apontando para o pwsh do pacote da MICROSOFT STORE, cujo
+  # caminho (`...\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`) carrega a versão do MSIX e some na
+  # próxima atualização da Store: foi assim que a tarefa `farm-tunel-192.168.1.11` deixou o túnel (e o android-09)
+  # fora no boot seguinte. O parâmetro segue declarado só para quem ainda o passa receber uma falha clara, em vez
+  # de um "parâmetro não encontrado" sem explicação. Sem PowerShell 7 em `Program Files`, o instalador usa o
+  # Windows PowerShell 5.1 do sistema, que é estável.
   [switch]$AceitarStore,
   # Imprime o que o `-Instalar` faria — executável escolhido, argumentos da tarefa, laços que derrubaria e
   # colisão de portas — sem tocar no Agendador nem matar processo nenhum. É o que torna o `-Instalar` testável.
@@ -76,6 +77,11 @@ param(
   [string]$MapaDeOutrosTuneis = ''
 )
 $ErrorActionPreference = 'Stop'
+if ($AceitarStore) {
+  throw ("-AceitarStore foi removido: registrar a tarefa no pwsh do pacote da Microsoft Store deixa o tunel fora " +
+         "no boot seguinte a uma atualizacao da Store (o caminho carrega a versao do pacote). Rode -Instalar sem " +
+         "o parametro: o instalador usa o PowerShell 7 do MSI ou, na falta dele, o Windows PowerShell 5.1 do sistema.")
+}
 $tarefa = "farm-tunel-$Worker"
 $KnownHosts = Join-Path (Split-Path $Chave) 'known_hosts'
 
@@ -135,7 +141,7 @@ if ($RegistrarChaveDeHost) {
   return
 }
 
-function Resolve-Pwsh {
+function Resolve-Interpretador {
   <# O executável que a TAREFA vai guardar. Tem de ser um caminho que não muda: a ação registrada guarda TEXTO,
      e o Agendador não procura o programa de novo.
 
@@ -143,12 +149,35 @@ function Resolve-Pwsh {
      `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`. Esse caminho carrega
      a VERSÃO do pacote MSIX e some na próxima atualização da Microsoft Store. No boot seguinte a ação aponta
      para um executável inexistente, o túnel não sobe, os seis aparelhos remotos E o canal reverso do agente caem
-     juntos, e o painel só mostra "worker offline". `RestartCount` não socorre: não há processo a reiniciar. #>
-  $estavel = Join-Path ${env:ProgramFiles} 'PowerShell\7\pwsh.exe'
-  if (Test-Path -LiteralPath $estavel) { return $estavel }
-  $fonte = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
-  if ($fonte -and $fonte -notmatch '\\WindowsApps\\') { return $fonte }
-  return $null
+     juntos, e o painel só mostra "worker offline". `RestartCount` não socorre: não há processo a reiniciar.
+
+     Reincidência (A8, 02/10/2026): a tarefa `farm-tunel-192.168.1.11` foi registrada com `-AceitarStore` justamente
+     nesse caminho. Por isso NENHUM caminho dentro de `\WindowsApps\` é aceito mais, com ou sem flag: a escolha é,
+     em ordem, (1) o MSI estável `C:\Program Files\PowerShell\7\pwsh.exe`; (2) qualquer outro pwsh que não seja do
+     WindowsApps; (3) o Windows PowerShell 5.1 do sistema, que mora em `System32` e não muda com atualização
+     nenhuma. O 5.1 serve porque este script não usa nada exclusivo do 7 (conferido: `??`, `&&`, `?.`,
+     `-AsHashtable`, `Join-String` etc. não aparecem, e o arquivo carrega BOM para o 5.1 ler os acentos como UTF-8).
+     Sem nenhum dos três, falha com a instrução de instalar o MSI.
+
+     Os parâmetros existem para o teste injetar caminhos falsos; no uso normal os padrões valem. Devolve
+     `@{ Caminho; Tipo }` com Tipo = pwsh7 | pwsh | powershell51. #>
+  param(
+    [string]$Estavel = (Join-Path ${env:ProgramFiles} 'PowerShell\7\pwsh.exe'),
+    [string[]]$OutrosPwsh = @((Get-Command pwsh -All -ErrorAction SilentlyContinue).Source),
+    [string]$WindowsPowerShell = (Join-Path ${env:SystemRoot} 'System32\WindowsPowerShell\v1.0\powershell.exe')
+  )
+  $serve = { param($c) $c -and ($c -notmatch '\\WindowsApps\\') -and (Test-Path -LiteralPath $c -PathType Leaf) }
+  if (& $serve $Estavel) { return [pscustomobject]@{ Caminho = $Estavel; Tipo = 'pwsh7' } }
+  foreach ($c in @($OutrosPwsh)) {
+    if (& $serve $c) { return [pscustomobject]@{ Caminho = $c; Tipo = 'pwsh' } }
+  }
+  if (& $serve $WindowsPowerShell) { return [pscustomobject]@{ Caminho = $WindowsPowerShell; Tipo = 'powershell51' } }
+  $store = @($OutrosPwsh | Where-Object { $_ }) -join ', '
+  throw ("nenhum interpretador estavel para a tarefa agendada: nao ha PowerShell 7 em " +
+         "'$Estavel', nao ha outro pwsh fora do WindowsApps (achados: '$store'; o pacote da Microsoft Store " +
+         "e recusado porque o caminho dele carrega a versao e some na proxima atualizacao) e o Windows PowerShell " +
+         "5.1 nao esta em '$WindowsPowerShell'. Instale o PowerShell 7 por MSI: " +
+         "winget install --id Microsoft.PowerShell --source winget")
 }
 
 function Get-OutrosTuneis {
@@ -187,17 +216,12 @@ if ($Instalar) {
                 "-Worker $Worker -Usuario $Usuario -Chave `"$Chave`" -Mapa `"$Mapa`" " +
                 "-MapaArquivo `"$MapaArquivo`" " +
                 "-MapaReverso `"$MapaReverso`" -LogDir `"$LogDir`""
-  # pwsh, não powershell.exe: a tarefa rodava no 5.1 e morria com LastTaskResult=1 em cmdlets só do 7 (medido)
-  $exe = Resolve-Pwsh
-  if (-not $exe) {
-    $store = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
-    $recado = "o unico pwsh desta maquina e o pacote da Microsoft Store ($store). O caminho dele muda a cada " +
-              "atualizacao, e a tarefa registrada nele para de existir no boot seguinte - o tunel cai e leva " +
-              "junto os aparelhos remotos e o canal do agente. Instale o PowerShell 7 por MSI: " +
-              "winget install --id Microsoft.PowerShell --source winget"
-    if (-not $AceitarStore) { throw $recado }
-    Write-Warning "$recado (seguindo assim porque -AceitarStore foi pedido)"
-    $exe = $store
+  # Prefere o pwsh 7 (MSI), mas este script roda também no Windows PowerShell 5.1 (conferido: sem recurso só do 7;
+  # o 5.1 que morria com LastTaskResult=1 era OUTRO script, de cmdlets só do 7). Nunca o pacote da Store.
+  $inter = Resolve-Interpretador
+  $exe = $inter.Caminho
+  if ($exe -match '\\WindowsApps\\') {
+    throw "recusado: o executavel '$exe' esta em WindowsApps e some quando a Microsoft Store atualiza o pacote"
   }
 
   # Colisao de porta local com OUTRO tunel: o `ssh` novo morreria na largada por ExitOnForwardFailure.
@@ -237,6 +261,7 @@ if ($Instalar) {
   if ($Simular) {
     Write-Output "tarefa: $tarefa"
     Write-Output "executavel: $exe"
+    Write-Output "interpretador: $($inter.Tipo)"
     Write-Output "argumentos: $argumentos"
     Write-Output "portas locais: $($minhas -join ', ')"
     Write-Output 'colisao: nenhuma'

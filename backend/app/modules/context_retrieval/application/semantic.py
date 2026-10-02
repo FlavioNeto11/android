@@ -20,8 +20,8 @@ from typing import TYPE_CHECKING
 
 from ..domain.errors import ProviderError
 from ..domain.model import (
-    Chunk, ContextSelection, FallbackReason, FileHit, MapEntry, PayloadLimits, ProviderUsage, Region, RepoMap,
-    RetrievalRequest,
+    CHUNK_SELECTION_VERSION, Chunk, ContextSelection, FallbackReason, FileHit, MapEntry, PayloadLimits, ProviderUsage, Region,
+    RepoMap, RetrievalRequest,
 )
 from ..domain.policy import ExternalContextPolicy
 from ..domain.ports import ChunkSource, MapSource, ProviderLocality, ResponseCache, SemanticProvider
@@ -213,7 +213,7 @@ class SemanticRetriever:
         paths = [p for p, _ in candidatos]
         try:
             brutos = list(self.chunk_source.chunks_for(paths, max_chunks=self.limits.max_chunks,
-                                                       max_bytes=self.limits.max_bytes))
+                                                       max_bytes=self.limits.max_bytes, query=request.query))
         except Exception:
             return self._b_falhou(run, "chunk_source_error")
 
@@ -250,7 +250,7 @@ class SemanticRetriever:
             return self._b_bloqueada(run, d.code)
 
         chunks_por_chave = {(c.path, c.start_line, c.end_line) for c in enviar}
-        chave = self._chave(request, prov, "B", ",".join(paths) + "|" + self._limites_na_chave())
+        chave = self._chave(request, prov, "B", ",".join(paths) + "|" + self._limites_na_chave() + "|" + CHUNK_SELECTION_VERSION)
         em_cache = self._ler_regioes(self._cache_get(chave), chunks_por_chave)
         if em_cache:
             run.meta["stage_b_cache"] = "hit"

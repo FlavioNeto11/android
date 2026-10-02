@@ -391,6 +391,7 @@ async def test_referencia_sem_etapa_que_a_leia_e_defeito_do_plano(harness: Harne
 
 
 async def test_recuperacao_reaproveita_o_valor_sem_reler(harness: Harness) -> None:
+    harness.cfg.file.ai.cascade_blocked_to_tier1 = False    # o bloqueio forçado aqui é o que o teste exercita: a cascata do 17.10 o absorveria no tier 1
     inner = harness.ai.inner
     seen: dict[str, Any] = {"decisoes": 1}
     # A dependência EXPLÍCITA da leitura é o caso que a recuperação refaria: sem o 24.3, "refazer a navegação" levava

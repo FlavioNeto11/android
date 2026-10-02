@@ -51,7 +51,7 @@ from ..vitrine import objetivo_em_andamento
 from . import rede
 from .rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError,
                              apagar_relatorios_de_falha, desfazer, endereco_no_tunel, instalado_em, montar_plano,
-                             observar, provisionar, religar_pela_interface)
+                             observar, parar_cliente_solto, provisionar, religar_pela_interface)
 from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, sondar_vazamento
 from .sonda_rede import Contabilidade
 
@@ -531,6 +531,15 @@ class ConvergenciaDeRede:
                 self._apagar_linha(iid, f"rede tirada e conferida depois do reinício ({obs.descrever(pkg)})")
                 await self._garantir_servidor()
                 return {"instance_id": iid, "rev": rev, "state": None, "evidence": obs.descrever(pkg)}
+            if reiniciou and obs.cliente_solto():
+                # Rede tirada e o boot já passou, mas o cliente VPN religou SOZINHO (auto-início): um `tun0` para um par que saiu do
+                # servidor. Reiniciar de novo o religaria outra vez (W8, r2: 2º reinício do rollback); o remédio é parar o cliente.
+                await parar_cliente_solto(ap, pkg)
+                obs = await observar(ap, pkg)
+                if obs.removida():
+                    self._apagar_linha(iid, f"rede tirada; o cliente religou sozinho no boot e foi parado ({obs.descrever(pkg)})")
+                    await self._garantir_servidor()
+                    return {"instance_id": iid, "rev": rev, "state": None, "evidence": obs.descrever(pkg)}
             return self._reiniciar_ou_desistir(rt, row, obs, reiniciou, "o always-on ou o bloqueio continuam")
         plano_bloqueio = row["policy"] == "exigida_com_bloqueio"
         if not obs.configuracao_ok(pkg, plano_bloqueio):

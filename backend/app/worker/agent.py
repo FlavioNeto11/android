@@ -22,7 +22,7 @@ from ..contracts.worker.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESER
                                          Progress, Result, WorkerDevice, WorkerResources)
 from ..contracts.worker.verbos import sem_hibernacao
 from ..devices.avd import capacidades_do_avd
-from ..util import now, parse_iso
+from ..util import now, now_iso, parse_iso
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
@@ -306,6 +306,9 @@ class Agent:
             contagens = self.executor.tirar_contagens()
             enviada = await self._send(Heartbeat(resources=self._recursos(), devices=inventario,
                                                  clock_offset_s=self._clock_offset_s,
+                                                 # relógio local na saída: o central re-mede o desvio a cada
+                                                 # batida (central antigo ignora e usa o `clock_offset_s`)
+                                                 sent_at=now_iso(),
                                                  metricas=contagens).model_dump())
             if not enviada:
                 self.executor.devolver_contagens(contagens)

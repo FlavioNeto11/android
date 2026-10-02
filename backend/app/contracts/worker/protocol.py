@@ -210,6 +210,13 @@ class Heartbeat(BaseModel):
     #: Positivo = relógio do worker atrasado em relação ao central. `None` só em worker de protocolo antigo
     #: (campo opcional — regra do arquivo: novo campo tem padrão, worker menor continua aceito).
     clock_offset_s: float | None = None
+    #: Relógio LOCAL do agente (ISO, UTC) no instante em que a batida foi montada. Com ele o central re-mede o
+    #: desvio a CADA batida (`relógio_do_central_na_chegada − sent_at`, positivo = worker atrasado; inclui a
+    #: latência de ida, dezenas de ms contra um limite de 5 s) e o `degraded` por relógio acompanha o relógio de
+    #: agora, não a fotografia do `welcome`. Quando presente, VALE MAIS que `clock_offset_s`. Opcional dos dois
+    #: lados: agente antigo não manda (o central cai no `clock_offset_s` da conexão, como antes) e central antigo
+    #: ignora o campo (`extra="ignore"`) e segue com o `clock_offset_s`. Sem versão nem feature negociada.
+    sent_at: str | None = None
     #: Métricas agregadas do agente desde a batida anterior (hoje, `capacidade.reserva`). Só o central grava
     #: janela e serve `/api/desempenho`: sem isto, o que o agente conta morria no processo dele. Agente antigo
     #: manda a lista vazia; central antigo ignora o campo (`extra="ignore"`) e a contagem daquela batida se perde,

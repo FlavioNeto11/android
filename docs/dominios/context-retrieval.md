@@ -361,12 +361,51 @@ Uma execução por pergunta, com a A e a B no mesmo pedido e o custo separado po
 3. **Antes de adotar**, no PR separado: (a) rodízio de chunks entre candidatos, que ataca o H25, medido de graça no `--analise` sobre todo o golden (30 perguntas, sem rede); (b) margem do teto de tokens (a `len//4` subestima), por exemplo subir o teto para 28.000 ou calibrar a estimativa pela razão medida (~1,3×); (c) só então uma segunda rodada paga curta, se o dono quiser.
 4. Não mudar o ranking de arquivos nem o híbrido: nada aqui os toca.
 
+### Orçamento padrão novo e rodízio de chunks (J13, 02/10/2026; muda o padrão e o chunker)
+
+O J12 mostrou que a B vale o gasto e que a única falha (H25) era do chunker. O J13 muda **três coisas juntas**, cada uma com a sua medida:
+
+**(a) Seleção de chunks: rodízio entre candidatos, com a janela escolhida pela pergunta (grátis, 30 perguntas).** `scripts/context-retrieval-chunk-eval.py` (sem rede, sem chave) compara quatro seleções nas 30 perguntas do golden do poetry, com a mesma métrica de região do J12 (a região esperada é *alcançável* se alguma janela enviada a sobrepõe; fração = linhas esperadas cobertas pela união das janelas). Os candidatos são o BM25 local, com o arquivo esperado forçado em 1º, 2º ou 3º (a A real do Jev o pôs em 1º em 5 de 6 e em 2º/3º no resto):
+
+| Esperado em… | atual (início, sequencial) | rodízio simples (janelas do início) | lexical (sequencial) | rodízio lexical | **rodízio lexical, 1º em dobro (escolhido)** |
+|---|---|---|---|---|---|
+| local (onde o BM25 pôs) | 16/23 (0,67) | 3/23 (0,13) | 20/23 (0,82) | 20/23 (0,78) | **20/23 (0,81)** |
+| 1º | 26/30 (0,84) | 7/30 (0,18) | **29/30 (0,91)** | 26/30 (0,77) | 27/30 (0,85) |
+| 2º | 11/30 (0,36) | 6/30 (0,15) | 19/30 (0,58) | 24/30 (0,71) | **24/30 (0,70)** |
+| 3º | 1/30 (0,03) | 5/30 (0,14) | 6/30 (0,18) | 24/30 (0,70) | **24/30 (0,70)** |
+
+- **Rodízio simples PIORA** (janelas do início de cada arquivo: as regiões profundas, como a linha 488 do H01, ficam fora): a repartição só funciona com a janela escolhida pela pergunta. O 1º em dobro (a A põe o melhor primeiro) recupera o que o rodízio puro perde quando o esperado é o 1º. O payload fica entre o de antes e menor (máx. 6.293 tokens estimados contra 6.832).
+- **Critério de aceitação cumprido:** melhor em todos os regimes contra o atual (26→27, 11→24, 1→24, 16→20). Perde para o `lexical` sequencial só quando o esperado é o 1º (29 contra 27); a troca vale porque a A erra a ordem (no 2º run real o esperado veio em 2º/3º em 2 de 6).
+- **Código:** `Chunker.chunks_for(..., query=)` (`infrastructure/chunker.py`); sem `query` o corte original continua o mesmo. O serviço passa a pergunta; a versão da seleção (`CHUNK_SELECTION_VERSION = "rr-lex1"`) entra na chave do cache da B. Termos: identificadores e palavras da pergunta, quebrando snake_case e CamelCase, sem palavras vazias; pontuação = ocorrências por janela (até 3 por termo). Prova `simulated`: `tests/test_context_retrieval_chunks_rodizio.py` (7), `tests/test_context_retrieval_semantic.py` (+2) e `scripts/tests/test_context_retrieval_chunk_eval.py` (a estratégia medida é a mesma do produto).
+
+**(b) Teto de tokens: calibrado contra o provedor, e o dado mandou 32.000, não 28.000.** O provedor reporta tokens reais; contra a estimativa `len//4`:
+- **etapa B:** o payload exato (reconstruído) estima 6.210–7.018 e o real foi 6.178–7.085: razão **0,98 a 1,11, média 1,01**. A estimativa da B é boa; não precisa de fator.
+- **etapa A:** o mapa de 34 KB estima **8.512** e o provedor contou **15.652**: razão **1,84** (paths e símbolos tokenizam pesado). Isso não pesa na checagem da A (ela vai com a estimativa, longe do teto), mas pesa na da B, que soma os tokens REAIS da A: com o mapa no teto de bytes (48 KB ≈ 12 mil estimados ≈ **22,1 mil reais**) mais a B no pior caso medido (7,1 mil × 1,11 ≈ 7,9 mil) dá ~30 mil, acima dos 28.000 do primeiro palpite. Com 32.000 cabe com folga de ~6% no pior caso e de ~30% neste repositório.
+- Subir o teto custa pouco: 32 mil tokens são ~US$ 0,0014 ao preço observado, e o teto de custo (US$ 0,05) e o de chamadas (2) não mudaram.
+
+**(c) Novos padrões** (`config.py` e `domain/model.py`, iguais; exemplo em `config.example.yaml`): `max_candidate_files` 8 → **5**, `max_chunks` 24 → **16**, `max_input_tokens` 24.000 → **32.000**. O retrieval segue **desligado por padrão** e a política de envio não mudou (`PRIVATE_CODE_SEND_APPROVED = False`): isto só muda o orçamento de quando o remoto público for ligado. Prova `simulated`: `tests/test_context_retrieval_orcamento_padrao.py` (4): configuração igual ao domínio; a B medida cabe; o pior caso (mapa no teto + B no pior medido) cabe em 32.000 e **não** em 28.000; o padrão antigo barrava a B.
+
+**(d) Rodada paga de confirmação com os padrões NOVOS do produto, sem configuração de teste (`real`):** 02/10/2026, máquina central, `python-poetry/poetry` @ `94b6e35`, código do J13 (`809127a` + este PR), as mesmas 6 perguntas, **12 chamadas, todas 200, 0 fallbacks, zero retry, US$ 0,005459**; nada deste repositório saiu. A B **rodou nas 6** com 16 chunks (a de J12 também, mas com configuração de teste); maior pedido **22.280 tokens de 32.000**.
+
+| Caso | A: hit@1 / @3 | B: região esperada (fração) | B: linhas a ler | tokens A / B |
+|---|---|---|---|---|
+| H01 | sim / sim | **sim (1,00)** | 120 | 15.652 / 6.628 |
+| H02 | sim / sim | **sim (1,00)** | 150 | 15.654 / 6.063 |
+| H13 | não / sim | **sim (0,29)** | 200 | 15.663 / 5.868 |
+| H14 | sim / sim | **sim (1,00)** | 120 | 15.667 / 5.770 |
+| H25 | não / sim | **não** (região esperada fora das janelas escolhidas) | 183 | 15.657 / 6.116 |
+| H26 | sim / sim | **sim (1,00)** | 120 | 15.657 / 5.577 |
+
+- **Leitura honesta:** região achada em **5/6, igual ao J12** (não melhorou neste conjunto de 6); linhas a ler ~149 por pergunta contra ~160. A fração coberta média caiu (0,71 contra 0,82) porque, neste run, a A pôs o arquivo esperado em 2º/3º em H13 e H25 (a A do Jev não é determinística entre runs) e a janela lexical cobre só 4 janelas do arquivo grande (H13: região de 151 linhas, 4 janelas); no H25 as janelas lexicais (linhas 1, 106, 351, 386) erram a faixa 264–271, porque a pergunta em linguagem natural ("older than the declared requirement") não tem termo que a janela dela contenha. É o limite da seleção lexical: ela acha o que a pergunta nomeia, não o que ela só descreve.
+- **O que a rodada confirma:** os padrões novos fazem a B **rodar** dentro do teto, sem configuração de teste, com a seleção nova. O ganho de região da seleção está na medição grátis de 30 perguntas, não neste run de 6.
+- **Segue pendente:** escolher janelas por semântica (não só por termos) para perguntas descritivas como o H25 (por exemplo, devolver mais janelas por arquivo para o 2º candidato ou pontuar pela vizinhança de símbolos); fica para uma fatia medida à parte.
+
 ### Painel (J8): cartão só de leitura
 
 A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retrieval de contexto" (`frontend/src/features/settings/ContextRetrievalSection.tsx`, textos e tons em `frontend/src/lib/contextRetrieval.ts`), que lê `GET /api/context-retrieval/status` e mostra: um veredito (desligado, só local, envio externo bloqueado ou permitido), a configuração (modo, interruptor, provedor e se está disponível), a proveniência do envio (decisão, motivo em português, classe e visibilidade do repositório, e as três provas: remoto público, commit público e worktree limpo; `null` aparece como "Sem resposta"), o orçamento por pedido e as métricas recentes (pedidos, cache, latência p50/p95, custo, tokens, voltas ao local e bloqueios por razão).
 - **Só leitura, por desenho:** o único botão é "Atualizar"; não há interruptor, campo nem chamada além do `GET`, e o texto diz que ligar o envio externo é decisão de configuração (`context_retrieval.enabled` e `semantic.*` no `config.yaml`). "Envio externo permitido" só aparece quando a política permite E o provedor está disponível; em qualquer outro caso a resposta é "nada sai".
 - **Por que na guia IA e não numa tela nova:** uma tela nova mudaria o contrato de rotas e o menu, já revisados; o assunto (provedor, orçamento, chave) é o da guia IA, ao lado do saldo das contas.
-- **Prova:** `simulated`, `frontend/src/features/settings/ContextRetrievalSection.test.tsx` (7) e `frontend/src/lib/contextRetrieval.test.ts` (9): desligado, híbrido bloqueado com as três provas, métricas, `null` sem resposta, só leitura (um botão, nada além de `GET`), 503. `npm run typecheck`, `npm test` (96 arquivos, 1.149 testes) e `npm run build` passaram. **Verificação no navegador: `not_run`** (o preview do projeto serve o `frontend` do checkout central, que não tem este código, e o backend central ainda não tem a rota; o deploy é da sessão Android).
+- **Prova:** `simulated`, `frontend/src/features/settings/ContextRetrievalSection.test.tsx` (7) e `frontend/src/lib/contextRetrieval.test.ts` (9): desligado, híbrido bloqueado com as três provas, métricas, `null` sem resposta, só leitura (um botão, nada além de `GET`), 503. `npm run typecheck`, `npm test` (96 arquivos, 1.149 testes) e `npm run build` passaram. **Verificação no navegador: `real`** (02/10/2026, central, build `bcea158`, feita pela sessão orquestradora depois do deploy): o cartão aparece em `#/configuracao?aba=ia` com "Desligado", proveniência "Bloqueado — Repositório privado: o código não sai da máquina" e o orçamento, sem erro no console. (Antes do deploy era `not_run`: o preview do projeto servia o `frontend` do checkout central, sem este código.)
 
 ## Limites conhecidos
 
@@ -376,7 +415,7 @@ A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retr
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
 - **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
-  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda com os padrões de hoje. A ablação do J12 mediu a B (vale o gasto) e recomenda `max_candidate_files` 5 e `max_chunks` 16 sem mexer no teto; a decisão e o PR de mudança de padrão seguem pendentes (seção "Ablação A × A+B por região", acima).
+  1. ~~**Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca rodava.~~ **Fechada (J13):** o padrão passou a 5 candidatos, 16 chunks e teto de 32.000, com rodízio de chunks, medido e confirmado (seção "Orçamento padrão novo e rodízio de chunks", acima).
   2. ~~Rótulo `cache_b: miss` também saía quando a B era bloqueada pelo orçamento~~ **Fechada (J3a):** o rótulo só vira `miss` depois de `check_call` aprovar a chamada; bloqueada pelo orçamento fica `skipped`, com `stage_b_reason`.
   3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
   4. ~~`assume-unchanged` / `skip-worktree` escondiam alterações do `git status`~~ **Fechada (J3b):** o gate lê também `git ls-files -v -z` e trata qualquer arquivo marcado (minúscula = `assume-unchanged`, `S` = `skip-worktree`) como worktree sujo, mesmo sem alteração (fail closed); `ls-files` que falha vale `None`. Efeito colateral aceito: um sparse-checkout, que usa `skip-worktree`, também bloqueia o envio remoto.

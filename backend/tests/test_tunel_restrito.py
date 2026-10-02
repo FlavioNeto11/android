@@ -16,6 +16,7 @@ exatamente o que gravaria. Sem pwsh no PATH, os testes que o usam se pulam sozin
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -128,30 +129,32 @@ def _instalar_simulado(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 @precisa_pwsh
-def test_instalar_recusa_o_pwsh_da_store_e_diz_como_resolver() -> None:
-    r"""No central medido, `(Get-Command pwsh).Source` É o pacote da Store — então esta recusa acontece de fato
-    aqui. Numa máquina com o MSI em `C:\Program Files\PowerShell\7`, o caminho estável ganha e a instalação
-    segue: os dois desfechos são corretos, e o que NÃO pode é registrar o caminho versionado em silêncio."""
-    r = _instalar_simulado("-Worker", "203.0.113.9", "-Mapa", "45555:5555")
-    if r.returncode != 0:
-        assert "Microsoft.PowerShell" in (r.stdout + r.stderr)
+def test_instalar_nunca_registra_o_pwsh_da_store() -> None:
+    r"""No central medido, `(Get-Command pwsh).Source` É o pacote da Store. Desde o A8 o instalador não recusa
+    mais por isso: cai no Windows PowerShell 5.1 do sistema (ou no MSI, se houver). O que NÃO pode é registrar o
+    caminho versionado do MSIX, que some quando a Store atualiza o pacote."""
+    r = _instalar_simulado("-Worker", "203.0.113.9", "-Mapa", "45555:5555",
+                           "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555")
+    if r.returncode != 0:                 # sem MSI e sem 5.1: falha clara, jamais a Store
         assert "winget install --id Microsoft.PowerShell" in (r.stdout + r.stderr)
     else:
         executavel = next(l for l in r.stdout.splitlines() if l.startswith("executavel: "))
         assert "WindowsApps" not in executavel, executavel
+        assert next(l for l in r.stdout.splitlines() if l.startswith("interpretador: ")).split(": ")[1] in (
+            "pwsh7", "pwsh", "powershell51")
 
 
 @precisa_pwsh
 def test_instalar_recusa_porta_local_ja_usada_por_outro_tunel() -> None:
     """Aceite 5 (dois workers): o `-Mapa` é digitado à mão, e dois workers com o padrão pedem as mesmas 15555/15557.
     `ExitOnForwardFailure=yes` faz o segundo túnel morrer na largada, e o painel mostra só 'worker offline'."""
-    r = _instalar_simulado("-AceitarStore", "-Worker", "203.0.113.9", "-Mapa", "15555:5555",
+    r = _instalar_simulado("-Worker", "203.0.113.9", "-Mapa", "15555:5555",
                            "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555,15557:5557")
     assert r.returncode != 0
     assert "colisao de portas locais" in (r.stdout + r.stderr)
     assert "farm-tunel-192.168.1.19" in (r.stdout + r.stderr)
 
-    ok = _instalar_simulado("-AceitarStore", "-Worker", "203.0.113.9", "-Mapa", "45555:5555",
+    ok = _instalar_simulado("-Worker", "203.0.113.9", "-Mapa", "45555:5555",
                             "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555,15557:5557")
     assert ok.returncode == 0, ok.stdout + ok.stderr
     assert "colisao: nenhuma" in ok.stdout
@@ -182,3 +185,160 @@ def test_o_filtro_do_laco_nao_confunde_um_ip_com_o_prefixo_de_outro() -> None:
 
     assert casa("192.168.1.19")
     assert not casa("192.168.1.1")
+
+
+# ---------------------------------------------------------------------------------------------- A8 (02/10/2026)
+# A tarefa `farm-tunel-192.168.1.11` foi registrada com `-AceitarStore` no pwsh do MSIX e deixou de subir quando a
+# Store atualizou o pacote. Contrato novo: NENHUM caminho em `\WindowsApps\` vira ação da tarefa; a ordem é
+# MSI estável -> outro pwsh fora do WindowsApps -> Windows PowerShell 5.1 -> falha clara.
+
+precisa_ps51 = pytest.mark.skipif(shutil.which("powershell") is None or os.name != "nt",
+                                  reason="Windows PowerShell 5.1 é pré-requisito deste teste")
+_STORE = r"WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe"
+
+
+def _funcao_interpretador() -> str:
+    """O texto REAL de `Resolve-Interpretador`, extraído do script (termina na primeira `}` de coluna 0)."""
+    linhas = TUNEL.read_text(encoding="utf-8").splitlines()
+    inicio = next(i for i, l in enumerate(linhas) if l.startswith("function Resolve-Interpretador"))
+    fim = next(i for i in range(inicio + 1, len(linhas)) if linhas[i].startswith("}"))
+    return "\n".join(linhas[inicio:fim + 1])
+
+
+def _falso(base: Path, relativo: str, existe: bool = True) -> str:
+    caminho = base / relativo
+    if existe:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text("", encoding="utf-8")
+    return str(caminho)
+
+
+def _escolher(base: Path, shell: str, estavel: str, outros: list[str], ps51: str) -> subprocess.CompletedProcess[str]:
+    """Roda a função extraída com caminhos FALSOS (arquivos vazios em `base`); não toca nada da máquina."""
+    lista = ",".join("'" + o + "'" for o in outros)
+    script = base / "escolher.ps1"
+    script.write_text(
+        _funcao_interpretador() + "\n$ErrorActionPreference = 'Stop'\n"
+        f"$r = Resolve-Interpretador -Estavel '{estavel}' -OutrosPwsh @({lista}) -WindowsPowerShell '{ps51}'\n"
+        "Write-Output \"$($r.Tipo)|$($r.Caminho)\"\n", encoding="utf-8-sig")
+    return subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                          capture_output=True, text=True, timeout=120)
+
+
+precisa_shell = pytest.mark.skipif(os.name != "nt" or shutil.which("pwsh") is None,
+                                   reason="PowerShell do Windows é pré-requisito")
+
+
+@precisa_shell
+@pytest.mark.parametrize("shell", ["pwsh", "powershell"])
+def test_interpretador_escolhe_o_7_estavel_quando_existe(tmp_path: Path, shell: str) -> None:
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} ausente")
+    estavel = _falso(tmp_path, r"PF\PowerShell\7\pwsh.exe")
+    store = _falso(tmp_path, _STORE)
+    ps51 = _falso(tmp_path, r"sys\powershell.exe")
+    r = _escolher(tmp_path, shell, estavel, [store], ps51)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip() == f"pwsh7|{estavel}"
+
+
+@precisa_shell
+@pytest.mark.parametrize("shell", ["pwsh", "powershell"])
+def test_interpretador_pula_a_store_e_usa_outro_pwsh(tmp_path: Path, shell: str) -> None:
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} ausente")
+    store = _falso(tmp_path, _STORE)
+    outro = _falso(tmp_path, r"ferramentas\pwsh\pwsh.exe")
+    ps51 = _falso(tmp_path, r"sys\powershell.exe")
+    r = _escolher(tmp_path, shell, _falso(tmp_path, r"PF\ausente.exe", existe=False), [store, outro], ps51)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip() == f"pwsh|{outro}"            # a Store veio PRIMEIRA na lista e foi ignorada
+
+
+@precisa_shell
+@pytest.mark.parametrize("shell", ["pwsh", "powershell"])
+def test_interpretador_cai_no_windows_powershell_5_1_quando_so_ha_a_store(tmp_path: Path, shell: str) -> None:
+    """É o caso do central medido: o único pwsh é o do MSIX. Antes exigia `-AceitarStore`; agora usa o 5.1."""
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} ausente")
+    store = _falso(tmp_path, _STORE)
+    ps51 = _falso(tmp_path, r"sys\System32\WindowsPowerShell\v1.0\powershell.exe")
+    r = _escolher(tmp_path, shell, _falso(tmp_path, r"PF\ausente.exe", existe=False), [store], ps51)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip() == f"powershell51|{ps51}"
+    assert "WindowsApps" not in r.stdout
+
+
+@precisa_shell
+@pytest.mark.parametrize("shell", ["pwsh", "powershell"])
+def test_interpretador_falha_claro_quando_nada_serve_e_nunca_devolve_a_store(tmp_path: Path, shell: str) -> None:
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} ausente")
+    store = _falso(tmp_path, _STORE)
+    r = _escolher(tmp_path, shell, _falso(tmp_path, r"PF\ausente.exe", existe=False), [store],
+                  _falso(tmp_path, r"sys\powershell.exe", existe=False))
+    assert r.returncode != 0
+    saida = r.stdout + r.stderr
+    assert "nenhum interpretador estavel" in saida
+    assert "winget install --id Microsoft.PowerShell" in saida
+    assert "powershell51|" not in r.stdout and "pwsh|" not in r.stdout     # nada foi "escolhido"
+
+
+def test_o_instalador_so_registra_caminho_validado_e_o_5_1_e_o_do_sistema() -> None:
+    texto = TUNEL.read_text(encoding="utf-8")
+    codigo = "\n".join(l for l in texto.splitlines() if not l.strip().startswith("#"))
+    guarda = r"if ($exe -match '\\WindowsApps\\')"
+    assert r"System32\WindowsPowerShell\v1.0\powershell.exe" in texto       # 5.1 pelo caminho fixo do sistema
+    assert "Resolve-Pwsh" not in codigo                                      # a função antiga (que devolvia a Store)
+    assert "$exe = $store" not in codigo and "seguindo assim" not in codigo
+    # Rede de segurança no -Instalar: mesmo que a função mude, a ação com WindowsApps não chega ao Agendador.
+    assert guarda in codigo
+    assert codigo.index(guarda) < codigo.index("New-ScheduledTaskAction")
+
+
+def test_o_tunel_nao_usa_recurso_exclusivo_do_powershell_7() -> None:
+    """A escolha do 5.1 só é segura se o script roda nele. Operadores/cmdlets exclusivos do 7 em CÓDIGO (não em
+    comentário) reabrem a armadilha 'a tarefa no 5.1 morre com LastTaskResult=1'."""
+    texto = TUNEL.read_text(encoding="utf-8")
+    texto = re.sub(r"<#.*?#>", "", texto, flags=re.S)
+    codigo = "\n".join(re.sub(r"(^|\s)#.*$", "", l) for l in texto.splitlines())
+    codigo = re.sub(r"'[^'\n]*'", "''", codigo)
+    codigo = re.sub(r'"[^"\n]*"', '""', codigo)
+    for padrao in (r"\?\?", r"\?\.", r"&&", r"\|\|", r"-AsHashtable", r"Join-String", r"-Parallel",
+                   r"Get-Error", r"-SkipHttpErrorCheck", r"\?\["):
+        assert not re.search(padrao, codigo), padrao
+
+
+def test_o_arquivo_do_tunel_tem_bom_para_o_5_1_ler_utf8() -> None:
+    assert TUNEL.read_bytes()[:3] == b"\xef\xbb\xbf"
+
+
+@precisa_ps51
+def test_o_tunel_parseia_e_instala_simulado_no_windows_powershell_5_1() -> None:
+    """Parser do 5.1 sobre o arquivo inteiro + `-Instalar -Simular` (não registra nem encerra nada)."""
+    cmd = ("$e=$null;$t=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("
+           f"'{TUNEL}',[ref]$t,[ref]$e); if (@($e).Count) {{ $e | ForEach-Object {{ $_.Message }}; exit 3 }}; "
+           "'parse-ok'")
+    p = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+                       capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0 and "parse-ok" in p.stdout, p.stdout + p.stderr
+
+    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(TUNEL), "-Instalar",
+                        "-Simular", "-Worker", "203.0.113.9", "-Mapa", "45555:5555",
+                        "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555"],
+                       capture_output=True, text=True, timeout=180, cwd=str(RAIZ))
+    assert r.returncode == 0, r.stdout + r.stderr
+    executavel = next(l for l in r.stdout.splitlines() if l.startswith("executavel: "))
+    assert "WindowsApps" not in executavel, executavel
+    assert '-MapaReverso "18000:8010"' in r.stdout            # arquitetura do túnel intacta: nunca a 8000
+    assert "18000:8000" not in r.stdout
+
+
+@precisa_pwsh
+def test_aceitar_store_agora_e_erro_explicado() -> None:
+    r = _instalar_simulado("-AceitarStore", "-Worker", "203.0.113.9", "-Mapa", "45555:5555",
+                           "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555")
+    assert r.returncode != 0
+    saida = r.stdout + r.stderr
+    assert "-AceitarStore foi removido" in saida and "Microsoft Store" in saida
+    assert "executavel:" not in r.stdout                      # nem simulou ação alguma

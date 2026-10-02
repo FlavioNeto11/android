@@ -87,8 +87,14 @@ Precisa de: **Python 3.12 ou mais novo** (o worker real roda 3.12.10), Android S
 pwsh -File scripts\install-prereqs.ps1 -SkipAppium
 ```
 
-Acerte o relógio ANTES de inscrever — o agente mede o desvio em relação ao central uma vez por conexão, e
-acima de 5 s o worker fica `degradado` ("relógio desalinhado") até reconectar:
+Acerte o relógio ANTES de inscrever — acima de 5 s de desvio contra o central o worker fica `degradado`
+("relógio desalinhado"). O desvio é **re-medido a cada batida** (A9, 02/10/2026): o agente manda o relógio local da
+saída em `Heartbeat.sent_at` e o central calcula `relógio do banco na chegada − sent_at` (positivo = worker
+atrasado; inclui a latência de ida, de dezenas de ms contra os 5 s). O `degradado` por relógio some sozinho quando o
+desvio volta ao limite, sem reconectar. Antes do A9 o número era o do `welcome`, repetido em toda batida, e o estado
+só se corrigia reconectando. Compatibilidade: `sent_at` é opcional, sem versão nem feature; agente antigo não o manda
+e o central usa o `clock_offset_s` da conexão (comportamento de antes); central antigo ignora o campo e segue com
+`clock_offset_s`, que o agente novo continua mandando.
 
 ```bash
 pwsh -File scripts\hora-certa.ps1        # como Administrador; no central também
@@ -471,9 +477,19 @@ desejado na reconexão (passo 5, último parágrafo).
 
 **Um detalhe que já derrubou o túnel:** a tarefa guarda o caminho do executável como TEXTO, e o `pwsh` do pacote
 da Microsoft Store mora em `C:\Program Files\WindowsApps\Microsoft.PowerShell_<versão>_x64__.../pwsh.exe` — some
-na próxima atualização da Store, e no boot seguinte a ação aponta para nada. Por isso `-Instalar` **recusa** o
-pwsh da Store e manda instalar o MSI (`winget install --id Microsoft.PowerShell --source winget`); e por isso a
-tarefa do central aponta para `backend\.venv\Scripts\python.exe`, que é caminho desta árvore. `-Instalar`
+na próxima atualização da Store, e no boot seguinte a ação aponta para nada (reincidiu em 02/10: a tarefa
+`farm-tunel-192.168.1.11` foi registrada com `-AceitarStore` nesse caminho e o túnel, o worker e o android-09 caíram
+no boot seguinte). Por isso `-Instalar` **nunca** registra caminho em `\WindowsApps\`: escolhe, em ordem, o MSI
+estável `C:\Program Files\PowerShell\7\pwsh.exe`, outro `pwsh` fora do WindowsApps e, na falta deles, o
+**Windows PowerShell 5.1** do sistema (`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, que não muda
+com atualização nenhuma). O 5.1 serve porque `worker-tunnel.ps1` não usa recurso exclusivo do 7 (um teste confere o
+texto e o parser do 5.1 lê o arquivo sem erro; o arquivo tem BOM para o 5.1 ler os acentos como UTF-8). Sem nenhum
+dos três, `-Instalar` falha e manda instalar o MSI (`winget install --id Microsoft.PowerShell --source winget`).
+`-AceitarStore` virou **erro explicado** (declarado só para quem ainda o passa), e há uma trava final: ação com
+WindowsApps não chega ao Agendador. `-Simular` mostra `executavel:` e `interpretador:` (`pwsh7`, `pwsh` ou
+`powershell51`). Para corrigir uma tarefa já registrada na Store, rode `-Instalar` de novo (a reinstalação
+substitui a tarefa) — procedimento no central, com autorização por mexer no túnel. A tarefa do central aponta
+para `backend\.venv\Scripts\python.exe`, que é caminho desta árvore. `-Instalar`
 também recusa quando uma porta local do `-Mapa` já é usada por outro `farm-tunel-*` (com dois workers, o mapa
 padrão colide) e, ao reinstalar, derruba **só** o laço daquele worker — antes matava o de todos.
 
@@ -664,6 +680,13 @@ Não substitui o ensaio de campo, mas nenhuma destas regras depende mais de mem�
 | `backend/tests/test_worker_agent.py` | agente contra um `websockets.serve` de verdade em porta efêmera: inscrição devolve a credencial uma vez e a reconexão usa ela; recusa explicada para o agente; ACK → iniciado → desfecho, nessa ordem; `VerbUncertain` → `uncertain`; `cancel` antes de tocar no aparelho → `cancelled` e depois do efeito começar → `uncertain`; reentrega devolve o mesmo desfecho sem executar de novo |
 | `backend/tests/test_worker_executor.py` | `start` só volta depois de o Android responder; prazo estourado → `VerbUncertain`; boots um a um com `boot_parallelism=1`; guarda de RAM recusa sem subir nada; hibernar sem snapshot → `VerbFailed`; e a prova de que `adb.state()`/`estado()` saem da thread do laço de eventos |
 | `backend/tests/test_canal_do_worker.py` | o canal `/api/worker/ws` de ponta a ponta: `hello` malformado → `bad_hello`, batida e ACK viram estado no banco, desconexão devolve o aparelho ao que o transporte alcança |
+
+## O relógio do worker e as tarefas do notebook (02/10/2026, real)
+
+- **Desvio medido a cada batida (A9).** O agente manda `sent_at` (relógio local) em cada `heartbeat`; o central mede `relógio_do_central_na_chegada − sent_at` e o `degraded` "relógio desalinhado" aparece e SOME sozinho (sem reconectar) conforme o desvio passe ou volte do limite de 5 s. Agente anterior sem `sent_at` segue com o desvio da conexão (`welcome`).
+- **Hora certa no notebook (A9).** O notebook (`worker-lan-01`, `C:\farm`) não sincronizava (w32time em "Local CMOS Clock", última sincronização em 01/10) e ficou **+8,857 s** atrás do NTP.br (+8,7 s medido pelo central). Em 02/10 ~16:25Z foi instalada a tarefa `farm-relogio` (SYSTEM, Windows PowerShell 5.1, a cada 15 min) com o MESMO `scripts/sincronizar-relogio.ps1` do central, copiado para `C:\farm\relogio\scripts\` (log em `C:\farm\relogio\data\logs\relogio.log`; o script usa a pasta-pai da sua pasta como raiz). Resultado: **+8,857 s → +0,002 s**, `degraded` do worker saiu em segundos, e a 1ª execução agendada fechou com resultado 0. Atualizar o script no notebook = copiar de novo para esse caminho.
+- **Agente atualizado (A10).** Pelo procedimento oficial: origem `git archive` de `backend/app`, `backend/worker-manifest.txt`, `backend/worker-requirements.txt`, `config/worker.example.yaml` e `scripts` + `.git/HEAD` com o SHA, em `C:\farm\origem-<sha7>`, e `pwsh -File scripts\worker-install.ps1 -Origem C:\farm\origem-<sha7>` NO notebook (acesso `ssh Administrator@<ip>`; antes um `-Simular`). `0.1.0+5d8b545` → `0.1.0+f9eed71`, `agent_outdated` falso; a queda foi de ~10 s.
+- **Túnel com `powershell.exe` 5.1 (A8).** A tarefa `farm-tunel-<ip>` do central foi reinstalada com `scripts/worker-tunnel.ps1 -Instalar` (mesmos `-Usuario`, `-Mapa`, `-MapaArquivo`, `-MapaReverso 18000:8010`): agora executa `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe` e não mais o caminho com versão do `pwsh` da Store. Conferido: forwards `15555..15565`, reverso `18000 → 8010` (nunca a 8000), worker `up`, android-09 online e hierarquia 200. **Antes de qualquer destes passos**: `PUT /api/instances/<id>/repair-pause` do aparelho do worker, para a escada não reagir à queda curta; `DELETE` depois.
 
 ## Loja num worker remoto (decisão 4, opção a — 24/09/2026)
 
