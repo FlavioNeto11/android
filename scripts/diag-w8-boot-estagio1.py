@@ -155,6 +155,10 @@ def baseline(amb: Any) -> dict[str, Any]:
     so_relogio = estado == "degraded" and bool(re.search(r"rel[óo]gio desalinhado", detalhe)) and ";" not in detalhe
     if estado != "healthy" and not so_relogio:
         falhas.append("worker_degradado_por_outra_causa")
+    try:                                                                          # o UI Start/Stop passa pela API de hierarquia: sem ela o boot nem começa
+        amb.hierarquia()
+    except Exception as exc:  # noqa: BLE001
+        falhas.append(f"automacao_ui_indisponivel ({type(exc).__name__}: {exc})"[:160])
     srv = amb.servidor()
     wg = hashlib.sha256(json.dumps(srv, sort_keys=True, default=str).encode()).hexdigest()[:16]
     return {"ok": not falhas, "falhas": falhas, "gate": g["base"], "worker": {"estado": estado, "detalhe": detalhe, "so_relogio": so_relogio,

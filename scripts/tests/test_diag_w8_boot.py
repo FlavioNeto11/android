@@ -471,6 +471,22 @@ class Estagio1(unittest.TestCase):
         self.assertEqual((b["estado"], len(b["do_proprio_app"])), ("OBSERVED", 1))
         self.assertEqual(obs.segunda_partida("")["estado"], "NOT_OBSERVED")
 
+    def test_o_baseline_exige_a_automacao_de_ui(self) -> None:
+        """O 1º ensaio real parou em 503 da API de hierarquia (UiAutomator2 morto) DEPOIS de escrever o always-on: o baseline agora lê antes."""
+        class Amb:
+            def agora(self): return 1.0e9
+            def snapshot(self): return {"workers": [{"id": est1.tile.WORKER, "state": "healthy", "last_seen_at": est1.datetime.now(est1.timezone.utc).isoformat()}]}
+            def servidor(self): return {"peers": []}
+            def hierarquia(self): raise RuntimeError("HTTP 503 automation_unavailable")
+        orig = est1.boot.gate
+        est1.boot.gate = lambda amb: {"ok": True, "falhas": [], "base": {}}
+        try:
+            b = est1.baseline(Amb())
+        finally:
+            est1.boot.gate = orig
+        self.assertFalse(b["ok"])
+        self.assertTrue(any(f.startswith("automacao_ui_indisponivel") for f in b["falhas"]), b["falhas"])
+
     def test_so_orquestra_o_que_o_ator_ja_faz(self) -> None:
         """O estágio 1 não escreve nada novo: os braços são os ensaios existentes e o vocabulário de escrita é o do `diag-w8-boot.py`."""
         self.assertTrue(set(est1.BRACOS.values()) <= set(mod.ENSAIOS))
