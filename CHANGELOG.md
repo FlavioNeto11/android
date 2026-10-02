@@ -69,6 +69,47 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-01 (noite) — Retrieval de contexto de código (ADR-063), branch `feat/context-retrieval`
+
+Na branch, **não mergeada na `main`** e **não implantada**; desligado por padrão (`context_retrieval.enabled: false`), então
+mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, transporte simulado, sem rede); chamada real ao Jev `not_run`
+(`REAL_JEV_NETWORK_CALLS = 0`). `claude/jev-pilot` segue como evidência e não foi mergeada.
+
+- **Módulo novo** `backend/app/modules/context_retrieval/`: `ContextRetriever`→`ContextSelection`→`ContextPack`; retrievers
+  léxico (ripgrep com caminho Python equivalente), BM25 (stdlib), semântico em duas etapas (mapa→arquivos, chunks→regiões) e
+  híbrido (regra v1 do piloto: salvaguarda lexical no topo, semântico completa); modos `disabled`/`local_only`/`shadow`/`hybrid`.
+- **Provedor plugável** (`SemanticProvider`): falso determinístico e adaptador Jev (`POST /v1/systemone`, chave só em
+  `TYPESAFE_API_KEY`). A regra híbrida não conhece o provedor.
+- **Privacidade como política única** (`ExternalContextPolicy`): repositório privado a provedor remoto é negado
+  (`PRIVATE_CODE_SEND_APPROVED = False`, constante de código); caminho sensível nunca entra em índice, mapa ou chunk; portão duro de
+  segredo bloqueia o pedido (reaproveita `security/redaction.py` para o "mole").
+- **Fail-open, orçamento, cache e observabilidade**: toda falha do semântico cai no local com `fallback_reason`; teto de chamadas,
+  tokens, custo, prazo e payload; cache por revisão do repositório; eventos por lista fechada de campos (nunca código nem a pergunta
+  crua) e `GET /api/context-retrieval/status`.
+- **Primeiro ponto de integração**: `scripts/plano-100-pacotes.py --contexto` (opt-in) e a CLI
+  `python -m app.modules.context_retrieval.presentation.cli`.
+- Prova: `backend/tests/test_context_retrieval_{core,local,semantic,integration}.py` e `scripts/tests/test_pacotes_contexto.py`.
+- **Estabilização (2ª rodada)**: índice BM25 persistente por revisão (gravação atômica, corrompido = miss, higiene de segredo, poda);
+  `--contexto` usa um serviço só no lote (orçamento de sessão compartilhado); motor léxico Python por contagem (paridade com `rg`);
+  `rg` opcional com descoberta robusta; `docs-check` não exige mais o handoff local; regressão contra o piloto (30 casos públicos).
+  Medido no plano-100 inteiro: 96,7 s contra ~1.550 s (16x). Prova: `test_context_retrieval_{bm25_cache,hardening,pilot_regression}.py`.
+- **Fechamento de privacidade (PR #18)**: `public` no YAML não basta mais: o envio remoto exige a prova independente de que o repositório
+  real é público (git remote + GitHub anônimo, `UNKNOWN` bloqueia, cache de 15 min só de `PUBLIC`); o status não faz rede e não afirma
+  autorização sem prova vigente; segredo mole e duro no mapa da etapa A é omitido (`RETRIEVAL_VERSION` 2). Prova:
+  `test_context_retrieval_privacy_gates.py`.
+- **Procedência pública (PR #18)**: remoto público não provava que o CONTEÚDO LOCAL era público (arquivo não rastreado entra no universo
+  do workspace; o HEAD local pode não estar publicado). O envio remoto agora exige também worktree LIMPO (`git status --porcelain=v1
+  --untracked-files=all` vazio, lido a cada chamada, sem cache) e HEAD público (`GET /repos/{dono}/{repo}/commits/{sha}` anônimo,
+  `sha` exato). Prova por remoto + SHA; sujar bloqueia na hora e sem rede; o status traz `remote_visibility_verified`,
+  `head_public_verified`, `worktree_clean`. `RETRIEVAL_VERSION` 3. Prova `simulated`: `test_context_retrieval_privacy_gates.py` (git
+  real em diretório temporário, GitHub simulado); Jev real `not_run`.
+- **Privacidade (PR #18)**: `synthetic` + provedor remoto passa de permitido a NEGADO (constante de código `SYNTHETIC_REMOTE_SEND_APPROVED = False`,
+  sem campo de configuração). Remoto: privado negado, sintético negado, público só com `allow_public` explícito. Prova: `test_context_retrieval_{core,semantic,hardening}.py`.
+- **Revisão final do PR #18** (duas revisões independentes, só leitura): a chamada ao provedor passa a contar quando autorizada (falha
+  também gasta a cota da sessão); cache do mapa corrompido é miss; `.tmp` único e sem sobra; texto de região com a mesma numeração
+  de linha dos retrievers (`\x0c`); `sk-proj-…` é segredo duro. Limites abertos em `docs/dominios/context-retrieval.md`.
+- **Fumaça pública por etapa** (`scripts/context-retrieval-public-smoke.py`): `--cases` (subconjunto das 6 perguntas escolhidas) e `--max-calls` (só baixa o teto de 12); por caso o resumo grava chamadas HTTP e do serviço, cache do mapa e dos chunks, arquivos e chunks enviados e o motivo da etapa B. Fecha a dívida `STAGE_A/B_PER_CASE`. Prova: `simulated`, `scripts/tests/test_context_retrieval_public_smoke.py` (9, sem rede). Sem mudança no backend.
+
 ## 2026-10-01 (noite) — hierarquia lida de sessão UiAutomator2 morta recria a sessão (branch `fix/uia2-sessao-morta`)
 
 - **Correção.** `DeviceManager.hierarchy` só devolvia 503 quando a sessão morria por baixo (reboot pelo worker no

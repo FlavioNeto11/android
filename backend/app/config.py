@@ -47,6 +47,9 @@ class EnvSettings(BaseSettings):
                                              validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"))
     deepseek_api_key: SecretStr | None = Field(default=None, alias="DEEPSEEK_API_KEY")
     dashscope_api_key: SecretStr | None = Field(default=None, alias="DASHSCOPE_API_KEY")
+    #: Chave do provedor semântico de retrieval de contexto (`context_retrieval.semantic.provider: jev`). Só do ambiente
+    #: ou do `.env`, nunca do `config.yaml`; ausente = provedor indisponível e o retrieval cai no local (ADR-063).
+    typesafe_api_key: SecretStr | None = Field(default=None, alias="TYPESAFE_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -838,6 +841,64 @@ class LearningCfg(BaseModel):
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
 
 
+class ContextRetrievalLexicalCfg(BaseModel):
+    use_ripgrep: bool = True       # false força o caminho Python puro (mesmo resultado, mais lento)
+    ripgrep_path: str | None = None  # opcional; sem ele, RIPGREP_PATH e depois o PATH; sem rg, o motor é o Python
+    window_lines: int = Field(7, ge=1, le=200)
+
+
+class ContextRetrievalBm25Cfg(BaseModel):
+    k1: float = Field(1.2, gt=0, le=5)
+    b: float = Field(0.75, ge=0, le=1)
+
+
+class ContextRetrievalCacheCfg(BaseModel):
+    enabled: bool = True
+    directory: str = "context_retrieval"   # relativo a `paths.data_dir`; fora do Git
+
+
+class ContextRetrievalSemanticCfg(BaseModel):
+    """Provedor semântico e os tetos do que ele pode custar e receber. Nada daqui carrega chave."""
+
+    provider: Literal["none", "fake", "jev"] = "none"
+    model: str = ""                                 # vazio = o padrão do adaptador
+    #: Classe do repositório para a política de envio. A provedor REMOTO `private` e `synthetic` são NEGADOS (constantes de
+    #: código `PRIVATE_CODE_SEND_APPROVED` e `SYNTHETIC_REMOTE_SEND_APPROVED`, não deste arquivo); só `public` com
+    #: `allow_public` E a prova independente de visibilidade pública (git remote + GitHub anônimo) passa. `synthetic` serve a
+    #: fixtures e testes com provedor fake ou local (ADR-063).
+    repository_class: Literal["private", "public", "synthetic"] = "private"
+    allow_public: bool = False                      # necessário, mas NÃO suficiente: o repositório real tem de provar ser público
+    timeout_ms: int = Field(5_000, ge=100, le=60_000)
+    max_calls: int = Field(2, ge=1, le=10)          # por pedido (etapa A + etapa B)
+    max_calls_per_session: int = Field(40, ge=1, le=10_000)
+    max_input_tokens: int = Field(24_000, ge=100)
+    max_cost_usd: float = Field(0.05, ge=0)
+    max_map_files: int = Field(400, ge=1, le=5_000)
+    max_candidate_files: int = Field(8, ge=1, le=50)
+    max_chunks: int = Field(24, ge=1, le=200)
+    max_bytes: int = Field(48_000, ge=1_000, le=1_000_000)
+
+
+class ContextRetrievalCfg(BaseModel):
+    """Retrieval de contexto de código (ADR-063). Desligado por padrão: com `enabled: false` o código existe e nada muda."""
+
+    enabled: bool = False
+    mode: Literal["disabled", "local_only", "shadow", "hybrid"] = "disabled"
+    top_k: int = Field(5, ge=1, le=20)
+    lexical_preserve: int = Field(1, ge=0, le=5)    # arquivos lexicais preservados no topo pela regra híbrida v1
+    lexical: ContextRetrievalLexicalCfg = ContextRetrievalLexicalCfg()
+    bm25: ContextRetrievalBm25Cfg = ContextRetrievalBm25Cfg()
+    cache: ContextRetrievalCacheCfg = ContextRetrievalCacheCfg()
+    #: Padrões extras (globs) que NUNCA entram em índice, mapa ou chunk, além dos fixos do domínio.
+    sensitive_paths: list[str] = []
+    semantic: ContextRetrievalSemanticCfg = ContextRetrievalSemanticCfg()
+
+    @property
+    def effective_mode(self) -> str:
+        """`disabled` sempre que o interruptor está desligado, seja qual for o `mode` escrito."""
+        return self.mode if self.enabled else "disabled"
+
+
 class AppSeed(BaseModel):
     id: str
     name: str
@@ -875,6 +936,7 @@ class AppConfigFile(BaseModel):
     contas: ContasCfg = ContasCfg()
     releases: ReleasesCfg = ReleasesCfg()
     skills: SkillsCfg = SkillsCfg()
+    context_retrieval: ContextRetrievalCfg = ContextRetrievalCfg()
     provisioning: ProvisioningCfg = ProvisioningCfg()
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()

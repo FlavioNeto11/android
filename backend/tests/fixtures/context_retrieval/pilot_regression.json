@@ -1,0 +1,3831 @@
+{
+ "source": "claude/jev-pilot, holdout Poetry 2.5.1 (SHA 94b6e35b9091991887aa54feeb3771a86d3bd692)",
+ "hybrid_rule_version": "1",
+ "cases": [
+  {
+   "id": "H01",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Where is `LazyWheelOverHTTP` defined?",
+   "identifiers": [
+    "LazyWheelOverHTTP"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     80,
+     90
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     417,
+     427
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     486,
+     500
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     1,
+     62
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/inspection/lazy_wheel.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     80,
+     90
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     417,
+     427
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     483,
+     493
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     486,
+     500
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     1,
+     62
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     80,
+     90
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     417,
+     427
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     486,
+     500
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     1,
+     62
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H02",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Where is `SolverProblemError` raised when version solving fails?",
+   "identifiers": [
+    "SolverProblemError"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/__init__.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/puzzle/solver.py",
+     15,
+     25
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     107,
+     117
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     175,
+     188
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     84,
+     133
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/puzzle/exceptions.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/solver.py",
+     15,
+     25
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     107,
+     117
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     181,
+     191
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     21,
+     31
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     376,
+     386
+    ],
+    [
+     "src/poetry/puzzle/exceptions.py",
+     8,
+     18
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/__init__.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/puzzle/solver.py",
+     175,
+     188
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     84,
+     133
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/__init__.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/puzzle/solver.py",
+     15,
+     25
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     107,
+     117
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     175,
+     188
+    ],
+    [
+     "src/poetry/puzzle/solver.py",
+     84,
+     133
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H03",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Where is `IsolatedBuildBackendError` raised?",
+   "identifiers": [
+    "IsolatedBuildBackendError"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     22,
+     32
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     532,
+     542
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     1,
+     39
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/utils/isolated_build.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     22,
+     32
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     532,
+     542
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     30,
+     40
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     331,
+     341
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     34,
+     44
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     226,
+     231
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     1,
+     39
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     22,
+     32
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     532,
+     542
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     1,
+     39
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H04",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "How does `_validate_archive_hash` pick which hash type to verify an archive with?",
+   "identifiers": [
+    "_validate_archive_hash"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/utils/download.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/utils/helpers.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     799,
+     813
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ],
+    [
+     "src/poetry/publishing/hash_manager.py",
+     22,
+     33
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/installation/executor.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     799,
+     813
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/installation/chooser.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/utils/download.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/utils/helpers.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ],
+    [
+     "src/poetry/publishing/hash_manager.py",
+     22,
+     33
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/utils/download.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/utils/helpers.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     799,
+     813
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ],
+    [
+     "src/poetry/publishing/hash_manager.py",
+     22,
+     33
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H05",
+   "group": "EXACT",
+   "category": "EXACT_TEXT",
+   "question": "Which code reads `include-system-site-packages` from the virtual environment configuration?",
+   "identifiers": [
+    "include-system-site-packages"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/site_packages.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     168,
+     178
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     1,
+     41
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/env/virtual_env.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     168,
+     178
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/site_packages.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     168,
+     178
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     1,
+     41
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/site_packages.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     168,
+     178
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     1,
+     41
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H06",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "What does `get_credentials_for_git_url` return for URLs that are not HTTP or HTTPS?",
+   "identifiers": [
+    "get_credentials_for_git_url"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/utils/dependency_specification.py",
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     352,
+     362
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     357,
+     368
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/vcs/git/backend.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     352,
+     362
+    ],
+    [
+     "src/poetry/vcs/git/backend.py",
+     247,
+     257
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/utils/dependency_specification.py",
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     357,
+     368
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/utils/dependency_specification.py",
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     352,
+     362
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     357,
+     368
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H07",
+   "group": "EXACT",
+   "category": "EXACT_SETTING",
+   "question": "Where is `installer.max-workers` capped by the CPU-based default?",
+   "identifiers": [
+    "installer.max-workers"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/installation/installer.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/console/commands/installer_command.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/config/config.py",
+     310,
+     320
+    ],
+    [
+     "src/poetry/config/config.py",
+     406,
+     416
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     64,
+     118
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     1,
+     56
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/console/commands/config.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/config/config.py",
+     310,
+     320
+    ],
+    [
+     "src/poetry/config/config.py",
+     406,
+     416
+    ],
+    [
+     "src/poetry/console/commands/config.py",
+     92,
+     102
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/installation/installer.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/console/commands/installer_command.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     64,
+     118
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     1,
+     56
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/installation/installer.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/console/commands/installer_command.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/config/config.py",
+     310,
+     320
+    ],
+    [
+     "src/poetry/config/config.py",
+     406,
+     416
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     64,
+     118
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     1,
+     56
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H08",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "What does `_should_write` compare to decide whether the lock file is rewritten?",
+   "identifiers": [
+    "_should_write"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     252,
+     262
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     275,
+     295
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     248,
+     259
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     1,
+     71
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/packages/locker.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     252,
+     262
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     275,
+     295
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     873,
+     883
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     202,
+     212
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     243,
+     253
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     248,
+     259
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     1,
+     71
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     252,
+     262
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     275,
+     295
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     248,
+     259
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     1,
+     71
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H09",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Which responses make `_is_file_exists_error` return true?",
+   "identifiers": [
+    "_is_file_exists_error"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/utils/helpers.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/console/exceptions.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/console/commands/self/self_command.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     265,
+     275
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     363,
+     373
+    ],
+    [
+     "src/poetry/utils/helpers.py",
+     83,
+     88
+    ],
+    [
+     "src/poetry/toml/file.py",
+     23,
+     24
+    ],
+    [
+     "src/poetry/utils/helpers.py",
+     134,
+     143
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/publishing/uploader.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     265,
+     275
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     363,
+     373
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/helpers.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/console/exceptions.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/console/commands/self/self_command.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/helpers.py",
+     83,
+     88
+    ],
+    [
+     "src/poetry/toml/file.py",
+     23,
+     24
+    ],
+    [
+     "src/poetry/utils/helpers.py",
+     134,
+     143
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/utils/helpers.py",
+    "src/poetry/toml/file.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/console/exceptions.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/console/commands/self/self_command.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     265,
+     275
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     363,
+     373
+    ],
+    [
+     "src/poetry/utils/helpers.py",
+     83,
+     88
+    ],
+    [
+     "src/poetry/toml/file.py",
+     23,
+     24
+    ],
+    [
+     "src/poetry/utils/helpers.py",
+     134,
+     143
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H10",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Where is `get_system_env` implemented?",
+   "identifiers": [
+    "get_system_env"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/system_env.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/helpers.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     226,
+     236
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     245,
+     255
+    ],
+    [
+     "src/poetry/utils/env/system_env.py",
+     52,
+     83
+    ],
+    [
+     "src/poetry/utils/env/system_env.py",
+     1,
+     29
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/console/commands/self/self_command.py",
+    "src/poetry/console/commands/self/show/plugins.py",
+    "src/poetry/utils/isolated_build.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     226,
+     236
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     245,
+     255
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     467,
+     477
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     517,
+     527
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     601,
+     611
+    ],
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     62,
+     72
+    ],
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     174,
+     184
+    ],
+    [
+     "src/poetry/console/commands/self/self_command.py",
+     45,
+     55
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/env/system_env.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/helpers.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/env/system_env.py",
+     52,
+     83
+    ],
+    [
+     "src/poetry/utils/env/system_env.py",
+     1,
+     29
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/system_env.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/helpers.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     226,
+     236
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     245,
+     255
+    ],
+    [
+     "src/poetry/utils/env/system_env.py",
+     52,
+     83
+    ],
+    [
+     "src/poetry/utils/env/system_env.py",
+     1,
+     29
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H11",
+   "group": "EXACT",
+   "category": "EXACT_SYMBOL",
+   "question": "Where is `_get_pool` implemented in the interactive init flow?",
+   "identifiers": [
+    "_get_pool"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/factory.py",
+    "src/poetry/poetry.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     338,
+     348
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     445,
+     455
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     561,
+     574
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     305,
+     364
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/init.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     338,
+     348
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     445,
+     455
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     465,
+     475
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     556,
+     566
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/factory.py",
+    "src/poetry/poetry.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     561,
+     574
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     305,
+     364
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/factory.py",
+    "src/poetry/poetry.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     338,
+     348
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     445,
+     455
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     561,
+     574
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     305,
+     364
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H12",
+   "group": "EXACT",
+   "category": "EXACT_TEXT",
+   "question": "Where is `content-hash` written into the lock metadata?",
+   "identifiers": [
+    "content-hash"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     98,
+     109
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     116,
+     126
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     213,
+     246
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/packages/locker.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     98,
+     109
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     116,
+     126
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     238,
+     248
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     213,
+     246
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     98,
+     109
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     116,
+     126
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     213,
+     246
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H13",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "When the dependency resolver reaches a dead end, how does it derive a new rule from the contradiction and rewind its earlier choices?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/mixology/incompatibility.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/mixology/version_solver.py",
+     318,
+     377
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     368,
+     427
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     418,
+     468
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/incompatibility.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/mixology/failure.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/mixology/incompatibility_cause.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/utils/dependency_specification.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/provider.py",
+     15,
+     36
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     44,
+     58
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     60,
+     70
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     79,
+     89
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     143,
+     170
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     188,
+     203
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     206,
+     216
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     221,
+     231
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/mixology/incompatibility.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/mixology/version_solver.py",
+     318,
+     377
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     368,
+     427
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     418,
+     468
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/mixology/incompatibility.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/mixology/version_solver.py",
+     318,
+     377
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     368,
+     427
+    ],
+    [
+     "src/poetry/mixology/version_solver.py",
+     418,
+     468
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H14",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How does the tool determine that the pinned snapshot of resolved dependencies is out of date relative to the declared requirements, including snapshots written by older releases?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/inspection/info.py",
+    "src/poetry/repositories/installed_repository.py",
+    "src/poetry/console/commands/show.py",
+    "src/poetry/installation/executor.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     13,
+     23
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     25,
+     35
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     184,
+     200
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     207,
+     236
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     239,
+     250
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     271,
+     281
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     300,
+     313
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     325,
+     335
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py",
+    "src/poetry/config/source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     95,
+     124
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H15",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "Which operations are forced to run one at a time instead of in parallel, and how are source-control checkouts that share a directory serialized?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/installation/operations/operation.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/console/application.py",
+    "src/poetry/console/commands/install.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     157,
+     216
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     207,
+     254
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/installation/wheel_installer.py",
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/installation/uninstaller.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/inspection/info.py",
+    "src/poetry/packages/locker.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/installation/wheel_installer.py",
+     9,
+     20
+    ],
+    [
+     "src/poetry/installation/wheel_installer.py",
+     35,
+     46
+    ],
+    [
+     "src/poetry/installation/wheel_installer.py",
+     59,
+     78
+    ],
+    [
+     "src/poetry/installation/wheel_installer.py",
+     80,
+     105
+    ],
+    [
+     "src/poetry/installation/wheel_installer.py",
+     128,
+     159
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     354,
+     373
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     509,
+     519
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     532,
+     557
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/installation/operations/operation.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/console/application.py",
+    "src/poetry/console/commands/install.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     157,
+     216
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     207,
+     254
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/installation/executor.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/utils/threading.py",
+    "src/poetry/installation/operations/operation.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/console/application.py",
+    "src/poetry/console/commands/install.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/installation/executor.py",
+     157,
+     216
+    ],
+    [
+     "src/poetry/installation/executor.py",
+     207,
+     254
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H16",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How is the folder for an isolated interpreter made unique across different checkouts that share the same project title?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/locations.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/__main__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     638,
+     646
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/console/application.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/factory.py",
+    "src/poetry/inspection/info.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/env/virtual_env.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/provider.py",
+     497,
+     507
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     564,
+     574
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     678,
+     688
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     714,
+     724
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     786,
+     796
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     1005,
+     1015
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     142,
+     169
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     183,
+     193
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/locations.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/__main__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     638,
+     646
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/isolated_build.py",
+    "src/poetry/locations.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/config/config.py",
+    "src/poetry/utils/env/__init__.py",
+    "src/poetry/__main__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     638,
+     646
+    ],
+    [
+     "src/poetry/utils/isolated_build.py",
+     175,
+     231
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H17",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "Under which conditions is a prebuilt binary distribution rejected, or a source archive rejected, given the user's configured restrictions?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/config/config.py",
+     95,
+     103
+    ],
+    [
+     "src/poetry/config/config.py",
+     144,
+     191
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/installation/chooser.py",
+    "src/poetry/repositories/installed_repository.py",
+    "src/poetry/console/commands/config.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/installation/wheel_installer.py",
+    "src/poetry/console/application.py",
+    "src/poetry/repositories/pypi_repository.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/installation/executor.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/installation/chooser.py",
+     28,
+     56
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     63,
+     82
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     90,
+     113
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     135,
+     148
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     166,
+     192
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     195,
+     207
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     243,
+     253
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     286,
+     312
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/config/config.py",
+     95,
+     103
+    ],
+    [
+     "src/poetry/config/config.py",
+     144,
+     191
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/config/config.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/config/config.py",
+     95,
+     103
+    ],
+    [
+     "src/poetry/config/config.py",
+     144,
+     191
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H18",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How are the descriptive fields of a built archive extracted and turned into the form fields sent to the package index?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/masonry/api.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/inspection/lazy_wheel.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     255,
+     287
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     368,
+     399
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     353,
+     366
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/inspection/info.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/utils/cache.py",
+    "src/poetry/repositories/pypi_repository.py",
+    "src/poetry/installation/wheel_installer.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/init.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/provider.py",
+     15,
+     38
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     44,
+     89
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     92,
+     102
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     125,
+     175
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     188,
+     231
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     241,
+     265
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     267,
+     436
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/masonry/api.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/inspection/lazy_wheel.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     255,
+     287
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     368,
+     399
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     353,
+     366
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/inspection/info.py",
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/masonry/api.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/console/commands/build.py",
+    "src/poetry/utils/wheel.py",
+    "src/poetry/inspection/lazy_wheel.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/inspection/info.py",
+     255,
+     287
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     368,
+     399
+    ],
+    [
+     "src/poetry/inspection/info.py",
+     353,
+     366
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H19",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How are third-party extensions discovered at startup, and what type check must an extension pass before being registered?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/console/command_loader.py",
+    "src/poetry/console/application.py",
+    "src/poetry/plugins/base_plugin.py",
+    "src/poetry/plugins/plugin.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     96,
+     106
+    ],
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     75,
+     79
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/console/application.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/console/logging/io_formatter.py",
+    "src/poetry/installation/operations/operation.py",
+    "src/poetry/utils/env/python/providers.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/repositories/installed_repository.py",
+    "src/poetry/installation/uninstaller.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     9,
+     19
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     23,
+     40
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     324,
+     334
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     467,
+     477
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     510,
+     520
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     570,
+     581
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     677,
+     687
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     723,
+     733
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/console/command_loader.py",
+    "src/poetry/console/application.py",
+    "src/poetry/plugins/base_plugin.py",
+    "src/poetry/plugins/plugin.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     96,
+     106
+    ],
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     75,
+     79
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/console/command_loader.py",
+    "src/poetry/console/application.py",
+    "src/poetry/plugins/base_plugin.py",
+    "src/poetry/plugins/plugin.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     96,
+     106
+    ],
+    [
+     "src/poetry/plugins/plugin_manager.py",
+     75,
+     79
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H20",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How does the tool decide whether to reuse an already downloaded copy of a source-controlled dependency or fetch it again?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/utils/cache.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/repositories/cached_repository.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/download.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/cache.py",
+     248,
+     278
+    ],
+    [
+     "src/poetry/utils/cache.py",
+     287,
+     335
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/repositories/http_repository.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/mixology/incompatibility.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     69,
+     81
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     127,
+     143
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     204,
+     223
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     226,
+     236
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     283,
+     293
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     338,
+     348
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     361,
+     389
+    ],
+    [
+     "src/poetry/inspection/lazy_wheel.py",
+     414,
+     427
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/cache.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/repositories/cached_repository.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/download.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/cache.py",
+     248,
+     278
+    ],
+    [
+     "src/poetry/utils/cache.py",
+     287,
+     335
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/cache.py",
+    "src/poetry/packages/direct_origin.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/repositories/cached_repository.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/vcs/git/__init__.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/utils/download.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/cache.py",
+     248,
+     278
+    ],
+    [
+     "src/poetry/utils/cache.py",
+     287,
+     335
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H21",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "How long does the HTTP client wait before trying again after a failed network call, and can the server override that delay?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/utils/download.py",
+    "src/poetry/repositories/http_repository.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/repositories/pypi_repository.py",
+    "src/poetry/repositories/exceptions.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/config/config.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/download.py",
+     108,
+     131
+    ],
+    [
+     "src/poetry/repositories/http_repository.py",
+     59,
+     114
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/console/application.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/repositories/http_repository.py",
+    "src/poetry/installation/uninstaller.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/puzzle/solver.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     23,
+     33
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     39,
+     49
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     52,
+     66
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     233,
+     243
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     262,
+     279
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     290,
+     312
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     338,
+     348
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     380,
+     390
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/download.py",
+    "src/poetry/repositories/http_repository.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/repositories/pypi_repository.py",
+    "src/poetry/repositories/exceptions.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/config/config.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/download.py",
+     108,
+     131
+    ],
+    [
+     "src/poetry/repositories/http_repository.py",
+     59,
+     114
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/download.py",
+    "src/poetry/repositories/http_repository.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/inspection/lazy_wheel.py",
+    "src/poetry/repositories/pypi_repository.py",
+    "src/poetry/repositories/exceptions.py",
+    "src/poetry/utils/constants.py",
+    "src/poetry/config/config.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/download.py",
+     108,
+     131
+    ],
+    [
+     "src/poetry/repositories/http_repository.py",
+     59,
+     114
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H22",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_CROSS_MODULE",
+   "question": "How does the tool detect where the original interpreter lives when running inside a virtual environment, including those created by legacy tooling?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/__main__.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/generic_env.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/utils/env/python/providers.py",
+    "src/poetry/utils/env/system_env.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/env/base_env.py",
+     381,
+     391
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     45,
+     50
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/installation/executor.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/installation/uninstaller.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/console/application.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/console/commands/env/activate.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/env/env_manager.py",
+     12,
+     22
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     31,
+     41
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     47,
+     57
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     83,
+     93
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     101,
+     135
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     157,
+     173
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     181,
+     198
+    ],
+    [
+     "src/poetry/utils/env/env_manager.py",
+     205,
+     238
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/__main__.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/generic_env.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/utils/env/python/providers.py",
+    "src/poetry/utils/env/system_env.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/env/base_env.py",
+     381,
+     391
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     45,
+     50
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/env/base_env.py",
+    "src/poetry/utils/env/virtual_env.py",
+    "src/poetry/__main__.py",
+    "src/poetry/utils/env/env_manager.py",
+    "src/poetry/utils/env/generic_env.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/utils/env/python/providers.py",
+    "src/poetry/utils/env/system_env.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/env/base_env.py",
+     381,
+     391
+    ],
+    [
+     "src/poetry/utils/env/virtual_env.py",
+     45,
+     50
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H23",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "When no combination of releases satisfies the requirements, how does the final explanation suggest adjusting the interpreter constraint?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/incompatibility_cause.py",
+    "src/poetry/console/commands/debug/resolve.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/utils/env/python/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/utils/env/base_env.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/mixology/failure.py",
+     86,
+     131
+    ],
+    [
+     "src/poetry/mixology/failure.py",
+     36,
+     95
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/console/commands/show.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/plugins/plugin_manager.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/utils/isolated_build.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/provider.py",
+     12,
+     27
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     43,
+     53
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     60,
+     70
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     73,
+     103
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     108,
+     118
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     141,
+     151
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     213,
+     233
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     236,
+     273
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/incompatibility_cause.py",
+    "src/poetry/console/commands/debug/resolve.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/utils/env/python/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/utils/env/base_env.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/mixology/failure.py",
+     86,
+     131
+    ],
+    [
+     "src/poetry/mixology/failure.py",
+     36,
+     95
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/mixology/failure.py",
+    "src/poetry/mixology/incompatibility_cause.py",
+    "src/poetry/console/commands/debug/resolve.py",
+    "src/poetry/puzzle/solver.py",
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/utils/env/python/exceptions.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/utils/env/base_env.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/mixology/failure.py",
+     86,
+     131
+    ],
+    [
+     "src/poetry/mixology/failure.py",
+     36,
+     95
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H24",
+   "group": "SEMANTIC",
+   "category": "SEMANTIC_BEHAVIOR",
+   "question": "What picks the newest compatible release for a dependency named during interactive scaffolding, and what constraint style does it write?",
+   "identifiers": [],
+   "safeguard": false,
+   "rule_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     441,
+     460
+    ],
+    [
+     "src/poetry/version/version_selector.py",
+     16,
+     56
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/puzzle/provider.py",
+    "src/poetry/console/commands/show.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/mixology/version_solver.py",
+    "src/poetry/console/commands/init.py",
+    "src/poetry/utils/env/python/manager.py",
+    "src/poetry/console/application.py",
+    "src/poetry/mixology/failure.py",
+    "src/poetry/console/commands/build.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/puzzle/provider.py",
+     12,
+     36
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     43,
+     58
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     73,
+     103
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     141,
+     170
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     188,
+     203
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     206,
+     233
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     241,
+     265
+    ],
+    [
+     "src/poetry/puzzle/provider.py",
+     267,
+     497
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     441,
+     460
+    ],
+    [
+     "src/poetry/version/version_selector.py",
+     16,
+     56
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py",
+    "src/poetry/config/file_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     441,
+     460
+    ],
+    [
+     "src/poetry/version/version_selector.py",
+     16,
+     56
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H25",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "What does the installer do when it finds `poetry.lock` older than the declared requirements?",
+   "identifiers": [
+    "poetry.lock"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/commands/check.py",
+    "src/poetry/installation/installer.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/check.py",
+     17,
+     34
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     174,
+     189
+    ],
+    [
+     "src/poetry/installation/installer.py",
+     216,
+     275
+    ],
+    [
+     "src/poetry/installation/installer.py",
+     266,
+     325
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/check.py",
+    "src/poetry/console/commands/show.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/console/commands/remove.py",
+    "src/poetry/console/commands/update.py",
+    "src/poetry/console/application.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/console/commands/installer_command.py",
+    "src/poetry/console/commands/lock.py",
+    "src/poetry/console/commands/self/lock.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/check.py",
+     17,
+     34
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     174,
+     189
+    ],
+    [
+     "src/poetry/console/commands/show.py",
+     144,
+     161
+    ],
+    [
+     "src/poetry/console/commands/add.py",
+     391,
+     402
+    ],
+    [
+     "src/poetry/console/commands/remove.py",
+     164,
+     175
+    ],
+    [
+     "src/poetry/console/commands/update.py",
+     69,
+     83
+    ],
+    [
+     "src/poetry/console/application.py",
+     618,
+     628
+    ],
+    [
+     "src/poetry/console/commands/install.py",
+     59,
+     69
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/installation/installer.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/installation/installer.py",
+     216,
+     275
+    ],
+    [
+     "src/poetry/installation/installer.py",
+     266,
+     325
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/check.py",
+    "src/poetry/installation/installer.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/check.py",
+     17,
+     34
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     174,
+     189
+    ],
+    [
+     "src/poetry/installation/installer.py",
+     216,
+     275
+    ],
+    [
+     "src/poetry/installation/installer.py",
+     266,
+     325
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H26",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "How is the fingerprint of `pyproject.toml` computed for comparison with the lock?",
+   "identifiers": [
+    "pyproject.toml"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/console/commands/lock.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     31,
+     41
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     59,
+     69
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     261,
+     290
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/console/commands/check.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/console/commands/add.py",
+    "src/poetry/console/commands/self/self_command.py",
+    "src/poetry/console/commands/update.py",
+    "src/poetry/console/commands/version.py",
+    "src/poetry/inspection/info.py",
+    "src/poetry/layouts/layout.py",
+    "src/poetry/pyproject/toml.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     31,
+     41
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     59,
+     69
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     93,
+     130
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     502,
+     512
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     16,
+     35
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     103,
+     113
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     128,
+     138
+    ],
+    [
+     "src/poetry/console/commands/check.py",
+     179,
+     189
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/packages/locker.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/console/commands/lock.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     261,
+     290
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/init.py",
+    "src/poetry/packages/locker.py",
+    "src/poetry/pyproject/toml.py",
+    "src/poetry/publishing/hash_manager.py",
+    "src/poetry/console/commands/lock.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/init.py",
+     31,
+     41
+    ],
+    [
+     "src/poetry/console/commands/init.py",
+     59,
+     69
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     292,
+     341
+    ],
+    [
+     "src/poetry/packages/locker.py",
+     261,
+     290
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H27",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "What happens in the upload loop when `skip-existing` is on and the index says the file already exists?",
+   "identifiers": [
+    "skip-existing"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/publish.py",
+     40,
+     50
+    ],
+    [
+     "src/poetry/console/commands/publish.py",
+     114,
+     122
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     250,
+     295
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     200,
+     259
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/publish.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/publish.py",
+     40,
+     50
+    ],
+    [
+     "src/poetry/console/commands/publish.py",
+     114,
+     122
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/publishing/uploader.py",
+     250,
+     295
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     200,
+     259
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/publish.py",
+    "src/poetry/publishing/uploader.py",
+    "src/poetry/publishing/publisher.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/publish.py",
+     40,
+     50
+    ],
+    [
+     "src/poetry/console/commands/publish.py",
+     114,
+     122
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     250,
+     295
+    ],
+    [
+     "src/poetry/publishing/uploader.py",
+     200,
+     259
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H28",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "How is the `keyring` consulted for a web address that matches no configured repository?",
+   "identifiers": [
+    "keyring"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/utils/password_manager.py",
+     10,
+     40
+    ],
+    [
+     "src/poetry/utils/password_manager.py",
+     42,
+     189
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     335,
+     355
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/config/config.py",
+    "src/poetry/console/commands/installer_command.py",
+    "src/poetry/console/commands/config.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/utils/password_manager.py",
+     10,
+     40
+    ],
+    [
+     "src/poetry/utils/password_manager.py",
+     42,
+     189
+    ],
+    [
+     "src/poetry/utils/password_manager.py",
+     191,
+     286
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     107,
+     118
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     319,
+     329
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     337,
+     353
+    ],
+    [
+     "src/poetry/config/config.py",
+     182,
+     192
+    ],
+    [
+     "src/poetry/config/config.py",
+     398,
+     408
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/utils/authenticator.py",
+     335,
+     355
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/utils/password_manager.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/repositories/repository_pool.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/utils/password_manager.py",
+     10,
+     40
+    ],
+    [
+     "src/poetry/utils/password_manager.py",
+     42,
+     189
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     335,
+     355
+    ],
+    [
+     "src/poetry/utils/authenticator.py",
+     1,
+     46
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H29",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "Where is the message built that explains why no archive matched, using `ConsoleMessage`?",
+   "identifiers": [
+    "ConsoleMessage"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/exceptions.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/exceptions.py",
+     23,
+     38
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     43,
+     68
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     125,
+     197
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/exceptions.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/utils/authenticator.py",
+    "src/poetry/utils/env/python/installer.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/exceptions.py",
+     23,
+     38
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     43,
+     68
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     90,
+     123
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     127,
+     143
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     168,
+     178
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     188,
+     209
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     217,
+     233
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     6,
+     16
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/installation/chooser.py",
+    "src/poetry/console/exceptions.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/installation/chooser.py",
+     125,
+     197
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/exceptions.py",
+    "src/poetry/installation/chooser.py",
+    "src/poetry/installation/chef.py",
+    "src/poetry/mixology/partial_solution.py",
+    "src/poetry/vcs/git/backend.py",
+    "src/poetry/vcs/git/system.py",
+    "src/poetry/version/version_selector.py",
+    "src/poetry/__main__.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/exceptions.py",
+     23,
+     38
+    ],
+    [
+     "src/poetry/console/exceptions.py",
+     43,
+     68
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     125,
+     197
+    ],
+    [
+     "src/poetry/installation/chooser.py",
+     211,
+     269
+    ]
+   ],
+   "pilot_fallback": false
+  },
+  {
+   "id": "H30",
+   "group": "MIXED",
+   "category": "MIXED_IDENTIFIER_ELSEWHERE",
+   "question": "How are `--with`, `--without` and `--only` combined to pick the active dependency groups?",
+   "identifiers": [
+    "--with",
+    "--without",
+    "--only"
+   ],
+   "safeguard": true,
+   "rule_files": [
+    "src/poetry/console/commands/install.py",
+    "src/poetry/console/commands/group_command.py",
+    "src/poetry/console/commands/command.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "rule_regions": [
+    [
+     "src/poetry/console/commands/install.py",
+     124,
+     157
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     74,
+     110
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     65,
+     72
+    ]
+   ],
+   "rg_files": [
+    "src/poetry/console/commands/install.py",
+    "src/poetry/console/commands/group_command.py"
+   ],
+   "rg_regions": [
+    [
+     "src/poetry/console/commands/install.py",
+     124,
+     157
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     89,
+     101
+    ]
+   ],
+   "jev_files": [
+    "src/poetry/console/commands/group_command.py",
+    "src/poetry/console/commands/command.py",
+    "src/poetry/console/commands/install.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "jev_regions": [
+    [
+     "src/poetry/console/commands/group_command.py",
+     74,
+     110
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     65,
+     72
+    ]
+   ],
+   "pilot_files": [
+    "src/poetry/console/commands/install.py",
+    "src/poetry/console/commands/group_command.py",
+    "src/poetry/console/commands/command.py",
+    "src/poetry/__main__.py",
+    "src/poetry/__version__.py",
+    "src/poetry/config/config.py",
+    "src/poetry/config/config_source.py",
+    "src/poetry/config/dict_config_source.py"
+   ],
+   "pilot_regions": [
+    [
+     "src/poetry/console/commands/install.py",
+     124,
+     157
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     74,
+     110
+    ],
+    [
+     "src/poetry/console/commands/group_command.py",
+     65,
+     72
+    ]
+   ],
+   "pilot_fallback": false
+  }
+ ]
+}

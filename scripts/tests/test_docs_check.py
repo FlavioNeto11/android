@@ -73,6 +73,26 @@ class DocsCheckTests(unittest.TestCase):
         self.assertIn('README.md:1: link quebrado para "docs/nao-existe.md"', saida)
         self.assertNotIn('link quebrado para "CLAUDE.md"', saida)
 
+    def _repositorio_git(self) -> None:
+        import subprocess
+        subprocess.run(['git', 'init', '-q'], cwd=self.root, check=True)
+        (self.root / '.git' / 'info').mkdir(exist_ok=True)
+
+    def test_link_para_arquivo_local_ignorado_pelo_git_nao_e_quebrado(self):
+        """O handoff é local (`.git/info/exclude`): num worktree novo ele não existe e o link continua valendo."""
+        self._repositorio_git()
+        with open(self.root / '.git' / 'info' / 'exclude', 'a', encoding='utf-8') as f:
+            f.write('.claude/handoff-current.md\n')
+        write(self.root / 'CLAUDE.md', '# Projeto\n\n[handoff](.claude/handoff-current.md)\n')
+        codigo, saida = self.run_check()
+        self.assertNotIn('link quebrado', saida)
+
+    def test_link_para_arquivo_ausente_e_nao_ignorado_continua_quebrado(self):
+        self._repositorio_git()
+        write(self.root / 'CLAUDE.md', '# Projeto\n\n[handoff](.claude/outro.md)\n')
+        codigo, saida = self.run_check()
+        self.assertIn('link quebrado para ".claude/outro.md"', saida)
+
     def test_link_em_bloco_historico_e_so_aviso(self):
         write(self.root / 'CLAUDE.md', '# Projeto\n')
         write(self.root / 'docs/auditoria-2026-09-21/README.md', '[x](sem-arquivo.md)\n')
