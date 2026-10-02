@@ -563,26 +563,45 @@ decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `
 
 - **Consumidor da intenção em sombra (31.9, R2 e R3, ADR-069).** `decisao_fechada/intencao.py` (`ConsumidorDeIntencao`), ligado por
   `taskqueue/sombra_intencao.py` e por UMA linha em `RunService._spawn_planning`: um `add_done_callback` que agenda a sombra
-  DEPOIS que o `_plan` termina, como tarefa solta (a chamada à porta vai para uma thread). **Fora da cadeia**: `intent_ports.py`
-  e `intent_resolver.py` não mudam; a sombra só observa, e nada do que o Jev responde volta ao plano. Origem `intencao`, classe
-  C3, sempre `shadow` (consumidor `on` na config continua sombra aqui). Com a config padrão (`enabled=false` ou consumidor `off`)
-  `ativo()` é falso e nada é montado nem chamado.
+  DEPOIS que o `_plan` termina. **Fora da cadeia**: `intent_ports.py` e `intent_resolver.py` não mudam; a sombra só observa, e
+  nada do que o Jev responde volta ao plano. Origem `intencao`, classe C3, sempre `shadow` (consumidor `on` na config continua
+  sombra aqui).
+  - **Quando roda**: só depois de um plano bem-sucedido. Plano cancelado, com exceção ou recusado pelo provedor (`refusal`) não
+    vira sombra, e a execução que já está `failed` ou `cancelled` quando a thread a lê também não. No laço de eventos fica só o
+    agendamento (`asyncio.to_thread`): ler a execução, a RESOLVE, o catálogo e a porta rodam numa thread. O `stop()` do
+    `AppState` cancela as soltas e espera até 6 s as que já chamaram a porta, antes de fechar o banco.
+  - **Desligado custa zero**: `ativo()` é falso, e então nada é lido, resolvido, montado ou gravado (nem linha de recusa), quando
+    o envio não está aprovado no código (`privacidade.JEV_RUNTIME_SEND_APPROVED`, lido na hora; hoje `False`), quando a porta não
+    está em `shadow` para a intenção (padrão: `enabled=false` ou consumidor `off`) ou quando a C3 não está nas classes efetivas
+    (teto do código ∩ `classes_permitidas`).
   - **Pedido**: um só, com duas perguntas (uma chamada). Estado: `comando` (já sem destinos, depois de `redact` e de
     `remover_entidades`) e `app` (id do app da execução, quando há). R2 `intencao_catalogo`: `choice` sobre o catálogo inteiro,
     habilidades publicadas (se `skills.enabled`) e fluxos ativos (se `ai.flows`), como ids opacos (`opt:` + sha1 do id da
     habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. Só vai com 1 a 254
-    entradas: truncar mediria o que o Jev não viu. R3 `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou
-    como empatadas (2 ou mais).
-  - **Remoção de entidades que falha fechada** (`entidades.py`, função pura `remover_entidades(texto) -> str | None`): troca por
-    marcadores fixos e minúsculos (`[nome]`, `[usuario]`, `[email]`, `[numero]`, `[telefone]`, `[link]`, `[texto]` para o que
-    está entre aspas) e CONFERE o resultado com detectores mais largos; se sobrar `@`, `://`, domínio, 3 dígitos (mesmo separados),
-    "arroba"/"ponto com" ou palavra capitalizada fora de começo de frase, devolve `None`. Nesse caso o estado vai vazio, a porta
-    recusa e a sombra grava `fallback_reason='privacidade'`: o pedido não sai. Limite conhecido: nome em minúsculas e nome como
-    primeiro termo de frase sem vírgula passam, por isso a C3 só vale em sombra.
-  - **Casamento**: depois da gravação (a linha nasce na thread da porta, então o casamento tenta até ela existir), `casar_decisao_real`
-    com o que a cadeia real resolveu. A cadeia é a RESOLVE refeita sem efeito (`resolve_intent`), com o catálogo de agora. R2:
-    a habilidade resolvida (ou a única de que fala, quando falta parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho
-    fica vazio. R3: só quando a cadeia escolheu um dos empatados. **`casar_desfecho` não é chamado**: não há gancho de fim de
+    entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
+    `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
+  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`). Só
+    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa) ou no
+    vocabulário do catálogo do dono e do id do app (`vocabulario_de`). Qualquer outra palavra, em qualquer caixa, vira `[termo]`;
+    palavra com dígito ou `_` também. Por forma: `[link]`, `[email]`, `[usuario]`, `[telefone]`, `[texto]` (entre aspas) e
+    `[numero]` (TODO número, até o de 2 dígitos). Recusa (`None`): endereço (rua, avenida, CEP, bairro, apto…), e-mail ofuscado
+    (`arroba`, `ponto com`, `(at)`/`(dot)`), 3 ou mais algarismos por extenso, dígito que sobrou, e mais de 6 palavras
+    desconhecidas ou metade ou mais do texto desconhecida. Com `None`, o estado vai vazio, a porta recusa e a sombra grava
+    `fallback_reason='privacidade'`: o pedido não sai. **A sombra não reduz o risco**: em `shadow` o corpo sai para o decisor
+    igual ao de `on`, e a única proteção da C3 é esta remoção. A conferência é a própria lista (o que não é conhecido não sai),
+    não um detector "mais largo" depois da troca.
+  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação ou desafio
+    (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto em qualquer formato) vai com estado vazio e marcador
+    `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava `privacidade`.
+  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada: D-J5 veta o
+    Jev decidir conteúdo social ou de persona, não ler o catálogo de habilidades). O nome de terceiro dentro do comando é que
+    não sai: vira `[termo]` pela lista.
+  - **Casamento**: a porta chama `ao_registrar` na mesma thread, logo depois de gravar a linha (também na recusa por
+    privacidade); sem polling e sem espera fixa. `casar_decisao_real` recebe o que a cadeia real resolveu (a RESOLVE refeita sem
+    efeito, `resolve_intent`, com o catálogo de agora). R2: a habilidade resolvida (ou a única de que fala, quando falta
+    parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
+    que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
+    da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
     execução sem mexer no núcleo, e fica para o 31.10.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
     habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.

@@ -2406,6 +2406,7 @@ class AppState:
             t.cancel()
         if self.runs.sombra_intencao is not None:
             self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
+            self.runs.sombra_intencao = None            # e nenhuma nova: um plano que termine agora não agenda outra
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
@@ -2433,6 +2434,11 @@ class AppState:
             if self._digestoes:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
+            try:
+                # Idem para a sombra da porta `DecisaoFechada` (31.9): a linha da chamada já feita é gravada antes do close.
+                await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, 6.0)
+            except Exception:  # noqa: BLE001 - esperar a sombra nunca impede fechar o banco
+                log.exception("encerramento: sombras da decisão fechada")
             try:
                 # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
                 self.lideranca.soltar_todas()

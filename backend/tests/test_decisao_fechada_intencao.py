@@ -39,10 +39,10 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
 # ================================================================== 1. remover_entidades
 @pytest.mark.parametrize("texto, esperado", [
     ("abra o instagram e curta o primeiro post", "abra o instagram e curta o primeiro post"),
-    ("curta 25 posts do feed", "curta 25 posts do feed"),                         # 2 dígitos não são número de contato
-    ("curta o post de Maria Silva", "curta o post de [nome]"),
-    ("Maria, abra o aplicativo", "[nome], abra o aplicativo"),
-    ("Abra o app. Depois mande para Joana", "Abra o app. Depois mande para [nome]"),
+    ("curta 25 posts do feed", "curta [numero] posts do feed"),                   # todo número vira marcador
+    ("curta o post de Maria Silva", "curta o post de [termo]"),
+    ("Maria, abra o aplicativo", "[termo], abra o aplicativo"),
+    ("Abra o app. Depois mande para Joana", "Abra o app. Depois mande para [termo]"),
     ("mande para @fulano.silva agora", "mande para [usuario] agora"),
     ("escreva para fulano@exemplo.com hoje", "escreva para [email] hoje"),
     ("ligue para (11) 99999-9999 agora", "ligue para [telefone] agora"),
@@ -53,7 +53,7 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
     ('comente "adorei o post" no feed', "comente [texto] no feed"),
     ("poste 'bom dia pessoal' no feed", "poste [texto] no feed"),          # aspas simples ASCII
     ("escreva `oi tudo bem` agora", "escreva [texto] agora"),
-    ("fale com D'Ávila agora", "fale com [nome] agora"),                  # o apóstrofo não abre trecho
+    ("fale com D'Ávila agora", "fale com [termo] agora"),                 # o apóstrofo não abre trecho
     ("segunda, curta o post", "segunda, curta o post"),
 ])
 def test_remover_entidades_troca_por_marcador_fixo(texto: str, esperado: str) -> None:
@@ -73,7 +73,7 @@ def test_remover_entidades_falha_fechada_quando_sobra_indicio(texto: str) -> Non
     # Ou virou marcadores (e entao nada sobrou) ou recusou: nunca devolve o texto com o indicio.
     if resultado is not None:
         resto = resultado
-        for m in ("[link]", "[numero]", "[usuario]", "[email]", "[telefone]", "[nome]", "[texto]"):
+        for m in ("[link]", "[numero]", "[usuario]", "[email]", "[telefone]", "[termo]", "[texto]"):
             resto = resto.replace(m, " ")
         assert "@" not in resto and not any(c.isdigit() for c in resto) and ".com" not in resto
 
@@ -99,9 +99,54 @@ def test_marcadores_nao_disparam_a_conferencia_e_o_resultado_e_estavel() -> None
     assert remover_entidades(primeiro) == primeiro                 # idempotente: o que já está limpo continua limpo
 
 
-def test_nome_proprio_em_minusculas_e_primeiro_termo_sem_virgula_sao_o_limite_conhecido() -> None:
-    """O que a heurística NÃO pega fica documentado em `entidades.py`; por isso a classe só vale em sombra."""
-    assert remover_entidades("joana curtiu isso") == "joana curtiu isso"
+#: Os vazamentos medidos pela revisão independente (`.claude/handoffs/revisao-31-9.md`, achados 1, 3 e os importantes) e o
+#: que NÃO pode sobrar de cada um. Com a lista de permissão, cada texto ou recusa (None) ou sai sem o termo.
+_VAZAMENTOS = [
+    ("joana curtiu isso", ["joana"]),
+    ("mande para joana silva", ["joana", "silva"]),
+    ("fale com joão da silva", ["joão", "silva"]),
+    ("Joana curtiu isso", ["Joana"]),
+    ("Joana: abra o app", ["Joana"]),
+    ("Joana! abra o app", ["Joana"]),
+    ("abra o app\nJoana curtiu", ["Joana"]),
+    ("send a message to john", ["john"]),
+    ("o número dela é nove nove oito sete", ["nove nove oito"]),
+    ("pedido 12", ["12"]),
+    ("rua das flores 12", ["flores", "12"]),
+    ("moro na rua augusta numero cento e vinte", ["augusta"]),
+    ("siga joana_silva99", ["joana", "silva99"]),
+    ("joana(at)gmail(dot)com", ["joana", "gmail"]),
+    ("Mande para o Dr. Silva o relatório", ["Silva"]),
+    ("Mande o arquivo para: Joana", ["Joana"]),
+    ("Para: Joana. Mande o arquivo", ["Joana"]),
+    ("mande para Łukasz", ["Łukasz"]),
+    ("mande para Иван agora", ["Иван"]),
+    ("envie para jOANA", ["OANA"]),
+    ("comente ❤ no post da joana silva", ["joana"]),                 # o TargetExtractor em minúsculas (achado 3)
+    ("abra o chrome e procure strasse da joana souza", ["joana", "souza", "strasse"]),
+    ("distribua: curta o post com a persona lucas", ["lucas"]),     # o nome da persona em minúscula
+    ("moro na Rua Augusta 12", ["Augusta", "12"]),
+    ("ligue para (11) 9 8765-4321", ["11", "8765"]),
+]
+
+
+@pytest.mark.parametrize("texto, proibidos", _VAZAMENTOS)
+def test_lista_de_permissao_nao_deixa_nome_nem_identificador_passar(texto: str, proibidos: list[str]) -> None:
+    resultado = remover_entidades(texto)
+    if resultado is not None:
+        for termo in proibidos:
+            assert termo.casefold() not in resultado.casefold(), (texto, resultado)
+        assert remover_entidades(resultado) == resultado                    # idempotente
+
+
+def test_vocabulario_do_catalogo_entra_na_lista_permitida_e_o_limiar_recusa() -> None:
+    from app.planning.decisao_fechada.entidades import vocabulario_de
+    assert remover_entidades("abra o qamessenger agora") == "abra o [termo] agora"
+    assert remover_entidades("abra o qamessenger agora", vocabulario=vocabulario_de(["QA Messenger: QAMessenger"])) == \
+        "abra o qamessenger agora"
+    # metade ou mais desconhecida: o que sobra é quase só máscara, e o texto inteiro não sai
+    assert remover_entidades("joana pedro marcos ana") is None
+    assert remover_entidades("curta joana") == "curta [termo]"             # 1 de 2: no limite, sai mascarado
 
 
 # ================================================================== 2. consumidor (banco de teste e a RESOLVE de verdade)
@@ -116,7 +161,7 @@ class Mundo2:
         self.sombra = RepositorioDeSombra(self.db)
         self.decisor = decisor
         self.porta = Porta(decisor, cfg=cfg, observador=observador_de_sombra(self.sombra))
-        self.consumidor = ConsumidorDeIntencao(self.porta, self.sombra, espera_s=5.0)
+        self.consumidor = ConsumidorDeIntencao(self.porta, self.sombra)
 
     def catalogo(self) -> list[EntradaDeCatalogo]:
         return catalogo_de(lambda estado: self.m.registro.list(state=estado), self.m.registro.definition,
@@ -195,11 +240,13 @@ def test_sombra_casa_a_decisao_real_da_habilidade_resolvida_e_de_nenhuma(tmp_pat
     w.fechar()
 
 
-def test_decisao_real_do_desempate_so_quando_a_cadeia_escolheu_um_dos_empatados() -> None:
+def test_a_r3_nao_tem_decisao_real_na_sombra_so_a_r2() -> None:
+    """A cadeia em empate não escolhe (AMBIGUOUS volta para a pessoa) e a que desempata não devolve os candidatos: a R3 é
+    rotulada pela escolha da pessoa ou pelo desfecho, no 31.10 (revisão, achado da R3 inalcançável)."""
     a, b = "ig.abrir_conversa", "ig.abrir_numero"
     perguntas = {PERGUNTA_CATALOGO, PERGUNTA_DESEMPATE}
     reais = ConsumidorDeIntencao.decisoes_reais(CadeiaObservada(resolvida=a, empatados=(a, b)), perguntas)
-    assert reais == {PERGUNTA_CATALOGO: id_opaco(a), PERGUNTA_DESEMPATE: id_opaco(a)}
+    assert reais == {PERGUNTA_CATALOGO: id_opaco(a)}
     assert ConsumidorDeIntencao.decisoes_reais(CadeiaObservada(empatados=(a, b)), perguntas) == {}
     assert ConsumidorDeIntencao.decisoes_reais(CadeiaObservada(resolvida="outra", empatados=(a, b)), perguntas) == {
         PERGUNTA_CATALOGO: id_opaco("outra")}
@@ -227,7 +274,7 @@ def test_estado_que_sai_nao_tem_entidade_nem_segredo(tmp_path: Path, porta_abert
     w.porta.aguardar_sombras()
     assert len(falso.chamadas) == 1
     comando = falso.chamadas[0].estado["comando"]
-    assert comando == "curta o post de [nome] [usuario] [email] [numero]"
+    assert comando == "curta o post de [termo] [usuario] [email] [numero]"
     w.fechar()
 
 
@@ -279,15 +326,70 @@ def test_padrao_desligado_zero_chamadas_e_zero_linhas(tmp_path: Path, porta_aber
     w.fechar()
 
 
-def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(tmp_path: Path) -> None:
+def test_com_o_envio_fechado_no_codigo_nada_e_feito(tmp_path: Path) -> None:
+    """Desligado custa ZERO (revisão, núcleo): com `JEV_RUNTIME_SEND_APPROVED=False` o consumidor nem monta o pedido, e
+    não sobra nem a linha de recusa (antes gravava `privacidade`)."""
     assert privacidade.JEV_RUNTIME_SEND_APPROVED is False               # sem monkeypatch: o padrão do código
     falso = DecisorFalso()
     w = Mundo2(tmp_path, falso)
+    assert not w.consumidor.ativo()
     w.consumidor.observar(run_id="run-fechado", comando="abra a conversa com @ana", app=None, catalogo=w.catalogo(),
                           cadeia=CadeiaObservada(resolvida="ig.abrir_conversa"))
     w.porta.aguardar_sombras()
+    assert falso.chamadas == [] and w.linhas() == []
+    w.fechar()
+
+
+def test_c3_fora_das_classes_permitidas_desliga_a_sombra(tmp_path: Path, porta_aberta: None) -> None:
+    cfg = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}, classes_permitidas=["C0", "C1", "C2"])
+    falso = DecisorFalso()
+    w = Mundo2(tmp_path, falso, cfg)
+    assert not w.consumidor.ativo()
+    w.consumidor.observar(run_id="run-c3", comando="abra a conversa com @ana", app=None, catalogo=w.catalogo(),
+                          cadeia=CadeiaObservada(resolvida="ig.abrir_conversa"))
+    w.porta.aguardar_sombras()
+    assert falso.chamadas == [] and w.linhas() == []
+    w.fechar()
+
+
+@pytest.mark.parametrize("comando", [
+    "a senha é hunter2",
+    "Entre no Outlook, a senha do e-mail é batatafrita",
+    "minha senha é correcthorsebattery",
+    "o 2fa é 123456",
+    "o código de verificação é quatro dois",
+    "o codigo e 4242 e depois abra o app",
+    "resolva o captcha e entre",
+    "use o token abc",
+])
+def test_c7_em_prosa_nunca_sai_e_a_sombra_registra_privacidade(tmp_path: Path, porta_aberta: None, comando: str) -> None:
+    """Achado 2 da revisão: credencial, código e 2FA escritos em prosa marcam `credencial` e a porta recusa o pedido
+    inteiro (zero chamadas), com a linha `privacidade`."""
+    falso = DecisorFalso()
+    w = Mundo2(tmp_path, falso)
+    pedido = w.consumidor.pedido(run_id="run-c7", comando=comando, app=None, catalogo=w.catalogo(),
+                                 cadeia=CadeiaObservada(sem_casamento=True))
+    assert pedido is not None and pedido.marcadores == frozenset({"credencial"}) and pedido.estado == {}
+    w.consumidor.observar(run_id="run-c7", comando=comando, app=None, catalogo=w.catalogo(),
+                          cadeia=CadeiaObservada(sem_casamento=True))
+    w.porta.aguardar_sombras()
     assert falso.chamadas == []
     assert [r["fallback_reason"] for r in w.linhas()] == ["privacidade"]
+    w.fechar()
+
+
+def test_nome_de_terceiro_no_comando_social_sai_mascarado(tmp_path: Path, porta_aberta: None) -> None:
+    """O catálogo social é C2 (ADR-069; a exclusão social/persona da revisão foi REFUTADA). O nome de terceiro dentro do
+    comando social é que não pode sair: a lista de permissão o troca, em qualquer caixa."""
+    falso = DecisorFalso()
+    w = Mundo2(tmp_path, falso)
+    for i, comando in enumerate(("siga a joana no instagram", "comente que lindo no post da joana",
+                                 "Comente ❤️ no post da Joana Silva")):
+        w.consumidor.observar(run_id=f"run-s{i}", comando=comando, app="com.instagram.android", catalogo=w.catalogo(),
+                              cadeia=CadeiaObservada(sem_casamento=True))
+    w.porta.aguardar_sombras()
+    enviados = [c.estado.get("comando", "") for c in falso.chamadas]
+    assert enviados and all("joana" not in e.casefold() and "silva" not in e.casefold() for e in enviados), enviados
     w.fechar()
 
 
@@ -329,7 +431,7 @@ async def test_plan_termina_sem_esperar_o_decisor_lento_e_a_sombra_casa_depois(
     catalogo = [EntradaDeCatalogo("ig.abrir_conversa", "Abrir conversa", "Abre a conversa com uma pessoa"),
                 EntradaDeCatalogo("ig.curtir", "Curtir", "")]
     st.runs.sombra_intencao = SombraDaIntencao(
-        ConsumidorDeIntencao(st.decisao_fechada, st.decisao_sombra, espera_s=10.0),
+        ConsumidorDeIntencao(st.decisao_fechada, st.decisao_sombra),
         resolver=lambda c, p: IntentResolution(ResolutionStatus.NO_MATCH), catalogo=lambda: catalogo)
     run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
     t0 = time.monotonic()
@@ -394,7 +496,7 @@ async def test_cancelar_derruba_as_sombras_soltas() -> None:
     sombra = SombraDaIntencao(Consumidor(),  # type: ignore[arg-type]
                               resolver=lambda c, p: IntentResolution(status=ResolutionStatus.NO_MATCH),
                               catalogo=lambda: ())
-    sombra.agendar("r-1", "abrir o app", [None], None)
+    sombra.agendar("r-1", lambda: ("abrir o app", [None], None))
     [solta] = list(sombra._soltas)                                            # noqa: SLF001
     sombra.cancelar()
     await asyncio.wait([solta], timeout=2)
@@ -415,8 +517,9 @@ async def test_a_sombra_recebe_o_comando_sem_destinos(harness: Harness) -> None:
         def ativo(self) -> bool:
             return True
 
-        def agendar(self, run_id: str, comando: str, perfis: Any, app: Any) -> None:
-            recebidos.append(comando)
+        def agendar(self, run_id: str, ler: Any) -> None:
+            dados = ler()                                    # na vida real, numa thread; aqui, na hora
+            recebidos.append(dados[0])
 
         def cancelar(self) -> None:
             pass
@@ -425,3 +528,48 @@ async def test_a_sombra_recebe_o_comando_sem_destinos(harness: Harness) -> None:
     st.runs.sem_destinos = lambda c: "LIMPO:" + c                              # type: ignore[method-assign]
     st.runs._intencao_em_sombra(run.id)                                        # noqa: SLF001
     assert recebidos == ["LIMPO:abra o aplicativo de configuracoes"]
+
+
+# ------------------------------------------------------------------ núcleo (revisão independente, 02/10)
+async def test_plano_com_excecao_ou_recusado_pelo_provedor_nao_vira_sombra(harness: Harness) -> None:
+    import asyncio  # noqa: PLC0415
+
+    chamados: list[str] = []
+    runs = harness.state.runs
+    runs._intencao_em_sombra = chamados.append                                # type: ignore[method-assign]  # noqa: SLF001
+    laco = asyncio.get_running_loop()
+    com_erro: asyncio.Future[None] = laco.create_future()
+    com_erro.set_exception(RuntimeError("plano quebrou"))
+    runs._depois_do_plano(com_erro, "r-erro")                                  # noqa: SLF001
+    com_erro.exception()                                                       # consumida: sem aviso de exceção perdida
+    recusado: asyncio.Future[None] = laco.create_future()
+    recusado.set_result(None)
+    runs._sem_sombra.add("r-recusado")                                         # noqa: SLF001 - o ramo `refusal` do _plan
+    runs._depois_do_plano(recusado, "r-recusado")                              # noqa: SLF001
+    assert chamados == [] and "r-recusado" not in runs._sem_sombra              # noqa: SLF001
+
+
+async def test_execucao_que_falhou_ou_foi_cancelada_nao_e_lida_pela_sombra(harness: Harness) -> None:
+    st = harness.state
+    run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+    assert st.runs._dados_da_sombra(run.id) is not None                       # noqa: SLF001
+    for status in ("failed", "cancelled"):
+        st.db.execute("UPDATE runs SET status=? WHERE id=?", (status, run.id))
+        assert st.runs._dados_da_sombra(run.id) is None                       # noqa: SLF001
+    assert st.runs._dados_da_sombra("nao-existe") is None                     # noqa: SLF001
+
+
+async def test_desligada_a_sombra_nao_le_nem_resolve_nada(harness: Harness) -> None:
+    """Desligado custa ZERO: nem a leitura da execução nem a RESOLVE acontecem (o `ler` nunca é chamado)."""
+    st = harness.state
+    lidos: list[str] = []
+    resolvidos: list[str] = []
+    st.runs.sombra_intencao = SombraDaIntencao(
+        ConsumidorDeIntencao(st.decisao_fechada, st.decisao_sombra),
+        resolver=lambda c, p: resolvidos.append(c) or IntentResolution(ResolutionStatus.NO_MATCH),  # type: ignore[func-returns-value]
+        catalogo=lambda: ())
+    st.runs._dados_da_sombra = lambda run_id: lidos.append(run_id)             # type: ignore[method-assign]  # noqa: SLF001
+    st.runs._intencao_em_sombra("r-qualquer")                                  # noqa: SLF001
+    await st.runs.sombra_intencao.aguardar()
+    assert lidos == [] and resolvidos == []

@@ -81,21 +81,24 @@ class Porta:
         self._trava = Lock()
 
     # ------------------------------------------------------------------ API
-    def consultar(self, pedido: PedidoDeDecisao) -> ResultadoDeDecisao:
+    def consultar(self, pedido: PedidoDeDecisao, *,
+                  ao_registrar: Callable[[], object] | None = None) -> ResultadoDeDecisao:
+        """`ao_registrar` (opcional) roda logo DEPOIS de o observador gravar a linha, na mesma thread: na sombra, na thread
+        da porta; na recusa e no `on`, aqui mesmo. É onde quem chama casa a decisão real sem esperar a linha aparecer."""
         modo = modo_efetivo(pedido.modo, self.cfg, pedido.origem)
         if modo == "off":
             return resultado_de_fallback(pedido, "desligado")
         recusa = privacidade.validar(replace(pedido, modo=modo), classes_yaml=self._classes_yaml())
         if not recusa.permitido:
             res = resultado_de_fallback(pedido, "privacidade")
-            self._observar(pedido, modo, res)  # a recusa também é medida (ids e categorias, sem estado)
+            self._observar(pedido, modo, res, ao_registrar)  # a recusa também é medida (ids e categorias, sem estado)
             return res
         pronto = privacidade.redigir(pedido)
         if modo == "shadow":
-            self._agendar(pronto)
+            self._agendar(pronto, ao_registrar)
             return resultado_de_fallback(pedido, "desligado")  # nada do caminho de trabalho usa a sombra
         res = self._chamar_com_timeout(pronto, TIMEOUT_ON_S)
-        self._observar(pedido, modo, res)
+        self._observar(pedido, modo, res, ao_registrar)
         return res
 
     def aguardar_sombras(self, timeout_s: float = 10.0) -> None:
@@ -119,12 +122,12 @@ class Porta:
                 self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decisao-fechada")
             return self._pool
 
-    def _agendar(self, pedido: PedidoDeDecisao) -> None:
-        f = self._executor().submit(self._sombra, pedido)
+    def _agendar(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:
+        f = self._executor().submit(self._sombra, pedido, ao_registrar)
         with self._trava:
             self._pendentes = [p for p in self._pendentes if not p.done()] + [f]
 
-    def _sombra(self, pedido: PedidoDeDecisao) -> None:
+    def _sombra(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:
         t0 = time.perf_counter()
         try:
             bruto = self.decisor.decidir(pedido, TIMEOUT_SHADOW_S)
@@ -136,7 +139,7 @@ class Porta:
         except Exception:
             log.warning("decisao_fechada: falha inesperada do decisor na sombra")
             res = resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
-        self._observar(pedido, "shadow", res)
+        self._observar(pedido, "shadow", res, ao_registrar)
 
     def _chamar_com_timeout(self, pedido: PedidoDeDecisao, timeout_s: float) -> ResultadoDeDecisao:
         t0 = time.perf_counter()
@@ -152,7 +155,8 @@ class Porta:
             log.warning("decisao_fechada: falha inesperada do decisor")
             return resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
 
-    def _observar(self, pedido: PedidoDeDecisao, modo: Modo, res: ResultadoDeDecisao) -> None:
+    def _observar(self, pedido: PedidoDeDecisao, modo: Modo, res: ResultadoDeDecisao,
+                  ao_registrar: Callable[[], object] | None = None) -> None:
         if self.observador is None:
             return
         try:
@@ -160,6 +164,12 @@ class Porta:
                                               pedido.ref, res))
         except Exception:  # medir nunca derruba o trabalho
             log.warning("decisao_fechada: observador falhou")
+            return
+        if ao_registrar is not None:
+            try:
+                ao_registrar()
+            except Exception:  # idem: casar a decisão real é medição
+                log.warning("decisao_fechada: falha ao casar a decisão real")
 
     @staticmethod
     def _conferir(pedido: PedidoDeDecisao, bruto: ResultadoDeDecisao) -> ResultadoDeDecisao:

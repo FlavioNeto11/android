@@ -1,9 +1,9 @@
 """Liga a sombra da intenção (R2 e R3, item 31.9) ao serviço de execuções, sem tocar a cadeia de resolução.
 
-`RunService` chama `agendar` UMA vez, quando o `_plan` de uma execução termina. Aqui, no laço de eventos e sem esperar rede,
-só se lê o que a cadeia real já sabe: o catálogo (habilidades publicadas e fluxos ativos, respeitando os interruptores
-`skills.enabled` e `ai.flows`) e o resultado da RESOLVE. A chamada à porta, que bloqueia, vai para uma thread solta: o plano
-já acabou e nada espera por ela. Com a configuração padrão (`ativo()` falso) este módulo não faz nada.
+`RunService` chama `agendar` UMA vez, quando o `_plan` de uma execução termina bem (não cancelado, sem exceção, sem recusa
+do provedor). No laço de eventos fica SÓ o agendamento: ler a execução, a RESOLVE, o catálogo (habilidades publicadas e
+fluxos ativos, respeitando `skills.enabled` e `ai.flows`) e a chamada à porta rodam numa thread solta; o plano já acabou e
+nada espera por ela. Desligado (`ativo()` falso: config padrão, envio não aprovado ou C3 fora das classes), nada é feito.
 
 A RESOLVE é refeita (`resolve_intent` não tem efeito: não grava, não chama IA, não cria execução). Por quê: o `_plan` tem
 vários pontos de saída e o enxerto no núcleo precisa ser uma linha só. A diferença possível é o catálogo ter mudado nos
@@ -21,6 +21,9 @@ from ..modules.skills.domain.versions import SkillDefinition, SkillSummary
 from ..planning.decisao_fechada.intencao import CadeiaObservada, ConsumidorDeIntencao, EntradaDeCatalogo
 
 log = logging.getLogger("poc.ai")
+
+#: O que a sombra precisa da execução: o comando SEM destinos, as personas por aparelho e o app principal.
+DadosDaExecucao = tuple[str, Sequence[str | None], str | None]
 
 
 def cadeia_de(resolucao: IntentResolution) -> CadeiaObservada:
@@ -58,20 +61,32 @@ class SombraDaIntencao:
     def ativo(self) -> bool:
         return self._consumidor.ativo()
 
-    def agendar(self, run_id: str, comando: str, profile_ids: Sequence[str | None], app: str | None) -> None:
-        """Chamado no laço, depois do `_plan`. Lê o catálogo e a resolução (barato) e solta a consulta numa thread."""
+    def agendar(self, run_id: str, ler: Callable[[], DadosDaExecucao | None]) -> None:
+        """Chamado no laço, depois do `_plan`. Só agenda: `ler` (a execução: comando sem destinos, personas e app, ou `None`
+        para não observar), a RESOLVE, o catálogo e a porta rodam todos numa thread."""
         if not self.ativo():
             return
         try:
-            cadeia = cadeia_de(self._resolver(comando, profile_ids))
-            catalogo = tuple(self._catalogo())
-            tarefa = asyncio.ensure_future(asyncio.to_thread(
-                self._consumidor.observar, run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia))
+            tarefa = asyncio.ensure_future(asyncio.to_thread(self._observar, run_id, ler))
         except Exception:  # noqa: BLE001 - observar nunca derruba o trabalho
             log.warning("decisao_fechada: não foi possível agendar a sombra da intenção")
             return
         self._soltas.add(tarefa)
         tarefa.add_done_callback(self._soltas.discard)
+
+    def _observar(self, run_id: str, ler: Callable[[], DadosDaExecucao | None]) -> None:
+        """Na thread: tudo o que lê banco ou resolve. O `Database` é serializado por trava e já é usado de threads."""
+        try:
+            dados = ler()
+            if dados is None:
+                return
+            comando, profile_ids, app = dados
+            cadeia = cadeia_de(self._resolver(comando, profile_ids))
+            catalogo = tuple(self._catalogo())
+        except Exception:  # noqa: BLE001
+            log.warning("decisao_fechada: não foi possível ler a execução para a sombra da intenção")
+            return
+        self._consumidor.observar(run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia)
 
     def cancelar(self) -> None:
         """Desligamento: cancela as sombras soltas (o `stop()` do `AppState`, como o `_bg`). A thread que já chamou a porta
@@ -85,4 +100,4 @@ class SombraDaIntencao:
             await asyncio.gather(*list(self._soltas), return_exceptions=True)
 
 
-__all__ = ["SombraDaIntencao", "cadeia_de", "catalogo_de"]
+__all__ = ["DadosDaExecucao", "SombraDaIntencao", "cadeia_de", "catalogo_de"]

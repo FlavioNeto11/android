@@ -114,6 +114,8 @@ class RunService:
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
         #: Sombra da intenção (31.9, ADR-069), injetada pelo AppState. `None` = não observa. Só lê; nunca muda o plano.
         self.sombra_intencao: SombraDaIntencao | None = None
+        #: Execuções cujo plano o provedor RECUSOU (`needs_input` por `refusal`): a sombra não as observa (31.9, revisão).
+        self._sem_sombra: set[str] = set()
         #: Sorteio do canário de IA (item 17.7), em [0, 1). Injetável: o teste fixa o valor em vez de depender da sorte.
         self.sorteio: Callable[[], float] = random.random
 
@@ -834,30 +836,35 @@ class RunService:
         self._planning[run_id].add_done_callback(lambda t: self._depois_do_plano(t, run_id))   # 31.9: só observa
 
     def _depois_do_plano(self, tarefa: asyncio.Future[None], run_id: str) -> None:
-        """Tarefa CANCELADA (o `stop()` do central cancela o plano) não lê o banco nem agenda sombra no desligamento."""
-        if not tarefa.cancelled():
-            self._intencao_em_sombra(run_id)
+        """Só o plano que terminou BEM vira sombra: tarefa cancelada (o `stop()` cancela o plano), com exceção ou recusada
+        pelo provedor (o comando que o provedor recusou por conteúdo não vai a outro provedor) não observa nada."""
+        recusado = run_id in self._sem_sombra
+        self._sem_sombra.discard(run_id)
+        if tarefa.cancelled() or tarefa.exception() is not None or recusado:
+            return
+        self._intencao_em_sombra(run_id)
 
     def _intencao_em_sombra(self, run_id: str) -> None:
-        """Depois do `_plan` (qualquer desfecho): entrega a sombra da intenção (31.9, ADR-069) e esquece. Só observa: não
-        decide, não grava na execução e uma falha aqui nunca vira falha do plano. Inerte com a config padrão."""
+        """Entrega a sombra da intenção (31.9, ADR-069) e esquece. Só observa: não decide, não grava na execução e uma falha
+        aqui nunca vira falha do plano. Desligada, custa uma comparação: nada é lido nem resolvido."""
         sombra = self.sombra_intencao
         if sombra is None or not sombra.ativo():
             return
-        try:
-            run = self.repo.run_row(run_id)
-            if run is None:
-                return
-            perfis, comando, perguntas = self._perfis_da_execucao(run)
-            if perguntas:
-                return
-            apps = loads(str(run["app_ids"] or "[]"), [])
-            # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem
-            # destinos; os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
-            sombra.agendar(run_id, self.sem_destinos(comando), [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
-                           str(apps[0]) if apps else None)
-        except Exception:  # noqa: BLE001
-            log.warning("sombra da intenção da execução %s", run_id)
+        sombra.agendar(run_id, lambda: self._dados_da_sombra(run_id))
+
+    def _dados_da_sombra(self, run_id: str) -> tuple[str, list[str | None], str | None] | None:
+        """Roda na THREAD da sombra. `None` = não observar: execução sumida, que falhou ou foi cancelada, ou com pergunta."""
+        run = self.repo.run_row(run_id)
+        if run is None or run["status"] in (RunStatus.failed.value, RunStatus.cancelled.value):
+            return None
+        perfis, comando, perguntas = self._perfis_da_execucao(run)
+        if perguntas:
+            return None
+        apps = loads(str(run["app_ids"] or "[]"), [])
+        # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem destinos;
+        # os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
+        return (self.sem_destinos(comando), [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
+                str(apps[0]) if apps else None)
 
     def resume_planning_after_restart(self) -> None:
         """Retoma o planejamento que EU deixei pela metade — nunca o que outro backend está planejando agora.
@@ -973,6 +980,7 @@ class RunService:
                     plan.required_apps = apps_do_plano(plan, instances)
         except AIError as exc:
             if exc.kind == "refusal":
+                self._sem_sombra.add(run_id)
                 # Recusa do provedor não é falha da execução: repetir o MESMO comando tende a dar a mesma
                 # recusa. `needs_input` pede que a pessoa reescreva o comando, em vez de derrubar a execução
                 # inteira como se fosse um defeito nosso (achado #93, ponto 3).
