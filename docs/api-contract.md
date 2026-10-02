@@ -2938,3 +2938,462 @@ Compatível para trás: uma rota nova, só leitura, sem efeito colateral e sem m
 | `summary` | objeto | dos eventos recentes: `requests`, `by_mode`, `cache` (`hit`/`miss`), `latency_ms` (`p50`, `p95`, `n`), `cost_usd`, `input_tokens`, `fallbacks` (por razão) e `privacy_blocks` |
 
 Sem a configuração composta responde 503 `not_ready`. Nunca devolve código, a pergunta ou caminhos de arquivo.
+
+## Adendo v0.45 (02/10/2026) — Pedidos persistentes (Fase 28, item 28.9) — adendo, PROPOSTO, não implementado
+
+**Estado deste adendo.** É a PROPOSTA de contrato do item 28.9 do [plano-100](plano-100.md). Nenhuma rota, evento ou campo
+abaixo existe no código: nada aqui é `real` nem `simulated`; a prova é `not_run` até a implementação (aceite proposto no
+fim). Quando esta proposta contradiz o corpo base ou um adendo anterior, vale o que está em vigor no código, e a mudança
+só vale depois de implementada e de a prova trocar de nível. Compatível para trás: só rotas novas e campos opcionais novos.
+
+Fontes: [desenho dos pedidos persistentes](design/pedidos-persistentes.md), §6 (modelo), §6.2 (estados), §6.3
+(identidade), §7.9 (cancelar, pausar, editar, retomar) e §11 (experiência, incluída a lista de rotas); ADR-044 (prévia
+obrigatória dos alvos), ADR-047 (assistente e sucessora), ADR-059, ADR-062 (a caixa de Pendências). O modelo e os estados
+estão escritos, e ainda não na `main`, no commit `a46485a4` do branch de integração da Fase 28 (`jev/integ-28`):
+`backend/migrations/067_pedidos.sql` (tabelas e CHECKs, linhas 47–123),
+`backend/app/modules/pedidos/domain/estados.py` (vocabulários nas linhas 36–52, arestas do pedido em 68–98, da
+ocorrência em 105–137, regras em 143–168), `domain/chave.py` (formato do instante na linha 46, chave em 63–81, tentativa
+em 83–96) e `domain/recorrencia.py` (`interpretar` na 163, `Instante` na 106, `proximas` na 375, `LIMITE_PREVIA` na 59).
+
+### O que o contrato fixa, em seis linhas
+
+1. O pedido é o objetivo que dura; a ocorrência é cada vez que ele pede uma execução; a execução é a `RunDetail` de
+   sempre. A API **solicita e acompanha**: quem materializa, despacha e fecha é o laço de pedidos (28.4), nunca a rota.
+2. A criação passa por uma **prévia sem efeito e sem custo** (ADR-044): só a confirmação, com o selo `confirmacao` que a
+   prévia devolveu, cria um pedido `ativo`.
+3. Estado muda só por ação nomeada (`ativar`, `pausar`, `retomar`, `cancelar`); `PATCH` nunca muda `estado`.
+4. Toda ação inválida para o estado atual é `409 invalid_state` com as ações que valem; a tabela de transições é a de
+   `estados.py`, e o painel lê `acoes_permitidas` em vez de reescrevê-la.
+5. Repetir é seguro: criação por `idempotency_key`; ação de estado repetida no estado que ela já produziu é `200` com
+   `sem_mudanca: true`; `executar` e `backfill` repetem pela chave determinística da ocorrência (`chave.py`).
+6. A caixa de **avisos** é um canal informativo; o que depende de uma pessoa continua na caixa de **Pendências**
+   (ADR-062). Os dois não se misturam (seção "Avisos e Pendências").
+
+### Tipos (TypeScript)
+
+Datas: o formato-base do documento, com UMA exceção — `OcorrenciaDTO.previsto_para` e `chave` usam o instante canônico
+de `chave.py` (UTC, segundo cheio, sufixo `Z`: `2026-10-03T11:00:00Z`), porque a identidade da ocorrência depende do
+texto. Todo nome de campo abaixo é o da coluna da migração 067; o que é calculado pela API está marcado.
+
+```ts
+type Autonomia     = 'observar' | 'preparar' | 'agir';                      // estados.py:36
+type Sobreposicao  = 'pular' | 'guardar_uma' | 'permitir_todas';            // estados.py:38
+type TipoDeGatilho = 'agora' | 'horario' | 'recorrencia' | 'evento' | 'condicao' | 'persona';   // estados.py:40
+type OrigemOcorrencia = 'agenda' | 'recuperacao' | 'evento' | 'condicao' | 'persona' | 'manual' | 'backfill'; // :42
+type MotivoDeEncerramento = 'prazo' | 'contagem' | 'orcamento' | 'abandonado';   // estados.py:52
+type EstadoPedido = 'rascunho' | 'ativo' | 'pausado' | 'aguardando_pessoa' | 'concluido' | 'encerrado' | 'cancelado';
+type EstadoOcorrencia = 'prevista' | 'devida' | 'despachada' | 'rodando' | 'concluida' | 'falhou' | 'incerta'
+                      | 'cancelada' | 'pulada' | 'perdida';
+type AcaoDePedido = 'editar' | 'ativar' | 'pausar' | 'retomar' | 'cancelar' | 'executar' | 'backfill';
+
+interface PedidoDTO {                       // uma linha de `pedidos`
+  id: string;                               // 1–28 caracteres de [A-Za-z0-9_-] (chave.py:41)
+  titulo: string;
+  objetivo: string;                         // texto-base do comando, SEM destino e SEM segredo
+  contexto: string | null;
+  criterios_sucesso: string[] | null;       // lista verificável; null = só prazo, contagem ou orçamento encerram
+  alvos: PedidoAlvos | null;                // foto dos alvos no formato de `runs.targets` (migração 051)
+  autonomia: Autonomia;                     // padrão 'observar': pedido sem escolha nunca age (`067_pedidos.sql:54`)
+  fuso: string;                             // nome IANA; padrão 'America/Sao_Paulo'
+  inicio_em: string | null; fim_em: string | null;                 // UTC; fim_em null = sem prazo
+  max_ocorrencias: number | null;           // > 0
+  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0
+  sobreposicao: Sobreposicao;               // padrão 'pular'
+  janela_recuperacao_s: number | null;      // null = o padrão por tipo de gatilho (§7.5)
+  coalescer: boolean;                       // a coluna é 0/1; padrão true
+  max_tentativas: number;                   // por ocorrência; >= 1; padrão 2
+  pausa_por_falha: number;                  // N falhas seguidas pausam; >= 1; padrão 3
+  estado: EstadoPedido;
+  versao: number;                           // sobe a cada edição
+  proxima_em: string | null;                // UTC; CACHE da próxima materialização
+  criado_por: string | null;                // operador da sessão (nunca o nome do corpo)
+  pausado_motivo: string | null;            // sempre preenchido quando estado = 'pausado'
+  encerrado_motivo: MotivoDeEncerramento | null;
+  pai_id: string | null;                    // SÓ LEITURA até o 28.10 (sub-pedidos)
+  criado_em: string; atualizado_em: string;
+}
+
+interface PedidoAlvos {                     // o mesmo `targets` de POST /api/runs/targets/resolve
+  targets: { instance_id: string | null; profile_id: string; app_id: string | null;
+             origem: 'ui' | 'texto' | 'vinculo' | 'balanceamento' }[];
+  device_policy: 'one' | 'primary' | 'all';
+}
+
+interface GatilhoDTO {                      // uma linha de `pedido_gatilhos`
+  id: string; tipo: TipoDeGatilho; ativo: boolean; criado_em: string;
+  spec: GatilhoSpec;                        // JSON; ver abaixo
+  cursor: string | null;                    // só evento e condição (28.8); nunca editável
+}
+type GatilhoSpec =
+  | {}                                                        // agora
+  | { dtstart: string }                                       // horario: hora LOCAL ingênua 'YYYY-MM-DDTHH:MM:SS', no fuso do pedido
+  | { dtstart: string; rrule: string }                        // recorrencia: subconjunto da RFC 5545 (recorrencia.py)
+  | Record<string, unknown>;                                  // evento, condicao, persona: forma do 28.8
+
+interface OcorrenciaDTO {                   // uma linha de `pedido_ocorrencias`
+  id: string; pedido_id: string; pedido_versao: number; gatilho_id: string | null;
+  previsto_para: string;                    // instante canônico (segundo cheio, 'Z')
+  chave: string;                            // 'ped:<pedido>:<gatilho>:<instante>' (+ ':manual'|':backfill'); sem dado da pessoa
+  origem: OrigemOcorrencia; estado: EstadoOcorrencia;
+  tentativa: number;                        // execuções já pedidas; a n-ésima usa a chave 'chave:t<n>'
+  run_id: string | null;
+  run: { id: string; short_id: string; status: RunStatus; status_detail: string | null } | null;   // CALCULADO
+  run_disponivel: boolean;                  // CALCULADO: false com run_id preenchido = a execução foi purgada
+  motivo: string | null;                    // obrigatório em pulada, perdida, cancelada, falhou e incerta (estados.py:137)
+  custo_usd: number;                        // acumulado de todas as tentativas, gravado antes da purga
+  resumo: string | null;
+  criada_em: string; iniciada_em: string | null; terminada_em: string | null;
+}
+// NÃO expostos (encanamento do laço): materializada_token, dono, prazo_posse.
+
+interface PedidoView extends PedidoDTO {    // o que a lista e o detalhe devolvem; tudo abaixo é CALCULADO
+  gatilhos_resumo: { tipo: TipoDeGatilho; descricao: string }[];   // 'Todo dia às 08:00 (America/Sao_Paulo)'
+  personas: { profile_id: string; nome: string }[];                // lidas de `alvos`
+  proxima_local: string | null;             // `proxima_em` no fuso do pedido, com o deslocamento
+  ultima_ocorrencia: { id: string; estado: EstadoOcorrencia; terminada_em: string | null; motivo: string | null;
+                       run_id: string | null } | null;
+  ocorrencias_por_estado: Partial<Record<EstadoOcorrencia, number>>;
+  gasto_usd: number;                        // soma de `custo_usd` das ocorrências
+  orcamento_usado: number | null;           // gasto_usd / orcamento_total_usd; null sem orçamento
+  avisos_nao_lidos: number;
+  acoes_permitidas: AcaoDePedido[];         // pela tabela de estados.py; o painel não a reescreve
+}
+
+interface PedidoDetalhe extends PedidoView {
+  gatilhos: GatilhoDTO[];
+  proximas: ProximaData[];                  // as próximas 5, calculadas com `recorrencia.proximas`
+  ocorrencias_recentes: OcorrenciaDTO[];    // as últimas 20; a lista completa é a rota de ocorrências
+  execucoes_em_curso: { run_id: string; ocorrencia_id: string; status: RunStatus }[];
+  pendencias: PendenciaDoPedido[];          // só com estado = 'aguardando_pessoa'; lido do estado vivo
+  memoria: unknown | null; relatorios_recentes: unknown[] | null; observacoes_recentes: unknown[] | null;
+                                            // null = ainda não existe (28.7); [] = existe e está vazio
+}
+interface ProximaData { gatilho: number; nominal: string; local: string; utc: string;
+                        desviado: boolean; repetido: boolean }     // `Instante.para_dict` + índice do gatilho
+interface PendenciaDoPedido { tipo: 'aprovacao' | 'pergunta' | 'ocorrencia_incerta';
+                              ref: string; run_id: string | null; ocorrencia_id: string | null; desde: string }
+```
+
+`ProximaData.desviado` e `repetido` existem **para esta API mostrá-los** (`recorrencia.py:18` e `:111`): `desviado` = a hora local
+não existia (salto do horário de verão) e o pedido roda no primeiro instante válido depois do salto; `repetido` = a hora
+local aconteceu duas vezes e o pedido roda só na primeira. O painel diz isso ao lado da data.
+
+`RunSummary` ganha `pedido_id: string | null` e `ocorrencia_id: string | null` (a coluna `runs.pedido_id` e
+`runs.ocorrencia_id` da 067; `null` em toda execução anterior, que é o que ela de fato é). Aditivo.
+
+### Rotas (todas sob `/api/pedidos`)
+
+`/previa` e `/avisos` são declaradas ANTES de `/{pedido_id}` (o mesmo cuidado de `POST /api/runs/targets/suggest`).
+
+| Método e rota | Corpo | Resposta |
+|---|---|---|
+| `POST /api/pedidos/previa` | `PedidoCorpo` + `proximas?` | `200 PedidoPrevia`; sem efeito, sem gravação, **sem chamada de IA** |
+| `POST /api/pedidos` | `PedidoCorpo` + `idempotency_key` + `titulo?` + `confirmacao?` | `201 PedidoView` (`ativo` se veio `confirmacao`, senão `rascunho`); `200 {…, deduplicated: true}` se a chave já existia |
+| `GET /api/pedidos` | filtros em query | `200 {items: PedidoView[], proximo_cursor, total_por_estado}` |
+| `GET /api/pedidos/{id}` | – | `PedidoDetalhe`; `404 not_found` |
+| `PATCH /api/pedidos/{id}` | `PedidoEdicao` | `200 PedidoEdicaoResultado` (`dry_run: true` = prévia da edição, nada grava) |
+| `POST /api/pedidos/{id}/ativar` | `{confirmacao}` | `200 PedidoView` (`rascunho` → `ativo`) |
+| `POST /api/pedidos/{id}/pausar` | `{motivo?}` | `200 {pedido, sem_mudanca}` |
+| `POST /api/pedidos/{id}/retomar` | `{modo?: 'daqui' \| 'recuperar'}` | `200 {pedido, sem_mudanca, puladas, recuperadas}` |
+| `POST /api/pedidos/{id}/cancelar` | `{confirmar: true, motivo?}` | `200 {pedido, sem_mudanca, execucoes_em_curso, ocorrencias_canceladas}` |
+| `POST /api/pedidos/{id}/executar` | `{solicitado_em}` | `202 {ocorrencia, deduplicated}` |
+| `POST /api/pedidos/{id}/backfill` | `{de, ate, dry_run?, confirmar_ocorrencias?}` | `200` na prévia; `202 {ocorrencias, ja_existentes}` ao gravar |
+| `GET /api/pedidos/{id}/ocorrencias` | `?estado=&origem=&de=&ate=&limit=&antes_de=` | `200 {items: OcorrenciaDTO[], proximo: string \| null}` |
+| `GET /api/pedidos/{id}/execucoes?limit=` | – | `RunSummary[]` pelo `runs.pedido_id`, as mais novas primeiro |
+| `GET /api/pedidos/avisos` | `?lido=&requer_pessoa=&pedido_id=&limit=&cursor=` | `200 {items: AvisoDTO[], nao_lidos, proximo_cursor}` |
+| `POST /api/pedidos/avisos/ler` | `{ids?: string[] (≤ 200), todos?: true}` | `200 {lidos, nao_lidos}`; repetir é seguro |
+| `GET /api/pedidos/{id}/relatorios` · `/observacoes` | `?limit=&cursor=` | **dependem do 28.7** (tabelas que a 067 não tem); até lá a rota não existe |
+
+Os nomes de rota são os do §11 do desenho, com **uma divergência proposta**: a prévia é `POST`, não `GET /api/pedidos/previa`.
+Ela leva o texto do comando e a especificação dos gatilhos; texto de comando em query string vai para log de proxy e
+histórico do navegador, e a regra do projeto é nunca pôr dado da pessoa na URL.
+
+### Criação pelo Comando, com prévia
+
+**Corpo comum (`PedidoCorpo`).** `extra="forbid"` como `RunCreate`: campo desconhecido é 422, e `pai_id` e `estado` não se
+enviam (o primeiro é do 28.10; o segundo muda só por ação).
+
+```ts
+interface PedidoCorpo {
+  objetivo: string;                         // 3–4000, como `RunCreate.command`; destinos do texto (ADR-044) saem dele
+  contexto?: string; criterios_sucesso?: string[];
+  alvos: { instance_ids?: string[]; profile_ids?: string[]; targets?: RunTarget[];
+           device_policy?: 'one' | 'primary' | 'all'; distribute?: DistributeSpec };   // as mesmas regras de POST /api/runs
+  autonomia?: Autonomia;                    // padrão 'observar'
+  fuso?: string;                            // padrão 'America/Sao_Paulo'
+  gatilhos: { tipo: TipoDeGatilho; spec: GatilhoSpec }[];     // 1 a 8 (limite proposto)
+  inicio_em?: string; fim_em?: string; max_ocorrencias?: number;
+  orcamento_total_usd?: number; orcamento_ocorrencia_usd?: number;
+  sobreposicao?: Sobreposicao; janela_recuperacao_s?: number; coalescer?: boolean;
+  max_tentativas?: number; pausa_por_falha?: number;
+}
+```
+
+**`POST /api/pedidos/previa`** devolve sempre `200` quando o corpo é bem formado, com o que a criação decidiria:
+
+```ts
+interface PedidoPrevia {
+  valido: boolean;                          // false se há ao menos um bloqueio
+  objetivo_sem_destinos: string;            // `command_sem_destinos` do resolvedor de alvos
+  alvos: { targets: ResolvedTargetDTO[]; questions: Question[]; command_sem_destinos: string | null;
+           warnings: string[] };            // o mesmo resolvedor de POST /api/runs/targets/resolve
+  proximas: ProximaData[];                  // padrão 5 (`proximas`: 1..50), no fuso escolhido; ordenadas por `utc`
+  intervalo_minimo_s: number | null;        // o menor intervalo entre as próximas 20 datas; base do piso
+  autonomia: { teto: Autonomia; exige_aprovacao: string[]; recusado: string[] };   // capacidades, do §6.4 e de POLICIES
+  custo: { base: 'mediana_das_ultimas_5' | 'teto_por_ocorrencia' | 'sem_base';
+           por_ocorrencia_usd: number | null; ocorrencias_por_mes: number | null; por_mes_usd: number | null };
+  bloqueios: { codigo: string; campo?: string; mensagem: string }[];   // os MESMOS códigos que a criação devolveria
+  alertas: { codigo: string; mensagem: string }[];                      // não impedem (ex.: persona sem sessão pronta)
+  confirmacao: string | null;               // selo opaco 'sha256:…'; null quando `valido` é false
+}
+```
+
+- **Prévia nunca recusa por regra de negócio**: devolve `bloqueios[]`. Só corpo malformado (422) e `credencial_no_comando`
+  (409, nada é processado nem ecoado) viram erro HTTP.
+- **Sem IA e sem custo.** A escolha automática de personas (ADR-050) continua sendo `POST /api/runs/targets/suggest`; o
+  painel chama essa rota antes e passa os `targets` que a pessoa aceitou. Refinar o texto é `POST /api/commands/refine`
+  (ADR-047). O custo estimado **não inventa número**: sem histórico nem teto por ocorrência, `base: 'sem_base'` e os
+  valores vêm `null` (para um pedido que já tem ocorrências, a base é a mediana das últimas 5).
+- **`confirmacao`** é o selo do que a pessoa viu: o resumo SHA-256 da forma canônica de `objetivo_sem_destinos`, `targets`
+  resolvidos, `device_policy`, `autonomia`, `fuso`, gatilhos (a `rrule` na forma de `Regra.para_texto`), `inicio_em`,
+  `fim_em`, `max_ocorrencias`, os dois orçamentos, `sobreposicao`, `janela_recuperacao_s`, `coalescer`, `max_tentativas` e
+  `pausa_por_falha`. Não entram `titulo`, `contexto` nem `criterios_sucesso`. O contrato fixa só que ele é opaco, estável
+  para o mesmo conteúdo e diferente se qualquer campo acima mudar; as datas e o custo, que dependem do relógio, não entram.
+  A prévia não grava nada, então o selo não tem validade nem estado no servidor.
+- **Piso de frequência** (§10): `observar` e `preparar` ≥ 15 min; `agir` (efeito externo) ≥ 1 h. Abaixo, o bloqueio
+  `frequencia_abaixo_do_piso` (`piso_s`, `observado_s` em `mensagem`); os dois valores são configuração, com estes padrões.
+
+**`POST /api/pedidos`** — `PedidoCorpo` mais:
+
+| Campo | Regra |
+|---|---|
+| `idempotency_key` | 8–100 caracteres de `[A-Za-z0-9_.:-]`, como `RunCreate`; obrigatório |
+| `titulo` | 1–120; sem ele, os primeiros 80 caracteres de `objetivo_sem_destinos` |
+| `confirmacao` | o selo da prévia. **Com ele**, o pedido nasce `rascunho` e passa a `ativo` na MESMA transação (`rascunho → ativo` pela pessoa, `estados.py:70`); **sem ele**, fica `rascunho` e a pessoa ativa depois por `POST /{id}/ativar` |
+
+- A criação recalcula tudo o que a prévia calculou. Selo diferente → `409 previa_desatualizada`; alvos que o servidor
+  resolve hoje diferentes dos `targets` ecoados → `409 alvos_nao_confirmados` (o código que já existe, adendo v0.29).
+- **Idempotência.** A 067 não tem coluna de chave de idempotência; a proposta é que o `id` do pedido seja determinístico:
+  `"ped_" + 24 primeiros caracteres hexadecimais do SHA-256 da idempotency_key` (28 caracteres, o máximo de `chave.py:41`).
+  Repetir a chamada com o mesmo conteúdo devolve o MESMO pedido, `200` com `deduplicated: true`; a mesma chave com conteúdo
+  diferente é `409 idempotency_conflict`. Alternativa descartada por ora: coluna própria (exige migração nova).
+- `criado_por` é o operador da sessão; um `criado_por` no corpo é 422. `proxima_em` é calculada e gravada na ativação, e a
+  criação acorda o laço de pedidos (`wake()`, §7.2).
+- Pedido com `alvos` que não resolvem a nenhum aparelho: `400 sem_alvo` (o código que a prévia por persona já usa).
+
+### Leitura
+
+**`GET /api/pedidos`** — os nomes dos filtros são os do link da tela (`#/pedidos?estado=ativo,pausado&q=preço`), para o
+link e a chamada serem a mesma coisa (ADR-062, item 4).
+
+| Query | Significado |
+|---|---|
+| `estado` | um ou mais dos sete, separados por vírgula |
+| `autonomia`, `tipo` | `Autonomia`; `TipoDeGatilho` (qualquer gatilho do pedido) |
+| `profile_id` | pedidos que têm essa persona em `alvos` |
+| `q` | texto em `titulo` e `objetivo` (≤ 80 caracteres) |
+| `pede_atencao=1` | `pausado`, `aguardando_pessoa`, ou com aviso não lido |
+| `ordem` | `atualizado` (padrão), `proxima` (a de `proxima_em` mais cedo primeiro, sem data por último) ou `criado` |
+| `limit`, `cursor` | 1–200 (padrão 50); cursor opaco devolvido em `proximo_cursor` |
+
+`total_por_estado` conta TODOS os pedidos por estado, ignorando `estado` e `cursor` (os chips da tela), no mesmo espírito
+do snapshot completo da ADR-062. Estado fora dos sete → `422`.
+
+**`GET /api/pedidos/{id}/ocorrencias`** pagina pelo tempo, do mais novo ao mais antigo: `antes_de` é um `previsto_para`
+canônico, e `proximo` é o valor para a página seguinte (`null` no fim). `limit` 1–500 (padrão 50). Uma `pulada` ou `perdida`
+traz sempre o `motivo` (nada some em silêncio, `estados.py:137`). A ocorrência sobrevive à purga da execução: com `run_id`
+preenchido e `run_disponivel: false`, a tela mostra o resumo e o custo gravados e não oferece o link.
+
+### Edição (`PATCH /api/pedidos/{id}`)
+
+```ts
+interface PedidoEdicao extends Partial<PedidoCorpo> {
+  versao: number;                           // a versão que a pessoa viu: compare-and-set
+  titulo?: string;
+  dry_run?: boolean;                        // true: calcula e devolve, não grava
+  confirmacao?: string;                     // exigida quando a edição muda um campo que entra no selo
+}
+interface PedidoEdicaoResultado {
+  aplicado: boolean;                        // false no dry_run
+  pedido: PedidoView;                       // com a versão nova se aplicado; senão como ficaria
+  mudancas: { campo: string; de: unknown; para: unknown }[];
+  proximas_antes: ProximaData[]; proximas_depois: ProximaData[];
+  ocorrencias_refeitas: number;             // `prevista`/`devida` da versão anterior, canceladas e refeitas (§7.9)
+  custo: PedidoPrevia['custo'];
+  confirmacao: string | null;               // o selo do estado resultante
+}
+```
+
+- `versao` diferente da atual → `409 versao_desatualizada` (`versao_atual` em `details`). Aplicar sobe a versão em 1.
+- As ocorrências `prevista` e `devida` da versão anterior viram `cancelada` (motivo "pedido editado") e são refeitas na
+  versão nova; as `despachada` em diante **terminam na versão em que nasceram** (§7.9). Nenhuma execução é cancelada por
+  edição.
+- Editável em `rascunho`, `ativo`, `pausado` e `aguardando_pessoa`; nos três terminais, `409 invalid_state`. `estado`, `id`,
+  `pai_id`, `proxima_em`, `criado_*` e `versao` não se editam por aqui. O fuso muda só em `rascunho` ou `pausado`
+  (mudar fuso com o pedido correndo desloca todas as datas).
+- Mudar alvo, autonomia, fuso, gatilho, limite ou orçamento muda o selo: a edição real exige a `confirmacao` que o
+  `dry_run` devolveu (senão `409 previa_nao_confirmada`). Editar só `titulo`, `contexto` ou `criterios_sucesso` não exige.
+- Recusas da criação valem aqui (recorrência inválida, piso, sobreposição, credencial no texto).
+
+### Ações e estados
+
+Quem age é sempre a **pessoa** (`ator = pessoa`, de `estados.py`); as arestas do sistema (pausa automática, `concluido`,
+`encerrado`, `aguardando_pessoa`) não têm rota. A API confere a aresta com `transicionar_pedido` e escreve com
+`UPDATE … WHERE estado = <de>` (o CAS que fecha a corrida com o laço).
+
+| Ação | De → para | O que mais faz |
+|---|---|---|
+| `ativar {confirmacao}` | `rascunho` → `ativo` | calcula `proxima_em`; acorda o laço |
+| `pausar {motivo?}` | `ativo` → `pausado` | `motivo` 1–200 caracteres, padrão "Pausado pela pessoa", sempre gravado em `pausado_motivo`; para de materializar; **não cancela** execução em curso |
+| `retomar {modo}` | `pausado` → `ativo` | `daqui` (padrão): o que venceu durante a pausa vira `pulada` com motivo, e o pedido segue da próxima data; `recuperar`: o que está dentro da janela vira `devida` (origem `recuperacao`, mesma chave) e o resto vira `pulada`; devolve as duas contagens |
+| `retomar` | `aguardando_pessoa` → `ativo` | sem `modo` (com ele, 422). Exige que as pendências estejam resolvidas: senão `409 pendencia_aberta`, com `pendencias` em `details` |
+| `cancelar {confirmar: true}` | `rascunho`, `ativo`, `pausado` ou `aguardando_pessoa` → `cancelado` | ver abaixo |
+| `executar {solicitado_em}` | só `ativo` | cria uma ocorrência `manual` já `devida`; segue a sobreposição do pedido |
+| `backfill {de, ate}` | só `ativo`, só `observar` | cria ocorrências `backfill` dos instantes passados da agenda |
+
+- **Repetir é seguro, por estado.** `pausar` num pedido já `pausado`, `retomar` num `ativo`, `ativar` num `ativo` e `cancelar`
+  num `cancelado` respondem `200` com `sem_mudanca: true` e não gravam nem emitem evento (a tabela não tem aresta de um
+  estado para ele mesmo, `estados.py:17`; a camada da API se adianta). Uma ação cuja aresta não existe — `pausar` num
+  `aguardando_pessoa`, `retomar` num `concluido`, qualquer ação num terminal — é `409 invalid_state`, com `estado` e
+  `acoes_permitidas` em `details`. Não há "reabrir": nenhum terminal tem saída.
+- **Cancelar é pedir, não desfazer** (o princípio do adendo v0.7). Sem `confirmar: true`, a chamada responde
+  `409 confirmacao_necessaria` com `execucoes_em_curso` e `ocorrencias_futuras` em `details` e não muda nada: é o que a tela
+  mostra antes de confirmar. Confirmado, o pedido vira `cancelado` no ato (nenhuma ocorrência nasce depois do CAS); as
+  ocorrências `prevista`/`devida` viram `cancelada`; para cada execução em curso sai `RunService.cancel`. O desfecho de
+  cada uma é o REAL: ocorrência `cancelada` se a execução fechou `cancelled`; `incerta` se `uncertain`; um desfecho que
+  chega no meio ganha do pedido. `execucoes_em_curso[].entregue: false` não é erro (o pedido ficou registrado).
+- **`executar`.** Aceito não é feito: `202` com a ocorrência `devida`; o laço a despacha em até um ciclo (`pedidos.tick_s`) e
+  a execução aparece depois. `solicitado_em` é o instante do gesto, no formato canônico: a identidade é a chave
+  `ped:<id>:-:<instante>:manual` (§6.3), então repetir a MESMA chamada devolve a mesma ocorrência (`deduplicated: true`)
+  e um segundo clique, em outro segundo, é outra ocorrência. Um `solicitado_em` a mais de 120 s do relógio do servidor é
+  `422 solicitado_em_invalido`. A ocorrência pode nascer `pulada` por sobreposição, com o motivo à vista.
+- **`backfill`.** Só `observar`: com `preparar` ou `agir`, `409 backfill_so_observar`. Com `dry_run: true` devolve
+  `{ocorrencias, primeira, ultima, custo, ja_existentes}`; para gravar, `confirmar_ocorrencias` repete o número da
+  prévia (senão `409 previa_desatualizada`). Teto por chamada de ocorrências: configuração (padrão proposto 100); acima,
+  `422 backfill_grande_demais`. A chave leva o instante do slot e a origem, então repetir o gesto não duplica
+  (`ja_existentes` conta os que já estavam).
+- **Responder a uma pendência** não ganha rota nova: aprovação segue as rotas de aprovação, pergunta segue
+  `POST /api/runs/{id}/successor` (ADR-047) e ocorrência `incerta` segue a resolução de objetivo; depois, `retomar` devolve
+  o pedido a `ativo` (a aresta `aguardando_pessoa → ativo` é da pessoa e não é automática em `estados.py:79`).
+
+### Avisos e Pendências
+
+[ADR-062](decisoes.md#adr-062--pendência-tem-dona-a-caixa-e-a-url-é-a-fonte-da-verdade-da-tela) reserva a palavra
+"pendência" ao que depende de uma pessoa e dá a ela uma dona, a caixa de Pendências. A proposta separa:
+
+| | Caixa de **Pendências** (existe) | Caixa de **avisos** (nova) |
+|---|---|---|
+| O que é | decisão que só uma pessoa toma | notificação informativa do que o pedido fez |
+| Itens de pedido | pedido `aguardando_pessoa` (aprovação, pergunta, ocorrência `incerta`) | `pausa_automatica`, `orcamento_80`, `orcamento_esgotado`, `ocorrencia_perdida`, `relatorio_pronto`, `encerramento` |
+| Contador | o total da caixa (menu, topo, semáforo) | "avisos não lidos", com nome próprio; **nunca se chama pendência** |
+| Sai quando | a pessoa decide | a pessoa marca como lido |
+
+- O **snapshot** ganha `pedidos: {por_estado: Record<EstadoPedido, number>, avisos_nao_lidos: number, aguardando_pessoa:
+  PedidoView[]}`, completo desde a primeira carga e sem janela (a regra 2 da ADR-062). Os `aguardando_pessoa` alimentam a
+  caixa de Pendências como uma origem nova. **Para não contar duas vezes** a decisão que já tem item próprio (a aprovação
+  e a execução `needs_input`), o item do pedido é o que conta, e os itens daquele pedido aparecem agrupados sob ele
+  (`pedido_id`) sem contar de novo. Isso muda a definição de Pendência e **exige emenda à ADR-062** (decisão em aberto 1).
+```ts
+type AvisoTipo = 'pausa_automatica' | 'orcamento_80' | 'orcamento_esgotado' | 'ocorrencia_perdida'
+               | 'relatorio_pronto' | 'encerramento'                         // informativos: vão para a caixa de avisos
+               | 'aprovacao_pendente' | 'pergunta' | 'ocorrencia_incerta';  // requer_pessoa: vão para as Pendências
+interface AvisoDTO {
+  id: string; pedido_id: string; pedido_titulo: string; ocorrencia_id: string | null;
+  tipo: AvisoTipo; nivel: 'info' | 'warn' | 'error'; mensagem: string; dados: Record<string, unknown>;
+  requer_pessoa: boolean; criado_em: string; lido_em: string | null;
+}
+```
+
+- **Avisos** são linhas da tabela `pedido_avisos` (a 067 não a tem: **migração própria na implementação**, número a conferir
+  em todos os branches): `id`, `pedido_id`, `ocorrencia_id?`, `tipo`, `nivel` (`info` | `warn` | `error`), `mensagem` em
+  português, `dados` (JSON), `requer_pessoa` (booleano), `chave_dedupe` UNIQUE (`orcamento_80` sai uma vez por pedido até o
+  orçamento subir), `criado_em`, `lido_em`. Nunca guardam segredo nem texto de terceiros.
+- `GET /api/pedidos/avisos?lido=0` alimenta a caixa; `requer_pessoa=0` é o filtro do painel (o aviso de aprovação,
+  pergunta ou incerteza existe para o canal de fora e não repete na caixa de avisos). `POST /api/pedidos/avisos/ler` marca
+  lido e é idempotente.
+- **Ponto de extensão do 28.11** (aviso fora do painel, decisão do dono: canal e conta): o canal externo assina o evento
+  `pedido.aviso`, que sai para TODOS os tipos, `requer_pessoa` ou não. O 28.9 não envia nada para fora do painel.
+
+### Eventos (WebSocket `/api/ws`, `EventRecord.kind`)
+
+Persistidos, fora de `EPHEMERAL_KINDS`; o cliente refaz o snapshot no `resync`, como em todos os eventos.
+
+| kind | data | persistido |
+|---|---|---|
+| `pedido.updated` | `{pedido: PedidoView}` (sem `proximas` nem `gatilhos`) | sim |
+| `pedido.ocorrencia.updated` | `{ocorrencia: OcorrenciaDTO}` | sim |
+| `pedido.aviso` | `{aviso: AvisoDTO}` | sim |
+
+Nível: `pedido.updated` é `warn` quando o estado vira `pausado` pelo sistema ou `aguardando_pessoa`, `info` no resto;
+`pedido.ocorrencia.updated` é `error` em `falhou`, `warn` em `incerta`, `perdida` e `pulada`, `info` no resto;
+`pedido.aviso` herda `nivel`. `message` traz sempre texto legível em português.
+
+### Erros
+
+Corpo `{detail: {code, message, ...}}`. Os códigos marcados com ● já existem e mantêm o significado.
+
+| Status | `code` | Quando |
+|---|---|---|
+| 404 | `not_found` ● | pedido, ocorrência ou aviso inexistente (`details.kind`) |
+| 409 | `credencial_no_comando` ● | o `objetivo` tem formato de segredo; nada é gravado nem ecoado |
+| 409 | `alvos_nao_confirmados` ● | os alvos de hoje diferem dos ecoados |
+| 409 | `invalid_state` ● | ação sem aresta no estado atual, edição em terminal, `executar`/`backfill` fora de `ativo` (`estado`, `acoes_permitidas`) |
+| 409 | `versao_desatualizada` | `PATCH` com `versao` velha (`versao_atual`) |
+| 409 | `previa_desatualizada` · `previa_nao_confirmada` | selo diferente do recalculado; edição que muda o selo sem `confirmacao` |
+| 409 | `idempotency_conflict` | mesma `idempotency_key`, conteúdo diferente |
+| 409 | `pendencia_aberta` | `retomar` de `aguardando_pessoa` com pendência (`pendencias`) |
+| 409 | `confirmacao_necessaria` | `cancelar` sem `confirmar: true` (`execucoes_em_curso`, `ocorrencias_futuras`) |
+| 409 | `backfill_so_observar` | `backfill` em `preparar` ou `agir` |
+| 400 | `sem_alvo` ● | os alvos não resolvem a nenhum aparelho |
+| 422 | `recorrencia_invalida` | `ErroRecorrencia`: regra fora do subconjunto, ou início inválido (a mensagem é para a pessoa) |
+| 422 | `fuso_desconhecido` | nome fora da base IANA |
+| 422 | `gatilho_nao_suportado` | `evento`, `condicao` ou `persona` antes do 28.8 |
+| 422 | `frequencia_abaixo_do_piso` | intervalo menor que o piso da autonomia |
+| 422 | `sobreposicao_incompativel` | `agir` só com `pular`; `permitir_todas` só com `observar` (`estados.py:37`–`:38`, §7.4) |
+| 422 | `limite_invalido` | `fim_em` ≤ `inicio_em`; orçamento por ocorrência maior que o total; `max_ocorrencias` ≤ 0; os CHECKs da 067 |
+| 422 | `solicitado_em_invalido` · `backfill_grande_demais` | ver `executar` e `backfill` |
+
+Em `previa`, todos os 422 acima de regra (não de forma) viram `bloqueios[]`. O resto dos 422 é o de corpo inválido
+(`extra="forbid"`, tipos), igual ao das outras rotas.
+
+### Permissões
+
+Nada novo. As rotas que alteram estado passam pelo mesmo portão do adendo v0.9: `Origin` fora de `allowed_origins` é
+`403 forbidden_origin`; fora do loopback, `Authorization: Bearer` ou o cookie de sessão; `public_hosts` como sempre.
+A identidade na trilha é o operador da sessão (`criado_por`, e o autor de cada ação nos eventos); o nome que vier no corpo
+nunca vence. A prévia não grava, mas passa pelo mesmo portão (ela resolve alvos e lê o parque).
+
+### Lacunas do modelo 067 e dependências
+
+| Lacuna | Proposta neste adendo | Quem fecha |
+|---|---|---|
+| sem coluna de chave de idempotência | `id` determinístico a partir da chave | 28.9 (ou migração, se o dono preferir) |
+| sem tabela de avisos | `pedido_avisos`, migração própria | 28.9 |
+| `aguardando_pessoa` não guarda a causa | `pendencias[]` lido do estado vivo (aprovações, execuções `needs_input`, ocorrências `incerta`) | 28.9 |
+| `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` | rotas declaradas; campos `null` até existirem | 28.7 |
+| `spec` de `evento`, `condicao` e `persona` | `422 gatilho_nao_suportado` | 28.8 |
+| `pai_id` e sub-pedidos | só leitura; o corpo o recusa | 28.10 |
+| re-resolução dos alvos a cada ocorrência (a persona pode ter mudado de aparelho) | fora deste contrato | 28.4 |
+| `estados.py`: `aguardando_pessoa` não vai a `pausado`, e `fim_em` que passa nessa espera não encerra (linhas 20–24) | a API não inventa a aresta; `pausar` ali é `409 invalid_state` | 28.4 e 28.5 |
+
+### Decisões em aberto (do dono ou do coordenador)
+
+1. **ADR-062:** o pedido `aguardando_pessoa` vira uma origem da caixa de Pendências, agrupando a aprovação e a execução
+   `needs_input` dele para não contar em dobro? É a recomendação; muda a definição e pede emenda ao ADR.
+2. **Prévia como `POST`** (divergência do §11, que escreve `GET`).
+3. **Repetir ação de estado:** `200 sem_mudanca` (proposto, como `retomar` repetido e o `cancel` de comando) ou `409`.
+4. **Retomar de `aguardando_pessoa`:** pela mesma rota `retomar`, sem rota `responder` (proposto), e sem retorno automático
+   (a aresta é só da pessoa em `estados.py`).
+5. **Idempotência de criação:** `id` determinístico (proposto, sem migração) ou coluna `idempotency_key` UNIQUE.
+6. **`backfill`:** a chave leva o instante de cada slot (proposto, repetir não duplica), enquanto o §6.3 diz "o instante do
+   pedido do dono, arredondado ao segundo".
+7. **Avisos:** a lista de tipos é a do §11 mais `ocorrencia_perdida` e `encerramento` (acréscimos desta proposta); e o
+   padrão `pausar` sem motivo.
+8. **Piso de frequência de `preparar`:** o §10 diz "efeito externo ≥ 1 h"; esta proposta trata `preparar` (só rascunho, com
+   aprovação) como `observar`, 15 min, e põe a hora cheia só em `agir`.
+
+### Aceite proposto e prova
+
+Aceite do 28.9 (desenho §13): `typecheck`, testes e navegador contra o backend simulado a 1366 e a 375 px. Prova possível:
+`simulated` (testes de contrato da API com pedido, gatilho e execução falsos; nomes dos arquivos definidos na implementação).
+`real`: só no 28.12, com ocorrências ligadas a `runs` reais. **Hoje: `not_run` em todos os níveis** (este adendo é texto).
