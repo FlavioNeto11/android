@@ -108,6 +108,7 @@ async def test_espera_e_visivel_e_termina_quando_o_lider_aprende(harness: Harnes
 
 async def test_lider_que_falha_solta_os_demais_na_hora(harness: Harness) -> None:
     _liga(harness)
+    harness.cfg.file.ai.cascade_blocked_to_tier1 = False    # o bloqueio forçado aqui é o que o teste exercita: a cascata do 17.10 o absorveria no tier 1
     portao = asyncio.Event()
 
     def bloqueia(req: Any) -> tuple[Decision, Usage]:

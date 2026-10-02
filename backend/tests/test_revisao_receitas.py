@@ -131,6 +131,7 @@ async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(
     desemboca em exatamente um veredito de reprodução, e cada divergência que levou a etapa à IA é um retorno."""
     _, n = await _aprende_em_01(harness)
     _quebra_open_conversation(harness)
+    harness.cfg.file.ai.cascade_blocked_to_tier1 = False    # o bloqueio forçado aqui é o que o teste exercita: a cascata do 17.10 o absorveria no tier 1
     inner = harness.ai.inner
     decide0 = inner.decide
     falhou = {"feito": False}

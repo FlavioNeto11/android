@@ -209,6 +209,10 @@ ai:
   strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao
                                           # Opus, até curtir com seletor de commit); by_risk = só risco alto do
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo; false = nunca
+  cascade_blocked_to_tier1: true  # (true) 17.10: step_blocked do modelo de ação sobe UMA vez ao de escalonamento antes de pedir uma
+                                  # pessoa (não vale para challenge, auth_required e wrong_account); false = como antes
+  rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
+                                    # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
