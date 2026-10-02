@@ -3403,6 +3403,26 @@ Aceite do 28.9 (desenho §13): `typecheck`, testes e navegador contra o backend 
 `simulated` (testes de contrato da API com pedido, gatilho e execução falsos; nomes dos arquivos definidos na implementação).
 `real`: só no 28.12, com ocorrências ligadas a `runs` reais. **Hoje: `not_run` em todos os níveis** (este adendo é texto).
 
+## Adendo v0.46 (02/10/2026) — Aprendizado vivo, item 30.5: ações permitidas calculadas no backend
+
+Mudança aditiva na `Entrada` do livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` de
+`GET /api/aprendizado/{kind}/{ref}`). Corpos em `backend/app/modules/learning/presentation/livro.py`; a regra mora em
+`domain/livro.py` (`acoes_da_pessoa`, `por_que_o_sistema_nao_publica`), sobre `ciclo.TRANSICOES` e `permitido`.
+O painel deixou de espelhar o `ciclo.py`: só traduz as chaves para texto.
+
+- `acoes: [{to, rotulo, exige_motivo}]`: os passos que uma PESSOA pode dar agora, na ordem da tabela do ciclo.
+  `to` é o estado de destino (o corpo de `POST …/status`); `rotulo` é a chave estável `validar | aprovar | rejeitar |
+  aposentar | desligar | reativar`; `exige_motivo` é `true` (decidir deixa o motivo na trilha). Vazio em `habilidade` (rota
+  própria das habilidades), em `memoria`, em item sem estado, em receita substituída (`deprecated` não volta) e sem o
+  destino `deprecated` em fluxo (sai de circulação como `disabled`). O veto e o modo do tipo não travam a pessoa.
+- `por_que_nao_publica: {codigo, espera_o_dono, detalhe} | null`: por que o sistema não publica sozinho. `codigo`:
+  `habilidade`, `efeito_externo`, `texto_de_pessoa` (esperam o dono: `espera_o_dono=true`), `vetado` (`detalhe` = razão do
+  veto) ou `modo_desligado`; `null` quando o sistema publica sozinho. Nesta entrega a rota só preenche os três
+  primeiros; veto e modo precisam de leitura do repositório e do ajuste, e entram quando o serviço os expuser.
+
+Prova `simulated`: `backend/tests/test_learning_acoes.py` percorre `TRANSICOES` × D1 × tipo × estado e confere que `acoes`
+só tem transições válidas para `by=pessoa` e que nenhuma válida falta (salvo as exceções acima). `real`: `not_run`.
+
 ## Adendo v0.47 (02/10/2026) — Aprendizado vivo: visão por app e chave de app canônica (Fase 30, itens 30.1 e 30.2)
 
 Compatível para trás: duas rotas novas, só leitura, sem tabela nova e sem cópia de conteúdo (composição de leitura sobre o

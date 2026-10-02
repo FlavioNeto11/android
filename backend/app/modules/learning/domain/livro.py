@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from app.modules.learning.domain.ciclo import SkillState, exige_o_dono
+from app.modules.learning.domain.ciclo import TRANSICOES, Actor, SkillState, exige_o_dono, permitido
 from app.modules.learning.domain.vocabulario import (FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, SourceKind)
 from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
 
@@ -247,6 +247,73 @@ def para_aprovar(e: EntradaDoLivro) -> bool:
     if e.state is SkillState.VALIDATED and e.requires_owner:
         return True
     return e.state is SkillState.CANDIDATE and e.human_origin and e.kind in KINDS_DE_ITEM
+
+
+#: Chave estável do rótulo de cada passo que uma pessoa dá (o texto em português é do painel, nunca daqui).
+_ROTULO_DO_PASSO: Mapping[tuple[SkillState, SkillState], str] = {
+    (_S.CANDIDATE, _S.VALIDATED): "validar", (_S.VALIDATED, _S.PUBLISHED): "aprovar",
+    (_S.CANDIDATE, _S.DISABLED): "rejeitar", (_S.VALIDATED, _S.DISABLED): "rejeitar",
+    (_S.PUBLISHED, _S.DEPRECATED): "aposentar", (_S.PUBLISHED, _S.DISABLED): "desligar",
+    (_S.DEPRECATED, _S.PUBLISHED): "reativar", (_S.DISABLED, _S.PUBLISHED): "reativar",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class AcaoPermitida:
+    """Um passo que a PESSOA pode dar neste item agora. `rotulo` é a chave (`aprovar`, `desligar`...); decidir
+    sempre exige o motivo (fica na trilha), então `exige_motivo` é verdadeiro em todas as de hoje."""
+
+    to: SkillState
+    rotulo: str
+    exige_motivo: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class MotivoDeNaoPublicar:
+    """Por que o sistema não publica este item sozinho. `codigo`: `habilidade`, `efeito_externo`,
+    `texto_de_pessoa` (esperam o dono: `espera_o_dono`), `vetado` ou `modo_desligado`; `detalhe` é a razão do veto."""
+
+    codigo: str
+    espera_o_dono: bool
+    detalhe: str | None = None
+
+
+def acoes_da_pessoa(e: EntradaDoLivro, *, modo_publica: bool = True) -> tuple[AcaoPermitida, ...]:
+    """As transições que uma PESSOA pode fazer a partir do estado atual: `ciclo.TRANSICOES` (ator pessoa) conferida
+    por `permitido`, mais as exceções da fonte. Habilidade tem rota e ciclo próprios e memória fica fora do D1 (sem
+    ações no livro); fluxo não tem `deprecated` (sai de circulação como `disabled`) e a receita substituída não volta.
+    O veto nunca trava a pessoa (só o sistema), e o modo do tipo também não."""
+    if e.kind in (LivroKind.HABILIDADE, LivroKind.MEMORIA) or e.state is None:
+        return ()
+    if e.kind is LivroKind.RECEITA and e.state is SkillState.DEPRECATED:
+        return ()
+    saida: list[AcaoPermitida] = []
+    for (de, para), _quem in TRANSICOES.items():
+        if de is not e.state:
+            continue
+        if e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) and status_nativo(e.kind, para) is None:
+            continue
+        if permitido(de, para, Actor.PERSON, side_effect=e.side_effect, human_origin=e.human_origin,
+                     modo_publica=modo_publica):
+            saida.append(AcaoPermitida(para, _ROTULO_DO_PASSO[(de, para)]))
+    return tuple(saida)
+
+
+def por_que_o_sistema_nao_publica(e: EntradaDoLivro, *, modo_publica: bool = True,
+                                  veto: str | None = None) -> MotivoDeNaoPublicar | None:
+    """O D1 em palavras de máquina: habilidade publica só por pessoa; efeito externo e texto de pessoa são do dono;
+    depois, o veto (`motivo_do_veto`) e o modo do tipo fora de `on`. `None`: o sistema publica sozinho."""
+    if e.kind is LivroKind.HABILIDADE:
+        return MotivoDeNaoPublicar("habilidade", True)
+    if e.side_effect:
+        return MotivoDeNaoPublicar("efeito_externo", True)
+    if e.human_origin:
+        return MotivoDeNaoPublicar("texto_de_pessoa", True)
+    if veto is not None:
+        return MotivoDeNaoPublicar("vetado", False, veto)
+    if not modo_publica:
+        return MotivoDeNaoPublicar("modo_desligado", False)
+    return None
 
 
 def a_revisar(e: EntradaDoLivro, decididos_por_pessoa: frozenset[str]) -> bool:

@@ -79,8 +79,8 @@ async def test_f8_cancelar_o_boot_nao_libera_a_ram_de_um_emulador_que_segue_no_a
     custo = ex._custo_de_ram(a)
     _memoria(ex, custo + 4096 + 500)
     subidos = _sem_emulador(monkeypatch)
-    _pids_vivos(ex, subidos)
     _estado_falso(ex, monkeypatch, "stopped")
+    _pids_vivos(ex, subidos)
     monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
     preso = AdbFalso(pronto_depois_de=1)
     preso.liberar = threading.Event()
@@ -112,8 +112,8 @@ async def test_f8_guarda_de_vagas_conta_boot_admitido_que_ainda_nao_subiu(
     no_ar, x, y = ex.settings.devices
     _memoria(ex, 64_000)
     subidos = _sem_emulador(monkeypatch)
-    _pids_vivos(ex, subidos, ja_no_ar=(no_ar.avd_name,))
     _estado_falso(ex, monkeypatch, "stopped")
+    _pids_vivos(ex, subidos, ja_no_ar=(no_ar.avd_name,))
     monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
     monkeypatch.setattr(ex.avd, "apply_hardware", lambda *_a, **_k: time.sleep(0.3))
     adbs = {d.serial: AdbFalso(pronto_depois_de=1) for d in ex.settings.devices}
@@ -234,8 +234,8 @@ async def test_zero_medido_e_recusa_por_ram_e_nao_por_desconhecido(tmp_path: Pat
     metricas.limpar()
     ex = _executor(tmp_path)
     subidos = _sem_emulador(monkeypatch)
-    _pids_vivos(ex, subidos)
     _estado_falso(ex, monkeypatch, "stopped")
+    _pids_vivos(ex, subidos)
     monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
     _memoria(ex, 0)
     with pytest.raises(VerbRefused) as saida:
@@ -266,8 +266,8 @@ async def test_metrica_de_reserva_so_tem_rotulos_de_conjunto_pequeno(tmp_path: P
     metricas.limpar()
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
     ex = _executor(tmp_path, quantos=3, min_free_ram_mb=1024, max_slots=3)
-    _pids_vivos(ex, _sem_emulador(monkeypatch))
     _estado_falso(ex, monkeypatch, "stopped")
+    _pids_vivos(ex, _sem_emulador(monkeypatch))
     monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
     monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(pronto_depois_de=1))
     ok, sem_ram, sem_medida = ex.settings.devices

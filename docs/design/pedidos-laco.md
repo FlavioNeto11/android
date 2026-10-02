@@ -370,21 +370,52 @@ Riscos:
 - **R5. `needs_input` e `incerta` sem `aguardando_pessoa` até o 28.5**: com `pular`, a ocorrência aberta bloqueia as
   seguintes (não há efeito duplicado); com `permitir_todas` (`observar`) seguem nascendo — aceitável só para leitura.
 
-Decisões pendentes:
+Decisões (todas fechadas em 02/10/2026; D1 e D4 confirmadas pelo dono, as demais tomadas pelo coordenador como o
+desenho recomendou):
 
-- **DECISÃO D1 (dono):** o 28.4 entra desligado (`pedidos.enabled: false`) até o orçamento do 28.6, ou já ligado?
-  Recomendação: desligado; a prova do 28.12 liga.
-- **DECISÃO D2 (coordenador):** `prazo_inicio_s` e `horizonte_s` globais (configuração, sem migração) ou por pedido
-  (068)? Recomendação: globais agora.
-- **DECISÃO D3 (coordenador):** ligação execução→pedido por parâmetro interno de `RunService.create` gravado no
-  mesmo `INSERT` (recomendado, atômico) ou por `UPDATE runs` depois da criação (sem mexer na assinatura, mas não
-  atômico).
-- **DECISÃO D4 (dono):** o que conta para `max_ocorrencias`: só as que viraram execução (recomendado: `pulada` e
-  `perdida` não gastaram nada) ou toda ocorrência materializada.
-- **DECISÃO D5 (coordenador, junto do 28.9):** editar a recorrência cria gatilho novo e edita a versão das abertas no
-  lugar (recomendado, por A6), em vez de "refazer" como o §7.9 diz hoje. Pede ajuste do texto do §7.9 e entra no ADR
-  da implementação (ADR-060, §13 do desenho).
-- **DECISÃO D6 (coordenador):** aceitar latência de até `tick_s` no fechamento dos casos sem worker (recomendado), ou
-  pôr um aviso em `repo.set_run_status`.
-- **DECISÃO D7 (coordenador):** padrão de janela para `horario` sem efeito e para `agora` (proposto 1800 s; o §7.5 não
-  diz).
+- **Decidido (02/10, dono) D1:** o 28.4 entra DESLIGADO (`pedidos.enabled: false`, padrão em `PedidosCfg`) até o
+  orçamento do 28.6 estar na main; desligado, o laço nem sobe e este backend não toma nem renova a trava `pedidos`. A
+  prova do 28.12 liga.
+- **Decidido (02/10, coordenador) D2:** `prazo_inicio_s` e `horizonte_s` globais, no bloco `pedidos:` da configuração
+  (com `tick_s`, `janela_padrao_s`, `lote_max`, `posse_s`). Sem migração; por pedido seria a 068 (reservada).
+- **Decidido (02/10, coordenador) D3:** a ligação execução→pedido vai por parâmetro INTERNO `origem=(pedido_id,
+  ocorrencia_id)` de `RunService.create` e `Repository.create_run`, gravado no mesmo `INSERT` (atômico). `RunCreate`
+  segue com `extra="forbid"`: a API pública não ganhou campo (A4).
+- **Decidido (02/10, dono) D4:** `max_ocorrencias` conta só as ocorrências que viraram execução (`run_id` não nulo);
+  `pulada` e `perdida` sem execução não gastaram nada.
+- **Decidido (02/10, coordenador) D5:** editar a recorrência ou o horário cria GATILHO NOVO (id novo) e desativa o
+  velho, cujas `prevista`/`devida` viram `cancelada` (motivo `edição`); as demais ocorrências abertas mudam de versão
+  NO LUGAR (mesma linha), nunca cancelar e recriar (A6). Texto do §7.9 de `pedidos-persistentes.md` ajustado; ADR-066.
+- **Decidido (02/10, coordenador) D6:** aceita-se até `tick_s` (15 s) de atraso no fechamento dos casos sem worker
+  (falha no planejamento, cancelamento antes de iniciar); a varredura fecha. Sem aviso em `repo.set_run_status`.
+- **Decidido (02/10, coordenador) D7:** janela padrão de 1800 s para `horario` sem efeito e para `agora`,
+  configurável em `pedidos.janela_padrao_s`; `horario` com autonomia `agir` fica em 0.
+
+## 10. O que foi implementado e onde (02/10/2026, branch `feat/28-4-laco`)
+
+Prova `simulated` (`backend/tests/test_pedidos_*.py`); `real` só no 28.12.
+
+| Peça | Onde |
+|---|---|
+| Janela, coalescência, origem, segundo cheio (A5) | `modules/pedidos/domain/materializar.py` (`materializar`, `janela_padrao_s`) |
+| Instantes devidos de `agora`/`horario`/`recorrencia` | `modules/pedidos/domain/gatilhos.py` |
+| Sobreposição e teto por autonomia | `modules/pedidos/domain/sobreposicao.py` (`decidir`) |
+| Tabela de fechamento e prazo de início | `modules/pedidos/domain/fechamento.py` (`fechar`, `prazo_de_inicio_vencido`) |
+| SQL das três tabelas (CAS por estado e versão) | `modules/pedidos/infrastructure/repositorio.py` |
+| O laço (`uma_volta`: fechar, materializar, despachar, agendar) | `modules/pedidos/infrastructure/laco.py` |
+| Pausar, retomar, cancelar, editar | `modules/pedidos/infrastructure/acoes.py` |
+| Parâmetro interno `origem` (D3) | `taskqueue/service.py` (`create`, `_criar_com_perguntas`), `taskqueue/repository.py` (`create_run`) |
+| Trava `PEDIDOS` e ligação | `taskqueue/travas.py`, `state.py` (`self.pedidos`, tarefa `pedidos`, `_execucao_assentada`, `_manter_travas`) |
+| Configuração | `config.py::PedidosCfg`, bloco `pedidos:` de `config/config.example.yaml` |
+
+Desvios e escolhas do código, onde o desenho dizia INFERRED:
+
+- O instante do despacho para o prazo de início é `runs.created_at` (a execução nasce no mesmo gesto; sem coluna nova).
+- `uma_volta` é síncrona e roda direto no laço de eventos (A3); só a espera (`wait_for`) é assíncrona.
+- Pedido com `spec` quebrada ou sem alvos não derruba a volta: o gatilho é registrado e ignorado, e a criação que falha
+  deixa a ocorrência `devida` com o motivo em `resumo`, até a janela vencer (`perdida`).
+- Ainda sem código: `evento`, `condicao` e `persona` (28.8), orçamento (28.6), retentativa e `aguardando_pessoa`
+  (28.5), a API das ações (28.9). `acoes.py` não tem rota ainda.
+- `test_pedidos_laco.py` cobre A1, A2, A3, A5, A6, dois líderes e a cerca, coalescência, perdidas, sobreposição,
+  `max_ocorrencias`, reinício, pausa/retomada/cancelamento e o laço desligado; A4 está em `test_pedidos_origem.py`.
+  PostgreSQL (`TEST_DATABASE_URL`): `not_run`.

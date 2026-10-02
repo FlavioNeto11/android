@@ -164,7 +164,9 @@ interface ItemDoLivroProps {
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
 export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
-  const espera = e.requires_owner ? porQueOSistemaNaoPublica(e) : null;
+  const porQue = porQueOSistemaNaoPublica(e);
+  const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
+  const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';
 
@@ -188,6 +190,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {e.last_used_at ? <span>Último uso: {formatClock(e.last_used_at)}</span> : null}
         {detalhe ? <span>{detalhe}</span> : null}
         {espera ? <span className={styles.aviso}>Espera o dono: {espera}</span> : null}
+        {naoPublica ? <span>O sistema não publica sozinho: {naoPublica}</span> : null}
         <span className={styles.mono}>{chaveDoItem(e)}</span>
       </div>
       {extra}

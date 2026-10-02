@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 from weakref import WeakKeyDictionary, ref
@@ -39,6 +39,7 @@ from app.modules.learning.domain import telas as dominio
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ErroDeAprendizado, NaoEncontrado, SkillState,
                                                conferir_transicao)
 from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem
+from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Decisao, Limiares, veredito_de_repeticao
 from app.modules.learning.domain.vocabulario import (LivroKind, ModoDeTelas, Polaridade, Posicao, SignalKind,
                                                      SourceKind, absorvida)
@@ -64,6 +65,8 @@ class AjustesDeTelas:
     modo: ModoDeTelas = ModoDeTelas.OBSERVE
     observacoes: int = 3
     execucoes: int = 2
+    #: `aprendizado.telas.por_app`: o modo de cada pacote que sobrescreve o global (§8.10). Vazio = o global vale.
+    por_app: Mapping[str, ModoDeTelas] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------ o que a infraestrutura entrega
@@ -169,11 +172,22 @@ class ServicoDeTelas:
     def ajustes(self) -> AjustesDeTelas:
         return self._ajustes()
 
+    def modo_efetivo(self, pacote: str | None) -> ModoDeTelas:
+        """O modo que vale para `pacote` (§8.10): o override de `por_app`, senão o global; sem pacote, o global. É a
+        ÚNICA regra: coleta, publicação (D1) e o fornecedor da sessão passam por aqui."""
+        a = self.ajustes
+        return modo_efetivo(a.modo, a.por_app, pacote)
+
+    def _algum_ligado(self) -> bool:
+        """Falso só quando o global e todos os overrides estão em `off`: o atalho barato do digest e da curadoria."""
+        a = self.ajustes
+        return a.modo is not ModoDeTelas.OFF or any(m is not ModoDeTelas.OFF for m in a.por_app.values())
+
     # ================================================================== coleta
     def observar_tentativa(self, t: TelaDaTentativa) -> int:
         """Uma tentativa fechada: marca de conflito (tela de login, desafio ou 2FA perto de um uso) e, na etapa
         comprovada sobre tela não protegida do app, a tela vista. Devolve quantas linhas gravou."""
-        if self.ajustes.modo is ModoDeTelas.OFF or t.loja or not t.pacote:
+        if self.modo_efetivo(t.pacote) is ModoDeTelas.OFF or t.loja or not t.pacote:
             return 0
         agora = self._relogio()
         feito = 0
@@ -209,7 +223,7 @@ class ServicoDeTelas:
         """Uma conferência da conta: o uso da tela aprendida em que ela parou (a favor, ou conflito com o desfecho) e,
         quando o voltar saiu do app sem resolver, a tela desconhecida (sinal `tela_desconhecida_chamou_pessoa`, que
         nunca promove nada: não veio de etapa comprovada)."""
-        if self.ajustes.modo is ModoDeTelas.OFF or not s.pacote:
+        if self.modo_efetivo(s.pacote) is ModoDeTelas.OFF or not s.pacote:
             return 0
         agora = self._relogio()
         momento = to_iso(agora)
@@ -240,16 +254,19 @@ class ServicoDeTelas:
         """Minerador do digest: os apps com tela desconhecida vista nesta execução são minerados de novo. A candidata
         que nasce aqui leva o `run_id` no nascimento: foi esta execução que a fez passar da repetição mínima, e o
         "Aprendizado desta execução" a mostra entre as candidatas geradas."""
-        if self.ajustes.modo is ModoDeTelas.OFF:
+        if not self._algum_ligado():
             return 0
-        return sum(self.minerar_app(app, run_id=run_id) for app in self._leitura.apps_da_execucao(run_id))
+        return sum(self.minerar_app(app, run_id=run_id) for app in self._leitura.apps_da_execucao(run_id)
+                   if self.modo_efetivo(app) is not ModoDeTelas.OFF)
 
     def executar(self, agora: datetime) -> int:
         """Passo da curadoria: valida e publica o que ficou para trás, absorve e aposenta."""
-        if self.ajustes.modo is ModoDeTelas.OFF:
+        if not self._algum_ligado():
             return 0
         feito = 0
         for app in self._leitura.apps_com_telas():
+            if self.modo_efetivo(app) is ModoDeTelas.OFF:
+                continue
             declaradas = self._declarado.declaradas(app)
             if declaradas is None:
                 continue
@@ -387,7 +404,7 @@ class ServicoDeTelas:
                     continue
                 feito += 1
                 atual = self._repo.item(item.id)
-            if atual is not None and atual.state is SkillState.VALIDATED and aj.modo is ModoDeTelas.ON:
+            if atual is not None and atual.state is SkillState.VALIDATED and self.modo_efetivo(app) is ModoDeTelas.ON:
                 feito += self._mover(atual, SkillState.PUBLISHED,
                                      "publicação sozinha (D1): sem efeito externo, repetida e com prova local")
         return feito
@@ -449,7 +466,7 @@ class ServicoDeTelas:
             else:
                 conferir_transicao(item.state, para, SYSTEM_ACTOR, side_effect=item.side_effect,
                                    human_origin=item.human_origin,
-                                   modo_publica=self.ajustes.modo is ModoDeTelas.ON)
+                                   modo_publica=self.modo_efetivo(item.escopo.app) is ModoDeTelas.ON)
                 self._repo.transicionar_item(item, para, by=SYSTEM_ACTOR, reason=reason, detalhe=detalhe,
                                              run_id=run_id)
         except ErroDeAprendizado as exc:

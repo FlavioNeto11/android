@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CAMADAS, type EntradaDoLivro, type GrupoDeFalha, MOTIVOS, MOTIVO_DO_DESFAZER, acaoDeAprovar, acaoDeAprovarNaFila,
+  type AcaoPermitida, CAMADAS, type EntradaDoLivro, type EstadoDoLivro, type RotuloDaAcao, type GrupoDeFalha, MOTIVOS, MOTIVO_DO_DESFAZER, acaoDeAprovar, acaoDeAprovarNaFila,
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
@@ -16,9 +16,11 @@ function entrada(over: Partial<EntradaDoLivro> = {}): EntradaDoLivro {
     kind: 'receita', ref: '1', state: 'validated', native_status: 'validated', title: 'Abrir conversa', app: 'com.x',
     origin: 'execucao', side_effect: true, human_origin: false, requires_owner: true, created_at: '2026-09-28T10:00:00Z',
     state_at: '2026-09-28T10:00:00Z', last_used_at: null, uses: 3, evidence: { for: 2, against: 0 }, count: null,
-    detail: null, ...over,
+    detail: null, acoes: [], por_que_nao_publica: null, ...over,
   };
 }
+
+const ACAO = (to: EstadoDoLivro, rotulo: RotuloDaAcao): AcaoPermitida => ({ to, rotulo, exige_motivo: true });
 
 function grupo(over: Partial<GrupoDeFalha> = {}): GrupoDeFalha {
   return {
@@ -57,47 +59,44 @@ describe('rótulos', () => {
     expect(rotuloDoKind('memoria')).toBe('Memória da persona');
   });
 
-  it('por que o sistema não publica sozinho (D1)', () => {
-    expect(porQueOSistemaNaoPublica(entrada({ side_effect: true }))).toBe('tem efeito externo');
-    expect(porQueOSistemaNaoPublica(entrada({ side_effect: false, human_origin: true }))).toBe('tem texto de pessoa');
-    expect(porQueOSistemaNaoPublica(entrada({ kind: 'habilidade', side_effect: false }))).toBe('habilidade: publicar é sempre de uma pessoa');
-    expect(porQueOSistemaNaoPublica(entrada({ side_effect: false, human_origin: false }))).toBeNull();
+  it('por que o sistema não publica sozinho: o texto da chave que o backend mandou', () => {
+    const dono = (codigo: 'efeito_externo' | 'texto_de_pessoa' | 'habilidade') => ({ codigo, espera_o_dono: true, detalhe: null });
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: dono('efeito_externo') }))).toBe('tem efeito externo');
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: dono('texto_de_pessoa') }))).toBe('tem texto de pessoa');
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: dono('habilidade') }))).toBe('habilidade: publicar é sempre de uma pessoa');
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: { codigo: 'vetado', espera_o_dono: false, detalhe: 'desligado por uma pessoa' } })))
+      .toBe('desligado por uma pessoa');
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: null }))).toBeNull();
   });
 });
 
-describe('ações da pessoa (a tabela de transições do domínio)', () => {
+describe('ações da pessoa (as `acoes` do backend; o painel só põe o texto)', () => {
   const alvos = (e: EntradaDoLivro) => acoesDoItem(e).map((a) => a.to);
 
-  it('validado: aprovar publica, rejeitar desliga', () => {
-    expect(alvos(entrada({ state: 'validated' }))).toEqual(['published', 'disabled']);
-    expect(acoesDoItem(entrada({ state: 'validated' }))[0]?.label).toBe('Aprovar');
+  it('sem `acoes` (habilidade, memória, receita substituída) não há botão', () => {
+    expect(alvos(entrada({ kind: 'habilidade', acoes: [] }))).toEqual([]);
+    expect(alvos(entrada({ kind: 'memoria', state: null, acoes: [] }))).toEqual([]);
   });
 
-  it('candidato: validar à mão ou rejeitar', () => {
-    expect(alvos(entrada({ kind: 'licao', state: 'candidate' }))).toEqual(['validated', 'disabled']);
+  it('cada chave vira o texto em português e a ordem do backend é mantida', () => {
+    const e = entrada({ acoes: [ACAO('published', 'aprovar'), ACAO('disabled', 'rejeitar')] });
+    expect(acoesDoItem(e).map((a) => [a.to, a.label, a.confirmar, a.perigo])).toEqual([
+      ['published', 'Aprovar', 'Confirmar aprovação', false], ['disabled', 'Rejeitar', 'Confirmar rejeição', true]]);
+    const pub = entrada({ state: 'published', acoes: [ACAO('deprecated', 'aposentar'), ACAO('disabled', 'desligar')] });
+    expect(acoesDoItem(pub).map((a) => a.label)).toEqual(['Aposentar', 'Desligar']);
+    expect(acoesDoItem(entrada({ state: 'disabled', acoes: [ACAO('published', 'reativar')] }))[0]?.label).toBe('Reativar');
   });
 
-  it('publicado: receita aposenta ou desliga; fluxo não tem aposentadoria', () => {
-    expect(alvos(entrada({ state: 'published' }))).toEqual(['deprecated', 'disabled']);
-    expect(alvos(entrada({ kind: 'fluxo', state: 'published' }))).toEqual(['disabled']);
+  it('chave que o painel não conhece (backend mais novo) aparece como veio, sem perigo', () => {
+    const nova = { to: 'published', rotulo: 'promover', exige_motivo: true } as unknown as AcaoPermitida;
+    expect(acoesDoItem(entrada({ acoes: [nova] }))).toEqual([{ to: 'published', label: 'promover', confirmar: 'Confirmar promover', perigo: false }]);
   });
 
-  it('reativar é de pessoa; receita substituída não volta', () => {
-    expect(alvos(entrada({ kind: 'fluxo', state: 'disabled' }))).toEqual(['published']);
-    expect(alvos(entrada({ kind: 'tela', state: 'deprecated' }))).toEqual(['published']);
-    expect(alvos(entrada({ kind: 'receita', state: 'deprecated' }))).toEqual([]);
-  });
-
-  it('habilidade e memória não se decidem pelo livro', () => {
-    expect(alvos(entrada({ kind: 'habilidade', state: 'validated' }))).toEqual([]);
-    expect(alvos(entrada({ kind: 'memoria', state: null }))).toEqual([]);
-  });
-
-  it('aprovar é o próximo passo para cima: candidato → validado, validado → publicado', () => {
-    expect(acaoDeAprovar(entrada({ state: 'candidate' }))?.to).toBe('validated');
-    expect(acaoDeAprovar(entrada({ state: 'validated' }))?.to).toBe('published');
-    expect(acaoDeAprovar(entrada({ state: 'published' }))).toBeNull();
-    expect(acaoDeAprovar(entrada({ kind: 'habilidade', state: 'validated' }))).toBeNull();
+  it('aprovar é o passo para cima que o backend ofereceu: validar ou aprovar', () => {
+    expect(acaoDeAprovar(entrada({ state: 'candidate', acoes: [ACAO('validated', 'validar'), ACAO('disabled', 'rejeitar')] }))?.to).toBe('validated');
+    expect(acaoDeAprovar(entrada({ acoes: [ACAO('published', 'aprovar'), ACAO('disabled', 'rejeitar')] }))?.to).toBe('published');
+    expect(acaoDeAprovar(entrada({ state: 'published', acoes: [ACAO('deprecated', 'aposentar'), ACAO('disabled', 'desligar')] }))).toBeNull();
+    expect(acaoDeAprovar(entrada({ kind: 'habilidade', acoes: [] }))).toBeNull();
   });
 });
 
@@ -127,10 +126,12 @@ describe('habilidade na fila Para aprovar (a rota das habilidades, não a do liv
     expect(acoesNaFila(entrada({ kind: 'habilidade', ref: 'x@2', state: 'candidate' }))).toEqual([]);
   });
 
-  it('os outros tipos seguem a tabela do livro: aprovar (o próximo passo) e rejeitar', () => {
-    expect(acoesNaFila(entrada({ state: 'validated' })).map((a) => a.to)).toEqual(['published', 'disabled']);
-    expect(acoesNaFila(entrada({ kind: 'licao', ref: 'li-1', state: 'candidate' })).map((a) => a.to)).toEqual(['validated', 'disabled']);
-    expect(acaoDeAprovarNaFila(entrada({ state: 'validated' }))?.to).toBe('published');
+  it('os outros tipos seguem as `acoes` do backend: aprovar (o próximo passo) e rejeitar', () => {
+    const validado = entrada({ state: 'validated', acoes: [ACAO('published', 'aprovar'), ACAO('disabled', 'rejeitar')] });
+    expect(acoesNaFila(validado).map((a) => a.to)).toEqual(['published', 'disabled']);
+    expect(acoesNaFila(entrada({ kind: 'licao', ref: 'li-1', state: 'candidate', acoes: [ACAO('validated', 'validar'), ACAO('disabled', 'rejeitar')] }))
+      .map((a) => a.to)).toEqual(['validated', 'disabled']);
+    expect(acaoDeAprovarNaFila(validado)?.to).toBe('published');
     expect(acoesNaFila(entrada({ kind: 'memoria', state: null }))).toEqual([]);
   });
 });

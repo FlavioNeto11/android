@@ -144,24 +144,31 @@ class Repository:
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
-                   ai_profile: tuple[str, str] | None = None) -> tuple[Row, bool]:
+                   ai_profile: tuple[str, str] | None = None,
+                   origem: tuple[str, str] | None = None) -> tuple[Row, bool]:
         """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução.
 
         `targets`: a foto JSON dos alvos resolvidos (migração 051) — persona e origem de cada aparelho e o comando
         sem os destinos. O planejamento roda depois (e é retomado após reinício) a partir desta linha.
 
-        `ai_profile`: `(perfil, origem)` já decididos por quem chama (item 17.7, migração 064); `None` = padrão."""
-        perfil, origem = ai_profile if ai_profile is not None else (None, None)
+        `ai_profile`: `(perfil, origem)` já decididos por quem chama (item 17.7, migração 064); `None` = padrão.
+
+        `origem`: `(pedido_id, ocorrencia_id)` quando a execução nasce de uma ocorrência de pedido (item 28.4, migração
+        067), gravado no MESMO `INSERT`: a ligação nunca existe pela metade. Parâmetro de chamada INTERNA (D3): o
+        `RunCreate` da API pública tem `extra="forbid"` e não ganhou o campo."""
+        perfil, perfil_origem = ai_profile if ai_profile is not None else (None, None)
+        pedido_id, ocorrencia_id = origem if origem is not None else (None, None)
         run_id = new_run_id()
         try:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
-                    " targets, ai_profile, ai_profile_source) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
-                     int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, origem))
+                     int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, perfil_origem,
+                     pedido_id, ocorrencia_id))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None

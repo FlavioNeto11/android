@@ -24,8 +24,8 @@ continua impondo `commit_guard`, `card_guard` e `band_guard` — a lição que c
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
@@ -40,6 +40,7 @@ from app.modules.learning.domain.licoes import (LIMIARES_DA_LICAO, Contraste, Co
                                                 Pedido, Recusa, bloco_de_licoes, escolher, licao_de_contraste,
                                                 licao_de_nota, licao_do_planejador)
 from app.modules.learning.domain.livro import ItemDeAprendizado, NovoItem
+from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Decisao, veredito_de_repeticao
 from app.modules.learning.domain.tokens import TETOS_DE_FABRICA, Teto, estimar_tokens
 from app.modules.learning.domain.vocabulario import Braco, DetalheDeEstado, LivroKind, Modo, Papel, Posicao
@@ -63,6 +64,8 @@ class AjustesDeLicoes:
     minimo_por_braco: int = 8
     maximo_por_braco: int = 20
     holdout_publicada: float = 0.1
+    #: `aprendizado.licoes.por_app`: o modo de cada pacote que sobrescreve o global (§8.10). Vazio = o global vale.
+    por_app: Mapping[str, Modo] = field(default_factory=dict)
 
     def teto(self, papel: Papel) -> Teto:
         return self.planejador if papel is Papel.PLANNER else self.ator
@@ -147,6 +150,21 @@ class ServicoDeLicoes:
         a = self._servico.ajustes
         return a.modo_licoes if a.enabled else Modo.OFF
 
+    def modo_efetivo(self, pacote: str | None) -> Modo:
+        """O modo que vale para `pacote` (§8.10): o override de `por_app`, senão o global. `enabled: false` vence
+        tudo. Sem pacote, o global. É a ÚNICA regra: coleta, publicação e consumo passam por aqui."""
+        a = self._servico.ajustes
+        if not a.enabled:
+            return Modo.OFF
+        return modo_efetivo(a.modo_licoes, self._ajustes().por_app, pacote)
+
+    def _algum_ligado(self) -> bool:
+        """Falso só quando o global e todos os overrides estão em `off` (ou o aprendizado todo está desligado): é o
+        atalho barato que poupa a leitura do digest e da curadoria."""
+        a = self._servico.ajustes
+        if not a.enabled:
+            return False
+        return a.modo_licoes is not Modo.OFF or any(m is not Modo.OFF for m in self._ajustes().por_app.values())
     # ================================================================== registro no digest e na curadoria
     def mineradores(self) -> tuple[_Minerador, ...]:
         return (_Minerador("licoes.exposicoes", self.preencher),
@@ -160,7 +178,7 @@ class ServicoDeLicoes:
     def licoes_para(self, pedido: Pedido) -> list[str]:
         """Uma vez por tentativa (ator) ou por planejamento: as lições que vão ao prompt, com a exposição gravada no
         ato. Leitura indexada das publicadas do app e um INSERT idempotente — nada de IA, nada de varrer o livro."""
-        modo = self.modo
+        modo = self.modo_efetivo(pedido.app)
         if modo is Modo.OFF or not pedido.app:
             return []
         ajustes = self._ajustes()
@@ -195,7 +213,7 @@ class ServicoDeLicoes:
         teto = self._ajustes().teto(papel)
         escolha = escolher(self._repo.publicadas(papel, app), pedido, teto,
                            holdout_publicada=self._ajustes().holdout_publicada, sortear=False)
-        return Previa(app=app, papel=papel, acao=pedido.capability, etapa=pedido.step_hash, modo=self.modo, teto=teto,
+        return Previa(app=app, papel=papel, acao=pedido.capability, etapa=pedido.step_hash, modo=self.modo_efetivo(app), teto=teto,
                       escolha=escolha, bloco=bloco_de_licoes(list(escolha.textos)))
 
     # ================================================================== digest
@@ -204,10 +222,12 @@ class ServicoDeLicoes:
         return self._repo.preencher(run_id, to_iso(self._relogio()))
 
     def minerar_contrastes(self, run_id: str) -> int:
-        if self.modo is Modo.OFF:
+        if not self._algum_ligado():
             return 0
         feitos = 0
         for c in self._repo.contrastes(run_id):
+            if self.modo_efetivo(c.app) is Modo.OFF:
+                continue
             proposta = licao_de_contraste(c)
             if isinstance(proposta, Recusa):
                 self._recusa(proposta.motivo.value)
@@ -218,10 +238,12 @@ class ServicoDeLicoes:
         return feitos
 
     def minerar_plano(self, run_id: str) -> int:
-        if self.modo is Modo.OFF:
+        if not self._algum_ligado():
             return 0
         feitos = 0
         for c in self._repo.contrastes_do_plano(run_id):
+            if self.modo_efetivo(c.app) is Modo.OFF:
+                continue
             proposta = licao_do_planejador(c)
             if isinstance(proposta, Recusa):
                 self._recusa(proposta.motivo.value)
@@ -284,6 +306,9 @@ class ServicoDeLicoes:
         pelo sistema."""
         if item.kind is not LivroKind.LICAO:
             return
+        modo = self.modo_efetivo(item.escopo.app)
+        if modo is Modo.OFF:
+            return
         atual: ItemDeAprendizado | None = item
         if item.state is SkillState.CANDIDATE and not item.human_origin:
             v = veredito_de_repeticao(self._livro.evidencias(item.id), LIMIARES_DA_LICAO)
@@ -295,7 +320,7 @@ class ServicoDeLicoes:
                                  f"repetição: {v.execucoes} execuções reais, {v.a_favor} observações", run_id=run_id)
                      if v.decisao is Decisao.PROMOVE else None)
         if (atual is not None and atual.state is SkillState.VALIDATED and not atual.requires_owner
-                and self.modo is Modo.ON):
+                and modo is Modo.ON):
             self._mover(atual, SkillState.PUBLISHED, "sem efeito externo e repetida (D1): entra na fila de prova",
                         detalhe=DetalheDeEstado.FILA_DE_PROVA.value, run_id=run_id)
 
@@ -305,15 +330,14 @@ class ServicoDeLicoes:
         digest deixou para trás; no `shadow` minera, valida e mede o que já existe, mas não publica nem aposenta por
         falta de exposição (sem prompt não há exposição)."""
         feitos = self._preencher_pendentes(agora)
-        modo = self.modo
-        if modo is Modo.OFF:
+        if not self._algum_ligado():
             return feitos
         feitos += self._notas(agora)
         licoes = self._livro.itens(kind=LivroKind.LICAO)
         for item in licoes:
             if item.state in (SkillState.CANDIDATE, SkillState.VALIDATED):
                 self._avaliar(item)
-        feitos += self._aposentar(agora, modo)
+        feitos += self._aposentar(agora)
         feitos += self._vereditos()
         feitos += self._abrir_provas()
         feitos += self._propor(agora)
@@ -326,6 +350,8 @@ class ServicoDeLicoes:
     def _notas(self, agora: datetime) -> int:
         feitos = 0
         for nota in self._repo.notas(to_iso(agora - timedelta(days=NOTAS_DIAS))):
+            if self.modo_efetivo(nota.app) is Modo.OFF:
+                continue
             proposta = licao_de_nota(nota)
             if isinstance(proposta, Recusa):
                 self._recusa(proposta.motivo.value)
@@ -336,9 +362,12 @@ class ServicoDeLicoes:
         return feitos
 
     def _publicadas(self) -> list[ItemDeAprendizado]:
-        return self._livro.itens(kind=LivroKind.LICAO, state=SkillState.PUBLISHED)
+        """As publicadas dos apps que não estão em `off`: o app desligado não se mede nem se aposenta (nada gravado
+        sobre ele muda enquanto o dono não o religa)."""
+        return [i for i in self._livro.itens(kind=LivroKind.LICAO, state=SkillState.PUBLISHED)
+                if self.modo_efetivo(i.escopo.app) is not Modo.OFF]
 
-    def _aposentar(self, agora: datetime, modo: Modo) -> int:
+    def _aposentar(self, agora: datetime) -> int:
         feitos = 0
         for item in self._publicadas():
             refutacoes = sum(1 for e in self._livro.evidencias(item.id)
@@ -347,7 +376,8 @@ class ServicoDeLicoes:
             saida = aposentadoria(detalhe=item.state_detail, desde=_instante(item.state_at), agora=agora,
                                   ultima_exposicao=_instante(ultima), refutacoes=refutacoes,
                                   absorvida_em=self._repo.absorvida(item.id),
-                                  sem_exposicao_dias=SEM_EXPOSICAO_DIAS if modo is Modo.ON else None)
+                                  sem_exposicao_dias=(SEM_EXPOSICAO_DIAS if self.modo_efetivo(item.escopo.app) is Modo.ON
+                                                        else None))
             if saida is not None:
                 feitos += int(self._mover(item, saida.para, saida.motivo, detalhe=saida.detalhe) is not None)
                 continue

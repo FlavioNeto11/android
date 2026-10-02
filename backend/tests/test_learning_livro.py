@@ -152,6 +152,14 @@ async def test_o_livro_une_as_fontes_com_o_estado_mapeado(mundo: Mundo, cliente:
     assert por_ref[("fluxo", "fluxo-desligado")]["origin"] == "treino"
     assert por_ref[("fluxo", "fluxo-com-efeito")]["app"] == PACOTE                  # o pacote, não o id do app
     assert por_ref[("habilidade", "ig.validada@1")]["requires_owner"] is True
+    # 30.5: as ações da pessoa e o motivo vêm do backend (receita substituída não volta; habilidade tem rota própria)
+    assert [a["rotulo"] for a in por_ref[("receita", str(mundo.legado_com_commit))]["acoes"]] == ["aposentar", "desligar"]
+    assert por_ref[("receita", str(mundo.legado_com_commit))]["por_que_nao_publica"]["codigo"] == "efeito_externo"
+    assert [a["to"] for a in por_ref[("receita", str(mundo.em_quarentena))]["acoes"]] == ["published"]
+    assert por_ref[("receita", str(mundo.substituida))]["acoes"] == []
+    assert por_ref[("habilidade", "ig.validada@1")]["acoes"] == []
+    assert por_ref[("habilidade", "ig.validada@1")]["por_que_nao_publica"]["codigo"] == "habilidade"
+    assert por_ref[("memoria", "p1")]["acoes"] == []
     memoria = por_ref[("memoria", "p1")]
     assert memoria["count"] == 2 and memoria["state"] is None
     assert LEMBRANCA not in r.text                                                 # só a contagem
