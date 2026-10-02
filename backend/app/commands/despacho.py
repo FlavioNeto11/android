@@ -34,7 +34,7 @@ from ..models import CommandState, InstanceActionBody, InstanceState, ReleaseCha
 from ..releases.catalog import InstalacaoIncerta
 from ..security.sessions import operador_atual
 from ..social.repository import frase_da_quarentena
-from ..util import new_command_id, new_token, now, parse_iso
+from ..util import new_command_id, new_token, now, parse_iso, to_iso
 from ..workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, ObserveResult, Progress, Result,
                                ResultAck)
 from ..workers.registry import WorkerError, WorkerLink
@@ -787,6 +787,12 @@ def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *
         # Sem worker que saiba executar o verbo neste aparelho não existe pedido automático: dizer isso no
         # cartão é mais honesto do que abrir um comando que ninguém pode executar.
         return None
+    if verb in ("restart", "reset") and requested_by in REPARO_AUTOMATICO             and (pausa := s.devices.pausa_de_reparo(rt)) is not None:
+        # Aparelho em experimento/manutenção: nada de reparo automático por baixo. Não abre comando (não vira degrau da
+        # escada nem linha no histórico); fica dito no diário, e a pausa expira sozinha.
+        s.bus.emit("log", f"{instance_id}: '{verb}' automático NÃO pedido: reparo pausado até {to_iso(pausa.until)} "
+                          f"({pausa.reason}; {pausa.by}) — {motivo}", level="warn", instance_id=instance_id)
+        return None
     params = InstanceActionBody(confirm=True, idempotency_key=idempotency_key)
     row, repetido = _abrir_comando(s, instance_id, verb, params, requested_by=requested_by)
     if repetido:
@@ -887,6 +893,10 @@ def _reconciliar_uma_vez(s: AppState, worker_id: str, link: WorkerLink, devices:
 #: (`scheduler`). Um reinício de saúde contado como degrau levaria, com mais dois defeitos, ao `reset`.
 REQUESTED_BY_RECONCILIACAO = "reconciliacao"
 REQUESTED_BY_SAUDE = "saude"
+#: Quem emite reparo AUTOMÁTICO (`restart`/`reset`): é isto que a pausa do aparelho (`DeviceManager.pausar_reparo`) segura.
+#: Pedido de pessoa (`panel` e a sessão do operador), o `restart` da rede (o produto, `rede_convergencia.QUEM`), o rodízio
+#: e a reconciliação NÃO entram: a pausa é só da escada e do reinício por saúde.
+REPARO_AUTOMATICO = frozenset({"system", REQUESTED_BY_SAUDE})
 
 #: A escada de reparo automático: quantos `restart` antes de `reset`, e quanto esperar depois de esgotar.
 DEGRAUS_DE_RESTART = 2
@@ -915,6 +925,13 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     """
     rt = s.devices.devices.get(instance_id)
     if rt is None:
+        return None
+    if (pausa := s.devices.pausa_de_reparo(rt)) is not None:
+        # Pausa do aparelho (experimento/manutenção): não decide degrau nem conta no histórico. Volta a ser avaliado
+        # logo depois do fim da pausa — se o aparelho ainda estiver mal, a escada recomeça normalmente.
+        s.devices.adiar_reparo(rt, max(1.0, (pausa.until - now()).total_seconds() + 1.0))
+        s.bus.emit("log", f"{instance_id}: reparo automático pausado até {to_iso(pausa.until)} ({pausa.reason}; "
+                          f"{pausa.by}); a escada não age — {motivo}", level="warn", instance_id=instance_id)
         return None
     # Hospedeiro sobrecarregado: o convidado "degradou" porque a MÁQUINA não tem CPU, não porque o Android dele
     # adoeceu. Subir de degrau aí só piora (reiniciar é o momento mais pesado de um convidado) e, com a escada, chega

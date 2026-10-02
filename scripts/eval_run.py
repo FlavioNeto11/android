@@ -27,6 +27,36 @@ ROOT = Path(__file__).resolve().parents[1]
 ADB = Path(r"C:\Android\Sdk\platform-tools\adb.exe")
 PROVIDER = "content://com.pocqa.messenger.provider"
 TERMINAL = {"completed", "completed_with_issues", "failed", "cancelled", "needs_input"}
+#: Queda transitória do transporte (K-045): o backend segue vivo e a conexão reaproveitada é que cai.
+TRANSITORIOS = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.ConnectError, httpx.ReadTimeout)
+
+
+class Resistente:
+    """Cliente que repete a chamada quando o TRANSPORTE cai (`RemoteProtocolError`, `ReadError`, ...) em vez de abandonar a bateria
+    com uma execução em curso órfã (K-045). Só o transporte: resposta HTTP de erro (4xx/5xx) não é repetida aqui, e a leitura que
+    segue falhando depois das tentativas levanta a exceção original. O POST de `/api/runs` leva a `idempotency_key` do caso, então
+    repetir o mesmo corpo devolve a execução já criada em vez de abrir outra; o cancelamento também é seguro de repetir."""
+
+    def __init__(self, http: httpx.Client, *, tentativas: int = 4, espera_s: float = 1.0, dorme=time.sleep) -> None:
+        self._http, self._tentativas, self._espera_s, self._dorme = http, tentativas, espera_s, dorme
+
+    def _repetindo(self, metodo: str, *args: object, **kw: object) -> httpx.Response:
+        for n in range(1, self._tentativas + 1):
+            try:
+                return getattr(self._http, metodo)(*args, **kw)
+            except TRANSITORIOS as exc:
+                if n == self._tentativas:
+                    raise
+                print(f"  (queda transitória do transporte: {type(exc).__name__}; nova tentativa {n + 1}/{self._tentativas})",
+                      file=sys.stderr)
+                self._dorme(self._espera_s * n)
+        raise AssertionError("inalcançável")
+
+    def get(self, *args: object, **kw: object) -> httpx.Response:
+        return self._repetindo("get", *args, **kw)
+
+    def post(self, *args: object, **kw: object) -> httpx.Response:
+        return self._repetindo("post", *args, **kw)
 
 
 def adb(serial: str, *args: str) -> str:
@@ -109,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         # Seguro por padrão: sem --yes não se abre NEM a conexão de leitura. O plano sai só do YAML local.
         print(plano(cases, spec, a))
         return 2
-    http = httpx.Client(base_url=a.base, timeout=30, headers={"Origin": a.base})
+    http = Resistente(httpx.Client(base_url=a.base, timeout=30, headers={"Origin": a.base}))
     ai = http.get("/api/ai").json()
     insts = {i["id"]: i for i in http.get("/api/instances").json()}
     apps = {x["package"] for x in http.get("/api/apps").json()}
@@ -139,15 +169,26 @@ def main(argv: list[str] | None = None) -> int:
         run = http.post("/api/runs", json={"command": case["command"], "instance_ids": ids, "mode": "execute",
                                            "idempotency_key": f"eval-{uuid.uuid4()}"}).json()
         deadline = t0 + case.get("timeout_s", spec["defaults"]["timeout_s"])
+        detail = None
         while True:
             time.sleep(3)
-            detail = http.get(f"/api/runs/{run['id']}").json()
+            try:
+                detail = http.get(f"/api/runs/{run['id']}").json()
+            except TRANSITORIOS:
+                # Esgotou as tentativas desta leitura: a execução segue viva no backend, então se espera a próxima volta
+                # (até o prazo) em vez de largá-la órfã. Sem nenhuma leitura boa até o prazo, o erro aparece abaixo.
+                if time.monotonic() > deadline:
+                    http.post(f"/api/runs/{run['id']}/cancel", json={})
+                    break
+                continue
             pending = [o for o in detail["objectives"] if o["status"] in ("pending", "running")]
             if detail["status"] in TERMINAL or (detail["status"] == "running" and detail["objectives"] and not pending):
                 break
             if time.monotonic() > deadline:
                 http.post(f"/api/runs/{run['id']}/cancel", json={})
                 break
+        if detail is None:
+            raise RuntimeError(f"{case['id']}: nenhuma leitura de /api/runs/{run['id']} respondeu até o prazo")
         secs = round(time.monotonic() - t0)
         got = "needs_input" if detail["status"] == "needs_input" else (
             sorted({o["status"] for o in detail["objectives"]}) or [detail["status"]])

@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — W8: o executor da validação real não dobra o prefixo /api (achado ANTES do 1º boot)
+
+- `scripts/diag-w8-mitigacao.py`: `Api` montava `/api/api/...` (a base já termina em `/api`); o firewall-check do 1º disparo real (02/10 15:25Z) devolveu 405 e o protocolo parou em `INCONCLUSIVE` "BLOQUEADO" sem escrever nada, nenhum boot. Corrigido com teste (`UrlsDoApi`) e saída em UTF-8 (o plano com `≤` quebrava no console cp1252). O protocolo pré-comprometido não muda; nada tinha rodado.
+
+## 2026-10-02 — pausa do reparo automático por aparelho (W8, quase-acidente do §17.4) (branch `feat/pausa-de-reparo`)
+
+- **Plataforma.** `PUT`/`DELETE /api/instances/{id}/repair-pause`: o central deixa de emitir `restart`/`reset` AUTOMÁTICOS
+  (escada de reparo e reinício por saúde) para UM aparelho marcado em experimento ou manutenção. Desligada por padrão,
+  prazo (`ttl_s`, 60 s a 3 h) obrigatório, expira sozinha, aparece em `instances[].repair_pause` e em
+  `GET /api/health` → `features.repair_pause` (informativo, não é problema). Comando de pessoa, o `restart` da rede e os
+  outros aparelhos passam; não mexe na manutenção do worker.
+- **Por quê.** No estágio 1 do W8 a escada pediu um `restart` do android-09 15 s depois do restart do experimento; só a
+  rejeição `device_busy` (acidental) o barrou (`docs/handoffs/w8-boot-recovery.md` §17.4).
+- Prova: `simulated` (`backend/tests/test_pausa_de_reparo.py`, 8 testes). Docs: `docs/dominios/parque.md`, `docs/api-contract.md`.
+
 ## 2026-10-01 — a rede religa o túnel pelo Start da interface do cliente, não pelo tile (W8) (branch `fix/w8-sfa-service-mode`)
 
 - **Correção (não implantada).** O tile do SFA 1.14.2 não recalcula o `serviceMode`: num cliente que só importou o perfil
@@ -97,6 +112,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — Retrieval: orçamento padrão novo — 5 candidatos, 16 chunks, teto 28.000 (J13)
 
 - O J12 sustentou: a etapa B vale o gasto (região 5/6 contra 2/6 do local, −88% de linhas a ler, +40% de custo). Padrão de `context_retrieval.semantic`: `max_candidate_files` 8 → 5, `max_chunks` 24 → 16, `max_input_tokens` 24.000 → 28.000 (`backend/app/config.py` e `domain/model.py`, iguais; exemplo em `config/config.example.yaml`). Com os padrões antigos a B era barrada (`budget_exceeded`); o teto novo dá margem ao maior pedido medido (22.748) e cobre até a B no teto de bytes. `simulated`: `test_context_retrieval_orcamento_padrao.py` (4). Nada muda no ambiente central: o retrieval segue desligado por padrão e a política de envio é a mesma. Rodízio de chunks (H25) e nova medição paga ficam pendentes. Sem deploy.
+
+## 2026-10-02 — Avaliação: `eval_run.py` resiste a queda transitória do transporte (17.11, K-045)
+
+- `scripts/eval_run.py` ganhou `Resistente`: repete a chamada (4 tentativas, espera crescente) em `RemoteProtocolError`/`ReadError`/`WriteError`/`ConnectError`/`ReadTimeout`, o POST de `/api/runs` repete com a mesma `idempotency_key` (não abre outra execução) e o laço de espera tolera uma leitura que esgote as tentativas, até o prazo, em vez de largar a execução órfã. Resposta HTTP de erro não é repetida. `simulated`: 7 casos de teste novos em `scripts/tests/test_eval_run.py` (cliente falso, sem rede nem sleep; mutação que apaga a repetição derruba 5). Nenhuma chamada ao backend nem ao adb foi feita; a prova `real` é a próxima bateria. Sem deploy.
 
 ## 2026-10-02 — Retrieval: ablação A × A+B por região, medida (J12, `real`)
 

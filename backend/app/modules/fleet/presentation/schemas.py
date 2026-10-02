@@ -133,3 +133,10 @@ class ServerLimitsPatch(BaseModel):
     #: Teto de aparelhos EXISTENTES na máquina (migração 050): é o que `POST /api/instances` confere antes de
     #: criar mais um. `null` = sem teto. Não vai para o agente (o esquema do fio está congelado, ADR-031).
     max_devices: int | None = Field(default=None, ge=1, le=256)
+
+
+class RepairPauseBody(BaseModel):
+    """Pausa do reparo automático de UM aparelho: o prazo é OBRIGATÓRIO (sem ele a pausa ficaria esquecida ligada) e tem teto de 3 h."""
+
+    ttl_s: int = Field(ge=60, le=10_800)
+    reason: str = Field(min_length=3, max_length=200)
