@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.21: reinício pedido pela rede que nunca sai (retentativa de 30 s e termo que segurou, branch fix/29-21-reinicio-da-rede)
+
+- `backend/app/devices/rede_convergencia.py`: `_pedir_reinicio` diz na linha (`detail`) QUAL termo do "ocupado" segurou o reinício (worker, controle, objetivo, comando exclusivo, estado do aparelho, verbo `restart` ausente ou recusa), uma vez por termo e uma no esgotamento das 24 tentativas, sem ruído a cada 5 s; com objetivo parado em `wait_reason='rede'` neste aparelho o esgotamento retenta em `retentativa_do_reinicio_s` (30 s) em vez de pôr 300 s de mudez (android-05, 02/10: a execução ficou presa 7 min).
+- `backend/app/vitrine.py`: `objetivo_que_segura` (o id que `objetivo_em_andamento` conta) e `objetivo_esperando_a_rede`.
+- Dívida registrada: o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e zeram no restart do central. Causa exata do "ocupado" no android-05 NÃO provada.
+- Prova `simulated`: `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` (4 casos) e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; `tests/test_rede_*.py` e os testes da vitrine passam. Real `not_run`: reproduzir no android-05.
+- Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.21), `docs/conhecimento/aprendizados.md` (K-071).
+
 ## 2026-10-02 — Papel de IA `persona` para a geração de persona (17.8, branch jev/17-8-papel-persona)
 
 - `backend/app/config.py`: `AI_ROLES` ganha `persona`; `Config.ai_role` resolve `persona` SEM `ai.roles.persona` como o `social` (o bloco dele e, nos perfis do 17.7, a camada `social` e depois a `persona`); com bloco próprio o do `social` não vale para ela. `ROLE_DEFAULTS`, `ai_model_for` e `ai_effort_for` tratam `persona` como `social`: instalação existente não muda sem mexer na configuração.

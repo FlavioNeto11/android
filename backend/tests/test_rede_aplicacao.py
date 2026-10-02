@@ -1468,3 +1468,109 @@ async def test_manutencao_do_worker_recusa_o_reinicio_da_rede_e_nao_o_device_net
     [_, aceito] = st.db.query("SELECT * FROM commands WHERE verb='restart' ORDER BY created_at, id")
     assert aceito["state"] != "rejected"
     assert conv.memoria("android-01").reinicios.get(1) == 2
+
+
+# ============================================================================ 29.21: o reinício que a rede pede e nunca sai
+def _objetivo_parado(parque: Harness, status: str, wait_reason: str | None, iid: str = "android-01",
+                     oid: str = "run-2921:o1") -> str:
+    """Um objetivo de execução `running` SEM etapa pronta (o escalonador não o despacha): só a linha que a convergência
+    e a vitrine leem. `wait_reason='rede'` é a espera da porta (25.6 `running`, ou `pending` pelo despacho)."""
+    st = parque.state
+    assert st is not None
+    st.db.execute("INSERT OR IGNORE INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids,"
+                  " created_at, plan) VALUES ('run-2921','k-2921','teste','execute','running',1,?,?,'{}')",
+                  (json.dumps([iid]), now_iso()))
+    st.db.execute("DELETE FROM objectives WHERE id=?", (oid,))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, wait_reason)"
+                  " VALUES (?,'run-2921',?,?,1,?)", (oid, iid, status, wait_reason))
+    return oid
+
+
+@pytest.mark.parametrize("status", ["running", "pending"])
+@pytest.mark.parametrize("ocupado", [False, True], ids=["livre", "ocupado_24_tentativas"])
+async def test_reinicio_com_objetivo_esperando_a_rede(parque: Harness, monkeypatch: pytest.MonkeyPatch, ocupado: bool,
+                                                      status: str) -> None:
+    """android-05 (02/10): `configurado` sem boot, um objetivo parado em `wait_reason='rede'` e nenhum `restart` aberto
+    nunca. O objetivo que espera a rede NÃO segura o reinício em nenhum termo; com o aparelho ocupado por outro motivo,
+    esgotadas as tentativas (24 de 5 s) NÃO vêm os 300 s mudos: a retentativa de ~30 s abre o `restart` assim que solta."""
+    from app.models import ControlOwner
+
+    st = parque.state
+    assert st is not None
+    _, reinicios, _ = _preparar(parque, monkeypatch)
+    conv = st.rede_convergencia
+    conv.intervalo_do_reinicio_s = 0.001                                           # as 24 tentativas, sem esperar de verdade
+    conv.retentativa_do_reinicio_s = 0.05                                          # o "30 s" do produto
+    rt = st.devices.devices["android-01"]
+    oid = _objetivo_parado(parque, status, "rede")
+    if ocupado:
+        rt.control = ControlOwner.ai                                               # outro trabalho no aparelho
+    try:
+        assert await _passo(parque, "pedido")                                      # `configurado`, reinício agendado
+        if ocupado:
+            await parque.wait(lambda: "nova tentativa em" in str((_linha(parque) or {}).get("detail")), 10,
+                              "esgotamento das tentativas dito na linha")
+            assert reinicios.pedidos == []
+            assert conv.memoria("android-01").espera_ate == 0.0                    # nada de 300 s de mudez
+            assert "android-01" in conv._reinicio_agendado                         # a retentativa está agendada
+            detalhe = str(_linha(parque)["detail"])
+            assert "controle da IA" in detalhe and f"objetivo {oid} espera a rede" in detalhe, detalhe
+    finally:
+        rt.control = ControlOwner.none
+    await parque.wait(lambda: len(reinicios.pedidos) == 1, 10, "o restart pedido")
+    assert [i for i, _ in reinicios.pedidos] == ["android-01"]
+    assert "android-01" not in conv._reinicio_agendado
+    assert conv.memoria("android-01").reinicio_segurado == ""
+    assert _linha(parque)["state"] == "configurado" and "reinício c-teste-1 pedido" in str(_linha(parque)["detail"])
+
+
+async def test_reinicio_que_nao_sai_diz_qual_termo_segurou(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A observação (29.21): o termo de `ocupado` que segurou o reinício vai para a linha, UMA vez por termo (a tentativa
+    é de 5 em 5 s), o esgotamento e o `restart` que o worker não sabe fazer também dizem a causa."""
+    from app.models import ControlOwner
+
+    st = parque.state
+    assert st is not None
+    _, reinicios, _ = _preparar(parque, monkeypatch)
+    conv = st.rede_convergencia
+    conv.atraso_do_reinicio_s = 3600.0                                             # as tentativas só correm daqui, à mão
+    conv.intervalo_do_reinicio_s = 3600.0
+    agora = [1_000_000.0]
+    conv._agora = lambda: agora[0]
+    gravadas: list[str] = []
+    registrar0 = rede.registrar_observacao
+
+    def registrar(st_, iid, *, rev, estado, evidencia, **kw):
+        gravadas.append(evidencia)
+        return registrar0(st_, iid, rev=rev, estado=estado, evidencia=evidencia, **kw)
+
+    monkeypatch.setattr(rede, "registrar_observacao", registrar)
+    assert await _passo(parque, "pedido")                                          # `configurado`, nada pedido ainda
+    gravadas.clear()
+    rt = st.devices.devices["android-01"]
+    rt.control = ControlOwner.user
+    conv._pedir_reinicio("android-01", 1, "m", 5)
+    conv._pedir_reinicio("android-01", 1, "m", 4)                                  # mesmo termo: não regrava
+    assert len(gravadas) == 1 and "aguarda o aparelho: controle de uma pessoa" in gravadas[0]
+    rt.control = ControlOwner.none
+    oid = _objetivo_parado(parque, "waiting_user", None)
+    conv._pedir_reinicio("android-01", 1, "m", 3)                                  # outro termo: grava
+    assert len(gravadas) == 2 and f"objetivo {oid} em andamento" in gravadas[1]
+    assert reinicios.pedidos == []
+    # Esgotou, sem objetivo esperando a rede: diz o termo e a espera de 5 min, e a varredura volta depois.
+    conv._reinicio_agendado.add("android-01")
+    conv._pedir_reinicio("android-01", 1, "m", 0)
+    assert "não saiu em 25 tentativas" in gravadas[2] and f"objetivo {oid} em andamento" in gravadas[2]
+    assert "5 min" in gravadas[2] and len(gravadas) == 3
+    assert conv.memoria("android-01").espera_ate == agora[0] + 300.0
+    assert "android-01" not in conv._reinicio_agendado
+    # Livre, mas o worker do aparelho não tem o verbo: `pedir_ciclo_de_vida` devolve None sem abrir linha, e a causa fica dita.
+    st.db.execute("UPDATE objectives SET status='succeeded' WHERE id=?", (oid,))
+    reinicios.aceitar = False
+    conv._pedir_reinicio("android-01", 1, "m", 0)
+    assert len(reinicios.pedidos) == 1 and "recusado no pré-voo ou pela pausa de reparo" in gravadas[-1]
+    rt.worker_verbs = []
+    conv._pedir_reinicio("android-01", 1, "m", 0)
+    assert len(reinicios.pedidos) == 2
+    assert "reinício da rede não foi aceito: o worker do aparelho não tem o verbo restart" in gravadas[-1]
+    assert "reinício da rede não foi aceito" in str(_linha(parque)["detail"])
