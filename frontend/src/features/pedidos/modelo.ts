@@ -14,6 +14,7 @@ import type {
   TipoDeGatilho,
 } from '../../api/pedidos';
 import type { StatusMeta } from '../../lib/status';
+import { formatUsd as formatUsdDoUso } from '../usage/usage';
 
 export const ESTADOS_DO_PEDIDO: readonly EstadoPedido[] = [
   'ativo', 'aguardando_pessoa', 'pausado', 'rascunho', 'concluido', 'encerrado', 'cancelado',
@@ -83,7 +84,7 @@ export function instanteCanonico(d: Date): string {
 
 export function formatUsd(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return '—';
-  return `US$ ${n.toFixed(n !== 0 && Math.abs(n) < 1 ? 3 : 2)}`;
+  return formatUsdDoUso(n);   // o mesmo formato do resto do painel: vírgula decimal, "US$ 0,00"
 }
 
 /** "3h" a partir de segundos, só para o intervalo mínimo e a janela. */
