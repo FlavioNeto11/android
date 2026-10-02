@@ -456,6 +456,21 @@ Decisão do dono (02/10, via sessão orquestradora): "Sim, r4 + pausar os vizinh
 - **Estado de partida (declarado):** baseline do 09 restaurado pelo rollback do r3 (SFA `stopped=true`, always-on null, sem `tun0`, sem linha, 4 peers).
 - **Prova:** `simulated` (`scripts/tests/test_diag_w8_mitigacao.py`, 76 com o `test_diag_w8_boot.py`); o resultado real vai em §17.10.
 
+### 17.10 Resultado real da rodada r4 (02/10/2026 16:08:22Z a 16:14:32Z; seed `w8-mitigacao-20261002-r4`; central `bcea158`, scripts `1e49bdf`; **real**): **W8 = PASS**
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002-r4/`. Pré-registro: §17.9 (gravado antes do boot, PR #45).
+
+| Passo | Resultado |
+|---|---|
+| Pré-voo, firewall (`liberado`, só lido), janela ociosa (31 s), pausa do 09 e **dos vizinhos 01/03/06 conferidas no health** | ok |
+| Par do 09 (servidor WG, 1º reinício) | `assign` 200 às 16:08:58Z; **03/06 reconectaram em 30,1 s** |
+| **Iteração 1 (boot 4 de 6; `restart` `c-20261002161008-5a2fcc`, 16:10:08Z, `rede`)** | **`RECOVERED_BY_UI`**: o `tun0` não subiu sozinho; aos 193 s o produto fez UM Start pela interface e o túnel subiu ("túnel religado pelo Start da interface do cliente, sem reinício", 16:13:22Z); nenhum reinício extra, nenhuma falha da interface; nenhum ciclo de vida de outro aparelho na janela |
+| Rollback | janela ociosa ok; `force-stop` do SFA (`stopped=true`) → `assign vpn=null` → servidor WG reiniciou (12,2 s), **03/06 reconectaram em 30,1 s**; **UM só** reinício de rollback (`c-20261002161400-02392a`); SFA não religou; pausas do 09 e dos vizinhos encerradas (200 nos quatro); linha de rede removida, 4 peers, `health` ok `problems []`, hierarquia 200 |
+
+**Veredito (critério pré-registrado: a `RECOVERED_BY_UI` válida do r4 somada à do r3): `PASS`.** `PROVED` (n=2 boots válidos, ambos com falha real e recuperação pelo produto): com a política `livre` + `vpn-central-wireguard` e o always-on no android-09, o `tun0` **não subiu sozinho** (2 de 2 boots válidos) e a mitigação do PR #17 o religou com UM Start pela interface do cliente, sem reinício extra e sem falha da interface (r3 iteração 1: 198 s; r4: 193 s). Uma 3ª ocorrência concordante (r3 iteração 2) foi invalidada pela regra e não conta. **Escopo e limites:** só o android-09, SFA 1.14.2, o produto em `bcea158`; a causa raiz do `SILENT_STOP` segue `NARROWED` (não determinada); o PASS prova a **mitigação**, não a causa. A correção do rollback (A11, PR #44) está na `main` e **não** implantada.
+
+**Contagem final:** reinícios reais contados 4 de 6 (1 do r2, 2 do r3, 1 do r4); reinícios de rollback fora da conta: 2 (r2), 1 (r3), 1 (r4). Reinícios do servidor WireGuard: 2 por rodada (r2, r3, r4), todos em janela ociosa com reconexão de 03/06 em 20 a 30 s. Nenhum ciclo de vida de outro aparelho no r4 (com os vizinhos pausados; a regra de bystander não mudou).
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
