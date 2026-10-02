@@ -1341,10 +1341,11 @@ class RunService:
         per_instance = []
         # Item 24.3: o valor que uma etapa leu e outra usou, com a ORIGEM (etapa e app) — é o que diz de onde veio o
         # alvo de uma ação. Só dado comum: código, senha e token nunca chegam à tabela (triagem do executor).
-        lidos: dict[str, list[dict[str, str | None]]] = {}
+        lidos: dict[str, list[dict[str, str | int | None]]] = {}
         for v in self.repo.saidas_da_execucao(run_id):
             lidos.setdefault(str(v["objective_id"]), []).append(
-                {k: v[k] for k in ("name", "value", "value_kind", "step_title", "app", "read_at")})
+                {k: v[k] for k in ("name", "value", "value_kind", "step_title", "app", "read_at", "origem", "leitor",
+                                   "frame_sha256", "evidence_id")})
         for o in detail.objectives:
             steps = [s for s in detail.steps if s.objective_id == o.id and s.plan_version == o.plan_version]
             manual = [s.title for s in detail.steps if s.objective_id == o.id and s.result and not s.result.verified]
@@ -1385,6 +1386,11 @@ class RunService:
             md += [f"| {p['instance_id']} | {v['name']} = {_celula(v['value'])} | {v['value_kind']} | "
                    f"{_celula(v['step_title'])} | {_celula(v['app'] or 'app do plano')} |"
                    for p in per_instance for v in p["values_read"]]
+            # Item 12.5: o valor lido da IMAGEM diz como foi conferido, em frase fixa (sem o texto do recorte).
+            visuais = [(p["instance_id"], v) for p in per_instance for v in p["values_read"] if v.get("origem") == "visual"]
+            if visuais:
+                md += [""] + [f"- {i} · {v['name']}: lido da imagem; conferido às cegas por {_celula(str(v['leitor']))} "
+                              f"no recorte da captura {str(v['frame_sha256'] or '')[:8]}" for i, v in visuais]
         md += ["", "Somente itens com SUCESSO comprovado contam como concluídos. Itens bloqueados, incertos, "
                    "cancelados ou não iniciados NÃO contam como sucesso."]
         return {"run": RunSummary(**detail.model_dump(include=set(RunSummary.model_fields))).model_dump(mode="json"),
