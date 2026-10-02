@@ -81,6 +81,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Retrieval: medição local de qualidade neste repositório (J4)
+
+- **`scripts/context-retrieval-local-eval.py`** (novo, só mede): avalia lexical, BM25 e híbrido local em 40 commits `feat`/`fix` da `main`, com o índice no estado do pai do commit (sem vazar a resposta). Zero rede e zero chamada paga. `real` (02/10, central, `--ate 40316ba`): com escopo de código o BM25 chega a 82,5% hit@3 e 0,652 MRR@10; sem escopo cai para 30%; o `hybrid_local` fica abaixo do BM25 puro (72,5%); a primeira consulta de cada revisão custa ~5,5 s. Números, limites e propostas (não aplicadas) em `docs/dominios/context-retrieval.md`. `simulated`: `scripts/tests/test_context_retrieval_local_eval.py` (8, git real em pasta temporária; o anti-vazamento falha se o índice usar o commit em vez do pai).
+
+## 2026-10-02 — Retrieval: duas dívidas pequenas fechadas (J3)
+
+- **Rótulo `stage_b_cache`**: ficava `miss` também quando o orçamento barrava a etapa B antes de qualquer chamada. Agora só vira `miss` depois de `check_call` aprovar; bloqueada fica `skipped` (com `stage_b_reason`). Teste discriminante em `test_context_retrieval_semantic.py` (falha com o código antigo).
+- **Gate de worktree limpo**: não via arquivo marcado `assume-unchanged` ou `skip-worktree` (o `git status` sai vazio). `worktree_limpo` passa a ler também `git ls-files -v -z` e trata qualquer marca como sujo, mesmo sem alteração; `ls-files` que falha dá `None`. Um sparse-checkout (que usa `skip-worktree`) também bloqueia o envio remoto, de propósito. 6 testes novos em `test_context_retrieval_privacy_gates.py` (modificado escondido, só a marca, desmarcar limpa, git falhando); com o gate antigo eles falham. `simulated`: git real em pasta temporária, GitHub e provedor falsos.
+
+## 2026-10-02 — Falsas falhas de `git worktree` na suíte
+
+- **`worker-install.ps1`**: sem o venv do central à mão, lia `.git\HEAD` como pasta; num `git worktree` o `.git` é um arquivo `gitdir:` e a versão saía `0.1.0+desconhecido`. Agora segue `gitdir:` → HEAD do worktree → ref na pasta comum (`commondir`) ou em `packed-refs`, espelhando `app/version.py`. Prova: `test_instalacao_do_worker.py` 20/20 em worktree e 25/25 (com o backup) num checkout normal; o script real foi rodado com ref solta, `packed-refs`, HEAD destacado e worktree, e a versão bateu com o SHA.
+- **`test_backup_e_restore_ensaio_de_ponta_a_ponta`**: dependia do `config/config.yaml` da instalação (copiado pelo `backup.ps1`), que não existe em worktree. O teste agora monta a própria raiz temporária (scripts reais, `config.yaml` de fixture, interpretador do venv em uso) e roda a cópia; não toca no `config.yaml` real. Controle: o teste antigo falha num worktree com venv e sem config; o novo passa. Só testes e um script; sem mudança no backend.
+
+## 2026-10-02 — Retrieval de contexto: PR #18 mergeado e prova real do Jev registrada
+
+- **Docs.** `docs/dominios/context-retrieval.md` passa de `not_run` para `real` na chamada ao Jev em código PÚBLICO (`python-poetry/poetry` @ `94b6e35`, 02/10, commits `a07ff80` e `a88d609`; 11 de 12 chamadas, 0 fallbacks, ~US$ 0,006; etapa A/B por caso: H14 A+B, H13 só A com B bloqueada por `budget_exceeded`) e lista as dívidas para habilitar o uso remoto em "Limites conhecidos". `docs/estado-atual.md` com o topo atualizado. Só docs; sem chave, sem código.
+
 ## 2026-10-01 (noite) — Retrieval de contexto de código (ADR-063), branch `feat/context-retrieval`
 
 Na branch, **não mergeada na `main`** e **não implantada**; desligado por padrão (`context_retrieval.enabled: false`), então

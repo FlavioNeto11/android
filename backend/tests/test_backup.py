@@ -86,19 +86,38 @@ def test_copia_nao_escreve_na_origem(tmp_path: Path) -> None:
         conn.close()
 
 
+def _raiz_isolada(tmp_path: Path) -> Path:
+    """Uma raiz de projeto MÍNIMA numa pasta temporária: os scripts reais, um `config/` de fixture e o interpretador do
+    venv em uso. `backup.ps1` e `restore.ps1` descobrem a raiz por `$PSScriptRoot`, então rodar a cópia faz o teste não
+    depender do `config.yaml` da instalação (que num `git worktree` ou checkout limpo não existe) nem tocar nele."""
+    venv_py = Path(sys.executable)
+    cfg_venv = venv_py.parent.parent / "pyvenv.cfg"
+    if sys.prefix == sys.base_prefix or not cfg_venv.exists():
+        pytest.skip("o teste precisa rodar num venv: os scripts usam o python.exe do venv do backend")
+    raiz = tmp_path / "projeto"
+    shutil.copytree(SCRIPTS, raiz / "scripts", ignore=shutil.ignore_patterns("tests", "__pycache__"))
+    (raiz / "config").mkdir()
+    (raiz / "config" / "config.yaml").write_text("# fixture do teste de backup\nserver: {port: 0}\n", encoding="utf-8")
+    destino = raiz / "backend" / ".venv"
+    (destino / "Scripts").mkdir(parents=True)
+    shutil.copy2(venv_py, destino / "Scripts" / "python.exe")
+    shutil.copy2(cfg_venv, destino / "pyvenv.cfg")
+    return raiz
+
+
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
-@pytest.mark.skipif(not (RAIZ / "backend" / ".venv" / "Scripts" / "python.exe").exists(),
-                    reason="backup.ps1 usa o interpretador do venv do backend")
 def test_backup_e_restore_ensaio_de_ponta_a_ponta(tmp_path: Path) -> None:
     """O ensaio que o achado pedia: a restauração é exercitada numa pasta limpa, e é ela que prova que o
     procedimento funciona — procedimento de recuperação que ninguém executa se descobre quebrado no pior dia."""
+    raiz = _raiz_isolada(tmp_path)
+    scripts = raiz / "scripts"
     banco = tmp_path / "poc.sqlite3"
     conn = _banco_com_wal_vivo(banco)
     destino = tmp_path / "backups"
     try:
-        r = subprocess.run(["pwsh", "-NoProfile", "-File", str(SCRIPTS / "backup.ps1"),
+        r = subprocess.run(["pwsh", "-NoProfile", "-File", str(scripts / "backup.ps1"),
                             "-Banco", str(banco), "-Destino", str(destino), "-Reter", "0"],
-                           capture_output=True, text=True, timeout=180, cwd=str(RAIZ))
+                           capture_output=True, text=True, timeout=180, cwd=str(raiz))
     finally:
         conn.close()
     assert r.returncode == 0, r.stdout + r.stderr
@@ -122,9 +141,9 @@ def test_backup_e_restore_ensaio_de_ponta_a_ponta(tmp_path: Path) -> None:
 
     # --- a restauração, em pasta limpa, sem tocar em nada do projeto
     ensaio = tmp_path / "ensaio"
-    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(SCRIPTS / "restore.ps1"),
+    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(scripts / "restore.ps1"),
                         "-De", str(pasta), "-Para", str(ensaio)],
-                       capture_output=True, text=True, timeout=180, cwd=str(RAIZ))
+                       capture_output=True, text=True, timeout=180, cwd=str(raiz))
     assert r.returncode == 0, r.stdout + r.stderr
     assert "integridade=ok" in r.stdout
     assert "ENSAIO" in r.stdout

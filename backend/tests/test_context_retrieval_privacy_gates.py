@@ -734,8 +734,26 @@ def _sujar_renomeado(raiz: Path) -> None:
     _git(raiz, "mv", "docs/guia.md", "docs/guia2.md")
 
 
-@pytest.mark.parametrize("sujar", [_sujar_modificado, _sujar_untracked, _sujar_deletado, _sujar_staged, _sujar_renomeado],
-                         ids=["modificado", "untracked", "deletado", "staged", "renomeado"])
+def _sujar_assume_unchanged(raiz: Path) -> None:
+    """Alteração real, escondida do `git status` pelo índice: `status` sai vazio, o conteúdo local não é o do commit."""
+    _sujar_modificado(raiz)
+    _git(raiz, "update-index", "--assume-unchanged", "app/cadastro.py")
+
+
+def _sujar_skip_worktree(raiz: Path) -> None:
+    _sujar_modificado(raiz)
+    _git(raiz, "update-index", "--skip-worktree", "app/cadastro.py")
+
+
+def _sujar_so_a_marca(raiz: Path) -> None:
+    """Nem alterou o arquivo: a marca existir já tira a garantia de que `status` diz tudo (fail closed)."""
+    _git(raiz, "update-index", "--assume-unchanged", "docs/guia.md")
+
+
+@pytest.mark.parametrize("sujar", [_sujar_modificado, _sujar_untracked, _sujar_deletado, _sujar_staged, _sujar_renomeado,
+                                   _sujar_assume_unchanged, _sujar_skip_worktree, _sujar_so_a_marca],
+                         ids=["modificado", "untracked", "deletado", "staged", "renomeado", "assume-unchanged",
+                              "skip-worktree", "so-a-marca"])
 def test_worktree_sujo_nao_monta_mapa_nem_chunk_nem_chama_e_nem_vai_a_rede(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
                                                                            sujar: Any) -> None:
     raiz, _ = _repo_publicavel(tmp_path)
@@ -832,6 +850,32 @@ def test_leitura_real_do_estado_do_git_cobre_cada_tipo_de_alteracao(tmp_path: Pa
         assert gv.worktree_limpo(raiz) is True
         sujar(raiz)
         assert gv.worktree_limpo(raiz) is False, sujar.__name__
+
+
+@pytest.mark.parametrize("marca,desfaz", [("--assume-unchanged", "--no-assume-unchanged"), ("--skip-worktree", "--no-skip-worktree")])
+def test_marca_de_indice_esconde_do_status_mas_o_gate_ve_e_desmarcar_limpa(tmp_path: Path, marca: str, desfaz: str) -> None:
+    raiz, _ = _repo_publicavel(tmp_path)
+    assert gv.worktree_limpo(raiz) is True
+    _sujar_modificado(raiz)
+    assert gv.worktree_limpo(raiz) is False                          # visível ao status: já era dirty
+    _git(raiz, "update-index", marca, "app/cadastro.py")
+    status = subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=raiz, capture_output=True, check=True)
+    assert status.stdout.strip() == b""                              # a premissa do furo: o status NÃO mostra nada
+    assert gv.worktree_limpo(raiz) is False                          # e o gate mostra
+    _git(raiz, "update-index", desfaz, "app/cadastro.py")
+    _git(raiz, "checkout", "--", "app/cadastro.py")
+    assert gv.worktree_limpo(raiz) is True                           # sem marca e sem alteração: volta a ser limpo
+
+
+def test_ls_files_que_falha_nao_prova_worktree_limpo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    raiz, _ = _repo_publicavel(tmp_path)
+    real = gv._git
+
+    def sem_ls_files(r: Path, *args: str, **kw: Any):
+        return None if args and args[0] == "ls-files" else real(r, *args, **kw)
+
+    monkeypatch.setattr(gv, "_git", sem_ls_files)
+    assert gv.worktree_limpo(raiz) is None                           # git não respondeu: nunca "limpo"
 
 
 def test_arquivo_ignorado_nao_suja_porque_o_workspace_tambem_nao_o_le(tmp_path: Path) -> None:
