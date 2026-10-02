@@ -332,6 +332,12 @@ class LimitsCfg(BaseModel):
     fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
     fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
+    # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
+    # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
+    # por envio (r-20261002181642-eff15b, com o rejulgamento do 17.10) mais folga para uma nova tentativa; 0 desliga a
+    # proporção. O rejulgamento CONTINUA contando: o guarda não esconde chamada paga. Os tetos em US$ seguem valendo.
+    ai_max_calls_per_item: int = Field(12, ge=0, le=200)
+    ai_max_calls_absolute: int = Field(300, ge=1, le=5000)
     ai_max_tokens_per_run: int = Field(3_000_000, ge=1000)
     # Teto em DINHEIRO (achado #95). Os dois de cima estão em unidades que não se traduzem em US$ — e o de tokens
     # conta cache lido como token cheio. Estes somam `ai_calls × ai.prices`, que é a mesma conta de /api/usage.

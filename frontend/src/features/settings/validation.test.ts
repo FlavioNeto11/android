@@ -12,10 +12,10 @@ const field = (key: NumericSettingKey) => {
 };
 
 describe('limites', () => {
-  it('cobre todos os campos de Settings exatamente uma vez (27 numéricos + 1 interruptor + 1 escolha + 2 no cartão do servidor)', () => {
+  it('cobre todos os campos de Settings exatamente uma vez (29 numéricos + 1 interruptor + 1 escolha + 2 no cartão do servidor)', () => {
     const keys = ALL_LIMIT_FIELDS.map((f) => f.key).sort();
     expect(keys).toEqual([
-      'ai_max_calls_per_objective', 'ai_max_tokens_per_run', 'ai_max_usd_per_day', 'ai_max_usd_per_run',
+      'ai_max_calls_absolute', 'ai_max_calls_per_item', 'ai_max_calls_per_objective', 'ai_max_tokens_per_run', 'ai_max_usd_per_day', 'ai_max_usd_per_run',
       'capture_focus_interval_s',
       'capture_grid_interval_s', 'driver_call_timeout_s', 'evidence_retention_days',
       'fleet_max_accounts_per_target', 'fleet_min_spacing_between_accounts_s', 'fleet_spacing_jitter_s',

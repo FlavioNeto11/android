@@ -144,7 +144,7 @@ Conclusão `real`: **o cache do verificador funciona** (`cache_read > 0` na 2ª 
 | Disjuntor de conta | `backend/app/taskqueue/executor.py:83-233` (classifica cobrança/credencial; primeira falha represa a etapa sem gastar tentativa, pausa a execução, acusa em `/api/health` e na aba IA) | por execução, com liberação em `clear_ai_breaker` |
 | Teto do dia antes da imagem paga | `backend/app/modules/identity/application/persona_images.py::PersonaImageService.conferir_orcamento` (só o gerador pago; o simulado não gasta e não confere) | por dia, o mesmo `ai_max_usd_per_day`; 409 `ai_budget` na rota antes de aceitar o pedido |
 | Saldo da conta (ADR-051) | `backend/app/planning/saldos.py` + `RoutingProvider._saldo` (antes de cada chamada, também no destino do fallback) e `PersonaImageService.conferir_orcamento` | por conta (Anthropic, OpenAI, Gemini): `block_below` barra com `kind="balance"`; `warn_below` só avisa; ver §14 |
-| Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`) | por objetivo |
+| Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`). **Item 17.12:** o teto de chamadas é proporcional aos itens do `for_each`: `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))` (padrões 60 / 12 / 300; 8 itens = 144; sem lista ou com 1 item, 60 como antes). Os itens saem das etapas gravadas (`item_index` em `steps.variables`, `executor.py::_teto_de_chamadas`), o rejulgamento continua contando e a mensagem diz de onde veio o teto ("60 + 12 × 7 itens do for_each") | por objetivo |
 | Por etapa, medido (item 18.3) | `taskqueue/projecao.py` + `executor.py::_conferir_orcamento_da_etapa`: mediana e p90 de chamadas por (app, ação) nas etapas concluídas da janela; acima do p90, aviso na linha do tempo; acima de `max(p90 × ai.step_budget.p90_factor, p90 + slack)`, a etapa para (`budget`). Ação sem `min_samples` amostras não tem orçamento próprio. A mesma medição projeta o plano (`GET /api/runs/{id}/projection`) | por etapa |
 
 ## 7. Receitas, fluxos e provas locais
@@ -196,7 +196,7 @@ Nenhum dos três foi rodado na rodada de 23-24/09 por regra da chamada (sem gast
 **13/14 corretos por US$ 1,449** (≈US$ 0,10 por caso; o mais caro, `msg-todos-os-contatos`, US$ 0,59). A falha é
 `msg-todos-os-contatos` (`r-20261002181642-eff15b`): 6 de 8 envios comprovados e "Limite de 60 chamadas de IA por objetivo"
 no 7º — o rejulgamento do 17.10 soma uma verificação do modelo forte por envio, e o teto por objetivo não acompanha o tamanho
-do `for_each` (decisão pendente: teto proporcional aos itens, rejulgamento fora do teto, ou teto maior). A referência de
+do `for_each` (decidido no item 17.12: teto proporcional aos itens, com o rejulgamento DENTRO do teto e um absoluto; ver §6). A referência de
 25/09 (16/17, US$ 1,43) rodou com o ator em fallback. O rejulgamento das 56 capturas não foi repetido (mesmas capturas, mesmo
 modelo: vale o de 25/09, 41/56, US$ 1,14). HTTP 500 do verificador: 2 de 423 chamadas desde 19/09 (0,5%); os "~10 %" do
 achado não se confirmam nos dados.

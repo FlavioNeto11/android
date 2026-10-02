@@ -27,7 +27,7 @@ from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, ReadValue, StepBlocked, StepDone, TelaDeContaTravada,
                                 ToolContext, ToolValidationError, esperar_foco, execute_tool, looks_like_commit,
                                 resolve_point, urls_do_texto, validate_call)
-from ..config import Config
+from ..config import Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
@@ -53,7 +53,7 @@ from ..social.approvals import ler_rascunho
 from ..util import norm_text, now, now_iso, parse_iso
 from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, FechamentoDeTentativa, PedidoDeLicoes,
                        avisar, pedir_licoes)
-from .foreach import sanitize_item
+from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
@@ -526,9 +526,10 @@ class StepExecutor:
         if objective_id is not None:
             obj = self.repo.objective_row(objective_id)
             detalhe_anterior = obj["status_detail"]
-            if obj["ai_calls"] >= s.ai_max_calls_per_objective:
-                exc = AIError(f"Limite de {s.ai_max_calls_per_objective} chamadas de IA por objetivo atingido.",
-                              kind="budget")
+            teto, origem = self._teto_de_chamadas(objective_id, int(obj["ai_calls"]), s)
+            if obj["ai_calls"] >= teto:
+                exc = AIError(f"Limite de {teto} chamadas de IA por objetivo atingido"
+                              + (f" ({origem})." if origem != f"{teto}" else "."), kind="budget")
                 self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
                 raise exc
         if step_id is not None and objective_id is not None and self.cfg.file.ai.step_budget.enabled:
@@ -591,6 +592,22 @@ class StepExecutor:
             await asyncio.sleep(float(self.get_settings().ai_retry_wait_s) * (attempt + 1))
         assert last is not None
         raise last
+
+    def _teto_de_chamadas(self, objective_id: str, feitas: int, s: LimitsCfg) -> tuple[int, str]:
+        """Item 17.12: o teto de chamadas deste objetivo — `ai_max_calls_per_objective` fixo, ou proporcional aos itens do
+        `for_each` (`foreach.teto_de_chamadas`). Os itens saem das etapas JÁ GRAVADAS (`item_index` em `steps.variables`,
+        em todas as versões do plano: uma recuperação recomeça só com o que faltava e os itens já feitos continuam
+        contando), não de estado em memória — sobrevive a reinício e à recuperação. Só consulta o banco quando o teto
+        base já foi atingido: abaixo dele a resposta não depende do número de itens."""
+        base = int(s.ai_max_calls_per_objective)
+        por_item = int(s.ai_max_calls_per_item)
+        if por_item <= 0 or feitas < base:
+            return base, f"{base}"
+        indices = {(loads(r["variables"], {}) or {}).get("item_index")
+                   for r in self.repo.db.query("SELECT variables FROM steps WHERE objective_id=? AND variables LIKE ?",
+                                               (objective_id, '%"item_index"%'))}
+        indices.discard(None)
+        return teto_de_chamadas(base, por_item, int(s.ai_max_calls_absolute), len(indices))
 
     def _conferir_orcamento_da_etapa(self, run_id: str, objective_id: str, step_id: str, role: str,
                                      app_ids: object, attempt_id: str | None) -> None:

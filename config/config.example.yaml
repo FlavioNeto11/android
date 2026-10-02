@@ -183,6 +183,10 @@ limits:
   retry_backoff_s: 5
   no_progress_limit: 4
   ai_max_calls_per_objective: 60
+  # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute
+  # (60 + 12 × 7 = 144 para 8 itens). 0 em per_item desliga a proporção. O rejulgamento conta; os tetos em US$ seguem.
+  ai_max_calls_per_item: 12
+  ai_max_calls_absolute: 300
   ai_max_tokens_per_run: 3000000
   capture_grid_interval_s: 5
   capture_focus_interval_s: 1
@@ -239,7 +243,7 @@ ai:
     price_per_mtok: {text_in: 5.0, image_in: 8.0, output: 30.0}     # US$/M tokens (developers.openai.com, 28/09/2026)
   # Orçamento por etapa, medido no histórico da ação (item 18.3, ADR-052): passar do p90 vira aviso; passar de
   # max(p90 × p90_factor, p90 + slack) chamadas para a etapa. Ação com menos de min_samples etapas concluídas na
-  # janela não tem orçamento próprio (vale ai_max_calls_per_objective).
+  # janela não tem orçamento próprio (vale ai_max_calls_per_objective, proporcional aos itens do for_each: 17.12).
   step_budget: {enabled: true, p90_factor: 2.0, slack: 4, min_samples: 5, window_days: 30}
   prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
     claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026

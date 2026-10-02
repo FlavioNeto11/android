@@ -205,6 +205,7 @@ interface Settings {
   step_timeout_s: number; objective_timeout_s: number; driver_call_timeout_s: number;
   retry_backoff_s: number; no_progress_limit: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
+  ai_max_calls_per_item: number; ai_max_calls_absolute: number;   // 17.12: teto = base + por_item × (itens − 1), até o absoluto
   capture_grid_interval_s: number; capture_focus_interval_s: number; frame_max_age_ms: number;
   log_retention_days: number; evidence_retention_days: number;
 }
