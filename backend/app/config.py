@@ -24,8 +24,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 #: Esforço aceito pela API. Fora desta lista é erro de configuração, não um 400 a ser "aprendido".
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
-#: As cinco funções de IA. A ordem é a que o painel mostra.
-AI_ROLES = ("plan", "decide", "verify", "escalation", "social")
+#: As funções de IA. A ordem é a que o painel mostra. `persona` (item 17.8) é a geração/enriquecimento de persona:
+#: SEM bloco próprio ela herda a configuração de `social` por inteiro (`Config.ai_role`), então existe para poder ir a
+#: outro provedor sem arrastar o `social` da execução (comentário, DM) junto.
+AI_ROLES = ("plan", "decide", "verify", "escalation", "social", "persona")
 
 
 class EnvSettings(BaseSettings):
@@ -440,6 +442,8 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "verify": {"timeout_s": 30.0, "concurrency": 8},
     "escalation": {"timeout_s": 60.0, "concurrency": 4},
     "social": {"timeout_s": 60.0, "concurrency": 4},
+    # Mesmos números do social: sem `ai.roles.persona` a geração de persona se comporta como sempre.
+    "persona": {"timeout_s": 60.0, "concurrency": 4},
 }
 
 
@@ -476,7 +480,7 @@ class StepBudgetCfg(BaseModel):
 
 
 class ImageCfg(BaseModel):
-    """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos cinco papéis de IA (`AI_ROLES`): o saldo da
+    """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos papéis de IA de texto (`AI_ROLES`): o saldo da
     Anthropic não compra imagem, então é outro provedor, outra chave (`OPENAI_API_KEY`) e preço por imagem
     DECLARADO — a API de imagens não devolve custo. `simulated` (padrão) gera um degradê determinístico com Pillow,
     sem chave e sem nada sair da máquina; `openai` é `gpt-image-1-mini` por `/v1/images/generations`."""
@@ -1285,11 +1289,12 @@ class Config:
         por_papel["escalation"] = env.ai_model_escalation or por_papel["plan"]
         # Escrever como a persona é redação, não navegação: por padrão usa o modelo do planejador.
         por_papel["social"] = env.ai_model_social or por_papel["plan"]
+        por_papel["persona"] = por_papel["social"]       # 17.8: sem `ai.roles.persona`, o modelo de sempre do social
         return por_papel.get(role, base)
 
     def ai_effort_for(self, role: str) -> Effort:
         env = self.env
-        if role == "plan" or role == "social":
+        if role in ("plan", "social", "persona"):
             return env.ai_effort_planner
         if role == "verify":
             return env.ai_effort_verifier or env.ai_effort_actor
@@ -1305,11 +1310,17 @@ class Config:
         a campo; o que ele não escreve continua o do padrão. Perfil inexistente é `KeyError` — quem chama confere.
         """
         ai = self.file.ai
-        r = ai.roles.get(role) or RoleCfg()
+        # `persona` (item 17.8) sem bloco em `ai.roles` É o `social`: lê o bloco dele e, em cada perfil, a camada dele
+        # (depois a própria, por cima). Com bloco próprio, o `social` deixa de valer para ela — herdar só o modelo ou
+        # o `fallback_provider` do social ao apontar a persona para outro provedor daria um modelo que o destino não tem.
+        herda_social = role == "persona" and "persona" not in ai.roles
+        r = ai.roles.get("social" if herda_social else role) or RoleCfg()
         if profile is not None:
-            sobre = ai.profiles[profile].roles.get(role)
-            if sobre is not None:
-                r = r.model_copy(update=sobre.model_dump(exclude_none=True))
+            camadas = ai.profiles[profile].roles
+            for nome in (("social",) if herda_social else ()) + (role,):
+                sobre = camadas.get(nome)
+                if sobre is not None:
+                    r = r.model_copy(update=sobre.model_dump(exclude_none=True))
         padrao = ROLE_DEFAULTS.get(role, {"timeout_s": 60.0, "concurrency": 4})
         nome = r.provider or (self.env.ai_provider or "anthropic").strip().lower()
         prov = ai.providers.get(nome)

@@ -54,7 +54,7 @@ class _RoleGate:
     relativa entre funções — não deixar o social encher a fila do verificador.
 
     Ordem, dita como ela é: o limite global é tomado ANTES (no `_ai` do executor) e este depois. Com os padrões
-    (decide/verify 8, plan/escalation/social 4, global 4) ele nunca é o gargalo, então a ordem não aparece. Quem
+    (decide/verify 8, plan/escalation/social/persona 4, global 4) ele nunca é o gargalo, então a ordem não aparece. Quem
     baixar a concorrência de uma função ABAIXO do `max_ai_concurrency` global precisa saber o efeito colateral:
     tarefas daquela função podem ficar segurando vagas globais enquanto esperam a vaga da função. Não trava
     (quem está dentro segue progredindo), mas atrasa as outras funções — então baixe uma e suba o global junto.
@@ -72,7 +72,7 @@ class _RoleGate:
 
 
 class RoutingProvider:
-    """Despacha plan/decide/verify/escalation/social para o provedor de cada função."""
+    """Despacha plan/decide/verify/escalation/social/persona para o provedor de cada função."""
 
     simulated = False
 
@@ -102,6 +102,10 @@ class RoutingProvider:
         #: run_id → perfil. O perfil da execução é gravado na criação e não muda depois: lê-se uma vez.
         self._perfil_por_execucao: dict[str, str | None] = {}
         self._gates = {papel: _RoleGate(r.concurrency) for papel, r in self.roles.items()}
+        if not self._persona_tem_vagas_proprias(cfg):
+            # Persona sem bloco próprio dividia as vagas do social (a geração chamava o papel social). Com um semáforo
+            # novo o teto somado dobraria sem ninguém ter pedido: o mesmo objeto mantém o comportamento de antes.
+            self._gates["persona"] = self._gates["social"]
         self.simulated = all(getattr(p, "simulated", False) for p in self.providers.values())
         principal = self.providers["decide"]
         self.name = getattr(principal, "name", "roteador")
@@ -111,6 +115,13 @@ class RoutingProvider:
         self.repo: Any = None
         self.get_settings: Callable[[], Any] | None = None
         self._avisados: set[str] = set()
+
+    @staticmethod
+    def _persona_tem_vagas_proprias(cfg: Config) -> bool:
+        """`ai.roles.persona.concurrency` escrito (no padrão ou em algum perfil) separa as vagas da persona."""
+        ai = cfg.file.ai
+        blocos = [ai.roles.get("persona")] + [p.roles.get("persona") for p in ai.profiles.values()]
+        return any(b is not None and b.concurrency is not None for b in blocos)
 
     def attach(self, *, repo: Any, settings_getter: Callable[[], Any]) -> None:
         self.repo = repo
@@ -351,9 +362,9 @@ class RoutingProvider:
         return await self._call("social", None, lambda p: p.generate_social_response(req))
 
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
-        # Papel `social` (modelo e vagas de quem escreve na voz da persona), sem `run_id`: nasce do portal, como a
-        # prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
-        return await self._call("social", None, lambda p: p.generate_persona(req))
+        # Papel `persona` (item 17.8: herda o `social` até alguém configurá-lo), sem `run_id`: nasce do portal, como
+        # a prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
+        return await self._call("persona", None, lambda p: p.generate_persona(req))
 
 
 def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = None) -> ResolvedRole:
