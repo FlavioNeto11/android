@@ -3383,7 +3383,7 @@ nunca vence. A prévia não grava, mas passa pelo mesmo portão (ela resolve alv
 | Lacuna | Proposta neste adendo | Quem fecha |
 |---|---|---|
 | sem coluna de chave de idempotência | `id` determinístico a partir da chave | 28.9 (ou migração, se o dono preferir) |
-| sem tabela de avisos | `pedido_avisos`, migração própria | 28.9 |
+| sem tabela de avisos | `pedido_avisos`, migração 072 | 28.9 (feito) |
 | `aguardando_pessoa` não guarda a causa | `pendencias[]` lido do estado vivo (aprovações, execuções `needs_input`, ocorrências `incerta`) | 28.9 |
 | `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` | rotas declaradas; campos `null` até existirem | 28.7 |
 | `spec` de `evento`, `condicao` e `persona` | `422 gatilho_nao_suportado` | 28.8 |
@@ -3414,18 +3414,34 @@ contrato, salvo o abaixo.
 **Fora do 28.9 (não implementado; a rota não existe e responde 404/405):**
 - `POST /{id}/executar` e `POST /{id}/backfill` (e os erros `solicitado_em_invalido`, `backfill_grande_demais`,
   `backfill_so_observar`); `acoes_permitidas` não as oferece.
-- `POST /api/pedidos/avisos/ler`, o filtro `lido=` e a contagem `avisos_nao_lidos` real (sempre `0`; `nao_lidos: null` na
-  rota). Motivo: a 067 não tem `pedido_avisos` e o 28.9 não abre migração. Os avisos saem como evento `pedido.aviso`
-  (persistido em `events`, retenção de 14 dias) e `GET /api/pedidos/avisos` os lê de lá (`pedido_id`, `requer_pessoa`,
-  `limit`, `cursor` = id do evento). Emitidos hoje: `pausa_automatica`, `ocorrencia_perdida` e `encerramento`. **Faltam**
-  `orcamento_80` (o dedupe "uma vez até o orçamento subir" exige `chave_dedupe`), `orcamento_esgotado` e `relatorio_pronto`
-  (sem ponto de emissão no laço do 28.6/28.7) e os três `requer_pessoa` (o laço ainda não leva o pedido a
-  `aguardando_pessoa`, 28.5). Desenho da tabela pedida ao coordenador: `pedido_avisos(id TEXT PK, pedido_id TEXT NOT NULL
-  REFERENCES pedidos ON DELETE CASCADE, ocorrencia_id TEXT, tipo TEXT NOT NULL CHECK (os 9 tipos), nivel TEXT NOT NULL CHECK
-  (info|warn|error), mensagem TEXT NOT NULL, dados TEXT NOT NULL DEFAULT '{}', requer_pessoa INTEGER NOT NULL DEFAULT 0,
-  chave_dedupe TEXT NOT NULL UNIQUE, criado_em TEXT NOT NULL, lido_em TEXT)` mais índice `(pedido_id, lido_em)`; o `id` do
-  `AvisoDTO` passa a ser a chave primária (hoje é `tipo:pedido:ocorrencia:instante`).
-  `GET /api/pedidos?pede_atencao=1` cobre `pausado` e `aguardando_pessoa`, sem a cláusula "ou com aviso não lido" (não há `lido_em`).
+- **Avisos (migração 072, `pedido_avisos`): implementados.** O texto anterior desta seção (sem tabela, `lido=` e `ler`
+  fora do 28.9) está superado:
+  - Todo `pedido.aviso` é GRAVADO em `pedido_avisos` com `chave_dedupe` (`INSERT ... ON CONFLICT DO NOTHING`) e só então
+    emitido, e só se a linha é nova. É um caminho único (`CaixaDeAvisos.registrar`): o laço (`avisar` do `AppState`) e a API
+    usam o mesmo, então o mesmo fato visto pelos dois é uma linha e um evento. O `id` do `AvisoDTO` é o da linha
+    (`avs_` + 26 hex do sha256 da chave).
+  - `GET /api/pedidos/avisos` lê da tabela: filtros `lido` (`0`/`1`/`true`/`false`), `requer_pessoa`, `pedido_id`, `limit`,
+    `cursor` (deslocamento opaco; a ordem é `criado_em` decrescente). `nao_lidos` é real.
+  - `POST /api/pedidos/avisos/ler` com `{ids?, todos?, pedido_id?}` (`pedido_id` é extensão deste adendo: restringe o
+    `todos` a um pedido). Sem `ids` nem `todos`: 422; mais de 200 ids: 422; id inexistente: `404 not_found` com
+    `details.kind="aviso"` e nada é gravado; `pedido_id` inexistente: `404` com `kind="pedido"`. Resposta
+    `{lidos, nao_lidos}`; repetir devolve `lidos: 0` e não muda `lido_em`.
+  - **Definição de `avisos_nao_lidos` e `nao_lidos`:** só os informativos (`requer_pessoa=0`). Os que pedem pessoa moram
+    nas Pendências (ADR-062: não contar duas vezes). Por isso `todos` também marca só os informativos. Vale na
+    lista e no detalhe (por pedido), no snapshot (`pedidos.avisos_nao_lidos`) e na resposta de `/avisos` (do pedido
+    filtrado, ou de todos). O selo do menu do painel vem de `nao_lidos`.
+  - `GET /api/pedidos?pede_atencao=1` cobre `pausado`, `aguardando_pessoa` e o pedido com aviso informativo não lido.
+  - Chaves de deduplicação: `pausa_automatica:<pedido>:<atualizado_em da pausa>`, `encerramento:<pedido>`,
+    `orcamento_esgotado:<pedido>`, `orcamento_80:<pedido>:<teto>` (o teto na chave: sobe o orçamento e a pessoa é avisada de
+    novo), `ocorrencia_perdida:<ocorrência>`, `relatorio_pronto:<relatório>`, `<ocorrência>:ocorrencia_incerta`.
+  - Emitidos hoje: `pausa_automatica`, `encerramento`, `ocorrencia_perdida`, `ocorrencia_incerta` (28.5),
+    `orcamento_80` (laço, em `_conferir_orcamento`, com o gasto em [80%, 100%) do teto), `orcamento_esgotado` (quando o
+    pedido encerra por orçamento ele SUBSTITUI o `encerramento`: uma notícia, um aviso) e `relatorio_pronto` (todo
+    relatório gravado que não é `sob_demanda`; o evento sai depois do commit, pelas marcas do repositório). **Ainda não
+    emitidos:** `aprovacao_pendente` e `pergunta` (o contrato os prevê; nenhum ponto do laço os decide hoje, as pendências
+    seguem lidas do estado vivo).
+  - Divergência da tela: o painel não envia `alvos.distribute` (o backend o recusa); "distribuir por contas" fica barrado
+    no pedido persistente.
 - Gatilhos do `PedidoCorpo`: `evento`, `condicao` e `persona` → `gatilho_nao_suportado` (28.8). `alvos.distribute` não é
   aceito (422 por `extra="forbid"`): a seleção é `instance_ids`, `profile_ids` e `targets`.
 - `PATCH` troca a recorrência por UMA só (`gatilhos` com um item; mais de um → `limite_invalido`), porque o laço troca o

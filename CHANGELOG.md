@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Caixa de avisos dos pedidos e coerência tela × API (28.9, branch jev/integ-28-9)
+
+- Migração `072_pedido_avisos`: tabela `pedido_avisos` (CHECK nos nove tipos, `chave_dedupe` UNIQUE, `lido_em`, cascata com o pedido). Todo `pedido.aviso` (do laço 28.5/28.6/28.7 e da API) passa por `CaixaDeAvisos.registrar`: grava com `ON CONFLICT DO NOTHING` e só então emite, e só se a linha é nova; o evento em dobro da pausa (laço + API) acabou.
+- `GET /api/pedidos/avisos` lê da tabela (`lido=`, `requer_pessoa`, `pedido_id`); novo `POST /api/pedidos/avisos/ler` (ids, ou `todos` com `pedido_id` opcional; idempotente; 404 em id inexistente). `avisos_nao_lidos` real na lista, no detalhe e no snapshot (só informativos), e `pede_atencao=1` inclui o pedido com aviso não lido.
+- Pontos de emissão novos: `orcamento_80` (laço, uma vez até o teto subir), `orcamento_esgotado` (substitui o `encerramento` quando o motivo é orçamento) e `relatorio_pronto` (relatório de encerramento ou de período, depois do commit). `aprovacao_pendente` e `pergunta` seguem sem emissor.
+- Painel: o selo do menu vem de `nao_lidos`; "distribuir por contas" fica barrado no pedido persistente (o backend recusa `alvos.distribute`). Divergências registradas no adendo v0.45.
+- Prova `simulated`: `backend/tests/test_pedidos_avisos.py` (+ ajustes em `test_pedidos_retentativa.py` e `test_pedidos_tentativas.py`), `frontend/src/features/pedidos/PedidosPage.test.tsx`; `real` e PostgreSQL `not_run`.
+
 ## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
 
 - Nova tentativa por ocorrência: `modules/pedidos/domain/tentativas.py` (puro) decide, a partir do desfecho da execução, entre repetir (a MESMA linha volta `falhou → devida`, `tentativa+1`, despacho `chave:t<n>` depois de um atraso exponencial com teto), `incerta` ou falha definitiva. Só repete sem ação com `effect_possible` (e sem execução purgada) e sem etapa `uncertain` (a regra de `_reconciliar`); falha COM efeito possível (ou execução purgada) fecha `incerta` e leva o pedido a `aguardando_pessoa`, nunca `falhou` (decisão do coordenador: um `falhou` deixaria a próxima ocorrência refazer o efeito); `max_tentativas` é o total por ocorrência (padrão 2). Sem migração: o instante da espera mora em `terminada_em` enquanto a ocorrência é `devida` com `tentativa > 0`. A repetição passa por sobreposição, orçamento e saldo.
