@@ -364,8 +364,7 @@ hospedeiros com PostgreSQL gerenciado.
 - O Brasil não tem horário de verão desde o Decreto 9.772/2019, mas o MME o reavalia periodicamente: as regras vêm da
   base IANA atualizada (`tzdata` declarado), nunca de deslocamento fixo `-03:00`. A volta vira atualização
   de pacote, e as próximas ocorrências são recalculadas no deploy.
-- A biblioteca de RRULE (`python-dateutil`, que implementa a RFC) não está instalada hoje; a Fase 28 escolhe entre
-  adicioná-la ou validar o subconjunto acima com um gerador próprio e testes de fronteira.
+- A biblioteca de RRULE (`python-dateutil`) não está instalada; **decidido no 28.3: gerador próprio** (`backend/app/modules/pedidos/domain/recorrencia.py`, módulo puro com relógio injetado), com o subconjunto acima e testes de fronteira (`tests/test_pedidos_recorrencia.py`: `America/Sao_Paulo` em 2018/2019, `America/New_York`, `Europe/Lisbon`). O parser recusa o resto (SECONDLY/MINUTELY, YEARLY, BYSETPOS, WKST diferente de MO, `BYDAY` com ordinal) com mensagem clara. Convenções iguais às do dateutil: `DTSTART` só é ocorrência se casar com a regra; dia que não existe no mês é ignorado e não conta. **Desvio da hora inexistente**: vai para o primeiro instante válido depois do salto (o da transição, 03:00 em Nova York), não para o 03:30 que o §3.3.5 da RFC daria; entra no `COUNT`, e se cair no mesmo instante de outra ocorrência da regra elas viram uma só. `Instante.desviado` e `Instante.repetido` marcam os dois casos para a API documentar. HOURLY avança em hora de relógio local: no fim do horário de verão a lacuna entre duas ocorrências é de duas horas reais. `tzdata` agora está declarado em `requirements.in`.
 
 ### 7.8 Gatilhos por evento e por condição
 

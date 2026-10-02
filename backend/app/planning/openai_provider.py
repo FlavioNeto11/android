@@ -14,6 +14,8 @@ O que muda em relação à Anthropic, e por quê:
   descoberta por erro — e em todos os casos a resposta é revalidada por Pydantic antes de virar plano ou veredito.
 - **Imagem.** `image_url` com data URI base64. Modelo declarado sem visão nem chega aqui: o roteador recusa na
   partida (`ai.models.<modelo>.vision: false`).
+- **Repetição.** `ai.roles.<papel>.max_retries` repete 429 (menos falta de crédito) e 5xx com espera crescente e
+  `Retry-After`, como o SDK da Anthropic. É o que sustenta o `service_tier: flex` (trabalho offline, item 17.8).
 - **O que NÃO existe.** Ponto de cache (`cache_control`), `thinking` e `output_config.effort` são da Anthropic; um
   endpoint compatível recusaria a requisição. Por isso `cache_read_tokens` costuma vir de
   `prompt_tokens_details.cached_tokens` quando o servidor reporta, e zero quando não.
@@ -22,6 +24,7 @@ Dependência: `httpx`, que já estava no `requirements.txt`. Nenhum cliente novo
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -52,6 +55,13 @@ if TYPE_CHECKING:
     from ..config import ResolvedRole
 
 log = logging.getLogger("poc.ai")
+
+#: Espera entre as repetições de `ai.roles.<papel>.max_retries`: dobra a cada nova tentativa a partir de 5 s e
+#: nunca passa de 60 s. A resposta com `Retry-After` manda (até `_ESPERA_MAXIMA_S`). São constantes de código, não
+#: configuração: o prazo que importa é o `timeout_s` da função, que cobre as esperas também (ver `_create`).
+_ESPERA_INICIAL_S = 5.0
+_ESPERA_TETO_S = 60.0
+_ESPERA_MAXIMA_S = 300.0
 
 
 def openai_tools(strict: bool) -> list[dict[str, Any]]:
@@ -158,12 +168,24 @@ class OpenAICompatProvider:
         if self._key:
             headers["authorization"] = f"Bearer {self._key}"
         t0 = time.monotonic()
-        try:
-            resp = await self._http().post(self._url, json=body, headers=headers)
-        except httpx.TimeoutException as exc:
-            raise AIError(f"Tempo esgotado ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
-        except httpx.HTTPError as exc:
-            raise AIError(f"Falha de rede ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
+        # `max_retries` da função (0 por padrão: o dono das repetições é o `_ai` do executor, como na Anthropic).
+        # O prazo `timeout_s` vale POR requisição aqui e, no roteador, para o TOTAL — esperas inclusas —, então as
+        # repetições nunca estendem o prazo da função: uma fila de flex sem capacidade acaba em "passou de N s".
+        tentativa = 0
+        while True:
+            try:
+                resp = await self._http().post(self._url, json=body, headers=headers)
+            except httpx.TimeoutException as exc:
+                raise AIError(f"Tempo esgotado ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
+            except httpx.HTTPError as exc:
+                raise AIError(f"Falha de rede ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
+            if tentativa >= self.role.max_retries or not self._repetivel(resp):
+                break
+            espera = self._espera(resp, tentativa)
+            tentativa += 1
+            log.warning("%s respondeu %s; nova tentativa %s/%s em %.0f s (ai.roles.%s.max_retries).",
+                        self.role.endpoint, resp.status_code, tentativa, self.role.max_retries, espera, role)
+            await asyncio.sleep(espera)
         self._raise_for_status(resp, model)
         try:
             data = resp.json()
@@ -180,6 +202,26 @@ class OpenAICompatProvider:
         log.info("uso[%s/%s@%s]: entrada=%s cache_lido=%s saida=%s imagem=%s %sms", role, usage.model, self.name,
                  u.get("prompt_tokens"), cached, u.get("completion_tokens"), with_image, usage.ms)
         return self._choice(data, model), usage
+
+    @staticmethod
+    def _repetivel(resp: httpx.Response) -> bool:
+        """429 e 5xx, como o SDK da Anthropic faz com `max_retries`. FALTA DE CRÉDITO (`insufficient_quota`) NÃO:
+        repetir só gasta tempo e esconde o saldo zero (ADR-051). O caso de uso é o `service_tier: flex` da OpenAI,
+        que devolve 429 "Resource Unavailable" quando não há capacidade ociosa — esperado, não cobrado, e some
+        esperando."""
+        if resp.status_code == 429:
+            return "insufficient_quota" not in (resp.text or "")[:300]
+        return resp.status_code >= 500
+
+    @staticmethod
+    def _espera(resp: httpx.Response, tentativa: int) -> float:
+        try:
+            pedida = float(resp.headers.get("retry-after", ""))
+        except ValueError:
+            pedida = 0.0
+        if pedida > 0:
+            return min(pedida, _ESPERA_MAXIMA_S)
+        return min(_ESPERA_INICIAL_S * (2 ** tentativa), _ESPERA_TETO_S)
 
     def _raise_for_status(self, resp: httpx.Response, model: str) -> None:
         if resp.status_code < 400:

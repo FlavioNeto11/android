@@ -78,6 +78,27 @@ class TestModoCandidato(unittest.TestCase):
         self.assertEqual(novo["ai"]["roles"]["plan"]["model"], "claude-opus-5-5")
         self.assertEqual(raw["ai"]["roles"], {"plan": {"model": "claude-opus-5-5"}})   # o original fica intacto
 
+    def test_sobreposicao_flex_vira_papel_verify_com_prazo_longo_e_repeticoes(self) -> None:
+        """Item 17.8: o rejulgamento offline aceita uma entrada `service_tier: flex` SEM mudar o script — o candidato
+        é só `providers` + `roles.verify` do arquivo sobreposto; o resto do `ai` segue o da instalação."""
+        from app.config import AppConfigFile, Config, EnvSettings
+        from app.planning.provider import build_one
+
+        raw = {"ai": {"models": {"claude-haiku-4-5": {"vision": True, "tools": True}}}}
+        sobre = {"ai": {
+            "providers": {"openai-flex": {"kind": "openai", "base_url": "https://api.openai.com/v1",
+                                          "api_key_env": "OPENAI_API_KEY", "extra_body": {"service_tier": "flex"}}},
+            "models": {"gpt-teste": {"vision": True, "tools": True, "structured_output": "json_object"}},
+            "roles": {"verify": {"provider": "openai-flex", "model": "gpt-teste", "timeout_s": 900,
+                                 "max_retries": 5}}}}
+        cfg = Config(AppConfigFile.model_validate(mod._mesclar_ai(raw, sobre)), EnvSettings())
+        papel = cfg.ai_role("verify")
+        self.assertEqual((papel.provider, papel.extra_body, papel.timeout_s, papel.max_retries),
+                         ("openai-flex", {"service_tier": "flex"}, 900.0, 5))
+        self.assertIsNone(cfg.ai_role("decide").extra_body)            # o interativo não herda nada do flex
+        self.assertEqual(cfg.ai_role("decide").max_retries, 0)
+        self.assertEqual(type(build_one(cfg, papel)).__name__, "OpenAICompatProvider")
+
     def test_referencia_ignora_erro_e_a_ultima_leitura_vence(self) -> None:
         linhas = ['{"evidence_id": 1, "opus_satisfied": "no"}', '{"evidence_id": 2, "erro": "x"}', "",
                   "não é json", '{"evidence_id": 1, "opus_satisfied": "yes"}', '{"evidence_id": 3, "opus_satisfied": "no"}']
