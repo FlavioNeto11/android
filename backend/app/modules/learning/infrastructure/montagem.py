@@ -14,16 +14,19 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 
-from app.config import PROJECT_ROOT, BacklogCfg, LearningCfg
+from app.config import PROJECT_ROOT, BacklogCfg, Config, LearningCfg
 from app.db import Database
 from app.modules.applications.infrastructure import registry
+from app.modules.learning.application.apps import VisaoPorApp
 from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.nativos import Decidir
 from app.modules.learning.application.ports import Ajustes, Retencao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
+from app.modules.learning.domain.camada import ModosDeRuntime
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
 from app.modules.learning.infrastructure import ligar_costuras, ligar_licoes, ligar_nativos, ligar_telas, ligar_voz
+from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -79,6 +82,15 @@ def pacotes_do_registro() -> list[str]:
     return [d.package for d in registry.registered()]
 
 
+def modos_de_runtime(cfg: object) -> ModosDeRuntime:
+    """Os modos que moram fora do bloco `aprendizado:` (`ai.recipes`, `ai.flows`, `skills.enabled`), para a camada de
+    uso. A montagem do livro só recebe o `LearningCfg`, então quem lê é a apresentação, com o `cfg` do processo; sem ele
+    (ou de outra forma), tudo vem desconhecido e a camada sai `desconhecida`, nunca um palpite."""
+    if not isinstance(cfg, Config):
+        return ModosDeRuntime()
+    return ModosDeRuntime(receitas=cfg.file.ai.recipes, fluxos=cfg.file.ai.flows, habilidades=cfg.file.skills.enabled)
+
+
 def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], retencao_de_logs_dias: Callable[[], int],
                        precos: Callable[[], dict[str, list[float]]], habilidades: SqlSkillRepository | None = None,
                        fluxos: FlowStore | None = None, receitas: RecipeStore | None = None,
@@ -99,6 +111,7 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                              relogio=relogio, commit=commit or partial(commit_em_execucao, PROJECT_ROOT),
                              contagem_do_livro=lambda: servico.livro().contagem)
     servico.anexar(falhas)
+    servico.anexar(VisaoPorApp(servico, DeclaradosDoRegistro(), LojaSql(db)))     # 30.1: a visão por app
     servico.registrar_passo(falhas)
     for ligar in (ligar_costuras.ligar, ligar_voz.ligar):
         ligar(servico)

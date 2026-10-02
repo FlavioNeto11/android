@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,11 +22,18 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.config import AiCfg, AppConfigFile, Config, SkillsCfg
 from app.db import Database
+from app.modules.applications.infrastructure import registry
+from app.modules.learning.application.apps import Declarado, ResumoDoApp, VisaoDeApps, VisaoPorApp
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
+from app.modules.learning.domain.camada import (ArquivoDeclarado, Camada, Existencia, ModosDeRuntime,
+                                                ModosDeUso, uso_do_declarado, uso_do_item)
+from app.modules.learning.domain.ciclo import NaoEncontrado, SkillState
 from app.modules.learning.domain.livro import EntradaDoLivro
-from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind
+from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Modo, ModoDeTelas
+from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.fontes import FontesSql, ResolvedorDeApp
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
@@ -37,7 +45,8 @@ from .fake_skills import banco as banco_migrado
 AGORA = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 # Pacotes SINTÉTICOS do teste: o código de produção não tem pacote nenhum (ADR-052), e o teste não depende dos reais.
 LOJA = "com.exemplo.loja"            # app da loja (tabela `apps`) com id curto "loja"
-SOMENTE_DECLARADO = "com.exemplo.declarado"
+SOMENTE_DECLARADO = "com.exemplo.declarado"      # declarado e já citado por um fluxo (sem linha em `apps`)
+DECLARADO_SEM_LINHA = "com.exemplo.semlinha"     # declarado e SEM nenhuma linha no livro: aparece com zeros
 SOMENTE_LOJA = "com.exemplo.sodaloja"
 SOMENTE_APRENDIDO = "com.exemplo.aprendido"
 
@@ -163,3 +172,179 @@ async def test_rota_do_livro_filtra_o_balde_e_mostra_o_id_cru(cliente: httpx.Asy
     assert itens["f-desconhecido"]["app"] == APP_NAO_RESOLVIDO and itens["f-desconhecido"]["app_ref"] == "app-que-nao-existe"
     do_pacote = (await cliente.get(f"/api/aprendizado?app={LOJA}")).json()["itens"]
     assert {i["ref"] for i in do_pacote} == {"f-id-da-loja", "h.da.loja@1"} and all(i["app_ref"] is None for i in do_pacote)
+
+
+# ------------------------------------------------------------------ 30.1: a visão por app
+SEM_DADO = "com.exemplo.vazia"            # app da loja SEM nenhuma linha no livro: aparece com zeros
+
+
+class RegistroFalso:
+    """O registro de apps e a pasta do repositório, falsos: um app declarado com tudo, sem nenhuma linha no livro."""
+
+    def declarados(self) -> list[Declarado]:
+        return [Declarado(package=DECLARADO_SEM_LINHA, name="App Declarado", tem_app=True, tem_catalogo=True,
+                          tem_telas=True, tem_sessao=True, acoes=4, telas=3, login_gerenciado=True),
+                Declarado(package=SOMENTE_DECLARADO, name="Citado", tem_app=True),
+                Declarado(package=LOJA, name="App da Loja Declarado", tem_app=True, tem_catalogo=False,
+                          tem_telas=True, telas=2)]
+
+
+def _item(db: Database, id_: str, kind: str, app: str, *, state: str = "published", detalhe: str | None = None,
+          capacidade: str = "*") -> None:
+    db.execute("INSERT INTO learning_items(id, kind, state, state_detail, scope_app, scope_capability, content,"
+               " content_hash, summary, source_kind, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+               (id_, kind, state, detalhe, app, capacidade, "{}", f"h-{id_}", f"resumo {id_}", "recovery", "system", TS))
+
+
+@pytest.fixture
+def visao(mundo: Mundo) -> VisaoPorApp:
+    db = mundo.db
+    _loja(db, "vazia", SEM_DADO)
+    _item(db, "li-tela-pub", "tela", LOJA)
+    _item(db, "li-tela-obs", "tela", LOJA, state="candidate", capacidade="a")
+    _item(db, "li-tela-abs", "tela", LOJA, state="deprecated", detalhe="absorvida:abc1234", capacidade="b")
+    _item(db, "li-licao", "licao", LOJA)
+    _item(db, "li-so-aprendido", "tela", SOMENTE_APRENDIDO)
+    _item(db, "li-voz", "voz", "")                                  # persona: sem eixo de app
+    v = VisaoPorApp(mundo.servico, RegistroFalso(), LojaSql(db))
+    mundo.servico.anexar(v)
+    return v
+
+
+def _app(v: VisaoDeApps, pacote: str) -> ResumoDoApp:
+    return next(a for a in v.apps if a.pacote == pacote)
+
+
+def test_lista_de_apps_e_a_uniao_com_a_origem_de_existencia(visao: VisaoPorApp) -> None:
+    v = visao.apps()
+    assert {a.pacote for a in v.apps} == {DECLARADO_SEM_LINHA, SOMENTE_DECLARADO, LOJA, SOMENTE_LOJA, SEM_DADO, SOMENTE_APRENDIDO}
+    assert _app(v, DECLARADO_SEM_LINHA).existencia is Existencia.DECLARADO
+    assert _app(v, LOJA).existencia is Existencia.DECLARADO                  # a pasta vale mais que a loja
+    assert _app(v, SOMENTE_LOJA).existencia is Existencia.LOJA
+    assert _app(v, SOMENTE_APRENDIDO).existencia is Existencia.SO_APRENDIDO and _app(v, SOMENTE_APRENDIDO).loja is None
+    # O app declarado sem linha aparece com zeros (não some), com o que o repositório declara.
+    d = _app(v, DECLARADO_SEM_LINHA)
+    assert d.total_aprendido == 0 and d.absorvido == 0 and d.contagem == {} and d.declarado is not None
+    assert d.declarado.acoes == 4 and d.declarado.telas == 3 and d.nome == "App Declarado"
+    vazio = _app(v, SEM_DADO)
+    assert vazio.existencia is Existencia.LOJA and vazio.total_aprendido == 0 and vazio.nome == "App vazia"
+
+
+def test_aprendido_declarado_e_absorvido_nao_se_misturam(visao: VisaoPorApp) -> None:
+    v = visao.apps()
+    loja = _app(v, LOJA)
+    # aprendido: 2 telas (publicada e candidata), 1 lição, 1 fluxo, 1 habilidade; a tela absorvida sai da conta.
+    assert loja.contagem["tela"] == {"published": 1, "candidate": 1} and loja.contagem["licao"] == {"published": 1}
+    assert loja.absorvido == 1 and loja.total_aprendido == 5
+    detalhe = visao.detalhe(LOJA)
+    assert [x.entrada.ref for x in detalhe.absorvido] == ["li-tela-abs"]
+    assert detalhe.absorvido[0].absorvida_em == "abc1234"                      # aparece, com o commit
+    assert "li-tela-abs" not in {x.entrada.ref for x in detalhe.aprendido}
+    assert {i.arquivo.value: i.presente for i in detalhe.declarado if i.arquivo.value != "loja"} == {
+        "app": True, "catalogo": False, "telas": True, "sessao": False}
+    assert next(i for i in detalhe.declarado if i.arquivo.value == "telas").quantidade == 2
+    assert next(i for i in detalhe.declarado if i.arquivo.value == "catalogo").uso is None     # ausente não faz nada
+    uso_da_loja = next(i for i in detalhe.declarado if i.arquivo.value == "loja").uso
+    assert uso_da_loja is not None and uso_da_loja.camada is Camada.INERTE                      # sem nav_hints
+
+
+def test_balde_e_fora_do_eixo_sao_contados_a_parte(visao: VisaoPorApp) -> None:
+    v = visao.apps()
+    assert v.nao_resolvido.total_aprendido == 4 and v.nao_resolvido.pacote == APP_NAO_RESOLVIDO
+    assert v.nao_resolvido.contagem["fluxo"] == {"published": 3}
+    assert v.nao_resolvido.contagem["habilidade"] == {"published": 1}
+    assert APP_NAO_RESOLVIDO not in {a.pacote for a in v.apps}
+    assert v.fora_do_eixo["memoria"] == {"-": 2} and v.fora_do_eixo["voz"] == {"published": 1}
+    assert visao.detalhe(APP_NAO_RESOLVIDO).resumo.total_aprendido == 4
+
+
+def test_detalhe_de_app_desconhecido_e_404(visao: VisaoPorApp) -> None:
+    with pytest.raises(NaoEncontrado):
+        visao.detalhe("com.exemplo.nao.existe")
+
+
+def test_camada_de_uso_segue_os_modos_vigentes(visao: VisaoPorApp) -> None:
+    def camadas(runtime: ModosDeRuntime | None) -> dict[str, str]:
+        return {x.entrada.ref: x.uso.camada.value for x in visao.detalhe(LOJA, runtime).aprendido}
+
+    c = camadas(ModosDeRuntime(receitas="replay", fluxos=True, habilidades=True))
+    assert c["f-id-da-loja"] == "decide_sem_ia" and c["h.da.loja@1"] == "decide_sem_ia"
+    assert c["li-tela-obs"] == "medido_nao_usado"            # candidata, modo observe (padrão): grava e valida
+    assert c["li-tela-pub"] == "medido_nao_usado"            # observe: a sessão não consome
+    assert c["li-licao"] == "nao_medido"                     # lição em shadow (padrão): nem a medida existe
+    desligado = camadas(ModosDeRuntime(receitas="off", fluxos=False, habilidades=False))
+    assert desligado["f-id-da-loja"] == "inerte" and desligado["h.da.loja@1"] == "inerte"
+    # Sem conseguir ler o config, o que depende dele sai `desconhecida`, nunca um palpite.
+    sem = camadas(None)
+    assert sem["f-id-da-loja"] == "desconhecida" and sem["li-licao"] == "nao_medido"
+
+
+def test_camada_pura_cobre_a_tabela_do_desenho() -> None:
+    t = ModosDeUso(receitas="replay", fluxos=True, habilidades=True, licoes=Modo.ON, telas=ModoDeTelas.ON)
+    s = SkillState
+    assert uso_do_item(LivroKind.RECEITA, s.PUBLISHED, t).camada is Camada.DECIDE_SEM_IA
+    assert uso_do_item(LivroKind.RECEITA, s.CANDIDATE, t).camada is Camada.MEDIDO_NAO_USADO
+    assert uso_do_item(LivroKind.RECEITA, s.VALIDATED, t).camada is Camada.INERTE
+    assert uso_do_item(LivroKind.RECEITA, s.PUBLISHED, replace(t, receitas="shadow")).camada is Camada.MEDIDO_NAO_USADO
+    assert uso_do_item(LivroKind.FLUXO, s.CANDIDATE, t).camada is Camada.MEDIDO_NAO_USADO
+    assert uso_do_item(LivroKind.LICAO, s.PUBLISHED, t).camada is Camada.VAI_AO_PROMPT
+    assert uso_do_item(LivroKind.LICAO, s.PUBLISHED, replace(t, licoes=Modo.SHADOW)).camada is Camada.NAO_MEDIDO
+    assert uso_do_item(LivroKind.TELA, s.PUBLISHED, t).camada is Camada.CLASSIFICA_TELA
+    observe = replace(t, telas=ModoDeTelas.OBSERVE)
+    assert uso_do_item(LivroKind.TELA, s.PUBLISHED, observe).camada is Camada.MEDIDO_NAO_USADO
+    assert uso_do_item(LivroKind.TELA, s.DEPRECATED, t, detalhe="absorvida:x").camada is Camada.INERTE
+    assert uso_do_item(LivroKind.PREFERENCIA, s.PUBLISHED, t).camada is Camada.PRE_PREENCHE
+    assert uso_do_item(LivroKind.MEMORIA, None, t).camada is Camada.CONTEXTO_DA_PERSONA
+    assert uso_do_item(LivroKind.LICAO, s.PUBLISHED, replace(t, licoes=None)).camada is Camada.DESCONHECIDA
+    assert uso_do_declarado(ArquivoDeclarado.CATALOGO).camada is Camada.VAI_AO_PROMPT
+    assert uso_do_declarado(ArquivoDeclarado.TELAS).camada is Camada.CLASSIFICA_TELA
+    assert uso_do_declarado(ArquivoDeclarado.SESSAO).camada is Camada.LOGIN_FORA_DA_IA
+    assert uso_do_declarado(ArquivoDeclarado.LOJA).camada is Camada.VAI_AO_PROMPT
+
+
+def _cfg(*, recipes: str, flows: bool, skills: bool) -> Config:
+    """Um `Config` sem tocar no ambiente (`EnvSettings` leria o `.env`): só o arquivo importa à camada de uso."""
+    cfg = object.__new__(Config)
+    cfg.file = AppConfigFile(ai=AiCfg(recipes=recipes, flows=flows), skills=SkillsCfg(enabled=skills))
+    return cfg
+
+
+async def test_rotas_da_visao_por_app(visao: VisaoPorApp, mundo: Mundo) -> None:
+    app = FastAPI()
+    app.include_router(learning_router)
+    app.state.poc = SimpleNamespace(learning=mundo.servico, cfg=_cfg(recipes="replay", flows=True, skills=True))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/aprendizado/apps")
+        assert r.status_code == 200, r.text
+        corpo = r.json()
+        por_pacote = {a["pacote"]: a for a in corpo["apps"]}
+        assert corpo["total"] == 6 and por_pacote[DECLARADO_SEM_LINHA]["aprendido"]["total"] == 0
+        assert por_pacote[DECLARADO_SEM_LINHA]["existencia"] == "declarado"
+        assert por_pacote[SOMENTE_LOJA]["existencia"] == "loja"
+        assert por_pacote[DECLARADO_SEM_LINHA]["declarado"]["acoes"] == 4 and por_pacote[LOJA]["absorvido"] == 1
+        assert por_pacote[LOJA]["uso"]["fluxo"] == {"decide_sem_ia": 1}
+        assert corpo["nao_resolvido"]["aprendido"]["total"] == 4 and corpo["fora_do_eixo"]["memoria"] == {"-": 2}
+        assert corpo["modos"] == {"receitas": "replay", "fluxos": True, "habilidades": True, "licoes": "shadow",
+                                  "telas": "observe"}
+        # `/apps/{pacote}` NÃO cai na rota genérica `{kind}/{ref}` (que recusaria o `kind` com 422).
+        d = await c.get(f"/api/aprendizado/apps/{LOJA}")
+        assert d.status_code == 200, d.text
+        assert {x["ref"] for x in d.json()["absorvido"]} == {"li-tela-abs"}
+        assert d.json()["absorvido"][0]["absorvida_em"] == "abc1234"
+        assert {x["tipo"] for x in d.json()["declarado"]} == {"app", "catalogo", "telas", "sessao", "loja"}
+        assert (await c.get(f"/api/aprendizado/apps/{APP_NAO_RESOLVIDO}")).status_code == 200
+        assert (await c.get("/api/aprendizado/apps/com.exemplo.nao.existe")).status_code == 404
+        # O livro continua respondendo pela rota genérica.
+        assert (await c.get("/api/aprendizado/receita/999999")).status_code == 404
+
+
+async def test_rota_sem_config_devolve_modos_desconhecidos(visao: VisaoPorApp, cliente: httpx.AsyncClient) -> None:
+    r = await cliente.get("/api/aprendizado/apps")
+    assert r.status_code == 200 and r.json()["modos"]["receitas"] is None and r.json()["modos"]["fluxos"] is None
+
+
+def test_o_registro_real_alimenta_a_visao_sem_pacote_literal() -> None:
+    """O adaptador real lê o registro de apps do processo; o teste não nomeia pacote nenhum."""
+    reais = DeclaradosDoRegistro().declarados()
+    assert {d.package for d in reais} == {d.package for d in registry.registered()}
+    assert all(d.acoes is None or d.tem_catalogo for d in reais)       # ação contada => o app tem catalogo.yaml

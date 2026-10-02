@@ -1,13 +1,13 @@
 """O roteador do aprendizado, montado em `main.py`. A ORDEM importa: as rotas específicas dos pacotes seguintes
-(`/api/aprendizado/falhas`, `/sinais`, `/licoes/previa`, `/export`, `/voz/previa`, `/api/runs/{id}/feedback`) entram
+(`/api/aprendizado/apps`, `/falhas`, `/sinais`, `/licoes/previa`, `/export`, `/voz/previa`, `/api/runs/{id}/feedback`) entram
 ANTES do livro, cuja rota genérica `{kind}/{ref}` casaria com elas e recusaria o `kind` com 422."""
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.modules.learning.presentation import falhas, feedback, licoes, livro, telas, voz
+from app.modules.learning.presentation import apps, falhas, feedback, licoes, livro, telas, voz
 
 router = APIRouter()
-for especifico in (falhas.router, feedback.router, licoes.router, telas.router, voz.router):
+for especifico in (apps.router, falhas.router, feedback.router, licoes.router, telas.router, voz.router):
     router.include_router(especifico)
 router.include_router(livro.router)
