@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..config import Config
 from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
@@ -31,15 +31,16 @@ AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, de
 #: alimenta a fatia do teto do dia (`_budget`) e o relatório do Livro, então uma grafia solta viraria gasto sem dono.
 #: `execucao` = o laço da execução (há `run_id`); as demais nascem do portal ou de uma rotina e não têm `run_id`.
 OrigemDeIA = Literal["execucao", "ensino", "orquestracao", "assistente", "social", "persona", "curador",
-                     "decisao_fechada"]
+                     "decisao_fechada", "leitura"]
 ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assistente", "social", "persona",
-                                  "curador", "decisao_fechada")
+                                  "curador", "decisao_fechada", "leitura")
 
 #: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
 #: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
 #: `_saldo` levanta hoje; o valor fica no vocabulário para a etapa que o unificar, sem mudar o contrato de novo.
-MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido"]
-MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido")
+MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao", "pedido"]
+MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao",
+                                         "pedido")
 
 
 class AIError(RuntimeError):
@@ -191,6 +192,9 @@ class VerifyRequest:
 #: o modelo narrando em vez de transcrever, e vira recusa em vez de ser cortado calado.
 TRANSCRICAO_LINHAS_MAX = 12
 TRANSCRICAO_TEXTO_MAX = 400
+#: Quantas saídas um pedido de leitura pode ter e o alfabeto do nome (o mesmo de `models.SAIDA_NOME_RE`).
+LEITURA_SAIDAS_MAX = 20
+_NOME_DE_SAIDA = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 
 
 class Transcricao(BaseModel):
@@ -207,8 +211,17 @@ class Transcricao(BaseModel):
     legivel: bool = True
     truncado: bool = False
 
+    def __repr__(self) -> str:
+        """O texto transcrito é DADO DE TERCEIRO (o corpo de um e-mail pode trazer injeção de prompt ou um código): nunca
+        entra num log, num evento nem numa mensagem de erro por acidente."""
+        return f"Transcricao(linhas={len(self.linhas)}, legivel={self.legivel}, truncado={self.truncado}, conteudo=oculto)"
+
+    __str__ = __repr__
+
 
 class _CampoLido(BaseModel):
+    model_config = ConfigDict(extra="forbid")      # chave fora do esquema recusa a resposta inteira
+
     nome: str
     valor: str | None = None
 
@@ -216,6 +229,8 @@ class _CampoLido(BaseModel):
 class TranscricaoWire(BaseModel):
     """O formato PEDIDO ao modelo: `campos` como lista de pares, porque um mapa de chaves livres não cabe na gramática
     estrita (`additionalProperties: false`). `para_transcricao` o converte no que o executor consome."""
+
+    model_config = ConfigDict(extra="forbid")
 
     linhas: list[str]
     campos: list[_CampoLido]
@@ -237,6 +252,13 @@ class LeituraRequest:
     recorte: bytes
     saidas: dict[str, str]                    # nome → descrição ("remetente" → "quem enviou a mensagem")
     run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Os nomes pedidos vêm do plano e vão ao prompt: só o alfabeto de saída e no máximo `LEITURA_SAIDAS_MAX`."""
+        if not self.saidas or len(self.saidas) > LEITURA_SAIDAS_MAX or not all(
+                _NOME_DE_SAIDA.fullmatch(n) for n in self.saidas):
+            raise ValueError("saídas do pedido de leitura inválidas (nomes a-z0-9_ e no máximo "
+                             f"{LEITURA_SAIDAS_MAX})")
 
 
 @dataclass(slots=True)
@@ -288,23 +310,30 @@ class AIProvider(Protocol):
 
 
 def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
-    """JSON do modelo → `Transcricao`, revalidado. Só entram os campos PEDIDOS (um nome a mais é o modelo inventando), e
-    cada pedido volta (`None` quando faltou). Excesso de linhas ou de texto é `invalid_output`, nunca corte calado."""
+    """JSON do modelo → `Transcricao`, com parse ESTRITO (item 12.5; requisitos do hub de IA).
+
+    - JSON inválido, chave fora do esquema (`extra="forbid"`) ou tipo errado → `AIError(kind="invalid_output")`: nunca
+      `legivel=False` (isso é o MODELO afirmando que não leu) e nunca sucesso;
+    - só os campos PEDIDOS entram em `campos`; o pedido que não veio fica `None`;
+    - teto de linhas e de caracteres: o excesso é CORTADO e marca `truncado=True` (nunca passa calado, e um valor cortado
+      não concorda com o do ator)."""
     texto = (raw or "").strip()
     if texto.startswith("```"):
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
     try:
-        dados = json.loads(texto)
-        t = TranscricaoWire.model_validate(dados).para_transcricao()
+        t = TranscricaoWire.model_validate(json.loads(texto)).para_transcricao()
     except (ValueError, ValidationError) as exc:
         raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output") from exc
-    if len(t.linhas) > TRANSCRICAO_LINHAS_MAX or any(len(x) > TRANSCRICAO_TEXTO_MAX for x in t.linhas):
-        raise AIError("A transcrição do leitor passou do tamanho de um recorte.", kind="invalid_output")
-    campos = {n: ((t.campos.get(n) or None) if n in t.campos else None) for n in pedidas}
-    if any(v is not None and len(v) > TRANSCRICAO_TEXTO_MAX for v in campos.values()):
-        raise AIError("Um campo da transcrição passou do tamanho de um recorte.", kind="invalid_output")
-    return Transcricao(linhas=t.linhas, campos=campos, legivel=t.legivel, truncado=t.truncado)
+    cortou = len(t.linhas) > TRANSCRICAO_LINHAS_MAX or any(len(x) > TRANSCRICAO_TEXTO_MAX for x in t.linhas)
+    linhas = [x[:TRANSCRICAO_TEXTO_MAX] for x in t.linhas[:TRANSCRICAO_LINHAS_MAX]]
+    campos: dict[str, str | None] = {}
+    for n in pedidas:
+        valor = (t.campos.get(n) or None) if n in t.campos else None
+        if valor is not None and len(valor) > TRANSCRICAO_TEXTO_MAX:
+            valor, cortou = valor[:TRANSCRICAO_TEXTO_MAX], True
+        campos[n] = valor
+    return Transcricao(linhas=linhas, campos=campos, legivel=t.legivel, truncado=t.truncado or cortou)
 
 
 def persona_draft_from_json(raw: str) -> PersonaDraft:

@@ -1630,15 +1630,16 @@ class StepExecutor:
                                 "sem_leitor" if exc.kind == "not_configured" else "leitor_falhou") from exc
 
                     conhecimento = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / (app.package or ""))
-                    tela_conhecida = (telas_do_app.classificar(conhecimento, obs.tree, package=obs.package).tela
-                                      if conhecimento is not None else None)
+                    reconhecida = (telas_do_app.classificar(conhecimento, obs.tree, package=obs.package)
+                                   if conhecimento is not None else None)
+                    tela_conhecida = reconhecida.tela if reconhecida is not None else None
                     try:
                         lido_da_imagem = await ler_valor_visual(
                             habilitado=ai_cfg.leitura_visual.enabled, arvore=obs.tree, element_id=args.element_id,
                             nome=args.name, valor_do_ator=args.value or "", conhecimento=conhecimento,
                             tela=tela_conhecida, image_policy=ai_cfg.image_policy, fora_do_app=None,
                             largura=obs.width, altura=obs.height, obter_imagem=obter_imagem,
-                            tentativas=tentativas_visuais,
+                            tentativas=tentativas_visuais, tipo_da_tela=reconhecida.tipo if reconhecida else None,
                             transcrever=transcrever if self._tem_leitor() else None)
                     except LeituraVisualRecusada as rec:
                         # Barreira fechada: o ator recebe SÓ o código — nem a transcrição, nem o valor dele. O recorte

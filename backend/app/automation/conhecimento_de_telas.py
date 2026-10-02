@@ -585,6 +585,23 @@ def _conferir_fragmento(base: object, texto: str, regras: Sequence[RegraDeTela])
 
 
 @lru_cache(maxsize=None)
+def declaram_leitura_visual(base: Path) -> list[str]:
+    """Os pacotes (pastas de `app/conhecimento/apps/`) cujo `telas.yaml` declara `leitura_visual.regioes` (item 12.5): são os
+    apps de que o recorte de uma linha de tela pode sair para o leitor. Para o aviso de privacidade de `/api/ai`. Pasta cujo
+    arquivo não carrega fica de fora (o erro de carga é de quem descobre os apps, não do aviso)."""
+    if not base.is_dir():
+        return []
+    out: list[str] = []
+    for pasta in sorted(p for p in base.iterdir() if p.is_dir()):
+        try:
+            k = da_pasta(pasta)
+        except ConhecimentoInvalido:
+            continue
+        if k is not None and k.regioes_visuais:
+            out.append(pasta.name)
+    return out
+
+
 def da_pasta(pasta: Path) -> ConhecimentoDeTelas | None:
     """O `telas.yaml` da pasta de um app, carregado uma vez por processo; `None` quando o app não declara telas (o
     detector de conta travada fica com os sinais genéricos). Arquivo inválido levanta `ConhecimentoInvalido`."""

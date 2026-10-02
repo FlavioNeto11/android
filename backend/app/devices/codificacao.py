@@ -81,6 +81,13 @@ def tamanho_png(png: bytes) -> tuple[int, int]:
         return img.size
 
 
+#: Teto do recorte (item 12.5): é uma LINHA de tela, nunca o print inteiro. Lado maior em pixels da imagem enviada, fração
+#: da altura da imagem e bytes do JPEG. Passar de qualquer um é `ValueError` (a âncora não é uma linha).
+RECORTE_LADO_MAX = 1600
+RECORTE_ALTURA_MAX_FRACAO = 0.5
+RECORTE_BYTES_MAX = 400_000
+
+
 def recortar_jpeg(jpeg: bytes, largura: int, altura: int, limites: tuple[int, int, int, int]) -> bytes:
     """Um recorte do JPEG (item 12.5): `limites` em pixels do APARELHO (`largura` x `altura`) × a razão do tamanho real da
     imagem — a observação do modelo vem reduzida —, cortados na tela e SEM margem. `ValueError` se a área é vazia ou o
@@ -97,8 +104,15 @@ def recortar_jpeg(jpeg: bytes, largura: int, altura: int, limites: tuple[int, in
             caixa = (round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy))
             if caixa[2] <= caixa[0] or caixa[3] <= caixa[1]:
                 raise ValueError("o recorte ficou sem área")
-            saida = io.BytesIO()
-            img.convert("RGB").crop(caixa).save(saida, "JPEG", quality=90)
+            if (max(caixa[2] - caixa[0], caixa[3] - caixa[1]) > RECORTE_LADO_MAX
+                    or caixa[3] - caixa[1] > img.height * RECORTE_ALTURA_MAX_FRACAO):
+                raise ValueError("o recorte é grande demais para ser uma linha (nunca a tela inteira)")
+            corte = img.convert("RGB").crop(caixa)
     except OSError as exc:
         raise ValueError("JPEG ilegível") from exc
-    return saida.getvalue()
+    for qualidade in (90, 60):
+        saida = io.BytesIO()
+        corte.save(saida, "JPEG", quality=qualidade)
+        if saida.tell() <= RECORTE_BYTES_MAX:
+            return saida.getvalue()
+    raise ValueError("o recorte passa do teto de bytes")

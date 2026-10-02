@@ -424,7 +424,8 @@ def ancora_sem_limites(arvore: UiTree, element_id: str, largura: int, altura: in
 async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str, nome: str, valor_do_ator: str,
                            conhecimento: ConhecimentoDeTelas | None, tela: str | None, image_policy: str,
                            fora_do_app: str | None, largura: int, altura: int, obter_imagem: ObterImagem,
-                           tentativas: set[ChaveDeTentativa], transcrever: Transcrever | None) -> LeituraVisual:
+                           tentativas: set[ChaveDeTentativa], transcrever: Transcrever | None,
+                           tipo_da_tela: str | None = None) -> LeituraVisual:
     """Leitura visual de UMA saída, conferida às cegas (item 12.5, ADR-070). Roda as barreiras na ordem, das baratas para a
     cara, e levanta `LeituraVisualRecusada` na primeira que falhar — nunca devolve valor sem a concordância do leitor.
 
@@ -443,7 +444,10 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
         raise LeituraVisualRecusada("regiao_nao_declarada")
     if arvore.truncada:
         raise LeituraVisualRecusada("arvore_truncada")
-    if arvore.sensitive or image_policy == "never":
+    # A leitura NÃO serve para ler código de 2FA nem de desafio (ADR-009): tela classificada como desafio ou código, ou com
+    # conta travada detectada, não chama o leitor.
+    if (arvore.sensitive or image_policy == "never" or arvore.conta_travada is not None
+            or tipo_da_tela in ("desafio", "dois_fatores")):
         raise LeituraVisualRecusada("tela_sensivel")
     if fora_do_app is not None:
         raise LeituraVisualRecusada("fora_do_app")

@@ -531,6 +531,9 @@ class AiLimitsCfg(BaseModel):
     #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a D-J3, aprovada pelo
     #: dono no ADR-069; vale para as chamadas da porta `DecisaoFechada` (31.4).
     jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+    #: Leitura visual (item 12.5, `origem='leitura'`): fatia opcional do dia para o leitor das saídas de etapa. `0`
+    #: (padrão) = sem fatia: valem só os tetos do pedido, da execução e do dia, que a chamada sempre confere.
+    leitura_max_usd_per_day: float = Field(0.0, ge=0, le=100_000)
 
 
 class LeituraVisualCfg(BaseModel):
@@ -1246,6 +1249,9 @@ class AppConfigFile(BaseModel):
             if leitura.fallback_provider:
                 raise ValueError("ai.roles.leitura.fallback_provider: não existe fallback para o leitor; o recorte só "
                                  "vai ao provedor escolhido aqui")
+            if leitura.refusal_fallback is not None:
+                raise ValueError("ai.roles.leitura.refusal_fallback: não existe para o leitor; a captura vai exatamente "
+                                 "para o provedor que o aviso de privacidade nomeia (remova a linha)")
         if ai.canary.profile and ai.canary.profile not in ai.profiles:
             raise ValueError(f"ai.canary.profile: perfil '{ai.canary.profile}' não está em ai.profiles")
         for nome, prov in ai.providers.items():
@@ -1505,7 +1511,9 @@ class Config:
             base_url=prov.base_url, api_key_env=prov.api_key_env,
             sends_data_externally=prov.sends_data_externally and prov.kind != "simulated",
             fallback_provider=r.fallback_provider,
-            refusal_fallback=(self.env.ai_refusal_fallback if r.refusal_fallback is None else r.refusal_fallback),
+            # `leitura` nunca cai em fallback de recusa: o recorte vai para quem o aviso nomeia (item 12.5)
+            refusal_fallback=(False if role in ROLES_OPCIONAIS else
+                              self.env.ai_refusal_fallback if r.refusal_fallback is None else r.refusal_fallback),
             timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
             max_retries=int(r.max_retries if r.max_retries is not None else 0),
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
@@ -1525,11 +1533,15 @@ class Config:
         r = self.ai_leitura()
         if r is None:
             return
-        for papel in ("decide", "escalation"):
-            outro = self.ai_role(papel)
-            if r.model == outro.model and r.kind != "simulated":
-                raise ValueError(f"ai.roles.leitura.model: '{r.model}' é o mesmo modelo de {papel}; o segundo leitor "
-                                 "precisa ser outro modelo (de preferência de outra família: OpenAI ou Gemini)")
+        # Contra o `decide` e o `escalation` de BASE e de CADA perfil: o canário que troca o ator para o modelo do leitor
+        # tiraria a independência da conferência só naquelas execuções.
+        for perfil in (None, *self.file.ai.profiles):
+            for papel in ("decide", "escalation"):
+                outro = self.ai_role(papel, perfil)
+                if r.model == outro.model and r.kind != "simulated":
+                    onde = f"ai.profiles.{perfil}.roles.{papel}" if perfil else papel
+                    raise ValueError(f"ai.roles.leitura.model: '{r.model}' é o mesmo modelo de {onde}; o segundo leitor "
+                                     "precisa ser outro modelo (de preferência de outra família: OpenAI ou Gemini)")
         if r.kind != "simulated" and not self.model_caps(r.model).vision:
             raise ValueError(f"ai.roles.leitura.model: '{r.model}' está declarado sem visão em ai.models; o leitor "
                              "transcreve uma imagem")

@@ -30,11 +30,13 @@ import asyncio
 import logging
 from typing import Any, Callable
 
+from ..automation.conhecimento_de_telas import declaram_leitura_visual
 from ..config import AI_ROLES, Config, ResolvedRole
 from ..modules.execution.domain.orquestracao import OrquestracaoOut, PedidoDeOrquestracao
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
+from .capabilities import CONHECIMENTO_DE_APPS
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, LeituraRequest, PersonaGenerationRequest,
                        PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one)
 
@@ -193,9 +195,11 @@ class RoutingProvider:
             ligada = self.cfg.file.ai.leitura_visual.enabled
             destino = (f"o provedor “{r.provider}” ({r.endpoint or 'endpoint local'}, modelo {r.model})"
                        if r.sends_data_externally else "um endpoint que não sai desta máquina")
+            apps = ", ".join(declaram_leitura_visual(CONHECIMENTO_DE_APPS)) or "nenhum app"
             aviso += (f" Leitura visual ({'ligada' if ligada else 'desligada'}): quando ligada, o recorte de uma linha da "
-                      f"tela que a árvore não expõe (ex.: remetente e assunto de uma mensagem) é enviado a {destino} "
-                      "para uma segunda transcrição, às cegas. Telas sensíveis nunca são recortadas.")
+                      f"tela que a árvore não expõe (apps que declaram a região: {apps}; remetente e assunto de mensagens "
+                      f"de terceiros, por exemplo) é enviado a {destino} para uma segunda transcrição, às cegas. Telas "
+                      "sensíveis e de verificação nunca são recortadas; a chave aparece só como configurada.")
         refusal = any(linha.refusal_fallback for linha in linhas)
         return base.model_copy(update={
             "models": {papel: self.roles[papel].model for papel in (*AI_ROLES, *(("leitura",) if "leitura" in self.roles else ()))},
@@ -251,7 +255,7 @@ class RoutingProvider:
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
         """A régua da fatia desta origem, no mesmo formato das de `_budget` (vazia quando não há fatia).
 
-        Só `curador` e `decisao_fechada` têm fatia. Sem fatia configurada nada muda: o curador sem valor explícito e sem
+        Só `curador`, `decisao_fechada` e `leitura` têm fatia. Sem fatia configurada nada muda: o curador sem valor explícito e sem
         teto do dia não tem fatia (a fração é do teto do dia, e `0` o desliga), e `0` em qualquer uma a desliga."""
         limites = self.cfg.file.ai.limits
         if origem == "curador":
@@ -260,6 +264,8 @@ class RoutingProvider:
             rotulo, motivo = "da fatia do curador", "fatia_curador"
         elif origem == "decisao_fechada":
             limite, rotulo, motivo = float(limites.jev_max_usd_per_day), "da fatia da decisão fechada", "fatia_jev"
+        elif origem == "leitura":
+            limite, rotulo, motivo = float(limites.leitura_max_usd_per_day), "da fatia da leitura visual", "fatia_leitura"
         else:
             return ()
         return ((rotulo, limite, lambda: costs.spent_today_usd(self.repo.db, prices, origem=origem),
@@ -437,7 +443,9 @@ class RoutingProvider:
         if "leitura" not in self.roles:
             raise AIError("Não há leitor configurado (ai.roles.leitura): a leitura visual está indisponível.",
                           kind="not_configured")
-        return await self._call("leitura", req.run_id, lambda p: p.transcribe(req))
+        # `origem='leitura'` (073): a chamada passa pelo `_budget` COM o `run_id` (valem os tetos do pedido, da execução e
+        # do dia) e, quando `ai.limits.leitura_max_usd_per_day` > 0, pela fatia própria; o saldo vale por conta.
+        return await self._call("leitura", req.run_id, lambda p: p.transcribe(req), origem="leitura")
 
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         # Papel `persona` (item 17.8: herda o `social` até alguém configurá-lo), sem `run_id`: nasce do portal, como
