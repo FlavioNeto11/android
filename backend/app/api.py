@@ -1508,13 +1508,23 @@ async def list_interactions(request: Request, profile_id: str, counterparty: str
         raise _social_error(exc) from exc
 
 
-@router.get("/instagram/profiles/{profile_id}/context")
-async def social_context(request: Request, profile_id: str, counterparty: str | None = None,
-                         thread_key: str | None = None, content: str | None = None) -> Any:
-    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha."""
+class SocialContextBody(BaseModel):
+    """Corpo de `POST /instagram/profiles/{id}/context` (29.26): `content` é a mensagem recebida, texto livre de
+    terceiro que pode trazer nome e e-mail; não vai para a URL (query string vira linha de log de acesso)."""
+    model_config = ConfigDict(extra="forbid")
+    counterparty: str | None = Field(default=None, max_length=200)
+    thread_key: str | None = Field(default=None, max_length=200)
+    content: str | None = Field(default=None, max_length=4000)
+
+
+@router.post("/instagram/profiles/{profile_id}/context")
+async def social_context(request: Request, profile_id: str, body: SocialContextBody | None = None) -> Any:
+    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha.
+    Sem efeito: é POST só para o texto da mensagem ir no corpo (29.26); corpo ausente = contexto sem interlocutor."""
+    corpo = body or SocialContextBody()
     try:
-        return st(request).social.context(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                          current_content=content)
+        return st(request).social.context(profile_id, counterparty=corpo.counterparty, thread_key=corpo.thread_key,
+                                          current_content=corpo.content)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
