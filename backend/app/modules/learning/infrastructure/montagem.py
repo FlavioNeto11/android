@@ -112,7 +112,7 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`).
     `eventos`: o barramento do central (`EventBus`): com ele, o livro publica `learning.needs_person` (30.21). Sem ele,
-    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub é o 30.12)."""
+    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12)."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     risco = RiscoDoRegistro()

@@ -4,6 +4,8 @@ Custo: a 069 tem `usd REAL NOT NULL DEFAULT 0` e não tem `ai_call_id`. Até o 3
 `ai_calls`) o curador grava `usd = 0`, que aqui quer dizer NÃO MEDIDO, nunca "de graça": só `usd > 0` entra como
 custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da curadoria pela ESTIMATIVA do tamanho do dossiê
 gravado (a aplicação a calcula; aqui só se lê o tamanho). Nenhum custo é calculado à parte e gravado.
+Quando a 073 existir (31.2: `ai_calls.origem`/`ai_calls.ref`), o `usd` vai sair de `costs.spent_usd(origem='curador')`;
+o NULL que o combinado pede exige migração nova (a 069 declara a coluna NOT NULL), que é do 30.12.
 
 `G_W` é o gasto de IA da operação: `SUM(learning_daily.usd)` na janela, sem filtro de falha (o relatório filtra
 `failure_kind <> ''` porque fala de falhas; o orçamento fala do gasto todo). A curadoria não entra nele: a régua

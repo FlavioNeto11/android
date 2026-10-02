@@ -1,6 +1,6 @@
-"""O curador por IA, a parte de DOMÍNIO do 30.11 (`aprendizado-vivo.md` §8.6-8.7): os gatilhos, a ordem de prioridade
-e o orçamento proporcional que decide QUEM vai à IA nesta volta. Puro: recebe números já lidos e devolve a partilha; quem
-lê o banco, monta o dossiê e chama a porta `CuradorDeIA` é a aplicação (`application/curador.py`).
+"""O curador por IA, a parte de DOMÍNIO do 30.11 (`aprendizado-vivo.md` §8.6-8.7): os gatilhos, a ordem de
+prioridade e o orçamento proporcional que decide QUEM vai à IA nesta volta. Puro: recebe números já lidos e devolve
+a partilha; quem lê o banco, monta o dossiê e chama a porta `CuradorDeIA` é a aplicação (`application/curador.py`).
 
 O orçamento (decisão do dono, 02/10) é proporcional ao uso, sem teto fixo em US$:
 `B_W = min(α·G_W, k·N_W·c̄)`, janela móvel de W dias. `G_W` é o gasto de IA da OPERAÇÃO na janela (sem a curadoria);
@@ -10,7 +10,7 @@ primeira medida, a estimativa pelo tamanho do dossiê. A estimativa só DECIDE s
 
 Quando o orçamento acaba, a ordem é estrita (o que vem depois de um corte também é cortado, mesmo que caiba: uma
 revisão barata de prioridade baixa não passa na frente de uma cara de prioridade alta):
-1. conflito ou evidência contra em item publicado (inclui `degradando` e `obsoleto_provavel` de publicado);
+1. conflito ou evidência contra em item publicado B ou C (inclui `degradando` e `obsoleto_provavel` de publicado);
 2. classe C; 3. falha recorrente do backlog; 4. classe B; 5. classe A, só com sobra (`ia_permitida(A) = so_com_sobra`).
 
 Salvaguardas relativas: gasto da última hora ≤ `B_W / W / 2`; entrada do dia > 3× a média diária da janela → só as
@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from statistics import fmean, median
 
-from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, ia_permitida
 
 
 class Gatilho(StrEnum):
@@ -78,6 +78,10 @@ def mais_forte(gatilhos: Iterable[Gatilho]) -> Gatilho:
 
 
 def prioridade(classe: ClasseDeRisco, gatilho: Gatilho, *, publicado: bool) -> Prioridade:
+    """A classe A é sempre a última, mesmo publicada e contestada: a IA só opina sobre ela com sobra (decisão do dono,
+    02/10; `ia_permitida(A) = so_com_sobra`) e quem a rebaixa é a regra determinística de hoje."""
+    if ia_permitida(classe) == "so_com_sobra":
+        return Prioridade.CLASSE_A
     if publicado and gatilho in GATILHOS_CONTRA_PUBLICADO:
         return Prioridade.CONTRA_EM_PUBLICADO
     if classe is ClasseDeRisco.C:

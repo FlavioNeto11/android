@@ -28,7 +28,8 @@ from app.modules.learning.application.ports import (AjustesDoCurador, CuradorDeI
                                                     PedidoDeRevisao, RecusaDoProvedor, RegistroDeRevisoes,
                                                     TriagemDeTexto)
 from app.modules.learning.domain.ciclo import SkillState
-from app.modules.learning.domain.curador import OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, opcoes_do_dossie, validar_saida
+from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, opcoes_do_dossie,
+                                                 validar_saida)
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.orcamento_do_curador import (Gatilho, Janela, MotivoDoCorte, ParametrosDoOrcamento,
