@@ -33,6 +33,7 @@ export function origemFalhou(origem: OrigemDaPendencia, falhas: FalhasDeLeitura)
     case 'aprendizado': return falhas.aprendizado;
     case 'persona': return falhas.aprovacoes;
     case 'intervencao': return falhas.personas;
+    case 'pedido': return falhas.pedidos;
     default: return false;
   }
 }

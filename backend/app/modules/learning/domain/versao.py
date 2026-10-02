@@ -5,12 +5,15 @@ entradas são fatos já lidos (as versões VIVAS do app, as receitas da mesma ch
 do detalhe. A regra de ouro é a do resto do livro: o que não se sabe é `desconhecido`, escrito, e nunca um estado
 inventado; incerteza não conta como validado.
 
-Equivalência `recipes.app_version` × `device_app_state.observed_version_name` (a conferir no §7): as duas vêm do
-mesmo `versionName` do aparelho, e aqui se comparam como TEXTO exato. Se um dia divergirem no formato, a versão da
-receita some das vivas e aparece como `versao_aposentada` (visível), não como `comprovado`.
+Equivalência de formato (MEDIDA no central, 03/10): a receita grava `versionName(versionCode)` (`447.0.0.55.81(385311929)`,
+o mesmo formato de `taskqueue/scheduler.py`), e o aparelho guarda nome e código em colunas separadas
+(`device_app_state.observed_version_name`/`observed_version_code`). As versões vivas são montadas no formato da receita
+(`versao_canonica`), e a tela e a lição, que gravam só o nome, se comparam pelo nome (`nome_da_versao`). Comparar o nome
+cru com a versão da receita marcava toda receita como "versão fora do parque".
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -116,16 +119,30 @@ def quadro_da_tela(*, app: str | None, app_version: str | None, vivas: Sequence[
     parque (`telas.sem_casar`, a regra que já existe), `versao_aposentada` quando a versão dela saiu do parque; sem
     versão ou sem pacote, `desconhecido`. Dentro da janela e na versão viva, NÃO se promete `comprovado` (esse é
     estado de receita): fica `desconhecido`, que aqui significa "sem sinal de quebra"."""
-    nomes = [v.versao for v in vivas]
+    nomes = [nome_da_versao(v.versao) for v in vivas]      # a tela grava só o nome da versão
     estado = EstadoDeVersao.DESCONHECIDO
     if app and app_version and nomes:
-        if sem_casar(ultima_a_favor=ultima_a_favor, criada=criada or agora, versao_do_item=app_version,
+        if sem_casar(ultima_a_favor=ultima_a_favor, criada=criada or agora, versao_do_item=nome_da_versao(app_version),
                      versoes_recentes=nomes, agora=agora):
             estado = EstadoDeVersao.INCOMPATIVEL
-        elif app_version not in nomes:
+        elif nome_da_versao(app_version) not in nomes:
             estado = EstadoDeVersao.VERSAO_APOSENTADA
     return {"estado": estado.value, "app": app or None, "app_version": app_version, "vivas": _vivas_json(vivas),
             "nao_testada_em": [], "por_versao": []}
+
+
+_CODIGO_NO_FIM = re.compile(r"\(\d+\)$")
+
+
+def versao_canonica(nome: str | None, codigo: int | None) -> str:
+    """A versão no formato da receita: `nome(código)`; sem código, só o nome (o que o aparelho deu)."""
+    return f"{nome}({codigo})" if nome and codigo is not None else (nome or "")
+
+
+def nome_da_versao(versao: str) -> str:
+    """O `versionName` de uma versão no formato da receita (`447.0.0.55.81(385311929)` → `447.0.0.55.81`); a versão
+    que já é só nome volta igual."""
+    return _CODIGO_NO_FIM.sub("", versao.strip())
 
 
 def agrupar_vivas(observadas: Iterable[tuple[str, int]]) -> tuple[VersaoViva, ...]:
@@ -133,5 +150,5 @@ def agrupar_vivas(observadas: Iterable[tuple[str, int]]) -> tuple[VersaoViva, ..
     return tuple(VersaoViva(v, n) for v, n in sorted(observadas) if v)
 
 
-__all__ = ["EstadoDeVersao", "ReceitaDaChave", "VersaoViva", "agrupar_vivas", "estado_da_receita",
-           "quadro_da_receita", "quadro_da_tela", "quadro_independente"]
+__all__ = ["EstadoDeVersao", "ReceitaDaChave", "VersaoViva", "agrupar_vivas", "estado_da_receita", "nome_da_versao",
+           "quadro_da_receita", "quadro_da_tela", "quadro_independente", "versao_canonica"]

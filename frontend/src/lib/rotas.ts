@@ -7,6 +7,7 @@
  *   #/personas/<persona>          #/personas/<persona>/<guia>   (<persona> = nome legível `lucas-almeida` ou o id antigo)
  *   #/aplicativos                 #/aplicativos/<app_id>?aba=versoes
  *   #/execucoes                   #/execucoes/<id>?aba=linha-do-tempo
+ *   #/pedidos                     #/pedidos/<id>?aba=ocorrencias|execucoes|memoria   (o objetivo que dura; sem `aba` = Resumo)
  *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções, intervenções)
  *   #/aprendizado?aba=aprovar|aprendido|falhas|sinais   (sem `aba` = Para aprovar)
  *   #/infraestrutura  #/diagnostico
@@ -38,8 +39,11 @@
  *     `andamento` | `planejada` | `concluida` | `pendencia` (rótulo "Pede atenção") | `falha` | `cancelada`;
  *     `periodo` = `24h` | `7d` | `30d`;
  *     `aparelho` = id do aparelho; `servidor` = id do servidor. Convivem com `aba` da execução aberta.
+ *   - Pedidos (item 28.9, `features/pedidos/filtro.ts`): os nomes são os da query de `GET /api/pedidos`, para o link e a chamada
+ *     serem a mesma coisa: `q` (título ou objetivo), `estado` (um ou mais, separados por vírgula), `autonomia`, `tipo`
+ *     (de gatilho), `profile_id`, `pede_atencao=1`, `ordem` = `atualizado` | `proxima` | `criado`. Convivem com `aba`.
  */
-export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pendencias', 'aprendizado',
+export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pedidos', 'pendencias', 'aprendizado',
                       'infraestrutura', 'configuracao', 'diagnostico'] as const;
 export type Tela = (typeof TELAS)[number];
 

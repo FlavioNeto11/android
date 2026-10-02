@@ -19,6 +19,55 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Caixa de avisos dos pedidos e coerência tela × API (28.9, branch jev/integ-28-9)
+
+- **Passe de design e UX da tela Pedidos (28.9, só `frontend/`, prova `simulated`).** Lista: cartão estruturado (chips de estado e autonomia, agenda "Todo dia às 19:00 · próxima sex 02/10 19:00", gasto e ocorrências como metadados discretos; fuso só se difere do navegador; US$ no formato brasileiro), esqueleto no formato do cartão, erro com "Tentar de novo" e o vazio com **Novo pedido** (leva ao Comando com o painel aberto). Detalhe: título curto (o objetivo inteiro fica no Resumo) e Resumo em cartões (Agenda, Quem faz, Custos e limites, Comportamento, Autoria); a próxima data, quando o laço ainda não a gerou, é a primeira das calculadas. Painel "Repetir ou acompanhar" em seções (Quando, O que conta como feito, Limites, Avançado recolhido), prévia em blocos com datas legíveis, e a pergunta real do Automático ("marque aparelhos no modo Manual ou escolha uma persona") no lugar do erro genérico. Avisos com seletor segmentado e "Marcar todos" só com não lidos. Guias sem a barra vertical solta (`.tabs`, vale para todas as telas). Pendências: o pedido diz o motivo (ocorrência incerta). Testes: `PedidosPage.test.tsx`, `NovoPedido.test.tsx`, `formato.test.ts`, `pedidosNaCaixa.test.ts`.
+- Migração `072_pedido_avisos`: tabela `pedido_avisos` (CHECK nos nove tipos, `chave_dedupe` UNIQUE, `lido_em`, cascata com o pedido). Todo `pedido.aviso` (do laço 28.5/28.6/28.7 e da API) passa por `CaixaDeAvisos.registrar`: grava com `ON CONFLICT DO NOTHING` e só então emite, e só se a linha é nova; o evento em dobro da pausa (laço + API) acabou.
+- `GET /api/pedidos/avisos` lê da tabela (`lido=`, `requer_pessoa`, `pedido_id`); novo `POST /api/pedidos/avisos/ler` (ids, ou `todos` com `pedido_id` opcional; idempotente; 404 em id inexistente). `avisos_nao_lidos` real na lista, no detalhe e no snapshot (só informativos), e `pede_atencao=1` inclui o pedido com aviso não lido.
+- Pontos de emissão novos: `orcamento_80` (laço, uma vez até o teto subir), `orcamento_esgotado` (substitui o `encerramento` quando o motivo é orçamento) e `relatorio_pronto` (relatório de encerramento ou de período, depois do commit). `aprovacao_pendente` e `pergunta` seguem sem emissor.
+- Painel: o selo do menu vem de `nao_lidos`; "distribuir por contas" fica barrado no pedido persistente (o backend recusa `alvos.distribute`). Divergências registradas no adendo v0.45.
+- Prova `simulated`: `backend/tests/test_pedidos_avisos.py` (+ ajustes em `test_pedidos_retentativa.py` e `test_pedidos_tentativas.py`), `frontend/src/features/pedidos/PedidosPage.test.tsx`; `real` e PostgreSQL `not_run`.
+
+## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
+
+- Nova tentativa por ocorrência: `modules/pedidos/domain/tentativas.py` (puro) decide, a partir do desfecho da execução, entre repetir (a MESMA linha volta `falhou → devida`, `tentativa+1`, despacho `chave:t<n>` depois de um atraso exponencial com teto), `incerta` ou falha definitiva. Só repete sem ação com `effect_possible` (e sem execução purgada) e sem etapa `uncertain` (a regra de `_reconciliar`); falha COM efeito possível (ou execução purgada) fecha `incerta` e leva o pedido a `aguardando_pessoa`, nunca `falhou` (decisão do coordenador: um `falhou` deixaria a próxima ocorrência refazer o efeito); `max_tentativas` é o total por ocorrência (padrão 2). Sem migração: o instante da espera mora em `terminada_em` enquanto a ocorrência é `devida` com `tentativa > 0`. A repetição passa por sobreposição, orçamento e saldo.
+- `incerta` leva o pedido `ativo` a `aguardando_pessoa` (mesma transação) e nunca repete sozinha; N falhas seguidas (coluna `pausa_por_falha`, padrão 3) pausam o pedido (ator `sistema`). Os dois emitem `pedido.aviso` (`AvisoDTO` do contrato 28.9) no barramento (`state.py`), que o 28.11 já assina.
+- Configuração: `pedidos.max_tentativas`, `falhas_para_pausar` (padrões globais; a coluna do pedido vale), `retentativa_base_s`, `retentativa_teto_s`.
+- 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
+- Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
+
+## 2026-10-02 — Conta bloqueada sai na hora e a persona fica (29.23, ADR-068, branch feat/29-23-conta-bloqueada-sai)
+
+- Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
+- Migração 071 `contas_retiradas`: lápide só com o hash do @; `eh_conta_nossa()` e o filtro de frota recusam ação sobre conta nossa (ADR-050). `memory_items` reescritos para "[conta removida]"; gancho `limpezas_ao_retirar` para outros módulos. Histórico intacto (opção A do dono).
+- Testes: `test_conta_bloqueada_sai.py` (16); asserções de bloqueio em `test_detector_conta_travada`, `test_quarentena_de_conta`, `test_escopo_do_desafio` e `test_sessao_declarada` atualizadas de propósito (o bloqueio agora retira a conta e devolve a persona a `active`). Prova `simulated`; real e PostgreSQL `not_run`.
+- Retirada AUTOMÁTICA só no Instagram (conta âncora) e só com sinal forte: `ChallengeActivity` em foco (`DeviceManager.observe` lê o foco quando a árvore já parece conta travada) ou declaração do dono. Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
+
+## 2026-10-03 — Aprendizado: versão viva comparada no formato da receita (fix, branch fix/aprendizado-versao-nome-codigo)
+
+- A receita grava `app_version` como `nome(código)` (`447.0.0.55.81(385311929)`), e `fontes.vivas` agrupava só
+  `device_app_state.observed_version_name`: TODA receita aparecia como "versão fora do parque" e a saúde (30.4/30.14) marcava
+  78 de 160 itens `obsoleto_provavel` numa cópia do banco do central. Agora as vivas saem no formato da receita
+  (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
+  Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
+  Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
+
+## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
+
+- O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:
+  - só a ENTRADA na espera avisa;
+  - a saída, e a saída sem a entrada correspondente depois de reinício, é no-op;
+  - só a faixa C avisa por padrão (`avisos.aprendizado_faixas`, novo; a B é aprovação em lote e fica na caixa);
+  - a mensagem leva o título fixo e o link `#/pendencias`, nunca kind, ref, app ou motivo.
+- Chave de deduplicação comum aos eventos que avisam: `chave_do_fato(família, …)`. Famílias e formatos:
+  - `approval:{id}`;
+  - `run:{id}:needs_input`;
+  - `session:{evento}` (era `evento:{id}`);
+  - `pedido:{id}` (era `pedido-aviso:{id}`);
+  - `learning:{kind}:{ref}:{desde}`.
+  A troca de nome é inofensiva: o laço só lê eventos novos, a partir de `last_id`.
+- Prova `simulated`: `backend/tests/test_avisos_aprendizado.py` (6), mais os testes de avisos vizinhos. Real: `not_run`.
+
 ## 2026-10-02 — 30.13: falhas com diagnóstico determinístico (branch feat/30-13-falhas-diagnostico)
 
 - `modules/learning/domain/diagnostico.py` (novo, puro), `domain/vocabulario.py` (`CausaProvavel`; `TipoDeProposta` ganha `rebaixar_receita`, `revisar_licao`,
@@ -43,13 +92,50 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
 
+
+
 ## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
 
-- Nova tentativa por ocorrência: `modules/pedidos/domain/tentativas.py` (puro) decide, a partir do desfecho da execução, entre repetir (a MESMA linha volta `falhou → devida`, `tentativa+1`, despacho `chave:t<n>` depois de um atraso exponencial com teto), `incerta` ou falha definitiva. Só repete sem ação com `effect_possible` (e sem execução purgada) e sem etapa `uncertain` (a regra de `_reconciliar`); falha COM efeito possível (ou execução purgada) fecha `incerta` e leva o pedido a `aguardando_pessoa`, nunca `falhou` (decisão do coordenador: um `falhou` deixaria a próxima ocorrência refazer o efeito); `max_tentativas` é o total por ocorrência (padrão 2). Sem migração: o instante da espera mora em `terminada_em` enquanto a ocorrência é `devida` com `tentativa > 0`. A repetição passa por sobreposição, orçamento e saldo.
-- `incerta` leva o pedido `ativo` a `aguardando_pessoa` (mesma transação) e nunca repete sozinha; N falhas seguidas (coluna `pausa_por_falha`, padrão 3) pausam o pedido (ator `sistema`). Os dois emitem `pedido.aviso` (`AvisoDTO` do contrato 28.9) no barramento (`state.py`), que o 28.11 já assina.
-- Configuração: `pedidos.max_tentativas`, `falhas_para_pausar` (padrões globais; a coluna do pedido vale), `retentativa_base_s`, `retentativa_teto_s`.
-- 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
-- Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
+## 2026-10-02 — API de pedidos: prévia, criação idempotente, ações, leitura, eventos e snapshot (28.9, branch feat/28-9-rotas)
+
+- Rotas `/api/pedidos` (Adendo v0.45 de `docs/api-contract.md`): `POST /previa` (sem efeito e sem IA), `POST` (criação com selo e idempotência), `GET` (filtros, `total_por_estado`), `GET /{id}` (detalhe), `PATCH /{id}` (compare-and-set por `versao`, `dry_run`, selo), `ativar`, `pausar`, `retomar`, `cancelar`, `ocorrencias`, `execucoes`, `relatorios`, `observacoes` e `GET /avisos`. `executar`, `backfill` e `POST /avisos/ler` ficam fora (ver o adendo).
+- Domínio puro `modules/pedidos/domain/previa.py`: bloqueios (piso de frequência, sobreposição, limites, fuso, recorrência, gatilho não suportado), selo SHA-256, id determinístico (`uuid5` inteiro da chave em base64, 26 caracteres), custo sem número inventado. Serviço em `infrastructure/servico.py`; DTOs e router em `presentation/`.
+- Piso de frequência configurável (`pedidos.piso_observar_s` 900, `pedidos.piso_agir_s` 3600).
+- Eventos `pedido.updated`, `pedido.ocorrencia.updated` e `pedido.aviso`: o repositório anota as mudanças (`marcar`, por thread) e o laço (`notificar`) e as ações as publicam depois do commit.
+- `GET /api/snapshot` ganha `pedidos` (`por_estado`, `avisos_nao_lidos`, `aguardando_pessoa` com as `pendencias` agrupadas); `RunSummary` ganha `pedido_id` e `ocorrencia_id`. `AcoesDePedidos.editar` passa a aceitar autonomia, alvos, fuso, orçamentos e demais campos validados pela API.
+- Prova `simulated`: `tests/test_pedidos_api.py` (14). `real`: `not_run` (o laço segue desligado de fábrica).
+
+## 2026-10-02 — Aprendizado: obsolescência e rebaixamento `catalogo_sem_efeito` (30.14, branch feat/30-14-obsolescencia)
+
+- `saude.rotulo` ganha `obsoleto_provavel` (depois de `degradando`, antes de `sem_evidencia`, só no publicado), com os sinais do §9.2 que têm
+  fonte: substituta viva, versão fora do parque, versão viva sem reprodução, efeito sem respaldo no catálogo, fluxo nunca casado e tela
+  absorvida (`api-contract.md`, adendo v0.54). Só leitura.
+- Passo novo da curadoria, `catalogo_sem_efeito`: receita ou fluxo vivo com `commit` num app cujo catálogo atual não respalda o efeito é
+  rebaixado pelo sistema (sempre → `disabled`, para a pessoa poder reativar) pelo caminho do Livro, com o motivo
+  `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
+  Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
+## 2026-10-02 — Aprendizado: saúde, falhas, capability e fila Atenção por app no painel (30.15 restante, branch feat/30-15-painel-resto)
+
+- A aba Aplicativos ganha, só no painel (`frontend/src/features/aprendizado/`): a contagem por rótulo de saúde no cartão e no detalhe do
+  app ("1 degradando, 2 saudáveis"), a fila **Atenção** (degradando, provavelmente obsoleto e sem evidência, só leitura, com o motivo
+  principal em português e o link `?aba=aprendido&item=<tipo>:<ref>`), global abaixo dos cartões e por app no detalhe, e o bloco "O que
+  falha" no detalhe do app (as falhas do backlog filtradas por `app`, agrupadas por capability). A saúde é CONTADA da lista do Livro
+  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude`; as linhas de `/apps/{pacote}` passam a trazer a `saude`
+  da mesma função do Livro (`presentation/apps.py`, `LearningService.saudes`). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
+  (só existe em `conteudo.capability` do detalhe do item): o aprendido segue plano e a tela diz por quê; agrupa sozinho se a linha
+  passar a trazer `capability`. Prova `simulated` (`frontend/src/features/aprendizado/SaudeDoApp.test.tsx`); `not_run` no central.
+
+## 2026-10-02 — Aprendizado: detalhe rico do item do Livro no painel (30.16, branch feat/30-16-detalhe-rico)
+
+- O detalhe do item (Aprendido, "Detalhes, evidência e trilha") ganha as seções do §11.2 do desenho, só as aplicáveis: Identidade,
+  Conteúdo (receita com ações, alvo, NOMES de parâmetro, selo do commit, capability ambígua marcada, origem com link para a execução,
+  uso, sombra e versões vizinhas; fluxo, habilidade, lição e tela), Saúde (rótulo, motivos com fato e limiar, dimensões com "sem dado"
+  no lugar de zero), Versão do app (quadro por versão), Evidência, Histórico, Relações (links para o item no próprio Livro) e o que
+  a pessoa pode fazer. A linha da lista continua enxuta e ganha só o selo de saúde. `?aba=aprendido&item=<tipo>:<ref>` abre o item de
+  um link no topo do catálogo. Só painel: lê `conteudo`, `versao`, `saude` e `relacoes` já mandados (adendos v0.50 a v0.53) e não
+  recalcula nada. Faltam no contrato `camada_de_uso` e `classe_de_risco` do §11.2: não são exibidas. Prova `simulated`
+  (`frontend/src/features/aprendizado/DetalheRico.test.tsx`); `not_run` no central.
 
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
@@ -61,6 +147,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (sem critério seguro). `nasceu de`, `complementa / depende de` e `revisado por` ficam fora.
 - `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
   Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
+## 2026-10-02 — Tela Pedidos no painel (28.9, branch feat/28-9-tela)
+
+- Rotas `#/pedidos` e `#/pedidos/<id>?aba=` (lista com filtros no link, detalhe com Resumo, Ocorrências, Execuções e Memória e relatórios), item **Pedidos** no menu (décimo) com o selo de avisos não lidos, e a guia **Avisos** (`?aba=avisos`, `requer_pessoa=0`). Código em `frontend/src/features/pedidos/`; tipos do adendo v0.45 em `frontend/src/api/pedidos.ts`; `RunSummary` ganha `pedido_id` e `ocorrencia_id` opcionais.
+- Ações lidas de `acoes_permitidas`: editar (prévia com `dry_run`, aplicar com a versão e o selo), ativar, pausar (com motivo), retomar (daqui ou recuperar) e cancelar em duas etapas; `200 sem_mudanca` e `409 invalid_state` tratados. Sem botão de executar agora nem de backfill; a agenda não se edita.
+- Comando: botão **Repetir ou acompanhar…** abre `NovoPedido` (Quando, autonomia, limites) com a prévia obrigatória (`POST /api/pedidos/previa`) e só então "Confirmar e criar" (`POST /api/pedidos`, selo e `idempotency_key`).
+- Pendências: o pedido `aguardando_pessoa` vira a quinta origem da caixa (emenda à ADR-062); a aprovação e a execução parada dele ficam agrupadas sob ele e não contam de novo. `FalhasDeLeitura` ganha `pedidos`.
+- Prova `simulated`: `PedidosPage.test.tsx` (18), `NovoPedido.test.tsx` (11), `pedidosNaCaixa.test.ts` (3) e os testes de menu e Pendências ajustados. Contra o backend real e no navegador a 1366 e 375 px: `not_run`.
 
 ## 2026-10-02 — Aprendizado: esquecer_conta (29.23, branch feat/29-23-esquecer-conta-aprendizado)
 
@@ -80,6 +174,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   confiança derivada da probabilidade da escolha e a conclusão como único texto livre, opcional (`invalida:<motivo>` em vocabulário
   fechado). Sem rota, sem migração, sem chamada de IA nem prompt. Prova `simulated`
   (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
+
+## 2026-10-02 — Aprendizado: saúde do item do Livro (30.4, branch feat/30-4-saude)
+
+- `saude` na lista, em `pendentes`/`revisar` e no detalhe do Livro (`api-contract.md`, adendo v0.52): dimensões medidas (uso, eficácia, base de
+  evidência, frescor, contestação; versão e intervenção humana `desconhecidas`), UM rótulo por regra (`inativo`, `em_prova`, `degradando`,
+  `sem_evidencia`, `parado`, `pouca_amostra`, `saudavel`, mais `indeterminado` quando falta medida) e `motivos[]` com o fato e o limiar. Regras e
+  limiares da proposta D-5 (medidos no banco real); eficácia acumulada, sem janela por item; `obsoleto_provavel` fica para o 30.13.
+- `domain/saude.py` puro; `LearningService.saude_de`/`saudes` são a única fonte do cálculo (evidência lida só dos publicados); limiares em
+  `aprendizado.saude` (`sem_uso_dias`, `amostra_minima`, `taxa_minima`, `falhas_seguidas`, `contestacao_dias`), via `Ajustes.saude`.
+- `EntradaDoLivro.falhas_seguidas` novo (opcional), preenchido de `recipes.consecutive_fail`. Limiares = D-5, aprovada pelo dono em 02/10.
+- Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
+  lista = detalhe); `not_run` no central.
 
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 

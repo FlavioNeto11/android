@@ -20,6 +20,7 @@ from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import VersaoViva
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, ModoDeTelas, Polaridade, Posicao, SignalKind)
@@ -52,6 +53,8 @@ class Ajustes:
     #: Dias recalculados em `learning_daily` a cada passo da curadoria (o dia de hoje e os anteriores).
     dias_recalculados: int = 3
     retencao: Retencao = field(default_factory=Retencao)
+    #: Os limiares da saúde do item (30.4); o default é o do desenho (§5.3).
+    saude: LimiaresDeSaude = field(default_factory=LimiaresDeSaude)
 
 
 # ------------------------------------------------------------------ o que se grava

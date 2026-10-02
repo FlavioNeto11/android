@@ -76,6 +76,8 @@ interface UiStore {
   focusInstanceId: string | null;
   /** Texto a ser colocado no campo de comando (ex.: "Editar comando" de uma execução). */
   commandDraftRequest: { text: string; nonce: number } | null;
+  /** Pedido de "Novo pedido" (tela Pedidos): o Comando abre o painel "Repetir ou acompanhar" e o foco vai ao texto. */
+  novoPedidoRequest: number | null;
   /** Menu lateral recolhido para só ícones (telas largas; lembrado no navegador). */
   menuRecolhido: boolean;
   /** Gaveta do menu aberta (telas estreitas, abaixo de 1024 px). */
@@ -100,6 +102,10 @@ interface UiStore {
   openFocus: (id: string) => void;
   closeFocus: () => void;
   requestCommandDraft: (text: string) => void;
+  /** Leva ao Comando (`#/painel`) com o painel "Repetir ou acompanhar" aberto, sem mexer no texto já escrito. */
+  abrirNovoPedido: () => void;
+  /** O Comando já atendeu o pedido acima. */
+  novoPedidoAtendido: () => void;
   /** Vai para Personas e abre esta pessoa (numa guia, se dita). O Foco fica como está. */
   openPersona: (id: string, tab?: string) => void;
   setMenuRecolhido: (v: boolean) => void;
@@ -172,6 +178,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   selectedRunId: runDaRota(inicial) ?? (temJanela ? loadJson('selectedRun', isString) : null),
   focusInstanceId: inicial.query[PARAM_FOCO] || null,
   commandDraftRequest: null,
+  novoPedidoRequest: null,
   menuRecolhido: menuRecolhidoInicial(),
   menuAberto: false,
 
@@ -299,6 +306,12 @@ export const useUiStore = create<UiStore>((set, get) => ({
   },
 
   requestCommandDraft: (text) => set({ commandDraftRequest: { text, nonce: Date.now() } }),
+
+  abrirNovoPedido: () => {
+    set({ novoPedidoRequest: Date.now() });
+    get().navegar({ tela: 'painel' });
+  },
+  novoPedidoAtendido: () => set({ novoPedidoRequest: null }),
 
   openPersona: (id, tab) => {
     get().navegar({ tela: 'personas', segmentos: tab ? [id, tab] : [id] });

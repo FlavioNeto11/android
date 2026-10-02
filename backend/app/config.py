@@ -910,6 +910,17 @@ class RetencaoDoAprendizadoCfg(BaseModel):
     candidata_sem_evidencia_dias: int = Field(90, ge=1, le=3650)
 
 
+class SaudeCfg(BaseModel):
+    """Limiares da saúde do item do Livro (30.4; proposta D-5, medida no banco real). Os defaults são os medidos;
+    mudar aqui muda o rótulo de todos os itens na próxima leitura (nada é gravado)."""
+
+    sem_uso_dias: int = Field(14, ge=1, le=3650)           # nunca usado há isto = sem_evidencia; sem uso há mais = parado
+    amostra_minima: int = Field(5, ge=1, le=10_000)        # usos para a eficácia valer (abaixo: pouca_amostra)
+    taxa_minima: float = Field(0.8, ge=0, le=1)            # eficácia acumulada mínima (abaixo, com amostra: degradando)
+    falhas_seguidas: int = Field(2, ge=1, le=1000)         # consecutive_fail a partir do qual degrada
+    contestacao_dias: int = Field(7, ge=1, le=365)         # janela da evidência contra/conflito
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -929,6 +940,7 @@ class LearningCfg(BaseModel):
     ia_resumos_por_dia: int = Field(0, ge=0, le=0)
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
+    saude: SaudeCfg = SaudeCfg()
 
 
 class AvisosCfg(BaseModel):
@@ -948,6 +960,9 @@ class AvisosCfg(BaseModel):
     validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
     incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
     retencao_dias: float = Field(30.0, gt=0, le=3650)
+    #: Faixas do `learning.needs_person` (30.21) que avisam fora do painel (28.14). Padrão: só a C (item a item); a B é
+    #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
+    aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
 
 
 class ContextRetrievalLexicalCfg(BaseModel):
@@ -1070,6 +1085,11 @@ class PedidosCfg(BaseModel):
     #: Atraso exponencial da nova tentativa: `base * 2**(n-1)`, no máximo `retentativa_teto_s`. Chega até `tick_s` tarde.
     retentativa_base_s: float = Field(60.0, ge=1.0, le=86_400.0)
     retentativa_teto_s: float = Field(900.0, ge=1.0, le=86_400.0)
+    #: Piso de frequência da criação e da edição (28.9, adendo v0.45, decisão do dono 02/10): o menor intervalo entre
+    #: ocorrências por teto de autonomia. `observar` e `preparar` leem e preparam (15 min); `agir` tem efeito externo e
+    #: custo por ocorrência (1 h). Abaixo, a criação recusa com `frequencia_abaixo_do_piso`.
+    piso_observar_s: int = Field(900, ge=60, le=86_400)
+    piso_agir_s: int = Field(3600, ge=60, le=86_400)
 
 
 class AppConfigFile(BaseModel):

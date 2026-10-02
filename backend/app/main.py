@@ -46,6 +46,7 @@ from .commands.despacho import DespachoRecusado
 from .config import Config, get_config
 from .modules.context_retrieval.presentation.router import router as context_retrieval_router
 from .modules.learning.presentation.router import router as learning_router
+from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.skills.presentation.router import router as skills_router
 from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter, chave_sensivel
@@ -261,6 +262,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         # Livro de aprendizado (ADR-054; `/api/aprendizado*`) ANTES do `router`: o voto do D2
         # (`POST /api/runs/{id}/feedback`) casaria com `POST /runs/{run_id}/{op}` de lá e viraria 404.
         app.include_router(learning_router)
+        app.include_router(pedidos_router)       # `/api/pedidos` (28.9)
         app.include_router(router)
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)

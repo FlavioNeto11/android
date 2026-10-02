@@ -42,7 +42,11 @@ log = logging.getLogger("poc.pedidos")
 #: Campos do pedido que a pessoa edita sem mexer em gatilho. Alvo e autonomia ficam de fora do 28.4 (a prévia dos alvos
 #: e o teto de autonomia são do 28.9).
 CAMPOS_EDITAVEIS: frozenset[str] = frozenset({"titulo", "objetivo", "contexto", "sobreposicao", "janela_recuperacao_s",
-                                              "coalescer", "fim_em", "max_ocorrencias"})
+                                              "coalescer", "fim_em", "max_ocorrencias",
+                                              # 28.9: a API valida (prévia dos alvos, teto de autonomia, piso) ANTES de chamar
+                                              "criterios_sucesso", "alvos", "autonomia", "fuso", "inicio_em",
+                                              "orcamento_total_usd", "orcamento_ocorrencia_usd", "max_tentativas",
+                                              "pausa_por_falha"})
 MODOS_DE_RETOMADA = ("daqui", "recuperar")
 
 
@@ -71,7 +75,8 @@ class AcoesDePedidos:
         transicionar_pedido(p["estado"], "pausado", ator=ator, motivo=motivo)
         em = to_iso(self.relogio())
         with self.repo.db.tx():
-            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "pausado", em, pausado_motivo=motivo):
+            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "pausado", em, pausado_motivo=motivo,
+                                                pessoa=ator == ATOR_PESSOA):
                 raise AcaoInvalida(f"pedido {pedido_id} mudou de estado no meio")
             for linha in self.repo.ids_prevista_devida(pedido_id):
                 transicionar_ocorrencia(linha["estado"], "pulada", motivo="pedido pausado")
@@ -87,7 +92,7 @@ class AcoesDePedidos:
         agora = self.relogio()
         em = to_iso(agora)
         with self.repo.db.tx():
-            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "ativo", em):
+            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "ativo", em, pessoa=True):
                 raise AcaoInvalida(f"pedido {pedido_id} mudou de estado no meio")
             if modo == "daqui":
                 for g in self.repo.gatilhos_ativos(pedido_id):
@@ -118,7 +123,7 @@ class AcoesDePedidos:
         transicionar_pedido(p["estado"], "cancelado", ator=ATOR_PESSOA)
         em = to_iso(self.relogio())
         with self.repo.db.tx():
-            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "cancelado", em):
+            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "cancelado", em, pessoa=True):
                 raise AcaoInvalida(f"pedido {pedido_id} mudou de estado no meio")
             for linha in self.repo.ids_prevista_devida(pedido_id):
                 transicionar_ocorrencia(linha["estado"], "cancelada", motivo="pedido cancelado")
@@ -179,6 +184,7 @@ class AcoesDePedidos:
                 self.repo.inserir_gatilho(novo_id("g"), pedido_id, gatilho[0], json.dumps(dict(gatilho[1])),
                                           formatar_instante(agora), em)
             self.repo.trocar_versao_das_abertas(pedido_id, versao)
+            self.repo.marcar("pedido", pedido_id, pessoa=True)
         self.acordar()
         return versao
 

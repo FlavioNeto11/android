@@ -492,6 +492,42 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
   `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 
+## Saúde do item (30.4)
+
+Cada item do Livro (lista, `pendentes`, `revisar` e detalhe) traz `saude`: dimensões medidas, UM rótulo por regra e os `motivos[]` que o
+produziram (contrato no adendo v0.52 de `api-contract.md`; desenho em `design/aprendizado-vivo.md` §5, com as regras da proposta D-5
+medidas no banco real). A regra é pura (`domain/saude.py`); `LearningService.saude_de` é a única fonte do cálculo e `saudes` a aplica à
+lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura: não é estado, não move nada.
+
+- **Ordem (o primeiro que casa vence):** `inativo`, `em_prova`, `degradando` (`consecutive_fail ≥ 2`, eficácia `< 0,8` com `≥ 5` usos, ou
+  contra/conflito em 7 dias), `sem_evidencia` (publicado há ≥ 14 dias e nunca usado), `parado` (sem uso há mais de 14 dias),
+  `pouca_amostra` (< 5 usos), `saudavel`. Limiares em `aprendizado.saude` (`Ajustes.saude`).
+- **Sem dado não é bom nem ruim.** Dimensão sem medida sai `desconhecida` (`valor: null`, nunca 0); publicado sem contador de uso, sem data
+  do último uso ou sem eficácia/contestação medida é `indeterminado`. Habilidade e itens sem contador de uso (tela, lição, voz,
+  preferência) ficam `indeterminado` até haver fonte de uso por item.
+- **Eficácia acumulada.** Receita: `replay_ok/(ok+fail)`; fluxo e itens: evidências a favor/contra. Não há janela dos últimos N usos por item.
+- **Lacunas conhecidas.** `obsoleto_provavel`
+  veio no 30.14 (seção abaixo); `intervencao_humana` e `versao` ficam `desconhecida`; `acoes[]` não traz `motivo_de_bloqueio`. A lista lê a evidência de cada
+  publicado (uma consulta indexada por item): trocar por consulta em lote se a lista crescer.
+
+## Obsolescência (30.14)
+
+`obsoleto_provavel` entra na ordem da saúde depois de `degradando` e antes de `sem_evidencia`, só para o publicado (contrato no adendo
+v0.54; desenho §9.2). A regra é pura (`domain/obsolescencia.py`, `domain/saude.py`); a leitura é `application/obsolescencia.py`
+(`LeitorDeObsolescencia`, pendurado no serviço por `infrastructure/ligar_obsolescencia.py`), e a lista e o detalhe usam o mesmo
+`ContextoDeObsolescencia.sinais`. Sinais com fonte: substituta viva, versão fora do parque ou versão viva sem reprodução (o quadro do
+30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo, fluxo nunca casado há `sem_uso_dias` e tela
+absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
+
+- **Rebaixamento `catalogo_sem_efeito`** (passo da curadoria `RebaixamentoPorCatalogo`, sem IA, idempotente): receita ou fluxo vivo com
+  `commit` num app com catálogo (o do registro de apps) que não respalda o efeito — catálogo sem nenhuma ação com efeito (`*`, o Outlook
+  hoje) ou capability conhecida, sem ambiguidade, cuja ação não tem efeito. App sem catálogo nunca; capability ambígua ou desconhecida
+  num catálogo com efeito vira só o sinal (`duvidoso`). Vai por `LearningService.mudar_estado(by='sistema')`, o mesmo caminho do Livro
+  (CAS, trilha, aviso de espera): em prova → `disabled`, publicado → `deprecated` (fluxo: `disabled`). `recipes.py` não foi tocado.
+- **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
+  varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
+- **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
+
 ## Falhas com diagnóstico determinístico (30.13)
 
 Desenho: `docs/design/aprendizado-vivo.md` §9.1, só a parte determinística. A revisão por IA quando a causa é `indeterminada` **não está feita** (espera o
