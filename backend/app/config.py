@@ -499,6 +499,14 @@ class AiCfg(BaseModel):
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
     # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
+    # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
+    # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
+    # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.
+    cascade_blocked_to_tier1: bool = True
+    # Item 17.10 (como o B14/7.10, mas para o "sim"): em etapa com EFEITO externo, o "sim" do verificador barato é rejulgado
+    # UMA vez pelo modelo de escalonamento, e quem vale é o mais forte (discordou → não conta como prova). Só age quando o
+    # modelo do verificador é DIFERENTE do de escalonamento (senão seria a mesma pergunta ao mesmo modelo).
+    rejudge_yes_on_side_effect: bool = True
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de

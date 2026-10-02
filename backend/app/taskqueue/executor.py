@@ -1220,6 +1220,7 @@ class StepExecutor:
         # de uma tela que já passou — a Anthropic recebe a árvore inteira e não tropeça nisto.
         decide_kind = self.cfg.ai_role("decide").kind
         forcar_tier_1 = False                  # a decisão anterior foi descartada pelo piso: a PRÓXIMA sobe de tier
+        bloqueio_escalado = False              # item 17.10: o bloqueio do tier 0 sobe ao tier 1 UMA vez por tentativa
         tier = base_tier                       # só existe de verdade dentro do laço (decisão fresca); este é o
                                                 # valor antes de qualquer decisão — nunca lido por uma de receita
         # Pacote "anr" (r-20260928165254-e31953 e r-20260928195344-02ee9e): as mortes do app alvo por ANR contam pela
@@ -1428,7 +1429,8 @@ class StepExecutor:
                     motivo = (motivo_efeito if tier_efeito
                               else "nova tentativa da mesma etapa" if step.attempts > 1
                               else "erros seguidos" if errors_in_row >= 2
-                              else "alvo inexistente na tela (piso do modelo local, item 7.8)" if piso_forcou
+                              else ("bloqueio relatado pelo modelo de ação (item 17.10)" if bloqueio_escalado
+                                    else "alvo inexistente na tela (piso do modelo local, item 7.8)") if piso_forcou
                               else "ação repetida na mesma tela")
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
@@ -1637,6 +1639,19 @@ class StepExecutor:
                                                 obs.package)
                 if step.side_effect and fired:
                     return StepOutcome(Outcome.uncertain, args.reason)
+                if (tier == 0 and not from_recipe and not bloqueio_escalado and ai_cfg.cascade_blocked_to_tier1
+                        and args.kind not in ("challenge", "auth_required", "wrong_account")):
+                    # Item 17.10: o ator barato desiste cedo ("não vejo", "falta informação"). Antes de acordar uma pessoa,
+                    # o modelo de escalonamento olha a MESMA tela, uma vez. Se ele também relatar o bloqueio, vale o caminho
+                    # de sempre (tier 1 não sobe de novo).
+                    bloqueio_escalado = True
+                    forcar_tier_1 = True
+                    history.append(f"(executor) o modelo de ação relatou bloqueio ({args.kind}: {args.reason}); o modelo de "
+                                   "escalonamento reavalia esta mesma tela antes de pedir uma pessoa.")
+                    repo.decision(f"{iid} · {step.title}: bloqueio relatado pelo modelo de ação ({args.kind}); "
+                                  "subindo ao modelo de escalonamento antes de pedir uma pessoa",
+                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                    continue
                 if args.kind in ("auth_required", "wrong_account"):
                     # A IA viu login ou conta errada na tela. O perfil para de afirmar "Conectado": `wrong_account`
                     # e desafio dependem de pessoa; `auth_required` volta a ser trabalho do autenticador.
@@ -2106,6 +2121,23 @@ class StepExecutor:
                         self.repo.decision(
                             f"{rt.id} · {step.title}: o verificador recusou vendo o nível {level.value} "
                             f"(exigido {need.value}); rejulgando com o modelo de escalonamento",
+                            run_id=run_id, instance_id=rt.id, step_id=step.id)
+                        verdict = await self._ai(
+                            run_id, objective_id,
+                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                                                                       facts=list(facts or []), escalate=True)),
+                            step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id)
+                        level = verdict.delivery_level
+                    if (verdict.satisfied == "yes" and not escalou and (step.side_effect or need is not None)
+                            and self.cfg.file.ai.rejudge_yes_on_side_effect
+                            and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
+                        # Item 17.10: um "sim" errado numa etapa com efeito externo (ela mesma, ou a que confirma o nível de entrega do efeito) vira sucesso falso (no rejulgamento de
+                        # 25/09 o Haiku aprovou 6 telas erradas em 56). O modelo de escalonamento confere a mesma tela,
+                        # uma vez, e o veredito dele é o que vale: se discordar, não conta como prova.
+                        escalou = True
+                        self.repo.decision(
+                            f"{rt.id} · {step.title}: o verificador aprovou uma etapa com efeito externo; "
+                            "conferindo com o modelo de escalonamento",
                             run_id=run_id, instance_id=rt.id, step_id=step.id)
                         verdict = await self._ai(
                             run_id, objective_id,
