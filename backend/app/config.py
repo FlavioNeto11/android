@@ -520,6 +520,14 @@ class AiCfg(BaseModel):
     action_settle_s: float = Field(0.6, ge=0, le=10)
     judge_wait_s: float = Field(1.5, ge=0, le=30)
     recipe_settle_s: float = Field(1.0, ge=0, le=10)
+    # T.2 (achado #164): o orçamento de `_verify` eram três literais (8 / 15 / 60 s) no meio do laço, e o teste do
+    # resultado ambíguo pagava os 60 s INTEIROS em tempo real para provar "sem a mensagem na tela até o prazo →
+    # incerto". Agora é configuração, com o valor de hoje como padrão. `verify_budget_s` vale quando a verificação
+    # é "normal"; `verify_budget_patient_s`, quando há nível de entrega exigido ou o efeito já foi disparado (o app
+    # leva segundos para sair de "enviando"); `verify_budget_min_s` é o piso quando a etapa já está perto do prazo.
+    verify_budget_s: float = Field(15.0, ge=0.5, le=300)
+    verify_budget_patient_s: float = Field(60.0, ge=0.5, le=600)
+    verify_budget_min_s: float = Field(8.0, ge=0.5, le=60)
     # Receitas: off = só IA · shadow = aprende e compara com a IA, sem agir · replay = repete sem IA, IA só se divergir
     recipes: Literal["off", "shadow", "replay"] = "off"
     # Receita que a IA aprende nasce CANDIDATA: a IA segue decidindo a etapa e a receita só é comparada (sombra), ao
