@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Sombra da intenção no Jev: R2 e R3 fora da cadeia, com remoção de entidades que falha fechada (31.9, branch feat/31-9-intencao-sombra)
+
+- `planning/decisao_fechada/entidades.py`: `remover_entidades(texto) -> str | None`, função pura que troca nome próprio, `@handle`,
+  e-mail, número (3 dígitos ou mais), telefone, link e texto entre aspas por marcadores fixos e confere o resultado; se sobrar
+  indício, devolve `None` e o pedido não sai (`fallback_reason='privacidade'`).
+- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao` (C3, sempre
+  `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre os empatados), numa
+  chamada. Roda depois do `_plan`, como tarefa solta; grava a sombra e casa a decisão real. `CAMPOS_POR_ORIGEM["intencao"]` registra
+  `comando` e `app`. `casar_desfecho` fica para o 31.10 (sem gancho de fim de execução fora do núcleo).
+- Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning` e o método `_intencao_em_sombra`) e fiação em
+  `state.py`. `intent_ports.py` e `intent_resolver.py` não mudam. Padrão desligado: zero chamadas, zero linhas.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_intencao.py`, `DecisorFalso`). `JEV_RUNTIME_SEND_APPROVED` continua `False`;
+  chamada real ao Jev: `not_run`.
+
 ## 2026-10-02 — Sombra da porta `DecisaoFechada`: registro, preço, livro-caixa e transparência (31.5, branch feat/31-5-sombra-registro)
 
 - Migração 074 (`decisao_fechada_sombra` e `decisao_fechada_diario`): uma linha por pergunta respondida ou por fallback, só ids opacos e
