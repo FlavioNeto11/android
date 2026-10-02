@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
+
+- Real (02/10 17:49–17:54Z, central, deploy `25624c4`, android-05 sem conta real, US$ 0,2955): regra 2 provada em `r-20261002175209-1a252b`; regra 1 `not_run` (`r-20261002175004-ea377e`: o tier 0 não bloqueou; o tier 1 bloqueou pela nova tentativa); negativo `r-20261002175257-0e9362` barrado pelo detector de tela sensível. Detalhe em `docs/ia.md` §10b.
+- `scripts/eval_run.py`: `saida_segura()` — o "≈" do aviso derrubava a bateria no console cp1252 antes do primeiro POST; `scripts/tests/test_eval_run.py` (12).
+
 ## 2026-10-02 — Perfil de IA por execução e canário (17.7): A/B sem reiniciar o central (branch `jev/17-7-perfil-ia`)
 
 - `config.py`: `ai.profiles.<nome>.roles` (por cima de `ai.roles`, campo a campo) e `ai.canary: {profile, fraction}`, conferidos na partida como `ai.roles`. `planning/routing.py`: os perfis vivem no MESMO hub (teto em US$, vagas por função e instâncias compartilhados); o perfil sai de `runs.ai_profile` pelo `run_id` de cada chamada; perfil que sumiu da configuração falha com `not_configured` em vez de cair no padrão; perfil que manda dados para fora entra no aviso do `/api/ai`. `RunCreate.ai_profile` (desconhecido = `422 ai_profile_desconhecido`), sorteio injetável do canário em `RunService`, `RunSummary.ai_profile`/`ai_profile_source`. Migração `064_perfil_de_ia`. `scripts/eval_run.py --profile`.

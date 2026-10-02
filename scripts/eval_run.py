@@ -130,6 +130,16 @@ def plano(cases: list[dict], spec: dict, a: argparse.Namespace) -> str:
     return "\n".join(linhas)
 
 
+def saida_segura() -> None:
+    """O console do Windows abre em cp1252, e a bateria imprime "≈" e "–". Medido em 02/10: `UnicodeEncodeError`
+    ANTES do primeiro POST, com `--yes` já dado. Caractere que o console não tem vira "?"; a bateria não para."""
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass                                    # fluxo trocado (teste, pipe sem reconfigure): segue como está
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Bateria de avaliação. [P] (backend vivo + adb) e, com provedor real, "
                                              "[T]. Sem --yes só imprime o plano.")
@@ -144,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                          "force-stop, conferência), provision-qa.ps1 quando o caso pede e, com provedor real, gasto "
                          "de IA. Sem ele o script só imprime o plano")
     a = ap.parse_args(argv)
+    saida_segura()
     spec = yaml.safe_load((ROOT / "config" / "eval-set.yaml").read_text(encoding="utf-8"))
     wanted = {c for c in a.cases.split(",") if c}
     cases = [c for c in spec["cases"] if not wanted or c["id"] in wanted]

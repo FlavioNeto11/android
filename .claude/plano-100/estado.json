@@ -4575,22 +4575,21 @@
    "id": "17.10",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #40 (merge efab19d, 02/10/2026, sessao jev; feat b8a89ae + teste b8d281e). backend/app/taskqueue/executor.py: step_blocked do tier 0 sobe ao tier 1 antes de waiting_user (ai.cascade_blocked_to_tier1) e o 'sim' do verificador barato em etapa com efeito externo e rejulgado pelo tier de cima (ai.rejudge_yes_on_side_effect); as duas chaves true em backend/app/config.py e config/config.example.yaml; docs/ia.md. Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso). A suite completa (-n 8, 02/10) pegou 3 testes de bloqueio forcado que a cascata passou a absorver (test_desbravador, test_revisao_receitas, test_valor_entre_etapas); corrigidos desligando a chave NO teste (b8d281e), sem enfraquecer o que eles provam. Contagens da reexecucao em testes.",
-   "blocker": "Real not_run: depende do deploy pela sessao Android e de bateria paga (medicao do gpt-6-luna como ator), suspensa sem saldo/autorizacao nova.",
+   "evidence": "PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10). REAL PARCIAL 02/10/2026 17:49-17:54Z, central WIN-7S2UASNLFOP, deploy 25624c4, android-05 (sem conta real), scripts/eval_run.py --instances android-05, gasto do dia 0,0 -> 0,295547 (US$ 0,2955, teto 0,50); ator claude-sonnet-5, verificador claude-haiku-4-5, escalonamento claude-opus-5-5. REGRA 2 PROVADA: r-20261002175209-1a252b (msg-qa001, succeeded, US$ 0,0467), etapa 'Enviar a mensagem': 'o verificador aprovou uma etapa com efeito externo; conferindo com o modelo de escalonamento', ai_calls verify haiku x2 e opus x2. REGRA 1 NAO ACIONADA: r-20261002175004-ea377e (perfil-campo-inexistente, waiting_user, US$ 0,1926): tier 0 declarou step_done, verificador reprovou, 2a tentativa subiu ao tier 1 pela regra antiga (nova tentativa) e o tier 1 relatou step_blocked. NEGATIVO: r-20261002175257-0e9362 (sessao-expirada, waiting_user, US$ 0,0562): zero escalonamento, barrado pelo detector deterministico de tela sensivel antes da IA. docs/ia.md 10b.",
+   "blocker": "Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com chamada paga. auth_required vindo da IA tambem nao exercitado em real. Medicao do gpt-6-luna como ator (eval_run.py --profile, 17.7) pendente de bateria paga autorizada.",
    "files": [
     "backend/app/taskqueue/executor.py",
-    "backend/app/config.py",
-    "config/config.example.yaml",
     "backend/tests/test_cascata_ator_barato.py",
-    "docs/ia.md"
+    "docs/ia.md",
+    "scripts/eval_run.py"
    ],
-   "testes": "02/10 (sessao jev-xdist, branch jev/xdist-suite com a main f9eed71+25624c4 integrada): pytest -q tests/test_cascata_ator_barato.py tests/test_desbravador.py tests/test_revisao_receitas.py tests/test_valor_entre_etapas.py tests/test_arquitetura.py -> 63 passed",
-   "grupo": "sessao:jev-xdist",
+   "testes": "real: 3 execucoes acima (eval_run.py, PYTHONIOENCODING=utf-8); simulated: scripts/tests/test_eval_run.py -> 12 passed (inclui console cp1252)",
+   "grupo": "sessao:jev-17-10-real",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T16:42:55+00:00"
+   "quando": "2026-10-02T17:55:17+00:00"
   },
   "17.11": {
    "id": "17.11",
@@ -5591,6 +5590,15 @@
    ],
    "grupos": [
     "sessao:jev-17-7"
+   ]
+  },
+  {
+   "quando": "2026-10-02T17:55:17+00:00",
+   "itens": [
+    "17.10"
+   ],
+   "grupos": [
+    "sessao:jev-17-10-real"
    ]
   }
  ]
