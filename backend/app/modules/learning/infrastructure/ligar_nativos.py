@@ -33,6 +33,7 @@ from app.modules.learning.application.nativos import (AssinaturaDoPlano, D1Nativ
                                                       SombraDosFluxos, ValidacaoPorExecucao)
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
+from app.modules.learning.domain.evidencia_invalida import run_da_etapa
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
 from app.modules.learning.domain.vocabulario import LivroKind
@@ -112,6 +113,12 @@ class LeituraSql:
                                       nasceu_de=linhas.texto_ou_nulo(r, "source_run_id")))
         return saida
 
+    def execucao_real(self, run_id: str) -> bool:
+        """A execução existe e não é simulada (`runs.simulated=0`): a única que ensina de novo o que a evidência
+        inválida desligou (30.23)."""
+        row = self._db.one("SELECT simulated FROM runs WHERE id=?", (run_id,))
+        return row is not None and not linhas.inteiro(row, "simulated")
+
     def execucao_de_habilidade(self, run_id: str) -> ExecucaoDeHabilidade | None:
         row = self._db.one("SELECT status, simulated, skill_id, skill_version, instance_ids FROM runs WHERE id=?",
                            (run_id,))
@@ -173,7 +180,7 @@ class PoliticaD1DoFluxo:
             conteudo = linhas.json_legado(nascimento.plano)
             return self._d1.fluxo_ao_nascer(nascimento.match_key,
                                             content_hash(conteudo) if conteudo is not None else None,
-                                            nascimento.reaproveita)
+                                            nascimento.reaproveita, nascimento.run_id)
         except Exception:  # noqa: BLE001 - sem a regra, o lado seguro: nasce inerte (a sombra decide depois)
             log.exception("aprendizado: política de nascimento do fluxo (%s)", nascimento.run_id)
             return "candidate" if nascimento.reaproveita is None else None
@@ -208,10 +215,21 @@ class OuvinteD1DasReceitas:
             with self._db.savepoint():
                 return self._d1.receita_vetada(hash_da_receita(linhas.json_legado(r.actions)),
                                                escopo_da_receita(r.package, r.app_version, r.signature, r.variant,
-                                                                 r.step_hash), r.app_version)
+                                                                 r.step_hash), r.app_version,
+                                               run_da_etapa(r.learned_from))
         except Exception:  # noqa: BLE001 - o veto informa a loja; ilegível não trava o aprendizado da etapa
             log.exception("aprendizado: veto da receita (%s)", r.step_hash)
             return False
+
+    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool:
+        r = receita
+        try:
+            with self._db.savepoint():                # só leitura, dentro da transação da loja (ver `vetada`)
+                return self._d1.receita_reaprendida(escopo_da_receita(r.package, r.app_version, r.signature,
+                                                                      r.variant, r.step_hash), recipe_id)
+        except Exception:  # noqa: BLE001 - na dúvida, o dono decide: a receita para em validated (nunca publica)
+            log.exception("aprendizado: reaprendida da receita %s", recipe_id)
+            return True
 
     def mudou(self, mudanca: MudancaDaReceita) -> None:
         m = mudanca
@@ -257,7 +275,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     `aprendizado.fluxo` VIGENTE (lido a cada uso). `decidir(texto, run_id)`: a linha do tempo da execução."""
     leitura = LeituraSql(db)
     trilha = TrilhaDasLojas(db)
-    d1 = D1Nativo(repo, com_prova=com_prova, relogio=relogio)
+    d1 = D1Nativo(repo, com_prova=com_prova, relogio=relogio, execucao_real=leitura.execucao_real)
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
                                                 decidir=decidir))
     if habilidades is not None:

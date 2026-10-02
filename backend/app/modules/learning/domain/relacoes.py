@@ -1,5 +1,6 @@
 """As relações derivadas de um item do Livro (30.7, `docs/design/aprendizado-vivo.md` §6): o que ele substitui, por
-quem foi substituído, de que foi derivado, em que regra declarada foi absorvido e com quem se contradiz.
+quem foi substituído, de que foi derivado, o que ele reaprende depois de uma evidência inválida (30.23), em que regra
+declarada foi absorvido e com quem se contradiz.
 
 SEM tabela de arestas: cada relação sai de um dado que já existe (versão vizinha da receita, `parent_version`,
 `parent_id`, o prefixo `absorvida:`, o mesmo `scope_key` com outro `content_hash`) e carrega a `fonte` de onde foi lida,
@@ -36,6 +37,8 @@ class TipoDeRelacao(StrEnum):
     SUBSTITUI = "substitui"
     SUBSTITUIDA_POR = "substituida_por"
     DERIVADO_DE = "derivado_de"
+    REAPRENDE = "reaprende"
+    REAPRENDIDA_POR = "reaprendida_por"
     ABSORVIDA = "absorvida"
     CONTRADIZ = "contradiz"
 
@@ -142,6 +145,30 @@ def absorvida(entrada: EntradaDoLivro, tema: str | None) -> list[JsonObject]:
         return [relacao(TipoDeRelacao.ABSORVIDA, KIND_DA_REGRA_DECLARADA, tema,
                         rotulo=f"regra '{tema}' declarada no commit {commit}", fonte=fonte)]
     return [relacao(TipoDeRelacao.ABSORVIDA, KIND_DO_COMMIT, commit, rotulo=f"declarada no commit {commit}", fonte=fonte)]
+
+
+# ------------------------------------------------------------------ reaprendizado (30.23)
+_FONTE_DO_REAPRENDIZADO = "learning_transitions: evidencia_invalida:<run>, mesmo scope_key"
+
+
+def de_reaprendizado(entrada: EntradaDoLivro, mesmo_escopo: Iterable[EntradaDoLivro]) -> list[JsonObject]:
+    """O reaprendido aponta para o item desligado por evidência inválida no mesmo escopo (`reaprende`); o desligado,
+    para os que o reaprenderam (`reaprendida_por`). Sai de `EntradaDoLivro.reaprendido`, que o serviço deriva da
+    trilha. O fluxo renasce na MESMA linha (`match_key` único): não aponta para si mesmo (a marca do item diz isso)."""
+    saida: list[JsonObject] = []
+    r = entrada.reaprendido
+    if r is not None and r.item_invalidado != entrada.trail_ref:
+        kind, sep, ref = r.item_invalidado.partition(":")
+        if sep and ref:
+            saida.append(relacao(TipoDeRelacao.REAPRENDE, kind, ref,
+                                 rotulo=f"desligado por evidência inválida (execução {r.run_invalidada})",
+                                 fonte=_FONTE_DO_REAPRENDIZADO))
+    for o in mesmo_escopo:
+        if (o.reaprendido is not None and o.reaprendido.item_invalidado == entrada.trail_ref
+                and o.trail_ref != entrada.trail_ref):
+            saida.append(relacao(TipoDeRelacao.REAPRENDIDA_POR, o.kind.value, o.ref, rotulo=o.title,
+                                 fonte=_FONTE_DO_REAPRENDIZADO))
+    return saida
 
 
 # ------------------------------------------------------------------ contradição

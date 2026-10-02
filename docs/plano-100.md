@@ -724,6 +724,7 @@ lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `tr
 | 30.20 | **Modo por app para lições e telas** (§8.10; decisão do dono de 02/10): override por pacote, padrão = global; lições depois no QAMessenger, telas `on` no Outlook depois da leitura real | diagnóstico C12 | M |
 | 30.21 | **Evento `learning.needs_person`** (§8.11): entrada e saída da espera humana (faixas B e C), sem conteúdo, para o aviso (28.11) e as Pendências (ADR-062) | pedido do orquestrador, 02/10 | P |
 | 30.22 | **Backfill único das lições** nas 12 execuções reais com contraste aprovável anteriores à 055, idempotente, sem IA, com backup antes | causa medida das 0 lições (02/10) | P |
+| 30.23 | **Evidência inválida** como tipo próprio de desligamento (motivo estruturado `evidencia_invalida:<run>`, ação própria no livro): o veto barra só renascer da MESMA execução; outra execução real reaprende como item novo (receita) ou na mesma linha (fluxo), com relação "reaprende" e classe B forçada; transição corretiva da receita 109 e do fluxo do Outlook | decisão do orquestrador, 02/10 (trava do 12.5) | M |
 
 **Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
 o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.

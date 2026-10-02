@@ -39,6 +39,9 @@ export const apiAprendizado = {
   /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela. */
   mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string) =>
     apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, { body: { to, reason: reason.trim() } }),
+  /** 30.23: a execução de origem terminou como sucesso sem comprovar o que fez. O motivo é estruturado pelo backend. */
+  invalidarEvidencia: (kind: LivroKind, ref: string, runId: string) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } }),
 
   /** "O que mais falha" (A3). Sem IA; o simulado fica fora por padrão. */
   falhas: async (q: { dias: number; app?: string; camada?: string; limite?: number }, signal?: AbortSignal): Promise<RelatorioDeFalhas> =>
