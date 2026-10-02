@@ -57,7 +57,8 @@ buildado (`npm run build`) para `start.ps1` servir `frontend/dist/index.html`
 ## 4. Testes
 
 ```powershell
-cd backend; .venv\Scripts\python.exe -m pytest -q          # SQLite (padrão), ~11 min
+cd backend; .venv\Scripts\python.exe -m pytest -q          # SQLite (padrão), em série
+cd backend; .venv\Scripts\python.exe -m pytest -q -n 8     # a mesma suíte em 8 processos (pytest-xdist), ~5:06
 # com TEST_DATABASE_URL=postgresql://...  , a mesma suíte roda contra PostgreSQL, ~14 min
 cd frontend; npm run typecheck && npm test
 cd backend; .venv\Scripts\python.exe -m pytest -q ..\scripts\tests   # lógica pura dos scripts, sem tocar o parque
@@ -76,6 +77,8 @@ Convenções): durante o trabalho, rodar só o arquivo ou o `-k` afetado; a suí
 commit**, e roda **em segundo plano** — nunca ficar ocioso esperando. O harness de teste isola-se do parque real
 por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padrão de produção é 5554,
 `config.py:184`), então a suíte nunca endereça um emulador real do parque, mesmo rodando na mesma máquina.
+
+**Suíte em paralelo (`-n 8`, J-XDIST).** O `pytest-xdist` está nas dependências de dev (`backend/requirements-dev.in`). Medido em 02/10 na máquina central (22 núcleos lógicos), serial em `25624c4` (prova real da sessão Android, 16:40–17:16Z) e paralelas em `7a1d0b0` (o mesmo código de teste): em série ~36 min (2178 s); com `-n 8`, 5:06 e 5:47 em duas execuções seguidas, as três com o mesmo resultado (4752 passed e 9 skipped, sem falha, nas duas paralelas; a referência em série deu 4754 passed e 7 skipped porque rodou num worktree com a junção `backend/.venv` — os 2 testes a mais de `test_supervisao_do_central.py` exigem o venv NA árvore e pulam também em série sem ela). `-n 12` não ganha tempo e já expôs um teste de tempo frágil (`test_worker_executor.py::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila`, que agora espera pelo fato em vez de `sleep(0.05)`). O isolamento entre processos vem do próprio harness: `tmp_path` e SQLite por teste, portas de console falsas a partir de 5640. No PostgreSQL, cada teste cria um schema `t<uuid>` e cada sessão apaga só os schemas que ela criou (`conftest.py::_SCHEMAS_DE_TESTE`); como cada worker do xdist é uma sessão, o desenho vale também em paralelo, mas a corrida em PostgreSQL com `-n` está `not_run`. Continua a regra de uma suíte completa por vez na máquina, mesmo entre sessões: antes de disparar, confira se já há um `python -m pytest` rodando.
 
 **PostgreSQL de teste.** O contêiner `farm-pg` (PostgreSQL 17 na porta 55433; receita em
 [banco.md](banco.md#rodar-a-suíte-contra-o-postgresql)) é o banco das corridas com `TEST_DATABASE_URL`; em 29/09 a

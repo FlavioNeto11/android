@@ -4571,6 +4571,46 @@
    "conferencia": "",
    "quando": "2026-10-01T08:20:06+00:00"
   },
+  "17.10": {
+   "id": "17.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #40 (merge efab19d, 02/10/2026, sessao jev; feat b8a89ae + teste b8d281e). backend/app/taskqueue/executor.py: step_blocked do tier 0 sobe ao tier 1 antes de waiting_user (ai.cascade_blocked_to_tier1) e o 'sim' do verificador barato em etapa com efeito externo e rejulgado pelo tier de cima (ai.rejudge_yes_on_side_effect); as duas chaves true em backend/app/config.py e config/config.example.yaml; docs/ia.md. Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso). A suite completa (-n 8, 02/10) pegou 3 testes de bloqueio forcado que a cascata passou a absorver (test_desbravador, test_revisao_receitas, test_valor_entre_etapas); corrigidos desligando a chave NO teste (b8d281e), sem enfraquecer o que eles provam. Contagens da reexecucao em testes.",
+   "blocker": "Real not_run: depende do deploy pela sessao Android e de bateria paga (medicao do gpt-6-luna como ator), suspensa sem saldo/autorizacao nova.",
+   "files": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/config.py",
+    "config/config.example.yaml",
+    "backend/tests/test_cascata_ator_barato.py",
+    "docs/ia.md"
+   ],
+   "testes": "02/10 (sessao jev-xdist, branch jev/xdist-suite com a main f9eed71+25624c4 integrada): pytest -q tests/test_cascata_ator_barato.py tests/test_desbravador.py tests/test_revisao_receitas.py tests/test_valor_entre_etapas.py tests/test_arquitetura.py -> 63 passed",
+   "grupo": "sessao:jev-xdist",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T16:42:55+00:00"
+  },
+  "17.11": {
+   "id": "17.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simulated: scripts/tests/test_eval_run.py (transporte falso). Contagem em testes.",
+   "blocker": "",
+   "files": [
+    "scripts/eval_run.py",
+    "scripts/tests/test_eval_run.py",
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "02/10 (mesma base): pytest -q scripts/tests/test_eval_run.py -> 10 passed",
+   "grupo": "sessao:jev-xdist",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T16:42:55+00:00"
+  },
   "17.7": {
    "id": "17.7",
    "status": "implemented",
@@ -4594,7 +4634,7 @@
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T17:21:04+00:00"
+   "quando": "2026-10-02T17:43:19+00:00"
   }
  },
  "rodadas": [
@@ -5535,7 +5575,17 @@
    ]
   },
   {
-   "quando": "2026-10-02T17:21:04+00:00",
+   "quando": "2026-10-02T16:42:55+00:00",
+   "itens": [
+    "17.10",
+    "17.11"
+   ],
+   "grupos": [
+    "sessao:jev-xdist"
+   ]
+  },
+  {
+   "quando": "2026-10-02T17:43:19+00:00",
    "itens": [
     "17.7"
    ],
