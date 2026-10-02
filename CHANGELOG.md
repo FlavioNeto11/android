@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Catálogo do Outlook na main e valor lido entre etapas (12.3, branch feat/12-3-outlook-catalogo)
+
+- 12.3: catálogo só de leitura do Outlook na `main`, valor lido entre etapas. `backend/app/conhecimento/apps/com.microsoft.office.outlook/catalogo.yaml`
+  (`OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS`, `SEARCH_MAIL`; nenhuma ação com efeito) e `Capability.saidas`
+  (`planning/capabilities.py`): a ação declara os nomes que pode entregar (`remetente`, `assunto` na abertura da caixa e
+  na busca); o planejador entre apps leva `saidas` na etapa de catálogo (`planning/parsing.py`, `prompts.py`) e o
+  executor lê o valor como na etapa livre. ADR-065; sem migração. `CapabilityDefinition.output.values`.
+- `simulated_provider.py`: o simulador cai na entrada do app quando o catálogo não tem as ações que ele conhece.
+- Testes: `test_planejador_entre_apps.py` (catálogos do Outlook entram no pedido; C1 provado com o catálogo real),
+  `test_porta_de_politica_por_app.py` (efeito no Outlook sem ação do catálogo é recusado), `test_catalogo_como_dado.py`,
+  `test_outlook_declarado.py`. Prova: `simulated`; a leitura real no aparelho é `not_run`.
+
 ## 2026-10-02 — Flex para trabalho offline (17.8, branch jev/17-8-flex)
 
 - `backend/app/planning/openai_provider.py`: o `OpenAICompatProvider` passa a honrar `ai.roles.<papel>.max_retries`

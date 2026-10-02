@@ -71,6 +71,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | proposto (Fase 24) | 29/09 |
 | [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
+| [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 
 ---
 
@@ -3771,3 +3772,36 @@ limites que ficaram abertos estão em [dominios/context-retrieval.md](dominios/c
 
 **Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
 [ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.
+
+## ADR-065 — Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml`
+
+**Data:** 02/10/2026 · **Estado:** vigente · **Decisão técnica** (item 12.3; confirma e completa o ADR-058 §3 para o
+catálogo). Os números 063 (retrieval) e 064 (trava de líder) são de outros trabalhos.
+
+**Contexto.** O catálogo só de leitura do Outlook foi mantido fora da `main` porque, com catálogo, o Outlook deixa de ser
+app de etapa livre no plano entre apps (ADR-058, item 24.1) e só a etapa livre lia valor para outra etapa (24.3): o
+cenário C1 do dono (ler no Outlook e usar no Instagram) viraria pergunta, com 16 testes vermelhos.
+
+**Decisão.**
+
+1. `Capability.saidas` (`catalogo.yaml`, campo `saidas`) lista os nomes que a ação PODE entregar às etapas seguintes. É
+   dado do app: zero Python por app (ADR-052). Validado na carga (nome pela regra do `PlanStep`, sem repetir; a coleta não
+   declara, porque a lista dela vai pelo `for_each`).
+2. O planejador escolhe, por etapa, quais nomes usa (`saidas` na etapa de catálogo do plano entre apps; na etapa livre
+   segue `livre.saidas`). Nome que a ação não declara, ou ação sem `saidas`, vira pergunta (`missing`) e o plano sai sem
+   etapas. A ação NUNCA entrega por padrão: entregar força `read_value` e desliga a receita, e só vale quando alguém cita
+   o valor.
+3. O valor continua sendo lido pelo executor, do texto do elemento na tela, com a triagem de segredo: código de
+   verificação, senha e token nunca são saída (ADR-009, ADR-022, ADR-058 §3). O Outlook declara só `remetente` e
+   `assunto`, nunca um nome de código.
+4. Não muda a regra da porta de política: efeito no Outlook sem ação do catálogo segue recusado (`manual_only`), e enviar
+   e-mail continua fora do catálogo.
+
+**Alternativas.** Toda ação de leitura entregar sempre (desligaria a receita em todo uso); o nome livre escolhido pelo
+modelo em qualquer ação (leitura inventada, sem nada que diga onde ler); deixar o Outlook livre sem catálogo (a porta
+recusaria, com razão, só o efeito, mas a leitura ficaria sem ação nomeada nem prova declarada).
+
+**Consequências.** `CapabilityDefinition.output.values` carrega a lista (v1alpha1); sem migração (`steps.saidas`, 056, já
+guarda a lista); o simulador de planos cai na entrada do app quando o catálogo não tem as ações que ele conhece.
+
+**Relação.** ADR-052, ADR-057, ADR-058 §3, item 24.3, item 13.2.

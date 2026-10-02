@@ -48,7 +48,7 @@ def _normalizado(cap: Capability) -> dict[str, object]:
 #: valor com a execução que a motivou. O teste confere que cada entrada é mudança de fato (difere do instantâneo) e
 #: que todo o resto continua idêntico: nada muda calado, e nada fica declarado sem ter mudado.
 CAMPOS_NOVOS: dict[str, object] = {
-    # 24.3 (ADR-063): os valores que a ação pode entregar às etapas seguintes. O Instagram não declara nenhum.
+    # 24.3 (ADR-065): os valores que a ação pode entregar às etapas seguintes. O Instagram não declara nenhum.
     "saidas": [],
     # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
     "card_guard": [],
@@ -239,7 +239,7 @@ def test_um_catalogo_minimo_de_outro_app_carrega_so_com_dado(tmp_path: Path) -> 
      "inherited_bindings — 'caption_contains' repetido"),
     (_doc(_acao(optional_bindings=["caption_contains"], inherited_bindings="caption_contains")),
      "inherited_bindings: esperava uma lista"),
-    # Valor entregue entre etapas (24.3, ADR-063): nome com a mesma regra do `PlanStep`, sem repetir, lista, e a coleta
+    # Valor entregue entre etapas (24.3, ADR-065): nome com a mesma regra do `PlanStep`, sem repetir, lista, e a coleta
     # não declara (a lista dela vai pelo for_each).
     (_doc(_acao(saidas=["Assunto"])), "saidas — nome de saída inválido: 'Assunto'"),
     (_doc(_acao(saidas=["assunto", "assunto"])), "saidas — nomes de saída repetidos"),
@@ -306,7 +306,7 @@ def test_nenhum_app_guarda_catalogo_em_python() -> None:
 
 
 def test_acao_declara_o_que_pode_entregar_e_a_descricao_ao_planejador_diz(tmp_path: Path) -> None:
-    """24.3 (ADR-063): `saidas` é dado do catálogo; o planejador as vê na linha da ação (e só nela)."""
+    """24.3 (ADR-065): `saidas` é dado do catálogo; o planejador as vê na linha da ação (e só nela)."""
     catalogo = carregar_catalogo(_arquivo(tmp_path, _doc(_acao(key="LER", saidas=["remetente", "assunto"]), _acao())))
     assert catalogo.get("LER").saidas == ("remetente", "assunto") and catalogo.get("ABRIR").saidas == ()
     assert "[pode entregar em `saidas`: remetente, assunto]" in catalogo.get("LER").describe()

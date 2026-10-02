@@ -2829,6 +2829,10 @@ com "credencial" é tratado como segredo pela redação.
   - O despacho troca a referência pelo valor na linha da etapa antes da porta de política. A ferramenta `read_value`
     lê o valor do texto do elemento, e `step_done` sem a leitura é recusado.
   - Código de verificação, senha e token nunca são saída.
+  - Ação de catálogo também entrega valor (ADR-065): a capability declara `saidas` (nomes que pode entregar), a etapa
+    de catálogo do plano entre apps leva `saidas` com um subconjunto delas, e o `PlanStep.saidas` gravado é o mesmo
+    da etapa livre. Nome fora do declarado vira `missing` (`field` = a ação em minúsculas). Sem mudança de rota,
+    de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
 

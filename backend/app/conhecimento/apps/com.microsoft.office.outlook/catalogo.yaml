@@ -10,7 +10,7 @@
 # Abrir uma MENSAGEM também fica de fora: marca a mensagem como lida na conta (e pode disparar confirmação de leitura
 # para o remetente) — é mudança de estado da conta, não leitura.
 #
-# VALOR ENTRE ETAPAS (item 24.3, ADR-063): `saidas` lista os nomes que a ação PODE entregar às etapas seguintes (o
+# VALOR ENTRE ETAPAS (item 24.3, ADR-065): `saidas` lista os nomes que a ação PODE entregar às etapas seguintes (o
 # remetente e o assunto da mensagem mais recente da lista, lidos da linha à vista, sem abrir a mensagem). O planejador
 # escolhe, por etapa, os que usa; quem tira o valor é o executor, do texto do elemento na tela (`read_value`), nunca da
 # palavra do modelo. Código de verificação, senha e token nunca são saída (ADR-009, ADR-022): por isso não há nome

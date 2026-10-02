@@ -44,7 +44,7 @@ from .conftest import Harness, make_config
 IG = "com.instagram.android"
 OUTLOOK = "com.microsoft.office.outlook"
 # A mecânica do plano entre apps (etapa livre, segunda trava, ordem dos apps) precisa de um app SEM catálogo. O Outlook
-# ganhou catálogo só de leitura (12.3, ADR-063) e é coberto pelos testes `*_outlook_real_*` / "do catálogo" no fim do
+# ganhou catálogo só de leitura (12.3, ADR-065) e é coberto pelos testes `*_outlook_real_*` / "do catálogo" no fim do
 # arquivo; para a mecânica, este e-mail de pacote qualquer segue com o MESMO id e rótulo ("no Outlook" nos comandos).
 EMAIL_LIVRE = "com.exemplo.email.livre"
 QA = "com.pocqa.messenger"

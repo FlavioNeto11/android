@@ -134,7 +134,7 @@ class CollectOutput:
     rewind: bool = False
     #: Como extrair a CHAVE do item do texto lido (grupo 1 da expressão).
     item_key: str | None = None
-    #: Item 24.3 (ADR-063): os nomes dos valores que a capability PODE entregar às etapas seguintes, lidos da tela
+    #: Item 24.3 (ADR-065): os nomes dos valores que a capability PODE entregar às etapas seguintes, lidos da tela
     #: pelo executor (`read_value`). Um valor por nome, escolhido por etapa; a lista da coleta não passa por aqui.
     values: tuple[str, ...] = ()
 

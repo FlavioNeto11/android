@@ -948,7 +948,7 @@ def test_o_email_fora_do_painel_da_gaveta_nao_e_a_conta() -> None:
 
 
 def test_o_catalogo_do_outlook_declara_o_valor_que_entrega_sem_codigo() -> None:
-    """12.3 (ADR-063): a abertura da caixa e a busca podem entregar remetente e assunto da mensagem à vista; a coleta
+    """12.3 (ADR-065): a abertura da caixa e a busca podem entregar remetente e assunto da mensagem à vista; a coleta
     entrega lista pelo for_each e não declara `saidas`. Nenhum nome é código, senha ou token (ADR-009, ADR-022)."""
     m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
     assert m.catalog is not None

@@ -109,7 +109,7 @@ class _MultiStepOut(BaseModel):
     livre: _LivreOut | None
     depends_on: list[str]
     for_each: str | None
-    # Item 24.3 (ADR-063): os valores que a etapa de CATÁLOGO lê para as seguintes — só os que a ação declara poder
+    # Item 24.3 (ADR-065): os valores que a etapa de CATÁLOGO lê para as seguintes — só os que a ação declara poder
     # entregar (`Capability.saidas`). Na etapa livre o nome vai em `livre.saidas`, como sempre.
     saidas: list[str] = []
 

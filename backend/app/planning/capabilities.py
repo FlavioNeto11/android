@@ -120,7 +120,7 @@ class Capability:
     # `band_guard`). Com `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova
     # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
-    # Item 24.3 (ADR-063): os NOMES dos valores que esta ação PODE entregar às etapas seguintes (`{{saida:<nome>}}`). É
+    # Item 24.3 (ADR-065): os NOMES dos valores que esta ação PODE entregar às etapas seguintes (`{{saida:<nome>}}`). É
     # o que a ação declara; o planejador escolhe, por etapa, quais usa (`CapabilityNode.saidas`) — uma ação que sempre
     # entregasse forçaria `read_value` (e desligaria a receita) em todo uso, mesmo sem ninguém citar o valor. Quem tira
     # o valor continua sendo o executor, do texto do elemento na tela, com a triagem de segredo de sempre.
