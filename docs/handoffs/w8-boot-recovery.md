@@ -390,6 +390,31 @@ Executor: `scripts/diag-w8-mitigacao.py` (testes `scripts/tests/test_diag_w8_mit
   `python scripts/diag-w8-mitigacao.py --execute --instance android-09 --run data/diag-w8-boot/mitigacao-<data> --aplicar-politica --aceito-reinicio-do-servidor-wireguard --deploy-conferido` (a pasta precisa existir e estar vazia).
 - **Prova:** `not_run` (nenhum aparelho tocado). Resultado real, quando houver: §17.6.
 
+### 17.6 Resultado da validação real da mitigação, 1º disparo completo (02/10/2026; **real**: central WIN-7S2UASNLFOP, commit `bcea158`, scripts em `317e5b6`)
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002/` (tentativa 0, parou em `INCONCLUSIVE`/BLOQUEADO sem escrever nada) e `data/diag-w8-boot/mitigacao-20261002-r2/` (execução), mais `…-r2/pos/estado-apos-rollback.txt`. Autorização do dono, 02/10, via sessão orquestradora (§17.5).
+
+**Tentativa 0 (15:25:55Z), defeito do executor achado ANTES de qualquer escrita.** `Api` montava `/api/api/...` (a base já termina em `/api`): o `firewall-check` deu 405, o ator leu `estado=None` e parou em "BLOQUEADO", sem política, par, pausa nem boot. Corrigido no PR #36 (teste `UrlsDoApi`; saída em UTF-8). O protocolo não mudou.
+
+**Execução r2 (15:28:03Z a 15:32:25Z), veredito pré-comprometido `FAIL` pela regra fechada, mas por defeito do executor, NÃO por desfecho da mitigação.**
+
+| Passo | Resultado | Prova |
+|---|---|---|
+| Deploy da `main` | `bcea158` no ar, migração 063, `problems []`; backup `data\backups\20261002-122408` | real |
+| Pré-voo + firewall-check | `liberado` (UDP 51820 da LAN 192.168.1.0/24, Wi-Fi, perfil Public); regra do dono, o script só leu | real |
+| Janela ociosa (par entrando) | ok em 15 s; nenhuma execução nem comando aberto em 02/03/05/06 | real |
+| Pausa do reparo | ligada e conferida no health antes do boot (`features.repair_pause`) | real |
+| Política `livre` + `vpn-central-wireguard` no 09 | `POST /api/network/assign` 200 às 15:28:21Z; servidor WG reiniciou 37,6 s depois; **03 e 06 reconectaram em 20,1 s**; 02/05 hibernados = `sem_evidencia` | real |
+| **Iteração 1** (boot 1 de 6, `restart` `c-20261002152908-00600d`, requested_by `rede`) | **`NO_FAILURE`**: `tun0` subiu sem o Start da interface (`ui_ok=false`, 1 reinício, nenhuma falha da interface); linha `conectado`, always-on `io.nekohasekai.sfa`, o servidor viu o par 10.66.0.6 | real |
+| **Iteração 2** | **`BOOT_INVALID` por defeito do executor**: ao pedir `reapply`+`apply` (apply = 409 `device_busy`) o ator reaplicou o **baseline do estágio 1** (sem peer, sem linha de rede, `always_on` null, sem `tun0`), que por construção não vale com a política já aplicada. Nenhum boot aconteceu na iteração 2 | real |
+| Rollback | `assign vpn null` 200; janela ociosa ok; servidor WG reiniciou 40,6 s depois e **03/06 reconectaram em 20,1 s**; pausa encerrada (200); peers de volta a 4 (02/03/05/06) | real |
+
+Contagem de reinícios reais do android-09: **1 dos 6** (boot 1). Fora da conta, do rollback: `c-20261002153829-9d02cd` (o `desfazer` da plataforma, 15:38:29Z) e `c-20261002153937-24819f` (15:39:37Z, pedido pela própria convergência, ver abaixo): **2 reinícios de rollback**, registrados à parte. Nenhum outro aparelho teve reinício, reset, stop nem escada de reparo na janela; 02/03/05/06 não reportaram sinal além do piscar esperado do servidor WireGuard (2 reinícios, reconexão em 20 s cada).
+
+**Leitura honesta.** `PROVED` (n=1): com a política aplicada, o boot 1 chegou a `NO_FAILURE`. A mitigação do PR #17 **não foi exercitada**: não houve `SILENT_STOP` nesse boot, então nada prova nem refuta o Start da interface. O veredito pré-comprometido, `FAIL`, vem de `BOOT_INVALID` na iteração 2, defeito do executor (o baseline do estágio 1 reaproveitado onde não vale), e o desfecho substantivo é `INCONCLUSIVE` (1 `NO_FAILURE`; sobram 5 dos 6 boots). Não se reclassifica o `FAIL` registrado; a correção do baseline por iteração e uma nova rodada dependem de decisão (o protocolo foi alterado depois de um boot).
+
+**Achado de produto no rollback (`OBSERVED`; causa `INFERRED`).** Depois de `assign vpn null`, a plataforma tirou o always-on e reiniciou o 09, mas **o SFA reiniciou sozinho no boot** (`tun0` no ar, `VPN CONNECTED`, processo `io.nekohasekai.sfa`) com o par do 09 já removido do servidor: a convergência leu "o always-on ou o bloqueio continuam depois do boot (… always-on=null; … tun0 no ar …)" e pediu **mais um** `restart` (o 2º reinício do rollback). A causa provável é o próprio auto-início do SFA (o serviço estava ligado quando o aparelho foi desligado), `INFERRED`, não verificada nas preferências do app. O baseline foi restaurado à mão em 15:41:06Z: `am force-stop io.nekohasekai.sfa` (só no android-09) → `tun0` ausente, SFA `stopped=true`, always-on null, sem linha em `device_network`, 4 peers, `health` ok e `problems []`, hierarquia 200, Instagram `ready`. Dívida de produto: o `desfazer` da rede não para o cliente VPN, e o aparelho fica com um túnel para um par que não existe mais (sem tráfego) até alguém parar o app; ver item de correção na fila.
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
