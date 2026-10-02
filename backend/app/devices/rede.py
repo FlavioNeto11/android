@@ -37,6 +37,7 @@ from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..util import novo_id_de_app, now_iso, parse_iso
 from .proxy import _HOST
+from .rede_saida_central import perfil_leva_ipv6, veredito
 from .sonda_rede import pernas_udp
 
 if TYPE_CHECKING:
@@ -582,13 +583,15 @@ def pendencias(st: AppState) -> list[dict[str, object]]:
     return saida
 
 
-def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
-    """Desejado × observado de cada aparelho do parque (a loja fica de fora: não é destino)."""
+def listar_aparelhos(st: AppState) -> dict[str, object]:
+    """Desejado × observado de cada aparelho do parque (a loja fica de fora: não é destino), e no topo a saída medida
+    do próprio central (`central_egress`, item 29.20), com a qual cada aparelho é comparado em `egress_home`."""
     linhas = {str(r["instance_id"]): r for r in st.db.query("SELECT * FROM device_network")}
     ultimas: dict[str, Row] = {}
     for m in st.db.query("SELECT * FROM network_measurements ORDER BY measured_at, id"):
         ultimas[str(m["instance_id"])] = m                              # a última de cada aparelho fica
-    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, params FROM network_profiles")}
+    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, protocol, params FROM network_profiles")}
+    central = st.rede_saida_central.atual()
     aparelhos: list[dict[str, object]] = []
     for rt in sorted(st.devices.devices.values(), key=lambda r: r.id):
         if rt.store:
@@ -623,8 +626,24 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
             # com a esperada do perfil novo acusaria uma diferença que ainda não foi medida.
             "egress_matches": (saida_confere(esperada, row["egress_ipv4"], row["egress_ipv6"])
                                if row is not None and row["state"] in _MEDIDOS else None),
+            "egress_home": _saida_pela_casa(row, perfis, central),
         })
-    return {"devices": aparelhos}
+    return {"devices": aparelhos, "central_egress": central}
+
+
+def _saida_pela_casa(row: Row | None, perfis: dict[str, Row], central: dict[str, object]) -> dict[str, object]:
+    """Este aparelho ainda sai pela casa (item 29.20)? A saída medida dele (`device_network.egress_*`, a mesma fonte
+    de `egress_shared_with` e `egress_matches`) contra a do central, e o IPv6 medido contra o que o perfil de VPN leva.
+    O IPv6 pergunta pelo TÚNEL: com um proxy por cima, o IPv6 também depende de a VPN o carregar, então a regra olha
+    sempre o perfil de VPN (sem VPN, o perfil não leva IPv6 e o IPv6 medido sai direto)."""
+    if row is None:
+        return veredito(medido=False, ipv4=None, ipv6=None, central=central, leva_ipv6=False,
+                        com_rede_pedida=False).como_dict()
+    vpn = perfis.get(str(row["vpn_profile_id"] or ""))
+    leva = perfil_leva_ipv6(loads(vpn["params"], {}) or {}, str(vpn["protocol"])) if vpn is not None else False
+    return veredito(medido=row["state"] in _MEDIDOS, ipv4=row["egress_ipv4"], ipv6=row["egress_ipv6"],
+                    central=central, leva_ipv6=leva,
+                    com_rede_pedida=bool(row["vpn_profile_id"] or row["proxy_profile_id"])).como_dict()
 
 
 # ============================================================================ atribuir

@@ -720,6 +720,14 @@ class RedeSondaCfg(BaseModel):
     # app sem ninguém ter pedido trabalho nele é usá-la por conta própria (ADR-056 §7, K-057).
     abrir_apps: bool = False
     espera_app_s: int = Field(15, ge=3, le=120)
+    # A saída do PRÓPRIO central (item 29.20): com os mesmos ecos, pelo socket do backend, para a plataforma acusar o
+    # aparelho cuja saída medida é igual a ela (= sai pela rede da casa). `central_ttl_s` é a idade em que se mede de
+    # novo (a varredura de 60 s só pergunta); uma medida com mais de 3 vezes isso deixa de valer ("não medida", nunca
+    # "limpo"). `medir_central: false` desliga (o harness de testes não abre socket); `central_prazo_s` é o prazo por
+    # host e família.
+    medir_central: bool = True
+    central_ttl_s: float = Field(600, ge=60, le=86_400)
+    central_prazo_s: float = Field(6, ge=1, le=30)
 
     @field_validator("hosts_ipv4", "hosts_ipv6")
     @classmethod

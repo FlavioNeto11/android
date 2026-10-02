@@ -394,6 +394,9 @@ rede:                             # rede por aparelho (ADR-056): aplicação no 
     abrir_apps: false             # true = a sonda abre o app exigido sem tráfego na janela TAMBÉM sem tarefa esperando
                                   # (com tarefa segurada pela porta, abre sempre: é o que a tarefa faria; é usar a conta)
     espera_app_s: 15              # quanto o app aberto pela sonda fica na frente antes de voltar ao início
+    medir_central: true           # mede a saída do PRÓPRIO central (mesmos ecos) para acusar aparelho que sai pela casa (29.20)
+    central_ttl_s: 600            # idade em que a saída do central é medida de novo; com mais de 3x isso, "não medida"
+    central_prazo_s: 6            # prazo por host e família na medida do central
 
 aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, falha classificada; NENHUMA IA no pipeline
   enabled: true                   # digest a cada execução e curadoria periódica; false = só a leitura do livro

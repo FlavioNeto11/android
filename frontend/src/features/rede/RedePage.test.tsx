@@ -587,3 +587,40 @@ it('servidor do central sem endereço da LAN avisa que o remoto é recusado', as
   await waitFor(() => text().includes('não configurado (rede.servidor.endpoint_lan)'));
   expect(text()).toContain('aparelhos de outra máquina: nenhum');
 });
+
+it('mostra quem ainda sai pela casa, o que está sem medida e a saída do central (29.20)', async () => {
+  const home = (over: Partial<NonNullable<NetworkDeviceRow['egress_home']>>) => ({
+    ipv4: false, ipv6: false, ipv6_outside_profile: false, leaves_by_home: false, reason: 'a saída medida não é a do central', ...over,
+  });
+  backend.on('GET', /\/network\/profiles/, () => json({ profiles: [perfil()] }));
+  backend.on('GET', /\/network\/devices/, () => json({
+    central_egress: { ipv4: '177.10.20.30', ipv6: null, measured_at: '2026-10-02T12:00:00+00:00', reason: 'IPv6: sem rota' },
+    devices: [
+      linha({ instance_id: 'android-01', egress_home: home({ ipv4: true, leaves_by_home: true, reason: 'o aparelho sai pelo IPv4 do central' }),
+              network: rede({ vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv4: '177.10.20.30' }) }),
+      linha({ instance_id: 'android-02', egress_home: home({ ipv6_outside_profile: true, leaves_by_home: true }),
+              network: rede({ instance_id: 'android-02', vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv4: '198.51.100.9' }) }),
+      linha({ instance_id: 'android-03', egress_home: home({}), network: rede({ instance_id: 'android-03', vpn_profile_id: 'vpn-1', egress_ipv4: '198.51.100.10' }) }),
+      linha({ instance_id: 'android-05', egress_home: home({ ipv4: null, ipv6: null, ipv6_outside_profile: null, leaves_by_home: null, reason: 'sem rede pedida' }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-05'));
+  expect(text()).toContain('2 aparelhos ainda saem pela casa (android-01, android-02) · 1 sem medida.');
+  expect(text()).toContain('Saída medida do central: 177.10.20.30.');
+  const tabela = Array.from(container.querySelectorAll('table')).find((t) => t.textContent?.includes('IP de saída'))!;
+  const celula = (id: string) => Array.from(tabela.querySelectorAll('tbody tr'))
+    .find((tr) => tr.textContent?.includes(id))!.querySelectorAll('td')[5]!;
+  expect(celula('android-01').textContent).toContain('sai pela casa: IPv4 igual ao do central');
+  expect(celula('android-02').textContent).toContain('sai pela casa: IPv6 fora do perfil');
+  expect(celula('android-03').textContent).toContain('não sai pela casa');
+  expect(celula('android-05').textContent).toContain('sai pela casa: sem medida');
+});
+
+it('sem egress_home (backend de antes do 29.20) o resumo da casa não aparece', async () => {
+  backend.on('GET', /\/network\/profiles/, () => json({ profiles: [perfil()] }));
+  backend.on('GET', /\/network\/devices/, () => json({ devices: [linha({ instance_id: 'android-01' })] }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-01'));
+  expect(text()).not.toContain('Saída pela casa');
+});

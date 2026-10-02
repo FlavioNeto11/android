@@ -2289,6 +2289,30 @@ export interface NetworkDeviceRow {
   /** A saída medida NESTA revisão é a esperada? `null` = sem esperada, ou a revisão pedida ainda não foi medida.
    *  `false` deixa o aparelho `parcial` (com política exigida, a tarefa espera). */
   egress_matches?: boolean | null;
+  /** Este aparelho ainda sai pela rede da casa? A saída medida dele contra a do próprio central (29.20). Ausente =
+   *  backend de antes do 29.20. `null` em qualquer campo = sem medida (nunca "limpo"). */
+  egress_home?: NetworkEgressHome;
+}
+
+/** O veredito "sai pela casa" de um aparelho (`rede_saida_central.SaidaPelaCasa.como_dict()`): `ipv4`/`ipv6` = a saída
+ *  medida é a do central (IPv6: mesmo /64); `ipv6_outside_profile` = IPv6 medido com o perfil de VPN sem IPv6 (sai
+ *  direto, fora do túnel); `leaves_by_home` = resumo (`true` se algum acusa; `false` só com o IPv4 medido diferente e
+ *  nada incerto; senão `null`). `reason` diz o porquê, inclusive o que não foi medido. */
+export interface NetworkEgressHome {
+  ipv4: boolean | null;
+  ipv6: boolean | null;
+  ipv6_outside_profile: boolean | null;
+  leaves_by_home: boolean | null;
+  reason: string;
+}
+
+/** A saída pública medida do PRÓPRIO central (`central_egress` de `GET /api/network/devices`): `null` na família =
+ *  não medida, com o motivo em `reason` (`"ok"` quando as duas valem). */
+export interface NetworkCentralEgress {
+  ipv4: string | null;
+  ipv6: string | null;
+  measured_at: string | null;
+  reason: string;
 }
 
 /** A saída esperada de um aparelho e o perfil que a declara (`rede.SaidaEsperada.como_dict()`). */
@@ -2312,6 +2336,8 @@ export interface NetworkEgressWarning {
 /** `GET /api/network/devices`. */
 export interface NetworkDeviceList {
   devices: NetworkDeviceRow[];
+  /** A saída do central, referência de `egress_home` (29.20). Ausente = backend de antes do 29.20. */
+  central_egress?: NetworkCentralEgress;
 }
 
 /** `POST /api/network/assign`: perfis e política para os aparelhos escolhidos; `dry_run` = só prévia (sem gravar).
