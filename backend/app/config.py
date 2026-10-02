@@ -910,6 +910,18 @@ class RetencaoDoAprendizadoCfg(BaseModel):
     candidata_sem_evidencia_dias: int = Field(90, ge=1, le=3650)
 
 
+class SaudeCfg(BaseModel):
+    """Limiares da saúde do item do Livro (30.4, `docs/design/aprendizado-vivo.md` §5.3). Os defaults são os valores
+    iniciais do desenho; mudar aqui muda o rótulo de todos os itens na próxima leitura (nada é gravado)."""
+
+    sem_uso_dias: int = Field(14, ge=1, le=3650)           # publicado sem uso nem evidência há isto = sem_evidencia
+    janela_usos: int = Field(10, ge=1, le=10_000)          # usos recentes para a taxa da janela valer
+    taxa_minima: float = Field(0.8, ge=0, le=1)            # eficácia mínima para `saudavel`
+    queda_pp: float = Field(20.0, ge=0, le=100)            # taxa da janela < histórica − isto (pontos percentuais)
+    contestacao_dias: int = Field(7, ge=1, le=365)         # janela da contestação e da intervenção humana
+    intervencoes_minimas: int = Field(2, ge=1, le=1000)
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -929,6 +941,7 @@ class LearningCfg(BaseModel):
     ia_resumos_por_dia: int = Field(0, ge=0, le=0)
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
+    saude: SaudeCfg = SaudeCfg()
 
 
 class AvisosCfg(BaseModel):

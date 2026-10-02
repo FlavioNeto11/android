@@ -31,6 +31,7 @@ from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizad
 from app.modules.learning.domain.livro import (EntradaDoLivro, Transicao, acoes_da_pessoa,
                                                por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
 from app.modules.skills.domain.document import JsonObject, JsonValue
 from app.shared.costuras import autor_do_gesto
@@ -84,7 +85,19 @@ def _chamar(fn: Callable[[], T]) -> T:
 
 
 # ------------------------------------------------------------------ JSON
-def _entrada(e: EntradaDoLivro, servico: LearningService | None = None) -> JsonObject:
+def _saude(s: Saude | None) -> JsonObject | None:
+    """A saúde do item (30.4): o rótulo, os motivos (vocabulário fechado) e as dimensões medidas. `valor: null` +
+    `estado: desconhecida` = sem dado (nunca zero). O texto em português é do painel."""
+    if s is None:
+        return None
+    return {"rotulo": s.rotulo.value,
+            "motivos": [{"codigo": m.codigo.value, "dimensao": m.dimensao.value if m.dimensao else None,
+                         "valor": m.valor, "limite": m.limite, "detalhe": m.detalhe} for m in s.motivos],
+            "dimensoes": [{"nome": d.nome.value, "estado": "desconhecida" if d.desconhecida else "medida",
+                           "valor": d.valor, "amostra": d.amostra, "fonte": d.fonte} for d in s.dimensoes]}
+
+
+def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: Saude | None = None) -> JsonObject:
     """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`.
     Com o `servico`, o motivo conhece o modo do tipo e do pacote e o veto (`vetado`, `modo_desligado`); sem ele, só o
     que o próprio item diz (efeito externo, texto de pessoa, habilidade)."""
@@ -102,7 +115,8 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None) -> JsonO
             "acoes": [{"to": a.to.value, "rotulo": a.rotulo, "exige_motivo": a.exige_motivo}
                       for a in acoes_da_pessoa(e)],
             "por_que_nao_publica": None if motivo is None else {
-                "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe}}
+                "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
+            "saude": _saude(saude)}
 
 
 def _evidencia(e: Evidencia) -> JsonObject:
@@ -116,13 +130,14 @@ def _transicao(t: Transicao) -> JsonObject:
 
 
 def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
-    return {"item": _entrada(d.entrada, servico), "evidencias": [_evidencia(e) for e in d.evidencias],
+    return {"item": _entrada(d.entrada, servico, d.saude), "evidencias": [_evidencia(e) for e in d.evidencias],
             "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
             "conteudo": d.conteudo}
 
 
 def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:
-    return {"itens": [_entrada(e, servico) for e in entradas], "total": len(entradas)}
+    saudes = servico.saudes(entradas)
+    return {"itens": [_entrada(e, servico, saudes.get(e.trail_ref)) for e in entradas], "total": len(entradas)}
 
 
 class CorpoDeStatus(BaseModel):
@@ -139,7 +154,8 @@ async def ler_livro(request: Request, kind: LivroKind | None = None, state: Skil
     servico = _servico(request)
     livro = servico.livro(kind=kind, state=state, app=app, origem=origem)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
-    return {"itens": [_entrada(e, servico) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
+    return {"itens": [_entrada(e, servico, livro.saudes.get(e.trail_ref)) for e in livro.itens],
+            "total": len(livro.itens), "contagem": contagem}
 
 
 @router.get("/pendentes", response_model=None)
