@@ -173,7 +173,7 @@ motivo quer dizer:
   estourada barra só aquela origem. O gasto da fatia é o do dia filtrado por origem (`costs.spent_today_usd(origem=)`,
   `ai_calls.origem`, migração 073). `0` desliga a fatia; curador sem valor explícito e sem teto do dia fica sem fatia.
 - O vocabulário de `origem` (`ORIGENS_DE_IA`): `execucao` (padrão com `run_id`), `ensino` (`generalize`),
-  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` e `decisao_fechada`. Linha antiga
+  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` (`review_knowledge`, 30.12) e `decisao_fechada`. Linha antiga
   fica NULL. Quem pede passa `origem=`/`ref=` a `RoutingProvider._call`; o `Usage` leva os dois e `add_usage` grava.
 - Os tetos de CHAMADAS e de tokens do executor (17.12 e 18.3) continuam em `kind="budget"` sem `motivo`: protegem
   contra laço, não contra preço, e não são uma régua de dinheiro.

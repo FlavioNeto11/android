@@ -30,6 +30,8 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
                                                             PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
+from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
+                      parecer_from_json)
 from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
@@ -371,6 +373,20 @@ class AnthropicProvider:
         try:
             return orquestracao_from_json(raw), usage
         except OrquestracaoInvalida as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
+
+    # ------------------------------------------------------------------ curador do Livro (30.12)
+    async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
+        """Dossiê do item + opções fechadas → parecer. Modelo do planejador, só texto; o esquema leva os enums."""
+        resp, usage = await self._create(role="plan", model=self.models["plan"], system=CURADOR_SYSTEM,
+                                         content=[{"type": "text", "text": curador_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=3000,
+                                         schema=esquema_do_parecer(req.opcoes))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            return ParecerBruto(bruto=parecer_from_json(raw), modelo=resp.model), usage
+        except ParecerIlegivel as exc:
             raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
 
     # ------------------------------------------------------------------ decisão

@@ -533,7 +533,8 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 
 ## Curador, aplicação (30.11)
 
-Desenho em `design/aprendizado-vivo.md` §8.5-8.8 e §8.11. Só com o adaptador SIMULADO: o do hub de IA é o 30.12 (frente Jev).
+Desenho em `design/aprendizado-vivo.md` §8.5-8.8 e §8.11. O `AppState` liga o adaptador do hub de IA (30.12, frente Jev); a montagem
+sem adaptador (testes) usa o SIMULADO.
 
 ## Obsolescência (30.14)
 
@@ -559,7 +560,13 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
   modelo, usd, ai_call_id}`. O hub valida só o JSON; o learning valida com `validar_saida`. Falha do provedor chega como
   `RecusaDoProvedor(kind)` (o adaptador traduz o `AIError`); `kind = budget` para o lote da volta sem nova tentativa.
 - **Adaptador simulado** (`infrastructure/curador_simulado.py`): determinístico, sem rede e sem custo; grava `provedor = simulado` e
-  `simulated = 1` (nunca prova). É o padrão da montagem até o 30.12.
+  `simulated = 1` (nunca prova). É o padrão da montagem quando ninguém passa `curador_de_ia` (testes).
+- **Adaptador do hub** (30.12, `infrastructure/curador_do_hub.py::CuradorDoHub`): chama `AIRouter.review_knowledge` (papel `plan`
+  emprestado, `origem = curador`, `ref = dossie_hash`; template e esquema em `planning/curador.py`, `VERSAO_DO_TEMPLATE`). A volta roda
+  numa thread e a chamada vai ao laço do processo (`run_coroutine_threadsafe`, laço passado pelo `AppState.start`); sem laço ou sem
+  resposta em `TIMEOUT_S` é `RecusaDoProvedor` (`unavailable`/`timeout`). O `AIError` vira `RecusaDoProvedor(kind)` com o mesmo
+  `kind`. Com chamada, grava a linha em `ai_calls` (`add_usage`) e devolve `usd` e `ai_call_id` MEDIDOS, lidos da própria linha; sem
+  chamada (hub simulado) os dois ficam `None`. `provedor` é o do `Usage` (ex.: `anthropic`) e `simulado` acompanha o hub.
 - **Laço** (`infrastructure/ligar_curador.py::LacoDoCurador`, a cada `aprendizado.curador.intervalo_s`), separado do
   `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
   `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta.
@@ -584,8 +591,9 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
   Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
   revisado com um dossiê cortado não volta à IA com o inteiro enquanto o estado for o mesmo (confere as variantes antes do pedido).
 - **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0` e não tem `ai_call_id`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0`
-  conta como medida). O `usd` vai sair de `costs.spent_usd(origem='curador')` quando a 073 (31.2) existir; o NULL e o `ai_call_id`
-  pedem migração própria (30.12).
+  conta como medida). Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub, mas a `NovaRevisao` ainda não os
+  grava: o NULL e a coluna `ai_call_id` pedem migração própria (a 075 está PRÉ-reservada para a frente Aprendizado), e a gravação do
+  `usd` espera a unificação do saldo na rubrica (`design/hub-de-ia-fora-de-execucao.md`, PENDÊNCIA).
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
 

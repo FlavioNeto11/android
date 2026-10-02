@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Curador do Livro pelo hub de IA (30.12, branch feat/30-12-curador-hub)
+
+- `AIRouter.review_knowledge(PedidoDeParecer)`: papel `plan` emprestado, sem execução, `origem = curador` e `ref = dossie_hash`
+  em `ai_calls`; a fatia do curador (31.6) corta ali com `AIError(kind="budget", motivo="fatia_curador")`.
+- Template e esquema do hub em `planning/curador.py` (`VERSAO_DO_TEMPLATE = curador-v1`): os enums da resposta saem das opções
+  fechadas do aprendizado; o hub só garante o objeto JSON, e quem valida o parecer é `validar_saida`. Anthropic e
+  OpenAI-compatível respondem pelo modelo do `plan`; o simulado, por regra fixa.
+- `modules/learning/infrastructure/curador_do_hub.py::CuradorDoHub`, ligado pelo `AppState` no lugar do simulado: ponte de thread
+  para o laço do processo, `AIError` → `RecusaDoProvedor(kind)`, `usd` e `ai_call_id` MEDIDOS na linha de `ai_calls`. O modo do
+  curador continua `off` de fábrica.
+- Prova `simulated`: `backend/tests/test_curador_do_hub.py` (14). Chamada real: `not_run`.
+
 ## 2026-10-02 — Conta bloqueada sai na hora e a persona fica (29.23, ADR-068, branch feat/29-23-conta-bloqueada-sai)
 
 - Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
