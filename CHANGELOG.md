@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
+
+- Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.
+- android-03: verify `session_ready`; coleta `r-20261002221213-8d1c0a` com `OPEN_PROFILE` comprovado pela árvore local (**real**) e `OPEN_POST` parado por grade vazia.
+  android-06 fora (sem rede medida pelo produto e pelo ping); android-01 fora (verify com timeout do UiAutomator). US$ 0,15.
+- `REPLY_COMMENT`, `edit` em aparelho, `learn_from` de comentário e `for_each` com itens reais seguem `not_run`; registro em `docs/relatorio-validacao.md` §8.9 e no estado do 8.3.
+
 ## 2026-10-02 — Aprendizado: achados da validação no Chrome do deploy 1 (branch feat/aprendizado-ux-deploy1)
 
 - **B2 (versão):** já estava corrigida pelo #105 (e9de6697), implantado em b5baf3e5. Medido no central (só leitura, 02/10 ~22:05Z): 160 itens, nenhum `versao_aposentada`, Atenção = 11. A validação pegou um deploy anterior.
