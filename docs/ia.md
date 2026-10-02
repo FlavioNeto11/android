@@ -19,6 +19,8 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
 | `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 
+**Função opcional `leitura` (item 12.5, ADR-070)** fica FORA de `AI_ROLES`: só existe com `ai.roles.leitura` escrito, sem herança de nenhuma outra (§17).
+
 **`generalize` (modo treinamento, item 13.2) não é uma sexta função registrada** — despacha no provedor/modelo do
 papel `plan` (mesmo hub, sem `ai.roles.generalize` dedicado): `backend/app/planning/training.py` monta o pedido e
 chama o provedor resolvido para `plan`.
@@ -564,3 +566,51 @@ continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de d
 
 Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_context_retrieval_semantic.py`: decisores nulo e falso e
 transporte falso). Chamada real ao Jev: `not_run`.
+
+## 17. Leitura visual: o papel `leitura` (item 12.5, ADR-070)
+
+Quando a árvore do app não expõe o texto de uma linha (passo 0 do 12.5: a caixa do Outlook é um `ComposeView` cega), o valor lido
+na imagem conta como saída de etapa se um **segundo leitor**, que não vê o valor do ator, transcreve o mesmo no recorte da mesma
+captura. O papel `leitura` é esse leitor. É **roteamento comum do hub**, nunca a porta `DecisaoFechada` nem as sombras do Jev
+(ADR-069 §4).
+
+**`ai.roles.leitura` (contrato de configuração).**
+
+- Opcional e **sem herança**: sem o bloco com `provider` e `model` escritos o papel fica DESLIGADO (`Config.ai_leitura()` é
+  `None`, `Config.ai_role("leitura")` levanta `KeyError`), não entra em `AI_ROLES`, em `ai_roles()` nem em `ai.profiles.<p>.roles`
+  (escrever `leitura` num perfil recusa a partida). Sem o papel, a leitura visual recusa com `sem_leitor`.
+- Na partida (`Config.validar_leitura`, chamada por `Config.__init__` e por `RoutingProvider`): exige visão
+  (`model_caps(model).vision`), recusa o MESMO MODELO do `decide` e do `escalation` — o de base e o de cada perfil — e diz a linha a
+  corrigir; o provedor simulado passa direto. Compara o modelo, e não só o par (provedor, modelo): é mais estrito que o par, de
+  propósito (o mesmo modelo por dois endpoints erra junto).
+- Não aceita `fallback_provider` nem `refusal_fallback`: o recorte vai exatamente para o provedor que o aviso de privacidade nomeia.
+- Padrões: prazo 30 s, 2 vagas (`ROLE_DEFAULTS["leitura"]`). Aceita provedor `anthropic`, `openai` ou compatível (Gemini pelo
+  endpoint OpenAI-compatível, como os outros papéis). Preferência do dono: outra família que o ator; Haiku é a alternativa.
+- Opção `ai.leitura_visual.enabled` (padrão `false`) liga o uso; o exemplo está comentado em `config.example.yaml`.
+
+**`transcribe` (contrato de provedor).** `async transcribe(req: LeituraRequest) -> tuple[Transcricao, Usage]`, nos três
+provedores (Anthropic, `OpenAICompatProvider`, simulado) e no `RoutingProvider`.
+
+- `LeituraRequest(recorte: bytes, saidas: dict[str, str], run_id: str | None)`: SÓ o JPEG do recorte e os nomes e descrições das
+  saídas pedidas (nomes `^[a-z][a-z0-9_]{0,39}$`, no máximo 20). Nunca o valor do ator, o comando, os fatos ou a tela inteira; o
+  `run_id` serve ao teto e à contabilidade, e não vai ao prompt.
+- `Transcricao(linhas: list[str], campos: dict[str, str | None], legivel: bool, truncado: bool)`. No fio o modelo devolve
+  `campos` como lista de pares `{nome, valor}` (`TranscricaoWire`, gramática estrita).
+- **Parse estrito** (`provider.transcricao_from_json`): JSON inválido, chave fora do esquema ou tipo errado é `AIError(kind=
+  "invalid_output")` — nunca `legivel=False` (isso é o MODELO dizendo que não leu) e nunca sucesso. Só os campos pedidos entram,
+  e o pedido que não veio fica `None`. Passou de 12 linhas ou de 400 caracteres: o excesso é cortado e marca `truncado=True`.
+- `Transcricao` não se imprime (`__repr__` oculta o conteúdo): o texto transcrito é dado de terceiro, pode trazer injeção de prompt
+  ou um código, e nunca entra no `plan`, no `decide`, em log, evento ou mensagem de erro.
+- Contabilidade: `Usage.role="leitura"`, `ai_calls.origem="leitura"` (`ORIGENS_DE_IA`), `with_image=True`. A chamada passa pelo
+  `_budget` com o `run_id` da execução (valem os tetos do pedido, da execução e do dia), pelo `_saldo` da conta do provedor e
+  entra no teto de chamadas do objetivo (`Executor._ai`). Fatia opcional `ai.limits.leitura_max_usd_per_day` (0, padrão,
+  desliga; motivo `fatia_leitura`).
+- Imagem: só o recorte (`devices.codificacao.recortar_jpeg`): lado maior até 1600 px, no máximo metade da altura da imagem e até
+  400 KB; passou de qualquer um, a âncora não é uma linha e a leitura recusa (`sem_ancora`).
+
+**`/api/ai`.** Com o papel escrito aparece em `roles` e em `models`, e o `notice` ganha a frase da leitura visual (ligada ou
+desligada) nomeando o provedor, o endpoint, o modelo e os pacotes que declaram a região (`declaram_leitura_visual`); a chave
+aparece só como "configurada". Telas sensíveis e de verificação nunca são recortadas.
+
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run` (a bancada com capturas
+guardadas é o portão para ligar a opção no central).

@@ -2837,6 +2837,17 @@ com "credencial" é tratado como segredo pela redação.
     de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
+- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem` (`arvore`|`visual`),
+  `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando `origem=arvore`). O markdown traz, para
+  cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no recorte da captura <sha8>". A ferramenta
+  `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value` e só vale com `value_kind=text`). A ação
+  `read_value` visual registra `{name, value_kind, chars, origem, frame_id, evidence_id, leitor}` e `args.value` fica
+  `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do vocabulário fechado (`desligado`,
+  `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`, `fora_do_app`, `sem_ancora`,
+  `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`, `nao_confere`, `triagem:<motivo>`).
+  `GET /api/ai` lista a função `leitura` em `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia
+  provedor, modelo e os apps que declaram a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem`
+  é `leitura`. Sem rota nova; migração 078.
 
 ## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
 

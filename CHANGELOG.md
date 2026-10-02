@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 12.5 nível 1: leitura visual de saída de etapa conferida às cegas (ADR-070, branch feat/12-5-leitura-visual)
+
+- **Por quê.** O passo 0 (`real`, android-01) provou que a linha da caixa do Outlook é cega na árvore (ComposeView sem texto em
+  toda a subárvore); sem leitura da imagem o `read_value` não tinha de onde tirar remetente e assunto.
+- **O que entra, DESLIGADO (`ai.leitura_visual.enabled: false`).** `read_value(source="visual")` na região que o app declara
+  (`leitura_visual.regioes` no `telas.yaml` do Outlook), com 13 barreiras e conferência cega por um segundo leitor: papel novo
+  `ai.roles.leitura` (sem herança, outro modelo que `decide`/`escalation`, com visão, sem fallback) e `transcribe(LeituraRequest)
+  -> Transcricao` nos três provedores. O recorte vira evidência; `step_outputs` ganha `origem`, `leitor`, `frame_sha256`,
+  `evidence_id` (migração 078); valor visual em etapa com efeito espera a pessoa; o juiz recebe a imagem à força.
+- **Junto.** `step_blocked.reason` redigido nos quatro destinos; conta própria das recusas da barreira de saídas (4 → `fail_or_retry`).
+- **Hub de IA.** `origem='leitura'`, fatia opcional `ai.limits.leitura_max_usd_per_day`, parse estrito da transcrição, teto do
+  recorte (nunca a tela inteira), aviso de `/api/ai` com provedor, modelo e apps que declaram a região.
+- **Docs.** ADR-070, `ia.md` §17, `dominios/execution.md`, `api-contract.md` (adendo), `banco.md` (078), aprendizado K-077, item 12.5.
+- Prova `simulated`: `tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`. `real`: `not_run` (bancada do leitor e
+  execução no android-01 dependem de ligar a opção e do provedor escolhido).
+
 ## 2026-10-02 — Aprendizado: interface do modo por app de lições e telas (30.20, branch feat/30-20-modo-por-app-painel)
 
 - O detalhe do app mostra "Lições e telas neste app": o modo que vale, "definido para este app" ou "segue o global", o que

@@ -507,6 +507,40 @@ não escolheu nenhuma, e o produto deu "1 de 1 com sucesso comprovado" com a cai
 Prova: `simulated` (`tests/test_saidas_obrigatorias.py`, QA Messenger falso com catálogo de teste, o caso real reconstruído
 inclusive). Real: `not_run` (repetir a leitura do Outlook no android-01).
 
+### Leitura visual de saída de etapa (item 12.5, ADR-070)
+
+Na tela cega que o app declara, o valor que o ator leu NA IMAGEM conta como saída se um segundo leitor concordar às cegas. Liga só
+com `ai.leitura_visual.enabled` e com o papel `ai.roles.leitura` ([ia.md §17](../ia.md)). O dado do app é
+`leitura_visual.regioes` no `telas.yaml` (`tela`, `dentro_de` com o resource-id do contêiner, `saidas`): o carregador recusa
+`dentro_de` vazio, nome de saída fora do alfabeto e tela que o arquivo não declara; `app_declarado/pacote.py` recusa saída que
+nenhuma ação do catálogo entrega.
+
+- **Chamada:** `read_value(name, element_id, value=<o que o ator leu>, source="visual")`, só `value_kind=text`. O executor tenta a
+  ÁRVORE primeiro: se há texto, grava com `origem=arvore` (mesmo com `source=visual`); só a falha "sem texto nem descrição"
+  (`LeituraSemTexto`) abre o caminho visual, e qualquer outra falha é recusa comum.
+- **Barreiras** (`taskqueue/saidas.py::ler_valor_visual`, das baratas para a cara; a primeira que falha recusa e nada é gravado):
+  `desligado` · `elemento_com_texto` (âncora ou descendente com texto) · `regiao_nao_declarada` · `arvore_truncada` (`UiTree.truncada`)
+  · `tela_sensivel` (sensível, `image_policy=never`, conta travada, tela de desafio ou de código) · `fora_do_app` · `sem_ancora` ·
+  `captura_mudou` (sem imagem na observação, uma nova é capturada e exige a mesma assinatura de árvore e os mesmos limites) ·
+  `repetida` (chave nome + assinatura + limites, não o sha do JPEG) · `sem_leitor` · `leitor_falhou` · `ilegivel` · `truncado` ·
+  `nao_confere` · `triagem:<motivo>`.
+- **Concordância:** valor do ator normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos) igual ao campo do
+  leitor E sequência contígua de palavras inteiras de uma das linhas. O leitor recebe só o recorte e os nomes das saídas.
+- **Sem eco:** na recusa o ator recebe só o código (histórico, `actions.error`, evento); a transcrição nunca sai de
+  `ler_valor_visual`, e o recorte recusado não é guardado.
+- **Sucesso:** `step_outputs` com `origem=visual`, `leitor`, `frame_sha256` e `evidence_id` (o recorte vira evidência); a ação não
+  leva o valor (`args.value` fica `**OMITIDO**`); o juiz da pós-condição recebe a imagem à força (`_verify(imagem_forcada=True)`).
+- **Consumidor** (`Scheduler._valor_visual_sem_a_pessoa`): etapa com `side_effect` ou `commit_guard` que cita valor visual vai para
+  `waiting_user` ("valor lido da imagem precisa da sua confirmação"), sem gastar tentativa; navegação e busca seguem. Confirmar na
+  árvore do app consumidor não vale (circular). **Limite da v1:** não há resolução própria para a pessoa confirmar o valor; ela
+  refaz o comando informando-o ou abandona o item.
+- **Junto:** o `step_blocked.reason` (texto do modelo) passa por `razao_sem_segredo` (redação + triagem) antes de
+  `steps.status_detail`, `attempts.error`, a nota da evidência e o evento `decision`; e as recusas da barreira de saídas
+  (`step_done` recusado e `read_value` rejeitado) têm conta própria que `observe_screen` e `find_element` não zeram: com 4, a etapa
+  vai para `fail_or_retry`.
+
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run`.
+
 ## Conta e portas do app da etapa (item 24.4)
 
 Num comando que atravessa apps, cada etapa age pela conta da persona NO APP DELA, e as portas do despacho valem para

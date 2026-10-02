@@ -76,6 +76,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31) | 02/10 |
+| [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
 
@@ -4033,3 +4034,60 @@ Prova: `simulated` nos itens 31.1–31.9 (provedor nulo e falso); `real` só no 
 
 **Relação.** ADR-063 (emendado), ADR-009, ADR-040, ADR-051, ADR-054; Fase 31 em [plano-100.md](plano-100.md);
 `backend/app/modules/context_retrieval/adapters/jev.py`; `backend/app/planning/` (porta, 31.4).
+
+---
+
+## ADR-070 — Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor
+
+**Data:** 02/10/2026 · **Estado:** vigente, **aprovado pelo dono em 02/10 ~23:25Z; leitor de outra família autorizado**
+(item 12.5, nível 1; substitui em parte o ADR-065 §3). A opção nasce **desligada** (`ai.leitura_visual.enabled: false`).
+Decisão completa e notas das propostas: `.claude/handoffs/decisao-12-5.md`.
+
+**Contexto.** A r-20261002204347-8c3f6e (Outlook no android-01) fechou como sucesso sem remetente nem assunto, e a 178742
+gastou 14 chamadas sem conseguir lê-los. O passo 0 (`real`, 02/10 ~23:05Z, android-01) provou que a árvore é cega ali: a
+lista da caixa é um `ComposeView` (`com.microsoft.office.outlook:id/conversation_list`, [0,160][720,1115]) e a linha
+clicável [0,323][720,485] tem 4 filhos sem texto nem descrição em toda a subárvore (profundidade 21, 77 a 79 nós), com
+`snapshotMaxDepth` 70 ou 200 e com `allowInvisibleElements`. O texto só existe na imagem. Por isso o nível 0 (árvore mais
+funda) não se faz, e o ADR-065 §3 ("o valor é lido do texto do elemento") deixa o valor sem como ser lido.
+
+**Decisão.**
+
+1. **Texto novo do ADR-065 §3:** o valor é lido do texto do elemento **ou, na tela cega declarada pelo app, por leitura
+   visual conferida às cegas**. O valor visual conta como saída da etapa sob UMA conferência: a transcrição cega e
+   concordante de um segundo leitor independente sobre o recorte da mesma captura, nos limites de um elemento que o
+   executor provou sem texto, dentro de uma região que o app declarou (`leitura_visual.regioes` do `telas.yaml`, ADR-052).
+2. **Origem não é nível de prova.** `real`, `simulated` e `not_run` dizem como uma afirmação foi validada;
+   `origem=arvore|visual` é atributo de cada valor gravado (migração 078: `step_outputs.origem`, `leitor`, `frame_sha256`,
+   `evidence_id`). Não existe "real_visual".
+3. **O leitor** é o papel novo `leitura` (`ai.roles.leitura`): **sem herança** (provider e model escritos), **de outra
+   família** que o ator por escolha do dono (OpenAI ou Gemini pelo endpoint compatível; Haiku é a alternativa), modelo
+   diferente do `decide` e do `escalation` (base e perfis) e com visão, sem `fallback_provider` nem `refusal_fallback`. Ele
+   recebe SÓ o recorte e os nomes e descrições das saídas pedidas: nunca o valor do ator, o comando, os fatos ou o
+   contexto. O juiz de sim ou não NÃO confere o valor (a tendência dele ao "sim" está no ADR-024); ele julga a tela e
+   passa a receber a imagem à força.
+4. **Concordância:** o valor do ator, normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos), é igual
+   ao campo do leitor E é uma sequência contígua de palavras inteiras de uma das linhas transcritas. Discordância,
+   ilegível, truncado, triagem, captura mudada, tentativa repetida na mesma tela e leitor ausente RECUSAM, com um código
+   de vocabulário fechado, sem gravar. O ator recebe só o código: a transcrição nunca volta a ele (senão uma nova tentativa
+   faria dos dois um leitor só).
+5. **Valor visual não alimenta efeito externo sem a pessoa.** Etapa com `side_effect` ou `commit_guard` que consome valor
+   visual vai para `waiting_user` ("valor lido da imagem precisa da sua confirmação"); navegação e busca seguem.
+6. **Só `text`** na v1: número, endereço e lista lidos da imagem são recusados (número visto é justamente o formato de um
+   código). A leitura não serve para código de 2FA ou de desafio (ADR-009): tela classificada como desafio não chama o leitor.
+7. **Junto, sem depender desta decisão:** o `step_blocked.reason` (texto do modelo) passa por redação e triagem antes de
+   `steps.status_detail`, `attempts.error`, a nota da evidência e o evento `decision`; e as recusas da barreira de saídas
+   têm conta própria que `observe_screen` e `find_element` não zeram (com 4, `fail_or_retry`).
+
+**Alternativas.** Árvore mais funda (nível 0): provada insuficiente. O próprio ator ler a imagem sem segundo leitor: um
+modelo só concordando consigo mesmo. O juiz conferir o valor: viés ao "sim" (ADR-024). OCR local: dependência nova sem
+ganho de independência declarado.
+
+**Consequências.** Destino novo das capturas: o recorte de uma linha de tela vai ao provedor de `ai.roles.leitura`
+(aviso de `/api/ai` o nomeia, com os apps que declaram a região). Custo estimado por par de leitura em torno de US$ 0,001
+(`not_run`). Erro correlacionado entre ator e leitor reduzido pela outra família, não zerado; a bancada com controles é o
+portão para ligar a opção no central. O recorte prova "esta linha diz X", não "X é a mais recente".
+
+**Relação.** ADR-065 §3 (substituído em parte), ADR-052, ADR-058, ADR-009, ADR-024, ADR-069 §4 (a transcrição é
+roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
+`backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),
+[ia.md](ia.md).
