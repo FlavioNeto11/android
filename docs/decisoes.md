@@ -4031,9 +4031,10 @@ catálogo, comando), que o ADR-063 não cobre.
 6. **Modos e prova.** `off` é o padrão; `shadow` é assíncrono e fora do caminho crítico; `on` só por consumidor, com GO
    pré-registrado (limiares escritos antes do primeiro resultado, 31.7). Um fallback nunca conta como acerto.
 7. **Gasto.** *(Emendado em 02/10/2026, ~23:25Z: a condição da troca da chave caiu; ver o item 9.)* Fatia própria `fatia_jev`
-   dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado, **condicionada à
+   dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado~~, **condicionada à
    troca da chave TypeSafe pelo dono ANTES de qualquer chamada nova** (D-J3; o piloto marcou rotação obrigatória). Até o dono
-   confirmar a troca, nenhuma chamada real ao Jev; ninguém lê nem toca a chave.
+   confirmar a troca, nenhuma chamada real ao Jev~~ (condição revogada pelo item 9, que fixa a ordem das chamadas reais);
+   ninguém lê nem toca a chave.
 8. **Transparência.** Com `shadow` ligado, o `notice` de `GET /api/ai` nomeia a TypeSafe e as classes enviadas; a chave aparece só
    como "configurada".
 9. **Emenda de 02/10/2026 (decisão do dono no chat da orquestradora, ~23:25Z, relatada à frente Jev): a chave TypeSafe NÃO
