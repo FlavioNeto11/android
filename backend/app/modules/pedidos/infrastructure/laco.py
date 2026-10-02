@@ -48,7 +48,7 @@ from app.modules.pedidos.domain.materializar import janela_padrao_s, materializa
 from app.modules.pedidos.domain.orcamento import (ULTIMAS_PARA_ESTIMAR, custo_estimado, motivo_sem_orcamento,
                                                   quantas_cabem)
 from app.modules.pedidos.domain.sobreposicao import Devida, decidir
-from app.modules.pedidos.domain.tentativas import ACAO_REPETIR, Decisao
+from app.modules.pedidos.domain.tentativas import ACAO_INCERTA, ACAO_REPETIR, Decisao
 from app.taskqueue.service import RunError
 from app.taskqueue.travas import PEDIDOS, Lideranca, TravaPerdida
 from app.util import parse_iso, to_iso
@@ -227,12 +227,16 @@ class LacoDePedidos:
         # esta leitura sempre vê as chamadas inteiras. Só o fechamento terminal soma (uma vez por tentativa).
         custo = self._custo_da_tentativa(o) if fech.terminal else None
         p = self.repo.pedido(o["pedido_id"]) if fech.estado in ("falhou", "incerta") else None
-        if p is not None and fech.estado == "falhou" and o["pedido_estado"] == "ativo":
+        if p is not None and fech.estado == "falhou":
             decisao = self._decidir_tentativa(o, p, fech.estado, agora, custo or 0.0, run_status)
-            if decisao.acao == ACAO_REPETIR and decisao.repetir_em is not None:
+            if decisao.acao == ACAO_REPETIR and decisao.repetir_em is not None and o["pedido_estado"] == "ativo":
                 self._retentar(o, fech.motivo, decisao.repetir_em, token, custo or 0.0, r)
                 return
-            if decisao.complemento:
+            if decisao.acao == ACAO_INCERTA:
+                # Falha com efeito possível: o mundo está incerto (§7.6). A ocorrência fecha `incerta` (qualquer que seja o
+                # estado do pedido), e o laço mais abaixo leva um pedido `ativo` a `aguardando_pessoa`.
+                fech = replace(fech, estado="incerta", motivo=f"{fech.motivo}; {decisao.complemento}"[:500])
+            elif decisao.complemento:
                 fech = replace(fech, motivo=f"{fech.motivo}; {decisao.complemento}")
         transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
         preparo = self._observar(o, fech) if fech.terminal else None

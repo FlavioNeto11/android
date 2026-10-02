@@ -40,9 +40,10 @@ def test_falha_sem_efeito_repete_com_atraso_exponencial_a_partir_de_agora() -> N
     assert d3.acao == ACAO_REPETIR and d3.repetir_em == AGORA + timedelta(seconds=240)
 
 
-def test_falha_com_efeito_possivel_nunca_repete() -> None:
-    d = _decidir(efeito_possivel=True)
-    assert d.acao == ACAO_DEFINITIVA and d.repetir_em is None and "efeito" in (d.complemento or "")
+def test_falha_com_efeito_possivel_vira_incerta_e_nunca_repete() -> None:
+    for tentativa in (1, 2, 5):
+        d = _decidir(efeito_possivel=True, tentativa=tentativa, max_tentativas=9)
+        assert d.acao == ACAO_INCERTA and d.repetir_em is None and "efeito" in (d.complemento or "")
 
 
 def test_incerta_nunca_repete_e_vai_a_pessoa_mesmo_sem_efeito_declarado() -> None:

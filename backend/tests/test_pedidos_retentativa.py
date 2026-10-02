@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 import pytest_asyncio
 
 from app.modules.pedidos.infrastructure.laco import LacoDePedidos
@@ -43,19 +44,23 @@ def _pedido_estado(db, pid: str = "ped1"):
     return db.one("SELECT estado, pausado_motivo, encerrado_motivo FROM pedidos WHERE id=?", (pid,))
 
 
-def _acao_com_efeito(db, run_id: str, *, alvo: str = "android-01") -> None:
-    """Uma ação da execução que PODE ter chegado ao aparelho (`actions.effect_possible=1`)."""
-    oid, sid = f"{run_id}:{alvo}", f"{run_id}:{alvo}:v1:tocar"
+def _acao(db, run_id: str, *, tool: str = "tap", status: str = "done", efeito: int = 1, commit: int = 0,
+          alvo: str = "android-01") -> None:
+    """Uma ação da execução, como o executor a deixa: `efeito` é `actions.effect_possible` (o comando PODE ter chegado ao
+    aparelho; o driver grava 0 quando provou que nada chegou), `status` é done/failed/unknown/intended."""
+    oid, sid = f"{run_id}:{alvo}", f"{run_id}:{alvo}:v1:agir"
     if not db.one("SELECT id FROM objectives WHERE id=?", (oid,)):
         db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,1)",
                    (oid, run_id, alvo, "failed"))
-    db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
-               " postcondition, timeout_s, max_attempts, status) VALUES (?,?,?,?,1,1,?,?,?,'{}',60,1,'failed')",
-               (sid, run_id, oid, alvo, "tocar", "Tocar", "tocar"))
-    db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,1,'failed',?)",
-               (f"{sid}:a1", sid, "2026-10-02T12:00:00.000Z"))
-    db.execute("INSERT INTO actions(attempt_id, seq, tool, args, status, effect_possible, intent_at)"
-               " VALUES (?,1,'tap','{}','done',1,?)", (f"{sid}:a1", "2026-10-02T12:00:00.000Z"))
+    if not db.one("SELECT id FROM steps WHERE id=?", (sid,)):
+        db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+                   " postcondition, timeout_s, max_attempts, status) VALUES (?,?,?,?,1,1,?,?,?,'{}',60,1,'failed')",
+                   (sid, run_id, oid, alvo, "agir", "Agir", "agir"))
+        db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,1,'failed',?)",
+                   (f"{sid}:a1", sid, "2026-10-02T12:00:00.000Z"))
+    seq = int(db.scalar("SELECT COUNT(*) FROM actions WHERE attempt_id=?", (f"{sid}:a1",))) + 1
+    db.execute("INSERT INTO actions(attempt_id, seq, tool, args, status, side_effect, effect_possible, intent_at)"
+               " VALUES (?,?,?,'{}',?,?,?,?)", (f"{sid}:a1", seq, tool, status, commit, efeito, "2026-10-02T12:00:00.000Z"))
 
 
 def _falhar_a_ultima(db, detalhe: str = "o app travou") -> str:
@@ -136,30 +141,97 @@ async def test_max_tentativas_e_respeitado_a_ultima_falha_e_definitiva(h: Harnes
 
 
 # =============================================================================================== efeito e incerteza
-async def test_falha_com_efeito_possivel_nao_repete(h: Harness) -> None:
-    r, db = Relogio(), h.state.db
-    laco, _ = _laco(h, r)
-    _agora(db, "ped1", r, max_tentativas=2)
+async def _falha_e_fecha(h: Harness, r: Relogio, laco: LacoDePedidos, *acoes: dict, max_tentativas: int = 3):
+    """Despacha, deixa as `acoes` na execução, assenta `failed` e roda a volta que fecha. Devolve o resumo dela."""
+    db = h.state.db
+    _agora(db, "ped1", r, max_tentativas=max_tentativas)
     laco.uma_volta()
-    _acao_com_efeito(db, _falhar_a_ultima(db))
-    res = laco.uma_volta()
-    assert (res.fechadas, res.retentadas) == (1, 0)
+    run_id = _falhar_a_ultima(db)
+    for a in acoes:
+        _acao(db, run_id, **a)
+    return laco.uma_volta()
+
+
+async def test_falha_com_efeito_possivel_vira_incerta_pede_a_pessoa_e_nunca_repete(h: Harness) -> None:
+    """Decisão do coordenador (02/10): efeito possível = mundo incerto. Um `falhou` deixaria a PRÓXIMA ocorrência refazer o
+    efeito (um segundo envio); por isso `incerta`, pedido em `aguardando_pessoa`, aviso que pede a pessoa e nenhuma tentativa."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r)
+    res = await _falha_e_fecha(h, r, laco, {"tool": "tap", "status": "done", "efeito": 1, "commit": 1})
+    assert (res.fechadas, res.retentadas, res.aguardando) == (1, 0, 1)
     [o] = _ocs(db)
-    assert o["estado"] == "falhou" and "efeito externo possível" in o["motivo"]
-    r.avancar(3600)
+    assert o["estado"] == "incerta" and "efeito externo possível" in o["motivo"] and "o app travou" in o["motivo"]
+    assert _pedido_estado(db)["estado"] == "aguardando_pessoa"
+    [a] = avisos
+    assert (a["tipo"], a["requer_pessoa"], a["ocorrencia_id"]) == ("ocorrencia_incerta", True, o["id"])
+    r.avancar(7200)
     laco.uma_volta()
-    assert len(_runs(db)) == 1
+    laco.uma_volta()
+    assert len(_runs(db)) == 1 and len(avisos) == 1, "nunca uma nova tentativa, mesmo com `max_tentativas` sobrando"
 
 
-async def test_execucao_purgada_conta_como_efeito_possivel_e_nao_repete(h: Harness) -> None:
+@pytest.mark.parametrize("status", ["unknown", "intended"])
+async def test_resultado_desconhecido_da_acao_tambem_e_efeito_possivel(h: Harness, status: str) -> None:
+    """`unknown` (o comando pode ter chegado) e `intended` (o backend caiu no meio) são efeito possível mesmo com `effect_possible=0`."""
     r, db = Relogio(), h.state.db
-    laco, _ = _laco(h, r)
+    laco, avisos = _laco(h, r)
+    await _falha_e_fecha(h, r, laco, {"tool": "type_text", "status": status, "efeito": 0, "commit": 1})
+    assert _ocs(db)[0]["estado"] == "incerta" and _pedido_estado(db)["estado"] == "aguardando_pessoa"
+    assert len(avisos) == 1
+
+
+async def test_falha_antes_de_qualquer_acao_com_efeito_ganha_nova_tentativa_normal(h: Harness) -> None:
+    """Sem ação alguma, ou só com leitura (`observe_screen`, que não tem efeito possível): a falha é comprovadamente sem efeito."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r, retentativa_base_s=60)
+    res = await _falha_e_fecha(h, r, laco, {"tool": "observe_screen", "status": "done", "efeito": 0})
+    assert (res.retentadas, res.fechadas, res.aguardando) == (1, 0, 0)
+    [o] = _ocs(db)
+    assert o["estado"] == "devida" and o["tentativa"] == 1 and _pedido_estado(db)["estado"] == "ativo" and not avisos
+    r.avancar(61)
+    assert laco.uma_volta().despachadas == 1 and _ocs(db)[0]["tentativa"] == 2
+
+
+async def test_o_driver_provou_que_nada_chegou_ao_aparelho_e_falha_sem_efeito_e_repete(h: Harness) -> None:
+    """A ação de commit falhou com `effect_possible=0` (o driver não entregou o comando): ausência de efeito PROVADA."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r, retentativa_base_s=60)
+    res = await _falha_e_fecha(h, r, laco, {"tool": "tap", "status": "failed", "efeito": 0, "commit": 1})
+    assert (res.retentadas, res.aguardando) == (1, 0) and not avisos
+    assert _ocs(db)[0]["estado"] == "devida" and _pedido_estado(db)["estado"] == "ativo"
+    # Esgotadas as tentativas, a mesma prova leva a `falhou` (não a `incerta`), e a próxima ocorrência segue.
+    r.avancar(61)
+    laco.uma_volta()
+    run2 = _falhar_a_ultima(db, "de novo")
+    _acao(db, run2, tool="tap", status="failed", efeito=0, commit=1)
+    db.execute("UPDATE pedidos SET max_tentativas=2 WHERE id='ped1'")
+    laco.uma_volta()
+    [o] = _ocs(db)
+    assert o["estado"] == "falhou" and "esgotou as 2 tentativas" in o["motivo"] and _pedido_estado(db)["estado"] != "aguardando_pessoa"
+
+
+async def test_execucao_purgada_conta_como_efeito_possivel_e_vira_incerta(h: Harness) -> None:
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r)
     _agora(db, "ped1", r, max_tentativas=2)
     laco.uma_volta()
     db.execute("DELETE FROM runs WHERE id=?", (_runs(db)[-1]["id"],))
     laco.uma_volta()
     [o] = _ocs(db)
-    assert o["estado"] == "falhou" and "não existe mais" in o["motivo"]
+    assert o["estado"] == "incerta" and "não existe mais" in o["motivo"] and len(avisos) == 1
+
+
+async def test_falha_com_efeito_em_pedido_pausado_fecha_incerta_sem_mexer_no_pedido(h: Harness) -> None:
+    """A ocorrência é `incerta` qualquer que seja o estado do pedido; só o pedido `ativo` vai a `aguardando_pessoa`."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r)
+    _agora(db, "ped1", r, max_tentativas=2)
+    laco.uma_volta()
+    run_id = _falhar_a_ultima(db)
+    _acao(db, run_id, status="done", efeito=1)
+    db.execute("UPDATE pedidos SET estado='pausado', pausado_motivo='pela pessoa' WHERE id='ped1'")
+    laco.uma_volta()
+    assert _ocs(db)[0]["estado"] == "incerta" and _pedido_estado(db)["estado"] == "pausado" and not avisos
 
 
 async def test_etapa_uncertain_leva_o_pedido_a_aguardando_pessoa_com_aviso_e_nunca_repete(h: Harness) -> None:

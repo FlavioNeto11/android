@@ -8,17 +8,21 @@ Duas perguntas, ambas puras:
 
    | fechamento                       | efeito possível | tentativas        | decisão                                   |
    | `incerta`                        | (qualquer)      | (qualquer)        | `incerta`: aguardando a pessoa, sem repetir |
-   | `falhou`                         | sim ou ignorado | (qualquer)        | `definitiva` (sem nova tentativa)         |
+   | `falhou`                         | sim             | (qualquer)        | `incerta`: o fechamento sobe a `incerta`  |
    | `falhou`                         | não             | `n < max`         | `repetir`, depois de um atraso exponencial |
    | `falhou`                         | não             | `n >= max`        | `definitiva`                              |
    | `falhou`, sem orçamento p/ outra | não             | `n < max`         | `definitiva` (o motivo diz o orçamento)   |
    | outros (`concluida`, `cancelada`)| —               | —                 | `fim`: nada a decidir                     |
 
    "Efeito possível" é `actions.effect_possible` de QUALQUER ação da execução (inclui o toque que deu certo: `tap`,
-   `type_text` etc. são `EFFECT_CAPABLE`), e a execução que sumiu (purga) conta como efeito possível: o que não se sabe
-   não é seguro repetir. Falha com efeito possível NÃO vira `incerta` aqui: a etapa com efeito externo que ficou sem
-   prova já chega como objetivo `uncertain` (`fechar` a manda a `incerta`); o toque comum de navegação não justifica
-   parar o pedido inteiro à espera da pessoa.
+   `type_text` etc. são `EFFECT_CAPABLE`) ou ação `intended`/`unknown`, e a execução que sumiu (purga) conta como efeito
+   possível: o que não se sabe não é seguro repetir.
+
+   **Falha com efeito possível é `incerta`, não `falhou`** (decisão do coordenador, 02/10): se o efeito pode ter acontecido,
+   o mundo está incerto, e um `falhou` definitivo deixaria a PRÓXIMA ocorrência refazê-lo (um segundo envio). O pedido vai a
+   `aguardando_pessoa`, sem nova tentativa. Só fica `falhou` (e só então pode repetir) quando a execução comprovadamente
+   não produziu efeito: falhou antes de qualquer ação com efeito, ou o driver provou que nada chegou ao aparelho (ação
+   registrada com `effect_possible = 0`).
 
 2. **Quando o pedido pausa** (`falhas_seguidas`, `deve_pausar`): N ocorrências seguidas que terminaram `falhou`
    (o `pause-on-failure` do Temporal). Conta OCORRÊNCIAS, não execuções: a ocorrência que falhou e foi repetida só conta
@@ -75,7 +79,7 @@ def decidir(*, estado: str, tentativa: int, max_tentativas: int, efeito_possivel
     if estado != "falhou":
         return Decisao(ACAO_FIM)
     if efeito_possivel:
-        return Decisao(ACAO_DEFINITIVA, complemento="sem nova tentativa: ação com efeito externo possível, só se verifica")
+        return Decisao(ACAO_INCERTA, complemento="efeito externo possível: só se verifica, sem nova tentativa")
     if tentativa >= max_tentativas:
         # `max_tentativas == 1` é o pedido que nunca repete: nada a explicar. Com mais, diz que o limite acabou.
         return Decisao(ACAO_DEFINITIVA, complemento=(f"esgotou as {max_tentativas} tentativas" if max_tentativas > 1 else None))
