@@ -37,6 +37,7 @@ from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..util import novo_id_de_app, now_iso, parse_iso
 from .proxy import _HOST
+from .rede_saida_central import perfil_leva_ipv6, veredito, veredito_sem_rede
 from .sonda_rede import pernas_udp
 
 if TYPE_CHECKING:
@@ -582,13 +583,16 @@ def pendencias(st: AppState) -> list[dict[str, object]]:
     return saida
 
 
-def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
-    """Desejado × observado de cada aparelho do parque (a loja fica de fora: não é destino)."""
+def listar_aparelhos(st: AppState) -> dict[str, object]:
+    """Desejado × observado de cada aparelho do parque (a loja fica de fora: não é destino), e no topo a saída medida
+    do próprio central (`central_egress`, item 29.20), com a qual cada aparelho é comparado em `egress_home`."""
     linhas = {str(r["instance_id"]): r for r in st.db.query("SELECT * FROM device_network")}
     ultimas: dict[str, Row] = {}
     for m in st.db.query("SELECT * FROM network_measurements ORDER BY measured_at, id"):
         ultimas[str(m["instance_id"])] = m                              # a última de cada aparelho fica
-    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, params FROM network_profiles")}
+    perfis = {str(p["id"]): p for p in st.db.query("SELECT id, name, protocol, params FROM network_profiles")}
+    central = st.rede_saida_central.atual()
+    sondas = _sondas_sem_rede(st)
     aparelhos: list[dict[str, object]] = []
     for rt in sorted(st.devices.devices.values(), key=lambda r: r.id):
         if rt.store:
@@ -623,8 +627,107 @@ def listar_aparelhos(st: AppState) -> dict[str, list[dict[str, object]]]:
             # com a esperada do perfil novo acusaria uma diferença que ainda não foi medida.
             "egress_matches": (saida_confere(esperada, row["egress_ipv4"], row["egress_ipv6"])
                                if row is not None and row["state"] in _MEDIDOS else None),
+            "egress_home": _saida_pela_casa(row, perfis, central, sondas.get(rt.id), _validade_da_sonda(st)),
         })
-    return {"devices": aparelhos}
+    return {"devices": aparelhos, "central_egress": central}
+
+
+#: O `method` da sonda de IP do aparelho SEM rede pedida (item 29.20) em `network_measurements` (≤ 60): é o que separa
+#: esta medida das da rede pedida, e a convergência nunca a trata como uma (não há linha em `device_network`).
+METODO_SEM_REDE = "sonda de IP sem rede pedida (uid 2000)"
+#: Quantos `reverificar_s` uma medida de aparelho sem rede vale: depois disso o aparelho volta a "presumido".
+_VALIDADE_SEM_REDE_EM_VEZES = 3
+
+
+def _validade_da_sonda(st: AppState) -> float:
+    return float(st.cfg.file.rede.sonda.reverificar_s) * _VALIDADE_SEM_REDE_EM_VEZES
+
+
+def sem_rede_pedida(row: Row | None) -> bool:
+    """Sem rede pedida: sem linha em `device_network`, ou linha de pedido vazio (tirou tudo)."""
+    return row is None or not (row["vpn_profile_id"] or row["proxy_profile_id"])
+
+
+def registrar_saida_sem_rede(st: AppState, instance_id: str, ipv4: str | None, ipv6: str | None,
+                             detalhe: str) -> int | None:
+    """Acrescenta ao histórico a sonda de IP de um aparelho SEM rede pedida (29.20) e devolve o id. É só leitura da
+    saída: não cria linha em `device_network`, não muda estado, política nem revisão, não emite aviso. Se o aparelho
+    ganhou uma rede pedida no meio da sonda, a medida se perde (`None`): a saída dele passou a ser da rede pedida, e a
+    medição dela é a da convergência. Falha de sonda (sem IP) entra também, com o motivo no `detalhe`: é o que diz "não
+    medida" e espaça a próxima tentativa, em vez de repetir a sonda sem parar."""
+    if not sem_rede_pedida(_linha(st, instance_id)):
+        return None
+    medicao = NetworkMeasurementInput(method=METODO_SEM_REDE, egress_ipv4=ipv4, egress_ipv6=ipv6, detail=detalhe[:500])
+    return int(st.db.inserted_id(
+        "INSERT INTO network_measurements(instance_id, measured_at, method, egress_ipv4, egress_ipv6, dns_resolver,"
+        " udp_ok, per_app, leak_blocked, detail) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (instance_id, medicao.measured_at or now_iso(), METODO_SEM_REDE, medicao.egress_ipv4, medicao.egress_ipv6, None,
+         None, dumps({}), None, medicao.detail)))
+
+
+def sonda_sem_rede_devida(st: AppState, instance_id: str, agora: float) -> bool:
+    """Já é hora de medir de novo a saída deste aparelho sem rede? A última tentativa (com ou sem IP) passou de
+    `reverificar_s`, ou, se falhou, de 5 minutos (nunca mais que `reverificar_s`). Nunca medido: sim."""
+    ultima = st.db.one("SELECT measured_at, egress_ipv4, egress_ipv6 FROM network_measurements"
+                       " WHERE instance_id=? AND method=? ORDER BY id DESC LIMIT 1", (instance_id, METODO_SEM_REDE))
+    quando = parse_iso(str(ultima["measured_at"])) if ultima is not None else None
+    if ultima is None or quando is None:
+        return True
+    reverificar = float(st.cfg.file.rede.sonda.reverificar_s)
+    espera = reverificar if (ultima["egress_ipv4"] or ultima["egress_ipv6"]) else min(300.0, reverificar)
+    return agora - quando.timestamp() >= espera
+
+
+def _sondas_sem_rede(st: AppState) -> dict[str, tuple[Row | None, Row | None]]:
+    """Por aparelho, `(a última tentativa, a última COM IP)` da sonda de IP sem rede pedida."""
+    por: dict[str, tuple[Row | None, Row | None]] = {}
+    for m in st.db.query("SELECT * FROM network_measurements WHERE method=? ORDER BY measured_at, id",
+                         (METODO_SEM_REDE,)):
+        iid = str(m["instance_id"])
+        _, com_ip = por.get(iid, (None, None))
+        por[iid] = (m, m if (m["egress_ipv4"] or m["egress_ipv6"]) else com_ip)
+    return por
+
+
+def _saida_sem_rede(sonda: tuple[Row | None, Row | None] | None, central: dict[str, object],
+                    validade_s: float) -> dict[str, object]:
+    """O veredito do aparelho SEM rede pedida: a sonda de IP (a última com IP, enquanto vale) contra o central, e
+    PRESUMIDO onde não houver medida que valha (item 29.20). A falha só conta se foi a tentativa mais recente."""
+    ultima, com_ip = sonda if sonda is not None else (None, None)
+    quando = parse_iso(str(com_ip["measured_at"])) if com_ip is not None else None
+    valida = com_ip is not None and quando is not None and time.time() - quando.timestamp() <= validade_s
+    falha = None
+    if ultima is not None and not (ultima["egress_ipv4"] or ultima["egress_ipv6"]):
+        falha = str(ultima["detail"] or "sem IP")
+    medida = com_ip if valida else None
+    v = veredito_sem_rede(ipv4=medida["egress_ipv4"] if medida else None,
+                          ipv6=medida["egress_ipv6"] if medida else None, central=central, falha=falha)
+    out = v.como_dict()
+    out["measured"] = ({"ipv4": medida["egress_ipv4"], "ipv6": medida["egress_ipv6"],
+                        "measured_at": medida["measured_at"], "source": "probe_no_network"} if medida else None)
+    return out
+
+
+def _saida_pela_casa(row: Row | None, perfis: dict[str, Row], central: dict[str, object],
+                     sonda: tuple[Row | None, Row | None] | None = None,
+                     validade_s: float = 1800.0) -> dict[str, object]:
+    """Este aparelho ainda sai pela casa (item 29.20)? A saída medida dele (`device_network.egress_*`, a mesma fonte
+    de `egress_shared_with` e `egress_matches`) contra a do central, e o IPv6 medido contra o que o perfil de VPN leva.
+    O IPv6 pergunta pelo TÚNEL: com um proxy por cima, o IPv6 também depende de a VPN o carregar, então a regra olha
+    sempre o perfil de VPN (sem VPN, o perfil não leva IPv6 e o IPv6 medido sai direto).
+
+    Sem rede pedida (sem linha, ou linha de pedido vazio) o aparelho sai pela casa por DEFINIÇÃO: é "presumido" até a
+    sonda de IP medir (`_saida_sem_rede`). `measured` traz os IPs em que o veredito se apoia; `basis` diz se é
+    "measured" ou "presumed"."""
+    if row is None or sem_rede_pedida(row):
+        return _saida_sem_rede(sonda, central, validade_s)
+    vpn = perfis.get(str(row["vpn_profile_id"] or ""))
+    leva = perfil_leva_ipv6(loads(vpn["params"], {}) or {}, str(vpn["protocol"])) if vpn is not None else False
+    out = veredito(medido=row["state"] in _MEDIDOS, ipv4=row["egress_ipv4"], ipv6=row["egress_ipv6"],
+                   central=central, leva_ipv6=leva, com_rede_pedida=True).como_dict()
+    out["measured"] = ({"ipv4": row["egress_ipv4"], "ipv6": row["egress_ipv6"], "measured_at": row["verified_at"],
+                        "source": "device_network"} if (row["egress_ipv4"] or row["egress_ipv6"]) else None)
+    return out
 
 
 # ============================================================================ atribuir

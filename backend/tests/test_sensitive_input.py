@@ -365,11 +365,13 @@ def test_menu_de_configuracoes_que_so_CITA_dois_fatores_nao_vira_sensivel() -> N
     "Enter the 6-digit code", "We detected an unusual login attempt", "Suspicious login attempt",
     "Confirm it's you", "Help us confirm it's you", "Verify your account",
     "Enter the code we sent to your email", "I'm not a robot", "Confirm you're human",
+    "Verify you're human", "Prove you are a human", "Confirm you're a real person",
     # pt
     "Autenticação de dois fatores", "Código de segurança", "Código de confirmação",
     "Insira o código de 6 dígitos", "Detectamos uma tentativa de login incomum",
     "Atividade suspeita na sua conta", "Confirme que é você", "Ajude a confirmar sua identidade",
     "Verifique sua conta", "Não sou um robô", "Confirme que você é uma pessoa",
+    "Confirmar que você é humano", "Comprove que você é uma pessoa real",
 ])
 def test_concorda_com_o_classificador_de_desafio_do_instagram(frase: str) -> None:
     """Dois classificadores que discordam sobre a MESMA tela é pior do que ter um só.

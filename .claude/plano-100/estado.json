@@ -4497,14 +4497,16 @@
    "id": "29.9",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 01/10, android-09 (QA, notebook), central 658e5bb: a causa do W4 foi um defeito de código, medido — o comando de observação contava o cabeçalho 'Lockdown filtering rules:' do dumpsys (sempre presente), então com a política exigida (sem bloqueio) o túnel no ar nunca valia como conectado e a rede reiniciava em cadeia; corrigido para contar as linhas 'UIDs:' (R=3 no android-03 com bloqueio, R=0 no android-09). Depois da correção: W2–W5 — perfil vpn-central-wireguard, política exigida, um reinício, 'conectado' às 13:07:51Z e trafego_verificado às 13:08:37Z (medição #76), com o servidor do central vendo o par 10.66.0.6; W6 — modo avião por 1 min: o túnel voltou sozinho (tun0 e VPN CONNECTED, sem reprovisão nem reinício); W7 — agente do notebook religado às 13:19Z: o aparelho seguiu com o túnel e trafego_verificado, sem reinício; W8 — exigida_com_bloqueio: teste de vazamento REAL no remoto com o cliente parado e o Android recusando a sonda (leak_rev 2, leak_result 1, 13:26Z).",
-   "blocker": "No W8 o túnel não voltou depois do teste de vazamento com o bloqueio: o tile não religou e a rede desistiu depois de 2 reinícios (4 reinícios pela rede no total do W8, todos no QA android-09); rollback às 13:37Z, rede tirada às 13:42Z. É o K-066 (always-on uma vez por boot) mais forte no notebook. Antes de usar bloqueio em aparelho remoto, medir por que o cliente não sobe no boot ali.",
-   "grupo": "29-pendencias-evolucao3",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Real, 01/10, android-09 (QA, notebook), central 658e5bb: a causa do W4 foi um defeito de código (o comando de observação contava o cabeçalho 'Lockdown filtering rules:' do dumpsys), corrigido para contar as linhas 'UIDs:'; W2–W7 reais, trafego_verificado na medição #76 às 13:08:37Z, modo avião e religação do agente do notebook sem reinício. W8 com exigida_com_bloqueio em 01/10: o túnel não voltou depois do teste de vazamento (4 reinícios pela rede, rollback 13:37Z, K-066). Depois, 02/10, central bcea158 (rodada r4, 16:08 a 16:14Z, seed w8-mitigacao-20261002-r4, restart c-20261002161008-5a2fcc): a mitigação do PR #17 (Start pela interface do SFA) foi PROVADA em política 'livre' + vpn-central-wireguard, W8 PASS (docs/handoffs/w8-boot-recovery.md §17.10): o tun0 não subiu sozinho em 2 de 2 boots válidos (r3 198 s, r4 193 s) e o produto o religou com UM Start, sem reinício extra.",
+   "blocker": "O PASS de 02/10 vale só para política 'livre' no android-09 (SFA 1.14.2, bcea158); o W8 com exigida_com_bloqueio e teste de vazamento em aparelho remoto segue not_run depois do PR #17, e a causa raiz do SILENT_STOP segue NARROWED. Ação: a execução repete o W8 com exigida_com_bloqueio no android-09, com a pausa do reparo e em janela sem tarefa (cadastrar o par reinicia o servidor VPN do central e tira 03 e 06 por ~30 s), com o dono avisado.",
+   "arquivos": [],
+   "testes": "Sem teste novo nesta rodada; provas reais citadas pelos ids de execução acima e por docs/handoffs/w8-boot-recovery.md §17.10.",
+   "grupo": "29-18-fechamento",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-01T13:42:27+00:00"
+   "quando": "2026-10-02T18:21:36+00:00"
   },
   "29.12": {
    "id": "29.12",
@@ -4547,16 +4549,23 @@
   },
   "29.18": {
    "id": "29.18",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Relatório §27 (27.1 a 27.9, com a matriz por aparelho), handoff com checkpoints 1 a 9, CHANGELOG, estado-atual e o livro do plano atualizados em 30/09; resumo real × simulado × não executado entregue ao dono no chat.",
-   "blocker": "Fecha quando o 27.2 tiver o C1 num aparelho com rede verificada (e-mail de teste do dono para o Bruno ou o André) e o cron de PostgreSQL de 01/10 05:17Z (29.14) tiver resultado.",
-   "grupo": "29-pendencias-evolucao3",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Real, 02/10/2026, central, commit 40aa08fd (branch docs/29-18-fechamento, base a0a03b7): docs/relatorio-validacao.md §28 (os 20 itens 29.1 a 29.20 com estado e nível de prova, veredito por cláusula do 'Fecha quando' e quem decide cada pendência), CHANGELOG, topo de docs/estado-atual.md e linha da Fase 29 em docs/roadmap.md; python scripts/docs-check.py com 0 erros e 0 avisos e claude-plan-100.py check sem interrupção. Comandos de documentação, não prova de produto. A fase NÃO fecha com este item: a cláusula 'CI verde no commit publicado' segue sem run depois das correções do docs-check.",
+   "blocker": "",
+   "arquivos": [
+    "docs/relatorio-validacao.md",
+    "CHANGELOG.md",
+    "docs/estado-atual.md",
+    "docs/roadmap.md"
+   ],
+   "testes": "python scripts/docs-check.py -> 0 erros, 0 avisos; python scripts/claude-plan-100.py check -> sem interrupção. Nenhum teste de produto (item documental).",
+   "grupo": "29-18-fechamento",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T23:15:11+00:00"
+   "quando": "2026-10-02T18:21:36+00:00"
   },
   "29.14": {
    "id": "29.14",
@@ -4634,6 +4643,31 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T17:43:19+00:00"
+  },
+  "29.20": {
+   "id": "29.20",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/rede_saida_central.py (novo), rede.py, rede_convergencia.py, rede_medicao.py, sonda_rede.py, config; GET /api/network/devices com central_egress e egress_home por aparelho (IPv4 igual, IPv6 no mesmo /64, IPv6 fora do perfil, basis measured|presumed; sem medida é null ou presumido, nunca limpo); painel Rede com o selo e o resumo. Simulado: backend/tests/test_rede_saida_central.py (20 testes: veredito, TTL, falha de medida, caso notebook da LAN e vpn-central-wireguard acusados, presumido nunca nulo nem limpo), backend/tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida e ::test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le, frontend/src/features/rede/RedePage.test.tsx. Prova lida nos commits e na seção §28.1 do relatório; testes não rodados nesta rodada documental.",
+   "blocker": "Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitura de GET /api/network/devices sem tocar aparelho).",
+   "arquivos": [
+    "backend/app/devices/rede_saida_central.py",
+    "backend/app/devices/rede.py",
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/devices/rede_medicao.py",
+    "backend/app/devices/sonda_rede.py",
+    "frontend/src/features/rede/RedePage.tsx",
+    "backend/tests/test_rede_saida_central.py",
+    "backend/tests/test_rede_por_aparelho.py",
+    "frontend/src/features/rede/RedePage.test.tsx"
+   ],
+   "testes": "not_run nesta rodada (documental); cobertura simulated registrada pelos commits d02e316e e 3a12502c, cada um com os testes acima.",
+   "grupo": "29-18-fechamento",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T18:21:36+00:00"
   }
  },
  "rodadas": [
@@ -5599,6 +5633,17 @@
    ],
    "grupos": [
     "sessao:jev-17-10-real"
+   ]
+  },
+  {
+   "quando": "2026-10-02T18:21:36+00:00",
+   "itens": [
+    "29.18",
+    "29.20",
+    "29.9"
+   ],
+   "grupos": [
+    "29-18-fechamento"
    ]
   },
   {

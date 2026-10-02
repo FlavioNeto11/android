@@ -281,6 +281,12 @@ def ler_ip_de_saida(saida: str, familia: int) -> IpDeSaida:
     if not corpo:
         venceu = codigo is not None and codigo.group(1) == "124"
         return IpDeSaida(None, "sem resposta (tempo esgotado)" if venceu else "sem resposta")
+    return ip_da_resposta_http(corpo, familia)
+
+
+def ip_da_resposta_http(corpo: str, familia: int) -> IpDeSaida:
+    """A resposta HTTP do eco, já sem os marcadores do `nc` (item 29.20): o mesmo julgamento serve à sonda do aparelho e
+    à do PRÓPRIO central (`rede_saida_central`, que fala por socket, sem `nc`). `corpo` é a resposta inteira, não vazia, só com LF."""
     if not corpo.startswith("HTTP/"):
         return IpDeSaida(None, corpo.splitlines()[0][:120])
     status = corpo.splitlines()[0]

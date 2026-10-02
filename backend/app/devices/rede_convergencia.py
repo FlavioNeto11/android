@@ -52,7 +52,7 @@ from . import rede
 from .rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError,
                              apagar_relatorios_de_falha, desfazer, endereco_no_tunel, instalado_em, montar_plano,
                              observar, parar_cliente_solto, provisionar, religar_pela_interface)
-from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, sondar_vazamento
+from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, medir_saida, sondar_vazamento
 from .sonda_rede import Contabilidade
 
 if TYPE_CHECKING:
@@ -108,6 +108,9 @@ class _Memoria:
     # não foi tentado ou se religou. Só enfeita a evidência de quem cai no reinício.
     religar_motivo: str = ""
     religar_codigo: str = ""
+    # A sonda de IP do aparelho sem rede pedida (29.20): monotonic da próxima vez em que a varredura pode disparar uma.
+    # Separada de `espera_ate` de propósito: uma rede atribuída depois não pode esperar por causa da sonda.
+    sonda_sem_rede_ate: float = 0.0
 
 
 def _vazio(row: Row) -> bool:
@@ -258,6 +261,11 @@ class ConvergenciaDeRede:
         """O trabalho de rede que este aparelho precisa AGORA, ou `None`. Uma consulta quando não há linha — é
         perguntado a cada aparelho que entra no ar e a cada varredura."""
         row = self._linha(rt.id)
+        if (motivo in ("ligou", "varredura") and rede.sem_rede_pedida(row)
+                and (row is None or self._acao(row, motivo) is None)):
+            # Sem rede pedida e nada a desfazer: só a sonda de IP de leitura (29.20), nunca um passo da convergência
+            # (a porta da tarefa e o pedido manual não passam por aqui: não há rede a esperar nem a aplicar).
+            return self._trabalho_sem_rede(rt)
         if row is None or not self._elegivel(rt) or self._acao(row, motivo) is None:
             return None
         if motivo == "tarefa":
@@ -265,6 +273,30 @@ class ConvergenciaDeRede:
 
         async def trabalho() -> None:
             await self.executar(rt, motivo=motivo)
+
+        return trabalho
+
+    def _trabalho_sem_rede(self, rt: DeviceRuntime) -> Callable[[], Awaitable[None]] | None:
+        """A sonda de IP do aparelho SEM rede pedida (item 29.20): só os IPs v4/v6 de saída, como o uid 2000, com o
+        aparelho ligado e livre, a cada `rede.sonda.reverificar_s` (a falha espera menos: 5 min). NÃO é convergência: não
+        há linha em `device_network`, nada muda de estado, política ou revisão, e nada dispara reaplicação, reinício,
+        bloqueio de tarefa ou comando — o resultado só vira uma linha em `network_measurements` que a listagem lê."""
+        if not self.cfg.sonda.medir_sem_rede or not self._elegivel(rt):
+            return None
+        mem = self.memoria(rt.id)
+        agora = self._agora()
+        if agora < mem.sonda_sem_rede_ate or not rede.sonda_sem_rede_devida(self.st, rt.id, now().timestamp()):
+            return None
+        # Reserva a vez já na pergunta (a varredura pergunta a cada 60 s, e o trabalho só roda no ponto seguro).
+        mem.sonda_sem_rede_ate = agora + _ESPERA_DA_RELEITURA_S
+
+        async def trabalho() -> None:
+            try:
+                ipv4, ipv6, detalhe = await medir_saida(self._aparelho(self.st, rt), self.cfg.sonda)
+                rede.registrar_saida_sem_rede(self.st, rt.id, ipv4, ipv6, detalhe)
+            except Exception as exc:  # noqa: BLE001 - leitura: falha vira "não medida", nunca derruba o trabalho de ligar
+                log.info("%s: sonda de IP sem rede pedida não concluiu — %s", rt.id, exc)
+                rede.registrar_saida_sem_rede(self.st, rt.id, None, None, f"a sonda não concluiu ({str(exc)[:200]})")
 
         return trabalho
 
