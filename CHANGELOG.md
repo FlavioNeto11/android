@@ -27,6 +27,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_rede_saida_central.py`, `tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida`, `RedePage.test.tsx`. Medir o central real e conferir o android-09 com `vpn-central-wireguard`: `not_run`.
 - Docs: `docs/dominios/parque.md` ("Nenhum aparelho pela saída da casa"), `docs/api-contract.md`.
 
+## 2026-10-02 — Suíte em paralelo com pytest-xdist: `pytest -q -n 8` em ~5 min contra ~36 min em série (J-XDIST, PR #48)
+
+- `backend/requirements-dev.in`/`.txt`: `pytest-xdist==3.8.0`. `test_worker_executor.py::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila` espera pelo fato em vez de `sleep(0.05)` (falhava isolada e com `-n 12`).
+- Real (02/10, WIN-7S2UASNLFOP): em série `25624c4` 4754 passed/7 skipped em 2178 s (sessão Android); `-n 8` em `7a1d0b0` 4752 passed/9 skipped em 306,87 s e 347,57 s, sem falha. Os 2 pulos a mais são de `test_supervisao_do_central.py` (exigem `backend/.venv` na árvore; pulam também em série no worktree sem a junção). PostgreSQL com `-n`: `not_run`.
+- Docs: `docs/operacao.md` §4, `.claude/rules/testes.md`.
+
 ## 2026-10-02 — A8/A9/A10 executados em real: túnel em PowerShell 5.1, relógio do notebook e agente `f9eed71`
 
 - Real (02/10, central + `worker-lan-01`, deploy `f9eed71`, backup `20261002-132234`/`132239`, com a pausa de reparo do android-09 conferida no health): tarefa `farm-tunel-192.168.1.11` reinstalada com `powershell.exe` 5.1 (forwards 15555..15565 e reverso `18000 → 8010`, worker `up`, hierarquia do android-09 200); agente do notebook `0.1.0+5d8b545` → `0.1.0+f9eed71`; relógio do notebook +8,857 s → +0,002 s pela tarefa `farm-relogio` (`C:\farm\relogio`), 1ª execução agendada com resultado 0, e o `degraded` por relógio saiu sozinho.
