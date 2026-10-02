@@ -361,6 +361,22 @@ Uma execução por pergunta, com a A e a B no mesmo pedido e o custo separado po
 3. **Antes de adotar**, no PR separado: (a) rodízio de chunks entre candidatos, que ataca o H25, medido de graça no `--analise` sobre todo o golden (30 perguntas, sem rede); (b) margem do teto de tokens (a `len//4` subestima), por exemplo subir o teto para 28.000 ou calibrar a estimativa pela razão medida (~1,3×); (c) só então uma segunda rodada paga curta, se o dono quiser.
 4. Não mudar o ranking de arquivos nem o híbrido: nada aqui os toca.
 
+### Orçamento padrão novo (J13, 02/10/2026; muda o padrão, `simulated` no teste e `real` na medição que o sustenta)
+
+O J12 sustentou a mudança (a B vale o gasto: região 5/6 contra 2/6 do local, −88% de linhas a ler, +40% de custo), então o padrão passou a ser a configuração medida:
+
+| Parâmetro | Antes | Agora | Por quê |
+|---|---|---|---|
+| `max_candidate_files` | 8 | **5** | é o `top_k`, e a B só lê chunks de quem a A escolheu |
+| `max_chunks` | 24 | **16** | com 24 a B passava de ~9 mil tokens estimados e era barrada; com 16 mediu 6,2 a 7,1 mil |
+| `max_input_tokens` | 24.000 | **28.000** | mediu-se no máximo 22.748 por pedido (margem de ~5% com 24.000, e a estimativa `len//4` da B fica 5–10% abaixo do que o provedor conta); com 28.000 até a B no teto de `max_bytes` (48 KB ≈ 12 mil estimados) cabe depois da A (15,7 + 12 = 27,7 mil) |
+
+- **Só o teto sobe, o resto desce:** subir `max_input_tokens` não muda nenhum caso medido (todos cabiam) e só deixa de barrar pedidos maiores; o teto de custo (US$ 0,05 por pedido) e o de chamadas (2 por pedido) não mudaram, e 28 mil tokens custam ~US$ 0,0012 ao preço observado.
+- **Teto por etapa** (opção 2) **não foi implementado**: o dado não pediu; a conta única por pedido com margem resolve, e dividir mudaria o contrato do orçamento e da configuração.
+- **Onde:** `backend/app/config.py` (`ContextRetrievalSemanticCfg`) e `domain/model.py` (`Budget`, `PayloadLimits`), sempre os mesmos números; o desligado-por-padrão (`context_retrieval.enabled: false`) e a política de envio **não mudam**, então nada muda no ambiente central até alguém ligar o remoto.
+- **Prova:** `backend/tests/test_context_retrieval_orcamento_padrao.py` (4, `simulated`): padrões da configuração e do domínio iguais; a B medida (7,1 mil) e até a B no teto de bytes cabem depois da A medida (15,7 mil); e o padrão antigo (24.000 com a B de 24 chunks, ~9,8 mil) barrava. A prova `real` do comportamento é a do J12 (config equivalente, só que passada à mão).
+- **Segue pendente (não é deste PR):** o rodízio de chunks entre candidatos para o caso H25 (os chunks esgotam no primeiro candidato) e uma nova medição paga com o padrão novo, se o dono quiser.
+
 ### Painel (J8): cartão só de leitura
 
 A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retrieval de contexto" (`frontend/src/features/settings/ContextRetrievalSection.tsx`, textos e tons em `frontend/src/lib/contextRetrieval.ts`), que lê `GET /api/context-retrieval/status` e mostra: um veredito (desligado, só local, envio externo bloqueado ou permitido), a configuração (modo, interruptor, provedor e se está disponível), a proveniência do envio (decisão, motivo em português, classe e visibilidade do repositório, e as três provas: remoto público, commit público e worktree limpo; `null` aparece como "Sem resposta"), o orçamento por pedido e as métricas recentes (pedidos, cache, latência p50/p95, custo, tokens, voltas ao local e bloqueios por razão).
@@ -376,7 +392,7 @@ A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retr
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
 - **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
-  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda com os padrões de hoje. A ablação do J12 mediu a B (vale o gasto) e recomenda `max_candidate_files` 5 e `max_chunks` 16 sem mexer no teto; a decisão e o PR de mudança de padrão seguem pendentes (seção "Ablação A × A+B por região", acima).
+  1. ~~**Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca rodava.~~ **Fechada (J13):** o padrão passou a 5 candidatos, 16 chunks e teto de 28.000, a configuração medida no J12 (seção "Orçamento padrão novo", acima).
   2. ~~Rótulo `cache_b: miss` também saía quando a B era bloqueada pelo orçamento~~ **Fechada (J3a):** o rótulo só vira `miss` depois de `check_call` aprovar a chamada; bloqueada pelo orçamento fica `skipped`, com `stage_b_reason`.
   3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
   4. ~~`assume-unchanged` / `skip-worktree` escondiam alterações do `git status`~~ **Fechada (J3b):** o gate lê também `git ls-files -v -z` e trata qualquer arquivo marcado (minúscula = `assume-unchanged`, `S` = `skip-worktree`) como worktree sujo, mesmo sem alteração (fail closed); `ls-files` que falha vale `None`. Efeito colateral aceito: um sparse-checkout, que usa `skip-worktree`, também bloqueia o envio remoto.
