@@ -557,10 +557,22 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
   qualquer etapa (o que `Scheduler._reconciliar` deixa marcado), e a execução PURGADA conta como efeito possível (o que não se
   sabe não é seguro repetir). `max_tentativas` é o TOTAL de execuções por ocorrência (2 = a primeira e uma repetição); o atraso
   é `min(retentativa_teto_s, retentativa_base_s * 2**(n-1))` (60 s e 900 s por padrão). `incerta` (etapa `uncertain`) nunca repete.
-- **Falha com efeito possível não vira `incerta`:** fica `falhou` (definitiva) com o motivo "sem nova tentativa: ação com efeito
-  externo possível, só se verifica". A `incerta` é só o que `fechar` já decidia (objetivo `uncertain`); um toque comum de
-  navegação não justifica parar o pedido à espera da pessoa. Se o coordenador preferir `incerta` para toda falha com efeito
-  possível, é o ramo `efeito_possivel` de `domain/tentativas.decidir` (e passa a levar o pedido a `aguardando_pessoa`).
+- **Falha com efeito possível é `incerta`, não `falhou`** (decisão do coordenador, 02/10; a primeira versão a deixava `falhou`).
+  Se o efeito pode ter acontecido, o mundo está incerto, e um `falhou` definitivo deixaria a PRÓXIMA ocorrência refazê-lo (um
+  segundo envio); falha ou incerteza nunca contam como sucesso. O laço sobe o fechamento `falhou` para `incerta` (motivo
+  "…; efeito externo possível: só se verifica, sem nova tentativa", `domain/tentativas.decidir` → `ACAO_INCERTA`), qualquer que
+  seja o estado do pedido; o pedido `ativo` vai a `aguardando_pessoa` com o aviso `ocorrencia_incerta`, igual à `incerta` que o
+  `fechar` já decidia (objetivo `uncertain`). A execução PURGADA também (não se sabe o que ela fez). Só fica `falhou`, e só
+  então pode repetir, a execução que COMPROVADAMENTE não produziu efeito: falhou antes de qualquer ação com efeito (nenhuma
+  ação, ou só leitura como `observe_screen`, `effect_possible = 0`), ou o driver provou que nada chegou ao aparelho (ação
+  registrada `failed` com `effect_possible = 0`, que o executor grava quando `DriverError.effect_possible` é falso). Não há
+  outra "verificação que prova ausência" no código: é esta a prova. CONSEQUÊNCIA: `tap`, `long_press`, `drag` e `type_text` são
+  `EFFECT_CAPABLE` e gravam `effect_possible = 1` até quando deram certo, inclusive em etapa de navegação (sem `side_effect`);
+  logo toda falha DEPOIS de um toque desses vira `incerta`, e a nova tentativa fica para as falhas antes do primeiro toque
+  (planejamento, aparelho indisponível, leitura) e para as provadas sem efeito. Restringir o predicado às ações de commit
+  (`actions.side_effect = 1`) é uma linha em `RepositorioDePedidos.efeito_possivel`, se o dono achar o critério largo demais.
+  Testes: `test_pedidos_retentativa.py` (efeito → `incerta`, `aguardando_pessoa` e aviso, sem nova tentativa; antes de qualquer
+  ação com efeito → repete; driver provou ausência → repete e esgotada vira `falhou`; `unknown`/`intended`; purgada; pedido pausado).
 - **A nova tentativa é a MESMA linha.** `retentar` faz `despachada|rodando → devida` num só `UPDATE` (CAS de estado, custo da
   tentativa somado, motivo = a falha), sem coluna nova: `terminada_em` carrega o instante `nao_antes_de` enquanto a ocorrência
   é `devida` com `tentativa > 0` (`marcar_despachada` o zera). `tentativa` e `run_id` ficam; o despacho usa `n = tentativa+1`
@@ -592,7 +604,13 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
   `pedidos.max_tentativas` (padrão 2) e `pedidos.pausa_por_falha` (padrão 3), NOT NULL. Vale a coluna do pedido; os dois valores
   da configuração são o padrão global (usado se a coluna vier nula e o que a criação do 28.9 deve gravar). `retentativa_base_s`
   e `retentativa_teto_s` só existem na configuração.
-- A nova tentativa sai até `tick_s` depois do instante (`_espera` olha só a próxima materialização), aceito como a D6.
+- **A espera da nova tentativa mora em `terminada_em`** (a 067 não tem coluna para ela e o 28.5 não leva migração): enquanto a
+  ocorrência é `devida` com `tentativa > 0`, `terminada_em` é o instante `nao_antes_de`, que o despacho respeita (`_em_espera`) e
+  de onde a janela de recuperação passa a contar (`_limite_da_janela`); `marcar_despachada` o zera. É reaproveitar uma coluna
+  fora do sentido (uma `devida` não terminou nada); o custo é essa convenção, documentada aqui e no docstring de
+  `RepositorioDePedidos.retentar`, e a saída limpa é uma coluna `proxima_tentativa_em` numa migração futura. Além disso, a
+  nova tentativa sai até `tick_s` (15 s) DEPOIS do instante, porque `_espera` olha só a próxima materialização e não o
+  `nao_antes_de`; aceito como a D6.
 - Os testes do 28.4 inserem o pedido com `max_tentativas=1` (`test_pedidos_laco._pedido`): medem o fechamento, e uma falha sem
   efeito agora ganharia uma repetição. O padrão de verdade (2) é exercido em `test_pedidos_retentativa.py`.
 - Não feito (fora do 28.5): `needs_input` → `aguardando_pessoa` (`fechamento.py` o deixa para depois; ainda sem código), as rotas
