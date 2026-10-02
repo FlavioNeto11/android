@@ -20,7 +20,7 @@ snapshot foi salvo é `EmulatorBackend.save_snapshot` (real chama o console pelo
 `_wait_boot` só roda no caminho REAL (o `_boot` do aparelho falso continua retornando antes de chegar nele); o
 ramo de prazo estourado agora tem teste, chamando o método direto — o mesmo padrão de
 `test_a_decisao_depende_so_da_memoria_declarada` sobre `_recusa_por_capacidade` — com `boot_timeout_s=0`, que
-estoura ANTES de qualquer sonda por `adb`. As sondas em si (`boot_completed`, `ui_ready`, `prepare_for_automation`) têm teste em `test_wait_boot_sondas.py` (J10), com dublês só nas três chamadas ao `Adb`; o veredito do snapshot durante o boot e a extração no agente remoto (`worker/executor.py`) seguem de fora (T.2).
+estoura ANTES de qualquer sonda por `adb`. As sondas em si (`boot_completed`, `ui_ready`, `prepare_for_automation`) têm teste em `test_wait_boot_sondas.py` (J10), com dublês só nas três chamadas ao `Adb`; o veredito do snapshot durante o boot tem teste em `test_snapshot_verdict.py`; a extração no agente remoto (`worker/executor.py`) segue de fora (T.2).
 """
 from __future__ import annotations
 
