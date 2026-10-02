@@ -74,6 +74,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31) | 02/10 |
 
 ---
 
@@ -3903,3 +3904,58 @@ real e PostgreSQL: `not_run` (28.12).
 
 **Relação.** `backend/app/modules/pedidos/`; `backend/app/taskqueue/service.py` e `repository.py`; `backend/app/state.py`;
 `backend/app/config.py` (`PedidosCfg`).
+
+## ADR-069 — Jev (TypeSafe System One) em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado por classe
+
+**Data:** 02/10/2026 · **Estado:** aceito · **Decisão do dono**, aprovada no chat da orquestradora às ~21:35Z de 02/10
+("sim para todos" sobre as perguntas do roteiro), registrada pela frente Jev (item 31.3). Emenda o
+[ADR-063](decisoes.md#adr-063--retrieval-de-contexto-de-código-léxico--bm25-locais-semântico-plugável-política-única-de-envio).
+Roteiro de partida: `.claude/handoffs/roteiro-jev.md` (§3 a porta, §4 as decisões D-J1 a D-J7, §5 os itens); desenho do hub
+em [design/hub-de-ia-fora-de-execucao.md](design/hub-de-ia-fora-de-execucao.md).
+
+**Contexto.** O ADR-063 tratou o Jev (System One, TypeSafe) só como provedor de retrieval de CÓDIGO, com envio privado e
+sintético negados. O dono pediu (02/10) que o Jev seja usado onde acelera a plataforma. O roteiro mostrou que o ganho está nas
+decisões por conjunto fechado (triagem do curador, etapa semântica da intenção, desempate, apps candidatos), não no `decide`
+com visão (~58% do gasto, que devolve ferramenta e argumentos livres). Essas decisões levam DADO DE RUNTIME (categorias,
+catálogo, comando), que o ADR-063 não cobre.
+
+**Decisão.**
+
+1. **Porta única.** O System One em runtime só é chamado pela porta `DecisaoFechada` do hub de IA (`planning/`, item 31.4) e só
+   para escolher entre opções fechadas (`choice`, `noul`, `score`), até 255 opções, sempre com `nenhuma`. Um teste de cliente
+   único prova que só o adaptador fala com a TypeSafe.
+2. **Poder limitado.** O Jev escolhe entre candidatos que passam depois pelos MESMOS guardas, acrescenta escrutínio ou
+   escalonamento e sugere para a pessoa confirmar. Nunca autoriza efeito externo, aprovação, consentimento, sucesso nem
+   segurança; nunca dispensa verificação nem tier (ADR-063 item 11; ADR-054).
+3. **Constantes de código fechadas por padrão**, ao lado das do ADR-063 (que continuam: código privado e sintético NEGADOS):
+   `JEV_RUNTIME_SEND_APPROVED` e `JEV_ALLOWED_CLASSES`. O YAML só restringe, nunca libera. Cada classe liberada tem linha aqui,
+   com data.
+4. **Classes de dado liberadas pelo dono em 02/10/2026:**
+
+   | Classe | O que | Liberada para |
+   |---|---|---|
+   | C0 | categorias e metadados (`failure_kind`, risco, `side_effect`, tier, contagens, status) | F1: todos os consumidores da porta |
+   | C1 estrito | Livro sanitizado por campos nomeados de lista fechada (lição de texto fechado, metadados de receita sem rótulo de seletor) | F1 |
+   | C2 | catálogo próprio do dono (nome, descrição e modelo de habilidade, fluxo, capability, app declarado) | F2 |
+   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades que FALHA FECHADA | F3: só a sombra da intenção (31.9) |
+
+   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3); C5 (árvore de UI);
+   C6 (tela e texto de conta real) até pedido de privacidade/ZDR e ADR próprio; **C7 nunca**, em modo nenhum, sombra inclusa
+   (tela sensível, aparelho-loja, segredo, credencial, desafio, 2FA, CAPTCHA: o pedido INTEIRO é recusado); C8 segue o ADR-063.
+5. **Telemetria do MCA aceita por escrito.** O dono aceita que a TypeSafe processe logs, estatísticas, classificações e
+   aprendizados derivados do nosso uso; até C0 revela o padrão de uso do parque.
+6. **Modos e prova.** `off` é o padrão; `shadow` é assíncrono e fora do caminho crítico; `on` só por consumidor, com GO
+   pré-registrado (limiares escritos antes do primeiro resultado, 31.7). Um fallback nunca conta como acerto.
+7. **Gasto.** Fatia própria `fatia_jev` dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do
+   ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado, **condicionada à
+   troca da chave TypeSafe pelo dono ANTES de qualquer chamada nova** (D-J3; o piloto marcou rotação obrigatória). Até o dono
+   confirmar a troca, nenhuma chamada real ao Jev; ninguém lê nem toca a chave.
+8. **Transparência.** Com `shadow` ligado, o `notice` de `GET /api/ai` nomeia a TypeSafe e as classes enviadas; a chave aparece só
+   como "configurada".
+
+**Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
+acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.
+Prova: `simulated` nos itens 31.1–31.9 (provedor nulo e falso); `real` só no 31.10/31.11, depois da chave nova.
+
+**Relação.** ADR-063 (emendado), ADR-009, ADR-040, ADR-051, ADR-054; Fase 31 em [plano-100.md](plano-100.md);
+`backend/app/modules/context_retrieval/adapters/jev.py`; `backend/app/planning/` (porta, 31.4).
