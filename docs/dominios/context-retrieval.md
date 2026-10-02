@@ -228,6 +228,7 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 | Regra híbrida nova x regra v1 do piloto (30 perguntas públicas) | `simulated` | `backend/tests/test_context_retrieval_pilot_regression.py` |
 | Integração com o gerador de pacotes (saída idêntica com a flag desligada) | `simulated` | `scripts/tests/test_pacotes_contexto.py` |
 | Chamada real ao Jev, só em código PÚBLICO | `real` | 02/10/2026, máquina central, `python-poetry/poetry` @ `94b6e35`, commits `a07ff80` (rodada 1) e `a88d609` (rodada 2, por etapa); `scripts/context-retrieval-public-smoke.py` (rodada 1: `--run`; rodada 2: `--cases H13,H14 --max-calls 4 --run`). 11 de 12 chamadas, todas HTTP 200, 0 fallbacks, US$ 0,0043 + 0,0016 (~0,006). Passou pela MESMA política de produção (remoto público, HEAD público, worktree limpo), sem atalho. Detalhe abaixo |
+| Qualidade do retrieval LOCAL neste repositório (40 commits, hit@k e MRR por modo) | `real` | 02/10/2026, central, `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40`; teste sem rede em `scripts/tests/test_context_retrieval_local_eval.py` (`simulated`). Tabela abaixo |
 | Chamada real ao Jev em código PRIVADO (este repositório) | `not_run` | negado por constante de código (`PRIVATE_CODE_SEND_APPROVED = False`); sem autorização |
 
 ### Smoke real público (02/10/2026)
@@ -243,6 +244,35 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 
 - **Total acumulado: 11 de 12 chamadas.** Isto valida o adaptador e o pipeline, não é benchmark.
 - **Leitura:** a etapa B só roda quando o payload cabe no teto de entrada por pedido (`max_input_tokens`, padrão 24.000) e a etapa A já consome cerca de 15,6k tokens; neste repositório a B é a exceção. É o comportamento esperado do orçamento, não bug. Que as 7 chamadas da rodada 1 foram 6 de A e 1 de B (só o H14, que gastou ~23,3k tokens) é inferência, não medição por etapa.
+
+### Medição local neste repositório (02/10/2026, `real`, gratuita, sem rede)
+
+- **Como:** `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40` (máquina central, Windows, ripgrep presente; 374 s no total).
+  Conjunto: os 40 commits `feat`/`fix` mais recentes sem merge até esse SHA, com 1 a 8 arquivos de código modificados ou apagados. A pergunta é o assunto
+  (sem `tipo(escopo):`) mais o corpo do commit, sem `[skip ci]` e trailers; o gabarito são esses arquivos de código (docs, testes, `CHANGELOG`, `.claude/` e arquivo novo ficam de fora).
+  O índice é o do estado do PAI do commit (worktree descartável em `--detach <pai>`), então a resposta não vaza. Teste do anti-vazamento: `scripts/tests/test_context_retrieval_local_eval.py` (com o commit no lugar do pai, ele falha).
+- **Resultado** (n = 40 em cada linha, 0 erros; top-10 por pedido; só mede, nada foi alterado):
+
+  | Variante da pergunta | Modo | hit@3 | hit@5 | MRR@10 | recall@5 | latência mediana |
+  |---|---|---|---|---|---|---|
+  | completa, repositório inteiro | lexical | 12,5% | 22,5% | 0,134 | 15,1% | 670 ms |
+  | completa, repositório inteiro | bm25 | 30,0% | 40,0% | 0,213 | 26,3% | 5.533 ms (inclui construir o índice) |
+  | completa, repositório inteiro | hybrid_local | 17,5% | 35,0% | 0,182 | 23,8% | 423 ms |
+  | só o assunto | lexical | 10,0% | 17,5% | 0,096 | 13,8% | 324 ms |
+  | só o assunto | bm25 | 32,5% | 47,5% | 0,238 | 28,8% | 46 ms |
+  | só o assunto | hybrid_local | 30,0% | 47,5% | 0,229 | 29,0% | 373 ms |
+  | completa, escopo de código | lexical | 37,5% | 45,0% | 0,321 | 25,7% | 116 ms |
+  | completa, escopo de código | bm25 | **82,5%** | **87,5%** | **0,652** | 60,0% | 44 ms |
+  | completa, escopo de código | hybrid_local | 72,5% | 80,0% | 0,559 | 51,0% | 194 ms |
+
+  O escopo de código é `backend/app/`, `frontend/src/` e `scripts/`. Índice BM25: 1.339 arquivos no universo, primeira consulta de cada revisão 5,5 s de mediana (máx. 6,1 s); depois, dezenas de ms.
+- **Leitura (o que os números dizem):**
+  1. **O maior efeito é o escopo, não o modo:** restringir ao código leva o BM25 de 30% para 82,5% de hit@3. A documentação (1,3 mil arquivos, boa parte `docs/` e `.claude/`) ocupa o topo quando a pergunta fala do mesmo assunto. Como o gabarito é só código, parte dessa diferença é por construção: um doc relevante conta como erro aqui.
+  2. **O BM25 vence o léxico** em todas as variantes (o léxico exige o nome exato, e a mensagem de commit quase nunca o traz inteiro).
+  3. **O `hybrid_local` perde para o BM25 puro neste conjunto:** 72,5% contra 82,5% de hit@3 no escopo de código; em 4 dos 40 casos o híbrido erra o hit@3 onde o BM25 acerta e em nenhum acontece o contrário. A regra de fusão v1 dá a vez ao léxico quando a pergunta cita um identificador, e aqui isso piorou.
+  4. A primeira consulta de uma revisão custa ~5,5 s (construir o índice); é o gargalo medido que motiva o índice incremental (J5).
+- **Limites da medição:** a pergunta é a mensagem de commit, que costuma citar o símbolo ou o arquivo, então os números são um teto para o léxico e não um benchmark de perguntas abertas; 19 dos 40 commits são de frontend (a UX recente), e o conjunto inclui os commits do próprio retrieval; n = 40 dá intervalo largo (±12 pontos); só local, então nada diz do semântico (ver o smoke do Jev, que mede outra coisa).
+- **Propostas (NÃO aplicadas; exigem decisão e nova medição):** (a) escopo padrão de código, ou peso menor para `docs/`, `.claude/` e `CHANGELOG`, no pedido de tarefa de código; (b) rever a regra "o léxico manda quando há identificador" (a salvaguarda v1) ou medir um híbrido que parta do BM25 e use o léxico só para promover o arquivo que contém o identificador; (c) repetir a medição com perguntas que não sejam mensagem de commit (por exemplo, as do holdout público do piloto) antes de tirar conclusão sobre o modo.
 
 ## Limites conhecidos
 
