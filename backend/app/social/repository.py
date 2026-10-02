@@ -651,6 +651,31 @@ class SocialRepository:
                     return app, str(v["profile_id"])
         return None
 
+    def conflito_da_conta_nova(self, profile_id: str | None, app_id: str,
+                               instance_id: str | None = None) -> tuple[str, str | None, str] | None:
+        """`(aparelho, app, outra persona)` quando GANHAR uma conta em `app_id` faria a persona servir, num aparelho,
+        a um app que OUTRA persona já serve ali (D2-a); `None` quando a conta pode nascer. É o outro lado de
+        `quem_ja_serve`: aquele pergunta no vínculo, este na conta — a porta que o vínculo não vê.
+
+        O vínculo SEM app serve a todo app em que a persona tem conta (`profiles_of_instance`), então uma pessoa
+        vinculada sem app a um aparelho que já tem o Instagram de outra persona passa a servir o Instagram no
+        instante em que ganha a conta: o vínculo, feito antes, não tinha app nenhum para conferir (29.29).
+        Confere: o aparelho do cadastro (`instance_id`, que ainda vai ser vinculado) e cada aparelho de vínculo
+        sem app da persona. O vínculo COM app não entra: `bind` já o conferiu quando foi feito, e a conta nova não
+        muda o que ele serve. Persona que já tem conta no app também não: o vínculo sem app dela já o servia.
+        `profile_id=None`: pessoa ainda por nascer, sem vínculo nenhum (só o aparelho do cadastro conta).
+        Quem chama confere ANTES de criar qualquer linha: o 409 quer dizer "nada foi criado"."""
+        aparelhos: list[str] = [instance_id] if instance_id else []
+        if profile_id is not None and not self.db.one(
+                "SELECT 1 FROM profile_accounts WHERE profile_id=? AND app_id=?", (profile_id, app_id)):
+            aparelhos += [str(b["instance_id"]) for b in self.db.query(
+                "SELECT DISTINCT instance_id FROM device_profile_bindings WHERE profile_id=? AND active=1"
+                " AND app_id IS NULL ORDER BY instance_id", (profile_id,))]
+        for iid in dict.fromkeys(aparelhos):
+            if (conflito := self.quem_ja_serve(profile_id, iid, app_id)) is not None:
+                return iid, *conflito
+        return None
+
     def set_primary(self, profile_id: str, instance_id: str) -> None:
         """Marca o aparelho principal da persona (o par precisa estar vinculado; senão `KeyError`)."""
         if self.binding(profile_id, instance_id) is None:
