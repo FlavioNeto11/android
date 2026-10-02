@@ -180,13 +180,18 @@ class RepositorioDePedidos:
         return (cur.rowcount or 0) == 1
 
     def mover(self, ocorrencia_id: str, de: str, para: str, *, motivo: str | None = None,
-              iniciada_em: str | None = None, terminada_em: str | None = None) -> bool:
+              iniciada_em: str | None = None, terminada_em: str | None = None,
+              custo_usd: float | None = None) -> bool:
         """CAS de estado. Solta a reserva (`dono`, `prazo_posse`): uma ocorrência que mudou de estado não é mais de
-        ninguém."""
+        ninguém.
+
+        `custo_usd` (28.6): o custo desta TENTATIVA, SOMADO ao que já havia, no MESMO `UPDATE` do fechamento. Atômico
+        com a mudança de estado: o CAS que perde (outro laço fechou antes) não soma nada, então o custo entra uma vez
+        só por fechamento; e uma queda não deixa a ocorrência fechada sem custo."""
         cur = self.db.execute(
             "UPDATE pedido_ocorrencias SET estado=?, motivo=COALESCE(?, motivo), iniciada_em=COALESCE(?, iniciada_em),"
-            " terminada_em=?, dono=NULL, prazo_posse=NULL WHERE id=? AND estado=?",
-            (para, motivo, iniciada_em, terminada_em, ocorrencia_id, de))
+            " terminada_em=?, custo_usd=custo_usd+?, dono=NULL, prazo_posse=NULL WHERE id=? AND estado=?",
+            (para, motivo, iniciada_em, terminada_em, float(custo_usd or 0.0), ocorrencia_id, de))
         return (cur.rowcount or 0) == 1
 
     def reservar(self, ocorrencia_id: str, dono: str, prazo_posse: str, agora: str) -> bool:

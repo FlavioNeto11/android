@@ -66,11 +66,15 @@ class Resumo:
 
 class LacoDePedidos:
     def __init__(self, db: Database, runs, lideranca: Lideranca, cfg: PedidosCfg, *,
-                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None):
+                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None,
+                 custo_da_execucao: Callable[[str], float] | None = None):
         self.db = db
         self.runs = runs
         self.lideranca = lideranca
         self.cfg = cfg
+        #: US$ gastos pela execução (`ai_calls`, pela mesma conta do painel de uso: `costs.spent_usd`). Injetado por
+        #: `AppState` (precisa de `ai.prices`, que o laço não conhece); sem ele o fechamento grava custo 0 (28.6).
+        self.custo_da_execucao: Callable[[str], float] | None = custo_da_execucao
         #: Atributo (e não só parâmetro) para o teste trocar o relógio de um laço já de pé, como em `Lideranca`.
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._lider = lider
@@ -188,11 +192,27 @@ class LacoDePedidos:
         if fech is None:
             return
         transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
+        # O custo é lido ANTES de fechar e gravado no mesmo UPDATE do fechamento (28.6): a retenção apaga `ai_calls`
+        # por `ts`, mas não toca as de execução de ocorrência ainda aberta (`state._purgar_demais_tabelas`), então
+        # esta leitura sempre vê as chamadas inteiras. Só o fechamento terminal soma (uma vez por tentativa).
+        custo = self._custo_da_tentativa(o) if fech.terminal else None
         with self.lideranca.cercada(PEDIDOS, token):
             moveu = self.repo.mover(o["id"], o["estado"], fech.estado, motivo=fech.motivo,
-                                    iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None)
+                                    iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None,
+                                    custo_usd=custo)
         if moveu and fech.terminal:
             r.fechadas += 1
+
+    def _custo_da_tentativa(self, o: Row) -> float:
+        """US$ das chamadas de IA da execução desta tentativa; 0 sem execução ou sem a leitura injetada. Falha na
+        leitura não impede o fechamento (a ocorrência não pode ficar aberta por causa de um número): registra e grava 0."""
+        if not o["run_id"] or self.custo_da_execucao is None:
+            return 0.0
+        try:
+            return max(0.0, float(self.custo_da_execucao(o["run_id"])))
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: custo da execução %s", o["run_id"])
+            return 0.0
 
     def _cancelar_por_prazo(self, o: Row, token: int) -> None:
         """Cancela a execução que não começou a tempo e grava a INTENÇÃO; o estado final só sai quando ela assenta."""
