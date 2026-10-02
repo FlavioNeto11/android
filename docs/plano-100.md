@@ -645,6 +645,7 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 | 28.11 | **Aviso fora do painel** (decisão do dono: canal e conta) | §11 | P |
 | 28.12 | **Prova real** [A]: no central, um pedido de preço (`observar`, navegador, sem compra) com 3 ocorrências recorrentes, um reinício do backend no meio e uma ocorrência perdida de propósito; um pedido de políticos só de leitura com relatório determinístico. Chamada paga pontual autorizada | §12 | M |
 | 28.13 | **Fechamento**: seção no `relatorio-validacao.md`, ADR da implementação, CHANGELOG, handoff, estado pelo mecanismo | — | P |
+| 28.14 | **`learning.needs_person` no aviso externo** (mapa de amarração M9): o 28.11 passa a assinar o evento do 30.21 (entrada e saída da espera humana do Livro) e os 4 eventos de aviso (`approval.pending`, `session.needs_person`, `pedido.aviso`, `learning.needs_person`) ganham uma chave de deduplicação comum; payload combinado com a frente Aprendizado | §11 | P |
 
 **Fecha quando:** um pedido recorrente real no central (28.12) atravessa um reinício do backend sem duplicar nem
 perder ocorrência, com orçamento respeitado e relatório que separa observado de conclusão, e as provas `simulated`
