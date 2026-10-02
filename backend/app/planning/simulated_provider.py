@@ -400,8 +400,14 @@ class SimulatedProvider:
             nodes = [CapabilityNode(key="open_profile", capability="OPEN_PROFILE", bindings={"username": alvo}),
                      CapabilityNode(key="follow", capability="FOLLOW", depends_on=["open_profile"],
                                     bindings={"username": alvo})]
-        else:
-            nodes = [CapabilityNode(key="open_feed", capability="OPEN_FEED")]
+        # O que o simulador sabe fazer é abrir o app. No Instagram é o feed; num app que declarou outro catálogo (o
+        # Outlook, 12.3), é a primeira ação oferecida sem argumento — a entrada do app. As regras acima
+        # são do vocabulário do Instagram: o comando entre apps ("curtir @ana") também chega ao catálogo do outro app,
+        # e ali elas não existem — cai na entrada em vez de virar a pergunta "ação inexistente".
+        if not nodes or any(not catalog.has(n.capability) for n in nodes):
+            entrada = "OPEN_FEED" if catalog.has("OPEN_FEED") else next(
+                (c.key for c in catalog.offered if not c.bindings), "OPEN_FEED")
+            nodes = [CapabilityNode(key=entrada.lower(), capability=entrada)]
         steps, missing = compose(catalog, nodes)
         return Plan(summary=f"[simulado] {req.command[:80]}", app_id=app.id if app else None,
                     app_package=catalog.package, success_criteria=["[simulado] ações do catálogo executadas"],
