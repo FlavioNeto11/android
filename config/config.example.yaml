@@ -223,6 +223,13 @@ ai:
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
+  # Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev (TypeSafe System One). DESLIGADA: o envio e
+  # as classes que podem sair são constantes de código (`planning/decisao_fechada/privacidade.py`) e este bloco só RESTRINGE.
+  # `shadow` roda fora do caminho crítico e nada usa a resposta; `on` só por consumidor, com GO pré-registrado.
+  decisao_fechada:
+    enabled: false                # (false) vence tudo, inclusive um consumidor em `on`
+    consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
+    # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:

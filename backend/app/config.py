@@ -509,6 +509,19 @@ class ImageCfg(BaseModel):
     timeout_s: float = Field(180.0, ge=1, le=900)
 
 
+class DecisaoFechadaCfg(BaseModel):
+    """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
+
+    O YAML só RESTRINGE: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
+    privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
+    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado."""
+
+    enabled: bool = False
+    consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
+    #: Estreita o teto de código (interseção). None = não estreita além do código.
+    classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+
+
 class AiCfg(BaseModel):
     #: Gerador de imagem da persona. Não é papel: `_ia_coerente` não o conhece e o hub não o roteia.
     image: ImageCfg = ImageCfg()
@@ -608,6 +621,7 @@ class AiCfg(BaseModel):
     #: modelo de UMA execução não exige reiniciar o central nem mexer no que as outras usam.
     profiles: dict[str, AiProfileCfg] = {}
     canary: AiCanaryCfg = AiCanaryCfg()
+    decisao_fechada: DecisaoFechadaCfg = DecisaoFechadaCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
