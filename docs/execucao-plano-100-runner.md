@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-263 de 299 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+263 de 312 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -301,12 +301,25 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
 | 30.21 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_r… |  |
 | 30.22 | implemented | real | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoff… |  |
+| 31.1 | pendente | — | — | — |  |  |
+| 31.2 | pendente | — | — | — |  |  |
+| 31.3 | pendente | — | — | — |  |  |
+| 31.4 | pendente | — | — | — |  |  |
+| 31.5 | pendente | — | — | — |  |  |
+| 31.6 | pendente | — | — | — |  |  |
+| 31.7 | pendente | — | — | — |  |  |
+| 31.8 | pendente | — | — | — |  |  |
+| 31.9 | pendente | — | — | — |  |  |
+| 31.10 | pendente | — | — | — |  |  |
+| 31.11 | pendente | — | — | — |  |  |
+| 31.12 | pendente | — | — | — |  |  |
+| 31.13 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (36): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.9, 28.10, 28.12, 28.13, 28.14, 29.7, 29.9, 29.13, 29.19, 29.21, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, T.2
+Pendentes (49): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.9, 28.10, 28.12, 28.13, 28.14, 29.7, 29.9, 29.13, 29.19, 29.21, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.1, 31.2, 31.3, 31.4, 31.5, 31.6, 31.7, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
