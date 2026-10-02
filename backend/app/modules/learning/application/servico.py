@@ -23,13 +23,14 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
+from app.modules.learning.domain.conteudo import licao_legivel, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, SourceKind)
-from app.modules.skills.domain.document import JsonValue
+from app.modules.skills.domain.document import JsonObject, JsonValue
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -52,6 +53,10 @@ class DetalheDoLivro:
     trilha: tuple[Transicao, ...]
     #: As exposições de uma lição (pacote A7): braço, tokens e desfecho de cada unidade; vazio nos outros tipos.
     exposicoes: tuple[JsonValue, ...] = ()
+    #: O conteúdo legível do item (30.3): o que a receita, o fluxo, a habilidade, a lição ou a tela FAZEM, só do que
+    #: já está no banco (`domain/conteudo.py`). `None` na memória (só a contagem sai) e na voz e preferência (texto
+    #: de pessoa).
+    conteudo: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +169,21 @@ class LearningService:
             todas = self._repo.exposicoes(e.ref, limite=100_000)
             exposicoes = tuple(exposicao_json(x) for x in todas[-EXPOSICOES_NO_DETALHE:])
         return DetalheDoLivro(e, tuple(self._repo.evidencias(e.trail_ref)), tuple(self._repo.trilha(e.trail_ref)),
-                              exposicoes)
+                              exposicoes, self._conteudo(kind, e.ref))
+
+    def _conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O `conteudo` do detalhe (30.3): das fontes nativas, pela fonte; lição e tela, do `content` do item. Voz e
+        preferência são texto de pessoa e ficam sem conteúdo aqui (o título já é o que o detalhe expõe)."""
+        if kind in (LivroKind.RECEITA, LivroKind.FLUXO, LivroKind.HABILIDADE):
+            return self._fontes.conteudo(kind, ref)
+        item = self._repo.item(ref) if kind in (LivroKind.LICAO, LivroKind.TELA) else None
+        if item is None:
+            return None
+        if kind is LivroKind.TELA:
+            return tela_legivel(item.content)
+        return licao_legivel(item.content, texto=item.summary, app=item.escopo.app,
+                             capability=item.escopo.capability, step_hash=item.escopo.step_hash,
+                             role=item.escopo.role, tokens=item.tokens)
 
     def pendentes(self) -> tuple[EntradaDoLivro, ...]:
         """"Para aprovar": a fila do D1 (e a contagem da barra do topo)."""

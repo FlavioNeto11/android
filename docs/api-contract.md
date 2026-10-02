@@ -3495,3 +3495,41 @@ autenticação por conteúdo de tela ainda não são derivados.
 
 **Ligação.** `montar_aprendizado(..., eventos=<EventBus>)`. Sem `eventos`, nada é publicado; `state.py` passa
 `eventos=self.bus`. Prova `simulated` (`tests/test_learning_espera.py`).
+
+## Adendo v0.50 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `conteudo` (item 30.3)
+
+O detalhe do Livro ganha `conteudo` (objeto, ou `null`), ao lado de `item`, `evidencias`, `trilha` e `exposicoes` (que não mudam). Só
+leitura, montado do que já existe no banco (nenhuma migração). Sempre traz `tipo` (`receita`, `fluxo`, `habilidade`, `licao`, `tela`).
+`null` em `memoria` (só a contagem sai), `voz` e `preferencia` (texto de pessoa).
+
+**Regra do segredo.** Nunca sai valor de parâmetro nem texto digitado: o texto de uma receita é 100 % parâmetro e só os NOMES saem
+(`{nome}`). A ação `type_secret` e o parâmetro sigiloso (`senha`, `token`, `código`...) saem só como `segredo: true`, sem nome; dentro
+de um seletor o parâmetro sigiloso vira `{segredo}`.
+
+**`receita`**
+
+| Campo | Conteúdo |
+|---|---|
+| `identidade` | `app`, `app_version`, `assinatura`, `variante` (`null` se vazios), `step_key`, `step_hash`, `versao`, `estado` (o status nativo da receita) |
+| `acoes[]` | `indice` (base 0), `ferramenta`, `commit` (bool), `alvo[]` (um por seletor, em ordem de confiança: `tipo` = `rid+text`, `rid+desc`, `rid`, `desc`, `text`, mais `rid`, `texto`, `desc` do que existir), `parametros[]` (nomes não sigilosos), `segredo` (bool); quando se aplicam: `digita` (`limpa_antes`, `enter`, `so_parametro`), `pacote`, `duracao_ms`, `coleta` (`seletor_do_item`, `exclusoes`), `rolagem` (`direcao`, `max`) |
+| `efeito` | `externo` (o selo de `side_effect`) e `acoes_commit[]` (índices de `acoes[]` que fazem o commit) |
+| `capability` | `null` se nenhuma fonte diz; senão `nomes[]`, `ambigua` (bool) e `fonte`: `origem` (a etapa em `learned_from_step`) ou `mesmo_step_hash` (etapas com o mesmo `template_hash` no app; mais de um nome: todos listados e `ambigua: true`). A receita não grava capability: é derivada |
+| `origem` | `{tipo: "execucao", step_id, run_id}` (`run_id` `null` se a etapa não existe mais), `{tipo: "treino", ref}` (prefixo `training:`) ou `{tipo: "desconhecida"}` |
+| `uso` | `replay_ok`, `replay_fail`, `consecutive_fail`, `last_used_at` |
+| `sombra` | `shadow_agree`, `shadow_total` |
+| `substitui`, `substituida_por` | `{id, versao, estado}` da versão vizinha da mesma chave (app, versão do app, assinatura, variante, `step_hash`), ou `null` |
+
+**`fluxo`**: `nome`, `comando_modelo`, `origem` (`{tipo: "execucao"|"treino", fonte, source_run_id}`), `etapas[]` (`indice`, `chave`,
+`capability`, `alvo` = `commit_selector`, `efeito`, `pos_condicao` = `{tipo, descricao}` ou `null`, `parametros[]` = nomes dos `bindings`,
+`segredo`) e `efeito` (`externo`, `etapas_com_efeito[]`).
+
+**`habilidade`**: `skill_id`, `versao`, `schema_version`, `estado`, `source_kind`, `source_ref`, `parent_version`, `command_template`,
+`content_hash`, `parametros[]`, `nos[]` (`id`, `tipo`), `total_de_nos`, `rota` (`/api/skills/{id}/versions/{versao}`; o ciclo e a
+edição continuam nas rotas das habilidades).
+
+**`licao`**: `texto` (o `summary`, o que o ator lê e que `item.title` já mostra), `modelo`, `acao`, `alvo` (`{tipo, valor}`; `valor` de
+`parametro` é o NOME), `escopo` (`app`, `capability`, `step_hash`, `role`), `tokens`. A nota crua da pessoa não sai além do `texto`.
+
+**`tela`**: `tela`, `casa`, `autenticada`, `ids_todos[]`, `razao`.
+
+Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_conteudo.py`); `not_run` no central.
