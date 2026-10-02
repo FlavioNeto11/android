@@ -173,7 +173,7 @@ describe('Comando "Por persona"', () => {
     expect(byRole('button', /^Executar/).getAttribute('aria-disabled')).toBe('true');
     expect(text(container)).toContain('Responda às perguntas da prévia antes de executar.');
 
-    await click(byRole('button', 'André Souza', perguntas));
+    await click(byRole('button', /André Souza$/, perguntas));
     await waitFor(() => expect((resolucoes().at(-1)!.body as ResolveTargetsRequest).profile_ids).toEqual(['ig-3']));
     const alvos = await waitFor(() => {
       const p = byRole('region', 'Prévia dos alvos');
