@@ -97,3 +97,4 @@
 .cartaoResumo dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .objetivoCompleto { margin: 0; color: var(--text-1); font-size: var(--fs-sm); max-width: 90ch; overflow-wrap: anywhere; }
 .tituloLinha { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barraDeAvisos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }

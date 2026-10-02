@@ -48,7 +48,7 @@ export function dataCompacta(iso: string | null | undefined, fuso?: string): str
 
 /** "19:00" de um ISO com ou sem deslocamento ("2026-10-02T19:00:00-03:00"): a hora que está escrita, no fuso do pedido. */
 export function horaEscrita(iso: string | null | undefined): string | null {
-  const m = /T(\d{2}):(\d{2})/.exec(iso ?? '');
+  const m = /[T ](\d{2}):(\d{2})/.exec(iso ?? '');
   return m ? `${m[1]}:${m[2]}` : null;
 }
 

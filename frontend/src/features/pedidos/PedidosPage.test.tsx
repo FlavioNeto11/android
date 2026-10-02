@@ -66,7 +66,7 @@ describe('lista', () => {
     expect(linhas).toHaveLength(2);
     expect(text(linhas[0] as HTMLElement)).toContain('Todo dia às 08:00');
     expect(text(linhas[0] as HTMLElement)).toContain('Ana Lima');
-    expect(text(linhas[0] as HTMLElement)).toContain('2026-10-03 08:00 -03:00');
+    expect(text(linhas[0] as HTMLElement)).toContain('sáb 03/10 08:00');
     expect(text(linhas[1] as HTMLElement)).toContain('2 avisos novos');
     expect(text(linhas[1] as HTMLElement)).toContain('Pausado: Pausado pela pessoa');
     // Chips de estado: contagem de TODOS (`total_por_estado`), não só dos carregados.

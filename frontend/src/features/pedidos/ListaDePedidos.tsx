@@ -1,4 +1,4 @@
-import { CalendarClock, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Plus, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toApiError } from '../../api/client';
 import type { ListaDePedidos as Lista, PedidoView } from '../../api/pedidos';
@@ -6,15 +6,16 @@ import { BarraListagem, type FiltroListagem } from '../../components/BarraListag
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
-import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Badge } from '../../components/Badge';
 import { hashDe } from '../../lib/rotas';
-import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { apiPedidos } from './api';
+import { EsqueletoDaLista } from './Esqueleto';
+import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, quemFazDoPedido } from './formato';
 import {
   AUTONOMIAS, ORDENS, ROTULO_DA_ORDEM, TIPOS_DE_GATILHO, chaveDoFiltro, filtroDoLink, temFiltro, type FiltroDoLink,
 } from './filtro';
@@ -84,6 +85,7 @@ export function ListaDePedidos() {
   const { itens, totais, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
   const pessoas = usePersonas();
   const agora = useNow();
+  const abrirNovoPedido = useUiStore((s) => s.abrirNovoPedido);
 
   // A busca digitada só vai ao link depois de uma pausa: cada tecla seria uma leitura.
   const [busca, setBusca] = useState(filtro.q ?? '');
@@ -136,18 +138,21 @@ export function ListaDePedidos() {
                                                          profile_id: undefined, pede_atencao: undefined }) : undefined}
       />
       {erro ? (
-        <Banner tone="warning" icon={TriangleAlert} compact role="status">
+        <Banner tone="warning" icon={TriangleAlert} compact role="status"
+                actions={<Button size="sm" onClick={() => usePedidosStore.getState().bater()}>Tentar de novo</Button>}>
           Não foi possível ler os pedidos agora. {erro}
         </Banner>
       ) : null}
       {itens === null ? (
-        <LoadingRegion label="Carregando os pedidos…"><Skeleton height={72} radius={8} /><Skeleton height={72} radius={8} /></LoadingRegion>
+        <EsqueletoDaLista label="Carregando os pedidos…" />
       ) : itens.length === 0 ? (
-        <EmptyState icon={CalendarClock} title={temFiltro(filtro) ? 'Nenhum pedido neste filtro' : 'Nenhum pedido ainda'}
-                    hint={temFiltro(filtro) ? 'Limpe os filtros para ver todos.'
-                      : 'Um pedido nasce no Comando: escreva o objetivo e use “Repetir ou acompanhar…”.'}>
-          Nada para mostrar.
-        </EmptyState>
+        temFiltro(filtro) ? (
+          <EmptyState icon={CalendarClock} title="Nenhum pedido neste filtro">Limpe os filtros para ver todos.</EmptyState>
+        ) : (
+          <EmptyState icon={CalendarClock} title="Nenhum pedido ainda"
+                      hint="Escreva o objetivo no Comando e use “Repetir ou acompanhar…”."
+                      actions={<Button variant="primary" icon={Plus} onClick={abrirNovoPedido}>Novo pedido</Button>} />
+        )
       ) : (
         <>
           <ul className={styles.lista} aria-label="Pedidos">
@@ -164,7 +169,14 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
   const foco = useUiStore((s) => s.focusInstanceId);
   const href = hashDe('pedidos', { segmentos: [p.id], query: { [PARAM_FOCO]: foco ?? undefined } });
   const ult = p.ultima_ocorrencia;
-  const gatilhos = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => g.descricao).join(' · ') : '—';
+  const { personas, aparelhos } = quemFazDoPedido(p);
+  const quem = personas.length > 0 ? personas.join(', ') : aparelhos.join(', ');
+  // A hora fica no texto da agenda ("Todo dia às 19:00"); o backend só a escreve quando a regra a traz, então completa-se
+  // com a hora da próxima data (escrita no fuso do pedido). O fuso vai uma vez, e só se difere do navegador.
+  const hora = horaEscrita(p.proxima_local);
+  const agenda = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : null;
+  const proxima = p.proxima_em ?? p.proxima_local;
+  const fusoMostrado = fusoParaMostrar(p.fuso);
   const usado = p.orcamento_usado !== null && p.orcamento_usado !== undefined ? ` (${Math.round(p.orcamento_usado * 100)}% do orçamento)` : '';
   return (
     <li className={styles.linha}>
@@ -175,25 +187,26 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
           {p.avisos_nao_lidos > 0 ? <Badge size="sm" tone="info">{p.avisos_nao_lidos} {p.avisos_nao_lidos === 1 ? 'aviso novo' : 'avisos novos'}</Badge> : null}
         </div>
         <a className={styles.titulo} href={href}>{p.titulo}</a>
-        <div className={styles.meta}>
-          <span>{gatilhos}</span>
-          {p.personas?.length ? <span>{p.personas.map((x) => x.nome).join(', ')}</span> : null}
-          <span title={p.proxima_em ? formatDateTime(p.proxima_em) : undefined}>
-            Próxima: {p.proxima_local ?? (p.proxima_em ? formatDateTime(p.proxima_em) : '—')} ({p.fuso})
-          </span>
-          <span>Gasto: {formatUsd(p.gasto_usd)}{usado}</span>
-        </div>
-        <div className={styles.meta}>
+        <p className={styles.agenda}>
+          <CalendarClock size={13} aria-hidden />
+          {agenda ? <span>{agenda}</span> : null}
+          {proxima ? <span>{agenda ? '· ' : ''}próxima <strong title={proxima}>{dataCompacta(proxima, p.fuso)}</strong></span>
+            : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}próxima data ainda não calculada</span> : null}
+          {fusoMostrado ? <span className={styles.dim}>(fuso {fusoMostrado})</span> : null}
+        </p>
+        {p.estado === 'pausado' && p.pausado_motivo ? <span className={styles.motivo}>Pausado: {p.pausado_motivo}</span> : null}
+        <div className={styles.metaDiscreta}>
+          {quem ? <span>{quem}</span> : null}
+          <span>Gasto {formatUsd(p.gasto_usd)}{usado}</span>
           {ult ? (
             <>
               <span>Última: <StatusBadge meta={META_DA_OCORRENCIA[ult.estado]} size="sm" plain />
                 {ult.terminada_em ? ` ${tempoRelativo(ult.terminada_em, agora)}` : ''}</span>
-              {ult.motivo ? <span className={styles.motivo}>{ult.motivo}</span> : null}
+              {ult.motivo ? <span>{ult.motivo}</span> : null}
               {ult.run_id ? <a href={hashDe('execucoes', { segmentos: [ult.run_id] })}>ver a execução</a> : null}
             </>
-          ) : <span className={styles.dim}>Nenhuma ocorrência ainda</span>}
+          ) : <span>Nenhuma ocorrência ainda</span>}
         </div>
-        {p.estado === 'pausado' && p.pausado_motivo ? <span className={styles.motivo}>Pausado: {p.pausado_motivo}</span> : null}
       </div>
     </li>
   );

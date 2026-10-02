@@ -6,11 +6,12 @@ import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
-import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
 import { toastError } from '../../store/toasts';
 import { apiPedidos } from './api';
+import { EsqueletoDaLista } from './Esqueleto';
 import { ROTULO_DO_AVISO, mensagemDoErro } from './modelo';
 import { usePedidosStore } from './store';
 import styles from './Pedidos.module.css';
@@ -63,22 +64,28 @@ export function CaixaDeAvisos() {
   const naoLidos = (itens ?? []).filter((a) => !a.lido_em);
   return (
     <>
-      <div className={styles.acoes}>
-        <Button size="sm" variant={todos ? 'outline' : 'primary'} aria-pressed={!todos} onClick={() => setTodos(false)}>Não lidos</Button>
-        <Button size="sm" variant={todos ? 'primary' : 'outline'} aria-pressed={todos} onClick={() => setTodos(true)}>Todos</Button>
-        <Button size="sm" icon={CheckCheck} loading={ocupado} disabledReason={naoLidos.length === 0 ? 'Nenhum aviso não lido.' : null}
+      <div className={styles.barraDeAvisos}>
+        <div className={styles.seletor} role="group" aria-label="Quais avisos mostrar">
+          <button type="button" className={cx(styles.seletorItem, !todos && styles.seletorAtivo)} aria-pressed={!todos} onClick={() => setTodos(false)}>Não lidos</button>
+          <button type="button" className={cx(styles.seletorItem, todos && styles.seletorAtivo)} aria-pressed={todos} onClick={() => setTodos(true)}>Todos</button>
+        </div>
+        <Button size="sm" icon={CheckCheck} loading={ocupado}
+                disabledReason={itens === null ? 'Carregando os avisos.' : naoLidos.length === 0 ? 'Nenhum aviso não lido.' : null}
                 onClick={() => void marcar({ todos: true })}>
-          Marcar todos como lidos
+          {naoLidos.length > 0 ? `Marcar todos como lidos (${naoLidos.length})` : 'Marcar todos como lidos'}
         </Button>
       </div>
-      {erro ? <Banner tone="warning" icon={TriangleAlert} compact role="status">Não foi possível ler os avisos agora. {erro}</Banner> : null}
+      {erro ? (
+        <Banner tone="warning" icon={TriangleAlert} compact role="status"
+                actions={<Button size="sm" onClick={() => void ler()}>Tentar de novo</Button>}>
+          Não foi possível ler os avisos agora. {erro}
+        </Banner>
+      ) : null}
       {itens === null ? (
-        <LoadingRegion label="Carregando os avisos…"><Skeleton height={56} radius={8} /></LoadingRegion>
+        <EsqueletoDaLista label="Carregando os avisos…" />
       ) : itens.length === 0 ? (
         <EmptyState icon={Bell} title={todos ? 'Nenhum aviso' : 'Nenhum aviso novo'}
-                    hint="Quando um pedido pausar sozinho, gastar o orçamento, perder uma ocorrência ou ficar pronto, o aviso aparece aqui.">
-          Nada para ler.
-        </EmptyState>
+                    hint="Quando um pedido pausar sozinho, gastar o orçamento, perder uma ocorrência ou ficar pronto, o aviso aparece aqui." />
       ) : (
         <ul className={styles.lista} aria-label="Avisos">
           {itens.map((a) => (
