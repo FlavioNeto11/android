@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Memória, observações e relatório do pedido (28.7, branch feat/28-7-memoria-relatorio)
+
+- Migração **070** `pedidos_memoria` (reservada pela coordenação; a 069 é de outra frente e entra antes): `pedido_memoria` (chave/valor por pedido, versão, tipos do §8.1), `pedido_observacoes` (o que cada ocorrência observou, sem chave estrangeira para a execução: sobrevive à purga) e `pedido_relatorios` (conteúdo JSON determinístico, `sha256`, sequência por pedido, relatório de encerramento único por índice parcial). Só tabelas novas.
+- Domínio puro em `modules/pedidos/domain/`: `memoria.py` (versionada, segredo recusado, `compactar` sem IA), `observacao.py` (observado, incerto ou ausente) e `relatorio.py` (observado, conclusão, não coberto; mesmas entradas dão o mesmo relatório; incerteza, falha e ausência nunca viram conclusão).
+- O laço registra as observações no fechamento da ocorrência, na mesma transação cercada que a fecha, a partir das saídas lidas entre etapas (056); sem saída estruturada grava o resultado com valor ausente. O relatório sai sob demanda, no encerramento e no cancelamento, e falha dele nunca impede a transição.
+- Resumo por IA: só o ponto de extensão (`ResumidorDeRelatorio`, `pedidos.resumo_ia: false`); nenhuma chamada paga.
+- Prova `simulated`: `backend/tests/test_pedidos_memoria.py` (23) e `test_pedidos_relatorio.py` (28); a corrida contra PostgreSQL é pulada sem `TEST_DATABASE_URL`. `real`: `not_run` (o 28.12 liga o laço no central). Desenho: `docs/design/pedidos-laco.md` §11.
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
