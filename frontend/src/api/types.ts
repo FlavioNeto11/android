@@ -336,6 +336,8 @@ interface Settings {
   fleet_max_accounts_per_target: number; fleet_target_window_s: number;
   fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
+  // item 17.12 — o teto de chamadas cresce por item do for_each (base + por_item × (itens − 1)), até o absoluto
+  ai_max_calls_per_item: number; ai_max_calls_absolute: number;
   // v0.3 — teto em DINHEIRO (item 7.2). 0 = desligado. Os dois de cima estão em unidades que não
   // se traduzem em US$; estes somam `ai_calls × ai.prices`, a mesma conta do painel de custo.
   ai_max_usd_per_run: number; ai_max_usd_per_day: number;

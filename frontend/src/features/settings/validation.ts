@@ -101,7 +101,9 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     title: 'Orçamento de IA',
     description: 'Tetos de consumo do provedor.',
     fields: [
-      int('ai_max_calls_per_objective', 'Chamadas de IA por objetivo', 'chamadas', '', 1, 10_000),
+      int('ai_max_calls_per_objective', 'Chamadas de IA por objetivo', 'chamadas', 'Sem repetição (for_each) é o teto do objetivo; com lista, é o ponto de partida.', 1, 10_000),
+      int('ai_max_calls_per_item', 'Chamadas a mais por item da lista', 'chamadas', 'Cada item além do primeiro soma isto ao teto do objetivo (o rejulgamento conta). 0 desliga a proporção.', 0, 200),
+      int('ai_max_calls_absolute', 'Teto absoluto de chamadas por objetivo', 'chamadas', 'Limita o crescimento por item; nunca baixa o teto de cima.', 1, 5000),
       int('ai_max_tokens_per_run', 'Tokens por execução', 'tokens', 'Soma de entrada e saída em todas as instâncias.', 1000, 1_000_000_000),
       dec('ai_max_usd_per_run', 'US$ por execução', 'US$', 'Teto em dinheiro, pelos preços de ai.prices. Em 80 % sai um aviso; em 100 % as chamadas de IA são recusadas. 0 desliga.', 0, 10_000),
       dec('ai_max_usd_per_day', 'US$ por dia (UTC)', 'US$', 'Vale também para o que nasce fora de uma execução, como a prévia de persona. 0 desliga.', 0, 100_000),
