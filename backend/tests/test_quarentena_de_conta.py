@@ -567,8 +567,9 @@ async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> Non
     linha = s.db.one("SELECT resolved_by, resolution FROM device_locked_accounts WHERE instance_id='android-02'")
     assert linha["resolved_by"] == "reset do aparelho" and "dados apagados (reset)" in linha["resolution"]
     assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado", "resolvido"]
-    # O perfil NÃO é reativado pelo wipe: reativar é decisão de pessoa.
-    assert s.social_repo.profile_row(felipe)["status"] == "blocked"
+    # O marcador foi `declarado` pelo dono: declaração é sinal forte e retirou a conta (29.23, ADR-068), devolvendo a
+    # persona a `active`; o wipe do aparelho não mexe nela.
+    assert s.social_repo.profile_row(felipe)["status"] == "active"
 
 
 async def test_reset_concluido_pelo_agente_resolve_o_marcador_e_o_incerto_nao(h: Harness) -> None:

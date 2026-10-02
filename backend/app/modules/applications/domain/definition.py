@@ -54,6 +54,10 @@ class AppDefinition:
     #: renderizador. A plataforma recusa instalar e abrir o app num aparelho que o usa (`devices/compatibilidade.py`).
     #: Vazio = o app não declarou nada, e nada muda para ele.
     refused_renderers: tuple[str, ...] = ()
+    #: Atividades (`pacote/atividade` completo, minúsculo) que, EM FOCO, provam a conta PERDIDA no app
+    #: (`atividades_de_conta_perdida` no `app.yaml`, 29.23/ADR-068). É o sinal forte da retirada automática: app que não
+    #: declara nenhuma não retira conta sozinho (a conta travada fica para a pessoa, e a retirada é só pela rota).
+    lost_account_activities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:

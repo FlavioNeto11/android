@@ -3667,3 +3667,13 @@ Livro (`LearningService.mudar_estado`): `candidate`/`validated`/`published` → 
 
 Nenhum campo novo além do vocabulário, nenhuma migração, nenhum código de erro novo. Prova `simulated`
 (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
+## Adendo v0.55 (02/10/2026) — `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/retire`: conta bloqueada sai (item 29.23, ADR-068)
+
+Bloqueio confirmado: a conta sai da plataforma na hora e a persona fica. Corpo opcional `{"evidencia": "texto até 500"}` (o @ e o
+id da conta são cortados do evento). Vale também para a conta âncora, que `DELETE …/accounts/{id}` recusa (409 `anchor_account`).
+
+Resposta 200: `{profile_id, account_id, retirada, ancora, limpezas, status_da_persona, detail}`. `limpezas` são contagens
+(`memory_items` e as dos módulos que registraram limpeza), sem texto da conta. A conta que já não existe devolve `retirada: false`
+(idempotente). Persona inexistente: 404 `not_found`. Evento `profile.account_retired` (`data`: `profile_id`, `account_id`,
+`app_id`, `ancora`, `origem`, `autor`, `evidencia`, `limpezas`, `status_da_persona`). O aparelho não é tocado.
