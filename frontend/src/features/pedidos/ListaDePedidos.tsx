@@ -41,14 +41,18 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
   const filtroRef = useRef(filtro);
   filtroRef.current = filtro;
   const anterior = useRef<string | null>(null);
+  const temDado = useRef(false);
 
   useEffect(() => {
     const ctrl = new AbortController();
     // Outro filtro: a lista de antes não é a resposta; mesma chave (evento ao vivo): mantém o que está na tela.
-    if (anterior.current !== chave) setItens(null);
+    if (anterior.current !== chave) { setItens(null); temDado.current = false; }
     anterior.current = chave;
+    // Sem dado nenhum (primeira carga, outro filtro ou "Tentar de novo"), o aviso de antes sai e volta o esqueleto até a resposta.
+    if (!temDado.current) setErro(null);
     apiPedidos.listar({ ...filtroRef.current, limit: PAGINA }, ctrl.signal)
       .then((r) => {
+        temDado.current = true;
         setItens(Array.isArray(r?.items) ? r.items : []);
         setTotais(r?.total_por_estado ?? {});
         setLaco(r?.laco ?? null);
@@ -57,8 +61,8 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
       })
       .catch((e) => {
         if (ctrl.signal.aborted) return;
+        // Sem dado anterior `itens` fica `null`: a tela mostra só o aviso, nunca "0 pedidos" nem "Nenhum pedido ainda" (que seria falso).
         setErro(mensagemDoErro(toApiError(e)));
-        setItens((atual) => atual ?? []);
       });
     return () => ctrl.abort();
   }, [chave, epoch]);
@@ -99,6 +103,10 @@ export function ListaDePedidos() {
   }, [busca, filtro.q, trocarQuery]);
 
   const totalGeral = Object.values(totais).reduce<number>((a, n) => a + (n ?? 0), 0);
+  // Sem nenhum pedido (ou sem leitura nenhuma, por erro) e sem filtro ativo, buscar e filtrar não leva a lugar algum: a barra
+  // inteira some e fica só o estado vazio (ou o aviso). Com filtro no link ela fica, para que dê para limpá-lo.
+  const semFiltroAtivo = !temFiltro(filtro) && busca.trim() === '';
+  const semNada = semFiltroAtivo && ((itens !== null && totalGeral === 0) || (itens === null && erro !== null));
   const filtros: FiltroListagem[] = [
     {
       chave: 'estado', rotulo: 'Estado do pedido', tipo: 'chips', rotuloTodos: 'Todos', contagemTodos: totalGeral,
@@ -131,16 +139,18 @@ export function ListaDePedidos() {
     <>
       {/* Vale para a instalação inteira: vem antes dos filtros, não entre a contagem e a lista. */}
       {laco?.ligado === false ? <AvisoDoLacoDesligado /> : null}
-      <BarraListagem
-        nome="pedidos"
-        busca={{ valor: busca, onChange: setBusca, placeholder: 'Buscar por título ou objetivo' }}
-        filtros={filtros}
-        ordem={{ valor: filtro.ordem, onChange: (v) => trocarQuery({ ordem: v === 'atualizado' ? undefined : v }),
-                 opcoes: ORDENS.map((o) => ({ valor: o, rotulo: ROTULO_DA_ORDEM[o] })) }}
-        resumo={itens ? `${itens.length}${cursor ? '+' : ''} ${itens.length === 1 ? 'pedido' : 'pedidos'}` : undefined}
-        onLimpar={temFiltro(filtro) ? () => trocarQuery({ q: undefined, estado: undefined, autonomia: undefined, tipo: undefined,
-                                                         profile_id: undefined, pede_atencao: undefined }) : undefined}
-      />
+      {semNada ? null : (
+        <BarraListagem
+          nome="pedidos"
+          busca={{ valor: busca, onChange: setBusca, placeholder: 'Buscar por título ou objetivo' }}
+          filtros={filtros}
+          ordem={{ valor: filtro.ordem, onChange: (v) => trocarQuery({ ordem: v === 'atualizado' ? undefined : v }),
+                   opcoes: ORDENS.map((o) => ({ valor: o, rotulo: ROTULO_DA_ORDEM[o] })) }}
+          resumo={itens ? `${itens.length}${cursor ? '+' : ''} ${itens.length === 1 ? 'pedido' : 'pedidos'}` : undefined}
+          onLimpar={temFiltro(filtro) ? () => trocarQuery({ q: undefined, estado: undefined, autonomia: undefined, tipo: undefined,
+                                                           profile_id: undefined, pede_atencao: undefined }) : undefined}
+        />
+      )}
       {erro ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status"
                 actions={<Button size="sm" onClick={() => usePedidosStore.getState().bater()}>Tentar de novo</Button>}>
@@ -148,7 +158,7 @@ export function ListaDePedidos() {
         </Banner>
       ) : null}
       {itens === null ? (
-        <EsqueletoDaLista label="Carregando os pedidos…" />
+        erro ? null : <EsqueletoDaLista label="Carregando os pedidos…" />
       ) : itens.length === 0 ? (
         temFiltro(filtro) ? (
           <EmptyState icon={CalendarClock} title="Nenhum pedido neste filtro">Limpe os filtros para ver todos.</EmptyState>

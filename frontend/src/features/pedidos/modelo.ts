@@ -49,6 +49,15 @@ export const ROTULO_DA_AUTONOMIA: Record<Autonomia, { rotulo: string; dica: stri
   agir: { rotulo: 'Agir', dica: 'Pode agir; o que tem efeito fora do sistema espera a sua aprovação.' },
 };
 
+/**
+ * O que a autonomia que NÃO age significa para este pedido, dito na prévia: sem isto, "Pronta para criar" em verde parece
+ * prometer que o objetivo (um envio, por exemplo) vai acontecer. `agir` não precisa de aviso. Não muda o padrão (ADR-044).
+ */
+export const AVISO_DA_AUTONOMIA: Partial<Record<Autonomia, string>> = {
+  observar: 'Com Observar, este pedido só lê e relata: não vai enviar nada. Para enviar, escolha Agir.',
+  preparar: 'Com Preparar, este pedido prepara rascunhos para você aprovar; não envia sozinho.',
+};
+
 export const ROTULO_DO_GATILHO: Record<TipoDeGatilho, string> = {
   agora: 'Agora', horario: 'Em um horário', recorrencia: 'Repetir', evento: 'Quando acontecer', condicao: 'Quando valer',
   persona: 'Por persona',

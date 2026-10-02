@@ -84,7 +84,8 @@ export function DetalheDoPedido({ id }: { id: string }) {
       <Page title="Pedido" actions={voltar}>
         {erro ? (
           erro.nao_existe
-            ? <EmptyState icon={ListChecks} title="Este pedido não existe">O link pode estar velho. Volte à lista.</EmptyState>
+            ? <EmptyState icon={ListChecks} title="Este pedido não existe" hint="O link pode estar velho."
+                        actions={<Button variant="primary" icon={ArrowLeft} onClick={() => navegar({ tela: 'pedidos' })}>Ver todos os pedidos</Button>} />
             : (
               <Banner tone="warning" icon={TriangleAlert} compact role="status"
                       actions={<Button size="sm" onClick={reler}>Tentar de novo</Button>}>

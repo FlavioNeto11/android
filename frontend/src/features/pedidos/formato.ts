@@ -4,7 +4,10 @@
  * cada data).
  */
 import type { PedidoView, ProximaData } from '../../api/pedidos';
+import type { AppConfig, ResolvedTarget } from '../../api/types';
 import { parseTs } from '../../lib/time';
+import { appsDoAlvo } from '../command/alvos';
+import { handleDe, nomeDe, rotuloDoIdentificador, type Pessoa } from '../profiles/pessoa';
 
 /** O fuso IANA do navegador ("America/Sao_Paulo"); vazio quando o ambiente não informa. */
 export function fusoDoNavegador(): string {
@@ -71,6 +74,32 @@ export function quemFazDoPedido(p: Pick<PedidoView, 'personas' | 'alvos'>): { pe
   const personas = (p.personas ?? []).map((x) => x.nome);
   const aparelhos = [...new Set((p.alvos?.targets ?? []).map((t) => t.instance_id).filter((x): x is string => !!x))];
   return { personas, aparelhos };
+}
+
+/** A persona como a pessoa a conhece: "Bruno Ferreira (@bruno)"; sem a lista (ainda lendo ou persona apagada), o id, como o Comando faz. */
+export function nomeDaPersonaNoPedido(id: string, pessoas: readonly Pessoa[] | null | undefined): string {
+  const p = pessoas?.find((x) => x.id === id);
+  if (!p) return id;
+  const nome = nomeDe(p);
+  const h = handleDe(p);
+  return h && nome !== `@${h}` ? `${nome} (${rotuloDoIdentificador(h)})` : nome;
+}
+
+/** Um alvo da prévia em uma linha, sem id interno de persona: "android-03 · Bruno Ferreira (@bruno) · Outlook". */
+export function rotuloDoAlvo(
+  t: Pick<ResolvedTarget, 'instance_id' | 'profile_id' | 'app_id' | 'app_ids'>,
+  pessoas: readonly Pessoa[] | null | undefined, apps: readonly Pick<AppConfig, 'id' | 'name'>[],
+): string {
+  const partes = [t.instance_id];
+  if (t.profile_id) partes.push(nomeDaPersonaNoPedido(t.profile_id, pessoas));
+  const nomesDosApps = appsDoAlvo(t, apps);
+  if (nomesDosApps.length > 0) partes.push(nomesDosApps.join(', '));
+  return partes.join(' · ');
+}
+
+/** Os avisos do backend citam a persona pelo id ("… mais de um aparelho (ig-f0zk…)"): na tela, pelo nome. */
+export function comNomesDePersonas(texto: string, ids: readonly string[], pessoas: readonly Pessoa[] | null | undefined): string {
+  return ids.reduce((t, id) => t.split(id).join(nomeDaPersonaNoPedido(id, pessoas)), texto);
 }
 
 /**

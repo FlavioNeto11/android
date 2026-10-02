@@ -455,5 +455,8 @@
   .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
   .kvVal { min-width: 0; overflow-wrap: anywhere; margin-bottom: 6px; }
   .cardHeader { flex-wrap: wrap; }
-  .cardActions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+  /* O texto tem prioridade: com `flex: 1` nos dois, o X de fechar dividia a sobra do cabeçalho com o título (uns 110 px de
+     coluna em 386 px). Agora o texto pede a largura toda e a ação vai para o canto, ou para a linha de baixo se não couber. */
+  .cardHeaderText { flex: 1 1 min(100%, 16rem); }
+  .cardActions { flex: 0 1 auto; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 }

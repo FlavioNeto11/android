@@ -23,7 +23,8 @@ interface PedidosStore {
   bater: () => void;
 }
 
-const LIMITE_DA_CAIXA = 50;
+/** O mesmo limite da caixa de avisos: com o mesmo pedido, as duas leituras simultâneas viram uma (`apiPedidos.avisos`). */
+export const LIMITE_DA_CAIXA = 100;
 let emVoo: Promise<void> | null = null;
 
 export const usePedidosStore = create<PedidosStore>((set) => ({
