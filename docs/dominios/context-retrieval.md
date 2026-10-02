@@ -100,7 +100,7 @@ O índice BM25 mora em disco, em `data/context_retrieval/bm25/bm25-<raiz>-<chave
 - **Lote**: `service.session()` (ou `gather_many`) congela a revisão e o universo e guarda o texto lido durante o lote (teto de 96 MB),
   de modo que Workspace, revisão, índice, mapa, cache e orçamento de SESSÃO são os mesmos para todos os itens. O orçamento de sessão
   não reinicia por item: no lote o total de chamadas ao provedor nunca passa de `max_calls_per_session`.
-- `plano-100-pacotes.py --contexto` usa a API Python com um serviço só (sem subprocesso por item).
+- `plano-100-pacotes.py --contexto` usa a API Python com um serviço só (sem subprocesso por item). **Escopo padrão de código (J7):** a consulta do consumidor é restrita a `backend/app/`, `frontend/src/` e `scripts/`; `--contexto-escopo PREFIXO` (repetível) troca o padrão e `--contexto-sem-escopo` consulta o repositório inteiro. O padrão vale SÓ para este consumidor: o serviço, a CLI do módulo e a API continuam sem escopo por padrão.
 - **Motor léxico sem `rg`**: o ranking usa contagens (aditivas por linha) sobre o texto inteiro em minúscula; as linhas casadas, que só
   servem às janelas, são levantadas apenas para os arquivos escolhidos. Com `rg` o resultado é o mesmo (teste de paridade com o
   `rg` real em `test_context_retrieval_local.py`). O `rg` é opcional: configurado (`context_retrieval.lexical.ripgrep_path`),
@@ -249,6 +249,15 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 - **Leitura:** a etapa B só roda quando o payload cabe no teto de entrada por pedido (`max_input_tokens`, padrão 24.000) e a etapa A já consome cerca de 15,6k tokens; neste repositório a B é a exceção. É o comportamento esperado do orçamento, não bug. Que as 7 chamadas da rodada 1 foram 6 de A e 1 de B (só o H14, que gastou ~23,3k tokens) é inferência, não medição por etapa.
 
 ### Medição local neste repositório (02/10/2026, `real`, gratuita, sem rede)
+
+**Efeito do escopo padrão no consumidor `plano-100-pacotes.py --contexto` (J7, `real`):** `scripts/context-retrieval-local-eval.py --consumidor --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40` (mesmo conjunto de 40 commits; só o modo `hybrid_local`, que é o `local_only` do produto, com a pergunta cortada em 600 caracteres como o consumidor faz; 224 s):
+
+| Consumidor | hit@3 | hit@5 | MRR@10 | recall@5 |
+|---|---|---|---|---|
+| antes: sem escopo | 22,5% | 37,5% | 0,195 | 24,0% |
+| depois: escopo de código | **70,0%** | **77,5%** | **0,555** | 52,6% |
+
+A diferença contra a tabela completa abaixo (17,5% e 72,5%) vem de cortar a pergunta em 600 caracteres. Os mesmos limites da medição valem (n = 40, pergunta é mensagem de commit, gabarito só de código, então parte do ganho é por construção: um doc relevante conta como erro).
 
 - **Como:** `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40` (máquina central, Windows, ripgrep presente; 374 s no total).
   Conjunto: os 40 commits `feat`/`fix` mais recentes sem merge até esse SHA, com 1 a 8 arquivos de código modificados ou apagados. A pergunta é o assunto

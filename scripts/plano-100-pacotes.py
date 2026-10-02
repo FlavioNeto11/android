@@ -15,6 +15,10 @@ itens (índice BM25 em disco por revisão, nada reconstruído por item), e só e
 ligado na configuração (`context_retrieval.enabled`) ou quando `--contexto-modo` o pede de forma explícita. Sem a flag
 a saída é byte a byte a de sempre; com o retrieval desligado, também. As sugestões dependem da revisão do código e por
 isso NÃO se commitam os pacotes gerados com `--contexto`.
+
+Por padrão a consulta é restrita ao CÓDIGO (`backend/app/`, `frontend/src/`, `scripts/`): sem o escopo a documentação ocupa o topo (a medição
+local de 02/10 foi de 17,5% para 72,5% de acerto no top 3 só por restringir). `--contexto-escopo PREFIXO` (repetível) troca o padrão e
+`--contexto-sem-escopo` consulta o repositório inteiro. O padrão vale SÓ para este consumidor; o serviço e a API não mudam.
 """
 from __future__ import annotations
 
@@ -216,6 +220,10 @@ def escrever(itens: list[dict], apendice: dict[str, dict], sugerir_contexto=None
     gravar(destino / 'indice.json', json.dumps(indice, ensure_ascii=False, indent=1) + '\n')
 
 
+#: Escopo padrão das sugestões: onde mora o código que um item do plano muda. Igual ao `ESCOPO_CODIGO` de `context-retrieval-local-eval.py`.
+ESCOPO_DO_CONTEXTO = ('backend/app/', 'frontend/src/', 'scripts/')
+
+
 class SugestorDeContexto:
     """`item -> linhas` pela API Python do retrieval de contexto, com UM serviço para o lote inteiro. Nunca levanta.
 
@@ -225,8 +233,10 @@ class SugestorDeContexto:
     nenhuma linha; o retrieval é auxílio do pacote, não requisito dele.
     """
 
-    def __init__(self, modo: str | None = None, *, servico=None, fabrica=None) -> None:
+    def __init__(self, modo: str | None = None, *, escopo: tuple[str, ...] = ESCOPO_DO_CONTEXTO, servico=None,
+                 fabrica=None) -> None:
         self.modo = modo
+        self.escopo = tuple(escopo)
         self._servico = servico
         self._fabrica = fabrica or self._fabrica_real
         self._pronto = servico is not None
@@ -269,7 +279,7 @@ class SugestorDeContexto:
         pergunta = f"{item['titulo']}. {item['corpo']}"[:600]
         inicio = time.perf_counter()
         try:
-            pack = servico.gather(pergunta)
+            pack = servico.gather(pergunta, scope=self.escopo)
         except Exception as erro:  # noqa: BLE001
             self._avisar(f'a consulta ao retrieval falhou ({type(erro).__name__})')
             return []
@@ -280,6 +290,13 @@ class SugestorDeContexto:
         linhas += [f'- `{r.path}:{r.start_line}-{r.end_line}`' for r in pack.regions]
         origem = f'origem {pack.origin}, revisão {pack.revision[:12]}'
         return [f'_{origem}_', ''] + linhas if linhas else []
+
+
+def escopo_do_contexto(args) -> tuple[str, ...]:
+    """`--contexto-sem-escopo` = repositório inteiro; `--contexto-escopo` (repetível) = os prefixos pedidos; senão o padrão de código."""
+    if args.contexto_sem_escopo:
+        return ()
+    return tuple(args.contexto_escopo or ESCOPO_DO_CONTEXTO)
 
 
 def gravar(caminho: Path, conteudo: str) -> None:
@@ -351,6 +368,10 @@ def main(argv=None) -> int:
     parser.add_argument('--bloco', help='Limitar a fila a um bloco do mapa.')
     parser.add_argument('--contexto', action='store_true',
                         help='EXPERIMENTAL: acrescenta sugestões do retrieval de contexto (só se estiver ligado).')
+    parser.add_argument('--contexto-escopo', action='append', metavar='PREFIXO',
+                        help='Prefixo de caminho das sugestões (repetível); troca o escopo padrão de código.')
+    parser.add_argument('--contexto-sem-escopo', action='store_true',
+                        help='Sugestões no repositório inteiro, sem restringir ao código.')
     parser.add_argument('--contexto-modo', choices=['local_only', 'shadow', 'hybrid'],
                         help='Pede um modo do retrieval explicitamente, mesmo com ele desligado na configuração.')
     args = parser.parse_args(argv)
@@ -358,7 +379,9 @@ def main(argv=None) -> int:
     # `--fila` só gera se ainda não houver pacote. Regenerar apaga e reescreve o diretório inteiro, e pedir a fila
     # de um bloco enquanto agentes de outro estão lendo os pacotes deles tiraria os arquivos debaixo deles.
     if not args.conferir and not (args.fila and (RAIZ / DESTINO / 'indice.json').is_file()):
-        sugestor = SugestorDeContexto(args.contexto_modo) if (args.contexto or args.contexto_modo) else None
+        escopo = escopo_do_contexto(args)
+        sugestor = (SugestorDeContexto(args.contexto_modo, escopo=escopo)
+                    if (args.contexto or args.contexto_modo) else None)
         if sugestor is None:
             escrever(itens, apendice)
         else:
