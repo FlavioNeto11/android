@@ -3003,11 +3003,11 @@ interface PedidoDTO {                       // uma linha de `pedidos`
   fuso: string;                             // nome IANA; padrão 'America/Sao_Paulo'
   inicio_em: string | null; fim_em: string | null;                 // UTC; fim_em null = sem prazo
   max_ocorrencias: number | null;           // > 0
-  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0
+  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0; limite conhecido: ver abaixo
   sobreposicao: Sobreposicao;               // padrão 'pular'
   janela_recuperacao_s: number | null;      // null = o padrão por tipo de gatilho (§7.5)
   coalescer: boolean;                       // a coluna é 0/1; padrão true
-  max_tentativas: number;                   // por ocorrência; >= 1; padrão 2
+  max_tentativas: number;                   // execuções por ocorrência (total); >= 1; padrão 2; só repete sem efeito possível (28.5)
   pausa_por_falha: number;                  // N falhas seguidas pausam; >= 1; padrão 3
   estado: EstadoPedido;
   versao: number;                           // sobe a cada edição
@@ -3079,6 +3079,13 @@ interface ProximaData { gatilho: number; nominal: string; local: string; utc: st
 interface PendenciaDoPedido { tipo: 'aprovacao' | 'pergunta' | 'ocorrencia_incerta';
                               ref: string; run_id: string | null; ocorrencia_id: string | null; desde: string }
 ```
+
+**Orçamento: limite conhecido.** `gasto_usd` soma o custo das ocorrências FECHADAS: o custo de uma execução em curso só entra
+quando ela fecha. Por isso o excesso máximo do orçamento é o custo de UMA ocorrência aberta, limitado pelo teto da execução
+(`min(orcamento_ocorrencia_usd − gasto da ocorrência, orcamento_total_usd − gasto_usd)`); com a ocorrência aberta nenhuma outra é
+despachada, e o pedido encerra com `encerrado_motivo = 'orcamento'` quando ela fecha. `orcamento_usado` pode, portanto, passar de
+1. Uma ocorrência adiada por saldo da conta de IA (ADR-051) segue `devida` dentro da janela de recuperação e, passada ela, vira
+`perdida` com `motivo` "adiada por saldo além da janela: ...". (Implementado e testado no 28.6/28.5, prova `simulated`.)
 
 `ProximaData.desviado` e `repetido` existem **para esta API mostrá-los** (`recorrencia.py:18` e `:111`): `desviado` = a hora local
 não existia (salto do horário de verão) e o pedido roda no primeiro instante válido depois do salto; `repetido` = a hora
@@ -3598,7 +3605,7 @@ não há janela por item. `versao` e `intervencao_humana` saem `desconhecida` po
 **Config** `aprendizado.saude` (defaults = limiares medidos; nada é gravado, mudar vale na próxima leitura): `sem_uso_dias: 14`,
 `amostra_minima: 5`, `taxa_minima: 0.8`, `falhas_seguidas: 2`, `contestacao_dias: 7`.
 
-Fora desta fatia: `obsoleto_provavel` (30.13); `acoes[]` já existe em `item` (§5.4) e não ganhou `motivo_de_bloqueio`. `falhas_seguidas` vem de
+Fora desta fatia: `obsoleto_provavel` (30.14, adendo v0.54); `acoes[]` já existe em `item` (§5.4) e não ganhou `motivo_de_bloqueio`. `falhas_seguidas` vem de
 `recipes.consecutive_fail`. Limiares aprovados pelo dono em 02/10 (D-5). Prova
 `simulated` (`tests/test_learning_saude.py`); `not_run` no central.
 
@@ -3627,3 +3634,36 @@ dividem o comando) nem `licao`, `voz` e `preferencia` (o `scope_key` não nomeia
 e `revisado por` (IA, §8.5) ficam fora: o primeiro já existe, os outros dois não têm fonte hoje. `memoria` devolve `relacoes: []`.
 
 Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
+## Adendo v0.54 (02/10/2026) — rótulo `obsoleto_provavel` e rebaixamento `catalogo_sem_efeito` (item 30.14)
+
+**`saude.rotulo`** (v0.52) ganha `obsoleto_provavel`, avaliado depois de `degradando` e antes de `sem_evidencia`: só para o **publicado**
+(em prova, o rótulo continua `em_prova`). Só leitura (D-5): nada é desligado pela saúde. Os sinais vêm do §9.2 de
+`design/aprendizado-vivo.md`, só os que têm fonte hoje; cada um é um `motivos[]` com o fato em `valor` e a **fonte em `detalhe`**
+(o `Motivo` não tem campo `fonte`):
+
+| `codigo` | Tipos | Fato (`valor`) e fonte (`detalhe`) |
+|---|---|---|
+| `substituta_viva` | receita, item com `parent_id` | `ref` da versão seguinte da mesma chave (receita) ou do item filho, em estado vivo; `recipes` mesma chave / `learning_items.parent_id` |
+| `versao_fora_do_parque` | receita, tela | a versão do item, que nenhum aparelho ativo tem (`versao.estado = versao_aposentada`); `device_app_state` |
+| `versao_viva_sem_reproducao` | receita, tela | as versões vivas em que a chave não tem receita e que não são provadamente mais antigas (tela: `incompativel`) |
+| `efeito_sem_respaldo_no_catalogo` | receita, fluxo | a capability (ou `*`); `catalogo.yaml (<sem_respaldo\|duvidoso>): <fato>` |
+| `fluxo_nunca_casado` | fluxo | dias publicado sem nenhum uso (`limite` = `sem_uso_dias`); `flows.uses`. Toma o lugar de `sem_evidencia` no fluxo |
+| `absorvida` | item | o commit de `state_detail = absorvida:<commit>` |
+
+Fora (sem fonte hoje): "sem uso enquanto a etapa roda por outro caminho", "duplicado" em chaves vizinhas e "habilidade publicada com a
+mesma `match_key`" do fluxo. Quedas de eficácia e contestação já são `degradando`.
+
+**Rebaixamento `catalogo_sem_efeito`** (o único efeito do item; passo `catalogo_sem_efeito` da curadoria periódica,
+`aprendizado.curadoria_s`; determinístico, sem IA, idempotente): receita ou fluxo **vivo** com `commit` num app cujo catálogo ATUAL (o do
+registro de apps, que a porta de política aplica) não respalda o efeito. Rebaixa só quando (a) o catálogo não tem nenhuma ação com efeito
+externo → motivo `catalogo_sem_efeito:*`, ou (b) a capability é conhecida sem ambiguidade e a ação dela no catálogo não tem efeito →
+`catalogo_sem_efeito:<CAPABILITY>`. App sem catálogo: nunca. Capability desconhecida ou ambígua num catálogo com efeito: só o motivo
+`efeito_sem_respaldo_no_catalogo` (`duvidoso`). Transição pelo sistema (`decided_by = sistema`, `reason` = o motivo) pelo mesmo caminho do
+Livro (`LearningService.mudar_estado`): `candidate`/`validated`/`published` → `disabled` (receita `quarantined`); nunca `deprecated`, porque a receita
+`superseded` não volta pelo Livro e o §9.2 diz que reativar é de pessoa. O item rebaixado aparece `inativo` com o motivo da trilha em
+`motivos[0].detalhe` — é o dado que o curador (30.11) vai ler. O `validated` que esperava o dono sai da espera com
+`learning.needs_person` `motivo: rebaixado_pelo_sistema` (adendo v0.49). Reativar é de pessoa (`disabled` → `published`).
+
+Nenhum campo novo além do vocabulário, nenhuma migração, nenhum código de erro novo. Prova `simulated`
+(`tests/test_learning_obsolescencia.py`); `not_run` no central.

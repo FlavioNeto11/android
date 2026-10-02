@@ -10,7 +10,9 @@ conhecida e zerada; se alguma medida falta, o rótulo é `indeterminado` e os mo
 
 As regras e os limiares são os medidos no banco real (proposta D-5 ao dono), que valem sobre o §5.3 do desenho: a eficácia é
 a ACUMULADA (`replay_ok/(ok+fail)`; não há fonte por item para a "janela dos últimos N usos"), `parado` e `pouca_amostra`
-separam o que o §5.3 chamava de saudável sem distinguir, e `obsoleto_provavel` fica para o 30.13.
+separam o que o §5.3 chamava de saudável sem distinguir. `obsoleto_provavel` (30.14) vem depois de `degradando` e antes de
+`sem_evidencia`, com os sinais do §9.2 que têm fonte hoje (`domain/obsolescencia.py`); cada motivo leva o fato em `valor` e a
+fonte em `detalhe`.
 
 O rótulo NÃO é estado e não move nada: quem move é o `ciclo.py` (ou a pessoa).
 """
@@ -21,6 +23,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.obsolescencia import SinaisDeObsolescencia
 from app.modules.learning.domain.vocabulario import LivroKind
 
 
@@ -28,6 +31,7 @@ class Rotulo(StrEnum):
     INATIVO = "inativo"
     EM_PROVA = "em_prova"
     DEGRADANDO = "degradando"
+    OBSOLETO_PROVAVEL = "obsoleto_provavel"  # publicado e algum sinal do §9.2 (30.14); só leitura
     SEM_EVIDENCIA = "sem_evidencia"        # publicado há ≥ `sem_uso_dias` e nunca usado
     PARADO = "parado"                      # já usado, mas sem uso há mais de `sem_uso_dias`
     POUCA_AMOSTRA = "pouca_amostra"        # usado dentro da janela, com menos de `amostra_minima` usos
@@ -61,6 +65,13 @@ class CodigoDoMotivo(StrEnum):
     FALHAS_SEGUIDAS = "falhas_seguidas"
     EFICACIA_ABAIXO_DO_MINIMO = "eficacia_abaixo_do_minimo"
     CONTESTADO_RECENTEMENTE = "contestado_recentemente"
+    # obsoleto_provavel (30.14, §9.2): só os sinais com fonte hoje
+    SUBSTITUTA_VIVA = "substituta_viva"
+    VERSAO_FORA_DO_PARQUE = "versao_fora_do_parque"
+    VERSAO_VIVA_SEM_REPRODUCAO = "versao_viva_sem_reproducao"
+    EFEITO_SEM_RESPALDO_NO_CATALOGO = "efeito_sem_respaldo_no_catalogo"
+    FLUXO_NUNCA_CASADO = "fluxo_nunca_casado"
+    ABSORVIDA = "absorvida"
     # sem_evidencia, parado, pouca_amostra
     NUNCA_USADO = "nunca_usado"
     SEM_USO_RECENTE = "sem_uso_recente"
@@ -107,6 +118,8 @@ class SinaisDeSaude:
     detalhe: str | None = None
     falhas_seguidas: int | None = None
     contestacoes_recentes: int | None = None
+    #: Os sinais do §9.2 já lidos (30.14). `None`: o serviço não os leu (nenhum sinal; o rótulo segue a regra de antes).
+    obsolescencia: SinaisDeObsolescencia | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +216,32 @@ def _degradando(s: SinaisDeSaude, taxa: float | None, lim: LimiaresDeSaude) -> l
     return motivos
 
 
+def _obsoleto(s: SinaisDeSaude, lim: LimiaresDeSaude) -> list[Motivo]:
+    """Os motivos de `obsoleto_provavel`, na ordem do §9.2. O fato vai em `valor`; a fonte, em `detalhe`."""
+    motivos: list[Motivo] = []
+    o = s.obsolescencia
+    if o is not None and o.substituta_viva is not None:
+        sub = o.substituta_viva
+        motivos.append(Motivo(_C.SUBSTITUTA_VIVA, None, sub.ref, None, f"{sub.fonte} (estado {sub.estado})"))
+    if o is not None and o.versao_fora_do_parque is not None:
+        vivas = ", ".join(o.versoes_vivas) or "nenhuma"
+        motivos.append(Motivo(_C.VERSAO_FORA_DO_PARQUE, _D.VERSAO, o.versao_fora_do_parque, None,
+                              f"device_app_state: versões vivas {vivas}"))
+    if o is not None and o.versoes_sem_reproducao:
+        motivos.append(Motivo(_C.VERSAO_VIVA_SEM_REPRODUCAO, _D.VERSAO, ", ".join(o.versoes_sem_reproducao), None,
+                              "device_app_state × itens da mesma chave"))
+    if o is not None and o.efeito is not None:
+        motivos.append(Motivo(_C.EFEITO_SEM_RESPALDO_NO_CATALOGO, None, o.efeito.capability, None,
+                              f"catalogo.yaml ({o.efeito.respaldo.value}): {o.efeito.fato}"))
+    if s.kind is LivroKind.FLUXO and s.usos == 0 and not s.ultimo_uso:
+        idade = _dias_desde(s.estado_desde or s.criado_em, s.agora)
+        if idade is not None and idade >= lim.sem_uso_dias:
+            motivos.append(Motivo(_C.FLUXO_NUNCA_CASADO, _D.USO, idade, lim.sem_uso_dias, "flows.uses: dias publicado"))
+    if o is not None and o.absorvida_em is not None:
+        motivos.append(Motivo(_C.ABSORVIDA, None, o.absorvida_em, None, "learning_items.state_detail: absorvida:<commit>"))
+    return motivos
+
+
 def calcular(s: SinaisDeSaude, lim: LimiaresDeSaude = LimiaresDeSaude()) -> Saude | None:
     """O rótulo e os motivos de um item, pela ordem da proposta D-5 (o primeiro que casa vence). `None`: a memória,
     que não é item de ciclo (só a contagem sai)."""
@@ -230,6 +269,9 @@ def calcular(s: SinaisDeSaude, lim: LimiaresDeSaude = LimiaresDeSaude()) -> Saud
     degradando = _degradando(s, taxa, lim)
     if degradando:
         return Saude(Rotulo.DEGRADANDO, tuple(degradando), dims)
+    obsoleto = _obsoleto(s, lim)
+    if obsoleto:
+        return Saude(Rotulo.OBSOLETO_PROVAVEL, tuple(obsoleto), dims)
 
     if s.usos is None:                                  # sem contador de uso o item não se classifica
         return Saude(Rotulo.INDETERMINADO, (Motivo(_C.USO_DESCONHECIDO, _D.USO),), dims)
