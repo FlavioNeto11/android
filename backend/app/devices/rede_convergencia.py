@@ -9,7 +9,7 @@ rastro (comando `device.network` no histórico do aparelho; reinício como coman
 |---|---|
 | `pendente`, pedido com VPN/proxy | **aplicar**: plano, chave e par no servidor, cliente pela loja, receita; → `configurado` e pede o reinício |
 | `pendente`, pedido vazio (tirou tudo) | **desfazer**: tira always-on e bloqueio; → `configurado` e pede o reinício |
-| `configurado` | **conectar**: lê como uid 2000 (depois de um boot, esperando o `tun0` até `rede.espera_tun_s` contados do boot); túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; a configuração valendo e só o túnel faltando → o tile do cliente (`rede.cliente_tile`, item 29.3) e, se ele não religar, outro reinício; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
+| `configurado` | **conectar**: lê como uid 2000 (depois de um boot, esperando o `tun0` até `rede.espera_tun_s` contados do boot); túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; a configuração valendo e só o túnel faltando → o Start da interface do cliente (`rede.cliente_atividade`, W8: o tile não recalcula o `serviceMode` do SFA) e, se ele não religar, outro reinício; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
 | `conectado`, `parcial` | **verificar** (25.5; ao ligar, a pedido, pela porta da tarefa, e na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s`): relê como o conferir e, com o túnel no ar, roda a sonda de saída (`rede_medicao.medir`) e grava a medição — só ela leva a `trafego_verificado` ou `parcial`. Com bloqueio, antes, a prova de vazamento: a que a linha guarda para a revisão e para a instalação do cliente VPN (colunas `leak_*`, item 29.2) ou, sem ela, o teste (`rede_medicao.sondar_vazamento`: o cliente VPN parado, com a intenção gravada antes); sem o túnel de volta, → `configurado` e reinicia (o boot religa o cliente), e a medição vem depois |
 | `trafego_verificado` | **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
 
@@ -49,9 +49,9 @@ from ..models import ControlOwner, InstanceState
 from ..util import now, now_iso, parse_iso
 from ..vitrine import objetivo_em_andamento
 from . import rede
-from .rede_aplicacao import (AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError, apagar_relatorios_de_falha,
-                             desfazer, endereco_no_tunel, instalado_em, montar_plano, observar, provisionar,
-                             religar_pelo_tile)
+from .rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError,
+                             apagar_relatorios_de_falha, desfazer, endereco_no_tunel, instalado_em, montar_plano,
+                             observar, provisionar, religar_pela_interface)
 from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, sondar_vazamento
 from .sonda_rede import Contabilidade
 
@@ -104,6 +104,10 @@ class _Memoria:
     # A última medição foi feita SEM abrir os apps exigidos (varredura, ligou): a tarefa que a porta segura mede de
     # novo já, abrindo-os, em vez de esperar `reverificar_s` por uma medição que não podia provar o app parado.
     medida_sem_abrir: bool = False
+    # Por que o último Start da interface do cliente não religou o túnel (código e detalhe, sem segredo); vazio se
+    # não foi tentado ou se religou. Só enfeita a evidência de quem cai no reinício.
+    religar_motivo: str = ""
+    religar_codigo: str = ""
 
 
 def _vazio(row: Row) -> bool:
@@ -135,8 +139,11 @@ class ConvergenciaDeRede:
         self.intervalo_do_reinicio_s = 5.0
         #: Entre uma leitura da tela e a próxima, na importação do perfil (o SFA leva um instante para trocar de tela).
         self.pausa_da_tela_s = 1.5
-        #: Quanto esperar o túnel depois de clicar o tile do cliente (medido em 30/09: 1 a 4 s depois do clique).
-        self.espera_do_tile_s = 20.0
+        #: Quanto esperar o túnel depois do Start da interface do cliente (medido no android-09, 01/10: tun0 em menos de 1 s).
+        self.espera_da_interface_s = 25.0
+        #: Quanto esperar o botão Start aparecer na árvore depois de abrir o app, e o intervalo entre as leituras.
+        self.prazo_do_botao_s = 15.0
+        self.pausa_da_interface_s = 1.0
 
     # ------------------------------------------------------------------ utilidades
     @property
@@ -518,6 +525,7 @@ class ConvergenciaDeRede:
         obs = await self._observar_depois_do_boot(ap, row, pkg)
         reiniciou = self._reiniciou_depois(row, obs)
         mem = self.memoria(iid)
+        mem.religar_motivo = mem.religar_codigo = ""   # o de uma passada anterior não enfeita a evidência desta
         if _vazio(row):
             if obs.removida() and reiniciou:
                 self._apagar_linha(iid, f"rede tirada e conferida depois do reinício ({obs.descrever(pkg)})")
@@ -539,7 +547,7 @@ class ConvergenciaDeRede:
             # de novo: em 30/09 a primeira tentativa do always-on falhou em 5 de 7 boots), o tile do cliente.
             nova = await self._religar_sem_reinicio(ap, iid, plano_bloqueio)
             if nova is not None:
-                obs, religado = nova, "religado pelo tile do cliente, sem reinício; "
+                obs, religado = nova, "religado pelo Start da interface do cliente, sem reinício; "
         if obs.conectada(plano_bloqueio):
             evidencia = f"{religado}túnel no ar, lido como uid 2000: {obs.descrever(pkg)}" + self._par_no_servidor(iid)
             novo = rede.registrar_observacao(self.st, iid, rev=rev, estado="conectado", evidencia=evidencia)
@@ -555,22 +563,43 @@ class ConvergenciaDeRede:
         return self._reiniciar_ou_desistir(rt, row, obs, reiniciou, "o túnel não subiu")
 
     async def _religar_sem_reinicio(self, ap: AparelhoDaRede, iid: str, bloqueio: bool) -> Observacao | None:
-        """O túnel de volta pelo tile do cliente (`rede.cliente_tile`), sem reiniciar o aparelho; `None` se não deu (ou
-        se o gesto está desligado). Quem chama garante que só o túnel falta: a configuração, o always-on e o bloqueio
-        ficam como estão, e a releitura final é a de sempre (uid 2000, com as regras de bloqueio conferidas)."""
-        tile = str(self.cfg.cliente_tile or "").strip()
-        if not tile:
+        """O túnel de volta pelo Start da interface do cliente (`rede.cliente_atividade`), sem reiniciar o aparelho;
+        `None` se não deu (ou se o gesto está desligado). Quem chama garante que só o túnel falta: a configuração, o
+        always-on e o bloqueio ficam como estão, e a releitura final é a de sempre (uid 2000, com as regras de bloqueio
+        conferidas). O motivo do desfecho fica em `memoria(iid).religar_motivo` (para a evidência de quem cair no
+        reinício). NÃO há fallback para o tile: ele não recalcula o `serviceMode` do SFA (W8) e, com o motivo da
+        interface desconhecido, tentá-lo só repetiria o ProxyService; a recuperação que sobra é a de sempre, o reinício
+        (always-on), dentro de `rede.reinicios_max`."""
+        mem = self.memoria(iid)
+        mem.religar_motivo = mem.religar_codigo = ""
+        atividade = str(self.cfg.cliente_atividade or "").strip()
+        if not atividade:
             return None
         try:
-            obs, o_que = await religar_pelo_tile(ap, self.cfg.cliente_pacote, tile, espera_s=self.espera_do_tile_s)
+            r = await religar_pela_interface(ap, self.cfg.cliente_pacote, atividade, espera_s=self.espera_da_interface_s,
+                                             prazo_do_botao_s=self.prazo_do_botao_s, pausa_s=self.pausa_da_interface_s)
         except Exception as exc:  # noqa: BLE001 - o gesto é uma tentativa: sem ele, vale o reinício de sempre
-            log.info("%s: o tile do cliente VPN não religou o túnel — %s", iid, exc)
+            mem.religar_codigo = "erro_inesperado"
+            mem.religar_motivo = f"religar pela interface: {type(exc).__name__}: {str(exc)[:160]}"
+            log.info("%s: o Start da interface do cliente VPN não religou o túnel — %s", iid, exc)
             return None
-        log.info("%s: %s", iid, o_que)
-        if obs is None or not obs.conectada(bloqueio):
+        log.info("%s: %s (%s)", iid, r.detalhe, r.codigo)
+        if not r.religado or r.obs is None or not r.obs.conectada(bloqueio):
+            mem.religar_codigo = r.codigo
+            mem.religar_motivo = f"religar pela interface: {r.codigo}: {r.detalhe}"
+            if r.religado:                                  # o túnel subiu, mas sem as regras de bloqueio da política
+                mem.religar_codigo = "sem_regras_de_bloqueio"
+                mem.religar_motivo = "religar pela interface: túnel no ar sem as regras de bloqueio da política"
+            if r.codigo == CLASSE_ERRADA_PARA_TUN:          # guard D: dito alto, não consumido como timeout genérico
+                self.st.bus.emit("log", f"{iid}: {r.detalhe}", instance_id=iid)
             return None
-        self.st.bus.emit("log", f"{iid}: {o_que}", instance_id=iid)
-        return obs
+        self.st.bus.emit("log", f"{iid}: {r.detalhe}", instance_id=iid)
+        return r.obs
+
+    def _motivo_da_interface(self, iid: str) -> str:
+        """Por que o Start da interface não religou (se foi tentado nesta passada): vai na evidência, sem segredo."""
+        motivo = self.memoria(iid).religar_motivo
+        return f" ({motivo})" if motivo else ""
 
     def _reiniciar_ou_desistir(self, rt: DeviceRuntime, row: Row, obs: Observacao, reiniciou: bool,
                                o_que: str) -> dict[str, object]:
@@ -589,12 +618,17 @@ class ConvergenciaDeRede:
                 erro = (f"{o_que}: o reinício foi pedido {pedidos} vez(es) e nenhum boot foi detectado depois da "
                         f"configuração (uptime {uptime}). Aparelho que a plataforma não reinicia de verdade (celular "
                         f"sem worker): reinicie-o por fora e peça Reaplicar ({obs.descrever(pkg)})")
+            erro += self._motivo_da_interface(iid)
             self._falhou(iid, rev, RedeAplicacaoError(erro))
             raise RedeAplicacaoError(erro)
         detalhe = (f"{o_que} depois do boot ({obs.descrever(pkg)}); novo reinício pedido" if reiniciou
                    else f"configurado, sem reinício desde então ({obs.descrever(pkg)}); reinício pedido")
+        detalhe += self._motivo_da_interface(iid)
+        # O motivo do reinício (200 caracteres) SUBSTITUI o `detail` da linha: o código da interface vai na frente.
+        codigo = self.memoria(iid).religar_codigo
+        motivo_do_reinicio = (f"[interface: {codigo}] " if codigo else "") + detalhe
         rede.registrar_observacao(self.st, iid, rev=rev, estado="configurado", evidencia=detalhe)
-        self._agendar_reinicio(iid, rev, detalhe[:200])
+        self._agendar_reinicio(iid, rev, motivo_do_reinicio[:200])
         return {"instance_id": iid, "rev": rev, "state": "configurado", "evidence": detalhe}
 
     async def _conferir(self, rt: DeviceRuntime, row: Row, motivo: Motivo) -> None:
@@ -705,7 +739,7 @@ class ConvergenciaDeRede:
         novo = rede.registrar_observacao(
             self.st, iid, rev=rev, estado="configurado",
             evidencia=f"teste de vazamento ({vazamento.texto[:220]}); o cliente VPN foi parado para o teste e o "
-                      "túnel não voltou sozinho sem boot: reinicia, e a medição vem depois")
+                      f"túnel não voltou sozinho sem boot: reinicia, e a medição vem depois{self._motivo_da_interface(iid)}")
         # O desfecho do teste vai no motivo: a evidência do reinício substitui o `detail` da linha.
         self._agendar_reinicio(iid, rev, f"religar o cliente VPN depois do teste de vazamento da rev {rev} "
                                          f"({vazamento.texto[:200]})")
@@ -809,7 +843,7 @@ class ConvergenciaDeRede:
             # banco é o que diz, a quem vier depois, que o ensaio não terminou.
             mem.ensaio_em_curso = False
         if not await self._tunel_de_volta(ap, pkg, True):
-            # O cliente ficou parado. Primeiro o tile (sem reinício); só se ele não religar, o boot.
+            # O cliente ficou parado. Primeiro o Start da interface (sem reinício); só se ele não religar, o boot.
             if await self._religar_sem_reinicio(ap, iid, True) is None:
                 return self._religar_pelo_boot(iid, rev, teste.vazamento)
         return teste.vazamento

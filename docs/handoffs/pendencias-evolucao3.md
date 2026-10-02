@@ -385,6 +385,22 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 
 ## Checkpoints
 
+### Checkpoint 20 — 01/10 ~22:00Z — smoke real da função de produto: PASS; incidente de host separado
+
+- `PRODUCT_FUNCTION_REAL_SMOKE = PASS` (W8 §20.4, `real`, android-09, um Start, VPNService, tun0 em 2,7 s, CONNECTED, rollback pela UI). W8 segue OPEN;
+  boots 1/3/4 OPEN. Sem merge, sem deploy, sem PR.
+- Incidente do host (§21, fora do W8): notebook trocou de IP (.19→.11), túnel apontava para o velho; recuperado sem reinscrever o worker. Pendências
+  operacionais: reserva DHCP para B8-9A-2A-FD-EA-7B (autorização do dono), relógio do worker +8,1 s (`degraded`), pwsh da Store no central (instalar MSI).
+
+### Checkpoint 19 — 01/10 ~20:00Z — correção de produto: religar pelo Start da interface (branch `fix/w8-sfa-service-mode`, `simulated`)
+
+- Decisão do dono: B + D. `religar_pela_interface` substitui o tile na convergência (abre a atividade, `Start` pela árvore, UM toque,
+  sucesso só com `tun0` E VPN CONNECTED); guard `wrong_service_class_for_tun`; sem fallback para o tile; `rede.cliente_atividade` novo,
+  `rede.cliente_tile` legado. Nunca se escreve o `serviceMode`. Importação/provisão intactas.
+- Testes `simulated` (rede, sonda, portão, worker, por aparelho: verdes). **Nenhum aparelho tocado, sem deploy, sem WireGuard, sem IA
+  paga.** Revalidação real desenhada em `w8-diagnostico-android09.md` §19.4, `not_run`.
+- `BOOT_RECOVERY_ROOT_CAUSE = OPEN` (boots 1/3/4). W8 **OPEN**. Branch só em `origin/fix/w8-sfa-service-mode`, sem merge.
+
 ### Checkpoint 18 — 01/10 ~18:30Z — o `serviceMode` do cliente do 09 estava em NORMAL (`real` + código 1.14.2)
 
 - Código upstream (commit `fc21909`, 1.14.2/739): o tile e o boot chamam `BoxService.start()` com `Settings.serviceClass()` sem

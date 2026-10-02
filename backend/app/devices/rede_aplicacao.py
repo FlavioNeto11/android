@@ -382,6 +382,32 @@ class Elemento:
     habilitado: bool = True
 
 
+@dataclass(frozen=True)
+class NoDaTela:
+    """Um nó da árvore de tela COMPLETA (com os que não têm texto): é o que prova que um rótulo pertence a um botão. No
+    Compose o `Start` do SFA é um filho de texto NÃO clicável de um contêiner clicável sem texto (android-09, 01/10)."""
+
+    texto: str
+    pacote: str
+    limites: tuple[int, int, int, int]
+    clicavel: bool
+    habilitado: bool = True
+
+    @property
+    def centro(self) -> tuple[int, int]:
+        x0, y0, x1, y1 = self.limites
+        return (x0 + x1) // 2, (y0 + y1) // 2
+
+    @property
+    def area(self) -> int:
+        x0, y0, x1, y1 = self.limites
+        return max(0, x1 - x0) * max(0, y1 - y0)
+
+    def contem(self, outro: NoDaTela) -> bool:
+        return (self.limites[0] <= outro.limites[0] and self.limites[1] <= outro.limites[1]
+                and self.limites[2] >= outro.limites[2] and self.limites[3] >= outro.limites[3])
+
+
 class AparelhoDaRede(Protocol):
     """O que a receita precisa do aparelho. `AparelhoPeloAdb` é o de verdade; o teste passa um dublê."""
 
@@ -391,6 +417,7 @@ class AparelhoDaRede(Protocol):
 
     async def shell(self, comando: str, *, timeout: float = 40) -> str: ...
     async def elementos(self) -> list[Elemento]: ...
+    async def arvore(self) -> list[NoDaTela]: ...
     async def tocar(self, x: int, y: int) -> None: ...
     async def reverso(self, porta: int) -> None: ...
     async def desfazer_reverso(self, porta: int) -> None: ...
@@ -412,6 +439,11 @@ class AparelhoPeloAdb:
         arvore = await self.st.devices.hierarchy(self.rt)
         return [Elemento(texto=(e.text or e.desc or "").strip(), pacote=e.package, centro=e.center,
                          habilitado=e.enabled) for e in arvore.elements if (e.text or e.desc)]
+
+    async def arvore(self) -> list[NoDaTela]:
+        arvore = await self.st.devices.hierarchy(self.rt)
+        return [NoDaTela(texto=(e.text or e.desc or "").strip(), pacote=e.package, limites=tuple(e.bounds),
+                         clicavel=bool(e.clickable), habilitado=bool(e.enabled)) for e in arvore.elements]
 
     async def tocar(self, x: int, y: int) -> None:
         await self.rt.executor.run(self.rt.adb.tap, x, y, timeout=20, label="toque da importação da rede")
@@ -691,7 +723,12 @@ async def observar(ap: AparelhoDaRede, pacote: str, *, esperar_tun_s: float = 0.
         await asyncio.sleep(intervalo_s)
 
 
-# ============================================================================ religar o túnel sem reiniciar (29.3)
+# ============================================================================ o tile do cliente (29.3) — NÃO é o caminho de recuperação
+# ATENÇÃO (W8, 01/10/2026): o que está medido abaixo valeu no android-05 porque o `serviceMode` do cliente ali JÁ era VPN
+# (o tile chama `BoxService.start()` sem recalcular o modo). Num cliente que só importou o perfil (o fluxo da plataforma),
+# o tile inicia o ProxyService e o serviço se encerra sem tun0 (android-09). A convergência usa
+# `religar_pela_interface` (Start da UI); `religar_pelo_tile` e `comando_de_religar` ficam só para o diagnóstico
+# (scripts/diag-w8-tile.py importa o comando) e para um aparelho cujo modo já se provou VPN. Nunca é fallback automático.
 # Medido em 30/09 no android-05 (7 boots, host com carga): o `startAlwaysOnVpn` do sistema roda UMA vez por boot, e em
 # 5 de 7 a primeira tentativa falhou — ANR de início do serviço com o convidado sem CPU (3), ou o serviço subindo e
 # parando sozinho (2). Reiniciar de novo rola o mesmo dado. O que religou sem reinício, 5 de 5 com o SystemUI
@@ -724,7 +761,8 @@ def comando_de_religar(tile: str) -> str:
 
 async def religar_pelo_tile(ap: AparelhoDaRede, pacote: str, tile: str, *, espera_s: float = 20.0) -> tuple[Observacao | None, str]:
     """Tenta subir o túnel pelo tile do cliente, sem reiniciar o aparelho. Devolve a observação com o túnel no ar (ou
-    `None`) e o que aconteceu. Não mexe em always-on nem em bloqueio; a barra volta a como estava."""
+    `None`) e o que aconteceu. Não mexe em always-on nem em bloqueio; a barra volta a como estava.
+    NÃO usar como recuperação: o tile não recalcula o `serviceMode` do cliente (ver a nota da seção)."""
     v = _ler_pares(await ap.shell(comando_de_religar(tile), timeout=60), ("Q0", "P1", "P2", "Q", "T", "CLICOU"))
     try:
         if v.get("CLICOU") != "1":
@@ -748,6 +786,314 @@ async def religar_pelo_tile(ap: AparelhoDaRede, pacote: str, tile: str, *, esper
                 logging.getLogger(__name__).info("tile do cliente VPN não removido da barra — %s", exc)
 
 
+# ============================================================================ religar pela interface do cliente (W8)
+# O tile NÃO é o mecanismo de recuperação (W8, 01/10/2026). Fonte de verdade: SFA 1.14.2, commit upstream
+# fc21909df7a3f0fc9435f3866fb6a4960711aa5f (`app/src/main/java/io/nekohasekai/sfa/`):
+#   TileService.onClick → toggleService → BoxService.start() → Settings.serviceClass()   (NÃO chama rebuildServiceMode);
+#   Settings.serviceClass(): serviceMode == VPN → VPNService; qualquer outro valor → ProxyService (o padrão é NORMAL);
+#   MainActivity.startService() → startService0(): rebuildServiceMode() → Libbox.hasTunInbound(perfil selecionado) →
+#     serviceMode → serviceClass() → startForegroundService;
+#   a importação (ProfileManager.create(andSelect = true)) SELECIONA o perfil sem recalcular o serviceMode.
+# ProxyService com perfil que tem `tun`: openTun lança "android: tun inbound requires VPN service" → stopAndAlert →
+# stopSelf (1 a 2 s, sem tun0). Foi o que o tile fez no android-09 (cliente instalado e perfil importado, nunca um Start
+# pela interface: serviceMode ficou no padrão NORMAL). No android-05 o tile funcionava porque o serviceMode já era VPN.
+# O Start da interface (UM toque) fez o 09 subir o VPNService em menos de 1 s (docs/handoffs/w8-diagnostico-android09.md
+# §18). Não se escreve o serviceMode (é do SFA: sem root, sem banco privado); usa-se o caminho oficial.
+#: O commit upstream do SFA 1.14.2 (versionCode 739) em que a lógica acima foi lida (`version.properties` = 1.14.2/739).
+SFA_COMMIT_DE_REFERENCIA = "fc21909df7a3f0fc9435f3866fb6a4960711aa5f"
+#: Os rótulos do SFA 1.14.2 (commit `fc21909`), por locale. O Start é `R.string.action_start` (`MainActivity.kt`: o
+#: `contentDescription` do FAB e o texto do botão estendido) e o Stop é `R.string.stop`. A ORIGEM da tabela é o que o
+#: próprio commit traz em `app/src/main/res/values*/strings.xml`: o padrão (inglês) e `values-fa`, `values-ru-rRU`,
+#: `values-zh-rCN`, `values-zh-rTW` (não há outros locales traduzidos nessa versão; o Android cai no padrão quando o
+#: locale do aparelho não tem recurso). Não é uma lista de traduções "plausíveis": cada par vem desses arquivos.
+#: Não há identificação independente de locale: o Compose do SFA não expõe `resource-id` nem `testTag` nos botões, e o
+#: contêiner clicável não tem texto. Por isso o rótulo é uma PROVA a mais (junto do pacote, do contêiner e da unicidade),
+#: nunca o único critério, e um rótulo fora desta tabela não é tocado (falha fechada).
+ROTULOS_DO_CLIENTE: dict[str, tuple[str, str]] = {
+    "en": ("Start", "Stop"),
+    "fa": ("شروع", "توقف"),
+    "ru": ("Начать", "Остановить"),
+    "zh-CN": ("启动", "停止"),
+    "zh-TW": ("啟動", "停止"),
+}
+#: O contêiner clicável do botão não pode ser enorme perto do rótulo (um clicável que cobre a tela inteira não prova
+#: nada): no android-09 o contêiner tem ~5x a área do rótulo.
+LIMITE_DO_CONTEINER = 40
+_PACOTE = re.compile(r"^[A-Za-z0-9_.]+$")
+#: `MM-DD HH:MM:SS.mmm`: o formato de `logcat -v time` e de `-T` (a hora do aparelho).
+_HORA_DO_LOGCAT = re.compile(r"^\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}$")
+
+RELIGADO = "religado_pela_interface"
+JA_HA_TUN = "ja_ha_tun"
+ABERTURA_FALHOU = "abertura_falhou"
+START_NAO_PROVADO = "start_nao_provado"
+INTERFACE_MOSTRA_STOP = "interface_mostra_stop"
+FOCO_NAO_E_O_CLIENTE = "foco_nao_e_o_cliente"
+TUN_NAO_SUBIU = "tun_nao_subiu"
+VPN_NAO_CONECTADA = "vpn_nao_conectada"
+#: Guard D: o Start da interface iniciou o ProxyService (serviceMode não-VPN) num plano que exige TUN. Não é "o cliente
+#: começou": é incompatibilidade de classe/modo, e a recuperação NÃO está concluída.
+CLASSE_ERRADA_PARA_TUN = "wrong_service_class_for_tun"
+
+#: A classe de serviço que ESTE Start iniciou, lida SÓ na janela dele (eventos depois do baseline tirado logo antes do toque).
+CLASSE_VPN = "VPNService"
+CLASSE_PROXY = "ProxyService"
+CLASSE_AMBAS = "ambas"                    # as duas na janela (corrida): não é "ProxyService sem VPNService"
+CLASSE_NENHUMA = "nenhuma_na_janela"      # buffer íntegro e nenhum serviço do cliente iniciado na janela
+CLASSE_DESCONHECIDA = "UNKNOWN"           # não se prova: baseline/buffer ilegível, buffer rotacionado ou comando falhou
+
+
+@dataclass(frozen=True)
+class ReligadoPelaInterface:
+    obs: Observacao | None
+    codigo: str
+    detalhe: str
+    #: O que o desfecho observou (para a evidência e para o smoke real): a classe de serviço da janela do Start, o rótulo
+    #: e o método do alvo, o locale lido do aparelho e o tempo até o `tun0`.
+    classe: str = CLASSE_DESCONHECIDA
+    rotulo: str = ""
+    metodo: str = ""
+    locale: str = ""
+    tun_apos_s: float | None = None
+
+    @property
+    def religado(self) -> bool:
+        return self.codigo == RELIGADO and self.obs is not None
+
+
+def idioma_do_recurso(locale: str) -> str | None:
+    """O recurso do SFA 1.14.2 que o Android escolheria para o `locale` do aparelho (`pt-BR`, `zh_TW`, `ru-RU`…): a chave
+    de `ROTULOS_DO_CLIENTE`. Sem recurso traduzido, o Android usa o padrão (`en`). Vazio/ilegível: `None` (não se sabe)."""
+    bruto = (locale or "").strip().replace("_", "-")
+    if not bruto or bruto.lower() == "null":
+        return None
+    partes = [p for p in bruto.split("-") if p]
+    lingua = partes[0].lower()
+    if lingua == "zh":
+        resto = {p.lower() for p in partes[1:]}
+        return "zh-TW" if resto & {"tw", "hk", "mo", "hant"} else "zh-CN"
+    return lingua if lingua in ROTULOS_DO_CLIENTE else "en"
+
+
+def rotulos_para(locale: str) -> tuple[tuple[str, ...], tuple[str, ...], str | None]:
+    """(rótulos aceitos de Start, de Stop, o idioma do recurso). Locale lido: SÓ os do idioma dele (o Android usa um recurso por
+    vez). Locale ilegível: a união de todos os idiomas do SFA 1.14.2 — o resto do localizador (pacote, contêiner clicável,
+    unicidade) continua valendo, e um rótulo fora da tabela segue sem toque."""
+    idioma = idioma_do_recurso(locale)
+    if idioma is None:
+        return (tuple(v[0] for v in ROTULOS_DO_CLIENTE.values()), tuple(v[1] for v in ROTULOS_DO_CLIENTE.values()), None)
+    inicio, parada = ROTULOS_DO_CLIENTE[idioma]
+    return (inicio,), (parada,), idioma
+
+
+def achar_botao(nos: list[NoDaTela], pacote: str, rotulo: str | tuple[str, ...]) -> tuple[NoDaTela | None, str]:
+    """O ponto de toque do botão do cliente cujo rótulo é UM dos `rotulo` (um texto ou os do locale), PROVADO pela árvore
+    (nunca coordenada fixa, nunca outro pacote): exatamente UM nó habilitado do `pacote` com esse texto, dentro do menor
+    contêiner clicável e habilitado do MESMO pacote que o contém (e não enorme perto dele). O toque vai no centro do
+    RÓTULO, que está dentro do contêiner. Qualquer dúvida: `(None, motivo)` — falha fechada."""
+    aceitos = (rotulo,) if isinstance(rotulo, str) else tuple(rotulo)
+    alvos = {r.casefold() for r in aceitos}
+    nome = "/".join(repr(r) for r in aceitos)
+    do_pacote = [n for n in nos if n.pacote == pacote and len(n.limites) == 4]
+    rotulados = [n for n in do_pacote if n.texto.casefold() in alvos]
+    if not rotulados:
+        fora = sum(1 for n in nos if n.pacote != pacote and n.texto.casefold() in alvos)
+        return None, (f"nenhum {nome} do {pacote} na tela" + (f" ({fora} em outro pacote: não é tocado)" if fora else ""))
+    if len(rotulados) > 1:
+        return None, f"{len(rotulados)} nós {nome} no {pacote}: ambíguo"
+    rotulo_no = rotulados[0]
+    if not rotulo_no.habilitado:
+        return None, f"o {nome} do {pacote} está desabilitado"
+    conteineres = [n for n in do_pacote if n.clicavel and n.habilitado and n.contem(rotulo_no)]
+    if not conteineres:
+        return None, f"o {nome} do {pacote} não está dentro de um contêiner clicável e habilitado"
+    menor = min(conteineres, key=lambda n: n.area)
+    if rotulo_no.area <= 0 or menor.area > LIMITE_DO_CONTEINER * rotulo_no.area:
+        return None, f"o contêiner clicável do {nome} é grande demais para ser o botão"
+    return rotulo_no, ""
+
+
+def comando_do_estado_da_interface(pacote: str) -> str:
+    """Uma ida ao aparelho: o foco da tela, o `tun0`, as classes de serviço do cliente, o locale (três fontes) e o
+    BASELINE: a hora do aparelho agora, no formato do `logcat -v time` (a janela do Start começa aqui)."""
+    if not _PACOTE.match(pacote or ""):
+        raise RedeAplicacaoError(f"pacote do cliente VPN inválido: {pacote!r}")
+    servicos = f"dumpsys activity services {pacote} 2>/dev/null"
+    return (
+        "echo F=$(dumpsys window 2>/dev/null | grep -m1 mCurrentFocus); "
+        "echo T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); "
+        f"echo SR=$({servicos} | grep -o '{pacote}/[.]bg[.][A-Za-z]*' | sort -u | tr '\\n' ','); "
+        "echo L1=$(getprop persist.sys.locale); "
+        "echo L2=$(settings get system system_locales 2>/dev/null | cut -d, -f1); "
+        "echo L3=$(getprop ro.product.locale); "
+        "echo BASE=$(date '+%m-%d %H:%M:%S.%N' | cut -c1-18)"
+    )
+
+
+def comando_da_janela_do_start(pacote: str, base: str) -> str:
+    """Quantas vezes o ActivityManager iniciou cada classe do cliente em primeiro plano DEPOIS do `base` (buffer `events`:
+    o `ProxyService` do 09 vivia 1 a 2 s e só ali ficava rastro), mais a hora da entrada mais antiga do buffer (se ela é
+    posterior ao `base`, o buffer girou e a janela não está inteira) e o `tun0`."""
+    if not _PACOTE.match(pacote or ""):
+        raise RedeAplicacaoError(f"pacote do cliente VPN inválido: {pacote!r}")
+    if not _HORA_DO_LOGCAT.match(base or ""):
+        raise RedeAplicacaoError(f"baseline de hora inválido: {base!r}")
+    janela = f"logcat -b events -d -v time -T '{base}' 2>/dev/null | grep am_foreground_service_start"
+    return (
+        "echo T=$(ip -o addr show tun0 2>/dev/null | grep -c inet); "
+        f"echo OLD=$(logcat -b events -d -v time 2>/dev/null | grep -m1 '^[0-9][0-9]-' | cut -c1-18); "
+        f"echo EVP=$({janela} | grep -c '{pacote}/[.]bg[.]ProxyService'); "
+        f"echo EVV=$({janela} | grep -c '{pacote}/[.]bg[.]VPNService'); "
+        f"echo SR=$(dumpsys activity services {pacote} 2>/dev/null | grep -o '{pacote}/[.]bg[.][A-Za-z]*' | sort -u | tr '\\n' ',')"
+    )
+
+
+def comando_de_devolver_o_foco(pacote: str) -> str:
+    """HOME, e só se o foco ainda é do cliente (o que ESTE gesto abriu); outro app em primeiro plano não é tocado."""
+    return (f"F=$(dumpsys window 2>/dev/null | grep -m1 mCurrentFocus); case \"$F\" in *{pacote}*) "
+            "input keyevent KEYCODE_HOME;; esac; true")
+
+
+def _lido(saida: str) -> dict[str, str]:
+    return _ler_pares(saida, ("F", "T", "SR", "L1", "L2", "L3", "BASE", "OLD", "EVP", "EVV"))
+
+
+def _inteiro(v: dict[str, str], chave: str) -> int | None:
+    return int(v[chave]) if v.get(chave, "").isdigit() else None
+
+
+def locale_do_aparelho(lido: dict[str, str]) -> str:
+    """O primeiro locale legível: `persist.sys.locale` (a escolha do usuário), o primeiro de `system_locales`, e por fim
+    `ro.product.locale` (o do produto, o que vale quando nada foi escolhido)."""
+    for chave in ("L1", "L2", "L3"):
+        v = (lido.get(chave) or "").strip()
+        if v and v.lower() != "null":
+            return v
+    return ""
+
+
+def classe_na_janela(base: str, janela: dict[str, str]) -> tuple[str, str]:
+    """(classe, por quê): a classe de serviço que ESTE Start iniciou, provada só pelos eventos DEPOIS do `base`. Sem prova
+    (baseline ou buffer ilegível, buffer que girou desde o baseline, contagem que não veio): `UNKNOWN`, nunca uma conclusão
+    inventada. `ProxyService` só quando houve início dele na janela e nenhum de `VPNService` (a corrida entre os dois
+    é `ambas`)."""
+    if not _HORA_DO_LOGCAT.match(base or ""):
+        return CLASSE_DESCONHECIDA, "o baseline de hora não foi lido"
+    antiga = (janela.get("OLD") or "").strip()
+    if not _HORA_DO_LOGCAT.match(antiga):
+        return CLASSE_DESCONHECIDA, "a hora da entrada mais antiga do buffer events não foi lida"
+    if antiga > base:
+        return CLASSE_DESCONHECIDA, (f"o buffer events girou: a entrada mais antiga ({antiga}) é posterior ao baseline "
+                                     f"({base}); a janela do Start não está inteira")
+    proxy, vpn = _inteiro(janela, "EVP"), _inteiro(janela, "EVV")
+    if proxy is None or vpn is None:
+        return CLASSE_DESCONHECIDA, "a contagem de eventos da janela não veio do aparelho"
+    if proxy and vpn:
+        return CLASSE_AMBAS, f"ProxyService ({proxy}) e VPNService ({vpn}) iniciados na janela do Start"
+    if proxy:
+        return CLASSE_PROXY, f"ProxyService iniciado {proxy} vez(es) na janela do Start, nenhum VPNService"
+    if vpn:
+        return CLASSE_VPN, f"VPNService iniciado {vpn} vez(es) na janela do Start"
+    return CLASSE_NENHUMA, "nenhum serviço do cliente iniciado na janela do Start"
+
+
+async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str, *, espera_s: float = 25.0,
+                                 prazo_do_botao_s: float = 15.0, pausa_s: float = 1.0) -> ReligadoPelaInterface:
+    """Sobe o túnel pelo Start da interface do cliente (`MainActivity.startService0`, que recalcula o serviceMode),
+    sem reiniciar o aparelho: abre a atividade, acha o botão de Start PELA ÁRVORE (rótulo do locale do aparelho, em
+    `ROTULOS_DO_CLIENTE`), toca UMA vez e observa.
+    Sucesso SÓ com `tun0` E VPN CONNECTED. Nunca toca com `tun0` já no ar (um Start/Stop cego desligaria a VPN), nunca
+    com o foco fora do cliente, nunca em nó de outro pacote nem com rótulo fora da tabela; sem fallback para o tile.
+    A classe de serviço é lida SÓ na janela deste Start (baseline de hora → toque → eventos posteriores).
+    Devolve o código do desfecho e o que foi observado."""
+    if not _TILE.match(atividade or ""):
+        raise RedeAplicacaoError(f"atividade do cliente VPN inválida: {atividade!r}")
+    antes = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+    locale = locale_do_aparelho(antes)
+    iniciar, parar_rotulos, idioma = rotulos_para(locale)
+    visto = {"locale": locale or "não lido", "rotulo": "", "metodo": ""}
+    if antes.get("T", "0") not in ("0", ""):
+        return ReligadoPelaInterface(None, JA_HA_TUN, "Start não tocado: já há tun0 (tocar desligaria a VPN)",
+                                     locale=visto["locale"])
+    abriu = False
+    try:
+        try:
+            saida = await ap.shell(f"am start -n {atividade}", timeout=30)
+        except Exception as exc:  # noqa: BLE001 - o desfecho é um código, e quem chama decide (sem cair no tile)
+            return ReligadoPelaInterface(None, ABERTURA_FALHOU, f"o app não abriu: {type(exc).__name__}: {str(exc)[:160]}",
+                                         locale=visto["locale"])
+        abriu = True
+        if re.search(r"\bError\b|Exception|does not exist", saida or ""):
+            return ReligadoPelaInterface(None, ABERTURA_FALHOU, f"o app não abriu: {(saida or '').strip()[:160]}",
+                                         locale=visto["locale"])
+        fim = time.monotonic() + prazo_do_botao_s
+        while True:
+            nos = await ap.arvore()
+            botao, motivo = achar_botao(nos, pacote, iniciar)
+            if botao is not None:
+                break
+            parar, _ = achar_botao(nos, pacote, parar_rotulos)
+            if parar is not None:
+                return ReligadoPelaInterface(None, INTERFACE_MOSTRA_STOP, "a interface do cliente mostra Stop sem tun0: "
+                                             "o cliente se acha iniciado; Start/Stop não é alternado às cegas",
+                                             rotulo=parar.texto, locale=visto["locale"])
+            if time.monotonic() >= fim:
+                vistos = ", ".join(n.texto for n in nos if n.pacote == pacote and n.texto)[:200] or "nada do cliente"
+                return ReligadoPelaInterface(None, START_NAO_PROVADO,
+                                             f"{motivo} (locale {visto['locale']}; na tela: {vistos}); nenhum toque",
+                                             locale=visto["locale"])
+            await asyncio.sleep(pausa_s)
+        visto["rotulo"] = botao.texto
+        visto["metodo"] = (f"árvore: rótulo `action_start` ({botao.texto!r}, recurso {idioma or 'qualquer idioma do SFA'}) "
+                           "+ menor contêiner clicável do pacote")
+        agora = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+        if pacote not in agora.get("F", ""):
+            return ReligadoPelaInterface(None, FOCO_NAO_E_O_CLIENTE, "o foco da tela não é do cliente VPN; nenhum toque "
+                                         f"(foco: {agora.get('F', 'não lido')[:120]})", rotulo=botao.texto,
+                                         metodo=visto["metodo"], locale=visto["locale"])
+        if agora.get("T", "0") not in ("0", ""):
+            return ReligadoPelaInterface(None, JA_HA_TUN, "Start não tocado: o tun0 subiu enquanto a tela abria",
+                                         rotulo=botao.texto, metodo=visto["metodo"], locale=visto["locale"])
+        base = (agora.get("BASE") or "").strip()                   # o baseline da janela: logo antes do toque
+        t_toque = time.monotonic()
+        await ap.tocar(*botao.centro)
+        obs = await observar(ap, pacote, esperar_tun_s=espera_s, intervalo_s=2.0)
+        tun_apos = round(time.monotonic() - t_toque, 1) if obs.tun else None
+        if obs.tun and not obs.vpn_conectada and espera_s > 0:
+            await asyncio.sleep(2.0)                   # o `tun0` aparece um instante antes do CONNECTED no dumpsys
+            obs = await observar(ap, pacote)
+        try:
+            janela = _lido(await ap.shell(comando_da_janela_do_start(pacote, base), timeout=45))
+            classe, porque = classe_na_janela(base, janela)
+        except Exception as exc:  # noqa: BLE001 - sem a leitura, a classe é desconhecida; nunca uma conclusão inventada
+            janela, classe, porque = {}, CLASSE_DESCONHECIDA, f"a janela do Start não foi lida: {type(exc).__name__}"
+        comum = {"classe": classe, "rotulo": botao.texto, "metodo": visto["metodo"], "locale": visto["locale"],
+                 "tun_apos_s": tun_apos}
+        # Guard D ANTES do sucesso: o ProxyService iniciado por ESTE Start (e nenhum VPNService) num plano com TUN não
+        # vale como recuperação, mesmo que um tun0 esteja no ar por outro caminho (o always-on em paralelo).
+        if classe == CLASSE_PROXY:
+            return ReligadoPelaInterface(None, CLASSE_ERRADA_PARA_TUN,
+                                         "o Start da interface iniciou o ProxyService (serviceMode não-VPN) num plano que "
+                                         f"exige TUN: incompatibilidade de classe/modo, recuperação NÃO concluída ({porque})",
+                                         **comum)
+        if obs.tun and obs.vpn_conectada:
+            nota = {CLASSE_VPN: "", CLASSE_AMBAS: f" ({porque})"}.get(classe, f" (classe do serviço: {classe}; {porque})")
+            return ReligadoPelaInterface(obs, RELIGADO, "túnel religado pelo Start da interface do cliente, sem reinício"
+                                         + nota, **comum)
+        if obs.tun:
+            return ReligadoPelaInterface(None, VPN_NAO_CONECTADA, "o tun0 apareceu e a VPN não ficou CONNECTED no dumpsys",
+                                         **comum)
+        return ReligadoPelaInterface(None, TUN_NAO_SUBIU, f"o Start foi tocado e o túnel não subiu em {espera_s:g} s "
+                                     f"(classe do serviço: {classe}; serviços do cliente: {janela.get('SR') or 'nenhum'})",
+                                     **comum)
+    finally:
+        if abriu:
+            try:
+                await ap.shell(comando_de_devolver_o_foco(pacote), timeout=20)
+            except Exception as exc:  # noqa: BLE001 - arrumação: não muda o desfecho
+                logging.getLogger(__name__).info("foco não devolvido ao launcher — %s", exc)
+
+
 async def apagar_relatorios_de_falha(ap: AparelhoDaRede, pacote: str) -> None:
     await ap.shell(f"rm -rf {_crash_reports(pacote)}", timeout=30)
     await ap.shell("sync", timeout=60)
@@ -758,7 +1104,10 @@ def endereco_no_tunel(plano_ou_address: str) -> str:
     return str(ipaddress.ip_interface(plano_ou_address).ip)
 
 
-__all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "Observacao", "Plano", "ProxyDoCliente",
+__all__ = ["AparelhoDaRede", "AparelhoPeloAdb", "Elemento", "NoDaTela", "Observacao", "Plano", "ProxyDoCliente",
+           "ReligadoPelaInterface", "SFA_COMMIT_DE_REFERENCIA", "ROTULOS_DO_CLIENTE", "achar_botao", "classe_na_janela",
+           "idioma_do_recurso", "rotulos_para", "comando_da_janela_do_start", "locale_do_aparelho", "religar_pela_interface", "comando_do_estado_da_interface",
+           "comando_de_devolver_o_foco",
            "RedeAplicacaoError", "ServidorDeUmaVez", "TunelWg", "apagar_relatorios_de_falha", "comando_de_observacao",
            "comando_da_instalacao", "config_do_cliente", "desfazer", "endereco_no_tunel", "endpoint_do_central",
            "identidade_do_cliente", "instalado_em", "ler_observacao", "montar_plano", "observar", "origem_do_aparelho",

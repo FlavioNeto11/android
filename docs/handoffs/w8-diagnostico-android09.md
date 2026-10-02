@@ -588,3 +588,159 @@ o always-on não subiu o túnel sozinho enquanto o boot 2 subiu: isso segue sem 
 - **C.** Não usar o tile como início primário depois de mudança de perfil; reservá-lo a "religar" quando o modo já foi recalculado.
 - **D.** Antes de declarar a sessão pronta, conferir a classe esperada (`VPNService` em primeiro plano / `ServiceRecord`) e não só o `tun0`.
 Todas dependem de decisão do dono; nenhuma foi implementada.
+
+## 19. A correção de produto: religar pelo Start da interface (01/10/2026, branch `fix/w8-sfa-service-mode`, `simulated`)
+
+Decisão do dono (01/10): `F6_TUN_NOT_CREATED_AFTER_TILE` suficientemente provado (§18); correção **B + D**, sem deploy e sem W8
+completo. B = o Start da interface do SFA (que executa `rebuildServiceMode()`) é o mecanismo primário de religar uma VPN gerenciada;
+D = uma rede que exige TUN que iniciou o `ProxyService` NÃO conta como recuperada. O tile deixa de ser o mecanismo de recuperação.
+
+### 19.1. O que mudou (`backend/app/devices/rede_aplicacao.py`, `rede_convergencia.py`, `config.py`)
+
+- **`religar_pela_interface(ap, pacote, atividade)`** (substitui `religar_pelo_tile` na convergência): (1) lê o foco, o `tun0` e o
+  buffer `events` (quantas vezes o ActivityManager iniciou `ProxyService`/`VPNService` em primeiro plano); com `tun0` já no ar
+  **não toca em nada**; (2) `am start -n <pacote>/.compose.MainActivity` (se falha: código `abertura_falhou`, sem tile); (3) espera o
+  botão pela árvore COMPLETA da plataforma (`AparelhoDaRede.arvore()`, com os nós sem texto); (4) relê o foco (deve ser o cliente) e o
+  `tun0` (se subiu entretanto, não toca); (5) **UM** toque no centro do rótulo `Start`; (6) observa até `tun0` E VPN CONNECTED; (7) lê
+  de novo as classes de serviço; (8) devolve o foco (HOME só se o foco ainda é do cliente).
+- **Localizador (`achar_botao`):** exatamente UM nó habilitado do pacote do cliente com o rótulo `action_start` DO LOCALE do aparelho (§20.1; no inglês, `Start`), dentro do **menor contêiner
+  clicável e habilitado do mesmo pacote** que o contém (e não enorme perto dele: ≤ 40× a área do rótulo). Ausente, repetido,
+  desabilitado, sem contêiner, ou só em outro pacote: **falha fechada, nenhum toque**. Sem coordenada fixa. Se a tela mostra `Stop`
+  sem `tun0`: `interface_mostra_stop`, nenhum toque (nada de alternar às cegas).
+- **Guard D:** `wrong_service_class_for_tun` quando, sem `tun0`, (a regra original usava o contador cumulativo; §20.2 a trocou pela JANELA do Start) o `am_foreground_service_start` do `ProxyService`
+  subiu e o do `VPNService` não. O código vai na frente do motivo do reinício (`[interface: …]`, ele SUBSTITUI o `detail` da linha, 200
+  caracteres) e a razão completa na evidência; um evento de log é emitido. A linha fica `configurado` (não saudável). Outros códigos:
+  `ja_ha_tun`, `abertura_falhou`, `start_nao_provado`, `interface_mostra_stop`, `foco_nao_e_o_cliente`, `tun_nao_subiu`,
+  `vpn_nao_conectada`. Sem segredo em nenhum.
+- **Sem fallback para o tile, nunca automático** (nem com o motivo desconhecido): a recuperação que sobra é a de sempre, o reinício
+  (always-on), dentro de `rede.reinicios_max`; o Start é UMA tentativa por passada, sem laço novo. `religar_pelo_tile`,
+  `comando_de_religar` e `rede.cliente_tile` ficam como LEGADO (o `scripts/diag-w8-tile.py` importa o comando; histórico do 05
+  preservado e documentado como válido porque o modo ali já era VPN).
+- **Config:** `rede.cliente_atividade` (padrão `io.nekohasekai.sfa/.compose.MainActivity`; vazio desliga o gesto e volta a valer só o
+  reinício). Os dois pontos de chamada (`_conectar` e o pós-teste de vazamento) passam por `_religar_sem_reinicio`, agora sobre a
+  interface. Importação/provisão não mudaram.
+- **O que NÃO se faz:** escrever o `serviceMode`, ler o armazenamento privado do SFA, root, `run-as`, `WorkingDirectoryProvider`,
+  exportar perfil, tocar chave ou peer.
+
+### 19.2. Suposições do SFA 1.14.2 (commit `fc21909df7a3f0fc9435f3866fb6a4960711aa5f`, `SFA_COMMIT_DE_REFERENCIA` no código)
+
+Tile → `BoxService.start()` → `Settings.serviceClass()` sem `rebuildServiceMode`; `serviceClass`: VPN → `VPNService`, senão
+`ProxyService`; Start da UI → `rebuildServiceMode()` → `hasTunInbound(perfil selecionado)` → modo → classe → `startForegroundService`;
+a importação seleciona sem recalcular. Registradas no comentário do módulo e no docstring de
+`tests/test_rede_religar_interface.py`. Não se depende do ramo `dev`; trocar a versão do cliente exige reconferir.
+
+### 19.3. Testes (`simulated`)
+
+`backend/tests/test_rede_religar_interface.py` (22): os dez casos do dono: (1) stale do 09 (tile → `ProxyService`, sem `tun0`; Start da
+UI → rebuild → `VPNService` → `tun0` → CONNECTED, sem restart); (2) modo já VPN; (3) `tun0` presente: nem abre o app; (4) Start não
+encontrado/ambíguo/sem contêiner/desabilitado: nenhum toque; (5) Start de outro pacote: não toca; (6) Start que inicia o `ProxyService`:
+`wrong_service_class_for_tun`, sem sucesso; (7) `tun0` sem CONNECTED: sem sucesso; (8) abertura que falha (inclusive exceção): sem
+tile; (9) aparelho de worker remoto, mesma semântica, e `AparelhoPeloAdb.arvore` entrega a árvore completa; (10) foco devolvido,
+nenhum comando/estado artificial aberto, nunca mais de um toque. `tests/test_rede_aplicacao.py` e `test_rede_sonda.py`: a convergência
+(boot → Start → `conectado` sem reinício e com always-on/bloqueio intactos; teto e laço de reinício inalterados; guard D; abertura que
+falha; gesto desligado; teste de vazamento → Start → medição na mesma passada). Nenhum aparelho real foi tocado.
+
+### 19.4. Revalidação real futura (NÃO executada; exige autorização do dono)
+
+Desenho: no android-09 (serviceMode hoje provavelmente VPN por causa do teste de §18, então o tile já não reproduz o defeito),
+revalidar o **produto**, não o princípio: com coletor novo, deixar a convergência (checkout com este branch implantado em janela
+controlada) religar um túnel derrubado (`force-stop` do cliente), e conferir `religado pelo Start da interface do cliente`, `VPNService`,
+`tun0`, CONNECTED, `healthy`, foco no launcher, 0 comandos abertos e nenhum reinício. Para provar o caso stale de ponta a ponta seria
+preciso um aparelho com cliente recém-instalado e só import (ou limpar os dados do app no 09, que pede outra autorização). O fechamento do
+W8 de ponta a ponta pode exigir ainda o par do 09, uma janela controlada e eventual reinício do WireGuard.
+
+### 19.5. O que fica aberto
+
+`BOOT_RECOVERY_ROOT_CAUSE = OPEN`: os boots 1/3/4 do W8 (always-on sem túnel; o boot 2 subiu) **não** são explicados pelo `serviceMode`
+(o always-on inicia o `VPNService` direto). W8 continua **OPEN**.
+
+## 20. Hardening antes do merge: locale do botão e janela da classe de serviço (01/10/2026, `simulated`)
+
+Revisão do dono: dois pontos do §19 fechados ANTES de qualquer merge/deploy, seguidos de UMA revalidação real mínima (§20.4).
+
+### 20.1. Locale: o rótulo vem do recurso do SFA, não de uma lista inventada
+
+O botão é `R.string.action_start` do SFA 1.14.2 (commit `fc21909df7a3f0fc9435f3866fb6a4960711aa5f`), com tradução em `values/` (padrão,
+`Start`), `values-fa` (`شروع`), `values-ru-rRU` (`Начать`), `values-zh-rCN` (`启动`) e `values-zh-rTW` (`啟動`); o de parar é
+`R.string.stop` (`Stop`/`توقف`/`Остановить`/`停止`/`停止`). Não há outro idioma traduzido nessa versão. `ROTULOS_DO_CLIENTE` é essa tabela
+(origem: os `strings.xml` do commit de referência), não um palpite. A plataforma NÃO muda o locale do aparelho.
+
+- O locale vem do aparelho, em uma só ida: `persist.sys.locale`, depois o primeiro de `settings get system system_locales`, depois
+  `ro.product.locale`. `idioma_do_recurso` escolhe o recurso como o Android: `ru-*`→ru, `fa-*`→fa, `zh-CN/SG/Hans`→zh-CN,
+  `zh-TW/HK/MO/Hant`→zh-TW, qualquer outro (pt-BR, de-DE…) → o padrão `en`.
+- Locale lido: só os rótulos DESSE idioma entram (o Android mostra um recurso por vez); o de outro idioma não é tocado.
+  Locale ilegível: a união da tabela; o resto do localizador (pacote, contêiner clicável, unicidade, tamanho) segue valendo.
+- Rótulo fora da tabela (ex.: `Iniciar`), nó de outro pacote, ambíguo, desabilitado ou sem contêiner clicável: **nenhum toque**.
+- **Limitação documentada.** Não existe identificação totalmente independente de idioma: o botão do Compose não tem `resource-id` nem
+  `testTag`, só um rótulo de texto dentro de um contêiner clicável sem rótulo. Uma versão do SFA que acrescente ou mude traduções precisa de
+  entrada nova na tabela (`SFA_COMMIT_DE_REFERENCIA` marca o que foi lido); até lá o gesto falha fechado e a convergência segue para o
+  reinício. Nada de coordenada fixa.
+
+### 20.2. Classe de serviço: só a janela DESTE Start
+
+Antes, o contador cumulativo do buffer `events` podia ver o `ProxyService` de um tile de ontem. Agora: o baseline é a hora do
+APARELHO (`date`, no formato do `logcat -v time`) tirada na mesma ida que lê foco/`tun0`/locale; depois do toque, só os
+`am_foreground_service_start` do cliente posteriores ao baseline contam (`logcat -b events -d -v time -T '<base>'`). Se a entrada mais
+antiga do buffer é posterior ao baseline (o buffer girou), se algo não foi lido ou o comando falha: `SERVICE_CLASS = UNKNOWN`, sem
+inventar. Regras: `ProxyService` provado na janela sem `VPNService` → `wrong_service_class_for_tun`; os dois na janela (corrida) →
+`ambas`, não é guard; `UNKNOWN` com `tun0` + VPN CONNECTED continua sendo sucesso e NÃO alega ProxyService; `UNKNOWN` sem túnel →
+`tun_nao_subiu`.
+
+### 20.3. Testes (`simulated`)
+
+`tests/test_rede_religar_interface.py` (75): tabela, resolução de idioma (18 casos), inglês, pt-BR→padrão, fa/ru/zh-CN/zh-TW, rótulo de
+outro idioma, locale ilegível, rótulo desconhecido, elemento de outro pacote, histórico ignorado, buffer rotacionado, ProxyService novo,
+VPNService novo, corrida, classe inobservável e comando da janela que falha. `tests/test_rede_aplicacao.py`: o aparelho falso ganhou
+locale, eventos com hora, relógio, buffer que gira e janela sem leitura.
+
+### 20.4. Revalidação real: UM Start do `religar_pela_interface` do branch no android-09 (`real`, 01/10/2026 21:52Z, PASS)
+
+`scripts/diag-w8-smoke-produto.py` chama a função REAL do branch (commit-base `50592fe`) por um adaptador de adb + árvore do central.
+Coletor `data/diag-w8/20261001T215204Z-smoke09/` (fora do Git; `logcat -b all`). Gate (todas as pré-condições por leitura) OK: QA, online,
+sem tarefa/comando/operador/`device_network`/peer, `always_on=null`, `lockdown=0`, sem `tun0`, VPN desconectada, conectividade healthy.
+(A primeira chamada do script parou no gate por `banco_ro_responde`: rodado de um worktree o `data/` não existe; nada foi escrito no aparelho
+e a tentativa não foi consumida. O script agora sobe os ancestrais até achar `data/poc.sqlite3`.)
+
+| Campo | Valor |
+|---|---|
+| `DEVICE_LOCALE` | `en-US` |
+| `UI_TARGET_METHOD` | árvore: rótulo `action_start` (recurso `en`) + menor contêiner clicável do pacote |
+| `UI_TARGET_LABEL` | `Start` |
+| `SERVICE_CLASS` | `VPNService` (na janela deste Start) |
+| `TUN_TIME` | 2,7 s depois do toque |
+| `VPN_CONNECTED` | sim (`tun0` + VPN CONNECTED) |
+| `RESULT_CODE` | `religado_pela_interface` (chamada de 5,1 s, um toque, sem tile, sem reinício) |
+
+Rollback pela UI (UM toque no `Stop` achado pela mesma árvore, rótulo do locale), sem o rollback extraordinário do tile: `always_on=null`,
+`lockdown=0`, sem `tun0`, VPN desconectada, foco no launcher, sem peer, sem `device_network`, 0 comandos abertos, conectividade healthy.
+Limite do que isto prova: o android-09 já estava com `serviceMode=VPN` desde o Start manual do §18, então esta prova valida a MECÂNICA da
+função (locale, árvore, um toque, janela de classe, sucesso só com `tun0` + CONNECTED), NÃO o caso stale (tile → ProxyService), que o §18
+e os testes simulados cobrem. `PRODUCT_FUNCTION_REAL_SMOKE = PASS`. W8 segue **OPEN** (boots 1/3/4 sem túnel por always-on não explicados).
+
+## 21. Incidente do host: o notebook mudou de IP no reboot e o túnel apontava para o antigo (01/10/2026, `real`; NÃO é do W8)
+
+Separado do W8: o reboot do notebook (worker-lan-01) não conta como evidência contra a correção.
+
+- **Causa:** o notebook recebeu por DHCP `192.168.1.11` (Wi-Fi, MAC `B8-9A-2A-FD-EA-7B`); antes era `192.168.1.19`. A tarefa `farm-tunel-192.168.1.19`
+  continuou tentando `192.168.1.19:22` (`Connection timed out` no `data/logs/tunel-192.168.1.19.log`), então nem os 6 `-L` de ADB nem o `-R 18000:8010`
+  subiam. O agente (`farm-agente`) estava vivo — autostart OK — e repetia `WinError 1225` em `ws://127.0.0.1:18000`.
+- **O ssh.exe:** existe em `C:\Windows\System32\OpenSSH\ssh.exe` e está no PATH do shell do central (`where.exe ssh` o acha); o que o dono viu foi o
+  shell interativo dele, não o host. Nenhum reparo do OpenSSH foi necessário.
+- **Identidade:** as três chaves de host do `192.168.1.11` (RSA, ECDSA, ED25519) têm a MESMA impressão digital das gravadas no `known_hosts`
+  para `192.168.1.19` (ED25519 `wtLix8ag…`, ECDSA `iaU1b9Ra…`, RSA `XUkP3SZ6…`) e o login com a chave `worker_ed25519` passou com
+  `StrictHostKeyChecking=yes`: é o mesmo host. As linhas do `.11` entraram no `known_hosts` (backup antes), sem afrouxar a verificação.
+- **Correção mínima:** `Stop`/`Unregister` da tarefa `farm-tunel-192.168.1.19` e encerramento do laço e do `ssh` ligados SÓ ao `.19`;
+  `scripts/worker-tunnel.ps1 -Instalar -Worker 192.168.1.11 … -AceitarStore` registrou `farm-tunel-192.168.1.11` (mesmo usuário, chave, mapa de 6 portas,
+  `-MapaArquivo` absoluto, `-R 18000:8010`). Dívida registrada: o único `pwsh` do central é o da Store (`WindowsApps\…7.6.6.0…`), que some numa atualização
+  da Store; instalar o MSI (`winget install --id Microsoft.PowerShell`) e reinstalar a tarefa. Sem token novo, sem reinscrição, outro worker intocado.
+- **Prova:** 6 listeners `15555…15565` no central (um `ssh` com os 6 `-L` e o `-R`), `127.0.0.1:18000` em LISTEN no worker, o agente conectou
+  (`conectado; batendo a cada 10 s`), `worker-lan-01 connected=true transport=up`. O central abriu sozinho o `start` do android-09 (estado desejado
+  `online`): `online`/`healthy` em ~75 s. Os outros 5 aparelhos continuam `stopped` (estado desejado deles).
+- **Aberto 1 — relógio:** o worker ficou `degraded` ("relógio desalinhado: +8,1 s"; o agente mede uma vez por conexão). Não foi corrigido: mexer no
+  relógio exige autorização do dono (`hora-certa.ps1` no notebook).
+- **Aberto 2 — IP dinâmico (risco de repetição ALTO):** o túnel e o `known_hosts` são amarrados ao IP. Recomendação, em ordem: (1) **reserva DHCP** no
+  roteador para o MAC acima (o roteador não foi alterado: precisa de autorização do dono); (2) depois, `-Worker` por nome (mDNS/DNS local) com
+  `known_hosts` por alias, para o IP deixar de ser identidade; (3) a longo prazo, túnel iniciado pelo worker, como o `-R` já inverte o canal do agente.
+  Nada disto foi implementado aqui (sem refatoração na recuperação).
+- `WORKER_AUTOSTART_EXPECTED=YES`, `WORKER_AUTOSTART_WORKED=YES` para o agente (a tarefa `AtStartup` subiu); o túnel do central também é `AtStartup`,
+  mas aponta para um IP fixo: é o ponto frágil, não o autostart.
