@@ -172,6 +172,8 @@ async def test_falha_grava_evidencia_com_imagem_tardia(harness: Harness) -> None
     — adquirida depois, com o próprio horário na nota, e nunca de tela sensível."""
     harness.cfg.file.ai.image_policy = "auto"
     harness.cfg.file.ai.rich_tree_min_elements = 3
+    harness.encurtar_verificacao()          # T.2: sem isso, o orçamento paciente de 60 s era pago em tempo real
+    harness.pular_o_tempo()
     fake = harness.fakes["android-01"]
     fake.send_fault = "error_lost"
     run = harness.run(["android-01"])

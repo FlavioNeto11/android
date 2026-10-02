@@ -324,6 +324,36 @@ ai:
   #   escalation: {provider: anthropic, model: claude-sonnet-5}
   #   plan:    {provider: anthropic}
   #   social:  {provider: anthropic, refusal_fallback: false}
+  #
+  # Perfil de IA por execução e canário (item 17.7, docs/ia.md §10c): A/B sem reiniciar o central. Cada função do
+  # perfil vale por cima de `roles`, campo a campo; o que ele não escreve continua o padrão. Uma execução escolhe com
+  # `POST /api/runs {"ai_profile": "luna-ator"}` (ou `scripts/eval_run.py --profile luna-ator`); sem escolha, o
+  # canário sorteia a fatia `fraction` das execuções para `canary.profile`. Perfil inválido recusa a partida.
+  # profiles:
+  #   luna-ator:
+  #     note: candidato a ator barato (bateria 17.10)
+  #     roles:
+  #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
+  #
+  # Item 17.8 — Flex para trabalho OFFLINE (a OpenAI cobra ~metade, mas responde 429 "Resource Unavailable" quando
+  # não há capacidade ociosa e pode levar minutos). A entrada de provedor é um endpoint como outro qualquer, com o
+  # campo no corpo; quem aponta para ela é um papel com prazo longo e `max_retries` (que repete 429 e 5xx, com
+  # `Retry-After` ou 5 s dobrando até 60 s; falta de crédito nunca repete). NÃO aponte decide/verify/plan/escalation
+  # da EXECUÇÃO nem o `social` (escreve comentário e resposta durante a execução): o flex é lento e instável por
+  # desenho. Hoje o uso previsto é o rejulgamento offline — `scripts/eval_rejudge.py --sobrepor <arquivo>` com
+  # este bloco num arquivo à parte (só `providers`/`models`/`prices`/`roles` entram), SEM tocar este config.yaml:
+  #
+  # providers:
+  #   openai-flex:
+  #     kind: openai
+  #     base_url: https://api.openai.com/v1
+  #     api_key_env: OPENAI_API_KEY
+  #     extra_body: {service_tier: flex}
+  # roles:
+  #   verify:  {provider: openai-flex, model: gpt-6-luna, timeout_s: 900, max_retries: 5}   # modelo declarado em ai.models
+  #
+  # `timeout_s` não tem teto de validação e é o prazo TOTAL do papel, esperas das repetições inclusas.
 
 releases:                         # entrega e conferência de versão no parque
   verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Mapping, Sequence
+import random
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from ..db import Row, dumps, loads
@@ -110,6 +111,8 @@ class RunService:
         #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições do planejador e o aviso dos gestos
         #: de uma pessoa (resolver um item, repetir itens). No-op por padrão; nunca mudam o que o gesto faz.
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
+        #: Sorteio do canário de IA (item 17.7), em [0, 1). Injetável: o teste fixa o valor em vez de depender da sorte.
+        self.sorteio: Callable[[], float] = random.random
 
     # ------------------------------------------------------------------ criar + planejar
     @staticmethod
@@ -125,8 +128,26 @@ class RunService:
                            "Contas do perfil), com o seu consentimento, e a automação a digita de lá sem passar pela IA.",
                            409)
 
+    def _perfil_de_ia(self, req: RunCreate) -> tuple[str, str] | None:
+        """Perfil de IA da execução (item 17.7): o pedido manda; sem pedido, o canário sorteia; senão, o padrão.
+
+        O perfil desconhecido é recusado ANTES de criar a execução: aceitar e rodar no padrão faria a execução dizer
+        "rodei no candidato" sem ter rodado, e a comparação A/B mediria o padrão contra ele mesmo."""
+        ai = self.scheduler.cfg.file.ai
+        if req.ai_profile is not None:
+            if req.ai_profile not in ai.profiles:
+                conhecidos = ", ".join(sorted(ai.profiles)) or "nenhum declarado"
+                raise RunError("ai_profile_desconhecido",
+                               f"Perfil de IA '{req.ai_profile}' não está em ai.profiles (perfis: {conhecidos}).", 422)
+            return req.ai_profile, "explicit"
+        canario = ai.canary
+        if canario.profile and canario.fraction > 0 and self.sorteio() < canario.fraction:
+            return canario.profile, "canary"
+        return None
+
     def create(self, req: RunCreate) -> RunSummary:
         self._recusar_credencial(req.command)
+        perfil_de_ia = self._perfil_de_ia(req)
         pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
                   "targets": [t.model_dump() for t in req.targets]}
         if req.distribute is not None:
@@ -148,7 +169,7 @@ class RunService:
                            409, {"targets": [a.as_dict() for a in nao_confirmados], "command_sem_destinos": comando})
         req = req.model_copy(update={"instance_ids": resolucao.instance_ids})
         if resolucao.perguntas:
-            return self._criar_com_perguntas(req, resolucao, comando, pedido)
+            return self._criar_com_perguntas(req, resolucao, comando, pedido, perfil_de_ia)
         perfis = {a.instance_id: a.profile_id for a in resolucao.alvos}
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
         if unknown:
@@ -180,7 +201,8 @@ class RunService:
         # ADR-040: nada de cofre aqui. A credencial é da conta da persona de cada aparelho; o que a execução carrega
         # são NOMES, montados no planejamento, e o consentimento já foi dado na conta.
         row, created = self.repo.create_run(req, simulated=self.provider.simulated,
-                                            targets=self._foto(req, resolucao, comando, pedido))
+                                            targets=self._foto(req, resolucao, comando, pedido),
+                                            ai_profile=perfil_de_ia)
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
@@ -383,11 +405,12 @@ class RunService:
                       "command_sem_destinos": comando, "device_policy": req.device_policy, "pedido": dict(pedido)})
 
     def _criar_com_perguntas(self, req: RunCreate, resolucao: Resolucao, comando: str,
-                             pedido: Mapping[str, object]) -> RunSummary:
+                             pedido: Mapping[str, object], perfil_de_ia: tuple[str, str] | None = None) -> RunSummary:
         """Contradição ou ambiguidade de destino: a execução nasce em `needs_input` com as perguntas estruturadas
         (o mesmo formato das da RESOLVE), sem plano — nem parcial — e sem chamar o planejador."""
         row, created = self.repo.create_run(req, simulated=self.provider.simulated,
-                                            targets=self._foto(req, resolucao, comando, pedido))
+                                            targets=self._foto(req, resolucao, comando, pedido),
+                                            ai_profile=perfil_de_ia)
         if created:
             self._pedir_resposta(row["id"], [p.as_dict() for p in resolucao.perguntas])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
