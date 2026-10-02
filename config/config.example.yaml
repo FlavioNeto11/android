@@ -416,6 +416,7 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
+  # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD

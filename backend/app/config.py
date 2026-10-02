@@ -948,6 +948,9 @@ class AvisosCfg(BaseModel):
     validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
     incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
     retencao_dias: float = Field(30.0, gt=0, le=3650)
+    #: Faixas do `learning.needs_person` (30.21) que avisam fora do painel (28.14). Padrão: só a C (item a item); a B é
+    #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
+    aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
 
 
 class ContextRetrievalLexicalCfg(BaseModel):
