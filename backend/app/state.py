@@ -82,6 +82,7 @@ from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
 from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
+from .modules.pedidos.infrastructure.servico import PedidosApi
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -454,6 +455,9 @@ class AppState:
             # que o canal de fora (28.11) assina no barramento. O `nivel` do aviso é o do evento.
             avisar=lambda aviso: self.bus.emit("pedido.aviso", str(aviso["mensagem"]), level=str(aviso["nivel"]),
                                                data={"aviso": dict(aviso)}))
+        # API de pedidos (28.9): prévia, criação, ações, leitura e os eventos `pedido.*` (as marcas do laço e das ações).
+        self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos)
+        self.pedidos.notificar = self.pedidos_api.publicar
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
         # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),

@@ -40,6 +40,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
 
+## 2026-10-02 — API de pedidos: prévia, criação idempotente, ações, leitura, eventos e snapshot (28.9, branch feat/28-9-rotas)
+
+- Rotas `/api/pedidos` (Adendo v0.45 de `docs/api-contract.md`): `POST /previa` (sem efeito e sem IA), `POST` (criação com selo e idempotência), `GET` (filtros, `total_por_estado`), `GET /{id}` (detalhe), `PATCH /{id}` (compare-and-set por `versao`, `dry_run`, selo), `ativar`, `pausar`, `retomar`, `cancelar`, `ocorrencias`, `execucoes`, `relatorios`, `observacoes` e `GET /avisos`. `executar`, `backfill` e `POST /avisos/ler` ficam fora (ver o adendo).
+- Domínio puro `modules/pedidos/domain/previa.py`: bloqueios (piso de frequência, sobreposição, limites, fuso, recorrência, gatilho não suportado), selo SHA-256, id determinístico (`uuid5` inteiro da chave em base64, 26 caracteres), custo sem número inventado. Serviço em `infrastructure/servico.py`; DTOs e router em `presentation/`.
+- Piso de frequência configurável (`pedidos.piso_observar_s` 900, `pedidos.piso_agir_s` 3600).
+- Eventos `pedido.updated`, `pedido.ocorrencia.updated` e `pedido.aviso`: o repositório anota as mudanças (`marcar`, por thread) e o laço (`notificar`) e as ações as publicam depois do commit.
+- `GET /api/snapshot` ganha `pedidos` (`por_estado`, `avisos_nao_lidos`, `aguardando_pessoa` com as `pendencias` agrupadas); `RunSummary` ganha `pedido_id` e `ocorrencia_id`. `AcoesDePedidos.editar` passa a aceitar autonomia, alvos, fuso, orçamentos e demais campos validados pela API.
+- Prova `simulated`: `tests/test_pedidos_api.py` (14). `real`: `not_run` (o laço segue desligado de fábrica).
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
