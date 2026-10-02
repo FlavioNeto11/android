@@ -393,6 +393,25 @@ class RendererInfo(BaseModel):
     fallback: bool = False
 
 
+class RepairPauseInfo(BaseModel):
+    """A pausa do reparo AUTOMÁTICO deste aparelho (escada de reparo e reinício por saúde do central). Existe para
+    experimento ou manutenção de UM aparelho: sem ela, o central tenta consertar por baixo o aparelho que alguém está
+    mexendo de propósito. Sempre com prazo: expira sozinha."""
+
+    until: str                                # ISO UTC do fim da pausa
+    since: str
+    reason: str
+    by: str
+    remaining_s: int
+
+
+class RepairPauseBody(BaseModel):
+    """O prazo é OBRIGATÓRIO (sem ele a pausa ficaria esquecida ligada) e tem teto de 3 h."""
+
+    ttl_s: int = Field(ge=60, le=10_800)
+    reason: str = Field(min_length=3, max_length=200)
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -421,6 +440,7 @@ class InstanceDTO(BaseModel):
     readiness: ReadinessInfo = ReadinessInfo()
     current: InstanceCurrent | None = None
     attention: str | None = None
+    repair_pause: RepairPauseInfo | None = None   # pausa do reparo automático (nulo = o reparo age normalmente)
     resources: InstanceResources | None = None
     kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
     # Máquina que hospeda este aparelho; nulo = esta. É o que permite navegar servidor → dispositivo → tarefa.

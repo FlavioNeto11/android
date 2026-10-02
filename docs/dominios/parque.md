@@ -274,6 +274,30 @@ Cada degrau emite `instance.remediation` (evento, não efêmero) com `{degrau, v
 faz o relatório de uso e o painel não confundirem reparo automático com comando manual. O adiamento por máquina
 saturada não emite nada além do aviso no cartão.
 
+### Pausa do reparo automático por aparelho (02/10/2026, W8)
+
+Quase-acidente do estágio 1 do W8 (`docs/handoffs/w8-boot-recovery.md` §17.4): a escada de reparo pediu um `restart` do
+android-09 15 s depois do `restart` do experimento. Só não entrou porque o comando do experimento ainda estava aberto
+(`device_busy`). A pausa é o mecanismo mínimo para experimento ou manutenção de UM aparelho:
+
+- **Desligada por padrão.** `PUT /api/instances/{id}/repair-pause` `{ttl_s, reason}` liga; `DELETE` encerra. **`ttl_s` é
+  obrigatório** (60 s a 3 h) e a pausa **expira sozinha** (o monitor limpa e registra `instance.repair_pause`); repetir o
+  `PUT` renova. Fica só em memória: reiniciar o central a apaga, com o efeito de sempre (a escada volta), por isso quem
+  depende dela confere o `repair_pause` do aparelho (`GET /api/snapshot` → `instances[].repair_pause`) e do
+  `GET /api/health` → `features.repair_pause` (`{id: {until, since, reason, by, remaining_s}}`; vazio = nenhuma). É
+  informativo: não vira problema de saúde.
+- **O que segura:** só o reparo AUTOMÁTICO de `restart`/`reset` do aparelho marcado: a escada (`requested_by='system'`,
+  `despacho.remediar`) e o reinício por saúde do convidado (`requested_by='saude'`). A pausa não abre comando (nem
+  rejeitado), então não conta como degrau; o aparelho volta a ser avaliado logo depois do fim da pausa e, se ainda
+  estiver mal, a escada recomeça no 1º degrau.
+- **O que NÃO segura:** comando de pessoa (`panel` e sessão do operador), o `restart` da rede (`rede`: é o produto, o
+  `_reiniciar_ou_desistir` do W8), o rodízio, a reconciliação, `stop`/`hibernate`, e **qualquer outro aparelho**.
+- **Não é a manutenção do worker** (`POST /api/workers/{id}/maintenance`): aquela suspende toda atribuição nova do
+  notebook (inclusive o `restart` do próprio experimento e os aparelhos com conta) e não serve a este caso.
+- Código: `devices/manager.py` (`pausar_reparo`, `retomar_reparo`, `pausa_de_reparo`), `commands/despacho.py`
+  (`REPARO_AUTOMATICO`, o gate em `remediar` e em `pedir_ciclo_de_vida`). Prova `simulated`:
+  `backend/tests/test_pausa_de_reparo.py` (8 testes).
+
 ### Saúde do convidado: pressão e interrupção acumulada (ADR-053)
 
 Cada sonda de saúde que acha o framework vivo (`DeviceManager.conferir_saude` → `_conferir_pressao`) lê load, memória e
