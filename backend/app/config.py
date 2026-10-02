@@ -445,7 +445,7 @@ class AiProfileCfg(BaseModel):
     está escrita aqui, não a soma de tudo o que o perfil esqueceu de repetir."""
 
     roles: dict[str, RoleCfg] = {}
-    note: str = ""                              # para que serve (aparece no painel de IA e no relatório da execução)
+    note: str = ""                              # para que serve: só documentação do YAML (nada o exibe ainda)
 
 
 class AiCanaryCfg(BaseModel):

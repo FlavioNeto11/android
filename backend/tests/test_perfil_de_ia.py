@@ -92,7 +92,7 @@ def test_perfil_sem_visao_recusa_o_roteador_na_partida(tmp_path: Path) -> None:
     """A mesma regra 2 do hub: capacidade declarada vale para a função do perfil, conferida ao construir."""
     cfg = _com_perfil(tmp_path, {"cego": {"roles": {"decide": {"model": "modelo-cego"}}}})
     cfg.file.ai.models["modelo-cego"] = ModelCaps(vision=False)
-    with pytest.raises(Exception, match="modelo-cego"):
+    with pytest.raises(ValueError, match=r"ai\.profiles\.cego\.roles\.decide: o modelo 'modelo-cego'"):
         RoutingProvider(cfg)
 
 

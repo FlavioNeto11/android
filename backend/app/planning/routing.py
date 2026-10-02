@@ -95,7 +95,7 @@ class RoutingProvider:
         self.roles_por_perfil: dict[str, dict[str, ResolvedRole]] = {}
         for nome in cfg.file.ai.profiles:
             roles = cfg.ai_roles(nome)
-            _valida_capacidade(cfg, roles)
+            _valida_capacidade(cfg, roles, f"ai.profiles.{nome}.roles")
             for papel, r in roles.items():
                 self._instance(papel, r)
             self.roles_por_perfil[nome] = roles
@@ -375,7 +375,7 @@ def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = N
         concurrency=r.concurrency, effort=r.effort, extra_body=outro.extra_body if outro else None)
 
 
-def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole]) -> None:
+def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole], onde: str = "ai.roles") -> None:
     """Função que precisa de visão não pode apontar para modelo declarado sem visão (achado #97).
 
     Recusar na PARTIDA é a diferença entre "o backend não sobe e diz qual linha corrigir" e "o aparelho ligou, a
@@ -389,6 +389,6 @@ def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole]) -> None:
         caps = cfg.model_caps(r.model)
         if not caps.vision:
             raise ValueError(
-                f"ai.roles.{papel}: o modelo '{r.model}' está declarado sem visão em ai.models, mas "
+                f"{onde}.{papel}: o modelo '{r.model}' está declarado sem visão em ai.models, mas "
                 f"ai.image_policy={cfg.file.ai.image_policy} manda imagem para essa função. "
                 "Aponte a função para um modelo com visão ou use ai.image_policy: never.")
