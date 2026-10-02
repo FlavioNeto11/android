@@ -10,7 +10,8 @@ fábrica e nada roda sem ele.
   ficam `None`: nada foi medido.
 - **Ponte de thread:** a volta do curador roda numa thread (`asyncio.to_thread`) e o hub é assíncrono; a chamada vai
   ao laço do processo por `run_coroutine_threadsafe`. Sem laço no ar (teste, desligamento), é recusa, nunca bloqueio.
-- `simulado` acompanha o hub: em modo simulado o parecer é gravado com `simulated = 1` e nunca vira aviso.
+- `simulado` é o da RESPOSTA (`ParecerBruto.simulado`), não o do hub: o roteador com papéis mistos diz `simulated = False`
+  mesmo quando o `plan` é simulado. Parecer simulado é gravado com `simulated = 1` e nunca vira aviso.
 """
 from __future__ import annotations
 
@@ -48,6 +49,7 @@ class CuradorDoHub:
         self._timeout_s = timeout_s
         self._laco: asyncio.AbstractEventLoop | None = None
         self._provedor = "hub"
+        self._simulado = bool(getattr(hub, "simulated", False))
 
     def ligar_laco(self, laco: asyncio.AbstractEventLoop) -> None:
         """O laço do processo, que o `AppState` passa ao subir (a volta do curador chama daqui de uma thread)."""
@@ -60,7 +62,8 @@ class CuradorDoHub:
 
     @property
     def simulado(self) -> bool:
-        return bool(getattr(self._hub, "simulated", False))
+        """Se a última revisão veio de provedor simulado (antes da primeira, o que o hub declara)."""
+        return self._simulado
 
     def revisar(self, pedido: PedidoDeRevisao) -> RespostaDeRevisao:
         laco = self._laco
@@ -76,7 +79,8 @@ class CuradorDoHub:
             raise RecusaDoProvedor(f"o hub não respondeu em {self._timeout_s:.0f} s", kind="timeout") from None
         except AIError as e:
             raise RecusaDoProvedor(str(e), kind=e.kind) from e
-        self._provedor = usage.provider or ("simulated" if self.simulado else "hub")
+        self._simulado = parecer.simulado
+        self._provedor = usage.provider or ("simulated" if parecer.simulado else "hub")
         ai_call_id, usd = self._medir(usage, pedido.dossie_hash)
         return RespostaDeRevisao(bruto=dict(parecer.bruto), probabilidade=parecer.probabilidade,
                                  modelo=parecer.modelo or usage.model, usd=usd, ai_call_id=ai_call_id)

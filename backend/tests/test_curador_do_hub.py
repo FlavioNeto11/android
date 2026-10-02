@@ -258,3 +258,20 @@ def test_sem_laco_e_sem_resposta_a_tempo_sao_recusa_do_provedor(db: Database, la
     _ligar(m, HubFalso(demora=2.0), laco, tmp_path, timeout_s=0.2)
     assert m.volta().cortados[ref] is MotivoDoCorte.ERRO_DO_PROVEDOR
     assert m.revisoes() == []
+
+
+def test_roteador_misto_com_plan_simulado_grava_simulado_e_nao_avisa(db: Database, laco: Any,  # noqa: F811
+                                                                    tmp_path: Path) -> None:
+    """Regressão: o roteador diz `simulated = False` quando nem todo papel é simulado; o parecer que o `plan` simulado
+    deu não pode passar por real (iria ao dono como aviso). O `simulado` é o da resposta."""
+    m = Mundo(db)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)       # classe B: só parecer real avisaria
+    r, _ = _hub(tmp_path, db)
+    for chave in list(r._por_chave):                                    # noqa: SLF001
+        r._por_chave[chave] = SimulatedProvider()                       # noqa: SLF001
+    assert r.simulated is False
+    adaptador = _ligar(m, r, laco, tmp_path)
+    v = m.volta()
+    assert v.revisadas == (ref,) and v.avisos == 0
+    [linha] = m.revisoes()
+    assert (linha["simulated"], linha["modelo"]) == (1, MODELO_SIMULADO) and adaptador.simulado

@@ -39,6 +39,9 @@ class ParecerBruto:
     bruto: JsonObject
     modelo: str
     probabilidade: float | None = None      # só um provedor de escolha (`choice`) a mede; o Claude não
+    # Quem RESPONDEU declara: o roteador com papéis mistos (`plan` simulado, `decide` real) tem `simulated = False`, e o
+    # parecer simulado não pode passar por real (ele vira aviso ao dono).
+    simulado: bool = False
 
 
 class ParecerIlegivel(ValueError):
@@ -122,7 +125,7 @@ def parecer_simulado(req: PedidoDeParecer) -> ParecerBruto:
     bruto: JsonObject = {"decisao": "observar" if observar else "manter", "evidencias_citadas": citadas,
                          "faixa": req.classe if req.classe in req.opcoes.get("faixa", [req.classe]) else None,
                          "causa": "evidencia_contraditoria" if observar else "reproduz_bem"}
-    return ParecerBruto(bruto=bruto, modelo=MODELO_SIMULADO)
+    return ParecerBruto(bruto=bruto, modelo=MODELO_SIMULADO, simulado=True)
 
 
 __all__ = ["CURADOR_SYSTEM", "LIMITE_DA_CONCLUSAO", "MODELO_SIMULADO", "VERSAO_DO_TEMPLATE", "ParecerBruto",
