@@ -1,7 +1,8 @@
 """Rotas do livro de aprendizado (ADR-054, fluxo §8): a leitura única e o status com trilha.
 
 - `GET  /api/aprendizado?kind=&state=&app=&origem=`: a união (receita, fluxo, habilidade, memória e os itens do
-  livro), com a contagem por tipo e estado;
+  livro), com a contagem por tipo e estado. `app=` é o PACOTE (chave canônica) ou `nao_resolvido` (o balde do fluxo e
+  da habilidade cujo app não resolve, 30.2); a memória é da persona e não entra em nenhum dos dois;
 - `GET  /api/aprendizado/pendentes`: a fila do D1 ("Para aprovar") e a contagem da barra do topo;
 - `GET  /api/aprendizado/revisar`: receitas e fluxos ATIVOS com efeito externo que nenhuma pessoa decidiu pelo livro
   (o legado anterior ao D1);
@@ -87,7 +88,8 @@ def _entrada(e: EntradaDoLivro) -> JsonObject:
     """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`."""
     motivo = por_que_o_sistema_nao_publica(e)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
-            "native_status": e.native_status, "title": e.title, "app": e.app, "origin": e.origin.value,
+            "native_status": e.native_status, "title": e.title, "app": e.app, "app_ref": e.app_ref,
+            "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
             "created_at": e.created_at, "state_at": e.state_at, "last_used_at": e.last_used_at, "uses": e.uses,
             "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail,
