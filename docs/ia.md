@@ -634,7 +634,7 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
     `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
   - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`). Só
-    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa) ou no
+    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa e sem nome de app, ADR-052) ou no
     vocabulário do catálogo do dono e do id do app (`vocabulario_de`). Qualquer outra palavra, em qualquer caixa, vira `[termo]`;
     palavra com dígito ou `_` também. Por forma: `[link]`, `[email]`, `[usuario]`, `[telefone]`, `[texto]` (entre aspas) e
     `[numero]` (TODO número, até o de 2 dígitos). Recusa (`None`): endereço (rua, avenida, CEP, bairro, apto…), e-mail ofuscado

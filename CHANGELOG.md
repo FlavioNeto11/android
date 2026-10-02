@@ -191,6 +191,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning`; só plano bem-sucedido: cancelado, com
   exceção ou recusado não vira sombra; a leitura da execução vai para a thread) e fiação em `state.py` (o `stop()` espera as sombras
   antes de fechar o banco). `intent_ports.py` e `intent_resolver.py` não mudam.
+- Suíte 5: a lista de permissão fixa não tem mais nome de app (`instagram`, `outlook`, `chrome`…). A catraca do ADR-052
+  (`test_apps_fora_do_nucleo.py`) recusa texto de app no código; o nome do app sai pelo id do app e pelo catálogo
+  (`vocabulario_de`), e sem eles vira `[termo]`. A mudança só restringe: custa utilidade, nunca privacidade.
 - Prova: `simulated` (`backend/tests/test_decisao_fechada_intencao.py`, `DecisorFalso`, com os vazamentos medidos pela revisão como
   testes negativos). `JEV_RUNTIME_SEND_APPROVED` continua `False`; chamada real ao Jev: `not_run`.
 
