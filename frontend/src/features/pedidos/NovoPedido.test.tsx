@@ -7,7 +7,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
-import { makePedido, makeRun, makeSnapshot } from '../../test/fixtures';
+import { makePedido, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { CommandPanel } from '../command/CommandPanel';
 import { gatilhoDoQuando, quandoInicial, rruleDe } from './gatilho';
@@ -223,5 +223,72 @@ describe('integração com o Comando', () => {
     await comando();
     await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'entre com a senha: Abc12345xyz no app');
     expect(byRole('button', /Repetir ou acompanhar/).getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('achados da validação do deploy 2 (prévia e formulário)', () => {
+  const previaCom = (over: Partial<PedidoPrevia>): PedidoPrevia => ({ ...PREVIA, ...over });
+  const secao = () => container.querySelector('section[aria-label="Prévia do pedido"]') as HTMLElement;
+  async function verPrevia() {
+    await click(byRole('button', 'Ver a prévia'));
+    await waitFor(() => expect(secao()).not.toBeNull());
+  }
+
+  it('I2: "Quem faz e onde" mostra o nome da persona (com o @) e o do app, nunca o id interno', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Bruno Ferreira', { username: 'bruno' })]));
+    useAppStore.setState({ apps: [{ id: 'com.x', name: 'Outlook' } as never] });
+    await montarDireto();
+    await verPrevia();
+    await waitFor(() => expect(text(secao())).toContain('android-01 · Bruno Ferreira (@bruno) · Outlook'));
+    expect(text(secao())).not.toContain('persona p1');
+    useAppStore.setState({ apps: [] });
+  });
+
+  it('I3: com Observar a prévia avisa que o pedido não envia nada; com Preparar, que não envia sozinho; com Agir, nada', async () => {
+    await montarDireto();
+    await verPrevia();
+    expect(text(secao())).toContain('Com Observar, este pedido só lê e relata: não vai enviar nada. Para enviar, escolha Agir.');
+    backend.on('POST', /^\/api\/pedidos\/previa$/, () => json(previaCom({ autonomia: { teto: 'preparar', exige_aprovacao: [], recusado: [] } })));
+    await click(byRole('button', 'Ver a prévia de novo'));
+    await waitFor(() => expect(text(secao())).toContain('prepara rascunhos para você aprovar; não envia sozinho'));
+    expect(text(secao())).not.toContain('não vai enviar nada');
+    backend.on('POST', /^\/api\/pedidos\/previa$/, () => json(previaCom({ autonomia: { teto: 'agir', exige_aprovacao: [], recusado: [] } })));
+    await click(byRole('button', 'Ver a prévia de novo'));
+    await waitFor(() => expect(text(secao())).toContain('Autonomia: Agir'));
+    expect(text(secao())).not.toContain('Com Observar');
+    expect(text(secao())).not.toContain('prepara rascunhos');
+  });
+
+  it('I5: o objetivo longo vem DEPOIS dos cartões, com as quebras de linha, recolhido até "Ver o objetivo inteiro"', async () => {
+    const longo = ['Objetivo: enviar o resumo', 'App: Outlook', 'Passos:', '1. abrir', '2. escrever', '3. enviar', 'Concluído quando: enviado'].join('\n');
+    backend.on('POST', /^\/api\/pedidos\/previa$/, () => json(previaCom({ objetivo_sem_destinos: longo })));
+    await montarDireto();
+    await verPrevia();
+    const texto = Array.from(secao().querySelectorAll('p')).find((p) => p.textContent?.includes('Passos:')) as HTMLElement;
+    expect(texto.textContent).toBe(longo);                        // as quebras seguem no texto; o CSS (pre-line) as mostra
+    expect(texto.className).toContain('objetivoRecolhido');
+    const cartaoDeCusto = Array.from(secao().querySelectorAll('h4')).find((h) => h.textContent?.includes('Custo estimado')) as HTMLElement;
+    expect(cartaoDeCusto.compareDocumentPosition(texto) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();   // os cartões vêm antes do texto
+    const ver = byRole('button', 'Ver o objetivo inteiro');
+    expect(ver.getAttribute('aria-expanded')).toBe('false');
+    await click(ver);
+    expect(texto.className).not.toContain('objetivoRecolhido');
+    expect(byRole('button', 'Recolher o objetivo').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('I5: objetivo curto não tem o botão de recolher', async () => {
+    await montarDireto();
+    await verPrevia();
+    expect(Array.from(secao().querySelectorAll('button')).some((b) => /objetivo/.test(b.textContent ?? ''))).toBe(false);
+  });
+
+  it('(b) o seletor de data nativo ganha a leitura em português logo abaixo', async () => {
+    await montarDireto();
+    await click(byRole('button', 'Em um horário'));
+    expect(text(container)).toMatch(/Fica assim: \S+, \d{2}\/\d{2} às \d{2}:\d{2}/);   // o horário de partida já vem preenchido
+    await setValue(byRole('textbox', /^Quando/) as HTMLInputElement, '2026-10-03T08:00');
+    await waitFor(() => expect(text(container)).toContain('Fica assim: sáb, 03/10 às 08:00'));
+    await setValue(byRole('textbox', /Prazo final/) as HTMLInputElement, '2026-10-09T20:30');
+    await waitFor(() => expect(text(container)).toContain('Fica assim: sex, 09/10 às 20:30'));
   });
 });

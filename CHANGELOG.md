@@ -45,6 +45,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-02 — Pedidos: data prevista na lista e sinal do laço desligado (28.12, ajustes de API; branch feat/28-12-sinais-da-lista)
 
+- Achados da validação do deploy 2 na tela Pedidos (só painel, mais o texto do motivo de nova tentativa): erro na primeira carga mostra só o aviso (sem "0 pedidos" nem estado vazio); a prévia mostra persona e app pelo nome, avisa o que Observar/Preparar significam e põe o objetivo (com as quebras) depois dos cartões, recolhido; cabeçalho de cartão sem espremer o texto abaixo de 720 px; leitura em português dos seletores de data; barra de filtros some sem pedidos; botão no link velho; título longo do detalhe quebra; Pendências sem frase repetida; avisos e personas pedidos juntos viram uma leitura só; o motivo "nova tentativa a partir de 02/10 22:17 UTC" (a coluna `terminada_em` segue ISO). Prova `simulated` (vitest e pytest); navegador `not_run`.
 - `PedidoView.proxima_prevista`: sem `proxima_em` (laço desligado ou ainda sem gerar) e com agenda, a lista traz a 1ª data
   CALCULADA pelos gatilhos; a linha mostra "prevista … (pela agenda)" em vez de "próxima data ainda não calculada".
 - `laco: {ligado}` na lista e no detalhe (`pedidos.enabled` desta instalação). Desligado, a tela mostra o aviso
