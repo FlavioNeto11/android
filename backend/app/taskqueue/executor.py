@@ -9,6 +9,7 @@ Regras centrais:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import io
 import logging
 import re
@@ -31,7 +32,8 @@ from ..config import Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
-from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
+from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, Postcondition, StepDTO, StepResult,
+                      StepStatus)
 from ..modules.capabilities.domain.definition import CapabilityRef
 from ..modules.capabilities.domain.strategy import StrategyKind
 from ..modules.capabilities.domain.verification import Observation as Leitura
@@ -730,7 +732,8 @@ class StepExecutor:
                        stop_reason: Callable[[], str | None], resumed_after_manual: bool) -> StepOutcome:
         """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
         mode = self.cfg.file.ai.recipes
-        leitura = mode != "off" and bool(self.repo.saidas_da_etapa(step.id))
+        leitura = mode != "off" and bool(saidas_exigidas(self.repo.saidas_da_etapa(step.id),
+                                                         capability_of(app.package, step.capability)))
         if leitura:
             # Item 24.3: a etapa que entrega um valor às seguintes precisa LER (`read_value`), e ler é decisão sobre a
             # tela da vez — a receita reproduziria os gestos e concluiria sem valor nenhum.
@@ -1052,6 +1055,8 @@ class StepExecutor:
         cartao = guardas_do_cartao(cap.card_guard, step.bindings) if cap else ()
         collected: list[str] | None = None
         empty_collects = 0
+        lista_ate_o_fim = False          # a última leitura vazia chegou ao FIM da lista (fato do executor)
+        vazio_provado: str | None = None     # prova do vazio (item 12.4): a lista abriu sem item nenhum e a tela disse
         inicio = time.monotonic()
         deadline = inicio + step.timeout_s
         call_timeout = float(s.driver_call_timeout_s)
@@ -1077,7 +1082,8 @@ class StepExecutor:
         need = step.postcondition.required_delivery_level
         # Item 24.3 (ADR-058): os valores que ESTA etapa entrega às seguintes (`steps.saidas`). Ficam só na memória
         # (`lidos`) até a etapa ser comprovada: uma tentativa que falha não deixa valor para ninguém usar.
-        saidas_declaradas = repo.saidas_da_etapa(step.id)
+        # Item 12.4: sem nomes escolhidos pelo planejador, a etapa entrega o que a AÇÃO declara (`Capability.saidas`).
+        saidas_declaradas = saidas_exigidas(repo.saidas_da_etapa(step.id), cap)
         lidos: dict[str, tuple[str, str]] = {}
 
         def faltam_saidas() -> list[str]:
@@ -1628,8 +1634,8 @@ class StepExecutor:
                                + " às seguintes — leia na tela com read_value antes de concluir.")
                 errors_in_row += 1
                 if errors_in_row >= 4:
-                    return await fail_or_retry("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes.",
-                                               obs)
+                    return await fail_or_retry("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes: "
+                                               + ", ".join(f"'{n}'" for n in faltam_saidas()) + ".", obs)
                 continue
             if isinstance(args, StepDone) and collecting:
                 aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
@@ -1851,8 +1857,19 @@ class StepExecutor:
                 elif not got:
                     history.append("(executor) nenhum item casou com item_selector dentro da lista; confira o seletor.")
                     empty_collects += 1
+                    lista_ate_o_fim = bool(out.result.get("at_end"))
                     if empty_collects >= 3:
-                        return await fail_or_retry("A coleta não encontrou nenhum item na lista.", obs)
+                        sufixo = ""
+                        if lista_ate_o_fim:
+                            # Lista sem item é falha, a menos que o vazio seja COMPROVADO (item 12.4): o julgamento
+                            # pergunta pelo estado vazio explícito, não pela tela em geral.
+                            vazio_provado, motivo = await self._prova_de_vazio(
+                                rt, step, ctx_for, run_id, oid, deadline, call_timeout, history, attempt_id, app.package)
+                            if vazio_provado is not None:
+                                collected = []
+                                break
+                            sufixo = f" O vazio não foi comprovado: {motivo}"
+                        return await fail_or_retry("A coleta não encontrou nenhum item na lista." + sufixo, obs)
                     continue
                 elif not (out.result.get("at_end") or out.result.get("capped")):
                     return await fail_or_retry("A lista não chegou ao fim dentro do limite de páginas da coleta.", obs)
@@ -1891,13 +1908,17 @@ class StepExecutor:
             if faltam_saidas():
                 return await fail_or_retry("A lista foi lida, mas o valor " + ", ".join(f"'{n}'" for n in faltam_saidas())
                                            + " que esta etapa entrega às seguintes não foi lido (read_value).", last_obs)
-            text = f"{len(collected)} item(ns) lidos até o fim da lista: " + ", ".join(collected)[:400]
+            if vazio_provado is not None:
+                text = "Lista vazia comprovada (nenhum item): " + vazio_provado[:300]
+            else:
+                text = f"{len(collected)} item(ns) lidos até o fim da lista: " + ", ".join(collected)[:400]
             await evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
             repo.transition_step(step.id, StepStatus.verifying, message=f"Etapa '{step.title}': itens lidos pelo executor")
             with repo.db.tx():
                 self._gravar_saidas(step, app, lidos)
                 repo.transition_step(step.id, StepStatus.succeeded, detail=text,
-                                     result=StepResult(verified=True, evidence_text=text, items=collected),
+                                     result=StepResult(verified=True, evidence_text=text, items=collected,
+                                                       vazio_comprovado=vazio_provado is not None),
                                      message=f"Etapa '{step.title}' comprovada: {text}")
             repo.finish_attempt(attempt_id, AttemptStatus.succeeded, observed=text)
             return StepOutcome(Outcome.succeeded, text, items=collected, outputs=_saidas_do_desfecho(lidos))
@@ -2019,6 +2040,30 @@ class StepExecutor:
             return False
         return (self._deterministic(step, obs)[0] and not textos_do_cartao_ausentes(cartao, obs.tree)
                 and self._tela_fora_do_app(step, obs, pacote) is None)
+
+    async def _prova_de_vazio(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
+                              objective_id: str, deadline: float, call_timeout: float, history: list[str],
+                              attempt_id: str, pacote: str | None) -> tuple[str | None, str]:
+        """Item 12.4: a coleta leu a lista até o fim e não achou item. Só é sucesso com o vazio COMPROVADO: o julgamento
+        pergunta se a tela mostra, de forma explícita, que não há itens (estado vazio). Lista com itens à vista, ou
+        tela que só "parece certa", não comprova. Devolve `(evidência, "")` quando comprovado e `(None, motivo)` quando
+        não — erro de IA ou do aparelho aqui também é não comprovado, nunca sucesso."""
+        post = step.postcondition
+        julgada = step.model_copy(update={"postcondition": Postcondition(
+            kind="model_judged", value=f"a lista está vazia: {post.value}",
+            description=("A tela mostra de forma EXPLÍCITA que a lista não tem nenhum item (estado vazio, como "
+                         "\"nenhum resultado\"). Se há qualquer item da lista à vista, ou a tela não diz que está vazia, "
+                         "NÃO está comprovado. Original: " + post.description))})
+        def ctx_vazio() -> StepContext:                # `ctx_for` fecha sobre a etapa original: a pergunta é outra
+            return dataclasses.replace(ctx_for(), postcondition_description=julgada.postcondition.description)
+
+        try:
+            ok, texto, _, _, _ = await self._verify(rt, julgada, ctx_vazio, run_id, objective_id, deadline, call_timeout,
+                                                    patient=False, facts=history[-12:], attempt_id=attempt_id,
+                                                    pacote=pacote)
+        except (AIError, DriverError, DriverTimeout) as exc:
+            return None, f"a verificação não pôde ser feita ({type(exc).__name__})"
+        return (texto, "") if ok else (None, texto or "a tela não mostra o estado vazio")
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
@@ -2415,6 +2460,14 @@ class _RecipeRun:
     def exerceu(self, kind: StrategyKind) -> None:
         if kind.value not in self.exercised:
             self.exercised.append(kind.value)
+
+
+def saidas_exigidas(escolhidas: list[str], cap: Any) -> list[str]:
+    """Item 12.4: os valores que a etapa TEM de entregar para ser comprovada. O planejador escolhe o subconjunto que as
+    etapas seguintes usam (`steps.saidas`); sem escolha, vale tudo o que a ação do catálogo declara
+    (`Capability.saidas`). Antes só a escolha contava: o plano que não citou nenhum valor tinha `saidas=[]`, e a
+    verificação — que prova a TELA — dava a etapa por comprovada sem remetente nem assunto (r-20261002204347-8c3f6e)."""
+    return list(escolhidas) or list(getattr(cap, "saidas", ()) or ())
 
 
 def _saidas_do_desfecho(lidos: dict[str, tuple[str, str]]) -> dict[str, str] | None:

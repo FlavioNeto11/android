@@ -1805,3 +1805,22 @@ depois da medição velha: só uma medição nova (posterior) libera, sem mexer 
 **Aplicabilidade.** Toda prova durável atrelada a um runtime (túnel, sessão, hierarquia, classificação de tela) precisa declarar a que
 geração do runtime pertence e comparar com a de agora; validade por relógio não substitui isso. Atenção ao aparelho remoto: o central só
 vê o boot pelo desfecho do agente, e `_adopt` põe `online` sem passar pelo `_set_state`.
+
+### K-075 — Verificação que comprova a tela não comprova a extração
+
+**Data:** 02/10/2026 · **Área:** execução (`taskqueue/executor.py`), item 12.4
+
+**Sintoma.** r-20261002204347-8c3f6e (Outlook, android-01): a etapa `OPEN_MAIL_INBOX`, cuja ação declara `saidas: [remetente, assunto]`,
+ficou `succeeded` ("1 de 1 com sucesso comprovado") com a caixa de entrada aberta e nenhum remetente nem assunto no resultado.
+
+**Causa.** O executor só exigia leitura do que o PLANEJADOR escolhera em `steps.saidas` (24.3: a ação "pode entregar", o plano
+escolhe). Plano sem nenhuma citação `{{saida:…}}` → `saidas=[]` → `step_done` aceito → o verificador julgou a pós-condição ("inbox
+aberta"), que é sobre a TELA. Nenhuma guarda dizia que a ação existia para entregar valor.
+
+**O que funcionou.** Uma fonte só para "o que esta etapa tem de entregar" (`saidas_exigidas`: escolha do plano, ou o que a ação
+declara) usada nos dois pontos que decidem (receita desligada e laço do ator). Para a lista, vazio só com prova explícita do vazio
+(pergunta própria ao julgamento) e marca no resultado.
+
+**Aplicabilidade.** Quando uma etapa existe para extrair algo, a pós-condição de tela é necessária e insuficiente: o critério de
+sucesso tem de conferir o ARTEFATO (valor, itens). Ao declarar um contrato novo no catálogo, pergunte quem o cobra quando o
+consumidor (a etapa seguinte) não existe.

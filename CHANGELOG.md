@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 12.4: etapa que declara saídas só é comprovada com elas (branch fix/12-4-saidas-obrigatorias)
+
+- `backend/app/taskqueue/executor.py`: `saidas_exigidas` (o que o planejador escolheu em `steps.saidas` ou, sem escolha, o que a
+  ação declara em `Capability.saidas`) passa a valer em `run_step` e `_run_step`, no lugar de só `steps.saidas`. Achado real:
+  r-20261002204347-8c3f6e, Outlook no android-01, `OPEN_MAIL_INBOX` com a caixa aberta, "1 de 1 com sucesso comprovado" e nenhum
+  remetente nem assunto: o plano não escolheu saída, então nada foi exigido e a verificação comprovou a tela. Agora a etapa lê
+  (`read_value`) ou falha com o nome que faltou; com efeito disparado seria `uncertain`. Coleta sem item continua falha, salvo
+  vazio comprovado pela tela (`_prova_de_vazio`, julgamento "a lista está vazia" explícito), marcado em `StepResult.vazio_comprovado`.
+  Mensagem de `step_done` sem leitura passa a citar os nomes. Núcleo tocado: `taskqueue/executor.py` e `models.py` (um campo em
+  `StepResult`); não toca `scheduler.py`, `state.py`, eventos, config, api, `planning/` nem pedidos.
+- Prova `simulated`: `tests/test_saidas_obrigatorias.py` (9 casos: caso real reconstruído, saída faltando, saídas lidas, subconjunto
+  do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
+- Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
