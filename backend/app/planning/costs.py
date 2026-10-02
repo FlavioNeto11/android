@@ -62,8 +62,12 @@ def day_start_iso() -> str:
 
 
 def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = None,
-              since: str | None = None) -> float:
+              since: str | None = None, origem: str | None = None) -> float:
     """Quanto já se gastou, em US$, nesta execução (`run_id`) ou desde um instante (`since`).
+
+    `origem` (item 31.2, migração 073) restringe a quem pediu a chamada (`ai_calls.origem`); combina com `run_id` ou
+    com `since`, e sozinho não define janela nenhuma (devolve 0, como a chamada sem `run_id` nem `since`). Linhas
+    antigas têm `origem` NULL e nunca entram num filtro por origem.
 
     Agrupa por modelo e soma com o preço de cada um — inclusive as linhas do fallback, que ficam no modelo que
     REALMENTE respondeu (`ai_calls.model`), como a API cobra.
@@ -77,6 +81,9 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
     # Modo simulado não custa nada, e um modelo chamado "simulado" não está em `ai.prices` — sem esta cláusula
     # ele seria contado pelo preço MAIS CARO da tabela, e uma bateria de desenvolvimento apareceria como dólares.
     where += " AND COALESCE(provider,'') <> 'simulated'"
+    if origem is not None:
+        where += " AND origem=?"
+        params = (*params, origem)
     # `usd` (migração 048) é o custo DECLARADO de uma chamada cobrada por unidade — imagem — e vale no lugar dos
     # tokens daquela linha; onde é nulo, a conta continua sendo tokens × preço do modelo.
     linhas = db.query(
@@ -88,5 +95,5 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
     return round(sum(row_usd(prices, linha) + float(linha["usd_declarado"] or 0) for linha in linhas), 6)
 
 
-def spent_today_usd(db: Any, prices: dict[str, list[float]]) -> float:
-    return spent_usd(db, prices, since=day_start_iso())
+def spent_today_usd(db: Any, prices: dict[str, list[float]], *, origem: str | None = None) -> float:
+    return spent_usd(db, prices, since=day_start_iso(), origem=origem)

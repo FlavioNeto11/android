@@ -26,10 +26,30 @@ AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, de
                        "declaradas por app em `sensitive_screens` e todas as do aparelho-loja.")
 
 
+#: Quem pediu a chamada de IA (item 31.2; migração 073, `ai_calls.origem`). Vocabulário FECHADO: o gasto por origem
+#: alimenta a fatia do teto do dia (`_budget`) e o relatório do Livro, então uma grafia solta viraria gasto sem dono.
+#: `execucao` = o laço da execução (há `run_id`); as demais nascem do portal ou de uma rotina e não têm `run_id`.
+OrigemDeIA = Literal["execucao", "ensino", "orquestracao", "assistente", "social", "persona", "curador",
+                     "decisao_fechada"]
+ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assistente", "social", "persona",
+                                  "curador", "decisao_fechada")
+
+#: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
+#: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
+#: `_saldo` levanta hoje; o valor fica no vocabulário para a etapa que o unificar, sem mudar o contrato de novo.
+MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido"]
+MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido")
+
+
 class AIError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False, kind: str = "error",
-                 status: int | None = None, model: str = ""):
+                 status: int | None = None, model: str = "", motivo: MotivoDeOrcamento | None = None):
         super().__init__(message)
+        if motivo is not None and kind != "budget":
+            raise ValueError("`motivo` só existe quando kind='budget'")
+        if motivo is not None and motivo not in MOTIVOS_DE_ORCAMENTO:
+            raise ValueError(f"motivo de orçamento desconhecido: {motivo!r}")
+        self.motivo = motivo      # qual régua barrou; só com kind='budget' (ver MOTIVOS_DE_ORCAMENTO)
         self.retryable = retryable
         self.kind = kind          # error | not_configured | refusal | budget | invalid_output | billing | balance
         # Achado #101: o modelo que a chamada REALMENTE tentou (quando o provedor já sabia) e o status HTTP do
@@ -57,6 +77,10 @@ class Usage:
     requested_model: str = ""
     fallback: str | None = None
     provider: str = ""                        # qual endpoint respondeu (anthropic | local | simulated…)
+    # Item 31.2 (migração 073): quem pediu a chamada (`ORIGENS_DE_IA`) e o id do item de origem, quando há um. Quem
+    # preenche é o hub (`AIRouter._call`); `add_usage` grava. `None` = chamada que não passou pelo hub.
+    origem: str | None = None
+    ref: str | None = None
 
 
 @dataclass(slots=True)

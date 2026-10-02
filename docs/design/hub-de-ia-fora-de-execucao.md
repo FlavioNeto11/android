@@ -14,6 +14,15 @@ fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts; o decisor real é o 3
 Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **Jev-retrieval** = o provedor remoto de
 `modules/context_retrieval` (ADR-063).
 
+**Implementação (31.2 e 31.6, 02/10/2026):** a coluna `ai_calls.origem`/`ref` (migração 073), `Usage.origem`, o filtro
+`costs.spent_usd(origem=)`, `AIError.motivo` fechado e as fatias `curador` e `decisao_fechada` em `_budget` estão no
+código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. Faltam o método do curador (30.12), a porta de decisão
+do Jev e o saldo da conta (ADR-051) dentro da mesma ordem.
+
+**PENDÊNCIA registrada (orquestradora, 02/10):** a ordem das réguas ficou a existente (pedido > execução > dia > fatia) e o saldo
+da conta continua em `_saldo` (`kind="balance"`). UNIFICAR o saldo na rubrica (o `motivo="saldo"` e a fatia `α × min(saldo, teto)`) é o
+passo seguinte, a fazer antes do 30.11 gravar `learning_reviews.usd` e antes do 31.10.
+
 ## 1. O que já existe (PROVED no código)
 
 - Métodos do hub fora de execução usam o papel `plan` emprestado e `run_id=None`, como `generalize` (13.2),
