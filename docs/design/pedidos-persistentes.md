@@ -551,6 +551,11 @@ branches antes de criar** (regra de sessões paralelas). `[A]` = toca aparelho o
 Dependências: 28.1 → 28.4; 28.2 → 28.3, 28.4, 28.7, 28.9; 28.4 → 28.5, 28.6, 28.8; 28.7 → 28.10; 28.9 depende de
 28.4 e 28.7; 28.12 depende de 28.4–28.9; 28.10 e 28.11 podem ficar para depois da prova sem bloquear.
 
+O desenho de implementação do 28.4 (onde o laço vive, regras exatas de janela e coalescência, despacho que procura a
+execução pela chave antes de criar, fechamento pela varredura quando o gancho não dispara, e as decisões pendentes)
+está em [pedidos-laco.md](pedidos-laco.md). Ele registra dois desvios deste texto: o `on_run_settled` só acorda o
+laço, e editar a recorrência cria gatilho novo em vez de refazer as ocorrências abertas (a chave não tem versão).
+
 | Item | Aceite | Prova possível |
 |---|---|---|
 | 28.1 | dois `AppState` no mesmo banco (SQLite e PostgreSQL) com relógio injetado: um só líder; o outro assume depois de 120 s; saldo não concilia duas vezes | `simulated`; `real` só com segundo backend no central (not_run até lá) |

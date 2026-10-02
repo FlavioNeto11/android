@@ -12,11 +12,11 @@
  * personas falhava (achado do revisor no 25.8): com o backend já resolvendo tudo numa chamada só, essa classe de
  * bug não existe mais.
  */
-import { Eye, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
+import { Eye, Home, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkDeviceRow, NetworkExpectedEgress, NetworkFirewallState,
+  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkCentralEgress, NetworkDeviceRow, NetworkEgressHome, NetworkExpectedEgress, NetworkFirewallState,
   NetworkMeasurement, NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -61,7 +61,9 @@ const PREVIA: Record<NetworkAssignDevice['outcome'], { rotulo: string; tom: Tone
 
 /** Os IPs de saída medidos de um aparelho: o IPv4 e o IPv6 (um aparelho pode sair só por um deles). */
 function ipsMedidos(a: NetworkDeviceRow): string[] {
-  return [a.network?.egress_ipv4, a.network?.egress_ipv6].filter((ip): ip is string => !!ip);
+  // Sem rede pedida não há `network`: a saída medida é a da sonda de IP do aparelho (29.20), em `egress_home.measured`.
+  const m = a.network ? { ipv4: a.network.egress_ipv4, ipv6: a.network.egress_ipv6 } : a.egress_home?.measured;
+  return [m?.ipv4, m?.ipv6].filter((ip): ip is string => !!ip);
 }
 
 /** IPs medidos que aparecem em mais de um aparelho — ADR-056 §1: "dois aparelhos com o mesmo IP geram aviso". Os
@@ -77,6 +79,7 @@ function ipsDuplicados(aparelhos: NetworkDeviceRow[]): Set<string> {
 export function RedePage() {
   const [perfis, setPerfis] = useState<NetworkProfileListed[] | null>(null);
   const [aparelhos, setAparelhos] = useState<NetworkDeviceRow[] | null>(null);
+  const [central, setCentral] = useState<NetworkCentralEgress | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [temDados, setTemDados] = useState(false);
   const [ocupadoPorId, setOcupadoPorId] = useState<Record<string, 'verify' | 'reapply' | undefined>>({});
@@ -88,6 +91,7 @@ export function RedePage() {
       const [ps, ds] = await Promise.all([api.listNetworkProfiles(), api.listNetworkDevices()]);
       setPerfis(ps.profiles);
       setAparelhos(ds.devices);
+      setCentral(ds.central_egress ?? null);
       setErro(null);
       setTemDados(true);
     } catch (e) {
@@ -173,6 +177,7 @@ export function RedePage() {
         <CardHeader title="Aparelhos" subtitle="Desejado × observado, IP de saída medido e a última verificação de cada aparelho."
                     actions={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void carregar()}>Recarregar</Button>} />
         <CardBody>
+          <ResumoDaCasa aparelhos={aparelhos} central={central} />
           <div className={s.tableWrap}>
             <table className={`${s.table} ${s.devices}`}>
               <thead>
@@ -254,6 +259,7 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
             ) : null}
           </>
         ) : <span className={s.muted}>não medido</span>}
+        {row.egress_home ? <SaiPelaCasa home={row.egress_home} /> : null}
         {row.egress_expected ? <SaidaEsperada esperada={row.egress_expected} confere={row.egress_matches ?? null} /> : null}
         {row.last_measurement ? <ResumoDaMedicao m={row.last_measurement} /> : null}
         {d && d.policy === 'exigida_com_bloqueio' ? <ProvaDeVazamento d={d} /> : null}
@@ -275,6 +281,62 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
         </div>
       </td>
     </tr>
+  );
+}
+
+/** As frases do que acusa em `egress_home`, na ordem de gravidade. Vazia = nada acusa. */
+function acusacoesDaCasa(h: NetworkEgressHome): string[] {
+  return [
+    h.ipv4 ? 'IPv4 igual ao do central' : null,
+    h.ipv6 ? 'IPv6 na mesma rede do central' : null,
+    h.ipv6_outside_profile ? 'IPv6 fora do perfil' : null,
+  ].filter((x): x is string => !!x);
+}
+
+/** "Sai pela casa" (29.20) ao lado do IP medido: o que ACUSA em destaque (com o motivo no `title`), "não sai" só com
+ *  medida dos dois lados, e "sem medida" quando falta uma delas — nunca um "limpo" presumido. */
+function SaiPelaCasa({ home }: { home: NetworkEgressHome }) {
+  if (home.basis === 'presumed') {
+    // Um estado próprio, nunca neutro: sem rede pedida a saída é a da casa até uma medida provar outra.
+    return (
+      <div className={`${s.rowNote} ${s.dupe}`} title={home.reason}>
+        <Home size={12} aria-hidden /> sai pela casa (presumido: sem rede pedida)
+      </div>
+    );
+  }
+  const acusa = acusacoesDaCasa(home);
+  if (acusa.length > 0) {
+    return (
+      <div className={`${s.rowNote} ${s.dupe}`} title={home.reason}>
+        <Home size={12} aria-hidden /> sai pela casa: {acusa.join(' · ')}
+      </div>
+    );
+  }
+  return (
+    <div className={s.rowNote} title={home.reason}>
+      {home.leaves_by_home === false ? 'não sai pela casa' : 'sai pela casa: sem medida'}
+    </div>
+  );
+}
+
+/** A linha de resumo acima da tabela: quantos aparelhos ainda saem pela casa, quantos estão sem medida, e a saída
+ *  medida do central. Sem `egress_home` em nenhuma linha (backend de antes do 29.20), não mostra nada. */
+function ResumoDaCasa({ aparelhos, central }: { aparelhos: NetworkDeviceRow[]; central: NetworkCentralEgress | null }) {
+  const veredictos = aparelhos.map((a) => a.egress_home).filter((h): h is NetworkEgressHome => !!h);
+  if (veredictos.length === 0) return null;
+  const saem = aparelhos.filter((a) => a.egress_home?.leaves_by_home === true);
+  const presumidos = saem.filter((a) => a.egress_home?.basis === 'presumed').length;
+  const semMedida = veredictos.filter((h) => h.leaves_by_home === null).length;
+  const saidaCentral = central ? [central.ipv4, central.ipv6].filter((ip): ip is string => !!ip).join(' e ') : '';
+  return (
+    <Banner tone={saem.length > 0 ? 'danger' : 'info'} icon={Home} compact title="Saída pela casa">
+      <strong>{saem.length === 1 ? '1 aparelho ainda sai' : `${saem.length} aparelhos ainda saem`} pela casa</strong>
+      {saem.length > 0 ? ` (${saem.map((a) => a.instance_id).join(', ')})` : ''}
+      {presumidos > 0 ? ` · ${presumidos} presumido${presumidos === 1 ? '' : 's'} (sem rede pedida)` : ''} · {semMedida} sem medida.{' '}
+      {saidaCentral
+        ? <>Saída medida do central: <code>{saidaCentral}</code>.</>
+        : <span title={central?.reason}>Saída do central ainda não medida{central ? ` (${central.reason})` : ''}.</span>}
+    </Banner>
   );
 }
 
