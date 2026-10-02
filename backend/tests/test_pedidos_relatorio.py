@@ -254,7 +254,8 @@ async def test_execucao_ja_purgada_no_fechamento_ainda_registra_o_resultado(h: H
     db.execute("DELETE FROM runs WHERE id=?", (run["id"],))
     laco.uma_volta()
     [oc] = _ocs(db)
-    assert oc["estado"] == "falhou" and "não existe mais" in oc["motivo"]
+    # 28.5: a execução que sumiu é efeito possível (não se sabe o que ela fez): fecha `incerta`, nunca `falhou`.
+    assert oc["estado"] == "incerta" and "não existe mais" in oc["motivo"]
     [o] = RepositorioDeMemoria(db).todas_as_observacoes("ped1")
     assert (o["situacao"], o["valor"]) == ("ausente", None) and "não existe mais" in o["trecho"]
 

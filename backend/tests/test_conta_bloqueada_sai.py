@@ -314,6 +314,23 @@ async def test_gatilho_na_conta_de_outro_app_retira_so_ela(harness: Harness, cor
     assert s.social_repo.profile_row(pid)["status"] == "active"
 
 
+async def test_costura_o_appstate_liga_o_esquecer_conta_do_aprendizado_na_retirada(harness: Harness) -> None:
+    """Costura real (contrato combinado com o Aprendizado): o AppState registra `esquecer_conta` no gancho, e a retirada
+    tira o @ do Livro na MESMA transação — sem limpeza falsa, pela função de verdade."""
+    from app.modules.learning import esquecer_conta
+    from .test_learning_esquecer_conta import _item
+    s = estado(harness)
+    assert esquecer_conta in s.social.limpezas_ao_retirar
+    pid, ancora, _ = persona_com_duas_contas(s)
+    _item(s.db, "li-costura", content="resposta para @ana.ancora no post", summary="voz de ana.ancora",
+          profile=pid)
+    res = s.social.retirar_conta_bloqueada(pid, ancora, origem="declarado", autor="dono")
+    assert res["retirada"] is True
+    linha = s.db.one("SELECT content, summary FROM learning_items WHERE id='li-costura'")
+    assert "ana.ancora" not in (linha["content"] + linha["summary"]) and MARCADOR in linha["content"]
+    assert res["limpezas"].get("learning_items", 0) >= 1
+
+
 # ============================================================ a persona sem conta continua roteável
 async def test_persona_sem_conta_e_aceita_e_roteada_para_automacao_sem_conta(harness: Harness) -> None:
     s = estado(harness)

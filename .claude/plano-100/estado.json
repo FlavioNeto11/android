@@ -4646,10 +4646,6 @@
   },
   "29.20": {
    "id": "29.20",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/rede_saida_central.py (novo), rede.py, rede_convergencia.py, rede_medicao.py, sonda_rede.py, config; GET /api/network/devices com central_egress e egress_home por aparelho (IPv4 igual, IPv6 no mesmo /64, IPv6 fora do perfil, basis measured|presumed; sem medida é null ou presumido, nunca limpo); painel Rede com o selo e o resumo. Simulado: backend/tests/test_rede_saida_central.py (20 testes: veredito, TTL, falha de medida, caso notebook da LAN e vpn-central-wireguard acusados, presumido nunca nulo nem limpo), backend/tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida e ::test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le, frontend/src/features/rede/RedePage.test.tsx. Prova lida nos commits e na seção §28.1 do relatório; testes não rodados nesta rodada documental.",
-   "blocker": "Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitura de GET /api/network/devices sem tocar aparelho).",
    "arquivos": [
     "backend/app/devices/rede_saida_central.py",
     "backend/app/devices/rede.py",
@@ -4662,12 +4658,16 @@
     "frontend/src/features/rede/RedePage.test.tsx"
    ],
    "testes": "not_run nesta rodada (documental); cobertura simulated registrada pelos commits d02e316e e 3a12502c, cada um com os testes acima.",
-   "grupo": "29-18-fechamento",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/rede_saida_central.py (novo), rede.py, rede_convergencia.py, rede_medicao.py, sonda_rede.py, config; GET /api/network/devices com central_egress e egress_home por aparelho (IPv4 igual, IPv6 no mesmo /64, IPv6 fora do perfil, basis measured|presumed; sem medida é null ou presumido, nunca limpo); painel Rede com o selo e o resumo. Simulado: backend/tests/test_rede_saida_central.py (20 testes: veredito, TTL, falha de medida, caso notebook da LAN e vpn-central-wireguard acusados, presumido nunca nulo nem limpo), backend/tests/test_rede_por_aparelho.py::test_saida_da_casa_acusa_por_aparelho_e_nunca_limpa_sem_medida e ::test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le, frontend/src/features/rede/RedePage.test.tsx. Prova lida nos commits e na seção §28.1 do relatório; testes não rodados nesta rodada documental. REAL 02/10/2026 ~18:50Z no central (deploy c764b44 do PR #58, migracao 064, agente 0.1.0+c764b44): GET /api/network/devices devolveu central_egress medido (IPv4 publico do central + IPv6) e egress_home por aparelho; android-02/03/05/06 medidos saindo pela casa (a VPN deles termina no central), os demais presumidos.",
+   "blocker": "",
+   "grupo": "29-20-rede",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T18:21:36+00:00"
+   "quando": "2026-10-02T20:38:56+00:00"
   },
   "17.12": {
    "id": "17.12",
@@ -4814,8 +4814,8 @@
    "id": "29.21",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071.",
-   "blocker": "Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~30 s e tunel conectado (teto US$ 0,30, autorizado pelo orquestrador). Causa exata do 'ocupado' nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria (zeram no restart do central).",
+   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071. Observacao real 02/10/2026 19:50-19:53Z no central (main a1fa730, migracao 068, ja com o 29.21 implantado): android-05 parado (c-20261002195039-aa9df5) e ligado a frio (c-20261002195048-48cd93) com objetivo de QA Messenger (r-20261002195048-7963c2, ~US$0,097); o tunel subiu sozinho e nenhum reinicio foi pedido, logo o caminho do 29.21 NAO foi exercitado. Achado colateral virou o 29.22 (trafego_verificado da medicao #134 atravessou o boot).",
+   "blocker": "Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reproduziu). Observar a proxima ocorrencia espontanea no parque; causa exata do 'ocupado' de 19:00 nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria.",
    "arquivos": [
     "backend/app/devices/rede_convergencia.py",
     "backend/app/vitrine.py",
@@ -4827,7 +4827,7 @@
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T19:47:17+00:00"
+   "quando": "2026-10-02T20:38:56+00:00"
   },
   "17.8": {
    "id": "17.8",
@@ -4850,6 +4850,265 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T20:02:41+00:00"
+  },
+  "28.5": {
+   "id": "28.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #90, merge 04998b0e na main (02/10/2026, sessao jev). backend/app/modules/pedidos/domain/tentativas.py (puro): repetir so a falha sem efeito possivel (mesma linha falhou->devida, tentativa+1, chave:t<n>, atraso exponencial retentativa_base_s/teto_s), incerta com efeito possivel -> pedido aguardando_pessoa + pedido.aviso, nunca repete; falhas_para_pausar pausa com aviso (ator sistema). Predicado de efeito LARGO (decisao do coordenador 02/10; contagem a revisitar no 28.12, pedidos-laco.md par. 13). Suite inteira na arvore combinada 761f0c30 (main 14ec911c + 28.5 + 29.22): 5476 passed, 9 skipped, 0 failed (-n 8, Idle); depois da main 73945eb2: afetados 494 passed.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/tentativas.py",
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio.py",
+    "backend/app/state.py",
+    "backend/app/config.py",
+    "docs/design/pedidos-laco.md"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_tentativas.py",
+    "backend/tests/test_pedidos_retentativa.py",
+    "backend/tests/test_pedidos_orcamento.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
+  },
+  "28.6": {
+   "id": "28.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #85, merge d75ca783 (02/10/2026, sessao jev), acrescimos no PR #90. Custo da ocorrencia por costs.spent_usd no mesmo UPDATE do fechamento; domain/orcamento.py (estimativa pela mediana, encerra com encerrado_motivo=orcamento); AIRouter._budget barra pelo teto da ocorrencia; infrastructure/saldo.py adia pelo saldo (ADR-051), alem da janela vira perdida; prioridade em dispatchable_objectives. Sem migracao. Suite efd39d3e: 5414 passed / 9 skipped / 0 failed; suite 761f0c30: 5476/9/0. Real (laco ligado, 28.12) e PostgreSQL: not_run.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/orcamento.py",
+    "backend/app/modules/pedidos/infrastructure/saldo.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/repository.py"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_orcamento.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
+  },
+  "28.7": {
+   "id": "28.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #85, merge d75ca783 (02/10/2026, sessao jev); migracao 070_pedidos_memoria implantada no central (health 070, deploy da sessao Android ~20:20Z). domain/memoria.py (versionada, segredo recusado, compactar sem IA), observacao.py, relatorio.py (deterministico, sha256; incerteza/falha/ausencia nunca viram conclusao); o laco grava observacoes na transacao cercada do fechamento; resumo por IA so como ponto de extensao (pedidos.resumo_ia=false). Suite efd39d3e: 5414/9/0. Real com o laco ligado (28.12): not_run.",
+   "blocker": "",
+   "files": [
+    "backend/migrations/070_pedidos_memoria.sql",
+    "backend/app/modules/pedidos/domain/memoria.py",
+    "backend/app/modules/pedidos/domain/observacao.py",
+    "backend/app/modules/pedidos/domain/relatorio.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio_memoria.py",
+    "backend/app/modules/pedidos/infrastructure/relatorios.py"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_memoria.py",
+    "backend/tests/test_pedidos_relatorio.py"
+   ],
+   "grupo": "sessao:jev-28-567",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:37:37+00:00"
+  },
+  "29.22": {
+   "id": "29.22",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/29-22-boot-invalida-verificacao (67fd075f + merges): devices/rede.py inicio_do_boot/boot_depois_da_medicao e motivo 'boot' em verificacao_invalida (marco = instances.emulator_started_at; aparelho de worker usa online_since_mono, renovado em manager.readotar_depois_do_worker); rede_convergencia.py mede ao ligar e na varredura; a porta da rede segura a tarefa ate medicao posterior ao boot (wake do snapshot tambem invalida: uma medicao por acordar). Sem coluna nova. Caso real que motivou: android-05 02/10 19:50Z, medicao #134 (19:20Z) atravessou o boot a frio e a porta liberou r-20261002195048-7963c2 com o aparelho sem DNS. K-073. Simulado: tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo e ::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito; test_hierarquia_sessao_morta (marco do worker). Suite combinada 761f0c30 (main 14ec911c + 28.5 + 29.22): 5476 passed, 9 skipped, 0 failed.",
+   "blocker": "Prova real not_run: parar e ligar a frio um aparelho exigida/exigida_com_bloqueio no central e ver a porta segurar ('subiu depois da medicao') ate a medicao nova; repetir num aparelho do worker (marco do agente) depois do deploy com o agente alinhado.",
+   "arquivos": [
+    "backend/app/devices/rede.py",
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/devices/manager.py",
+    "backend/tests/test_rede_portao.py",
+    "backend/tests/test_hierarquia_sessao_morta.py"
+   ],
+   "testes": "292 direcionados (test_rede_*, test_hierarquia_sessao_morta, test_pausa_de_reparo, test_porta_de_sessao_no_teto) + suite combinada 761f0c30 5476/0",
+   "grupo": "29-22-boot",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:38:56+00:00"
+  },
+  "30.1": {
+   "id": "30.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_apps.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.2": {
+   "id": "30.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_apps.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.5": {
+   "id": "30.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #72 merge 9336088a e PR #79 merge e86b4a33: acoes_da_pessoa e por_que_o_sistema_nao_publica no backend (domain/livro.py), veto e modo na rota; adendo v0.46; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_acoes.py, tests/test_learning_rota_publicacao.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.20": {
+   "id": "30.20",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_d1_fluxos.py, tests/test_d1_receitas.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.22": {
+   "id": "30.22",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoffs/aprendizado/backfill-*.txt",
+   "arquivos": "scripts/aprendizado-backfill-licoes.py, backend/app/modules/learning/infrastructure/backfill_licoes.py",
+   "testes": "",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.9": {
+   "id": "30.9",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy)",
+   "arquivos": "backend/migrations/069_revisoes_do_aprendizado.sql",
+   "testes": "tests/test_migracao_069_revisoes.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.21": {
+   "id": "30.21",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_espera.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.3": {
+   "id": "30.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_conteudo.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.6": {
+   "id": "30.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #87 merge 73945eb2: estado de versão por item (domain/versao.py, device_app_state), adendo v0.51; 444 testes do módulo; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_versao.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.7": {
+   "id": "30.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #89 merge f82185fc: relações derivadas no detalhe (domain/relacoes.py), adendo v0.53; 459 testes do módulo; prova simulated; not_run no central (nada implantado)",
+   "arquivos": "backend/app/modules/learning/",
+   "testes": "tests/test_learning_relacoes.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "30.15": {
+   "id": "30.15",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #82 merge 312808d1: 1ª fatia, aba Aplicativos (Global → App) como visão inicial, detalhe por app, filtro de app (frontend/src/features/aprendizado/AplicativosTab.tsx, apps.ts); falta saúde, falhas no detalhe do app, capability e fila Atenção",
+   "arquivos": "frontend/src/features/aprendizado/",
+   "testes": "",
+   "blocker": "resto depende do 30.4 (PR #88) e do 30.13",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:40:34+00:00"
   }
  },
  "rodadas": [
@@ -5879,6 +6138,49 @@
    ],
    "grupos": [
     "sessao:jev-28-11-real"
+   ]
+  },
+  {
+   "quando": "2026-10-02T20:37:37+00:00",
+   "itens": [
+    "28.5",
+    "28.6",
+    "28.7"
+   ],
+   "grupos": [
+    "sessao:jev-28-567"
+   ]
+  },
+  {
+   "quando": "2026-10-02T20:38:56+00:00",
+   "itens": [
+    "29.21",
+    "29.20",
+    "29.22"
+   ],
+   "grupos": [
+    "29-20-rede",
+    "29-21-rede",
+    "29-22-boot"
+   ]
+  },
+  {
+   "quando": "2026-10-02T20:40:34+00:00",
+   "itens": [
+    "30.1",
+    "30.2",
+    "30.5",
+    "30.20",
+    "30.22",
+    "30.9",
+    "30.21",
+    "30.3",
+    "30.6",
+    "30.7",
+    "30.15"
+   ],
+   "grupos": [
+    "30-aprendizado-vivo"
    ]
   }
  ]
