@@ -33,6 +33,8 @@ export interface ResumoDoApp {
   aprendido: { total: number; contagem: Contagem };
   absorvido: number;
   uso: Contagem;
+  /** O modo EFETIVO de lições e telas neste app (30.20) e a origem; `null` no backend anterior. */
+  modos_do_app: ModosDoApp | null;
 }
 
 export interface ModosDaVisao {
@@ -41,6 +43,20 @@ export interface ModosDaVisao {
   habilidades: boolean | null;
   licoes: string | null;
   telas: string | null;
+  /** As exceções por app do config (`aprendizado.<tipo>.por_app`, §8.10): pacote → modo. Vazio = todos no global. */
+  licoes_por_app: Record<string, string>;
+  telas_por_app: Record<string, string>;
+}
+
+/** Um modo por app: o que vale e de onde vem (`app` = override no config; `global` = segue o modo global). */
+export interface ModoDoApp {
+  modo: string | null;
+  origem: 'app' | 'global';
+}
+
+export interface ModosDoApp {
+  licoes: ModoDoApp;
+  telas: ModoDoApp;
 }
 
 export interface VisaoDeApps {
@@ -119,12 +135,33 @@ export function lerResumo(raw: unknown): ResumoDoApp {
     aprendido: { total: num(ap.total), contagem: lerContagem(ap.contagem) },
     absorvido: num(r.absorvido),
     uso: lerContagem(r.uso),
+    modos_do_app: lerModosDoApp(r.modos_do_app),
   };
+}
+
+function lerModoDoApp(raw: unknown): ModoDoApp {
+  const m = obj(raw);
+  return { modo: str(m.modo), origem: m.origem === 'app' ? 'app' : 'global' };
+}
+
+function lerModosDoApp(raw: unknown): ModosDoApp | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const m = obj(raw);
+  return { licoes: lerModoDoApp(m.licoes), telas: lerModoDoApp(m.telas) };
+}
+
+function lerPorApp(raw: unknown): Record<string, string> {
+  const saida: Record<string, string> = {};
+  for (const [pacote, modo] of Object.entries(obj(raw))) if (typeof modo === 'string') saida[pacote] = modo;
+  return saida;
 }
 
 export function lerModos(raw: unknown): ModosDaVisao {
   const m = obj(raw);
-  return { receitas: str(m.receitas), fluxos: bool(m.fluxos), habilidades: bool(m.habilidades), licoes: str(m.licoes), telas: str(m.telas) };
+  return {
+    receitas: str(m.receitas), fluxos: bool(m.fluxos), habilidades: bool(m.habilidades), licoes: str(m.licoes), telas: str(m.telas),
+    licoes_por_app: lerPorApp(m.licoes_por_app), telas_por_app: lerPorApp(m.telas_por_app),
+  };
 }
 
 export function lerVisaoDeApps(raw: unknown): VisaoDeApps {
@@ -252,6 +289,63 @@ export function modosEmTexto(m: ModosDaVisao): { tipo: string; modo: string }[] 
     { tipo: 'Lições', modo: rotuloDoModo(m.licoes) },
     { tipo: 'Telas aprendidas', modo: rotuloDoModo(m.telas) },
   ];
+}
+
+/** Os dois tipos que têm modo por app (§8.10): a chave do config e o nome no painel. */
+export const TIPOS_COM_MODO_POR_APP = [
+  { chave: 'licoes', nome: 'Lições' },
+  { chave: 'telas', nome: 'Telas aprendidas' },
+] as const;
+export type TipoComModoPorApp = (typeof TIPOS_COM_MODO_POR_APP)[number]['chave'];
+
+/** O que cada modo FAZ, em uma frase, por tipo (o rótulo sozinho, "só observa", não diz o efeito). */
+const EFEITO_DO_MODO: Record<TipoComModoPorApp, Record<string, string>> = {
+  licoes: {
+    off: 'não coleta nem usa lições neste app',
+    shadow: 'coleta e mede as lições, mas nenhuma vai ao prompt',
+    on: 'as lições publicadas vão ao prompt do ator e do planejador',
+  },
+  telas: {
+    off: 'não observa as telas deste app',
+    observe: 'observa e valida as telas, mas nenhuma é publicada sozinha',
+    on: 'as telas publicadas são entregues à sessão do app',
+  },
+};
+
+export interface ModoDoAppEmTexto {
+  chave: TipoComModoPorApp;
+  tipo: string;
+  modo: string;
+  efeito: string | null;
+  doApp: boolean;
+}
+
+/** Lições e telas de um app em texto: o rótulo do modo, o efeito e se é do app ou do global. */
+export function modosDoAppEmTexto(m: ModosDoApp): ModoDoAppEmTexto[] {
+  return TIPOS_COM_MODO_POR_APP.map(({ chave, nome }) => {
+    const x = m[chave];
+    return { chave, tipo: nome, modo: rotuloDoModo(x.modo), efeito: x.modo ? EFEITO_DO_MODO[chave][x.modo] ?? null : null,
+             doApp: x.origem === 'app' };
+  });
+}
+
+/** O que o app tem de próprio (para o chip do cartão): só os tipos com override. */
+export function modosProprios(m: ModosDoApp | null): ModoDoAppEmTexto[] {
+  return m ? modosDoAppEmTexto(m).filter((x) => x.doApp) : [];
+}
+
+/** As exceções por app da visão global, com o nome do app quando se sabe; ordenadas por app e tipo. */
+export function excecoesPorApp(m: ModosDaVisao, nomes?: ReadonlyMap<string, string>): { pacote: string; app: string; tipo: string; modo: string }[] {
+  const saida = TIPOS_COM_MODO_POR_APP.flatMap(({ chave, nome }) => {
+    const mapa = chave === 'licoes' ? m.licoes_por_app : m.telas_por_app;
+    return Object.entries(mapa).map(([pacote, modo]) => ({ pacote, app: nomes?.get(pacote) ?? pacote, tipo: nome, modo: rotuloDoModo(modo) }));
+  });
+  return saida.sort((a, b) => a.app.localeCompare(b.app, 'pt-BR') || a.tipo.localeCompare(b.tipo, 'pt-BR'));
+}
+
+/** A chave do config que muda o modo deste tipo neste app (o painel não grava o config: diz onde mudar). */
+export function chaveDoConfig(tipo: TipoComModoPorApp, pacote: string): string {
+  return `aprendizado.${tipo}.por_app.${pacote}`;
 }
 
 /** O que há de declarado, em uma frase: "3 arquivos · 12 ações · 8 telas". `null` fora do registro de apps. */

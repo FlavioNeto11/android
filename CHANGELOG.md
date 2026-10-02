@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: interface do modo por app de lições e telas (30.20, branch feat/30-20-modo-por-app-painel)
+
+- O detalhe do app mostra "Lições e telas neste app": o modo que vale, "definido para este app" ou "segue o global", o que
+  o modo faz e, em "Como mudar", a chave `aprendizado.<tipo>.por_app.<pacote>` com o aviso de que é preciso reiniciar o
+  central. O cartão do app mostra só o modo próprio; o Global lista as exceções com link para o app.
+- API (adendo v0.64, provisório): `modos_do_app` em cada app de `/apps` e `/apps/{pacote}`; `licoes_por_app` e
+  `telas_por_app` em `modos`. Só leitura: o painel não grava o config.
+- Prova `simulated`: `tests/test_learning_modo_por_app.py`, `test_learning_apps.py`; `AplicativosTab.test.tsx`.
+  Navegador: preview com cópia do banco do central e overrides só no config do ensaio.
+
 ## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
 
 - **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a

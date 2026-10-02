@@ -382,6 +382,14 @@ rota do livro traz `por_que_nao_publica` com `modo_desligado` e `vetado` (30.5, 
 e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o modo efetivo do pacote
 (`ModosDeUso.do_pacote`). O pacote vem só do config (ADR-052). Prova `simulated`; nada foi ligado no central.
 
+**Interface do modo por app (30.20, só leitura; adendo v0.64).** Cada app de `/apps` e o `app` de `/apps/{pacote}` trazem
+`modos_do_app`: lições e telas com o modo EFETIVO e a origem (`app` quando o pacote está em `por_app`, senão `global`;
+`ModosDeUso.definidos_no_app`). Os `modos` da visão ganham `licoes_por_app` e `telas_por_app`. No painel: o detalhe do
+app mostra "Lições e telas neste app" com o modo, a marca "definido para este app" ou "segue o global" e o que o modo
+faz; "Como mudar" diz a chave do config e que é preciso reiniciar o central (o config é lido uma vez, em `state.py`). O
+cartão mostra só o modo próprio, e o Global lista as exceções. O painel não grava o config: editar pela tela é decisão
+pendente da orquestradora (gravar o `config.yaml` ou levar o override para o banco; as duas mexem em núcleo).
+
 ## Evento `learning.needs_person` (30.21)
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem

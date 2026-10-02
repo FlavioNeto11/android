@@ -7,7 +7,9 @@ vale. A regra é uma só (`domain/modo_por_app.modo_efetivo`) e o pacote vem só
 - a função pura: override, global, sem pacote;
 - LIÇÕES: o consumo (`licoes_para`) entrega só do pacote em `on`, conta sombra no `shadow` e nada no `off`; a coleta e
   a validação seguem o modo do pacote; o D1 não publica no pacote em `shadow` mesmo com o global em `on`;
-- TELAS: a observação, o minerador, a publicação sozinha (D1) e o fornecedor da sessão seguem o modo do pacote.
+- TELAS: a observação, o minerador, a publicação sozinha (D1) e o fornecedor da sessão seguem o modo do pacote;
+- PAINEL (interface do 30.20, só leitura): o modo EFETIVO de cada app e a origem (`app` ou `global`), e as exceções na
+  visão global.
 
 Nível de prova: `simulated` (banco de teste, aparelhos falsos, nenhuma IA).
 """
@@ -58,6 +60,25 @@ def test_modo_efetivo_e_o_override_ou_o_global_e_sem_pacote_e_o_global() -> None
     assert modo_efetivo(Modo.ON, {IG: Modo.OFF}, None) is Modo.ON
     assert modo_efetivo(Modo.ON, {IG: Modo.OFF}, "") is Modo.ON
     assert modo_efetivo(ModoDeTelas.OBSERVE, {CORREIO: ModoDeTelas.ON}, CORREIO) is ModoDeTelas.ON
+
+
+def test_o_painel_ve_o_modo_efetivo_a_origem_e_as_excecoes() -> None:
+    from app.modules.learning.domain.camada import ModosDeUso
+    from app.modules.learning.presentation.apps import _modos, _modos_do_app
+    m = ModosDeUso(receitas="replay", fluxos=True, habilidades=True, licoes=Modo.SHADOW, telas=ModoDeTelas.OBSERVE,
+                   licoes_por_app={IG: Modo.ON}, telas_por_app={CORREIO: ModoDeTelas.ON, IG: ModoDeTelas.OFF})
+    assert m.definidos_no_app(IG) == {"licoes", "telas"} and m.definidos_no_app(CORREIO) == {"telas"}
+    assert m.definidos_no_app(OUTRO) == frozenset() and m.definidos_no_app(None) == frozenset()
+    assert _modos_do_app(m, IG) == {"licoes": {"modo": "on", "origem": "app"}, "telas": {"modo": "off", "origem": "app"}}
+    assert _modos_do_app(m, CORREIO) == {"licoes": {"modo": "shadow", "origem": "global"},
+                                         "telas": {"modo": "on", "origem": "app"}}
+    assert _modos_do_app(m, OUTRO) == {"licoes": {"modo": "shadow", "origem": "global"},
+                                       "telas": {"modo": "observe", "origem": "global"}}
+    j = _modos(m)
+    assert j["licoes"] == "shadow" and j["licoes_por_app"] == {IG: "on"}
+    assert j["telas_por_app"] == dict(sorted({CORREIO: "on", IG: "off"}.items()))
+    # global que a composição não soube ler: o override não o adivinha, mas a origem continua dita
+    assert _modos_do_app(ModosDeUso(licoes_por_app={IG: Modo.ON}), IG)["licoes"] == {"modo": None, "origem": "app"}
 
 
 def test_o_ligar_traduz_o_config_para_os_ajustes() -> None:

@@ -10,8 +10,9 @@ import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, linhaDeUso, modosEmTexto, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
-  temMedidoNaoUsado, type Contagem, type DetalheDoApp, type ResumoDoApp, type VisaoDeApps,
+  EXISTENCIA_META, abrirApp, abrirAprendidoDoApp, chaveDoConfig, excecoesPorApp, linhaDeUso, modosDoAppEmTexto, modosEmTexto,
+  modosProprios, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso, temMedidoNaoUsado, type Contagem,
+  type DetalheDoApp, type ModosDoApp, type ResumoDoApp, type VisaoDeApps,
 } from './apps';
 import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
 import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
@@ -67,6 +68,16 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
         {usoPorTipo(app.uso).length === 0 ? <span className={styles.cartaoUso}>{linhaDeUso(app.uso)}</span>
           : usoPorTipo(app.uso).map((t) => <span key={t.tipo} className={styles.cartaoUso}><strong>{t.tipo}</strong>: {t.texto}</span>)}
       </div>
+      {modosProprios(app.modos_do_app).length > 0 ? (
+        <div className={styles.cartaoLinha} data-modo-proprio>
+          <span className={styles.cartaoRotulo}>Modo próprio deste app</span>
+          <span className={styles.chipsDeModo}>
+            {modosProprios(app.modos_do_app).map((m) => (
+              <Badge key={m.chave} tone="info" size="sm" title={m.efeito ?? undefined}>{m.tipo}: {m.modo}</Badge>
+            ))}
+          </span>
+        </div>
+      ) : null}
       {itens ? (
         <div className={styles.cartaoLinha}>
           <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
@@ -124,6 +135,7 @@ function Global() {
   const livro = useCarga((s) => apiAprendizado.livro({}, s), 'livro-global');
   const todos = livro.dado ? (Array.isArray(livro.dado.itens) ? livro.dado.itens : []) : undefined;
   const nomes = useMemo(() => new Map((visao?.apps ?? []).map((a) => [a.pacote, a.nome] as const)), [visao]);
+  const excecoes = useMemo(() => (visao ? excecoesPorApp(visao.modos, nomes) : []), [visao, nomes]);
   const recarregar = () => { void carregar(); void livro.carregar(); };
   return (
     <section className={styles.secao} aria-label="Aplicativos">
@@ -147,13 +159,33 @@ function Global() {
         )
       ) : (
         <>
-          <Disclosure summary="Como o aprendizado é usado hoje (modos globais)" bare>
+          <Disclosure
+            summary={excecoes.length > 0
+              ? `Como o aprendizado é usado hoje (modos globais e ${excecoes.length} ${excecoes.length === 1 ? 'exceção' : 'exceções'} por app)`
+              : 'Como o aprendizado é usado hoje (modos globais)'}
+            bare
+          >
             {() => (
-              <div className={styles.resumo} role="group" aria-label="Modos globais">
-                {modosEmTexto(visao.modos).map((m) => (
-                  <span key={m.tipo} className={styles.resumoChip}><strong>{m.tipo}</strong><span>{m.modo}</span></span>
-                ))}
-              </div>
+              <>
+                <div className={styles.resumo} role="group" aria-label="Modos globais">
+                  {modosEmTexto(visao.modos).map((m) => (
+                    <span key={m.tipo} className={styles.resumoChip}><strong>{m.tipo}</strong><span>{m.modo}</span></span>
+                  ))}
+                </div>
+                {excecoes.length > 0 ? (
+                  <div className={styles.excecoes} data-excecoes-por-app>
+                    <span className={styles.cartaoRotulo}>Exceções por app (lições e telas)</span>
+                    <ul aria-label="Exceções por app">
+                      {excecoes.map((x) => (
+                        <li key={`${x.pacote}:${x.tipo}`}>
+                          <a className={styles.linkAlvo} href={`#/aprendizado?aba=apps&app=${encodeURIComponent(x.pacote)}`}>{x.app}</a>
+                          {' — '}<strong>{x.tipo}</strong>: {x.modo}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
             )}
           </Disclosure>
           {visao.apps.length === 0 && !visao.nao_resolvido ? (
@@ -272,6 +304,53 @@ function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['apren
   );
 }
 
+/**
+ * Lições e telas neste app (30.20, §8.10): o modo que VALE aqui e se ele é do app (override no config) ou do global.
+ * Só leitura: o modo por app é configuração da instalação, lida ao iniciar o central; o painel diz onde mudar.
+ */
+function ModosNesteApp({ pacote, modos }: { pacote: string; modos: ModosDoApp | null }) {
+  if (!modos) return null;
+  const linhas = modosDoAppEmTexto(modos);
+  return (
+    <div className={styles.cartaoLinha} data-modo-do-app>
+      <span className={styles.cartaoRotulo}>Lições e telas neste app</span>
+      <ul className={styles.modosDoApp} aria-label="Modo de lições e telas neste app">
+        {linhas.map((m) => (
+          <li key={m.chave} className={styles.modoDoApp} data-modo={m.chave} data-origem={m.doApp ? 'app' : 'global'}>
+            <span className={styles.modoDoAppHead}>
+              <strong>{m.tipo}</strong>
+              <span>{m.modo}</span>
+              <Badge tone={m.doApp ? 'info' : 'neutral'} size="sm"
+                title={m.doApp ? 'O config da instalação define um modo só para este app.' : 'Sem modo próprio: vale o modo global.'}>
+                {m.doApp ? 'definido para este app' : 'segue o global'}
+              </Badge>
+            </span>
+            {m.efeito ? <span className={styles.modoEfeito}>{m.efeito}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <Disclosure bare summary="Como mudar">
+        {() => (
+          <div className={styles.comoMudar}>
+            <p>
+              É configuração da instalação: o painel mostra, não grava. Edite <span className={styles.mono}>config/config.yaml</span> e
+              reinicie o central, que lê o config ao iniciar. Sem a chave, o app segue o modo global.
+            </p>
+            <ul>
+              {linhas.map((m) => (
+                <li key={m.chave}>
+                  <span className={styles.mono}>{chaveDoConfig(m.chave, pacote)}</span>
+                  {': '}{m.chave === 'licoes' ? 'off, shadow ou on' : 'off, observe ou on'}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Disclosure>
+    </div>
+  );
+}
+
 function DetalheDeUmApp({ pacote }: { pacote: string }) {
   const { dado: d, erro, carregando, carregar } = useCarga<DetalheDoApp>((s) => apiAprendizado.app(pacote, s), pacote);
   const voltar = () => useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps' } });
@@ -310,6 +389,7 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
               <span className={styles.cartaoRotulo}>Como é usado</span>
               <UsoEmChips uso={d.app.uso} />
             </div>
+            {!balde ? <ModosNesteApp pacote={pacote} modos={d.app.modos_do_app} /> : null}
             <div className={styles.cartaoLinha} data-saude-do-app>
               <span className={styles.cartaoRotulo}>Saúde do aprendido</span>
               {doLivro ? <ChipsDeSaude itens={doLivro} /> : livro.erro
