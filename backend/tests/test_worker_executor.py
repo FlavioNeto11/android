@@ -315,7 +315,7 @@ async def test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila(tmp_path: Pat
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
 
     t1 = asyncio.create_task(ex.run("start", primeiro, {"boot_timeout_s": 5}))
-    await asyncio.sleep(0.05)
+    await _ate(lambda: subidos == [primeiro.avd_name], "o primeiro subir")   # espera o fato, não 50 ms: o 1º start frio passa disso
     assert subidos == [primeiro.avd_name], "o primeiro não chegou a subir"
     t2 = asyncio.create_task(ex.run("start", ex.settings.devices[1], {"boot_timeout_s": 5}))
     await asyncio.sleep(0.05)                       # o segundo está na FILA, e a RAM acabou nesse meio-tempo
