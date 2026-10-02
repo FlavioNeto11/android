@@ -4674,7 +4674,7 @@
    "status": "implemented",
    "proof": "simulated",
    "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed. Merge PR #61 (c82a5210), implantado no central 02/10 ~19:05Z.",
-   "blocker": "Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede exigida_com_bloqueio vpn-central-wireguard acordou sem tun0; a Android investiga), US$ 0,1346, nenhum envio, teto nao exercitado -> not_run. Uma nova tentativa autorizada (teto US$ 0,80) no android-07 (sem conta real, sem rede pedida).",
+   "blocker": "Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede exigida_com_bloqueio vpn-central-wireguard acordou sem tun0; a Android investiga), US$ 0,1346, nenhum envio, teto nao exercitado -> not_run. Uma nova tentativa autorizada (teto US$ 0,80) no android-07 (sem conta real, sem rede pedida). 2a tentativa 02/10 19:57Z r-20261002195703-1b94e3 no android-07: barrada na 1a etapa (Abrir o QA Messenger) por auth_challenge conta_travada 'confirm you're human' (nada tocado), US$ 0,1027 (so o plano); cancelada e 07 hibernado. Total gasto no 17.12 real: US$ 0,2373 (teto 0,80). Segue not_run por bloqueio de ambiente; nova tentativa so com nova autorizacao, depois da captura do 07 pela Android.",
    "files": [
     "backend/app/taskqueue/foreach.py",
     "backend/app/taskqueue/executor.py",
@@ -4684,12 +4684,12 @@
     "config/config.example.yaml"
    ],
    "testes": "backend/tests/test_teto_proporcional_for_each.py -> 8 passed (simulated)",
-   "grupo": "sessao:jev-fase28",
+   "grupo": "sessao:jev-28-11-real",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T19:30:15+00:00"
+   "quando": "2026-10-02T20:02:41+00:00"
   },
   "28.1": {
    "id": "28.1",
@@ -4793,22 +4793,22 @@
   "28.11": {
    "id": "28.11",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila duravel com deduplicacao, so o lider envia (trava avisos, tomada so com avisos.enabled), enabled=false de fabrica, Problem avisos_sem_segredo, conteudo minimo (tipo + link #/pendencias). TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID lidos pelo EnvSettings. Descoberta do chat_id por scripts/avisos-telegram.py descobrir|testar. Procedimento em docs/operacao.md secao 15.",
-   "blocker": "Prova real not_run: depois do deploy de e6e9cd13, descobrir o chat_id, o dono confirma, TELEGRAM_CHAT_ID no .env, testar (UMA mensagem, autorizada pelo dono).",
+   "proof": "real",
+   "evidence": "Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila duravel com deduplicacao, so o lider envia (trava avisos, tomada so com avisos.enabled), enabled=false de fabrica, Problem avisos_sem_segredo, conteudo minimo (tipo + link #/pendencias). TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID lidos pelo EnvSettings. Descoberta do chat_id por scripts/avisos-telegram.py descobrir|testar. Procedimento em docs/operacao.md secao 15. REAL 02/10/2026 ~20:02Z, central WIN-7S2UASNLFOP, commit a1fa730 (deploy com 068): dono criou o bot e gravou TELEGRAM_BOT_TOKEN; `scripts/avisos-telegram.py descobrir` achou 1 chat privado (id do dono), TELEGRAM_CHAT_ID gravado pela orquestradora com autorizacao do dono; avisos.enabled=true desde o reinicio da farm-central ~20:01Z (health ok, problems []); `scripts/avisos-telegram.py testar` -> exit 0, 'Mensagem de teste enviada.'; o dono CONFIRMOU no chat o recebimento.",
+   "blocker": "Fonte pedido.aviso so com o 28.9; o 'Para aprovar' do Aprendizado sem evento no barramento (avisado a frente Aprendizado).",
    "files": [
     "backend/migrations/068_avisos_entregas.sql",
     "backend/app/modules/avisos",
     "scripts/avisos-telegram.py",
     "docs/operacao.md"
    ],
-   "testes": "backend/tests/test_avisos_fila.py, test_avisos_telegram.py, test_avisos_servico.py (simulated)",
-   "grupo": "sessao:jev-fase28",
+   "testes": "real: scripts/avisos-telegram.py testar (02/10 ~20:02Z, a1fa730); simulated: test_avisos_fila.py, test_avisos_telegram.py, test_avisos_servico.py",
+   "grupo": "sessao:jev-28-11-real",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T19:30:15+00:00"
+   "quando": "2026-10-02T20:02:41+00:00"
   },
   "29.21": {
    "id": "29.21",
@@ -4828,6 +4828,28 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T19:47:17+00:00"
+  },
+  "17.8": {
+   "id": "17.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Flex (PR #50: OpenAICompatProvider honra max_retries, Retry-After) e papel de IA `persona` (decisao do dono 02/10; PR #80, merge 1779bf74): sem config persona herda exatamente o social; a geracao de persona usa role=persona; ai.roles.persona pode apontar para openai-flex. Adendo v0.48. Suite -n 8 Idle na arvore combinada fd541b2b: 5289 passed / 0 failed; afetados na main final 95 passed.",
+   "blocker": "Chamada real ao flex not_run (sem bateria paga autorizada para isso).",
+   "files": [
+    "backend/app/config.py",
+    "backend/app/planning/routing.py",
+    "backend/app/planning/anthropic_provider.py",
+    "backend/app/planning/openai_provider.py",
+    "backend/tests/test_papel_persona.py",
+    "docs/ia.md"
+   ],
+   "testes": "backend/tests/test_papel_persona.py (20) + test_openai_provider.py test_flex_* (simulated)",
+   "grupo": "sessao:jev-28-11-real",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T20:02:41+00:00"
   }
  },
  "rodadas": [
@@ -5846,6 +5868,17 @@
    ],
    "grupos": [
     "29-21-rede"
+   ]
+  },
+  {
+   "quando": "2026-10-02T20:02:41+00:00",
+   "itens": [
+    "28.11",
+    "17.12",
+    "17.8"
+   ],
+   "grupos": [
+    "sessao:jev-28-11-real"
    ]
   }
  ]
