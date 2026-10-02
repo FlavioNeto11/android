@@ -47,6 +47,18 @@ def test_perfil_de_ia_vai_no_corpo_da_execucao_e_no_plano() -> None:
     assert "perfil de IA 'cand'" in mod.plano([{"id": "a", "expect": "succeeded"}], spec, ns)
 
 
+def test_console_cp1252_nao_derruba_a_bateria(monkeypatch: pytest.MonkeyPatch) -> None:
+    """02/10: o "≈" do aviso de provedor real derrubava a bateria no console cp1252, antes do primeiro POST."""
+    import io
+    bruto = io.BytesIO()
+    console = io.TextIOWrapper(bruto, encoding="cp1252")
+    monkeypatch.setattr(mod.sys, "stdout", console)
+    mod.saida_segura()
+    print("Referência medida: ≈US$ 0,05–0,45")
+    console.flush()
+    assert b"?US$" in bruto.getvalue()
+
+
 def test_ajuda_diz_o_que_o_yes_libera(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         mod.main(["--help"])
