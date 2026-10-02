@@ -17,6 +17,10 @@ A chave `TYPESAFE_API_KEY` vem só do ambiente/`.env` pelo `EnvSettings`; este s
     backend/.venv/Scripts/python.exe scripts/context-retrieval-public-smoke.py --checkout <poetry> --golden <golden.json> [--run]
 
 Sem `--run` só mostra o plano (perguntas, limites, estado da chave) e não chama nada.
+
+`--cases H01,H13` roda só esse subconjunto das 6 perguntas escolhidas pela regra (nunca outras) e `--max-calls N` baixa o teto
+de chamadas desta execução (nunca acima de 12). Com `--cases` não há a repetição de cache do final. Por caso o resumo grava o
+que o serviço JÁ expõe (chamadas, cache do mapa e dos chunks, arquivos e chunks enviados, motivo da etapa B): nada é inventado.
 """
 from __future__ import annotations
 
@@ -53,6 +57,48 @@ def escolher(golden: dict) -> list[dict]:
     return saida
 
 
+def selecionar(perguntas: list[dict], ids: str | None) -> list[dict]:
+    """`--cases`: só subconjunto das perguntas já escolhidas pela regra, na ordem do golden; id estranho ou repetido é recusado."""
+    if ids is None:
+        return perguntas
+    pedidos = [i.strip() for i in ids.split(',') if i.strip()]
+    validos = {p['id'] for p in perguntas}
+    if not pedidos or len(set(pedidos)) != len(pedidos) or not set(pedidos) <= validos:
+        raise SystemExit(f'--cases só aceita ids distintos entre {sorted(validos)}')
+    return [p for p in perguntas if p['id'] in pedidos]
+
+
+def teto_de_chamadas(valor: int | None) -> int:
+    """`--max-calls` só baixa o teto travado; menos de 1 ou acima de 12 é recusado."""
+    if valor is None:
+        return MAX_CHAMADAS
+    if not 1 <= valor <= MAX_CHAMADAS:
+        raise SystemExit(f'--max-calls deve ficar entre 1 e {MAX_CHAMADAS}')
+    return valor
+
+
+def linha_do_caso(p: dict, pack, http: list[dict]) -> dict:
+    """Uma linha do resumo: o que o pack e o transporte REAIS mostram, sem derivar etapa que o serviço não diz."""
+    arquivos = [f.path for f in pack.files]
+    sem = pack.metadata.get('semantic', {})
+    gasto = pack.budget['spent']
+    return {
+        'id': p['id'], 'group': p['group'], 'origin': pack.origin,
+        'safeguard': pack.metadata.get('safeguard'), 'fallback_used': pack.metadata['fallback_used'],
+        'fallback_reason': pack.metadata['fallback_reason'],
+        'hit_at_3': esperado_em(arquivos, p['expected_files'], 3),
+        'hit_at_5': esperado_em(arquivos, p['expected_files'], 5),
+        'files': len(arquivos), 'regions': len(pack.regions),
+        'input_tokens': gasto['input_tokens'], 'cost_usd': gasto['cost_usd'],
+        'latency_ms': pack.metadata['latency_ms'],
+        'cache_a': sem.get('stage_a_cache'), 'cache_b': sem.get('stage_b_cache'),
+        'http_calls': len(http), 'http_statuses': [c['status'] for c in http],
+        'service_calls': sem.get('calls'),
+        'files_considered': sem.get('files_considered'), 'chunks_sent': sem.get('chunks_sent'),
+        'chunks_dropped_soft': sem.get('chunks_dropped_soft'), 'stage_b_reason': sem.get('stage_b_reason'),
+        'semantic_fallback_reason': sem.get('fallback_reason')}
+
+
 def git(checkout: Path, *args: str) -> str:
     return subprocess.run(['git', *args], cwd=checkout, capture_output=True, text=True, check=True).stdout.strip()
 
@@ -81,10 +127,13 @@ def main() -> int:
     ap.add_argument('--golden', type=Path, required=True)
     ap.add_argument('--run', action='store_true', help='faz as chamadas reais (sem isto, só mostra o plano)')
     ap.add_argument('--out', type=Path, default=None, help='grava o resumo (JSON) aqui')
+    ap.add_argument('--cases', default=None, help='subconjunto das 6 perguntas escolhidas, ex.: H01,H13 (sem repetição de cache)')
+    ap.add_argument('--max-calls', type=int, default=None, help=f'baixa o teto desta execução (máx. {MAX_CHAMADAS})')
     args = ap.parse_args()
 
     golden = json.loads(args.golden.read_text(encoding='utf-8'))
-    perguntas = escolher(golden)
+    perguntas = selecionar(escolher(golden), args.cases)
+    teto = teto_de_chamadas(args.max_calls)
     verificar_checkout(args.checkout)
 
     from app.config import EnvSettings, load_config
@@ -97,7 +146,7 @@ def main() -> int:
     tem_chave = cfg.env.typesafe_api_key is not None            # só o fato; o valor nunca é lido aqui
     plano = {'checkout_sha': SHA, 'questions': [{'id': p['id'], 'group': p['group'], 'category': p['category']}
                                                  for p in perguntas],
-             'max_calls': MAX_CHAMADAS, 'max_retries': 0, 'key_configured': tem_chave}
+             'max_calls': teto, 'max_retries': 0, 'key_configured': tem_chave}
     if not args.run:
         print(json.dumps({**plano, 'REAL_PUBLIC_SMOKE': 'PLAN_ONLY'}, ensure_ascii=False, indent=1))
         return 0
@@ -114,7 +163,7 @@ def main() -> int:
             self._real = httpx.HTTPTransport()
 
         def handle_request(self, request: httpx.Request) -> httpx.Response:
-            if len(chamadas) >= MAX_CHAMADAS:
+            if len(chamadas) >= teto:
                 raise httpx.ConnectError('limite de chamadas do smoke')
             t0 = time.perf_counter()
             resposta = self._real.handle_request(request)
@@ -130,7 +179,7 @@ def main() -> int:
         c.semantic.repository_class = 'public'
         c.semantic.allow_public = True
         c.semantic.max_calls = 2
-        c.semantic.max_calls_per_session = MAX_CHAMADAS
+        c.semantic.max_calls_per_session = teto
         c.semantic.max_cost_usd = 0.05
         c.semantic.max_map_files = 400
         provedor = JevSemanticProvider(model=c.semantic.model, env=ambiente_do_provedor(cfg), transport=Contador())
@@ -139,29 +188,21 @@ def main() -> int:
         custo = 0.0
         with servico.session():
             for p in perguntas:
+                antes_do_caso = len(chamadas)
                 pack = servico.gather(p['question'], scope=('src/poetry/',))
                 assert pack is not None
-                arquivos = [f.path for f in pack.files]
-                gasto = pack.budget['spent']
-                custo += gasto['cost_usd']
-                linhas.append({
-                    'id': p['id'], 'group': p['group'], 'origin': pack.origin,
-                    'safeguard': pack.metadata.get('safeguard'), 'fallback_used': pack.metadata['fallback_used'],
-                    'fallback_reason': pack.metadata['fallback_reason'],
-                    'hit_at_3': esperado_em(arquivos, p['expected_files'], 3),
-                    'hit_at_5': esperado_em(arquivos, p['expected_files'], 5),
-                    'files': len(arquivos), 'regions': len(pack.regions),
-                    'input_tokens': gasto['input_tokens'], 'cost_usd': gasto['cost_usd'],
-                    'latency_ms': pack.metadata['latency_ms'],
-                    'cache_a': pack.metadata.get('semantic', {}).get('stage_a_cache'),
-                    'cache_b': pack.metadata.get('semantic', {}).get('stage_b_cache')})
-            # a mesma pergunta de novo: tem de sair do cache, sem chamada nova
-            antes = len(chamadas)
-            repetida = servico.gather(perguntas[0]['question'], scope=('src/poetry/',))
-            assert repetida is not None
-        resumo = {**plano, 'REAL_PUBLIC_SMOKE': 'EXECUTED', 'network_calls': len(chamadas),
-                  'cache_repeat_new_calls': len(chamadas) - antes,
-                  'cache_repeat_a': repetida.metadata.get('semantic', {}).get('stage_a_cache'),
+                custo += pack.budget['spent']['cost_usd']
+                linhas.append(linha_do_caso(p, pack, chamadas[antes_do_caso:]))
+            repeticao: dict = {}
+            if args.cases is None:
+                # a mesma pergunta de novo: tem de sair do cache, sem chamada nova
+                antes = len(chamadas)
+                repetida = servico.gather(perguntas[0]['question'], scope=('src/poetry/',))
+                assert repetida is not None
+                repeticao = {'cache_repeat_new_calls': len(chamadas) - antes,
+                             'cache_repeat_a': repetida.metadata.get('semantic', {}).get('stage_a_cache'),
+                             'cache_repeat_b': repetida.metadata.get('semantic', {}).get('stage_b_cache')}
+        resumo = {**plano, 'REAL_PUBLIC_SMOKE': 'EXECUTED', 'network_calls': len(chamadas), **repeticao,
                   'statuses': sorted({c['status'] for c in chamadas}),
                   'cost_usd_total': round(custo, 6), 'cases': linhas}
     texto = json.dumps(resumo, ensure_ascii=False, indent=1)

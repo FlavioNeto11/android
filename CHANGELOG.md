@@ -108,6 +108,7 @@ mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, tr
 - **Revisão final do PR #18** (duas revisões independentes, só leitura): a chamada ao provedor passa a contar quando autorizada (falha
   também gasta a cota da sessão); cache do mapa corrompido é miss; `.tmp` único e sem sobra; texto de região com a mesma numeração
   de linha dos retrievers (`\x0c`); `sk-proj-…` é segredo duro. Limites abertos em `docs/dominios/context-retrieval.md`.
+- **Fumaça pública por etapa** (`scripts/context-retrieval-public-smoke.py`): `--cases` (subconjunto das 6 perguntas escolhidas) e `--max-calls` (só baixa o teto de 12); por caso o resumo grava chamadas HTTP e do serviço, cache do mapa e dos chunks, arquivos e chunks enviados e o motivo da etapa B. Fecha a dívida `STAGE_A/B_PER_CASE`. Prova: `simulated`, `scripts/tests/test_context_retrieval_public_smoke.py` (9, sem rede). Sem mudança no backend.
 
 ## 2026-10-01 (noite) — hierarquia lida de sessão UiAutomator2 morta recria a sessão (branch `fix/uia2-sessao-morta`)
 
