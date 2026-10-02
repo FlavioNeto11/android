@@ -323,10 +323,43 @@ A diferença contra a tabela completa abaixo (17,5% e 72,5%) vem de cortar a per
 | 4. Menos candidatos | `max_candidate_files` 8 → 5 e `max_chunks` 24 → 12 | B cai pela metade (~3,8 mil): A + B ~19,5 mil, cabe no teto atual | ~US$ 0,00082 | menos recall potencial na B; é só configuração, sem código |
 
 **Recomendação (de quem escreveu; a decisão é do dono):** primeiro medir se a B vale o gasto, depois ajustar o orçamento.
-1. **Valor da B não está medido.** No smoke, os 6 casos acertaram o arquivo (hit@3 e hit@5 em 6/6) com a B rodando em 1 só, e o H13 acertou com a B bloqueada. A B entrega REGIÕES (faixas de linha), não arquivos, então o ganho dela é custo de leitura a jusante, que o hit@k por arquivo não vê. Falta uma ablação A versus A + B, com métrica de região, antes de pagar para destravá-la.
+1. ~~**Valor da B não está medido.**~~ **Medido no J12** (seção "Ablação A × A+B por região"): 5 de 6 regiões contra 2 de 6 do local, ~88% menos linhas a ler, ~+40% de custo. Texto original: No smoke, os 6 casos acertaram o arquivo (hit@3 e hit@5 em 6/6) com a B rodando em 1 só, e o H13 acertou com a B bloqueada. A B entrega REGIÕES (faixas de linha), não arquivos, então o ganho dela é custo de leitura a jusante, que o hit@k por arquivo não vê. Falta uma ablação A versus A + B, com métrica de região, antes de pagar para destravá-la.
 2. **Se a B for desejada:** a opção 2 (teto por etapa) é a mais honesta, e a 4 é a mais barata de testar, porque é só configuração. A opção 3 só depois de uma medição de qualidade da A.
-3. **Verificar a cobertura da A antes de qualquer coisa:** `files_considered = 195` nos casos H13 e H14 com `max_map_files = 400`. Se o escopo `src/poetry/` tem mais de 195 arquivos, o corte em bytes deixa a A sem ver o resto. Conferir contando os arquivos do escopo no clone público no SHA fixado (não feito aqui: exigiria baixar o repositório de novo).
+3. ~~**Verificar a cobertura da A antes de qualquer coisa:**~~ **Fechado no J12:** 195 entradas de 193 `.py`, todas enviadas, 34 KB de 48 KB, sem corte. Texto original: `files_considered = 195` nos casos H13 e H14 com `max_map_files = 400`. Se o escopo `src/poetry/` tem mais de 195 arquivos, o corte em bytes deixa a A sem ver o resto. Conferir contando os arquivos do escopo no clone público no SHA fixado (não feito aqui: exigiria baixar o repositório de novo).
 4. **Próxima medição paga (precisa de autorização do dono):** rodada pequena no `python-poetry/poetry` (no máximo 6 perguntas, dentro do teto de 12 chamadas por execução e com `--cases`/`--max-calls`) com a opção escolhida, registrando por etapa.
+
+### Ablação A × A+B por região (J12, 02/10/2026, `real`)
+
+**Pergunta:** a etapa B (chunks → regiões) justifica os tokens e o orçamento que pede? Medido com `scripts/context-retrieval-ablation.py` (`--analise` é grátis e sem rede; `--run` é a paga).
+Uma execução por pergunta, com a A e a B no mesmo pedido e o custo separado por etapa pelo próprio provedor (um gravador envolve o provedor e guarda o que cada etapa devolveu e o que a B recebeu).
+
+- **Escopo e limites:** só `python-poetry/poetry` @ `94b6e35b9091991887aa54feeb3771a86d3bd692` (as 6 perguntas do smoke, escolhidas pela regra fixa: H01, H02, H13, H14, H25, H26), 6 × (A + B) = **12 chamadas, todas 200, 0 fallbacks, zero nova tentativa**, custo medido **US$ 0,005573** (A US$ 0,003946 + B US$ 0,001627; o teto de US$ 0,05 por pedido nunca chegou perto). Nenhum código deste repositório saiu; `PRIVATE_CODE_SEND_APPROVED` segue `False`.
+- **Configuração SÓ DESTA EXECUÇÃO** (os padrões do produto não mudaram): `max_candidate_files` 5 (padrão 8), `max_chunks` 16 (padrão 24), `max_input_tokens` 24.000 (padrão). É a opção 4 da proposta acima, com 16 chunks em vez de 12: a análise grátis mostrou que, com 12, a região esperada do H01 (linha 488 de `lazy_wheel.py`) fica fora dos chunks, porque o chunker corta janelas de 40 linhas a partir do INÍCIO de cada arquivo.
+- **Real, 02/10, máquina central, base `origin/main` 7067412 + o script deste PR; resultado completo no JSON da execução (`ablacao-real.json`, local).**
+
+**Cobertura da etapa A (grátis, no checkout fixado):** `src/poetry/` tem 193 arquivos `.py`; o mapa tem **195 entradas** no escopo (as duas a mais não são `.py`), as **195 foram ao provedor** e ocupam 34.055 bytes de 48.000: **nada é cortado**. A dívida "cobertura da A" está **fechada**: `files_considered = 195` é o escopo inteiro, não um corte.
+
+| Caso | A: hit@1 / @3 / @5 | A: linhas a ler (5 arquivos inteiros) | B: região esperada achada (fração das linhas) | B: linhas a ler | tokens A / B | local (BM25) região |
+|---|---|---|---|---|---|---|
+| H01 | sim / sim / sim | 746 | **sim (1,00)** | 200 | 15.652 / 6.873 | sim (0,67) |
+| H02 | sim / sim / sim | 2.212 | **sim (1,00)** | 80 | 15.654 / 6.229 | sim (0,50) |
+| H13 | sim / sim / sim | 1.959 | **sim (0,95)** | 200 | 15.663 / 7.085 | não |
+| H14 | sim / sim / sim | 718 | **sim (1,00)** | 200 | 15.667 / 6.188 | não |
+| H25 | não / sim / sim | 1.353 | **não** (a região esperada nem estava nos chunks enviados) | 200 | 15.657 / 6.178 | não |
+| H26 | sim / sim / sim | 830 | **sim (1,00)** | 80 | 15.657 / 6.178 | não |
+
+- **Arquivo (hit@k):** a B não o altera por construção (ela só devolve regiões dos candidatos da A); a A sozinha deu hit@3 6/6 e hit@1 5/6 neste conjunto.
+- **Região:** com a B, **5 de 6** perguntas trouxeram a região esperada (cobertura de 95% a 100% das linhas esperadas); o local (BM25/léxico, grátis) trouxe 2 de 6, e só em parte (50% e 67%).
+- **Leitura a jusante:** de ~1.300 linhas em média (arquivos inteiros dos candidatos da A) para ~160 com a B, cerca de **88% a menos**.
+- **Custo e orçamento:** A US$ 0,000657–0,000658 e 15,65–15,67 mil tokens; B US$ 0,000259–0,000298 e 6,18–7,09 mil tokens, ou seja ~**+40%** de custo por pergunta sobre a A. Maior total por pedido: **22.748 tokens** de 24.000 (margem de ~5%): a estimativa `len//4` do payload da B (proxy medido antes da chamada: 5,6–6,8 mil) ficou ~5–10% abaixo dos tokens que o provedor contou (6,2–7,1 mil).
+- **A falha (H25) é do chunker, não do Jev:** a A pôs `packages/locker.py` primeiro, os 16 chunks (janelas do início do arquivo, na ordem dos candidatos) se esgotaram nele, e o arquivo esperado, que veio depois, não teve chunk nenhum. Distribuir os chunks entre os candidatos (um por arquivo, em rodízio) ou escolher as janelas pelo léxico é a mudança de código que atacaria isso; **não feita aqui**.
+- **Limites desta medição:** n = 6 perguntas, uma execução, só um repositório; é uma ablação pequena e dirigida, **não** um benchmark. A região esperada do gabarito é uma faixa curta (6 a 8 linhas) e a janela da B tem 40 linhas, então "achou" significa "a janela contém a faixa", não precisão de linha. A estimativa de `max_input_tokens` por etapa continua sem implementação.
+
+**Recomendação de padrão (decisão do dono; nenhuma mudança feita aqui, o PR separado e medido vem depois):**
+1. **A B vale o gasto**: ~US$ 0,0003 por pergunta compra região no lugar de arquivo inteiro e 5/6 de acerto de região contra 2/6 do local.
+2. **Padrão sugerido:** `max_candidate_files` 8 → **5** e `max_chunks` 24 → **16**, sem mexer em `max_input_tokens` (24.000): é a configuração medida e cabe com folga de ~5%. Os padrões de hoje (8 e 24) estouram o teto (a B fica bloqueada por `budget_exceeded`, como no H13 do smoke).
+3. **Antes de adotar**, no PR separado: (a) rodízio de chunks entre candidatos, que ataca o H25, medido de graça no `--analise` sobre todo o golden (30 perguntas, sem rede); (b) margem do teto de tokens (a `len//4` subestima), por exemplo subir o teto para 28.000 ou calibrar a estimativa pela razão medida (~1,3×); (c) só então uma segunda rodada paga curta, se o dono quiser.
+4. Não mudar o ranking de arquivos nem o híbrido: nada aqui os toca.
 
 ### Painel (J8): cartão só de leitura
 
@@ -343,7 +376,7 @@ A guia **IA** de Configuração (`#/configuracao?aba=ia`) ganhou o cartão "Retr
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
 - **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
-  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda. Decidir o teto, ou a divisão por etapa, antes de ligar (opções, números e recomendação na seção "Proposta: orçamento da etapa B", acima).
+  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda com os padrões de hoje. A ablação do J12 mediu a B (vale o gasto) e recomenda `max_candidate_files` 5 e `max_chunks` 16 sem mexer no teto; a decisão e o PR de mudança de padrão seguem pendentes (seção "Ablação A × A+B por região", acima).
   2. ~~Rótulo `cache_b: miss` também saía quando a B era bloqueada pelo orçamento~~ **Fechada (J3a):** o rótulo só vira `miss` depois de `check_call` aprovar a chamada; bloqueada pelo orçamento fica `skipped`, com `stage_b_reason`.
   3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
   4. ~~`assume-unchanged` / `skip-worktree` escondiam alterações do `git status`~~ **Fechada (J3b):** o gate lê também `git ls-files -v -z` e trata qualquer arquivo marcado (minúscula = `assume-unchanged`, `S` = `skip-worktree`) como worktree sujo, mesmo sem alteração (fail closed); `ls-files` que falha vale `None`. Efeito colateral aceito: um sparse-checkout, que usa `skip-worktree`, também bloqueia o envio remoto.
