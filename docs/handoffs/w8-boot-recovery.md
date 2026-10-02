@@ -429,6 +429,21 @@ Desvio declarado: o protocolo §17.5 foi alterado **depois de 1 boot**, por **de
 - **Estado do 09 no início do r3 (declarado):** baseline restaurado à mão em 15:41:06Z (§17.6): SFA em `stopped=true` (`force-stop`), always-on null, sem `tun0`, sem linha de rede. O primeiro boot do r3 parte, portanto, com o SFA parado (equivale ao braço K do estágio 1); isso é uma condição do ponto de partida, registrada, e não do protocolo.
 - **Prova:** `simulated` (scripts/tests, 72 passam); o resultado real do r3 vai em §17.8.
 
+### 17.8 Resultado real da rodada r3 (02/10/2026 15:46:35Z a 15:56:23Z; seed `w8-mitigacao-20261002-r3`; central `bcea158`, scripts `817ccec`; **real**)
+
+Evidência (fora do Git): `data/diag-w8-boot/mitigacao-20261002-r3/` (`i1`, `i2`, `acionador-mitigacao.jsonl`, `mitigacao.estado.json`). Pré-voo, firewall (`liberado`, só lido), janela ociosa (31 s) e pausa conferida no health: ok.
+
+| Passo | Resultado |
+|---|---|
+| Par do 09 (servidor WG, 1º reinício) | `POST /api/network/assign` 200 às 15:47:10Z; **03/06 reconectaram em 30,1 s** (≤ 120 s); 02/05 hibernados = `sem_evidencia` |
+| **Iteração 1** (boot 2 de 6; `restart` `c-20261002154809-79b2f2`, 15:48:09Z, `rede`) | **`RECOVERED_BY_UI`**: o `tun0` NÃO subiu sozinho; 198 s depois do boot (180 s de espera + passada) o produto fez UM Start pela interface do cliente e o túnel subiu: "túnel religado pelo Start da interface do cliente, sem reinício" (15:51:27Z), linha `conectado`; nenhum reinício extra, nenhuma falha da interface |
+| **Iteração 2** (boot 3; `restart` `c-20261002155200-40a061`, 15:52:00Z) | **`BOOT_INVALID`** pela regra fechada: `android-01` recebeu um `restart` **automático por saúde** (`c-20261002155143-1a3a79`, 15:51:43Z, "17% da CPU em interrupção com o aparelho ocioso, 3 sondas seguidas"), dentro da janela. Os dados do 09 nessa iteração são os mesmos da 1ª (túnel religado pelo Start em 15:55:16Z, sem reinício extra), mas são **inadmissíveis** pelo protocolo e **não** entram na contagem |
+| Rollback | `force-stop` do SFA (`stopped=true` lido) → `assign vpn=null` → servidor WG reiniciou (15,9 s) e **03/06 reconectaram em 20,1 s**; **UM só** reinício de rollback (`c-20261002155559-6eb43f`); o SFA **não** religou (sem `tun0`, sem processo, always-on null), a linha de rede saiu sozinha, 4 peers, pausa encerrada, `health` ok, hierarquia 200. O `force-stop` antes do `assign` funcionou: no r2 houve 2 reinícios de rollback, aqui 1 |
+
+**Veredito formal pré-comprometido (r3): `FAIL`** (`BOOT_INVALID` na iteração 2 → regra fechada). **Leitura honesta (`PROVED`, n=1 válido):** em 1 boot válido a falha ocorreu (o `tun0` não subiu sozinho com a política e o always-on) e a mitigação do PR #17 a recuperou com UM Start pela interface, sem reinício extra; uma 2ª iteração concordante foi invalidada por um reinício de saúde de outro aparelho (coincidência, não causada pelo experimento: a causa é o monitor de interrupções acumuladas do ADR-053 no android-01; que ele não foi provocado pela carga do experimento é `INFERRED`, não medido). Pelo critério pré-comprometido o desfecho substantivo é **PARTIAL** (1 `RECOVERED_BY_UI` válido e nenhum desfecho ruim do 09), **não PASS** (exige 2).
+
+**Contagem:** reinícios reais contados 3 de 6 (1 do r2 + iterações 1 e 2 do r3); rollback fora da conta: 2 no r2, 1 no r3. **Reinícios do servidor WireGuard:** 2 no r2 e 2 no r3 (par entra e sai), todos em janela ociosa, todos com reconexão de 03/06 em 20 a 30 s. Nenhum sinal em 02/03/05/06 além do piscar esperado. **Não foi feita uma 4ª rodada:** exigiria +2 reinícios do servidor WireGuard, que não estão autorizados além dos já usados; sobra espaço de 3 boots (3 + 3 <= 6 permitiria UMA iteração).
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
