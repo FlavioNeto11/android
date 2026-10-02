@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
+
+- `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
+  marco é `instances.emulator_started_at` (boot a frio e acordar do snapshot, sobrevive ao restart do central) ou, no aparelho
+  de worker, `online_since_mono`. Achado: android-05 ficou `trafego_verificado` pela medição #134 (19:20) através do boot a frio
+  de 19:50, e a porta liberou a tarefa às 19:52 com o aparelho sem DNS. Sem coluna nova, sem migração.
+- `backend/app/devices/rede_convergencia.py`: frase de espera do `boot`; ao ligar e na varredura a convergência mede (antes só
+  conferia). `backend/app/devices/manager.py`: `readotar_depois_do_worker` renova `online_since_mono` quando o agente conclui
+  um boot novo. Não toca `taskqueue/`, `state.py` nem `scheduler.py`.
+- Decisão: wake quente também invalida (uma medição a mais por acordar); a linha não regride de estado, a porta é que não aceita.
+- Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
+- Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
