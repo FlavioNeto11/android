@@ -1697,3 +1697,24 @@ em VPN, o que torna o tile funcional naquele aparelho, mas a convergência não 
 (tabela `ROTULOS_DO_CLIENTE`, SFA 1.14.2: en/fa/ru/zh-CN/zh-TW; sem identificação independente de idioma, o Compose não tem `testTag`) e a
 classe de serviço só vale na JANELA do Start (`UNKNOWN` sem prova): handoff W8 §20. Os boots 1/3/4 do W8 sem túnel por
 always-on seguem sem causa (`BOOT_RECOVERY_ROOT_CAUSE = OPEN`).
+
+### K-069 — Teste lento por tempo real: antes de encurtar o `sleep`, ache quem o ESPERA e se o aparelho falso envelhece pelo mesmo relógio
+
+**Data:** 02/10/2026 · **Área:** testes (T.2, achado #164)
+
+**Sintoma.** `test_resultado_ambiguo...` levava 63,6 s e `test_rotation.py` 20 s sem que o rodízio custasse nada.
+
+**Causa.** Dois tempos diferentes. (1) O orçamento do verificador (`_verify`: 15 s, ou 60 s com o efeito disparado) era literal, e
+o laço de sondagem de 0,05 s em `judge_wait_s` não aparece em sonda que filtra `sleep` ≥ 0,3 s: 1.200 `sleep`s curtos somam 60 s.
+(2) As esperas de assentamento das ferramentas (~2,9 s por passo de mensagem) e o `wait_for` do verificador simulado, que existe
+para o aparelho falso envelhecer a mensagem (`sent_after_s`/`delivered_after_s` pelo relógio real).
+
+**O que não funcionou.** Encurtar o `sleep` e pronto: com 0,05 s o `wait_for` de 2 s vira "ainda enviando", o simulado desiste
+depois de 6 voltas e o teste passa a provar outra coisa.
+
+**O que funcionou.** Medir AGREGANDO segundos por ponto de chamada (um plugin que embrulha `asyncio.sleep`), configurar o
+orçamento (`ai.verify_budget_*`) e fazer as ferramentas dormirem por `ToolContext.dormir`, com o aparelho falso lendo o mesmo
+relógio (`tests/relogio_virtual.py`, `Harness.pular_o_tempo()`).
+
+**Aplicabilidade.** Só em teste opt-in: o `time.monotonic()` de prazos de etapa segue real, e testes de corrida com
+`action_delay_s` dependem da janela real. Ligar no harness inteiro pede a suíte completa.

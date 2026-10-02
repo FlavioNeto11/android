@@ -298,3 +298,117 @@ def test_chave_por_nome_declarado_apelido_e_ambiente(monkeypatch: pytest.MonkeyP
     assert env.chave("DASHSCOPE_API_KEY") == ""
     assert env.chave("CHAVE_LOCAL_DE_TESTE") == "valor-de-teste"
     assert env.chave(None) == "" and env.chave("") == ""
+
+
+# ---------------------------------------------------------------- item 17.8: Flex para trabalho offline
+def _flex(tmp: Path, respostas: list[Any], *, max_retries: int = 3,
+          timeout_s: float = 900.0) -> tuple[OpenAICompatProvider, list[httpx.Request], Any]:
+    """O papel `verify` (o do rejulgamento offline) apontado para uma entrada `openai-flex`; `decide` fica de fora."""
+    cfg = make_config(tmp)
+    caps = ModelCaps(vision=True, tools=True, strict_tools=False, structured_output="json_object", thinking=False,
+                     effort=False)
+    cfg.file.ai.models["gpt-teste"] = caps
+    cfg.file.ai.providers["openai-flex"] = ProviderCfg(kind="openai", base_url="https://api.openai.com/v1",
+                                                       extra_body={"service_tier": "flex"})
+    cfg.file.ai.roles["verify"] = RoleCfg(provider="openai-flex", model="gpt-teste", timeout_s=timeout_s,
+                                          max_retries=max_retries)
+    role = cfg.ai_role("verify")
+    p = OpenAICompatProvider(cfg, role=role)
+    vistos: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        r = respostas.pop(0)
+        return r if isinstance(r, httpx.Response) else httpx.Response(200, json=r)
+
+    p.set_client(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    return p, vistos, cfg
+
+
+_VEREDITO = json.dumps({"satisfied": "yes", "evidence": "ok", "confidence": 0.9})
+_REQ = lambda: VerifyRequest(ctx=ctx(), screen=SCREEN, facts=[])  # noqa: E731
+
+
+@pytest.fixture
+def esperas(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """`asyncio.sleep` falso: as esperas do flex (segundos de verdade) não rodam no teste, só ficam registradas."""
+    registro: list[float] = []
+
+    async def falso(segundos: float) -> None:
+        registro.append(segundos)
+
+    monkeypatch.setattr("app.planning.openai_provider.asyncio.sleep", falso)
+    return registro
+
+
+async def test_flex_manda_service_tier_so_no_papel_apontado(tmp_path: Path, esperas: list[float]) -> None:
+    """`service_tier: flex` mora na ENTRADA do provedor e só vale para o papel que aponta para ela: o interativo
+    (`decide`, `plan`, ...) não herda nem o campo nem o prazo longo nem as repetições."""
+    p, vistos, cfg = _flex(tmp_path, [_resposta(_VEREDITO)])
+    await p.verify(_REQ())
+    assert json.loads(vistos[0].content)["service_tier"] == "flex"
+    assert cfg.ai_role("verify").timeout_s == 900.0            # sem teto de validação: o prazo longo é aceito
+    for papel in ("plan", "decide", "escalation", "social"):
+        r = cfg.ai_role(papel)
+        assert r.extra_body is None and r.max_retries == 0, papel
+    assert esperas == []
+    await p.aclose()
+
+
+async def test_flex_429_sem_capacidade_e_repetido_e_respeita_retry_after(tmp_path: Path, esperas: list[float]) -> None:
+    sem_capacidade = httpx.Response(429, text='{"error": {"message": "Resource Unavailable"}}',
+                                    headers={"retry-after": "17"})
+    p, vistos, _ = _flex(tmp_path, [sem_capacidade, httpx.Response(429, text="Resource Unavailable"),
+                                    _resposta(_VEREDITO)])
+    veredito, _ = await p.verify(_REQ())
+    assert veredito.satisfied == "yes" and len(vistos) == 3
+    assert esperas == [17.0, 10.0]          # o `Retry-After` manda; sem ele, 5 s dobrando a cada tentativa
+    await p.aclose()
+
+
+async def test_flex_esgota_as_repeticoes_e_o_erro_continua_repetivel(tmp_path: Path, esperas: list[float]) -> None:
+    p, vistos, _ = _flex(tmp_path, [httpx.Response(429, text="Resource Unavailable") for _ in range(3)],
+                         max_retries=2)
+    with pytest.raises(AIError) as e:
+        await p.verify(_REQ())
+    assert e.value.status == 429 and e.value.retryable and len(vistos) == 3
+    assert esperas == [5.0, 10.0]
+    await p.aclose()
+
+
+async def test_espera_cresce_ate_o_teto_de_60s(tmp_path: Path, esperas: list[float]) -> None:
+    p, vistos, _ = _flex(tmp_path, [httpx.Response(429, text="x") for _ in range(7)], max_retries=6)
+    with pytest.raises(AIError):
+        await p.verify(_REQ())
+    assert esperas == [5.0, 10.0, 20.0, 40.0, 60.0, 60.0] and len(vistos) == 7
+    await p.aclose()
+
+
+async def test_sem_max_retries_nada_se_repete_e_o_caminho_interativo_segue_igual(tmp_path: Path,
+                                                                                 esperas: list[float]) -> None:
+    p, vistos, _ = _flex(tmp_path, [httpx.Response(429, text="x")], max_retries=0)
+    with pytest.raises(AIError):
+        await p.verify(_REQ())
+    assert len(vistos) == 1 and esperas == []
+    await p.aclose()
+
+
+async def test_falta_de_credito_e_erro_de_cliente_nao_sao_repetidos(tmp_path: Path, esperas: list[float]) -> None:
+    corpo = '{"error": {"type": "insufficient_quota"}}'
+    p, vistos, _ = _flex(tmp_path, [httpx.Response(429, text=corpo)])
+    with pytest.raises(AIError) as e:
+        await p.verify(_REQ())
+    assert e.value.kind == "billing" and len(vistos) == 1
+    await p.aclose()
+    p2, vistos2, _ = _flex(tmp_path, [httpx.Response(400, text="invalido")])
+    with pytest.raises(AIError):
+        await p2.verify(_REQ())
+    assert len(vistos2) == 1 and esperas == []
+    await p2.aclose()
+
+
+async def test_5xx_tambem_e_repetido(tmp_path: Path, esperas: list[float]) -> None:
+    p, vistos, _ = _flex(tmp_path, [httpx.Response(503, text="indisponivel"), _resposta(_VEREDITO)])
+    veredito, _ = await p.verify(_REQ())
+    assert veredito.satisfied == "yes" and len(vistos) == 2 and esperas == [5.0]
+    await p.aclose()

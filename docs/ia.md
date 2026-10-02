@@ -353,6 +353,22 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
 - **Candidatos declarados em `config.example.yaml`** (capacidade e preço de lista de 28/09/2026). Ligar um papel é
   `ai.providers` + `ai.roles`, sempre com `fallback_provider: anthropic` na adoção (o hub não cai para pago sem
   isso escrito).
+- **Flex para trabalho offline (item 17.8).** `service_tier: flex` é um campo do corpo, então basta uma entrada de
+  provedor (`ai.providers.openai-flex: {kind: openai, base_url, api_key_env, extra_body: {service_tier: flex}}`) e um
+  papel que aponte para ela com `timeout_s` longo e `max_retries`. Dois detalhes do código: (1) o
+  `OpenAICompatProvider` agora **honra `max_retries`** (antes só o provedor da Anthropic o usava): repete 429 e 5xx
+  com espera de 5 s dobrando até 60 s ou o `Retry-After` do servidor (até 300 s), e **nunca** `insufficient_quota`
+  (ADR-051); o padrão é 0, então o caminho interativo e os provedores já declarados não mudam; (2) `timeout_s` não
+  tem teto de validação e, no roteador, é o prazo **total** do papel, esperas incluídas — uma fila de flex sem
+  capacidade termina em "passou de N s", não pendura a vaga. **Uso hoje:** o rejulgamento offline
+  (`eval_rejudge.py --sobrepor`, bloco comentado em `config.example.yaml`; o custo impresso usa o preço de lista de
+  `ai.prices`, ~2x o do flex, então superestima). **Fora de escopo e por quê:** a geração de persona (`generate_persona`)
+  e a resposta social (`generate_social_response`) são o MESMO papel `social`, e a segunda roda dentro da execução
+  (comentário, resposta de DM, via `runner` do executor); apontar `social` para o flex deixaria a execução lenta e
+  sujeita a 429. Para a persona usar flex é preciso separar o papel (opção: um papel `persona` em `AI_ROLES`, que
+  toca `config.py`, roteador, saldos, aba IA e a regra de `_ia_coerente`) — decisão pendente do dono, não tomada aqui.
+  **Prova `simulated`:** `backend/tests/test_openai_provider.py` (`test_flex_*`, `MockTransport` + `sleep` falso) e
+  `scripts/tests/test_eval_rejudge.py`; chamada real ao flex `not_run` (sem chamada paga nesta rodada).
 - **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do
   `config.yaml` e reinício do central por braço). O resultado real fica em `relatorio-validacao.md`.
 - **Medido em 28/09 (§18):**

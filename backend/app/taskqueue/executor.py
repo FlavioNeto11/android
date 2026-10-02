@@ -310,6 +310,9 @@ class StepExecutor:
         self.provider = provider
         self.ai_limiter = ai_limiter
         self.get_settings = settings_getter
+        #: T.2: como as ferramentas esperam o aparelho assentar (vai no `ToolContext`). Produção: `asyncio.sleep`; o
+        #: teste que pula o tempo troca por um que avança o relógio do aparelho falso (`tests/relogio_virtual.py`).
+        self.dormir: Callable[[float], Awaitable[None]] = asyncio.sleep
         self.recipes = RecipeStore(repo.db)
         # Normal medido por ação (item 18.3): aviso ao passar do p90 e parada conservadora de laço descontrolado.
         self.historico = HistoricoDeAcoes(repo.db, lambda: cfg.file.ai.prices,
@@ -1671,7 +1674,8 @@ class StepExecutor:
                                    fill_secret=self.preenchedor(
                                        rt, lambda nome: resolve_secret(self.dados, profile_id, nome), obs.tree,
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
-                                   allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline)
+                                   allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline,
+                                   dormir=self.dormir)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None
@@ -2007,7 +2011,9 @@ class StepExecutor:
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
-        budget = min(max(deadline - time.monotonic(), 8.0), 60.0 if patient else 15.0)
+        ai_cfg = self.cfg.file.ai
+        budget = min(max(deadline - time.monotonic(), float(ai_cfg.verify_budget_min_s)),
+                     float(ai_cfg.verify_budget_patient_s if patient else ai_cfg.verify_budget_s))
         t_end = time.monotonic() + budget
         max_calls = int(self.cfg.file.ai.verify_max_model_calls)
         judged_polls = 0
