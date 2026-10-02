@@ -534,5 +534,29 @@ continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de d
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
-Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_context_retrieval_semantic.py`: decisores nulo e falso e
-transporte falso). Chamada real ao Jev: `not_run`.
+- **Registro da sombra (31.5, migração 074).** A porta, em `shadow` e em `on`, entrega ao `observador` um `RegistroDeDecisao`
+  por chamada, e `observador_de_sombra(RepositorioDeSombra(db))` (`decisao_fechada/sombra.py`) grava UMA linha por pergunta
+  respondida ou por fallback em `decisao_fechada_sombra`, inclusive a recusa de privacidade (mostra o que o envio fechado deixou
+  de decidir). A linha tem só ids opacos, categorias dos vocabulários fechados e números: **nunca o estado enviado nem o texto
+  das opções**, e um id fora do formato vira NULL ou `unknown_choice`, nunca texto livre. `usd` e `tokens` da chamada única
+  ficam só na primeira linha.
+  - **Depois da gravação**: `casar_decisao_real({pergunta: id}, ref=...|step_id=...)` e `casar_desfecho(desfecho, ref=...|step_id=...)`
+    (vocabulário `DESFECHOS`) preenchem o caminho atual e o desfecho; só preenchem o que está vazio. É a entrada do 31.8 e do 31.9.
+  - **Agregado diário** `decisao_fechada_diario` por (dia, origem, pergunta): `n`, `concordancia`, `acima_do_limiar`,
+    **`aceite_errado`** (acima do limiar, com decisão real casada e diferente: a métrica que veta o `on`), `fallbacks` (à parte:
+    nunca acerto), `usd` e `ms_p95`. Recalculado por inteiro nos 7 dias recentes e uma última vez antes da purga.
+  - **Retenção** `ai.decisao_fechada.retencao_dias` (padrão 180), no laço de retenção geral: purga dias inteiros; o agregado fica.
+  - **Preço e livro-caixa.** `ai.prices` ganha `jev-1.13.0: [0.042, 0, 0, 0]` (US$ 0,042 por milhão de entrada, saída grátis); a
+    coluna `usd` declarada de `ai_calls` vence os tokens (`costs.spent_usd`, precedente 048). A conta `typesafe` (provedor `jev`,
+    modelo `jev*`) entra em `GET /api/ai/balances` como conta conhecida **sem âncora** (`Sem âncora: o dono registra a
+    recarga`), sem leitura automática, sem chave de administrador e sem chamada de rede; a primeira recarga registrada vira a
+    âncora (base 0). Sem limites de fábrica: o teto do Jev é a fatia dele dentro do teto do dia (31.6). `console` vazio: o dono
+    informa a página em `ai.balance_consoles.typesafe`.
+  - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
+    de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
+    `decisao_fechada` (consumidores, classes, `send_approved`, `key`). A chave é só "configurada" ou "não configurada", pela
+    PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
+    aviso diz que o envio está FECHADO e que nada sai.
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
+decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
