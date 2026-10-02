@@ -13,12 +13,22 @@ Funções puras, usadas pelo executor, pelo repositório, pelo despacho e pela e
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import unicodedata
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+from ..automation.conhecimento_de_telas import ConhecimentoDeTelas
 from ..automation.hierarchy import (SUBTIPO_CODIGO, UiElement, UiTree, detectar_trava_generica,
                                     normalizar_texto_de_tela)
+from ..devices.codificacao import recortar_jpeg
 from ..models import SAIDA_VALOR_MAX, SAIDA_VALUE_KINDS, PlanStep
+
+if TYPE_CHECKING:
+    from ..planning.provider import Transcricao
 from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo
 from ..util import url_abrivel
 
@@ -35,6 +45,11 @@ PREFIXO_DA_VARIAVEL = "saida_"
 class LeituraInvalida(ValueError):
     """A chamada de `read_value` não pôde ler o valor (elemento inexistente, trecho fora do texto, tipo que não casa).
     É erro de chamada: o ator tenta de novo, como numa ferramenta rejeitada. Nada disto é recusa da triagem."""
+
+
+class LeituraSemTexto(LeituraInvalida):
+    """O elemento existe e não tem texto nem descrição: a ÚNICA falha da árvore que abre o caminho da leitura visual
+    (item 12.5). Qualquer outra falha (id inexistente, trecho fora do texto, tipo errado) segue recusa comum."""
 
 
 # ------------------------------------------------------------------ referências
@@ -196,7 +211,7 @@ def ler_valor(arvore: UiTree, *, element_id: str, trecho: str | None, tipo: str)
         return valor, itens, el
     fonte = texto_do_elemento(el)
     if not fonte:
-        raise LeituraInvalida(f"o elemento {element_id} não tem texto nem descrição para ler")
+        raise LeituraSemTexto(f"o elemento {element_id} não tem texto nem descrição para ler")
     if trecho:
         pedaco = limpar(trecho)
         i = fonte.casefold().find(pedaco.casefold()) if pedaco else -1
@@ -304,3 +319,164 @@ def args_da_chamada_invalida(args: dict[str, object], arvore: UiTree) -> dict[st
     if args.get("value"):
         out["value"] = "**OMITIDO**"
     return out
+
+
+# ------------------------------------------------------------------ leitura visual (item 12.5, ADR-070)
+#: Vocabulário FECHADO das recusas da leitura visual, na ordem das barreiras (das baratas para a cara). O ator recebe
+#: SÓ o código: nem a transcrição do leitor, nem o motivo em texto livre — com eco, uma nova tentativa faria dos dois um
+#: leitor só. `triagem` sai como `triagem:<motivo>`, o motivo sendo o do vocabulário de `triagem()`. `leitor_falhou` é o
+#: leitor indisponível (erro do provedor), recusa como as outras.
+RECUSAS_VISUAIS = ("desligado", "elemento_com_texto", "regiao_nao_declarada", "arvore_truncada", "tela_sensivel",
+                   "fora_do_app", "sem_ancora", "captura_mudou", "repetida", "sem_leitor", "leitor_falhou", "ilegivel",
+                   "truncado", "nao_confere", "triagem")
+
+
+class LeituraVisualRecusada(Exception):
+    """A leitura visual foi recusada. NUNCA grava valor. `codigo` é de `RECUSAS_VISUAIS`; `motivo` só existe na triagem."""
+
+    def __init__(self, codigo: str, motivo: str | None = None):
+        if codigo not in RECUSAS_VISUAIS:
+            raise ValueError(f"código de recusa fora do vocabulário: {codigo!r}")
+        super().__init__(f"{codigo}:{motivo}" if motivo else codigo)
+        self.codigo = codigo
+        self.motivo = motivo
+
+    @property
+    def rotulo(self) -> str:
+        """O que vai ao ator, à ação e ao evento: o código, e na triagem `triagem:<motivo>`."""
+        return f"{self.codigo}:{self.motivo}" if self.motivo else self.codigo
+
+
+@dataclass(frozen=True, slots=True)
+class LeituraVisual:
+    """Uma leitura visual VÁLIDA: o valor (do ator, conferido), o recorte que o leitor viu e o sha256 dele."""
+
+    valor: str
+    recorte: bytes
+    sha256: str
+    alvo: UiElement
+
+
+#: A imagem para o recorte, buscada só na barreira 6: (árvore, JPEG, largura e altura do aparelho), ou `None` se não veio.
+ObterImagem = Callable[[], Awaitable[tuple[UiTree, bytes | None, int, int] | None]]
+Transcrever = Callable[[bytes, dict[str, str]], Awaitable["Transcricao"]]
+#: A chave de "já houve uma tentativa visual": (nome, assinatura da árvore, limites da âncora).
+ChaveDeTentativa = tuple[str, str, tuple[int, int, int, int]]
+
+
+def descendentes_com_texto(arvore: UiTree, ancora: UiElement) -> bool:
+    """Algum elemento DENTRO dos limites da âncora (ela mesma incluída) tem texto ou descrição? Se tem, a árvore não é
+    cega ali e a leitura vai pelo texto (ou recusa): a visual só existe onde a árvore provou não ter nada."""
+    return any((e.text or e.desc) for e in arvore.elements if e.id == ancora.id or _dentro(e.bounds, ancora.bounds))
+
+
+_PONTAS = " .,;:!?\"'“”‘’«»()[]"
+
+
+def _palavras(texto: str) -> list[str]:
+    """NFKC, caixa e espaços colapsados, pontuação e aspas das PONTAS fora, ACENTOS MANTIDOS ("mãe" ≠ "mae")."""
+    t = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", texto or "").casefold()).strip().strip(_PONTAS)
+    return t.split(" ") if t else []
+
+
+def _termina_cortado(texto: str) -> bool:
+    return (texto or "").rstrip().endswith(("…", "..."))
+
+
+def conferir_transcricao(valor: str, nome: str, t: Transcricao) -> None:
+    """Barreiras 9 a 11: o leitor leu, não é truncado e CONCORDA com o ator. Levanta `LeituraVisualRecusada`.
+
+    A concordância exige as duas coisas: o valor do ator, normalizado, é igual ao `campos[nome]` do leitor, normalizado
+    (a regra da proposta verdade), E ele é uma sequência contígua de PALAVRAS INTEIRAS de uma das `linhas` (o acréscimo do
+    juiz: contra um campo que o leitor inventou sem estar escrito na imagem)."""
+    if not t.legivel:
+        raise LeituraVisualRecusada("ilegivel")
+    campo = t.campos.get(nome)
+    if (t.truncado or _termina_cortado(valor) or _termina_cortado(campo or "")
+            or any(_termina_cortado(x) for x in t.linhas)):
+        raise LeituraVisualRecusada("truncado")
+    do_ator = _palavras(valor)
+    if not do_ator or campo is None or _palavras(campo) != do_ator:
+        raise LeituraVisualRecusada("nao_confere")
+    n = len(do_ator)
+    if not any(p[i:i + n] == do_ator for p in (_palavras(linha) for linha in t.linhas) for i in range(len(p) - n + 1)):
+        raise LeituraVisualRecusada("nao_confere")
+
+
+def recortar(jpeg: bytes, largura: int, altura: int, limites: tuple[int, int, int, int]) -> bytes:
+    """O recorte da âncora no JPEG da observação (`devices.codificacao.recortar_jpeg`: sem margem, a linha vizinha pode ser
+    sensível). Área vazia ou JPEG ilegível → `sem_ancora`."""
+    try:
+        return recortar_jpeg(jpeg, largura, altura, limites)
+    except ValueError as exc:
+        raise LeituraVisualRecusada("sem_ancora") from exc
+
+
+def ancora_sem_limites(arvore: UiTree, element_id: str, largura: int, altura: int) -> bool:
+    """A âncora existe mas não tem área positiva dentro da tela (barreira 5)?"""
+    a = arvore.by_id(element_id)
+    if a is None:
+        return True
+    x1, y1, x2, y2 = max(0, a.bounds[0]), max(0, a.bounds[1]), min(largura, a.bounds[2]), min(altura, a.bounds[3])
+    return x2 <= x1 or y2 <= y1
+
+
+async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str, nome: str, valor_do_ator: str,
+                           conhecimento: ConhecimentoDeTelas | None, tela: str | None, image_policy: str,
+                           fora_do_app: str | None, largura: int, altura: int, obter_imagem: ObterImagem,
+                           tentativas: set[ChaveDeTentativa], transcrever: Transcrever | None) -> LeituraVisual:
+    """Leitura visual de UMA saída, conferida às cegas (item 12.5, ADR-070). Roda as barreiras na ordem, das baratas para a
+    cara, e levanta `LeituraVisualRecusada` na primeira que falhar — nunca devolve valor sem a concordância do leitor.
+
+    0 desligado · 1 elemento_com_texto · 2 regiao_nao_declarada · 3 arvore_truncada · 4 tela_sensivel/fora_do_app ·
+    5 sem_ancora · 6 captura_mudou · 7 repetida · 8 sem_leitor · 9 ilegivel · 10 truncado · 11 nao_confere · 12 triagem.
+
+    A barreira 1 da especificação ("a árvore tenta primeiro") é do executor: ele só chama aqui depois que `ler_valor`
+    falhou com `LeituraSemTexto`. `transcrever` recebe SÓ o recorte e os nomes e descrições das saídas pedidas — o valor do
+    ator, o comando e a tela inteira ficam de fora —, e a transcrição nunca sai desta função (só o valor conferido)."""
+    if not habilitado:
+        raise LeituraVisualRecusada("desligado")
+    ancora = arvore.by_id(element_id)
+    if ancora is None or descendentes_com_texto(arvore, ancora):
+        raise LeituraVisualRecusada("elemento_com_texto")
+    if conhecimento is None or conhecimento.regiao_visual(tela, arvore, ancora, nome) is None:
+        raise LeituraVisualRecusada("regiao_nao_declarada")
+    if arvore.truncada:
+        raise LeituraVisualRecusada("arvore_truncada")
+    if arvore.sensitive or image_policy == "never":
+        raise LeituraVisualRecusada("tela_sensivel")
+    if fora_do_app is not None:
+        raise LeituraVisualRecusada("fora_do_app")
+    if ancora_sem_limites(arvore, element_id, largura, altura):
+        raise LeituraVisualRecusada("sem_ancora")
+    # 6: a imagem e a árvore são da MESMA observação. Sem imagem na observação, uma nova é capturada e a árvore dela
+    # precisa ter a mesma assinatura e a âncora os mesmos limites, senão a tela mudou entre as duas leituras.
+    obtido = await obter_imagem()
+    if obtido is None:
+        raise LeituraVisualRecusada("captura_mudou")
+    arvore2, jpeg, largura2, altura2 = obtido
+    nova = arvore2.by_id(element_id)
+    if (jpeg is None or arvore2.sensitive or nova is None or nova.bounds != ancora.bounds
+            or arvore2.signature() != arvore.signature()):
+        raise LeituraVisualRecusada("captura_mudou")
+    # A chave não usa o sha do JPEG: o relógio da barra de status muda os bytes, e uma nova captura da mesma tela abriria
+    # outra tentativa. Tela e âncora iguais = o mesmo par.
+    chave = (nome, arvore.signature(), ancora.bounds)
+    if chave in tentativas:
+        raise LeituraVisualRecusada("repetida")
+    tentativas.add(chave)
+    if transcrever is None:
+        raise LeituraVisualRecusada("sem_leitor")
+    recorte = recortar(jpeg, largura2, altura2, ancora.bounds)
+    valor = limpar(valor_do_ator)
+    t = await transcrever(recorte, {nome: nome.replace("_", " ")})
+    conferir_transcricao(valor, nome, t)
+    # 12: a triagem roda sobre a transcrição e sobre o valor. O recorte recusado não é guardado (quem chama só o grava
+    # quando esta função devolve).
+    texto = " ".join(t.linhas)
+    motivo = triagem(valor, do_elemento=texto, da_tela=texto)
+    if motivo is None and (trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True)):
+        motivo = "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
+    if motivo is not None:
+        raise LeituraVisualRecusada("triagem", motivo)
+    return LeituraVisual(valor=valor, recorte=recorte, sha256=hashlib.sha256(recorte).hexdigest(), alvo=ancora)

@@ -79,3 +79,26 @@ def tamanho_png(png: bytes) -> tuple[int, int]:
     """Largura e altura lendo só o cabeçalho: `Image.open` é preguiçoso e não decodifica os pixels."""
     with Image.open(io.BytesIO(png)) as img:
         return img.size
+
+
+def recortar_jpeg(jpeg: bytes, largura: int, altura: int, limites: tuple[int, int, int, int]) -> bytes:
+    """Um recorte do JPEG (item 12.5): `limites` em pixels do APARELHO (`largura` x `altura`) × a razão do tamanho real da
+    imagem — a observação do modelo vem reduzida —, cortados na tela e SEM margem. `ValueError` se a área é vazia ou o
+    JPEG não abre: recorte vazio não vira leitura."""
+    if largura <= 0 or altura <= 0:
+        raise ValueError("tamanho do aparelho inválido")
+    x1, y1 = max(0, limites[0]), max(0, limites[1])
+    x2, y2 = min(largura, limites[2]), min(altura, limites[3])
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("a âncora não tem área dentro da tela")
+    try:
+        with Image.open(io.BytesIO(jpeg)) as img:
+            sx, sy = img.width / largura, img.height / altura
+            caixa = (round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy))
+            if caixa[2] <= caixa[0] or caixa[3] <= caixa[1]:
+                raise ValueError("o recorte ficou sem área")
+            saida = io.BytesIO()
+            img.convert("RGB").crop(caixa).save(saida, "JPEG", quality=90)
+    except OSError as exc:
+        raise ValueError("JPEG ilegível") from exc
+    return saida.getvalue()
