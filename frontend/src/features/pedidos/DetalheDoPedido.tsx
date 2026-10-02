@@ -1,5 +1,7 @@
-import { ArrowLeft, ListChecks, TriangleAlert } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowLeft, CalendarClock, Coins, Hand, ListChecks, Settings2, Target, TriangleAlert, UserRound, Users, type LucideIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { toApiError } from '../../api/client';
 import type { OcorrenciaDTO, PedidoDetalhe } from '../../api/pedidos';
 import type { RunSummary } from '../../api/types';
@@ -14,10 +16,14 @@ import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { prettyJson } from '../../lib/format';
 import { RUN_STATUS, metaOf } from '../../lib/status';
 import { hashDe } from '../../lib/rotas';
-import { formatDateTime, tempoRelativo, useNow } from '../../lib/time';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiPedidos } from './api';
 import { AcoesDoPedido } from './AcoesDoPedido';
+import { EsqueletoDaLista } from './Esqueleto';
+import {
+  agendaLegivel, dataCurta, fusoParaMostrar, horaEscrita, proximaDoPedido, quemFazDoPedido,
+} from './formato';
 import {
   META_DA_OCORRENCIA, META_DO_PEDIDO, ROTULO_DA_AUTONOMIA, ROTULO_DA_ORIGEM, ROTULO_DA_SOBREPOSICAO, ROTULO_DO_ENCERRAMENTO,
   formatUsd, mensagemDoErro,
@@ -30,6 +36,17 @@ type Aba = 'resumo' | 'ocorrencias' | 'execucoes' | 'memoria';
 const ABAS: readonly Aba[] = ['resumo', 'ocorrencias', 'execucoes', 'memoria'];
 const ehAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readonly string[]).includes(v);
 const ID = 'pedido';
+
+const TITULO_MAX = 90;
+
+/**
+ * O título do cabeçalho: `titulo` quando a pessoa deu um; sem ele o backend usa o começo do objetivo, que pode ser longo
+ * e repetir o Resumo. Aqui vira UMA linha curta; o objetivo inteiro mora no Resumo (e no `title` do cabeçalho).
+ */
+function tituloDoPedido(p: Pick<PedidoDetalhe, 'titulo' | 'objetivo'>): string {
+  const t = (p.titulo?.trim() || p.objetivo).replace(/\s+/g, ' ');
+  return t.length > TITULO_MAX ? `${t.slice(0, TITULO_MAX - 1).trimEnd()}…` : t;
+}
 
 /** O detalhe lido do backend; relê a cada evento `pedido.*` e quando uma ação muda o pedido. */
 function useDetalhe(id: string) {
@@ -67,8 +84,18 @@ export function DetalheDoPedido({ id }: { id: string }) {
         {erro ? (
           erro.nao_existe
             ? <EmptyState icon={ListChecks} title="Este pedido não existe">O link pode estar velho. Volte à lista.</EmptyState>
-            : <Banner tone="warning" icon={TriangleAlert} compact role="status">Não foi possível ler o pedido. {erro.texto}</Banner>
-        ) : <LoadingRegion label="Carregando o pedido…"><Skeleton height={80} radius={8} /></LoadingRegion>}
+            : (
+              <Banner tone="warning" icon={TriangleAlert} compact role="status"
+                      actions={<Button size="sm" onClick={reler}>Tentar de novo</Button>}>
+                Não foi possível ler o pedido. {erro.texto}
+              </Banner>
+            )
+        ) : (
+          <LoadingRegion label="Carregando o pedido…">
+            <Skeleton width="45%" height={22} />
+            <EsqueletoDaLista label="Carregando o resumo…" quantos={2} />
+          </LoadingRegion>
+        )}
       </Page>
     );
   }
@@ -80,7 +107,7 @@ export function DetalheDoPedido({ id }: { id: string }) {
     { id: 'memoria', label: 'Memória e relatórios' },
   ];
   return (
-    <Page title={pedido.titulo}
+    <Page title={<span className={styles.tituloLinha} title={pedido.objetivo}>{tituloDoPedido(pedido)}</span>}
           lead={(
             <span className={styles.topo}>
               <StatusBadge meta={META_DO_PEDIDO[pedido.estado]} srPrefix="Estado" />
@@ -102,46 +129,94 @@ export function DetalheDoPedido({ id }: { id: string }) {
   );
 }
 
+/** Um cartão do Resumo: título curto com ícone e as linhas rótulo/valor dele. */
+function CartaoResumo({ icone: Icone, titulo, children }: { icone: LucideIcon; titulo: string; children: ReactNode }) {
+  return (
+    <section className={styles.cartaoResumo} aria-label={titulo}>
+      <h3><Icone size={14} aria-hidden /> {titulo}</h3>
+      {children}
+    </section>
+  );
+}
+
 function Resumo({ p }: { p: PedidoDetalhe }) {
   const foco = useUiStore((s) => s.focusInstanceId);
-  const orc = p.orcamento_total_usd !== null ? `${formatUsd(p.gasto_usd)} de ${formatUsd(p.orcamento_total_usd)}` : `${formatUsd(p.gasto_usd)} (sem orçamento total)`;
+  const { personas, aparelhos } = quemFazDoPedido(p);
+  const fusoMostrado = fusoParaMostrar(p.fuso);
+  const proxima = proximaDoPedido(p, p.proximas);
+  // A hora do "Todo dia às 19:00": o backend só a escreve quando a regra a traz; senão vem do início do gatilho ou da próxima data.
+  const spec = p.gatilhos?.find((g) => g.ativo)?.spec as { dtstart?: string; local?: string } | undefined;
+  const hora = horaEscrita(spec?.dtstart ?? spec?.local) ?? horaEscrita(p.proxima_local);
+  const quando = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : '—';
+  const gasto = p.orcamento_total_usd !== null ? `${formatUsd(p.gasto_usd)} de ${formatUsd(p.orcamento_total_usd)}` : `${formatUsd(p.gasto_usd)} (sem orçamento total)`;
   return (
     <>
-      <p className={styles.nota}>{p.objetivo}</p>
-      {p.contexto ? <p className={styles.nota}>Contexto: {p.contexto}</p> : null}
-      {p.criterios_sucesso?.length ? (
-        <div><h3 className={styles.dim}>Critérios de sucesso</h3><ul>{p.criterios_sucesso.map((c) => <li key={c}>{c}</li>)}</ul></div>
-      ) : <p className={styles.dim}>Sem critérios de sucesso: só prazo, contagem ou orçamento encerram o pedido.</p>}
-      <dl className={styles.grade}>
-        <div><dt>Quando</dt><dd>{p.gatilhos_resumo?.map((g) => g.descricao).join(' · ') || '—'}</dd></div>
-        <div><dt>Personas</dt><dd>{p.personas?.map((x) => x.nome).join(', ') || '—'}</dd></div>
-        <div><dt>Fuso</dt><dd>{p.fuso}</dd></div>
-        <div><dt>Próxima</dt><dd>{p.proxima_local ?? (p.proxima_em ? formatDateTime(p.proxima_em) : '—')}</dd></div>
-        <div><dt>Prazo final</dt><dd>{p.fim_em ? formatDateTime(p.fim_em) : 'sem prazo'}</dd></div>
-        <div><dt>Máximo de ocorrências</dt><dd>{p.max_ocorrencias ?? 'sem limite'}</dd></div>
-        <div><dt>Gasto</dt><dd>{orc}{p.orcamento_usado !== null ? ` (${Math.round(p.orcamento_usado * 100)}%)` : ''}</dd></div>
-        <div><dt>Orçamento por ocorrência</dt><dd>{p.orcamento_ocorrencia_usd !== null ? formatUsd(p.orcamento_ocorrencia_usd) : 'sem teto'}</dd></div>
-        <div><dt>Se uma ocorrência ainda roda</dt><dd>{ROTULO_DA_SOBREPOSICAO[p.sobreposicao]}</dd></div>
-        <div><dt>Pausa após falhas seguidas</dt><dd>{p.pausa_por_falha}</dd></div>
-        {p.encerrado_motivo ? <div><dt>Encerrado porque</dt><dd>{ROTULO_DO_ENCERRAMENTO[p.encerrado_motivo]}</dd></div> : null}
-        <div><dt>Criado por</dt><dd>{p.criado_por ?? '—'} em {formatDateTime(p.criado_em)}</dd></div>
-      </dl>
-      <ProximasDatas datas={p.proximas ?? []} />
+      <section className={styles.cartaoResumo} aria-label="Objetivo">
+        <h3><Target size={14} aria-hidden /> Objetivo</h3>
+        <p className={styles.objetivoCompleto}>{p.objetivo}</p>
+        {p.contexto ? <p className={styles.nota}>Contexto: {p.contexto}</p> : null}
+        {p.criterios_sucesso?.length ? (
+          <div><h4 className={styles.dim}>Critérios de sucesso</h4><ul className={styles.listaSimples}>{p.criterios_sucesso.map((c) => <li key={c}>{c}</li>)}</ul></div>
+        ) : <p className={styles.dim}>Sem critérios de sucesso: só prazo, contagem ou orçamento encerram o pedido.</p>}
+      </section>
+      <div className={styles.resumoGrade}>
+        <CartaoResumo icone={CalendarClock} titulo="Agenda">
+          <dl>
+            <div><dt>Quando</dt><dd>{quando}</dd></div>
+            <div><dt>Próxima</dt>
+              <dd>
+                {proxima ? <span title={proxima.iso}>{dataCurta(proxima.iso, p.fuso)}</span> : <span className={styles.dim}>sem data prevista</span>}
+                {proxima?.calculada ? <span className={styles.dim}> (calculada pela agenda; o laço ainda não a gerou)</span> : null}
+              </dd>
+            </div>
+            <div><dt>Prazo final</dt><dd>{p.fim_em ? dataCurta(p.fim_em, p.fuso) : 'sem prazo'}</dd></div>
+            <div><dt>Máximo de ocorrências</dt><dd>{p.max_ocorrencias ?? 'sem limite'}</dd></div>
+            {fusoMostrado ? <div><dt>Fuso do pedido</dt><dd>{fusoMostrado}</dd></div> : null}
+          </dl>
+          <ProximasDatas datas={p.proximas ?? []} fuso={p.fuso} />
+        </CartaoResumo>
+        <CartaoResumo icone={Users} titulo="Quem faz">
+          <dl>
+            <div><dt>Aparelhos</dt><dd>{aparelhos.length ? aparelhos.join(', ') : 'nenhum fixado'}</dd></div>
+            <div><dt>Personas</dt><dd>{personas.length ? personas.join(', ') : 'nenhuma: o alvo é o aparelho'}</dd></div>
+          </dl>
+        </CartaoResumo>
+        <CartaoResumo icone={Coins} titulo="Custos e limites">
+          <dl>
+            <div><dt>Gasto</dt><dd>{gasto}{p.orcamento_usado !== null ? ` (${Math.round(p.orcamento_usado * 100)}%)` : ''}</dd></div>
+            <div><dt>Orçamento por ocorrência</dt><dd>{p.orcamento_ocorrencia_usd !== null ? formatUsd(p.orcamento_ocorrencia_usd) : 'sem teto'}</dd></div>
+          </dl>
+        </CartaoResumo>
+        <CartaoResumo icone={Settings2} titulo="Comportamento">
+          <dl>
+            <div><dt>Se uma ocorrência ainda roda</dt><dd>{ROTULO_DA_SOBREPOSICAO[p.sobreposicao]}</dd></div>
+            <div><dt>Pausa após falhas seguidas</dt><dd>{p.pausa_por_falha}</dd></div>
+            <div><dt>Tentativas por ocorrência</dt><dd>{p.max_tentativas}</dd></div>
+            {p.encerrado_motivo ? <div><dt>Encerrado porque</dt><dd>{ROTULO_DO_ENCERRAMENTO[p.encerrado_motivo]}</dd></div> : null}
+          </dl>
+        </CartaoResumo>
+        <CartaoResumo icone={UserRound} titulo="Autoria">
+          <dl>
+            <div><dt>Criado por</dt><dd>{p.criado_por ?? '—'}, {dataCurta(p.criado_em, p.fuso)}</dd></div>
+            <div><dt>Versão</dt><dd>{p.versao}</dd></div>
+          </dl>
+        </CartaoResumo>
+      </div>
       {p.estado === 'aguardando_pessoa' ? (
-        <div>
-          <h3 className={styles.dim}>O que espera você</h3>
+        <section className={styles.cartaoResumo} aria-label="O que espera você">
+          <h3><Hand size={14} aria-hidden /> O que espera você</h3>
           {p.pendencias?.length ? (
-            <ul aria-label="Decisões que esperam você">
+            <ul aria-label="Decisões que esperam você" className={styles.listaSimples}>
               {p.pendencias.map((x) => (
                 <li key={`${x.tipo}-${x.ref}`}>
-                  {{ aprovacao: 'Aprovação', pergunta: 'Pergunta do planejador', ocorrencia_incerta: 'Ocorrência incerta' }[x.tipo]}
+                  {{ aprovacao: 'Aprovação', pergunta: 'Pergunta do planejador', ocorrencia_incerta: 'Ocorrência incerta: confira se a ação aconteceu' }[x.tipo]}
                   {x.run_id ? <> · <a href={hashDe('execucoes', { segmentos: [x.run_id], query: { foco: foco ?? undefined } })}>abrir a execução</a></> : null}
-                  <span className={styles.dim}> desde {formatDateTime(x.desde)}</span>
+                  <span className={styles.dim}> desde {dataCurta(x.desde, p.fuso)}</span>
                 </li>
               ))}
             </ul>
           ) : <p className={styles.nota}>Nenhuma decisão aberta: já dá para retomar.</p>}
-        </div>
+        </section>
       ) : null}
     </>
   );
@@ -154,7 +229,7 @@ function LinhaDaOcorrencia({ o, agora }: { o: OcorrenciaDTO; agora: number }) {
       <div className={styles.corpo}>
         <div className={styles.topo}>
           <StatusBadge meta={META_DA_OCORRENCIA[o.estado]} size="sm" srPrefix="Ocorrência" />
-          <span title={o.previsto_para}>{formatDateTime(o.previsto_para)}</span>
+          <span title={o.previsto_para}>{dataCurta(o.previsto_para)}</span>
           <Badge size="sm">{ROTULO_DA_ORIGEM[o.origem]}</Badge>
           {o.tentativa > 1 ? <span className={styles.dim}>{o.tentativa}ª tentativa</span> : null}
           {o.terminada_em ? <span className={styles.dim}>terminou {tempoRelativo(o.terminada_em, agora)}</span> : null}
@@ -233,7 +308,7 @@ function Execucoes({ id }: { id: string }) {
               <div className={styles.corpo}>
                 <div className={styles.topo}>
                   <StatusBadge meta={metaOf(RUN_STATUS, r.status)} size="sm" srPrefix="Execução" />
-                  <span className={styles.dim} title={formatDateTime(r.created_at)}>{formatDateTime(r.created_at)}</span>
+                  <span className={styles.dim} title={dataCurta(r.created_at)}>{dataCurta(r.created_at)}</span>
                 </div>
                 <a className={styles.titulo} href={hashDe('execucoes', { segmentos: [r.id], query: { foco: foco ?? undefined } })}>{r.short_id}</a>
               </div>
