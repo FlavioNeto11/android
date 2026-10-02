@@ -674,6 +674,14 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
 - **Piso:** um evento novo dentro do piso da autonomia (`piso_observar_s` ou `piso_agir_s`), contado da última
   ocorrência do gatilho, espera sem mover o cursor; quando o piso passa, os que esperaram coalescem numa ocorrência.
   É o mesmo piso que a prévia aplica à recorrência.
+- **Log que volta:** se o cursor passa do `MAX(events.id)` (banco restaurado de backup: a sequência regride), o laço
+  refaz a base em `MAX`, grava a memória `pendencia` `evento.base.<gatilho>` e não dispara nada pelo intervalo. Sem
+  isso, o gatilho emudeceria sem sinal.
+- **Memória recusada não trava o gatilho:** `_lembrar` registra no log a `MemoriaInvalida`, e o cursor avança assim
+  mesmo.
+- **PostgreSQL:** a margem de 5 s é o que protege o cursor da ordem de COMMIT. Uma transação que segure o INSERT do
+  evento por mais tempo que isso perde o evento sem buraco. O SQL novo só rodou em SQLite (o PostgreSQL de teste do
+  projeto sobe por Docker). UNKNOWN até a suíte em PostgreSQL.
 - **Ritmo:** o pedido só com gatilho de evento fica com `proxima_em` NULL, e `pedidos_para_cuidar` o devolve em toda
   volta (`tick_s`). O pedido com recorrência e evento tem `proxima_em` da recorrência. Por isso os gatilhos de evento
   são lidos num passo próprio (`_avaliar_eventos`, o passo 4 do §7.2), sobre todos os pedidos `ativo`, e não dentro de
@@ -723,7 +731,9 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
 
 - `eventos_perdidos` (warn) e `condicao_atendida` (warn), os dois com `requer_pessoa=0`.
   - Chaves: `eventos_perdidos:<gatilho>:<ate_id>` e `condicao_atendida:<gatilho>:<ocorrencia>`.
-  - O texto do aviso não leva valor observado de terceiro, só o nome da observação e o operador.
+  - O texto do aviso não leva valor observado de terceiro: só o nome da observação, o operador e o limiar que a própria
+    pessoa escreveu. O título do pedido entra por função, nunca por `str.format`, porque um `{` no título derrubaria o
+    aviso.
 - **Migração `NNN_pedido_avisos_gatilhos.sql`** (número a confirmar com a coordenação):
   - SQLite: reconstrói `pedido_avisos` com o CHECK ampliado (molde da 047). A FK para `pedidos` com CASCADE e o
     índice `ix_pedido_avisos_pedido` ficam; nada aponta para a tabela;
@@ -734,7 +744,8 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
 ### 14.6 Edição e encerramento
 
 - `PATCH` (`acoes.editar`) continua trocando só os gatilhos de `agora`, `horario` e `recorrencia`. Os três novos ficam
-  como foram criados; para mudá-los, cancela-se e cria-se outro pedido.
+  como foram criados; para mudá-los, cancela-se e cria-se outro pedido. Pedir a troca por um deles é
+  `422 gatilho_nao_suportado`, com `campo` `gatilhos[0].tipo`.
 - `_agendar_pedido`: passado `fim_em`, evento e persona contam como esgotados (motivo `prazo`), e o pedido encerra. Antes
   disso, o pedido segue vivo. A condição não segura o pedido sozinha: com a recorrência esgotada, o pedido encerra mesmo
   que a condição exista.
@@ -747,7 +758,7 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
   piso da persona. `_datas` dá à persona a data da ativação.
 - **Laço:** o passo `_gatilhos_dinamicos`, entre materializar e orçamentos; `_agendar_pedido` passou a tratar `fim_em`.
 - **Linha de base:** `RepositorioDePedidos.base_dos_eventos` é chamado na ativação e na retomada `daqui`.
-- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (17 testes). O aceite "cursor abaixo do menor
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (20 testes). O aceite "cursor abaixo do menor
   evento registra o buraco, não dispara" está em `test_buraco_da_retencao_registra_e_nao_dispara`. O aviso de buraco
   depende da migração (§14.5); até lá, ficam a memória `pendencia` e o log. `real`: `not_run`.
 

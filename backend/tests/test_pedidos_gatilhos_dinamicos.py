@@ -377,3 +377,44 @@ async def test_api_aceita_e_descreve_os_gatilhos_novos(h: Harness) -> None:
     assert str(cursores["evento"]).startswith("ev:"), "a ativação fixa a linha de base dos eventos"
     assert json.loads(h.state.db.scalar("SELECT spec FROM pedido_gatilhos WHERE pedido_id=? AND tipo='condicao'",
                                         (pedido["id"],))) == {"observacao": "preco_total", "op": "<", "valor": 3500.0}
+
+
+async def test_log_que_volta_refaz_a_base_e_registra(h: Harness) -> None:
+    """Banco restaurado de backup: a sequência de `events` regride para baixo do cursor. O gatilho não pode emudecer."""
+    r = Relogio()
+    db = h.state.db
+    _pedido_de_evento(db, r, cursor="ev:99999999")
+    laco = _laco(h, r)
+    laco.uma_volta()
+    assert _ocs(db) == [] and _cursor(db, "gev") == f"ev:{_maior_evento(db)}"
+    assert db.one("SELECT tipo FROM pedido_memoria WHERE chave='evento.base.gev'")["tipo"] == "pendencia"
+    _evento(db, "run.failed", r.t - timedelta(seconds=30))
+    laco.uma_volta()
+    assert len(_ocs(db)) == 1, "depois de refeita a base, o gatilho volta a disparar"
+
+
+async def test_buraco_com_ids_no_formato_real(h: Harness) -> None:
+    """Os outros testes usam ids curtos; a produção usa `g`/`o` + 16 hex, que passam pelo filtro de segredo da memória."""
+    from app.modules.pedidos.infrastructure.repositorio import novo_id
+    r = Relogio()
+    db = h.state.db
+    gid = novo_id("g")
+    velhos = [_evento(db, "run.failed", r.t - timedelta(days=20)) for _ in range(3)]
+    criado = r.t - timedelta(minutes=1)
+    _pedido(db, criado=criado)
+    _gatilho(db, gid, "ped1", "evento", {"kinds": ["run.failed"]}, criado, cursor=f"ev:{velhos[0]}")
+    db.execute("DELETE FROM events WHERE id <= ?", (velhos[2],))
+    _evento(db, "run.started", r.t - timedelta(seconds=30))
+    assert _laco(h, r).uma_volta().buracos == 1
+    assert db.one("SELECT tipo FROM pedido_memoria WHERE chave=?", (f"evento.buraco.{gid}",))["tipo"] == "pendencia"
+
+
+async def test_patch_nao_troca_para_gatilho_novo(h: Harness) -> None:
+    from .test_pedidos_api import _cliente, _criar
+    h.state.pedidos.relogio = Relogio()
+    c = _cliente(h)
+    pid = _criar(c, "chave-28-8-patch-01").json()["id"]
+    versao = c.get(f"/api/pedidos/{pid}").json()["versao"]
+    r = c.patch(f"/api/pedidos/{pid}", json={"versao": versao, "gatilhos": [
+        {"tipo": "evento", "spec": {"kinds": ["run.failed"]}}]})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "gatilho_nao_suportado", r.text

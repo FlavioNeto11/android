@@ -159,7 +159,7 @@ class AcoesDePedidos:
         if fora:
             raise AcaoInvalida(f"campo(s) que a edição não muda: {sorted(fora)}")
         if gatilho is not None and gatilho[0] not in gatilhos.SUPORTADOS:
-            raise AcaoInvalida(f"tipo de gatilho fora do 28.4: {gatilho[0]}")
+            raise AcaoInvalida(f"a edição troca só agora, horário e recorrência, não {gatilho[0]}")
         p = self._pedido(pedido_id)
         if p["estado"] in ("concluido", "encerrado", "cancelado"):
             raise AcaoInvalida(f"pedido {p['estado']} não se edita")

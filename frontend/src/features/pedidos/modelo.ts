@@ -106,7 +106,9 @@ const MENSAGEM_DO_ERRO: Record<string, string> = {
   frequencia_abaixo_do_piso: 'A repetição é mais frequente do que o piso desta autonomia.',
   recorrencia_invalida: 'A regra de repetição não é aceita.',
   fuso_desconhecido: 'Fuso horário desconhecido.',
-  gatilho_nao_suportado: 'Este tipo de gatilho ainda não existe (fica para o item 28.8).',
+  gatilho_nao_suportado: 'Este tipo de gatilho não existe.',
+  gatilho_invalido: 'Os dados do gatilho não são aceitos.',
+  condicao_sem_observacao: 'A condição precisa de outro gatilho que observe (repetir, horário, evento ou persona).',
   sobreposicao_incompativel: 'Esta autonomia não aceita esse modo de sobreposição.',
   limite_invalido: 'Os limites estão incoerentes (prazo, número de ocorrências ou orçamento).',
   credencial_no_comando: 'O objetivo parece conter uma senha: tire-a do texto (ela mora na conta da persona).',
@@ -118,7 +120,9 @@ export function mensagemDoErro(e: ApiError): string {
   // A IA não decidiu quem faz: a pergunta vem na mensagem; o que a pessoa faz é escolher quem faz.
   if (e.code === 'alvos_a_decidir') return `${e.message} Para seguir: marque aparelhos no modo Manual ou escolha uma persona.`;
   const propria = MENSAGEM_DO_ERRO[e.code];
-  if (propria) return e.code === 'recorrencia_invalida' || e.code === 'frequencia_abaixo_do_piso' ? `${propria} ${e.message}` : propria;
+  // Nestes o backend diz QUAL regra ou campo falhou: a explicação geral sozinha não ajudaria a corrigir.
+  const detalha = ['recorrencia_invalida', 'frequencia_abaixo_do_piso', 'gatilho_invalido'].includes(e.code);
+  if (propria) return detalha ? `${propria} ${e.message}` : propria;
   return e.message ? `${e.message} ${hintForError(e)}` : hintForError(e);
 }
 

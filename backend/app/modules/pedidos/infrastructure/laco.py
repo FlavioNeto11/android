@@ -43,6 +43,7 @@ from app.modules.pedidos.domain import avisos as dominio_avisos
 from app.modules.pedidos.domain import gatilhos, gatilhos_dinamicos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
+from app.modules.pedidos.domain.memoria import MemoriaInvalida
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
 from app.modules.pedidos.domain.materializar import janela_padrao_s, materializar, truncar
@@ -556,6 +557,17 @@ class LacoDePedidos:
             with self.lideranca.cercada(PEDIDOS, token):
                 self.repo.cas_cursor(g["id"], g["cursor"], base)
             return
+        maior = self.repo.maior_evento()
+        if cursor > maior:
+            # O log voltou para trás (banco restaurado de backup: a sequência regride). Sem refazer a base, `teto <= cursor`
+            # calaria o gatilho para sempre, sem sinal. Refaz e registra; o que houve no meio não dispara.
+            em = to_iso(agora)
+            with self.lideranca.cercada(PEDIDOS, token):
+                if self.repo.cas_cursor(g["id"], g["cursor"], gatilhos_dinamicos.formatar_cursor_de_evento(maior)):
+                    self._lembrar(g, f"evento.base.{g['id']}", "pendencia",
+                                  f"o log de eventos voltou de #{cursor} para #{maior} (banco restaurado?); o gatilho "
+                                  f"{g['id']} recomeçou dali e nada foi disparado pelo intervalo", em)
+            return
         antes = g["cursor"]
         buraco = gatilhos_dinamicos.buraco(cursor, self.repo.menor_evento())
         if buraco is not None:
@@ -609,25 +621,33 @@ class LacoDePedidos:
         with self.lideranca.cercada(PEDIDOS, token):
             if not self.repo.cas_cursor(g["id"], g["cursor"], gatilhos_dinamicos.formatar_cursor_de_evento(ate)):
                 return
-            self.relatorios.gravar_memoria(g["pedido_id"], f"evento.buraco.{g['id']}", "pendencia", texto, agora=em)
+            self._lembrar(g, f"evento.buraco.{g['id']}", "pendencia", texto, em)
         r.buracos += 1
         log.warning("pedidos: gatilho %s do pedido %s perdeu os eventos #%s a #%s para a retenção", g["id"],
                     g["pedido_id"], de, ate)
         self._avisar_do_gatilho(g, "eventos_perdidos", f"eventos_perdidos:{g['id']}:{ate}", em,
-                                "Parte dos eventos que o pedido «{titulo}» acompanha foi apagada antes de ser lida; "
-                                "nada foi disparado por eles.", {"de_id": de, "ate_id": ate})
+                                lambda titulo: f"Parte dos eventos que o pedido «{titulo}» acompanha foi apagada antes "
+                                "de ser lida; nada foi disparado por eles.", {"de_id": de, "ate_id": ate})
 
-    def _avisar_do_gatilho(self, g: Row, tipo: str, chave: str, em: str, mensagem: str,
+    def _lembrar(self, g: Row, chave: str, tipo: str, valor: str, em: str, ocorrencia_id: str | None = None) -> None:
+        """Grava o fato na memória do pedido sem nunca travar o gatilho: memória recusada (tamanho, formato) fica no log,
+        e o cursor avança do mesmo jeito (senão o mesmo buraco seria redetectado em toda volta)."""
+        try:
+            self.relatorios.gravar_memoria(g["pedido_id"], chave, tipo, valor, agora=em, ocorrencia_id=ocorrencia_id)
+        except MemoriaInvalida as e:
+            log.warning("pedidos: memória %s do gatilho %s recusada: %s", chave, g["id"], e)
+
+    def _avisar_do_gatilho(self, g: Row, tipo: str, chave: str, em: str, mensagem: Callable[[str], str],
                            dados: Mapping[str, object], ocorrencia_id: str | None = None) -> None:
         """O aviso só existe com o tipo no CHECK de `pedido_avisos` (migração do 28.8); antes dela, a memória e o log já
-        guardam o fato."""
+        guardam o fato. `mensagem` recebe o título (texto da pessoa: nunca passa por `str.format`)."""
         if tipo not in dominio_avisos.TIPOS:
             return
         p = self.repo.pedido(g["pedido_id"])
         titulo = (p["titulo"] if p is not None else None) or g["pedido_id"]
         self._emitir(tentativas.aviso(tipo=tipo, aviso_id=chave, pedido_id=g["pedido_id"], pedido_titulo=titulo,
                                       ocorrencia_id=ocorrencia_id, criado_em=em,
-                                      mensagem=mensagem.format(titulo=titulo), dados=dados))
+                                      mensagem=mensagem(titulo), dados=dados))
 
     def _gatilho_de_persona(self, g: Row, token: int, agora: datetime, r: Resumo) -> None:
         """A próxima visita nasce quando a anterior FECHOU (§14.3). Uma `prevista` cuja hora chegou passa pelas regras
@@ -714,15 +734,14 @@ class LacoDePedidos:
                                         gatilhos_dinamicos.formatar_cursor_de_condicao(veredito, atual_id)):
                 return
             if dispara:
-                self.relatorios.gravar_memoria(
-                    g["pedido_id"], f"condicao.{g['id']}", "descoberta",
-                    f"{gatilhos_dinamicos.descrever('condicao', spec)}: atendida na ocorrência {atual_id}",
-                    agora=em, ocorrencia_id=atual_id)
+                self._lembrar(g, f"condicao.{g['id']}", "descoberta",
+                              f"{gatilhos_dinamicos.descrever('condicao', spec)}: atendida na ocorrência {atual_id}", em,
+                              ocorrencia_id=atual_id)
         if dispara:
             r.condicoes += 1
+            regra = gatilhos_dinamicos.descrever("condicao", spec).removeprefix("Avisa quando ")
             self._avisar_do_gatilho(g, "condicao_atendida", f"condicao_atendida:{g['id']}:{atual_id}", em,
-                                    "A condição do pedido «{titulo}» foi atendida: "
-                                    f"{gatilhos_dinamicos.descrever('condicao', spec)[len('Avisa quando '):]}.",
+                                    lambda titulo: f"A condição do pedido «{titulo}» foi atendida: {regra}.",
                                     {"gatilho_id": g["id"], "observacao": spec["observacao"], "op": spec["op"]},
                                     ocorrencia_id=atual_id)
 

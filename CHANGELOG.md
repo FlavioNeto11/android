@@ -35,7 +35,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Passado `fim_em`, evento e persona encerram o pedido.
 - Os avisos `eventos_perdidos` e `condicao_atendida` esperam a migração do CHECK de `pedido_avisos` (número pedido à
   coordenação).
-- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (17 testes) e os 483 de pedidos e arquitetura.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (20 testes) e os de pedidos e arquitetura; no painel, as mensagens de `gatilho_invalido` e
+  `condicao_sem_observacao`. PostgreSQL: `not_run`.
   No navegador, a lista, o filtro "Quando acontecer" e as ocorrências "Por evento" e "Por persona" foram conferidos a
   1366 e 375 px contra o backend simulado. `real`: `not_run`.
 
