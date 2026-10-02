@@ -485,6 +485,28 @@ argumento. O parser normaliza o nome, e um nome citado que nenhuma etapa ANTERIO
 ligada à leitura e resolvida). Falta, na DSL, a leitura nomeada, que espera a decisão do dono de estender a v1alpha1
 (proposta em [skill-dsl](../skill-dsl.md#saídas-e-casos-de-validação)).
 
+### Saídas obrigatórias (item 12.4)
+
+Etapa que declara saídas só é comprovada com elas preenchidas; a verificação de pós-condição prova a TELA, não a leitura.
+Achado real (02/10/2026, r-20261002204347-8c3f6e): `OPEN_MAIL_INBOX` do Outlook declara `saidas: [remetente, assunto]`, o plano
+não escolheu nenhuma, e o produto deu "1 de 1 com sucesso comprovado" com a caixa aberta e nenhum remetente ou assunto.
+
+- **O que a etapa exige** (`executor.saidas_exigidas`): os nomes escolhidos pelo planejador (`steps.saidas`) ou, sem escolha, tudo
+  o que a ação do catálogo declara (`Capability.saidas`). O planejador continua podendo estreitar para o subconjunto que as
+  seguintes usam; o que ele não pode é zerar o que a ação entrega. Vale em `run_step` (receita desligada: ler é decisão sobre a
+  tela da vez) e em `_run_step` (o ator é mandado ler com `read_value`, `step_done` sem ler é recusado, e a etapa comprovada pela
+  tela mas sem valor é `retry`/`failed`, ou `uncertain` se o efeito já foi disparado). Os valores vão ao dicionário de saídas do
+  objetivo (`{{saida:<nome>}}`, item 24.3), no contrato de sempre.
+- **Coleta** (`items_collected`): continua só com `collect_list`. Lista que chega ao fim sem item (3 leituras vazias) é falha
+  (`A coleta não encontrou nenhum item na lista.`), a menos que o vazio seja COMPROVADO: `_prova_de_vazio` pergunta ao
+  julgamento se a tela mostra, de forma explícita, que a lista está vazia (sem item à vista); com "sim" a etapa fecha com
+  `StepResult.vazio_comprovado=true` e `items=[]`, e o `for_each` expande para zero cópias. Lista com itens à vista e zero
+  casamentos (seletor errado) ou julgamento em dúvida/erro: falha, com "O vazio não foi comprovado" no motivo.
+- **Sem saídas e sem coleta** (navegação pura): nada muda.
+
+Prova: `simulated` (`tests/test_saidas_obrigatorias.py`, QA Messenger falso com catálogo de teste, o caso real reconstruído
+inclusive). Real: `not_run` (repetir a leitura do Outlook no android-01).
+
 ## Conta e portas do app da etapa (item 24.4)
 
 Num comando que atravessa apps, cada etapa age pela conta da persona NO APP DELA, e as portas do despacho valem para

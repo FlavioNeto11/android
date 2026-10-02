@@ -1774,6 +1774,9 @@ class RunSummary(BaseModel):
     #: Perfil de IA usado (item 17.7) e de onde veio: `explicit` (pedido) ou `canary` (sorteio). `None` = padrão.
     ai_profile: str | None = None
     ai_profile_source: Literal["explicit", "canary"] | None = None
+    #: O pedido persistente e a ocorrência que originaram a execução (28.9; `null` em toda execução anterior).
+    pedido_id: str | None = None
+    ocorrencia_id: str | None = None
 
 
 class StepResult(BaseModel):
@@ -1782,6 +1785,8 @@ class StepResult(BaseModel):
     delivery_level: DeliveryLevel | None = None
     driven_by: str | None = None              # ai | recipe | recipe+ai
     items: list[str] | None = None            # etapa de coleta: itens lidos da tela
+    # 12.4: coleta sem item só vale com o vazio COMPROVADO pela tela (estado vazio explícito); o resultado diz isso
+    vazio_comprovado: bool = Field(default=False, exclude_if=lambda v: not v)
     evidence_id: int | None = None            # confirmação manual: o print em que a pessoa se baseou (ADR-055)
 
 

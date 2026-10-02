@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -37,7 +37,9 @@ from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreU
 from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
-from .memory import MemoryRefused, MemoryStore
+from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit_needs_person_change
+from .contas_nossas import sem_o_rastro
+from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
                          sessao_vencida)
@@ -115,6 +117,19 @@ class SocialService:
         # fora deste serviço (o bloqueio por desafio do ADR-029, o detector de tela).
         repo.on_status_changed = self._anunciar_status
         repo.on_locked_account = self._anunciar_conta_travada
+        #: Limpezas de OUTROS módulos para a retirada da conta bloqueada (29.23): cada uma recebe `(db, *, profile_id,
+        #: account_id, handle, app_id)` e devolve contagens `{nome: n}`; roda em ordem DENTRO da transação da
+        #: retirada, e uma que levanta erro desfaz a retirada inteira. O módulo de Aprendizado registra a dele aqui.
+        self.limpezas_ao_retirar: list[Callable[..., dict[str, int]]] = []
+        #: Depois da retirada: `(profile_id, account_id, estava_bloqueada)`. O AppState liga o disjuntor de conta
+        #: (ADR-055) aqui: o agendador só o dispara ao VER `blocked`, e a retirada devolve a persona a `active`.
+        self.ao_retirar_conta: Callable[[str, str, bool], None] | None = None
+        self._retirando: set[tuple[str, str]] = set()
+        #: O SINAL FORTE de bloqueio (29.23): `instance_id -> a atividade de desafio do Instagram está em foco agora`.
+        #: O AppState liga ao que `DeviceManager.observe` leu (`DeviceRuntime.atividade_de_desafio`). Só texto na tela
+        #: NÃO retira a conta; sem esta ligação (testes, scripts) só a declaração do dono (`declarado`) retira.
+        self.sinal_de_desafio: Callable[[str], bool] | None = None
+        repo.on_conta_bloqueada = self._retirar_por_bloqueio
 
     # ------------------------------------------------------------------ consulta
     def list_profiles(self) -> list[InstagramProfileDTO]:
@@ -1366,6 +1381,141 @@ class SocialService:
         self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))
         self.repo.delete_account(profile_id, account_id)
         self.bus.emit("log", "Conta removida do perfil", data={"profile_id": profile_id})
+
+    # ------------------------------------------------------------------ conta bloqueada sai (29.23, ADR-068)
+    def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, origem: str = "declarado",
+                                autor: str = "painel", evidencia: str | None = None) -> dict[str, object]:
+        """Bloqueio confirmado numa conta: ela sai da plataforma NA HORA, como se não existisse; a PERSONA fica.
+
+        Numa transação só (nada pela metade): as limpezas registradas por outros módulos, a credencial da conta E a
+        legada E o ciphertext no cofre (o mesmo banco: `SecretStore(db)`), as sessões, o vínculo de aparelho da conta
+        e a linha da conta, mesmo sendo a âncora. Na âncora o `username` esvazia e o status da persona volta a
+        `active` por `mudar_status` (só se estava `blocked`: a pausa do dono, `disabled`, é dele). O aparelho NÃO é
+        tocado: o app segue com a conta logada até uma pessoa decidir (o marcador de quarentena da 054 fica).
+
+        Idempotente: a conta que já não existe devolve `retirada: False`, sem erro. Persona inexistente é 404. O id da
+        conta é a LÁPIDE: continua nos eventos e execuções antigos, que seguem legíveis.
+        """
+        self.get_profile(profile_id)
+        conta = self.repo.account_row(profile_id, account_id)
+        if conta is None:
+            return {"profile_id": profile_id, "account_id": account_id, "retirada": False, "ancora": False,
+                    "limpezas": {}, "status_da_persona": self._status_do(profile_id),
+                    "detail": "A conta já não existe nesta persona: nada a retirar."}
+        app_id = str(conta["app_id"])
+        handle = str(conta["handle"] or "")
+        ancora = self.repo.eh_pacote_ancora(profile_id, self.repo.pacote_da_conta(profile_id, account_id))
+        estava_bloqueada = ancora and self._status_do(profile_id) == "blocked"
+        # O evento da retirada não carrega o @ nem o id em texto: a evidência passa pelo mesmo corte da memória.
+        texto = sem_o_rastro((evidencia or "").strip()[:500], handle, account_id) or "bloqueio confirmado"
+        contagens: dict[str, int] = {}
+        # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto.
+        na_fila = [(str(s["instance_id"]), str(s["status"])) for s in self.repo.db.query(
+            "SELECT instance_id, status FROM account_sessions WHERE account_id=?", (account_id,))
+            if str(s["status"]) in PRECISA_DE_PESSOA]
+        with self.repo.db.tx():
+            for limpeza in list(self.limpezas_ao_retirar):
+                for nome, n in (limpeza(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                                        app_id=app_id) or {}).items():
+                    contagens[nome] = contagens.get(nome, 0) + int(n)
+            # A memória da persona FICA, sem o @ da conta nem o id dela em texto (a linha não se apaga).
+            contagens["memory_items"] = reescrever_memoria(self.repo.db, profile_id=profile_id, handle=handle,
+                                                           account_id=account_id)
+            refs = self.repo.retirar_conta_bloqueada(profile_id, account_id, ancora=ancora,
+                                                     motivo="conta retirada por bloqueio")
+            for ref in dict.fromkeys(refs):
+                # Com as DUAS linhas (conta e legada) já fora, nada mais segura o ciphertext: o `_apagar_credencial`
+                # só poupa o segredo que outra conta ou linha ainda referencia.
+                self._apagar_credencial(profile_id, ref)
+            if estava_bloqueada:
+                self.repo.mudar_status(profile_id, "active", origem=origem, autor=autor,
+                                       evidencia=f"conta {account_id} retirada por bloqueio: a persona segue")
+        self.bus.emit("profile.account_retired",
+                      f"Conta retirada por bloqueio confirmado ({origem}, por {autor}); a persona segue.",
+                      level="warn",
+                      data={"profile_id": profile_id, "account_id": account_id, "app_id": app_id, "ancora": ancora,
+                            "origem": origem, "autor": autor, "evidencia": redact(texto),
+                            "limpezas": contagens, "status_da_persona": self._status_do(profile_id)})
+        for iid, anterior in na_fila:
+            emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=iid,
+                                     status=SessionStatus.unknown.value, anterior_status=anterior,
+                                     detail="conta retirada por bloqueio", account_id=account_id)
+        if self.ao_retirar_conta is not None:
+            try:
+                self.ao_retirar_conta(profile_id, account_id, estava_bloqueada)
+            except Exception as exc:  # noqa: BLE001 - a conta já saiu; o disjuntor falhar não desfaz isso
+                self.bus.emit("log", f"Conta {account_id} retirada, mas o disjuntor de conta falhou "
+                                     f"({type(exc).__name__}): confira as execuções da persona.", level="error",
+                              data={"profile_id": profile_id, "account_id": account_id})
+        return {"profile_id": profile_id, "account_id": account_id, "retirada": True, "ancora": ancora,
+                "limpezas": contagens, "status_da_persona": self._status_do(profile_id),
+                "detail": "Conta retirada; a persona continua."}
+
+    def _status_do(self, profile_id: str) -> str:
+        linha = self.repo.profile_row(profile_id)
+        return str(linha["status"] or "active") if linha is not None else "active"
+
+    def _retirar_por_bloqueio(self, profile_id: str, app_id: str | None, handle: str, instance_id: str,
+                              evidencia: str | None, origem: str = "observado") -> None:
+        """Gatilho do bloqueio CONFIRMADO (a tela de verificação lida, `marcar_conta_travada`): a conta sai.
+
+        Só no INSTAGRAM (conta âncora, pacote `com.instagram.android`) e só com SINAL FORTE: a atividade de desafio
+        (`ChallengeActivity`) em foco, ou a declaração do dono. Texto na tela sozinho, ou conta de outro app (Outlook...),
+        fica como sempre: persona `blocked`/conta marcada e a pessoa decide; retirar ali é só pela rota manual.
+
+        Nunca levanta e roda sob savepoint: falhar aqui (uma limpeza que erra) desfaz só a retirada, e a persona
+        fica `blocked`, o estado seguro, com o erro visível no histórico; a rota manual refaz depois. A transação de
+        fora (o salvamento da sessão, o vínculo) segue. Sem conta achada, não há o que retirar."""
+        conta = self._conta_do_bloqueio(profile_id, app_id, handle)
+        if conta is None:
+            return
+        pacote = self.repo.pacote_da_conta(profile_id, str(conta["id"]))
+        # Só sai sozinha a conta âncora de um app que DECLARA a janela de conta perdida (`app.yaml`,
+        # `atividades_de_conta_perdida`; hoje só o Instagram): nos demais, a conta travada é da pessoa (ADR-068).
+        if not self.repo.eh_pacote_ancora(profile_id, pacote) or not capabilities_of(pacote).lost_account_activities:
+            return
+        forte = origem == "declarado" or bool(self.sinal_de_desafio is not None and self.sinal_de_desafio(instance_id))
+        if not forte:
+            self.bus.emit("log", f"{instance_id}: conta travada vista só pelo texto da tela, sem a atividade de desafio em "
+                                 "foco: a conta NÃO foi retirada (fica bloqueada para uma pessoa conferir).",
+                          level="info", instance_id=instance_id,
+                          data={"profile_id": profile_id, "account_id": str(conta["id"]), "sinal_forte": False})
+            return
+        chave = (profile_id, str(conta["id"]))
+        if chave in self._retirando:
+            return
+        self._retirando.add(chave)
+        try:
+            with self.repo.db.savepoint():
+                self.retirar_conta_bloqueada(profile_id, chave[1], origem=origem, autor="sistema",
+                                             evidencia=f"{instance_id}: {evidencia}" if evidencia
+                                             else f"conta travada em {instance_id}")
+        except Exception as exc:  # noqa: BLE001 - ver docstring
+            self.bus.emit("log", f"{instance_id}: bloqueio confirmado na conta {chave[1]}, mas a retirada falhou "
+                                 f"({type(exc).__name__}): a conta fica como estava; refaça pela rota de retirada da conta "
+                                 "(retire).", level="error",
+                          instance_id=instance_id, data={"profile_id": profile_id, "account_id": chave[1],
+                                                         "erro": type(exc).__name__})
+        finally:
+            self._retirando.discard(chave)
+
+    def _conta_do_bloqueio(self, profile_id: str, app_id: str | None, handle: str) -> Row | None:
+        """A conta da persona a que o bloqueio se refere: a do app dito; sem app, a que tem aquele @; sem nenhuma, a
+        âncora quando o @ é o do cadastro."""
+        if app_id:
+            if (conta := self.repo.account_by_app(profile_id, app_id)) is not None:
+                return conta
+            pacote = self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
+            if pacote and (conta := self.repo.conta_do_pacote(profile_id, str(pacote))) is not None:
+                return conta
+        alvo = handle.lower()
+        for conta in self.repo.list_accounts(profile_id):
+            if str(conta["handle"] or "").lstrip("@").lower() == alvo:
+                return conta
+        perfil = self.repo.profile_row(profile_id)
+        if perfil is not None and str(perfil["username"] or "").lower() == alvo:
+            return self.repo.conta_ancora(profile_id)
+        return None
 
     def set_account_credential(self, profile_id: str, account_id: str, body: Any, *,
                                by: str = "painel") -> ProfileAccountDTO:

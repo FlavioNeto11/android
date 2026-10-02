@@ -27,11 +27,12 @@ describe('falaDoTotal', () => {
 
 describe('origemFalhou', () => {
   it('cada origem depende da sua leitura; a execução vem do snapshot e não falha por leitura', () => {
-    const f = { aprendizado: true, aprovacoes: false, personas: false };
+    const f = { aprendizado: true, aprovacoes: false, personas: false, pedidos: false };
     expect(origemFalhou('aprendizado', f)).toBe(true);
     expect(origemFalhou('persona', f)).toBe(false);
     expect(origemFalhou('persona', { ...f, aprovacoes: true })).toBe(true);
     expect(origemFalhou('intervencao', { ...f, personas: true })).toBe(true);
-    expect(origemFalhou('execucao', { aprendizado: true, aprovacoes: true, personas: true })).toBe(false);
+    expect(origemFalhou('pedido', { ...f, pedidos: true })).toBe(true);
+    expect(origemFalhou('execucao', { aprendizado: true, aprovacoes: true, personas: true, pedidos: true })).toBe(false);
   });
 });

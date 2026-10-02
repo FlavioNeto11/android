@@ -1396,6 +1396,8 @@ class SessaoDeclarada:
                             anterior_status=anterior["status"] if anterior is not None else None, detail=detail,
                             evidencia=trava.trecho if trava is not None else (detail or "")[:300],
                             app_label=self.conhecimento.rotulo, visto_por="motor de sessão")
+        if self.repo.account_row(profile_id, conta.id) is None:
+            return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
                                  detail=detail, account_id=conta.id)

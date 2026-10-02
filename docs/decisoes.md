@@ -74,6 +74,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
+| [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31) | 02/10 |
 
 ---
 
@@ -3903,3 +3905,131 @@ real e PostgreSQL: `not_run` (28.12).
 
 **Relação.** `backend/app/modules/pedidos/`; `backend/app/taskqueue/service.py` e `repository.py`; `backend/app/state.py`;
 `backend/app/config.py` (`PedidosCfg`).
+
+---
+
+## ADR-068 — Conta bloqueada sai na hora e a persona fica: lápide só com o hash do arroba
+
+**Data:** 02/10/2026 · **Estado:** aceito · **Decisão do dono** (item 29.23; ~20:25Z a regra, ~20:45Z o histórico).
+Base: [ADR-055](decisoes.md) (bloqueio por tela, quarentena), [ADR-029](decisoes.md) (desafio bloqueia o perfil),
+[ADR-050](decisoes.md) (nada de engajamento simulado) e a persona como pessoa (evolução 2, 047).
+
+**Contexto.** Cinco das oito contas reais do Instagram estavam `blocked`: a tela de verificação de humano é a conta perdida.
+Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial na conta E na tabela legada
+(`instagram_credentials`), sessões, vínculo de aparelho e listagem, tudo em torno de uma conta morta, e a persona
+`blocked` junto, quando ela tem e-mail, outras contas e automações que nem precisam de conta.
+
+**Decisão do dono.**
+
+1. **Bloqueio confirmado** (a tela de verificação lida por `marcar_conta_travada`, ou o dono declara pela rota) tira a
+   conta da plataforma NA HORA, como se não existisse: some de listagens, roteamento, seleção, contagens e painel.
+2. **Retirar a conta NÃO é apagar a persona.** A persona continua viva e volta a `active` (por `mudar_status`, com
+   origem, autor e evidência); recebe contas novas depois. Na âncora o `username` esvazia: vira persona sem conta, como as
+   `ig-persona-*`.
+3. **Tudo o que faz a conta existir sai numa transação só:** credencial da conta, a LEGADA e o ciphertext no cofre
+   (o segredo só sai com as duas linhas já fora: era a legada que o prendia, K-074); sessões da conta (e a legada na
+   âncora); o vínculo de aparelho do app dela e o sem app (o de OUTRO app fica); a linha da conta, mesmo sendo âncora (a
+   regra "âncora não se remove" é da remoção comum, que continua 409). Idempotente: a segunda chamada devolve
+   `retirada: false`.
+4. **O aparelho NÃO é tocado.** O app segue com a conta bloqueada logada; o marcador de quarentena (054) fica. Limpar o
+   app (`pm clear`) é proposta ao dono, nunca automática.
+5. **Lápide só com o hash.** O produto precisa continuar sabendo que o @ foi NOSSO, senão uma persona nossa o trataria
+   como terceiro e poderia engajar com ele (engajamento simulado, ADR-050). A tabela `contas_retiradas` (071) guarda
+   `sha256("@" + handle em minúsculas, sem espaços)`, o app, a data e o `profile_id` só de auditoria; sem chave
+   estrangeira, fora da retenção. `eh_conta_nossa(db, handle)` consulta os @ vivos de todos os perfis e apps mais essas
+   lápides, e o filtro de frota (`PolicyEngine._fleet_gate`) recusa ação com efeito sobre conta nossa, viva ou aposentada.
+6. **Histórico (decisão do dono, 02/10/2026 ~20:45Z): opção A.** As provas antigas (events, runs, steps, approvals,
+   interactions, ai_calls) ficam intactas; o @ some só do produto vivo; `memory_items` reescritos para "[conta
+   removida]" (assunto e conteúdo, com e sem `@`, sem diferenciar caixa, e o id da conta em texto), sem apagar linha. O id da conta é a
+   lápide legível nas provas antigas. O evento da retirada não traz o @.
+7. **Gancho para outros módulos:** `SocialService.limpezas_ao_retirar`, lista de funções
+   `(db, *, profile_id, account_id, handle, app_id) -> dict[str, int]`, chamadas em ordem DENTRO da transação; uma que
+   levanta erro desfaz a retirada inteira. As contagens (sem texto da conta) entram no evento `profile.account_retired`.
+   O Aprendizado registra a dele (esquecer a conta) ao integrar.
+8. **Gatilho automático** (`SocialRepository.on_conta_bloqueada`, ao fim de `marcar_conta_travada`), com DOIS limites
+   decididos pelo dono/orquestrador: (a) **só o Instagram** (conta âncora, pacote `com.instagram.android`): a conta travada
+   de outro app (Outlook etc.) segue como antes, marcada/`blocked` para a pessoa, e só sai pela rota manual; (b) **só com
+   SINAL FORTE**: a janela que o PRÓPRIO app declara como conta perdida em foco (`atividades_de_conta_perdida` no
+   `app.yaml`; no Instagram, a `ChallengeActivity`), lida do `dumpsys window` por `DeviceManager.observe` quando a árvore
+   já parece conta travada (validade de 120 s), ou a declaração do dono. O núcleo não guarda nome de atividade nem de
+   pacote (ADR-052): app que não declara a janela não retira conta sozinho. Só TEXTO na
+   tela não retira: fica `blocked` + pessoa, com uma linha no histórico dizendo que faltou o sinal. Sem leitura do foco
+   (falha de adb), sem sinal. Uma detecção só pelas telas declaradas do app (`telas.yaml`, sem o texto genérico) também não
+   dispara a leitura do foco e portanto não retira sozinha (aprovado pelo orquestrador; cobri-la é extensão futura). Isso reduz o falso positivo de uma frase parecida em outra tela. O gatilho roda sob savepoint e
+   nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. O disjuntor de
+   conta (ADR-055) é acionado direto pela retirada, porque o agendador só o dispara ao VER `blocked` e a persona volta a
+   `active` no mesmo gesto.
+9. **Filtro de frota (`_fleet_gate`).** Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) é recusada. Responder
+   a comentário de um TERCEIRO num post nosso (roteiro 8.3: a conta dona do post age, o `counterparty` é o do terceiro)
+   continua permitido; coberto por teste.
+
+**Dívidas registradas.**
+
+- `DELETE /api/instagram/profiles/{id}` apaga a persona INTEIRA (os dados da pessoa moram na linha do perfil). Retirar a
+  conta não passa por ele e nada muda ali; é item separado.
+- Aplicar a regra às cinco contas `blocked` já existentes é operação pós-deploy (rota `retire`), não migração.
+- Os ids de conta e o @ continuam nas provas antigas (opção A); apagá-los (opção B) foi recusado pelo dono.
+- **Ideia de backlog (não implementada; depois do 12.4):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática), que também resolveria o marcador de quarentena do aparelho.
+
+**Consequências.** Migração 071. Persona sem conta já era roteável (`resolver_alvos` não exige conta quando o app do
+comando não usa conta); precisa de vínculo de aparelho para um app sem conta. Prova `simulated`:
+`test_conta_bloqueada_sai.py` (retirada, cofre, lápide, filtro, gancho, gatilho pela regra inteira, rota, persona sem conta
+roteada). Real e PostgreSQL: `not_run`.
+
+**Relação.** `backend/app/social/contas_nossas.py`, `service.py` (`retirar_conta_bloqueada`), `repository.py`
+(`retirar_conta_bloqueada`, `on_conta_bloqueada`), `policy.py` (`_fleet_gate`), `backend/migrations/071_contas_retiradas.sql`.
+
+## ADR-069 — Jev (TypeSafe System One) em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado por classe
+
+**Data:** 02/10/2026 · **Estado:** aceito · **Decisão do dono**, aprovada no chat da orquestradora às ~21:35Z de 02/10
+("sim para todos" sobre as perguntas do roteiro), registrada pela frente Jev (item 31.3). Emenda o
+[ADR-063](decisoes.md#adr-063--retrieval-de-contexto-de-código-léxico--bm25-locais-semântico-plugável-política-única-de-envio).
+Roteiro de partida: `.claude/handoffs/roteiro-jev.md` (§3 a porta, §4 as decisões D-J1 a D-J7, §5 os itens); desenho do hub
+em [design/hub-de-ia-fora-de-execucao.md](design/hub-de-ia-fora-de-execucao.md).
+
+**Contexto.** O ADR-063 tratou o Jev (System One, TypeSafe) só como provedor de retrieval de CÓDIGO, com envio privado e
+sintético negados. O dono pediu (02/10) que o Jev seja usado onde acelera a plataforma. O roteiro mostrou que o ganho está nas
+decisões por conjunto fechado (triagem do curador, etapa semântica da intenção, desempate, apps candidatos), não no `decide`
+com visão (~58% do gasto, que devolve ferramenta e argumentos livres). Essas decisões levam DADO DE RUNTIME (categorias,
+catálogo, comando), que o ADR-063 não cobre.
+
+**Decisão.**
+
+1. **Porta única.** O System One em runtime só é chamado pela porta `DecisaoFechada` do hub de IA (`planning/`, item 31.4) e só
+   para escolher entre opções fechadas (`choice`, `noul`, `score`), até 255 opções, sempre com `nenhuma`. Um teste de cliente
+   único prova que só o adaptador fala com a TypeSafe.
+2. **Poder limitado.** O Jev escolhe entre candidatos que passam depois pelos MESMOS guardas, acrescenta escrutínio ou
+   escalonamento e sugere para a pessoa confirmar. Nunca autoriza efeito externo, aprovação, consentimento, sucesso nem
+   segurança; nunca dispensa verificação nem tier (ADR-063 item 11; ADR-054).
+3. **Constantes de código fechadas por padrão**, ao lado das do ADR-063 (que continuam: código privado e sintético NEGADOS):
+   `JEV_RUNTIME_SEND_APPROVED` e `JEV_ALLOWED_CLASSES`. O YAML só restringe, nunca libera. Cada classe liberada tem linha aqui,
+   com data.
+4. **Classes de dado liberadas pelo dono em 02/10/2026:**
+
+   | Classe | O que | Liberada para |
+   |---|---|---|
+   | C0 | categorias e metadados (`failure_kind`, risco, `side_effect`, tier, contagens, status) | F1: todos os consumidores da porta |
+   | C1 estrito | Livro sanitizado por campos nomeados de lista fechada (lição de texto fechado, metadados de receita sem rótulo de seletor) | F1 |
+   | C2 | catálogo próprio do dono (nome, descrição e modelo de habilidade, fluxo, capability, app declarado) | F2 |
+   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades que FALHA FECHADA | F3: só a sombra da intenção (31.9) |
+
+   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3); C5 (árvore de UI);
+   C6 (tela e texto de conta real) até pedido de privacidade/ZDR e ADR próprio; **C7 nunca**, em modo nenhum, sombra inclusa
+   (tela sensível, aparelho-loja, segredo, credencial, desafio, 2FA, CAPTCHA: o pedido INTEIRO é recusado); C8 segue o ADR-063.
+5. **Telemetria do MCA aceita por escrito.** O dono aceita que a TypeSafe processe logs, estatísticas, classificações e
+   aprendizados derivados do nosso uso; até C0 revela o padrão de uso do parque.
+6. **Modos e prova.** `off` é o padrão; `shadow` é assíncrono e fora do caminho crítico; `on` só por consumidor, com GO
+   pré-registrado (limiares escritos antes do primeiro resultado, 31.7). Um fallback nunca conta como acerto.
+7. **Gasto.** Fatia própria `fatia_jev` dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do
+   ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado, **condicionada à
+   troca da chave TypeSafe pelo dono ANTES de qualquer chamada nova** (D-J3; o piloto marcou rotação obrigatória). Até o dono
+   confirmar a troca, nenhuma chamada real ao Jev; ninguém lê nem toca a chave.
+8. **Transparência.** Com `shadow` ligado, o `notice` de `GET /api/ai` nomeia a TypeSafe e as classes enviadas; a chave aparece só
+   como "configurada".
+
+**Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
+acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.
+Prova: `simulated` nos itens 31.1–31.9 (provedor nulo e falso); `real` só no 31.10/31.11, depois da chave nova.
+
+**Relação.** ADR-063 (emendado), ADR-009, ADR-040, ADR-051, ADR-054; Fase 31 em [plano-100.md](plano-100.md);
+`backend/app/modules/context_retrieval/adapters/jev.py`; `backend/app/planning/` (porta, 31.4).

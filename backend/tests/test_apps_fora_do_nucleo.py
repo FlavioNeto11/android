@@ -150,10 +150,10 @@ def test_integracoes_so_tem_o_motor_generico() -> None:
     assert dentro == ["__init__.py", "app_declarado"], f"código de app em integrations/: {dentro}"
 
 
-#: Nomes HISTÓRICOS que contêm "instagram" e não são conhecimento de app: a tabela do perfil (`instagram_profiles`,
-#: `instagram_credentials`), o prefixo das rotas do perfil (`/api/instagram/...`) e o nome antigo da variável da chave
+#: Nomes HISTÓRICOS que contêm "instagram" e não são conhecimento de app: as tabelas do perfil (`instagram_profiles`,
+#: `instagram_credentials`, `instagram_sessions`), o prefixo das rotas do perfil (`/api/instagram/...`) e o nome antigo da variável da chave
 #: mestra. Renomeá-los é migração e versão de contrato, não mudança de comportamento; ficam fora desta contagem.
-NOMES_HISTORICOS = re.compile(r"\binstagram_(?:profiles|credentials)\b|^/instagram/|INSTAGRAM_CREDENTIALS_MASTER_KEY")
+NOMES_HISTORICOS = re.compile(r"\binstagram_(?:profiles|credentials|sessions)\b|^/instagram/|INSTAGRAM_CREDENTIALS_MASTER_KEY")
 
 #: Texto (fora de docstring e de nome histórico) que cita o Instagram, por arquivo de `app/`. Não decide nada — quem
 #: decide é pego acima —, mas é conhecimento de app escrito em Python, e a meta do ADR-052 é zero. Catraca: só

@@ -23,8 +23,8 @@ from collections.abc import Mapping, Sequence
 import httpx
 
 from ..domain.errors import (
-    ProviderError, ProviderInvalidResponse, ProviderKeyMissing, ProviderOffline, ProviderOverloaded,
-    ProviderRateLimited, ProviderTimeout, ProviderUnavailable,
+    ProviderError, ProviderInvalidResponse, ProviderKeyMissing, ProviderOffline, ProviderOptionLimit,
+    ProviderOverloaded, ProviderRateLimited, ProviderTimeout, ProviderUnavailable,
 )
 from ..domain.model import (
     Chunk, FileChoice, FilesReply, ProviderUsage, RegionChoice, RegionsReply, RepoMap,
@@ -39,6 +39,13 @@ KEY_ENV = "TYPESAFE_API_KEY"
 DEFAULT_MODEL = "jev-1.13.0"
 #: Preço oficial de ENTRADA (US$ por 1 M de tokens); a saída é grátis. Só serve para reportar custo estimado.
 PRICE_USD_PER_MTOK_INPUT = 0.042
+#: Teto de opções de uma pergunta `choice` (documentação oficial), CONTANDO a opção `nenhuma`. Acima disso o pedido é
+#: recusado aqui, antes de montar o corpo: não vale pagar o round-trip para receber 422 (e nada é truncado em silêncio).
+MAX_OPCOES = 255
+#: Id opaco da opção "nenhuma das anteriores", sempre presente. Fica fora do vocabulário de caminhos de propósito; escolher
+#: `nenhuma` é abster-se, e `_ranking` o descarta (o híbrido cai no caminho local, como em qualquer resposta vazia).
+ID_NENHUMA = "opt:nenhuma"
+_DESCRICAO_NENHUMA = "None of the above: no other option answers the question."
 
 _INSTR_ARQUIVOS = ("Each entry of `entries` summarizes one file of a codebase (its language, the names it defines and "
                    "its purpose). Which files are most likely to contain the code that answers `question`? "
@@ -95,16 +102,21 @@ class JevSemanticProvider:
                   timeout_s: float) -> tuple[list[tuple[str, float]], ProviderUsage]:
         if not entradas:
             raise ProviderInvalidResponse("sem entradas")
+        if ID_NENHUMA in entradas:
+            raise ProviderInvalidResponse("id reservado")
+        if len(entradas) + 1 > MAX_OPCOES:  # +1: a `nenhuma`. Recusa local, antes de qualquer corpo ou rede
+            raise ProviderOptionLimit("opcoes acima do teto")
+        opcoes = {**entradas, ID_NENHUMA: _DESCRICAO_NENHUMA}
         corpo = {
-            "state": {"question": query, "entries": entradas},
+            "state": {"question": query, "entries": opcoes},
             "model": self.model,
             "questions": {"best": {"type": "choice", "instructions": instrucao,
-                                   "criteria": {i: None for i in entradas}}},
+                                   "criteria": {i: None for i in opcoes}}},
         }
         bruto = json.dumps(corpo, ensure_ascii=False).encode("utf-8")
         resposta, latencia = self._postar(bruto, timeout_s)
         answers, usage = self._interpretar(resposta, len(bruto), latencia)
-        ranking = self._ranking(answers.get("best"), set(entradas), limite)
+        ranking = self._ranking(answers.get("best"), set(opcoes), limite)
         return ranking, usage
 
     def _postar(self, corpo: bytes, timeout_s: float) -> tuple[object, float]:
@@ -175,7 +187,8 @@ class JevSemanticProvider:
                 raise ProviderInvalidResponse("opcao desconhecida")
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0.0 <= float(v) <= 1.0 + 1e-9:
                 raise ProviderInvalidResponse("probabilidade invalida")
-            pares.append((k, min(float(v), 1.0)))
+            if k != ID_NENHUMA:  # validada acima como opção enviada, mas nunca vira arquivo nem região
+                pares.append((k, min(float(v), 1.0)))
         pares.sort(key=lambda kv: -kv[1])  # sort estável: empate mantém a ordem em que o provedor listou
         return [(k, p) for k, p in pares if p > 0][:limite]
 

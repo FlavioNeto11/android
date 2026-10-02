@@ -14,7 +14,7 @@ A camada e o "onde alterar" NÃO são colunas: saem do tipo, na leitura, pela ta
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -87,8 +87,11 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.PRAZO_DA_ETAPA, ("tempo da etapa esgotado", "prazo da etapa", "passou do prazo restante da etapa")),
     (_F.IA_RECUSA, ("recusou esta requisicao por politica", "recusou a requisicao por politica",
                     "recusou verificar esta etapa por politica", "recusou todas as variacoes")),
-    (_F.IA_SALDO, ("sem credito", "recarregue no console", "recarregue o credito")),
-    (_F.IA_ORCAMENTO, ("teto de gasto de ia", "chamadas de ia por objetivo", "orcamento de")),
+    # legado: o texto de um `AIError` é o que o executor escreveu em `attempts.error`; o TIPO (`AIError.kind`) chega por
+    # `ai_calls.error_kind` e vence o texto onde existir (`classificar_pelo_tipo_da_ia`). Estas regras ficam para a
+    # tentativa sem `ai_calls` (além da purga) e para o texto que o tipo não cobre (a catraca por AST depende delas).
+    (_F.IA_SALDO, ("sem credito", "recarregue no console", "recarregue o credito")),  # legado
+    (_F.IA_ORCAMENTO, ("teto de gasto de ia", "chamadas de ia por objetivo", "orcamento de")),  # legado
     # O valor que a etapa entrega às seguintes (item 24.3) só existe se o ator chamar `read_value`: como o
     # `collect_list` da coleta, deixar de ler (ou insistir em leitura inválida) é conduta do ator com a ferramenta. E
     # concluir na tela de outro app (item 24.7) também: o executor disse qual app abrir e o ator não abriu.
@@ -144,6 +147,24 @@ def classificar_falha(error: str | None, status: str | None) -> FailureKind | No
     if s == "interrupted":
         return _F.INTERROMPIDA
     return classificar_texto(error)
+
+
+#: `AIError.kind` (planning/provider.py) → tipo da falha, em ORDEM de precedência. Só os tipos que ENCERRAM a chamada
+#: (o roteador não troca de modelo diante de `budget` nem de `refusal`, e conta e chave pedem a pessoa): um deles gravado
+#: numa chamada da tentativa que falhou é a causa dela, qualquer que seja o texto. `step_deadline`, `invalid_output` e
+#: `error` não entram: o prazo vence com ou sem IA, e os outros dois não dizem por que a etapa falhou.
+_DO_TIPO_DE_ERRO_DE_IA: tuple[tuple[str, FailureKind], ...] = (
+    ("budget", _F.IA_ORCAMENTO), ("billing", _F.IA_SALDO), ("balance", _F.IA_SALDO), ("refusal", _F.IA_RECUSA),
+    ("not_configured", _F.IA_INDISPONIVEL),
+)
+
+
+def classificar_pelo_tipo_da_ia(tipos: Iterable[str]) -> FailureKind | None:
+    """O tipo da falha dado pelos `AIError.kind` gravados em `ai_calls.error_kind` da tentativa; `None` sem nenhum
+    dos que decidem. Não olha texto: o teto atingido do pedido ("Orçamento do pedido atingido…") fugia da regra por
+    trecho e caía em `outro`."""
+    vistos = set(tipos)
+    return next((tipo for kind, tipo in _DO_TIPO_DE_ERRO_DE_IA if kind in vistos), None)
 
 
 #: `recipes.motivo_do_retorno` (o vocabulário do funil de receitas) → tipo. `outro` do funil continua `outro`.

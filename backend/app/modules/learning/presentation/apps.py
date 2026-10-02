@@ -15,6 +15,7 @@ from app.modules.learning.application.apps import (DetalheDoApp, ItemDeclarado, 
                                                    VisaoDeApps, VisaoPorApp)
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.camada import ModosDeUso, Uso
+from app.modules.learning.domain.saude import Saude
 from app.modules.learning.infrastructure.montagem import modos_de_runtime
 from app.modules.learning.presentation.livro import _chamar, _entrada, _servico
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -69,15 +70,17 @@ def _item_declarado(i: ItemDeclarado) -> JsonObject:
             "quantidade": i.quantidade, "uso": _uso(i.uso)}
 
 
-def _linha(x: LinhaDoAprendido, servico: LearningService) -> JsonObject:
-    return {**_entrada(x.entrada, servico), "origem_na_visao": x.origem.value, "uso": _uso(x.uso),
-            "absorvida_em": x.absorvida_em}
+def _linha(x: LinhaDoAprendido, servico: LearningService, saudes: dict[str, Saude]) -> JsonObject:
+    return {**_entrada(x.entrada, servico, saudes.get(x.entrada.trail_ref)), "origem_na_visao": x.origem.value,
+            "uso": _uso(x.uso), "absorvida_em": x.absorvida_em}
 
 
 def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
+    # A saúde sai da MESMA função da lista do Livro (30.4): o painel não a recalcula nem a completa por outra rota.
+    saudes = servico.saudes([x.entrada for x in (*d.aprendido, *d.absorvido)])
     return {"app": _resumo(d.resumo), "declarado": [_item_declarado(i) for i in d.declarado],
-            "aprendido": [_linha(x, servico) for x in d.aprendido], "absorvido": [_linha(x, servico) for x in d.absorvido],
-            "modos": _modos(d.modos)}
+            "aprendido": [_linha(x, servico, saudes) for x in d.aprendido],
+            "absorvido": [_linha(x, servico, saudes) for x in d.absorvido], "modos": _modos(d.modos)}
 
 
 @router.get("/apps", response_model=None)

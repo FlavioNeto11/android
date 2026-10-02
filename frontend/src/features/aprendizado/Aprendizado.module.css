@@ -404,3 +404,7 @@
 .semDado { color: var(--text-3); font-style: italic; }
 
 .seloDeSaude { flex: none; }
+
+/* 30.15: a contagem por rótulo de saúde (cartão e detalhe do app) e o subtítulo de cada grupo por capability. */
+.chipsDeSaude { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
+.subtitulo { font-size: var(--fs-md); font-weight: 600; color: var(--text-2); overflow-wrap: anywhere; }

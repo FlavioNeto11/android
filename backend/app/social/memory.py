@@ -18,10 +18,11 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..db import loads
+from ..db import Database, loads
 from ..models import InteractionStatus, MemoryItemDTO
 from ..security.redaction import looks_secret, mentions_credential
 from ..util import now_iso
+from .contas_nossas import previa_do_rastro, sem_o_rastro
 from .repository import SocialRepository
 
 log = logging.getLogger("poc.social.memory")
@@ -261,3 +262,32 @@ class MemoryStore:
             confidence=row["confidence"], occurrences=row["occurrences"], expires_at=row["expires_at"],
             created_at=row["created_at"], updated_at=row["updated_at"], last_used_at=row["last_used_at"],
             app_id=_app_de(row))
+
+
+# ------------------------------------------------------------------ retirada da conta (29.23, ADR-068)
+def reescrever_memoria(db: Database, *, profile_id: str, handle: str | None, account_id: str | None) -> int:
+    """`memory_items` da PERSONA: `subject` e `content` passam a dizer `[conta removida]` onde diziam o @ da conta
+    (com e sem `@`, sem diferenciar caixa) ou o id dela. A linha FICA: a persona sobrevive e lembra do que viveu.
+
+    O `fingerprint` (unique por perfil) é recalculado com o texto novo; se colidir com outra lembrança, a linha
+    guarda um fingerprint próprio em vez de ser apagada ou mesclada. Devolve quantas lembranças mudaram."""
+
+    previas = previa_do_rastro(handle, account_id)
+    if not previas:
+        return 0
+    casa = " OR ".join(f"lower({c}) LIKE ?" for c in ("subject", "content") for _ in previas)
+    args = tuple(f"%{p}%" for _ in ("subject", "content") for p in previas)
+    mudou = 0
+    for m in db.query(f"SELECT seq, subject, content, fingerprint FROM memory_items WHERE profile_id=? AND ({casa})",
+                      (profile_id, *args)):
+        assunto, conteudo = sem_o_rastro(m["subject"], handle, account_id), sem_o_rastro(m["content"], handle, account_id)
+        if assunto == m["subject"] and conteudo == m["content"]:
+            continue
+        fp = fingerprint(str(assunto), str(conteudo))
+        if db.one("SELECT 1 FROM memory_items WHERE profile_id=? AND fingerprint=? AND seq<>?",
+                  (profile_id, fp, m["seq"])) is not None:
+            fp = f"{fp[:24]}r{m['seq']}"
+        db.execute("UPDATE memory_items SET subject=?, content=?, fingerprint=? WHERE seq=?",
+                   (assunto, conteudo, fp, m["seq"]))
+        mudou += 1
+    return mudou

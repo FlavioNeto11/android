@@ -166,7 +166,7 @@ motivo quer dizer:
 | 2 | `execucao` | `ai_max_usd_per_run` | só chamada com `run_id` |
 | 3 | `dia` | `ai_max_usd_per_day`, o mesmo número para todos | toda chamada |
 | 4 | `fatia_curador` | `ai.limits.curador_max_usd_per_day`; sem valor, `curador_fracao_do_dia` (α = 0,10) × teto do dia | `origem='curador'` |
-| 4 | `fatia_jev` | `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50; D-J3 a confirmar pelo dono) | `origem='decisao_fechada'` |
+| 4 | `fatia_jev` | `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50; D-J3 aprovada pelo dono no ADR-069) | `origem='decisao_fechada'` |
 | (fora de `_budget`) | `saldo` | saldo da conta (ADR-051), em `RoutingProvider._saldo` | hoje sai com `kind="balance"`; o valor já está no vocabulário para a etapa que o unificar |
 
 - A fatia é PARTE do teto do dia, nunca soma por fora: a chamada passa no dia E na fatia da própria origem, e uma fatia
@@ -527,3 +527,40 @@ o que toca a IA. Nenhuma chamada de IA escreve, escolhe ou mede lição (`aprend
 
 Prova: `simulated` (`backend/tests/test_prompts_licoes.py`, `test_learning_licoes.py`, `test_learning_efeito.py`);
 exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md)).
+
+
+## 16. Decisão por conjunto fechado (Fase 31)
+
+A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
+System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
+real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
+continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de dado: ADR-069.
+
+- **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
+  step_id, ref)`, `Pergunta(id, tipo, instrucoes, opcoes, limiar)` e `RespostaDeDecisao(escolha, probabilidades, confianca,
+  fallback_reason, tokens, usd, ms)`. Origens: `curador`, `intencao`, `desempate`, `apps`. Até 255 opções, sempre com
+  `nenhuma` (`pergunta_choice` a acrescenta; o adaptador de retrieval aplica a mesma trava e recusa localmente acima de 255).
+  Um estado, N perguntas, **uma** chamada; o custo mora no `ResultadoDeDecisao`.
+- **Privacidade que falha fechada**, antes de montar corpo (`privacidade.py`, ADR-069 itens 3 e 4):
+  - `JEV_RUNTIME_SEND_APPROVED = False` recusa tudo;
+  - `JEV_ALLOWED_CLASSES` é o teto de código (C0 e C1 em F1 para todos, C2 em F2, C3 em F3), e **a C3 só vale na origem
+    `intencao` e só em `shadow`** (em outra origem, ou em `on`, é recusada);
+  - C4 em diante não existe no vocabulário;
+  - qualquer marcador de C7 no pedido (tela sensível ou protegida, aparelho-loja, segredo, credencial, desafio/2FA/CAPTCHA)
+    recusa o pedido INTEIRO, na sombra também; `social_persona` e qualquer origem fora das quatro (D-J5) também recusam;
+  - o estado só leva campos nomeados da lista da origem (`CAMPOS_POR_ORIGEM`, vazia até cada consumidor registrar os seus);
+  - toda string do corpo passa por `security.redaction.redact` (cobre segredo, não nome de terceiro: por isso a classe é
+    limitada).
+- **Modos.** `ai.decisao_fechada.enabled: false` vence tudo; `ai.decisao_fechada.consumidores.<origem>: off|shadow|on`
+  (ausente = `off`); o modo efetivo é o MENOR entre o do pedido e o do consumidor. `ai.decisao_fechada.classes_permitidas`
+  só estreita o teto de código. `shadow` roda fora do caminho crítico e nada usa a resposta (só o `observador`, que recebe
+  ids e categorias, nunca o estado); `on` só por consumidor, com GO pré-registrado.
+- **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
+  `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
+  `privacidade`, `desligado`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
+  resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+- **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
+  varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_context_retrieval_semantic.py`: decisores nulo e falso e
+transporte falso). Chamada real ao Jev: `not_run`.

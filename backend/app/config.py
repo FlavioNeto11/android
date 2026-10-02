@@ -520,9 +520,22 @@ class AiLimitsCfg(BaseModel):
     #: do dia (`0`), não há fatia e nada muda. A fração é o α = 10 % decidido pelo dono (30.11).
     curador_max_usd_per_day: float | None = Field(None, ge=0, le=100_000)
     curador_fracao_do_dia: float = Field(0.10, ge=0, le=1)
-    #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a proposta D-J3, a
-    #: confirmar pelo dono; ainda não há chamador, então o valor só passa a valer quando a porta existir.
+    #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a D-J3, aprovada pelo
+    #: dono no ADR-069; vale para as chamadas da porta `DecisaoFechada` (31.4).
     jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+
+
+class DecisaoFechadaCfg(BaseModel):
+    """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
+
+    O YAML só RESTRINGE: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
+    privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
+    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado."""
+
+    enabled: bool = False
+    consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
+    #: Estreita o teto de código (interseção). None = não estreita além do código.
+    classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
 
 
 class AiCfg(BaseModel):
@@ -626,6 +639,7 @@ class AiCfg(BaseModel):
     canary: AiCanaryCfg = AiCanaryCfg()
     #: Fatias do teto do dia por origem de chamada (item 31.6). Vazio = os padrões da classe.
     limits: AiLimitsCfg = AiLimitsCfg()
+    decisao_fechada: DecisaoFechadaCfg = DecisaoFechadaCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
@@ -1103,6 +1117,11 @@ class PedidosCfg(BaseModel):
     #: Atraso exponencial da nova tentativa: `base * 2**(n-1)`, no máximo `retentativa_teto_s`. Chega até `tick_s` tarde.
     retentativa_base_s: float = Field(60.0, ge=1.0, le=86_400.0)
     retentativa_teto_s: float = Field(900.0, ge=1.0, le=86_400.0)
+    #: Piso de frequência da criação e da edição (28.9, adendo v0.45, decisão do dono 02/10): o menor intervalo entre
+    #: ocorrências por teto de autonomia. `observar` e `preparar` leem e preparam (15 min); `agir` tem efeito externo e
+    #: custo por ocorrência (1 h). Abaixo, a criação recusa com `frequencia_abaixo_do_piso`.
+    piso_observar_s: int = Field(900, ge=60, le=86_400)
+    piso_agir_s: int = Field(3600, ge=60, le=86_400)
 
 
 class AppConfigFile(BaseModel):

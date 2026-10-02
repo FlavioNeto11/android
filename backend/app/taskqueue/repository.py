@@ -1200,7 +1200,8 @@ class Repository:
             finished_at=row["finished_at"], counts=counts, progress=(counts.succeeded / total) if total else 0.0,
             status_detail=row["status_detail"], deduplicated=deduplicated,
             app_ids=loads(_col(row, "app_ids"), []) or [],
-            ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"))
+            ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"),
+            pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])

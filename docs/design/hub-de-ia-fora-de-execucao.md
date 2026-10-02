@@ -7,6 +7,10 @@ abertas podem mudar o desenho:
 - a D0 do dono, sobre o sentido de "Jev para o fluxo de navegação";
 - o roteiro do Jev-retrieval (`choice`), que traz a emenda ao ADR-063 e as classes de dado que podem sair da máquina.
 
+**Porta do Jev (31.4, 02/10): IMPLEMENTADA** em `backend/app/planning/decisao_fechada/` (contrato, privacidade que falha
+fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts; o decisor real é o 31.8). Decisão: ADR-069. Resumo em
+[ia.md §16](../ia.md#16-decisão-por-conjunto-fechado-fase-31). Não muda o desenho do curador (30.12) nem a rubrica de gasto.
+
 Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **Jev-retrieval** = o provedor remoto de
 `modules/context_retrieval` (ADR-063).
 
