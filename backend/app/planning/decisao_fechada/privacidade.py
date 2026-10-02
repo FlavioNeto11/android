@@ -33,6 +33,12 @@ C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.
 CAMPOS_POR_ORIGEM: dict[str, frozenset[str]] = {o: frozenset() for o in ORIGENS}
+#: Curador (31.8): só METADADOS e CONTAGENS do dossiê (C0, F1), a lista fechada de `curador.CAMPOS`. Repetida aqui de
+#: propósito: o que sai é decidido neste arquivo, num diff que o revisor veja (o teste confere que as duas batem).
+CAMPOS_POR_ORIGEM["curador"] = frozenset({
+    "kind", "estado", "origem", "side_effect", "human_origin", "classe_de_risco", "politica",
+    "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
+    "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
 
 
 @dataclass(frozen=True)

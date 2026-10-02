@@ -588,3 +588,25 @@ continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de d
 
 Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
 decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
+
+### Triagem do curador em sombra (31.8, R1)
+
+`planning/decisao_fechada/curador.py`. `CuradorComTriagemEmSombra` decora o curador principal (porta `CuradorDeIA` do
+aprendizado, por estrutura): devolve o parecer DELE intacto e só depois entrega o item a `TriagemDoCurador`, que pergunta
+ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descartar` e `nenhuma` (`curador_triagem`).
+
+- **Dado F1, classe C0:** só `licao` e `receita`, e só os campos de `CAMPOS_POR_ORIGEM["curador"]`: tipo, estado, origem,
+  efeito, origem humana, classe e política de risco, rótulo de saúde e contagens (evidência a favor, contra e simulada,
+  falhas e ocorrências, votos, intervenções, execuções). Cada valor é rótulo de vocabulário ou número; conteúdo (inclusive
+  o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
+- **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
+  manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
+  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação), casada pelo `ref` = `dossie_hash`. Sem voto
+  da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
+- **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
+  rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
+  sombra só registra. A falha do curador principal sobe como antes, sem sombra.
+- **Ligação:** o `AppState` embrulha o adaptador do hub (30.12) quando os dois branches se encontram (suíte 5); até lá o
+  código existe e nada o chama.
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada real: `not_run` (31.10).
