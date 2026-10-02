@@ -81,6 +81,7 @@ from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
 from .modules.pedidos.infrastructure.laco import LacoDePedidos
+from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -446,7 +447,9 @@ class AppState:
         self.pedidos = LacoDePedidos(
             self.db, self.runs, self.lideranca, cfg.file.pedidos,
             # 28.6: o custo da ocorrência sai de `ai_calls` pela MESMA conta do painel de uso (`/api/usage`) e do teto.
-            custo_da_execucao=lambda run_id: costs.spent_usd(self.db, cfg.file.ai.prices, run_id=run_id))
+            custo_da_execucao=lambda run_id: costs.spent_usd(self.db, cfg.file.ai.prices, run_id=run_id),
+            # 28.6: saldo da conta de IA abaixo do mínimo (ADR-051) ADIA o despacho; é a mesma leitura de /api/ai/balances.
+            adiar_por_saldo=lambda: motivo_de_adiamento(self.db, cfg, cfg.file.pedidos.saldo_minimo_usd))
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
         # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),

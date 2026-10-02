@@ -1028,6 +1028,10 @@ class PedidosCfg(BaseModel):
     lote_max: int = Field(500, ge=1, le=5000)
     #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
     posse_s: int = Field(120, ge=10, le=3600)
+    #: Saldo estimado mínimo, em US$, das contas de IA em uso (ADR-051) para despachar (28.6). Abaixo dele o laço ADIA a
+    #: ocorrência: ela continua `devida`, sem falha, e sai quando o saldo volta (ou o dono recarrega). 0 desliga este
+    #: mínimo; o bloqueio do dono (`block_below` da conta) adia de qualquer forma.
+    saldo_minimo_usd: float = Field(0.0, ge=0.0, le=100_000.0)
 
 
 class AppConfigFile(BaseModel):

@@ -66,6 +66,7 @@ class Resumo:
     materializadas: int = 0
     despachadas: int = 0
     fechadas: int = 0
+    adiadas: int = 0
     encerrados: int = 0
     puladas: int = 0
     erros: int = 0
@@ -75,7 +76,8 @@ class Resumo:
 class LacoDePedidos:
     def __init__(self, db: Database, runs, lideranca: Lideranca, cfg: PedidosCfg, *,
                  relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None,
-                 custo_da_execucao: Callable[[str], float] | None = None):
+                 custo_da_execucao: Callable[[str], float] | None = None,
+                 adiar_por_saldo: Callable[[], str | None] | None = None):
         self.db = db
         self.runs = runs
         self.lideranca = lideranca
@@ -83,6 +85,10 @@ class LacoDePedidos:
         #: US$ gastos pela execução (`ai_calls`, pela mesma conta do painel de uso: `costs.spent_usd`). Injetado por
         #: `AppState` (precisa de `ai.prices`, que o laço não conhece); sem ele o fechamento grava custo 0 (28.6).
         self.custo_da_execucao: Callable[[str], float] | None = custo_da_execucao
+        #: Devolve o motivo de ADIAR o despacho (saldo da conta de IA abaixo do mínimo, ADR-051) ou `None` (28.6). Sem
+        #: ele o laço nunca adia por saldo. Lido uma vez por volta, só quando há o que despachar.
+        self.adiar_por_saldo: Callable[[], str | None] | None = adiar_por_saldo
+        self._adiamento: str | None = None
         #: Atributo (e não só parâmetro) para o teste trocar o relógio de um laço já de pé, como em `Lideranca`.
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._lider = lider
@@ -356,6 +362,7 @@ class LacoDePedidos:
         por_pedido: dict[str, list[Row]] = {}
         for o in self.repo.devidas():
             por_pedido.setdefault(o["pedido_id"], []).append(o)
+        self._adiamento = self._motivo_de_saldo() if por_pedido else None
         criacoes = 0
         for pedido_id, devidas in por_pedido.items():
             p = self.repo.pedido(pedido_id)
@@ -399,9 +406,32 @@ class LacoDePedidos:
         for oid in despachar:
             if criou >= orcamento:
                 break
+            if self._adiamento is not None:
+                self._adiar(por_id[oid], self._adiamento, r)
+                continue
             if self._despachar_uma(p, por_id[oid], token, agora, r):
                 criou += 1
         return criou
+
+    def _motivo_de_saldo(self) -> str | None:
+        """O saldo adia, nunca falha: erro ao ler o saldo não segura o despacho (a execução já tem a própria barreira
+        no `AIRouter`, que recusa a chamada de conta bloqueada)."""
+        if self.adiar_por_saldo is None:
+            return None
+        try:
+            return self.adiar_por_saldo()
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: leitura do saldo das contas de IA")
+            return None
+
+    def _adiar(self, o: Row, motivo: str, r: Resumo) -> None:
+        """A ocorrência FICA `devida` (sem reserva, sem execução, sem tentativa gasta, sem passar a `perdida`: adiar não
+        é falha) e o motivo vai em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha."""
+        texto = f"adiada: {motivo}"[:500]
+        if o["resumo"] != texto:
+            self.repo.soltar_reserva(o["id"], texto)
+            log.info("pedidos: ocorrência %s segue devida (%s)", o["id"], texto)
+        r.adiadas += 1
 
     def _pular(self, pular: list[tuple[str, str]], token: int, agora: datetime, r: Resumo, *,
                de: str = "devida") -> None:

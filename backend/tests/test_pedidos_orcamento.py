@@ -350,3 +350,81 @@ async def test_execucao_de_pedido_sem_orcamento_nao_tem_teto(h: Harness) -> None
     _agora(db, "ped1", r)
     laco.uma_volta()
     assert h.state.repo.teto_usd_da_execucao(_runs(db)[0]["id"]) is None
+
+
+# =============================================================================================== saldo (ADR-051)
+async def test_saldo_baixo_adia_sem_perder_a_ocorrencia_nem_gastar_tentativa(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    laco.adiar_por_saldo = lambda: "OpenAI: saldo estimado US$ 0,50, abaixo do bloqueio"
+    _agora(db, "ped1", r)
+    res = laco.uma_volta()
+    assert (res.despachadas, res.adiadas, res.erros) == (0, 1, 0) and _runs(db) == []
+    [o] = _ocs(db)
+    assert (o["estado"], o["tentativa"], o["run_id"], o["dono"]) == ("devida", 0, None, None)
+    assert o["resumo"].startswith("adiada: OpenAI: saldo estimado")
+    # Passa muito além da janela de recuperação: adiar NÃO é falha, a ocorrência não vira `perdida`.
+    r.avancar(10 * 3600)
+    assert laco.uma_volta().adiadas == 1
+    assert [x["estado"] for x in _ocs(db)] == ["devida"] and db.scalar("SELECT estado FROM pedidos WHERE id='ped1'") == "ativo"
+    # O saldo volta: a MESMA ocorrência é despachada, com a tentativa 1 e o resumo limpo.
+    laco.adiar_por_saldo = lambda: None
+    res = laco.uma_volta()
+    assert res.despachadas == 1 and res.adiadas == 0
+    [o2] = _ocs(db)
+    assert (o2["id"], o2["estado"], o2["tentativa"], o2["resumo"]) == (o["id"], "despachada", 1, None)
+
+
+async def test_a_leitura_do_saldo_que_falha_nao_segura_o_despacho(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+
+    def quebra() -> str | None:
+        raise RuntimeError("sem banco de saldos")
+
+    laco.adiar_por_saldo = quebra
+    _agora(db, "ped1", r)
+    assert laco.uma_volta().despachadas == 1
+
+
+async def test_sem_saldo_injetado_ou_sem_o_que_despachar_o_saldo_nem_e_lido(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    leituras: list[int] = []
+    laco.adiar_por_saldo = lambda: leituras.append(1)       # type: ignore[assignment,return-value]
+    laco.uma_volta()                                        # nenhum pedido: nada a despachar
+    assert leituras == []
+    _agora(db, "ped1", r)
+    laco.uma_volta()
+    assert leituras == [1], "uma leitura por volta, não uma por ocorrência"
+
+
+async def test_motivo_de_adiamento_le_o_servico_de_saldos_sem_chamada_paga(tmp_path) -> None:
+    from app.db import Database
+    from app.modules.pedidos.infrastructure.saldo import motivo_de_adiamento
+    from app.planning import saldos
+
+    from .conftest import _dsn_de_teste
+    from .test_saldos_de_ia import _cfg
+
+    cfg = _cfg(tmp_path)
+    db = Database(_dsn_de_teste() or tmp_path / "saldo-pedidos.sqlite3")
+    db.migrate()
+    assert motivo_de_adiamento(db, cfg, 1.0) is None, "sem leitura de saldo não há o que comparar"
+    saldos.registrar_leitura(db, "openai", 3.0)             # a conta que paga `decide` e `verify`
+    assert motivo_de_adiamento(db, cfg, 0.0) is None, "mínimo 0 desliga a regra; sem bloqueio do dono, libera"
+    assert "abaixo do mínimo dos pedidos" in motivo_de_adiamento(db, cfg, 5.0)
+    assert motivo_de_adiamento(db, cfg, 1.0) is None
+    saldos.ajustar_regra(db, "openai", block_below=4.0)     # o bloqueio do dono adia mesmo com mínimo 0
+    assert "barrada" in motivo_de_adiamento(db, cfg, 0.0)
+    saldos.registrar_leitura(db, "openai", 8.0)
+    assert motivo_de_adiamento(db, cfg, 1.0) is None
+    db.close()
+
+
+async def test_o_estado_liga_o_saldo_e_o_minimo_vem_da_configuracao(h: Harness) -> None:
+    assert h.state.pedidos.adiar_por_saldo is not None
+    assert PedidosCfg().saldo_minimo_usd == 0.0
