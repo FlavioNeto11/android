@@ -455,10 +455,11 @@ export const api = {
   getServerLimits: () => request<ServerLimits[]>('GET', '/servers/limits'),
   putServerLimits: (workerId: string, patch: ServerLimitsPatch) =>
     request<ServerLimits>('PUT', `/servers/${enc(workerId)}/limits`, { body: patch }),
-  /** Item 24.6: pelo app escolhido (`appId`) ou, sem ele, pelos apps que o `command` usa. */
+  /** Item 24.6: pelo app escolhido (`appId`) ou, sem ele, pelos apps que o `command` usa. POST com o texto no corpo
+   *  (29.26): o comando pode ter e-mail e query string vira linha de log de acesso. */
   previewDistribution: (count: number, alvo: { appId?: string; command?: string }, signal?: AbortSignal) =>
-    request<DistributionPreview>('GET', '/runs/distribution', {
-      query: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
+    request<DistributionPreview>('POST', '/runs/distribution', {
+      body: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
   /** Estado do retrieval de contexto (ADR-063): só leitura, sem rede e sem gasto. */

@@ -241,13 +241,13 @@ describe('Comando "Por persona"', () => {
  * Prova `simulated` (backend falso).
  */
 describe('Comando "Distribuir entre servidores" (item 24.6)', () => {
-  const distribuicoes = () => backend.callsTo('GET', /^\/api\/runs\/distribution$/);
+  const distribuicoes = () => backend.callsTo('POST', /^\/api\/runs\/distribution$/);
   const PREVIA = { requested: 2, missing: 0, reasons: [], per_server: { central: 2 },
                    picks: [{ instance_id: 'android-01', server_id: 'c', server_name: 'central', needs_start: false },
                            { instance_id: 'android-02', server_id: 'c', server_name: 'central', needs_start: false }] };
 
   async function modoDistribuir(): Promise<void> {
-    backend.on('GET', /^\/api\/runs\/distribution$/, () => json(PREVIA));
+    backend.on('POST', /^\/api\/runs\/distribution$/, () => json(PREVIA));
     await click(byRole('button', /Distribuir entre servidores/));
   }
 
@@ -259,9 +259,11 @@ describe('Comando "Distribuir entre servidores" (item 24.6)', () => {
     expect((byRole('combobox', 'do app') as HTMLSelectElement).value).toBe('');
     await setValue(campo(), 'leia a última nota e mande no QA Messenger');
     await waitFor(() => expect(distribuicoes().length).toBeGreaterThan(0));
-    const q = distribuicoes().at(-1)!.query;
-    expect(q.get('command')).toBe('leia a última nota e mande no QA Messenger');
-    expect(q.has('app_id')).toBe(false);
+    const corpoDaPrevia = distribuicoes().at(-1)!.body as Record<string, unknown>;
+    expect(corpoDaPrevia.command).toBe('leia a última nota e mande no QA Messenger');
+    // 29.26: o texto vai no corpo; a URL leva só o caminho (query string vira linha de log de acesso).
+    expect(distribuicoes().every((c) => c.query.toString() === '')).toBe(true);
+    expect(corpoDaPrevia).not.toHaveProperty('app_id');
     await waitFor(() => expect(text(container)).toContain('em central'));
 
     await click(byRole('button', /^Executar/));
@@ -276,8 +278,8 @@ describe('Comando "Distribuir entre servidores" (item 24.6)', () => {
     await modoDistribuir();
     await setValue(byRole('combobox', 'do app') as HTMLSelectElement, 'notes');
     await setValue(campo(), 'leia a última nota');
-    await waitFor(() => expect(distribuicoes().some((c) => c.query.get('app_id') === 'notes')).toBe(true));
-    expect(distribuicoes().every((c) => !c.query.has('command'))).toBe(true);
+    await waitFor(() => expect(distribuicoes().some((c) => (c.body as Record<string, unknown>).app_id === 'notes')).toBe(true));
+    expect(distribuicoes().every((c) => !('command' in (c.body as Record<string, unknown>)))).toBe(true);
     await waitFor(() => expect(text(container)).toContain('em central'));
     await click(byRole('button', /^Executar/));
     await waitFor(() => expect(envios()).toHaveLength(1));

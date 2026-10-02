@@ -8,7 +8,7 @@ quando a pessoa não escolhia: o comando entre apps era repartido pelos aparelho
 - com vários apps, o conjunto de candidatos é a UNIÃO dos aparelhos deles (não os do primeiro citado, que dependeria
   da ordem do texto), sem o aparelho em que algum deles se sabe fora de pronto, dito app por app;
 - comando que não diz app: prévia vazia com o motivo, e a criação recusa com `distribution_sem_app`;
-- `GET /runs/distribution` aceita `command` no lugar de `app_id` (um dos dois), com a mesma recusa de credencial.
+- `POST /runs/distribution` (corpo JSON, 29.26) aceita `command` no lugar de `app_id` (um dos dois), com a mesma recusa de credencial.
 
 Nível de prova: `simulated` (harness na porta 5640, aparelhos falsos).
 """
@@ -113,15 +113,21 @@ async def test_rota_da_previa_aceita_o_comando_no_lugar_do_app(harness: Harness)
     app = create_app(harness.cfg, state=harness.state)
     app.state.poc = harness.state
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
-        r = await c.get("/api/runs/distribution", params={"count": 2, "command": "abra o QA Messenger e mande oi"})
+        r = await c.post("/api/runs/distribution", json={"count": 2, "command": "abra o QA Messenger e mande oi"})
         assert r.status_code == 200, r.text
         assert len(r.json()["picks"]) == 2
         # Nem app nem comando: não há de quem distribuir.
-        r = await c.get("/api/runs/distribution", params={"count": 2})
+        r = await c.post("/api/runs/distribution", json={"count": 2})
         assert r.status_code == 422 and r.json()["detail"]["code"] == "distribution_sem_alvo"
         # Senha no texto não passa nem pela prévia (ADR-025/040).
-        r = await c.get("/api/runs/distribution", params={"count": 2, "command": "abra o QA Messenger senha: x1y2z3"})
+        r = await c.post("/api/runs/distribution", json={"count": 2, "command": "abra o QA Messenger senha: x1y2z3"})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "credencial_no_comando"
         # O app escolhido segue valendo sozinho, como antes.
-        r = await c.get("/api/runs/distribution", params={"count": 1, "app_id": "qa-messenger"})
+        r = await c.post("/api/runs/distribution", json={"count": 1, "app_id": "qa-messenger"})
         assert r.status_code == 200 and len(r.json()["picks"]) == 1
+        # 29.26: o texto vai no corpo, nunca na URL. O GET antigo morreu; corpo fora do contrato é 422.
+        r = await c.get("/api/runs/distribution", params={"count": 2, "command": "abra o QA Messenger e mande oi"})
+        assert r.status_code == 405
+        for ruim in ({"count": 2, "command": "oi", "extra": 1}, {"count": 0, "command": "oi"}, {"count": 2, "command": ""},
+                     {"count": 2, "command": "x" * 4001}):
+            assert (await c.post("/api/runs/distribution", json=ruim)).status_code == 422, ruim

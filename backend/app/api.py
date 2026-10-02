@@ -2935,14 +2935,23 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
     return {"runs": [s.repo.run_summary(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
 
 
-@router.get("/runs/distribution")
-async def preview_distribution(request: Request, count: int = Query(..., ge=1, le=64),
-                               app_id: str | None = Query(None, min_length=1, max_length=80),
-                               command: str | None = Query(None, min_length=1, max_length=4000)) -> Any:
+class DistributionPreviewBody(BaseModel):
+    """Corpo de `POST /runs/distribution` (29.26): o comando, que pode trazer e-mail e nunca deve ir para a URL (query
+    string vira linha de log de acesso). O teto é o do comando de uma execução, de `/skills/resolve` e de `/flows/match`."""
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(ge=1, le=64)
+    app_id: str | None = Field(default=None, min_length=1, max_length=80)
+    command: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
+@router.post("/runs/distribution")
+async def preview_distribution(request: Request, body: DistributionPreviewBody) -> Any:
     """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada.
 
     Item 24.6: `app_id` ficou opcional. Sem ele, os apps são os que o `command` usa (a mesma leitura da criação);
-    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação."""
+    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação. Item 29.26: era `GET` com tudo
+    na query; o texto do comando agora vai no corpo."""
+    count, app_id, command = body.count, body.app_id, body.command
     if app_id is None and command is None:
         raise err(422, "distribution_sem_alvo", "Informe o app (`app_id`) ou o comando (`command`) da distribuição.")
     s = st(request)
@@ -2952,6 +2961,13 @@ async def preview_distribution(request: Request, count: int = Query(..., ge=1, l
         return s.runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id), command)
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.get("/runs/distribution", include_in_schema=False)
+async def preview_distribution_get_removido() -> Any:
+    """Sem isto, o GET antigo cairia em `/runs/{run_id}` e responderia 404 "Execução não encontrada" (29.26)."""
+    raise HTTPException(405, detail={"code": "metodo_removido", "message": "A prévia da distribuição agora é POST /api/runs/distribution, "
+                                     "com o comando no corpo."}, headers={"Allow": "POST"})
 
 
 @router.get("/runs/{run_id}")

@@ -295,8 +295,8 @@ describe('Central de Aparelhos — sessão completa', () => {
   }, 15_000);
 
   it('comando: distribuir entre servidores mostra a prévia e manda distribute em vez de aparelhos', async () => {
-    backend.on('GET', /^\/api\/runs\/distribution$/, (call) => json({
-      requested: Number(call.query.get('count')),
+    backend.on('POST', /^\/api\/runs\/distribution$/, (call) => json({
+      requested: Number((call.body as { count: number }).count),
       picks: [
         { instance_id: 'android-09', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: false },
         { instance_id: 'android-10', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: true },
