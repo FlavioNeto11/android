@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 28.11 provado em real: aviso de teste chegou ao Telegram do dono
+
+- Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
@@ -47,6 +51,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — Aprendizado por aplicativo no painel (30.15, primeira fatia, branch feat/30-15-painel-por-app)
 
 - `frontend/src/features/aprendizado/`: nova aba **Aplicativos**, a visão inicial (Global → App, `docs/design/aprendizado-vivo.md` §11): um cartão por app de `GET /api/aprendizado/apps` (existência, declarado, aprendido por tipo e estado, absorvido, "como é usado" pela camada de uso, com o selo "medido, não usado"), mais os cartões "App não resolvido" e "Fora do eixo de app" quando > 0; app com zeros aparece. Detalhe em `#/aprendizado?aba=apps&app=<pacote>` (Declarado, Aprendido, Absorvido) e navegação nos dois sentidos: o item do Livro leva ao app e o app, ao Aprendido filtrado. Filtro "Aplicativo" na aba Aprendido, alimentado por `/apps`, passa `app` ao Livro. Saúde, capability e a fila Atenção ficam para depois (os contratos de saúde ainda não existem). Prova `simulated`: `AplicativosTab.test.tsx` (7); `real`: `not_run`.
+
+## 2026-10-02 — Aprendizado: migração `learning_reviews` (30.9, branch feat/30-9-learning-reviews)
+
+- Migração **069 provisória** (`backend/migrations/069_revisoes_do_aprendizado.sql`): tabela `learning_reviews`, a trilha auditável das revisões do curador por IA (`aprendizado-vivo.md` §8.5), sem FK e sem CHECK, nunca purgada, com `UNIQUE (item_ref, dossie_hash)` como salvaguarda do orçamento (§8.7). Só a forma; o curador é 30.10/30.11. `simulated`: `test_migracao_069_revisoes.py` (SQLite); PostgreSQL `not_run` (P17).
 
 ## 2026-10-02 — Aprendizado: evento `learning.needs_person` (30.21, branch feat/30-21-evento-needs-person)
 

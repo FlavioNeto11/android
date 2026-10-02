@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-248 de 297 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+249 de 297 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -141,7 +141,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.5 | implemented | real | claude-opus-5-5 (sessão da IDE) | — | Bateria real 28/09 (recipes off, flows false, 14 casos do app de QA): fase17-base 13/14 US$ 2,30; fase17-luna 12/14 US$ 1,08; fase17-luna-ator-sonnet 12/14 US$ 1,09 (US$/correto 0,177 × 0,090 × 0,091; p95 do ator 4,2 ×… |  |
 | 17.6 | partial | real | claude-opus-5-5 (sessão da IDE) | — | Central (28/09): ai.image = openai/gpt-image-2/medium (GET /api/ai → image configured, simulated false, price 0,055) e preço do gpt-6-luna declarado sem papel (K-046: o teto do dia caiu de 8,06 para 4,69). Ator e verifi… | Ator barato só depois da cascata (17.10) e de uma nova medição; acompanhamento de uma semana do custo da imagem. |
 | 17.7 | implemented | simulated | sessao | — | Branch jev/17-7-perfil-ia, commit f05588d (base 25624c4), 02/10/2026, sessao jev. backend/app/config.py: AiProfileCfg/AiCanaryCfg, ai.profiles por cima de ai.roles campo a campo, conferidos em _ia_coerente (funcao, prov… | Real not_run: primeiro uso real e a bateria do 17.10 (gpt-6-luna como ator via --profile), que depende de saldo e autorizacao. Painel sem seletor de perfil (so… |
-| 17.8 | pendente | — | — | — |  |  |
+| 17.8 | implemented | simulated | sessao | — | Flex (PR #50: OpenAICompatProvider honra max_retries, Retry-After) e papel de IA `persona` (decisao do dono 02/10; PR #80, merge 1779bf74): sem config persona herda exatamente o social; a geracao de persona usa role=per… | Chamada real ao flex not_run (sem bateria paga autorizada para isso). |
 | 17.10 | implemented | simulated | sessao | — | PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10).… | Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com… |
 | 17.11 | implemented | simulated | sessao | — | PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simu… |  |
 | 17.12 | implemented | simulated | sessao | — | Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos e… | Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede… |
@@ -253,7 +253,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.8 | pendente | — | — | — |  |  |
 | 28.9 | partial | not_run | sessao | — | Adendo do contrato v0.45 (docs/api-contract.md, 16 rotas, DTOs alinhados a 067 e estados.py, eventos, erros) e tela Pedidos em docs/produto.md: PR #60. Decisoes tomadas em 02/10 (PR #62): emenda a ADR-062 e piso confirm… | Implementacao (rotas, tela, caixa de avisos) pendente; depende do 28.4 (feito) e do 28.7; migracao da caixa de avisos pela regra do numero maior. |
 | 28.10 | pendente | — | — | — |  |  |
-| 28.11 | implemented | simulated | sessao | — | Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila durave… | Prova real not_run: depois do deploy de e6e9cd13, descobrir o chat_id, o dono confirma, TELEGRAM_CHAT_ID no .env, testar (UMA mensagem, autorizada pelo dono). |
+| 28.11 | implemented | real | sessao | — | Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila durave… | Fonte pedido.aviso so com o 28.9; o 'Para aprovar' do Aprendizado sem evento no barramento (avisado a frente Aprendizado). |
 | 28.12 | pendente | — | — | — |  |  |
 | 28.13 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
@@ -304,7 +304,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 8.3, 8.4, 12.3, 15.15, 17.6, 17.8, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
+Pendentes (48): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
