@@ -101,8 +101,16 @@ antes. É genérico por app — não depende do classificador do Instagram.
 
 `backend/app/social/policy.py` (`PolicyEngine`) decide se uma ação pode sair AGORA: teto por hora/dia (com
 aquecimento — `warmup_days`/`warmup_percent`), teto por execução, cooldown entre ações externas, e um
-"fleet gate" (achado #114) que coordena várias contas da frota sobre o MESMO alvo (`fleet_target_window_s`,
-`fleet_max_accounts_per_target`, `fleet_min_spacing_between_accounts_s`). A política de um perfil vem em três
+"fleet gate" (achado #114, endurecido pelo ADR-055) que coordena as contas da frota sobre o MESMO alvo: seguir,
+mensagem e comentário são de UMA conta por alvo (regra do dono, `UMA_CONTA_POR_ALVO`); curtir tem o teto
+`fleet_max_accounts_per_target` (padrão 3). Conta-se qualquer ação de saída das outras contas e os pedidos de
+aprovação em aberto, na janela `fleet_target_window_days` (padrão 30); o excedente é RECUSADO, não adiado, e abaixo
+do teto vale o espaçamento `fleet_min_spacing_between_accounts_s` (120) mais `fleet_spacing_jitter_s` (180). Os
+tetos por dia por balde (`likes_per_day` 150, `comments_per_day` 40, `follows_per_day` 40, `dms_per_day` 60) e o
+aquecimento (3 dias a 34%) são **padrão inicial, ajustável pelo dono** (`LimitsCfg` e `automation_policy.limits`).
+O que passa do teto de hora ou dia é represado antes de assumir a etapa (`retry_wait`, sem gastar tentativa).
+Pendente (decisão do dono): se um perfil pode afrouxar a política do catálogo — hoje afrouxar é permitido e fica
+marcado (`ProfilePolicyDTO.loosened`), não recusado (#114 item 3). A política de um perfil vem em três
 camadas, nesta ordem: **escolha própria → grupo → padrão** (`_own`/`_group`/`origin_for`); `limits_origin()`
 diz de onde veio o limite efetivo, para a UI mostrar a origem por ação.
 
@@ -157,9 +165,16 @@ Caminhos relativos a `backend/app/`.
   o campo de usuário antes de prosseguir (até `FILL_TRIES` = 3 tentativas, e só envia com o valor conferido) e
   preenche a senha pelo canal sensível; `_watch_after_submit` só observa, nunca reenvia por timeout, e
   `classificar_depois_do_envio` aplica a tabela declarada. `_wrong_account()` é **sempre** intervenção humana —
-  comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito.
+  comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito
+  (a flag `auto_switch_account`, que sugeria o contrário, não existe mais na configuração; implementar a troca pelo
+  seletor de contas é decisão do dono, ainda aberta).
   `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho de
-  código que resolva desafio ou 2FA automaticamente.** `_needs_person(conta, instance_id)` impede o agendador de
+  código que resolva desafio ou 2FA automaticamente.** "Confirm you're human" (e variantes: "verify/prove you're
+  human", "confirme/comprove que você é humano/uma pessoa") é a conta travada (decisão do dono, 29/09): cai em
+  `challenge` nos dois idiomas e em `hierarchy._CONTA_TRAVADA`, sem toque nenhum — a prova é com hierarquia
+  SINTÉTICA (`tests/test_detector_conta_travada.py`), porque a tela real não existe (a conta foi perdida). Tela que
+  nenhum sinal reconhece não se reobserva para sempre: `session_unknown_retry_cap` (3) bloqueia o perfil com o motivo
+  (`tests/test_porta_de_sessao_no_teto.py`). `_needs_person(conta, instance_id)` impede o agendador de
   sequer tentar de novo quando o estado já pede pessoa (lê a sessão da conta **deste app** neste aparelho, 23.4);
   `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são
   os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por cima (`contas.sessao.<pacote>.<ajuste>` no
@@ -477,7 +492,7 @@ só em dado, entra no registro com catálogo, leitura e login). Os testes leem o
 | `app.yaml` | `provedor_de_sessao: microsoft`, perfil e internet obrigatórios, `ancora_do_perfil: false` (desafio para só a conta Outlook, item 23.5), `renderizador_recusado: [swiftshader]` (29.11) |
 | `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", as intermediárias do primeiro uso, gaveta e caixa; extração do e-mail da conta dentro do painel da gaveta |
 | `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensas (recusas globais, botão por tela e Voltar no diálogo do sistema), conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
-| `catalogo.yaml` | fora da `main` (abaixo) |
+| `catalogo.yaml` | 3 ações só de leitura; `OPEN_MAIL_INBOX` e `SEARCH_MAIL` entregam `remetente` e `assunto` (12.3, ADR-065) |
 
 O caminho do login: boas-vindas → "Add account" → e-mail no `auto_complete_input_email` → "Continue" → ~10 s de
 `common_auth_webview_progressbar` → WebView `common_auth_webview`; em "Verify your email" com "Use your password",
@@ -529,13 +544,11 @@ aparelho (`RunService._mundo`), e remover a conta recusa só a do app âncora (`
 recusava toda conta com login automático). O painel ainda esconde o botão de remover para conta com login automático
 (`GuiaContas.tsx`): a do Outlook sai pela API.
 
-**Catálogo: fora da `main`.** Com `catalogo.yaml`, o Outlook deixaria de ser app de etapa livre no plano entre apps
-(ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3); 16 testes que provam esse fluxo ficariam
-vermelhos (`test_planejador_entre_apps.py`: 13; `test_porta_de_politica_por_app.py`: 3). Por isso o catálogo fica FORA
-da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do
-Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit
-`806eed9` do branch `worktree-agent-a2c596de1676ca7fa` (fora da história atual do branch), para quando ação de
-catálogo puder entregar valor a outra etapa.
+**Catálogo (12.3, ADR-065).** `catalogo.yaml` com `OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS` e `SEARCH_MAIL`, sem
+nenhuma ação com efeito (T17 do ADR-057). Com ele o Outlook deixa de ser app de etapa livre no plano entre apps
+(ADR-058), e o cenário C1 do dono (ler no Outlook e usar no Instagram) passa pela ação de catálogo que entrega o
+valor lido (`saidas`), como descrito em [apps-e-loja](apps-e-loja.md). Provas dos ids da caixa seguem `model_judged`
+até a observação real (29.12).
 
 Riscos conhecidos, para a próxima observação real: os sinais genéricos que já existiam ("verify your account",
 "security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista
@@ -594,5 +607,11 @@ Backlog:
 - Decisão do dono sobre o próximo app com login determinístico/catálogo (12.3).
 - Aplicar e medir as 8 personas com voz completa em produção (8.1) — custo de IA real, decisão do dono.
 - Provar memória de DM (8.2) num diálogo real entre duas contas — aceite de nível 2, hoje proibido nesta rodada.
+- Responder comentário em aparelho real (`REPLY_COMMENT`, 8.3, `not_run`): ação em conta real de terceiro, exige
+  autorização do dono. Roteiro: aparelho com conta viva e o worker ligado; objetivo "responda os comentários da minha
+  última publicação" com `for_each` em 2 comentários reais e política `approval_required`; conferir na fila que cada
+  pedido traz o comentário de origem, aprovar um e EDITAR outro (o texto digitado na tela tem de ser o editado);
+  conferir no aparelho o texto publicado, o `comment_replied` confirmado com a contraparte certa e a memória
+  aprendida do autor; registrar ids da execução e dos pedidos no relatório como prova `real`.
 - Conferir os padrões de `leitura.mensagem` do `app.yaml` do Instagram (`LeituraDeclarada.message_of`) contra
   árvore de acessibilidade real de DM.

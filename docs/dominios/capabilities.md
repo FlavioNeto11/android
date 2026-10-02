@@ -36,7 +36,7 @@ Os campos ficam agrupados pelo que governam:
 | efeito | `SideEffectContract` (`external`, `commit_selector`, `commit_guard`, `band_guard`, `interaction_type`, `failure_marks`) | se há efeito externo, quem o dispara, o que o guarda e o que o desmente |
 | governança | `Governance` (`risk`, `default_policy`, `limit_bucket`, `needs_draft`) | política padrão, limite por hora, texto gerado antes de agir |
 | execução | `ExecutionContract` (`internal`, `timeout_s`, `max_attempts`, `strategies`) | prazo, tentativas e que estratégias servem |
-| saída | `CollectOutput` (`collects`, `limit`, `from_top`, `rewind`, `item_key`) | coleta: a lista de itens lida da tela |
+| saída | `CollectOutput` (`collects`, `limit`, `from_top`, `rewind`, `item_key`, `values`) | coleta: a lista de itens lida da tela; `values` (`saidas` no `catalogo.yaml`, ADR-065): os nomes que a ação pode entregar às etapas seguintes por `read_value` |
 | requisitos do app | `AppRequirements` (`session_provider`, `needs_profile`, `requires_internet`) | vêm do registro de apps, não da capability |
 | reconciliação | `reconciliation` | prosa; nenhum código a lê |
 

@@ -2081,8 +2081,9 @@ async def delete_network_profile(request: Request, profile_id: str) -> Response:
 
 
 @router.get("/network/devices")
-async def list_network_devices(request: Request) -> dict[str, list[dict[str, object]]]:
-    """Desejado × observado por aparelho, com o proxy legado da 041 rebaixado a `configurado` no máximo."""
+async def list_network_devices(request: Request) -> dict[str, object]:
+    """Desejado × observado por aparelho, com o proxy legado da 041 rebaixado a `configurado` no máximo, `egress_home`
+    por aparelho e a saída medida do central (`central_egress`, item 29.20)."""
     return rede.listar_aparelhos(st(request))
 
 
