@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Trava de líder dos laços periódicos (28.1, branch feat/28-1-trava)
+
+- Migração `066_travas.sql` e `app/taskqueue/travas.py` (`Lideranca`): tomada por CAS no relógio do banco, prazo de 120 s, renovação a cada 20 s num laço próprio do `AppState` (`travas-de-lider`), token de cerca crescente, tomada idempotente, dono = `OWNER_ID`, devolução na saída limpa e faxina de partida para o mesmo dono.
+- `state.py`: saldos, curadoria e retenção rodam só no líder; os outros backends pulam a volta sem erro. O fechamento do dia (não idempotente) roda cercado pelo token (`TravaPerdida` recusa o líder que perdeu o mandato).
+- Prova `simulated`: `backend/tests/test_travas.py` (7: dois bancos, expiração, renovação, token antigo recusado, corrida de 8 conexões, dois `AppState` no mesmo banco). PostgreSQL pulado (sem `TEST_DATABASE_URL`); segundo backend real no central `not_run`. Limite conhecido: `saldos.CONCILIACOES` é memória do processo, e o seguidor com chave de administrador mostra a conciliação velha na saúde.
+
 ## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
 
 - Real (02/10 17:49–17:54Z, central, deploy `25624c4`, android-05 sem conta real, US$ 0,2955): regra 2 provada em `r-20261002175209-1a252b`; regra 1 `not_run` (`r-20261002175004-ea377e`: o tier 0 não bloqueou; o tier 1 bloqueou pela nova tentativa); negativo `r-20261002175257-0e9362` barrado pelo detector de tela sensível. Detalhe em `docs/ia.md` §10b.
