@@ -183,6 +183,10 @@ limits:
   retry_backoff_s: 5
   no_progress_limit: 4
   ai_max_calls_per_objective: 60
+  # Contas NOSSAS podem interagir entre si (29.28, emenda do ADR-050): este é o espaçamento mínimo, em segundos, entre dois gestos
+  # públicos da MESMA conta quando o alvo é outra conta da frota (viva); vale o maior entre ele e o cooldown do perfil (45 s).
+  # Conta retirada por bloqueio segue recusada. Baixe com cuidado: é o ritmo baixo que a decisão do dono pede.
+  fleet_min_spacing_to_own_account_s: 600
   # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute
   # (60 + 12 × 7 = 144 para 8 itens). 0 em per_item desliga a proporção. O rejulgamento conta; os tetos em US$ seguem.
   ai_max_calls_per_item: 12

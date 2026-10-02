@@ -2555,6 +2555,21 @@ backend simulado com três personas de teste. `real`: uma chamada no central em 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
+**Emenda de 02/10/2026 (~23:45Z, decisão do dono; item 29.28): contas e personas NOSSAS podem interagir entre si.** O filtro de
+frota (`PolicyEngine._fleet_gate`, ADR-055/ADR-068) citava este ADR para recusar todo efeito cujo alvo fosse conta nossa ("engajamento
+simulado"). O dono decidiu o contrário: no Instagram, comentar, responder e editar nos posts umas das outras; no Outlook, trocar e-mails.
+Os limites: **ritmo baixo** (no mínimo 600 s entre gestos públicos da MESMA conta quando o alvo é conta nossa), **uma interação por vez**,
+nada em lote ou laço, sem link, texto natural; a conduta continua (sem ofensa, sem fake news); desafio, "Confirm you're human" ou 2FA param
+tudo (ADR-009). No código: (a) alvo conta nossa RETIRADA por bloqueio (`contas_nossas.foi_retirada`, lápide do 29.23) continua recusado, sem
+`retry_at`; (b) alvo conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos por hora e dia, "uma conta por alvo" do
+ADR-055, que vale também entre contas nossas) e por um espaçamento desde o último gesto com efeito DESTA conta: o maior entre
+`limits.fleet_min_spacing_to_own_account_s` (padrão 600, também em `config/config.example.yaml`) e `cooldown_between_external_actions_s`
+do perfil, devolvendo `retry_at` (espera, não recusa). Ficam como estavam: a exclusão de conta nossa como "terceiro" (elegibilidade de
+comentário de terceiro, 8.3) e a proteção da conta retirada. Nada no prompt da persona ou da decisão social bloqueava a interação entre
+contas nossas (varredura de `ADR-050`/`eh_conta_nossa` em `backend/app`: só o `_fleet_gate`). Prova `simulated`:
+`tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central. A
+conduta do conteúdo (sem ofensa, sem fake news, sem link) é do texto gerado, não do filtro: este item não a afrouxa nem a reforça.
+
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
 **Data:** 28/09/2026 · **Estado:** vigente, implantado e encerrado em 28/09; os limites foram delegados pelo dono
@@ -3959,7 +3974,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. O disjuntor de
    conta (ADR-055) é acionado direto pela retirada, porque o agendador só o dispara ao VER `blocked` e a persona volta a
    `active` no mesmo gesto.
-9. **Filtro de frota (`_fleet_gate`).** Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) é recusada. Responder
+9. **Filtro de frota (`_fleet_gate`).** *(Emendado em 02/10/2026 pelo ADR-050, 29.28: só a conta RETIRADA segue recusada; a conta nossa VIVA passa a poder receber interação de outra conta nossa, com ritmo baixo.)* Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) era recusada. Responder
    a comentário de um TERCEIRO num post nosso (roteiro 8.3: a conta dona do post age, o `counterparty` é o do terceiro)
    continua permitido; coberto por teste.
 10. **29.24: rota de resolução e aviso sem o @** (orquestrador, a partir da validação real de 02/10). (a) A quarentena

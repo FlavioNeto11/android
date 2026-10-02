@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.28: contas nossas podem interagir entre si, em ritmo baixo (emenda do ADR-050, branch feat/29-27-limpeza-e-adr050)
+
+- **Decisão do dono de ~23:45Z:** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,
+  sem `retry_at`; conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos, uma conta por alvo do ADR-055) e por um
+  espaçamento mínimo desde o último gesto com efeito DESTA conta (maior entre `limits.fleet_min_spacing_to_own_account_s`, padrão 600, e o
+  cooldown do perfil), com `retry_at`. Config nova em `LimitsCfg` e `config/config.example.yaml`. Nenhum outro ponto bloqueava (varredura).
+  `simulated`: `tests/test_interacao_entre_contas_nossas.py` (7); `test_conta_bloqueada_sai.py` atualizado (2 testes). `not_run` no central.
+
 ## 2026-10-02 — 29.27: retirada de conta bloqueada limpa o app nos aparelhos (branch feat/29-27-limpeza-e-adr050)
 
 - **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de ~23:25Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no

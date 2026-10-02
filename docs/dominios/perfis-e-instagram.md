@@ -281,6 +281,12 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
   antes de mexer num aparelho com Instagram confere-se a tela (K-053). A quarentena só sai por uma PESSOA: reset do disco
   ou `POST /api/instances/{id}/locked-account/resolve` com nota (29.24, ADR-068 item 10; só banco). Conta já retirada (29.23)
   aparece como `[conta removida]` no rótulo, no marcador e nos avisos ("conta retirada (bloqueada)"); conta viva, com o @.
+- **Contas nossas entre si (29.28, emenda do ADR-050).** Conta nossa VIVA pode ser alvo de outra conta nossa (Instagram: comentar,
+  responder, editar nos posts umas das outras; Outlook: trocar e-mails), em ritmo baixo: o gesto com efeito exige no mínimo
+  `limits.fleet_min_spacing_to_own_account_s` (600 s) — ou o `cooldown_between_external_actions_s` do perfil, se maior — desde o último
+  gesto com efeito DESTA conta, com `retry_at`; uma interação por vez, sem link, texto natural; a conduta e a regra de desafio/2FA
+  continuam. Conta RETIRADA por bloqueio segue recusada. "Uma conta por alvo" e a aprovação valem entre contas nossas como para qualquer
+  alvo, e a conta nossa continua fora da elegibilidade de "terceiro" (8.3).
 - **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
   excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
   contas na mesma execução segue numa conta só, com aprovação. Quando uma conta cai, o disjuntor pausa as que agiram
@@ -630,7 +636,7 @@ receber contas novas.
   mesmo âncora. Idempotente. O aparelho não é tocado e o marcador de quarentena fica.
 - **Gatilho:** ao fim de `marcar_conta_travada`, SÓ no Instagram (conta âncora) e SÓ com sinal forte: a `ChallengeActivity` em foco (lida por `DeviceManager.observe`) ou a declaração do dono. Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
 - **Lápide:** `contas_retiradas` (071) guarda só o hash do @; `eh_conta_nossa()` (`social/contas_nossas.py`) é a consulta
-  única de "é conta nossa?", usada pelo filtro de frota: nada se faz entre contas nossas, viva ou aposentada (ADR-050).
+  única de "é conta nossa?", usada pelo filtro de frota: conta RETIRADA nunca é alvo; conta nossa VIVA pode receber a interação de outra conta nossa, em ritmo baixo (emenda do ADR-050, 29.28, abaixo).
 - **Memória:** `memory_items` ficam, com o @ e o id da conta trocados por "[conta removida]". Gancho
   `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
 - **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).

@@ -337,6 +337,10 @@ class LimitsCfg(BaseModel):
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
     fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
     fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
+    # Interação entre contas NOSSAS vivas (29.28, emenda do ADR-050): quando o alvo da ação com efeito é outra conta da frota
+    # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
+    # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
+    fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
     # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
