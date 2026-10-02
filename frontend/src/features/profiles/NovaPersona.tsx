@@ -3,7 +3,7 @@
  * sem aparelho: o @ do Instagram, a senha e o vínculo vêm depois, dentro dela (guia Contas e acesso, e Configuração
  * → Instâncias e contas). O formulário antigo "usuário + senha + aparelho" deixou de ser a porta de entrada.
  *
- * - Por prompt: `POST /personas/generate` é uma chamada PAGA ao papel `social` e NÃO grava nada; o rascunho volta
+ * - Por prompt: `POST /personas/generate` é uma chamada PAGA ao papel `persona` e NÃO grava nada; o rascunho volta
  *   para a pessoa revisar e só então `POST /personas` cria. O aviso de custo fica na cara, antes do botão.
  * - Por prompt, em LOTE (v0.34, "Quantidade" > 1): `POST /personas/generate/batch` gera N pessoas diferentes em
  *   segundo plano; a pessoa escolhe antes se cria direto ou revisa os rascunhos, e vê o custo estimado do lote antes
@@ -21,12 +21,12 @@ import { Dialog } from '../../components/Dialog';
 import { Field, TextArea, TextInput } from '../../components/Field';
 import { toast, toastError } from '../../store/toasts';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
-import { type LinhaDeCusto, custoDaGeracao, custoDasFotos, fotosAutomaticas, socialSimulado } from './custos';
+import { type LinhaDeCusto, custoDaGeracao, custoDasFotos, fotosAutomaticas, papelDaPersona, personaSimulado } from './custos';
 import { LoteDePersonas } from './LoteDePersonas';
 import styles from './Profiles.module.css';
 import { useAiStatus } from './useAiStatus';
 
-/** Estimativa do design §6.5 (papel social no Sonnet, ~4 mil tokens de entrada e ~1,5 mil de saída). O valor real
+/** Estimativa do design §6.5 (papel persona no Sonnet, ~4 mil tokens de entrada e ~1,5 mil de saída). O valor real
  *  sai de `ai_calls` depois; aqui é só para a pessoa decidir antes de gastar. */
 export const CUSTO_ESTIMADO_POR_PERSONA = '≈ US$ 0,02–0,03 por persona';
 
@@ -116,8 +116,8 @@ export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
   const [confirmandoLote, setConfirmandoLote] = useState(false);
   const [loteId, setLoteId] = useState<string | null>(null);
 
-  const social = ai?.roles?.find((r) => r.role === 'social') ?? null;
-  const simulado = socialSimulado(ai);
+  const papel = papelDaPersona(ai);
+  const simulado = personaSimulado(ai);
   const tamanho = pedido.trim().length;
   const n = Number(quantidade);
   const quantidadeValida = quantidade.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_POR_LOTE;
@@ -267,8 +267,8 @@ export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
           </Banner>
         ) : (
           <Banner tone="warning" icon={TriangleAlert} role="status" title="É uma chamada paga de IA">
-            Gerar o rascunho chama o papel <strong>social</strong>
-            {social ? <> (<span className="mono">{social.model}</span> em {social.provider})</> : null}
+            Gerar o rascunho chama o papel <strong>persona</strong>
+            {papel ? <> (<span className="mono">{papel.model}</span> em {papel.provider})</> : null}
             {falhou ? ' — não foi possível ler o provedor agora, então conte com custo' : null}
             : custo estimado {CUSTO_ESTIMADO_POR_PERSONA}. O texto do pedido e as restrições saem desta máquina;
             tela, memória e senha, nunca. {emLote && modoLote === 'criar'

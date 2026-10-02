@@ -364,7 +364,7 @@ interface AiStatus {
   notice: string;                 // texto para exibir
   effort: string | null;
   // v0.2
-  models?: { plan: string; decide: string; verify: string; escalation: string; social?: string } | null;
+  models?: { plan: string; decide: string; verify: string; escalation: string; social?: string; persona?: string } | null;
   recipes?: 'off' | 'shadow' | 'replay' | null; flows?: boolean | null;
   image_policy?: 'always' | 'auto' | 'never' | null;
   // disjuntor de conta de IA: chave válida, mas o provedor recusa por cobrança/credencial em tempo de execução
@@ -468,7 +468,7 @@ interface ManualInput {
 
 // ---- Adendo v0.2 — custo de IA, fluxos e receitas (copiado do contrato) ----
 
-interface UsageGroup { role: 'plan' | 'decide' | 'verify' | 'social'; model: string; tier: 0 | 1; calls: number;
+interface UsageGroup { role: 'plan' | 'decide' | 'verify' | 'social' | 'persona'; model: string; tier: 0 | 1; calls: number;
   fresh: number; cache_read: number; cache_write: number; output: number;        // tokens
   with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
 interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;

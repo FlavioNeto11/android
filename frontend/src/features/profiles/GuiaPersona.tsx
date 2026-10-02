@@ -290,7 +290,7 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
 /**
  * "Completar com IA": o gerar-por-prompt aplicado a uma persona que JÁ existe (pedido do dono de 28/09), sem formulário
  * novo. Completa só o vazio — voz, biografia e crenças (ADR-048) — e o que já está preenchido não muda; a instrução
- * opcional diz o que o dono quer para o que falta. Chamada paga ao provedor, pelo papel social.
+ * opcional diz o que o dono quer para o que falta. Chamada paga ao provedor, pelo papel persona.
  */
 function CompletarComIA({ persona, onCompleta }: { persona: PersonaDTO; onCompleta: (p: PersonaDTO) => Promise<void> }) {
   const [instrucao, setInstrucao] = useState('');
