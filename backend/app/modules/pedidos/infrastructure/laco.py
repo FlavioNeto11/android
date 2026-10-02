@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from app.config import PedidosCfg
@@ -39,7 +39,7 @@ from app.modules.pedidos.infrastructure.acoes import AcoesDePedidos
 from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
-from app.modules.pedidos.domain import gatilhos
+from app.modules.pedidos.domain import gatilhos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
@@ -48,6 +48,7 @@ from app.modules.pedidos.domain.materializar import janela_padrao_s, materializa
 from app.modules.pedidos.domain.orcamento import (ULTIMAS_PARA_ESTIMAR, custo_estimado, motivo_sem_orcamento,
                                                   quantas_cabem)
 from app.modules.pedidos.domain.sobreposicao import Devida, decidir
+from app.modules.pedidos.domain.tentativas import ACAO_REPETIR, Decisao
 from app.taskqueue.service import RunError
 from app.taskqueue.travas import PEDIDOS, Lideranca, TravaPerdida
 from app.util import parse_iso, to_iso
@@ -71,6 +72,10 @@ class Resumo:
     adiadas: int = 0
     encerrados: int = 0
     puladas: int = 0
+    perdidas: int = 0
+    retentadas: int = 0
+    aguardando: int = 0
+    pausados: int = 0
     erros: int = 0
     lider: bool = True
 
@@ -80,7 +85,8 @@ class LacoDePedidos:
                  relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None,
                  custo_da_execucao: Callable[[str], float] | None = None,
                  adiar_por_saldo: Callable[[], str | None] | None = None,
-                 resumidor: ResumidorDeRelatorio | None = None):
+                 resumidor: ResumidorDeRelatorio | None = None,
+                 avisar: Callable[[Mapping[str, object]], None] | None = None):
         self.db = db
         self.runs = runs
         self.lideranca = lideranca
@@ -92,6 +98,9 @@ class LacoDePedidos:
         #: ele o laço nunca adia por saldo. Lido uma vez por volta, só quando há o que despachar.
         self.adiar_por_saldo: Callable[[], str | None] | None = adiar_por_saldo
         self._adiamento: str | None = None
+        #: Entrega o `AvisoDTO` do `pedido.aviso` (contrato 28.9) a quem o publica: `AppState` o liga ao barramento, que o
+        #: 28.11 assina. Sem ele nada é emitido (a mudança de estado do pedido vale igual). Chamado FORA da cerca.
+        self.avisar: Callable[[Mapping[str, object]], None] | None = avisar
         #: Atributo (e não só parâmetro) para o teste trocar o relógio de um laço já de pé, como em `Lideranca`.
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._lider = lider
@@ -213,12 +222,21 @@ class LacoDePedidos:
                       motivo_de_espera=self.repo.espera_da_execucao(o["run_id"]) if o["run_id"] else None)
         if fech is None:
             return
-        transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
         # O custo é lido ANTES de fechar e gravado no mesmo UPDATE do fechamento (28.6): a retenção apaga `ai_calls`
         # por `ts`, mas não toca as de execução de ocorrência ainda aberta (`state._purgar_demais_tabelas`), então
         # esta leitura sempre vê as chamadas inteiras. Só o fechamento terminal soma (uma vez por tentativa).
         custo = self._custo_da_tentativa(o) if fech.terminal else None
+        p = self.repo.pedido(o["pedido_id"]) if fech.estado in ("falhou", "incerta") else None
+        if p is not None and fech.estado == "falhou" and o["pedido_estado"] == "ativo":
+            decisao = self._decidir_tentativa(o, p, fech.estado, agora, custo or 0.0, run_status)
+            if decisao.acao == ACAO_REPETIR and decisao.repetir_em is not None:
+                self._retentar(o, fech.motivo, decisao.repetir_em, token, custo or 0.0, r)
+                return
+            if decisao.complemento:
+                fech = replace(fech, motivo=f"{fech.motivo}; {decisao.complemento}")
+        transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
         preparo = self._observar(o, fech) if fech.terminal else None
+        avisos: list[Mapping[str, object]] = []
         with self.lideranca.cercada(PEDIDOS, token):
             moveu = self.repo.mover(o["id"], o["estado"], fech.estado, motivo=fech.motivo,
                                     iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None,
@@ -227,8 +245,87 @@ class LacoDePedidos:
                 # Na MESMA transação do fechamento: a ocorrência fecha com as observações dela, ou nada muda e a varredura
                 # repete (a observação é reentrante). Depois do fechamento a execução pode ser purgada; a observação fica.
                 self.relatorios.gravar_do_fechamento(preparo, pedido_id=o["pedido_id"], ocorrencia_id=o["id"])
+            if moveu and p is not None and o["pedido_estado"] == "ativo":
+                # Também na mesma transação: sem isto, uma queda entre o fechamento e a mudança do pedido deixaria o pedido
+                # `ativo` com a ocorrência `incerta` já fora da varredura, e nada o levaria a esperar a pessoa.
+                avisos = self._efeitos_no_pedido(o, p, fech.estado, agora, r)
         if moveu and fech.terminal:
             r.fechadas += 1
+        for aviso in avisos:
+            self._emitir(aviso)
+
+    # ------------------------------------------------------------------ 1a. tentativas e efeito (28.5)
+    def _decidir_tentativa(self, o: Row, p: Row, estado: str, agora: datetime, custo: float,
+                           run_status: str | None) -> Decisao:
+        """A decisão do domínio para a ocorrência que falhou. Efeito possível = a execução sumiu, ou alguma ação dela pode
+        ter chegado ao aparelho. O orçamento (28.6) também vale para a nova tentativa: sem verba para outra, a falha é
+        definitiva e o motivo diz por quê (mais claro que deixá-la `devida` e depois `pulada`)."""
+        efeito = run_status is None or self.repo.efeito_possivel(o["run_id"])
+        sem_orcamento: str | None = None
+        if p["orcamento_total_usd"] is not None:
+            total, gasto, necessario = self._situacao_do_orcamento(p)
+            sem_orcamento = motivo_sem_orcamento(total, gasto + custo, necessario)
+        teto = p["orcamento_ocorrencia_usd"]
+        if sem_orcamento is None and teto is not None and float(o["custo_usd"] or 0.0) + custo >= float(teto):
+            sem_orcamento = f"o teto da ocorrência (US$ {float(teto):.4f}) já foi gasto"
+        return tentativas.decidir(estado=estado, tentativa=max(1, int(o["tentativa"] or 1)),
+                                  max_tentativas=int(p["max_tentativas"] or self.cfg.max_tentativas),
+                                  efeito_possivel=efeito, agora=agora, base_s=self.cfg.retentativa_base_s,
+                                  teto_s=self.cfg.retentativa_teto_s, sem_orcamento=sem_orcamento)
+
+    def _retentar(self, o: Row, motivo_da_falha: str | None, em: datetime, token: int, custo: float, r: Resumo) -> None:
+        """A MESMA ocorrência volta a `devida` (`falhou → devida`, §7.6) com a falha como motivo e o custo da tentativa
+        somado; o despacho a pega depois de `em` e usa `chave:t<n+1>`. Não grava observação: a da última tentativa é a
+        que vale (a chave `(ocorrência, alvo, nome)` é única e a da tentativa anterior a tomaria)."""
+        quando = to_iso(em)
+        motivo = f"tentativa {o['tentativa']} falhou ({motivo_da_falha}); nova tentativa depois de {quando}"[:500]
+        transicionar_ocorrencia(o["estado"], "falhou", motivo=motivo)
+        transicionar_ocorrencia("falhou", "devida")
+        with self.lideranca.cercada(PEDIDOS, token):
+            if self.repo.retentar(o["id"], o["estado"], motivo=motivo, nao_antes_de=quando, custo_usd=custo):
+                r.retentadas += 1
+
+    def _efeitos_no_pedido(self, o: Row, p: Row, estado: str, agora: datetime, r: Resumo) -> list[Mapping[str, object]]:
+        """O que o fechamento de `estado` faz ao PEDIDO `ativo`; devolve os avisos a emitir DEPOIS da transação.
+
+        `incerta` leva o pedido a `aguardando_pessoa` (nunca repete sozinha: a pessoa resolve). `falhou` definitiva conta
+        as falhas seguidas e, no limite do pedido, o PAUSA (ator `sistema`, com motivo). O CAS `WHERE estado='ativo'` fecha
+        a corrida com a pessoa que pausou ou cancelou no meio."""
+        em = to_iso(agora)
+        avisos: list[Mapping[str, object]] = []
+        titulo = p["titulo"] or p["id"]
+        if estado == "incerta":
+            transicionar_pedido("ativo", "aguardando_pessoa", ator="sistema")
+            if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "aguardando_pessoa", em):
+                r.aguardando += 1
+                avisos.append(tentativas.aviso(
+                    tipo="ocorrencia_incerta", aviso_id=f"{o['id']}:ocorrencia_incerta", pedido_id=p["id"],
+                    pedido_titulo=titulo, ocorrencia_id=o["id"], criado_em=em,
+                    mensagem=f"O pedido «{titulo}» tem uma ocorrência incerta: confira o que aconteceu e resolva.",
+                    dados={"tentativa": int(o["tentativa"] or 0)}))
+        elif estado == "falhou":
+            limite = int(p["pausa_por_falha"] or self.cfg.falhas_para_pausar)
+            seguidas = tentativas.falhas_seguidas(["falhou", *self.repo.desfechos_recentes(p["id"], o["id"], limite)])
+            if tentativas.deve_pausar(seguidas, limite):
+                motivo = f"{seguidas} falhas seguidas"
+                transicionar_pedido("ativo", "pausado", ator="sistema", motivo=motivo)
+                if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "pausado", em, pausado_motivo=motivo):
+                    r.pausados += 1
+                    avisos.append(tentativas.aviso(
+                        tipo="pausa_automatica", aviso_id=f"{p['id']}:pausa_automatica:{o['id']}", pedido_id=p["id"],
+                        pedido_titulo=titulo, ocorrencia_id=o["id"], criado_em=em,
+                        mensagem=f"O pedido «{titulo}» foi pausado depois de {seguidas} falhas seguidas.",
+                        dados={"falhas_seguidas": seguidas}))
+        return avisos
+
+    def _emitir(self, aviso: Mapping[str, object]) -> None:
+        """Falha ao avisar nunca desfaz o que já foi gravado: o estado do pedido é a fonte da verdade."""
+        if self.avisar is None:
+            return
+        try:
+            self.avisar(aviso)
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: aviso %s", aviso.get("tipo"))
 
     def _custo_da_tentativa(self, o: Row) -> float:
         """US$ das chamadas de IA da execução desta tentativa; 0 sem execução ou sem a leitura injetada. Falha na
@@ -409,13 +506,17 @@ class LacoDePedidos:
                         p["id"], p["sobreposicao"], p["autonomia"])
         despachar, pular = list(plano.despachar), list(plano.pular)
         if p["max_ocorrencias"] is not None:
+            # Uma nova tentativa (28.5) já virou execução: `executadas` a conta, e o máximo não a barra.
+            retentativas = {o["id"] for o in devidas if int(o["tentativa"] or 0) > 0}
             restantes = max(0, int(p["max_ocorrencias"]) - self.repo.executadas(p["id"]))
             motivo = f"máximo de ocorrências atingido ({p['max_ocorrencias']})"
-            pular += [(i, motivo) for i in despachar[restantes:]]
-            despachar = despachar[:restantes]
+            novas = [i for i in despachar if i not in retentativas]
+            pular += [(i, motivo) for i in novas[restantes:]]
+            cortadas = set(novas[restantes:])
+            despachar = [i for i in despachar if i not in cortadas]
             if restantes == 0:          # a guardada também: nada mais vira execução
                 ja = {i for i, _ in pular}
-                pular += [(o["id"], motivo) for o in devidas if o["id"] not in ja]
+                pular += [(o["id"], motivo) for o in devidas if o["id"] not in ja and o["id"] not in retentativas]
         self._pular(pular, token, agora, r)
         if p["orcamento_total_usd"] is not None:
             # O que sobra do orçamento total deixa despachar só `cabem` ocorrências nesta volta; o resto fica `devida`
@@ -428,8 +529,10 @@ class LacoDePedidos:
         for oid in despachar:
             if criou >= orcamento:
                 break
+            if self._em_espera(por_id[oid], agora):
+                continue                # a nova tentativa (28.5) ainda não chegou na hora: segura o lugar, sem gastar nada
             if self._adiamento is not None:
-                self._adiar(por_id[oid], self._adiamento, r)
+                self._adiar(p, por_id[oid], self._adiamento, token, agora, r)
                 continue
             if self._despachar_uma(p, por_id[oid], token, agora, r):
                 criou += 1
@@ -446,9 +549,28 @@ class LacoDePedidos:
             log.exception("pedidos: leitura do saldo das contas de IA")
             return None
 
-    def _adiar(self, o: Row, motivo: str, r: Resumo) -> None:
-        """A ocorrência FICA `devida` (sem reserva, sem execução, sem tentativa gasta, sem passar a `perdida`: adiar não
-        é falha) e o motivo vai em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha."""
+    @staticmethod
+    def _em_espera(o: Row, agora: datetime) -> bool:
+        """`devida` com `tentativa > 0`: é a nova tentativa do 28.5, e `terminada_em` guarda o `nao_antes_de`
+        (`RepositorioDePedidos.retentar`). Antes dele ninguém a despacha, adia ou perde."""
+        return int(o["tentativa"] or 0) > 0 and bool(o["terminada_em"]) and parse_iso(o["terminada_em"]) > agora
+
+    def _limite_da_janela(self, p: Row, o: Row) -> datetime:
+        """Até quando a ocorrência `devida` pode esperar para virar execução: `previsto_para + J` (J = a janela, no
+        mínimo `tick_s`). Numa nova tentativa a conta parte do `nao_antes_de`, não do instante previsto (que já passou)."""
+        g = next((x for x in self.repo.gatilhos_ativos(p["id"]) if x["id"] == o["gatilho_id"]), None)
+        try:
+            janela = self._janela(p, g, loads(g["spec"], {}) if g else {})
+        except gatilhos.ErroDeGatilho:
+            janela = self.cfg.janela_padrao_s
+        base = parse_iso(o["previsto_para"])
+        if int(o["tentativa"] or 0) > 0 and o["terminada_em"]:
+            base = max(base, parse_iso(o["terminada_em"]))
+        return base + timedelta(seconds=max(janela, self.cfg.tick_s))
+
+    def _adiar(self, p: Row, o: Row, motivo: str, token: int, agora: datetime, r: Resumo) -> None:
+        """A ocorrência FICA `devida` (sem reserva, sem execução, sem tentativa gasta: adiar não é falha) e o motivo vai
+        em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha."""
         texto = f"adiada: {motivo}"[:500]
         if o["resumo"] != texto:
             self.repo.soltar_reserva(o["id"], texto)
@@ -522,13 +644,7 @@ class LacoDePedidos:
         """A ocorrência fica `devida`, solta a reserva e grava o último motivo; passou de `previsto_para + J` (J = a
         janela, no mínimo `tick_s`), vira `perdida`."""
         texto = texto[:500]
-        g = next((x for x in self.repo.gatilhos_ativos(p["id"]) if x["id"] == o["gatilho_id"]), None)
-        try:
-            janela = self._janela(p, g, loads(g["spec"], {}) if g else {})
-        except gatilhos.ErroDeGatilho:
-            janela = self.cfg.janela_padrao_s
-        limite = parse_iso(o["previsto_para"]) + timedelta(seconds=max(janela, self.cfg.tick_s))
-        if truncar(agora) > limite:
+        if truncar(agora) > self._limite_da_janela(p, o):
             motivo = f"não foi possível criar a execução: {texto}"
             transicionar_ocorrencia("devida", "perdida", motivo=motivo)
             with self.lideranca.cercada(PEDIDOS, token):
@@ -554,7 +670,7 @@ class LacoDePedidos:
         atingiu = p["max_ocorrencias"] is not None and self.repo.executadas(p["id"]) >= p["max_ocorrencias"]
         if atingiu:
             motivo = f"máximo de ocorrências atingido ({p['max_ocorrencias']})"
-            for linha in self.repo.ids_prevista_devida(p["id"]):
+            for linha in self.repo.ids_prevista_devida(p["id"], sem_retentativas=True):
                 self._pular([(linha["id"], motivo)], token, agora, r, de=linha["estado"])
         proximos: list[datetime] = []
         motivos: list[str] = []

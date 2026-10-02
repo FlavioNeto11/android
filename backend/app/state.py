@@ -449,7 +449,11 @@ class AppState:
             # 28.6: o custo da ocorrência sai de `ai_calls` pela MESMA conta do painel de uso (`/api/usage`) e do teto.
             custo_da_execucao=lambda run_id: costs.spent_usd(self.db, cfg.file.ai.prices, run_id=run_id),
             # 28.6: saldo da conta de IA abaixo do mínimo (ADR-051) ADIA o despacho; é a mesma leitura de /api/ai/balances.
-            adiar_por_saldo=lambda: motivo_de_adiamento(self.db, cfg, cfg.file.pedidos.saldo_minimo_usd))
+            adiar_por_saldo=lambda: motivo_de_adiamento(self.db, cfg, cfg.file.pedidos.saldo_minimo_usd),
+            # 28.5: o `AvisoDTO` da pausa por falhas seguidas e da ocorrência incerta sai como `pedido.aviso` (contrato 28.9),
+            # que o canal de fora (28.11) assina no barramento. O `nivel` do aviso é o do evento.
+            avisar=lambda aviso: self.bus.emit("pedido.aviso", str(aviso["mensagem"]), level=str(aviso["nivel"]),
+                                               data={"aviso": dict(aviso)}))
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
         # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),
