@@ -1435,19 +1435,20 @@
    "id": "7.4",
    "status": "partial",
    "proof": "real",
-   "evidence": "PROVA REAL 25/09/2026, central WIN-7S2UASNLFOP, producao em e6b00db, autorizada pelo dono (ADR-018). (1) Rejulgamento: scripts/eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes -> 41/56 concordam (73%); 9 falsos negativos do Haiku (Haiku reprovou, Opus viu a mensagem enviada) e 6 falsos positivos (Haiku aprovou tela em branco ou conversa aberta no lugar do perfil: evidencias 929, 931, 932, 936, 952, 965); capturas de 19-20/09, anteriores as mudancas de prompt do verificador; 243 083 tokens in / 8 418 out = US$ 1,14; saida em data/eval-rejudge.jsonl. (2) Linha de base: scripts/eval-run.ps1 -Label base-25-09, 14 casos QA em android-09 (remoto, worker-lan-01) e 3 casos Instagram (so navegacao) em android-01: 16/17 corretos, US$ 1,43 (data/eval-results.jsonl). O ator rodou no FALLBACK declarado (decide: qwen3-vl local -> claude-sonnet-5, 89 chamadas com ai_calls.fallback='anthropic') porque o Ollama nao estava no ar; a linha de base mede essa configuracao, nao o ator local. Falha: msg-suporte-busca (run r-20260925014321-86058e) ficou waiting_user porque o Haiku tratou required_delivery_level=sent como exato e recusou 'Entregue' (delivered), embora o prompt e a pos-condicao digam 'igual ou superior'; a mensagem foi entregue (conferido pelo ContentProvider do QA). (3) HTTP 500 do verificador: 2 de 284 chamadas registradas em ai_calls (ambas 24/09, 'Erro 500 do provedor', lado da Anthropic), as duas seguidas de verificacao ok em ~5 s pela retentativa do executor; os ~10% do achado nao aparecem nos dados registrados. Nenhuma chamada paga de reproducao. Total da rodada: ~US$ 2,57. Teto diario subiu a 30 e voltou a 10.",
-   "blocker": "Cache de prompt do verificador em Haiku 4.5 continua inativo (49 chamadas de verify em 25/09, cache_read=0: prefixo abaixo do minimo cacheavel, achado #100). E a linha de base com o ator LOCAL ainda nao foi medida: exige o Ollama no ar no central.",
+   "evidence": "PROVA REAL 25/09/2026, central WIN-7S2UASNLFOP, producao em e6b00db, autorizada pelo dono (ADR-018). (1) Rejulgamento: scripts/eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes -> 41/56 concordam (73%); 9 falsos negativos do Haiku (Haiku reprovou, Opus viu a mensagem enviada) e 6 falsos positivos (Haiku aprovou tela em branco ou conversa aberta no lugar do perfil: evidencias 929, 931, 932, 936, 952, 965); capturas de 19-20/09, anteriores as mudancas de prompt do verificador; 243 083 tokens in / 8 418 out = US$ 1,14; saida em data/eval-rejudge.jsonl. (2) Linha de base: scripts/eval-run.ps1 -Label base-25-09, 14 casos QA em android-09 (remoto, worker-lan-01) e 3 casos Instagram (so navegacao) em android-01: 16/17 corretos, US$ 1,43 (data/eval-results.jsonl). O ator rodou no FALLBACK declarado (decide: qwen3-vl local -> claude-sonnet-5, 89 chamadas com ai_calls.fallback='anthropic') porque o Ollama nao estava no ar; a linha de base mede essa configuracao, nao o ator local. Falha: msg-suporte-busca (run r-20260925014321-86058e) ficou waiting_user porque o Haiku tratou required_delivery_level=sent como exato e recusou 'Entregue' (delivered), embora o prompt e a pos-condicao digam 'igual ou superior'; a mensagem foi entregue (conferido pelo ContentProvider do QA). (3) HTTP 500 do verificador: 2 de 284 chamadas registradas em ai_calls (ambas 24/09, 'Erro 500 do provedor', lado da Anthropic), as duas seguidas de verificacao ok em ~5 s pela retentativa do executor; os ~10% do achado nao aparecem nos dados registrados. Nenhuma chamada paga de reproducao. Total da rodada: ~US$ 2,57. Teto diario subiu a 30 e voltou a 10.\n\nJ9, 02/10/2026 (sessao jev, base origin/main 5a50f80 + PR #31, merge 7067412): PROVA REAL do cache do verificador, scripts/verifier-cache-probe.py, mesmo VERIFIER_SYSTEM e ponto de cache do AnthropicProvider, tela sintetica sem codigo do repositorio, max_retries=0, 2 chamadas por modelo, teto US$ 0,50, gasto US$ 0,0241. Prefixo cacheavel medido por count_tokens: ~1290 tokens (system + esquema). Haiku 4.5 (padrao do verificador, minimo 4096): cache 0/0 nas duas chamadas (INERTE; explica as 49 verificacoes de 25/09). Sonnet 5 (minimo 1024): 1a gravou 1290, 2a LEU 1290 (US$ 0,004855 -> 0,002028). Opus 5.5 (minimo 512): idem (US$ 0,010238 -> 0,003706). O cache funciona onde o minimo cabe; o padrao NAO muda (Haiku sem cache, US$ 0,0016 por verificacao, ainda e mais barato que Sonnet com cache, US$ 0,0020 da 2a em diante). Corrige a leitura do PR #27 (len//4 dava ~560 tokens). Prova simulated: backend/tests/test_anthropic_provider.py::test_verificador_pede_o_ponto_de_cache_e_o_uso_le_os_campos_de_cache, ::test_uso_com_cache_vai_para_ai_calls_sem_contar_o_cache_como_entrada_nova, ::test_prefixo_do_verificador_fica_abaixo_do_minimo_do_haiku. docs/ia.md secao 5.",
+   "blocker": "Cache de prompt do verificador: ENCERRADO como 'nao se aplica no tamanho do prefixo' para o padrao (Haiku 4.5, minimo 4096 contra ~1290 tokens; prova real 02/10 em evidence). Continua pendente a linha de base com o ator LOCAL: exige o Ollama no ar no central (a chamada paga ao ator em nuvem esta autorizada, mas a medida e do local). Os ~10% de HTTP 500 do verificador nao aparecem nos dados (2 de 284), como registrado em 25/09.",
    "arquivos": [
-    "data/eval-rejudge.jsonl",
-    "data/eval-results.jsonl"
+    "scripts/verifier-cache-probe.py",
+    "backend/tests/test_anthropic_provider.py",
+    "docs/ia.md"
    ],
-   "testes": "eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes; eval-run.ps1 -Label base-25-09 (QA em android-09, IG em android-01); consulta read-only a ai_calls",
-   "grupo": "sessao:7.4",
+   "testes": "scripts/verifier-cache-probe.py --env <.env> (real, US$ 0,0241); pytest tests/test_anthropic_provider.py tests/test_arquitetura.py -> 25 passed",
+   "grupo": "sessao:jev-j14",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-25T13:45:44+00:00"
+   "quando": "2026-10-02T15:23:13+00:00"
   },
   "8.1": {
    "id": "8.1",
@@ -1809,25 +1810,20 @@
   "T.2": {
    "id": "T.2",
    "status": "partial",
-   "proof": "real",
-   "evidence": "backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot falso ganha PID via _spawn SÓ ao fim do boot simulado, achado #165); manager.py:711-724 (_adopt falso idem); backend/app/devices/emulator_backend.py:53,56,77,80,123,128 (save_snapshot/process_alive novos em EmulatorBackend/Real/Fake); backend/app/config.py:239 (limits.boot_poll_s, achado #164 — sleep(2) fixo de _wait_boot virou configurável, usado em manager.py:1467); backend/tests/test_ciclo_de_vida_do_emulador.py (16 testes, 5 novos: hibernar com sucesso mede e passa pelo backend, falha no snapshot desliga e descarta, hibernação desligada na config, parada simples zera PID, _wait_boot estoura prazo chamado direto sem tocar adb). Agente remoto (worker/executor.py): JÁ tem ciclo de vida real testado hoje — backend/tests/test_worker_executor.py (21 testes: start/stop/hibernate/wake/reset, boot que não termina vira VerbUncertain via INTERVALO_SONDA_S monkeypatchado, guarda de RAM, guarda de vagas, fila de boot com cancelamento) — via monkeypatch de app.worker.executor.emu, não via EmulatorBackend compartilhado com manager.py; é uma costura diferente da sugerida no achado, mas resolve a lacuna de teste que o achado apontava (evidência conferida hoje, não é o que o achado #165 media ontem). Medido no fechamento de 24/09: suite completa 1130 passed em 570,6 s (9 min 30 s) - meta de 2-3 min NAO atingida; os 10 testes mais lentos somam ~178 s, liderados por test_execution.py::test_resultado_ambiguo_vira_incerto_e_nao_reenvia (64,6 s) e test_rotation.py (21,8 s + 13,2 s) - sao o alvo da proxima otimizacao (relogio injetavel nesses caminhos).",
-   "blocker": "Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snapshot durante o boot) não ganharam backend fake — só o ramo de prazo estourado (boot_timeout_s=0) tem teste direto, porque esse ramo retorna ANTES de tocar adb; testar as sondas exigiria estender EmulatorBackend mais fundo em código de boot real sem poder validar contra um emulador de verdade nesta chamada, risco que decidi não assumir sozinho. worker/executor.py não foi unificado com EmulatorBackend (continua chamando app.devices.emulator diretamente) — decisão de escopo, não bloqueio técnico: já tem teste real equivalente. 'Medir o tempo da suíte' NÃO foi executado — proibido pela regra 4 desta chamada (não rodar a suíte inteira; 1130 testes coletados hoje, não 402). Comando para o orquestrador rodar no fechamento: cd backend && .venv/Scripts/python.exe -m pytest -q --durations=25",
+   "proof": "simulated",
+   "evidence": "backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot falso ganha PID via _spawn SÓ ao fim do boot simulado, achado #165); manager.py:711-724 (_adopt falso idem); backend/app/devices/emulator_backend.py:53,56,77,80,123,128 (save_snapshot/process_alive novos em EmulatorBackend/Real/Fake); backend/app/config.py:239 (limits.boot_poll_s, achado #164 — sleep(2) fixo de _wait_boot virou configurável, usado em manager.py:1467); backend/tests/test_ciclo_de_vida_do_emulador.py (16 testes, 5 novos: hibernar com sucesso mede e passa pelo backend, falha no snapshot desliga e descarta, hibernação desligada na config, parada simples zera PID, _wait_boot estoura prazo chamado direto sem tocar adb). Agente remoto (worker/executor.py): JÁ tem ciclo de vida real testado hoje — backend/tests/test_worker_executor.py (21 testes: start/stop/hibernate/wake/reset, boot que não termina vira VerbUncertain via INTERVALO_SONDA_S monkeypatchado, guarda de RAM, guarda de vagas, fila de boot com cancelamento) — via monkeypatch de app.worker.executor.emu, não via EmulatorBackend compartilhado com manager.py; é uma costura diferente da sugerida no achado, mas resolve a lacuna de teste que o achado apontava (evidência conferida hoje, não é o que o achado #165 media ontem). Medido no fechamento de 24/09: suite completa 1130 passed em 570,6 s (9 min 30 s) - meta de 2-3 min NAO atingida; os 10 testes mais lentos somam ~178 s, liderados por test_execution.py::test_resultado_ambiguo_vira_incerto_e_nao_reenvia (64,6 s) e test_rotation.py (21,8 s + 13,2 s) - sao o alvo da proxima otimizacao (relogio injetavel nesses caminhos).\n\nJ10, 02/10/2026 (sessao jev, PR #30, merge 5a50f80): as SONDAS de _wait_boot ganharam teste: backend/tests/test_wait_boot_sondas.py (7 testes, simulated; so as tres chamadas ao Adb sao duble, o laco, a fase de prontidao e o estado sao os de producao): boot_completed antes de ui_ready, a interface so sondada depois do boot, AdbError/DriverError engolidos e repetidos, 120 s sem interface depois do boot com relogio injetavel em manager (sem dormir), prazo estourado sem boot_completed, preparo que falha rapido sem impedir a entrada no ar, AjusteDosApps virando evento. Mutacoes (120 s -> 12000 s; ordem das sondas) derrubam os testes. Nenhum codigo de producao mudou (manager.py e despacho.py intocados). 45 passed com test_ciclo_de_vida_do_emulador, test_prontidao e test_arquitetura.",
+   "blocker": "Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBackend (decisao de escopo, ja tem teste equivalente em test_worker_executor.py); tempo da suite 570,6 s em 24/09, meta de 2-3 min NAO atingida (alvo: relogio injetavel em test_execution.py e test_rotation.py). As sondas boot_completed/ui_ready/prepare_for_automation foram FECHADAS no J10 (ver evidence). Os demais pontos da linha do plano (38 das 85 rotas sem teste HTTP; eventos command.updated/worker.updated e tela de Infraestrutura) nao foram verificados neste registro.",
    "arquivos": [
-    "backend/app/devices/manager.py",
-    "backend/app/devices/emulator_backend.py",
-    "backend/app/config.py",
-    "backend/tests/conftest.py",
-    "backend/tests/test_ciclo_de_vida_do_emulador.py",
-    "backend/tests/test_commands.py",
-    "backend/tests/test_rotation.py"
+    "backend/tests/test_wait_boot_sondas.py",
+    "backend/tests/test_ciclo_de_vida_do_emulador.py"
    ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_ciclo_de_vida_do_emulador.py tests/test_worker_executor.py tests/test_cancelamento.py tests/test_commands.py tests/test_rotation.py tests/test_distribute.py tests/test_log_do_emulador.py tests/test_store_role.py tests/test_store_sync.py tests/test_contrato_http.py tests/test_saude_do_convidado.py tests/test_workers.py tests/test_rotation_worker.py tests/test_canal_do_worker.py tests/test_contrato_de_worker.py tests/test_efeitos_remotos.py tests/test_configuracao_de_exemplo.py  →  259 passed in 105.41s",
-   "grupo": "T:T.2",
-   "modelo": "sonnet",
-   "esforco": "high",
-   "conferido": true,
-   "conferencia": "Arquivo:linha confirmados; 15 testes em test_ciclo_de_vida_do_emulador.py (não 16 declarado; 10 antes + 5 novos); manager.py:1558,1603,852,1345-1368,711-724 conforme; config.py:239 boot_poll_s configurável; emulator_backend.py save_snapshot/process_alive em Real/Fake; test_worker_executor.py 21 testes; sem TODO/FIXME/skip.",
-   "quando": "2026-09-24T15:41:17+00:00"
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_wait_boot_sondas.py tests/test_ciclo_de_vida_do_emulador.py tests/test_prontidao.py tests/test_arquitetura.py -> 45 passed",
+   "grupo": "sessao:jev-j14",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:23:13+00:00"
   },
   "T.1": {
    "id": "T.1",
@@ -5437,6 +5433,16 @@
    ],
    "grupos": [
     "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-02T15:23:13+00:00",
+   "itens": [
+    "T.2",
+    "7.4"
+   ],
+   "grupos": [
+    "sessao:jev-j14"
    ]
   }
  ]
