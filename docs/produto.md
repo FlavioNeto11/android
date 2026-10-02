@@ -54,7 +54,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
   Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
-- **Menu lateral e cabeçalho (revisão de UX, 30/09).** As nove seções (Painel, Personas, Aplicativos, Execuções, Aprendizado,
+- **Menu lateral e cabeçalho (revisão de UX, 30/09).** As dez seções (Painel, Personas, Aplicativos, Execuções, Pedidos, Aprendizado,
   Infraestrutura, Configuração, Diagnóstico e Pendências) ficam num menu lateral recolhível (ícone e rótulo; só ícone quando
   recolhido; **abre expandido a partir de 1280 px** e recolhido abaixo, e a escolha da pessoa fica guardada no navegador e vence
   o padrão; abaixo de 1024 px vira gaveta, aberta pelo botão "Menu", que traz o selo de pendências, com o Tab preso dentro e Esc
@@ -92,10 +92,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   aviso na saúde do ambiente são o mesmo total e levam à caixa. Em Execuções, o filtro que junta "terminou com
   problema" e "parou pedindo informação" se chama **Pede atenção**, e um plano pronto que ninguém mandou executar
   (`planned`) tem o chip **Planejadas**: não conta como execução em andamento.
-- **Pedidos persistentes e a tela Pedidos (Fase 28, item 28.9) — PROPOSTA, não implementada** (prova `not_run`; fontes:
+- **Pedidos persistentes e a tela Pedidos (Fase 28, item 28.9) — tela IMPLEMENTADA no painel, prova `simulated`** (código em
+  `frontend/src/features/pedidos/`, testes `PedidosPage.test.tsx`, `NovoPedido.test.tsx` e `pendencias/pedidosNaCaixa.test.ts`, com o
+  backend falso; contra o backend real do 28.9: `not_run`; as divergências e o que falta estão no fim deste item; fontes:
   [desenho](design/pedidos-persistentes.md) §11, §6.2 e §7.9, e o adendo v0.45 do [contrato](api-contract.md), que traz as
   rotas, os corpos e os códigos de erro). Um pedido é o objetivo que dura: ele gera ocorrências e cada ocorrência vira uma
-  execução comum. Seria a décima seção do menu (hoje são nove), e a contagem de nove acima só muda quando ela existir.
+  execução comum. É a décima seção do menu, logo depois de Execuções.
   - **Criar pelo Comando.** Ao lado de Planejar e Executar, o Comando ganha o seletor **Quando** (agora, em, repetir, quando
     acontecer, acompanhar) e os campos do pedido: título, critérios de sucesso, autonomia (observar, preparar ou agir; o
     padrão é observar), fuso, prazo, limite de ocorrências e orçamento. O assistente do ADR-047 refina o objetivo, e a
@@ -123,8 +125,34 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     pedido que **espera uma pessoa** (aprovação, pergunta do planejador ou ocorrência incerta) entra na caixa de Pendências
     como uma origem nova, e o aviso nunca usa a palavra "pendência". O canal de aviso **fora do painel** (e-mail, mensagem) é
     o item 28.11, decisão do dono; aqui existe só o ponto de extensão, o evento `pedido.aviso`.
-  - **Em aberto para o dono ou o coordenador** (lista completa no adendo v0.45): a emenda ao ADR-062 para a nova origem de
-    Pendências, a prévia como `POST` e o padrão de repetir uma ação de estado.
+  - **O que o painel faz hoje, e onde diverge do texto acima** (02/10/2026):
+    - Criar: o Comando ganhou o botão **Repetir ou acompanhar…**, que abre a criação do pedido com o texto e os alvos do
+      Comando (aparelhos marcados, personas, distribuição ou o Automático, que pergunta à sugestão como o Executar). Não há
+      um seletor "Quando" ao lado de Planejar e Executar: o "Quando" fica dentro do pedido (agora, em um horário, repetir,
+      acompanhar). "Quando acontecer" (evento, condição) não é oferecido: depende do 28.8 e o backend o recusa. "Acompanhar" é
+      repetir de hora em hora na autonomia observar. A prévia é obrigatória: "Confirmar e criar" só anda com a prévia em dia
+      e sem bloqueio, e mexer em qualquer campo a apaga. A `idempotency_key` é uma por conteúdo e selo: repetir a mesma
+      tentativa reaproveita a chave.
+    - Lista e detalhe: como descritos, com os filtros no link com os nomes da query da API. Os chips de estado são de
+      escolha única na tela (o link aceita vários estados separados por vírgula).
+    - Ações: lidas de `acoes_permitidas`. Há botão para **editar** (prévia com `dry_run`: o que muda e as datas antes e
+      depois; aplicar leva a `versao` e o selo; só os campos que mudaram vão; a agenda dos gatilhos NÃO se edita nesta tela),
+      **ativar** (o selo vem da prévia em `dry_run`), **pausar** (com motivo), **retomar** (modo "daqui para frente" ou
+      "recuperar" só para pausado; de aguardando você, sem modo) e **cancelar** (primeiro pergunta, sem `confirmar`, e a
+      confirmação diz quantas ocorrências futuras e quantas execuções em curso; depois manda `confirmar: true`). Repetir uma
+      ação que já valia mostra "nada mudou" (`sem_mudanca`). **Não há botão de executar agora nem de backfill**: ficam para
+      uma próxima entrega. A "chave de idempotência por clique" do texto acima vale só para a criação (as ações de estado
+      repetem pelo estado, como o contrato define).
+    - Avisos: a caixa é a guia **Avisos** da própria tela Pedidos (`#/pedidos?aba=avisos`), com o filtro `requer_pessoa=0`; o
+      contador de **avisos não lidos** é o selo do item Pedidos do menu (não há chip na barra do topo), e um aviso
+      informativo que chega ao vivo vira um toast.
+    - Pendências: o pedido `aguardando_pessoa` é uma origem nova da caixa (uma linha por pedido, com a aprovação e a execução
+      parada dele agrupadas embaixo, sem contar de novo; emenda à ADR-062 confirmada pelo dono). O painel monta o item no
+      cliente com `GET /api/pedidos?estado=aguardando_pessoa`; o campo `pedidos` do snapshot, previsto no contrato, não é
+      lido.
+    - Memória, relatórios e observações: `null` diz "ainda não disponível", `[]` diz "vazio".
+    - Em aberto: o resultado de nenhuma destas telas foi visto contra o backend real nem num navegador a 1366 e a 375 px
+      (`not_run`); a execução (tela Execuções) ainda não mostra de que pedido nasceu.
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada

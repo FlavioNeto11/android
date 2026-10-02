@@ -10,6 +10,7 @@ import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
 import { seletorDoAparelho } from './features/focus/Drawer';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
+import { PedidosPage } from './features/pedidos/PedidosPage';
 import { PendenciasPage } from './features/pendencias/PendenciasPage';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
@@ -98,7 +99,7 @@ export function App() {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
     const names = { painel: 'Painel', personas: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
-                    pendencias: 'Pendências', aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
+                    pedidos: 'Pedidos', pendencias: 'Pendências', aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
@@ -121,6 +122,7 @@ export function App() {
             {view === 'personas' ? <ProfilesPage /> : null}
             {view === 'aplicativos' ? <AppsPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
+            {view === 'pedidos' ? <PedidosPage /> : null}
             {view === 'pendencias' ? <PendenciasPage /> : null}
             {view === 'aprendizado' ? <AprendizadoPage /> : null}
             {view === 'infraestrutura' ? <InfraPage /> : null}

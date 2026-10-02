@@ -57,3 +57,5 @@
   .linha { flex-direction: column; align-items: stretch; }
   .acao { justify-content: center; }
 }
+
+.filhas { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }

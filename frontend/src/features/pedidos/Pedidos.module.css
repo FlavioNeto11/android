@@ -1,0 +1,53 @@
+/* Tela Pedidos (item 28.9). Só tokens; sem cor fixa. */
+
+.tabBody { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.lista { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+
+.linha {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  min-width: 0;
+}
+.corpo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; flex: 1; }
+.topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.titulo { color: var(--text-1); font-size: var(--fs-md); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.titulo:hover { text-decoration: underline; }
+.meta { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); }
+.dim { color: var(--text-3); font-size: var(--fs-xs); }
+.nota { margin: 0; color: var(--text-2); font-size: var(--fs-sm); max-width: 80ch; }
+.motivo { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.acoes { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); margin: 0; }
+.grade dt { color: var(--text-3); font-size: var(--fs-xs); }
+.grade dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.formulario { display: flex; flex-direction: column; gap: var(--sp-3); }
+.duas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); }
+.segmentado { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.dias { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.previa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.previa h3 { margin: 0; font-size: var(--fs-sm); color: var(--text-1); }
+.previa ul { margin: 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+.bloqueio { color: var(--danger-text, var(--text-1)); }
+
+.filhas { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+
+@media (max-width: 560px) {
+  .linha { flex-direction: column; }
+}
