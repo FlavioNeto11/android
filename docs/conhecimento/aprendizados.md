@@ -1805,3 +1805,20 @@ depois da medição velha: só uma medição nova (posterior) libera, sem mexer 
 **Aplicabilidade.** Toda prova durável atrelada a um runtime (túnel, sessão, hierarquia, classificação de tela) precisa declarar a que
 geração do runtime pertence e comparar com a de agora; validade por relógio não substitui isso. Atenção ao aparelho remoto: o central só
 vê o boot pelo desfecho do agente, e `_adopt` põe `online` sem passar pelo `_set_state`.
+
+### K-076 — Versão do app tem dois formatos: a receita grava `nome(código)`, o aparelho guarda nome e código separados
+
+**Data:** 03/10/2026 · **Área:** aprendizado (versão, saúde)
+
+**Sintoma.** Com o 30.4/30.14 sobre uma cópia do banco do central, 78 de 160 itens do Livro saíram `obsoleto_provavel` com o
+motivo `versao_fora_do_parque`, inclusive receitas reproduzindo bem no parque inteiro.
+
+**Causa.** `recipes.app_version` é `versionName(versionCode)` (o mesmo formato de `taskqueue/scheduler.py`), e
+`device_app_state` guarda `observed_version_name` e `observed_version_code` em colunas separadas. A comparação de texto exato
+do 30.6 nunca casava. Os testes usavam versões sintéticas sem código (`"447"`) e passavam. A tela e a lição gravam só o nome.
+
+**O que funcionou.** Montar as vivas no formato da receita (`versao_canonica`) e comparar a tela e a lição pelo nome
+(`nome_da_versao`); teste com os valores MEDIDOS do banco.
+
+**Aplicabilidade.** Toda comparação de versão de app entre fontes do projeto. Antes de comparar, meça o formato real das
+duas colunas; dado sintético sem o formato real esconde o erro. Aceite visual com cópia do banco pega o que o teste não pega.
