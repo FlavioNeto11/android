@@ -15,6 +15,10 @@ Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **
 código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. Faltam o método do curador (30.12), a porta de decisão
 do Jev e o saldo da conta (ADR-051) dentro da mesma ordem.
 
+**PENDÊNCIA registrada (orquestradora, 02/10):** a ordem das réguas ficou a existente (pedido > execução > dia > fatia) e o saldo
+da conta continua em `_saldo` (`kind="balance"`). UNIFICAR o saldo na rubrica (o `motivo="saldo"` e a fatia `α × min(saldo, teto)`) é o
+passo seguinte, a fazer antes do 30.11 gravar `learning_reviews.usd` e antes do 31.10.
+
 ## 1. O que já existe (PROVED no código)
 
 - Métodos do hub fora de execução usam o papel `plan` emprestado e `run_id=None`, como `generalize` (13.2),
