@@ -19,13 +19,14 @@ from ..metricas import metricas
 from ..modules.learning.domain.falhas import FailureKind
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
+from ..planning.capabilities import capability_of
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
 from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
-from .executor import Outcome, StepExecutor, StepOutcome, tela_da_falha
+from .executor import Outcome, StepExecutor, StepOutcome, saidas_exigidas, tela_da_falha
 from .flows import FlowStore
 from .foreach import expand
 from .projecao import projetar
@@ -1731,7 +1732,13 @@ class Scheduler:
         # reaproveitado na retomada, e reler (outro app aberto, outra ida à caixa de entrada) seria repetir etapa
         # concluída. O caminho até ela continua, como o de um efeito.
         gravadas = set(self.repo.step_outputs(objective_id))
-        leituras = {s.key for s in plan.steps if s.key in proven and s.saidas and set(s.saidas) <= gravadas}
+        # Item 12.4: as saídas da leitura são as EXIGIDAS (a escolha do plano ou, sem escolha, tudo o que a ação
+        # declara), as mesmas que o executor cobrou para comprová-la: com `s.saidas` vazio ela seria relida.
+        pacotes = {r["id"]: r["package"] for r in self.repo.db.query("SELECT id, package FROM apps")}
+        leituras = {s.key for s in plan.steps if s.key in proven
+                    and (exigidas := saidas_exigidas(s.saidas, capability_of(
+                        pacotes.get(s.app_id or plan.app_id or "", plan.app_package), s.capability)))
+                    and set(exigidas) <= gravadas}
 
         def visit(key: str) -> None:
             if key in needed or key in atravessadas or key not in by_key or key in decidido:

@@ -120,17 +120,17 @@ class Capability:
     # `band_guard`). Com `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova
     # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
-    # Item 24.3 (ADR-065): os NOMES dos valores que esta ação PODE entregar às etapas seguintes (`{{saida:<nome>}}`). É
-    # o que a ação declara; o planejador escolhe, por etapa, quais usa (`CapabilityNode.saidas`) — uma ação que sempre
-    # entregasse forçaria `read_value` (e desligaria a receita) em todo uso, mesmo sem ninguém citar o valor. Quem tira
-    # o valor continua sendo o executor, do texto do elemento na tela, com a triagem de segredo de sempre.
+    # Item 24.3 (ADR-065): os NOMES dos valores que esta ação ENTREGA às etapas seguintes (`{{saida:<nome>}}`). Desde o
+    # 12.4 a etapa só é comprovada com eles preenchidos: o planejador pode ESTREITAR, por etapa, o subconjunto que usa
+    # (`CapabilityNode.saidas`); sem escolha, o executor exige todos os que a ação declara. Quem tira o valor continua
+    # sendo o executor, do texto do elemento na tela, com a triagem de segredo de sempre.
     saidas: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""
         argumentos = ", ".join(self.bindings + tuple(f"{b}?" for b in self.optional_bindings)) or "sem argumentos"
         efeito = " [EFEITO EXTERNO]" if self.side_effect else ""
-        entrega = f" [pode entregar em `saidas`: {', '.join(self.saidas)}]" if self.saidas else ""
+        entrega = f" [entrega em `saidas`: {', '.join(self.saidas)}]" if self.saidas else ""
         return f"- {self.key}({argumentos}){efeito}{entrega}: {self.title}"
 
 

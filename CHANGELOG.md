@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 12.4: etapa que declara saídas só é comprovada com elas (branch fix/12-4-saidas-obrigatorias)
+
+- `backend/app/taskqueue/executor.py`: `saidas_exigidas` (o que o planejador escolheu em `steps.saidas` ou, sem escolha, o que a
+  ação declara em `Capability.saidas`) passa a valer em `run_step` e `_run_step`, no lugar de só `steps.saidas`. Achado real:
+  r-20261002204347-8c3f6e, Outlook no android-01, `OPEN_MAIL_INBOX` com a caixa aberta, "1 de 1 com sucesso comprovado" e nenhum
+  remetente nem assunto: o plano não escolheu saída, então nada foi exigido e a verificação comprovou a tela. Agora a etapa lê
+  (`read_value`) ou falha com o nome que faltou; com efeito disparado seria `uncertain`. Coleta sem item continua falha, salvo
+  vazio comprovado pela tela (`_prova_de_vazio`, julgamento "a lista está vazia" explícito), marcado em `StepResult.vazio_comprovado`.
+  Mensagem de `step_done` sem leitura passa a citar os nomes. Núcleo tocado: `taskqueue/executor.py` e `models.py` (um campo em
+  `StepResult`); não toca `scheduler.py`, `state.py`, eventos, config, api, `planning/` nem pedidos.
+- Prova `simulated`: `tests/test_saidas_obrigatorias.py` (9 casos: caso real reconstruído, saída faltando, saídas lidas, subconjunto
+  do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
+- Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
+
 ## 2026-10-02 — Caixa de avisos dos pedidos e coerência tela × API (28.9, branch jev/integ-28-9)
 
 - **Passe de design e UX da tela Pedidos (28.9, só `frontend/`, prova `simulated`).** Lista: cartão estruturado (chips de estado e autonomia, agenda "Todo dia às 19:00 · próxima sex 02/10 19:00", gasto e ocorrências como metadados discretos; fuso só se difere do navegador; US$ no formato brasileiro), esqueleto no formato do cartão, erro com "Tentar de novo" e o vazio com **Novo pedido** (leva ao Comando com o painel aberto). Detalhe: título curto (o objetivo inteiro fica no Resumo) e Resumo em cartões (Agenda, Quem faz, Custos e limites, Comportamento, Autoria); a próxima data, quando o laço ainda não a gerou, é a primeira das calculadas. Painel "Repetir ou acompanhar" em seções (Quando, O que conta como feito, Limites, Avançado recolhido), prévia em blocos com datas legíveis, e a pergunta real do Automático ("marque aparelhos no modo Manual ou escolha uma persona") no lugar do erro genérico. Avisos com seletor segmentado e "Marcar todos" só com não lidos. Guias sem a barra vertical solta (`.tabs`, vale para todas as telas). Pendências: o pedido diz o motivo (ocorrência incerta). Testes: `PedidosPage.test.tsx`, `NovoPedido.test.tsx`, `formato.test.ts`, `pedidosNaCaixa.test.ts`.

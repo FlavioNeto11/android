@@ -624,7 +624,7 @@ async def test_planejador_ensina_o_valor_entregue_pela_acao_do_catalogo(tmp_path
     p._client = SimpleNamespace(messages=falso, beta=SimpleNamespace(messages=falso))  # noqa: SLF001
     plano, _ = await p.plan(_pedido_outlook())
     chamada = chamadas[0]
-    assert "[pode entregar em `saidas`: remetente, assunto]" in chamada["messages"][0]["content"][0]["text"]
+    assert "[entrega em `saidas`: remetente, assunto]" in chamada["messages"][0]["content"][0]["text"]
     assert "`saidas` da etapa" in chamada["system"][0]["text"]
     etapa = chamada["output_config"]["format"]["schema"]["properties"]["steps"]["items"]
     assert "saidas" in etapa["required"]

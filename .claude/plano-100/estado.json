@@ -2217,14 +2217,16 @@
    "id": "12.3",
    "status": "partial",
    "proof": "real",
-   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto.",
-   "blocker": "Falta o critério do item: uma execução com efeito no app, com login pela credencial da conta. Depende do Outlook abrir no parque (renderizador do emulador, 29.10 a 29.12; o P15 NÃO é recusa do app ao emulador) e do login real com consentimento (29.13).",
-   "grupo": "29-registros-12.3",
-   "modelo": "opus",
-   "esforco": "high",
+   "arquivos": [],
+   "testes": "",
+   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto. REAL 02/10/2026 no central c11f8217 (android-01, conta Outlook do lucas): verify so de leitura c-20261002204249-081af1 levou a sessao de unknown a session_ready (verified_at 20:43:32Z), sem senha nem Conectar; execucao r-20261002204347-8c3f6e (OPEN_MAIL_INBOX, side_effect=false) navegou ate a caixa de entrada e foi comprovada (US$ 0,2045). Leitura de remetente e assunto NAO extraida (result.items=[]): defeito geral virou o 12.4.",
+   "blocker": "Leitura real de remetente e assunto not_run: depende do 12.4 (etapa com saidas so comprovada com elas preenchidas). Depois de implantado: repetir a leitura no 01 e, provada, no 03 e no 06 (autorizado pelo dono 02/10 ~21:00Z, so leitura, verify antes, nunca Conectar).",
+   "grupo": "12-3-outlook-leitura",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T12:23:08+00:00"
+   "quando": "2026-10-02T21:53:18+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -5185,6 +5187,28 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T21:38:16+00:00"
+  },
+  "12.4": {
+   "id": "12.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/12-4-saidas-obrigatorias (eaa94e7f, a08abd53, 8a8c57db da Jev, eace8f30 + merges): saidas_exigidas (a escolha do plano ou, sem escolha, tudo o que a acao declara em Capability.saidas) em run_step/_run_step e na retomada (scheduler); step_done sem ler recusado; etapa comprovada pela tela mas sem valor vira retry/failed ou uncertain se houve efeito; coleta vazia so com vazio_comprovado (julgamento explicito do estado vazio). Causa real confirmada no banco: steps.saidas NULL nas duas versoes do r-20261002204347-8c3f6e (OPEN_MAIL_INBOX 'comprovado' sem remetente nem assunto). Textos do planejador alinhados pela Jev (describe 'entrega', prompt). K-075. Simulado: tests/test_saidas_obrigatorias.py (9 casos) + afetados 238; suite 4 jev/integ-suite-4 @ 2533bbd8: 5746 passed, 7 skipped, 0 failed.",
+   "blocker": "Prova real not_run: depois do deploy, UMA nova leitura do Outlook no android-01 (verify antes, nunca Conectar) deve terminar succeeded so com remetente e assunto lidos em step_outputs, ou failed com o nome que faltou; com isso, 03 e 06 (autorizados pelo dono).",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/models.py",
+    "backend/app/planning/capabilities.py",
+    "backend/app/planning/prompts.py",
+    "backend/tests/test_saidas_obrigatorias.py"
+   ],
+   "testes": "suite 4 2533bbd8 5746/0; afetados 238",
+   "grupo": "12-4-saidas",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:53:18+00:00"
   }
  },
  "rodadas": [
@@ -6294,6 +6318,17 @@
    ],
    "grupos": [
     "sessao:jev-28-9"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:53:18+00:00",
+   "itens": [
+    "12.3",
+    "12.4"
+   ],
+   "grupos": [
+    "12-3-outlook-leitura",
+    "12-4-saidas"
    ]
   }
  ]
