@@ -846,7 +846,12 @@ Antes do `accept()`, nesta ordem: IP bloqueado ou com handshakes pendentes demai
 fora de loopback ∪ `public_hosts` → **4403**. Depois do `accept()`: `hello` maior que 32 KiB ou que demore mais de
 10 s → **4400**; credencial recusada → `Refused` + **4401**, e 5 recusas de um mesmo IP em 5 min bloqueiam aquele
 IP por 60 s. Loopback continua valendo como `Host` aqui: pelo túnel o agente chega com `Host: 127.0.0.1:18000`.
-3. Worker envia `heartbeat` a cada `heartbeat_s` (padrão 10 s), com recursos e inventário.
+3. Worker envia `heartbeat` a cada `heartbeat_s` (padrão 10 s), com recursos e inventário. Campos de relógio, ambos
+   opcionais: `sent_at` (ISO UTC, relógio local do agente na saída da batida; o central re-mede o desvio a cada batida
+   como `relógio do banco na chegada − sent_at`, positivo = worker atrasado) e `clock_offset_s` (desvio medido uma vez
+   no `welcome`, mantido para central antigo). `sent_at` vale mais quando presente e legível; sem ele o central usa
+   `clock_offset_s`. Acima de 5 s o worker fica `degraded` ("relógio desalinhado"), e o estado some sozinho quando o
+   desvio medido volta ao limite. Sem versão nem feature nova (A9).
 4. Central envia `dispatch {command_id, fence, verb, instance_id, serial, params, timeout_s}`.
 5. Worker responde `ack` (recebi) e, depois, `result {command_id, outcome, reason, data}` com o `fence` de volta.
 

@@ -32,13 +32,20 @@ import app.workers.protocol as protocolo_antigo
 #: nenhuma; (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo ignora (`extra="ignore"`),
 #: agente antigo não manda e o central fica com "não se sabe"; (5) não é mudança de forma do pydantic. Eram
 #: `18285a7c65c51551`, `04c2ae7aaf3a47f9` (heartbeat) e `9b76556e5c2ac878` (hello).
-ESQUEMA_CONGELADO = "074980b4f9d7d9df"
+#:
+#: A9 (02/10/2026): `heartbeat` mudou de propósito — ganhou `sent_at` (relógio local do agente na saída da batida), com
+#: o qual o central re-mede o desvio de relógio a cada batida. Checklist: (1) aditivo, padrão `None`; agente antigo não
+#: manda e o central cai no `clock_offset_s` da conexão; (2) nenhuma restrição afrouxada (campo livre, sem validação:
+#: ilegível vira "sem medida nova"); (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo
+#: ignora (`extra="ignore"`) e segue com `clock_offset_s`; (5) não é mudança de forma do pydantic. Eram
+#: `074980b4f9d7d9df` (total) e `a4445ce3107bff89` (heartbeat).
+ESQUEMA_CONGELADO = "f93b70d6c866d979"
 HASH_POR_TIPO = {
     "EnvioDeMidia": "fdb1207c5b4f42e4",
     "ack": "33e561638726df19",
     "cancel": "4b3f1e8c98e90ec3",
     "dispatch": "51d36366c2fd424c",
-    "heartbeat": "a4445ce3107bff89",
+    "heartbeat": "eb41cf4a6d0337ca",
     "hello": "e83b5bba0247b782",
     "limits": "6d4b495c5750b4bc",
     "observe_image": "26eb5e83e5a347f4",

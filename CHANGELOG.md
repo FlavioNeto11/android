@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — A9: o desvio de relógio do worker é re-medido a cada batida (branch `feat/a8-a9-codigo`)
+
+- **Defeito.** O agente media o desvio UMA vez por conexão (`Welcome.server_time`) e a batida repetia o número, então o
+  `degraded` "relógio desalinhado" refletia a fotografia da conexão e só mudava reconectando.
+- **Mudança mínima compatível.** `Heartbeat.sent_at` (opcional, relógio local do agente na saída); o central calcula
+  `relógio do banco na chegada − sent_at` (`WorkerRegistry.desvio_de_relogio`, latência de ida inclusa) e a regra de saúde
+  segue a mesma (limite 5 s, mesma mensagem; o `degraded` por relógio some sozinho quando o desvio volta ao limite).
+  Agente antigo (sem `sent_at`) cai no `clock_offset_s` da conexão; central antigo ignora o campo. Sem versão nem feature.
+  Esquema do fio recongelado em `test_contratos_do_worker.py` (`heartbeat`, aditivo).
+- Prova: `simulated` (`backend/tests/test_workers.py` 4 testes novos, `test_worker_agent.py::test_toda_batida_leva_o_relogio_local…`,
+  contrato). `not_run`: agente e central reais em máquinas com relógios diferentes. Docs: `docs/worker.md`,
+  `docs/api-contract.md`, `docs/parque-distribuido.md`.
+
+## 2026-10-02 — A8: o instalador do túnel nunca registra o pwsh da Microsoft Store (branch `feat/a8-a9-codigo`)
+
+- **Achado real.** No central a tarefa `farm-tunel-192.168.1.11` foi instalada com `-AceitarStore` e executava
+  `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`, caminho com a versão do
+  MSIX que some quando a Store atualiza: no boot seguinte o túnel não sobe e o worker (e o android-09) cai.
+- **Código** (`scripts/worker-tunnel.ps1`): `Resolve-Pwsh` virou `Resolve-Interpretador` (MSI estável → outro pwsh fora
+  do WindowsApps → Windows PowerShell 5.1 do sistema → falha clara); trava final antes do `New-ScheduledTaskAction`;
+  `-AceitarStore` agora é erro explicado; BOM no arquivo para o 5.1 ler UTF-8. Arquitetura do túnel intacta
+  (`-R 18000:8010`, nunca 8000; forwards ADB inalterados).
+- Prova: `simulated` (`backend/tests/test_tunel_restrito.py`, 23 testes; escolha da função extraída do script com caminhos
+  falsos em pwsh 7 e no 5.1, parser do 5.1, `-Instalar -Simular` no 5.1). `not_run`: reinstalar a tarefa real no central
+  (exige autorização: mexe no túnel). Docs: `docs/worker.md`.
+
 ## 2026-10-02 — W8: rodada r3 real: o Start pela interface recuperou o túnel sem reinício extra (PARTIAL; veredito formal FAIL por reinício de saúde do android-01)
 
 - `docs/handoffs/w8-boot-recovery.md` §17.8 (real, `bcea158`): iteração 1 `RECOVERED_BY_UI` (o `tun0` não subiu sozinho; UM Start pela interface aos 198 s religou, sem reinício extra); iteração 2 invalidada pela regra (`restart` automático por saúde do android-01, interrupções acumuladas), com dados concordantes mas inadmissíveis; veredito formal `FAIL`, desfecho substantivo `PARTIAL` (1 válido; PASS exige 2); rollback com `force-stop` do SFA fez UM só reinício (no r2 foram 2); servidor WireGuard reiniciado 2x, 03/06 reconectaram em 20 a 30 s. 3 de 6 boots usados.
