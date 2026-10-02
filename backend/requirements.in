@@ -19,6 +19,9 @@ httpx==0.28.1
 # Driver do PostgreSQL. Opcional na prática: quem roda tudo numa máquina fica no SQLite e nunca o importa
 # (o `db.py` só o carrega quando DATABASE_URL aponta para Postgres).
 psycopg[binary]==3.3.6
+# Base IANA de fusos para o `zoneinfo` (a Fase 28 calcula recorrencia no fuso do pedido; o Windows nao traz base
+# do sistema, PEP 615). Era so indireta do psycopg: declarada para continuar mesmo sem o driver.
+tzdata==2026.4
 # ---------------------------------------------------------------------------------------------------------
 # OPCIONAIS, ligados por bandeira no `.env`. Ficam FORA do lock de propósito: quem roda o parque numa máquina
 # não paga por eles, e o código só os importa quando a bandeira correspondente está ligada (import tardio, com

@@ -54,6 +54,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `docs/plano-100.md` (T.2): a contagem de rotas sem teste HTTP passa a ser a medida. O relógio virtual no harness inteiro continua fora (exige suíte completa).
 - Prova `simulated` (arquivo::teste acima, sem emulador, rede nem IA); `real`: `not_run`.
 
+## 2026-10-02 — Recorrência e fuso do pedido persistente (28.3, branch feat/28-3-recorrencia)
+
+Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subconjunto da RRULE (HOURLY/DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE, COUNT/UNTIL, com recusa clara do resto), geração em hora local ingênua localizada com `zoneinfo`, prévia das próximas datas com relógio injetado, hora inexistente desviada para o primeiro instante válido depois do salto e hora repetida em `fold=0`. `tzdata==2026.4` declarado em `requirements.in` (já estava no lock, indireto pelo psycopg). Prova `simulated`: `tests/test_pedidos_recorrencia.py` (`America/Sao_Paulo` 2018/2019, `America/New_York`, `Europe/Lisbon`, `Pacific/Apia`). Decisão de gerador próprio registrada em `docs/design/pedidos-persistentes.md` §7.7. Sem migração, sem rota.
+
 ## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
 
 - Real (02/10 17:49–17:54Z, central, deploy `25624c4`, android-05 sem conta real, US$ 0,2955): regra 2 provada em `r-20261002175209-1a252b`; regra 1 `not_run` (`r-20261002175004-ea377e`: o tier 0 não bloqueou; o tier 1 bloqueou pela nova tentativa); negativo `r-20261002175257-0e9362` barrado pelo detector de tela sensível. Detalhe em `docs/ia.md` §10b.
