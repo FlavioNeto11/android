@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { linhaDeUso, resumoDoDeclarado } from './apps';
+import { excecoesPorApp, lerModos, lerResumo, linhaDeUso, modosDoAppEmTexto, resumoDoDeclarado } from './apps';
 import type { EntradaDoLivro } from './model';
 
 /**
@@ -187,6 +187,83 @@ describe('Aprendizado por aplicativo', () => {
       const chamadas = backend.callsTo('GET', /^\/api\/aprendizado$/);
       expect(chamadas[chamadas.length - 1]?.query.get('app')).toBe('com.exemplo.cheio');
     });
+  });
+});
+
+describe('modo por app de lições e telas (30.20, só leitura)', () => {
+  const PROPRIO = { licoes: { modo: 'off', origem: 'app' }, telas: { modo: 'on', origem: 'app' } };
+  const GLOBAL = { licoes: { modo: 'on', origem: 'global' }, telas: { modo: 'observe', origem: 'global' } };
+  const COM_EXCECAO = {
+    ...VISAO,
+    apps: [{ ...APP_DECLARADO_ZERADO, modos_do_app: GLOBAL }, { ...APP_SO_APRENDIDO, modos_do_app: GLOBAL },
+           { ...APP_COMPLETO, modos_do_app: PROPRIO }],
+    modos: { ...VISAO.modos, licoes_por_app: { 'com.exemplo.cheio': 'off' }, telas_por_app: { 'com.exemplo.cheio': 'on' } },
+  };
+
+  it('o cartão mostra só o modo próprio, e o Global lista as exceções com link para o app', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/apps$/, () => json(COM_EXCECAO));
+    await montar();
+    await waitFor(() => expect(cartao('com.exemplo.cheio')).toBeTruthy());
+    const proprio = cartao('com.exemplo.cheio').querySelector('[data-modo-proprio]') as HTMLElement;
+    expect(text(proprio)).toContain('Lições: desligado');
+    expect(text(proprio)).toContain('Telas aprendidas: ligado');
+    expect(cartao('com.exemplo.vazio').querySelector('[data-modo-proprio]')).toBeNull();
+
+    const resumo = Array.from(container.querySelectorAll('summary')).find((s) => text(s as HTMLElement).includes('Como o aprendizado é usado'));
+    expect(text(resumo as HTMLElement)).toContain('2 exceções por app');
+    await click(resumo as HTMLElement);
+    const excecoes = container.querySelector('[data-excecoes-por-app]') as HTMLElement;
+    expect(text(excecoes)).toContain('Exemplo Cheio — Lições: desligado');
+    expect(text(excecoes)).toContain('Exemplo Cheio — Telas aprendidas: ligado');
+    expect(excecoes.querySelector('a')?.getAttribute('href')).toBe('#/aprendizado?aba=apps&app=com.exemplo.cheio');
+  });
+
+  it('o detalhe diz o modo que vale, de onde vem, o que faz e como mudar', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/apps\/com\.exemplo\.cheio$/, () => json({ ...DETALHE, app: { ...APP_COMPLETO, modos_do_app: PROPRIO } }));
+    useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps', app: 'com.exemplo.cheio' } }, 'replace');
+    await montar();
+    await waitFor(() => expect(container.querySelector('[data-modo-do-app]')).toBeTruthy());
+    const bloco = container.querySelector('[data-modo-do-app]') as HTMLElement;
+    const licoes = bloco.querySelector('[data-modo="licoes"]') as HTMLElement;
+    expect(licoes.getAttribute('data-origem')).toBe('app');
+    expect(text(licoes)).toContain('desligado');
+    expect(text(licoes)).toContain('definido para este app');
+    expect(text(licoes)).toContain('não coleta nem usa lições neste app');
+    expect(text(bloco.querySelector('[data-modo="telas"]') as HTMLElement)).toContain('as telas publicadas são entregues à sessão do app');
+    await click(Array.from(bloco.querySelectorAll('summary')).find((s) => text(s as HTMLElement) === 'Como mudar') as HTMLElement);
+    expect(text(bloco)).toContain('aprendizado.licoes.por_app.com.exemplo.cheio');
+    expect(text(bloco)).toContain('aprendizado.telas.por_app.com.exemplo.cheio');
+    expect(text(bloco)).toContain('reinicie o central');
+  });
+
+  it('sem override o detalhe diz "segue o global"; sem o campo (backend anterior) o bloco não aparece', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/apps\/com\.exemplo\.cheio$/, () => json({ ...DETALHE, app: { ...APP_COMPLETO, modos_do_app: GLOBAL } }));
+    useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps', app: 'com.exemplo.cheio' } }, 'replace');
+    await montar();
+    await waitFor(() => expect(container.querySelector('[data-modo-do-app]')).toBeTruthy());
+    const bloco = container.querySelector('[data-modo-do-app]') as HTMLElement;
+    expect(Array.from(bloco.querySelectorAll('[data-origem]')).map((x) => x.getAttribute('data-origem'))).toEqual(['global', 'global']);
+    expect(text(bloco)).toContain('segue o global');
+    await act(async () => root.unmount());
+    container.remove();
+
+    backend.on('GET', /^\/api\/aprendizado\/apps\/com\.exemplo\.cheio$/, () => json(DETALHE));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('catalogo.yaml'));
+    expect(container.querySelector('[data-modo-do-app]')).toBeNull();
+  });
+
+  it('funções puras: leitura tolerante, efeito por modo e exceções em ordem de app', () => {
+    expect(lerModos(VISAO.modos)).toMatchObject({ licoes_por_app: {}, telas_por_app: {} });
+    expect(lerResumo(APP_COMPLETO).modos_do_app).toBeNull();
+    expect(modosDoAppEmTexto({ licoes: { modo: 'shadow', origem: 'global' }, telas: { modo: null, origem: 'app' } })).toEqual([
+      { chave: 'licoes', tipo: 'Lições', modo: 'só mede (sombra)', efeito: 'coleta e mede as lições, mas nenhuma vai ao prompt', doApp: false },
+      { chave: 'telas', tipo: 'Telas aprendidas', modo: 'não lido', efeito: null, doApp: true },
+    ]);
+    const m = lerModos({ licoes_por_app: { 'b.app': 'on' }, telas_por_app: { 'a.app': 'observe', 'b.app': 'off' } });
+    expect(excecoesPorApp(m, new Map([['b.app', 'Bravo']])).map((x) => `${x.app}|${x.tipo}|${x.modo}`)).toEqual([
+      'a.app|Telas aprendidas|só observa', 'Bravo|Lições|ligado', 'Bravo|Telas aprendidas|desligado',
+    ]);
   });
 });
 

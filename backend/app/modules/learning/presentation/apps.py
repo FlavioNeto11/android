@@ -39,15 +39,27 @@ def _uso(u: Uso | None) -> JsonObject | None:
 
 
 def _modos(m: ModosDeUso) -> JsonObject:
+    """Os modos globais e, desde a v0.64, as exceções por app (`aprendizado.<tipo>.por_app`, §8.10)."""
     return {"receitas": m.receitas, "fluxos": m.fluxos, "habilidades": m.habilidades,
-            "licoes": m.licoes.value if m.licoes else None, "telas": m.telas.value if m.telas else None}
+            "licoes": m.licoes.value if m.licoes else None, "telas": m.telas.value if m.telas else None,
+            "licoes_por_app": {p: x.value for p, x in sorted(m.licoes_por_app.items())},
+            "telas_por_app": {p: x.value for p, x in sorted(m.telas_por_app.items())}}
+
+
+def _modos_do_app(m: ModosDeUso, pacote: str) -> JsonObject:
+    """O modo EFETIVO de lições e telas neste app (30.20) e de onde vem: `app` (override no config) ou `global`."""
+    efetivo, definidos = m.do_pacote(pacote), m.definidos_no_app(pacote)
+    return {"licoes": {"modo": efetivo.licoes.value if efetivo.licoes else None,
+                       "origem": "app" if "licoes" in definidos else "global"},
+            "telas": {"modo": efetivo.telas.value if efetivo.telas else None,
+                      "origem": "app" if "telas" in definidos else "global"}}
 
 
 def _contagem(c: dict[str, dict[str, int]]) -> JsonObject:
     return {k: {estado: n for estado, n in v.items()} for k, v in c.items()}
 
 
-def _resumo(r: ResumoDoApp) -> JsonObject:
+def _resumo(r: ResumoDoApp, modos: ModosDeUso) -> JsonObject:
     d, lj = r.declarado, r.loja
     declarado: JsonValue = None if d is None else {
         "arquivos": {"app": d.tem_app, "catalogo": d.tem_catalogo, "telas": d.tem_telas, "sessao": d.tem_sessao},
@@ -57,11 +69,12 @@ def _resumo(r: ResumoDoApp) -> JsonObject:
     return {"pacote": r.pacote, "nome": r.nome, "existencia": r.existencia.value if r.existencia else None,
             "declarado": declarado, "loja": loja,
             "aprendido": {"total": r.total_aprendido, "contagem": _contagem(r.contagem)},
-            "absorvido": r.absorvido, "uso": _contagem(r.uso)}
+            "absorvido": r.absorvido, "uso": _contagem(r.uso), "modos_do_app": _modos_do_app(modos, r.pacote)}
 
 
 def _lista(v: VisaoDeApps) -> JsonObject:
-    return {"apps": [_resumo(r) for r in v.apps], "total": len(v.apps), "nao_resolvido": _resumo(v.nao_resolvido),
+    return {"apps": [_resumo(r, v.modos) for r in v.apps], "total": len(v.apps),
+            "nao_resolvido": _resumo(v.nao_resolvido, v.modos),
             "fora_do_eixo": _contagem(v.fora_do_eixo), "modos": _modos(v.modos)}
 
 
@@ -84,7 +97,7 @@ def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
     saudes = servico.saudes(entradas)
     capabilities = servico.capabilities(entradas)       # em lote, como a saúde: nunca uma consulta por linha
     nomes = servico.nomes_das_capabilities(entradas, capabilities)
-    return {"app": _resumo(d.resumo), "declarado": [_item_declarado(i) for i in d.declarado],
+    return {"app": _resumo(d.resumo, d.modos), "declarado": [_item_declarado(i) for i in d.declarado],
             "aprendido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.aprendido],
             "absorvido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.absorvido],
             "modos": _modos(d.modos)}

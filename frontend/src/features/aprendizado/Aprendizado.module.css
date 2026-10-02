@@ -492,3 +492,16 @@
   color: var(--text-3);
   list-style: none;
 }
+
+/* Lições e telas neste app (30.20): o modo que vale, de onde vem e o que faz. */
+.modosDoApp { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.modoDoApp { display: flex; flex-direction: column; gap: 2px; }
+.modoDoAppHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-2); }
+.modoDoAppHead strong { color: var(--text-1); }
+.modoEfeito { font-size: var(--fs-xs); color: var(--text-3); }
+.comoMudar { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-2); }
+.comoMudar p { margin: 0; }
+.comoMudar ul { margin: 0; padding-left: var(--sp-4); }
+.chipsDeModo { display: flex; flex-wrap: wrap; gap: 4px; }
+.excecoes { display: flex; flex-direction: column; gap: 4px; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.excecoes ul { margin: 0; padding-left: var(--sp-4); }

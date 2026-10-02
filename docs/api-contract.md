@@ -3826,3 +3826,16 @@ Número provisório: a orquestradora renumera no merge se outro adendo chegar an
   (`itens[]` e `verificacao[]`, só no JSON; o Markdown segue com o código). É o `title` da capability no catálogo do app, com as
   internas, sem as lacunas de parâmetro: `OPEN_PROFILE` → "Abrir o perfil", `SEARCH_MAIL` → "Buscar no Outlook". Vem `null` se o
   app não tem catálogo, se a capability é desconhecida ou se a linha não tem capability. Nesses casos o painel mostra o código.
+
+## Adendo v0.64 (02/10/2026) — o modo por app de lições e telas na visão por app
+
+Número provisório: a orquestradora renumera no merge se outro adendo chegar antes. Só campos novos; nada muda de tipo.
+
+- `GET /api/aprendizado/apps` e `/apps/{pacote}`: o resumo de cada app (`apps[]`, `nao_resolvido`, `app`) ganha
+  **`modos_do_app`**: `{licoes: {modo, origem}, telas: {modo, origem}}`. `modo` é o efetivo no pacote (`off|shadow|on` para
+  lições, `off|observe|on` para telas; `null` se o global não pôde ser lido). `origem` é `app` quando o config tem
+  `aprendizado.<tipo>.por_app.<pacote>`, senão `global`.
+- `modos` (visão e detalhe) ganha **`licoes_por_app`** e **`telas_por_app`**: as exceções do config, pacote → modo,
+  ordenadas pelo pacote; `{}` quando todo app segue o global.
+
+Só leitura: o config é da instalação e é lido ao iniciar o central. Mudar um modo é editar o `config.yaml` e reiniciar.
