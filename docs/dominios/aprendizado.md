@@ -441,9 +441,14 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
   `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
   do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
-- **Contrato de saída** (`validar_saida`): os campos do §8.3, nada além; decisão e confiança em vocabulário fechado; citação só de id do
-  dossiê; `alvo` só em `substituir`/`fundir` e só de item relacionado. A falha vira `invalida:<motivo>` (vocabulário fechado, cabe em
-  `learning_reviews.validade`); o `Parecer` válido serializa na forma de `learning_reviews.saida`.
+- **Contrato de saída** (`validar_saida`): escolha entre RÓTULOS FECHADOS, pensada para um adaptador de `choice` (provedor Jev):
+  `decisao` (obrigatória), `faixa`, `causa`, `riscos`, `inconsistencias`, `falta`, com as opções em `OPCOES_FECHADAS`; `alvo` e
+  `evidencias_citadas` escolhem entre os ids do dossiê (`opcoes_do_dossie`). Citação inventada, rótulo fora do conjunto ou campo extra
+  invalidam. A confiança vem da `probabilidade` da escolha que o adaptador mede (entrada opcional; limiares 0,60 e 0,85); sem ela, um
+  rótulo categórico; nunca número dito pela IA. A `conclusao` (≤ 300) é o único texto livre, opcional, e não entra na decisão. A
+  `faixa` da IA nunca afrouxa a da política (`faixa_efetiva`). A falha vira `invalida:<motivo>` (vocabulário fechado, cabe em
+  `learning_reviews.validade`); o `Parecer` válido serializa na forma de `learning_reviews.saida`. Nenhum prompt no módulo: o template
+  é do hub.
 - Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
   `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 

@@ -28,7 +28,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `MotivoDeEntrada` mudaram para lá e são reexportados).
 - `domain/curador.py` (puro): dossiê de fatos por lista branca (sem valor de parâmetro, texto digitado, texto de tela ou de pessoa;
   item de sessão sem conteúdo), ids citáveis, `dossie_hash` estável (chave da 069), e validação do contrato de saída do §8.3
-  (`invalida:<motivo>` em vocabulário fechado). Sem rota, sem migração, sem chamada de IA. Prova `simulated`
+  em rótulos fechados (decisão, faixa, causa, riscos, inconsistências, falta; opções prontas para um adaptador de `choice`), com a
+  confiança derivada da probabilidade da escolha e a conclusão como único texto livre, opcional (`invalida:<motivo>` em vocabulário
+  fechado). Sem rota, sem migração, sem chamada de IA nem prompt. Prova `simulated`
   (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
 
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)

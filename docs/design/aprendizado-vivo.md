@@ -328,6 +328,10 @@ hoje: **a conferir** em `catalogo.yaml`.
   a família como fato (`familia_do_efeito`); as ações de envio e comentário do Instagram já caem em C por `risk: high`/`needs_draft`.
 - "A IA não decide" vira regra de domínio (`conferir_aceite`): aceite de parecer só por pessoa; lote só na B; a classe A não recebe
   parecer (a validação a marca `invalida:classe_sem_revisao`).
+- *Saída em rótulos fechados* (orientação da coordenação, 02/10; revê o §8.3): `decisao`, `faixa`, `causa`, `riscos`,
+  `inconsistencias` e `falta` são escolhas de conjuntos fechados (`curador.OPCOES_FECHADAS`), para um adaptador de `choice` com
+  probabilidade; `confianca` sai da probabilidade da escolha (baixa < 0,60 ≤ média < 0,85 ≤ alta, a recalibrar no `shadow`) e só sem
+  ela de um rótulo; `conclusao` vira opcional e é o único texto livre. A `faixa` apontada pela IA só pode endurecer a da política.
 
 ### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
