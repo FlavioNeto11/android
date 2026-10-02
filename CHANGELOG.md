@@ -40,6 +40,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
 
+## 2026-10-02 — Aprendizado: estado de versão por item (30.6, branch feat/30-6-versao)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `versao` (`api-contract.md`, adendo v0.52): o estado de versão do item (§7 do desenho),
+  as versões do app vivas no parque (`device_app_state`, só aparelho ativo com o app) e, na receita, uma linha por versão pela chave exata
+  (pacote, assinatura, variante, `step_hash`): `comprovado`, `nao_testado` (viva sem receita), `em_prova`, `falhando`, `incompativel`,
+  `superseded`, `versao_aposentada`. Tela entra pela regra `sem_casar`; os demais tipos são `independente`. O que não se sabe é
+  `desconhecido`, escrito (a receita sem nenhum aparelho observado não vira `comprovado`). Sem migração.
+- `domain/versao.py` (puro), `FontesSql.versao`/`vivas`, `DetalheDoLivro.versao`. Prova `simulated` (`tests/test_learning_versao.py`:
+  duas versões vivas e receita só na antiga = `nao_testado` na nova); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: conteúdo legível no detalhe do Livro (30.3, branch feat/30-3-conteudo-legivel)
 
 - `GET /api/aprendizado/{kind}/{ref}` ganha o campo `conteudo`: o que a receita, o fluxo, a habilidade, a lição e a tela FAZEM, montado só

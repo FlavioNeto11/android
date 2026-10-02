@@ -3533,3 +3533,28 @@ edição continuam nas rotas das habilidades).
 **`tela`**: `tela`, `casa`, `autenticada`, `ids_todos[]`, `razao`.
 
 Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_conteudo.py`); `not_run` no central.
+
+## Adendo v0.52 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `versao` (item 30.6)
+
+O detalhe do Livro ganha `versao` (objeto, sempre presente), ao lado de `conteudo` (v0.50). Só leitura, montado de `device_app_state` (as
+versões do app vivas no parque) e das chaves de `recipes` (a receita não cruza versão do app). Nenhuma migração. Desenho: `design/aprendizado-vivo.md` §7.
+
+Forma: `{estado, app, app_version, vivas[], nao_testada_em[], por_versao[]}`.
+
+| Campo | Conteúdo |
+|---|---|
+| `estado` | o estado de versão DO ITEM, na versão dele: `independente`, `comprovado`, `nao_testado`, `em_prova`, `falhando`, `incompativel`, `superseded`, `versao_aposentada` (os do §7) ou `desconhecido` (o "não sei" explícito: sem pacote, sem versão ou sem nenhum aparelho observado; nunca um estado inventado) |
+| `app`, `app_version` | o pacote e a versão do app do item; `null` onde não se aplica (`independente`) |
+| `vivas[]` | `{versao, aparelhos}`: as versões do app observadas hoje em aparelho ativo (aparelho aposentado, app `missing` e versão vazia não contam), ordenadas pelo texto da versão |
+| `nao_testada_em[]` | as versões vivas em que a chave da receita não tem receita nenhuma (`nao_testado`) |
+| `por_versao[]` | uma linha por versão em que a chave tem receita OU que está viva: `{versao, viva, aparelhos, estado, receita_ref}`; `receita_ref` é a de maior versão da chave naquela versão do app, `null` em `nao_testado` |
+
+**Por tipo.** `receita`: o quadro completo; a chave é (pacote, assinatura, variante, `step_hash`) em todas as versões do app. Regras: `superseded` se a
+linha foi trocada; `versao_aposentada` se a versão dela não está viva (não é falha); quarentena = `incompativel` se uma versão anterior da chave
+estava comprovada, senão `falhando`; `consecutive_fail > 0` = `falhando`; `active` com `replay_ok > 0` = `comprovado` (precisa de versão viva;
+sem nenhuma observada vira `desconhecido`); `active` sem prova = `em_prova`. `tela`: `incompativel` (dias sem casar E versão nova no parque, a regra `sem_casar` das
+telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao` vazio. `fluxo`, `habilidade`, `licao`, `voz`, `preferencia`,
+`memoria` (e o declarado): `{estado: "independente", app: null, app_version: null, vivas: [], nao_testada_em: [], por_versao: []}`.
+
+Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
+equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.
