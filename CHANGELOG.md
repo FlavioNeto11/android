@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Triagem do curador do Livro em sombra no Jev (31.8, branch feat/31-8-curador-sombra)
+
+- `planning/decisao_fechada/curador.py`: `CuradorComTriagemEmSombra` devolve o parecer do curador principal intacto e manda
+  o item à porta em `shadow` (`choice` manter/revisar/rebaixar/descartar/nenhuma); `CAMPOS_POR_ORIGEM["curador"]` com os
+  campos C0 (metadados e contagens), só lição e receita (F1).
+- A decisão real casada é o parecer do curador (concordância, não acerto); sem GO até os limiares do 31.7.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_curador.py`. Envio ao Jev continua fechado no código; real `not_run`.
+
 ## 2026-10-02 — Sombra da porta `DecisaoFechada`: registro, preço, livro-caixa e transparência (31.5, branch feat/31-5-sombra-registro)
 
 - Migração 074 (`decisao_fechada_sombra` e `decisao_fechada_diario`): uma linha por pergunta respondida ou por fallback, só ids opacos e
