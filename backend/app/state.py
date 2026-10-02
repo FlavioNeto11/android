@@ -428,7 +428,7 @@ class AppState:
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
             precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
             receitas=self.scheduler.executor.recipes,
-            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id))
+            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus)
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).

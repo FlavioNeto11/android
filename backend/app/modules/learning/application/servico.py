@@ -15,8 +15,10 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from functools import partial
 
-from app.modules.learning.application.ports import (Ajustes, FontesDoLivro, Minerador, MudancaNativa, NovoSinal,
-                                                    PassoDeCuradoria, RepositorioDeAprendizado, TriagemDeTexto)
+from app.modules.learning.application.espera import AvisadorDeEspera
+from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
+                                                    NovoSinal, PassoDeCuradoria, PortaDeEventos,
+                                                    RepositorioDeAprendizado, TriagemDeTexto)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
@@ -26,7 +28,7 @@ from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
-from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem)
+from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, SourceKind)
 from app.modules.skills.domain.document import JsonValue
 
 log = logging.getLogger("poc.aprendizado")
@@ -80,9 +82,11 @@ class LearningService:
     def __init__(self, repo: RepositorioDeAprendizado, fontes: FontesDoLivro, triagem: TriagemDeTexto, *,
                  ajustes: Callable[[], Ajustes], relogio: Callable[[], datetime],
                  retencao_de_logs_dias: Callable[[], int],
-                 mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = ()) -> None:
+                 mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
+                 eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
-        onde `ai_calls` ainda está inteiro."""
+        onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
+        publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -92,6 +96,7 @@ class LearningService:
         self._mineradores: list[Minerador] = list(mineradores)
         self._passos: list[PassoDeCuradoria] = list(passos)
         self._extensoes: list[object] = []
+        self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio)
 
     @property
     def ajustes(self) -> Ajustes:
@@ -249,7 +254,9 @@ class LearningService:
                                    human_origin=item.human_origin, modo_publica=self._modo_publica(kind, item.escopo.app))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED):
             self._conferir_veto(item.content_hash, item.escopo.chave(kind), item.app_version)
-        return self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
+        novo = self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
+        self.avisar_item(item, novo, by=by)
+        return novo
 
     def _mover_nativo(self, e: EntradaDoLivro, para: SkillState, *, by: str, reason: str,
                       run_id: str | None) -> None:
@@ -269,6 +276,8 @@ class LearningService:
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=para_status,
                           de_estado=e.state, para_estado=para, content_hash=e.content_hash, scope_key=e.scope_key,
                           app_version=e.app_version), by=by, reason=reason, run_id=run_id)
+        self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
+                                      por_sistema=by == SYSTEM_ACTOR)
 
     def _conferir_veto(self, content_hash: str, scope_key: str, app_version: str | None) -> None:
         motivo = motivo_do_veto(self._repo.desligamentos(content_hash, scope_key), agora=self._relogio(),
@@ -295,8 +304,34 @@ class LearningService:
             return vivo
         if by == SYSTEM_ACTOR:
             self._conferir_veto(novo.content_hash, novo.escopo.chave(novo.kind), novo.app_version)
-        return self._repo.criar_item(novo, by=by, estado=SkillState.CANDIDATE, detalhe=None,
-                                     reason="nascimento", run_id=run_id)
+        criado = self._repo.criar_item(novo, by=by, estado=SkillState.CANDIDATE, detalhe=None,
+                                       reason="nascimento", run_id=run_id)
+        self.avisar_item(None, criado, by=by)
+        return criado
+
+    # ================================================================== o evento `learning.needs_person` (30.21)
+    def avisar_item(self, antes: ItemDeAprendizado | None, depois: ItemDeAprendizado, *, by: str) -> None:
+        """Chamado depois de um item de `learning_items` nascer (`antes=None`) ou mudar de estado: publica a entrada na
+        espera do dono ou a saída dela (§8.11). Quem muda o estado SEM passar por `mudar_estado` (a tela absorvida,
+        que confere a tabela e vai ao repositório) chama isto. Nunca levanta."""
+        self._espera.mudou_sem_falhar(entrada_do_item(antes) if antes is not None else None, entrada_do_item(depois),
+                                      por_sistema=by == SYSTEM_ACTOR, capability=depois.escopo.capability,
+                                      sessao_ou_autenticacao=depois.source_kind is SourceKind.SESSION_UNKNOWN)
+
+    def avisar_mudanca_nativa(self, kind: LivroKind, ref: str, de_status: str | None, para_status: str, *,
+                              by: str) -> None:
+        """A mudança de status que a LOJA da receita ou do fluxo fez (nascimento, prova, quarentena, substituição): ela
+        não passa por `mudar_estado`. Lê a entrada já gravada e compara com o status anterior (`None` = nasceu). PROPAGA
+        a falha: a loja chama isto DENTRO da transação dela, num `savepoint` próprio (22.5) que precisa vê-la."""
+        if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+            return
+        depois = self._fontes.receita(ref) if kind is LivroKind.RECEITA else self._fontes.fluxo(ref)
+        if depois is None:
+            return
+        antes = None
+        if de_status is not None:
+            antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)
+        self._espera.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)
 
     def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
                         um_por_evento: bool = False) -> int | None:
