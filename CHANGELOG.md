@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Tela Pedidos no painel (28.9, branch feat/28-9-tela)
+
+- Rotas `#/pedidos` e `#/pedidos/<id>?aba=` (lista com filtros no link, detalhe com Resumo, Ocorrências, Execuções e Memória e relatórios), item **Pedidos** no menu (décimo) com o selo de avisos não lidos, e a guia **Avisos** (`?aba=avisos`, `requer_pessoa=0`). Código em `frontend/src/features/pedidos/`; tipos do adendo v0.45 em `frontend/src/api/pedidos.ts`; `RunSummary` ganha `pedido_id` e `ocorrencia_id` opcionais.
+- Ações lidas de `acoes_permitidas`: editar (prévia com `dry_run`, aplicar com a versão e o selo), ativar, pausar (com motivo), retomar (daqui ou recuperar) e cancelar em duas etapas; `200 sem_mudanca` e `409 invalid_state` tratados. Sem botão de executar agora nem de backfill; a agenda não se edita.
+- Comando: botão **Repetir ou acompanhar…** abre `NovoPedido` (Quando, autonomia, limites) com a prévia obrigatória (`POST /api/pedidos/previa`) e só então "Confirmar e criar" (`POST /api/pedidos`, selo e `idempotency_key`).
+- Pendências: o pedido `aguardando_pessoa` vira a quinta origem da caixa (emenda à ADR-062); a aprovação e a execução parada dele ficam agrupadas sob ele e não contam de novo. `FalhasDeLeitura` ganha `pedidos`.
+- Prova `simulated`: `PedidosPage.test.tsx` (18), `NovoPedido.test.tsx` (11), `pedidosNaCaixa.test.ts` (3) e os testes de menu e Pendências ajustados. Contra o backend real e no navegador a 1366 e 375 px: `not_run`.
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
