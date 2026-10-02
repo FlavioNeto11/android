@@ -188,9 +188,18 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
 | `scripts/eval-rejudge.ps1` | Rejulga com o modelo caro (Opus 5), por imagem, capturas que o barato já julgou; mede concordância. Com `scripts/eval_rejudge.py --sobrepor <yaml>` (Fase 17), julga as MESMAS capturas com o provedor do papel `verify` do arquivo sobreposto e compara com o Opus de `data/eval-rejudge.jsonl` (falso positivo e negativo), sem escrever no `config.yaml` | sim, pede `-Yes`/`--yes` |
 | `scripts/probe-models.py` | Sonda o que cada modelo aceita e se o cache pega; com `--yaml` já imprime o bloco `ai.models` pronto | sim (poucos centavos), pede `--yes` |
 
-Nenhum dos três foi rodado na rodada de 23-24/09 por regra da chamada (sem gasto pago sem autorização). A
-comparação "linha de base × configuração atual" que o próprio projeto exige antes de adotar uma alavanca de
-custo (decisão 7 do plano-100) **segue pendente**.
+Nenhum dos três foi rodado na rodada de 23-24/09 por regra da chamada (sem gasto pago sem autorização).
+
+**Linha de base da configuração atual (item 7.4, `real`, 02/10/2026):** central, deploy `25624c4` (cascata e rejulgamento do
+17.10 ligados), ator `claude-sonnet-5`, verificador `claude-haiku-4-5`, plano e escalonamento `claude-opus-5-5`, receitas em
+`replay` e fluxos ligados; android-05 sem conta real; os 14 casos do QA Messenger (os `ig-*` ficam fora: conta real).
+**13/14 corretos por US$ 1,449** (≈US$ 0,10 por caso; o mais caro, `msg-todos-os-contatos`, US$ 0,59). A falha é
+`msg-todos-os-contatos` (`r-20261002181642-eff15b`): 6 de 8 envios comprovados e "Limite de 60 chamadas de IA por objetivo"
+no 7º — o rejulgamento do 17.10 soma uma verificação do modelo forte por envio, e o teto por objetivo não acompanha o tamanho
+do `for_each` (decisão pendente: teto proporcional aos itens, rejulgamento fora do teto, ou teto maior). A referência de
+25/09 (16/17, US$ 1,43) rodou com o ator em fallback. O rejulgamento das 56 capturas não foi repetido (mesmas capturas, mesmo
+modelo: vale o de 25/09, 41/56, US$ 1,14). HTTP 500 do verificador: 2 de 423 chamadas desde 19/09 (0,5%); os "~10 %" do
+achado não se confirmam nos dados.
 
 ## 9. Observabilidade
 
