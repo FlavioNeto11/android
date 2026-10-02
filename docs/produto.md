@@ -92,6 +92,39 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   aviso na saúde do ambiente são o mesmo total e levam à caixa. Em Execuções, o filtro que junta "terminou com
   problema" e "parou pedindo informação" se chama **Pede atenção**, e um plano pronto que ninguém mandou executar
   (`planned`) tem o chip **Planejadas**: não conta como execução em andamento.
+- **Pedidos persistentes e a tela Pedidos (Fase 28, item 28.9) — PROPOSTA, não implementada** (prova `not_run`; fontes:
+  [desenho](design/pedidos-persistentes.md) §11, §6.2 e §7.9, e o adendo v0.45 do [contrato](api-contract.md), que traz as
+  rotas, os corpos e os códigos de erro). Um pedido é o objetivo que dura: ele gera ocorrências e cada ocorrência vira uma
+  execução comum. Seria a décima seção do menu (hoje são nove), e a contagem de nove acima só muda quando ela existir.
+  - **Criar pelo Comando.** Ao lado de Planejar e Executar, o Comando ganha o seletor **Quando** (agora, em, repetir, quando
+    acontecer, acompanhar) e os campos do pedido: título, critérios de sucesso, autonomia (observar, preparar ou agir; o
+    padrão é observar), fuso, prazo, limite de ocorrências e orçamento. O assistente do ADR-047 refina o objetivo, e a
+    escolha de personas é a de sempre (Automático ou Manual). A **prévia é obrigatória** e não gasta nada: mostra os alvos
+    e a origem de cada escolha (ADR-044), as próximas 5 datas no fuso escolhido (com a marca de hora que não existe ou que
+    se repete no horário de verão), a autonomia com o que exige aprovação e o que fica recusado, o custo estimado por mês
+    (ou "sem base de custo", nunca um número inventado) e os bloqueios. Só **Confirmar**, com o selo da prévia, cria o pedido
+    ativo; sem confirmar, ele fica rascunho.
+  - **Lista (`#/pedidos`).** Uma linha por pedido: estado, título, tipo de gatilho, persona(s), próxima execução (hora
+    local e fuso), última ocorrência (resultado e link para a execução), gasto contra o orçamento e avisos não lidos.
+    Busca, estado, autonomia, persona e tipo ficam no link, como nas outras telas (ADR-062, item 4); o item do menu leva
+    à tela limpa, e os chips de estado contam todos os pedidos, não só os carregados.
+  - **Detalhe (`#/pedidos/<id>?aba=…`).** Resumo (objetivo, critérios, autonomia, limites, versão); linha do tempo das
+    ocorrências, com o **motivo de cada pulada ou perdida** e o link para a execução (a mesma tela de Execuções), ou o
+    aviso de que a execução foi purgada, com custo e resumo preservados; próximas datas; pendências do pedido; custo por
+    ocorrência. Memória, relatórios e observações aparecem quando o item 28.7 existir; antes disso a guia diz "ainda não
+    disponível", não "vazio".
+  - **Ações**, todas lidas de `acoes_permitidas` (o painel não reescreve a tabela de estados): editar (nova versão, com a
+    prévia do que muda nas próximas datas e quantas ocorrências são refeitas), ativar, pausar (com motivo), retomar
+    ("daqui para frente", o padrão, ou "recuperar dentro da janela"), executar agora, backfill (só em observar, com prévia da
+    quantidade e do custo) e cancelar, que **pede confirmação e diz se há execução em curso**; cancelar é pedir, e o
+    desfecho da execução em curso é o real. Cada clique manda a própria chave de idempotência.
+  - **Avisos e Pendências não se misturam (ADR-062).** A **caixa de avisos** no painel é informativa, com contador próprio
+    na barra, e traz pausa automática, orçamento a 80% ou esgotado, ocorrência perdida, relatório pronto e encerramento. O
+    pedido que **espera uma pessoa** (aprovação, pergunta do planejador ou ocorrência incerta) entra na caixa de Pendências
+    como uma origem nova, e o aviso nunca usa a palavra "pendência". O canal de aviso **fora do painel** (e-mail, mensagem) é
+    o item 28.11, decisão do dono; aqui existe só o ponto de extensão, o evento `pedido.aviso`.
+  - **Em aberto para o dono ou o coordenador** (lista completa no adendo v0.45): a emenda ao ADR-062 para a nova origem de
+    Pendências, a prévia como `POST` e o padrão de repetir uma ação de estado.
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada
