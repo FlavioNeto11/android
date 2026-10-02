@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
+
+- O dono mantém a chave atual (como no ADR-017 com a Anthropic): cai a condição do item 7 e da D-J3. A prova real em sombra
+  (31.10/31.11) depende só dos tetos (`fatia_jev` de US$ 0,50/dia e o teto total registrado) e segue a ordem combinada: suíte 5,
+  merges, deploy 3, envio liberado por classe (C0 a C2 primeiro; C3 só com o 31.9 mergeado) e a sombra real numa janela sem
+  suíte. Ninguém lê nem imprime a chave; `JEV_RUNTIME_SEND_APPROVED` continua `False` até o 31.10.
+- Textos que citavam a troca como condição: `decisao_fechada/privacidade.py`, `porta.py`, `docs/ia.md`, `docs/plano-100.md`
+  e `docs/design/jev-golden-set.md`. Sem mudança de comportamento.
+
 ## 2026-10-03 — Aprendizado: "Como mudar o modo deste app" legível (30.20, branch fix/30-20-como-mudar)
 
 - O passo a passo diz o arquivo (`config/config.yaml`), mostra o trecho do bloco `aprendizado:` com o modo que vale hoje,

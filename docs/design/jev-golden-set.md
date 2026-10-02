@@ -69,4 +69,4 @@ no empate, a escolha da pessoa. A decisão real que a sombra casa hoje (o que a 
 ## 4. O que fica fora
 
 - Memória (conteúdo nunca sai), fluxo (C2, F2) e social/persona (D-J5).
-- Qualquer chamada: o 31.7 não chama nada. A primeira medição real é o 31.10, depois da troca da chave pelo dono.
+- Qualquer chamada: o 31.7 não chama nada. A primeira medição real é o 31.10, nos tetos do ADR-069 (sem troca de chave: item 9).

@@ -4,8 +4,9 @@ Duas constantes de CÓDIGO, ao lado das do ADR-063 (`context_retrieval/domain/po
 `SYNTHETIC_REMOTE_SEND_APPROVED`, que continuam False). O YAML só restringe, nunca libera: nenhuma configuração lida aqui
 abre o que o código fechou, e cada classe liberada tem linha no ADR-069 com a data da decisão do dono.
 
-`JEV_RUNTIME_SEND_APPROVED` continua False: ele só vira True no item 31.10, depois que o dono trocar a chave TypeSafe
-(ADR-069 item 7). Enquanto for False, `validar` recusa TODO pedido e o decisor nunca é chamado.
+`JEV_RUNTIME_SEND_APPROVED` continua False: ele só vira True no item 31.10, depois da suíte, do deploy e da liberação por
+classe (ADR-069 itens 7 e 9; a troca da chave TypeSafe deixou de ser condição). Enquanto for False, `validar` recusa TODO
+pedido e o decisor nunca é chamado.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from typing import Final
 from ...security.redaction import redact
 from .contrato import CLASSES, MARCADORES, MODOS, ORIGENS, PedidoDeDecisao
 
-#: O envio do Jev em runtime está aprovado? Falso até o 31.10 (chave trocada pelo dono). Constante de código.
+#: O envio do Jev em runtime está aprovado? Falso até o 31.10 (ADR-069 item 9). Constante de código.
 JEV_RUNTIME_SEND_APPROVED: bool = False
 
 #: Teto de código das classes que podem sair (ADR-069 item 4, dono, 02/10/2026): C0 e C1 em F1 para todos os consumidores,

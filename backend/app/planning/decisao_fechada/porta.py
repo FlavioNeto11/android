@@ -199,7 +199,7 @@ def _conferir_resposta(p: Pergunta, r: RespostaDeDecisao | None) -> RespostaDeDe
 
 
 def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observador | None = None) -> Porta:
-    """Porta padrão: decisor NULO. O 31.8 troca o decisor pelo real, depois do ADR-069 e da chave nova do dono."""
+    """Porta padrão: decisor NULO. O 31.10 troca o decisor pelo real (ADR-069 item 9: sem troca de chave)."""
     return Porta(DecisorNulo(), cfg=cfg, observador=observador)
 
 
