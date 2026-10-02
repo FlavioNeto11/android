@@ -397,6 +397,19 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
     # max_candidate_files: 5      # arquivos que a etapa A escolhe
     # max_chunks: 16              # trechos que a etapa B recebe (janelas do início dos candidatos; ver ADR-063)
 
+avisos:                           # aviso fora do painel (item 28.11): espelho da caixa de Pendências no Telegram, só saída
+  enabled: false                  # (false) desligado = nada é enfileirado nem enviado. Ligar exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env
+  canal: telegram                 # o único canal; o token e o chat_id NUNCA moram aqui (nomes fixos no .env; docs/operacao.md)
+  # url_painel: http://192.168.1.10:8000   # base pública do painel p/ o link <base>/#/pendencias; sem ela a mensagem leva só o texto
+  # intervalo_s: 15               # de quanto em quanto tempo o laço olha a fila
+  # lote: 5                       # avisos por volta
+  # timeout_s: 10                 # por chamada ao Telegram
+  # max_tentativas: 5             # esgotadas, a linha vira `falhou`
+  # backoff_s: 30                 # base do backoff exponencial (o Retry-After do 429 manda se for maior)
+  # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
+  # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
+  # retencao_dias: 30             # purga das linhas finais
+
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
 
@@ -445,7 +458,12 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     minimo_por_braco: 8           # unidades por braço para o veredito de efeito (o painel mostra "faltam N")
     maximo_por_braco: 20
     holdout_publicada: 0.1
+    # Modo por app (§8.10): `por_app: {<pacote>: off|shadow|on}` sobrescreve o `modo` global SÓ daquele pacote; vazio
+    # (padrão) = o global vale para todo app. Exemplo (comentado, não liga nada):
+    # por_app: {"com.exemplo.app": "shadow"}
   telas: {modo: "observe", observacoes: 3, execucoes: 2}    # "observe": grava e valida, a sessão não consome
+  # telas.por_app: {<pacote>: off|observe|on}, mesma regra (vazio = global). Exemplo comentado, não liga nada:
+  # telas: {modo: "observe", observacoes: 3, execucoes: 2, por_app: {"com.exemplo.app": "observe"}}
   # Fluxo aprendido de execução (D1): nasce candidato; a sombra no digest publica o sem efeito depois de
   # `concordancias` execuções concordantes além da que o gerou, e o com efeito para em validated (o dono aprova).
   # com_prova: false = o modo anterior (nasce ativo, sem D1): só para a suíte que prova o reaproveitamento.
@@ -457,6 +475,16 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,
              candidata_sem_evidencia_dias: 90}
+
+pedidos:                          # pedidos persistentes (28.4): o objetivo que dura e volta (docs/design/pedidos-laco.md)
+  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO e o teto de orçamento
+                                  # é do 28.6; ligar é decisão do dono, por instalação
+  tick_s: 15                      # o laço acorda a cada tanto (e quando uma execução do pedido assenta)
+  horizonte_s: 3600               # quanto à frente a recorrência vira ocorrência `prevista`
+  prazo_inicio_s: 3600            # execução despachada que não começa neste prazo é cancelada (a ocorrência fica `perdida`)
+  janela_padrao_s: 1800           # recuperação de `horario` sem efeito, de `agora` e de recorrência de um dia ou mais
+  lote_max: 500                   # linhas materializadas por gatilho e execuções criadas por volta
+  posse_s: 120                    # validade da reserva de uma ocorrência por um laço (a chave é quem garante a unicidade)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

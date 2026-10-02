@@ -28,6 +28,37 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   certa para quem não espera; um teste novo confirma que dois servidores ao mesmo tempo não colidem na porta. Só teste e doc;
   `backend/app/` intacto. Aprendizado K-072.
 
+## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
+
+- Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
+- Módulo novo `backend/app/modules/avisos/` (`domain/mensagem.py`, `application/entrega.py`, `adapters/telegram.py`, `infrastructure/fila_sql.py` e `servico.py`). Assina `approval.pending`, `run.updated` com `needs_input`, `session.needs_person` (só a entrada) e `pedido.aviso` (28.9, ainda não emitido: assinatura pronta e testada com evento sintético; só o aviso que pede pessoa leva o link). O item "Para aprovar" do Aprendizado não tem evento no barramento e não gera aviso.
+- Migração **068** `avisos_entregas` (número confirmado pela coordenação): fila durável com `chave` UNIQUE (o mesmo fato visto por duas réplicas é uma linha), estado, tentativas, `proximo_envio_em` e `ultimo_erro` sem segredo. Só o líder da trava nova `avisos` (`taskqueue/travas.py`) envia, com a reivindicação cercada pelo token; `enviando` abandonado por queda vira `incerto` e NÃO é reenviado. 429 respeita o `Retry-After`; pendente com mais de `avisos.validade_h` vira `descartado`.
+- Config: bloco `avisos` (`enabled: false`, `url_painel`, `intervalo_s`, `lote`, `timeout_s`, `max_tentativas`, `backoff_s`, `validade_h`, `incerto_apos_s`, `retencao_dias`; exemplo em `config/config.example.yaml`). Segredos de nome fixo no `.env`, por `EnvSettings`: `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Saúde: `avisos_sem_segredo` quando ligado e faltando um deles.
+- `scripts/avisos-telegram.py descobrir|testar`: a descoberta do `chat_id` (getUpdates SEM offset, só lê) e a mensagem de teste. Escolhido script e não rota: é passo de instalação, funciona antes do restart com o token novo e não cria rota que dispara chamada de saída. Procedimento de 6 passos em `docs/operacao.md` §15.
+- Prova `simulated`: `backend/tests/test_avisos_fila.py` (15), `test_avisos_telegram.py` (16, `httpx.MockTransport`: envio, 429, erro sem vazar o token, descoberta, script) e `test_avisos_servico.py` (11: dedupe, só o líder, desligado, segredo ausente, saúde, sem dado de persona, laço de ponta a ponta). Prova `real`: `not_run` (o dono cadastra o token e o chat_id).
+
+## 2026-10-02 — Laço de pedidos (28.4, branch feat/28-4-laco)
+
+- `backend/app/modules/pedidos/`: domínio puro (`materializar`, `gatilhos`, `sobreposicao`, `fechamento`) e aplicação
+  (`repositorio`, `laco`, `acoes`). O laço materializa as ocorrências com janela de recuperação e coalescência, despacha
+  uma execução por `RunService.create` com a chave `chave:t<n>` (procurada antes de criar) e fecha pela varredura.
+  Só o líder age (trava nova `pedidos` em `travas.py`, escrita cercada).
+- `RunService.create`/`Repository.create_run`: parâmetro interno `origem=(pedido_id, ocorrencia_id)` no mesmo `INSERT`;
+  `RunCreate` segue recusando campo extra.
+- Config: bloco `pedidos:` (`enabled: false` de fábrica, `tick_s`, `horizonte_s`, `prazo_inicio_s`, `janela_padrao_s`,
+  `lote_max`, `posse_s`) em `config.py` e `config/config.example.yaml`. Desligado, o laço nem sobe. Sem migração.
+- ADR-066; `docs/design/pedidos-laco.md` (decisões D1 a D7 fechadas e seção 10 com o que foi feito e onde) e §7.9 de
+  `pedidos-persistentes.md` (editar = gatilho novo, versão trocada no lugar).
+- Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
+  `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
+
+## 2026-10-02 — Aprendizado: modo por app para lições e telas (30.20, branch feat/30-20-modo-por-app)
+
+- `aprendizado.licoes.por_app` e `aprendizado.telas.por_app` (padrão vazio = modo global; chave = pacote Android validado)
+  e `domain/modo_por_app.modo_efetivo`, usado na coleta, na validação, no consumo e na publicação sozinha das telas.
+  Nada liga `on` na instalação. Prova `simulated` (`test_learning_modo_por_app.py`, 16 testes + 2 `xfail` do D1 de um
+  pacote mais permissivo que o global, que pede `servico.py`); ligar no central é `not_run`.
+
 ## 2026-10-02 — Aprendizado: backfill único e idempotente das lições anteriores à 055 (branch feat/aprendizado-backfill-licoes)
 
 - `scripts/aprendizado-backfill-licoes.py` + `learning/infrastructure/backfill_licoes.py`: passa só `licoes.contraste` e
@@ -35,6 +66,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   rede; ensaio numa cópia por padrão, `--aplicar` grava; aborta se a migração do banco difere da do código. Prova
   `simulated` (`test_aprendizado_backfill_licoes.py`, 11 testes); a rodada no banco do central é `not_run` até a
   coordenadora fazer backup e rodar.
+
+## 2026-10-02 — Ações permitidas calculadas no backend (30.5, branch feat/30-5-acoes-no-backend)
+
+- 30.5: a `Entrada` do livro traz `acoes` e `por_que_nao_publica`, calculadas em `domain/livro.py` sobre `ciclo.TRANSICOES`
+  (adendo v0.46 do `api-contract.md`); o painel apaga o espelho manual (`model.ts`) e só traduz as chaves. Teste de paridade
+  `test_learning_acoes.py` (`simulated`). Veto e modo do tipo no motivo: pendentes do serviço.
+
+## 2026-10-02 — Aprendizado vivo: chave de app canônica e visão por app (30.1 e 30.2, branch feat/30-1-visao-por-app)
+
+- Livro: fluxo e habilidade saem pelo PACOTE (tabela `apps` e registro de apps); o que não resolve cai no balde `nao_resolvido`, com o id cru em `app_ref`; a memória fica fora do eixo de app. Rotas novas, só leitura: `GET /api/aprendizado/apps` e `/apps/{pacote}` (registro ∪ loja ∪ Livro; declarado, aprendido, absorvido e camada de uso por tipo), sem tabela nova nem cópia de YAML (adendo v0.47). Prova `simulated` (`test_learning_apps.py`); `real` `not_run`.
 
 ## 2026-10-02 — Teste da fila de boot do worker espera o fato e não lê os processos do host (fix/teste-fila-de-boot)
 

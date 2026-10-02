@@ -7,7 +7,7 @@ import { isBoolean, loadJson } from '../../lib/storage';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import type { EntradaDoLivro } from './model';
+import type { AcaoPermitida, EntradaDoLivro, EstadoDoLivro, MotivoDeNaoPublicar, RotuloDaAcao } from './model';
 
 /**
  * Pacote A6 do ADR-054: a página Aprendizado contra o contrato do livro (A1) e o formato esperado de A3/A4, com o
@@ -19,21 +19,29 @@ function entrada(over: Partial<EntradaDoLivro>): EntradaDoLivro {
     kind: 'receita', ref: '1', state: 'validated', native_status: 'validated', title: 'Item', app: 'com.whatsapp',
     origin: 'execucao', side_effect: true, human_origin: false, requires_owner: true, created_at: '2026-09-28T10:00:00Z',
     state_at: '2026-09-28T10:00:00Z', last_used_at: null, uses: 0, evidence: { for: 3, against: 0 }, count: null,
-    detail: null, ...over,
+    detail: null, acoes: [], por_que_nao_publica: null, ...over,
   };
 }
 
-const RECEITA = entrada({ kind: 'receita', ref: '12', title: 'Enviar oi para o contato' });
+// As `acoes` e o motivo vêm do backend (`acoes_da_pessoa`); aqui são o que ele mandaria para cada item.
+const ACAO = (to: EstadoDoLivro, rotulo: RotuloDaAcao): AcaoPermitida => ({ to, rotulo, exige_motivo: true });
+const DONO = (codigo: 'efeito_externo' | 'texto_de_pessoa' | 'habilidade'): MotivoDeNaoPublicar => ({ codigo, espera_o_dono: true, detalhe: null });
+
+const RECEITA = entrada({ kind: 'receita', ref: '12', title: 'Enviar oi para o contato',
+                         acoes: [ACAO('published', 'aprovar'), ACAO('disabled', 'rejeitar')], por_que_nao_publica: DONO('efeito_externo') });
 const LICAO = entrada({ kind: 'licao', ref: 'li-abc', state: 'candidate', native_status: null, side_effect: false,
-                        human_origin: true, title: 'Role a lista antes de procurar o contato', state_at: '2026-09-27T10:00:00Z' });
-const LEGADO = entrada({ kind: 'receita', ref: '40', state: 'published', native_status: 'active', title: 'Curtir a última foto' });
+                        human_origin: true, title: 'Role a lista antes de procurar o contato', state_at: '2026-09-27T10:00:00Z',
+                        acoes: [ACAO('validated', 'validar'), ACAO('disabled', 'rejeitar')], por_que_nao_publica: DONO('texto_de_pessoa') });
+const LEGADO = entrada({ kind: 'receita', ref: '40', state: 'published', native_status: 'active', title: 'Curtir a última foto',
+                        acoes: [ACAO('deprecated', 'aposentar'), ACAO('disabled', 'desligar')], por_que_nao_publica: DONO('efeito_externo') });
 const PUBLICADO = entrada({ kind: 'fluxo', ref: 'f-9', state: 'published', native_status: 'active', side_effect: false,
-                            requires_owner: false, title: 'Abrir o perfil', uses: 7 });
+                            requires_owner: false, title: 'Abrir o perfil', uses: 7, acoes: [ACAO('disabled', 'desligar')] });
 // Habilidade validada: o livro põe TODA versão validada na fila do D1 (publicar é sempre de uma pessoa), mas a
 // transição vai pela rota das habilidades — a do livro devolve 409 `use_skills_route`.
 const HABILIDADE = entrada({ kind: 'habilidade', ref: 'instagram.abrir-conversa@2', native_status: 'validated',
                              side_effect: false, origin: 'ensino', app: 'com.instagram.android',
-                             title: 'Abrir a conversa com o contato', state_at: '2026-09-26T10:00:00Z' });
+                             title: 'Abrir a conversa com o contato', state_at: '2026-09-26T10:00:00Z',
+                             por_que_nao_publica: DONO('habilidade') });
 const MEMORIA = entrada({ kind: 'memoria', ref: 'ig-1', state: null, native_status: null, side_effect: false,
                           requires_owner: false, title: 'Marina Costa', count: 12 });
 
