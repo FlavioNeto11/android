@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 7.4: linha de base real da configuração implantada, 13/14 por US$ 1,45; achado do teto de chamadas no `for_each`
+
+- Real (02/10, central, deploy `25624c4`, android-05 sem conta real): 14 casos do QA Messenger, 13 corretos, US$ 1,449; `msg-todos-os-contatos` bateu no teto de 60 chamadas por objetivo no 7º de 8 contatos (`r-20261002181642-eff15b`). HTTP 500 do verificador: 2/423. Rejulgamento das 56 não repetido (vale o de 25/09). `docs/ia.md` §8; estado do 7.4 pelo mecanismo (`implemented`, `real`).
+
 ## 2026-10-02 — Flex para trabalho offline (17.8, branch jev/17-8-flex)
 
 - `backend/app/planning/openai_provider.py`: o `OpenAICompatProvider` passa a honrar `ai.roles.<papel>.max_retries`
