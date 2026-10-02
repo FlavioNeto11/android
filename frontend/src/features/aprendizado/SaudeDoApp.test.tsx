@@ -267,7 +267,7 @@ describe('falhas e capability no detalhe do app', () => {
       expect.stringContaining('abrir_conversa'), expect.stringContaining('enviar_mensagem'),
       expect.stringContaining('Fluxos (o comando inteiro)'),
     ]);
-    expect(resumos[1]).toContain('1 pedem atenção');
+    expect(resumos[1]).toContain('1 pede atenção');
     // Sem item pedindo atenção, o bloco fica recolhido.
     expect(container.querySelector('ul[aria-label="Aprendido: abrir_conversa"]')).toBeNull();
   });

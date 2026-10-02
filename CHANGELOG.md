@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: passe de design do painel (branch feat/aprendizado-passe-de-design)
+
+- Regra do dono (layout bom, UX, todos os fluxos validados no navegador). Detalhe do app na ordem do que pede ação: Atenção → Aprendido → O que falha → Declarado → Absorvido. O Aprendido ganha o nível Capability: um bloco recolhível por capability com contagem, "pede(m) atenção" e saúde no resumo (abre sozinho o bloco com item em atenção); fluxo (comando inteiro) e item sem capability em blocos próprios; sem o campo (backend anterior), agrupa por tipo. "Como é usado" vira chips por tipo; Declarado vira grade compacta.
+- Item do Livro: sem o pacote repetido dentro da página do app; título longo (comando de fluxo) em duas linhas; "Último uso" com o dia (`formatQuando`: "hoje, 20:47", "29/09 20:47"; antes só a hora, que fazia um uso de três dias atrás parecer de hoje); "Nunca usado" no lugar de "Usos: 0"; "sombra 0/0" some e "sombra a/b" vira "na sombra, concordou com a IA em a de b"; "Espera o dono" em faixa própria; referência discreta. Sinais: "pelo painel"/"pelo sistema" e data. Detalhe: "Evidência registrada" explica a diferença para os usos da linha.
+- Prova: `simulated` (vitest 1243/1243; typecheck) e navegador contra backend simulado com cópia do banco (porta 8766, 02/10 ~21:55Z): Global, detalhe do Instagram com 11 blocos de capability, Para aprovar, Aprendido, O que mais falha, Sinais, detalhe rico da receita 73, desligar→reativar da receita 25 com motivo e trilha, e 375 px sem rolagem horizontal.
+
 ## 2026-10-02 — Aprendizado: `capability` em cada linha do Livro e de `/apps/{pacote}` (branch feat/aprendizado-capability-na-linha)
 
 - A lista do Livro (`/api/aprendizado`, `/pendentes`, `/revisar`), as linhas de `/apps/{pacote}` e o `item` do detalhe trazem `capability` (`"<nome>"` ou `null`), para a hierarquia App → Capability → Item do painel. Receita: a derivação do detalhe, em lote (`FontesSql.capabilities_das_receitas`); lição e tela: `escopo.capability` (sem vazio nem `*`); fluxo, habilidade e memória: `null`. Sem migração; adendo v0.58 do contrato. Prova `simulated` (`test_learning_capability_na_linha.py`).

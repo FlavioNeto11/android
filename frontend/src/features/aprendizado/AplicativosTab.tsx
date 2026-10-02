@@ -33,6 +33,8 @@ function LinhaDeContagem({ rotulo, c }: { rotulo: string; c: Contagem }) {
   );
 }
 
+const textoDeAtencao = (n: number) => `${formatInt(n)} ${n === 1 ? 'pede' : 'pedem'} atenção`;
+
 /** Um app no Global: o que se declarou, o que se aprendeu, o que foi absorvido e como o aprendido é usado. */
 /**
  * `itens` são os itens do Livro deste app (a lista traz a saúde de cada um); `undefined` = a lista não carregou, e o
@@ -71,7 +73,7 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
           <ChipsDeSaude itens={itens} />
           {quantosPedemAtencao(itens) > 0 ? (
             <span><Badge tone="warning" size="sm" title="Degradando, provavelmente obsoleto ou sem evidência: veja a fila Atenção.">
-              {formatInt(quantosPedemAtencao(itens))} pedem atenção
+              {textoDeAtencao(quantosPedemAtencao(itens))}
             </Badge></span>
           ) : null}
         </div>
@@ -179,7 +181,7 @@ function Declarado({ d }: { d: DetalheDoApp }) {
       {d.declarado.length === 0 ? <p className={styles.secaoLead}>Nada foi declarado para este app.</p> : (
         <ul className={styles.tabelaDeclarado}>
           {d.declarado.map((i) => (
-            <li key={i.tipo} className={styles.item}>
+            <li key={i.tipo} className={styles.itemCompacto}>
               <div className={styles.itemHead}>
                 <span className={styles.itemTitulo}>{rotuloDoArquivo(i.tipo)}</span>
                 <Badge tone={i.presente ? 'success' : 'neutral'} size="sm">{i.presente ? 'presente' : 'ausente'}</Badge>
@@ -252,7 +254,7 @@ function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['apren
                 meta={(
                   <span className={styles.grupoMeta}>
                     <span>{formatInt(g.itens.length)} {g.itens.length === 1 ? 'item' : 'itens'}</span>
-                    {atencao > 0 ? <Badge tone="warning" size="sm">{formatInt(atencao)} pedem atenção</Badge> : null}
+                    {atencao > 0 ? <Badge tone="warning" size="sm">{textoDeAtencao(atencao)}</Badge> : null}
                     {contarPorRotulo(g.itens).length > 0 ? <ChipsDeSaude itens={g.itens} /> : null}
                   </span>
                 )}
@@ -311,10 +313,11 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
                 ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : <span>Carregando…</span>}
             </div>
           </div>
-          {!balde ? <Declarado d={d} /> : null}
+          {/* Do que pede ação ao que é referência: atenção, o aprendido, o que falha; o declarado e o absorvido depois. */}
           {doLivro ? <FilaDeAtencao itens={doLivro} /> : null}
           <AprendidoPorCapability itens={aprendido} onMudou={() => { void carregar(); void livro.carregar(); }} />
           <FalhasDoApp pacote={pacote} />
+          {!balde ? <Declarado d={d} /> : null}
           <ListaDoApp
             titulo="Absorvido"
             lead="O que já virou conhecimento declarado do repositório: não conta mais como aprendido."

@@ -324,8 +324,8 @@
 .migalhas { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-3); }
 
 .tabelaDeclarado {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--sp-2);
   margin: 0;
   padding: 0;
@@ -440,7 +440,7 @@
   color: var(--text-2);
 }
 
-.avisoDoItem { border-left-color: var(--warning-text); color: var(--warning-text); }
+.avisoDoItem { border-left-color: var(--warning-text); background: var(--warning-soft); color: var(--warning-text); border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0; }
 
 /* O nível Capability no detalhe do app: um bloco recolhível por capability, com contagem e saúde no resumo. */
 .grupos { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -454,4 +454,16 @@
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border-1);
   border-radius: var(--radius-md);
+}
+
+/* Um arquivo declarado: cartão pequeno na grade (é referência, não fila). */
+.itemCompacto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  min-width: 0;
 }

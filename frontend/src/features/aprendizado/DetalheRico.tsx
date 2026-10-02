@@ -358,7 +358,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
     <Secao slug="evidencia" titulo="Evidência registrada">
       <p className={styles.secaoLead}>
         As evidências que o Livro guardou (execução, aparelho e versão de cada uma); os usos da linha do item contam as
-        reproduções. 
+        reproduções.{' '}
         {n('for')} a favor · {n('against')} contra · {n('conflict')} em conflito
         {evid.some((x) => x.simulated) ? ' (as simuladas nunca contam para publicar)' : ''}.
       </p>
