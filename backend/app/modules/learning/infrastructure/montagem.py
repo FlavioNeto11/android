@@ -27,6 +27,7 @@ from app.modules.learning.domain.camada import ModosDeRuntime
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
 from app.modules.learning.infrastructure import ligar_costuras, ligar_licoes, ligar_nativos, ligar_telas, ligar_voz
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
+from app.modules.learning.infrastructure.eventos import Barramento, EventosNoBarramento, RiscoDoRegistro
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -97,16 +98,21 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                        precos: Callable[[], dict[str, list[float]]], habilidades: SqlSkillRepository | None = None,
                        fluxos: FlowStore | None = None, receitas: RecipeStore | None = None,
                        decidir: Decidir | None = None, relogio: Callable[[], datetime] = now,
-                       commit: Callable[[], str | None] | None = None) -> LearningService:
+                       commit: Callable[[], str | None] | None = None,
+                       eventos: Barramento | None = None) -> LearningService:
     """`fluxos`/`receitas`: as lojas do scheduler, que passam a nascer e mudar de status com o D1 e a trilha.
     `decidir(texto, run_id)`: a linha do tempo da execução (cada transição do sistema vira uma decisão nela).
     `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
-    backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`)."""
+    backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`).
+    `eventos`: o barramento do central (`EventBus`): com ele, o livro publica `learning.needs_person` (30.21). Sem ele,
+    nada é publicado."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     servico = LearningService(repo, FontesSql(db, pacotes_do_registro=pacotes_do_registro),
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
-                              relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias)
+                              relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
+                              eventos=EventosNoBarramento(eventos) if eventos is not None else None,
+                              catalogo_de_risco=RiscoDoRegistro())
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

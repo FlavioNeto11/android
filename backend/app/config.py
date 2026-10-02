@@ -1036,7 +1036,7 @@ class SensitiveScreenSeed(BaseModel):
 
 class PedidosCfg(BaseModel):
     """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
-    ocorrência despachada chama o planejador PAGO e o teto de orçamento é do 28.6; até ele entrar, ligar é decisão do
+    ocorrência despachada chama o planejador PAGO e o orçamento (28.6) já limita o gasto, mas ligar segue sendo decisão do
     dono, por instalação. Desligado, o laço nem sobe (e este backend não toma a trava `pedidos`)."""
 
     enabled: bool = False
@@ -1053,6 +1053,15 @@ class PedidosCfg(BaseModel):
     lote_max: int = Field(500, ge=1, le=5000)
     #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
     posse_s: int = Field(120, ge=10, le=3600)
+    #: Saldo estimado mínimo, em US$, das contas de IA em uso (ADR-051) para despachar (28.6). Abaixo dele o laço ADIA a
+    #: ocorrência: ela continua `devida`, sem falha, e sai quando o saldo volta (ou o dono recarrega). 0 desliga este
+    #: mínimo; o bloqueio do dono (`block_below` da conta) adia de qualquer forma.
+    saldo_minimo_usd: float = Field(0.0, ge=0.0, le=100_000.0)
+    #: Resumo do relatório por IA (28.7, `docs/design/pedidos-persistentes.md` §6.6): só o ponto de extensão. O relatório
+    #: determinístico é a fonte da verdade e sai sempre; ligar isto SEM um resumidor injetado não chama nada.
+    resumo_ia: bool = False
+    #: Teto por relatório, em USD, que o resumidor deve respeitar (e que o 28.6 conta no orçamento do pedido).
+    resumo_ia_teto_usd: float = Field(0.05, ge=0.0, le=5.0)
 
 
 class AppConfigFile(BaseModel):

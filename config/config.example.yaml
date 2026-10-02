@@ -484,14 +484,18 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
              candidata_sem_evidencia_dias: 90}
 
 pedidos:                          # pedidos persistentes (28.4): o objetivo que dura e volta (docs/design/pedidos-laco.md)
-  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO e o teto de orçamento
-                                  # é do 28.6; ligar é decisão do dono, por instalação
+  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO; o orçamento
+                                  # (28.6) limita o gasto por pedido, mas ligar é decisão do dono, por instalação
   tick_s: 15                      # o laço acorda a cada tanto (e quando uma execução do pedido assenta)
   horizonte_s: 3600               # quanto à frente a recorrência vira ocorrência `prevista`
   prazo_inicio_s: 3600            # execução despachada que não começa neste prazo é cancelada (a ocorrência fica `perdida`)
   janela_padrao_s: 1800           # recuperação de `horario` sem efeito, de `agora` e de recorrência de um dia ou mais
   lote_max: 500                   # linhas materializadas por gatilho e execuções criadas por volta
   posse_s: 120                    # validade da reserva de uma ocorrência por um laço (a chave é quem garante a unicidade)
+  saldo_minimo_usd: 0             # saldo estimado mínimo (US$) das contas de IA em uso para despachar; abaixo, a ocorrência é ADIADA
+                                  # (fica devida, sem falha); 0 desliga o mínimo (o bloqueio do dono na conta adia mesmo assim)
+  resumo_ia: false                # resumo do relatório por IA (28.7): só o ponto de extensão; o relatório determinístico sai sempre
+  resumo_ia_teto_usd: 0.05        # teto por relatório que o resumidor deve respeitar (o 28.6 conta no orçamento do pedido)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

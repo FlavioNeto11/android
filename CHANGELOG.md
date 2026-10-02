@@ -32,6 +32,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
 
+## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
+
+- Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
+- Orçamento total: `modules/pedidos/domain/orcamento.py` (puro). Restante menor que a estimativa (mediana das últimas 5 ocorrências; sem histórico, `orcamento_ocorrencia_usd`) ou `<= 0` pula o que não virou execução (`orçamento: …`) e encerra o pedido com `encerrado_motivo='orcamento'` (espera a execução aberta fechar). Pedido sem orçamento não muda de comportamento.
+- Teto por ocorrência na execução: `AIRouter._budget` consulta `Repository.teto_usd_da_execucao` (menor entre o resto do teto da ocorrência e o resto do orçamento total) e barra a chamada com `AIError(kind="budget")` antes de gastar. Sem coluna nova.
+- Saldo (ADR-051): `modules/pedidos/infrastructure/saldo.py` lê o mesmo serviço de `GET /api/ai/balances` (sem chamada paga); conta de IA em uso bloqueada, ou abaixo de `pedidos.saldo_minimo_usd` (novo; 0 desliga o mínimo), ADIA o despacho: a ocorrência fica `devida`, sem falha e sem virar `perdida`, com `resumo = "adiada: …"`.
+- Prioridade: `dispatchable_objectives` ordena `prioridade DESC, created_at`; `RunService.create`/`create_run` ganham o parâmetro interno `prioridade` (padrão 0, fora do `RunCreate` público). O laço grava 0 (a 067 não deu campo ao pedido).
+- Sem migração e sem ADR novo. Prova `simulated`: `backend/tests/test_pedidos_orcamento.py` (25); PostgreSQL e laço ligado no central (28.12): `not_run`. Desenho em `docs/design/pedidos-laco.md` §11.
+
+## 2026-10-02 — Memória, observações e relatório do pedido (28.7, branch feat/28-7-memoria-relatorio)
+
+- Migração **070** `pedidos_memoria` (reservada pela coordenação; a 069 é de outra frente e entra antes): `pedido_memoria` (chave/valor por pedido, versão, tipos do §8.1), `pedido_observacoes` (o que cada ocorrência observou, sem chave estrangeira para a execução: sobrevive à purga) e `pedido_relatorios` (conteúdo JSON determinístico, `sha256`, sequência por pedido, relatório de encerramento único por índice parcial). Só tabelas novas.
+- Domínio puro em `modules/pedidos/domain/`: `memoria.py` (versionada, segredo recusado, `compactar` sem IA), `observacao.py` (observado, incerto ou ausente) e `relatorio.py` (observado, conclusão, não coberto; mesmas entradas dão o mesmo relatório; incerteza, falha e ausência nunca viram conclusão).
+- O laço registra as observações no fechamento da ocorrência, na mesma transação cercada que a fecha, a partir das saídas lidas entre etapas (056); sem saída estruturada grava o resultado com valor ausente. O relatório sai sob demanda, no encerramento e no cancelamento, e falha dele nunca impede a transição.
+- Resumo por IA: só o ponto de extensão (`ResumidorDeRelatorio`, `pedidos.resumo_ia: false`); nenhuma chamada paga.
+- Prova `simulated`: `backend/tests/test_pedidos_memoria.py` (23) e `test_pedidos_relatorio.py` (28); a corrida contra PostgreSQL é pulada sem `TEST_DATABASE_URL`. `real`: `not_run` (o 28.12 liga o laço no central). Desenho: `docs/design/pedidos-laco.md` §11.
+
+## 2026-10-02 — 28.11 provado em real: aviso de teste chegou ao Telegram do dono
+
+- Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
@@ -60,6 +81,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — Aprendizado por aplicativo no painel (30.15, primeira fatia, branch feat/30-15-painel-por-app)
 
 - `frontend/src/features/aprendizado/`: nova aba **Aplicativos**, a visão inicial (Global → App, `docs/design/aprendizado-vivo.md` §11): um cartão por app de `GET /api/aprendizado/apps` (existência, declarado, aprendido por tipo e estado, absorvido, "como é usado" pela camada de uso, com o selo "medido, não usado"), mais os cartões "App não resolvido" e "Fora do eixo de app" quando > 0; app com zeros aparece. Detalhe em `#/aprendizado?aba=apps&app=<pacote>` (Declarado, Aprendido, Absorvido) e navegação nos dois sentidos: o item do Livro leva ao app e o app, ao Aprendido filtrado. Filtro "Aplicativo" na aba Aprendido, alimentado por `/apps`, passa `app` ao Livro. Saúde, capability e a fila Atenção ficam para depois (os contratos de saúde ainda não existem). Prova `simulated`: `AplicativosTab.test.tsx` (7); `real`: `not_run`.
+
+## 2026-10-02 — Aprendizado: migração `learning_reviews` (30.9, branch feat/30-9-learning-reviews)
+
+- Migração **069 provisória** (`backend/migrations/069_revisoes_do_aprendizado.sql`): tabela `learning_reviews`, a trilha auditável das revisões do curador por IA (`aprendizado-vivo.md` §8.5), sem FK e sem CHECK, nunca purgada, com `UNIQUE (item_ref, dossie_hash)` como salvaguarda do orçamento (§8.7). Só a forma; o curador é 30.10/30.11. `simulated`: `test_migracao_069_revisoes.py` (SQLite); PostgreSQL `not_run` (P17).
+
+## 2026-10-02 — Aprendizado: evento `learning.needs_person` (30.21, branch feat/30-21-evento-needs-person)
+
+- O Livro publica `learning.needs_person` quando um item entra na espera do dono (faixa B ou C da política de risco) e quando sai
+  dela (decidido pela pessoa, rebaixado pelo sistema, substituído). Payload de lista fechada, sem conteúdo (`api-contract.md`,
+  adendo v0.49). Porta de eventos do módulo (`PortaDeEventos`), adaptador sobre o `EventBus` em `infrastructure/eventos.py`;
+  classificação mínima em `domain/espera.py` (o 30.10 a estende); idempotente por (`kind:ref`, `aguardando`).
+- `montar_aprendizado(eventos=...)`: sem o argumento nada é publicado; `state.py` passa `eventos=self.bus`.
+- Prova `simulated`: `tests/test_learning_espera.py` (barramento falso e `EventBus` sobre SQLite). `not_run` no central.
 
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
