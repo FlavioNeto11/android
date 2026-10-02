@@ -77,10 +77,11 @@ from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, gu
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
+from .modules.pedidos.application.laco import LacoDePedidos
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
-from .taskqueue.travas import (CURADORIA, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
+from .taskqueue.travas import (CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
 from .util import now, now_iso, parse_iso, to_iso
@@ -433,6 +434,9 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
+        # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
+        self.pedidos = LacoDePedidos(self.db, self.runs, self.lideranca, cfg.file.pedidos)
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
         # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),
@@ -2247,6 +2251,10 @@ class AppState:
             self.lideranca.soltar_da_queda()
             self._manter_travas()
             self._bg.append(asyncio.create_task(self._laco_das_travas(), name="travas-de-lider"))
+            if self.cfg.file.pedidos.enabled:
+                # Depois de `resume_planning_after_restart` e de `soltar_da_queda`: a primeira volta é imediata, acha
+                # a execução pela chave antes de criar e retoma o que a queda deixou (pedidos-laco.md §6).
+                self._bg.append(asyncio.create_task(self.pedidos.laco(), name="pedidos"))
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
@@ -2441,6 +2449,7 @@ class AppState:
     def _execucao_assentada(self, run_id: str) -> None:
         """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
         self._draft_locks.pop(run_id, None)
+        self.pedidos.ao_assentar(run_id)             # só acorda o laço de pedidos (28.4); nunca escreve aqui
         try:
             laco = asyncio.get_running_loop()
         except RuntimeError:
@@ -2458,7 +2467,8 @@ class AppState:
     # ------------------------------------------------------------------ trava de líder (item 28.1)
     def _manter_travas(self) -> None:
         try:
-            self.lideranca.manter(TRAVAS_DOS_LACOS)
+            # `pedidos` só com o laço ligado: um backend com ele desligado não pode segurar a trava (28.4).
+            self.lideranca.manter([n for n in TRAVAS_DOS_LACOS if n != PEDIDOS or self.cfg.file.pedidos.enabled])
         except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz
             log.exception("travas de líder: renovação")
 

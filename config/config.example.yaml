@@ -454,6 +454,16 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,
              candidata_sem_evidencia_dias: 90}
 
+pedidos:                          # pedidos persistentes (28.4): o objetivo que dura e volta (docs/design/pedidos-laco.md)
+  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO e o teto de orçamento
+                                  # é do 28.6; ligar é decisão do dono, por instalação
+  tick_s: 15                      # o laço acorda a cada tanto (e quando uma execução do pedido assenta)
+  horizonte_s: 3600               # quanto à frente a recorrência vira ocorrência `prevista`
+  prazo_inicio_s: 3600            # execução despachada que não começa neste prazo é cancelada (a ocorrência fica `perdida`)
+  janela_padrao_s: 1800           # recuperação de `horario` sem efeito, de `agora` e de recorrência de um dia ou mais
+  lote_max: 500                   # linhas materializadas por gatilho e execuções criadas por volta
+  posse_s: 120                    # validade da reserva de uma ocorrência por um laço (a chave é quem garante a unicidade)
+
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
   # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".

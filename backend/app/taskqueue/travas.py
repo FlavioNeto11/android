@@ -47,7 +47,11 @@ RENOVAR_TRAVA_S = 20.0
 SALDOS = "saldos"
 CURADORIA = "curadoria"
 RETENCAO = "retencao"
-TRAVAS_DOS_LACOS = (SALDOS, CURADORIA, RETENCAO)
+#: O laço de pedidos (28.4) materializa, despacha e fecha ocorrências: só o líder o faz, e o seguidor que vira líder age já
+#: na volta seguinte (15 s). O `AppState` só a renova com `pedidos.enabled`: um backend com o laço desligado não pode
+#: segurar a trava e deixar o ligado sem líder.
+PEDIDOS = "pedidos"
+TRAVAS_DOS_LACOS = (SALDOS, CURADORIA, RETENCAO, PEDIDOS)
 
 
 class TravaPerdida(RuntimeError):

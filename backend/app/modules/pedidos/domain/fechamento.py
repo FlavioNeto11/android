@@ -70,7 +70,11 @@ def fechar(*, estado_atual: str, run_id: str, run_status: str | None, objetivos:
     if run_status in _EM_PREPARO:
         return None
     if run_status in _EM_CURSO:
-        return Fechamento("rodando", None, started_at) if estado_atual == "despachada" else None
+        if estado_atual != "despachada":
+            return None
+        if intencao == INTENCAO_PRAZO_DE_INICIO and run_status == "cancelling":
+            return None        # o laço cancelou pelo prazo: fica `despachada` até assentar (`perdida` só sai daqui)
+        return Fechamento("rodando", None, started_at)
     incertos = [o.id for o in objetivos if o.status == "uncertain"]
     if run_status == "completed":
         return Fechamento("concluida")
@@ -84,7 +88,8 @@ def fechar(*, estado_atual: str, run_id: str, run_status: str | None, objetivos:
     if run_status == "cancelled":
         if incertos:
             return Fechamento("incerta", f"objetivo incerto: {', '.join(incertos)}")
-        if intencao == INTENCAO_PRAZO_DE_INICIO and not any(o.iniciado for o in objetivos):
+        if (intencao == INTENCAO_PRAZO_DE_INICIO and estado_atual == "despachada"
+                and not any(o.iniciado for o in objetivos)):
             espera = f": {motivo_de_espera}" if motivo_de_espera else ""
             return Fechamento("perdida", f"não começou em {int(prazo_inicio_s)}s{espera}")
         return Fechamento("cancelada", "pedido cancelado" if pedido_cancelado else "execução cancelada")
