@@ -1774,6 +1774,9 @@ class RunSummary(BaseModel):
     #: Perfil de IA usado (item 17.7) e de onde veio: `explicit` (pedido) ou `canary` (sorteio). `None` = padrão.
     ai_profile: str | None = None
     ai_profile_source: Literal["explicit", "canary"] | None = None
+    #: O pedido persistente e a ocorrência que originaram a execução (28.9; `null` em toda execução anterior).
+    pedido_id: str | None = None
+    ocorrencia_id: str | None = None
 
 
 class StepResult(BaseModel):

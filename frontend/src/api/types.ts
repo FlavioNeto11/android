@@ -231,6 +231,10 @@ interface RunSummary {
   deduplicated?: boolean;     // presente em respostas de criação
   /** Apps que a execução toca: o do plano e o de cada etapa (item 12.1). */
   app_ids?: string[];
+  /** v0.45 (pedidos, 28.9): de que pedido e de que ocorrência esta execução nasceu; `null` ou ausente em toda
+   *  execução anterior ou avulsa. Aditivo e opcional: backend antigo não manda. */
+  pedido_id?: string | null;
+  ocorrencia_id?: string | null;
 }
 
 interface Step {

@@ -39,16 +39,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.modules.pedidos.domain.avisos import TIPOS as TIPOS_DE_AVISO
+
 ACAO_REPETIR = "repetir"
 ACAO_INCERTA = "incerta"
 ACAO_DEFINITIVA = "definitiva"
 ACAO_FIM = "fim"
 
-#: Tipos de aviso que esta peça emite: `(nivel, requer_pessoa)` (contrato 28.9, `AvisoTipo`).
-AVISOS: Mapping[str, tuple[str, bool]] = {
-    "pausa_automatica": ("warn", False),       # informativo: vai para a caixa de avisos
-    "ocorrencia_incerta": ("warn", True),      # pede a pessoa: vai para as Pendências
-}
+#: Tipos de aviso: `(nivel, requer_pessoa)` (contrato 28.9, `AvisoTipo`); o vocabulário é um só, em `domain/avisos.py`.
+AVISOS: Mapping[str, tuple[str, bool]] = TIPOS_DE_AVISO
 
 
 @dataclass(frozen=True)
@@ -106,8 +105,9 @@ def deve_pausar(seguidas: int, limite: int) -> bool:
 
 def aviso(*, tipo: str, aviso_id: str, pedido_id: str, pedido_titulo: str, ocorrencia_id: str | None, mensagem: str,
           criado_em: str, dados: Mapping[str, object] | None = None) -> dict[str, object]:
-    """O `AvisoDTO` do contrato 28.9 (`pedido.aviso`), sem `lido_em` preenchido. `aviso_id` é determinístico: a mesma
-    situação emitida duas vezes dá a mesma chave de deduplicação no canal de fora (28.11)."""
+    """O `AvisoDTO` do contrato 28.9 (`pedido.aviso`), sem `lido_em` preenchido. `aviso_id` é a CHAVE de deduplicação
+    (`pedido_avisos.chave_dedupe`, 072), determinística: a mesma situação emitida duas vezes é uma linha e um evento só.
+    O `id` do DTO que a pessoa vê é o da linha gravada (`domain/avisos.py::id_do_aviso`), posto por quem grava."""
     nivel, requer_pessoa = AVISOS[tipo]
     return {"id": aviso_id, "pedido_id": pedido_id, "pedido_titulo": pedido_titulo, "ocorrencia_id": ocorrencia_id,
             "tipo": tipo, "nivel": nivel, "mensagem": mensagem, "dados": dict(dados or {}),

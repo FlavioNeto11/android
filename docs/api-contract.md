@@ -2945,12 +2945,13 @@ Compatível para trás: uma rota nova, só leitura, sem efeito colateral e sem m
 
 Sem a configuração composta responde 503 `not_ready`. Nunca devolve código, a pergunta ou caminhos de arquivo.
 
-## Adendo v0.45 (02/10/2026) — Pedidos persistentes (Fase 28, item 28.9) — adendo, PROPOSTO, não implementado
+## Adendo v0.45 (02/10/2026) — Pedidos persistentes (Fase 28, item 28.9) — adendo, IMPLEMENTADO no backend (simulated)
 
-**Estado deste adendo.** É a PROPOSTA de contrato do item 28.9 do [plano-100](plano-100.md). Nenhuma rota, evento ou campo
-abaixo existe no código: nada aqui é `real` nem `simulated`; a prova é `not_run` até a implementação (aceite proposto no
-fim). Quando esta proposta contradiz o corpo base ou um adendo anterior, vale o que está em vigor no código, e a mudança
-só vale depois de implementada e de a prova trocar de nível. Compatível para trás: só rotas novas e campos opcionais novos.
+**Estado deste adendo.** Implementado no backend do item 28.9 (branch `feat/28-9-rotas`): prova `simulated` em
+`backend/tests/test_pedidos_api.py` (14 testes, TestClient, SQLite, laço de pedidos de verdade com relógio falso e o
+planejamento desligado); `real`: `not_run`. O texto abaixo é o contrato original; **o que diverge ou ficou de fora está
+na seção "Divergências da implementação" no fim deste adendo** e vale sobre o texto. A tela é de outro agente e segue
+este contrato. Compatível para trás: só rotas novas e campos opcionais novos.
 
 Fontes: [desenho dos pedidos persistentes](design/pedidos-persistentes.md), §6 (modelo), §6.2 (estados), §6.3
 (identidade), §7.9 (cancelar, pausar, editar, retomar) e §11 (experiência, incluída a lista de rotas); ADR-044 (prévia
@@ -3382,7 +3383,7 @@ nunca vence. A prévia não grava, mas passa pelo mesmo portão (ela resolve alv
 | Lacuna | Proposta neste adendo | Quem fecha |
 |---|---|---|
 | sem coluna de chave de idempotência | `id` determinístico a partir da chave | 28.9 (ou migração, se o dono preferir) |
-| sem tabela de avisos | `pedido_avisos`, migração própria | 28.9 |
+| sem tabela de avisos | `pedido_avisos`, migração 072 | 28.9 (feito) |
 | `aguardando_pessoa` não guarda a causa | `pendencias[]` lido do estado vivo (aprovações, execuções `needs_input`, ocorrências `incerta`) | 28.9 |
 | `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` | rotas declaradas; campos `null` até existirem | 28.7 |
 | `spec` de `evento`, `condicao` e `persona` | `422 gatilho_nao_suportado` | 28.8 |
@@ -3405,11 +3406,85 @@ O coordenador decidiu todas com a recomendação desta proposta; o dono confirmo
 7. **Avisos:** os tipos do §11 mais `ocorrencia_perdida` e `encerramento`; `pausar` sem motivo usa "Pausado pela pessoa".
 8. **(dono) Piso de frequência:** `observar` e `preparar` ≥ 15 min; `agir` ≥ 1 h.
 
+### Divergências da implementação (28.9, vale sobre o texto acima)
+
+Rotas e campos que **existem**: tudo da tabela de rotas, exceto o que está em "Fora do 28.9". Códigos e corpos como no
+contrato, salvo o abaixo.
+
+**Fora do 28.9 (não implementado; a rota não existe e responde 404/405):**
+- `POST /{id}/executar` e `POST /{id}/backfill` (e os erros `solicitado_em_invalido`, `backfill_grande_demais`,
+  `backfill_so_observar`); `acoes_permitidas` não as oferece.
+- **Avisos (migração 072, `pedido_avisos`): implementados.** O texto anterior desta seção (sem tabela, `lido=` e `ler`
+  fora do 28.9) está superado:
+  - Todo `pedido.aviso` é GRAVADO em `pedido_avisos` com `chave_dedupe` (`INSERT ... ON CONFLICT DO NOTHING`) e só então
+    emitido, e só se a linha é nova. É um caminho único (`CaixaDeAvisos.registrar`): o laço (`avisar` do `AppState`) e a API
+    usam o mesmo, então o mesmo fato visto pelos dois é uma linha e um evento. O `id` do `AvisoDTO` é o da linha
+    (`avs_` + 26 hex do sha256 da chave).
+  - `GET /api/pedidos/avisos` lê da tabela: filtros `lido` (`0`/`1`/`true`/`false`), `requer_pessoa`, `pedido_id`, `limit`,
+    `cursor` (deslocamento opaco; a ordem é `criado_em` decrescente). `nao_lidos` é real.
+  - `POST /api/pedidos/avisos/ler` com `{ids?, todos?, pedido_id?}` (`pedido_id` é extensão deste adendo: restringe o
+    `todos` a um pedido). Sem `ids` nem `todos`: 422; mais de 200 ids: 422; id inexistente: `404 not_found` com
+    `details.kind="aviso"` e nada é gravado; `pedido_id` inexistente: `404` com `kind="pedido"`. Resposta
+    `{lidos, nao_lidos}`; repetir devolve `lidos: 0` e não muda `lido_em`.
+  - **Definição de `avisos_nao_lidos` e `nao_lidos`:** só os informativos (`requer_pessoa=0`). Os que pedem pessoa moram
+    nas Pendências (ADR-062: não contar duas vezes). Por isso `todos` também marca só os informativos. Vale na
+    lista e no detalhe (por pedido), no snapshot (`pedidos.avisos_nao_lidos`) e na resposta de `/avisos` (do pedido
+    filtrado, ou de todos). O selo do menu do painel vem de `nao_lidos`.
+  - `GET /api/pedidos?pede_atencao=1` cobre `pausado`, `aguardando_pessoa` e o pedido com aviso informativo não lido.
+  - Chaves de deduplicação: `pausa_automatica:<pedido>:<atualizado_em da pausa>`, `encerramento:<pedido>`,
+    `orcamento_esgotado:<pedido>`, `orcamento_80:<pedido>:<teto>` (o teto na chave: sobe o orçamento e a pessoa é avisada de
+    novo), `ocorrencia_perdida:<ocorrência>`, `relatorio_pronto:<relatório>`, `<ocorrência>:ocorrencia_incerta`.
+  - Emitidos hoje: `pausa_automatica`, `encerramento`, `ocorrencia_perdida`, `ocorrencia_incerta` (28.5),
+    `orcamento_80` (laço, em `_conferir_orcamento`, com o gasto em [80%, 100%) do teto), `orcamento_esgotado` (quando o
+    pedido encerra por orçamento ele SUBSTITUI o `encerramento`: uma notícia, um aviso) e `relatorio_pronto` (todo
+    relatório gravado que não é `sob_demanda`; o evento sai depois do commit, pelas marcas do repositório). **Ainda não
+    emitidos:** `aprovacao_pendente` e `pergunta` (o contrato os prevê; nenhum ponto do laço os decide hoje, as pendências
+    seguem lidas do estado vivo).
+  - Divergência da tela: o painel não envia `alvos.distribute` (o backend o recusa); "distribuir por contas" fica barrado
+    no pedido persistente.
+- Gatilhos do `PedidoCorpo`: `evento`, `condicao` e `persona` → `gatilho_nao_suportado` (28.8). `alvos.distribute` não é
+  aceito (422 por `extra="forbid"`): a seleção é `instance_ids`, `profile_ids` e `targets`.
+- `PATCH` troca a recorrência por UMA só (`gatilhos` com um item; mais de um → `limite_invalido`), porque o laço troca o
+  gatilho ativo por um novo (D5).
+
+**Diferenças de comportamento:**
+- `horario`: o laço lê `spec.local`; a API aceita `local` e `dtstart` e grava sempre `local`. A `rrule` é gravada na forma
+  canônica.
+- `alvos` no banco usam o formato de `runs.targets` que o laço lê (`{"alvos": [...], "device_policy"}`); o DTO devolve a
+  mesma foto com a chave `targets`, como o contrato.
+- Id do pedido: `"ped_" + base64url(uuid5(chave))` sem preenchimento (26 caracteres, o `uuid5` inteiro): um SHA-256 de 64 hex
+  não cabe nos 28 caracteres de `chave.py`. `idempotency_conflict` só é conferido enquanto `versao == 1`; depois de editado,
+  repetir devolve o pedido atual.
+- Bloqueios novos (além do contrato): `alvos_com_pergunta` (409), `unknown_instance` e `store_instance` (400), os mesmos de
+  `RunService.create`.
+- `inicio_em` é gravado e limita as datas da prévia, mas **o laço (28.4) ainda não o aplica** ao materializar: a prévia traz
+  o alerta `inicio_em_nao_aplicado`.
+- `ativar`: o gatilho passa a valer da ativação (`pedido_gatilhos.criado_em` é reposto), para um rascunho antigo não gerar um
+  rastro de ocorrências atrasadas.
+- `editar` segue o laço (D5/A6), não o texto do contrato: as `prevista`/`devida` passam à versão nova NA MESMA LINHA, e só a
+  troca de gatilho as cancela e refaz; `ocorrencias_refeitas` conta as `prevista`/`devida` quando o gatilho muda e é 0 senão.
+  O fuso só muda em `rascunho` ou `pausado` (senão `409 invalid_state`).
+- `retomar` de `aguardando_pessoa` usa o modo `recuperar` por dentro (nada é pulado); de `pausado`, `puladas` é a contagem
+  real e `recuperadas` vale sempre 0 (o laço decide ao rodar, aplicando janela e coalescência).
+- `cancelar`: `execucoes_em_curso` traz só `run_id` (`entregue` não é conhecido: `RunService.cancel` roda dentro de
+  `acoes.cancelar`).
+- `pendencias` (aguardando_pessoa): `pergunta` = execução do pedido em `needs_input`; `aprovacao` = `pending_approvals`
+  pendente de execução do pedido; `ocorrencia_incerta` = `incerta` sem ocorrência posterior `concluida` (heurística: a 067
+  não marca "resolvida").
+- A prévia devolve `autonomia.exige_aprovacao`/`recusado` pela TABELA do §6.4 do desenho (por grau), não pelas capacidades do
+  plano, que só se conhecem depois de planejar (sem IA na prévia). `custo` fica `sem_base` sem histórico nem
+  `orcamento_ocorrencia_usd`. Limite conhecido do orçamento: o excesso máximo é o custo de UMA ocorrência aberta, limitado
+  pelo teto da execução.
+- Eventos: o repositório anota as mudanças e quem escreveu as publica depois do commit; numa volta do laço sai UM
+  `pedido.ocorrencia.updated` por ocorrência, com o estado em que ela ficou (a que nasce `devida` e é despachada na mesma
+  volta só aparece `despachada`).
+- Emenda à ADR-062 (já escrita): o snapshot traz `pedidos.aguardando_pessoa[]` com as `pendencias` de cada pedido; as `runs`
+  do snapshot carregam `pedido_id`/`ocorrencia_id` para a caixa tirar do total os filhos agrupados. O agrupamento no painel
+  é da tela.
+
 ### Aceite proposto e prova
 
-Aceite do 28.9 (desenho §13): `typecheck`, testes e navegador contra o backend simulado a 1366 e a 375 px. Prova possível:
-`simulated` (testes de contrato da API com pedido, gatilho e execução falsos; nomes dos arquivos definidos na implementação).
-`real`: só no 28.12, com ocorrências ligadas a `runs` reais. **Hoje: `not_run` em todos os níveis** (este adendo é texto).
+Aceite do 28.9 (desenho §13): `typecheck`, testes e navegador contra o backend simulado a 1366 e a 375 px. Prova hoje: `simulated` no backend (`backend/tests/test_pedidos_api.py`, 14 testes); a tela e o navegador a 1366 e 375 px são do outro agente (`not_run` aqui); `real`: só no 28.12, com ocorrências ligadas a `runs` reais (`not_run`).
 
 ## Adendo v0.46 (02/10/2026) — Aprendizado vivo, item 30.5: ações permitidas calculadas no backend
 

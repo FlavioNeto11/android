@@ -2,6 +2,7 @@ import type {
   Action, AppConfig, Attempt, EventRecord, Evidence, Flow, Instance, Objective, PersonaDevice, PersonaDTO, Plan, Recipe,
   RunDetail, RunSummary, SessionInfo, Settings, Snapshot, Step, UsageReport,
 } from '../api/types';
+import type { AvisoDTO, OcorrenciaDTO, PedidoDetalhe, PedidoView } from '../api/pedidos';
 
 export const SETTINGS: Settings = {
   max_active_devices: 10, max_ai_concurrency: 4, boot_parallelism: 2,
@@ -278,5 +279,44 @@ export function makePersona(id: string, name: string, over: Partial<PersonaDTO> 
     session: makeSession('unknown'), last_verified_at: null, last_activity_at: null,
     created_at: '2026-09-28T10:00:00Z', updated_at: '2026-09-28T10:00:00Z', devices,
     ...over,
+  };
+}
+
+// ---- pedidos (item 28.9, adendo v0.45) -----------------------------------------------------------------------
+export function makePedido(over: Partial<PedidoView> = {}): PedidoView {
+  return {
+    id: 'ped_a1', titulo: 'Resumo diário do feed', objetivo: 'Abra o app e resuma o feed.', contexto: null, criterios_sucesso: null,
+    alvos: null, autonomia: 'observar', fuso: 'America/Sao_Paulo', inicio_em: null, fim_em: null, max_ocorrencias: null,
+    orcamento_total_usd: null, orcamento_ocorrencia_usd: null, sobreposicao: 'pular', janela_recuperacao_s: null, coalescer: true,
+    max_tentativas: 2, pausa_por_falha: 3, estado: 'ativo', versao: 1, proxima_em: '2026-10-03T11:00:00Z', criado_por: 'ana',
+    pausado_motivo: null, encerrado_motivo: null, pai_id: null, criado_em: '2026-10-01T10:00:00Z', atualizado_em: '2026-10-02T10:00:00Z',
+    gatilhos_resumo: [{ tipo: 'recorrencia', descricao: 'Todo dia às 08:00 (America/Sao_Paulo)' }],
+    personas: [{ profile_id: 'p1', nome: 'Ana Lima' }], proxima_local: '2026-10-03 08:00 -03:00', ultima_ocorrencia: null,
+    ocorrencias_por_estado: {}, gasto_usd: 0, orcamento_usado: null, avisos_nao_lidos: 0,
+    acoes_permitidas: ['editar', 'pausar', 'cancelar'], ...over,
+  };
+}
+
+export function makeOcorrencia(over: Partial<OcorrenciaDTO> = {}): OcorrenciaDTO {
+  return {
+    id: 'oc_1', pedido_id: 'ped_a1', pedido_versao: 1, gatilho_id: 'g1', previsto_para: '2026-10-02T11:00:00Z',
+    chave: 'ped:ped_a1:g1:2026-10-02T11:00:00Z', origem: 'agenda', estado: 'concluida', tentativa: 1, run_id: 'run-0001',
+    run: { id: 'run-0001', short_id: 'run-0001', status: 'completed', status_detail: null }, run_disponivel: true, motivo: null,
+    custo_usd: 0.021, resumo: 'Feed resumido.', criada_em: '2026-10-02T10:59:00Z', iniciada_em: '2026-10-02T11:00:01Z',
+    terminada_em: '2026-10-02T11:03:00Z', ...over,
+  };
+}
+
+export function makePedidoDetalhe(over: Partial<PedidoDetalhe> = {}): PedidoDetalhe {
+  return {
+    ...makePedido(), gatilhos: [], proximas: [], ocorrencias_recentes: [makeOcorrencia()], execucoes_em_curso: [],
+    pendencias: [], memoria: null, relatorios_recentes: null, observacoes_recentes: null, ...over,
+  };
+}
+
+export function makeAviso(over: Partial<AvisoDTO> = {}): AvisoDTO {
+  return {
+    id: 'av_1', pedido_id: 'ped_a1', pedido_titulo: 'Resumo diário do feed', ocorrencia_id: null, tipo: 'orcamento_80', nivel: 'warn',
+    mensagem: 'O pedido gastou 80% do orçamento.', dados: {}, requer_pessoa: false, criado_em: '2026-10-02T12:00:00Z', lido_em: null, ...over,
   };
 }

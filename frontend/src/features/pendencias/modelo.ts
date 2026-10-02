@@ -18,19 +18,21 @@
  * A ação primária de cada linha LEVA à tela onde se decide (com a evidência ao lado); a caixa não aprova nem recusa
  * nada: decidir sem ver o contexto é o erro que a aprovação existe para evitar.
  */
+import type { PedidoView } from '../../api/pedidos';
 import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
 import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import type { Destino } from '../../store/ui';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
 import { encurtar, tituloCurto } from '../runs/filtroExecucoes';
 
-export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao' | 'intervencao';
+export type OrigemDaPendencia = 'aprendizado' | 'persona' | 'execucao' | 'intervencao' | 'pedido';
 
 export const ROTULO_DA_ORIGEM: Record<OrigemDaPendencia, string> = {
   aprendizado: 'Aprendizado',
   persona: 'Persona',
   execucao: 'Execução',
   intervencao: 'Intervenção',
+  pedido: 'Pedido',
 };
 
 /**
@@ -51,6 +53,11 @@ export interface Pendencia {
   /** Texto do botão primário. */
   acao: string;
   destino: Destino;
+  /**
+   * Só em `pedido` (emenda à ADR-062): as decisões que já têm item próprio (a aprovação e a execução `needs_input` das
+   * execuções do pedido) aparecem AGRUPADAS sob ele e não contam de novo: o item do pedido é o que conta.
+   */
+  filhas?: readonly Pendencia[];
 }
 
 const tempo = (iso: string | null): number => {
@@ -124,6 +131,29 @@ export function pendenciasDeExecucoes(runs: readonly RunSummary[]): Pendencia[] 
 }
 
 /**
+ * Emenda à ADR-062 (item 28.9, confirmada pelo dono em 02/10): o pedido em `aguardando_pessoa` é uma origem da caixa.
+ * Uma linha por pedido, com as decisões dele (aprovação, execução parada pedindo informação) agrupadas embaixo, sem
+ * contar duas vezes. A decisão em si continua na tela do pedido e nas telas de sempre; a caixa só leva até ela.
+ */
+export function pendenciasDePedidos(
+  pedidos: readonly PedidoView[], filhasPorPedido: ReadonlyMap<string, readonly Pendencia[]> = new Map(),
+): Pendencia[] {
+  return pedidos.filter((p) => p.estado === 'aguardando_pessoa').map((p) => {
+    const filhas = filhasPorPedido.get(p.id) ?? [];
+    return {
+      chave: `pedido:${p.id}`,
+      origem: 'pedido',
+      titulo: p.titulo,
+      detalhe: `Pedido aguardando você${filhas.length > 0 ? ` · ${filhas.length} ${filhas.length === 1 ? 'decisão' : 'decisões'} dentro dele` : ''}`,
+      desde: p.atualizado_em ?? null,
+      acao: 'Decidir',
+      destino: { tela: 'pedidos', segmentos: [p.id] },
+      ...(filhas.length > 0 ? { filhas } : {}),
+    };
+  });
+}
+
+/**
  * Sessões que esperam uma pessoa (RF-03 da revisão final): a mesma fila "Aguardando intervenção" de Personas — persona
  * com conta e sessão em login, desafio ou conta errada. A decisão continua lá (assumir o controle do aparelho e
  * resolver na tela); a caixa só leva até ela.
@@ -166,6 +196,8 @@ export interface EntradasDaCaixa {
   /** Personas (`GET /personas`, a mesma leitura da tela Personas): delas saem as sessões que pedem pessoa. */
   personas?: readonly PersonaDTO[] | null;
   nomeDaPersona?: (id: string | null) => string | null;
+  /** Pedidos lidos de `GET /api/pedidos?estado=aguardando_pessoa`; os que não estão nesse estado são ignorados. */
+  pedidos?: readonly PedidoView[] | null;
 }
 
 /**
@@ -177,7 +209,9 @@ export interface EntradasDaCaixa {
  * 2. Persona: cada aprovação de texto com status `pending` (a decidida, aprovada ou recusada, não conta);
  * 3. Execução: cada execução com status `needs_input`, por mais antiga que seja (a de um objetivo `waiting_user`
  *    dentro de uma execução que já terminou não conta: está em Execuções, no chip "Pede atenção");
- * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio ou conta errada (`PRECISA_DE_PESSOA`).
+ * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio ou conta errada (`PRECISA_DE_PESSOA`);
+ * 5. Pedido (emenda à ADR-062, 28.9): cada pedido em `aguardando_pessoa`. A aprovação e a execução `needs_input` das
+ *    execuções DELE saem das origens 2 e 3 e aparecem agrupadas sob o pedido (`filhas`): o item do pedido é o que conta.
  *
  * O total é `montarPendencias(...).length`. O selo do menu, o chip "aguardando você" do topo, o aviso do semáforo e as
  * linhas da caixa leem `usePendencias()`, que chama esta função: não há segunda conta em lugar nenhum. Quem somar por
@@ -187,11 +221,32 @@ export interface EntradasDaCaixa {
  * A lista e o total do menu: a mesma conta. Mais antigas primeiro (é o que está esperando há mais tempo).
  */
 export function montarPendencias(e: EntradasDaCaixa): Pendencia[] {
+  const aguardando = (e.pedidos ?? []).filter((p) => p.estado === 'aguardando_pessoa');
+  const idsDosPedidos = new Set(aguardando.map((p) => p.id));
+  const pedidoDaExecucao = new Map<string, string>();
+  for (const r of e.execucoes) if (r.pedido_id && idsDosPedidos.has(r.pedido_id)) pedidoDaExecucao.set(r.id, r.pedido_id);
+  const nomeDaPersona = e.nomeDaPersona ?? (() => null);
+  // O que já tem dono (um pedido aguardando) sai da origem de sempre e vira filha dele: não conta duas vezes.
+  const filhasPorPedido = new Map<string, Pendencia[]>();
+  const filha = (pedidoId: string, p: Pendencia) => filhasPorPedido.set(pedidoId, [...(filhasPorPedido.get(pedidoId) ?? []), p]);
+  const aprovacoes = (e.aprovacoes ?? []).filter((a) => {
+    const dono = a.run_id ? pedidoDaExecucao.get(a.run_id) : undefined;
+    if (!dono) return true;
+    for (const p of pendenciasDeAprovacoes([a], nomeDaPersona)) filha(dono, p);
+    return false;
+  });
+  const execucoes = e.execucoes.filter((r) => {
+    const dono = pedidoDaExecucao.get(r.id);
+    if (!dono) return true;
+    for (const p of pendenciasDeExecucoes([r])) filha(dono, p);
+    return false;
+  });
   const todas = [
     ...pendenciasDeAprendizado(e.aprendizado ?? []),
-    ...pendenciasDeAprovacoes(e.aprovacoes ?? [], e.nomeDaPersona ?? (() => null)),
-    ...pendenciasDeExecucoes(e.execucoes),
+    ...pendenciasDeAprovacoes(aprovacoes, nomeDaPersona),
+    ...pendenciasDeExecucoes(execucoes),
     ...pendenciasDeSessoes(e.personas ?? []),
+    ...pendenciasDePedidos(aguardando, filhasPorPedido),
   ];
   return todas.sort((a, b) => tempo(a.desde) - tempo(b.desde) || a.chave.localeCompare(b.chave));
 }

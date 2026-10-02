@@ -1085,6 +1085,11 @@ class PedidosCfg(BaseModel):
     #: Atraso exponencial da nova tentativa: `base * 2**(n-1)`, no máximo `retentativa_teto_s`. Chega até `tick_s` tarde.
     retentativa_base_s: float = Field(60.0, ge=1.0, le=86_400.0)
     retentativa_teto_s: float = Field(900.0, ge=1.0, le=86_400.0)
+    #: Piso de frequência da criação e da edição (28.9, adendo v0.45, decisão do dono 02/10): o menor intervalo entre
+    #: ocorrências por teto de autonomia. `observar` e `preparar` leem e preparam (15 min); `agir` tem efeito externo e
+    #: custo por ocorrência (1 h). Abaixo, a criação recusa com `frequencia_abaixo_do_piso`.
+    piso_observar_s: int = Field(900, ge=60, le=86_400)
+    piso_agir_s: int = Field(3600, ge=60, le=86_400)
 
 
 class AppConfigFile(BaseModel):
