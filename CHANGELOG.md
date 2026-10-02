@@ -81,6 +81,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — W8: protocolo da validação real com as condições do servidor WireGuard (A3, `not_run`)
+
+- **`scripts/diag-w8-mitigacao.py`**: antes de cada reinício do servidor WireGuard (par do android-09 entrando e saindo) espera a **janela ociosa** de 02/03/05/06 (sem execução nem comando aberto; nunca interrompe), observa o reinício e mede a **reconexão** (handshake novo dos pares online em ≤ 120 s; senão para, tira o par e relata); lê o firewall (`firewall-check`, nunca cria regra: sem `liberado` o resultado é BLOQUEADO com os comandos do dono); confere a **pausa do reparo no health antes de cada boot**; o reinício do 09 pelo rollback fica fora dos 6 boots e é registrado à parte. Prova `simulated`: `scripts/tests/test_diag_w8_mitigacao.py` (29 testes). Nada foi executado no parque (`not_run`).
+- `docs/handoffs/w8-boot-recovery.md` §17.5: autorização do dono (02/10, via sessão orquestradora), condições e sequência registradas antes do 1º boot.
+
 ## 2026-10-02 — IA: cache de prompt do verificador, prova simulada e medição do prefixo (J9, achado #100)
 
 - O ponto de cache (`cache_control`) já era pedido no verificador e o custo já lia `cache_read`/`cache_creation`; faltava prova e a conta. Três testes novos em `backend/tests/test_anthropic_provider.py` (`simulated`): a requisição do verificador carrega o marcador só no prefixo estável, o uso devolve os campos e `ai_calls` guarda a entrada não cacheada separada do cache lido/gravado. A medição explica as 49 verificações de 25/09 com `cache_read=0`: o prefixo do verificador (≈560 tokens) está abaixo do mínimo do Haiku 4.5 (4096) e do Sonnet 5 (1024), então a API ignora o ponto. Nenhuma mudança de código de produção; `cache_read>0` real: `not_run` (chamada paga, e não há prefixo para cachear). `docs/ia.md` §5 atualizado.
