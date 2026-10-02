@@ -11,7 +11,8 @@ Onde o fato não foi conferido no código, está escrito **a conferir**.
 
 Números do central usados no desenho (`real`, leitura, 02/10):
 - 0 lições e 0 exposições, apesar de 29 contrastes falha→sucesso em 14 dias: em `shadow` a lição não grava exposição
-  (`modules/learning/application/licoes.py:171-179`). Por que nenhum contraste virou item: **a conferir**.
+  (`modules/learning/application/licoes.py:171-179`). Causa medida: o digest que minera lições só existe desde 29/09 (migração 055) e não há backfill; os 12 contrastes aprováveis são anteriores.
+  Decisão do dono: backfill único e idempotente, sem IA (30.22).
 - ~10 candidatos novos por dia (pico 45); 29 de 31 transições foram do sistema; fila do dono: 1 pendente + 39 "a revisar".
 - 23 receitas com ação `commit` (4 Instagram, 18 QAMessenger, 1 Outlook). A do Outlook (receita 100) é anomalia: veio do envio do cenário C1
   de 01/10, no planejamento livre, antes do catálogo. Desde o 12.3 a porta de política recusa efeito no Outlook sem ação do catálogo, e o
@@ -261,8 +262,8 @@ fatos (dossiê determinístico)  →  interpretação (IA, saída estruturada)  
 ```
 
 A IA nunca transiciona. O que ela devolve é um **parecer** gravado em `learning_reviews`. A publicação e o rebaixamento automáticos continuam
-sendo só os das regras determinísticas de hoje. O parecer é opinião ao lado delas (classe A) ou recomendação para o dono aprovar em lote
-(classe B). Quem transiciona é sempre o `ciclo.py`: pelo sistema, nas regras atuais, ou pela pessoa, com `review_id` registrando o aceite ou
+sendo só os das regras determinísticas de hoje. A faixa A não recebe parecer. Na faixa B, o parecer é recomendação para o dono aprovar em lote;
+na C, apoio à decisão item a item. Quem transiciona é sempre o `ciclo.py`: pelo sistema, nas regras atuais, ou pela pessoa, com `review_id` registrando o aceite ou
 o override. A tabela do `ciclo.py` não ganha linha.
 
 ### 8.2 Dossiê (entrada da IA; só fatos, montado sem IA)
@@ -304,9 +305,9 @@ a etapa de efeito do fluxo). A política coincide com o D1 e o estreita; não o 
 
 | Classe | Como se reconhece | Quem decide | Papel da IA |
 |---|---|---|---|
-| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | só opina: o parecer aparece no detalhe e nas métricas, sem mover nada |
+| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **nenhum: a faixa A nunca gasta IA** (decisão do orçamento, §8.7); o dossiê determinístico basta |
 | **B: efeito médio, ou `commit` em app sem catálogo** | capability com `risk=medium`; ou receita/fluxo com `commit` em app sem `catalogo.yaml` (com catálogo e sem ação de efeito para a etapa, a regra é a de obsolescência do §9.2, que rebaixa) | o dono, **em lote** | recomenda (aprovar, observar, pedir evidência, desativar); o dono aceita um lote de pareceres com um gesto (`by = pessoa`, um `review_id` por item) ou recusa com motivo (override) |
-| **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | só monta o dossiê (determinístico): nenhuma recomendação vira gesto em lote. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
+| **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
 
 Fica fora das três: item com `human_origin=1` e sem efeito (lição de nota, preferência). O D1 já o entrega ao dono. Tratamento proposto:
 como a classe B, recomendação da IA e aprovação em lote (D-2 do §15).
@@ -343,39 +344,44 @@ Gatilhos (vocabulário fechado): `nova_pendencia_do_dono`, `a_revisar`, `degrada
 `grupo_de_falha_acima_do_minimo`, `pedido_da_pessoa`.
 
 Filtros, em ordem: modo do curador ≠ `off` → `dossie_hash` mudou desde a última revisão → item fora do cooldown (`cooldown_h`) →
-cabe no orçamento proporcional (§8.7) → ordem de prioridade do §8.7. A classe C passa pelos filtros, mas a IA não é chamada: o dossiê é
-gravado sem parecer. Volume medido: ~10 candidatos por dia (pico 45); a ~US$ 0,005 (Haiku) a ~US$ 0,02 (Opus 5.5) por revisão.
+cabe no orçamento proporcional (§8.7) → ordem de prioridade do §8.7. A faixa A não passa daqui: nunca vai à IA. Volume medido: ~10 candidatos por dia (pico 45); a ~US$ 0,005 (Haiku) a ~US$ 0,02 (Opus 5.5) por revisão.
 
 Execução: um laço periódico próprio (`aprendizado.curador.intervalo_s`) sob a **trava de líder** do ADR-064, separado do
 `PassoDeCuradoria` (cuja porta promete "nunca chama IA" e continua assim).
 
-### 8.7 Orçamento proporcional (decisão do dono: sem teto fixo em US$)
+### 8.7 Orçamento proporcional (DECISÃO DO DONO, 02/10)
 
-O orçamento da curadoria acompanha o uso da operação, no espírito do teto proporcional do 17.12. Todos os parâmetros ficam em
-`aprendizado.curador.orcamento`; **os valores são do orquestrador/dono**. Nenhum é um valor absoluto em dinheiro.
+O dono rejeitou teto fixo em US$ e aprovou orçamento **proporcional ao uso**, no espírito do teto proporcional do 17.12.
+Parâmetros em `aprendizado.curador.orcamento`.
 
-Definições, numa janela móvel de `W` dias (W ≤ `retencao.diario_dias`):
-- `G_W` = gasto de IA da operação na janela, **sem a curadoria**: soma de `learning_daily.usd`. A régua diária é durável. `ai_calls` é
-  purgada e serve só para o dia corrente.
-- `N_W` = itens elegíveis na janela (passaram nos filtros determinísticos).
-- `ĉ` = custo médio de uma revisão: média de `learning_reviews.usd` das últimas `n_ref` revisões válidas. Sem histórico, vale a estimativa
-  por tokens do dossiê × preço do modelo (`ai.prices`).
-- `C_W` = custo já gasto pela curadoria na janela (`learning_reviews.usd`).
+**Fórmula**: `B_W = min( α · G_W , k · N_W · c̄ )`, janela móvel `W = 7 dias`, com `α = 10%` e `k = 1,5`.
+- `G_W` = gasto de IA da operação na janela, **sem a curadoria**: soma de `learning_daily.usd`. A régua diária é durável. `ai_calls` é purgada.
+- `N_W` = itens que chegam à curadoria depois dos filtros determinísticos (§8.6).
+- `c̄` = custo médio **medido** por revisão: média de `learning_reviews.usd` na janela. Sem histórico, vale a estimativa por tokens do
+  dossiê × `ai.prices`.
+- `C_W` = custo já gasto pela curadoria na janela. Pode revisar se `C_W + custo_estimado ≤ B_W`.
+- **Custo máximo por revisão**: `c_max = 4 × mediana(c_rev)` da janela. Acima disso, o dossiê é cortado (menos evidências) ou cai no modelo
+  mais barato do perfil. Se ainda passar, a revisão é recusada (`validade = recusada:custo`).
+- Com `G_W = 0` (operação parada), `B_W = 0`: sem operação, não há curadoria paga.
 
-Regras:
-1. **Orçamento da janela**: `B_W = min( f · G_W , k · ĉ · N_W )`. `f` é a fração do gasto da operação. `k ≤ 1` é a fração do volume real
-   que se aceita revisar. Com `G_W = 0` (operação parada), `B_W = 0`: sem operação, não há curadoria paga.
-2. **Pode revisar** se `C_W + ĉ ≤ B_W`.
-3. **Custo máximo por revisão (relativo)**: `custo_estimado ≤ m · ĉ`. Acima disso, o dossiê é cortado (menos evidências) ou cai para o modelo
-   mais barato do perfil. Se ainda passar, a revisão é recusada (`validade = recusada:custo`).
-4. **Salvaguarda contra disparo**: revisões na última hora ≤ `r · média horária das revisões em W`, com um piso de `p` revisões por hora
-   (contagem, não dinheiro) para a curadoria poder começar. Ao passar do limite, o laço para até a próxima janela e gera aviso
-   (evento + Problem em `/api/health`, como os tetos de IA).
-5. **Prioridade quando o orçamento acaba**: (1) conflito; (2) classe B e item `human_origin`; (3) grupos de falha acima do mínimo, por custo;
-   (4) `degradando`; (5) `obsoleto_provavel`; (6) parecer de classe A. A classe C não consome orçamento (não chama IA).
-6. Aviso a 80% de `B_W`, como os tetos de IA atuais.
+Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ ≈ US$ 0,008` → `α·G = 0,96`, `k·N·c̄ = 0,85` →
+**`B = US$ 0,85 por 7 dias`**.
 
-Parâmetros: `W`, `f`, `k`, `m`, `r`, `p`, `n_ref`, `cooldown_h`, `max_evidencias`, modelo/perfil.
+**Prioridade quando o orçamento acaba** (decisão do dono):
+1. conflito ou evidência contra em item publicado;
+2. alto risco (faixa C);
+3. falha recorrente, ordenada por US$ perdido + intervenções;
+4. risco médio (faixa B);
+5. baixo risco (faixa A): **nunca gasta IA**.
+
+**Salvaguardas relativas** (decisão do dono):
+- 1 revisão por (item, `dossie_hash`);
+- gasto da última hora ≤ `B_W / 7 / 2`;
+- entrada do dia > 3 × a média diária da janela → só as prioridades 1–2, mais alerta (evento + Problem em `/api/health`);
+- sem nova tentativa em laço: uma revisão recusada ou inválida não se repete até o dossiê mudar;
+- a sobra (o que não coube) vai para a fila humana sem parecer, ou para a próxima janela.
+
+Aviso a 80% de `B_W`, como os tetos de IA atuais.
 
 ### 8.8 Modos e abstração de provedor
 
@@ -404,6 +410,35 @@ com padrão = o modo global. Uma função só, `modo_efetivo(tipo, pacote)`, usa
 efetivo do pacote do item), pelo fornecedor de lições, pelo fornecedor de telas e pela camada de uso do §3.3. O pacote é dado de instalação
 (config), não código: nenhuma regra por app no Python. Item 30.20.
 
+### 8.11 Evento de domínio: conhecimento aguardando a pessoa
+
+Quando um item entra nas faixas **B** ou **C** da política (§8.4) e passa a esperar decisão humana, e quando sai dessa espera, o Livro
+publica no barramento o evento **`learning.needs_person`**, no padrão de `approval.pending` e `session.needs_person`
+([`api-contract.md`](../api-contract.md), tabela de eventos). Persistido (como os dois).
+
+| Campo | Conteúdo |
+|---|---|
+| `kind`, `ref` | o item (`receita`, `100`) |
+| `app` | pacote |
+| `faixa` | `B` ou `C` |
+| `aguardando` | `true` ao entrar na espera; `false` ao sair (decidido, rebaixado pelo sistema, substituído) |
+| `motivo` | vocabulário fechado e curto: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; na saída, `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
+| `href` | link interno do painel para o detalhe (`#/aprendizado?item=<kind>:<ref>`) |
+| `desde` | quando entrou na espera |
+
+**Nunca** vai no payload: conteúdo da receita ou do fluxo, seletor, texto digitado ou parâmetro, texto de persona, nota, conclusão da IA.
+Quem quer o detalhe abre o `href`, com a autenticação do painel.
+
+**Quem publica**: o serviço do Livro (`modules/learning/application/servico.py`), por uma porta de eventos do próprio módulo (o mesmo
+`EventSink` que `session_rules.py` recebe), em três pontos: (1) a transição ou o nascimento que deixa o item à espera do dono
+(`validated` com `requires_owner`; candidata com texto de pessoa), inclusive quando vem do ouvinte das receitas e fluxos
+(`application/nativos.py`, que já recebe `MudancaDaReceita`); (2) a gravação de um parecer de faixa B (`motivo = parecer_da_ia`); (3) a saída
+da espera, por qualquer transição. Idempotente por (`kind:ref`, `aguardando`): sem mudança, não publica de novo.
+
+**Consumidores, sem acoplamento direto** (assinam o evento, o Livro não os conhece): o aviso fora do painel do 28.11 (Telegram, frente Jev, que
+hoje escuta `approval.pending`, `run.updated` em `needs_input`, `session.needs_person` e `pedido.aviso`) e a caixa de Pendências (ADR-062).
+Item 30.21. A linha entra na tabela de eventos do `api-contract.md` no adendo da implementação.
+
 ---
 
 ## 9. Falhas → diagnóstico → proposta → prova; e obsolescência
@@ -425,7 +460,7 @@ Hoje: o grupo (app × capability × tipo × tela) tem prova da correção medida
    `proposta` (enum: `corrigir_receita`, `nova_versao_da_receita`, `rebaixar`, `nova_candidata`, `corrigir_fluxo`, `coletar_tela`,
    `atualizar_catalogo`, `item_tecnico`, `nova_execucao`, `aguardar`), `evidencia_necessaria`, `como_validar`.
 4. A proposta vira linha `learning_backlog` de categoria `proposta` (tipos novos em `TipoDeProposta`, fechados), com `parent_id` = o grupo
-   de falha e a revisão em `learning_reviews`. A IA **não** altera conhecimento nem código: `rebaixar` segue a política do §8.4; o resto
+   de falha e a revisão em `learning_reviews`. A IA **não** altera conhecimento nem código: `rebaixar` da proposta é recomendação; só rebaixam sozinhos o gatilho determinístico novo (`catalogo_sem_efeito`, §9.2) e os de hoje; o resto é do dono.
    é pessoa ou sessão de desenvolvimento.
 5. **Prova** = a régua que já existe (`prova_minimo`, `prova_fator`, reincidência). `fixed` continua medido, nunca declarado.
 
@@ -525,7 +560,7 @@ Progressive disclosure: a lista mostra 1 linha por item (título legível, app �
 
 ---
 
-## 12. Pré-requisito de instrumentação
+## 12. Instrumentação: o que já existe e as três lacunas
 
 A atribuição de app por etapa **já existe** no aprendizado. `steps.app_id` NULL é desenho: a etapa herda o app do plano
 (`planning/parsing.py:204-207`). `app_da_etapa` (`taskqueue/projecao.py:72`) resolve o app em `learning_daily`, falhas, backlog, lições e
@@ -569,8 +604,10 @@ a partir de `modules/learning/infrastructure/`). Testes de backend no harness (`
 | 30.18 | Prova da Fase H: Instagram, QAMessenger e Outlook (só leitura, android-01 primeiro) na visão nova, curador em `shadow` com orçamento proporcional | M | `docs/relatorio-validacao.md` | Aprendizado (+ Android para a execução do Outlook) | deploy de 30.1-30.17; D-1, D-3 | `real` (data, máquina, commit, ids); sem efeito em conta de terceiros |
 | 30.19 | Docs: ADR-067 em `decisoes.md`, `docs/dominios/aprendizado.md`, adendo do contrato, CHANGELOG, estado pelo mecanismo | P | `docs/*` | Aprendizado | depois do PR do índice de ADRs | `python scripts/docs-check.py` |
 | 30.20 | Modo por app para lições e telas (§8.10): `por_app` com padrão = global, `modo_efetivo(tipo, pacote)` na coleta, no D1, nos fornecedores e na camada de uso | M | `config.py` (só `LearningCfg`), `config/config.example.yaml`, `application/licoes.py`, `application/telas.py`, `infrastructure/ligar_telas.py`, `ligar_licoes.py`, `domain/camada.py`, testes | Aprendizado | — (ligar de fato: lições no QAMessenger e telas no Outlook, depois da leitura real no android-01) | `simulated` (dois pacotes, modos diferentes; sem override = global); ligar no central = `real` |
+| 30.21 | Evento `learning.needs_person` (§8.11): porta de eventos do Livro, publicação na entrada e na saída da espera (faixas B e C), payload sem conteúdo, idempotente; linha na tabela de eventos | P | `application/ports.py`, `application/servico.py`, `application/nativos.py`, `infrastructure/montagem.py`, `docs/api-contract.md`, testes | Aprendizado | — (consumidores: 28.11 da Jev e Pendências, ADR-062, assinam depois) | `simulated` (barramento falso: entra, sai, não repete; o payload não tem campo de conteúdo) |
+| 30.22 | Backfill único e idempotente do digest (lições e demais mineradores) para execuções reais anteriores à 055, sem IA; só `runs.simulated=0`; reexecutar não duplica (chaves únicas e CAS dos mineradores) | P | `application/` (comando de manutenção), `infrastructure/montagem.py`, testes | Aprendizado | — | `simulated` (rodar 2× = mesmo resultado); `real` = contagem de candidatas antes e depois no central |
 
-Ordem sugerida: 30.1, 30.2 e 30.5 em paralelo (não compartilham arquivo, exceto `fontes.py` entre 30.1 e 30.2: em sequência). Depois 30.3 → (30.4, 30.6,
+Ordem sugerida: 30.20 e 30.21 são independentes e podem ir cedo (a decisão do dono já existe). 30.1, 30.2 e 30.5 em paralelo (não compartilham arquivo, exceto `fontes.py` entre 30.1 e 30.2: em sequência). Depois 30.3 → (30.4, 30.6,
 30.7) → 30.10. Migração (30.9) cedo, porque depende do número. Front (30.15, 30.16) atrás dos contratos. 30.11 → 30.12/30.13/30.14 → 30.17 → 30.18.
 Os IDs entram num bloco de `.claude/plano-100.json` e no `docs/plano-100.md` pelo mecanismo, fora deste PR.
 
@@ -593,15 +630,19 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
    chave + `version`, `absorvida:`, evidência e `content_hash`. Sem tabela de arestas.
 4. **Ações permitidas calculadas no backend.** O front não espelha `ciclo.py`.
 5. **Curador por IA como intérprete.** Dossiê determinístico → parecer estruturado com citações validadas → decisão pela política de risco,
-   com a decisão final no `ciclo.py`. Modos `off` (fábrica) / `shadow` / `on`; orçamento proporcional ao gasto de IA da operação, sem teto fixo
-   em US$ (§8.7); laço sob a trava de líder; porta própria (independente de `context_retrieval`). Política de risco aprovada pelo dono
-   (vale a mais restritiva entre catálogo e `commit`): A, navegação e leitura, publica pela regra determinística atual e a IA só opina;
-   B, efeito médio ou `commit` em app sem catálogo, a IA recomenda e o dono aprova em lote; C, alto risco, sessão, autenticação, envio,
-   publicação ou exclusão, sempre o dono, com a IA só montando o dossiê. A IA nunca transiciona.
+   com a decisão final no `ciclo.py`. A IA nunca transiciona. Modos `off` (fábrica) / `shadow` / `on`; laço sob a trava de líder; porta própria
+   (independente de `context_retrieval`).
+   - **Política de risco (decisão do dono, 02/10)**, valendo a mais restritiva entre catálogo e `commit`: (a) navegação e leitura publica pela
+     regra determinística atual e nunca gasta IA; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
+     (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
+   - **Orçamento proporcional (decisão do dono, 02/10)**: `B_W = min(α·G_W, k·N_W·c̄)`, α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana(c_rev)`;
+     prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.
 6. **Trilha própria `learning_reviews`**, nunca purgada, com modelo, template, custo, decisão, override e resultado posterior.
 7. **Falha → proposta** pelo backlog existente: conhecimento envolvido e causa provável determinísticos; IA só no indeterminado; prova da correção medida como hoje.
 8. **Modo por app** para lições e telas (override por pacote, padrão = global).
 9. **Rebaixamento determinístico** de receita ou fluxo com efeito num app cujo catálogo atual não tem ação de efeito para a etapa.
+10. **Evento `learning.needs_person`** na entrada e na saída da espera humana (faixas B e C), sem conteúdo, para os consumidores de aviso e Pendências.
+11. **Backfill único** do digest para execuções reais anteriores à 055 (decisão do dono, sem IA).
 
 **Alternativas recusadas.** Copiar o declarado para `learning_items` (segunda verdade). Nota de saúde 0–100 (sem origem explicável).
 Grafo de conhecimento (custo sem uso medido). IA aprovando direto (perde o D1 e a auditoria). Reaproveitar `ia_resumos_por_dia` ou `PassoDeCuradoria`
@@ -615,15 +656,15 @@ O painel de Aprendizado é refeito sobre contratos novos. A atribuição de app 
 
 ## 15. Decisões do dono
 
-Já decididas (02/10), incorporadas acima: política de risco A/B/C (§8.4); orçamento proporcional, sem teto fixo em US$ (§8.7); lições e telas
+Já decididas (02/10), incorporadas acima: política de risco A/B/C, com a mais restritiva entre catálogo e `commit` (§8.4); orçamento
+proporcional com α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana`, prioridades e salvaguardas (§8.7); backfill do digest das lições (30.22); lições e telas
 por app (§8.10): lições ainda não ligam e, depois, primeiro no QAMessenger; telas `on` primeiro no Outlook, depois da leitura real no android-01.
 
 Em aberto:
 
 | # | Decisão | Recomendação |
 |---|---|---|
-| D-1 | Valores dos parâmetros do orçamento (`W`, `f`, `k`, `m`, `r`, `p`, `n_ref`) e o modelo/perfil do curador | o orquestrador preenche; modelo barato como padrão, o mais caro só em `pedido_da_pessoa` |
+| D-1 | Modelo/perfil do curador | modelo barato como padrão (c̄ medido ≈ US$ 0,008); o mais caro só em `pedido_da_pessoa`, dentro de `c_max` |
 | D-2 | Item `human_origin` sem efeito (lição de nota, preferência): tratar como a classe B (recomendação e aprovação em lote)? | sim; continua sendo gesto do dono, só em lote |
 | D-3 | Critério para passar o curador de `shadow` a `on` | §8.9: ≥ 30 revisões válidas, concordância ≥ 90% na classe B |
-| D-4 | Por que 29 contrastes não viraram lição no central | investigar antes de ligar lições no QAMessenger (a conferir em `application/licoes.py`) |
 | D-5 | Limiares iniciais da saúde (§5.3) | os propostos, ajustados após uma semana de leitura real |
