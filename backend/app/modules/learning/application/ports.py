@@ -228,6 +228,9 @@ class RespostaDeRevisao:
     modelo: str
     usd: float | None                       # o hub mede (30.12); aqui NUNCA se calcula custo à parte
     ai_call_id: int | None
+    # Se ESTA resposta veio de provedor simulado. `None` = o adaptador não diz, e vale o `simulado` dele (o do hub o
+    # atualiza por resposta; com revisões concorrentes, só este campo é seguro).
+    simulado: bool | None = None
 
 
 class RecusaDoProvedor(Exception):
@@ -265,7 +268,8 @@ class AjustesDoCurador:
 
 @dataclass(frozen=True, slots=True)
 class NovaRevisao:
-    """Uma linha de `learning_reviews` (069). Sem `ai_call_id`: a 069 não tem a coluna (30.12)."""
+    """Uma linha de `learning_reviews` (069 + `ai_call_id` da 075). `ai_call_id` só vem de chamada MEDIDA pelo hub; o
+    `usd` dela ainda não é gravado (a pendência da rubrica em `design/hub-de-ia-fora-de-execucao.md`)."""
 
     item_ref: str
     item_kind: str
@@ -282,6 +286,7 @@ class NovaRevisao:
     saida: JsonObject | None
     classe_de_risco: str | None
     politica: str | None
+    ai_call_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

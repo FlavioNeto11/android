@@ -171,8 +171,9 @@ class CuradorPorIA:
                     # O único texto livre: com cara de credencial, não entra (o parecer continua válido sem ela).
                     parecer = replace(parecer, conclusao=None)
                 saida = parecer.como_dados()
+            simulado = self._curador.simulado if resposta.simulado is None else resposta.simulado
             if not self._gravar(x, validacao.validade, saida, agora, provedor=self._curador.provedor,
-                                modelo=resposta.modelo, simulado=self._curador.simulado):
+                                modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id):
                 continue                                # outra réplica gravou o mesmo (item, dossiê) primeiro
             if validacao.parecer is None:
                 invalidas.append(ref)
@@ -180,7 +181,7 @@ class CuradorPorIA:
             revisadas.append(ref)
             # Parecer do adaptador SIMULADO nunca vira aviso ao dono: o evento chega ao Telegram (28.14) sem marca de
             # simulado, e um parecer falso lá é pior que nenhum. Fica só o registro (`learning_reviews.simulated=1`).
-            if x.dossie.classe in (ClasseDeRisco.B, ClasseDeRisco.C) and not self._curador.simulado:
+            if x.dossie.classe in (ClasseDeRisco.B, ClasseDeRisco.C) and not simulado:
                 avisos += int(self._livro.avisar_parecer(x.entrada, Faixa(x.dossie.classe.value)))
         if cortados:
             log.info("aprendizado: curador deixou %d item(ns) para depois: %s", len(cortados),
@@ -291,14 +292,15 @@ class CuradorPorIA:
                                opcoes=opcoes, modelo_sugerido="escalada" if d.classe is ClasseDeRisco.C else "triagem")
 
     def _gravar(self, x: _Elegivel, validade: str, saida: dict[str, object] | None, agora: datetime, *,
-                provedor: str, modelo: str, simulado: bool, guardar_dossie: bool = True) -> bool:
+                provedor: str, modelo: str, simulado: bool, guardar_dossie: bool = True,
+                ai_call_id: int | None = None) -> bool:
         d = x.dossie
         nova = NovaRevisao(item_ref=x.entrada.trail_ref, item_kind=x.entrada.kind.value, scope_app=x.entrada.app or "",
                            gatilho=x.gatilho.value, dossie_hash=d.dossie_hash,
                            dossie=d.como_dados() if guardar_dossie else {}, template_id=TEMPLATE_ID,
                            template_versao=TEMPLATE_VERSAO, provedor=provedor, modelo=modelo, simulated=simulado,
                            validade=validade, saida=saida, classe_de_risco=d.classe.value,
-                           politica=d.risco.politica.value)
+                           politica=d.risco.politica.value, ai_call_id=ai_call_id)
         return self._registro.gravar(nova, agora) is not None
 
 

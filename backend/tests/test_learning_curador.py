@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -298,6 +298,53 @@ def test_usd_nao_medido_fica_zero_e_nao_entra_como_custo_medido(db: Database) ->
     j = RegistroDeRevisoesSql(db).janela(m.agora, 7)
     assert j.custos_medidos == () and j.gasto_medido == 0 and len(j.tamanhos_sem_medida) == 1
     assert j.gasto_da_operacao == pytest.approx(10.0)
+
+
+class CuradorMedido(CuradorSimulado):
+    """O adaptador do hub em teste: a resposta traz `usd`/`ai_call_id` lidos de `ai_calls` e diz se ELA é simulada."""
+
+    def __init__(self, *, usd: float | None, ai_call_id: int | None, simulado_da_resposta: bool | None) -> None:
+        super().__init__()
+        self._medida = (usd, ai_call_id, simulado_da_resposta)
+
+    def revisar(self, pedido):  # noqa: ANN001, ANN201 - mesma assinatura do simulado
+        usd, ai_call_id, simulado = self._medida
+        return replace(super().revisar(pedido), usd=usd, ai_call_id=ai_call_id, simulado=simulado)
+
+
+def test_chamada_medida_pelo_hub_fica_ligada_a_revisao_sem_gravar_o_usd_ainda(db: Database) -> None:
+    """075: a revisão guarda o `ai_call_id` da chamada medida; o `usd` só é gravado depois de unificar o saldo na rubrica
+    (pendência do hub), então segue 0 = não medido e entra pela estimativa. O simulado do adaptador (True) perde para o
+    da RESPOSTA (False): o parecer avisa o dono como o de um provedor real."""
+    m = Mundo(db)
+    m.ia = CuradorMedido(usd=0.0031, ai_call_id=42, simulado_da_resposta=False)
+    m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    r = m.volta()
+    assert r.revisadas == (ref,) and r.avisos == 1
+    [linha] = m.revisoes()
+    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0, 42, 0)
+    j = RegistroDeRevisoesSql(db).janela(m.agora, 7)
+    assert j.custos_medidos == () and len(j.tamanhos_sem_medida) == 1
+
+
+def test_resposta_simulada_nunca_avisa_mesmo_com_adaptador_real(db: Database) -> None:
+    """A resposta que se diz simulada não avisa o dono, mesmo com o adaptador declarando provedor real; sem chamada,
+    nada de `ai_call_id`."""
+    m = Mundo(db)
+    m.ia = CuradorMedido(usd=0.5, ai_call_id=None, simulado_da_resposta=True)
+    m.ia.simulado = False
+    m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    r = m.volta()
+    assert r.revisadas == (ref,) and r.avisos == 0
+    [linha] = m.revisoes()
+    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0, None, 1)
+    assert RegistroDeRevisoesSql(db).janela(m.agora, 7).custos_medidos == ()
 
 
 # ------------------------------------------------------------------ orçamento e prioridade

@@ -590,10 +590,11 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
   `lote_interrompido` ou `erro_do_provedor`; o corte NÃO vira linha (não gasta a chave (item, dossiê)) e fica no resultado e no log.
   Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
   revisado com um dossiê cortado não volta à IA com o inteiro enquanto o estado for o mesmo (confere as variantes antes do pedido).
-- **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0` e não tem `ai_call_id`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0`
-  conta como medida). Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub, mas a `NovaRevisao` ainda não os
-  grava: o NULL e a coluna `ai_call_id` pedem migração própria (a 075 está PRÉ-reservada para a frente Aprendizado), e a gravação do
-  `usd` espera a unificação do saldo na rubrica (`design/hub-de-ia-fora-de-execucao.md`, PENDÊNCIA).
+- **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0` conta como medida).
+  Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub; a 075 grava o `ai_call_id` (a revisão fica ligada à
+  chamada paga), e a gravação do `usd` espera a unificação do saldo na rubrica (`design/hub-de-ia-fora-de-execucao.md`, PENDÊNCIA).
+  A `RespostaDeRevisao.simulado` (opcional) diz se AQUELA resposta foi simulada e vale sobre o `simulado` do adaptador: é ela que
+  decide se o parecer avisa o dono.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
 

@@ -1,11 +1,11 @@
 """`RegistroDeRevisoes` sobre `learning_reviews` (069) e a leitura da janela do orçamento do curador (30.11, §8.7).
 
-Custo: a 069 tem `usd REAL NOT NULL DEFAULT 0` e não tem `ai_call_id`. Até o 30.12 (custo do hub, coluna `origem` em
-`ai_calls`) o curador grava `usd = 0`, que aqui quer dizer NÃO MEDIDO, nunca "de graça": só `usd > 0` entra como
-custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da curadoria pela ESTIMATIVA do tamanho do dossiê
-gravado (a aplicação a calcula; aqui só se lê o tamanho). Nenhum custo é calculado à parte e gravado.
-Quando a 073 existir (31.2: `ai_calls.origem`/`ai_calls.ref`), o `usd` vai sair de `costs.spent_usd(origem='curador')`;
-o NULL que o combinado pede exige migração nova (a 069 declara a coluna NOT NULL), que é do 30.12.
+Custo: a 069 tem `usd REAL NOT NULL DEFAULT 0`; a 075 acrescenta `ai_call_id`, a linha de `ai_calls` que o hub mediu
+(30.12). O `usd` medido NÃO é gravado ainda: a pendência registrada em `design/hub-de-ia-fora-de-execucao.md` (unificar
+o saldo na rubrica ANTES de o curador gravar `learning_reviews.usd`) segura. Então `usd = 0` continua querendo dizer NÃO
+MEDIDO, nunca "de graça": só `usd > 0` entra como custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da
+curadoria pela ESTIMATIVA do tamanho do dossiê gravado (a aplicação a calcula; aqui só se lê o tamanho). O
+`ai_call_id` já liga a revisão à chamada paga, para a auditoria e para a gravação do `usd` depois da unificação.
 
 `G_W` é o gasto de IA da operação: `SUM(learning_daily.usd)` na janela, sem filtro de falha (o relatório filtra
 `failure_kind <> ''` porque fala de falhas; o orçamento fala do gasto todo). A curadoria não entra nele: a régua
@@ -42,13 +42,13 @@ class RegistroDeRevisoesSql:
         cur = self._db.execute(
             "INSERT INTO learning_reviews(id, created_at, item_ref, item_kind, scope_app, gatilho, dossie_hash, dossie,"
             " template_id, template_versao, provedor, modelo, simulated, usd, saida, validade, classe_de_risco,"
-            " politica) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)"
+            " politica, ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (item_ref, dossie_hash) DO NOTHING",
             (rid, to_iso(agora), nova.item_ref, nova.item_kind, nova.scope_app, nova.gatilho, nova.dossie_hash,
              json.dumps(nova.dossie, ensure_ascii=False, sort_keys=True), nova.template_id, nova.template_versao,
-             nova.provedor, nova.modelo, int(nova.simulated),
+             nova.provedor, nova.modelo, int(nova.simulated), 0.0,
              None if nova.saida is None else json.dumps(nova.saida, ensure_ascii=False, sort_keys=True),
-             nova.validade, nova.classe_de_risco, nova.politica))
+             nova.validade, nova.classe_de_risco, nova.politica, nova.ai_call_id))
         return rid if (cur.rowcount or 0) == 1 else None
 
     def janela(self, agora: datetime, dias: int) -> LeituraDaJanela:
