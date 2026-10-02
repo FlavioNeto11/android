@@ -80,7 +80,9 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # Rede por aparelho (25.4): o executável do sing-box aponta para um caminho que NÃO existe. No checkout do
         # ambiente central o binário de verdade está em `data/rede/`, e um teste que escapasse do dublê de processo
         # subiria um servidor WireGuard na 51820 da máquina — em cima do que o parque usa. Assim, escapar é erro.
-        "rede": {"servidor": {"binario": str(tmp / "sing-box-de-teste-inexistente.exe")}},
+        "rede": {"servidor": {"binario": str(tmp / "sing-box-de-teste-inexistente.exe")},
+                 # Nenhum teste abre socket para medir a saída do central (29.20): quem prova isso injeta o medidor.
+                 "sonda": {"medir_central": False, "medir_sem_rede": False}},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
         # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que

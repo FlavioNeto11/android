@@ -2883,6 +2883,18 @@ da esperada leva a `parcial`, com o motivo no `detail`, e emite `network.updated
 profile_id, shared_with?}]` com `saida_dedicada_compartilhada` e `saida_dedicada_trocada_por_compartilhada`; são avisos
 e não recusam (a confirmação por aparelho com conta real não muda).
 
+**Saída pela casa (29.20).** `GET /api/network/devices` devolve, além de `devices`, `central_egress: {ipv4, ipv6,
+measured_at, reason}` (a saída pública medida do próprio central, em cache de memória; família sem medida válida = `null`,
+com o motivo em `reason`, `"ok"` quando as duas valem) e, por aparelho, `egress_home: {ipv4, ipv6, ipv6_outside_profile,
+leaves_by_home, basis, measured, reason}`: `ipv4`/`ipv6` = a última saída medida do aparelho é a do central (IPv6: mesmo
+/64); `ipv6_outside_profile` = IPv6 medido com o perfil de VPN sem IPv6; `leaves_by_home` = resumo. Qualquer campo `null`
+= sem medida de um dos lados (nunca "limpo"). `basis`: `"measured"` (saída medida contra a do central), `"presumed"`
+(aparelho SEM rede pedida e sem medida que o contradiga: `leaves_by_home` é `true`, estado próprio) ou `null` (sem
+veredito). `measured`: `{ipv4, ipv6, measured_at, source: "device_network" | "probe_no_network"}` com os IPs em que o
+veredito se apoia, ou `null`. Aparelho sem rede pedida é medido só nos IPs (sonda de IP do uid 2000) pela varredura, sem
+criar linha em `device_network`. Campos novos, aditivos; sem migração. Configuração, todos com padrão:
+`rede.sonda.medir_central` (true), `central_ttl_s` (600), `central_prazo_s` (6) e `medir_sem_rede` (true).
+
 **Configuração.** `rede.cliente_atividade` (atividade principal do cliente VPN; o Start dela religa o túnel sem reinício, W8:
 só o Start da interface recalcula o `serviceMode` do SFA; vazio desliga), `rede.cliente_tile` (LEGADO: tile do cliente, não é
 mais usado pela convergência) e `rede.espera_tun_s` com padrão 180 (era 60), contados do boot. Compatível para trás: campo

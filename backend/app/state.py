@@ -32,6 +32,7 @@ from .config import Config, LimitsCfg
 from .db import Database, Row, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.rede_convergencia import ConvergenciaDeRede
+from .devices.rede_saida_central import SaidaDoCentral
 from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
 from .events import EventBus
@@ -326,6 +327,8 @@ class AppState:
         # Aparelho de outra máquina (worker da LAN, celular): chega ao servidor pela LAN e depende do firewall (25.7).
         self.rede_servidor.eh_remoto = lambda iid: bool(getattr(self.devices.devices.get(iid), "external", False))
         self.rede_convergencia = ConvergenciaDeRede(self)
+        # A saída do PRÓPRIO central (item 29.20): a referência para acusar o aparelho que sai pela rede da casa.
+        self.rede_saida_central = SaidaDoCentral(lambda: self.cfg.file.rede.sonda)
         self.scheduler.rede_gate = self.rede_convergencia.motivo_de_espera
         # A queda do túnel no meio de um objetivo (item 25.6): relida de dentro do worker, entre as etapas.
         self.scheduler.rede_releitura = self.rede_convergencia.reler_entre_etapas
@@ -2248,6 +2251,8 @@ class AppState:
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
             # O servidor sing-box do central acompanha o banco (sobe com o primeiro aparelho que o pede; ADR-056).
             self._bg.append(asyncio.create_task(self.rede_convergencia.laco(), name="rede-servidor"))
+            # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
+            self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem
