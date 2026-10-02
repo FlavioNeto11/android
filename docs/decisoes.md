@@ -3972,6 +3972,28 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    Os avisos (frase da quarentena, recusa, start confirmado, anúncio e saída do `device.locked_account`, problem do
    `/health`) dizem "conta retirada (bloqueada)" quando o handle é o marcador ou está na lápide
    (`contas_nossas.foi_retirada`); conta VIVA em quarentena continua com o @. Evento antigo fica (opção A).
+11. **Emenda de 02/10/2026 (~23:25Z, decisão do dono; item 29.27): a retirada limpa o app sozinha.** A "ideia de backlog"
+   abaixo deixa de ser só proposta para o caso da conta RETIRADA: quando a conta de um app que DECLARA
+   `limpar_ao_retirar: true` no `app.yaml` (hoje só o âncora do perfil) sai da plataforma, a própria plataforma faz
+   `pm clear` SÓ desse pacote em cada aparelho onde a conta estava logada, com captura de tela antes e depois, nenhum
+   toque na tela (nem na de bloqueio) e nenhum outro pacote; depois resolve a quarentena do aparelho pelo caminho do 29.24
+   (`resolver_conta_travada`), com a nota "limpeza automática autorizada pelo dono em 02/10". O pacote vem do DADO
+   (`AppDefinition.clear_on_account_retire`, lido por `capabilities_of`): o núcleo não conhece app nenhum.
+   (a) **Onde a conta estava logada:** capturado em `SocialService.retirar_conta_bloqueada` ANTES da transação (que
+   mascara o @ do marcador e apaga sessão e vínculo), juntando os marcadores abertos do @ da conta, o vínculo ativo que
+   serve ao app dela e a sessão com estado de conta logada (`session_ready`, desafio, conta errada, intervenção). Vale
+   para o gatilho automático e para a rota manual `retire`.
+   (b) **Canal:** o comando `session.logout` (o `pm clear` do "sair da conta"), aberto por `comando_no_trabalho` dentro de
+   `run_device_job` (exclusividade do aparelho), por `Adb.clear_data`, que serve aparelho local e de worker remoto (o
+   túnel é o transporte). Aparelho hibernado ou parado é acordado com `confirm_locked_account` dado pelo SISTEMA (só
+   para acordar) e devolvido ao estado de antes ao fim. Tarefa de fundo, um aparelho por vez (`commands/limpeza_ao_retirar.py`).
+   (c) **Falha:** em qualquer passo a quarentena segue aberta, sai o evento `device.account_cleanup` em erro (o aviso de
+   atenção) e nada se repete: uma tentativa por retirada. A captura de antes que falha impede o `pm clear` (não se apaga o
+   que não ficou provado); a de depois que falha deixa a quarentena aberta.
+   (d) **Idempotente e sem retroativo:** não repete se uma pessoa já resolveu o marcador (a tarefa confere antes) nem se a
+   retirada não valeu; nada roda na subida. Retirada anterior ao deploy segue pela rota manual do 29.24, decisão de pessoa.
+   (e) O evento e o log não carregam o @ (só ids, o pacote e o aparelho). As capturas vão ao armazém de evidências sob
+   `limpeza-de-conta/<aparelho>/`, fora da tabela `evidence` (que exige execução) e sem prazo de retenção próprio.
 
 **Dívidas registradas.**
 
@@ -3979,7 +4001,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
   conta não passa por ele e nada muda ali; é item separado.
 - Aplicar a regra às cinco contas `blocked` já existentes é operação pós-deploy (rota `retire`), não migração.
 - Os ids de conta e o @ continuam nas provas antigas (opção A); apagá-los (opção B) foi recusado pelo dono.
-- **Ideia de backlog (não implementada; depois do 12.4):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática), que também resolveria o marcador de quarentena do aparelho.
+- **Ideia de backlog (SUPERADA pela emenda 11, 29.27, para a conta retirada de app que declara `limpar_ao_retirar`):** "limpar o app da conta retirada" (`pm clear` por aparelho) era proposta com confirmação do dono, nunca automática; o dono autorizou a regra automática em 02/10. Fora dela (app que não declara, ou retirada anterior ao deploy) segue a decisão de pessoa.
 
 **Consequências.** Migração 071. Persona sem conta já era roteável (`resolver_alvos` não exige conta quando o app do
 comando não usa conta); precisa de vínculo de aparelho para um app sem conta. Prova `simulated`:

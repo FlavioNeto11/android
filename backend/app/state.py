@@ -17,6 +17,7 @@ from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .automation.hierarchy import SUBTIPO_CONTA_TRAVADA
 from .commands import despacho
+from .commands.limpeza_ao_retirar import LimpezaAoRetirar
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
 from .commands.states import COMMAND_TERMINAL
@@ -333,6 +334,10 @@ class AppState:
         # O rastro textual da conta no Livro (o @ e o id em texto) sai na MESMA transação da retirada (contrato combinado
         # com o Aprendizado, 29.23): uma falha ali desfaz a retirada inteira, nada pela metade.
         self.social.limpezas_ao_retirar.append(esquecer_conta)
+        # 29.27 (emenda do ADR-068): conta retirada de app que declara `limpar_ao_retirar` leva os dados do app embora dos
+        # aparelhos onde estava logada (`pm clear` só desse pacote), numa tarefa de fundo; a quarentena resolve ao fim.
+        self.limpeza_ao_retirar = LimpezaAoRetirar(self)
+        self.social.ao_limpar_aparelhos = self.limpeza_ao_retirar.agendar
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
         # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece

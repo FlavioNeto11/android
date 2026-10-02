@@ -23,6 +23,7 @@ from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_vi
 from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
+from .limpeza_de_conta import AparelhoDaLimpeza
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
@@ -65,6 +66,10 @@ class BindingConflict(RuntimeError):
 #: De onde vem a afirmação de que uma conta travou (ADR-055, migração 054): a tela foi LIDA (`observado`), uma
 #: pessoa DISSE (`declarado`) ou uma regra DECIDIU (`regra`, como o bloqueio do ADR-029 por desafio).
 ORIGENS_DE_BLOQUEIO = ("observado", "declarado", "regra")
+#: Estados de `account_sessions` que só existem com o app ABERTO numa conta (`unknown` e `auth_required` não dizem que há
+#: conta logada): é por eles que a limpeza da retirada acha um aparelho sem marcador (29.27).
+_SESSAO_COM_CONTA_LOGADA = (SessionStatus.session_ready.value, SessionStatus.auth_challenge.value,
+                            SessionStatus.wrong_account.value, SessionStatus.needs_person.value)
 #: A origem do `instances.account_label` quando é a plataforma que o deriva (054). NULL = configuração ou digitado.
 _ROTULO_DERIVADO = ("vinculo", "marcador")
 
@@ -854,14 +859,49 @@ class SocialRepository:
             self.on_conta_bloqueada(pid, app, conta, instance_id, texto, origem)
         return True
 
+    def aparelhos_da_conta(self, profile_id: str, conta: Row, handles: Sequence[str | None]) -> list[AparelhoDaLimpeza]:
+        """Os aparelhos onde a conta estava LOGADA, para a limpeza da retirada (29.27). Três pistas, juntas:
+        - o marcador de quarentena ABERTO de um dos `handles` da conta (o @ da conta e o do cadastro, na âncora), do app
+          dela ou sem app: é o que prova a conta logada de verdade;
+        - o vínculo ativo da persona que serve ao app da conta (o do app, ou o sem app da âncora);
+        - a sessão da conta com um estado que só existe com o app aberto na conta (`session_ready`, desafio, conta
+          errada, intervenção): `unknown` e `auth_required` não dizem que há conta logada.
+        Chamar ANTES da retirada: ela troca o @ do marcador por `MARCADOR` e apaga sessão e vínculo. Ordem estável
+        (por aparelho). Só leitura."""
+        achados: dict[str, tuple[list[int], list[str]]] = {}
+
+        def _anotar(iid: str, origem: str, marcador: int | None = None) -> None:
+            ids, origens = achados.setdefault(iid, ([], []))
+            if marcador is not None:
+                ids.append(marcador)
+            if origem not in origens:
+                origens.append(origem)
+
+        alvos = sorted({normalizar_handle(h) for h in handles if h and normalizar_handle(h)})
+        for m in self.contas_travadas_abertas():
+            if m["handle"] in alvos and m["app_id"] in (None, conta["app_id"]):
+                _anotar(str(m["instance_id"]), "marcador", int(m["id"]))
+        for b in self.bindings_of_profile(profile_id):
+            if b["app_id"] is None or b["app_id"] == conta["app_id"]:
+                _anotar(str(b["instance_id"]), "vinculo")
+        for sessao in self.db.query("SELECT instance_id, status FROM account_sessions WHERE account_id=?",
+                                    (conta["id"],)):
+            if str(sessao["status"]) in _SESSAO_COM_CONTA_LOGADA:
+                _anotar(str(sessao["instance_id"]), "sessao")
+        return [AparelhoDaLimpeza(instance_id=iid, marcadores=tuple(ids), origens=tuple(origens))
+                for iid, (ids, origens) in sorted(achados.items())]
+
     def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,
-                               handle: str | None = None) -> int:
+                               handle: str | None = None, marcadores: Sequence[int] | None = None) -> int:
         """Uma pessoa decidiu o destino do aparelho (ou o disco foi apagado): o marcador aberto sai, e fica como
-        história. Com `handle`, só o daquela conta. Devolve quantos foram resolvidos. O PERFIL não é reativado aqui —
-        reativar é afirmar que a conta voltou a ser usável, e isso é decisão de pessoa na tela do perfil."""
+        história. Com `handle`, só o daquela conta; com `marcadores`, só os desses ids (a limpeza automática da
+        retirada, 29.27, que não pode citar o @: o marcador já está mascarado). Devolve quantos foram resolvidos. O
+        PERFIL não é reativado aqui — reativar é afirmar que a conta voltou a ser usável, e isso é decisão de pessoa na
+        tela do perfil."""
         abertos = [m for m in self.db.query("SELECT * FROM device_locked_accounts WHERE instance_id=?"
                                             " AND resolved_at IS NULL ORDER BY id", (instance_id,))
-                   if handle is None or m["handle"] == normalizar_handle(handle)]
+                   if (handle is None or m["handle"] == normalizar_handle(handle))
+                   and (marcadores is None or int(m["id"]) in marcadores)]
         for m in abertos:
             self.db.execute("UPDATE device_locked_accounts SET resolved_at=?, resolved_by=?, resolution=?"
                             " WHERE id=? AND resolved_at IS NULL", (now_iso(), por, (nota or "")[:500] or None,

@@ -3872,3 +3872,22 @@ Número provisório: a orquestradora renumera no merge se outro adendo chegar an
   (`itens[]` e `verificacao[]`, só no JSON; o Markdown segue com o código). É o `title` da capability no catálogo do app, com as
   internas, sem as lacunas de parâmetro: `OPEN_PROFILE` → "Abrir o perfil", `SEARCH_MAIL` → "Buscar no Outlook". Vem `null` se o
   app não tem catálogo, se a capability é desconhecida ou se a linha não tem capability. Nesses casos o painel mostra o código.
+
+
+## Adendo v0.66 (02/10/2026) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
+
+`POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (adendo v0.55) e o gatilho automático da retirada passam a **limpar os dados do app**
+(`pm clear` só do pacote da conta) nos aparelhos onde a conta estava logada, quando o `app.yaml` do app declara `limpar_ao_retirar: true`
+(hoje o Instagram). A resposta ganha o campo **`limpeza_dos_aparelhos`**: `{agendada: bool, aparelhos: n}` (com `motivo` quando `agendada` é
+falso por falha ao agendar ou por não haver executor). Sem a chave no app, ou sem aparelho onde a conta estava logada: `{agendada: false,
+aparelhos: 0}` e nada muda. A conta que já não existe (idempotente) não traz o campo.
+
+A limpeza roda em tarefa de fundo, um aparelho por vez, como o comando `session.logout` (aparece em `GET /api/commands` com
+`requested_by: sistema:limpeza-ao-retirar`): acorda o aparelho hibernado ou parado, captura a tela, `pm clear`, captura a tela, resolve a
+quarentena (`resolved_by: sistema:limpeza-ao-retirar`, `resolution: "limpeza automática autorizada pelo dono em 02/10"`) e devolve a energia.
+Evento novo **`device.account_cleanup`** por aparelho: `data` = `{profile_id, account_id, package, instance_id, resultado, passo, motivo, antes,
+depois, energia, resolvidos}`; `resultado` é `concluida` (nível `warn`), `dispensada` (a quarentena já tinha sido resolvida por uma pessoa, ou a
+retirada não valeu; `info`), `falhou` (`error`, o aviso de atenção: a quarentena segue aberta e nada é repetido) ou `nao_agendada` (`error`).
+`antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). O evento e o log não carregam o @ da conta. Nada
+roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
+
