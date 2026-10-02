@@ -61,6 +61,8 @@ export interface EntradaDoLivro {
   acoes: AcaoPermitida[];
   /** Por que o sistema não publica sozinho (D1, veto, modo); `null` quando publica. */
   por_que_nao_publica: MotivoDeNaoPublicar | null;
+  /** A saúde do item (30.4), do backend: o painel só a exibe. Ausente em backend antigo; `null` na memória. */
+  saude?: SaudeDoItem | null;
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
@@ -114,6 +116,175 @@ export interface DetalheDoLivro {
   evidencias: EvidenciaDoLivro[];
   trilha: TransicaoDoLivro[];
   exposicoes: unknown[];
+  /** O conteúdo legível (v0.50); `null` onde não sai. Os três campos abaixo são ausentes em backend antigo. */
+  conteudo?: ConteudoDoItem | null;
+  versao?: VersaoDoItem;
+  relacoes?: RelacaoDoItem[];
+}
+
+// ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda
+
+/** `domain/saude.py::Rotulo` (vocabulário fechado; o painel só traduz). */
+export type RotuloDeSaude = 'inativo' | 'em_prova' | 'degradando' | 'sem_evidencia' | 'parado' | 'pouca_amostra'
+  | 'saudavel' | 'indeterminado';
+
+/** Um fato que produziu o rótulo: `valor` é o medido, `limite` o cruzado, `detalhe` a janela, a amostra ou o motivo da trilha. */
+export interface MotivoDeSaude {
+  codigo: string;
+  dimensao: string | null;
+  valor: number | string | null;
+  limite: number | null;
+  detalhe: string | null;
+}
+
+/** `desconhecida` com `valor: null` é "sem dado": nunca 0. */
+export interface DimensaoDeSaude {
+  nome: string;
+  estado: 'medida' | 'desconhecida';
+  valor: number | string | null;
+  amostra: number | null;
+  fonte: string;
+}
+
+export interface SaudeDoItem {
+  rotulo: RotuloDeSaude;
+  motivos: MotivoDeSaude[];
+  dimensoes: DimensaoDeSaude[];
+}
+
+/** O alvo de uma ação da receita: um seletor; só o que ele tem de `rid`, `texto` e `desc` (nunca valor de parâmetro). */
+export interface AlvoDaAcao {
+  tipo: string;
+  rid?: string;
+  texto?: string;
+  desc?: string;
+}
+
+export interface AcaoDaReceita {
+  indice: number;
+  ferramenta: string | null;
+  commit: boolean;
+  alvo: AlvoDaAcao[];
+  /** Só os NOMES dos parâmetros não sigilosos. */
+  parametros: string[];
+  /** A ação digita um segredo (`type_secret` ou parâmetro sigiloso): não sai nome nem valor. */
+  segredo: boolean;
+  digita?: { limpa_antes: boolean; enter: boolean; so_parametro: boolean };
+  pacote?: string;
+  duracao_ms?: number;
+  coleta?: { seletor_do_item: string | null; exclusoes: number };
+  rolagem?: { direcao: string | null; max: number | null };
+}
+
+export interface VizinhaDaReceita {
+  id: number | string;
+  versao: number;
+  estado: string;
+}
+
+export type OrigemDaReceita =
+  | { tipo: 'execucao'; step_id: string; run_id: string | null }
+  | { tipo: 'treino'; ref: string }
+  | { tipo: 'desconhecida' };
+
+export interface ConteudoDaReceita {
+  tipo: 'receita';
+  identidade: {
+    app: string | null; app_version: string | null; assinatura: string | null; variante: string | null;
+    step_key: string | null; step_hash: string | null; versao: number; estado: string;
+  };
+  acoes: AcaoDaReceita[];
+  efeito: { externo: boolean; acoes_commit: number[] };
+  capability: { nomes: string[]; ambigua: boolean; fonte: 'origem' | 'mesmo_step_hash' } | null;
+  origem: OrigemDaReceita;
+  uso: { replay_ok: number; replay_fail: number; consecutive_fail: number; last_used_at: string | null };
+  sombra: { shadow_agree: number; shadow_total: number };
+  substitui: VizinhaDaReceita | null;
+  substituida_por: VizinhaDaReceita | null;
+}
+
+export interface EtapaDoFluxo {
+  indice: number;
+  chave: string | null;
+  capability: string | null;
+  alvo: string | null;
+  efeito: boolean;
+  pos_condicao: { tipo: string | null; descricao: string | null } | null;
+  parametros: string[];
+  segredo: boolean;
+}
+
+export interface ConteudoDoFluxo {
+  tipo: 'fluxo';
+  nome: string | null;
+  comando_modelo: string | null;
+  origem: { tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null };
+  etapas: EtapaDoFluxo[];
+  efeito: { externo: boolean; etapas_com_efeito: number[] };
+}
+
+export interface ConteudoDaHabilidade {
+  tipo: 'habilidade';
+  skill_id: string;
+  versao: number;
+  schema_version: number | string | null;
+  estado: string | null;
+  source_kind: string | null;
+  source_ref: string | null;
+  parent_version: number | null;
+  command_template: string | null;
+  content_hash: string | null;
+  parametros: string[];
+  nos: { id: string; tipo: string | null }[];
+  total_de_nos: number;
+  rota: string;
+}
+
+export interface ConteudoDaLicao {
+  tipo: 'licao';
+  texto: string | null;
+  modelo: string | null;
+  acao: string | null;
+  /** `valor` de `parametro` é o NOME do parâmetro. */
+  alvo: { tipo: string | null; valor: string | null } | null;
+  escopo: { app: string | null; capability: string | null; step_hash: string | null; role: string | null };
+  tokens: number | null;
+}
+
+export interface ConteudoDaTela {
+  tipo: 'tela';
+  tela: string | null;
+  casa: boolean;
+  autenticada: boolean;
+  ids_todos: string[];
+  razao: string | null;
+}
+
+/** `null` na memória, na voz e na preferência (texto de pessoa não sai). */
+export type ConteudoDoItem = ConteudoDaReceita | ConteudoDoFluxo | ConteudoDaHabilidade | ConteudoDaLicao | ConteudoDaTela;
+
+/** `domain/versao.py::EstadoDeVersao`, mais o "não sei" explícito. */
+export type EstadoDeVersao = 'independente' | 'comprovado' | 'nao_testado' | 'em_prova' | 'falhando' | 'incompativel'
+  | 'superseded' | 'versao_aposentada' | 'desconhecido';
+
+export interface VersaoDoItem {
+  estado: EstadoDeVersao;
+  app: string | null;
+  app_version: string | null;
+  vivas: { versao: string; aparelhos: number }[];
+  nao_testada_em: string[];
+  por_versao: { versao: string; viva: boolean; aparelhos: number; estado: EstadoDeVersao; receita_ref: string | null }[];
+}
+
+export type TipoDeRelacao = 'substitui' | 'substituida_por' | 'derivado_de' | 'absorvida' | 'contradiz';
+
+/** `kind`/`ref` apontam para o detalhe do alvo; `regra_declarada` e `commit` (absorvida) não são itens do Livro. */
+export interface RelacaoDoItem {
+  tipo: TipoDeRelacao;
+  kind: string;
+  ref: string;
+  rotulo: string | null;
+  fonte: string;
 }
 
 // ---------------------------------------------------------------- rótulos
