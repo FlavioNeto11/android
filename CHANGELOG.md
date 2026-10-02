@@ -81,6 +81,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — IA: cache de prompt do verificador, prova simulada e medição do prefixo (J9, achado #100)
+
+- O ponto de cache (`cache_control`) já era pedido no verificador e o custo já lia `cache_read`/`cache_creation`; faltava prova e a conta. Três testes novos em `backend/tests/test_anthropic_provider.py` (`simulated`): a requisição do verificador carrega o marcador só no prefixo estável, o uso devolve os campos e `ai_calls` guarda a entrada não cacheada separada do cache lido/gravado. A medição explica as 49 verificações de 25/09 com `cache_read=0`: o prefixo do verificador (≈560 tokens) está abaixo do mínimo do Haiku 4.5 (4096) e do Sonnet 5 (1024), então a API ignora o ponto. Nenhuma mudança de código de produção; `cache_read>0` real: `not_run` (chamada paga, e não há prefixo para cachear). `docs/ia.md` §5 atualizado.
+
 ## 2026-10-02 — Painel: cartão "Retrieval de contexto" na guia IA, só leitura (J8)
 
 - **`frontend/src/features/settings/ContextRetrievalSection.tsx`** (novo) na guia IA de Configuração: lê `GET /api/context-retrieval/status` (ADR-063) e mostra veredito, configuração, proveniência do envio externo com as três provas, orçamento e métricas recentes. Só leitura: um botão "Atualizar", nenhuma escrita, nenhum controle que ligue o remoto. Novos: `api.contextRetrievalStatus`, o tipo `ContextRetrievalStatus` e `lib/contextRetrieval.ts`. `simulated`: 16 testes novos; frontend inteiro 96 arquivos e 1.149 testes, typecheck e build ok. **Verificação visual no navegador: `not_run`**. Sem backend; sem deploy.
