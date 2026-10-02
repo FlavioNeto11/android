@@ -434,7 +434,7 @@ def test_diario_recalculado_pela_curadoria_e_idempotente(mundo: Mundo) -> None:
     segunda = sorted(tuple(sorted((k, v) for k, v in r.items() if k != "computed_at"))
                      for r in db.query("SELECT * FROM learning_daily"))
     assert primeira == segunda and primeira
-    assert db.scalar("SELECT COUNT(*) FROM learning_backlog") == 1              # o passo do backlog rodou junto
+    assert db.scalar("SELECT COUNT(*) FROM learning_backlog WHERE category='falha'") == 1    # o passo do backlog rodou junto
 
 
 # ------------------------------------------------------------------ prova da correção

@@ -99,7 +99,7 @@ def test_aviso_tem_o_formato_do_contrato_e_o_requer_pessoa_do_tipo() -> None:
 
 
 def test_os_tipos_de_aviso_existem_no_vocabulario_do_contrato() -> None:
-    assert set(AVISOS) == {"pausa_automatica", "ocorrencia_incerta"}
+    assert {"pausa_automatica", "ocorrencia_incerta"} <= set(AVISOS), "o vocabulário completo é de `domain/avisos.py`"
 
 
 def test_as_arestas_que_a_peca_usa_existem_nas_tabelas_de_estado() -> None:

@@ -335,6 +335,8 @@
   padding: 0 var(--sp-4);
   border-bottom: 1px solid var(--border-1);
   overflow-x: auto;
+  /* O traço da guia ativa passa 1px da caixa: sem isto surge uma barra vertical (o "⋮" à direita). */
+  overflow-y: hidden;
 }
 .tab {
   position: relative;
@@ -358,7 +360,7 @@
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   border-radius: 2px 2px 0 0;
   background: var(--accent);

@@ -615,3 +615,22 @@ Backlog:
   aprendida do autor; registrar ids da execução e dos pedidos no relatório como prova `real`.
 - Conferir os padrões de `leitura.mensagem` do `app.yaml` do Instagram (`LeituraDeclarada.message_of`) contra
   árvore de acessibilidade real de DM.
+
+## Conta bloqueada sai, a persona fica (item 29.23, ADR-068)
+
+Decisão do dono de 02/10/2026: bloqueio **confirmado** (a tela de verificação lida, ou o dono declara) tira a conta
+da plataforma na hora; a **persona continua viva**, volta a `active` e fica sem @ (como as `ig-persona-*`), pronta para
+receber contas novas.
+
+- **Ação** `SocialService.retirar_conta_bloqueada(profile_id, account_id, origem, autor, evidencia)` e rota
+  `POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (corpo opcional `{evidencia}`). Uma transação: credencial da
+  conta, a legada e o ciphertext do cofre; sessões; vínculo de aparelho do app da conta (e o sem app); a linha da conta,
+  mesmo âncora. Idempotente. O aparelho não é tocado e o marcador de quarentena fica.
+- **Gatilho:** ao fim de `marcar_conta_travada`, SÓ no Instagram (conta âncora) e SÓ com sinal forte: a `ChallengeActivity` em foco (lida por `DeviceManager.observe`) ou a declaração do dono. Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
+- **Lápide:** `contas_retiradas` (071) guarda só o hash do @; `eh_conta_nossa()` (`social/contas_nossas.py`) é a consulta
+  única de "é conta nossa?", usada pelo filtro de frota: nada se faz entre contas nossas, viva ou aposentada (ADR-050).
+- **Memória:** `memory_items` ficam, com o @ e o id da conta trocados por "[conta removida]". Gancho
+  `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
+- **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).
+- **Dívida:** `DELETE /api/instagram/profiles/{id}` ainda apaga a persona inteira (os dados da pessoa moram na linha do perfil).
+- **Ideia de backlog (depois do 12.4, não implementada):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática).

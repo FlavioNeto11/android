@@ -1824,3 +1824,42 @@ declara) usada nos dois pontos que decidem (receita desligada e laço do ator). 
 **Aplicabilidade.** Quando uma etapa existe para extrair algo, a pós-condição de tela é necessária e insuficiente: o critério de
 sucesso tem de conferir o ARTEFATO (valor, itens). Ao declarar um contrato novo no catálogo, pergunte quem o cobra quando o
 consumidor (a etapa seguinte) não existe.
+
+---
+### K-074 — A senha "apagada" da conta continuava no cofre: a linha legada segurava o ciphertext
+
+**Data:** 02/10/2026 · **Área:** credenciais (`social/service.py::_apagar_credencial`, `instagram_credentials`)
+
+**Sintoma.** Apagar só `account_credentials` de uma conta do Instagram deixava o segredo no cofre: `secrets.exists(ref)` seguia
+verdadeiro, e a senha de uma conta que saiu da plataforma continuava cifrada, sem dono visível.
+
+**Causa.** Desde a 049 `instagram_credentials` é só leitura, mas a linha legada REUSA o mesmo `secret_ref` da conta âncora.
+`_apagar_credencial` poupa o segredo enquanto qualquer linha (a legada ou outra conta) ainda aponta para ele, e isso está certo
+para a remoção comum; para a retirada por bloqueio (29.23) a ordem é que importa.
+
+**O que funcionou.** Na retirada, apagar as DUAS linhas (conta e legada) ANTES de chamar `_apagar_credencial`; com nada mais
+apontando, o `delete_secret` roda. Teste: o segredo some do cofre mesmo com a legada apontando para a mesma referência.
+
+**Armadilha vizinha.** A retirada devolve a persona a `active` no mesmo gesto, então o agendador (que só vê `blocked`) nunca
+dispara o disjuntor de conta (ADR-055): a retirada o aciona direto. E `marcar_conta_travada` re-bloqueava a persona sem conta
+(`_trava_a_persona` não olha se a conta ainda existe): agora só bloqueia se a conta existe.
+
+**Aplicabilidade.** Vigente. Toda ação que remove credencial por perfil precisa tirar a linha legada junto, e todo código que
+muda `status` por observação tem de lembrar que "persona sem conta" não tem o que bloquear.
+
+### K-076 — Versão do app tem dois formatos: a receita grava `nome(código)`, o aparelho guarda nome e código separados
+
+**Data:** 03/10/2026 · **Área:** aprendizado (versão, saúde)
+
+**Sintoma.** Com o 30.4/30.14 sobre uma cópia do banco do central, 78 de 160 itens do Livro saíram `obsoleto_provavel` com o
+motivo `versao_fora_do_parque`, inclusive receitas reproduzindo bem no parque inteiro.
+
+**Causa.** `recipes.app_version` é `versionName(versionCode)` (o mesmo formato de `taskqueue/scheduler.py`), e
+`device_app_state` guarda `observed_version_name` e `observed_version_code` em colunas separadas. A comparação de texto exato
+do 30.6 nunca casava. Os testes usavam versões sintéticas sem código (`"447"`) e passavam. A tela e a lição gravam só o nome.
+
+**O que funcionou.** Montar as vivas no formato da receita (`versao_canonica`) e comparar a tela e a lição pelo nome
+(`nome_da_versao`); teste com os valores MEDIDOS do banco.
+
+**Aplicabilidade.** Toda comparação de versão de app entre fontes do projeto. Antes de comparar, meça o formato real das
+duas colunas; dado sintético sem o formato real esconde o erro. Aceite visual com cópia do banco pega o que o teste não pega.
