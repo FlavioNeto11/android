@@ -36,7 +36,9 @@ from app.config import PedidosCfg
 from app.db import Database, Row, loads
 from app.models import RunCreate, RunTarget
 from app.modules.pedidos.infrastructure.acoes import AcoesDePedidos
+from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
+from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
 from app.modules.pedidos.domain import gatilhos
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
@@ -66,7 +68,8 @@ class Resumo:
 
 class LacoDePedidos:
     def __init__(self, db: Database, runs, lideranca: Lideranca, cfg: PedidosCfg, *,
-                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None):
+                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None,
+                 resumidor: ResumidorDeRelatorio | None = None):
         self.db = db
         self.runs = runs
         self.lideranca = lideranca
@@ -75,7 +78,11 @@ class LacoDePedidos:
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._lider = lider
         self.repo = RepositorioDePedidos(db)
-        self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar)
+        #: Observações do fechamento, memória e relatório (28.7). O resumo por IA só existe com `resumo_ia` ligado E um
+        #: `resumidor` injetado; sem os dois, nada de IA é chamado.
+        self.relatorios = ServicoDeRelatorios(db, lambda: self.relogio(), resumidor=resumidor, resumo_ia=cfg.resumo_ia,
+                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd)
+        self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None
 
@@ -188,11 +195,26 @@ class LacoDePedidos:
         if fech is None:
             return
         transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
+        preparo = self._observar(o, fech) if fech.terminal else None
         with self.lideranca.cercada(PEDIDOS, token):
             moveu = self.repo.mover(o["id"], o["estado"], fech.estado, motivo=fech.motivo,
                                     iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None)
+            if moveu and preparo is not None:
+                # Na MESMA transação do fechamento: a ocorrência fecha com as observações dela, ou nada muda e a varredura
+                # repete (a observação é reentrante). Depois do fechamento a execução pode ser purgada; a observação fica.
+                self.relatorios.gravar_do_fechamento(preparo, pedido_id=o["pedido_id"], ocorrencia_id=o["id"])
         if moveu and fech.terminal:
             r.fechadas += 1
+
+    def _observar(self, o: Row, fech):
+        """O que a ocorrência observou (28.7), lido ANTES de fechar. Falha aqui não trava o fechamento: a ocorrência fecha sem
+        observação e o relatório a lista como `sem_observacao` em "não coberto" (falta de prova nunca vira sucesso)."""
+        try:
+            return self.relatorios.observacoes_do_fechamento(o, estado=fech.estado, motivo=fech.motivo,
+                                                             versao_do_pedido=int(o["pedido_versao"]))
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: observações do fechamento da ocorrência %s", o["id"])
+            return None
 
     def _cancelar_por_prazo(self, o: Row, token: int) -> None:
         """Cancela a execução que não começou a tempo e grava a INTENÇÃO; o estado final só sai quando ela assenta."""
@@ -457,9 +479,20 @@ class LacoDePedidos:
         if esgotado and self.repo.quantas_em_aberto(p["id"]) == 0:
             motivo_fim = "contagem" if atingiu else ("prazo" if "prazo" in motivos else "contagem")
             transicionar_pedido("ativo", "encerrado", ator="sistema", motivo=motivo_fim)
+            relatorio = self._relatorio_final(p)
             with self.lideranca.cercada(PEDIDOS, token):
-                self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
-                                                 encerrado_motivo=motivo_fim)
+                if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
+                                                    encerrado_motivo=motivo_fim) and relatorio is not None:
+                    self.relatorios.gravar_relatorio(relatorio)       # encerrar gera o relatório final (§6.5), atômico
             return
         with self.lideranca.cercada(PEDIDOS, token):
             self.repo.definir_proxima_em(p["id"], p["versao"], proxima_em, to_iso(agora))
+
+    def _relatorio_final(self, p: Row):
+        """O relatório de encerramento, montado antes de a transação abrir. Falha não impede o encerramento: o relatório
+        sai depois, sob demanda (`ServicoDeRelatorios.gerar`)."""
+        try:
+            return self.relatorios.preparar_relatorio(p, gatilho="encerramento")
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: relatório de encerramento do pedido %s", p["id"])
+            return None
