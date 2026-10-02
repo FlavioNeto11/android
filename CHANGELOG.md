@@ -36,6 +36,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Resumo por IA: só o ponto de extensão (`ResumidorDeRelatorio`, `pedidos.resumo_ia: false`); nenhuma chamada paga.
 - Prova `simulated`: `backend/tests/test_pedidos_memoria.py` (23) e `test_pedidos_relatorio.py` (28); a corrida contra PostgreSQL é pulada sem `TEST_DATABASE_URL`. `real`: `not_run` (o 28.12 liga o laço no central). Desenho: `docs/design/pedidos-laco.md` §11.
 
+## 2026-10-02 — 28.11 provado em real: aviso de teste chegou ao Telegram do dono
+
+- Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
