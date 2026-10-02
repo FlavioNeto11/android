@@ -426,6 +426,25 @@ versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra
   `incompativel` ou `versao_aposentada` com sinal, e fora disso é `desconhecido` ("sem sinal de quebra"), nunca `comprovado` (esse é de receita).
 - Fora do escopo: o painel (30.16), o gatilho `versao_nova` do backlog e o veto por versão em `learning_transitions.app_version`.
 
+## Relações no detalhe (30.7)
+
+O detalhe do Livro devolve `relacoes` (contrato no adendo v0.53 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §6): o que o item
+substitui, por quem foi substituído, de que foi derivado, em que regra declarada foi absorvido e com quem se contradiz. Tudo na leitura, **sem
+tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `LearningService._relacoes` junta as fontes: o `conteudo` já lido
+(vizinhas da receita, `parent_version`), os itens (`parent_id`, `absorvida:`) e as entradas do mesmo tipo (contradição);
+`FontesSql.sucessoras_da_habilidade` é a única consulta nova (versões que têm esta por pai).
+
+- **Cada relação diz a `fonte`.** O que o §6 marca como novo sem fonte (`complementa / depende de`, `revisado por`) não sai, e `nasceu de` já está
+  em `conteudo.origem`.
+- **`contradiz` só onde o `scope_key` identifica a proposição.** Receita (chave exata; duas vivas na mesma chave é anomalia, porque a versão nova
+  aposenta as vivas) e tela (o `scope_key` é só o app, então exige o mesmo nome de regra). Fluxo (`match_key` único), habilidade (versões da mesma
+  habilidade dividem o comando) e lição, voz e preferência (o escopo não nomeia a proposição) ficam sem contradição derivada; abri-la para a
+  lição exige um critério de tema que ainda não existe.
+- **Vivo** é `candidate`, `validated` ou `published`; item morto não disputa e não é acusado.
+- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login, desafio), não para outro item.
+- **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
+- Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
