@@ -479,6 +479,24 @@ def resumir(pasta: Path, kind: str, saida: dict[str, Any] | None = None) -> dict
     }
 
 
+def segunda_partida(events_txt: str, pacote: str = PACOTE) -> dict[str, Any]:
+    """A 2ª partida do serviço (o `BootReceiver` -> `BoxService.start()` -> `startForegroundService(explícito)`) por INDÍCIO: o `events`
+    registra `am_wtf ... Background started FGS: Allowed [callingPackage: X; ... intent: Intent { ... }]` por cada partida em primeiro
+    plano checada. A do sistema é `callingPackage: android` com `act=android.net.VpnService pkg=<pacote>`; uma 2ª, do próprio app, teria
+    `callingPackage: <pacote>` ou `cmp=<pacote>/...`. `NOT_OBSERVED` NÃO prova que não houve (o log só sai em alguns caminhos)."""
+    chamadas = []
+    for bruto in events_txt.splitlines():
+        l = _linha(bruto)
+        if not l or l["tag"] != "am_wtf" or "Background started FGS" not in l["resto"] or pacote not in l["resto"]:
+            continue
+        cp = re.search(r"callingPackage: (\S+?);", l["resto"])
+        it = re.search(r"intent: Intent \{ (.*?) \}", l["resto"])
+        chamadas.append({"t": rotulo_hora(l), "chamador": cp.group(1) if cp else None, "intent": it.group(1) if it else None})
+    proprias = [c for c in chamadas if c["chamador"] == pacote or "cmp=" + pacote + "/" in (c["intent"] or "")]
+    return {"estado": "OBSERVED" if proprias else "NOT_OBSERVED", "verificacoes_de_fgs": len(chamadas), "do_proprio_app": proprias,
+            "do_sistema": [c for c in chamadas if c not in proprias]}
+
+
 def _boot_receiver(bcast: list[dict[str, Any]] | None, fg: dict[str, Any] | None) -> dict[str, Any] | None:
     """A 2ª chance do cliente: o `BootReceiver` foi ENTREGUE (rodou) ou pulado, e quando, contra o `startForeground` do serviço."""
     if bcast is None:

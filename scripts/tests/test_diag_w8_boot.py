@@ -385,5 +385,100 @@ class ObservacaoBoot(unittest.TestCase):
             self.skipTest("sem as capturas reais (data/ não versionado)")
 
 
+# ───────────────────────────── estágio 1 (K × R): ordem pré-comprometida, categorias fechadas, regra de parada ─────────────────────────────
+spec_e1 = importlib.util.spec_from_file_location("diag_w8_boot_estagio1", ROOT / "scripts" / "diag-w8-boot-estagio1.py")
+est1 = importlib.util.module_from_spec(spec_e1)
+sys.modules["diag_w8_boot_estagio1"] = est1
+spec_e1.loader.exec_module(est1)                                                  # type: ignore[union-attr]
+
+
+def _reg(idx, arm, cat, troca=False):
+    return {"ORDER_INDEX": idx, "BLOCK": (idx + 1) // 2, "ARM": arm, "RESULT": cat, "NETWORK_SWITCH_DURING_WINDOW": troca}
+
+
+class Estagio1(unittest.TestCase):
+    def test_a_ordem_e_deterministica_e_pre_comprometida(self) -> None:
+        o = est1.ordem()
+        self.assertEqual(o, est1.ordem(), "mesma semente, mesma ordem")
+        self.assertEqual([x["braco"] for x in o], ["K", "R", "R", "K", "K", "R"], "a ordem registrada no doc ANTES do 1º boot")
+        self.assertEqual(est1.SEED, "w8-boot-estagio1-20261002")
+        self.assertEqual([x["indice"] for x in o], [1, 2, 3, 4, 5, 6])
+        for b in (1, 2, 3):
+            self.assertEqual(sorted(x["braco"] for x in o if x["bloco"] == b), ["K", "R"], "cada bloco tem um K e um R")
+        self.assertNotEqual(est1.ordem("outra-semente"), o)
+        self.assertEqual({x["ensaio"] for x in o}, {"os+stopped", "os+receiver"}, "só os dois braços do estágio 1: nada de os+uistop")
+
+    def test_seguro_por_padrao_so_o_09_e_pasta_vazia(self) -> None:
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(est1.main([]), 0)
+        self.assertEqual(json.loads(out.getvalue())["max_boots"], 6)
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(est1.main(["--execute", "--instance", "android-02", "--run", "."]), 2)
+            self.assertEqual(est1.main(["--execute", "--instance", est1.IID]), 2)
+            with tempfile.TemporaryDirectory() as d:
+                (Path(d) / "x").write_text("a", encoding="utf-8")
+                self.assertEqual(est1.main(["--execute", "--instance", est1.IID, "--run", d]), 2, "pasta com conteúdo: sem retomar")
+
+    def test_as_categorias_sao_fechadas(self) -> None:
+        def resumo(cod, anr=(), crash=(), kill=()):
+            return {"assinatura": {"codigo": cod}, "processo": {"anr": list(anr), "crash": list(crash), "kill": list(kill)}}
+        self.assertEqual(est1.CATEGORIAS, ("TUN_OK", "SILENT_STOP", "ANR_OU_CRASH", "PROCESS_KILLED", "BOOT_INVALID", "UNKNOWN"))
+        self.assertEqual(est1.categoria(resumo("TUN_OK")), "TUN_OK")
+        self.assertEqual(est1.categoria(resumo("SILENT_STOP")), "SILENT_STOP")
+        self.assertEqual(est1.categoria(resumo("ANR_OU_KILL", anr=[1])), "ANR_OU_CRASH")
+        self.assertEqual(est1.categoria(resumo("CRASH", crash=[1])), "ANR_OU_CRASH")
+        self.assertEqual(est1.categoria(resumo("ANR_OU_KILL", kill=[1])), "PROCESS_KILLED")
+        for cod in ("SERVICO_SEM_FOREGROUND", "FGS_SEM_TUN", "SEM_ALWAYS_ON_DO_SISTEMA", "INDETERMINADO", "QUALQUER_NOVO"):
+            self.assertEqual(est1.categoria(resumo(cod)), "UNKNOWN", cod)
+
+    def test_a_regra_de_parada_do_pedido(self) -> None:
+        av = est1.avaliar_parada
+        # continuam: o esperado de H1 (K falha COM troca de rede; R funciona SEM troca)
+        self.assertIsNone(av([_reg(1, "K", "SILENT_STOP", True)]))
+        self.assertIsNone(av([_reg(1, "K", "SILENT_STOP", True), _reg(2, "R", "TUN_OK", False)]))
+        # as quatro paradas de hipótese
+        self.assertEqual(av([_reg(1, "R", "SILENT_STOP", True)])[0], "R_SILENT_STOP")
+        self.assertEqual(av([_reg(1, "K", "TUN_OK", False)])[0], "K_TUN_OK")
+        self.assertEqual(av([_reg(1, "K", "SILENT_STOP", False)])[0], "FALHA_SEM_TROCA_DE_REDE")
+        self.assertEqual(av([_reg(1, "R", "TUN_OK", True)])[0], "TUN_OK_COM_TROCA_DE_REDE")
+        # inválido, incerto e inesperado: param
+        for cat in ("BOOT_INVALID", "UNKNOWN"):
+            self.assertEqual(av([_reg(1, "K", cat)])[0], "BOOT_INVALIDO_OU_INCERTO")
+        for cat in ("ANR_OU_CRASH", "PROCESS_KILLED"):
+            self.assertEqual(av([_reg(1, "R", cat)])[0], "COMPORTAMENTO_INESPERADO")
+        # quatro iguais só com 4 boots que não dispararam nada antes (R TUN_OK sem troca, nunca K TUN_OK) -> não ocorre com K; vale o caso sintético
+        iguais = [_reg(1, "R", "TUN_OK"), _reg(2, "R", "TUN_OK"), _reg(3, "R", "TUN_OK"), _reg(4, "R", "TUN_OK")]
+        self.assertEqual(av(iguais)[0], "QUATRO_IGUAIS")
+        misto = [_reg(1, "K", "SILENT_STOP", True), _reg(2, "R", "TUN_OK"), _reg(3, "R", "TUN_OK"), _reg(4, "K", "SILENT_STOP", True)]
+        self.assertIsNone(av(misto), "K falha e R funciona, nos dois blocos: o 3º bloco é permitido")
+
+    def test_a_rede_padrao_no_instante_da_partida(self) -> None:
+        r = {"servico": {"proc_start": {"t": "10-01 19:29:14.864"}}, "rede": {"trocas_da_rede_padrao": [["10-01 19:29:14.915", "CELLULAR"]]}}
+        self.assertEqual(est1.rede_na_partida(r), "NONE_YET", "a rede padrão só veio 51 ms DEPOIS do processo")
+        r["rede"]["trocas_da_rede_padrao"] = [["10-01 19:29:14.000", "WIFI"], ["10-01 19:29:20.700", "CELLULAR"]]
+        self.assertEqual(est1.rede_na_partida(r), "WIFI")
+        self.assertEqual(est1.rede_na_partida({"servico": {}, "rede": {}}), "SEM_PROCESSO")
+
+    def test_a_segunda_partida_so_por_indicio(self) -> None:
+        so = ("10-01 19:29:22.054   623   686 I am_wtf  : [0,623,system_server,-1,ActivityManager,Background started FGS: Allowed "
+              "[callingPackage: android; callingUid: 1000; uidState: PER ; intent: Intent { act=android.net.VpnService pkg=io.nekohasekai.sfa }; code:X]]\n")
+        a = obs.segunda_partida(so)
+        self.assertEqual((a["estado"], a["verificacoes_de_fgs"], len(a["do_sistema"])), ("NOT_OBSERVED", 1, 1))
+        dois = so + ("10-01 19:29:22.060   623   686 I am_wtf  : [0,623,system_server,-1,ActivityManager,Background started FGS: Allowed "
+                     "[callingPackage: io.nekohasekai.sfa; callingUid: 10196; intent: Intent { cmp=io.nekohasekai.sfa/io.nekohasekai.sfa.bg.VPNService }; code:X]]\n")
+        b = obs.segunda_partida(dois)
+        self.assertEqual((b["estado"], len(b["do_proprio_app"])), ("OBSERVED", 1))
+        self.assertEqual(obs.segunda_partida("")["estado"], "NOT_OBSERVED")
+
+    def test_so_orquestra_o_que_o_ator_ja_faz(self) -> None:
+        """O estágio 1 não escreve nada novo: os braços são os ensaios existentes e o vocabulário de escrita é o do `diag-w8-boot.py`."""
+        self.assertTrue(set(est1.BRACOS.values()) <= set(mod.ENSAIOS))
+        self.assertNotIn("os+uistop", mod.ENSAIOS)
+        fonte = (ROOT / "scripts" / "diag-w8-boot-estagio1.py").read_text(encoding="utf-8").split('"""', 2)[2]      # sem a docstring
+        for proibido in ("amb.shell(", "settings put", "am force-stop", "svc wifi", "svc data", "pm clear", "wg set", "wg-quick", "wg show", "uninstall"):
+            self.assertNotIn(proibido, fonte, proibido)
+
+
 if __name__ == "__main__":
     unittest.main()

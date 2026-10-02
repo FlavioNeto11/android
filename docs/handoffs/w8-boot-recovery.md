@@ -259,3 +259,25 @@ Custo: ≈ 10 min por boot (≤ 80 min no teto) + análise offline; só o androi
 ## 16. Estado após a rodada offline
 
 `BOOT_ROOT_CAUSE = NARROWED`. Leituras ao vivo no android-09 nesta rodada (`real`, **sem boot e sem escrita de estado**): `dumpsys package/activity/connectivity/usagestats/dropbox/broadcasts`, `logcat -d`, `date`, `getprop`, `settings get`; o `dry.py` rodou a captura completa uma vez fora de um ensaio, e uma primeira tentativa de leitura criou e apagou um arquivo temporário em `/data/local/tmp`. Entregue (todos `simulated`/leitura, nenhum boot novo): parsers e resumo automático (`scripts/diag-w8-boot-obs.py`), captura ampliada, modo `resumir` offline, testes (`scripts/tests/test_diag_w8_boot.py`: 25), achados do framework (§13), a matriz (§15). **Não** mexi no PR #17 (só o corpo do PR foi corrigido: o always-on direto não depende do `serviceMode`, mas o `BootReceiver` → `BoxService.start()` → `serviceClass()` usa o `serviceMode` persistido; o E2 prova a falha também com `serviceMode=VPN`), não toquei outros aparelhos, não reiniciei o WireGuard, não implantei.
+
+## 17. Estágio 1 (K × R) autorizado pelo dono (02/10/2026): compromisso ANTES do 1º boot
+
+Autorização do dono: **somente o estágio 1**, no android-09, **no máximo 6 boots reais**, sem estágio 2 (`os+uistop`), sem corrigir nada. Executor: `scripts/diag-w8-boot-estagio1.py` (só orquestra o `diag-w8-boot.py::rodar`, com o mesmo vocabulário de escrita).
+
+- **Semente:** `w8-boot-estagio1-20261002`. Algoritmo: bit 0 de `sha256("<semente>:<bloco>")` igual a 0 → K antes de R; senão R antes de K.
+- **Ordem pré-comprometida** (calculada e gravada antes de qualquer boot; não muda em função de resultado):
+
+| Índice | Bloco | Braço | Ensaio |
+|---|---|---|---|
+| 1 | 1 | K | `os+stopped` |
+| 2 | 1 | R | `os+receiver` |
+| 3 | 2 | R | `os+receiver` |
+| 4 | 2 | K | `os+stopped` |
+| 5 | 3 | K | `os+stopped` (só se **nenhuma** parada disparou nos 4 primeiros) |
+| 6 | 3 | R | `os+receiver` (idem) |
+
+- **Categorias fechadas por boot:** `TUN_OK`, `SILENT_STOP`, `ANR_OU_CRASH`, `PROCESS_KILLED`, `BOOT_INVALID`, `UNKNOWN`. Mapeamento fixado: `TUN_OK`→`TUN_OK`; `SILENT_STOP`→`SILENT_STOP`; ANR ou crash→`ANR_OU_CRASH`; kill/morte sem ANR/crash→`PROCESS_KILLED`; qualquer outro código (serviço sem foreground, FGS sem tun, sem always-on, indeterminado) e qualquer coisa nova→`UNKNOWN`. Gate falho, `desfazer` que não devolve o baseline, adb que não volta, exceção→`BOOT_INVALID`.
+- **Troca de rede relevante:** troca de **transporte** da rede padrão entre o início do processo do serviço e 5 s depois do fim do FGS (ou do seu começo, se não houve fim). A ordem das redes é só **covariável**: nada de ligar/desligar Wi-Fi/celular.
+- **Baseline por boot** (`BOOT_INVALID` e parada se falhar, sem "consertar e repetir"): worker conectado e `transport=up`, heartbeat ≤ 45 s, aparelho online e QA, nenhum comando aberto, sem execução ativa, sem `tun0`, sem peer, `always_on` null e `lockdown` 0 antes do preparo. O worker está `degraded` **só pelo relógio do notebook (+8,1 s)**, conhecido nas 3 tentativas anteriores e aceito; qualquer outra degradação invalida. O digest do estado do servidor WireGuard é registrado antes e depois da rodada.
+- **Paradas** (aplicadas depois de cada boot): `R` com `SILENT_STOP` (o `force-stop` não é necessário); `K` com `TUN_OK` (não é suficiente); qualquer `SILENT_STOP` **sem** troca de rede (troca como causa necessária falsificada); qualquer `TUN_OK` **com** troca (como causa suficiente falsificada); boot inválido/incerto (`BOOT_INVALID`/`UNKNOWN`); `ANR_OU_CRASH`/`PROCESS_KILLED` (comportamento inesperado: não é a assinatura em estudo); os quatro primeiros boots na mesma classe.
+- **`SECOND_START`** só por indício (`events`: `Background started FGS` do próprio app); `NOT_OBSERVED` **não** prova ausência. `STAGE2_RECOMMENDED` sai da análise, e o estágio 2 **não** roda nesta rodada.
