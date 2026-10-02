@@ -46,6 +46,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Levantamento (só leitura, texto, `backend/app/api.py`): 175 rotas (`router` e `worker_router`); 174 têm chamada `client.<método>("<caminho>")` em `backend/tests/`; a que não tem é `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect`, coberta pelo apelido `POST /api/instagram/profiles/{id}/connect` que delega a ela. A frase "38 das 85 rotas sem teste HTTP" do plano está defasada. Limite: confere o caminho e o método na chamada, não o que cada teste afirma, e não cobre os routers de `app/modules/*/presentation`.
 - Fora do T.2 desta rodada: eventos `command.updated`/`worker.updated` e a tela de Infraestrutura (frontend); ligar `pular_o_tempo` no harness inteiro (exige a suíte completa).
 
+## 2026-10-02 — T.2: testes dos eventos `command.updated`/`worker.updated`, da tela de Infraestrutura e da última rota sem teste HTTP (T.2, branch `jev/t2-eventos-infra`)
+
+- `backend/tests/test_eventos_comando_e_worker.py` (14): payload (`data.command`, `data.worker`, `instance_id` no envelope), nível por estado (falha/recusa `error`, incerto `warn`, worker offline `warn`), mensagem com e sem motivo, aviso de comando em voo na reconexão (`inflight`), não efêmero, a trilha de um comando remoto pelo caminho real (despachado, ack, running, progresso, concluído) e o worker (canal sobe/cai, sem batida, manutenção, batida igual só gera `worker.metrics`, inventário novo gera `worker.updated`, rotação de credencial).
+- `frontend/src/features/infra/InfraPage.test.tsx` (+5, 39 no arquivo): um cartão por servidor; `worker.updated` troca o estado e o detalhe sem recarregar e traz servidor novo; `worker.metrics` apaga o aviso de dado velho; `command.updated` entra na aba Registros só do servidor que hospeda o aparelho.
+- `backend/tests/test_sessao_conectar_conta.py` (3): `POST /api/instagram/profiles/{id}/accounts/{conta}/session/connect`, a 175ª rota de `api.py` com chamada HTTP em teste: recusas na ordem (404, `no_binding`, `sem_vinculo`, `no_credential`, `consentimento_de_credencial`) e o 202 com `command_id` até o provedor de sessão (espião) e o comando `succeeded`.
+- `docs/plano-100.md` (T.2): a contagem de rotas sem teste HTTP passa a ser a medida. O relógio virtual no harness inteiro continua fora (exige suíte completa).
+- Prova `simulated` (arquivo::teste acima, sem emulador, rede nem IA); `real`: `not_run`.
+
 ## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
 
 - Real (02/10 17:49–17:54Z, central, deploy `25624c4`, android-05 sem conta real, US$ 0,2955): regra 2 provada em `r-20261002175209-1a252b`; regra 1 `not_run` (`r-20261002175004-ea377e`: o tier 0 não bloqueou; o tier 1 bloqueou pela nova tentativa); negativo `r-20261002175257-0e9362` barrado pelo detector de tela sensível. Detalhe em `docs/ia.md` §10b.
