@@ -35,6 +35,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `scripts/tests/test_eval_rejudge.py::test_sobreposicao_flex_*` (9 passam), transporte e `sleep` falsos. Chamada real
   ao flex: `not_run`.
 
+## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
+
+- Real (02/10 17:49–17:54Z, central, deploy `25624c4`, android-05 sem conta real, US$ 0,2955): regra 2 provada em `r-20261002175209-1a252b`; regra 1 `not_run` (`r-20261002175004-ea377e`: o tier 0 não bloqueou; o tier 1 bloqueou pela nova tentativa); negativo `r-20261002175257-0e9362` barrado pelo detector de tela sensível. Detalhe em `docs/ia.md` §10b.
+- `scripts/eval_run.py`: `saida_segura()` — o "≈" do aviso derrubava a bateria no console cp1252 antes do primeiro POST; `scripts/tests/test_eval_run.py` (12).
+
+## 2026-10-02 — Perfil de IA por execução e canário (17.7): A/B sem reiniciar o central (branch `jev/17-7-perfil-ia`)
+
+- `config.py`: `ai.profiles.<nome>.roles` (por cima de `ai.roles`, campo a campo) e `ai.canary: {profile, fraction}`, conferidos na partida como `ai.roles`. `planning/routing.py`: os perfis vivem no MESMO hub (teto em US$, vagas por função e instâncias compartilhados); o perfil sai de `runs.ai_profile` pelo `run_id` de cada chamada; perfil que sumiu da configuração falha com `not_configured` em vez de cair no padrão; perfil que manda dados para fora entra no aviso do `/api/ai`. `RunCreate.ai_profile` (desconhecido = `422 ai_profile_desconhecido`), sorteio injetável do canário em `RunService`, `RunSummary.ai_profile`/`ai_profile_source`. Migração `064_perfil_de_ia`. `scripts/eval_run.py --profile`.
+- Prova `simulated`: `backend/tests/test_perfil_de_ia.py` (16), `scripts/tests/test_eval_run.py` (11). `real`: `not_run`.
+- Docs: `docs/ia.md` §10c, `docs/banco.md` (064), `docs/api-contract.md` (`POST /api/runs`), `config/config.example.yaml`.
+
+## 2026-10-02 — Suíte em paralelo com pytest-xdist: `pytest -q -n 8` em ~5 min contra ~36 min em série (J-XDIST, PR #48)
+
+- `backend/requirements-dev.in`/`.txt`: `pytest-xdist==3.8.0`. `test_worker_executor.py::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila` espera pelo fato em vez de `sleep(0.05)` (falhava isolada e com `-n 12`).
+- Real (02/10, WIN-7S2UASNLFOP): em série `25624c4` 4754 passed/7 skipped em 2178 s (sessão Android); `-n 8` em `7a1d0b0` 4752 passed/9 skipped em 306,87 s e 347,57 s, sem falha. Os 2 pulos a mais são de `test_supervisao_do_central.py` (exigem `backend/.venv` na árvore; pulam também em série no worktree sem a junção). PostgreSQL com `-n`: `not_run`.
+- Docs: `docs/operacao.md` §4, `.claude/rules/testes.md`.
+
 ## 2026-10-02 — A8/A9/A10 executados em real: túnel em PowerShell 5.1, relógio do notebook e agente `f9eed71`
 
 - Real (02/10, central + `worker-lan-01`, deploy `f9eed71`, backup `20261002-132234`/`132239`, com a pausa de reparo do android-09 conferida no health): tarefa `farm-tunel-192.168.1.11` reinstalada com `powershell.exe` 5.1 (forwards 15555..15565 e reverso `18000 → 8010`, worker `up`, hierarquia do android-09 200); agente do notebook `0.1.0+5d8b545` → `0.1.0+f9eed71`; relógio do notebook +8,857 s → +0,002 s pela tarefa `farm-relogio` (`C:\farm\relogio`), 1ª execução agendada com resultado 0, e o `degraded` por relógio saiu sozinho.

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-236 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+239 de 273 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -140,10 +140,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.4 | implemented | simulated | claude-opus-5-5 (sessão da IDE) | — | config/config.example.yaml (gpt-6-luna, gemini-3.1-flash-lite, deepseek-flash: capacidade, preço e bloco comentado), .env.example, docs/ia.md §13; AppConfigFile valida o exemplo; docs-check 0 erros. |  |
 | 17.5 | implemented | real | claude-opus-5-5 (sessão da IDE) | — | Bateria real 28/09 (recipes off, flows false, 14 casos do app de QA): fase17-base 13/14 US$ 2,30; fase17-luna 12/14 US$ 1,08; fase17-luna-ator-sonnet 12/14 US$ 1,09 (US$/correto 0,177 × 0,090 × 0,091; p95 do ator 4,2 ×… |  |
 | 17.6 | partial | real | claude-opus-5-5 (sessão da IDE) | — | Central (28/09): ai.image = openai/gpt-image-2/medium (GET /api/ai → image configured, simulated false, price 0,055) e preço do gpt-6-luna declarado sem papel (K-046: o teto do dia caiu de 8,06 para 4,69). Ator e verifi… | Ator barato só depois da cascata (17.10) e de uma nova medição; acompanhamento de uma semana do custo da imagem. |
-| 17.7 | pendente | — | — | — |  |  |
+| 17.7 | implemented | simulated | sessao | — | Branch jev/17-7-perfil-ia, commit f05588d (base 25624c4), 02/10/2026, sessao jev. backend/app/config.py: AiProfileCfg/AiCanaryCfg, ai.profiles por cima de ai.roles campo a campo, conferidos em _ia_coerente (funcao, prov… | Real not_run: primeiro uso real e a bateria do 17.10 (gpt-6-luna como ator via --profile), que depende de saldo e autorizacao. Painel sem seletor de perfil (so… |
 | 17.8 | pendente | — | — | — |  |  |
-| 17.10 | pendente | — | — | — |  |  |
-| 17.11 | pendente | — | — | — |  |  |
+| 17.10 | implemented | simulated | sessao | — | PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10).… | Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com… |
+| 17.11 | implemented | simulated | sessao | — | PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simu… |  |
 | 17.9 | pendente | — | — | — |  |  |
 | 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
 | 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
@@ -280,7 +280,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (37): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.18, 29.19, 29.20, T.2
+Pendentes (34): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.8, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.18, 29.19, 29.20, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

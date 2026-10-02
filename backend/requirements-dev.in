@@ -2,3 +2,4 @@
 # -c: as bibliotecas em comum ficam nas mesmas versões do runtime (pydantic, para o plugin do mypy).
 -c requirements.txt
 mypy
+pytest-xdist==3.8.0

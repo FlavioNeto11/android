@@ -143,21 +143,25 @@ class Repository:
         self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda _pacote: False)
 
     # ================================================================== execuções
-    def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None) -> tuple[Row, bool]:
+    def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
+                   ai_profile: tuple[str, str] | None = None) -> tuple[Row, bool]:
         """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução.
 
         `targets`: a foto JSON dos alvos resolvidos (migração 051) — persona e origem de cada aparelho e o comando
-        sem os destinos. O planejamento roda depois (e é retomado após reinício) a partir desta linha."""
+        sem os destinos. O planejamento roda depois (e é retomado após reinício) a partir desta linha.
+
+        `ai_profile`: `(perfil, origem)` já decididos por quem chama (item 17.7, migração 064); `None` = padrão."""
+        perfil, origem = ai_profile if ai_profile is not None else (None, None)
         run_id = new_run_id()
         try:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
-                    " targets) VALUES (?,?,?,?,?,?,?,?,?)",
+                    " targets, ai_profile, ai_profile_source) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
-                     int(simulated), dumps(req.instance_ids), now_iso(), targets))
+                     int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, origem))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
@@ -1158,7 +1162,8 @@ class Repository:
             instances_used=row["instances_used"], created_at=row["created_at"], started_at=row["started_at"],
             finished_at=row["finished_at"], counts=counts, progress=(counts.succeeded / total) if total else 0.0,
             status_detail=row["status_detail"], deduplicated=deduplicated,
-            app_ids=loads(_col(row, "app_ids"), []) or [])
+            app_ids=loads(_col(row, "app_ids"), []) or [],
+            ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])
