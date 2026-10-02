@@ -38,13 +38,14 @@ OPCOES: Final[dict[str, str]] = {
     "opt:rebaixar": "demote: lower its stage, it is not reliable now",
     "opt:descartar": "discard: it should leave the book",
 }
-#: O parecer do curador principal (`learning/domain/curador.Decisao`) na régua da triagem. `substituir`/`fundir` tiram o
-#: item do Livro em favor de outro: `descartar`.
+#: O parecer do curador principal (`learning/domain/curador.Decisao`) na régua da triagem: o mapeamento fixo combinado com a
+#: frente Aprendizado (resposta ao 31.7). `aprovar`, `possivelmente_obsoleto`, `substituir` e `fundir` não têm par na régua
+#: grossa (alvo, ou mudança de estágio que a triagem não diz): ficam fora da comparação, sem decisão real casada.
 TRIAGEM_DO_PARECER: Final[Mapping[str, str]] = {
-    "manter": "opt:manter", "aprovar": "opt:manter",
-    "observar": "opt:revisar", "pedir_evidencia": "opt:revisar", "possivelmente_obsoleto": "opt:revisar",
+    "manter": "opt:manter",
+    "observar": "opt:revisar", "pedir_evidencia": "opt:revisar",
     "rebaixar": "opt:rebaixar",
-    "desativar": "opt:descartar", "substituir": "opt:descartar", "fundir": "opt:descartar",
+    "desativar": "opt:descartar",
 }
 _INSTRUCOES: Final = (
     "The state describes one item that a device-automation platform learned by itself (a lesson or a recipe), only as "

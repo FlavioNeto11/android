@@ -599,11 +599,13 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   efeito, origem humana, classe e política de risco, rótulo de saúde e contagens (evidência a favor, contra e simulada,
   falhas e ocorrências, votos, intervenções, execuções). Cada valor é rótulo de vocabulário ou número; conteúdo (inclusive
   o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
-- **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`: `manter`/`aprovar` → manter;
-  `observar`/`pedir_evidencia`/`possivelmente_obsoleto` → revisar; `rebaixar` → rebaixar; `desativar`/`substituir`/`fundir`
-  → descartar), casada pelo `ref` = `dossie_hash`. Sem voto da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
-- **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 (critério do D-3: 30 revisões ou mais e 90 % de acordo ou
-  mais); até lá a sombra só registra. A falha do curador principal sobe como antes, sem sombra.
+- **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
+  manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
+  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação), casada pelo `ref` = `dossie_hash`. Sem voto
+  da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
+- **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
+  rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
+  sombra só registra. A falha do curador principal sobe como antes, sem sombra.
 - **Ligação:** o `AppState` embrulha o adaptador do hub (30.12) quando os dois branches se encontram (suíte 5); até lá o
   código existe e nada o chama.
 

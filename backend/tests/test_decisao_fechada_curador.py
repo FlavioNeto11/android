@@ -164,6 +164,19 @@ def test_parecer_volta_intacto_e_a_sombra_grava_e_casa(db: Database, porta_abert
     assert TEXTO_DA_PESSOA not in json.dumps([dict(r) for r in db.query("SELECT * FROM decisao_fechada_sombra")])
 
 
+@pytest.mark.parametrize("decisao", ["aprovar", "possivelmente_obsoleto", "substituir", "fundir", "inventada"])
+def test_parecer_sem_par_na_triagem_grava_a_sombra_sem_decisao_real(db: Database, porta_aberta: None,
+                                                                     decisao: str) -> None:
+    decisor = DecisorFalso({PERGUNTA_TRIAGEM: RespostaDeDecisao(escolha="opt:manter",
+                                                                probabilidades={"opt:manter": 0.9}, confianca=0.9)})
+    triagem, porta, _ = _montar(db, decisor)
+    CuradorComTriagemEmSombra(CuradorFalso(decisao=decisao), triagem).revisar(Pedido(_dossie()))
+    porta.aguardar_sombras()
+    triagem.aguardar()
+    [linha] = db.query("SELECT escolha, decisao_real FROM decisao_fechada_sombra")
+    assert (linha["escolha"], linha["decisao_real"]) == ("opt:manter", None)
+
+
 def test_falha_do_curador_principal_sobe_sem_sombra(db: Database, porta_aberta: None) -> None:
     decisor = DecisorFalso()
     triagem, porta, _ = _montar(db, decisor)
