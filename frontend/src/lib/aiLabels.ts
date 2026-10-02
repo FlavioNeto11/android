@@ -6,6 +6,7 @@ export const AI_ROLE_LABEL: Record<UsageGroup['role'], string> = {
   decide: 'Decidir',
   verify: 'Verificar',
   social: 'Responder',
+  persona: 'Gerar persona',
 };
 
 export function aiRoleLabel(role: string): string {
@@ -57,6 +58,7 @@ export function aiModelRows(ai: Pick<AiStatus, 'models'>): LabeledValue[] {
     { key: 'verify', label: AI_ROLE_LABEL.verify, value: m.verify },
     { key: 'escalation', label: 'Escalonamento', value: m.escalation },
     { key: 'social', label: AI_ROLE_LABEL.social, value: m.social ?? '' },
+    { key: 'persona', label: AI_ROLE_LABEL.persona, value: m.persona ?? '' },
   ];
   return rows.filter((r) => typeof r.value === 'string' && r.value !== '');
 }

@@ -95,7 +95,7 @@ class _Provedor:
         if self.erro is not None:
             raise self.erro
         assert self.draft is not None
-        return self.draft, Usage(calls=1, role="social", model="m", provider="duble")
+        return self.draft, Usage(calls=1, role="persona", model="m", provider="duble")
 
 
 async def test_rascunho_gerado_e_um_persona_create_pronto_para_gravar(tmp_path: Path) -> None:
@@ -148,13 +148,13 @@ async def test_enriquecer_preenche_o_vazio_e_nao_chama_de_novo_quando_nada_falta
         pessoa = svc.create_persona(PersonaCreate(name="Otávio Ramos", traits=PersonaTraits(tone="seco")))
         assert pessoa.voice_gaps and pessoa.age is None
         cheia = await svc.enrich_persona(pessoa.id)
-        assert contador.count("social", kind="persona", enrich=True) == 1
+        assert contador.count("persona", kind="persona", enrich=True) == 1
         assert cheia.traits.tone == "seco" and cheia.name == "Otávio Ramos"          # o que existia ficou
         assert cheia.voice_gaps == [] and cheia.birth_date and cheia.visual.appearance and cheia.summary
         assert lacunas_da_biografia(cheia.biography.model_dump(exclude_none=True)) == []
         assert cheia.generation.source == "manual" and cheia.generation.enriched_at and cheia.generation.provider == "simulated"
         de_novo = await svc.enrich_persona(pessoa.id)
-        assert contador.count("social", kind="persona") == 1 and de_novo.updated_at == cheia.updated_at
+        assert contador.count("persona", kind="persona") == 1 and de_novo.updated_at == cheia.updated_at
     finally:
         db.close()
 
@@ -167,7 +167,7 @@ async def test_openai_manda_o_prompt_de_persona_com_esquema_e_le_o_rascunho(tmp_
     corpo = json.loads(vistos[0].content)
     assert "FICTÍCIAS" in corpo["messages"][0]["content"] and "<pedido>\numa barista\n</pedido>" in corpo["messages"][1]["content"][0]["text"]
     assert corpo["response_format"]["json_schema"]["name"] == "persona"
-    assert draft.name == rascunho["name"] and usage.role == "social" and usage.calls == 1
+    assert draft.name == rascunho["name"] and usage.role == "persona" and usage.calls == 1
     p, _ = provedor_openai(tmp_path, [_resposta(None, finish="content_filter")])
     with pytest.raises(AIError) as exc:
         await p.generate_persona(PersonaGenerationRequest(prompt="x", today=HOJE))
@@ -178,12 +178,12 @@ async def test_openai_manda_o_prompt_de_persona_com_esquema_e_le_o_rascunho(tmp_
     assert exc.value.kind == "invalid_output"
 
 
-async def test_anthropic_gera_persona_pelo_papel_social_com_saida_estruturada(tmp_path: Path) -> None:
+async def test_anthropic_gera_persona_pelo_papel_persona_com_saida_estruturada(tmp_path: Path) -> None:
     rascunho = persona_simulada(PersonaGenerationRequest(prompt="x", today=HOJE)).model_dump(mode="json")
     p, fake = provedor_anthropic(tmp_path, [_resp([SimpleNamespace(type="text", text=json.dumps(rascunho))])])
     draft, usage = await p.generate_persona(PersonaGenerationRequest(prompt="um chef", today=HOJE))
     chamada: dict[str, Any] = fake.calls[-1]
-    assert chamada["model"] == p.models["social"] and usage.role == "social"
+    assert chamada["model"] == p.models["persona"] and usage.role == "persona"
     # Sem gramática (K-042: a API recusou o esquema do rascunho duas vezes em produção): o esquema vai no texto.
     assert "format" not in chamada.get("output_config", {})
     texto = chamada["messages"][0]["content"][0]["text"]
@@ -217,7 +217,7 @@ async def test_enriquecer_com_instrucoes_leva_o_pedido_do_dono_e_recusa_segredo_
         svc.provider = contador
         pessoa = svc.create_persona(PersonaCreate(name="Otávio Ramos", traits=PersonaTraits(tone="seco")))
         cheia = await svc.enrich_persona(pessoa.id, instructions="é evangélico e vai ao culto toda semana")
-        assert contador.count("social", kind="persona", enrich=True) == 1
+        assert contador.count("persona", kind="persona", enrich=True) == 1
         texto = persona_generation_user_text(pedidos[-1])
         assert "é evangélico e vai ao culto toda semana" in texto and "sem reescrever" in texto
         assert cheia.traits.tone == "seco" and cheia.name == "Otávio Ramos"
@@ -226,7 +226,7 @@ async def test_enriquecer_com_instrucoes_leva_o_pedido_do_dono_e_recusa_segredo_
         with pytest.raises(SocialError) as recusa:
             await svc.enrich_persona(outra.id, instructions="a senha dela é Abc12345!")
         assert recusa.value.code == "instructions_with_secret" and recusa.value.status == 422
-        assert contador.count("social", kind="persona") == 1          # a recusa veio antes de qualquer chamada
+        assert contador.count("persona", kind="persona") == 1          # a recusa veio antes de qualquer chamada
     finally:
         db.close()
 

@@ -1739,3 +1739,47 @@ fotografia dos recados antes de drenar as tarefas (senão o recado chega durante
 
 **Aplicabilidade.** Todo teste do executor que não testa a varredura; quem testa `pid_do_avd` atribui o seu depois ou usa
 `processos_reais=True`. `sleep` fixo só como janela NEGATIVA (nada deve acontecer), nunca para esperar que algo aconteça.
+
+
+### K-071 — Pedido em `call_later` que esgota calado: quem espera o reinício não pode pagar pela espera de 5 minutos
+
+**Data:** 02/10/2026 · **Área:** rede por aparelho (29.21, android-05)
+
+**Sintoma.** `exigida_com_bloqueio` acordou a frio sem `tun0`; a convergência pôs `configurado`, religou pela interface e nunca
+abriu um `restart`; a execução que esperava a rede ficou presa 7 min. Nada no log nem no histórico dizia o motivo.
+
+**Causa.** O reinício é pedido por `call_later` em memória (24 tentativas de 5 s) e o esgotamento punha `espera_ate` 300 s, que
+cala a varredura e a porta. O termo que segurava o aparelho ("ocupado") não ia a lugar nenhum, então o defeito não tinha
+rastro. Qual termo segurou no android-05 segue sem prova.
+
+**O que não funcionou.** Supor o termo pelos eventos (IA liberou, `device.network` fechado, o objetivo da rede é excluído da
+conta): nenhum deveria segurar, e a suposição não é evidência.
+
+**O que funcionou.** Dizer o termo na linha (uma vez por termo) e, havendo objetivo parado em `wait_reason='rede'` no
+aparelho, retentar em 30 s em vez de 300 s. Teto, agendamento e `espera_ate` seguem em memória (dívida).
+
+**Aplicabilidade.** Qualquer espera em memória que cale um laço de decisão precisa dizer por que calou e ter uma saída curta
+quando alguém depende dela.
+
+### K-072 — Teste que afirma o contador de uma thread de servidor no instante em que o cliente recebe a resposta
+
+**Data:** 02/10/2026 · **Área:** testes (`test_rede_aplicacao.py`, `ServidorDeUmaVez`)
+
+**Sintoma.** `test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `pytest -n 8` e passava isolado.
+
+**Causa (hipótese descartada e causa lida no código).** A hipótese era porta fixa disputada entre os workers do xdist: não é —
+`ServidorDeUmaVez` já pede a porta 0 (efêmera) e lê `porta` de volta do socket, e cada teste tem o seu servidor. A corrida é
+outra: o `do_GET` grava o corpo e SÓ DEPOIS faz `entregues += 1`; o cliente volta com o corpo assim que o último byte chega, e o
+teste afirmava `srv.entregues == 1` nessa hora. Se a thread do servidor perde a CPU entre o `write` e o `+= 1` (o que a carga
+de 8 workers provoca), o teste lê 0. O servidor está certo (o consumidor de produção já espera o fato: `entregues < 1` em laço).
+
+**O que não funcionou.** Trocar a porta (já era efêmera) e rodar isolado (a janela é de microssegundos sem carga).
+
+**O que funcionou.** Esperar o FATO (`_ate_o_fato(lambda: srv.entregues == 1, ...)`) e provar a causa de forma determinística:
+`_atrasar_depois_do_corpo` faz o handler esperar 0,3 s depois de cada gravação no socket (envolve `wfile` no `setup` da classe do
+handler, sem tocar na produção); o teste parametrizado com esse atraso falharia sempre para quem afirma o contador logo ao
+receber a resposta. Um teste à parte confirma que dois servidores ao mesmo tempo recebem portas diferentes e não se cruzam.
+
+**Aplicabilidade.** Todo teste que lê estado mantido por uma thread do servidor sob teste (contador, fila, flag): a volta do
+cliente não ordena nada em relação a ele. Espere o fato com prazo; `sleep` fixo só como janela negativa. Para provar a causa,
+injete o atraso no ponto da corrida em vez de repetir até falhar.

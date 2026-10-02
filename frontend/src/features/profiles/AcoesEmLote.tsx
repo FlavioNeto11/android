@@ -20,7 +20,7 @@ import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
 import { plural } from '../../lib/format';
 import { CUSTO_ESTIMADO_POR_PERSONA } from './NovaPersona';
-import { custoDasFotos, faixaUsd, CUSTO_POR_PERSONA_USD, imagemPaga, socialSimulado } from './custos';
+import { custoDasFotos, faixaUsd, CUSTO_POR_PERSONA_USD, imagemPaga, personaSimulado } from './custos';
 import { RecusaLocal, executarEmLote, type ResultadoDoItem } from './emLote';
 import { nomeDe } from './pessoa';
 import styles from './Profiles.module.css';
@@ -149,7 +149,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
   const img = ai?.image ?? null;
   const fotosPagas = imagemPaga(ai);
   const custoFotos = custoDasFotos(ai, n * (Number.isInteger(k) ? k : 0));
-  const completarPago = !socialSimulado(ai);
+  const completarPago = !personaSimulado(ai);
   const esperado = `apagar ${n}`;
 
   let titulo: string;
@@ -195,7 +195,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
         <>
           {completarPago ? (
             <Banner tone="warning" icon={TriangleAlert} role="status" title="É uma chamada paga de IA por persona">
-              Cada persona com algo faltando chama o papel <strong>social</strong>: até{' '}
+              Cada persona com algo faltando chama o papel <strong>persona</strong>: até{' '}
               {faixaUsd(n * CUSTO_POR_PERSONA_USD.min, n * CUSTO_POR_PERSONA_USD.max)} no total
               ({CUSTO_ESTIMADO_POR_PERSONA}){aiFalhou ? ' — não foi possível ler o provedor agora, então conte com custo' : ''}.
               As completas não chamam o modelo. Só o vazio é preenchido; o que já existe não muda.

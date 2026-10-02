@@ -391,7 +391,7 @@ faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.1
 (`CatalogoDeRisco`, nunca texto de ação). Os pontos de chamada: `mudar_estado`, `propor`, `avisar_item` (a tela absorvida) e
 `avisar_mudanca_nativa` (os ouvintes das lojas de receita e fluxo). Contrato do payload: `api-contract.md`, adendo v0.49.
 Um gesto da pessoa que passa por dois estados (`mudar_status_nativo`: candidata, validada, publicada) pode publicar entrada e saída
-na mesma ação. Falta ligar `eventos=self.bus` em `state.py`.
+na mesma ação. `state.py` passa `eventos=self.bus`.
 
 ## Pendências conhecidas
 

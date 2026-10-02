@@ -4,9 +4,9 @@
 > [docs/relatorio-validacao.md](relatorio-validacao.md); para o plano que originou o hub, `docs/plano-100.md`
 > fases 0 e 7 (não editar); para produto e conceitos, [docs/produto.md](produto.md).
 
-## 1. As cinco funções
+## 1. As seis funções
 
-`AI_ROLES = ("plan", "decide", "verify", "escalation", "social")` (`backend/app/config.py:22`). Cada função tem
+`AI_ROLES = ("plan", "decide", "verify", "escalation", "social", "persona")` (`backend/app/config.py`). Cada função tem
 provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider`
 (`backend/app/planning/routing.py`):
 
@@ -17,13 +17,19 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `verify` | Confere a pós-condição da etapa por visão, quando a checagem determinística não basta | idem |
 | `escalation` | Assume quando o modelo barato tropeça, em nova tentativa e em etapa com efeito externo (`strong_model_for_side_effect`) | minoria, mas mais caro por chamada |
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
+| `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 
 **`generalize` (modo treinamento, item 13.2) não é uma sexta função registrada** — despacha no provedor/modelo do
 papel `plan` (mesmo hub, sem `ai.roles.generalize` dedicado): `backend/app/planning/training.py` monta o pedido e
 chama o provedor resolvido para `plan`.
 
-**Geração de persona também não é função nova.** `POST /api/personas/generate` e `POST /api/personas/{id}/enrich`
-despacham pelo papel `social` (`backend/app/planning/routing.py::RoutingProvider.generate_persona`, sem `run_id`:
+**Geração de persona é a função `persona` (item 17.8; até 02/10 era o `social`).** `POST /api/personas/generate` e
+`POST /api/personas/{id}/enrich` despacham pelo papel `persona`, que **sem `ai.roles.persona` herda o `social` por
+inteiro** — provedor, modelo, prazo, vagas (o MESMO semáforo), fallback e esforço, inclusive nos perfis do 17.7 (a camada
+`social` do perfil vale para ela) —, então nenhuma instalação muda sem mexer na configuração. Com bloco próprio ela
+passa a ser outra função e o bloco do `social` deixa de valer para ela (campo que ela não escreve cai nos padrões, não
+no social: herdar o modelo do social ao trocar de provedor daria um modelo que o destino não tem). Usa-se
+`RoutingProvider.generate_persona` (`backend/app/planning/routing.py::RoutingProvider.generate_persona`, sem `run_id`:
 vale o teto do dia, não o da execução), com `AIProvider.generate_persona` em todos os provedores
 (`anthropic_provider.py`, `openai_provider.py`, `simulated_provider.py::persona_simulada`). O que sai da máquina é só
 texto: o pedido do dono, as restrições e, no enriquecimento, o que a persona já tem; nunca tela, memória ou
@@ -82,7 +88,7 @@ Duas camadas, com precedência clara (`Config.ai_roles()`, `backend/app/config.p
    thinking/effort/min_cache_tokens).
 
 Herança quando `ai.roles.<papel>` falta um campo: `ROLE_DEFAULTS` fecha `timeout_s`/`concurrency`
-(`config.py:339-345` — plan 120s/4, decide 45s/8, verify 30s/8, escalation 60s/4, social 60s/4). Provedor não
+(`config.py::ROLE_DEFAULTS` — plan 120s/4, decide 45s/8, verify 30s/8, escalation 60s/4, social 60s/4, persona 60s/4). Provedor não
 declarado em `ai.providers` cai no do `.env` (`AI_PROVIDER`, padrão `anthropic`).
 
 ## 3. Capacidades declaradas (não descobertas)
@@ -371,11 +377,16 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
   tem teto de validação e, no roteador, é o prazo **total** do papel, esperas incluídas — uma fila de flex sem
   capacidade termina em "passou de N s", não pendura a vaga. **Uso hoje:** o rejulgamento offline
   (`eval_rejudge.py --sobrepor`, bloco comentado em `config.example.yaml`; o custo impresso usa o preço de lista de
-  `ai.prices`, ~2x o do flex, então superestima). **Fora de escopo e por quê:** a geração de persona (`generate_persona`)
-  e a resposta social (`generate_social_response`) são o MESMO papel `social`, e a segunda roda dentro da execução
-  (comentário, resposta de DM, via `runner` do executor); apontar `social` para o flex deixaria a execução lenta e
-  sujeita a 429. Para a persona usar flex é preciso separar o papel (opção: um papel `persona` em `AI_ROLES`, que
-  toca `config.py`, roteador, saldos, aba IA e a regra de `_ia_coerente`) — decisão pendente do dono, não tomada aqui.
+  `ai.prices`, ~2x o do flex, então superestima). **Persona no flex (papel `persona`, decisão do dono de 02/10, implementado):** a geração de persona
+  (`generate_persona`) e a resposta social (`generate_social_response`) eram o MESMO papel `social`, e a segunda roda
+  dentro da execução (comentário, resposta de DM, via `runner` do executor), então apontar `social` para o flex
+  deixaria a execução lenta e sujeita a 429. Agora a persona é função própria: `ai.roles.persona: {provider:
+  openai-flex, model: <declarado em ai.models>, timeout_s: 900, max_retries: 5}` leva SÓ a geração e o enriquecimento ao
+  flex; o `social` da execução continua onde estava. Sem essa linha nada muda (herda o `social`). `ai_calls` e o
+  relatório de uso passam a ter `role='persona'` para essas chamadas (linhas antigas seguem `social`); a aba IA mostra a
+  função, o saldo da conta entra por `saldos.conta_do_papel` como as demais, e `ai.profiles.<perfil>.roles.persona`
+  também vale. Concorrência: só se separa das vagas do `social` se `ai.roles.persona.concurrency` for escrito.
+  **Prova `simulated`:** `backend/tests/test_papel_persona.py`; chamada real ao flex `not_run`.
   **Prova `simulated`:** `backend/tests/test_openai_provider.py` (`test_flex_*`, `MockTransport` + `sleep` falso) e
   `scripts/tests/test_eval_rejudge.py`; chamada real ao flex `not_run` (sem chamada paga nesta rodada).
 - **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do

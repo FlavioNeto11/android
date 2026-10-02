@@ -160,7 +160,7 @@ async def test_modelo_por_funcao_escalonamento_e_parametros_por_modelo(tmp_path:
     cfg.env.ai_model_verifier = "claude-sonnet-5"
     p = AnthropicProvider(cfg)
     assert p.models == {"plan": "claude-opus-5", "decide": "claude-haiku-4-5", "verify": "claude-sonnet-5",
-                        "escalation": "claude-opus-5", "social": "claude-opus-5"}
+                        "escalation": "claude-opus-5", "social": "claude-opus-5", "persona": "claude-opus-5"}
     tool_use = SimpleNamespace(type="tool_use", name="observe_screen", id="t1", input={"rationale": "x", "need_image": False})
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     no_effort = anthropic.BadRequestError("output_config.effort is not supported", response=httpx.Response(400, request=req), body=None)

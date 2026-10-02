@@ -3456,6 +3456,12 @@ se o pacote não está em nenhuma das três fontes. As duas rotas entram antes d
 foi lido). Vale o modo GLOBAL (`ai.recipes`, `ai.flows`, `skills.enabled`, `aprendizado.licoes.modo`, `aprendizado.telas.modo`);
 o modo por app é o item 30.20.
 
+## Adendo v0.48 (02/10/2026) — Papel de IA `persona` (item 17.8)
+
+- `GET /api/ai`: `roles` ganha uma linha `role: "persona"` (a ordem é a de `AI_ROLES`: plan, decide, verify, escalation, social, persona) e `models.persona`. Sem `ai.roles.persona` a linha é idêntica à do `social`.
+- `GET /api/usage`: as chamadas de geração e enriquecimento de persona passam a vir com `role="persona"` (antes `social`); consumidores que filtravam por `social` para somar custo de persona devem somar os dois.
+- Sem mudança de rota, corpo ou código de erro; `POST /api/personas/generate` e `.../enrich` seguem pagos e sob o teto do dia.
+
 ## Adendo v0.49 (02/10/2026) — Evento `learning.needs_person`: conhecimento aguardando a pessoa (item 30.21)
 
 Evento persistido no barramento (`events`, fora de `EPHEMERAL_KINDS`), no padrão de `approval.pending` e `session.needs_person`.
@@ -3487,5 +3493,5 @@ ação que envia texto escrito (`needs_draft`) ou item nascido de sessão descon
 catálogo no app, e origem humana sem efeito (D-2). O mapa de `interaction_type` para envio, publicação e exclusão e a
 autenticação por conteúdo de tela ainda não são derivados.
 
-**Ligação.** `montar_aprendizado(..., eventos=<EventBus>)`. Sem `eventos`, nada é publicado: `state.py` precisa passar
-`eventos=self.bus` (fora do escopo do item 30.21). Prova `simulated` (`tests/test_learning_espera.py`).
+**Ligação.** `montar_aprendizado(..., eventos=<EventBus>)`. Sem `eventos`, nada é publicado; `state.py` passa
+`eventos=self.bus`. Prova `simulated` (`tests/test_learning_espera.py`).

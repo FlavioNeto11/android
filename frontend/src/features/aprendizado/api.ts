@@ -1,4 +1,5 @@
 import { apiRequest } from '../../api/client';
+import { lerDetalheDoApp, lerVisaoDeApps, type DetalheDoApp, type VisaoDeApps } from './apps';
 import {
   type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem,
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
@@ -23,6 +24,12 @@ export interface FiltroDoLivro {
 export const apiAprendizado = {
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
     apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem }, signal }),
+  /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
+  apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>
+    lerVisaoDeApps(await apiRequest<unknown>('GET', '/aprendizado/apps', { signal })),
+  /** O detalhe de um app (também `nao_resolvido`): o declarado, o aprendido e o absorvido. 404 se nenhuma fonte o conhece. */
+  app: async (pacote: string, signal?: AbortSignal): Promise<DetalheDoApp> =>
+    lerDetalheDoApp(await apiRequest<unknown>('GET', `/aprendizado/apps/${enc(pacote)}`, { signal })),
   /** A fila do D1 ("Para aprovar") e a contagem da barra do topo. */
   pendentes: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes', { signal }),
   /** O legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu ainda. */

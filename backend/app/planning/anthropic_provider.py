@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 
 from ..automation.tools import strict_schema, tool_definitions
-from ..config import Config
+from ..config import AI_ROLES, Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from ..modules.execution.domain.orquestracao import (OrquestracaoInvalida, OrquestracaoOut, PedidoDeOrquestracao,
                                                      orquestracao_from_json, orquestracao_system,
@@ -102,7 +102,7 @@ class AnthropicProvider:
     simulated = False
 
     def __init__(self, cfg: Config, role: "ResolvedRole | None" = None):
-        """`role=None` é o provedor único de sempre (as cinco funções na mesma instância).
+        """`role=None` é o provedor único de sempre (as funções todas na mesma instância).
 
         Com `role`, esta instância é a de UMA função dentro do hub: modelo, prazo, novas tentativas e fallback de
         recusa vêm dela. Os outros papéis continuam preenchidos (a instância sabe planejar mesmo sendo a do ator),
@@ -111,7 +111,7 @@ class AnthropicProvider:
         self.cfg = cfg
         env = cfg.env
         self.role = role
-        self.models = {papel: cfg.ai_model_for(papel) for papel in ("plan", "decide", "verify", "escalation", "social")}
+        self.models = {papel: cfg.ai_model_for(papel) for papel in AI_ROLES}
         if role is not None:
             self.models[role.role] = role.model
         self.model = self.models[role.role] if role is not None else self.models["decide"]
@@ -140,7 +140,7 @@ class AnthropicProvider:
                       "planejar/executar com IA fica pendente até configurar a chave e reiniciar o backend.")
         m = self.models
         roles = (f"plano: {m['plan']} · ação: {m['decide']} · verificação: {m['verify']} · "
-                 f"escalonamento: {m['escalation']} · social: {m['social']}")
+                 f"escalonamento: {m['escalation']} · social: {m['social']} · persona: {m['persona']}")
         return AiStatus(provider=self.name, model=self.model, configured=self.configured, simulated=False,
                         sends_data_externally=True, notice=f"{notice} Modelos por função — {roles}.",
                         effort=self.cfg.env.ai_effort_actor, models=dict(m), recipes=self.cfg.file.ai.recipes,
@@ -420,17 +420,20 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ geração de persona
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
-        """Pelo papel `social` (mesmo modelo e orçamento de quem escreve na voz da persona). Só texto: o pedido do
-        dono e, no enriquecimento, o que a persona já tem — nunca tela, memória ou credencial."""
+        """Pelo papel `persona` (item 17.8; sem `ai.roles.persona` é o `social`, com o mesmo modelo e orçamento). Só
+        texto: o pedido do dono e, no enriquecimento, o que a persona já tem — nunca tela, memória ou credencial."""
         # SEM gramática: a API recusa o esquema do rascunho como saída estruturada — primeiro por uniões demais (35,
         # limite 16), depois, com elas reduzidas, por "compiled grammar is too large" (K-042, medido em produção em
         # 28/09). O esquema vai no texto, como nas ferramentas não estritas; a garantia é o Pydantic na leitura.
         texto = (persona_generation_user_text(req)
                  + "\n\nResponda APENAS com um objeto JSON que valide contra este esquema, sem texto em volta; "
                    "campo sem valor vai como null:\n" + json.dumps(strict_schema(PersonaDraft), ensure_ascii=False))
-        resp, usage = await self._create(role="social", model=self.models["social"], system=PERSONA_GENERATION_SYSTEM,
+        # Com `role` (dentro do hub) o modelo é o da instância: ela é compartilhada por todas as funções de mesma
+        # chave, e `self.models["persona"]` só vale para quem NÃO tem função (o provedor único de sempre).
+        modelo = self.model if self.role is not None else self.models["persona"]
+        resp, usage = await self._create(role="persona", model=modelo, system=PERSONA_GENERATION_SYSTEM,
                                          content=[{"type": "text", "text": texto}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=MAX_TOKENS_DO_RASCUNHO)
-        self._check_stop(resp, self.models["social"])
+        self._check_stop(resp, modelo)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return persona_draft_from_json(raw), usage
