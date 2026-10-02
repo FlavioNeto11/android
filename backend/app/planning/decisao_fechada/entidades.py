@@ -30,7 +30,8 @@ M_TEXTO: Final = "[texto]"
 _MARCADORES: Final = (M_URL, M_EMAIL, M_HANDLE, M_TELEFONE, M_NUMERO, M_NOME, M_TEXTO)
 
 # Troca (do mais específico ao mais geral). `\w` é Unicode no `re` de str: acentos contam.
-_ASPAS = re.compile(r'"[^"]*"|“[^”]*”|«[^»]*»|‘[^’]*’')
+#: Aspas simples ASCII e crase só fora de palavra: o apóstrofo de "D'Ávila" não abre trecho.
+_ASPAS = re.compile(r'"[^"]*"|“[^”]*”|«[^»]*»|‘[^’]*’' r"|(?<!\w)'[^'\n]*'(?!\w)|`[^`]*`")
 _URL = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.\-]*://|www\.)\S+")
 _EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)*")
 _HANDLE = re.compile(r"@\w[\w.]*")

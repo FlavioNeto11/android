@@ -79,8 +79,9 @@ def id_opaco(skill_id: str) -> str:
 
 
 def _descricao(e: EntradaDeCatalogo) -> str:
+    # C2 é o catálogo do dono, liberado; o `redact` é só a rede para um segredo que tenha ido parar numa descrição.
     texto = " ".join(f"{e.nome}: {e.descricao}".split() if e.descricao else e.nome.split())
-    return texto[:_DESCRICAO_MAX] or "(sem nome)"
+    return (redact(texto) or "")[:_DESCRICAO_MAX] or "(sem nome)"
 
 
 def _opcoes(entradas: Sequence[EntradaDeCatalogo]) -> dict[str, str]:

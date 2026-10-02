@@ -51,6 +51,9 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
     ("veja https://exemplo.com/a?b=1 e www.exemplo.org", "veja [link] e [link]"),
     ("abra instagram.com/fulano", "abra [link]"),
     ('comente "adorei o post" no feed', "comente [texto] no feed"),
+    ("poste 'bom dia pessoal' no feed", "poste [texto] no feed"),          # aspas simples ASCII
+    ("escreva `oi tudo bem` agora", "escreva [texto] agora"),
+    ("fale com D'Ávila agora", "fale com [nome] agora"),                  # o apóstrofo não abre trecho
     ("segunda, curta o post", "segunda, curta o post"),
 ])
 def test_remover_entidades_troca_por_marcador_fixo(texto: str, esperado: str) -> None:
@@ -398,3 +401,27 @@ async def test_cancelar_derruba_as_sombras_soltas() -> None:
     assert solta.cancelled()
     await sombra.aguardar()
     assert not sombra._soltas                                                 # noqa: SLF001
+
+
+async def test_a_sombra_recebe_o_comando_sem_destinos(harness: Harness) -> None:
+    """ADR-069, C3: `sem_destinos` antes do `redact` e das entidades, em todo caminho de `_perfis_da_execucao`."""
+    st = harness.state
+    assert st is not None
+    run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+    recebidos: list[str] = []
+
+    class SombraEspia:
+        def ativo(self) -> bool:
+            return True
+
+        def agendar(self, run_id: str, comando: str, perfis: Any, app: Any) -> None:
+            recebidos.append(comando)
+
+        def cancelar(self) -> None:
+            pass
+
+    st.runs.sombra_intencao = SombraEspia()                                    # type: ignore[assignment]
+    st.runs.sem_destinos = lambda c: "LIMPO:" + c                              # type: ignore[method-assign]
+    st.runs._intencao_em_sombra(run.id)                                        # noqa: SLF001
+    assert recebidos == ["LIMPO:abra o aplicativo de configuracoes"]

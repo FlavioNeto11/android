@@ -852,7 +852,9 @@ class RunService:
             if perguntas:
                 return
             apps = loads(str(run["app_ids"] or "[]"), [])
-            sombra.agendar(run_id, comando, [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
+            # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem
+            # destinos; os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
+            sombra.agendar(run_id, self.sem_destinos(comando), [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
                            str(apps[0]) if apps else None)
         except Exception:  # noqa: BLE001
             log.warning("sombra da intenção da execução %s", run_id)
