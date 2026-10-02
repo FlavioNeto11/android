@@ -1028,6 +1028,11 @@ class PedidosCfg(BaseModel):
     lote_max: int = Field(500, ge=1, le=5000)
     #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
     posse_s: int = Field(120, ge=10, le=3600)
+    #: Resumo do relatório por IA (28.7, `docs/design/pedidos-persistentes.md` §6.6): só o ponto de extensão. O relatório
+    #: determinístico é a fonte da verdade e sai sempre; ligar isto SEM um resumidor injetado não chama nada.
+    resumo_ia: bool = False
+    #: Teto por relatório, em USD, que o resumidor deve respeitar (e que o 28.6 conta no orçamento do pedido).
+    resumo_ia_teto_usd: float = Field(0.05, ge=0.0, le=5.0)
 
 
 class AppConfigFile(BaseModel):
