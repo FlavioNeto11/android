@@ -11,10 +11,12 @@ import { saveJson } from '../../lib/storage';
 import { formatClock } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { DetalheRico } from './DetalheRico';
+import { metaDeSaude } from './detalhe';
 import { abrirApp } from './apps';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ONDE_FICAM_AS_HABILIDADES,
-  ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoEstado, rotuloDoKind,
+  ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -128,28 +130,8 @@ function DetalheDoItem({ entrada }: { entrada: EntradaDoLivro }) {
     return () => ctl.abort();
   }, [entrada.kind, entrada.ref]);
   if (erro) return <p className={styles.erroInline}>{erro}</p>;
-  if (!detalhe) return <p className={styles.secaoLead}>Carregando a evidência e a trilha…</p>;
-  const evid = Array.isArray(detalhe.evidencias) ? detalhe.evidencias : [];
-  const trilha = Array.isArray(detalhe.trilha) ? detalhe.trilha : [];
-  return (
-    <div className={styles.secao}>
-      <p className={styles.secaoLead}>
-        Evidência: {evid.filter((x) => x.stance === 'for').length} a favor · {evid.filter((x) => x.stance === 'against').length} contra
-        · {evid.filter((x) => x.stance === 'conflict').length} em conflito
-        {evid.some((x) => x.simulated) ? ' (as simuladas nunca contam para publicar)' : ''}.
-      </p>
-      {trilha.length > 0 ? (
-        <ol className={styles.trilha} aria-label="Trilha">
-          {trilha.map((t) => (
-            <li key={t.id}>
-              {formatClock(t.decided_at)} · {t.from ? `${rotuloDoEstado(t.from)} → ` : ''}{rotuloDoEstado(t.to)} por{' '}
-              <strong>{t.decided_by}</strong>: {t.reason}
-            </li>
-          ))}
-        </ol>
-      ) : <p className={styles.secaoLead}>Nenhuma transição registrada pelo livro ainda.</p>}
-    </div>
-  );
+  if (!detalhe) return <p className={styles.secaoLead}>Carregando o detalhe do item…</p>;
+  return <DetalheRico detalhe={detalhe} />;
 }
 
 interface ItemDoLivroProps {
@@ -160,16 +142,20 @@ interface ItemDoLivroProps {
   onSelecionar?: (sim: boolean) => void;
   onMudou: () => void;
   extra?: ReactNode;
+  /** Abre o detalhe já na primeira vista (o link de uma relação leva direto ao item). */
+  abrirDetalhe?: boolean;
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const porQue = porQueOSistemaNaoPublica(e);
   const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';
+  // O rótulo vem pronto do backend (a mesma função na lista e no detalhe): aqui só se escolhe o tom e o texto.
+  const saude = metaDeSaude(e.saude?.rotulo);
 
   return (
     <li className={cx(styles.item, selecionado && styles.itemSelecionado)} data-item={chaveDoItem(e)}>
@@ -181,6 +167,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         <span className={styles.itemTitulo}>{e.title || e.ref}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
+        {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
@@ -226,7 +213,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         />
       ) : null}
       {!memoria ? (
-        <Disclosure bare summary="Evidência e trilha">
+        <Disclosure bare summary="Detalhes, evidência e trilha" defaultOpen={abrirDetalhe}>
           {() => <DetalheDoItem entrada={e} />}
         </Disclosure>
       ) : null}

@@ -3566,6 +3566,49 @@ telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao`
 Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
 equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.
 
+
+## Adendo v0.52 (02/10/2026) — `saude` na lista e no detalhe do Livro (item 30.4)
+
+`GET /api/aprendizado` (cada elemento de `itens[]`), `GET /api/aprendizado/pendentes`, `GET /api/aprendizado/revisar` e
+`GET /api/aprendizado/{kind}/{ref}` (em `item`) ganham o campo `saude`: objeto, ou `null` na memória (só a contagem sai). É UMA função
+no backend (`domain/saude.py`, pura), a mesma na lista e no detalhe, então o rótulo nunca diverge. Só leitura: o rótulo não é estado,
+não move nada e não dispara nada. Nenhuma migração, nenhum código de erro novo.
+
+```json
+{"rotulo": "degradando",
+ "motivos": [{"codigo": "eficacia_abaixo_do_minimo", "dimensao": "eficacia", "valor": 0.6, "limite": 0.8, "detalhe": "10 usos"}],
+ "dimensoes": [{"nome": "eficacia", "estado": "medida", "valor": 0.6, "amostra": 10, "fonte": "recipes.replay_ok+replay_fail"}]}
+```
+
+**`rotulo`** (vocabulário fechado; a ordem é a de avaliação, o primeiro que casa vence; regras e limiares da proposta D-5, medidos no banco
+real, que valem sobre o §5.3 do desenho):
+
+| `rotulo` | Regra |
+|---|---|
+| `inativo` | `deprecated`, `disabled` (receita `superseded`/`quarantined` já chegam assim); o detalhe leva o motivo da trilha em `motivos[0].detalhe` |
+| `em_prova` | `candidate` ou `validated` (`aguarda_repeticao`, `aguarda_o_dono`, `validado_aguarda_publicacao`) |
+| `degradando` | publicado e qualquer de: `consecutive_fail ≥ falhas_seguidas`; eficácia `< taxa_minima` com `usos ≥ amostra_minima`; evidência contra ou conflito nos últimos `contestacao_dias` |
+| `sem_evidencia` | publicado há `≥ sem_uso_dias` e nunca usado |
+| `parado` | já usado, sem uso há mais de `sem_uso_dias` |
+| `pouca_amostra` | usado dentro de `sem_uso_dias` com menos de `amostra_minima` usos (inclui o publicado há pouco e ainda sem uso) |
+| `saudavel` | usado dentro de `sem_uso_dias`, `usos ≥ amostra_minima`, eficácia `≥ taxa_minima`, sem contestação recente |
+| `indeterminado` | publicado, mas falta a medida (contador de uso, data do último uso ou da criação, eficácia ou contestação desconhecidas); nunca vira `saudavel` por falta de dado |
+
+**`motivos[]`**: um por fato que produziu o rótulo: `codigo` (vocabulário fechado de `CodigoDoMotivo`), `dimensao` (ou `null`), `valor`
+medido, `limite` cruzado e `detalhe` (texto curto: janela, amostra, motivo da trilha). O texto em português é do painel.
+
+**`dimensoes[]`** (sempre as sete, nesta ordem: `uso`, `eficacia`, `base_de_evidencia`, `frescor`, `versao`, `contestacao`,
+`intervencao_humana`): `nome`, `estado` (`medida` | `desconhecida`), `valor` (`null` quando desconhecida, nunca 0), `amostra` e `fonte`
+(de onde veio). A eficácia é a ACUMULADA `replay_ok/(ok+fail)` (receita) ou `a favor/(a favor+contra)` das evidências (fluxo, item);
+não há janela por item. `versao` e `intervencao_humana` saem `desconhecida` por ora (versão: 30.6/30.13).
+
+**Config** `aprendizado.saude` (defaults = limiares medidos; nada é gravado, mudar vale na próxima leitura): `sem_uso_dias: 14`,
+`amostra_minima: 5`, `taxa_minima: 0.8`, `falhas_seguidas: 2`, `contestacao_dias: 7`.
+
+Fora desta fatia: `obsoleto_provavel` (30.14, adendo v0.54); `acoes[]` já existe em `item` (§5.4) e não ganhou `motivo_de_bloqueio`. `falhas_seguidas` vem de
+`recipes.consecutive_fail`. Limiares aprovados pelo dono em 02/10 (D-5). Prova
+`simulated` (`tests/test_learning_saude.py`); `not_run` no central.
+
 ## Adendo v0.53 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `relacoes` (item 30.7)
 
 O detalhe do Livro ganha `relacoes` (lista, sempre presente, `[]` quando nada se deriva), ao lado de `conteudo` (v0.50) e `versao` (v0.51).
@@ -3592,7 +3635,40 @@ e `revisado por` (IA, §8.5) ficam fora: o primeiro já existe, os outros dois n
 
 Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
 
-## Adendo v0.54 (02/10/2026) — `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/retire`: conta bloqueada sai (item 29.23, ADR-068)
+## Adendo v0.54 (02/10/2026) — rótulo `obsoleto_provavel` e rebaixamento `catalogo_sem_efeito` (item 30.14)
+
+**`saude.rotulo`** (v0.52) ganha `obsoleto_provavel`, avaliado depois de `degradando` e antes de `sem_evidencia`: só para o **publicado**
+(em prova, o rótulo continua `em_prova`). Só leitura (D-5): nada é desligado pela saúde. Os sinais vêm do §9.2 de
+`design/aprendizado-vivo.md`, só os que têm fonte hoje; cada um é um `motivos[]` com o fato em `valor` e a **fonte em `detalhe`**
+(o `Motivo` não tem campo `fonte`):
+
+| `codigo` | Tipos | Fato (`valor`) e fonte (`detalhe`) |
+|---|---|---|
+| `substituta_viva` | receita, item com `parent_id` | `ref` da versão seguinte da mesma chave (receita) ou do item filho, em estado vivo; `recipes` mesma chave / `learning_items.parent_id` |
+| `versao_fora_do_parque` | receita, tela | a versão do item, que nenhum aparelho ativo tem (`versao.estado = versao_aposentada`); `device_app_state` |
+| `versao_viva_sem_reproducao` | receita, tela | as versões vivas em que a chave não tem receita e que não são provadamente mais antigas (tela: `incompativel`) |
+| `efeito_sem_respaldo_no_catalogo` | receita, fluxo | a capability (ou `*`); `catalogo.yaml (<sem_respaldo\|duvidoso>): <fato>` |
+| `fluxo_nunca_casado` | fluxo | dias publicado sem nenhum uso (`limite` = `sem_uso_dias`); `flows.uses`. Toma o lugar de `sem_evidencia` no fluxo |
+| `absorvida` | item | o commit de `state_detail = absorvida:<commit>` |
+
+Fora (sem fonte hoje): "sem uso enquanto a etapa roda por outro caminho", "duplicado" em chaves vizinhas e "habilidade publicada com a
+mesma `match_key`" do fluxo. Quedas de eficácia e contestação já são `degradando`.
+
+**Rebaixamento `catalogo_sem_efeito`** (o único efeito do item; passo `catalogo_sem_efeito` da curadoria periódica,
+`aprendizado.curadoria_s`; determinístico, sem IA, idempotente): receita ou fluxo **vivo** com `commit` num app cujo catálogo ATUAL (o do
+registro de apps, que a porta de política aplica) não respalda o efeito. Rebaixa só quando (a) o catálogo não tem nenhuma ação com efeito
+externo → motivo `catalogo_sem_efeito:*`, ou (b) a capability é conhecida sem ambiguidade e a ação dela no catálogo não tem efeito →
+`catalogo_sem_efeito:<CAPABILITY>`. App sem catálogo: nunca. Capability desconhecida ou ambígua num catálogo com efeito: só o motivo
+`efeito_sem_respaldo_no_catalogo` (`duvidoso`). Transição pelo sistema (`decided_by = sistema`, `reason` = o motivo) pelo mesmo caminho do
+Livro (`LearningService.mudar_estado`): `candidate`/`validated`/`published` → `disabled` (receita `quarantined`); nunca `deprecated`, porque a receita
+`superseded` não volta pelo Livro e o §9.2 diz que reativar é de pessoa. O item rebaixado aparece `inativo` com o motivo da trilha em
+`motivos[0].detalhe` — é o dado que o curador (30.11) vai ler. O `validated` que esperava o dono sai da espera com
+`learning.needs_person` `motivo: rebaixado_pelo_sistema` (adendo v0.49). Reativar é de pessoa (`disabled` → `published`).
+
+Nenhum campo novo além do vocabulário, nenhuma migração, nenhum código de erro novo. Prova `simulated`
+(`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
+## Adendo v0.55 (02/10/2026) — `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/retire`: conta bloqueada sai (item 29.23, ADR-068)
 
 Bloqueio confirmado: a conta sai da plataforma na hora e a persona fica. Corpo opcional `{"evidencia": "texto até 500"}` (o @ e o
 id da conta são cortados do evento). Vale também para a conta âncora, que `DELETE …/accounts/{id}` recusa (409 `anchor_account`).

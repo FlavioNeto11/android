@@ -269,7 +269,7 @@ def _receita(r: Row) -> EntradaDoLivro:
         scope_key=escopo_da_receita(linhas.texto(r, "app_package"), linhas.texto(r, "app_version"),
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
-        app_version=linhas.texto(r, "app_version"))
+        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"))
 
 
 def _receita_lida(r: Row) -> ReceitaLida:
