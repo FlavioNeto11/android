@@ -3033,6 +3033,9 @@ class DeviceManager:
         exclusividade ao aparelho) à latência do ADB seria trocar uma mentira por uma espera."""
         if outcome == "succeeded" and verb in ("start", "wake", "restart", "reset"):
             if self._o_aparelho_subiu_de_novo(verb, data):
+                # O boot novo deste aparelho de worker (sem processo local, sem `emulator_started_at`): o marco que a
+                # rede compara com a medição (item 29.22). `_adopt` põe o aparelho `online` sem passar pelo `_set_state`.
+                rt.online_since_mono = time.monotonic()
                 await self._esquecer_a_sessao_de_antes_do_boot(rt)
             await self._readotar_agora(rt)
             # Aparelho que o central NUNCA viu cair (o restart do worker é mais rápido que o monitor de 30 s) segue `online`,

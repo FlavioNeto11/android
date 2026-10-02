@@ -10,6 +10,9 @@ regras e aparelho falso de QA; nenhuma VPN, nenhum emulador):
 - a remedição que não conclui (sem IP de saída) não é repetida a cada volta: espera `rede.sonda.reverificar_s`;
 - a varredura, com o aparelho livre, adianta a remedição para o fim da validade (a tarefa não espera por ela);
 - política livre: nenhum efeito, nem com a medição velha;
+- boot novo depois da medição (29.22): a verificação não atravessa o boot — a porta segura, diz por quê, a
+  convergência passa a medir (também ao ligar) e libera com a medição nova; sem boot novo (ou com o restart do central)
+  a verificação segue valendo;
 - a queda observada no meio de um objetivo (a linha regrediu) suspende a etapa SEGUINTE do mesmo app, sem gastar
   tentativa, com `wait_reason='rede'`, e o objetivo segue quando a rede volta a `trafego_verificado` — com a porta
   real e com uma porta de mentira que só vira o sinal entre as etapas;
@@ -27,6 +30,7 @@ from typing import Any
 import pytest
 
 from app.devices import rede
+from app.util import parse_iso
 from app.modules.identity.presentation.schemas import ProfileCreate
 
 from .conftest import Harness
@@ -44,6 +48,10 @@ def _medicoes(h: Harness, iid: str = IID) -> int:
 def _envelhecer_verificacao(h: Harness, s: float, iid: str = IID) -> None:
     quando = (datetime.now(timezone.utc) - timedelta(seconds=s)).isoformat()
     h.state.db.execute("UPDATE device_network SET verified_at=? WHERE instance_id=?", (quando, iid))  # type: ignore[union-attr]
+    # Envelhecer a medição é dizer que ela é de `s` segundos atrás; o boot do aparelho (item 29.22) é mais velho que ela.
+    h.state.devices.devices[iid].online_since_mono -= s  # type: ignore[union-attr]
+    h.state.db.execute("UPDATE instances SET emulator_started_at=? WHERE id=? AND emulator_started_at IS NOT NULL",  # type: ignore[union-attr]
+                       ((datetime.now(timezone.utc) - timedelta(seconds=s + 1)).isoformat(), iid))
 
 
 def _liberar_a_porta(h: Harness, iid: str = IID) -> None:
@@ -420,3 +428,59 @@ async def test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida(parque: 
     [ultima] = st.db.query("SELECT per_app, detail FROM network_measurements WHERE instance_id=? ORDER BY id DESC"
                            " LIMIT 1", (IID,))
     assert "aberto pela sonda" in str(ultima["detail"]) and json.loads(ultima["per_app"])[INSTAGRAM] == "ok"
+
+
+def _boot_do_aparelho(h: Harness, quando: datetime, iid: str = IID) -> None:
+    """O processo do emulador (boot a frio ou acordar) nasceu em `quando`: o que `Manager._save_pid` grava."""
+    h.state.db.execute("UPDATE instances SET emulator_started_at=? WHERE id=?",  # type: ignore[union-attr]
+                       (quando.isoformat(), iid))
+
+
+async def test_verificacao_nao_atravessa_um_boot_novo(parque: Harness,  # noqa: F811
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """O achado do android-05 (02/10): `trafego_verificado` da medição das 19:20, aparelho parado e ligado a frio às
+    19:50, e a porta liberou a tarefa às 19:52 com a mesma medição. Agora o boot depois da medição a invalida."""
+    st = parque.state
+    assert st is not None
+    await _verificado(parque, monkeypatch)
+    conv = st.rede_convergencia
+    medicao = _linha(parque)["verified_at"]
+    # Sem boot novo (o processo do emulador é de ANTES da medição): vale, e ligar só confere.
+    _boot_do_aparelho(parque, datetime.now(timezone.utc) - timedelta(hours=1))
+    assert conv.motivo_de_espera(IID) is None and rede.verificacao_invalida(st, _linha(parque)) is None
+    assert conv._acao(_linha(parque), "ligou") == "conferir"
+    # Restart do central: a memória zera, e o marco do processo (no banco) segue dizendo que não houve boot.
+    conv._mem.clear()
+    assert conv.motivo_de_espera(IID) is None
+    # Boot a frio depois da medição, a linha continua `trafego_verificado` com a MESMA medição: a porta segura.
+    _boot_do_aparelho(parque, parse_iso(medicao) + timedelta(milliseconds=1))   # só 1 ms depois da medição velha
+    linha = _linha(parque)
+    assert linha["state"] == "trafego_verificado" and linha["verified_at"] == medicao
+    assert rede.verificacao_invalida(st, linha) == "boot"
+    assert conv._acao(linha, "ligou") == "verificar"        # ao ligar mede, em vez de só conferir
+    assert conv._acao(linha, "varredura") == "verificar"
+    antes = _medicoes(parque)
+    _liberar_a_porta(parque)
+    motivo = conv.motivo_de_espera(IID) or ""
+    assert "subiu depois da medição" in motivo and "medindo de novo" in motivo
+    [pend] = [a for a in rede.listar_aparelhos(st)["devices"] if a["instance_id"] == IID]
+    assert pend["pending"] == "verificar"
+    # A porta mediu (aparelho livre); só a medição NOVA, posterior ao boot, libera.
+    await parque.wait(lambda: _medicoes(parque) == antes + 1, what="medição depois do boot")
+    await parque.wait(lambda: conv.motivo_de_espera(IID) is None, what="porta liberada pela medição nova")
+    assert _linha(parque)["verified_at"] != medicao
+
+
+async def test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    st = parque.state
+    assert st is not None
+    await _verificado(parque, monkeypatch)
+    conv, rt = st.rede_convergencia, st.devices.devices[IID]
+    st.db.execute("UPDATE instances SET emulator_started_at=NULL WHERE id=?", (IID,))   # aparelho de worker remoto
+    assert conv.motivo_de_espera(IID) is None                                   # entrou no ar antes da medição
+    rt.online_since_mono += 3600                                                # entrou no ar DEPOIS dela
+    assert rede.verificacao_invalida(st, _linha(parque)) == "boot"
+    st.db.execute("UPDATE device_network SET policy='livre' WHERE instance_id=?", (IID,))
+    assert rede.verificacao_invalida(st, _linha(parque)) is None and conv.motivo_de_espera(IID) is None
+
