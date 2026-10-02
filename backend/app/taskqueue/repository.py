@@ -826,13 +826,16 @@ class Repository:
             self.db.execute(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
-                " error_kind, error_status, error_message, attempt_id)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " error_kind, error_status, error_message, attempt_id, origem, ref)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
                  None if ok else error_kind, None if ok else error_status,
-                 None if ok else truncate(error_message, 500), attempt_id))
+                 None if ok else truncate(error_message, 500), attempt_id,
+                 # Item 31.2: quem pagou a chamada. O hub já preenche; a linha de execução que não passou por ele
+                 # (erro do executor) ainda é `execucao` quando há `run_id`. Fora de execução sem origem fica NULL.
+                 usage.origem or ("execucao" if run_id else None), usage.ref))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
