@@ -7,7 +7,13 @@ stopwords pt/en. Ideia da baseline do piloto (`experiments/jev`), reescrita aqui
 
 O índice vive em memória e, com `cache_dir`, também em disco, chaveado por raiz + `Workspace.revision()` + versões do
 retrieval e do índice + resumo do corpus (padrões sensíveis e teto de tamanho): edição ou arquivo novo muda a revisão e
-nasce outro arquivo; revisão incompatível nunca é carregada. Determinístico: mesma árvore e mesma pergunta, mesma saída
+nasce outro arquivo; revisão incompatível nunca é carregada.
+
+Reconstrução INCREMENTAL por arquivo: o índice guarda o resumo (digest) do texto de cada arquivo. Quando a revisão muda e
+existe um índice anterior COMPATÍVEL (na memória ou o mais recente em disco: mesma raiz, versões e corpus), só os arquivos cujo
+texto mudou (ou são novos) são higienizados e tokenizados; o resto reaproveita as contagens que já estavam no índice anterior.
+O resultado é idêntico ao do índice cheio (mesmos documentos na mesma ordem, mesmos postings, mesma pontuação): reaproveitar só
+evita refazer a parte cara, nunca muda o que sai. Determinístico: mesma árvore e mesma pergunta, mesma saída
 (desempate por caminho).
 
 O que vai para o disco é só vocabulário e contagens (token → documento, frequência), nunca texto de arquivo; arquivo de
@@ -34,7 +40,7 @@ from app.modules.context_retrieval.infrastructure.lexical import STOPWORDS, deac
 from app.modules.context_retrieval.infrastructure.workspace import Workspace, normalize_scope, path_in_scope
 
 #: Muda quando a tokenização, a higiene ou o formato do arquivo mudam: invalida todo índice em disco.
-INDEX_VERSION = "2"
+INDEX_VERSION = "3"
 #: Índices antigos mantidos em disco por raiz. Limpeza limitada: o diretório nunca cresce sem teto.
 INDICES_MANTIDOS = 3
 
@@ -138,6 +144,21 @@ def tokenize(texto: str) -> list[str]:
     return [tok for ident in _IDENT.findall(texto) for tok in _subtokens(ident)]
 
 
+def _digest_do_texto(texto: str) -> str:
+    return hashlib.blake2b(texto.encode("utf-8", errors="surrogatepass"), digest_size=16).hexdigest()
+
+
+def _contagens_por_documento(idx: "_Indice", quais: set[int]) -> dict[int, dict[str, int]]:
+    """Inverte os postings: as contagens (token -> frequência) de cada documento de `quais`, como estavam no índice."""
+    docs: dict[int, dict[str, int]] = {d: {} for d in quais}
+    for tok, p in idx.postings.items():
+        for i in range(0, len(p), 2):
+            alvo = docs.get(p[i])
+            if alvo is not None:
+                alvo[tok] = p[i + 1]
+    return docs
+
+
 @dataclass
 class _Indice:
     revisao: str
@@ -146,6 +167,8 @@ class _Indice:
     #: token → [doc0, tf0, doc1, tf1, ...] achatado: grava e carrega mais rápido que uma lista de tuplas.
     postings: dict[str, list[int]] = field(default_factory=dict)
     media: float = 0.0
+    #: digest do texto de cada arquivo, alinhado a `caminhos`: é o que diz, na próxima revisão, quais arquivos não mudaram.
+    digests: list[str] = field(default_factory=list)
 
     def idf(self, token: str) -> float:
         df = len(self.postings.get(token, ())) // 2
@@ -168,24 +191,47 @@ class BM25Retriever:
         self._dir = Path(cache_dir) if cache_dir is not None else None
         #: Quantas vezes o índice foi (re)construído: o teste e a observabilidade conferem o reaproveitamento.
         self.index_builds = 0
+        #: Na última construção: quantos arquivos reaproveitaram a análise do índice anterior e quantos foram analisados de novo,
+        #: e de onde veio o índice anterior ("memory", "disk" ou "none").
+        self.last_build: dict[str, object] = {"reused": 0, "analyzed": 0, "seed": "none"}
+        self._cab_do_indice: dict[str, str] | None = None
         #: De onde veio o índice da última consulta: "memory", "disk" ou "built". E o que cada via custou.
         self.last_source = ""
         self.stats: dict[str, float] = {"memory_hits": 0, "disk_hits": 0, "misses": 0, "build_ms": 0.0,
                                         "load_ms": 0.0, "save_ms": 0.0, "cache_bytes": 0}
 
     # ------------------------------------------------------------------ índice
-    def _construir(self, revisao: str) -> _Indice:
+    def _construir(self, revisao: str, semente: "_Indice | None" = None, origem: str = "none") -> _Indice:
+        """O índice da revisão. Com `semente` (um índice anterior COMPATÍVEL), os arquivos de texto igual não são analisados
+        de novo. Sem ela, é a construção completa de sempre."""
         idx = _Indice(revisao=revisao)
+        atuais: list[tuple[str, str, str]] = []                    # (caminho, texto, digest), na ordem do universo
         for caminho in self._ws.files():
             texto = self._ws.read_text(caminho)
-            if texto is None:
-                continue
-            tf = tokenize_counts(higienizar(texto))
-            for tok, n in tokenize_counts(caminho).items():
-                tf[tok] += n * PESO_CAMINHO
+            if texto is not None:
+                atuais.append((caminho, texto, _digest_do_texto(texto)))
+        posicao: dict[str, int] = {}
+        if semente is not None and len(semente.digests) == len(semente.caminhos):
+            posicao = {c: i for i, c in enumerate(semente.caminhos)}
+        iguais = {posicao[c] for c, _, d in atuais if c in posicao and semente is not None and semente.digests[posicao[c]] == d}
+        antigas = _contagens_por_documento(semente, iguais) if semente is not None and iguais else {}
+        reaproveitados = 0
+        for caminho, texto, digest in atuais:
+            velho = posicao.get(caminho)
+            if velho is not None and velho in antigas and semente is not None and semente.digests[velho] == digest:
+                tf: dict[str, int] = antigas[velho]
+                tamanho = semente.tamanhos[velho]
+                reaproveitados += 1
+            else:
+                contado = tokenize_counts(higienizar(texto))
+                for tok, n in tokenize_counts(caminho).items():
+                    contado[tok] += n * PESO_CAMINHO
+                tf = contado
+                tamanho = sum(contado.values())
             doc = len(idx.caminhos)
             idx.caminhos.append(caminho)
-            idx.tamanhos.append(sum(tf.values()))
+            idx.tamanhos.append(tamanho)
+            idx.digests.append(digest)
             for tok, n in tf.items():
                 p = idx.postings.get(tok)
                 if p is None:
@@ -195,6 +241,10 @@ class BM25Retriever:
                     p.append(n)
         idx.media = (sum(idx.tamanhos) / len(idx.tamanhos)) if idx.tamanhos else 0.0
         self.index_builds += 1
+        self.last_build = {"reused": reaproveitados, "analyzed": len(atuais) - reaproveitados,
+                           "seed": origem if semente is not None else "none"}
+        self.stats["files_reused"] = reaproveitados
+        self.stats["files_analyzed"] = len(atuais) - reaproveitados
         return idx
 
     # --- disco
@@ -220,9 +270,10 @@ class BM25Retriever:
                 return None
             idx = _Indice(revisao=cab["revision"], caminhos=[str(x) for x in bruto["paths"]],
                           tamanhos=[int(x) for x in bruto["sizes"]],
-                          postings={str(t): [int(x) for x in v] for t, v in bruto["postings"].items()})
+                          postings={str(t): [int(x) for x in v] for t, v in bruto["postings"].items()},
+                          digests=[str(x) for x in bruto["digests"]])
             n = len(idx.caminhos)
-            if len(idx.tamanhos) != n or any(len(v) % 2 or any(d < 0 or d >= n for d in v[::2])
+            if len(idx.tamanhos) != n or len(idx.digests) != n or any(len(v) % 2 or any(d < 0 or d >= n for d in v[::2])
                                              for v in idx.postings.values()):
                 return None                       # índice truncado ou adulterado: miss, nunca resultado errado
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -243,7 +294,8 @@ class BM25Retriever:
             tmp = arq.with_name(f"{arq.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")  # único: dois processos não se atropelam
             try:
                 tmp.write_text(json.dumps({"header": cab, "paths": idx.caminhos, "sizes": idx.tamanhos,
-                                           "postings": idx.postings}, ensure_ascii=False, separators=(",", ":")),
+                                           "digests": idx.digests, "postings": idx.postings},
+                                          ensure_ascii=False, separators=(",", ":")),
                                encoding="utf-8")
                 os.replace(tmp, arq)              # atômico: leitor nunca vê arquivo pela metade
             finally:
@@ -267,6 +319,33 @@ class BM25Retriever:
         except OSError:
             return
 
+    def _semente_do_disco(self, cab: dict[str, str]) -> _Indice | None:
+        """O índice mais recente em disco desta raiz que seja COMPATÍVEL (mesmas versões e corpus; só a revisão difere)."""
+        if self._dir is None:
+            return None
+        try:
+            candidatos = sorted(self._dir.glob(f"bm25-{cab['root_id']}-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        except OSError:
+            return None
+        sem_revisao = {k: v for k, v in cab.items() if k != "revision"}
+        for arq in candidatos[:INDICES_MANTIDOS]:
+            try:
+                bruto = json.loads(arq.read_text(encoding="utf-8"))
+                h = bruto.get("header") or {}
+                if {k: v for k, v in h.items() if k != "revision"} != sem_revisao:
+                    continue
+                idx = _Indice(revisao=str(h.get("revision", "")), caminhos=[str(x) for x in bruto["paths"]],
+                              tamanhos=[int(x) for x in bruto["sizes"]],
+                              postings={str(t): [int(x) for x in v] for t, v in bruto["postings"].items()},
+                              digests=[str(x) for x in bruto["digests"]])
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+            n = len(idx.caminhos)
+            if len(idx.tamanhos) == n and len(idx.digests) == n and not any(
+                    len(v) % 2 or any(d < 0 or d >= n for d in v[::2]) for v in idx.postings.values()):
+                return idx                        # índice truncado ou adulterado nunca serve de semente
+        return None
+
     def _indice_atual(self, revisao: str) -> tuple[_Indice, bool]:
         if self._indice is not None and self._indice.revisao == revisao:
             self.last_source = "memory"
@@ -280,16 +359,23 @@ class BM25Retriever:
             self.stats["disk_hits"] += 1
             self.last_source = "disk"
             self._indice = idx
+            self._cab_do_indice = {k: v for k, v in cab.items() if k != "revision"}
             return idx, True
         self.stats["misses"] += 1
         t0 = time.perf_counter()
-        idx = self._construir(revisao)
+        sem_revisao = {k: v for k, v in cab.items() if k != "revision"}
+        if self._indice is not None and self._cab_do_indice == sem_revisao:
+            semente, origem = self._indice, "memory"
+        else:
+            semente, origem = self._semente_do_disco(cab), "disk"
+        idx = self._construir(revisao, semente, origem)
         self.stats["build_ms"] = (time.perf_counter() - t0) * 1000
         t0 = time.perf_counter()
         self._gravar(idx, cab)
         self.stats["save_ms"] = (time.perf_counter() - t0) * 1000
         self.last_source = "built"
         self._indice = idx
+        self._cab_do_indice = sem_revisao
         return idx, False
 
     # ------------------------------------------------------------------ janela

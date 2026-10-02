@@ -90,6 +90,7 @@ O índice BM25 mora em disco, em `data/context_retrieval/bm25/bm25-<raiz>-<chave
 - **Chave**: identidade da raiz (hash do caminho) + revisão do repositório (hash de árvore do git, com resumo do que está sujo) +
   `RETRIEVAL_VERSION` + `INDEX_VERSION` (tokenização, higiene e formato) + resumo do corpus (política de caminhos sensíveis e teto
   de tamanho). O cabeçalho dentro do arquivo repete a identidade e é conferido ao carregar: nome igual com identidade diferente é miss.
+- **Reconstrução incremental por arquivo (J5)**: o índice guarda o digest (blake2b de 128 bits) do texto de cada arquivo. Quando a revisão muda e há um índice anterior COMPATÍVEL (o da memória, ou o mais recente em disco desta raiz: mesmos `INDEX_VERSION`, `RETRIEVAL_VERSION`, corpus e raiz, só a revisão difere), os arquivos de texto igual reaproveitam as contagens do índice anterior e só os alterados ou novos são higienizados e tokenizados; apagado some. O resultado é IDÊNTICO ao do índice cheio (mesmos documentos na mesma ordem, mesmos postings, tamanhos e média, logo a mesma pontuação): os testes comparam o índice incremental com o cheio depois de editar, acrescentar, apagar, renomear, esvaziar, só mexer no mtime e em cadeia. Semente de outro corpus, versão ou raiz, ou corrompida (lixo, truncada, sem digests, postings fora da faixa), nunca é usada: cai na construção completa. Renomear conta como arquivo novo (o caminho entra na pontuação). `INDEX_VERSION` subiu para 3 (o arquivo ganhou `digests`), o que invalida os índices em disco antigos uma vez.
 - **Seguro por construção**: gravação atômica (`.tmp` + `os.replace`); arquivo corrompido, truncado, adulterado ou com id de
   documento fora da faixa é miss silencioso e o índice é refeito; revisão nova gera outro arquivo e a antiga nunca é carregada; a
   limpeza mantém os 3 mais recentes por raiz.
@@ -229,6 +230,8 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 | Integração com o gerador de pacotes (saída idêntica com a flag desligada) | `simulated` | `scripts/tests/test_pacotes_contexto.py` |
 | Chamada real ao Jev, só em código PÚBLICO | `real` | 02/10/2026, máquina central, `python-poetry/poetry` @ `94b6e35`, commits `a07ff80` (rodada 1) e `a88d609` (rodada 2, por etapa); `scripts/context-retrieval-public-smoke.py` (rodada 1: `--run`; rodada 2: `--cases H13,H14 --max-calls 4 --run`). 11 de 12 chamadas, todas HTTP 200, 0 fallbacks, US$ 0,0043 + 0,0016 (~0,006). Passou pela MESMA política de produção (remoto público, HEAD público, worktree limpo), sem atalho. Detalhe abaixo |
 | Qualidade do retrieval LOCAL neste repositório (40 commits, hit@k e MRR por modo) | `real` | 02/10/2026, central, `scripts/context-retrieval-local-eval.py --ate 40316ba2bf8a2523534ec3c87440b52aab892cf4 --n 40`; teste sem rede em `scripts/tests/test_context_retrieval_local_eval.py` (`simulated`). Tabela abaixo |
+| Índice BM25 incremental: idêntico ao cheio e só reanalisa o que mudou | `simulated` | `backend/tests/test_context_retrieval_bm25_incremental.py` (22; mutação conferida) |
+| Custo do índice antes e depois do incremental | `real` | 02/10/2026, central, `scripts/context-retrieval-incremental-bench.py`; tabela "Custo do índice" abaixo |
 | Chamada real ao Jev em código PRIVADO (este repositório) | `not_run` | negado por constante de código (`PRIVATE_CODE_SEND_APPROVED = False`); sem autorização |
 
 ### Smoke real público (02/10/2026)
@@ -274,10 +277,23 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 - **Limites da medição:** a pergunta é a mensagem de commit, que costuma citar o símbolo ou o arquivo, então os números são um teto para o léxico e não um benchmark de perguntas abertas; 19 dos 40 commits são de frontend (a UX recente), e o conjunto inclui os commits do próprio retrieval; n = 40 dá intervalo largo (±12 pontos); só local, então nada diz do semântico (ver o smoke do Jev, que mede outra coisa).
 - **Propostas (NÃO aplicadas; exigem decisão e nova medição):** (a) escopo padrão de código, ou peso menor para `docs/`, `.claude/` e `CHANGELOG`, no pedido de tarefa de código; (b) rever a regra "o léxico manda quando há identificador" (a salvaguarda v1) ou medir um híbrido que parta do BM25 e use o léxico só para promover o arquivo que contém o identificador; (c) repetir a medição com perguntas que não sejam mensagem de commit (por exemplo, as do holdout público do piloto) antes de tirar conclusão sobre o modo.
 
+### Custo do índice, antes e depois do incremental (02/10/2026, `real`, sem rede)
+
+- **Como:** `scripts/context-retrieval-incremental-bench.py --backend <backend> --repo <worktree>` num worktree descartável do repositório (1.415 arquivos no índice; 3 repetições; máquina central), o MESMO script contra o código da `main` (`0da61af`, antes) e o do J5 (depois). Tempo da primeira consulta depois da mudança:
+
+  | Cenário | Antes (mediana) | Depois (mediana) | Arquivos reaproveitados / analisados (depois) |
+  |---|---|---|---|
+  | a frio, sem nenhum índice | 13,3 s | 12,5 s (igual; o hash dos textos custa poucos ms) | 0 / 1.415 |
+  | um arquivo editado, mesmo processo | 5,3 s | **1,3 s** | 1.414 / 1 (semente na memória) |
+  | outra edição, processo novo (índice só em disco) | 5,3 s | **1,6 s** | 1.414 / 1 (semente em disco) |
+  | trocar para `HEAD~10`, mesmo processo | 5,0 s | **1,7 s** | 1.340 / 23 (e 52 arquivos a menos) |
+
+  Os ~1,3 s que sobram, pelo perfil (só a leitura dos textos foi medida: ~0,3 s), são ler e hashear todos os textos, consultar a árvore do git (~0,2 s), inverter os postings e remontar a lista; esta parte final não foi medida em separado. Remontar só o que mudou (postings incrementais) seria o passo seguinte, mas exigiria renumerar documentos; não foi feito.
+- **Limites:** mede a primeira consulta de cada cenário, não a vazão; a frio inclui o custo de um worktree recém-criado; o ganho vale quando existe índice anterior compatível (memória ou disco), e não quando o cache em disco está desligado e o processo é novo.
+
 ## Limites conhecidos
 
-- **Primeira consulta de uma revisão nova** paga a construção do índice (alguns segundos no repositório inteiro, 1,4 mil arquivos).
-  Reconstrução incremental por arquivo (só o que mudou) fica para depois: hoje qualquer edição muda a revisão e refaz o índice.
+- **Primeira consulta de uma revisão nova** paga a construção do índice. Sem índice nenhum (a frio), são vários segundos no repositório inteiro (1,4 mil arquivos). Com um índice anterior compatível, a reconstrução é **incremental por arquivo** (abaixo) e custa cerca de 1,3 a 1,7 s.
 - **`rg`**: não é requisito. Descoberta em ordem: `context_retrieval.lexical.ripgrep_path`, variável `RIPGREP_PATH`, PATH
   (`shutil.which`, que no Windows aplica o PATHEXT: acha `rg.exe` e `rg.cmd`). Nenhum caminho de instalação é presumido, e candidato que não
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
@@ -293,6 +309,6 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 
 ## Próximas fatias
 
-Índice BM25 incremental por arquivo; tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
+Tela "Context Retrieval" no painel (o contrato da API está pronto); `shadow` em repositório público para medir qualidade e
 custo reais; outros `SemanticProvider` (embeddings locais, Ollama, banco vetorial); consumo do `ContextPack` por skills,
 planejamento e subagentes.
