@@ -3754,6 +3754,21 @@ Resposta 200: `{profile_id, account_id, retirada, ancora, limpezas, status_da_pe
 `app_id`, `ancora`, `origem`, `autor`, `evidencia`, `limpezas`, `status_da_persona`). O aparelho não é tocado.
 
 
+## Adendo v0.57 (02/10/2026) — `POST /api/instances/{instance_id}/locked-account/resolve`: a pessoa resolve a quarentena (item 29.24, ADR-068)
+
+Depois de limpar o app do aparelho (o que é decisão e ato da pessoa), a quarentena (marcador de conta travada, ADR-055) só sai por
+este gesto explícito. Corpo `{"nota": "1 a 500 caracteres"}`, **obrigatória** (vazia, só espaços ou longa demais: 422). A nota
+vira `resolution` do marcador; `resolved_by` é o operador da sessão (ou o rótulo de quem chama a API sem sessão).
+
+Resposta 200: `{instance_id, resolvidos}` (nº de marcadores abertos que viraram história). Sem marcador aberto: 404
+`no_locked_account` (como o `DELETE …/repair-pause` sem pausa); aparelho inexistente: 404. Só banco: não manda comando, não toca disco
+nem app e não reativa o perfil (decisão de pessoa, na tela do perfil). Sincroniza o `account_label` e emite `device.locked_account`
+com `acao: "resolvido"`.
+
+Também (29.24): a conta já retirada não aparece mais com o @ em `GET /api/instances` (`account_label`, `locked_account` viram
+`[conta removida]`), em `GET /api/health` (`locked_account_on_device`: "conta retirada, bloqueada"), nem nas frases da quarentena
+(`restriction`, 409 `locked_account`/`aparelho_em_quarentena`, motivo do comando recusado). Conta viva continua com o @.
+
 ## Adendo v0.56 (02/10/2026) — `GET /api/aprendizado/falhas` e `/backlog/{id}`: `diagnostico`; propostas do diagnóstico (item 30.13)
 
 Aditivo: nenhum campo some nem muda de tipo, nenhum código de erro novo. (A v0.54 e a v0.55 são de outras frentes; a v0.55 é do 30.11.)

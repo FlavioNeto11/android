@@ -217,7 +217,7 @@ def _despachar_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Call
             and (marcador := s.social_repo.conta_travada_no_aparelho(rt.id)) is not None):
         # Quarentena (ADR-055): a recusa fica no histórico do aparelho com o motivo, e nada foi tocado. Quem
         # distribui para o parque recebe o "não" como item, como o ocupado — o resto do parque segue.
-        motivo = frase_da_quarentena(marcador)
+        motivo = frase_da_quarentena(marcador, conta=s.social_repo.citacao_da_conta(marcador))
         _publish_command(s, s.commands.transition(command_id, CommandState.rejected, reason=motivo))
         if not recusar_ocupado:
             return {"accepted": False, "command_id": command_id, "state": CommandState.rejected.value,
@@ -604,9 +604,10 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
     # explícita da pessoa — que o pedido automático (remediação, rodízio, saúde, reconciliação) nunca manda.
     if action not in VERBOS_DA_QUARENTENA and (marcador := s.social_repo.conta_travada_no_aparelho(rt.id)) is not None:
         if not body.confirm_locked_account:
-            return "locked_account", frase_da_quarentena(marcador, action)
-        s.bus.emit("log", f"{rt.id}: '{action}' confirmado explicitamente apesar da quarentena da conta "
-                          f"@{marcador['handle']} (confirm_locked_account; pedido por {_autor_sem_requisicao()})",
+            return "locked_account", frase_da_quarentena(marcador, action, s.social_repo.citacao_da_conta(marcador))
+        s.bus.emit("log", f"{rt.id}: '{action}' confirmado explicitamente apesar da quarentena da "
+                          f"{s.social_repo.citacao_da_conta(marcador)} (confirm_locked_account; "
+                          f"pedido por {_autor_sem_requisicao()})",
                    level="warn", instance_id=rt.id, data={"command_id": command_id, "verb": action})
     if action == "reset" and not body.confirm:
         return "rejected", "o reset apaga dados e sessão do aparelho; envie confirm=true"
@@ -955,7 +956,7 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     pode_resetar = "reset" in (rt.worker_verbs or []) and not rt.store and not com_conta
     degrau = len(historico) + 1
     if com_conta and (marcador is not None or restarts >= DEGRAUS_DE_RESTART):
-        conta = (f"a conta @{marcador['handle']} está travada e logada nele (quarentena)" if marcador is not None
+        conta = (f"a {s.social_repo.citacao_da_conta(marcador)} está travada e logada nele (quarentena)" if marcador is not None
                  else "há conta vinculada nele, e o reset apagaria a sessão dela")
         s.devices.marcar_atencao(rt, f"Precisa do dono: {motivo}. O reparo automático parou aqui porque {conta}; "
                                      "nenhum reset automático acontece em aparelho com conta (ADR-055).")

@@ -75,6 +75,7 @@ from .security.sessions import PanelSessions, PortaoDeLogin
 from .releases.repository import ReleaseRepository
 from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
+from .social.contas_nossas import MARCADOR
 from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
@@ -647,7 +648,8 @@ class AppState:
         """Por que o aparelho está em quarentena (conta travada logada, ADR-055), ou `None`. A mesma frase do 409
         do painel, para a porta do despacho, a entrega e a distribuição contarem a mesma história."""
         marcador = self.social_repo.conta_travada_no_aparelho(instance_id)
-        return frase_da_quarentena(marcador) if marcador is not None else None
+        return (frase_da_quarentena(marcador, conta=self.social_repo.citacao_da_conta(marcador))
+                if marcador is not None else None)
 
     def _contas_travadas_no_ar(self) -> list[str]:
         """`aparelho (@conta)` de cada marcador aberto em aparelho LIGADO — no ar, subindo ou degradado no ar."""
@@ -656,7 +658,8 @@ class AppState:
         for m in self.social_repo.contas_travadas_abertas():
             rt = self.devices.devices.get(str(m["instance_id"]))
             if rt is not None and rt.state in no_ar:
-                saida.append(f"{rt.id} (@{m['handle']})")
+                rotulo = self.social_repo.rotulo_da_conta(m)
+                saida.append(f"{rt.id} ({'conta retirada, bloqueada' if rotulo == MARCADOR else rotulo})")
         return saida
 
     def pacotes_com_dado_velho(self, instance_id: str) -> list[str]:

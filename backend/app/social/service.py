@@ -255,14 +255,15 @@ class SocialService:
     def _anunciar_conta_travada(self, marcador: Row, acao: str, autor: str) -> None:
         """Evento `device.locked_account`: o aparelho entrou em quarentena (ou saiu dela) — aviso ao dono."""
         iid = str(marcador["instance_id"])
+        conta = self.repo.citacao_da_conta(marcador)  # a conta já retirada (29.23) não volta ao aviso com o @
         if acao == "marcado":
-            texto = (f"{iid}: conta @{marcador['handle']} travada e logada ({marcador['origin']}, por {autor}). "
+            texto = (f"{iid}: {conta} travada e logada ({marcador['origin']}, por {autor}). "
                      "O aparelho entrou em quarentena: nada o toca além de parar ou hibernar até você decidir.")
         else:
-            texto = f"{iid}: a quarentena da conta @{marcador['handle']} foi resolvida por {autor}."
+            texto = f"{iid}: a quarentena da {conta} foi resolvida por {autor}."
         self.bus.emit("device.locked_account", texto, level="error" if acao == "marcado" else "info",
                       instance_id=iid,
-                      data={"instance_id": iid, "handle": marcador["handle"], "profile_id": marcador["profile_id"],
+                      data={"instance_id": iid, "handle": self.repo.rotulo_da_conta(marcador).lstrip("@"), "profile_id": marcador["profile_id"],
                             "app_id": marcador["app_id"], "origem": marcador["origin"], "acao": acao, "autor": autor,
                             "evidencia": marcador["evidence"]})
 
@@ -476,7 +477,8 @@ class SocialService:
         # Quarentena (ADR-055): conta travada logada no aparelho. Conferida AQUI — antes de qualquer linha no
         # cadastro, e antes de tirar o vínculo antigo na troca — para o 409 querer dizer "nada mudou".
         if (marcador := self.repo.conta_travada_no_aparelho(instance_id)) is not None:
-            raise SocialError(AparelhoEmQuarentena.code, str(AparelhoEmQuarentena(marcador)), 409)
+            raise SocialError(AparelhoEmQuarentena.code,
+                              str(AparelhoEmQuarentena(marcador, self.repo.citacao_da_conta(marcador))), 409)
 
     # ------------------------------------------------------------------ aparelhos da persona (N:N, 051)
     def bind_device(self, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:

@@ -31,7 +31,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
     ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem, DevicePolicy, RunTarget, RunTargetsResolveBody)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
-    RepairPauseBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+    RepairPauseBody, ResolverQuarentenaBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialClone, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,

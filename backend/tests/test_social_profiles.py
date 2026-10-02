@@ -265,7 +265,10 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                # sobrevive ao desvínculo e à remoção do perfil — o android-04 tinha o felipe logado e NENHUM vínculo.
                # `sincronizar_rotulos` escreve `instances.account_label` (inventário do parque) a partir dele.
                "conta_travada_no_aparelho", "contas_travadas_abertas", "marcar_conta_travada",
-               "resolver_conta_travada", "sincronizar_rotulos"}
+               "resolver_conta_travada", "sincronizar_rotulos",
+               # 29.24: como citar a conta do marcador num aviso (sem o @ de conta retirada) e mascarar o que ficou de
+               # antes — dado do APARELHO e do marcador, não de perfil.
+               "rotulo_da_conta", "citacao_da_conta", "mascarar_contas_retiradas"}
     # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
     # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
     # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que

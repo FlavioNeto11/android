@@ -48,7 +48,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, TrainingSaveBody, TrainingStartBody,
+                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, ResolverQuarentenaBody, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialClone, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
@@ -2780,6 +2780,23 @@ async def hierarchy(request: Request, instance_id: str) -> Any:
 
 
 # ---------------------------------------------------------------------- controle manual
+@router.post("/instances/{instance_id}/locked-account/resolve")
+async def resolve_locked_account(request: Request, instance_id: str, body: ResolverQuarentenaBody) -> dict[str, object]:
+    """Uma pessoa resolve a QUARENTENA (ADR-055) depois de limpar o app do aparelho: o marcador aberto vira história
+    (`resolved_by/resolution` = a nota), o rótulo sincroniza e sai o evento `device.locked_account` ("resolvido").
+    Só banco: não toca disco nem app, e não reativa o perfil (isso é decisão de pessoa). A nota é obrigatória (422).
+    Sem marcador aberto, 404 `no_locked_account` — como o `repair-pause` sem pausa."""
+    s = st(request)
+    device(s, instance_id)
+    nota = body.nota.strip()
+    if not nota:
+        raise err(422, "nota_obrigatoria", "informe por que a quarentena foi resolvida")
+    resolvidos = s.social_repo.resolver_conta_travada(instance_id, por=quem(request), nota=nota)
+    if not resolvidos:
+        raise err(404, "no_locked_account", f"{instance_id} não tem marcador de conta travada aberto")
+    return {"instance_id": instance_id, "resolvidos": resolvidos}
+
+
 @router.put("/instances/{instance_id}/repair-pause")
 async def set_repair_pause(request: Request, instance_id: str, body: RepairPauseBody) -> RepairPauseInfo | None:
     """Pausa o reparo AUTOMÁTICO deste aparelho (a escada e o reinício por saúde do central) por `ttl_s` (obrigatório,

@@ -22,7 +22,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
-from .contas_nossas import hash_do_handle, registrar_lapide
+from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
@@ -75,11 +75,13 @@ def normalizar_handle(handle: str) -> str:
     return handle.strip().lstrip("@").strip().lower()
 
 
-def frase_da_quarentena(marcador: Row, acao: str | None = None) -> str:
+def frase_da_quarentena(marcador: Row, acao: str | None = None, conta: str | None = None) -> str:
     """Por que o aparelho está em quarentena, na MESMA frase para o 409 do painel, o histórico do comando, a porta
-    do despacho e a entrega que ficou de fora. Função de módulo: recebe a linha que quem chamou já buscou."""
+    do despacho e a entrega que ficou de fora. Função de módulo: recebe a linha que quem chamou já buscou. `conta` é
+    como citar a conta (`SocialRepository.citacao_da_conta`: o @ de conta retirada não volta ao texto, 29.24); sem
+    ele, o @ do marcador."""
     quem = f" ({marcador['seen_by']})" if marcador.get("seen_by") else ""
-    texto = (f"{marcador['instance_id']} está em quarentena: a conta @{marcador['handle']} está travada e logada "
+    texto = (f"{marcador['instance_id']} está em quarentena: a {conta or 'conta @' + str(marcador['handle'])} está travada e logada "
              f"nele desde {marcador['since']} ({marcador['origin']}{quem}; ADR-055). Nada toca neste aparelho além "
              "de parar ou hibernar até uma pessoa decidir")
     if acao:
@@ -94,8 +96,8 @@ class AparelhoEmQuarentena(RuntimeError):
 
     code = "aparelho_em_quarentena"
 
-    def __init__(self, marcador: Row) -> None:
-        super().__init__(frase_da_quarentena(marcador) + ". Escolha outro aparelho.")
+    def __init__(self, marcador: Row, conta: str | None = None) -> None:
+        super().__init__(frase_da_quarentena(marcador, conta=conta) + ". Escolha outro aparelho.")
         self.marcador = marcador
 
 
@@ -304,6 +306,8 @@ class SocialRepository:
         if ancora:
             self.db.execute("UPDATE instagram_profiles SET username='', updated_at=? WHERE id=?",
                             (now_iso(), profile_id))
+        # O @ some do que o produto vivo ainda mostra (rótulo do aparelho e marcador da quarentena), 29.24.
+        self.mascarar_contas_retiradas()
         self._sincronizar_rotulos_da_persona(profile_id)
         for iid in sorted(aparelhos):
             self._sincronizar_rotulo(iid)
@@ -605,7 +609,7 @@ class SocialRepository:
             # nem a própria dona da conta, que está bloqueada. A recusa é daqui, e não só do serviço, para quem
             # vincula por fora dele também topar nela.
             if (marcador := self.conta_travada_no_aparelho(instance_id)) is not None:
-                raise AparelhoEmQuarentena(marcador)
+                raise AparelhoEmQuarentena(marcador, self.citacao_da_conta(marcador))
             if (conflito := self.quem_ja_serve(profile_id, instance_id, app_id)) is not None:
                 raise BindingConflict(instance_id, *conflito)
             existente = self.binding(profile_id, instance_id, app_id) if app_id is not None else self.db.one(
@@ -757,6 +761,41 @@ class SocialRepository:
         return self.db.one("SELECT * FROM device_locked_accounts WHERE instance_id=? AND resolved_at IS NULL"
                            " ORDER BY id LIMIT 1", (instance_id,))
 
+    def rotulo_da_conta(self, marcador: Row) -> str:
+        """Como citar a conta do marcador num aviso novo: `@handle`, ou `[conta removida]` se ela já saiu (29.23/29.24)."""
+        return rotulo_da_conta(self.db, str(marcador["handle"]))
+
+    def citacao_da_conta(self, marcador: Row) -> str:
+        """A conta do marcador numa frase de aviso: `conta @x`, ou `conta retirada (bloqueada)` (29.24)."""
+        return citacao_da_conta(self.db, str(marcador["handle"]))
+
+    def mascarar_contas_retiradas(self) -> dict[str, int]:
+        """Tira o @ de conta JÁ retirada (lápide, 29.23) do que ainda o mostra ao vivo, sem migração (29.24): o
+        `handle` dos marcadores ABERTOS (a quarentena segue aberta até uma pessoa resolver) e o rótulo DERIVADO do
+        aparelho (origem `marcador`/`vinculo`). Idempotente; roda na retirada e na subida. O rótulo de configuração
+        (origem nula, do `config.yaml`) não é nosso para mexer: só é contado em `rotulo_de_configuracao`. Evento
+        antigo fica como está (opção A do dono)."""
+        n = {"marcadores": 0, "rotulos": 0, "rotulo_de_configuracao": 0}
+        for m in self.db.query("SELECT id, instance_id, handle FROM device_locked_accounts WHERE resolved_at IS NULL"
+                               " AND handle<>?", (MARCADOR,)):
+            if not foi_retirada(self.db, str(m["handle"])):
+                continue
+            if self.db.scalar("SELECT COUNT(*) FROM device_locked_accounts WHERE instance_id=? AND handle=?"
+                              " AND resolved_at IS NULL", (m["instance_id"], MARCADOR)):
+                continue  # o índice único (aparelho, conta) já tem um marcador mascarado: este fica como está
+            self.db.execute("UPDATE device_locked_accounts SET handle=? WHERE id=?", (MARCADOR, m["id"]))
+            n["marcadores"] += 1
+        for r in self.db.query("SELECT id, account_label, account_label_origin FROM instances"
+                               " WHERE account_label IS NOT NULL AND account_label<>?", (MARCADOR,)):
+            if not foi_retirada(self.db, str(r["account_label"])):
+                continue
+            if r["account_label_origin"] in _ROTULO_DERIVADO:
+                self.db.execute("UPDATE instances SET account_label=? WHERE id=?", (MARCADOR, r["id"]))
+                n["rotulos"] += 1
+            else:
+                n["rotulo_de_configuracao"] += 1
+        return n
+
     def contas_travadas_abertas(self) -> list[Row]:
         """Todos os marcadores abertos, de todos os aparelhos: é o que a saúde do sistema confere."""
         return self.db.query("SELECT * FROM device_locked_accounts WHERE resolved_at IS NULL"
@@ -877,7 +916,7 @@ class SocialRepository:
         for m in self.db.query("SELECT handle, app_id FROM device_locked_accounts WHERE instance_id=?"
                                " AND resolved_at IS NULL ORDER BY id", (instance_id,)):
             if m["app_id"] in (None, app):
-                return str(m["handle"]), "marcador"
+                return rotulo_da_conta(self.db, str(m["handle"])).lstrip("@"), "marcador"
         for v in self.profiles_of_instance(instance_id, app):
             conta = self.account_by_app(str(v["profile_id"]), app)
             if conta is not None and conta["handle"]:
@@ -900,7 +939,9 @@ class SocialRepository:
                             (rotulo, origem, instance_id))
 
     def sincronizar_rotulos(self) -> None:
-        """A varredura da partida: todo aparelho do parque com o rótulo derivado do que existe agora."""
+        """A varredura da partida: todo aparelho do parque com o rótulo derivado do que existe agora. Antes, o @ de
+        conta já retirada sai dos dados que ficaram de antes da 29.24 (idempotente, sem migração)."""
+        self.mascarar_contas_retiradas()
         for linha in self.db.query("SELECT id FROM instances WHERE retired_at IS NULL ORDER BY id"):
             self._sincronizar_rotulo(str(linha["id"]))
 

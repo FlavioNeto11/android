@@ -329,8 +329,9 @@ async def test_gatilho_a_tela_de_verificacao_na_ancora_retira_a_conta_e_a_person
     assert s.social_repo.account_row(pid, ancora) is None and s.social_repo.account_row(pid, correio) is not None
     assert not s.secrets.exists(ref)
     assert pid in s.social_repo.list_persona_ids() and pid not in s.social_repo.list_profile_ids()
-    # A quarentena do APARELHO fica (a conta segue logada lá): o marcador não é apagado pela retirada.
-    assert [m["handle"] for m in s.social_repo.contas_travadas_abertas()] == ["ana.ancora"]
+    # A quarentena do APARELHO fica (a conta segue logada lá): o marcador não é apagado pela retirada, mas o @ sai
+    # dele (29.24: o produto vivo não mostra o @ de conta retirada).
+    assert [m["handle"] for m in s.social_repo.contas_travadas_abertas()] == ["[conta removida]"]
     assert len(_eventos(s.db, "profile.account_retired")) == 1
     assert "ana.ancora" not in json.dumps(_eventos(s.db, "profile.account_retired"))
     assert eh_conta_nossa(s.db, "ana.ancora")
