@@ -51,6 +51,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
   Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
 
+## 2026-10-02 — Aprendizado: esquecer_conta (29.23, branch feat/29-23-esquecer-conta-aprendizado)
+
+- `app.modules.learning.esquecer_conta(db, *, profile_id, account_id, handle, app_id)` reescreve o rastro textual da conta (handle com e sem `@`, `account_id`) para `[conta removida]` em `learning_items`, `learning_evidence`, `learning_transitions`, `learning_backlog`, `learning_reviews` e `learning_signals`; roda na transação de quem chama (sem commit), não apaga linha nem muda hash/id, é idempotente e casa por fronteira de palavra (handle `ana` não estraga "banana"). Parte Aprendizado do 29.23; a frente Android (`memory_items`, chamada) é outra. Sem migração e sem rota. Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (13); PostgreSQL: `not_run`. Detalhe em `docs/dominios/aprendizado.md` ("Conta removida (29.23)").
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.

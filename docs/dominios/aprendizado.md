@@ -445,6 +445,26 @@ tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `Lear
 - **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
 - Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
 
+## Conta removida (29.23)
+
+`esquecer_conta(db, *, profile_id, account_id, handle, app_id)` (`app.modules.learning`, implementação em `infrastructure/esquecer_conta.py`) é a
+parte do Aprendizado do item 29.23: a conta bloqueada sai da plataforma como se não existisse e a persona continua. Reescreve o rastro
+TEXTUAL (o `handle`, com e sem `@`, e o `account_id`) para o marcador exato `[conta removida]`; a frente Android cuida de `memory_items`.
+
+- **Roda na transação de quem chama**: mesmo `db`, sem commit, rollback nem transação própria, sem I/O fora do banco. Devolve `{tabela: linhas}` (0
+  incluso) sem nenhum texto da conta. Idempotente: a segunda chamada devolve zeros (o marcador já existente não é reaberto, nem quando o handle é `conta`).
+- **Não apaga linha, não muda `content_hash`/`dossie_hash` nem coluna de id/chave** (`profile_id`, `scope_*`, `instance_id`, `source_ref`,
+  `cluster_key`), e não toca receitas, fluxos nem versões de habilidade. `profile_id` e `app_id` não restringem a varredura: o rastro pode estar em escopo alheio.
+- **Colunas varridas** (texto livre; JSON em texto conta): `learning_items` (`content`, `summary`, `provenance`), `learning_evidence` (`detail`,
+  `origin_ref`), `learning_transitions` (`reason`), `learning_backlog` (`title`, `failure_screen`, `notes`, `baseline`, `verification`),
+  `learning_reviews` (`dossie`, `saida`, `validade`, `override_motivo`, `resultado_posterior`), `learning_signals` (`note`, `data`). `learning_exposures` e
+  `learning_daily` não têm texto livre.
+- **Casamento seguro**: o `LIKE` (com `LOWER`, que o PostgreSQL não ignora maiúscula) só pré-filtra; a troca é por regex com fronteira de palavra. Handle
+  `ana` não vira "b[conta removida]na"; `.`, `_` e dígito colados prolongam o handle (`ana.silva`, `ana_silva2` não são `ana`), o ponto de fim de frase não.
+  `account_id` casa exato (hífen conta como parte). Handle vazio ou só `@` não faz nada.
+- **Limite conhecido**: `learning_evidence.origin_ref` entra num índice único; se a troca colidisse com outra linha, ela é PULADA para não derrubar a
+  transação do chamador (o rastro fica naquela coluna). Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (SQLite); PostgreSQL e uso real: `not_run`.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
