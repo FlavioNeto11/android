@@ -135,6 +135,13 @@ class ServerLimitsPatch(BaseModel):
     max_devices: int | None = Field(default=None, ge=1, le=256)
 
 
+class ResolverQuarentenaBody(BaseModel):
+    """Uma pessoa resolve a quarentena do aparelho (29.24): a nota é OBRIGATÓRIA — fica como `resolution` do marcador, e
+    é o que diz depois por que o aparelho voltou a servir (ex.: o app foi limpo com `pm clear`)."""
+
+    nota: str = Field(min_length=1, max_length=500)
+
+
 class RepairPauseBody(BaseModel):
     """Pausa do reparo automático de UM aparelho: o prazo é OBRIGATÓRIO (sem ele a pausa ficaria esquecida ligada) e tem teto de 3 h."""
 

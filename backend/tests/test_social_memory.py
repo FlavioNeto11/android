@@ -410,10 +410,15 @@ async def test_rotas_de_persona_memoria_e_contexto(tmp_path: Path) -> None:
             assert ruim.status_code == 400 and ruim.json()["detail"]["code"] == "memory_refused"
 
             # contexto: mostra a persona e não tem campo de credencial
-            ctx = (await client.get(f"/api/instagram/profiles/{pid}/context",
-                                    params={"counterparty": "@ana"})).json()
+            ctx = (await client.post(f"/api/instagram/profiles/{pid}/context", json={"counterparty": "@ana"})).json()
             assert ctx["persona"]["name"] == PERSONA_LUCAS.name
             assert SENHA not in str(ctx) and "password" not in str(ctx).lower()
+            # 29.26: a mensagem recebida (texto livre) vai no corpo; o GET antigo com query string morreu
+            assert (await client.get(f"/api/instagram/profiles/{pid}/context", params={"content": "oi"})).status_code == 405
+            sem_corpo = await client.post(f"/api/instagram/profiles/{pid}/context")
+            assert sem_corpo.status_code == 200 and sem_corpo.json()["persona"]["name"] == PERSONA_LUCAS.name
+            assert (await client.post(f"/api/instagram/profiles/{pid}/context", json={"content": "x" * 4001})).status_code == 422
+            assert (await client.post(f"/api/instagram/profiles/{pid}/context", json={"nada": 1})).status_code == 422
 
             # prévia da persona não publica nada
             prev = await client.post(f"/api/personas/{persona['id']}/preview",

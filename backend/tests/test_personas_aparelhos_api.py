@@ -65,6 +65,7 @@ async def test_persona_em_dois_aparelhos_com_principal_e_lista_por_aparelho(harn
         r = await c.get("/api/instances/android-01/personas")
         assert r.status_code == 200 and [p["profile_id"] for p in r.json()] == [a]
         assert r.json()[0]["app_id"] == "instagram" and r.json()[0]["is_primary"] is False
+        assert r.json()[0]["has_avatar"] in (True, False)               # 29.26: o painel só pede a foto se houver
 
         r = await c.delete(f"/api/personas/{a}/devices/android-02")
         assert r.status_code == 200, r.text

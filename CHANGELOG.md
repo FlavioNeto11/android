@@ -37,6 +37,45 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_learning_modo_por_app.py`, `test_learning_apps.py`; `AplicativosTab.test.tsx`.
   Navegador: preview com cópia do banco do central e overrides só no config do ensaio.
 
+## 2026-10-02 — 29.26: texto livre fora da query string e persona sem foto sem requisição (branch feat/29-26-texto-fora-da-query)
+
+- **Privacidade (varredura da classe, adendo v0.66):** `GET /api/runs/distribution?command=` virou `POST /api/runs/distribution`
+  (corpo `{count, app_id?, command?}`; o GET responde 405 `metodo_removido`). A varredura de todas as rotas `GET`/`DELETE` com parâmetro de query achou mais
+  duas com texto livre: `GET /instagram/profiles/{id}/context` (`content` é a mensagem recebida; virou `POST` com `{counterparty?, thread_key?, content?}`) e a busca `q`
+  de `GET /api/pedidos` (procura no título e no objetivo; virou `POST /api/pedidos/busca`, e `GET` com `q` na URL responde 422 `busca_no_corpo`). Ficaram na URL, por serem
+  id, status, enum, paginação ou nome curto de app/capability/handle: `/diagnostics`, `/ai/balances`, `/apps-overview`, `/apps/{id}/overview`, `/training`, `/desempenho`,
+  `/usage`, `/capabilities`, `/releases`, `/store`, `/app-state`, `/approvals`, `/commands`, `/runs`, `/runs/{id}/events`, `/instances/{id}/frame`, `/instagram/profiles/{id}/{memory,interactions,
+  policy,runs,auth-attempts,operational-context}`, `/instagram/policy-groups`, `/personas/{id}/devices/{iid}` (DELETE `app_id`), `/falhas`, `/aprendizado/sinais`, `/licoes/previa`, `/export`,
+  `/voz/previa`, `/preferencias/sugestoes`, `/skills`, `/teaching-sessions`, as listas de `/pedidos/*` (sem `q`) e `/avisos`. Quebra só para o painel do mesmo commit (`api.previewDistribution`, `apiPedidos.listar`).
+- **Avatar:** persona sem foto fazia `GET /instagram/profiles/{id}/avatar` e recebia 404 (cinco erros no console). `has_avatar` entrou no `PersonaDTO`, no `PersonaOnDeviceDTO` e em `profiles[]`
+  do contexto operacional (só adição); `profileAvatarUrl(id, temFoto)` devolve `undefined` sem foto e o `Avatar` mostra as iniciais, sem `<img>`.
+- Prova `simulated`: `test_distribuicao_pelo_comando.py`, `test_limites_por_servidor.py`, `test_social_memory.py`, `test_pedidos_api.py`, `test_persona_imagens.py`, `test_personas_aparelhos_api.py`,
+  `Avatar.test.tsx`, `ProfilesPage.test.tsx`, `CommandPanel.test.tsx`, `PedidosPage.test.tsx`, `app.integration.test.tsx`. Real: `not_run` (o console sem 404 de `/avatar` precisa ser visto no Chrome).
+
+## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
+
+- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
+  `aria-label` e as opções do diálogo seguem a mesma regra (`rotuloDaConta`, em `pessoa.ts`). `members[]` do grupo ganha `name` no backend (só adição).
+- **I6:** abaixo de 480 px o `CardHeader` (`components/ui.module.css`, serve a `PageSection` e a toda guia) põe o texto em largura total e desce a ação;
+  antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
+- **Privacidade:** `GET /api/flows/match?command=` virou `POST /api/flows/match` com corpo `{command}` (máx. 4000): o rascunho, às vezes com e-mail, não vai mais
+  para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.65). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
+- **Editor do grupo:** o membro sem conta some da listagem de perfis (29.23), e o diálogo contava 2 mas mostrava 1, sem como tirá-lo do grupo;
+  agora ele aparece como "Nome · sem conta" e pode ser desmarcado (achado na validação no navegador).
+- Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+2);
+  painel 1243/1243. Validado no navegador contra backend simulado do worktree (8766, IA simulada; a 8000 não foi tocada): chip e editor do grupo,
+  cabeçalho a 375 e 1280 px, `POST /api/flows/match` sem query string; capturas em `data/ux-validacao/2026-10-02-29-25/` (fora do Git). Real: `not_run`.
+
+## 2026-10-02 — 29.24: rota para resolver a quarentena e aviso sem o @ de conta retirada (branch feat/29-24-resolver-quarentena)
+
+- `POST /api/instances/{id}/locked-account/resolve` (corpo `{nota}` obrigatória; 404 `no_locked_account` sem marcador aberto): só banco, resolve o
+  marcador de quarentena, sincroniza o rótulo e emite `device.locked_account` "resolvido". Nunca automática. Adendo v0.61 em `api-contract.md`.
+- O @ de conta retirada (29.23) sai do produto vivo: `SocialRepository.mascarar_contas_retiradas()` (na retirada e na subida, sem migração) troca
+  por `[conta removida]` o `handle` dos marcadores abertos e o rótulo derivado do aparelho; os avisos (frase da quarentena, recusa, start confirmado,
+  anúncio e saída do evento, problem do `/health`) dizem "conta retirada (bloqueada)". Conta viva continua com o @; evento antigo fica (ADR-068, item 10).
+- Núcleo tocado: `api.py`, `state.py` (texto da quarentena e do health), `commands/despacho.py`, `social/` (`contas_nossas`, `repository`, `service`), `models.py` (re-exporta o corpo).
+  Prova `simulated`: `test_resolver_quarentena.py` (8), `test_conta_bloqueada_sai.py` (asserção do marcador agora `[conta removida]`). Real: `not_run`.
+
 ## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
 
 - **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a
@@ -1481,6 +1520,7 @@ ADR-040, 041, 042 e 045. **A produção segue em `524471d` e não pode dar `git 
 - **Suíte:** a primeira rodada do merge final ficou 5 h parada em
   `test_worker_agent.py::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela`. Não reproduziu isolado nem na
   repetição. O fechamento do teste ganhou prazo: se voltar, reprova em 10 s dizendo onde.
+
 ## 2026-09-27 — auditoria de usabilidade do painel (documentação; nada de código)
 
 Pedido do dono (27/09): conferir usabilidade, layout e otimização do painel antes de encerrar a evolução arquitetural.

@@ -24,7 +24,7 @@ from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfile
                       ProfileAccountDTO, ProfilePolicyDTO, SessionInfo, SessionStatus, SocialContextDTO,
                       SocialDraftDTO, voice_gaps)
 from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idade_em, lacunas_da_biografia,
-                                               mesclar_secao, normalizar_biografia, separar_nome,
+                                               mesclar_secao, nome_exibido, normalizar_biografia, separar_nome,
                                                separar_visual_legado)
 from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
@@ -255,14 +255,15 @@ class SocialService:
     def _anunciar_conta_travada(self, marcador: Row, acao: str, autor: str) -> None:
         """Evento `device.locked_account`: o aparelho entrou em quarentena (ou saiu dela) — aviso ao dono."""
         iid = str(marcador["instance_id"])
+        conta = self.repo.citacao_da_conta(marcador)  # a conta já retirada (29.23) não volta ao aviso com o @
         if acao == "marcado":
-            texto = (f"{iid}: conta @{marcador['handle']} travada e logada ({marcador['origin']}, por {autor}). "
+            texto = (f"{iid}: {conta} travada e logada ({marcador['origin']}, por {autor}). "
                      "O aparelho entrou em quarentena: nada o toca além de parar ou hibernar até você decidir.")
         else:
-            texto = f"{iid}: a quarentena da conta @{marcador['handle']} foi resolvida por {autor}."
+            texto = f"{iid}: a quarentena da {conta} foi resolvida por {autor}."
         self.bus.emit("device.locked_account", texto, level="error" if acao == "marcado" else "info",
                       instance_id=iid,
-                      data={"instance_id": iid, "handle": marcador["handle"], "profile_id": marcador["profile_id"],
+                      data={"instance_id": iid, "handle": self.repo.rotulo_da_conta(marcador).lstrip("@"), "profile_id": marcador["profile_id"],
                             "app_id": marcador["app_id"], "origem": marcador["origin"], "acao": acao, "autor": autor,
                             "evidencia": marcador["evidence"]})
 
@@ -476,7 +477,8 @@ class SocialService:
         # Quarentena (ADR-055): conta travada logada no aparelho. Conferida AQUI — antes de qualquer linha no
         # cadastro, e antes de tirar o vínculo antigo na troca — para o 409 querer dizer "nada mudou".
         if (marcador := self.repo.conta_travada_no_aparelho(instance_id)) is not None:
-            raise SocialError(AparelhoEmQuarentena.code, str(AparelhoEmQuarentena(marcador)), 409)
+            raise SocialError(AparelhoEmQuarentena.code,
+                              str(AparelhoEmQuarentena(marcador, self.repo.citacao_da_conta(marcador))), 409)
 
     # ------------------------------------------------------------------ aparelhos da persona (N:N, 051)
     def bind_device(self, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:
@@ -536,7 +538,8 @@ class SocialService:
                 profile_id=pid, username=linha["username"] or None, display_name=linha["display_name"],
                 name=str(campos_de_persona(linha)["name"]), status=linha["status"] or "active", app_id=v["app_id"],
                 is_primary=bool(v["is_primary"]), bound_at=v["bound_at"],
-                session=self.repo.sessao_no_aparelho(pid, v["app_id"], instance_id)))
+                session=self.repo.sessao_no_aparelho(pid, v["app_id"], instance_id),
+                has_avatar=self.repo.tem_avatar(pid)))
         return saida
 
     # ------------------------------------------------------------------ personas (= pessoas)
@@ -1625,7 +1628,9 @@ class SocialService:
         return PolicyGroupDTO(
             id=row["id"], name=row["name"], description=row["description"] or "", package=pacote,
             capabilities=caps, limits=loads(row["limits"], {}) or {}, loosened=afrouxadas,
-            members=[PolicyGroupMember(id=m["id"], username=m["username"])
+            members=[PolicyGroupMember(id=m["id"], username=m["username"],
+                                       name=nome_exibido(m["display_name"], m["first_name"], m["last_name"],
+                                                         m["username"]) or None)
                      for m in self.repo.policy_group_members(row["id"])],
             created_at=row["created_at"], updated_at=row["updated_at"])
 

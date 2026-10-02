@@ -263,7 +263,7 @@ export function CommandPanel() {
   };
   const nomeDaPersona: NomeDaPersona = useCallback((id) => {
     const p = pessoas?.find((x) => x.id === id);
-    return p ? { nome: nomeDe(p), handle: handleDe(p) } : { nome: id, handle: null };
+    return p ? { nome: nomeDe(p), handle: handleDe(p), temFoto: p.has_avatar } : { nome: id, handle: null };
   }, [pessoas]);
 
   // A prévia OBRIGATÓRIA (§7.6) do modo por persona. Texto com senha não vai a rota nenhuma, nem à prévia.

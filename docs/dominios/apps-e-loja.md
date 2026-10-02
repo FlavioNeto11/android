@@ -224,7 +224,7 @@ Dois mecanismos com o mesmo verbo, em subsistemas diferentes — não confundir:
 (validador `_um_dos_dois`). `RunService.create` resolve `distribute` em `instance_ids` chamando
 `taskqueue/service.py::_distribuir`, que usa `Scheduler.candidatos_do_app` + `Scheduler.servidores()` +
 `balanceamento.distribuir()`; recusa loja como alvo, recusa mistura de apps com catálogo, aplica o mesmo pré-voo
-de compatibilidade que qualquer execução. `GET /api/runs/distribution?count=&app_id=`
+de compatibilidade que qualquer execução. `POST /api/runs/distribution` (corpo `{count, app_id?, command?}`)
 (`api.py:2429-2434`, `previa_de_distribuicao`) mostra quem SERIA escolhido agora, sem criar nada — é a prévia
 que o painel usa antes de confirmar.
 

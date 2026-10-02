@@ -1,6 +1,6 @@
 """Fase I, de ponta a ponta no harness: os TRÊS chamadores da RESOLVE dão a mesma resposta para a mesma frase.
 
-`RunService._plan` (a execução), `GET /api/flows/match` (a estimativa do painel) e `apps_exigidos` (o pré-voo) —
+`RunService._plan` (a execução), `POST /api/flows/match` (a estimativa do painel) e `apps_exigidos` (o pré-voo) —
 mais a rota nova, `POST /api/skills/resolve`, que só prevê. Para cada frase da tabela:
 
 - resolvida → a execução usa a habilidade sem chamar o planejador (`count("plan") == 0`), a estimativa é dela e o
@@ -70,7 +70,7 @@ async def test_os_tres_chamadores_coerentes_para_a_mesma_frase(parque: Harness) 
             run = parque.run([IID], command=frase, mode="plan")
             detalhe = await parque.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=30)
             linha = s.repo.run_row(run.id)
-            estimativa = (await c.get("/api/flows/match", params={"command": frase})).json()
+            estimativa = (await c.post("/api/flows/match", json={"command": frase})).json()
             exigidos = [a["id"] for a in s.runs.apps_exigidos(frase)]
             previa = (await c.post("/api/skills/resolve", json={"command": frase})).json()
             etapas = {e["stage"]: e["outcome"] for e in previa["stages"]}
@@ -174,3 +174,17 @@ async def test_rota_resolve_recusa_versao_adulterada_com_409(parque: Harness, mo
     assert r.status_code == 409 and r.json()["detail"]["code"] == "content_tampered"
     assert "gated_by_config" in r.json()["detail"]
 
+
+
+async def test_flows_match_so_aceita_post_com_corpo_json(parque: Harness) -> None:  # noqa: F811
+    """29.25: o rascunho do comando (às vezes com e-mail) não vai mais na query string, que vira linha de log de
+    acesso. O GET antigo deixou de existir (405) e o corpo é validado (vazio, campo a mais e texto longo: 422)."""
+    async with cliente(parque) as c:
+        assert (await c.get("/api/flows/match", params={"command": "abra a conversa com @ana"})).status_code == 405
+        assert (await c.post("/api/flows/match")).status_code == 422                       # sem corpo
+        assert (await c.post("/api/flows/match", params={"command": "x"})).status_code == 422   # a query não vale
+        assert (await c.post("/api/flows/match", json={"command": ""})).status_code == 422
+        assert (await c.post("/api/flows/match", json={"command": "x" * 4001})).status_code == 422
+        assert (await c.post("/api/flows/match", json={"command": "x", "extra": 1})).status_code == 422
+        ok = await c.post("/api/flows/match", json={"command": "poste uma foto do gato"})
+        assert ok.status_code == 200 and ok.json() is None                                  # nada casa: `null`

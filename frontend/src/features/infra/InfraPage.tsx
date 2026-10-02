@@ -635,7 +635,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
                     <li key={`${p.profile_id}:${p.app_id ?? ''}`}>
                       <button type="button" className={styles.personaDoAparelho} onClick={() => openPersona(p.profile_id)}
                               aria-label={`Abrir a persona ${p.name}${app ? ` (${app})` : ''}`}>
-                        <Avatar src={profileAvatarUrl(p.profile_id)} name={p.name || p.profile_id} size={18} />
+                        <Avatar src={profileAvatarUrl(p.profile_id, p.has_avatar)} name={p.name || p.profile_id} size={18} />
                         <span className={styles.personaNome}>{p.name}</span>
                         {p.username ? <span className={styles.dim}>@{p.username}</span> : null}
                         {app ? <span className={styles.dim}>· {app}</span> : null}

@@ -125,6 +125,18 @@ describe('personas', () => {
     expect(backend.callsTo('GET', /^\/api\/instagram\/profiles$/)).toHaveLength(0);
   });
 
+  it('foto só com `has_avatar`: sem foto são as iniciais e NENHUMA <img> (nem o 404 de /avatar); com foto, a imagem (29.26)', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({ has_avatar: true }), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Helena Prado'));
+    const imgs = [...container.querySelectorAll('img')].map((i) => i.getAttribute('src') ?? '');
+    // Só a Mariana (com foto) pede a imagem; a Helena aparece com as iniciais "HP", sem <img> e sem requisição.
+    expect(imgs.length).toBeGreaterThan(0);
+    expect(imgs.every((u) => u.endsWith('/instagram/profiles/ig-1/avatar'))).toBe(true);
+    expect(imgs.some((u) => u.includes('ig-9'))).toBe(false);
+    expect(text()).toContain('HP');
+  });
+
   it('o cartão é a pessoa: contas, aparelho e situação — sem senha, sessão nem Conectar', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa({ accounts_count: 2 })]));
     await render();
@@ -579,6 +591,42 @@ describe('grupos de acesso', () => {
     expect(text()).toContain('2 mudança(s) em relação ao padrão');
     expect(text(document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement)).toContain('1 persona');
     expect(text()).toContain('nenhum — padrão do catálogo');      // o Bruno não tem grupo
+  });
+
+  it('29.25 (B3): membro cuja conta saiu aparece pelo nome e "sem conta", nunca como um "@" sozinho', async () => {
+    rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
+                 members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                           { id: 'ig-7', username: '', name: 'Beatriz Rocha' },
+                           { id: 'ig-8', username: null, name: null }],
+                 created_at: '', updated_at: '' }]);
+    await render();
+    const chips = await waitFor(() => document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement);
+    const textos = Array.from(chips.querySelectorAll('span[data-sem-conta], span[class*="memberChip"]')).map((e) => e.textContent);
+    expect(textos).toContain('@andre.carvalho9543');
+    expect(textos).toContain('Beatriz Rocha · sem conta');
+    expect(textos).toContain('Pessoa sem nome · sem conta');              // sem nome nenhum, ainda assim não é "@"
+    expect(textos.filter((t) => (t ?? '').trim() === '@')).toHaveLength(0);
+    expect(chips.querySelectorAll('[data-sem-conta]')).toHaveLength(2);    // o estilo discreto só nos sem conta
+  });
+
+  it('29.25 (B3): o editor lista o membro sem conta (fora da listagem de perfis) e deixa tirá-lo do grupo', async () => {
+    const grupo = { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
+                    members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                              { id: 'ig-7', username: '', name: 'Beatriz Rocha' }],
+                    created_at: '', updated_at: '' };
+    rotasBase([grupo]);
+    backend.on('GET', /\/instagram\/policy-groups\/grp-1$/, () => json(grupo));
+    backend.on('PUT', /\/instagram\/policy-groups\/grp-1$/, () => json({ ...grupo, members: grupo.members.slice(0, 1) }));
+    await render();
+    await waitFor(() => expect(text()).toContain('Cautelosos'));
+    await click(byRole('button', /^Editar$/i));
+    const beatriz = await waitFor(() => byRole('checkbox', /^Beatriz Rocha · sem conta$/) as HTMLInputElement);
+    expect(beatriz.checked).toBe(true);                                    // a contagem (2) bate com o que se vê
+    await click(beatriz);
+    await click(byRole('button', /Salvar grupo/i));
+    await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-1$/)).toHaveLength(1));
+    expect((backend.callsTo('PUT', /policy-groups\/grp-1$/)[0]!.body as { profile_ids: string[] }).profile_ids)
+      .toEqual(['ig-1']);
   });
 
   it('criar um grupo manda nome, políticas escolhidas e os perfis marcados (só quem tem conta)', async () => {

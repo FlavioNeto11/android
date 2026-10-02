@@ -393,9 +393,11 @@ export type FrameMode = 'thumb' | 'full';
  * URL da imagem do frame. O parâmetro `f` NÃO faz parte do contrato: é apenas um "cache key" para que o
  * navegador só busque de novo quando `frame.id` mudar (o backend ignora parâmetros desconhecidos).
  */
-/** URL da foto do perfil. Responde 404 quando não há foto — o `Avatar` cai nas iniciais nesse caso. */
-export function profileAvatarUrl(profileId: string): string {
-  return `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar`;
+/** URL da foto do perfil, ou `undefined` quando o perfil não tem foto (`has_avatar` do DTO): o `Avatar` mostra as
+ *  iniciais SEM requisição. Antes a rota era chamada sempre e respondia 404 (um erro no console por persona sem foto,
+ *  29.26). `temFoto` ausente (fixture antiga, DTO sem o campo) conta como sem foto: na dúvida, nenhuma requisição. */
+export function profileAvatarUrl(profileId: string, temFoto: boolean | undefined): string | undefined {
+  return temFoto ? `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar` : undefined;
 }
 
 /** URL do ícone do aplicativo, extraído do próprio APK. Só vale pedir quando `release.has_icon`: sem ícone
@@ -455,10 +457,11 @@ export const api = {
   getServerLimits: () => request<ServerLimits[]>('GET', '/servers/limits'),
   putServerLimits: (workerId: string, patch: ServerLimitsPatch) =>
     request<ServerLimits>('PUT', `/servers/${enc(workerId)}/limits`, { body: patch }),
-  /** Item 24.6: pelo app escolhido (`appId`) ou, sem ele, pelos apps que o `command` usa. */
+  /** Item 24.6: pelo app escolhido (`appId`) ou, sem ele, pelos apps que o `command` usa. POST com o texto no corpo
+   *  (29.26): o comando pode ter e-mail e query string vira linha de log de acesso. */
   previewDistribution: (count: number, alvo: { appId?: string; command?: string }, signal?: AbortSignal) =>
-    request<DistributionPreview>('GET', '/runs/distribution', {
-      query: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
+    request<DistributionPreview>('POST', '/runs/distribution', {
+      body: { count, app_id: alvo.appId || undefined, command: alvo.appId ? undefined : alvo.command }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
   /** Estado do retrieval de contexto (ADR-063): só leitura, sem rede e sem gasto. */
@@ -478,9 +481,10 @@ export const api = {
 
   listFlows: (signal?: AbortSignal) => request<Flow[]>('GET', '/flows', { signal }),
   flowsCoverage: (signal?: AbortSignal) => request<FlowCoverage[]>('GET', '/flows/cobertura', { signal }),
-  /** Item 7.7: o comando digitado casa com um fluxo conhecido? `null` sem casamento — nada a estimar. */
+  /** Item 7.7: o comando digitado casa com um fluxo conhecido? `null` sem casamento — nada a estimar. POST com o
+   *  texto no corpo (29.25): o rascunho pode ter e-mail e query string vira linha de log de acesso. */
   flowsMatch: (command: string, signal?: AbortSignal) =>
-    request<FlowCoverage | null>('GET', '/flows/match', { query: { command }, signal }),
+    request<FlowCoverage | null>('POST', '/flows/match', { body: { command }, signal }),
   profileCapabilities: (profileId: string) =>
     request<ProfileCapabilities>('GET', `/instagram/profiles/${enc(profileId)}/capacidades`),
   updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),

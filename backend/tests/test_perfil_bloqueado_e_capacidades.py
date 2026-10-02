@@ -140,7 +140,7 @@ async def test_estimativa_de_custo_por_fluxo(tmp_path: Path) -> None:
             r = await c.get("/api/flows/cobertura")
             f2 = next(f for f in r.json() if f["flow_id"] == "f2")
             assert f2["estimated_usd"] is None
-            assert (await c.get("/api/flows/match", params={"command": "não existe nenhum fluxo assim"})).json() is None
+            assert (await c.post("/api/flows/match", json={"command": "não existe nenhum fluxo assim"})).json() is None
 
         # `claude-sonnet-5`: US$ 2/milhão de tokens de entrada (config.example.yaml) — tokens escolhidos para dar
         # custos redondos por chamada: decide 1,00 e 3,00 (mediana 2,00); verify 0,50 e 1,50 (mediana 1,00).
@@ -162,9 +162,9 @@ async def test_estimativa_de_custo_por_fluxo(tmp_path: Path) -> None:
             # Fase G (decisão P2): `/flows/match` passa pelo MESMO registro que o planejamento, e por isso respeita
             # `ai.flows` — com os fluxos desligados (o padrão do harness), nenhuma execução usaria f2, e a rota não
             # estima um plano que não rodaria. Antes ela ignorava o interruptor.
-            assert (await c.get("/api/flows/match", params={"command": "enviar oi"})).json() is None
+            assert (await c.post("/api/flows/match", json={"command": "enviar oi"})).json() is None
             h.cfg.file.ai.flows = True
-            r2 = await c.get("/api/flows/match", params={"command": "enviar oi"})
+            r2 = await c.post("/api/flows/match", json={"command": "enviar oi"})
             assert r2.status_code == 200
             corpo = r2.json()
             assert corpo["flow_id"] == "f2"

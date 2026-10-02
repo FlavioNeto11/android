@@ -171,7 +171,14 @@ async def test_lista_com_filtros_detalhe_e_404(h: Harness) -> None:
     assert lista["total_por_estado"]["ativo"] == 1 and lista["total_por_estado"]["rascunho"] == 1
     assert [i["id"] for i in c.get("/api/pedidos?estado=rascunho").json()["items"]] == [b["id"]]
     assert c.get("/api/pedidos?estado=rascunho").json()["total_por_estado"]["ativo"] == 1, "os chips ignoram o filtro"
-    assert [i["id"] for i in c.get("/api/pedidos?q=vitrine").json()["items"]] == [b["id"]]
+    # 29.26: o termo de busca (texto livre) vai no corpo; na query a recusa é explícita, não uma lista inteira disfarçada
+    assert [i["id"] for i in c.post("/api/pedidos/busca", json={"q": "vitrine"}).json()["items"]] == [b["id"]]
+    assert c.post("/api/pedidos/busca", json={"q": "VITRINE", "estado": "rascunho"}).json()["total_por_estado"]["ativo"] == 1
+    assert c.post("/api/pedidos/busca", json={"q": "inexistente-xyz"}).json()["items"] == []
+    gq = c.get("/api/pedidos?q=vitrine")
+    assert gq.status_code == 422 and gq.json()["detail"]["code"] == "busca_no_corpo"
+    for ruim in ({}, {"q": ""}, {"q": "x" * 81}, {"q": "a", "extra": 1}, {"q": "a", "limit": 0}):
+        assert c.post("/api/pedidos/busca", json=ruim).status_code == 422, ruim
     assert c.get("/api/pedidos?estado=inexistente").status_code == 422
     assert [i["id"] for i in c.get("/api/pedidos?tipo=recorrencia&autonomia=observar&ordem=proxima").json()["items"]]
     pag = c.get("/api/pedidos?limit=1").json()

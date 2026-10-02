@@ -73,7 +73,7 @@ def contexto_do_aparelho(s: Any, instance_id: str) -> dict[str, Any]:
         # nem nada que venha do cofre.
         perfis.append({
             "profile_id": perfil.id, "username": perfil.username, "display_name": perfil.display_name,
-            "persona_id": perfil.persona_id, "persona_name": perfil.persona_name,
+            "persona_id": perfil.persona_id, "persona_name": perfil.persona_name, "has_avatar": perfil.has_avatar,
             "credential_configured": perfil.credential.configured,
             "credential_status": perfil.credential.status,
             "session": perfil.session.model_dump(mode="json"),

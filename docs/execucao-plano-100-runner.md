@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-268 de 314 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+268 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -281,6 +281,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reprodu… |
 | 29.22 | implemented | simulated |  | — | Branch fix/29-22-boot-invalida-verificacao (67fd075f + merges): devices/rede.py inicio_do_boot/boot_depois_da_medicao e motivo 'boot' em verificacao_invalida (marco = instances.emulator_started_at; aparelho de worker us… | Prova real not_run: parar e ligar a frio um aparelho exigida/exigida_com_bloqueio no central e ver a porta segurar ('subiu depois da medicao') ate a medicao no… |
 | 29.23 | implemented | simulated |  | — | Branch feat/29-23-conta-bloqueada-sai (3cbbffe1, f1c83b56, 5126a414, 41f7204c, 827e038d + merges): acao retirar_conta_bloqueada + rota POST /api/instagram/profiles/{p}/accounts/{a}/retire (credencial da conta + legada +… | Prova real not_run: deploy com ensaio da 071 e retire nas 5 contas bloqueadas pela rota (declaracao do dono como sinal), com antes/depois; PostgreSQL not_run. |
+| 29.24 | pendente | — | — | — |  |  |
+| 29.25 | pendente | — | — | — |  |  |
+| 29.26 | pendente | — | — | — |  |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
@@ -321,7 +324,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (46): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.1, 31.2, 31.4, 31.5, 31.6, 31.7, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (49): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.8, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.1, 31.2, 31.4, 31.5, 31.6, 31.7, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

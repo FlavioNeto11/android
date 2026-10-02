@@ -44,6 +44,26 @@ def registrar_lapide(db: Database, *, app_id: str, handle: str | None, profile_i
     return True
 
 
+def foi_retirada(db: Database, handle: str | None) -> bool:
+    """Este @ está na lápide (conta retirada da plataforma, 29.23), ou já foi trocado por `MARCADOR`? Diferente de
+    `eh_conta_nossa`: conta VIVA também é nossa, e um aviso de quarentena de conta viva continua com o @ — só o da
+    retirada some do produto vivo."""
+    if (handle or "").strip() == MARCADOR:
+        return True
+    h = hash_do_handle(handle)
+    return bool(h) and bool(db.scalar("SELECT COUNT(*) FROM contas_retiradas WHERE handle_sha256=?", (h,)))
+
+
+def rotulo_da_conta(db: Database, handle: str | None) -> str:
+    """Como citar a conta num texto NOVO: `@handle` se está viva, `MARCADOR` se foi retirada (29.23, opção A)."""
+    return MARCADOR if foi_retirada(db, handle) else f"@{normalizar(handle)}"
+
+
+def citacao_da_conta(db: Database, handle: str | None) -> str:
+    """A conta dentro de uma frase de aviso (`a …`, `da …`): `conta @x`, ou `conta retirada (bloqueada)` se ela já saiu."""
+    return "conta retirada (bloqueada)" if foi_retirada(db, handle) else f"conta @{normalizar(handle)}"
+
+
 def eh_conta_nossa(db: Database, handle: str | None) -> bool:
     """Este @ é de uma conta NOSSA? Consulta GLOBAL: os @ vivos de todos os perfis e apps, mais as lápides.
 

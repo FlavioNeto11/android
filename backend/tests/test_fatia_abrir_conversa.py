@@ -304,7 +304,7 @@ async def test_rotas_de_fluxo_respeitam_a_skill(parque: Harness) -> None:
     s = estado(parque)
     await publicar_abrir(s)
     async with cliente(parque) as c:
-        corpo = (await c.get("/api/flows/match", params={"command": ABRA})).json()
+        corpo = (await c.post("/api/flows/match", json={"command": ABRA})).json()
         assert corpo["flow_id"] == corpo["skill_ref"] == "ig.abrir_conversa@1" and corpo["steps_total"] == 2
         # fluxo adotado com a skill publicada não se religa por fora
         s.db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at)"

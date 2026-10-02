@@ -3962,6 +3962,16 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
 9. **Filtro de frota (`_fleet_gate`).** Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) é recusada. Responder
    a comentário de um TERCEIRO num post nosso (roteiro 8.3: a conta dona do post age, o `counterparty` é o do terceiro)
    continua permitido; coberto por teste.
+10. **29.24: rota de resolução e aviso sem o @** (orquestrador, a partir da validação real de 02/10). (a) A quarentena
+   do aparelho (054) segue aberta depois da retirada e do `pm clear` até uma PESSOA resolvê-la:
+   `POST /api/instances/{id}/locked-account/resolve` com `{"nota"}` obrigatória (só banco, não toca disco nem app, não
+   reativa o perfil; sem marcador aberto, 404 `no_locked_account`). Nunca dispara sozinha. (b) O @ de conta já retirada
+   sai do produto vivo e não volta em evento NOVO: `SocialRepository.mascarar_contas_retiradas()` troca por
+   `[conta removida]` o `handle` dos marcadores abertos e o rótulo DERIVADO do aparelho (origem `marcador`/`vinculo`), na
+   retirada e na subida (idempotente, sem migração); o rótulo de configuração (origem nula, `config.yaml`) não é tocado.
+   Os avisos (frase da quarentena, recusa, start confirmado, anúncio e saída do `device.locked_account`, problem do
+   `/health`) dizem "conta retirada (bloqueada)" quando o handle é o marcador ou está na lápide
+   (`contas_nossas.foi_retirada`); conta VIVA em quarentena continua com o @. Evento antigo fica (opção A).
 
 **Dívidas registradas.**
 

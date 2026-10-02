@@ -247,11 +247,11 @@ async def test_distribuicao_pela_api_previa_e_execucao(tmp_path: Path) -> None:
         for iid in ("android-03", "android-04"):
             h.state.devices.get(iid).state = InstanceState.online
         async with await _cliente(h) as c:
-            previa = (await c.get("/api/runs/distribution", params={"count": 4, "app_id": "qa-messenger"})).json()
+            previa = (await c.post("/api/runs/distribution", json={"count": 4, "app_id": "qa-messenger"})).json()
             assert previa["missing"] == 0 and len(previa["picks"]) == 4
             # Duas máquinas com aparelho livre: a distribuição usa as duas.
             assert len(previa["per_server"]) == 2
-            vazia = (await c.get("/api/runs/distribution", params={"count": 2, "app_id": "outro-app"})).json()
+            vazia = (await c.post("/api/runs/distribution", json={"count": 2, "app_id": "outro-app"})).json()
             assert vazia["picks"] == [] and "nenhum aparelho do parque está vinculado a este app" in vazia["reasons"]
 
         demais = RunCreate(command="abra o app", idempotency_key="dist-demais-1",
