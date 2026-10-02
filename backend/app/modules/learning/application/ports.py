@@ -317,7 +317,7 @@ class RegistroDeRevisoes(Protocol):
 class FonteDeDossies(Protocol):
     """Monta o dossiê (§8.2) de uma entrada do Livro, sem IA. `None` quando o item sumiu ou não tem dossiê (memória)."""
 
-    def dossie(self, entrada: EntradaDoLivro) -> Dossie | None: ...
+    def dossie(self, entrada: EntradaDoLivro, *, max_evidencias: int | None = None) -> Dossie | None: ...
 
 
 class LacoPeriodico(Protocol):

@@ -2280,6 +2280,7 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
+            self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura (e a rede de cada
             # aparelho converge no mesmo trabalho: `vitrine.trabalho_ao_ligar`).
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
