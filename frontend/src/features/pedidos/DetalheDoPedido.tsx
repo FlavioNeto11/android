@@ -3,7 +3,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { toApiError } from '../../api/client';
-import type { OcorrenciaDTO, PedidoDetalhe } from '../../api/pedidos';
+import type { OcorrenciaDTO, PedidoDetalhe, PendenciaDoPedido } from '../../api/pedidos';
 import type { RunSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -22,7 +22,7 @@ import { apiPedidos } from './api';
 import { AcoesDoPedido } from './AcoesDoPedido';
 import { EsqueletoDaLista } from './Esqueleto';
 import {
-  agendaLegivel, dataCurta, fusoParaMostrar, horaEscrita, proximaDoPedido, quemFazDoPedido,
+  agendaLegivel, dataCurta, fusoParaMostrar, horaEscrita, horaNoFuso, proximaDoPedido, quemFazDoPedido,
 } from './formato';
 import {
   META_DA_OCORRENCIA, META_DO_PEDIDO, ROTULO_DA_AUTONOMIA, ROTULO_DA_ORIGEM, ROTULO_DA_SOBREPOSICAO, ROTULO_DO_ENCERRAMENTO,
@@ -116,7 +116,8 @@ export function DetalheDoPedido({ id }: { id: string }) {
             </span>
           )}
           actions={voltar}>
-      <AcoesDoPedido pedido={pedido} onMudou={reler} />
+      <AcoesDoPedido pedido={pedido} onMudou={reler} exceto={pedido.estado === 'aguardando_pessoa' ? ['retomar'] : undefined} />
+      {pedido.estado === 'aguardando_pessoa' ? <AvisoQueEsperaVoce p={pedido} onMudou={reler} /> : null}
       {pedido.estado === 'pausado' && pedido.pausado_motivo ? <p className={styles.nota}>Pausado: {pedido.pausado_motivo}</p> : null}
       <Tabs tabs={tabs} active={aba} onChange={(a) => trocarQuery({ aba: a === 'resumo' ? undefined : a })} idBase={ID} label="Pedido" />
       <TabPanel idBase={ID} id={aba} className={styles.tabBody}>
@@ -130,6 +131,42 @@ export function DetalheDoPedido({ id }: { id: string }) {
 }
 
 /** Um cartão do Resumo: título curto com ícone e as linhas rótulo/valor dele. */
+/** O que cada decisão aberta quer dizer, em português, com o motivo e o lugar onde se decide. */
+function motivoDaPendencia(x: PendenciaDoPedido, p: PedidoDetalhe): { texto: string; href: string | null } {
+  const oc = x.ocorrencia_id ? [...(p.ocorrencias_recentes ?? [])].find((o) => o.id === x.ocorrencia_id) : undefined;
+  const runId = x.run_id ?? oc?.run_id ?? null;
+  const href = runId ? hashDe('execucoes', { segmentos: [runId] }) : x.tipo === 'ocorrencia_incerta' ? hashDe('pedidos', { segmentos: [p.id], query: { aba: 'ocorrencias' } }) : null;
+  if (x.tipo === 'ocorrencia_incerta') {
+    const dia = dataCurta(oc?.previsto_para ?? x.desde, p.fuso).split(' às ', 1).join('').replace(/^\S+, /, '');
+    return { texto: `a ocorrência de ${dia} terminou incerta: confira no aparelho se a ação aconteceu`, href };
+  }
+  if (x.tipo === 'aprovacao') return { texto: 'uma aprovação espera a sua decisão antes de a ação seguir', href };
+  return { texto: 'o planejador fez uma pergunta e a execução parou esperando a sua resposta', href };
+}
+
+/**
+ * Aviso no topo do detalhe de um pedido `aguardando_pessoa`: o que espera a pessoa, com o motivo de cada pendência que a
+ * API devolve, o link para onde decidir e o Retomar ao lado. Sem pendência aberta, já dá para retomar.
+ */
+function AvisoQueEsperaVoce({ p, onMudou }: { p: PedidoDetalhe; onMudou: () => void }) {
+  const itens = (p.pendencias ?? []).map((x) => ({ x, ...motivoDaPendencia(x, p) }));
+  return (
+    <Banner tone="warning" icon={Hand} role="status" title="Este pedido espera você"
+            actions={<AcoesDoPedido pedido={p} onMudou={onMudou} somente={['retomar']} />}>
+      {itens.length === 0 ? <p>Nenhuma decisão aberta: já dá para retomar.</p> : (
+        <ul className={styles.listaSimples} aria-label="O que espera você">
+          {itens.map(({ x, texto, href }) => (
+            <li key={`${x.tipo}-${x.ref}`}>
+              {texto.charAt(0).toUpperCase() + texto.slice(1)}, e retome.
+              {href ? <> <a href={href}>{x.run_id || href.includes('execucoes') ? 'Abrir a execução' : 'Ver as ocorrências'}</a></> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Banner>
+  );
+}
+
 function CartaoResumo({ icone: Icone, titulo, children }: { icone: LucideIcon; titulo: string; children: ReactNode }) {
   return (
     <section className={styles.cartaoResumo} aria-label={titulo}>
@@ -146,7 +183,8 @@ function Resumo({ p }: { p: PedidoDetalhe }) {
   const proxima = proximaDoPedido(p, p.proximas);
   // A hora do "Todo dia às 19:00": o backend só a escreve quando a regra a traz; senão vem do início do gatilho ou da próxima data.
   const spec = p.gatilhos?.find((g) => g.ativo)?.spec as { dtstart?: string; local?: string } | undefined;
-  const hora = horaEscrita(spec?.dtstart ?? spec?.local) ?? horaEscrita(p.proxima_local);
+  const hora = horaEscrita(spec?.dtstart ?? spec?.local) ?? horaEscrita(p.proxima_local)
+    ?? horaNoFuso(p.proxima_em ?? p.proximas?.[0]?.utc, p.fuso);
   const quando = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : '—';
   const gasto = p.orcamento_total_usd !== null ? `${formatUsd(p.gasto_usd)} de ${formatUsd(p.orcamento_total_usd)}` : `${formatUsd(p.gasto_usd)} (sem orçamento total)`;
   return (

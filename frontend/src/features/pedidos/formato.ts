@@ -93,3 +93,16 @@ export function dataCurtaDeCampo(campo: string): string {
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
   return dataCurta(d.toISOString());
 }
+
+/** "19:00" de um instante, lido no fuso do pedido (para completar "Todo dia" quando só se tem `proxima_em`). */
+export function horaNoFuso(iso: string | null | undefined, fuso: string): string | null {
+  const t = parseTs(iso);
+  if (t === null) return null;
+  try {
+    const p: Record<string, string> = {};
+    for (const parte of new Intl.DateTimeFormat('pt-BR', { timeZone: fuso, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(t)) p[parte.type] = parte.value;
+    return `${p.hour}:${p.minute}`;
+  } catch {
+    return null;
+  }
+}

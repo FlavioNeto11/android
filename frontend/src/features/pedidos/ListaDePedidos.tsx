@@ -1,4 +1,4 @@
-import { CalendarClock, Plus, TriangleAlert } from 'lucide-react';
+import { CalendarClock, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toApiError } from '../../api/client';
 import type { ListaDePedidos as Lista, PedidoView } from '../../api/pedidos';
@@ -15,7 +15,7 @@ import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { apiPedidos } from './api';
 import { EsqueletoDaLista } from './Esqueleto';
-import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, quemFazDoPedido } from './formato';
+import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, horaNoFuso, quemFazDoPedido } from './formato';
 import {
   AUTONOMIAS, ORDENS, ROTULO_DA_ORDEM, TIPOS_DE_GATILHO, chaveDoFiltro, filtroDoLink, temFiltro, type FiltroDoLink,
 } from './filtro';
@@ -85,7 +85,6 @@ export function ListaDePedidos() {
   const { itens, totais, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
   const pessoas = usePersonas();
   const agora = useNow();
-  const abrirNovoPedido = useUiStore((s) => s.abrirNovoPedido);
 
   // A busca digitada só vai ao link depois de uma pausa: cada tecla seria uma leitura.
   const [busca, setBusca] = useState(filtro.q ?? '');
@@ -150,8 +149,7 @@ export function ListaDePedidos() {
           <EmptyState icon={CalendarClock} title="Nenhum pedido neste filtro">Limpe os filtros para ver todos.</EmptyState>
         ) : (
           <EmptyState icon={CalendarClock} title="Nenhum pedido ainda"
-                      hint="Escreva o objetivo no Comando e use “Repetir ou acompanhar…”."
-                      actions={<Button variant="primary" icon={Plus} onClick={abrirNovoPedido}>Novo pedido</Button>} />
+                      hint="Use “Novo pedido”: escreva o objetivo no Comando e escolha “Repetir ou acompanhar…”." />
         )
       ) : (
         <>
@@ -173,7 +171,7 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
   const quem = personas.length > 0 ? personas.join(', ') : aparelhos.join(', ');
   // A hora fica no texto da agenda ("Todo dia às 19:00"); o backend só a escreve quando a regra a traz, então completa-se
   // com a hora da próxima data (escrita no fuso do pedido). O fuso vai uma vez, e só se difere do navegador.
-  const hora = horaEscrita(p.proxima_local);
+  const hora = horaEscrita(p.proxima_local) ?? horaNoFuso(p.proxima_em, p.fuso);
   const agenda = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : null;
   const proxima = p.proxima_em ?? p.proxima_local;
   const fusoMostrado = fusoParaMostrar(p.fuso);
@@ -187,6 +185,7 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
           {p.avisos_nao_lidos > 0 ? <Badge size="sm" tone="info">{p.avisos_nao_lidos} {p.avisos_nao_lidos === 1 ? 'aviso novo' : 'avisos novos'}</Badge> : null}
         </div>
         <a className={styles.titulo} href={href}>{p.titulo}</a>
+        {agenda || proxima || p.estado === 'ativo' ? (
         <p className={styles.agenda}>
           <CalendarClock size={13} aria-hidden />
           {agenda ? <span>{agenda}</span> : null}
@@ -194,6 +193,7 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
             : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}próxima data ainda não calculada</span> : null}
           {fusoMostrado ? <span className={styles.dim}>(fuso {fusoMostrado})</span> : null}
         </p>
+        ) : null}
         {p.estado === 'pausado' && p.pausado_motivo ? <span className={styles.motivo}>Pausado: {p.pausado_motivo}</span> : null}
         <div className={styles.metaDiscreta}>
           {quem ? <span>{quem}</span> : null}

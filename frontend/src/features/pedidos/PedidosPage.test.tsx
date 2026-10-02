@@ -164,6 +164,32 @@ describe('detalhe e navegação por hash', () => {
     for (const nome of ['Custos e limites', 'Comportamento', 'Autoria']) expect(container.querySelector(`section[aria-label="${nome}"]`)).not.toBeNull();
   });
 
+  it('aguardando você: aviso acima das guias com o motivo da ocorrência incerta, o link e o Retomar ali perto', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      estado: 'aguardando_pessoa', acoes_permitidas: ['retomar', 'cancelar'],
+      ocorrencias_recentes: [makeOcorrencia({ id: 'oc_i', estado: 'incerta', run_id: 'run-5', previsto_para: '2026-10-02T22:00:00Z' })],
+      pendencias: [{ tipo: 'ocorrencia_incerta', ref: 'oc_i', run_id: null, ocorrencia_id: 'oc_i', desde: '2026-10-02T22:10:00Z' }],
+    })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Este pedido espera você'));
+    const aviso = container.querySelector('[role="status"]') as HTMLElement;
+    expect(text(aviso)).toContain('A ocorrência de 02/10 terminou incerta');
+    expect(text(aviso)).toContain('confira no aparelho se a ação aconteceu');
+    expect(aviso.querySelector('a[href="#/execucoes/run-5"]')).not.toBeNull();
+    expect(aviso.querySelector('button')?.textContent).toContain('Retomar');
+    // o aviso fica antes das guias
+    expect(aviso.compareDocumentPosition(container.querySelector('[role="tablist"]') as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('o botão "Novo pedido" está sempre no cabeçalho da página', async () => {
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    expect(text(container.querySelector('h1')?.parentElement?.parentElement as HTMLElement)).toContain('Novo pedido');
+    await click(byRole('button', /Novo pedido/));
+    expect(window.location.hash).toBe('#/painel');
+  });
+
   it('pedido inexistente: 404 vira "este pedido não existe"', async () => {
     backend.on('GET', /^\/api\/pedidos\/ped_zzz$/, () => apiError(404, 'not_found', 'Pedido não encontrado'));
     await irPara({ tela: 'pedidos', segmentos: ['ped_zzz'] });

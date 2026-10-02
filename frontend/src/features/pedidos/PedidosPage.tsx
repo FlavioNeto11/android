@@ -1,4 +1,5 @@
-import { Bell, ListChecks } from 'lucide-react';
+import { Bell, ListChecks, Plus } from 'lucide-react';
+import { Button } from '../../components/Button';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { useUiStore } from '../../store/ui';
@@ -19,6 +20,7 @@ export function PedidosPage() {
   const id = useUiStore((s) => s.rota.segmentos[0]);
   const abaDoLink = useUiStore((s) => s.rota.query.aba);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const abrirNovoPedido = useUiStore((s) => s.abrirNovoPedido);
   const naoLidos = usePedidosStore((s) => s.naoLidos);
   if (id) return <DetalheDoPedido key={id} id={id} />;
 
@@ -28,7 +30,7 @@ export function PedidosPage() {
     { id: 'avisos', label: 'Avisos', icon: Bell, count: naoLidos, alert: (naoLidos ?? 0) > 0 },
   ];
   return (
-    <Page title="Pedidos"
+    <Page title="Pedidos" actions={<Button variant="primary" icon={Plus} onClick={abrirNovoPedido}>Novo pedido</Button>}
           lead="Um pedido é o objetivo que dura: gera uma ocorrência por data, e cada ocorrência vira uma execução comum. Crie um pelo Comando, com “Repetir ou acompanhar…”.">
       <Tabs tabs={tabs} active={aba} onChange={(a) => trocarQuery(a === 'avisos' ? { aba: 'avisos' } : { aba: undefined })} idBase={ID} label="Pedidos" />
       <TabPanel idBase={ID} id={aba} className={styles.tabBody}>

@@ -20,11 +20,17 @@ const quantos = (v: unknown): number => (Array.isArray(v) ? v.length : typeof v 
  * `200 sem_mudanca` (repetir é seguro: a tela diz que já estava assim) e o `409 invalid_state` (a tela relê e diz o que
  * vale agora). As destrutivas pedem confirmação. `executar` e `backfill` ainda não têm botão (fora do 28.9 desta tela).
  */
-export function AcoesDoPedido({ pedido, onMudou }: { pedido: PedidoDetalhe; onMudou: () => void }) {
+export function AcoesDoPedido({ pedido, onMudou, somente, exceto }: {
+  pedido: PedidoDetalhe; onMudou: () => void;
+  /** Mostra só estas ações (o aviso de "aguardando você" leva o Retomar para perto do motivo). */
+  somente?: readonly AcaoDePedido[];
+  /** Esconde estas (a barra principal não repete o que o aviso já oferece). */
+  exceto?: readonly AcaoDePedido[];
+}) {
   const [ocupado, setOcupado] = useState<AcaoDePedido | null>(null);
   const [editando, setEditando] = useState(false);
   const [retomando, setRetomando] = useState(false);
-  const permitidas = new Set(pedido.acoes_permitidas ?? []);
+  const permitidas = new Set((pedido.acoes_permitidas ?? []).filter((a) => (!somente || somente.includes(a)) && !exceto?.includes(a)));
 
   const depois = () => {
     usePedidosStore.getState().bater();
@@ -160,7 +166,7 @@ export function AcoesDoPedido({ pedido, onMudou }: { pedido: PedidoDetalhe; onMu
       ) : null}
       {permitidas.has('editar') ? <Button icon={Pencil} onClick={() => setEditando(true)}>Editar</Button> : null}
       {permitidas.has('cancelar') ? <Button variant="dangerGhost" icon={Ban} loading={ocupado === 'cancelar'} onClick={() => void cancelar()}>Cancelar pedido</Button> : null}
-      {permitidas.size === 0 ? <span className={styles.dim}>Este pedido não aceita ações.</span> : null}
+      {permitidas.size === 0 && !somente ? <span className={styles.dim}>Este pedido não aceita ações.</span> : null}
 
       {retomando ? (
         <Dialog open onClose={() => setRetomando(false)} title="Retomar o pedido" icon={Play}
