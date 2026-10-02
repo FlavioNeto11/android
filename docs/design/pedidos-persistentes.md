@@ -342,8 +342,13 @@ hospedeiros com PostgreSQL gerenciado.
 - Dentro da execução, as tentativas por etapa são as de hoje (`max_attempts`, `retry_wait`).
 - Por ocorrência: nova tentativa só quando a execução falhou **sem** ação com `effect_possible` e sem etapa `uncertain`
   (a mesma regra de `_reconciliar`: efeito possivelmente disparado só se verifica). Atraso exponencial com teto e
-  `max_tentativas` (padrão 2).
-- `incerta` para o pedido em `aguardando_pessoa` até a pessoa resolver; nunca repete sozinha.
+  `max_tentativas` (padrão 2, o total de execuções por ocorrência).
+- **Falha com efeito possível é `incerta`, nunca `falhou`** (decisão do coordenador, 02/10): se o efeito pode ter acontecido,
+  o mundo está incerto, e um `falhou` deixaria a próxima ocorrência refazê-lo (um segundo envio). A ocorrência fecha `incerta`,
+  o pedido vai a `aguardando_pessoa` e nada se repete sozinho. Só é `falhou` (e só então repete) a execução que
+  comprovadamente não produziu efeito: falhou antes de qualquer ação com efeito, ou o driver provou que nada chegou ao
+  aparelho (`effect_possible = 0`). A execução purgada também é `incerta`. Implementação e consequências em
+  `pedidos-laco.md` §13.- `incerta` para o pedido em `aguardando_pessoa` até a pessoa resolver; nunca repete sozinha.
 - N falhas seguidas (padrão 3) pausam o pedido (o `pause-on-failure` do Temporal), com aviso.
 - O efeito externo tem uma segunda cerca fora da ocorrência: a política social conta tentativa e efeito confirmado
   igual (`CONTAM`) e aplica uma conta por alvo; uma ocorrência repetida por engano esbarra nela.

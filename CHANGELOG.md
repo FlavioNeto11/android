@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
+
+- Nova tentativa por ocorrência: `modules/pedidos/domain/tentativas.py` (puro) decide, a partir do desfecho da execução, entre repetir (a MESMA linha volta `falhou → devida`, `tentativa+1`, despacho `chave:t<n>` depois de um atraso exponencial com teto), `incerta` ou falha definitiva. Só repete sem ação com `effect_possible` (e sem execução purgada) e sem etapa `uncertain` (a regra de `_reconciliar`); falha COM efeito possível (ou execução purgada) fecha `incerta` e leva o pedido a `aguardando_pessoa`, nunca `falhou` (decisão do coordenador: um `falhou` deixaria a próxima ocorrência refazer o efeito); `max_tentativas` é o total por ocorrência (padrão 2). Sem migração: o instante da espera mora em `terminada_em` enquanto a ocorrência é `devida` com `tentativa > 0`. A repetição passa por sobreposição, orçamento e saldo.
+- `incerta` leva o pedido `ativo` a `aguardando_pessoa` (mesma transação) e nunca repete sozinha; N falhas seguidas (coluna `pausa_por_falha`, padrão 3) pausam o pedido (ator `sistema`). Os dois emitem `pedido.aviso` (`AvisoDTO` do contrato 28.9) no barramento (`state.py`), que o 28.11 já assina.
+- Configuração: `pedidos.max_tentativas`, `falhas_para_pausar` (padrões globais; a coluna do pedido vale), `retentativa_base_s`, `retentativa_teto_s`.
+- 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
+- Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
+
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
 - `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,

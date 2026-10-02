@@ -3003,11 +3003,11 @@ interface PedidoDTO {                       // uma linha de `pedidos`
   fuso: string;                             // nome IANA; padrão 'America/Sao_Paulo'
   inicio_em: string | null; fim_em: string | null;                 // UTC; fim_em null = sem prazo
   max_ocorrencias: number | null;           // > 0
-  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0
+  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0; limite conhecido: ver abaixo
   sobreposicao: Sobreposicao;               // padrão 'pular'
   janela_recuperacao_s: number | null;      // null = o padrão por tipo de gatilho (§7.5)
   coalescer: boolean;                       // a coluna é 0/1; padrão true
-  max_tentativas: number;                   // por ocorrência; >= 1; padrão 2
+  max_tentativas: number;                   // execuções por ocorrência (total); >= 1; padrão 2; só repete sem efeito possível (28.5)
   pausa_por_falha: number;                  // N falhas seguidas pausam; >= 1; padrão 3
   estado: EstadoPedido;
   versao: number;                           // sobe a cada edição
@@ -3079,6 +3079,13 @@ interface ProximaData { gatilho: number; nominal: string; local: string; utc: st
 interface PendenciaDoPedido { tipo: 'aprovacao' | 'pergunta' | 'ocorrencia_incerta';
                               ref: string; run_id: string | null; ocorrencia_id: string | null; desde: string }
 ```
+
+**Orçamento: limite conhecido.** `gasto_usd` soma o custo das ocorrências FECHADAS: o custo de uma execução em curso só entra
+quando ela fecha. Por isso o excesso máximo do orçamento é o custo de UMA ocorrência aberta, limitado pelo teto da execução
+(`min(orcamento_ocorrencia_usd − gasto da ocorrência, orcamento_total_usd − gasto_usd)`); com a ocorrência aberta nenhuma outra é
+despachada, e o pedido encerra com `encerrado_motivo = 'orcamento'` quando ela fecha. `orcamento_usado` pode, portanto, passar de
+1. Uma ocorrência adiada por saldo da conta de IA (ADR-051) segue `devida` dentro da janela de recuperação e, passada ela, vira
+`perdida` com `motivo` "adiada por saldo além da janela: ...". (Implementado e testado no 28.6/28.5, prova `simulated`.)
 
 `ProximaData.desviado` e `repetido` existem **para esta API mostrá-los** (`recorrencia.py:18` e `:111`): `desviado` = a hora local
 não existia (salto do horário de verão) e o pedido roda no primeiro instante válido depois do salto; `repetido` = a hora
