@@ -3003,11 +3003,11 @@ interface PedidoDTO {                       // uma linha de `pedidos`
   fuso: string;                             // nome IANA; padrão 'America/Sao_Paulo'
   inicio_em: string | null; fim_em: string | null;                 // UTC; fim_em null = sem prazo
   max_ocorrencias: number | null;           // > 0
-  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0
+  orcamento_total_usd: number | null; orcamento_ocorrencia_usd: number | null;      // >= 0; limite conhecido: ver abaixo
   sobreposicao: Sobreposicao;               // padrão 'pular'
   janela_recuperacao_s: number | null;      // null = o padrão por tipo de gatilho (§7.5)
   coalescer: boolean;                       // a coluna é 0/1; padrão true
-  max_tentativas: number;                   // por ocorrência; >= 1; padrão 2
+  max_tentativas: number;                   // execuções por ocorrência (total); >= 1; padrão 2; só repete sem efeito possível (28.5)
   pausa_por_falha: number;                  // N falhas seguidas pausam; >= 1; padrão 3
   estado: EstadoPedido;
   versao: number;                           // sobe a cada edição
@@ -3079,6 +3079,13 @@ interface ProximaData { gatilho: number; nominal: string; local: string; utc: st
 interface PendenciaDoPedido { tipo: 'aprovacao' | 'pergunta' | 'ocorrencia_incerta';
                               ref: string; run_id: string | null; ocorrencia_id: string | null; desde: string }
 ```
+
+**Orçamento: limite conhecido.** `gasto_usd` soma o custo das ocorrências FECHADAS: o custo de uma execução em curso só entra
+quando ela fecha. Por isso o excesso máximo do orçamento é o custo de UMA ocorrência aberta, limitado pelo teto da execução
+(`min(orcamento_ocorrencia_usd − gasto da ocorrência, orcamento_total_usd − gasto_usd)`); com a ocorrência aberta nenhuma outra é
+despachada, e o pedido encerra com `encerrado_motivo = 'orcamento'` quando ela fecha. `orcamento_usado` pode, portanto, passar de
+1. Uma ocorrência adiada por saldo da conta de IA (ADR-051) segue `devida` dentro da janela de recuperação e, passada ela, vira
+`perdida` com `motivo` "adiada por saldo além da janela: ...". (Implementado e testado no 28.6/28.5, prova `simulated`.)
 
 `ProximaData.desviado` e `repetido` existem **para esta API mostrá-los** (`recorrencia.py:18` e `:111`): `desviado` = a hora local
 não existia (salto do horário de verão) e o pedido roda no primeiro instante válido depois do salto; `repetido` = a hora
@@ -3558,3 +3565,29 @@ telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao`
 
 Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
 equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.
+
+## Adendo v0.53 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `relacoes` (item 30.7)
+
+O detalhe do Livro ganha `relacoes` (lista, sempre presente, `[]` quando nada se deriva), ao lado de `conteudo` (v0.50) e `versao` (v0.51).
+Só leitura, montada na leitura do que já existe; **sem tabela de arestas e sem migração**. Desenho: `design/aprendizado-vivo.md` §6.
+(A v0.52 está reservada ao 30.4, a saúde.)
+
+Forma de cada relação: `{tipo, kind, ref, rotulo, fonte}`. `kind` e `ref` apontam para o detalhe do alvo (`GET /api/aprendizado/{kind}/{ref}`),
+salvo `absorvida`; `rotulo` é texto curto para exibir (pode ser `null`); `fonte` diz de onde a relação foi derivada. A lista vem ordenada por
+`tipo` (na ordem da tabela) e depois por `kind` e `ref`.
+
+| `tipo` | Onde aparece | De onde sai (`fonte`) | Alvo |
+|---|---|---|---|
+| `substitui` / `substituida_por` | receita | `recipes`: mesma chave (pacote, versão do app, assinatura, variante, `step_hash`), versão anterior e seguinte (a leitura do `conteudo.substitui`/`substituida_por`, v0.50) | `receita/<id>`; `rotulo` `v<n> (<status>)` |
+| `substitui` / `substituida_por` | habilidade | `skill_versions.parent_version` (o pai) e as versões que a têm por pai | `habilidade/<skill>@<n>` |
+| `substitui` / `substituida_por` | item (`tela`, `licao`, `voz`, `preferencia`) | `learning_items.parent_id` (o pai; os itens que o têm por pai). Pai que sumiu do banco não gera relação | `<kind>/<li-...>` |
+| `derivado_de` | habilidade `flow:<id>@1` | o `skill_id` do fluxo legado | `fluxo/<id>` |
+| `absorvida` | item | `state_detail = absorvida:<commit>`. Tela: o alvo é a regra declarada pelo nome (`kind` `regra_declarada`, `ref` o nome da tela); sem nome, `kind` `commit` e `ref` o commit | ver ao lado |
+| `contradiz` | receita, tela | mesmo `scope_key`, `content_hash` diferente e os DOIS vivos (`candidate`, `validated`, `published`). Receita: duas vivas na mesma chave com caminho diferente (anomalia: a versão nova aposenta as vivas da chave). Tela: o `scope_key` é só o app, então exige o mesmo nome de regra (`conteudo.tela`) | `receita/<id>` ou `tela/<li-...>` |
+
+**O que NÃO sai (e por quê).** `contradiz` não é derivado em `fluxo` (`flows.match_key` é único), `habilidade` (as versões da mesma habilidade
+dividem o comando) nem `licao`, `voz` e `preferencia` (o `scope_key` não nomeia a proposição: acusaria toda lição do mesmo passo). A evidência
+`conflict` da tela aponta para um aparelho, não para outro item: não vira relação. `nasceu de` (já exposto em `conteudo.origem`), `complementa / depende de`
+e `revisado por` (IA, §8.5) ficam fora: o primeiro já existe, os outros dois não têm fonte hoje. `memoria` devolve `relacoes: []`.
+
+Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.

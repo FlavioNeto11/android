@@ -426,6 +426,45 @@ versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra
   `incompativel` ou `versao_aposentada` com sinal, e fora disso é `desconhecido` ("sem sinal de quebra"), nunca `comprovado` (esse é de receita).
 - Fora do escopo: o painel (30.16), o gatilho `versao_nova` do backlog e o veto por versão em `learning_transitions.app_version`.
 
+## Relações no detalhe (30.7)
+
+O detalhe do Livro devolve `relacoes` (contrato no adendo v0.53 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §6): o que o item
+substitui, por quem foi substituído, de que foi derivado, em que regra declarada foi absorvido e com quem se contradiz. Tudo na leitura, **sem
+tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `LearningService._relacoes` junta as fontes: o `conteudo` já lido
+(vizinhas da receita, `parent_version`), os itens (`parent_id`, `absorvida:`) e as entradas do mesmo tipo (contradição);
+`FontesSql.sucessoras_da_habilidade` é a única consulta nova (versões que têm esta por pai).
+
+- **Cada relação diz a `fonte`.** O que o §6 marca como novo sem fonte (`complementa / depende de`, `revisado por`) não sai, e `nasceu de` já está
+  em `conteudo.origem`.
+- **`contradiz` só onde o `scope_key` identifica a proposição.** Receita (chave exata; duas vivas na mesma chave é anomalia, porque a versão nova
+  aposenta as vivas) e tela (o `scope_key` é só o app, então exige o mesmo nome de regra). Fluxo (`match_key` único), habilidade (versões da mesma
+  habilidade dividem o comando) e lição, voz e preferência (o escopo não nomeia a proposição) ficam sem contradição derivada; abri-la para a
+  lição exige um critério de tema que ainda não existe.
+- **Vivo** é `candidate`, `validated` ou `published`; item morto não disputa e não é acusado.
+- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login, desafio), não para outro item.
+- **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
+- Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
+
+## Conta removida (29.23)
+
+`esquecer_conta(db, *, profile_id, account_id, handle, app_id)` (`app.modules.learning`, implementação em `infrastructure/esquecer_conta.py`) é a
+parte do Aprendizado do item 29.23: a conta bloqueada sai da plataforma como se não existisse e a persona continua. Reescreve o rastro
+TEXTUAL (o `handle`, com e sem `@`, e o `account_id`) para o marcador exato `[conta removida]`; a frente Android cuida de `memory_items`.
+
+- **Roda na transação de quem chama**: mesmo `db`, sem commit, rollback nem transação própria, sem I/O fora do banco. Devolve `{tabela: linhas}` (0
+  incluso) sem nenhum texto da conta. Idempotente: a segunda chamada devolve zeros (o marcador já existente não é reaberto, nem quando o handle é `conta`).
+- **Não apaga linha, não muda `content_hash`/`dossie_hash` nem coluna de id/chave** (`profile_id`, `scope_*`, `instance_id`, `source_ref`,
+  `cluster_key`), e não toca receitas, fluxos nem versões de habilidade. `profile_id` e `app_id` não restringem a varredura: o rastro pode estar em escopo alheio.
+- **Colunas varridas** (texto livre; JSON em texto conta): `learning_items` (`content`, `summary`, `provenance`), `learning_evidence` (`detail`,
+  `origin_ref`), `learning_transitions` (`reason`), `learning_backlog` (`title`, `failure_screen`, `notes`, `baseline`, `verification`),
+  `learning_reviews` (`dossie`, `saida`, `validade`, `override_motivo`, `resultado_posterior`), `learning_signals` (`note`, `data`). `learning_exposures` e
+  `learning_daily` não têm texto livre.
+- **Casamento seguro**: o `LIKE` (com `LOWER`, que o PostgreSQL não ignora maiúscula) só pré-filtra; a troca é por regex com fronteira de palavra. Handle
+  `ana` não vira "b[conta removida]na"; `.`, `_` e dígito colados prolongam o handle (`ana.silva`, `ana_silva2` não são `ana`), o ponto de fim de frase não.
+  `account_id` casa exato (hífen conta como parte). Handle vazio ou só `@` não faz nada.
+- **Limite conhecido**: `learning_evidence.origin_ref` entra num índice único; se a troca colidisse com outra linha, ela é PULADA para não derrubar a
+  transação do chamador (o rastro fica naquela coluna). Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (SQLite); PostgreSQL e uso real: `not_run`.
+
 ## Curador, domínio e política de risco (30.10)
 
 Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, o laço e o orçamento são do 30.11.
