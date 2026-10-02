@@ -137,6 +137,26 @@ def avaliar_parada(regs: list[dict[str, Any]]) -> tuple[str, str] | None:
     return None
 
 
+# Campos de `GET /network/server` que mudam sozinhos (telemetria da própria plataforma), fora do digest: `peers[].last_connection` (o log do
+# WireGuard, lido a cada medição de rede de outro aparelho) e `remote_access.firewall.checked_at` (cache do firewall). `started_at` e `pid`
+# FICAM: são a prova de que o servidor não reiniciou. Visto em 02/10: o digest mudou só por `last_connection` do android-03/06.
+CAMPOS_VOLATEIS_DO_SERVIDOR = ("last_connection", "checked_at")
+
+
+def _sem_volateis(x: Any) -> Any:
+    if isinstance(x, dict):
+        return {k: _sem_volateis(v) for k, v in x.items() if k not in CAMPOS_VOLATEIS_DO_SERVIDOR}
+    if isinstance(x, list):
+        return [_sem_volateis(v) for v in x]
+    return x
+
+
+def digest_servidor(srv: Any) -> str:
+    """O digest do estado do servidor WireGuard SEM a telemetria volátil: muda só se o conjunto de pares, a assinatura, o pid ou o
+    `started_at` mudarem (isto é, só se o servidor foi mexido)."""
+    return hashlib.sha256(json.dumps(_sem_volateis(srv), sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def baseline(amb: Any) -> dict[str, Any]:
     """O baseline por boot: o gate do tile (worker conectado e `up`, aparelho online e QA, sem comando aberto, sem tun0, sem peer, adb, always-on
     null e lockdown 0) MAIS o heartbeat do worker recente. O worker pode estar `degraded` SÓ pelo relógio do notebook (+8 s, conhecido,
@@ -160,7 +180,7 @@ def baseline(amb: Any) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         falhas.append(f"automacao_ui_indisponivel ({type(exc).__name__}: {exc})"[:160])
     srv = amb.servidor()
-    wg = hashlib.sha256(json.dumps(srv, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    wg = digest_servidor(srv)
     return {"ok": not falhas, "falhas": falhas, "gate": g["base"], "worker": {"estado": estado, "detalhe": detalhe, "so_relogio": so_relogio,
             "heartbeat_idade_s": None if idade is None else round(idade, 1)}, "wg_servidor_digest": wg}
 
@@ -225,7 +245,7 @@ def rodar_estagio(amb: Any, run: Path) -> dict[str, Any]:
     if not saida["parada"]:
         saida["parada"] = {"codigo": "TETO" if len(regs) >= MAX_BOOTS else "FIM_SEM_PARADA", "motivo": f"{len(regs)} boots executados"}
     try:
-        saida["wg_servidor_digest"] = {"antes": wg_antes, "depois": hashlib.sha256(json.dumps(amb.servidor(), sort_keys=True, default=str).encode()).hexdigest()[:16]}
+        saida["wg_servidor_digest"] = {"antes": wg_antes, "depois": digest_servidor(amb.servidor())}
     except Exception as exc:  # noqa: BLE001
         saida["wg_servidor_digest"] = {"antes": wg_antes, "erro": str(exc)[:100]}
     saida["fim"] = boot.iso()

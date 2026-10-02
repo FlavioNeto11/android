@@ -495,6 +495,30 @@ class Estagio1(unittest.TestCase):
         for proibido in ("amb.shell(", "settings put", "am force-stop", "svc wifi", "svc data", "pm clear", "wg set", "wg-quick", "wg show", "uninstall"):
             self.assertNotIn(proibido, fonte, proibido)
 
+    def test_digest_do_servidor_ignora_a_telemetria_volatil_e_pega_o_resto(self) -> None:
+        """02/10: o digest mudou só porque `peers[].last_connection` (android-03/06) andou. Isso não é o servidor ter sido mexido."""
+        base = {"pid": 8416, "started_at": "2026-10-02T11:07:55Z", "signature": "ab82064daf07", "in_sync": True,
+                "peers": [{"instance_id": "android-03", "address": "10.66.0.5", "last_connection": "-0300 2026-10-02 09:51:56"},
+                          {"instance_id": "android-06", "address": "10.66.0.6", "last_connection": None}],
+                "remote_access": {"remote_peers": [], "firewall": {"state": "ok", "checked_at": "2026-10-02T12:00:00Z"}}}
+        d0 = est1.digest_servidor(base)
+        andou = json.loads(json.dumps(base))
+        andou["peers"][0]["last_connection"] = "-0300 2026-10-02 09:53:09"
+        andou["peers"][1]["last_connection"] = "-0300 2026-10-02 09:53:09"
+        andou["remote_access"]["firewall"]["checked_at"] = "2026-10-02T12:30:00Z"
+        self.assertEqual(est1.digest_servidor(andou), d0, "só telemetria mudou: o digest não muda")
+        for caminho, valor in (("pid", 9999), ("started_at", "2026-10-02T13:00:00Z"), ("signature", "outra"), ("in_sync", False)):
+            mexido = json.loads(json.dumps(base))
+            mexido[caminho] = valor
+            self.assertNotEqual(est1.digest_servidor(mexido), d0, f"{caminho} mudou: o digest tem de mudar (servidor reiniciado ou refeito)")
+        peer_novo = json.loads(json.dumps(base))
+        peer_novo["peers"].append({"instance_id": "android-09", "address": "10.66.0.9", "last_connection": None})
+        self.assertNotEqual(est1.digest_servidor(peer_novo), d0, "peer novo é alteração de verdade")
+        sem_peer = json.loads(json.dumps(base))
+        sem_peer["peers"].pop()
+        self.assertNotEqual(est1.digest_servidor(sem_peer), d0)
+        self.assertEqual(base["peers"][0]["last_connection"], "-0300 2026-10-02 09:51:56", "a entrada não é alterada")
+
 
 if __name__ == "__main__":
     unittest.main()

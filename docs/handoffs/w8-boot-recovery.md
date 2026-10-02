@@ -312,7 +312,58 @@ Parada: **ES2** (K com `TUN_OK`). Baseline devolvido (`always_on` null, lockdown
 - `INFERRED`: H4 (2ª partida causal) enfraquecida: houve `BootReceiver` entregue e 2ª partida indicada, com `TUN_OK`. Fraca: n=1 e o indício da 2ª partida é indireto.
 - A ordem das redes é covariável **não controlada**; é exatamente o fator que o desenho não separa (ADR-056: manipular a rede está fora da matriz).
 
-**Observações do ambiente (não invalidam o boot):** a escada de reparo do central tentou um `restart` às 12:47:41Z, enquanto o do experimento rodava, e foi **rejeitada** (`já tem o comando 'restart' em andamento`); aviso de pressão de CPU do convidado (load 15 em 2 vCPU) logo depois do boot, normalizado em ~1 min. O digest do servidor WireGuard difere antes/depois **só** porque `peers[].last_connection` (android-03/06) é telemetria que muda sozinha (medição periódica de rede da própria plataforma); o conjunto de peers (02, 03, 05, 06; o 09 não é peer), a `signature` (`ab82064daf07`), `in_sync` e `started_at` (WireGuard não reiniciou) não mudaram. Para a próxima rodada, o digest deve excluir `last_connection`.
+**Observações do ambiente (não invalidam o boot):** a escada de reparo do central tentou um `restart` às 12:47:41Z, enquanto o do experimento rodava, e foi **rejeitada** (`já tem o comando 'restart' em andamento`); aviso de pressão de CPU do convidado (load 15 em 2 vCPU) logo depois do boot, normalizado em ~1 min. O digest do servidor WireGuard difere antes/depois **só** porque `peers[].last_connection` (android-03/06) é telemetria que muda sozinha (medição periódica de rede da própria plataforma); o conjunto de peers (02, 03, 05, 06; o 09 não é peer), a `signature` (`ab82064daf07`), `in_sync` e `started_at` (WireGuard não reiniciou) não mudaram. Corrigido na rodada seguinte (§17.3): `digest_servidor` exclui `last_connection` e `checked_at`, mantendo `pid`/`started_at`.
+
+### 17.3 Rodada offline de decisão (02/10/2026, **zero boot**, só leitura): validade do boot 1 e a pergunta de produto
+
+Pedido do Orquestrador Android (estágio 1 ENCERRADO por ES2; `BOOTS_CONSUMED=1` de 6; estágio 2 e controle de rede NÃO autorizados; nenhuma correção). Nada foi escrito em aparelho nesta rodada.
+
+**1. O boot 1 (K) é VÁLIDO.** `PROVED` (evidência bruta `data/diag-w8-boot/estagio1-20261002-r2/b1-K/boot-os+stopped.saida.json`): `preparo.apos_force_stop = {"stopped": true, "tun": false}`, lido 3,0 s depois do `am force-stop` (12:47:23.364Z) e **antes** do `restart` (12:47:26.607Z, comando `c-20261002124726-2515e1`). Mesma leitura do E2. O `tun0` tinha subido antes (`tun_subiu_antes: true`) e caiu com o `force-stop`. Conclusão do §17.2 mantida: o `force-stop` sozinho, sem troca de rede, n=1, **não é suficiente**.
+
+`stopped=false` no `boot_completed` é **esperado** e não indica que o `force-stop` falhou: (i) F1 (§13): o flag é gravado com atraso de 10 s e o restart veio 3,2 s depois, então `INFERRED` que **nem persistiu**; (ii) F2: subir um serviço do pacote limpa o flag, e o `startService` do always-on (processo do serviço nasceu 12:48:20.177Z) precede a amostra do `boot_completed` (12:48:25.8Z). A evidência **não separa** (i) de (ii); nenhum dos dois contradiz o `stopped=true` lido antes do restart. O 1º adb (12:47:58Z, uptime 21,7 s) leu `null` porque o `pm` ainda não respondia.
+
+**2. O W8 fecha no nível do produto? (código + evidência existentes)**
+
+**(a) Existe caminho que, depois de um boot, vê "always-on nominal, sem `tun0`" e religa?** `PROVED` por leitura de código.
+- **Na `main` 3d3cac7** (o que roda no central): só pelo **tile** (`rede_convergencia.py:557-565` `_religar_sem_reinicio` → `religar_pelo_tile`), que o §18 do PR #17 provou iniciar a classe errada (`ProxyService`) com `serviceMode` desatualizado (`PROVED` no 09 em 01/10).
+- **No PR #17** (`fddab25`, DRAFT, não implantado): `_conectar` (`rede_convergencia.py:521-559`) espera o `tun0` até `rede.espera_tun_s`=180 s **contados do boot** (`:510-519`) e, com a configuração no lugar, `reiniciou` e `not obs.conectada`, chama `_religar_sem_reinicio` → `religar_pela_interface` (`:548`, `:579`): UM Start pela UI por passada.
+- **Quem dispara:** `ConvergenciaDeRede.executar` com motivo `ligou` (aparelho entra no ar, inclusive após o `restart`), `varredura` (`vitrine.py:246`, laço de 60 s, só aparelho ligado, livre e sem objetivo), `tarefa` (porta, ≥ 30 s entre disparos) ou `pedido`.
+- **Limite:** só para linha de rede em `configurado` (política aplicada); 1 Start por passada; Start que falha → `_reiniciar_ou_desistir` (`:604`) pede reinício até `rede.reinicios_max`=2 por revisão (recusado também conta); depois `_falhou` (`:988`), espera 300 s × 3^(n−1), teto 1 h. Chave de desligar: `rede.cliente_atividade` vazio (`config.py:743`).
+- **Não existe para o android-09 do experimento**: ele não tem linha de rede (o ator escreve o always-on direto).
+
+**(b) Um Start pela UI, a partir de SILENT_STOP, produz `tun0`?** `UNKNOWN` para esse estado exato.
+- Não há leitura real de Start depois de um SILENT_STOP: o `desfazer` do E2 e do boot 1 não tocam Start (só Stop se houver `tun0`, e restauram `always_on`/lockdown); os B1/B3/B4 foram religados pelo **tile**, que falhou por classe errada (§18.5).
+- `OBSERVED` em estados vizinhos: §18.4 (01/10 18:23Z, processo vivo, `ProxyService` vinculado, sem `tun0`) → UM Start → `VPNService`, `tun0` em 0,9 s; §20.4 (21:52Z, processo vivo, `serviceMode=VPN`, sem `tun0`) → UM Start da função de produto → `tun0` + CONNECTED em 2,7 s. Os dois partiram de aparelho **parado limpo**, nenhum de SILENT_STOP nem de boot com always-on.
+- `INFERRED` plausível: o fim de um SILENT_STOP (serviço fechou o próprio FGS, processo vivo, `serviceMode=VPN`) se parece com o "depois do Stop do usuário". O que não se sabe é se o `libbox` fica num estado em que o 2º Start tropeça.
+
+**(c) Mitigação mínima, agnóstica à causa (§8.4):** se (a) é o PR #17, **não há código novo a escrever**; a mitigação mínima é o PR #17 no caminho.
+- Entra em `_conectar` (`rede_convergencia.py:545-548`).
+- Gatilho: boot visto + configuração/bloqueio no lugar + `not obs.conectada` depois de `espera_tun_s`.
+- Limite: 1 Start por passada, ≤ `reinicios_max`+1 = 3 por revisão, sem laço (o retry é o reinício já existente e limitado).
+- Rollback: `rede.cliente_atividade: ""` (gesto desligado, volta só o reinício) ou reverter o merge.
+- Testes discriminantes (simulados, já no PR): `test_rede_aplicacao.py::test_tunel_que_nao_sobe_no_boot_e_religado_pelo_start_da_interface_sem_outro_reinicio`, `…::test_start_que_inicia_o_proxyservice_nao_e_recuperacao_e_o_reinicio_segue`, `…::test_gesto_desligado_pela_configuracao_nao_toca_na_interface_e_o_reinicio_segue`, `test_rede_religar_interface.py` (caso 3: com `tun0` nunca toca).
+- Limites que continuam: a latência (3+ min até o Start, porque espera os 180 s) e o gatilho só existir para aparelho com política de rede aplicada.
+- Efeito real pós-SILENT_STOP: `UNKNOWN` (ver (b)).
+
+**(d) Validação REAL mínima: protocolo PROPOSTO, pré-comprometido, NÃO autorizado (só roda com o dono).**
+- Pré-condições, todas decisão do dono: merge e deploy do PR #17 (commit anotado no registro); linha de rede aplicada no android-09 (aparelho QA, sem conta real; hoje sem política); baseline do §17 mais a conferência da escada (§17.4).
+- Um braço só (mitigação ligada). A comparação com o passado (B1/B3/B4 e E2, ≈ 70% de falha com o tile) é contexto, **não inferência**.
+- Semente `w8-mitigacao-<data>`; **máx. 6 boots reais**; em cada boot o produto roda sozinho (nenhum toque do ator depois do restart) e o coletor `diag-w8-boot` só observa.
+- Categorias fechadas: `NO_FAILURE` (o `tun0` subiu sem Start); `RECOVERED_BY_UI` (SILENT_STOP visto e `tun0` + CONNECTED com **um** Start e nenhum reinício até 180 s + 120 s do boot); `RECOVERED_BY_RESTART`; `NOT_RECOVERED`; `BOOT_INVALID`; `UNKNOWN`.
+- Parada: **FAIL** em qualquer SILENT_STOP não recuperado pelo Start, ou `NOT_RECOVERED`/`BOOT_INVALID`/`UNKNOWN`; **PASS** com ≥ 2 `RECOVERED_BY_UI` e nenhum desfecho ruim; **PARTIAL** com 1; **INCONCLUSIVE** com 6 `NO_FAILURE` (a mitigação não foi exercitada: só prova não-regressão).
+- A falha não é determinística, então o desenho não promete exercitá-la: com taxa de falha p, a chance de ver ao menos 1 em 6 boots é 1−(1−p)^6 (88% se p = 0,3; 47% se p = 0,1).
+- Proibido: segundo Start, sleep/retry/watchdog novo, tocar outro aparelho.
+
+**W8 fecha no nível do produto?** CONDICIONAL: a mitigação existe no PR #17 (Start pela UI uma vez, limitada, com chave de desligar) e a mecânica está provada no 09 em estado limpo; falta o dono autorizar o merge e o deploy e o protocolo (d) ter ao menos 1 falha natural recuperada. A causa raiz continua `NARROWED`, como dívida documentada.
+
+### 17.4 Quase-acidente: a escada de reparo tentou `restart` durante o experimento (registro; dívida, nada corrigido)
+
+android-09, comando `c-20261002124741-6f37ab`, `restart`, `requested_by=system`, 12:47:41.463Z, **15 s depois** do `restart` do experimento (`c-20261002124726-2515e1`, `panel`). O central viu o aparelho reiniciando como `error` ("emulador ligado, mas o Android lá não responde ao ADB") e remediou. A plataforma **rejeitou** (`device_busy`: "já tem o comando 'restart' em andamento"; `despacho.py` ~620, `VERBOS_EXCLUSIVOS`) e a rejeição **não conta como degrau** (`commands/store.py:34`: `state != 'rejected'`).
+
+Era a **única** barreira, e acidental: se o comando do experimento já tivesse terminado (terminou 12:48:33Z; o aparelho só voltou `online` 12:48:40Z), o `restart` do `system` entraria, e com mais dois a escada chega ao `reset` do AVD (`despacho.py:891-960`; no android-09, sem conta, `pode_resetar` é verdadeiro).
+
+- **Mecanismo que já existe e NÃO serve:** a manutenção do worker (`POST /workers/{id}/maintenance`, `registry.py:752`, `despacho.py:631`) recusaria também o `restart` do próprio experimento (mesmo pré-voo) e suspenderia os outros aparelhos do notebook (01/03/06, com conta). Não há pausa de reparo por aparelho exposta (`adiar_reparo` é interno, `manager.py:1256`).
+- **Proposta para a próxima rodada com boot (sem código novo):** (1) registrar no baseline e no fim de cada boot as linhas de `commands` do aparelho com `requested_by='system'` e marcar `BOOT_INVALID` se alguma **não rejeitada** aparecer na janela; (2) não usar manutenção do worker; (3) se o dono quiser blindagem real, decidir uma pausa de reparo por aparelho (recurso de plataforma, fora desta frente).
 
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
