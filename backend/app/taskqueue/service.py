@@ -92,7 +92,7 @@ class RunService:
                  profiles: Any = None, secrets: Any = None, *, skills: SkillRunPlanner):
         self.flows = scheduler.flows
         #: RESOLVE + COMPILE (fase G): o registro de habilidades (skill publicada → fluxo ativo → nada) e o compilador.
-        #: É a MESMA porta que `apps_exigidos` e `GET /api/flows/match` usam (decisão P2).
+        #: É a MESMA porta que `apps_exigidos` e `POST /api/flows/match` usam (decisão P2).
         self.skills = skills
         #: Cofre (`SecretStore`). A execução não guarda mais credencial (ADR-040: a senha é da conta da persona);
         #: fica injetado para quem ainda pergunta se ele está pronto.
