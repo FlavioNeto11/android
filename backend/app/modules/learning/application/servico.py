@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from app.modules.learning.application.espera import AvisadorDeEspera
@@ -30,11 +30,12 @@ from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
                                                      SourceKind)
-from app.util import parse_iso
 from app.modules.skills.domain.document import JsonObject, JsonValue
+from app.util import parse_iso
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -55,6 +56,9 @@ def _tema_do_item(kind: LivroKind, conteudo: JsonObject | None) -> str | None:
 class Livro:
     itens: tuple[EntradaDoLivro, ...]
     contagem: dict[str, dict[str, int]]
+    #: A saúde de cada item (30.4), pela ref da trilha (`EntradaDoLivro.trail_ref`); a memória não tem. É a MESMA
+    #: função do detalhe, então a lista e o detalhe nunca discordam do rótulo.
+    saudes: dict[str, Saude] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,8 @@ class DetalheDoLivro:
     #: já está no banco (`domain/conteudo.py`). `None` na memória (só a contagem sai) e na voz e preferência (texto
     #: de pessoa).
     conteudo: JsonObject | None = None
+    #: A saúde do item (30.4); `None` na memória.
+    saude: Saude | None = None
     #: O estado de versão do item (30.6, `domain/versao.py`, §7): em que versões foi validado, quais estão vivas no
     #: parque e o estado por versão. Sempre presente; o que não se sabe é `desconhecido`, nunca inventado.
     versao: JsonObject | None = None
@@ -83,6 +89,15 @@ class Relatorio:
     feito: dict[str, int] = field(default_factory=dict)
     falhas: tuple[str, ...] = ()
     pulado: bool = False
+
+
+def _quando(texto: str) -> datetime | None:
+    """A data de uma evidência (`…Z`) como `datetime` UTC; texto que não é data vira `None` (não conta como recente)."""
+    try:
+        d = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=UTC)
 
 
 def dias_intactos(corte: datetime, agora: datetime) -> tuple[str, str] | None:
@@ -147,7 +162,7 @@ class LearningService:
         todas = self._todas(kind)
         filtradas = tuple(e for e in todas if (state is None or e.state is state) and (app is None or e.app == app)
                           and (origem is None or e.origin is origem))
-        return Livro(filtradas, contagem(filtradas))
+        return Livro(filtradas, contagem(filtradas), self.saudes(filtradas))
 
     def _todas(self, kind: LivroKind | None) -> list[EntradaDoLivro]:
         fontes: dict[LivroKind, Callable[[], list[EntradaDoLivro]]] = {
@@ -186,9 +201,47 @@ class LearningService:
             todas = self._repo.exposicoes(e.ref, limite=100_000)
             exposicoes = tuple(exposicao_json(x) for x in todas[-EXPOSICOES_NO_DETALHE:])
         evidencias = tuple(self._repo.evidencias(e.trail_ref))
+        trilha = tuple(self._repo.trilha(e.trail_ref))
         conteudo = self._conteudo(kind, e.ref)
-        return DetalheDoLivro(e, evidencias, tuple(self._repo.trilha(e.trail_ref)), exposicoes, conteudo,
-                              self._versao(e, evidencias), self._relacoes(e, conteudo))
+        return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, evidencias, trilha),
+                              versao=self._versao(e, evidencias), relacoes=self._relacoes(e, conteudo))
+
+    # ================================================================== saúde (30.4)
+    def saudes(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, Saude]:
+        """A saúde de cada entrada, pela ref da trilha. A evidência só é lida dos PUBLICADOS (os outros estados decidem
+        o rótulo pelo estado), com o mesmo limite do detalhe: o rótulo é o mesmo nos dois."""
+        saida: dict[str, Saude] = {}
+        for e in entradas:
+            evidencias = self._repo.evidencias(e.trail_ref) if e.state is SkillState.PUBLISHED else ()
+            saude = self.saude_de(e, tuple(evidencias))
+            if saude is not None:
+                saida[e.trail_ref] = saude
+        return saida
+
+    def saude_de(self, e: EntradaDoLivro, evidencias: tuple[Evidencia, ...],
+                 trilha: tuple[Transicao, ...] = ()) -> Saude | None:
+        """A ÚNICA fonte do cálculo de saúde (30.4): lê os sinais do que o livro já tem e entrega a `domain/saude.py`.
+        O que o livro não expõe (item sem contador, intervenção humana) vai como `None` e a dimensão sai
+        `desconhecida`; nunca como zero."""
+        agora = self._relogio()
+        if e.kind in (LivroKind.RECEITA, *KINDS_DE_ITEM):
+            a_favor, contra = e.a_favor, e.contra          # contadores da própria fonte (sobrevivem à retenção)
+        elif e.kind is LivroKind.FLUXO:                    # o fluxo não tem contador de acerto: só as evidências
+            a_favor = sum(1 for x in evidencias if x.stance is Posicao.FOR)
+            contra = sum(1 for x in evidencias if x.stance is not Posicao.FOR)
+        else:
+            a_favor = contra = None
+        recentes: int | None = None
+        if e.kind is not LivroKind.HABILIDADE and e.state is SkillState.PUBLISHED:
+            corte = agora - timedelta(days=self.ajustes.saude.contestacao_dias)
+            recentes = sum(1 for x in evidencias
+                           if x.stance is not Posicao.FOR and (q := _quando(x.observed_at)) is not None and q >= corte)
+        motivo = trilha[-1].reason if trilha and e.state in (SkillState.DEPRECATED, SkillState.DISABLED) else None
+        return calcular(SinaisDeSaude(
+            kind=e.kind, estado=e.state, agora=agora, criado_em=e.created_at, estado_desde=e.state_at,
+            ultimo_uso=e.last_used_at, usos=e.uses, a_favor=a_favor, contra=contra, exige_o_dono=e.requires_owner,
+            detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes),
+            self.ajustes.saude)
 
     def _relacoes(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[JsonObject, ...]:
         """O `relacoes` do detalhe (30.7): da leitura que o `conteudo` já fez (vizinhas da receita, `parent_version`),

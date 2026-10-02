@@ -218,6 +218,9 @@ class EntradaDoLivro:
     #: O `app_id` CRU do fluxo ou da habilidade quando ele não casou com nenhum pacote (`app` = `APP_NAO_RESOLVIDO`):
     #: o dono vê o que não resolveu. `None` em tudo que resolveu e nos tipos que não têm eixo de app.
     app_ref: str | None = None
+    #: `recipes.consecutive_fail` (30.4: a saúde degrada em `saude.falhas_seguidas`). `None` onde a fonte não tem o
+    #: contador (e enquanto a fonte nativa não o preenche): a dimensão fica `desconhecida`, nunca zero.
+    falhas_seguidas: int | None = None
 
     @property
     def requires_owner(self) -> bool:

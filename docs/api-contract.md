@@ -3566,6 +3566,49 @@ telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao`
 Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
 equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.
 
+
+## Adendo v0.52 (02/10/2026) — `saude` na lista e no detalhe do Livro (item 30.4)
+
+`GET /api/aprendizado` (cada elemento de `itens[]`), `GET /api/aprendizado/pendentes`, `GET /api/aprendizado/revisar` e
+`GET /api/aprendizado/{kind}/{ref}` (em `item`) ganham o campo `saude`: objeto, ou `null` na memória (só a contagem sai). É UMA função
+no backend (`domain/saude.py`, pura), a mesma na lista e no detalhe, então o rótulo nunca diverge. Só leitura: o rótulo não é estado,
+não move nada e não dispara nada. Nenhuma migração, nenhum código de erro novo.
+
+```json
+{"rotulo": "degradando",
+ "motivos": [{"codigo": "eficacia_abaixo_do_minimo", "dimensao": "eficacia", "valor": 0.6, "limite": 0.8, "detalhe": "10 usos"}],
+ "dimensoes": [{"nome": "eficacia", "estado": "medida", "valor": 0.6, "amostra": 10, "fonte": "recipes.replay_ok+replay_fail"}]}
+```
+
+**`rotulo`** (vocabulário fechado; a ordem é a de avaliação, o primeiro que casa vence; regras e limiares da proposta D-5, medidos no banco
+real, que valem sobre o §5.3 do desenho):
+
+| `rotulo` | Regra |
+|---|---|
+| `inativo` | `deprecated`, `disabled` (receita `superseded`/`quarantined` já chegam assim); o detalhe leva o motivo da trilha em `motivos[0].detalhe` |
+| `em_prova` | `candidate` ou `validated` (`aguarda_repeticao`, `aguarda_o_dono`, `validado_aguarda_publicacao`) |
+| `degradando` | publicado e qualquer de: `consecutive_fail ≥ falhas_seguidas`; eficácia `< taxa_minima` com `usos ≥ amostra_minima`; evidência contra ou conflito nos últimos `contestacao_dias` |
+| `sem_evidencia` | publicado há `≥ sem_uso_dias` e nunca usado |
+| `parado` | já usado, sem uso há mais de `sem_uso_dias` |
+| `pouca_amostra` | usado dentro de `sem_uso_dias` com menos de `amostra_minima` usos (inclui o publicado há pouco e ainda sem uso) |
+| `saudavel` | usado dentro de `sem_uso_dias`, `usos ≥ amostra_minima`, eficácia `≥ taxa_minima`, sem contestação recente |
+| `indeterminado` | publicado, mas falta a medida (contador de uso, data do último uso ou da criação, eficácia ou contestação desconhecidas); nunca vira `saudavel` por falta de dado |
+
+**`motivos[]`**: um por fato que produziu o rótulo: `codigo` (vocabulário fechado de `CodigoDoMotivo`), `dimensao` (ou `null`), `valor`
+medido, `limite` cruzado e `detalhe` (texto curto: janela, amostra, motivo da trilha). O texto em português é do painel.
+
+**`dimensoes[]`** (sempre as sete, nesta ordem: `uso`, `eficacia`, `base_de_evidencia`, `frescor`, `versao`, `contestacao`,
+`intervencao_humana`): `nome`, `estado` (`medida` | `desconhecida`), `valor` (`null` quando desconhecida, nunca 0), `amostra` e `fonte`
+(de onde veio). A eficácia é a ACUMULADA `replay_ok/(ok+fail)` (receita) ou `a favor/(a favor+contra)` das evidências (fluxo, item);
+não há janela por item. `versao` e `intervencao_humana` saem `desconhecida` por ora (versão: 30.6/30.13).
+
+**Config** `aprendizado.saude` (defaults = limiares medidos; nada é gravado, mudar vale na próxima leitura): `sem_uso_dias: 14`,
+`amostra_minima: 5`, `taxa_minima: 0.8`, `falhas_seguidas: 2`, `contestacao_dias: 7`.
+
+Fora desta fatia: `obsoleto_provavel` (30.13); `acoes[]` já existe em `item` (§5.4) e não ganhou `motivo_de_bloqueio`. `falhas_seguidas` vem de
+`recipes.consecutive_fail`. Limiares aprovados pelo dono em 02/10 (D-5). Prova
+`simulated` (`tests/test_learning_saude.py`); `not_run` no central.
+
 ## Adendo v0.53 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `relacoes` (item 30.7)
 
 O detalhe do Livro ganha `relacoes` (lista, sempre presente, `[]` quando nada se deriva), ao lado de `conteudo` (v0.50) e `versao` (v0.51).
