@@ -287,3 +287,25 @@ Autorização do dono: **somente o estágio 1**, no android-09, **no máximo 6 b
 O boot 1 (K, bloco 1) **não chegou ao restart**. Depois de gravar o always-on e o lockdown 0, o `UI Start` pediu `GET /api/instances/android-09/hierarchy` e recebeu **503 `automation_unavailable`** (o UiAutomator2 do Appium no android-09 está morto: *"the instrumentation process is not running (probably crashed)"*; segue 503 em leituras posteriores). A exceção levou ao `desfazer`, que devolveu o baseline (`always_on` null, lockdown 0, sem `tun0`, uptime contínuo de ~7440 s: **nenhum reboot**). Por regra do dono (`BOOT_INVALID` → parar, sem retry), **a rodada parou** e a ordem pré-comprometida **não foi alterada nem consumida além do slot 1**. Evidência (fora do Git): `data/diag-w8-boot/estagio1-20261002/`.
 
 Falha do baseline, não do experimento: o gate lia só o shell do aparelho e não a automação de UI. Corrigido **só como leitura** (commit seguinte): o baseline agora exige que a API de hierarquia responda e falha **antes** de escrever qualquer coisa. Falta o dono decidir como recuperar a sessão UiAutomator2 do 09 (ação na automação do aparelho, não feita) e se autoriza reexecutar o estágio 1 do slot 1.
+
+## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
+
+**Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
+
+| Camada | Leitura (`real`) |
+|---|---|
+| Appium do central (127.0.0.1:4723) | `GET /status` → `ready:true`, v3.7.0, commit `5d8b545`. `/appium/sessions` desligado (`session_discovery`), então a lista de sessões não é legível |
+| Sessão do android-09 | `instances.appium_session_id = 36cc8d6e-…` (a mesma do 503). O Appium ainda a reconhece (um `GET /session/<id>/url` chega ao driver e responde "not yet implemented", não "session not found") |
+| Plataforma | `automation = {state: ready, detail: "systemPort 8208"}` no snapshot: **confia em "pronta"** (`ensure_automation` só reabre se `state != ready` ou `session.connected` falso) |
+| Instrumentation no aparelho | `pm list instrumentation`: `io.appium.uiautomator2.server.test` **instalado**; `ps`/`pidof`: **nenhum** processo de `uiautomator2.server` nem `.test`; só o `io.appium.settings` (PID 1870, `NLService`) vive |
+| Pacotes | `io.appium.uiautomator2.server`, `.server.test` e `io.appium.settings` presentes (`UIA2_REINSTALL_REQUIRED = NO`) |
+| Portas | nenhum forward `tcp:8208`/`9208` para o 09 em `adb forward --list` e nada escutando 8208/9208/9523: o forward se foi com o reboot |
+| Logs | nenhuma linha de instrumentation/uiautomator no logcat depois do boot de 19:29: **ninguém subiu a instrumentation depois do reboot do E2** |
+
+**Linha do tempo (tabela `events`, UTC):** nos restarts de 22:13 e 22:19 o central viu o aparelho cair (`error — emulador desligado…`) e voltar (`online — aparelho externo via ADB`, `sessão de automação pronta` às 22:14:57 e 22:23:32). No restart do E2 (22:28:36 → `succeeded` 22:29:32) **nunca viu a queda**: nenhum `online`/`sessão de automação pronta` depois. A sessão de antes do reboot ficou como "pronta"; o reboot matou a instrumentation; desde então a leitura da hierarquia dá 503 (`cannot be proxied to UiAutomator2 server because the instrumentation process is not running`).
+
+**Por que não se cura sozinha (código, `backend/app/devices/manager.py`):** a recriação da sessão só acontece em (a) o aparelho entrar no ar (`_start_online_tasks`), (b) `rt.automation.state == "error"` (o monitor retenta), (c) o executor, ao pegar `DriverError` numa execução (`invalidate_automation` + `ensure_automation`), (d) o Appium do worker mudar. O endpoint `GET /instances/{id}/hierarchy` converte o `DriverError` em 503 **sem invalidar**. Não há rota/verbo por aparelho que reconcilie a sessão; `home/back/recents/open_app/install_apk` são só ADB num aparelho de worker.
+
+**Caminhos que NÃO usei, e por quê:** `restart`/`stop`/`start` (reboot do aparelho: vetado); reiniciar o `farm-central` (derruba e readota a sessão de todos os aparelhos, inclusive os de conta real); `adb disconnect/connect` do serial do 09 no central (só funciona se o monitor perceber a queda, e então o `error` com `attention` pede reparo na hora: a escada começa por `restart`, e no 3º degrau `reset`); disparar uma execução que erre (AI paga/conta). Reinstalar os APKs do Appium não é preciso.
+
+**Defeito de plataforma encontrado (não corrigido; fora do escopo):** a hierarquia devia invalidar a sessão ao receber o erro de "instrumentation not running", e o `restart` por worker devia invalidar `rt.automation`. Registrado como tarefa à parte.
