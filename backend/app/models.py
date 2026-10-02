@@ -31,7 +31,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
     ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem, DevicePolicy, RunTarget, RunTargetsResolveBody)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
-    ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+    RepairPauseBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialClone, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
@@ -403,13 +403,6 @@ class RepairPauseInfo(BaseModel):
     reason: str
     by: str
     remaining_s: int
-
-
-class RepairPauseBody(BaseModel):
-    """O prazo é OBRIGATÓRIO (sem ele a pausa ficaria esquecida ligada) e tem teto de 3 h."""
-
-    ttl_s: int = Field(ge=60, le=10_800)
-    reason: str = Field(min_length=3, max_length=200)
 
 
 class InstanceDTO(BaseModel):
