@@ -68,6 +68,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   A troca de nome é inofensiva: o laço só lê eventos novos, a partir de `last_id`.
 - Prova `simulated`: `backend/tests/test_avisos_aprendizado.py` (6), mais os testes de avisos vizinhos. Real: `not_run`.
 
+## 2026-10-02 — 30.13: falhas com diagnóstico determinístico (branch feat/30-13-falhas-diagnostico)
+
+- `modules/learning/domain/diagnostico.py` (novo, puro), `domain/vocabulario.py` (`CausaProvavel`; `TipoDeProposta` ganha `rebaixar_receita`, `revisar_licao`,
+  `reaprender_tela`, `ajustar_catalogo`, `investigar`), `domain/backlog.py` (`Proposta` com `alvo`, `causa`, `parent_id`), `infrastructure/contexto_sql.py` (novo) e
+  `relatorio_sql.py`: cada grupo de falha sai com conhecimento envolvido (refs citáveis, `aproximado`), causa provável determinística com fatos e proposta
+  estruturada; a proposta vira linha do backlog com `parent_id` = o grupo. Sem IA, sem migração; a causa `indeterminada` é dado para o curador (30.11).
+- Teto de IA pelo tipo: `ai_calls.error_kind` (`AIError.kind`) vence o texto na leitura (`classificar_pelo_tipo_da_ia`); o texto fica como legado. Achado: o teto do
+  pedido caía em `outro`. Gravar o kind em `attempts` (`failure_kind` em `finish_attempt`) é do taskqueue e não foi feito.
+- `api-contract` adendo v0.56 (`diagnostico`, `alvo`/`causa`/`parent_id` nas propostas). `tests/test_learning_diagnostico.py` (45, `simulated`); em
+  `test_learning_backlog.py` uma contagem passou a filtrar `category='falha'` (a curadoria agora também grava propostas do diagnóstico).
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
