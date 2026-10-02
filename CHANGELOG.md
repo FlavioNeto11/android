@@ -44,6 +44,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Docs: `docs/ia.md` §1 e o parágrafo do 17.8 (como apontar a persona para `openai-flex`), `docs/dominios/persona.md`, `config/config.example.yaml`, `docs/api-contract.md` (adendo v0.48).
 - Prova `simulated`: `backend/tests/test_papel_persona.py` (20 testes: herança do social, bloco próprio, perfis do 17.7, validação da partida, roteamento e papel no uso, vagas compartilhadas) e `frontend/src/features/profiles/custos.test.ts`. `real`: `not_run` (sem chamada ao flex).
 
+## 2026-10-02 — Aprendizado por aplicativo no painel (30.15, primeira fatia, branch feat/30-15-painel-por-app)
+
+- `frontend/src/features/aprendizado/`: nova aba **Aplicativos**, a visão inicial (Global → App, `docs/design/aprendizado-vivo.md` §11): um cartão por app de `GET /api/aprendizado/apps` (existência, declarado, aprendido por tipo e estado, absorvido, "como é usado" pela camada de uso, com o selo "medido, não usado"), mais os cartões "App não resolvido" e "Fora do eixo de app" quando > 0; app com zeros aparece. Detalhe em `#/aprendizado?aba=apps&app=<pacote>` (Declarado, Aprendido, Absorvido) e navegação nos dois sentidos: o item do Livro leva ao app e o app, ao Aprendido filtrado. Filtro "Aplicativo" na aba Aprendido, alimentado por `/apps`, passa `app` ao Livro. Saúde, capability e a fila Atenção ficam para depois (os contratos de saúde ainda não existem). Prova `simulated`: `AplicativosTab.test.tsx` (7); `real`: `not_run`.
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.

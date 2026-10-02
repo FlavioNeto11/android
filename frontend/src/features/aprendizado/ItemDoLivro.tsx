@@ -11,6 +11,7 @@ import { saveJson } from '../../lib/storage';
 import { formatClock } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { abrirApp } from './apps';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ONDE_FICAM_AS_HABILIDADES,
   ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoEstado, rotuloDoKind,
@@ -183,7 +184,13 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       </div>
       <div className={styles.itemMeta}>
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
-        {e.app ? <span>App: <span className={styles.mono}>{e.app}</span></span> : null}
+        {e.app ? (
+          <span>App:{' '}
+            <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(e.app as string)}>
+              <span className={styles.mono}>{e.app}</span>
+            </button>
+          </span>
+        ) : null}
         <span>{ORIGEM_LABEL[e.origin] ?? e.origin}</span>
         {!memoria ? <span>Evidência: {e.evidence.for} a favor · {e.evidence.against} contra</span> : null}
         {typeof e.uses === 'number' ? <span>Usos: {formatInt(e.uses)}</span> : null}

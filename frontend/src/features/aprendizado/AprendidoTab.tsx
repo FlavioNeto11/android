@@ -1,12 +1,14 @@
 import { BookOpen, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
+import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, type FiltroDoLivro } from './api';
+import type { VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
   ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type ListaDoLivro, acoesDoItem, isEstadoDoLivro, isLivroKind,
@@ -42,7 +44,12 @@ function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']
  * Configuração → Fluxos e receitas → Habilidades; a validada também aparece na fila Para aprovar.
  */
 export function AprendidoTab() {
-  const [filtro, setFiltro] = useState<FiltroDoLivro>({});
+  const [outros, setFiltro] = useState<FiltroDoLivro>({});
+  // O app vem do link (`?aba=aprendido&app=<pacote>`), para a navegação do detalhe do app ao catálogo e de volta.
+  const app = useUiStore((s) => s.rota.query.app) || undefined;
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const filtro = useMemo<FiltroDoLivro>(() => ({ ...outros, app }), [outros, app]);
+  const [visao, setVisao] = useState<VisaoDeApps | null>(null);
   const [lista, setLista] = useState<ListaDoLivro | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -67,6 +74,20 @@ export function AprendidoTab() {
     void carregar(filtro);
   }, [carregar, filtro]);
 
+  // As opções do filtro de app vêm da lista de /apps (nenhum pacote fica escrito aqui); se ela falhar, o filtro só
+  // mostra o app do link e o resto do catálogo continua funcionando.
+  useEffect(() => {
+    const ctl = new AbortController();
+    apiAprendizado.apps(ctl.signal).then(setVisao).catch(() => undefined);
+    return () => ctl.abort();
+  }, []);
+  const opcoesDeApp = useMemo(() => {
+    const o = (visao?.apps ?? []).map((a) => ({ pacote: a.pacote, nome: a.nome }));
+    if (visao?.nao_resolvido && visao.nao_resolvido.aprendido.total > 0) o.push({ pacote: visao.nao_resolvido.pacote || 'nao_resolvido', nome: 'App não resolvido' });
+    if (app && !o.some((x) => x.pacote === app)) o.push({ pacote: app, nome: app });
+    return o;
+  }, [visao, app]);
+
   return (
     <section className={styles.secao} aria-label="Aprendido">
       <div className={styles.toolbar}>
@@ -85,6 +106,14 @@ export function AprendidoTab() {
                     onChange={(e) => setFiltro((f) => ({ ...f, state: isEstadoDoLivro(e.target.value) ? e.target.value : undefined }))}>
               <option value="">Todos</option>
               {ESTADOS_DO_LIVRO.map((s) => <option key={s} value={s}>{rotuloDoEstado(s)}</option>)}
+            </Select>
+          )}
+        </Field>
+        <Field label="Aplicativo" className={styles.filtro}>
+          {({ id }) => (
+            <Select id={id} small value={app ?? ''} onChange={(e) => trocarQuery({ app: e.target.value || undefined })}>
+              <option value="">Todos</option>
+              {opcoesDeApp.map((a) => <option key={a.pacote} value={a.pacote}>{a.nome === a.pacote ? a.pacote : `${a.nome} (${a.pacote})`}</option>)}
             </Select>
           )}
         </Field>
