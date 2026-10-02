@@ -16,6 +16,7 @@ from functools import partial
 
 from app.config import PROJECT_ROOT, BacklogCfg, LearningCfg
 from app.db import Database
+from app.modules.applications.infrastructure import registry
 from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.nativos import Decidir
 from app.modules.learning.application.ports import Ajustes, Retencao
@@ -72,6 +73,12 @@ def regras_do_backlog(cfg: BacklogCfg) -> RegrasDoBacklog:
                            prova_fator=cfg.prova_fator)
 
 
+def pacotes_do_registro() -> list[str]:
+    """Os pacotes do registro de apps (embutidos inclusive): é por onde o `app_id` de um fluxo ou habilidade, que já é
+    um pacote, resolve sem passar pela tabela `apps` (30.2)."""
+    return [d.package for d in registry.registered()]
+
+
 def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], retencao_de_logs_dias: Callable[[], int],
                        precos: Callable[[], dict[str, list[float]]], habilidades: SqlSkillRepository | None = None,
                        fluxos: FlowStore | None = None, receitas: RecipeStore | None = None,
@@ -83,7 +90,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`)."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
-    servico = LearningService(repo, FontesSql(db), TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
+    servico = LearningService(repo, FontesSql(db, pacotes_do_registro=pacotes_do_registro),
+                              TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias)
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,

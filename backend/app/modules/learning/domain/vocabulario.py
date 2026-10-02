@@ -135,6 +135,11 @@ def absorvida(commit: str) -> str:
     return f"absorvida:{commit.strip()}"
 
 
+#: O balde "app não resolvido" (30.2): fluxo e habilidade cujo `app_id` não casa com `apps` nem com um pacote
+#: conhecido. Não é pacote Android (pacote tem ponto), então nunca colide com um; o filtro `app=` do livro o aceita.
+APP_NAO_RESOLVIDO = "nao_resolvido"
+
+
 class EstadoDoBacklog(StrEnum):
     OPEN = "open"
     TRIAGED = "triaged"
