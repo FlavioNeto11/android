@@ -27,7 +27,7 @@ sinais:
     two_factor: '(two[- ]factor|security code|confirmation code|login code|6[- ]digit( (security |login |confirmation )?code)?|enter the code we sent|we sent (you )?a code)'
     # achado #104: "confirm you're human" (r-20260920143652-132c2e); nunca só "to use your account", que aparece em
     # onboarding comum. "Confirm you are human", por extenso, é como o dono relatou a tela.
-    challenge: "(confirm (that )?you('?re| are) (a )?human|confirm it'?s you|help us confirm|verify your account|(we|we'?ve|we have) detected (an? |some )?(unusual|suspicious)|(suspicious|unusual) (login|activity|attempt|behavio)|automated behavio|captcha|i'?m not a robot)"
+    challenge: "((confirm|verify|prove) (that )?you('?re| are) (a )?(human|real person)|confirm it'?s you|help us confirm|verify your account|(we|we'?ve|we have) detected (an? |some )?(unusual|suspicious)|(suspicious|unusual) (login|activity|attempt|behavio)|automated behavio|captcha|i'?m not a robot)"
     save_login: 'save (your )?login info'
     save_dismiss: '^\s*not now\s*$'
     wrong_password: '(incorrect password|password (you )?entered .* incorrect|wrong password)'
@@ -41,7 +41,7 @@ sinais:
     facebook: 'facebook'
     two_factor: '(autentica[çc][ãa]o de dois fatores|c[óo]digo de seguran[çc]a|c[óo]digo de confirma|c[óo]digo de login|insira o c[óo]digo|digite o c[óo]digo|enviamos um c[óo]digo)'
     # achado #104: "confirme que você é humano/uma pessoa" tem outra ordem de palavras.
-    challenge: '(confirme que (voc[êe] )?[ée] (um[ae]? pessoa|humano)|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta|detectamos (uma? |algum[ae]? )?(tentativa|atividade|acesso|login|comportamento)|(atividade|tentativa de login|login|acesso|comportamento) (suspeit|incomum)|comportamento automatizado|captcha|n[ãa]o sou um rob[ôo])'
+    challenge: '((confirme|confirmar|verifique|comprove) que (voc[êe] )?[ée] (um[ae]? pessoa( real)?|humano)|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta|detectamos (uma? |algum[ae]? )?(tentativa|atividade|acesso|login|comportamento)|(atividade|tentativa de login|login|acesso|comportamento) (suspeit|incomum)|comportamento automatizado|captcha|n[ãa]o sou um rob[ôo])'
     save_login: 'salvar (suas )?informa[çc][õo]es de login'
     save_dismiss: '^\s*agora n[ãa]o\s*$'
     wrong_password: '(senha incorreta|senha .* incorreta)'

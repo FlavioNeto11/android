@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 8.3 Sinais e limites: o que já estava feito, o que faltava
+
+- Simulado (`tests/test_capabilities.py::test_abandonar_o_item_expira_a_aprovacao_pendente`,
+  `tests/test_detector_conta_travada.py`, `tests/test_sensitive_input.py`): conferido contra o código de hoje, o
+  grosso do 8.3 já estava na `main` (f5015a6 e ADR-055): "confirm you're human" no classificador, teto de
+  reobservação `unknown` (`session_unknown_retry_cap`), teto por dia por balde, uma conta por alvo com espaçamento e
+  expiração da aprovação ao cancelar. Faltava: `resolve(abandon)` e o cancelamento antes de iniciar não expiravam o
+  pedido pendente (agora expiram); o classificador aceita "verify/prove you're human", "comprove/confirmar que você
+  é humano/uma pessoa (real)". Hierarquia SINTÉTICA — a tela real não existe, a conta foi perdida.
+- `not_run`: `REPLY_COMMENT` e "editar" em aparelho real (conta real de terceiro; roteiro em
+  [`perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md)). Pendente do dono: afrouxar a política do catálogo
+  (#114 item 3), troca de conta (#115: a flag já não existe; implementar ou assumir que conta errada é sempre pessoa).
+
 ## 2026-10-02 — A8/A9/A10 executados em real: túnel em PowerShell 5.1, relógio do notebook e agente `f9eed71`
 
 - Real (02/10, central + `worker-lan-01`, deploy `f9eed71`, backup `20261002-132234`/`132239`, com a pausa de reparo do android-09 conferida no health): tarefa `farm-tunel-192.168.1.11` reinstalada com `powershell.exe` 5.1 (forwards 15555..15565 e reverso `18000 → 8010`, worker `up`, hierarquia do android-09 200); agente do notebook `0.1.0+5d8b545` → `0.1.0+f9eed71`; relógio do notebook +8,857 s → +0,002 s pela tarefa `farm-relogio` (`C:\farm\relogio`), 1ª execução agendada com resultado 0, e o `degraded` por relógio saiu sozinho.
