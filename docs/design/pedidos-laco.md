@@ -667,6 +667,13 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
   - Falso positivo possível: um id pulado pela sequência (rollback), exatamente na fronteira da purga, gera aviso
     sem perda real.
   - Erra do lado seguro: avisa a mais, nunca dispara a mais.
+- **Margem e lote:** o laço só lê eventos com `ts <= agora - 5 s` (`MARGEM_DOS_EVENTOS`). No PostgreSQL, um id menor pode
+  ficar visível DEPOIS de um maior (a sequência não segue a ordem do COMMIT), e o cursor não pode passar por cima dele.
+  Lê no máximo 500 por volta. Sem casar nada, o cursor vai ao teto lido: sem isso, a purga dos eventos que não casam
+  pareceria um buraco.
+- **Piso:** um evento novo dentro do piso da autonomia (`piso_observar_s` ou `piso_agir_s`), contado da última
+  ocorrência do gatilho, espera sem mover o cursor; quando o piso passa, os que esperaram coalescem numa ocorrência.
+  É o mesmo piso que a prévia aplica à recorrência.
 - **Ritmo:** o pedido só com gatilho de evento fica com `proxima_em` NULL, e `pedidos_para_cuidar` o devolve em toda
   volta (`tick_s`). O pedido com recorrência e evento tem `proxima_em` da recorrência. Por isso os gatilhos de evento
   são lidos num passo próprio (`_avaliar_eventos`, o passo 4 do §7.2), sobre todos os pedidos `ativo`, e não dentro de
@@ -696,8 +703,12 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
 - **Spec:** `{"observacao": "<nome>", "op": "<|<=|>|>=|==|!=|mudou", "valor": <número ou texto>}`.
   - `mudou` não leva `valor`: compara o `sha256` com o da observação anterior de mesmo nome.
   - Os ops de ordem exigem número dos dois lados.
-- **Quando:** no fechamento de cada ocorrência do pedido, depois de gravadas as observações (mesma volta). Não custa
-  execução nem IA.
+- **Quando:** no passo 4 de cada volta, sobre a observação mais nova do nome (de qualquer ocorrência do pedido) que ainda
+  não deu veredito. Não custa execução nem IA. É durável: a observação já está gravada, e uma queda no meio só adia o
+  veredito para a volta seguinte. Avaliar dentro de `_fechar_uma` perderia o veredito numa queda logo depois do fechamento.
+- **Vários alvos:** cada alvo da ocorrência é avaliado contra a observação de mesmo alvo da ocorrência anterior (a do
+  `mudou`). O veredito é verdadeiro se algum alvo é verdadeiro, falso se algum é falso e nenhum verdadeiro, e nenhum nos
+  outros casos.
 - **Avaliação:** só observação `situacao='observado'` com tipo compatível. `incerto` e `ausente` não dão veredito
   (o cursor não muda), e o predicado largo do 28.5 não vira fato.
 - **Disparo por borda, não por nível:** só a passagem de falso para verdadeiro gera o aviso `condicao_atendida`
@@ -720,7 +731,27 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
 - Até a migração existir, o código só grava a memória e registra no log. O aviso fica atrás de
   `avisos.TIPOS`, que o teste confere contra o CHECK.
 
-### 14.6 Tela
+### 14.6 Edição e encerramento
+
+- `PATCH` (`acoes.editar`) continua trocando só os gatilhos de `agora`, `horario` e `recorrencia`. Os três novos ficam
+  como foram criados; para mudá-los, cancela-se e cria-se outro pedido.
+- `_agendar_pedido`: passado `fim_em`, evento e persona contam como esgotados (motivo `prazo`), e o pedido encerra. Antes
+  disso, o pedido segue vivo. A condição não segura o pedido sozinha: com a recorrência esgotada, o pedido encerra mesmo
+  que a condição exista.
+
+### 14.7 O que foi feito (03/10/2026, branch `feat/28-8-gatilhos-evento`)
+
+- **Domínio:** `domain/gatilhos_dinamicos.py` (puro), com validação da `spec`, cursores, `buraco`, `proxima_visita`,
+  `avaliar`, `disparou` e `descrever`.
+- **Prévia:** `normalizar_gatilho` aceita os três, com os códigos `gatilho_invalido` e `condicao_sem_observacao` e o
+  piso da persona. `_datas` dá à persona a data da ativação.
+- **Laço:** o passo `_gatilhos_dinamicos`, entre materializar e orçamentos; `_agendar_pedido` passou a tratar `fim_em`.
+- **Linha de base:** `RepositorioDePedidos.base_dos_eventos` é chamado na ativação e na retomada `daqui`.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (17 testes). O aceite "cursor abaixo do menor
+  evento registra o buraco, não dispara" está em `test_buraco_da_retencao_registra_e_nao_dispara`. O aviso de buraco
+  depende da migração (§14.5); até lá, ficam a memória `pendencia` e o log. `real`: `not_run`.
+
+### 14.8 Tela
 
 - A criação pelo painel (`NovoPedido.tsx`) não oferece os tipos novos nesta fatia: o 28.8 é API.
 - O que renderiza é o `gatilhos_resumo` na lista e no detalhe. `descrever_gatilho` ganha texto para os três tipos:

@@ -3811,3 +3811,30 @@ Muda o VALOR de um campo, não o tipo. O `href` de `learning.needs_person` (30.2
 `#/aprendizado?item=<kind>:<ref>` para **`#/aprendizado?aba=aprendido&item=<kind>:<ref>`**. Sem a aba, o painel caía na visão
 Aplicativos e não abria o item (validação no Chrome de 02/10, I1). O painel aceita os dois formatos: `item` sem `aba` abre o
 catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcionando. "Revisar" das Pendências usa o mesmo link.
+
+## Adendo v0.60 (03/10/2026) — gatilhos `evento`, `condicao` e `persona` no `PedidoCorpo` (item 28.8)
+
+Aditivo para quem lê; muda a resposta para quem já mandava esses tipos. Antes, `evento`, `condicao` e `persona` davam sempre
+`gatilho_nao_suportado` (adendo v0.45). Agora são aceitos, com a `spec` validada (desenho em `docs/design/pedidos-laco.md` §14):
+
+| tipo | `spec` | o que faz |
+|---|---|---|
+| `evento` | `{"kinds": ["run.failed", ...], "niveis": ["warn", "error"]?}`: de 1 a 10 tipos de evento; nunca `pedido.*` nem um tipo efêmero (`frame`, `metrics`...) | cada volta que acha eventos novos que casam cria UMA ocorrência (origem `evento`), respeitando o piso da autonomia; os eventos das execuções do próprio pedido não contam |
+| `persona` | `{"intervalo_min_s": N, "intervalo_max_s": M}`, `300 ≤ N ≤ M ≤ 30 dias` | a primeira visita na ativação; a seguinte quando a anterior fecha, depois da saída `proxima_visita_s` da visita (presa a [N, M]) ou de M |
+| `condicao` | `{"observacao": "<saída>", "op": "<", "valor": 3500}` (`op` em `<`, `<=`, `>`, `>=`, `==`, `!=`, `mudou`; `mudou` sem `valor`) | avalia a observação mais nova; só a passagem de falso para verdadeiro avisa; não cria ocorrência |
+
+Códigos novos (em `previa`, viram `bloqueios[]`):
+
+| HTTP | `codigo` | Quando | `campo` |
+|---|---|---|---|
+| 422 | `gatilho_invalido` | a `spec` de um dos três não serve (a mensagem diz o quê) | `gatilhos[i].spec.<campo>` |
+| 422 | `condicao_sem_observacao` | o pedido só tem gatilhos `condicao`: nada observaria | `gatilhos` |
+| 422 | `frequencia_abaixo_do_piso` | (já existia) também `persona` com `intervalo_min_s` abaixo do piso da autonomia | `gatilhos[i].spec.intervalo_min_s` |
+
+- `gatilhos_resumo[].descricao` ganha os textos "Quando acontecer: …", "A persona volta entre … e …" e "Avisa quando …".
+- `proximas` (prévia) mostra a primeira visita da persona e nenhuma data para evento e condição: elas dependem do que acontecer.
+- A edição (`PATCH`) continua trocando só `agora`, `horario` e `recorrencia`. Os gatilhos dos três tipos novos ficam como
+  foram criados.
+- Avisos `eventos_perdidos` e `condicao_atendida`: dependem da migração do 28.8 (número a confirmar) para entrar no CHECK de
+  `pedido_avisos.tipo`. Até lá, o fato fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
+  `condicao.<gatilho>`, `descoberta`) e no log.
