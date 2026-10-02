@@ -383,8 +383,10 @@ hospedeiros com PostgreSQL gerenciado.
 - Cancelar o pedido: ocorrências futuras `canceladas`; a execução em curso recebe `RunService.cancel` (o caminho de
   `cancel_requested` que o `_tick` já trata); nenhuma ocorrência nova nasce depois do CAS de estado.
 - Pausar: para de materializar; retomar oferece "daqui para frente" (padrão) ou "recuperar dentro da janela".
-- Editar: `versao + 1`; ocorrências `prevista`/`devida` da versão anterior são refeitas; as despachadas terminam na
-  versão em que nasceram.
+- Editar: `versao + 1`; as ocorrências `prevista`/`devida` passam à versão nova NA MESMA LINHA (nunca canceladas e
+  recriadas: a chave não tem versão, e a nova seria engolida pelo `ON CONFLICT DO NOTHING`). Mudar a recorrência ou o
+  horário desativa o gatilho (as `prevista`/`devida` dele viram `cancelada`, motivo `edição`) e cria um gatilho novo, com
+  id e, portanto, chaves novas. As despachadas terminam na versão em que nasceram (28.4, D5; ADR-066).
 - Reinício do backend: nada novo — o laço relê `proxima_em`, as ocorrências e as execuções do banco; o que estava
   `despachada` sem execução é recriado pela chave (devolve a mesma, se existir).
 

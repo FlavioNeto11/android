@@ -72,6 +72,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | proposto (Fase 24) | 29/09 |
 | [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
+| [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 
 ---
 
@@ -3822,3 +3823,42 @@ no mesmo banco com relógio falso: tomada, renovação, queda, cerca recusando o
 **Relação.** [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §7.3; `backend/app/taskqueue/travas.py`;
 `backend/app/state.py` (`_laco_das_travas`, `_lider`, `_fechar_dia_cercado`); [banco.md](banco.md) (migração 066);
 vagas de IA (`ai_slots.py`, migração 027) como molde.
+
+---
+
+## ADR-066 — Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo
+
+**Data:** 02/10/2026 · **Estado:** aceito · **Decisão técnica e do dono** (Fase 28, item 28.4; D1 e D4 confirmadas pelo
+dono, D2, D3, D5, D6 e D7 pelo coordenador). Desenho: [design/pedidos-laco.md](design/pedidos-laco.md); base:
+[ADR-059](decisoes.md#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) e
+[ADR-064](decisoes.md#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate).
+
+**Contexto.** O laço de pedidos materializa ocorrências, despacha uma execução por `RunService.create` e fecha a
+ocorrência quando a execução termina. Cada ocorrência despachada chama o planejador pago, e o teto de orçamento só chega
+no 28.6. O desenho achou seis problemas no código existente (A1 a A6), dois deles de forma: a execução não sabia a qual
+pedido pertencia, e a chave da ocorrência não tem versão.
+
+**Decisão.**
+
+1. **Desligado de fábrica** (`pedidos.enabled: false`). Desligado, o laço nem sobe e o backend não toma nem renova a
+   trava `pedidos`: um backend com o laço desligado não pode deixar o ligado sem líder. Liga o dono, por instalação,
+   depois do 28.6.
+2. **Origem interna.** `RunService.create(req, origem=(pedido_id, ocorrencia_id))` e `Repository.create_run` gravam
+   `runs.pedido_id` e `runs.ocorrencia_id` no MESMO `INSERT` (atômico, também no caminho `needs_input`). `RunCreate`
+   mantém `extra="forbid"`: a API pública não ganha campo, e o pedido não é forjável por quem cria uma execução.
+3. **Despacho idempotente.** A chave da execução é `chave:t<n>`. O laço procura a execução por ela ANTES de chamar
+   `create` (o pré-voo poderia recusar uma execução que já existe) e chama `create` na thread do laço de eventos.
+4. **Editar a recorrência cria gatilho novo.** As ocorrências abertas do gatilho velho são canceladas com motivo `edição`;
+   as demais abertas mudam de versão na mesma linha. Nunca cancelar e recriar a mesma ocorrência.
+5. **Fechamento por varredura.** A varredura do laço é o caminho normal das execuções que assentam sem worker; o gancho
+   `on_run_settled` só acorda o laço. Latência aceita de até `tick_s` (15 s).
+6. **Prazos globais e `max_ocorrencias` por execução.** `prazo_inicio_s`, `horizonte_s` e a janela padrão (1800 s para
+   `horario` sem efeito e `agora`) são configuração, sem migração. `max_ocorrencias` conta só as ocorrências que viraram
+   execução.
+
+**Consequências.** O 28.4 não tem migração (067 basta). Prova `simulated`: `test_pedidos_materializar.py`,
+`test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`, `test_pedidos_origem.py`, `test_pedidos_laco.py`. Prova
+real e PostgreSQL: `not_run` (28.12).
+
+**Relação.** `backend/app/modules/pedidos/`; `backend/app/taskqueue/service.py` e `repository.py`; `backend/app/state.py`;
+`backend/app/config.py` (`PedidosCfg`).

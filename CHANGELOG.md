@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Laço de pedidos (28.4, branch feat/28-4-laco)
+
+- `backend/app/modules/pedidos/`: domínio puro (`materializar`, `gatilhos`, `sobreposicao`, `fechamento`) e aplicação
+  (`repositorio`, `laco`, `acoes`). O laço materializa as ocorrências com janela de recuperação e coalescência, despacha
+  uma execução por `RunService.create` com a chave `chave:t<n>` (procurada antes de criar) e fecha pela varredura.
+  Só o líder age (trava nova `pedidos` em `travas.py`, escrita cercada).
+- `RunService.create`/`Repository.create_run`: parâmetro interno `origem=(pedido_id, ocorrencia_id)` no mesmo `INSERT`;
+  `RunCreate` segue recusando campo extra.
+- Config: bloco `pedidos:` (`enabled: false` de fábrica, `tick_s`, `horizonte_s`, `prazo_inicio_s`, `janela_padrao_s`,
+  `lote_max`, `posse_s`) em `config.py` e `config/config.example.yaml`. Desligado, o laço nem sobe. Sem migração.
+- ADR-066; `docs/design/pedidos-laco.md` (decisões D1 a D7 fechadas e seção 10 com o que foi feito e onde) e §7.9 de
+  `pedidos-persistentes.md` (editar = gatilho novo, versão trocada no lugar).
+- Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
+  `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
+
 ## 2026-10-02 — Teto de chamadas de IA proporcional ao `for_each` (17.12, branch jev/17-12-teto-for-each)
 
 - `backend/app/taskqueue/executor.py::_ai` / `_teto_de_chamadas` e `backend/app/taskqueue/foreach.py::teto_de_chamadas`: o teto de chamadas por objetivo passa a ser `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))`; sem `for_each` (ou com 1 item) continua exatamente `ai_max_calls_per_objective`. Os itens saem das etapas já gravadas (`item_index` em `steps.variables`, todas as versões do plano), só consultadas quando o base já foi atingido. O rejulgamento do 17.10 continua contando; `ai_max_usd_per_run`/`per_day` e o teto de tokens ficam como estavam. A mensagem diz o teto efetivo e a origem (`60 + 12 × 7 itens do for_each`).
