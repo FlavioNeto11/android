@@ -371,6 +371,15 @@ Bloco `aprendizado` do `config.example.yaml`; os modos vão entre aspas, porque 
 YAML. Padrões e significado na tabela do [adendo v0.38](../api-contract.md). Nenhum modo passa a `on` sem prova real e
 decisão do dono.
 
+**Modo por app (30.20, §8.10 do desenho).** `aprendizado.licoes.por_app: {<pacote>: off|shadow|on}` e
+`aprendizado.telas.por_app: {<pacote>: off|observe|on}` sobrescrevem o modo global de UM pacote (chave = pacote Android,
+validada no config); vazio, o padrão, é o global. A regra é uma só, `domain/modo_por_app.modo_efetivo`, e vale na coleta
+e na validação (mineradores, curadoria, observadores de tela), no consumo (`licoes_para`, fornecedor de telas) e na
+publicação sozinha das telas; `enabled: false` vence tudo. O pacote vem só do config (ADR-052). Limite até a próxima
+fatia: o D1 de um pacote MAIS permissivo que o global (global `shadow`/`observe`, pacote `on`) ainda é recusado, porque
+`LearningService._modo_publica` e o portão global de `CosturasDoLivro.licoes_para` leem só o modo global
+(`test_learning_modo_por_app.py`, dois `xfail(strict)`). Prova `simulated`; nada foi ligado no central.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

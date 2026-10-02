@@ -19,7 +19,7 @@ from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.licoes import LICAO_MAX_CARACTERES, Pedido
 from app.modules.learning.domain.tokens import Teto
-from app.modules.learning.domain.vocabulario import Papel
+from app.modules.learning.domain.vocabulario import Modo, Papel
 from app.modules.learning.infrastructure.licoes_sql import SqlLicoesRepository
 from app.modules.learning.infrastructure.ligar_costuras import extensoes
 from app.taskqueue.costuras import PedidoDeLicoes
@@ -33,7 +33,7 @@ def ajustes_de_licoes(cfg: LicoesCfg) -> AjustesDeLicoes:
         ator=Teto(tokens=cfg.ator.tokens, itens=cfg.ator.max, caracteres_por_item=LICAO_MAX_CARACTERES),
         planejador=Teto(tokens=cfg.planejador.tokens, itens=cfg.planejador.max),
         minimo_por_braco=cfg.minimo_por_braco, maximo_por_braco=max(cfg.minimo_por_braco, cfg.maximo_por_braco),
-        holdout_publicada=cfg.holdout_publicada)
+        holdout_publicada=cfg.holdout_publicada, por_app={pacote: Modo(m) for pacote, m in cfg.por_app.items()})
 
 
 class FornecedorDoLivro:

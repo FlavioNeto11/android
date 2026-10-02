@@ -56,7 +56,8 @@ _DESCONHECIDA_NO_DATA = f'%"classificada":"{dominio.DESCONHECIDA}"%'
 
 
 def ajustes_de_telas(cfg: TelasAprendidasCfg) -> AjustesDeTelas:
-    return AjustesDeTelas(modo=ModoDeTelas(cfg.modo), observacoes=cfg.observacoes, execucoes=cfg.execucoes)
+    return AjustesDeTelas(modo=ModoDeTelas(cfg.modo), observacoes=cfg.observacoes, execucoes=cfg.execucoes,
+                          por_app={pacote: ModoDeTelas(m) for pacote, m in cfg.por_app.items()})
 
 
 # ------------------------------------------------------------------ leitura (sinais e evidência)
@@ -268,7 +269,8 @@ class ObservadorDeTelas:
 
     def ao_fechar(self, f: FechamentoDeTentativa) -> None:
         telas = self._telas()
-        if telas is None or telas.ajustes.modo is ModoDeTelas.OFF or f.loja or f.arvore is None or not f.app_package:
+        if (telas is None or f.loja or f.arvore is None or not f.app_package
+                or telas.modo_efetivo(f.app_package) is ModoDeTelas.OFF):
             return
         pacote = f.app_package
         k = self._declarado.telas(pacote)
@@ -309,7 +311,7 @@ class FornecedorDoLivro:
 
     def __call__(self, pacote: str) -> tuple[RegraDeTela, ...]:
         telas = self._telas()
-        if telas is None or telas.ajustes.modo is not ModoDeTelas.ON:
+        if telas is None or telas.modo_efetivo(pacote) is not ModoDeTelas.ON:
             return ()
         regras: list[RegraDeTela] = []
         for item_id, conteudo in telas.publicadas(pacote):
@@ -330,7 +332,7 @@ class ObservadorDaSessaoDoLivro:
 
     def ao_conferir(self, conferencia: ConferenciaDaSessao) -> None:
         telas = self._telas()
-        if telas is None or telas.ajustes.modo is ModoDeTelas.OFF:
+        if telas is None or telas.modo_efetivo(conferencia.pacote) is ModoDeTelas.OFF:
             return
         c = conferencia
         ids: tuple[str, ...] = ()

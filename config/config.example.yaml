@@ -445,7 +445,12 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     minimo_por_braco: 8           # unidades por braço para o veredito de efeito (o painel mostra "faltam N")
     maximo_por_braco: 20
     holdout_publicada: 0.1
+    # Modo por app (§8.10): `por_app: {<pacote>: off|shadow|on}` sobrescreve o `modo` global SÓ daquele pacote; vazio
+    # (padrão) = o global vale para todo app. Exemplo (comentado, não liga nada):
+    # por_app: {"com.exemplo.app": "shadow"}
   telas: {modo: "observe", observacoes: 3, execucoes: 2}    # "observe": grava e valida, a sessão não consome
+  # telas.por_app: {<pacote>: off|observe|on}, mesma regra (vazio = global). Exemplo comentado, não liga nada:
+  # telas: {modo: "observe", observacoes: 3, execucoes: 2, por_app: {"com.exemplo.app": "observe"}}
   # Fluxo aprendido de execução (D1): nasce candidato; a sombra no digest publica o sem efeito depois de
   # `concordancias` execuções concordantes além da que o gerou, e o com efeito para em validated (o dono aprova).
   # com_prova: false = o modo anterior (nasce ativo, sem D1): só para a suíte que prova o reaproveitamento.
