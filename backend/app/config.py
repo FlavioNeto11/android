@@ -883,11 +883,11 @@ class ContextRetrievalSemanticCfg(BaseModel):
     timeout_ms: int = Field(5_000, ge=100, le=60_000)
     max_calls: int = Field(2, ge=1, le=10)          # por pedido (etapa A + etapa B)
     max_calls_per_session: int = Field(40, ge=1, le=10_000)
-    max_input_tokens: int = Field(24_000, ge=100)
+    max_input_tokens: int = Field(32_000, ge=100)
     max_cost_usd: float = Field(0.05, ge=0)
     max_map_files: int = Field(400, ge=1, le=5_000)
-    max_candidate_files: int = Field(8, ge=1, le=50)
-    max_chunks: int = Field(24, ge=1, le=200)
+    max_candidate_files: int = Field(5, ge=1, le=50)
+    max_chunks: int = Field(16, ge=1, le=200)
     max_bytes: int = Field(48_000, ge=1_000, le=1_000_000)
 
 

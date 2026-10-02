@@ -110,9 +110,11 @@ class ChunksFalsos:
     def __init__(self, por_caminho: dict[str, list[Chunk]] | None = None) -> None:
         self.por_caminho = _chunks() if por_caminho is None else por_caminho
         self.pedidos: list[list[str]] = []
+        self.consultas: list[str | None] = []
 
-    def chunks_for(self, paths: Sequence[str], *, max_chunks: int, max_bytes: int) -> list[Chunk]:
+    def chunks_for(self, paths: Sequence[str], *, max_chunks: int, max_bytes: int, query: str | None = None) -> list[Chunk]:
         self.pedidos.append(list(paths))
+        self.consultas.append(query)
         return [c for p in paths for c in self.por_caminho.get(p, [])]
 
 
@@ -807,3 +809,24 @@ def test_usage_do_fake_e_provider_usage():
     fake = _fake(cost_usd_per_call=0.5, tokens_per_call=9, latency_ms=3.0)
     r = fake.select_files("login", _mapa_pequeno(), max_files=2, timeout_s=1.0)
     assert r.usage == ProviderUsage(9, 0, 0.5, 3.0)
+
+
+def test_o_servico_passa_a_pergunta_ao_chunker(tmp_path: Path):
+    """J13: a fonte de chunks recebe a pergunta (é ela que escolhe as janelas da etapa B)."""
+    fonte = ChunksFalsos()
+    m = Montagem(_fake())
+    m.retriever.chunk_source = fonte  # type: ignore[assignment]
+    m.pedir("onde verify_password valida a senha no login")
+    assert fonte.consultas == ["onde verify_password valida a senha no login"]
+
+
+def test_trocar_a_selecao_de_chunks_invalida_o_cache_da_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Outra seleção é outro payload e outra resposta: a versão da seleção entra na chave da B (a A segue em cache)."""
+    from app.modules.context_retrieval.application import semantic as sem_mod
+
+    fake = _fake()
+    m = Montagem(fake, cache=SemanticCache(tmp_path / "c"))
+    m.pedir()
+    monkeypatch.setattr(sem_mod, "CHUNK_SELECTION_VERSION", "outra-selecao")
+    sel = m.pedir()
+    assert (sel.metadata["stage_a_cache"], sel.metadata["stage_b_cache"]) == ("hit", "miss")
