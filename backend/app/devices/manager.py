@@ -328,6 +328,9 @@ class DeviceRuntime:
         self.store = cfg.store_id == self.id
         #: Árvore da última observação (a de quando a etapa foi comprovada): vira memória do perfil sem outro dump.
         self.last_tree: Any = None
+        #: `(atividade, time.monotonic())` quando a ÚLTIMA observação com conta travada achou a atividade de desafio do
+        #: Instagram em foco (`dumpsys window`); `None` quando a janela em foco era outra. É o sinal forte do 29.23.
+        self.atividade_de_desafio: tuple[str, float] | None = None
         #: Sessão de treinamento aberta neste aparelho (item 13.1). A verdade é `training_sessions`; isto só evita
         #: consultar o banco a cada toque.
         self.training_session_id: str | None = None
@@ -3473,6 +3476,29 @@ class DeviceManager:
         rt.classificacao = (rt.geracao, tree.sensitive, time.monotonic())
         return tree
 
+    #: A janela em foco da verificação "Confirm you're human" do Instagram (sinal forte do 29.23, ADR-068).
+    ATIVIDADE_DE_DESAFIO = "com.instagram.challenge.activity.ChallengeActivity"
+    #: Por quanto tempo a leitura vale como sinal (s): cobre a volta do detector até a marcação, nada além.
+    VALIDADE_DA_ATIVIDADE_S = 120.0
+
+    async def _ler_atividade_de_desafio(self, rt: DeviceRuntime) -> None:
+        """Só roda quando a árvore já parece conta travada (uma leitura do foco, sem custo no resto). Falha ao ler =
+        sem sinal forte: a conta fica bloqueada para a pessoa, nunca retirada por incerteza."""
+        try:
+            _, atividade = await rt.executor.run(rt.io.current_focus, timeout=15, label="janela em foco")
+        except Exception as exc:  # noqa: BLE001 - sem leitura, sem sinal
+            log.info("%s: sem ler o foco da trava (%s)", rt.id, exc)
+            rt.atividade_de_desafio = None
+            return
+        rt.atividade_de_desafio = ((str(atividade), time.monotonic())
+                                   if atividade and str(atividade).endswith("ChallengeActivity") else None)
+
+    def tem_atividade_de_desafio(self, instance_id: str) -> bool:
+        """A atividade de desafio do Instagram estava em foco na última observação de conta travada deste aparelho?"""
+        rt = self.devices.get(instance_id)
+        visto = rt.atividade_de_desafio if rt is not None else None
+        return visto is not None and time.monotonic() - visto[1] <= self.VALIDADE_DA_ATIVIDADE_S
+
     async def observe(self, rt: DeviceRuntime, *, timeout: float,
                       imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None) -> Observation:
         """Observação: hierarquia PRIMEIRO, imagem só quando pedida (contrato C1 do adendo v0.20).
@@ -3494,6 +3520,8 @@ class DeviceManager:
         tree_at = now_iso()
         tree = self._classificar(rt, xml)
         rt.last_tree = tree
+        if tree.conta_travada is not None:
+            await self._ler_atividade_de_desafio(rt)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         sensivel = tree.sensitive or rt.store or ex.em_trecho_sensivel
         quer = False if sensivel else (bool(imagem(tree)) if callable(imagem) else bool(imagem))

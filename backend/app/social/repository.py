@@ -110,7 +110,7 @@ class SocialRepository:
         self.on_locked_account: Callable[[Row, str, str], None] | None = None
         #: Bloqueio CONFIRMADO numa conta (29.23, ADR-068): `(profile_id, app_id, handle, instance_id, evidencia)`. É
         #: o que o `SocialService` liga à retirada da conta; o marcador já foi gravado quando isto dispara.
-        self.on_conta_bloqueada: Callable[[str, str | None, str, str, str | None], None] | None = None
+        self.on_conta_bloqueada: Callable[[str, str | None, str, str, str | None, str], None] | None = None
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
@@ -812,7 +812,7 @@ class SocialRepository:
             self.on_locked_account(linha, "marcado", visto_por)
         if pid is not None and self.on_conta_bloqueada is not None:
             # Por último: o marcador, o bloqueio e o aviso já saíram; a retirada só tira a conta de cena (29.23).
-            self.on_conta_bloqueada(pid, app, conta, instance_id, texto)
+            self.on_conta_bloqueada(pid, app, conta, instance_id, texto, origem)
         return True
 
     def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,

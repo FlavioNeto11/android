@@ -472,10 +472,10 @@ async def test_um_app_novo_para_no_desafio_e_chama_a_pessoa(correio: Any) -> Non
     ancora_antes = _linhas_da_conta(db, m.ancora)
     r = await m.sessao.ensure_session(FakeRt(app), m.pid)              # type: ignore[arg-type]
     assert r.outcome is Outcome.AUTH_CHALLENGE
-    assert db.query("SELECT 1 FROM events WHERE kind='log' AND message LIKE ?", ("%O Correio de Exemplo pediu confirmação%",))
+    assert "O Correio de Exemplo pediu confirmação" in (
+        m.repo.account_session_row(m.pid, m.conta, "android-02")["detail"] or "")
     assert m.repo.profile_row(m.pid)["status"] == "active"
-    # 29.23 (ADR-068): a conta travada confirmada SAI na hora (conta, credencial e sessão); a quarentena do aparelho fica.
-    assert m.repo.account_row(m.pid, m.conta) is None and m.repo.account_credential_row(m.pid, m.conta) is None
+    assert m.repo.account_credential_row(m.pid, m.conta)["status"] == "review"
     assert _linhas_da_conta(db, m.ancora) == ancora_antes              # a conta âncora nem foi tocada
     assert db.query("SELECT 1 FROM events WHERE kind='log' AND message LIKE ?", ("%bloqueado automaticamente%",)) == []
     parada = [json.loads(r["data"]) for r in db.query("SELECT data FROM events WHERE kind='log'")
@@ -523,9 +523,7 @@ async def test_o_desafio_no_app_ancora_segue_bloqueando_a_persona(correio: Any) 
     ig_app = FakeInstagram(stored_password=SENHA_DA_ANCORA, challenge_on_login=True)
     r = await instagram(ig_app).ensure_session(FakeRt(ig_app), m.pid)  # type: ignore[arg-type]
     assert r.outcome is Outcome.AUTH_CHALLENGE, r.detail
-    # 29.23 (ADR-068): bloqueada e, na hora, a conta âncora sai; a persona volta a `active`, sem @.
-    assert (m.repo.profile_row(m.pid)["status"], m.repo.profile_row(m.pid)["username"]) == ("active", "")
-    assert m.repo.account_row(m.pid, m.ancora) is None
+    assert m.repo.profile_row(m.pid)["status"] == "blocked"
     marcador = db.one("SELECT handle, profile_id FROM device_locked_accounts WHERE instance_id='android-02'")
     assert marcador is not None and (marcador["handle"], marcador["profile_id"]) == (USUARIO_DA_ANCORA, m.pid)
     assert _linhas_da_conta(db, m.conta) == correio_antes
@@ -554,23 +552,16 @@ async def test_o_login_do_segundo_app_nao_escreve_na_conta_do_primeiro(correio: 
     assert _linhas_da_conta(db, m.ancora) == antes                      # a conta âncora nem foi tocada
     assert m.repo.profile_row(m.pid)["last_verified_at"] == verificado_antes   # o cartão do perfil é o da âncora
     do_correio = _linhas_da_conta(db, m.conta)
-    if cenario == "desafio":
-        # 29.23 (ADR-068): o desafio de conta travada retira a conta do correio na hora, com a sessão dela.
-        assert m.repo.account_row(m.pid, m.conta) is None and do_correio["sessoes"] == []
-    else:
-        assert [s["status"] for s in do_correio["sessoes"]] == [SessionStatus(
-            {"entra": "session_ready", "senha_recusada": "auth_required", "desafio": "auth_challenge",
-             "conta_errada": "wrong_account"}[cenario]).value]
+    assert [s["status"] for s in do_correio["sessoes"]] == [SessionStatus(
+        {"entra": "session_ready", "senha_recusada": "auth_required", "desafio": "auth_challenge",
+         "conta_errada": "wrong_account"}[cenario]).value]
     if cenario == "conta_errada":
         assert do_correio["tentativas"] == [] and app.typed == []       # conta errada nunca digita nada
         assert f"a esperada é @{USUARIO_DO_CORREIO}" in r.detail and f"@{USUARIO_DA_ANCORA}" in r.detail
     else:
         assert len(do_correio["tentativas"]) == 1                       # a tentativa é da conta do correio
-        if cenario == "desafio":
-            assert do_correio["credencial"] == []                       # a credencial saiu com a conta (29.23)
-        else:
-            status = {"entra": "active", "senha_recusada": "invalid"}[cenario]
-            assert do_correio["credencial"][0]["status"] == status
+        status = {"entra": "active", "senha_recusada": "invalid", "desafio": "review"}[cenario]
+        assert do_correio["credencial"][0]["status"] == status
 
 
 async def test_o_login_do_primeiro_app_nao_escreve_na_conta_do_segundo(correio: Any) -> None:

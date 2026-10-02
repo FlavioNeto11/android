@@ -325,6 +325,7 @@ class AppState:
         self.scheduler.session_gate = self._session_gate
         # Conta bloqueada que sai (29.23): a persona volta a `active`, então o agendador nunca VÊ o `blocked` que dispara
         # o disjuntor de conta (ADR-055); a retirada o aciona direto, na hora.
+        self.social.sinal_de_desafio = lambda iid: self.devices.tem_atividade_de_desafio(iid)
         self.social.ao_retirar_conta = (
             lambda pid, _conta, estava: self.scheduler.disjuntor_de_conta(pid) if estava else None)
         # O rastro textual da conta no Livro (o @ e o id em texto) sai na MESMA transação da retirada (contrato combinado

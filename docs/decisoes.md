@@ -3945,10 +3945,19 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    `(db, *, profile_id, account_id, handle, app_id) -> dict[str, int]`, chamadas em ordem DENTRO da transação; uma que
    levanta erro desfaz a retirada inteira. As contagens (sem texto da conta) entram no evento `profile.account_retired`.
    O Aprendizado registra a dele (esquecer a conta) ao integrar.
-8. **Gatilho automático** (`SocialRepository.on_conta_bloqueada`, ao fim de `marcar_conta_travada`): roda sob savepoint e
-   nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. Conta de outro
-   app (Outlook) sai sem tocar o status da persona (P9). O disjuntor de conta (ADR-055) é acionado direto pela retirada,
-   porque o agendador só o dispara ao VER `blocked` e a persona volta a `active` no mesmo gesto.
+8. **Gatilho automático** (`SocialRepository.on_conta_bloqueada`, ao fim de `marcar_conta_travada`), com DOIS limites
+   decididos pelo dono/orquestrador: (a) **só o Instagram** (conta âncora, pacote `com.instagram.android`): a conta travada
+   de outro app (Outlook etc.) segue como antes, marcada/`blocked` para a pessoa, e só sai pela rota manual; (b) **só com
+   SINAL FORTE**: a atividade `com.instagram.challenge.activity.ChallengeActivity` em foco (`dumpsys window`, lida por
+   `DeviceManager.observe` quando a árvore já parece conta travada, validade de 120 s) ou a declaração do dono. Só TEXTO na
+   tela não retira: fica `blocked` + pessoa, com uma linha no histórico dizendo que faltou o sinal. Sem leitura do foco
+   (falha de adb), sem sinal. Isso reduz o falso positivo de uma frase parecida em outra tela. O gatilho roda sob savepoint e
+   nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. O disjuntor de
+   conta (ADR-055) é acionado direto pela retirada, porque o agendador só o dispara ao VER `blocked` e a persona volta a
+   `active` no mesmo gesto.
+9. **Filtro de frota (`_fleet_gate`).** Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) é recusada. Responder
+   a comentário de um TERCEIRO num post nosso (roteiro 8.3: a conta dona do post age, o `counterparty` é o do terceiro)
+   continua permitido; coberto por teste.
 
 **Dívidas registradas.**
 
@@ -3956,6 +3965,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
   conta não passa por ele e nada muda ali; é item separado.
 - Aplicar a regra às cinco contas `blocked` já existentes é operação pós-deploy (rota `retire`), não migração.
 - Os ids de conta e o @ continuam nas provas antigas (opção A); apagá-los (opção B) foi recusado pelo dono.
+- **Ideia de backlog (não implementada; depois do 12.4):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática), que também resolveria o marcador de quarentena do aparelho.
 
 **Consequências.** Migração 071. Persona sem conta já era roteável (`resolver_alvos` não exige conta quando o app do
 comando não usa conta); precisa de vínculo de aparelho para um app sem conta. Prova `simulated`:

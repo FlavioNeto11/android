@@ -45,6 +45,8 @@ from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository
                          sessao_vencida)
 
 log = logging.getLogger("poc.social")
+#: O único app cuja conta bloqueada sai SOZINHA (29.23, ADR-068): o Instagram; nos demais, só pela rota manual.
+PACOTE_DO_INSTAGRAM = "com.instagram.android"
 
 # Quantas interações o contexto mostra inteiras. Acima disso, a conversa ganha uma nota dizendo que há mais.
 _RECENTES_NO_CONTEXTO = 6
@@ -125,6 +127,10 @@ class SocialService:
         #: (ADR-055) aqui: o agendador só o dispara ao VER `blocked`, e a retirada devolve a persona a `active`.
         self.ao_retirar_conta: Callable[[str, str, bool], None] | None = None
         self._retirando: set[tuple[str, str]] = set()
+        #: O SINAL FORTE de bloqueio (29.23): `instance_id -> a atividade de desafio do Instagram está em foco agora`.
+        #: O AppState liga ao que `DeviceManager.observe` leu (`DeviceRuntime.atividade_de_desafio`). Só texto na tela
+        #: NÃO retira a conta; sem esta ligação (testes, scripts) só a declaração do dono (`declarado`) retira.
+        self.sinal_de_desafio: Callable[[str], bool] | None = None
         repo.on_conta_bloqueada = self._retirar_por_bloqueio
 
     # ------------------------------------------------------------------ consulta
@@ -1452,14 +1458,27 @@ class SocialService:
         return str(linha["status"] or "active") if linha is not None else "active"
 
     def _retirar_por_bloqueio(self, profile_id: str, app_id: str | None, handle: str, instance_id: str,
-                              evidencia: str | None) -> None:
+                              evidencia: str | None, origem: str = "observado") -> None:
         """Gatilho do bloqueio CONFIRMADO (a tela de verificação lida, `marcar_conta_travada`): a conta sai.
+
+        Só no INSTAGRAM (conta âncora, pacote `com.instagram.android`) e só com SINAL FORTE: a atividade de desafio
+        (`ChallengeActivity`) em foco, ou a declaração do dono. Texto na tela sozinho, ou conta de outro app (Outlook...),
+        fica como sempre: persona `blocked`/conta marcada e a pessoa decide; retirar ali é só pela rota manual.
 
         Nunca levanta e roda sob savepoint: falhar aqui (uma limpeza que erra) desfaz só a retirada, e a persona
         fica `blocked`, o estado seguro, com o erro visível no histórico; a rota manual refaz depois. A transação de
         fora (o salvamento da sessão, o vínculo) segue. Sem conta achada, não há o que retirar."""
         conta = self._conta_do_bloqueio(profile_id, app_id, handle)
-        if conta is None:
+        if conta is None or self.repo.pacote_da_conta(profile_id, str(conta["id"])) != PACOTE_DO_INSTAGRAM:
+            return
+        if not self.repo.eh_pacote_ancora(profile_id, PACOTE_DO_INSTAGRAM):
+            return
+        forte = origem == "declarado" or bool(self.sinal_de_desafio is not None and self.sinal_de_desafio(instance_id))
+        if not forte:
+            self.bus.emit("log", f"{instance_id}: conta travada vista só pelo texto da tela, sem a atividade de desafio em "
+                                 "foco: a conta NÃO foi retirada (fica bloqueada para uma pessoa conferir).",
+                          level="info", instance_id=instance_id,
+                          data={"profile_id": profile_id, "account_id": str(conta["id"]), "sinal_forte": False})
             return
         chave = (profile_id, str(conta["id"]))
         if chave in self._retirando:
@@ -1467,7 +1486,7 @@ class SocialService:
         self._retirando.add(chave)
         try:
             with self.repo.db.savepoint():
-                self.retirar_conta_bloqueada(profile_id, chave[1], origem="observado", autor="sistema",
+                self.retirar_conta_bloqueada(profile_id, chave[1], origem=origem, autor="sistema",
                                              evidencia=f"{instance_id}: {evidencia}" if evidencia
                                              else f"conta travada em {instance_id}")
         except Exception as exc:  # noqa: BLE001 - ver docstring

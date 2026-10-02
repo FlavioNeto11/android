@@ -390,16 +390,18 @@ async def test_challenge_nao_gera_nova_tentativa_e_pede_a_pessoa(tmp_path: Path)
         pid = cadastrar(social)
         r = await auth.ensure_session(FakeRt(app), pid)
         assert r.outcome is Outcome.AUTH_CHALLENGE
-        # 29.23 (ADR-068): a trava confirmada retira a conta na hora; a sessão dela sai junto.
-        assert repo.session_row(pid) is None and repo.conta_ancora(pid) is None
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+        assert "Assuma o controle" in (repo.session_row(pid)["detail"] or "")
 
         antes = len(app.typed)
         r2 = await auth.ensure_session(FakeRt(app), pid)              # app continua na tela de challenge
-        assert not r2.ready and len(app.typed) == antes               # sem conta: não digitou de novo
+        assert r2.outcome is Outcome.AUTH_CHALLENGE
+        assert len(app.typed) == antes                                # não digitou de novo
 
-        # Sem item de fila para uma conta que saiu: o único evento é o de SAÍDA, emitido pela retirada.
+        # Um evento só: a segunda chamada CONFIRMA o mesmo estado, não é uma nova entrada na fila.
         eventos = eventos_da_fila(db, pid)
-        assert [e["active"] for e in eventos] == [False]
+        assert [e["active"] for e in eventos] == [True]
+        assert eventos[0]["status"] == SessionStatus.auth_challenge.value
         assert eventos[0]["instance_id"] == "android-02"
     finally:
         db.close()
@@ -413,15 +415,16 @@ async def test_reobservacao_apos_desafio_resolvido_tira_o_perfil_da_fila(tmp_pat
     try:
         pid = cadastrar(social)
         await auth.ensure_session(FakeRt(app), pid)
-        assert repo.session_row(pid) is None                           # 29.23: a conta saiu na hora
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
 
         app.screen = "feed"                                            # a pessoa resolveu o desafio na tela
         app.account = USUARIO
         r = await auth.ensure_session(FakeRt(app), pid, observe_only=True)
-        assert not r.ready and repo.session_row(pid) is None           # a observação não a traz de volta
+        assert r.ready
+        assert repo.session_row(pid)["status"] == SessionStatus.session_ready.value
 
         eventos = eventos_da_fila(db, pid)
-        assert [e["active"] for e in eventos] == [False]               # a saída é a da retirada; nada reentra
+        assert [e["active"] for e in eventos] == [True, False]
     finally:
         db.close()
 
@@ -512,9 +515,7 @@ async def test_desfecho_sem_sucesso_depois_do_envio_conta_para_o_teto(tmp_path: 
         pid = cadastrar(social)
         r = await auth.ensure_session(FakeRt(app), pid)
         assert r.outcome is Outcome.AUTH_CHALLENGE                 # senha enviada, desfecho não é sucesso
-        # 29.23: a credencial saiu com a conta; a tentativa que enviou a senha ficou na auditoria (uma só).
-        assert repo.credential_row(pid) is None
-        assert db.scalar("SELECT COUNT(*) FROM authentication_attempts WHERE profile_id=?", (pid,)) == 1
+        assert repo.credential_row(pid)["failed_attempts"] == 1    # antes ficava em 0 e nunca travava
     finally:
         db.close()
 
@@ -744,8 +745,7 @@ async def test_desafio_bloqueia_o_perfil_sozinho_e_uma_vez(tmp_path: Path) -> No
         pid = cadastrar(social)
         assert repo.profile_row(pid)["status"] == "active"
         assert (await auth.ensure_session(FakeRt(app), pid)).outcome is Outcome.AUTH_CHALLENGE
-        # 29.23 (ADR-068): bloqueou (o aviso sai) e a conta saiu na hora; a persona volta a `active`, sem @.
-        assert (repo.profile_row(pid)["status"], repo.profile_row(pid)["username"]) == ("active", "")
+        assert repo.profile_row(pid)["status"] == "blocked"
         await auth.ensure_session(FakeRt(app), pid)                    # ainda na tela do desafio
         avisos = _avisos_de_bloqueio(db)
         assert len(avisos) == 1
@@ -769,8 +769,8 @@ async def test_perfil_pausado_pelo_dono_continua_pausado_no_desafio(tmp_path: Pa
 
 
 async def test_desafio_resolvido_nao_reativa_o_perfil_sozinho(tmp_path: Path) -> None:
-    """29.23 (ADR-068): com a conta retirada, resolver a tela depois não a traz de volta nem reativa nada por efeito
-    colateral: a persona segue sem conta, `active`; conta nova é cadastro de propósito."""
+    """Se a pessoa resolver a tela, a sessão volta a `session_ready` (a fila "Aguardando intervenção" esvazia), mas
+    o perfil continua `blocked`: reativar é afirmar que a conta voltou a ser usável — decisão de pessoa."""
     app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
     auth, repo, social, db = build(tmp_path, app)
     try:
@@ -779,7 +779,7 @@ async def test_desafio_resolvido_nao_reativa_o_perfil_sozinho(tmp_path: Path) ->
         app.screen = "feed"
         app.account = USUARIO
         r = await auth.ensure_session(FakeRt(app), pid, observe_only=True)
-        assert not r.ready and repo.session_row(pid) is None and repo.conta_ancora(pid) is None
-        assert repo.profile_row(pid)["status"] == "active"
+        assert r.ready and repo.session_row(pid)["status"] == SessionStatus.session_ready.value
+        assert repo.profile_row(pid)["status"] == "blocked"
     finally:
         db.close()

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from app.models import RunCreate, SessionStatus
 from app.modules.identity.presentation.schemas import PersonaDeviceBody
 from app.planning.capabilities import capability_of
 from app.social.contas_nossas import MARCADOR, eh_conta_nossa, hash_do_handle, sem_o_rastro
+from app.devices.manager import DeviceManager
 from app.social.policy import PolicyEngine
 from app.util import now_iso
 
@@ -31,6 +33,7 @@ from .test_sessao_por_conta import IID, correio_registrado, estado, persona_com_
 
 __all__ = ["correio_registrado"]
 
+ATIVIDADE = DeviceManager.ATIVIDADE_DE_DESAFIO
 FELIPE = "felipe.teste01"
 LUCAS = "lucas.teste02"
 
@@ -254,10 +257,58 @@ async def test_conta_de_outro_app_sai_sem_tocar_a_ancora_nem_o_status(harness: H
     assert eh_conta_nossa(s.db, "ana.correio")
 
 
-# ============================================================ gatilho automático (a tela de verificação lida)
+# ============================================================ gatilho automático (só Instagram, só com sinal forte)
+def _atividade_em_foco(s: Any, valor: tuple[str, float] | None = None) -> None:
+    """O sinal forte: o que `DeviceManager.observe` guarda quando a ChallengeActivity está em foco."""
+    s.devices.devices[IID].atividade_de_desafio = valor or (ATIVIDADE, time.monotonic())
+
+
+async def test_so_o_texto_da_tela_nao_retira_a_conta_fica_bloqueada_para_a_pessoa(
+        harness: Harness, correio_registrado: None) -> None:
+    s = estado(harness)
+    pid, ancora, _ = persona_com_duas_contas(s)
+    s.social_repo.set_account_session(pid, ancora, IID, status=SessionStatus.session_ready, verified_at=now_iso())
+    # Sem a atividade de desafio em foco (ou com outra atividade, ou com a leitura velha): só o texto.
+    for visto in (None, ("com.instagram.android.activity.MainTabActivity", time.monotonic()),
+                  (ATIVIDADE, time.monotonic() - 10_000)):
+        s.devices.devices[IID].atividade_de_desafio = visto
+        s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada", package=IG_PKG)
+        linha = s.social_repo.profile_row(pid)
+        assert linha["status"] == "blocked" and linha["username"] == "ana.ancora"          # como antes: pessoa decide
+        assert s.social_repo.account_row(pid, ancora) is not None
+    assert _eventos(s.db, "profile.account_retired") == []
+    assert any("sem a atividade de desafio" in e["message"] for e in _eventos(s.db, "log"))
+
+
+async def test_atividade_de_desafio_em_foco_retira_e_a_leitura_do_foco_a_produz(
+        harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = estado(harness)
+    rt = s.devices.devices[IID]
+    # A leitura do foco (o que `observe` faz ao ver a árvore de conta travada): só a ChallengeActivity vale.
+    for foco, esperado in (((IG_PKG, ATIVIDADE), True), ((IG_PKG, "com.instagram.mainactivity.MainActivity"), False),
+                           ((None, None), False)):
+        monkeypatch.setattr(rt.io, "current_focus", lambda f=foco: f)
+        await s.devices._ler_atividade_de_desafio(rt)
+        assert s.devices.tem_atividade_de_desafio(IID) is esperado
+
+    def quebra() -> tuple[str, str]:
+        raise RuntimeError("adb fora")
+
+    monkeypatch.setattr(rt.io, "current_focus", quebra)
+    await s.devices._ler_atividade_de_desafio(rt)
+    assert s.devices.tem_atividade_de_desafio(IID) is False                   # sem leitura, sem sinal forte
+    # E o gatilho enxerga a leitura: dois sinais (o texto classificado + a atividade) retiram.
+    pid, ancora, _ = persona_com_duas_contas(s)
+    monkeypatch.setattr(rt.io, "current_focus", lambda: (IG_PKG, ATIVIDADE))
+    await s.devices._ler_atividade_de_desafio(rt)
+    s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada", package=IG_PKG)
+    assert s.social_repo.account_row(pid, ancora) is None and s.social_repo.profile_row(pid)["status"] == "active"
+
+
 async def test_gatilho_a_tela_de_verificacao_na_ancora_retira_a_conta_e_a_persona_volta_a_active(
         harness: Harness, correio_registrado: None) -> None:
     s = estado(harness)
+    _atividade_em_foco(s)
     pid, ancora, correio = persona_com_duas_contas(s)
     for c in (ancora, correio):
         s.social_repo.set_account_session(pid, c, IID, status=SessionStatus.session_ready, verified_at=now_iso())
@@ -287,6 +338,7 @@ async def test_gatilho_a_tela_de_verificacao_na_ancora_retira_a_conta_e_a_person
 async def test_gatilho_com_limpeza_defeituosa_deixa_a_persona_bloqueada_e_a_conta_intacta(
         harness: Harness, correio_registrado: None) -> None:
     s = estado(harness)
+    _atividade_em_foco(s)
     pid, ancora, _ = persona_com_duas_contas(s)
     s.social_repo.set_account_session(pid, ancora, IID, status=SessionStatus.session_ready, verified_at=now_iso())
 
@@ -305,13 +357,23 @@ async def test_gatilho_com_limpeza_defeituosa_deixa_a_persona_bloqueada_e_a_cont
     assert s.social_repo.profile_row(pid)["status"] == "active"
 
 
-async def test_gatilho_na_conta_de_outro_app_retira_so_ela(harness: Harness, correio_registrado: None) -> None:
+async def test_conta_de_outro_app_nao_e_retirada_sozinha_fica_bloqueada_e_so_a_rota_retira(
+        harness: Harness, correio_registrado: None) -> None:
     from .test_sessao_declarada import CORREIO
     s = estado(harness)
     pid, ancora, correio = persona_com_duas_contas(s)
+    s.social_repo.set_account_session(pid, correio, IID, status=SessionStatus.session_ready, verified_at=now_iso())
+    _atividade_em_foco(s)                    # mesmo com a atividade em foco: a retirada automática é só do Instagram
     s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada", package=CORREIO)
+    assert s.social_repo.account_row(pid, correio) is not None and s.social_repo.account_row(pid, ancora) is not None
+    assert s.social_repo.account_credential_row(pid, correio)["status"] == "review"         # para só ela, na fila
+    assert s.social_repo.account_session_row(pid, correio, IID)["status"] == "auth_challenge"
+    assert [m["handle"] for m in s.social_repo.contas_travadas_abertas()] == ["ana.correio"]  # marcada
+    assert s.social_repo.profile_row(pid)["status"] == "active"                             # P9: a persona segue
+    assert _eventos(s.db, "profile.account_retired") == []
+    # Pela rota manual a conta do outro app sai.
+    assert s.social.retirar_conta_bloqueada(pid, correio, origem="declarado", autor="dono")["retirada"] is True
     assert s.social_repo.account_row(pid, correio) is None and s.social_repo.account_row(pid, ancora) is not None
-    assert s.social_repo.profile_row(pid)["status"] == "active"
 
 
 async def test_costura_o_appstate_liga_o_esquecer_conta_do_aprendizado_na_retirada(harness: Harness) -> None:
@@ -387,3 +449,16 @@ def test_migracao_071_cria_a_lapide_sem_chave_estrangeira(tmp_path: Path) -> Non
         db.execute("INSERT INTO contas_retiradas(app_id, handle_sha256, retirada_em) VALUES (?,?,?)",
                    ("instagram", "a" * 64, now_iso()))                               # UNIQUE (app_id, hash)
     assert re.fullmatch(r"[0-9a-f]{64}", hash_do_handle("x"))
+
+
+def test_responder_a_terceiro_num_post_nosso_segue_permitido_e_conta_nossa_segue_recusada(tmp_path: Path) -> None:
+    """O caminho do roteiro 8.3: a conta dona do post responde ao comentário de um TERCEIRO (`counterparty` é o dele)."""
+    svc, repo, db, pid, outro = _montar(tmp_path)
+    policies = PolicyEngine(repo, lambda: _Frota(curtidas=3))
+    responder = capability_of(IG, "REPLY_COMMENT")
+    assert policies.check(pid, responder, counterparty="@terceiro.qualquer").allowed
+    svc.retirar_conta_bloqueada(outro, _ancora(repo, outro))
+    # Conta nossa, viva (felipe) ou aposentada (lucas, retirado agora), continua recusada para qualquer ação com efeito.
+    assert not policies.check(pid, responder, counterparty=f"@{LUCAS}").allowed
+    assert not policies.check(outro, responder, counterparty=f"@{FELIPE}").allowed
+    assert not policies.check(pid, capability_of(IG, "FOLLOW"), counterparty=f"@{FELIPE}").allowed

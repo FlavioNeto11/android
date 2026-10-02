@@ -81,9 +81,7 @@ async def test_conta_travada_no_outro_app_poe_o_aparelho_em_quarentena_sem_bloqu
 
     assert _marcadores(s) == [("ana.correio", "correio", pid)]
     assert s.social_repo.profile_row(pid)["status"] == "active"
-    # 29.23 (ADR-068): a trava confirmada retira a conta do correio na hora; a âncora fica intacta.
-    assert s.social_repo.account_row(pid, conta) is None
-    assert _credencial(s, pid, ancora) == "active"
+    assert (_credencial(s, pid, conta), _credencial(s, pid, ancora)) == ("review", "active")
     # A quarentena é do APARELHO (ADR-055): nada é despachado nele, de app nenhum, até uma pessoa decidir.
     rt = s.devices.get(IID)
     for pacote in (CORREIO, IG):
@@ -122,12 +120,9 @@ async def test_no_app_ancora_o_comportamento_de_hoje_nao_muda(harness: Harness, 
     assert _marcadores(s) == []
 
     # A trava na âncora: a persona é bloqueada (ADR-029) e o aparelho entra em quarentena com a conta âncora.
-    ancora_app = str(s.social_repo.conta_ancora(pid)["app_id"])
     s._sessao_desmentida(IID, "auth_challenge", "confirm you're human", subtipo="conta_travada", package=IG)
-    # 29.23 (ADR-068): bloqueada e, na hora, a conta âncora sai e a persona volta a `active`, sem @.
-    assert (s.social_repo.profile_row(pid)["status"], s.social_repo.profile_row(pid)["username"]) == ("active", "")
-    assert s.social_repo.account_row(pid, ancora) is None
-    assert _marcadores(s) == [("ana.ancora", ancora_app, pid)]
+    assert s.social_repo.profile_row(pid)["status"] == "blocked"
+    assert _marcadores(s) == [("ana.ancora", str(s.social_repo.conta_ancora(pid)["app_id"]), pid)]
     assert _credencial(s, pid, conta) == "active"                      # a conta do correio não é tocada
 
 
@@ -146,15 +141,13 @@ async def test_a_trava_vista_pelo_executor_vai_a_conta_do_app_da_tela(harness: H
     executor._sessao_desmentida(IID, CORREIO, "auth_challenge", "confirm you're human", subtipo="conta_travada")
 
     assert s.social_repo.profile_row(pid)["status"] == "active"
-    assert s.social_repo.account_row(pid, conta) is None               # 29.23: a conta do correio saiu na hora
-    assert (status(s, pid, conta), status(s, pid, ancora)) == (None, "session_ready")
-    assert _credencial(s, pid, ancora) == "active"
+    assert (status(s, pid, conta), status(s, pid, ancora)) == ("auth_challenge", "session_ready")
+    assert (_credencial(s, pid, conta), _credencial(s, pid, ancora)) == ("review", "active")
     assert _marcadores(s) == [("ana.correio", "correio", pid)]
 
     # O inverso: a etapa em curso é do correio, e a trava aparece na tela do app âncora.
     monkeypatch.setattr(s, "_pacote_em_curso", lambda _iid: CORREIO)
-    ancora_app = str(s.social_repo.conta_ancora(pid)["app_id"])
     executor._sessao_desmentida(IID, IG, "auth_challenge", "confirm you're human", subtipo="conta_travada")
-    assert s.social_repo.profile_row(pid)["status"] == "active"        # bloqueou e a retirada devolveu a persona
-    assert s.social_repo.account_row(pid, ancora) is None and status(s, pid, ancora) is None
-    assert ("ana.ancora", ancora_app, pid) in _marcadores(s)
+    assert s.social_repo.profile_row(pid)["status"] == "blocked"
+    assert status(s, pid, ancora) == "auth_challenge"
+    assert ("ana.ancora", str(s.social_repo.conta_ancora(pid)["app_id"]), pid) in _marcadores(s)
