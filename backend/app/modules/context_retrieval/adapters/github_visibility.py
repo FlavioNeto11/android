@@ -105,12 +105,20 @@ def _git(raiz: Path, *args: str, timeout: float = 30.0) -> subprocess.CompletedP
 
 
 def worktree_limpo(raiz: Path) -> bool | None:
-    """`True` só se o git respondeu e NÃO listou nada; `False` se listou qualquer coisa; `None` se o git não respondeu
-    (falha, timeout). Só `True` autoriza."""
+    """`True` só se o git respondeu, NÃO listou nada e nenhum arquivo está marcado `assume-unchanged`/`skip-worktree`;
+    `False` se listou qualquer coisa ou há marca; `None` se o git não respondeu (falha, timeout). Só `True` autoriza."""
     r = _git(raiz, "status", "--porcelain=v1", "--untracked-files=all")
     if r is None:
         return None
-    return not r.stdout.strip()
+    if r.stdout.strip():
+        return False
+    # `status` não vê o que o índice manda ignorar: `assume-unchanged` (etiqueta em minúscula no `ls-files -v`) e
+    # `skip-worktree` (`S`) escondem alteração local. Não dá para provar limpo ali, então qualquer arquivo marcado é sujo
+    # (fail closed), mesmo sem alteração: a marca existir já tira a garantia de que `status` diz tudo.
+    marcados = _git(raiz, "ls-files", "-v", "-z")
+    if marcados is None:
+        return None
+    return not any(e[:1].islower() or e[:1] == b"S" for e in marcados.stdout.split(b"\x00") if e)
 
 
 def ler_head(raiz: Path) -> str | None:

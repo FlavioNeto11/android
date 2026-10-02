@@ -1642,6 +1642,9 @@ volta em segundos, sem tocar em always-on nem em bloqueio.
 **Aplicabilidade.** Vigente para o cliente sing-box 1.14.2 em Android 14. A causa de fundo é CPU do convidado no boot:
 um host menos carregado falha menos. O gesto com um app em primeiro plano e nos aparelhos do notebook segue `not_run`.
 
+**Correção (W8, 01/10/2026): o tile só valia no android-05 porque o `serviceMode` do cliente ali já era VPN.** A
+recuperação da convergência deixou de ser o tile e passou a ser o Start da interface: ver K-068.
+
 ### K-067 — Working set pequeno do emulador com WHPX não prova paginação do convidado
 
 **Data:** 01/10/2026 · **Área:** worker do notebook (`worker-lan-01`), rede por aparelho (29.9)
@@ -1665,3 +1668,33 @@ cadeia. Corrigido em `658e5bb` (conta as linhas `UIDs:`); com a correção, W2�
 **O que fazer.** Não tirar conclusão de memória pelo working set de um emulador com WHPX, e desconfiar primeiro do
 que a própria plataforma mede: o registro dizia "tun0 no ar; VPN CONNECTED" e mesmo assim "o túnel não subiu".
 
+### K-068 — O tile do SFA não recalcula o `serviceMode`: num cliente que só importou o perfil ele inicia o ProxyService e o serviço aborta
+
+**Data:** 01/10/2026 · **Área:** rede por aparelho (ADR-056, item 29.9, W8)
+
+**Sintoma.** No android-09 o tile do cliente (`religar_pelo_tile`, o "mecanismo medido" do K-066) clicava com sucesso (exit 0) e
+o túnel nunca subia: `ProxyService` em primeiro plano por 1–2 s, `STOP_FOREGROUND`, sem `tun0`, sem par
+(`F6_TUN_NOT_CREATED_AFTER_TILE`, 4 vezes no W8 e nas duas A1). No android-05 o mesmo gesto subia o `VPNService` e o túnel.
+
+**Causa (código do SFA 1.14.2, commit upstream `fc21909df7a3f0fc9435f3866fb6a4960711aa5f`; prova real no 09).**
+`TileService.onClick` → `BoxService.start()` → `Settings.serviceClass()` (`serviceMode == VPN` → `VPNService`, senão
+`ProxyService`), **sem `rebuildServiceMode()`**. Só `MainActivity.startService0` (o Start da UI) e a seleção de perfil com o
+serviço rodando recalculam o modo (`Libbox.hasTunInbound(perfil selecionado)`); a importação (`create(andSelect = true)`)
+seleciona o perfil sem recalcular, e o `serviceMode` nasce `NORMAL`. O `ProxyService` com perfil que tem `tun` falha no
+`openTun` ("android: tun inbound requires VPN service", que só vai para a UI, não para o logcat) e se encerra. O 09 só
+importou o perfil (nunca um Start pela UI): modo NORMAL. O 05 já tinha o modo VPN (origem desconhecida: provável Start da UI nas
+rodadas do piloto). O always-on do boot não passa por isso (o sistema inicia o `VPNService` direto).
+
+**O que não funcionou.** O tile no 09 (0 de 6). Culpar o netlink (`avc denied { bind } netlink_route_socket` aparece também no
+05 e na VPN que funciona), o par, o endpoint ou o perfil selecionado (r2 estava certo).
+
+**O que funcionou.** UM toque no Start da interface (`real`, android-09, 01/10 18:23Z): `VPNService`, `tun0` em < 1 s, VPN
+CONNECTED, sem par. A plataforma agora religa assim (`rede_aplicacao.religar_pela_interface`): acha o `Start` PELA ÁRVORE (o
+rótulo do Compose é filho não clicável de um contêiner clicável), UM toque, sucesso só com `tun0` E VPN CONNECTED, e o guard
+`wrong_service_class_for_tun` quando o Start inicia o `ProxyService`. Nunca se escreve o `serviceMode` (é do SFA).
+
+**Aplicabilidade.** Cliente sing-box (SFA) 1.14.2; reconferir o código ao trocar de versão. O Start da UI deixa o `serviceMode`
+em VPN, o que torna o tile funcional naquele aparelho, mas a convergência não depende disso. O rótulo vem do locale do aparelho
+(tabela `ROTULOS_DO_CLIENTE`, SFA 1.14.2: en/fa/ru/zh-CN/zh-TW; sem identificação independente de idioma, o Compose não tem `testTag`) e a
+classe de serviço só vale na JANELA do Start (`UNKNOWN` sem prova): handoff W8 §20. Os boots 1/3/4 do W8 sem túnel por
+always-on seguem sem causa (`BOOT_RECOVERY_ROOT_CAUSE = OPEN`).

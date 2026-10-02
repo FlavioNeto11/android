@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-01 — a rede religa o túnel pelo Start da interface do cliente, não pelo tile (W8) (branch `fix/w8-sfa-service-mode`)
+
+- **Correção (não implantada).** O tile do SFA 1.14.2 não recalcula o `serviceMode`: num cliente que só importou o perfil
+  (o android-09) iniciava o `ProxyService`, que aborta sem `tun0`. A convergência passa a religar pelo Start da interface
+  (`rede_aplicacao.religar_pela_interface`: abre a atividade, acha o `Start` pela árvore, UM toque, sucesso só com `tun0` e
+  VPN CONNECTED), com o guard `wrong_service_class_for_tun` e sem fallback para o tile. `rede.cliente_atividade` novo;
+  `rede.cliente_tile` vira legado. Prova `simulated`; a real do princípio é de 01/10 (android-09, UM Start da UI).
+  W8 segue aberto: os boots 1/3/4 sem túnel por always-on não são explicados. Detalhe: `docs/handoffs/w8-diagnostico-android09.md` §19.
+- **Hardening (mesma branch).** O rótulo do `Start` vem do locale do aparelho e da tabela do SFA 1.14.2 (`ROTULOS_DO_CLIENTE`:
+  en/fa/ru/zh-CN/zh-TW; outro idioma cai no inglês; rótulo desconhecido ou de outro pacote = nenhum toque). A classe de serviço
+  passa a ser lida só na janela do Start (baseline de hora do aparelho); sem prova, `UNKNOWN`. §20 do mesmo handoff.
+
 ## 2026-09-28 — o backend troca o Appium órfão sem prova de mascaramento (K-039 fora do deploy) (branch `claude/nifty-feynman-uflykh`)
 
 - **Operação.** Quando o backend morria sozinho (crash, Windows Update), o supervisor o religava, mas o Appium que
@@ -68,6 +80,33 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
+
+## 2026-10-02 — Retrieval: proposta de orçamento da etapa B (J6, só doc)
+
+- `docs/dominios/context-retrieval.md` ganha a seção "Proposta: orçamento da etapa B": a regra do teto (`gasto da A + len(payload)//4 > 24.000` barra a B, ~33 KB de payload), os números reais do smoke (A ~15,6 mil tokens, B ~7,6 mil, US$ 0,00066 a 0,00098 por pergunta), cinco opções com custo estimado, e a recomendação: medir antes o valor da B (ablação A x A + B com métrica de região) e conferir se a A cobre o escopo (`files_considered = 195`). Nada foi alterado nem habilitado; a decisão de habilitar o remoto é do dono.
+
+## 2026-10-02 — Retrieval: índice BM25 incremental por arquivo (J5)
+
+- **`infrastructure/bm25.py`**: o índice guarda o digest do texto de cada arquivo (`INDEX_VERSION` 3, o que invalida os índices em disco antigos uma vez). Com a revisão nova e um índice anterior compatível (memória ou o mais recente em disco), só os arquivos alterados ou novos são higienizados e tokenizados; o resto reaproveita as contagens. O índice sai IDÊNTICO ao cheio. Semente de outro corpus, versão ou raiz, ou corrompida, nunca é usada. Sem mudança de pontuação, de política nem de API.
+- **Medição `real`** (02/10, central, 1.415 arquivos, `scripts/context-retrieval-incremental-bench.py`, antes = `main` `0da61af`): uma edição 5,3 s → 1,3 s; processo novo com índice em disco 5,3 s → 1,6 s; trocar para `HEAD~10` 5,0 s → 1,7 s; a frio sem índice, igual (13,3 s → 12,5 s). `simulated`: `test_context_retrieval_bm25_incremental.py` (22, comparação com o índice cheio em 7 tipos de mudança, semente incompatível ou corrompida; duas mutações do código falham os testes).
+
+## 2026-10-02 — Retrieval: medição local de qualidade neste repositório (J4)
+
+- **`scripts/context-retrieval-local-eval.py`** (novo, só mede): avalia lexical, BM25 e híbrido local em 40 commits `feat`/`fix` da `main`, com o índice no estado do pai do commit (sem vazar a resposta). Zero rede e zero chamada paga. `real` (02/10, central, `--ate 40316ba`): com escopo de código o BM25 chega a 82,5% hit@3 e 0,652 MRR@10; sem escopo cai para 30%; o `hybrid_local` fica abaixo do BM25 puro (72,5%); a primeira consulta de cada revisão custa ~5,5 s. Números, limites e propostas (não aplicadas) em `docs/dominios/context-retrieval.md`. `simulated`: `scripts/tests/test_context_retrieval_local_eval.py` (8, git real em pasta temporária; o anti-vazamento falha se o índice usar o commit em vez do pai).
+
+## 2026-10-02 — Retrieval: duas dívidas pequenas fechadas (J3)
+
+- **Rótulo `stage_b_cache`**: ficava `miss` também quando o orçamento barrava a etapa B antes de qualquer chamada. Agora só vira `miss` depois de `check_call` aprovar; bloqueada fica `skipped` (com `stage_b_reason`). Teste discriminante em `test_context_retrieval_semantic.py` (falha com o código antigo).
+- **Gate de worktree limpo**: não via arquivo marcado `assume-unchanged` ou `skip-worktree` (o `git status` sai vazio). `worktree_limpo` passa a ler também `git ls-files -v -z` e trata qualquer marca como sujo, mesmo sem alteração; `ls-files` que falha dá `None`. Um sparse-checkout (que usa `skip-worktree`) também bloqueia o envio remoto, de propósito. 6 testes novos em `test_context_retrieval_privacy_gates.py` (modificado escondido, só a marca, desmarcar limpa, git falhando); com o gate antigo eles falham. `simulated`: git real em pasta temporária, GitHub e provedor falsos.
+
+## 2026-10-02 — Falsas falhas de `git worktree` na suíte
+
+- **`worker-install.ps1`**: sem o venv do central à mão, lia `.git\HEAD` como pasta; num `git worktree` o `.git` é um arquivo `gitdir:` e a versão saía `0.1.0+desconhecido`. Agora segue `gitdir:` → HEAD do worktree → ref na pasta comum (`commondir`) ou em `packed-refs`, espelhando `app/version.py`. Prova: `test_instalacao_do_worker.py` 20/20 em worktree e 25/25 (com o backup) num checkout normal; o script real foi rodado com ref solta, `packed-refs`, HEAD destacado e worktree, e a versão bateu com o SHA.
+- **`test_backup_e_restore_ensaio_de_ponta_a_ponta`**: dependia do `config/config.yaml` da instalação (copiado pelo `backup.ps1`), que não existe em worktree. O teste agora monta a própria raiz temporária (scripts reais, `config.yaml` de fixture, interpretador do venv em uso) e roda a cópia; não toca no `config.yaml` real. Controle: o teste antigo falha num worktree com venv e sem config; o novo passa. Só testes e um script; sem mudança no backend.
+
+## 2026-10-02 — Retrieval de contexto: PR #18 mergeado e prova real do Jev registrada
+
+- **Docs.** `docs/dominios/context-retrieval.md` passa de `not_run` para `real` na chamada ao Jev em código PÚBLICO (`python-poetry/poetry` @ `94b6e35`, 02/10, commits `a07ff80` e `a88d609`; 11 de 12 chamadas, 0 fallbacks, ~US$ 0,006; etapa A/B por caso: H14 A+B, H13 só A com B bloqueada por `budget_exceeded`) e lista as dívidas para habilitar o uso remoto em "Limites conhecidos". `docs/estado-atual.md` com o topo atualizado. Só docs; sem chave, sem código.
 
 ## 2026-10-01 (noite) — Retrieval de contexto de código (ADR-063), branch `feat/context-retrieval`
 
