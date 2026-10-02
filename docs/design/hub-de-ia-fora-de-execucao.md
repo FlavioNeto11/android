@@ -10,6 +10,11 @@ abertas podem mudar o desenho:
 Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **Jev-retrieval** = o provedor remoto de
 `modules/context_retrieval` (ADR-063).
 
+**Implementação (31.2 e 31.6, 02/10/2026):** a coluna `ai_calls.origem`/`ref` (migração 073), `Usage.origem`, o filtro
+`costs.spent_usd(origem=)`, `AIError.motivo` fechado e as fatias `curador` e `decisao_fechada` em `_budget` estão no
+código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. Faltam o método do curador (30.12), a porta de decisão
+do Jev e o saldo da conta (ADR-051) dentro da mesma ordem.
+
 ## 1. O que já existe (PROVED no código)
 
 - Métodos do hub fora de execução usam o papel `plan` emprestado e `run_id=None`, como `generalize` (13.2),

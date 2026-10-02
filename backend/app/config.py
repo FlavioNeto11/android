@@ -509,6 +509,22 @@ class ImageCfg(BaseModel):
     timeout_s: float = Field(180.0, ge=1, le=900)
 
 
+class AiLimitsCfg(BaseModel):
+    """Fatias do teto de gasto DO DIA para usos fora de execução (item 31.6; hub-de-ia-fora-de-execucao.md §3).
+
+    São PARTES do teto do dia (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: a chamada
+    precisa passar no teto do dia E na fatia da própria origem. Uma fatia estourada barra só aquela origem
+    (`AIError.motivo` = `fatia_curador` ou `fatia_jev`); as demais seguem. `0` desliga a fatia."""
+
+    #: Curador do Livro (`origem='curador'`). Sem valor, a fatia é `curador_fracao_do_dia × teto do dia`; sem teto
+    #: do dia (`0`), não há fatia e nada muda. A fração é o α = 10 % decidido pelo dono (30.11).
+    curador_max_usd_per_day: float | None = Field(None, ge=0, le=100_000)
+    curador_fracao_do_dia: float = Field(0.10, ge=0, le=1)
+    #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a proposta D-J3, a
+    #: confirmar pelo dono; ainda não há chamador, então o valor só passa a valer quando a porta existir.
+    jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+
+
 class AiCfg(BaseModel):
     #: Gerador de imagem da persona. Não é papel: `_ia_coerente` não o conhece e o hub não o roteia.
     image: ImageCfg = ImageCfg()
@@ -608,6 +624,8 @@ class AiCfg(BaseModel):
     #: modelo de UMA execução não exige reiniciar o central nem mexer no que as outras usam.
     profiles: dict[str, AiProfileCfg] = {}
     canary: AiCanaryCfg = AiCanaryCfg()
+    #: Fatias do teto do dia por origem de chamada (item 31.6). Vazio = os padrões da classe.
+    limits: AiLimitsCfg = AiLimitsCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
