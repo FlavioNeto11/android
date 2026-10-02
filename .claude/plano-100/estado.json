@@ -4773,21 +4773,30 @@
   },
   "28.9": {
    "id": "28.9",
-   "status": "partial",
-   "proof": "not_run",
-   "evidence": "Adendo do contrato v0.45 (docs/api-contract.md, 16 rotas, DTOs alinhados a 067 e estados.py, eventos, erros) e tela Pedidos em docs/produto.md: PR #60. Decisoes tomadas em 02/10 (PR #62): emenda a ADR-062 e piso confirmados pelo dono; POST /api/pedidos/previa; 200 sem_mudanca; retomar sem retorno automatico; id deterministico pelo hash inteiro da idempotency_key; chave do backfill pelo instante do slot.",
-   "blocker": "Implementacao (rotas, tela, caixa de avisos) pendente; depende do 28.4 (feito) e do 28.7; migracao da caixa de avisos pela regra do numero maior.",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #106, merge f35a816d (02/10/2026, sessao jev). API /api/pedidos (previa, criacao idempotente, acoes, leitura, eventos, snapshot), migracao 072 pedido_avisos (dedupe, lido/nao lidos, POST /avisos/ler, emissores orcamento_80/esgotado/relatorio_pronto), tela Pedidos + Comando com previa + Pendencias agrupadas (emenda ADR-062). Suite inteira na arvore combinada 4484d15c: 5596 passed / 0 failed; apos UX e main e9de6697: backend afetados 605 passed, frontend typecheck + 1241 testes. UX validada no navegador contra backend simulado isolado (8765/5188) em 1366 e 375 px, todos os fluxos. Real (central apos deploy, laco ligado): not_run; validacao da orquestradora no navegador apos o deploy pendente.",
+   "blocker": "",
    "files": [
-    "docs/api-contract.md",
-    "docs/produto.md"
+    "backend/app/modules/pedidos/presentation/router.py",
+    "backend/app/modules/pedidos/infrastructure/servico.py",
+    "backend/app/modules/pedidos/infrastructure/avisos.py",
+    "backend/migrations/072_pedido_avisos.sql",
+    "frontend/src/features/pedidos/",
+    "frontend/src/features/command/CommandPanel.tsx"
    ],
-   "testes": "not_run (so documento)",
-   "grupo": "sessao:jev-fase28",
+   "testes": [
+    "backend/tests/test_pedidos_api.py",
+    "backend/tests/test_pedidos_avisos.py",
+    "frontend/src/features/pedidos/PedidosPage.test.tsx",
+    "frontend/src/features/pedidos/NovoPedido.test.tsx"
+   ],
+   "grupo": "sessao:jev-28-9",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T19:30:15+00:00"
+   "quando": "2026-10-02T21:38:16+00:00"
   },
   "28.11": {
    "id": "28.11",
@@ -5155,6 +5164,27 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T21:27:38+00:00"
+  },
+  "28.14": {
+   "id": "28.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #100, merge e22098c5 (02/10/2026, sessao jev). modules/avisos/domain/mensagem.py: learning.needs_person avisa so na entrada da espera, faixa C por padrao (avisos.aprendizado_faixas), chave learning:{kind}:{ref}:{desde}, sem identificador na mensagem; chave_do_fato comum (approval, run, session, pedido, learning). Payload combinado com a frente Aprendizado. Suite combinada a08298fb: 0 falhas deste item. Real (Telegram com evento do Livro): not_run.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/avisos/domain/mensagem.py",
+    "backend/app/modules/avisos/infrastructure/servico.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_avisos_aprendizado.py"
+   ],
+   "grupo": "sessao:jev-28-9",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:38:16+00:00"
   }
  },
  "rodadas": [
@@ -6254,6 +6284,16 @@
    ],
    "grupos": [
     "29-23-conta-bloqueada"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:38:16+00:00",
+   "itens": [
+    "28.9",
+    "28.14"
+   ],
+   "grupos": [
+    "sessao:jev-28-9"
    ]
   }
  ]
