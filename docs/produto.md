@@ -106,6 +106,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     se repete no horário de verão), a autonomia com o que exige aprovação e o que fica recusado, o custo estimado por mês
     (ou "sem base de custo", nunca um número inventado) e os bloqueios. Só **Confirmar**, com o selo da prévia, cria o pedido
     ativo; sem confirmar, ele fica rascunho.
+  - **Aparência da tela (passe de design, 02/10).** Datas sempre como "sex, 02/10 às 19:00" (hora do fuso do pedido; o fuso só aparece se difere do navegador, uma vez). Lista: cartão com chips, agenda legível e metadados discretos; vazio com **Novo pedido**, que abre o Comando com o painel "Repetir ou acompanhar" aberto. Painel de criação em seções (Quando, O que conta como feito, Limites, Avançado) com o resumo "Quem faz" e a prévia em blocos (quando, quem e onde, autonomia, custo). Detalhe: título curto e Resumo em cartões. Sem alvo decidido no Automático, a tela mostra a pergunta do backend e manda marcar aparelhos no Manual ou escolher uma persona.
   - **Lista (`#/pedidos`).** Uma linha por pedido: estado, título, tipo de gatilho, persona(s), próxima execução (hora
     local e fuso), última ocorrência (resultado e link para a execução), gasto contra o orçamento e avisos não lidos.
     Busca, estado, autonomia, persona e tipo ficam no link, como nas outras telas (ADR-062, item 4); o item do menu leva
