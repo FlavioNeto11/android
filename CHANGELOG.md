@@ -58,6 +58,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subconjunto da RRULE (HOURLY/DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE, COUNT/UNTIL, com recusa clara do resto), geração em hora local ingênua localizada com `zoneinfo`, prévia das próximas datas com relógio injetado, hora inexistente desviada para o primeiro instante válido depois do salto e hora repetida em `fold=0`. `tzdata==2026.4` declarado em `requirements.in` (já estava no lock, indireto pelo psycopg). Prova `simulated`: `tests/test_pedidos_recorrencia.py` (`America/Sao_Paulo` 2018/2019, `America/New_York`, `Europe/Lisbon`, `Pacific/Apia`). Decisão de gerador próprio registrada em `docs/design/pedidos-persistentes.md` §7.7. Sem migração, sem rota.
 
+## 2026-10-02 — Modelo do pedido persistente: tabelas, colunas em `runs` e domínio puro de estados (28.2, branch `feat/28-2-modelo-pedido`)
+
+- Migração `067_pedidos.sql`: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias` (`chave` UNIQUE + trio UNIQUE) e `runs.pedido_id`, `ocorrencia_id`, `prioridade` (padrão 0). Sem FK entre `runs` e a ocorrência (a purga de uma não leva a outra); só colunas novas e vazias, nenhuma linha de `runs` é tocada. O plano dizia 060: a main já passou dela, e a 065/066 são da trava (28.1).
+- `backend/app/modules/pedidos/domain/`: `estados.py` (tabelas de transição do pedido, com ator `pessoa`/`sistema`, e da ocorrência; `transicionar_*` recusa aresta fora da tabela, ator errado e motivo faltante) e `chave.py` (`ped:<pedido>:<gatilho>:<instante UTC no segundo>`; gesto manual/backfill leva a origem; `chave:t<n>` como `idempotency_key`; ids até 28 caracteres para caber nos 100 de `RunCreate`).
+- Prova `simulated`: `backend/tests/test_pedidos_modelo.py` (produto cartesiano das duas máquinas, chave, migração sobre banco existente, CHECK igual ao vocabulário do domínio), em SQLite; PostgreSQL `not_run` (sem `TEST_DATABASE_URL`). Fora do escopo: laço (28.4), API/tela (28.9), recorrência (28.3).
+
 ## 2026-10-02 — Trava de líder dos laços periódicos (28.1, branch feat/28-1-trava)
 
 - Migração `066_travas.sql` e `app/taskqueue/travas.py` (`Lideranca`): tomada por CAS no relógio do banco, prazo de 120 s, renovação a cada 20 s num laço próprio do `AppState` (`travas-de-lider`), token de cerca crescente, tomada idempotente, dono = `OWNER_ID`, devolução na saída limpa e faxina de partida para o mesmo dono.
