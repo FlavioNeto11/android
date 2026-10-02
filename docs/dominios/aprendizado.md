@@ -274,6 +274,13 @@ com o banco aberto só para leitura.
   ou não houve observação nesta tentativa. Nunca texto da tela. A trava achada dentro de uma ferramenta devolve a tela
   pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`. As telas aprendidas ficam fora, para a
   chave do grupo não depender do modo do livro.
+- **App por etapa no aprendizado (medido em 02/10, `test_aprendizado_app_por_etapa.py`).** `steps.app_id` NULL é o
+  desenho, não perda: o plano só grava o app da etapa quando ele difere do app do plano (`planning/parsing.py`), e
+  `runs.app_ids` leva o app do plano primeiro. A régua diária, o relatório de falhas, as lições e as costuras resolvem
+  por `app_da_etapa` (etapa, depois `app_ids[0]`), então uma execução Instagram + Outlook já conta cada etapa no app
+  dela. Não gravar o app do plano em `steps.app_id`: mudaria a conta esperada (`do_aparelho`) e a identidade da receita.
+  `failure_screen` vazio é, em quase tudo, tela desconhecida por desenho, app sem `telas.yaml` ou tentativa anterior ao
+  escritor.
 - **Backlog sem falso corrigido (22.3).** A chave do grupo não mudou, mas a MEDIDA de uma linha segue
   `ChaveDoGrupo.abrange`: a linha sem tela (as abertas antes do escritor, e as de tela desconhecida) mede o mesmo
   `(app, capability, failure_kind)` em QUALQUER tela, na linha de base, na prova e na reincidência; a linha com tela

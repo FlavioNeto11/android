@@ -98,7 +98,7 @@ class _LivreOut(BaseModel):
     postcondition: _PostOut
     timeout_s: int
     max_attempts: int
-    saidas: list[str] = []            # item 24.3: só etapa livre lê valor; ação de catálogo não
+    saidas: list[str] = []            # item 24.3: o valor que a etapa livre lê (na de catálogo, `saidas` da etapa)
 
 
 class _MultiStepOut(BaseModel):
@@ -109,6 +109,9 @@ class _MultiStepOut(BaseModel):
     livre: _LivreOut | None
     depends_on: list[str]
     for_each: str | None
+    # Item 24.3 (ADR-065): os valores que a etapa de CATÁLOGO lê para as seguintes — só os que a ação declara poder
+    # entregar (`Capability.saidas`). Na etapa livre o nome vai em `livre.saidas`, como sempre.
+    saidas: list[str] = []
 
 
 class _MultiPlanOut(BaseModel):
@@ -278,7 +281,8 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
         crus = [CapabilityNode(key=norm_key(etapas[i].key), capability=etapas[i].capability or "",
                                depends_on=[norm_key(d) for d in etapas[i].depends_on],
                                bindings={b.name: b.value for b in etapas[i].bindings},
-                               for_each=norm_key(etapas[i].for_each) if etapas[i].for_each else None)
+                               for_each=norm_key(etapas[i].for_each) if etapas[i].for_each else None,
+                               saidas=tuple(dict.fromkeys(n for n in map(_norm_saida, etapas[i].saidas) if n)))
                 for i in indices]
         nos.update(zip(indices, herdar_argumentos(catalogo, crus), strict=True))
     faltas: list[MissingInfo] = []
@@ -318,6 +322,9 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
                 continue
             else:
                 etapa = _etapa_livre(chave, s.livre, depends_on=s.depends_on, for_each=s.for_each, app_id=None)
+                # O nome posto em `saidas` da etapa, e não em `livre.saidas`, vale igual: perder a leitura aqui só
+                # viraria, logo abaixo, a pergunta "quem lê esse valor?" por um erro de lugar do modelo.
+                etapa.saidas = list(dict.fromkeys([*etapa.saidas, *(n for n in map(_norm_saida, s.saidas) if n)]))
             montadas.append((app.id, etapa))
         faltas += saidas_sem_leitura(etapa for _, etapa in montadas)
         usados = list(dict.fromkeys(app_id for app_id, _ in montadas))

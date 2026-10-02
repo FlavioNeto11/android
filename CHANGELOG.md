@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Teste da fila de boot do worker espera o fato e não lê os processos do host (fix/teste-fila-de-boot)
+
+- `test_worker_executor.py::test_a_espera_na_fila_de_boot_e_dita_em_progresso` falhava neste host: esperava `sleep(0.05)` pelo
+  recado "fila de boot", mas antes dele cada `start` varre os processos REAIS do host (`pid_do_avd`: `psutil.process_iter` +
+  `cmdline()`, ~60 ms sob pytest). Agora as esperas que significam "algo acontece" usam `_ate(...)` (o recado de fila, o primeiro
+  emulador subir) e `_estado_falso` isola também `pid_do_avd` (`_sem_processos_reais`; `processos_reais=True` deixa a leitura
+  real). Dois testes novos provam a causa (varredura lenta de 0,2 s sem isolamento; `process_iter` não é chamado com ele).
+  Só teste e doc; `backend/app/` intacto. Aprendizado K-070.
+
+## 2026-10-02 — Catálogo do Outlook na main e valor lido entre etapas (12.3, branch feat/12-3-outlook-catalogo)
+
+- 12.3: catálogo só de leitura do Outlook na `main`, valor lido entre etapas. `backend/app/conhecimento/apps/com.microsoft.office.outlook/catalogo.yaml`
+  (`OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS`, `SEARCH_MAIL`; nenhuma ação com efeito) e `Capability.saidas`
+  (`planning/capabilities.py`): a ação declara os nomes que pode entregar (`remetente`, `assunto` na abertura da caixa e
+  na busca); o planejador entre apps leva `saidas` na etapa de catálogo (`planning/parsing.py`, `prompts.py`) e o
+  executor lê o valor como na etapa livre. ADR-065; sem migração. `CapabilityDefinition.output.values`.
+- `simulated_provider.py`: o simulador cai na entrada do app quando o catálogo não tem as ações que ele conhece.
+- Testes: `test_planejador_entre_apps.py` (catálogos do Outlook entram no pedido; C1 provado com o catálogo real),
+  `test_porta_de_politica_por_app.py` (efeito no Outlook sem ação do catálogo é recusado), `test_catalogo_como_dado.py`,
+  `test_outlook_declarado.py`. Prova: `simulated`; a leitura real no aparelho é `not_run`.
+
+## 2026-10-02 — Aprendizado: atribuição de app por etapa travada em teste (branch fix/aprendizado-app-por-etapa)
+
+- `backend/tests/test_aprendizado_app_por_etapa.py`: régua diária e relatório de falhas contam cada etapa de uma execução
+  Instagram + Outlook no app dela e levam a tela da falha à chave; sem mudança de código (o `steps.app_id` NULL é o
+  desenho). Prova `simulated`.
+
 ## 2026-10-02 — Fase 28: decisões do dono e do coordenador registradas (28.9, emenda à ADR-062, 28.11 Telegram)
 
 - `docs/api-contract.md` (Adendo v0.45): as oito decisões em aberto do 28.9 viram decisões tomadas; o dono confirmou a emenda à ADR-062 e o piso de frequência (observar/preparar ≥ 15 min, agir ≥ 1 h). O ponto de extensão do 28.11 registra o canal escolhido: Telegram, com token e chat_id só pelo cofre/.env.

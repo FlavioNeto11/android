@@ -63,15 +63,16 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 | [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
-| [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
+| [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | vigente; fatias 1–4 implementadas (28/09), fatia 5 (aprendizado) absorvida por ADR-054 (20.9) | 28/09 |
 | [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`); pendências dos revisores resolvidas em `7a02491` (itens 21.10–21.14) | 28/09 |
-| [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | aceito; fundação (A1, migração 055) integrada em `c359f65`, a implantar; A2–A9 pendentes | 29/09 |
+| [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | vigente; fundação (A1) implantada em `c359f65` (29/09 ~03:55Z), A2–A9 integradas e implantadas em 29/09 ~07:38Z (lições em shadow, telas em observe) | 29/09 |
 | [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede) | 29/09 |
 | [ADR-056](#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055) | Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida; revisa a cláusula de rede do ADR-055 | vigente (decisão do dono); Fase 25 a implementar; substitui em parte o ADR-055 | 29/09 |
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
-| [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | proposto (Fase 24) | 29/09 |
+| [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | vigente; Fase 24 implementada (24.1–24.9); o §3 (valor lido entre etapas) é completado pelo [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) para ação de catálogo | 29/09 |
 | [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
+| [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 
 ---
 
@@ -3568,7 +3569,7 @@ app); ADR-055 (quarentena, uma conta por alvo); ADR-009; item 12.3.
 
 ## ADR-058 — Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas
 
-**Data:** 29/09/2026 · **Estado:** proposto (desenho da Fase 24; a implementação confirma ou corrige) · **Decisão
+**Data:** 29/09/2026 · **Estado:** vigente (Fase 24 implementada, 24.1–24.9; nasceu proposto como desenho da Fase 24) · **Decisão
 técnica** sobre o pedido do dono de 29/09.
 
 **Contexto.** O 12.1 deu app por etapa, contexto por etapa e portas por app no despacho, mas: citar outro app derruba
@@ -3829,3 +3830,36 @@ no mesmo banco com relógio falso: tomada, renovação, queda, cerca recusando o
 **Relação.** [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §7.3; `backend/app/taskqueue/travas.py`;
 `backend/app/state.py` (`_laco_das_travas`, `_lider`, `_fechar_dia_cercado`); [banco.md](banco.md) (migração 066);
 vagas de IA (`ai_slots.py`, migração 027) como molde.
+
+## ADR-065 — Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml`
+
+**Data:** 02/10/2026 · **Estado:** vigente · **Decisão técnica** (item 12.3; confirma e completa o ADR-058 §3 para o
+catálogo). Os números 063 (retrieval) e 064 (trava de líder) são de outros trabalhos.
+
+**Contexto.** O catálogo só de leitura do Outlook foi mantido fora da `main` porque, com catálogo, o Outlook deixa de ser
+app de etapa livre no plano entre apps (ADR-058, item 24.1) e só a etapa livre lia valor para outra etapa (24.3): o
+cenário C1 do dono (ler no Outlook e usar no Instagram) viraria pergunta, com 16 testes vermelhos.
+
+**Decisão.**
+
+1. `Capability.saidas` (`catalogo.yaml`, campo `saidas`) lista os nomes que a ação PODE entregar às etapas seguintes. É
+   dado do app: zero Python por app (ADR-052). Validado na carga (nome pela regra do `PlanStep`, sem repetir; a coleta não
+   declara, porque a lista dela vai pelo `for_each`).
+2. O planejador escolhe, por etapa, quais nomes usa (`saidas` na etapa de catálogo do plano entre apps; na etapa livre
+   segue `livre.saidas`). Nome que a ação não declara, ou ação sem `saidas`, vira pergunta (`missing`) e o plano sai sem
+   etapas. A ação NUNCA entrega por padrão: entregar força `read_value` e desliga a receita, e só vale quando alguém cita
+   o valor.
+3. O valor continua sendo lido pelo executor, do texto do elemento na tela, com a triagem de segredo: código de
+   verificação, senha e token nunca são saída (ADR-009, ADR-022, ADR-058 §3). O Outlook declara só `remetente` e
+   `assunto`, nunca um nome de código.
+4. Não muda a regra da porta de política: efeito no Outlook sem ação do catálogo segue recusado (`manual_only`), e enviar
+   e-mail continua fora do catálogo.
+
+**Alternativas.** Toda ação de leitura entregar sempre (desligaria a receita em todo uso); o nome livre escolhido pelo
+modelo em qualquer ação (leitura inventada, sem nada que diga onde ler); deixar o Outlook livre sem catálogo (a porta
+recusaria, com razão, só o efeito, mas a leitura ficaria sem ação nomeada nem prova declarada).
+
+**Consequências.** `CapabilityDefinition.output.values` carrega a lista (v1alpha1); sem migração (`steps.saidas`, 056, já
+guarda a lista); o simulador de planos cai na entrada do app quando o catálogo não tem as ações que ele conhece.
+
+**Relação.** ADR-052, ADR-057, ADR-058 §3, item 24.3, item 13.2.
