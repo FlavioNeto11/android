@@ -632,7 +632,7 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
 | 28.1 | **Trava de líder**: tabela `travas` (migração 059), tomada e renovação por CAS no relógio do banco, token; aplicada a saldos, curadoria e retenção (`state.py`) | laços sem trava (§1); Kleppmann, Kubernetes | M |
-| 28.2 | **Modelo do pedido**: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias`, `runs.pedido_id`, `ocorrencia_id`, `prioridade` (migração 060); domínio puro de estados e transições (`modules/pedidos/domain/`), chave da ocorrência | §6 | G |
+| 28.2 | **Modelo do pedido**: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias`, `runs.pedido_id`, `ocorrencia_id`, `prioridade` (migração 067); domínio puro de estados e transições (`modules/pedidos/domain/`), chave da ocorrência | §6 | G |
 | 28.3 | **Recorrência e fuso**: subconjunto da RRULE, `zoneinfo` + `tzdata` declarado em `requirements.in` (hoje indireto), desvio documentado para hora inexistente, `fold=0` na repetida; prévia das próximas datas | RFC 5545, PEP 495/615 | M |
 | 28.4 | **Laço de pedidos**: materializar, janela, coalescer, sobreposição, despacho idempotente por `RunService.create`, fechamento pelo gancho e pela varredura, retomada depois de reinício | §7.2–7.5, 7.9 | G |
 | 28.5 | **Tentativas e efeito**: nova tentativa só sem efeito possível; `incerta` para em `aguardando_pessoa`; pausa por falhas seguidas | §7.6 | M |
