@@ -2174,23 +2174,44 @@
   "11.10": {
    "id": "11.10",
    "status": "implemented",
-   "proof": "tests",
-   "evidence": "Migração 036 (policy_groups + instagram_profiles.policy_group_id); social/policy.py _own/_group/origin_for/limits_origin (escolha própria → grupo → padrão); service._aplicar_politica compartilhada (null = herdar; aviso de afrouxamento de risco alto também no grupo); rotas /instagram/policy-groups e /instagram/policy-defaults. Frontend: PolicyEditor.tsx (editor compartilhado), PolicyGroups.tsx (seção + diálogo com membros), aba Configurações com seletor de grupo e origem por ação. Testes: tests/test_grupos_de_acesso.py (6), ProfileDetail.test.tsx e ProfilesPage.test.tsx (3). Escolhas próprias já gravadas nos 8 perfis (SEND_MESSAGE autônomo) continuam sobrepondo — visível como 'próprio'.",
-   "quando": "2026-09-24T18:06:49+00:00"
+   "proof": "simulated",
+   "evidence": "Migração 036 (policy_groups + instagram_profiles.policy_group_id); social/policy.py _own/_group/origin_for/limits_origin (escolha própria → grupo → padrão); service._aplicar_politica compartilhada (null = herdar; aviso de afrouxamento de risco alto também no grupo); rotas /instagram/policy-groups e /instagram/policy-defaults. Frontend: PolicyEditor.tsx (editor compartilhado), PolicyGroups.tsx (seção + diálogo com membros), aba Configurações com seletor de grupo e origem por ação. Testes: tests/test_grupos_de_acesso.py (6), ProfileDetail.test.tsx e ProfilesPage.test.tsx (3). Escolhas próprias já gravadas nos 8 perfis (SEND_MESSAGE autônomo) continuam sobrepondo — visível como 'próprio'.\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "12.1": {
    "id": "12.1",
    "status": "implemented",
-   "proof": "tests",
-   "quando": "2026-09-24T18:47:42+00:00",
-   "evidence": "Migração 037 (profile_accounts com backfill da conta Instagram — conferido numa cópia do banco de produção: 8 contas, 18 memórias e 39 interações marcadas instagram; account_credentials; app_id em memory_items/social_interactions/pending_approvals/steps; runs.app_ids). PlanStep.app_id + parsing/prompts (etapa declara o app; igual ao do plano vira None; desconhecido vira pergunta). Scheduler: _app_context por etapa, _pacotes_do_objetivo + _portas_do_app (app e sessão para cada app das etapas que faltam). Executor/state: efeito, memória da tela e portão de política com o app da etapa; fleet_targeting por (app, alvo). Social: contas por app (CRUD, senha no cofre, sessão marcada pela pessoa fora do Instagram; conta Instagram é âncora), memória/interações filtráveis por app, contexto diz o app do fato. Testes: tests/test_perfil_multiapp.py (5)."
+   "proof": "simulated",
+   "evidence": "Migração 037 (profile_accounts com backfill da conta Instagram — conferido numa cópia do banco de produção: 8 contas, 18 memórias e 39 interações marcadas instagram; account_credentials; app_id em memory_items/social_interactions/pending_approvals/steps; runs.app_ids). PlanStep.app_id + parsing/prompts (etapa declara o app; igual ao do plano vira None; desconhecido vira pergunta). Scheduler: _app_context por etapa, _pacotes_do_objetivo + _portas_do_app (app e sessão para cada app das etapas que faltam). Executor/state: efeito, memória da tela e portão de política com o app da etapa; fleet_targeting por (app, alvo). Social: contas por app (CRUD, senha no cofre, sessão marcada pela pessoa fora do Instagram; conta Instagram é âncora), memória/interações filtráveis por app, contexto diz o app do fato. Testes: tests/test_perfil_multiapp.py (5).\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "12.2": {
    "id": "12.2",
    "status": "implemented",
-   "proof": "tests",
-   "quando": "2026-09-24T18:47:42+00:00",
-   "evidence": "Backend: app/apps_overview.py (/apps-overview e /apps/{id}/overview: contas, aparelhos, execuções, custo de IA por app/dia, etapas por origem, falhas, receitas, fluxos; preenche runs.app_ids antigos a partir do plano). Frontend: OpenAppMenu (Abrir app escolhe o app e manda app_id, no Foco e na ação em lote); perfil com AppSwitcher acima das abas (Memória e Interações por app) e aba Contas (ProfileAccounts.tsx); menu Aplicativos vira AppsPage (Por app + Versões e instalação) com página do app e rastro de execuções abrindo na tela de Execuções."
+   "proof": "simulated",
+   "evidence": "Backend: app/apps_overview.py (/apps-overview e /apps/{id}/overview: contas, aparelhos, execuções, custo de IA por app/dia, etapas por origem, falhas, receitas, fluxos; preenche runs.app_ids antigos a partir do plano). Frontend: OpenAppMenu (Abrir app escolhe o app e manda app_id, no Foco e na ação em lote); perfil com AppSwitcher acima das abas (Memória e Interações por app) e aba Contas (ProfileAccounts.tsx); menu Aplicativos vira AppsPage (Por app + Versões e instalação) com página do app e rastro de execuções abrindo na tela de Execuções.\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "12.3": {
    "id": "12.3",
@@ -2208,30 +2229,58 @@
   "13.1": {
    "id": "13.1",
    "status": "implemented",
-   "proof": "tests",
-   "quando": "2026-09-24T20:44:50+00:00",
-   "evidence": "Migração 038 (training_sessions, training_inputs); app/training/recorder.py (gravação com UiTree.at + _safe_target; senha/código/tela sensível não gravados — parece_senha_ou_codigo); ganchos em DeviceManager.manual_input e open_app; devolver o controle encerra; rotas /instances/{id}/training e /training/*. tests/test_modo_treinamento.py."
+   "proof": "simulated",
+   "evidence": "Migração 038 (training_sessions, training_inputs); app/training/recorder.py (gravação com UiTree.at + _safe_target; senha/código/tela sensível não gravados — parece_senha_ou_codigo); ganchos em DeviceManager.manual_input e open_app; devolver o controle encerra; rotas /instances/{id}/training e /training/*. tests/test_modo_treinamento.py.\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "13.2": {
    "id": "13.2",
    "status": "implemented",
-   "proof": "tests",
-   "quando": "2026-09-24T20:44:50+00:00",
-   "evidence": "planning/training.py (TRAINER_SYSTEM, _TrainOut, proposta_simulada), generalize em anthropic/openai/simulated/routing (papel plan, só texto); app/training/skills.py (propose/save → FlowStore.learn_from_plan + flow_scope + distill_training com a identidade do replay); flows.match respeita escopo por perfil/grupo; portão de política recusa efeito sem ação num app com catálogo; comando com parâmetros colados é recusado. Teste ponta a ponta: habilidade treinada reaproveitada por comando para outro contato com etapas por receita (sem planejador)."
+   "proof": "simulated",
+   "evidence": "planning/training.py (TRAINER_SYSTEM, _TrainOut, proposta_simulada), generalize em anthropic/openai/simulated/routing (papel plan, só texto); app/training/skills.py (propose/save → FlowStore.learn_from_plan + flow_scope + distill_training com a identidade do replay); flows.match respeita escopo por perfil/grupo; portão de política recusa efeito sem ação num app com catálogo; comando com parâmetros colados é recusado. Teste ponta a ponta: habilidade treinada reaproveitada por comando para outro contato com etapas por receita (sem planejador).\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "13.3": {
    "id": "13.3",
    "status": "implemented",
-   "proof": "tests",
-   "quando": "2026-09-24T20:44:50+00:00",
-   "evidence": "features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relatório sem IA/com IA); aba Habilidades mostra 'Ensinadas por você'. TrainingReview.test.tsx."
+   "proof": "simulated",
+   "evidence": "features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relatório sem IA/com IA); aba Habilidades mostra 'Ensinadas por você'. TrainingReview.test.tsx.\n\n[02/10/2026, sessao jev: o campo proof deste item era 'tests', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "10.5": {
    "id": "10.5",
    "status": "implemented",
-   "proof": "unit",
-   "evidence": "migrations/039_limites_por_servidor.sql (worker_limits + declarado no hello); workers/protocol.py (Hello.boot_parallelism/min_free_ram_mb, mensagem Limits); workers/registry.py (limites_definidos/declarados, definir_limites, capacidade com o efetivo + max_working, envio na 1a batida de cada conexão); worker/executor.py (FilaDeBoot redimensionável, aplicar_limites com volta ao worker.yaml) e worker/agent.py (declara o arquivo, aplica 'limits'); taskqueue/scheduler.py (servidor_de, trabalhando_por_servidor, servidor_lotado no despacho e na entrega; servidores() e candidatos_do_app); taskqueue/balanceamento.py (distribuir: carga relativa, prefere ligado, vaga para ligar, teto próprio, motivos); taskqueue/service.py (previa_de_distribuicao, _distribuir no create); models.py (DistributeSpec, RunCreate.distribute, ServerLimits*); api.py (GET /servers/limits, PUT /servers/{id}/limits, GET /runs/distribution). Frontend: settings/ServersLimits.tsx + serverLimits.ts (cartão por servidor), LimitsSection em 'Por servidor' + 'Parque', validation.ts sem vagas/boots; command/DistributeTarget.tsx + CommandPanel (modo distribuir com prévia). Testes: tests/test_limites_por_servidor.py (15), serverLimits.test.ts, app.integration (cartão e distribuir).",
-   "quando": "2026-09-24T21:11:34+00:00"
+   "proof": "simulated",
+   "evidence": "migrations/039_limites_por_servidor.sql (worker_limits + declarado no hello); workers/protocol.py (Hello.boot_parallelism/min_free_ram_mb, mensagem Limits); workers/registry.py (limites_definidos/declarados, definir_limites, capacidade com o efetivo + max_working, envio na 1a batida de cada conexão); worker/executor.py (FilaDeBoot redimensionável, aplicar_limites com volta ao worker.yaml) e worker/agent.py (declara o arquivo, aplica 'limits'); taskqueue/scheduler.py (servidor_de, trabalhando_por_servidor, servidor_lotado no despacho e na entrega; servidores() e candidatos_do_app); taskqueue/balanceamento.py (distribuir: carga relativa, prefere ligado, vaga para ligar, teto próprio, motivos); taskqueue/service.py (previa_de_distribuicao, _distribuir no create); models.py (DistributeSpec, RunCreate.distribute, ServerLimits*); api.py (GET /servers/limits, PUT /servers/{id}/limits, GET /runs/distribution). Frontend: settings/ServersLimits.tsx + serverLimits.ts (cartão por servidor), LimitsSection em 'Por servidor' + 'Parque', validation.ts sem vagas/boots; command/DistributeTarget.tsx + CommandPanel (modo distribuir com prévia). Testes: tests/test_limites_por_servidor.py (15), serverLimits.test.ts, app.integration (cartão e distribuir).\n\n[02/10/2026, sessao jev: o campo proof deste item era 'unit', fora do vocabulario do livro-razao (real | simulated | not_run). Era prova de teste automatizado com dubles, ou seja `simulated`; texto da evidencia inalterado.]",
+   "arquivos": [],
+   "testes": "",
+   "grupo": "sessao:jev-vocabulario",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T15:35:05+00:00"
   },
   "T.4": {
    "id": "T.4",
@@ -5443,6 +5492,21 @@
    ],
    "grupos": [
     "sessao:jev-j14"
+   ]
+  },
+  {
+   "quando": "2026-10-02T15:35:05+00:00",
+   "itens": [
+    "10.5",
+    "11.10",
+    "12.1",
+    "12.2",
+    "13.1",
+    "13.2",
+    "13.3"
+   ],
+   "grupos": [
+    "sessao:jev-vocabulario"
    ]
   }
  ]
