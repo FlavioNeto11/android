@@ -364,8 +364,8 @@ async def test_saldo_baixo_adia_sem_perder_a_ocorrencia_nem_gastar_tentativa(h: 
     [o] = _ocs(db)
     assert (o["estado"], o["tentativa"], o["run_id"], o["dono"]) == ("devida", 0, None, None)
     assert o["resumo"].startswith("adiada: OpenAI: saldo estimado")
-    # Passa muito além da janela de recuperação: adiar NÃO é falha, a ocorrência não vira `perdida`.
-    r.avancar(10 * 3600)
+    # Ainda DENTRO da janela de recuperação (1800 s): adiar NÃO é falha, a ocorrência segue `devida`.
+    r.avancar(600)
     assert laco.uma_volta().adiadas == 1
     assert [x["estado"] for x in _ocs(db)] == ["devida"] and db.scalar("SELECT estado FROM pedidos WHERE id='ped1'") == "ativo"
     # O saldo volta: a MESMA ocorrência é despachada, com a tentativa 1 e o resumo limpo.
@@ -374,6 +374,25 @@ async def test_saldo_baixo_adia_sem_perder_a_ocorrencia_nem_gastar_tentativa(h: 
     assert res.despachadas == 1 and res.adiadas == 0
     [o2] = _ocs(db)
     assert (o2["id"], o2["estado"], o2["tentativa"], o2["resumo"]) == (o["id"], "despachada", 1, None)
+
+
+async def test_saldo_baixo_alem_da_janela_vira_perdida_com_o_motivo_do_saldo(h: Harness) -> None:
+    """28.6 (coordenador): esperar para sempre esconderia o atraso; passou de `previsto_para + J`, a ocorrência é `perdida`
+    (visível, §7.5) e o motivo do saldo fica nela. O pedido segue vivo, sem execução criada."""
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    laco.adiar_por_saldo = lambda: "OpenAI: saldo estimado US$ 0,50, abaixo do bloqueio"
+    _agora(db, "ped1", r)
+    laco.uma_volta()
+    r.avancar(1790)                 # janela de `agora` = 1800 s, contada de `previsto_para` (5 s antes do início)
+    assert laco.uma_volta().perdidas == 0 and [x["estado"] for x in _ocs(db)] == ["devida"]
+    r.avancar(30)
+    res = laco.uma_volta()
+    assert (res.perdidas, res.despachadas) == (1, 0) and _runs(db) == []
+    [o] = _ocs(db)
+    assert o["estado"] == "perdida" and o["motivo"].startswith("adiada por saldo além da janela: OpenAI: saldo estimado")
+    assert o["terminada_em"] and o["run_id"] is None and o["tentativa"] == 0, "nunca virou execução"
 
 
 async def test_a_leitura_do_saldo_que_falha_nao_segura_o_despacho(h: Harness) -> None:

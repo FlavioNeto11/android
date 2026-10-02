@@ -267,6 +267,24 @@ async def test_a_nova_tentativa_passa_pelo_saldo_e_fica_devida_sem_gastar_enquan
     assert laco.uma_volta().despachadas == 1 and _ocs(db)[0]["tentativa"] == 2
 
 
+async def test_a_nova_tentativa_adiada_por_saldo_conta_a_janela_a_partir_do_atraso_e_depois_vira_perdida(h: Harness) -> None:
+    r, db = Relogio(), h.state.db
+    laco, _ = _laco(h, r, retentativa_base_s=60)
+    _agora(db, "ped1", r, max_tentativas=2)
+    laco.uma_volta()
+    _falhar_a_ultima(db)
+    laco.uma_volta()
+    laco.adiar_por_saldo = lambda: "saldo baixo"
+    r.avancar(1830)         # além de `previsto_para + 1800 s` (5 s antes do início), mas aquém de `atraso (60 s) + 1800 s`
+    assert laco.uma_volta().perdidas == 0, "a janela da repetição parte do atraso, não do instante previsto"
+    [o] = _ocs(db)
+    assert o["estado"] == "devida"
+    r.avancar(40)
+    assert laco.uma_volta().perdidas == 1
+    [o] = _ocs(db)
+    assert o["estado"] == "perdida" and o["motivo"] == "adiada por saldo além da janela: saldo baixo"
+
+
 async def test_sem_orcamento_para_outra_tentativa_a_falha_e_definitiva_e_o_pedido_encerra(h: Harness) -> None:
     r, db = Relogio(), h.state.db
     laco, _ = _laco(h, r)

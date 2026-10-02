@@ -570,7 +570,16 @@ class LacoDePedidos:
 
     def _adiar(self, p: Row, o: Row, motivo: str, token: int, agora: datetime, r: Resumo) -> None:
         """A ocorrência FICA `devida` (sem reserva, sem execução, sem tentativa gasta: adiar não é falha) e o motivo vai
-        em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha."""
+        em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha. Passou da janela
+        (`previsto_para + J`, §10 do desenho), vira `perdida` COM o motivo do saldo: esperar para sempre esconderia o
+        atraso, e a `perdida` é visível e diz por quê (§7.5)."""
+        if truncar(agora) > self._limite_da_janela(p, o):
+            perdida = f"adiada por saldo além da janela: {motivo}"[:500]
+            transicionar_ocorrencia("devida", "perdida", motivo=perdida)
+            with self.lideranca.cercada(PEDIDOS, token):
+                if self.repo.mover(o["id"], "devida", "perdida", motivo=perdida, terminada_em=to_iso(agora)):
+                    r.perdidas += 1
+            return
         texto = f"adiada: {motivo}"[:500]
         if o["resumo"] != texto:
             self.repo.soltar_reserva(o["id"], texto)
