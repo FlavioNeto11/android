@@ -482,6 +482,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   posse_s: 120                    # validade da reserva de uma ocorrência por um laço (a chave é quem garante a unicidade)
   saldo_minimo_usd: 0             # saldo estimado mínimo (US$) das contas de IA em uso para despachar; abaixo, a ocorrência é ADIADA
                                   # (fica devida, sem falha); 0 desliga o mínimo (o bloqueio do dono na conta adia mesmo assim)
+  resumo_ia: false                # resumo do relatório por IA (28.7): só o ponto de extensão; o relatório determinístico sai sempre
+  resumo_ia_teto_usd: 0.05        # teto por relatório que o resumidor deve respeitar (o 28.6 conta no orçamento do pedido)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
