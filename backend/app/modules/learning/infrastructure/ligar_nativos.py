@@ -158,19 +158,6 @@ class TrilhaDasLojas:
 AvisoDeMudanca = Callable[..., None]
 
 
-def _anunciar(db: Database, avisar: AvisoDeMudanca | None, kind: LivroKind, ref: str, de: str | None, para: str,
-              por: str) -> None:
-    """O aviso da espera do dono (30.21) da mudança que a loja fez, DEPOIS da trilha e num `savepoint` próprio: a falha
-    dele (log, nunca exceção) não leva a trilha junto, e a loja da execução nunca cai por ele."""
-    if avisar is None:
-        return
-    try:
-        with db.savepoint():
-            avisar(kind, ref, de, para, by=por)
-    except Exception:  # noqa: BLE001
-        log.exception("aprendizado: aviso de espera de %s %s", kind.value, ref)
-
-
 class PoliticaD1DoFluxo:
     """`flows.PoliticaDoFluxo`: o status com que o fluxo nasce de uma execução, e a trilha do que a loja mudou."""
 
@@ -197,9 +184,10 @@ class PoliticaD1DoFluxo:
             with self._db.savepoint():                # dentro do `try`: o savepoint precisa VER a falha para desfazê-la
                 self._trilha.registrar(LivroKind.FLUXO, m.flow_id, m.de, m.para, motivo=m.motivo, por=m.por,
                                        run_id=m.run_id)
-        except Exception:  # noqa: BLE001 - a trilha informa; o fluxo aprendido não cai por causa dela
+                if self._avisar is not None:      # 30.21: depois da trilha, no mesmo savepoint (a falha sobe até ele)
+                    self._avisar(LivroKind.FLUXO, m.flow_id, m.de, m.para, by=m.por)
+        except Exception:  # noqa: BLE001 - a trilha e o aviso informam; o fluxo aprendido não cai por causa deles
             log.exception("aprendizado: trilha do fluxo %s", m.flow_id)
-        _anunciar(self._db, self._avisar, LivroKind.FLUXO, m.flow_id, m.de, m.para, m.por)
 
 
 
@@ -232,9 +220,10 @@ class OuvinteD1DasReceitas:
                 origem = self._execucao_de_origem(m.recipe_id) if m.de is None else None
                 self._trilha.registrar(LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, motivo=m.motivo,
                                        por=m.por, run_id=origem)
-        except Exception:  # noqa: BLE001 - a trilha informa; a receita não cai por causa dela
+                if self._avisar is not None:      # 30.21: depois da trilha, no mesmo savepoint
+                    self._avisar(LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, by=m.por)
+        except Exception:  # noqa: BLE001 - a trilha e o aviso informam; a receita não cai por causa deles
             log.exception("aprendizado: trilha da receita %s", m.recipe_id)
-        _anunciar(self._db, self._avisar, LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, m.por)
 
 
     def _execucao_de_origem(self, recipe_id: int) -> str | None:

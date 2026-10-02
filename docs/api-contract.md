@@ -1153,6 +1153,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
+| `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -3454,3 +3455,37 @@ se o pacote não está em nenhuma das três fontes. As duas rotas entram antes d
 `pre_preenche`, `contexto_da_persona`, `medido_nao_usado`, `nao_medido`, `inerte` e `desconhecida` (o modo de que depende não
 foi lido). Vale o modo GLOBAL (`ai.recipes`, `ai.flows`, `skills.enabled`, `aprendizado.licoes.modo`, `aprendizado.telas.modo`);
 o modo por app é o item 30.20.
+
+## Adendo v0.49 (02/10/2026) — Evento `learning.needs_person`: conhecimento aguardando a pessoa (item 30.21)
+
+Evento persistido no barramento (`events`, fora de `EPHEMERAL_KINDS`), no padrão de `approval.pending` e `session.needs_person`.
+Sem `instance_id`. `level`: `warn` ao entrar na faixa C, `info` nos demais. A `message` só tem identificadores e o vocabulário
+fechado (também é persistida e transmitida).
+
+**`data`** (lista fechada, `CAMPOS_DO_PAYLOAD`; um teste falha se aparecer outra chave):
+
+| Campo | Conteúdo |
+|---|---|
+| `kind`, `ref` | o item (`receita` + `100`; `licao` + `li-…`) |
+| `app` | pacote (`""` se o item não tem app) |
+| `faixa` | `B` ou `C` (§8.4 de `design/aprendizado-vivo.md`) |
+| `aguardando` | `true` ao entrar na espera; `false` ao sair |
+| `motivo` | entrada: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; saída: `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
+| `href` | `#/aprendizado?item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
+| `desde` | ISO UTC de quando entrou na espera (também no evento de saída) |
+
+**Nunca** vai no evento: conteúdo de receita ou fluxo, seletor, texto digitado, parâmetro, texto de persona, nota nem conclusão de IA.
+
+**Quando publica.** Na transição ou no nascimento que deixa o item na fila "Para aprovar" (`validated` com `requires_owner`;
+candidata de origem humana) e em qualquer transição que o tira dela, incluindo a mudança que a própria loja de receitas ou de
+fluxos faz. Idempotente por (`kind:ref`, `aguardando`): mover entre dois estados que não mudam a espera, ou repetir a mesma
+mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` existe no
+vocabulário para o curador do 30.11; ninguém o publica ainda.
+
+**Faixa (mínima, `domain/espera.py::classificar_espera`; o 30.10 a estende).** C: `risk=high`, `default_policy=manual_only`,
+ação que envia texto escrito (`needs_draft`) ou item nascido de sessão desconhecida. B: efeito externo médio ou commit sem
+catálogo no app, e origem humana sem efeito (D-2). O mapa de `interaction_type` para envio, publicação e exclusão e a
+autenticação por conteúdo de tela ainda não são derivados.
+
+**Ligação.** `montar_aprendizado(..., eventos=<EventBus>)`. Sem `eventos`, nada é publicado: `state.py` precisa passar
+`eventos=self.bus` (fora do escopo do item 30.21). Prova `simulated` (`tests/test_learning_espera.py`).
