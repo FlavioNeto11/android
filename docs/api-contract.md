@@ -3888,6 +3888,8 @@ quarentena (`resolved_by: sistema:limpeza-ao-retirar`, `resolution: "limpeza aut
 Evento novo **`device.account_cleanup`** por aparelho: `data` = `{profile_id, account_id, package, instance_id, resultado, passo, motivo, antes,
 depois, energia, resolvidos}`; `resultado` é `concluida` (nível `warn`), `dispensada` (a quarentena já tinha sido resolvida por uma pessoa, ou a
 retirada não valeu; `info`), `falhou` (`error`, o aviso de atenção: a quarentena segue aberta e nada é repetido) ou `nao_agendada` (`error`).
-`antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). O evento e o log não carregam o @ da conta. Nada
+`antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). Os aparelhos do pedido vêm dos marcadores abertos da
+conta e do vínculo (não da sessão); `passo: outra_conta` (em `falhou`) é a recusa de limpar um aparelho que também serve a outra conta do mesmo
+app, ou que tem quarentena aberta de outra conta (sem acordá-lo). O evento e o log não carregam o @ da conta. Nada
 roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
 

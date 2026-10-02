@@ -644,8 +644,12 @@ receber contas novas.
 - **Limpeza do app ao retirar (29.27, emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z).** Conta de app que declara `limpar_ao_retirar: true`
   no `app.yaml` (hoje o Instagram; lido em `AppDefinition.clear_on_account_retire`) leva os dados do app embora dos aparelhos onde estava
   logada: `pm clear` SÓ desse pacote, captura de tela antes e depois, nenhum toque na tela, e a quarentena do aparelho resolvida pelo caminho do
-  29.24 com a nota "limpeza automática autorizada pelo dono em 02/10". Os aparelhos são os marcadores abertos do @ da conta, o vínculo que
-  serve ao app e a sessão com conta logada, CAPTURADOS antes da retirada (`SocialRepository.aparelhos_da_conta`). Quem executa é
+  29.24 com a nota "limpeza automática autorizada pelo dono em 02/10". Os aparelhos são os marcadores abertos do @ da conta e o vínculo que
+  serve ao app, CAPTURADOS antes da retirada (`SocialRepository.aparelhos_da_conta`); a sessão NÃO é pista (sobrevive ao desvínculo e pode ser
+  de aparelho que já serve outra persona). Antes do `pm clear` há a trava `outra_conta` (vínculo, sessão em qualquer status ou marcador de outra
+  conta do mesmo app no aparelho: recusa, sem limpar, quarentena aberta) e, antes de acordar, a trava de energia (só acorda se todo marcador
+  aberto do aparelho é do pedido). **Risco residual (o dono aceita):** conta logada no app fora da plataforma (seletor de contas do Instagram)
+  seria apagada pelo `pm clear`. Quem executa é
   `commands/limpeza_ao_retirar.py` (gancho `SocialService.ao_limpar_aparelhos`, ligado no `AppState`): tarefa de fundo, um aparelho por vez,
   comando `session.logout` dentro de `run_device_job`; hibernado ou parado é acordado com a confirmação de quarentena do SISTEMA e devolvido ao
   estado de antes. Falha em qualquer passo: quarentena aberta, evento `device.account_cleanup` em erro, sem nova tentativa. Idempotente (não repete

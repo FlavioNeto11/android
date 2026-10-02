@@ -31,11 +31,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no
   Instagram; `AppDefinition.clear_on_account_retire`). Retirada de conta (gatilho ou rota `retire`) de app que declara isso faz, em tarefa de fundo, um
-  aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo + sessão, capturados antes de a retirada mascarar o @): acorda se
+  aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo, capturados antes de a retirada mascarar o @; a sessão NÃO é pista): acorda se
   hibernado/parado, captura de tela, `pm clear` SÓ do pacote declarado (comando `session.logout` em `run_device_job`), captura de tela, resolve a
   quarentena com a nota "limpeza automática autorizada pelo dono em 02/10" e devolve a energia. Falha: quarentena aberta e evento `device.account_cleanup`
   em erro, sem repetir. Sem retroativo na subida; sem o @ em evento ou log. Resposta de `retire` ganha `limpeza_dos_aparelhos` (adendo v0.66).
-  `resolver_conta_travada` aceita `marcadores`. Sem migração. `simulated`: `tests/test_limpeza_ao_retirar.py` (12); `not_run` no central.
+  `resolver_conta_travada` aceita `marcadores`. Sem migração. `simulated`: `tests/test_limpeza_ao_retirar.py` (19); `not_run` no central.
+- **Correção da revisão adversarial (defeitos que bloqueavam o merge):** o `pm clear` podia apagar o Instagram de OUTRA persona viva. (1) A sessão
+  deixa de ser fonte de aparelho (`unbind` não a apaga; `wrong_account`/`needs_person` não dizem "esta conta está aqui"). (2) Trava `outra_conta`
+  dentro do trabalho do aparelho, logo antes do `clear_data`: recusa se há vínculo (inclusive o sem app de persona com conta do app, o furo da
+  D2-a), sessão em qualquer status ou marcador de outra conta do mesmo app (`SocialRepository.outra_conta_no_aparelho`); quarentena aberta e
+  evento de erro. (3) Trava de energia: só acorda com `confirm_locked_account` se todo marcador aberto do aparelho é do pedido. **Risco residual a
+  aceitar pelo dono:** conta logada no app fora da plataforma (seletor de contas do Instagram) seria apagada. O furo da D2-a em `create_profile`
+  segue como item separado.
 
 ## 2026-10-02 — 29.26: texto livre fora da query string e persona sem foto sem requisição (branch feat/29-26-texto-fora-da-query)
 

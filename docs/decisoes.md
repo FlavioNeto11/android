@@ -4001,9 +4001,11 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    (`resolver_conta_travada`), com a nota "limpeza automática autorizada pelo dono em 02/10". O pacote vem do DADO
    (`AppDefinition.clear_on_account_retire`, lido por `capabilities_of`): o núcleo não conhece app nenhum.
    (a) **Onde a conta estava logada:** capturado em `SocialService.retirar_conta_bloqueada` ANTES da transação (que
-   mascara o @ do marcador e apaga sessão e vínculo), juntando os marcadores abertos do @ da conta, o vínculo ativo que
-   serve ao app dela e a sessão com estado de conta logada (`session_ready`, desafio, conta errada, intervenção). Vale
-   para o gatilho automático e para a rota manual `retire`.
+   mascara o @ do marcador e apaga sessão e vínculo), juntando só os marcadores abertos do @ da conta e o vínculo ativo
+   que serve ao app dela. A SESSÃO não é pista (corrigido na revisão adversarial): `unbind` não a apaga, e
+   `wrong_account`/`needs_person` dizem "outra conta aberta" ou "pessoa precisa agir", não "esta conta está aqui", então
+   o aparelho de uma sessão velha podia já servir OUTRA persona viva. Perder um aparelho é recuperável (rota manual do
+   29.24); apagar conta viva não é. Vale para o gatilho automático e para a rota manual `retire`.
    (b) **Canal:** o comando `session.logout` (o `pm clear` do "sair da conta"), aberto por `comando_no_trabalho` dentro de
    `run_device_job` (exclusividade do aparelho), por `Adb.clear_data`, que serve aparelho local e de worker remoto (o
    túnel é o transporte). Aparelho hibernado ou parado é acordado com `confirm_locked_account` dado pelo SISTEMA (só
@@ -4015,6 +4017,21 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    retirada não valeu; nada roda na subida. Retirada anterior ao deploy segue pela rota manual do 29.24, decisão de pessoa.
    (e) O evento e o log não carregam o @ (só ids, o pacote e o aparelho). As capturas vão ao armazém de evidências sob
    `limpeza-de-conta/<aparelho>/`, fora da tabela `evidence` (que exige execução) e sem prazo de retenção próprio.
+   (f) **Trava "outra conta", na hora de executar:** DENTRO do trabalho exclusivo do aparelho, depois de acordar e logo
+   antes do `Adb.clear_data`, a limpeza relê o banco (a retirada já apagou sessões e vínculos da conta retirada em TODOS
+   os aparelhos: `account_sessions WHERE account_id` e os vínculos ativos do app dela e sem app) e RECUSA, passo
+   `outra_conta`, se sobra no aparelho vínculo ativo que serve ao mesmo app (o do app, ou o sem app de persona com conta
+   nele: o furo antigo da D2-a), sessão de outra conta do app em QUALQUER status, ou marcador aberto de outra conta do app.
+   Recusa = nenhum `pm clear`, quarentena aberta, evento `device.account_cleanup` em erro, nada repetido
+   (`SocialRepository.outra_conta_no_aparelho`).
+   (g) **Trava de energia:** acordar ou ligar vai com `confirm_locked_account=True`, que passa por cima de QUALQUER
+   marcador do aparelho. Só se acorda se todo marcador aberto do aparelho é do pedido; com marcador de outra conta, a
+   limpeza falha (`outra_conta`) sem acordar, sem capturar e sem limpar.
+   (h) **RISCO RESIDUAL, para o dono aceitar:** a plataforma só protege as contas que CONHECE (marcadores, vínculos e
+   sessões). Uma conta logada no app fora da plataforma (por exemplo, no seletor de contas do Instagram do aparelho) não
+   aparece em nenhuma tabela e seria apagada pelo `pm clear`, que limpa o app inteiro. As travas (f) e (g) não a enxergam.
+   Fora de escopo aqui: o furo da D2-a em `create_profile` (pessoa vinculada sem app ganha a conta do app depois, sem
+   `instance_id`) segue aberto como item separado; a trava (f) é a rede enquanto isso.
 
 **Dívidas registradas.**
 
