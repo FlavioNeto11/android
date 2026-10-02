@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-252 de 297 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+253 de 298 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -275,8 +275,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.17 | implemented | real | opus | — | Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\Androidrquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/.… | None |
 | 29.18 | implemented | real |  | — | Real, 02/10/2026, central, commit 40aa08fd (branch docs/29-18-fechamento, base a0a03b7): docs/relatorio-validacao.md §28 (os 20 itens 29.1 a 29.20 com estado e nível de prova, veredito por cláusula do 'Fecha quando' e q… |  |
 | 29.19 | blocked | not_run | opus | — | Objetivo do dono de 30/09 (~18:10Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem c… |
-| 29.20 | implemented | simulated |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… | Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitu… |
-| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~… |
+| 29.20 | implemented | real |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… |  |
+| 29.21 | partial | simulated |  | — | backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que esp… | Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reprodu… |
+| 29.22 | implemented | simulated |  | — | Branch fix/29-22-boot-invalida-verificacao (67fd075f + merges): devices/rede.py inicio_do_boot/boot_depois_da_medicao e motivo 'boot' em verificacao_invalida (marco = instances.emulator_started_at; aparelho de worker us… | Prova real not_run: parar e ligar a frio um aparelho exigida/exigida_com_bloqueio no central e ver a porta segurar ('subiu depois da medicao') ate a medicao no… |
 | 30.1 | pendente | — | — | — |  |  |
 | 30.2 | pendente | — | — | — |  |  |
 | 30.3 | pendente | — | — | — |  |  |
