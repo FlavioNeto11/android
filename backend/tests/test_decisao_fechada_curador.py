@@ -27,7 +27,7 @@ from app.planning.decisao_fechada.decisores import DecisorFalso
 from app.planning.decisao_fechada.porta import Porta
 from app.planning.decisao_fechada.sombra import RepositorioDeSombra, observador_de_sombra
 
-from .conftest import _dsn_de_teste
+from .conftest import Harness, _dsn_de_teste
 
 TEXTO_DA_PESSOA = "texto unico escrito pela pessoa sobre o botao"
 HASH = "a" * 64
@@ -220,3 +220,17 @@ def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(db: Database) -> 
     assert decisor.chamadas == []
     linhas = db.query("SELECT fallback_reason, escolha FROM decisao_fechada_sombra")
     assert [(r["fallback_reason"], r["escolha"]) for r in linhas] in ([], [("privacidade", None)])
+
+
+async def test_o_appstate_embrulha_o_curador_do_hub_com_a_triagem(harness: Harness) -> None:
+    """Ligação (suíte 5): o aprendizado recebe o curador do hub (30.12) embrulhado pela triagem em sombra, e a triagem usa
+    a porta e a sombra do próprio `AppState`. De fábrica, inerte: nada é consultado."""
+    st = harness.state
+    laco = next(x for x in st.learning.lacos if x.nome == "curador")
+    curador = laco.curador._curador                                            # type: ignore[attr-defined]  # noqa: SLF001
+    assert isinstance(curador, CuradorComTriagemEmSombra)
+    assert curador._interno is st._curador_do_hub                              # noqa: SLF001
+    assert curador._triagem is st._triagem_do_curador                           # noqa: SLF001
+    assert st._triagem_do_curador._porta is st.decisao_fechada                  # noqa: SLF001
+    assert st._triagem_do_curador._repositorio is st.decisao_sombra             # noqa: SLF001
+    assert not st._triagem_do_curador.ativo()

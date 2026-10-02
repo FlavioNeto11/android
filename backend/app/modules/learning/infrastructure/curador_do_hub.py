@@ -83,7 +83,8 @@ class CuradorDoHub:
         self._provedor = usage.provider or ("simulated" if parecer.simulado else "hub")
         ai_call_id, usd = self._medir(usage, pedido.dossie_hash)
         return RespostaDeRevisao(bruto=dict(parecer.bruto), probabilidade=parecer.probabilidade,
-                                 modelo=parecer.modelo or usage.model, usd=usd, ai_call_id=ai_call_id)
+                                 modelo=parecer.modelo or usage.model, usd=usd, ai_call_id=ai_call_id,
+                                 simulado=parecer.simulado)
 
     def _medir(self, usage: Usage, ref: str) -> tuple[int | None, float | None]:
         """Grava a linha e devolve (id, US$) dela. Contabilizar nunca derruba o parecer que já custou."""

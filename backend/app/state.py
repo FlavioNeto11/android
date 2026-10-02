@@ -63,6 +63,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
 from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
@@ -437,21 +438,25 @@ class AppState:
         # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
         # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
         # As lojas do scheduler ganham o D1 (fluxo nasce candidato; receita com efeito para em `validated`) e a trilha.
+        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO até o 31.10. Nasce antes do
+        # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
+        # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
+        self.decisao_sombra = RepositorioDeSombra(self.db)
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
         # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
+        # 31.8: a triagem do Jev observa cada parecer em sombra (consumidor `curador`, inerte de fábrica) e devolve o
+        # parecer do curador intacto: nada do Jev volta ao Livro.
         self._curador_do_hub = CuradorDoHub(self.provider, self.db,
                                             registrar_uso=lambda u: self.repo.add_usage(None, None, u),
                                             precos=lambda: self.cfg.file.ai.prices)
+        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada, self.decisao_sombra)
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
             precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
-            curador_de_ia=self._curador_do_hub)
-        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO até o 31.8. A sombra grava só ids e
-        # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
-        self.decisao_sombra = RepositorioDeSombra(self.db)
-        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
+            curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
