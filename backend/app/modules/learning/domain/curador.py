@@ -13,10 +13,12 @@ Três regras mandam aqui:
   dependa do relógio (a idade sai de `criado_em`, quem lê calcula). É a chave de idempotência (item, dossie_hash) da
   069: dossiê igual, revisão não se repete.
 
-A validação da saída é determinística e fecha o contrato: JSON fixo, vocabulário fechado de decisão e confiança,
-citação só de id do dossiê, `alvo` só de item relacionado presente, nenhum campo além dos do §8.3. A resposta inválida é
-gravada assim (`invalida:<motivo>`) e não gera ação. A IA nunca decide: o parecer válido é recomendação (B) ou apoio
-(C); o aceite é da pessoa (`politica_de_risco.conferir_aceite`).
+A validação da saída é determinística e fecha o contrato: a resposta é escolha entre RÓTULOS FECHADOS (decisão, faixa,
+causa, riscos, inconsistências, falta), citação só de id do dossiê, `alvo` só de item relacionado presente, confiança
+derivada da probabilidade medida pelo adaptador (nunca número dito pela IA), e um único texto livre, a `conclusao`,
+curta e opcional. Nenhum campo além desses. A resposta inválida é gravada assim (`invalida:<motivo>`) e não gera ação.
+A IA nunca decide: o parecer válido é recomendação (B) ou apoio (C); o aceite é da pessoa
+(`politica_de_risco.conferir_aceite`).
 """
 from __future__ import annotations
 
@@ -215,7 +217,7 @@ def conteudo_do_dossie(legivel: JsonValue, *, sessao_ou_autenticacao: bool = Fal
         ids = [i for i in _lista_de(legivel.get("ids_todos")) if isinstance(i, str)]
         autenticada = legivel.get("autenticada") is True
         return {"tipo": tipo, **_so(legivel, ("tela", "casa", "autenticada")),
-                "ids_todos": [] if autenticada else sorted(ids), "total_de_ids": len(ids)}
+                "ids_todos": [] if autenticada else [i for i in sorted(ids)], "total_de_ids": len(ids)}
     return {"tipo": tipo}
 
 
@@ -280,7 +282,7 @@ class Dossie:
             "saude": self.saude,
             "versao": self.versao,
             "politica": self.politica_vigente,
-            "citaveis": sorted(self._citaveis),
+            "citaveis": [c for c in sorted(self._citaveis)],
         }
 
     @property
@@ -331,7 +333,12 @@ def montar_dossie(item: IdentidadeDoItem, fatos_de_risco: FatosDeRisco, conteudo
                   saude=saude, versao=versao, politica_vigente=politica_vigente, _citaveis=frozenset(citaveis))
 
 
-# ------------------------------------------------------------------ o contrato de saída (§8.3)
+# ------------------------------------------------------------------ o contrato de saída (§8.3, em rótulos fechados)
+# A resposta é, sempre que dá, uma ESCOLHA entre rótulos fechados (orientação da coordenação, 02/10): um adaptador de
+# `choice` (o provedor Jev, com probabilidade sobre um conjunto fechado) monta as opções de `OPCOES_FECHADAS` e, para
+# `alvo` e `evidencias_citadas`, de `opcoes_do_dossie`. O único texto livre é a `conclusao`, curta, opcional e fora da
+# decisão. A confiança nunca é número dado pela IA: vem da probabilidade da escolha medida pelo adaptador ou, sem ela,
+# de um rótulo categórico. Nenhum prompt mora aqui: o template é do hub.
 class Decisao(StrEnum):
     APROVAR = "aprovar"
     OBSERVAR = "observar"
@@ -352,6 +359,50 @@ class Confianca(StrEnum):
     ALTA = "alta"
 
 
+class Causa(StrEnum):
+    """Por que a decisão: a causa principal que o parecer aponta."""
+
+    REPRODUZ_BEM = "reproduz_bem"
+    FALHA_RECORRENTE = "falha_recorrente"
+    EVIDENCIA_CONTRADITORIA = "evidencia_contraditoria"
+    EVIDENCIA_INSUFICIENTE = "evidencia_insuficiente"
+    VERSAO_NOVA_DO_APP = "versao_nova_do_app"
+    SUBSTITUIDO_POR_OUTRO = "substituido_por_outro"
+    DUPLICADO = "duplicado"
+    INTERVENCAO_HUMANA = "intervencao_humana"
+    RISCO_DO_EFEITO = "risco_do_efeito"
+    OUTRA = "outra"
+
+
+class RiscoApontado(StrEnum):
+    EFEITO_EXTERNO = "efeito_externo"
+    IRREVERSIVEL = "irreversivel"
+    ALVO_ERRADO = "alvo_errado"
+    CONTA_OU_SESSAO = "conta_ou_sessao"
+    TEXTO_DE_PESSOA = "texto_de_pessoa"
+    VERSAO_INCOMPATIVEL = "versao_incompativel"
+    CUSTO = "custo"
+
+
+class Inconsistencia(StrEnum):
+    EVIDENCIA_A_FAVOR_E_CONTRA = "evidencia_a_favor_e_contra"
+    VOTO_CONTRA_REPRODUCAO = "voto_contra_reproducao"
+    CATALOGO_DIVERGE_DO_CONTEUDO = "catalogo_diverge_do_conteudo"
+    VERSAO_DIVERGENTE = "versao_divergente"
+    SAUDE_DIVERGE_DO_ESTADO = "saude_diverge_do_estado"
+
+
+class Falta(StrEnum):
+    """O que faltaria para decidir com mais segurança."""
+
+    REPRODUCAO_EM_OUTRO_APARELHO = "reproducao_em_outro_aparelho"
+    REPRODUCAO_NA_VERSAO_VIVA = "reproducao_na_versao_viva"
+    EXECUCAO_REAL = "execucao_real"
+    SOMBRA = "sombra"
+    VOTO_DA_PESSOA = "voto_da_pessoa"
+    DECISAO_DA_PESSOA = "decisao_da_pessoa"
+
+
 class MotivoDeInvalidade(StrEnum):
     """O `<motivo>` de `learning_reviews.validade = 'invalida:<motivo>'`. Vocabulário fechado: o texto da IA nunca
     entra na coluna."""
@@ -362,9 +413,10 @@ class MotivoDeInvalidade(StrEnum):
     CAMPO_EXTRA = "campo_extra"
     CAMPO_AUSENTE = "campo_ausente"
     DECISAO_FORA_DO_VOCABULARIO = "decisao_fora_do_vocabulario"
+    ROTULO_FORA_DO_VOCABULARIO = "rotulo_fora_do_vocabulario"  # faixa, causa, riscos, inconsistências, falta
     CONFIANCA_INVALIDA = "confianca_invalida"
+    PROBABILIDADE_INVALIDA = "probabilidade_invalida"   # a do adaptador, fora de [0, 1]
     CONCLUSAO_INVALIDA = "conclusao_invalida"
-    LISTA_INVALIDA = "lista_invalida"
     CITACAO_INVALIDA = "citacao_invalida"               # `evidencias_citadas` não é lista de texto
     CITACAO_DESCONHECIDA = "citacao_desconhecida"       # id que não está no dossiê (inventado)
     SEM_CITACAO = "sem_citacao"
@@ -373,32 +425,71 @@ class MotivoDeInvalidade(StrEnum):
     ALVO_INDEVIDO = "alvo_indevido"
 
 
-CAMPOS_OBRIGATORIOS = frozenset({"decisao", "confianca", "conclusao", "evidencias_citadas"})
-CAMPOS_DA_SAIDA = CAMPOS_OBRIGATORIOS | {"alvo", "riscos", "inconsistencias", "falta"}
+#: Os rótulos permitidos de cada campo fechado: o que um adaptador de `choice` oferece. `riscos`, `inconsistencias` e
+#: `falta` são escolha múltipla do mesmo conjunto.
+OPCOES_FECHADAS: Mapping[str, tuple[str, ...]] = {
+    "decisao": tuple(d.value for d in Decisao),
+    "faixa": tuple(c.value for c in ClasseDeRisco),
+    "causa": tuple(c.value for c in Causa),
+    "riscos": tuple(r.value for r in RiscoApontado),
+    "inconsistencias": tuple(i.value for i in Inconsistencia),
+    "falta": tuple(f.value for f in Falta),
+    "confianca": tuple(c.value for c in Confianca),
+}
+CAMPOS_OBRIGATORIOS = frozenset({"decisao", "evidencias_citadas"})
+CAMPOS_DA_SAIDA = CAMPOS_OBRIGATORIOS | {"alvo", "faixa", "causa", "confianca", "conclusao", "riscos",
+                                         "inconsistencias", "falta"}
 DECISOES_COM_ALVO = frozenset({Decisao.SUBSTITUIR, Decisao.FUNDIR})
 LIMITE_DA_CONCLUSAO = 300
-#: As listas livres (`riscos`, `inconsistencias`, `falta`): curtas, para a resposta não virar um texto longo da IA
-#: gravado como fato. A triagem de texto (segredo) é da aplicação, antes da gravação.
-LIMITE_DE_ITENS = 10
-LIMITE_DO_ITEM = 200
+#: Probabilidade da escolha → confiança: abaixo de 0,60 é baixa, a partir de 0,85 é alta. Escolha de desenho do 30.10,
+#: a recalibrar com o `shadow` (§8.9).
+LIMIARES_DE_CONFIANCA = (0.60, 0.85)
+_ORDEM_DA_CLASSE = {ClasseDeRisco.A: 0, ClasseDeRisco.B: 1, ClasseDeRisco.C: 2}
+
+
+def opcoes_do_dossie(dossie: Dossie) -> dict[str, tuple[str, ...]]:
+    """As opções que dependem do item: os ids citáveis e os alvos possíveis, em ordem estável."""
+    return {"evidencias_citadas": tuple(sorted(dossie.citaveis)), "alvo": tuple(sorted(dossie.alvos_possiveis))}
+
+
+def confianca_da_probabilidade(probabilidade: float) -> Confianca:
+    baixa, alta = LIMIARES_DE_CONFIANCA
+    if probabilidade < baixa:
+        return Confianca.BAIXA
+    return Confianca.ALTA if probabilidade >= alta else Confianca.MEDIA
 
 
 @dataclass(frozen=True, slots=True)
 class Parecer:
     decisao: Decisao
-    confianca: Confianca
-    conclusao: str
     evidencias_citadas: tuple[str, ...]
+    confianca: Confianca | None = None      # derivada da probabilidade; sem ela, o rótulo; sem os dois, sem medida
+    probabilidade: float | None = None      # a da escolha da decisão, medida pelo adaptador (nunca dita pela IA)
     alvo: str | None = None
-    riscos: tuple[str, ...] = ()
-    inconsistencias: tuple[str, ...] = ()
-    falta: tuple[str, ...] = ()
+    faixa: ClasseDeRisco | None = None      # a classe que a IA vê; nunca afrouxa a da política (`faixa_efetiva`)
+    causa: Causa | None = None
+    riscos: tuple[RiscoApontado, ...] = ()
+    inconsistencias: tuple[Inconsistencia, ...] = ()
+    falta: tuple[Falta, ...] = ()
+    conclusao: str | None = None            # o único texto livre; não entra na decisão
+
+    def faixa_efetiva(self, da_politica: ClasseDeRisco) -> ClasseDeRisco:
+        """Vale a mais restritiva entre a da política e a que a IA apontou."""
+        if self.faixa is None or _ORDEM_DA_CLASSE[self.faixa] <= _ORDEM_DA_CLASSE[da_politica]:
+            return da_politica
+        return self.faixa
 
     def como_dados(self) -> JsonObject:
         """O que vai a `learning_reviews.saida`: a forma do §8.3, já normalizada."""
-        return {"decisao": self.decisao.value, "alvo": self.alvo, "confianca": self.confianca.value,
-                "conclusao": self.conclusao, "evidencias_citadas": list(self.evidencias_citadas),
-                "riscos": list(self.riscos), "inconsistencias": list(self.inconsistencias), "falta": list(self.falta)}
+        return {"decisao": self.decisao.value, "alvo": self.alvo,
+                "faixa": None if self.faixa is None else self.faixa.value,
+                "causa": None if self.causa is None else self.causa.value,
+                "confianca": None if self.confianca is None else self.confianca.value,
+                "probabilidade": self.probabilidade,
+                "evidencias_citadas": [c for c in self.evidencias_citadas],
+                "riscos": [r.value for r in self.riscos],
+                "inconsistencias": [i.value for i in self.inconsistencias],
+                "falta": [f.value for f in self.falta], "conclusao": self.conclusao}
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,76 +506,110 @@ class Validacao:
         return "ok" if self.motivo is None else f"invalida:{self.motivo.value}"
 
 
-def _invalida(motivo: MotivoDeInvalidade) -> Validacao:
-    return Validacao(None, motivo)
+class _Invalida(Exception):
+    def __init__(self, motivo: MotivoDeInvalidade) -> None:
+        self.motivo = motivo
 
 
-def _textos(valor: object, *, limite_do_item: int = LIMITE_DO_ITEM) -> tuple[str, ...] | None:
+def _rotulo[E: StrEnum](tipo: type[E], valor: object, motivo: MotivoDeInvalidade) -> E | None:
+    if valor is None:
+        return None
+    if not isinstance(valor, str):
+        raise _Invalida(motivo)
+    try:
+        return tipo(valor)
+    except ValueError:
+        raise _Invalida(motivo) from None
+
+
+def _rotulos[E: StrEnum](tipo: type[E], valor: object) -> tuple[E, ...]:
     if valor is None:
         return ()
-    if not isinstance(valor, list) or len(valor) > LIMITE_DE_ITENS:
-        return None
-    if not all(isinstance(t, str) and 0 < len(t) <= limite_do_item for t in valor):
-        return None
-    return tuple(valor)
+    if not isinstance(valor, list):
+        raise _Invalida(MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
+    saida: list[E] = []
+    for v in valor:
+        r = _rotulo(tipo, v, MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
+        if r is not None and r not in saida:
+            saida.append(r)
+    return tuple(saida)
 
 
-def validar_saida(bruto: str | Mapping[str, object], dossie: Dossie) -> Validacao:
+def _probabilidade(p: float | None) -> float | None:
+    if p is None:
+        return None
+    if isinstance(p, bool) or not isinstance(p, (int, float)) or not 0.0 <= float(p) <= 1.0:
+        raise _Invalida(MotivoDeInvalidade.PROBABILIDADE_INVALIDA)
+    return float(p)
+
+
+def validar_saida(bruto: str | Mapping[str, object], dossie: Dossie, *,
+                  probabilidade: float | None = None) -> Validacao:
     """A resposta da IA contra o contrato do §8.3 e contra o dossiê que ela leu. Determinística; a primeira falha
-    decide o motivo (a ordem abaixo)."""
+    decide o motivo. `probabilidade`: a da escolha da decisão, quando o adaptador a mede (choice); dela sai a
+    confiança, e o rótulo `confianca` da resposta só vale sem ela."""
+    try:
+        return Validacao(_parecer(bruto, dossie, probabilidade))
+    except _Invalida as e:
+        return Validacao(None, e.motivo)
+
+
+def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: float | None) -> Parecer:
     if isinstance(bruto, str):
         try:
             dados: object = json.loads(bruto)
         except ValueError:
-            return _invalida(MotivoDeInvalidade.JSON_INVALIDO)
+            raise _Invalida(MotivoDeInvalidade.JSON_INVALIDO) from None
     else:
         dados = bruto
     if not isinstance(dados, Mapping):
-        return _invalida(MotivoDeInvalidade.NAO_E_OBJETO)
+        raise _Invalida(MotivoDeInvalidade.NAO_E_OBJETO)
     if dossie.classe is ClasseDeRisco.A:
-        return _invalida(MotivoDeInvalidade.CLASSE_SEM_REVISAO)
+        raise _Invalida(MotivoDeInvalidade.CLASSE_SEM_REVISAO)
     chaves = set(dados)
     if chaves - CAMPOS_DA_SAIDA:
-        return _invalida(MotivoDeInvalidade.CAMPO_EXTRA)
+        raise _Invalida(MotivoDeInvalidade.CAMPO_EXTRA)
     if CAMPOS_OBRIGATORIOS - chaves:
-        return _invalida(MotivoDeInvalidade.CAMPO_AUSENTE)
-    try:
-        decisao = Decisao(dados["decisao"])
-    except (ValueError, TypeError):
-        return _invalida(MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO)
-    try:
-        confianca = Confianca(dados["confianca"])
-    except (ValueError, TypeError):
-        return _invalida(MotivoDeInvalidade.CONFIANCA_INVALIDA)
-    conclusao = dados["conclusao"]
-    if not isinstance(conclusao, str) or not conclusao.strip() or len(conclusao) > LIMITE_DA_CONCLUSAO:
-        return _invalida(MotivoDeInvalidade.CONCLUSAO_INVALIDA)
-    listas = [_textos(dados.get(c)) for c in ("riscos", "inconsistencias", "falta")]
-    if any(x is None for x in listas):
-        return _invalida(MotivoDeInvalidade.LISTA_INVALIDA)
-    riscos, inconsistencias, falta = (x or () for x in listas)
+        raise _Invalida(MotivoDeInvalidade.CAMPO_AUSENTE)
+    decisao = _rotulo(Decisao, dados["decisao"], MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO)
+    if decisao is None:
+        raise _Invalida(MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO)
+    faixa = _rotulo(ClasseDeRisco, dados.get("faixa"), MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
+    causa = _rotulo(Causa, dados.get("causa"), MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
+    riscos = _rotulos(RiscoApontado, dados.get("riscos"))
+    inconsistencias = _rotulos(Inconsistencia, dados.get("inconsistencias"))
+    falta = _rotulos(Falta, dados.get("falta"))
+    rotulo = _rotulo(Confianca, dados.get("confianca"), MotivoDeInvalidade.CONFIANCA_INVALIDA)
+    p = _probabilidade(probabilidade)
+    confianca = confianca_da_probabilidade(p) if p is not None else rotulo
+    conclusao = dados.get("conclusao")
+    if conclusao is not None and (not isinstance(conclusao, str) or not conclusao.strip()
+                                  or len(conclusao) > LIMITE_DA_CONCLUSAO):
+        raise _Invalida(MotivoDeInvalidade.CONCLUSAO_INVALIDA)
     citadas = dados["evidencias_citadas"]
     if not isinstance(citadas, list) or not all(isinstance(c, str) for c in citadas):
-        return _invalida(MotivoDeInvalidade.CITACAO_INVALIDA)
+        raise _Invalida(MotivoDeInvalidade.CITACAO_INVALIDA)
     citadas_t = tuple(dict.fromkeys(citadas))
     if any(c not in dossie.citaveis for c in citadas_t):
-        return _invalida(MotivoDeInvalidade.CITACAO_DESCONHECIDA)
+        raise _Invalida(MotivoDeInvalidade.CITACAO_DESCONHECIDA)
     if not citadas_t and decisao is not Decisao.MANTER:
-        return _invalida(MotivoDeInvalidade.SEM_CITACAO)
+        raise _Invalida(MotivoDeInvalidade.SEM_CITACAO)
     alvo = dados.get("alvo")
     if decisao in DECISOES_COM_ALVO:
         if alvo is None:
-            return _invalida(MotivoDeInvalidade.ALVO_AUSENTE)
+            raise _Invalida(MotivoDeInvalidade.ALVO_AUSENTE)
         if not isinstance(alvo, str) or alvo not in dossie.alvos_possiveis:
-            return _invalida(MotivoDeInvalidade.ALVO_DESCONHECIDO)
+            raise _Invalida(MotivoDeInvalidade.ALVO_DESCONHECIDO)
     elif alvo is not None:
-        return _invalida(MotivoDeInvalidade.ALVO_INDEVIDO)
-    return Validacao(Parecer(decisao=decisao, confianca=confianca, conclusao=conclusao,
-                             evidencias_citadas=citadas_t, alvo=alvo if isinstance(alvo, str) else None,
-                             riscos=riscos, inconsistencias=inconsistencias, falta=falta))
+        raise _Invalida(MotivoDeInvalidade.ALVO_INDEVIDO)
+    return Parecer(decisao=decisao, evidencias_citadas=citadas_t, confianca=confianca, probabilidade=p,
+                   alvo=alvo if isinstance(alvo, str) else None, faixa=faixa, causa=causa, riscos=riscos,
+                   inconsistencias=inconsistencias, falta=falta, conclusao=conclusao)
 
 
-__all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS",
-           "SECOES_CITAVEIS", "VERSAO_DO_DOSSIE", "Confianca", "Decisao", "Dossie", "Evidencia", "GrupoDeFalha",
-           "IdentidadeDoItem", "Intervencao", "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao",
-           "Validacao", "Voto", "conteudo_do_dossie", "montar_dossie", "validar_saida"]
+__all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
+           "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "SECOES_CITAVEIS", "VERSAO_DO_DOSSIE", "Causa",
+           "Confianca", "Decisao",
+           "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",
+           "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao", "RiscoApontado", "Validacao", "Voto",
+           "confianca_da_probabilidade", "conteudo_do_dossie", "montar_dossie", "opcoes_do_dossie", "validar_saida"]

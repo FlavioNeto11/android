@@ -16,10 +16,11 @@ import json
 import re
 
 from app.modules.learning.domain import conteudo
-from app.modules.learning.domain.curador import (CAMPOS_DA_SAIDA, LIMITE_DA_CONCLUSAO, Decisao, Dossie, Evidencia,
-                                                 GrupoDeFalha, IdentidadeDoItem, Intervencao, MotivoDeInvalidade,
-                                                 PassoDaTrilha, Relacao, Voto, conteudo_do_dossie, montar_dossie,
-                                                 validar_saida)
+from app.modules.learning.domain.curador import (CAMPOS_DA_SAIDA, LIMITE_DA_CONCLUSAO, OPCOES_FECHADAS, Confianca,
+                                                 Decisao, Dossie, Evidencia, GrupoDeFalha, IdentidadeDoItem,
+                                                 Intervencao, MotivoDeInvalidade, PassoDaTrilha, Relacao, Voto,
+                                                 confianca_da_probabilidade, conteudo_do_dossie, montar_dossie,
+                                                 opcoes_do_dossie, validar_saida)
 from app.modules.learning.domain.politica_de_risco import (ClasseDeRisco, FatosDeRisco, FatosDoCatalogo,
                                                            RecusaDoAceite, conferir_aceite)
 
@@ -82,7 +83,8 @@ def _saida(**kw: object) -> dict[str, object]:
     base: dict[str, object] = {"decisao": "observar", "alvo": None, "confianca": "media",
                                "conclusao": "Duas reproduções a favor e um voto contra.",
                                "evidencias_citadas": ["ev:1", "voto:5"], "riscos": [], "inconsistencias": [],
-                               "falta": ["mais uma reprodução em outro aparelho"]}
+                               "falta": ["reproducao_em_outro_aparelho"], "causa": "evidencia_contraditoria",
+                               "faixa": "B"}
     base.update(kw)
     return base
 
@@ -159,7 +161,8 @@ def test_dossie_cabe_em_learning_reviews() -> None:
     assert d.tamanho_em_bytes() > 0
     v = validar_saida(_saida(), d)
     assert v.ok and v.validade == "ok"
-    assert v.parecer is not None and set(v.parecer.como_dados()) == CAMPOS_DA_SAIDA
+    assert v.parecer is not None and set(v.parecer.como_dados()) == CAMPOS_DA_SAIDA | {"probabilidade"}
+    json.dumps(v.parecer.como_dados())                             # vai a `saida`
 
 
 # ------------------------------------------------------------------ a validação da saída
@@ -178,7 +181,7 @@ def test_decisao_fora_do_vocabulario_campo_extra_e_ausente() -> None:
     assert validar_saida(_saida(decisao="publicar"), d).motivo is MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO
     assert validar_saida(_saida(aplicar=True), d).motivo is MotivoDeInvalidade.CAMPO_EXTRA
     sem = _saida()
-    del sem["confianca"]
+    del sem["decisao"]
     assert validar_saida(sem, d).motivo is MotivoDeInvalidade.CAMPO_AUSENTE
 
 
@@ -189,8 +192,53 @@ def test_confianca_categorica_conclusao_curta_e_listas() -> None:
     longa = "x" * (LIMITE_DA_CONCLUSAO + 1)
     assert validar_saida(_saida(conclusao=longa), d).motivo is MotivoDeInvalidade.CONCLUSAO_INVALIDA
     assert validar_saida(_saida(conclusao="  "), d).motivo is MotivoDeInvalidade.CONCLUSAO_INVALIDA
-    assert validar_saida(_saida(riscos=["a"] * 11), d).motivo is MotivoDeInvalidade.LISTA_INVALIDA
-    assert validar_saida(_saida(falta="texto solto"), d).motivo is MotivoDeInvalidade.LISTA_INVALIDA
+    sem_conclusao = _saida()
+    del sem_conclusao["conclusao"]
+    v = validar_saida(sem_conclusao, d)                             # o único texto livre é opcional
+    assert v.parecer is not None and v.parecer.conclusao is None
+
+
+def test_campos_de_decisao_sao_rotulos_fechados() -> None:
+    d = _dossie()
+    fora = MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO
+    assert validar_saida(_saida(riscos=["pode dar ruim"]), d).motivo is fora
+    assert validar_saida(_saida(falta="texto solto"), d).motivo is fora
+    assert validar_saida(_saida(inconsistencias=["outra coisa"]), d).motivo is fora
+    assert validar_saida(_saida(causa="porque sim"), d).motivo is fora
+    assert validar_saida(_saida(faixa="D"), d).motivo is fora
+    v = validar_saida(_saida(riscos=["efeito_externo", "efeito_externo", "irreversivel"]), d)
+    assert v.parecer is not None and [r.value for r in v.parecer.riscos] == ["efeito_externo", "irreversivel"]
+
+
+def test_opcoes_para_o_adaptador_de_choice() -> None:
+    assert OPCOES_FECHADAS["decisao"] == tuple(x.value for x in Decisao)
+    assert OPCOES_FECHADAS["faixa"] == ("A", "B", "C")
+    assert set(OPCOES_FECHADAS) <= CAMPOS_DA_SAIDA
+    assert "conclusao" not in OPCOES_FECHADAS                       # texto livre não é escolha
+    d = _dossie()
+    opcoes = opcoes_do_dossie(d)
+    assert opcoes["alvo"] == ("receita:101",) and set(opcoes["evidencias_citadas"]) == d.citaveis
+
+
+def test_confianca_derivada_da_probabilidade_nunca_numero_da_ia() -> None:
+    d = _dossie()
+    assert confianca_da_probabilidade(0.3) is Confianca.BAIXA
+    assert confianca_da_probabilidade(0.7) is Confianca.MEDIA
+    assert confianca_da_probabilidade(0.9) is Confianca.ALTA
+    v = validar_saida(_saida(confianca="baixa"), d, probabilidade=0.92)
+    assert v.parecer is not None and v.parecer.confianca is Confianca.ALTA and v.parecer.probabilidade == 0.92
+    sem = _saida()
+    del sem["confianca"]
+    v = validar_saida(sem, d)
+    assert v.parecer is not None and v.parecer.confianca is None                # sem medida, não inventa
+    assert validar_saida(_saida(), d, probabilidade=1.5).motivo is MotivoDeInvalidade.PROBABILIDADE_INVALIDA
+
+
+def test_faixa_da_ia_nunca_afrouxa_a_da_politica() -> None:
+    c = validar_saida(_saida(faixa="B"), _dossie(C)).parecer
+    assert c is not None and c.faixa_efetiva(ClasseDeRisco.C) is ClasseDeRisco.C
+    b = validar_saida(_saida(faixa="C"), _dossie()).parecer
+    assert b is not None and b.faixa_efetiva(ClasseDeRisco.B) is ClasseDeRisco.C
 
 
 def test_sem_citacao_so_para_manter() -> None:

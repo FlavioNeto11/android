@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.modules.skills.domain.document import JsonObject
+
 
 class ClasseDeRisco(StrEnum):
     A = "A"                     # o sistema decide pela regra determinística; nunca vai à IA
@@ -99,7 +101,7 @@ class FatosDeRisco:
     catalogo: FatosDoCatalogo | None = None  # None: capability não derivável ou desconhecida do catálogo
     sessao_ou_autenticacao: bool = False
 
-    def como_dados(self) -> dict[str, object]:
+    def como_dados(self) -> JsonObject:
         c = self.catalogo
         return {"side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
                 "sessao_ou_autenticacao": self.sessao_ou_autenticacao,
@@ -154,7 +156,7 @@ class Classificacao:
     def aceita_lote(self) -> bool:
         return self.classe is ClasseDeRisco.B
 
-    def como_dados(self) -> dict[str, object]:
+    def como_dados(self) -> JsonObject:
         return {"classe": self.classe.value, "politica": self.politica.value,
                 "motivo": None if self.motivo is None else self.motivo.value,
                 "razoes": [r.value for r in self.razoes]}
