@@ -8,15 +8,24 @@ entre ~70 mil e ~1,5 milhão de tokens só para se orientar — antes de ler uma
 
     python scripts/plano-100-pacotes.py            # gera .claude/plano-100/pacotes/
     python scripts/plano-100-pacotes.py --conferir # só confere que plano e apêndice continuam casando
+    python scripts/plano-100-pacotes.py --contexto # EXPERIMENTAL, opt-in: acrescenta sugestões do retrieval de contexto
+
+`--contexto` consulta `backend/app/modules/context_retrieval` (ADR-063) pela API Python, com um único serviço para todos os
+itens (índice BM25 em disco por revisão, nada reconstruído por item), e só escreve algo quando o retrieval está
+ligado na configuração (`context_retrieval.enabled`) ou quando `--contexto-modo` o pede de forma explícita. Sem a flag
+a saída é byte a byte a de sempre; com o retrieval desligado, também. As sugestões dependem da revisão do código e por
+isso NÃO se commitam os pacotes gerados com `--contexto`.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
 import re
 import sys
+import time
 
 RAIZ = Path(__file__).resolve().parents[1]
 PLANO = Path('docs/plano-100.md')
@@ -160,7 +169,7 @@ def montar() -> tuple[list[dict], dict[str, dict]]:
     return itens, apendice
 
 
-def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
+def escrever(itens: list[dict], apendice: dict[str, dict], sugerir_contexto=None) -> None:
     destino = RAIZ / DESTINO
     destino.mkdir(parents=True, exist_ok=True)
     for antigo in destino.glob('*.md'):
@@ -187,6 +196,10 @@ def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
         if item['arquivos']:
             linhas += ['## Arquivos citados nas evidências', '',
                        *(f'- `{caminho}`' for caminho in item['arquivos']), '']
+        if sugerir_contexto is not None:
+            sugestoes = sugerir_contexto(item)
+            if sugestoes:
+                linhas += ['## Sugestões de contexto (retrieval local; palpite, não é evidência)', '', *sugestoes, '']
         if item['achados']:
             linhas += ['## Achados, na íntegra', '']
             for referencia in item['achados']:
@@ -201,6 +214,72 @@ def escrever(itens: list[dict], apendice: dict[str, dict]) -> None:
         dados['pacote'] = str(DESTINO / f'{item_id}.md').replace('\\', '/')
         dados['bytes'] = (destino / f'{item_id}.md').stat().st_size
     gravar(destino / 'indice.json', json.dumps(indice, ensure_ascii=False, indent=1) + '\n')
+
+
+class SugestorDeContexto:
+    """`item -> linhas` pela API Python do retrieval de contexto, com UM serviço para o lote inteiro. Nunca levanta.
+
+    O serviço (e com ele o `Workspace`, a revisão, o índice BM25, o mapa, o cache e o orçamento de sessão) é montado uma vez,
+    na primeira consulta, e reaproveitado em todos os itens; `sessao()` congela a revisão enquanto o lote roda. Sem
+    subprocesso por item. Falha ao importar o backend, retrieval desligado e erro na consulta dão a MESMA resposta:
+    nenhuma linha; o retrieval é auxílio do pacote, não requisito dele.
+    """
+
+    def __init__(self, modo: str | None = None, *, servico=None, fabrica=None) -> None:
+        self.modo = modo
+        self._servico = servico
+        self._fabrica = fabrica or self._fabrica_real
+        self._pronto = servico is not None
+        self._avisou = False
+        self.tempos_ms: list[float] = []
+
+    def _montar(self):
+        if self._pronto:
+            return self._servico
+        self._pronto = True
+        try:
+            self._servico = self._fabrica()
+        except Exception as erro:  # noqa: BLE001 - falta de dependência do backend não derruba a geração
+            self._servico = None
+            self._avisar(f'o retrieval de contexto não carregou ({type(erro).__name__})')
+        return self._servico
+
+    def _fabrica_real(self):
+        backend = str(RAIZ / 'backend')
+        if backend not in sys.path:
+            sys.path.insert(0, backend)
+        from app.config import load_config
+        from app.modules.context_retrieval.domain.model import RetrievalMode
+        from app.modules.context_retrieval.wiring import build_service
+        return build_service(load_config(), mode=RetrievalMode(self.modo) if self.modo else None)
+
+    def _avisar(self, motivo: str) -> None:
+        if not self._avisou:
+            print(f'Aviso: {motivo}; os pacotes saem sem sugestões.', file=sys.stderr)
+            self._avisou = True
+
+    def sessao(self):
+        servico = self._montar()
+        return servico.session() if servico is not None else contextlib.nullcontext()
+
+    def __call__(self, item: dict) -> list[str]:
+        servico = self._montar()
+        if servico is None or not getattr(servico, 'enabled', False):
+            return []
+        pergunta = f"{item['titulo']}. {item['corpo']}"[:600]
+        inicio = time.perf_counter()
+        try:
+            pack = servico.gather(pergunta)
+        except Exception as erro:  # noqa: BLE001
+            self._avisar(f'a consulta ao retrieval falhou ({type(erro).__name__})')
+            return []
+        self.tempos_ms.append((time.perf_counter() - inicio) * 1000)
+        if pack is None:
+            return []
+        linhas = [f'- `{f.path}`' for f in pack.files]
+        linhas += [f'- `{r.path}:{r.start_line}-{r.end_line}`' for r in pack.regions]
+        origem = f'origem {pack.origin}, revisão {pack.revision[:12]}'
+        return [f'_{origem}_', ''] + linhas if linhas else []
 
 
 def gravar(caminho: Path, conteudo: str) -> None:
@@ -270,12 +349,21 @@ def main(argv=None) -> int:
     parser.add_argument('--conferir', action='store_true', help='Só conferir plano x apêndice, sem gravar nada.')
     parser.add_argument('--fila', action='store_true', help='Imprimir a fila de execução (JSON) em vez do resumo.')
     parser.add_argument('--bloco', help='Limitar a fila a um bloco do mapa.')
+    parser.add_argument('--contexto', action='store_true',
+                        help='EXPERIMENTAL: acrescenta sugestões do retrieval de contexto (só se estiver ligado).')
+    parser.add_argument('--contexto-modo', choices=['local_only', 'shadow', 'hybrid'],
+                        help='Pede um modo do retrieval explicitamente, mesmo com ele desligado na configuração.')
     args = parser.parse_args(argv)
     itens, apendice = montar()
     # `--fila` só gera se ainda não houver pacote. Regenerar apaga e reescreve o diretório inteiro, e pedir a fila
     # de um bloco enquanto agentes de outro estão lendo os pacotes deles tiraria os arquivos debaixo deles.
     if not args.conferir and not (args.fila and (RAIZ / DESTINO / 'indice.json').is_file()):
-        escrever(itens, apendice)
+        sugestor = SugestorDeContexto(args.contexto_modo) if (args.contexto or args.contexto_modo) else None
+        if sugestor is None:
+            escrever(itens, apendice)
+        else:
+            with sugestor.sessao():
+                escrever(itens, apendice, sugestor)
     if args.fila:
         indice = json.loads((RAIZ / DESTINO / 'indice.json').read_text(encoding='utf-8'))
         print(json.dumps(fila(indice, args.bloco), ensure_ascii=False, indent=1))

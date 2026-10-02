@@ -14,6 +14,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 DOC_GLOBS = ['CLAUDE.md', 'README.md', 'CHANGELOG.md', 'docs/**/*.md',
@@ -98,6 +99,22 @@ def _alvo_do_link(bruto: str) -> str | None:
     return alvo.strip() or None
 
 
+def _local_nao_versionado(raiz: Path, destino: Path) -> bool:
+    """O alvo é um arquivo que o Git manda ignorar (`.gitignore` ou `.git/info/exclude`)?
+
+    O handoff da sessão (`.claude/handoff-current.md`) é local de propósito: fica em `.git/info/exclude` e por isso não
+    existe num clone ou worktree novo. Um link para ele não está quebrado, só aponta para algo que cada máquina gera. A
+    pergunta vai ao próprio Git em vez de uma lista no script, então vale para qualquer arquivo local declarado assim. Sem
+    Git (ou fora de um repositório) a resposta é "não" e o link continua sendo cobrado.
+    """
+    try:
+        r = subprocess.run(['git', 'check-ignore', '-q', '--', str(destino)], cwd=raiz, capture_output=True,
+                           timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
+
+
 def checar_links(raiz: Path, arquivos: list[Path], rel: Relatorio) -> None:
     for arquivo in arquivos:
         texto = ler(arquivo)
@@ -109,7 +126,7 @@ def checar_links(raiz: Path, arquivos: list[Path], rel: Relatorio) -> None:
                 if alvo is None:
                     continue
                 destino = (raiz / alvo.lstrip('/')) if alvo.startswith('/') else (arquivo.parent / alvo)
-                if destino.exists():
+                if destino.exists() or _local_nao_versionado(raiz, destino):
                     continue
                 msg = (f'{arquivo.relative_to(raiz).as_posix()}:{n}: link quebrado para '
                        f'"{m.group(1)}"')

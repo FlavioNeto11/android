@@ -3684,3 +3684,90 @@ crescerem muito, criar índice em `runs(status)`.
 **Relação.** [produto.md](produto.md) (menu, visões, pendências); [revisoes-ux/revisao-final.md](revisoes-ux/revisao-final.md);
 [revisoes-ux/12-decisoes.md](revisoes-ux/12-decisoes.md); ADR-054 (aprendizado) e ADR-055 (proteção de contas), origens das
 aprovações e intervenções.
+
+
+## ADR-063 — Retrieval de contexto de código: léxico + BM25 locais, semântico plugável, política única de envio
+
+**Data:** 01/10/2026 · **Estado:** aceito · **Decisão técnica** (fase de implementação do JEV-PILOT; o dono encerrou a fase
+técnica do piloto e liberou construir, integrar, testar e simular; **não** liberou enviar código privado).
+
+**Contexto.** O piloto (`claude/jev-pilot`, **não mergeada**, segue como evidência e protótipo; relatório em
+`claude/jev-pilot:docs/research/jev-pilot-closure.md`) validou, em dois corpora públicos, que *salvaguarda lexical + mapa
+semântico* é candidata a recuperar contexto top-3/top-5, e que o provedor semântico **não** substitui grep/BM25. O backend não
+tinha camada de retrieval de código: a IA do planejador/ator/verificador lê telas de aparelho, e o único passo de "juntar
+contexto antes de implementar" é o gerador de pacotes do plano-100 mais a leitura manual da skill `preparar-tarefa`.
+
+**Decisão.**
+
+1. Módulo novo `backend/app/modules/context_retrieval/` (domínio, aplicação, infraestrutura, apresentação), reescrito a
+   partir da `main`; do piloto vêm ideias e contratos, não arquivos.
+2. `ContextRetriever` → `ContextSelection` → `ContextPack`. Retrievers: léxico (ripgrep, com caminho Python equivalente),
+   BM25 (stdlib), semântico (`SemanticProvider`, interface), híbrido. O provedor Jev é um adaptador entre vários: a regra
+   híbrida não o conhece, e um falso determinístico exercita o pipeline sem rede.
+3. **Regra híbrida v1** (a validada): identificador explícito na pergunta e achado lexical → o melhor arquivo lexical fica no
+   topo, o semântico completa sem duplicar, e até 2 janelas lexicais entram antes das semânticas; sem sinal lexical, o
+   semântico é o principal. `lexical_preserve` (padrão 1) é configurável, mas o padrão é o que o piloto mediu.
+4. Modos: `disabled` (padrão; o pipeline antigo segue e o serviço nem toca o disco), `local_only`, `shadow` (o semântico roda
+   para medir; o contexto entregue é o local) e `hybrid`. `context_retrieval.enabled: false` vence qualquer `mode`.
+5. **Política única** (`ExternalContextPolicy`): olha onde o provedor executa (local/remoto/falso) e a classe do repositório
+   (privado/público/sintético), nunca o nome do provedor. A provedor **remoto**: **privado negado, sintético negado** e público
+   só com `allow_public` explícito E prova independente de que o remoto real é público, de que o HEAD local existe nele e de que o
+   worktree está limpo (`RepositoryVisibilityVerifier`/`RepositoryProof`; sem prova a política falha fechada). `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são
+   **constantes de código**, de propósito: liberar um deles é decisão do dono, com ADR novo, e não um valor esquecido num YAML.
+   "Sintético" serve a fixtures e testes (provedor FAKE ou LOCAL); não é autorização para mandar código a um serviço remoto.
+6. Caminho sensível (`.env`, `config.yaml`, `secrets/`, `data/`, `evidence/`, `backups/`, `personas/`, chaves, bancos, logs…)
+   nunca entra em índice, mapa ou chunk. **Portão duro de segredo** (chave privada, JWT, bearer, chave de API, DSN com senha)
+   bloqueia o pedido inteiro, não só redige; segredo "mole" (par chave/valor que a redação central mascararia) tira só o
+   trecho. O mole reaproveita `security.redaction`.
+7. **Fail-open**: timeout, 429, 529, provedor fora do ar, resposta inválida, orçamento estourado, bloqueio de privacidade ou
+   falha de parse caem no resultado local, com `fallback_reason`. O semântico nunca bloqueia o trabalho. Há orçamento de
+   chamadas por pedido e por sessão, tokens, custo e prazo, e todo payload tem teto (arquivos, chunks, bytes).
+8. A chave `TYPESAFE_API_KEY` vem só do ambiente/`.env` (`EnvSettings`); chave ausente = provedor indisponível = fallback.
+9. Cache em JSON no disco (sem migração) por revisão do repositório (hash de árvore, com resumo do que está sujo), pergunta
+   normalizada, escopo, versão do retrieval, provedor, modelo e etapa; o mapa tem cache próprio. Nunca guarda código nem segredo.
+10. Observabilidade por **lista fechada de campos** (arquivos considerados/escolhidos, latência, fallback e razão, provedor,
+    modelo, tokens, custo, acerto de cache, razão de bloqueio de privacidade); a pergunta vira impressão digital. API de
+    leitura `GET /api/context-retrieval/status`; a tela do painel é a próxima fatia.
+11. Primeiro ponto de integração: `scripts/plano-100-pacotes.py --contexto` (opt-in), que acrescenta aos pacotes de trabalho
+    sugestões de arquivos e trechos. A mesma CLI (`python -m app.modules.context_retrieval.presentation.cli`) serve à skill
+    `preparar-tarefa`. O retrieval **não** decide ação, clique, aprovação nem segurança.
+
+**Alternativas.** Mergear a branch do piloto: traria 9 mil linhas de pesquisa, avaliadores e corpora para a produção.
+Integrar na IA do planejador: ela lê telas, não código; seria um consumidor inventado. Flag de configuração para liberar
+código privado: um `true` esquecido vence a decisão do dono. RAG persistente, vector DB ou grafo de conhecimento agora:
+decidir backend antes de ter a abstração certa; entram depois, como mais um `SemanticProvider`.
+
+**Consequências.** Mergear não muda nada (o padrão é desligado). Nenhuma chamada de rede ao Jev nesta fase
+(`REAL_JEV_NETWORK_CALLS = 0`): o adaptador é provado só com transporte simulado. Ligar `shadow` em repositório público mede
+qualidade e custo reais sem alterar o contexto. Mudar a regra ou o formato da seleção exige subir `RETRIEVAL_VERSION`, que
+invalida os caches.
+
+**Adendo (2ª rodada, 01/10/2026): índice persistente.** O índice BM25 passa a morar em disco (`data/context_retrieval/bm25/`, fora do
+Git), chaveado por raiz + revisão + `RETRIEVAL_VERSION` + `INDEX_VERSION` + corpus, com gravação atômica, corrompido = miss e poda
+(3 por raiz). Guarda só vocabulário e contagens, nunca texto; linha com formato de credencial e token com cara de chave nem
+viram termo, e caminho sensível nem entra no universo. Subir `INDEX_VERSION` (tokenização, higiene, formato) invalida o disco. O lote
+(`--contexto`) usa um serviço só, com orçamento de sessão compartilhado. O `docs-check` deixou de exigir o `handoff-current.md`
+local (fora do Git) como destino de link: alvo que o próprio Git manda ignorar (`git check-ignore`) não conta como link quebrado.
+
+**Adendo (fechamento de privacidade, PR #18).** `public` no YAML deixou de bastar: o envio remoto de repositório público exige
+`allow_public` E a prova independente de que o repositório REAL é público (`RepositoryVisibilityVerifier`, domínio; implementação
+no GitHub em `adapters/github_visibility.py`, anônima, todos os remotos, `UNKNOWN` bloqueia; cache de 15 min só de `PUBLIC`,
+chaveado pela identidade canônica dos remotos). O status não faz rede e não afirma autorização sem prova vigente. Matriz final a
+provedor remoto: privado NEGADO, sintético NEGADO, público = opt-in de configuração + visibilidade pública verificada. Segredo mole
+(e duro) no mapa da etapa A passa a ser omitido, na construção do mapa e na saída (`RETRIEVAL_VERSION` 2). Quem muda um destes
+portões muda código com ADR; nenhum campo de configuração os dispensa.
+
+**Adendo (endurecimento de privacidade, PR #18).** `synthetic` + provedor REMOTE passou de permitido a **negado** (antes bastava
+`repository_class: synthetic` no YAML, e um repositório privado marcado assim por engano contornava `PRIVATE_CODE_SEND_APPROVED`).
+Matriz a provedor remoto: privado negado; sintético negado; público negado até `allow_public: true`. Provedor LOCAL e FAKE não
+sofrem o bloqueio de classe (FAKE continua exercitando o pipeline nos testes, com os portões de caminho e de segredo). Não há
+campo de configuração que libere `synthetic`; se um dia for preciso, exige mudar a constante no código com ADR. O smoke público
+(`python-poetry/poetry`) continua permitido como `public` + `allow_public: true`.
+
+**Adendo (revisão final do PR #18).** O orçamento conta a chamada quando ela é AUTORIZADA (reserva atômica), não quando responde:
+falha de provedor também gasta a cota. O hit de cache do mapa corrompido (número absurdo, aninhamento profundo) é miss. Gravações
+de cache e de índice usam `.tmp` único e não deixam sobra se falham. A chave de API de projeto (`sk-proj-…`) é segredo duro. Os
+limites que ficaram abertos estão em [dominios/context-retrieval.md](dominios/context-retrieval.md#limites-conhecidos-revisão-final-do-pr-18).
+
+**Relação.** `claude/jev-pilot` (evidência, não mergeada); [dominios/context-retrieval.md](dominios/context-retrieval.md);
+[ADR-025/ADR-040](decisoes.md) (segredo nunca em log/prompt); `security/redaction.py`.
