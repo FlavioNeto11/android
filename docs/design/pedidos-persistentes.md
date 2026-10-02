@@ -528,7 +528,7 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
 
 ## 13. Plano incremental: Fase 28 proposta (26.8)
 
-Proposta para o plano-100 (quem registra é o mecanismo, não este documento). Números: **migrações a partir da 059**
+Proposta para o plano-100 (quem registra é o mecanismo, não este documento). Números: **migrações a partir da 059** (efetivos em 02/10: `066_travas` no 28.1 e `067_pedidos` no 28.2, porque a main já tinha a 063 e a 064; a renovação da trava ficou numa tarefa própria do `AppState`, a cada 20 s, e não no `_manter_posse`)
 (056–058 estão reservadas às Fases 23–27; 056 e 057 já estão em curso), ADR a partir do 060 — **conferir em todos os
 branches antes de criar** (regra de sessões paralelas). `[A]` = toca aparelho ou conta real.
 

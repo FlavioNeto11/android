@@ -11,7 +11,7 @@ export const SETTINGS: Settings = {
   session_unknown_retry_cap: 3,
   fleet_max_accounts_per_target: 3, fleet_target_window_s: 3600,
   fleet_min_spacing_between_accounts_s: 120, fleet_spacing_jitter_s: 180,
-  ai_max_calls_per_objective: 60, ai_max_tokens_per_run: 2_000_000,
+  ai_max_calls_per_objective: 60, ai_max_calls_per_item: 12, ai_max_calls_absolute: 300, ai_max_tokens_per_run: 2_000_000,
   ai_max_usd_per_run: 15, ai_max_usd_per_day: 0,
   capture_grid_interval_s: 2, capture_focus_interval_s: 0.5, frame_max_age_ms: 5000,
   log_retention_days: 14, evidence_retention_days: 14,

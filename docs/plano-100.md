@@ -404,6 +404,7 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.8 | **Flex para trabalho offline** (geração de persona, rejulgamento) com `service_tier: flex` | segunda onda | P |
 | 17.10 | **Cascata para ator barato**: `step_blocked` do tier 0 sobe ao tier 1 antes de `waiting_user`, e o "sim" do verificador barato em etapa com efeito externo é rejulgado (como no B14). Pré-condição para medir de novo o gpt-6-luna como ator | bateria de 28/09 (relatório §18) | M |
 | 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
+| 17.12 | **Teto de chamadas proporcional ao for_each** (`teto = base + por_item × (itens − 1)`, limitado por um absoluto; o rejulgamento continua contando; tetos em US$ e de tokens intactos) | achado do 7.4 real (r-20261002181642-eff15b) | P |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Fase 18 — Conhecimento de app como dado e execução medida · 8 itens (pedido do dono de 28/09/2026; ADR-052)
@@ -631,8 +632,8 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
-| 28.1 | **Trava de líder**: tabela `travas` (migração 059), tomada e renovação por CAS no relógio do banco, token; aplicada a saldos, curadoria e retenção (`state.py`) | laços sem trava (§1); Kleppmann, Kubernetes | M |
-| 28.2 | **Modelo do pedido**: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias`, `runs.pedido_id`, `ocorrencia_id`, `prioridade` (migração 060); domínio puro de estados e transições (`modules/pedidos/domain/`), chave da ocorrência | §6 | G |
+| 28.1 | **Trava de líder**: tabela `travas` (migração 066), tomada e renovação por CAS no relógio do banco, token; aplicada a saldos, curadoria e retenção (`state.py`) | laços sem trava (§1); Kleppmann, Kubernetes | M |
+| 28.2 | **Modelo do pedido**: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias`, `runs.pedido_id`, `ocorrencia_id`, `prioridade` (migração 067); domínio puro de estados e transições (`modules/pedidos/domain/`), chave da ocorrência | §6 | G |
 | 28.3 | **Recorrência e fuso**: subconjunto da RRULE, `zoneinfo` + `tzdata` declarado em `requirements.in` (hoje indireto), desvio documentado para hora inexistente, `fold=0` na repetida; prévia das próximas datas | RFC 5545, PEP 495/615 | M |
 | 28.4 | **Laço de pedidos**: materializar, janela, coalescer, sobreposição, despacho idempotente por `RunService.create`, fechamento pelo gancho e pela varredura, retomada depois de reinício | §7.2–7.5, 7.9 | G |
 | 28.5 | **Tentativas e efeito**: nova tentativa só sem efeito possível; `incerta` para em `aguardando_pessoa`; pausa por falhas seguidas | §7.6 | M |

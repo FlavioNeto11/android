@@ -31,6 +31,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_porta_de_politica_por_app.py` (efeito no Outlook sem ação do catálogo é recusado), `test_catalogo_como_dado.py`,
   `test_outlook_declarado.py`. Prova: `simulated`; a leitura real no aparelho é `not_run`.
 
+## 2026-10-02 — Teto de chamadas de IA proporcional ao `for_each` (17.12, branch jev/17-12-teto-for-each)
+
+- `backend/app/taskqueue/executor.py::_ai` / `_teto_de_chamadas` e `backend/app/taskqueue/foreach.py::teto_de_chamadas`: o teto de chamadas por objetivo passa a ser `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))`; sem `for_each` (ou com 1 item) continua exatamente `ai_max_calls_per_objective`. Os itens saem das etapas já gravadas (`item_index` em `steps.variables`, todas as versões do plano), só consultadas quando o base já foi atingido. O rejulgamento do 17.10 continua contando; `ai_max_usd_per_run`/`per_day` e o teto de tokens ficam como estavam. A mensagem diz o teto efetivo e a origem (`60 + 12 × 7 itens do for_each`).
+- Config: campos novos `ai_max_calls_per_item` (padrão 12 = ~8 chamadas medidas por envio na `r-20261002181642-eff15b`, com folga; 0 desliga) e `ai_max_calls_absolute` (padrão 300; só limita o crescimento, nunca baixa o base); expostos em Configuração › Orçamento de IA, `config.example.yaml` e `docs/api-contract.md`. Sem migração (os limites vivem em `settings`).
+- Prova `simulated`: `backend/tests/test_teto_proporcional_for_each.py` (8 testes: fórmula, 5 contatos que estouram com o teto fixo e fecham com o proporcional, sem lista = 60, absoluto corta, rejulgamento conta, US$ intacto); frontend `validation.test.ts`. Prova `real`: `not_run` (reexecutar `msg-todos-os-contatos` depois do deploy exige autorização de gasto).
+
 ## 2026-10-02 — 29.18: fechamento da Fase 29
 
 - `docs/relatorio-validacao.md` §28 (novo): os 20 itens 29.1 a 29.20, cada um com estado e nível de prova (`real` com data, máquina, commit e ids; `simulated` com `arquivo::teste`; `not_run`) e, para o que não fechou, o que ficou pronto e a ação exata e quem decide. Real sem ressalva: 29.1, 29.4, 29.10, 29.11, 29.14, 29.16, 29.17; real com resto: 29.9, 29.12, 29.13; só simulado: 29.2, 29.3, 29.6, 29.20; `not_run` adiados pelo dono: 29.7 e 29.19.
@@ -102,6 +108,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — Recorrência e fuso do pedido persistente (28.3, branch feat/28-3-recorrencia)
 
 Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subconjunto da RRULE (HOURLY/DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE, COUNT/UNTIL, com recusa clara do resto), geração em hora local ingênua localizada com `zoneinfo`, prévia das próximas datas com relógio injetado, hora inexistente desviada para o primeiro instante válido depois do salto e hora repetida em `fold=0`. `tzdata==2026.4` declarado em `requirements.in` (já estava no lock, indireto pelo psycopg). Prova `simulated`: `tests/test_pedidos_recorrencia.py` (`America/Sao_Paulo` 2018/2019, `America/New_York`, `Europe/Lisbon`, `Pacific/Apia`). Decisão de gerador próprio registrada em `docs/design/pedidos-persistentes.md` §7.7. Sem migração, sem rota.
+
+## 2026-10-02 — Modelo do pedido persistente: tabelas, colunas em `runs` e domínio puro de estados (28.2, branch `feat/28-2-modelo-pedido`)
+
+- Migração `067_pedidos.sql`: `pedidos`, `pedido_gatilhos`, `pedido_ocorrencias` (`chave` UNIQUE + trio UNIQUE) e `runs.pedido_id`, `ocorrencia_id`, `prioridade` (padrão 0). Sem FK entre `runs` e a ocorrência (a purga de uma não leva a outra); só colunas novas e vazias, nenhuma linha de `runs` é tocada. O plano dizia 060: a main já passou dela, e a 065/066 são da trava (28.1).
+- `backend/app/modules/pedidos/domain/`: `estados.py` (tabelas de transição do pedido, com ator `pessoa`/`sistema`, e da ocorrência; `transicionar_*` recusa aresta fora da tabela, ator errado e motivo faltante) e `chave.py` (`ped:<pedido>:<gatilho>:<instante UTC no segundo>`; gesto manual/backfill leva a origem; `chave:t<n>` como `idempotency_key`; ids até 28 caracteres para caber nos 100 de `RunCreate`).
+- Prova `simulated`: `backend/tests/test_pedidos_modelo.py` (produto cartesiano das duas máquinas, chave, migração sobre banco existente, CHECK igual ao vocabulário do domínio), em SQLite; PostgreSQL `not_run` (sem `TEST_DATABASE_URL`). Fora do escopo: laço (28.4), API/tela (28.9), recorrência (28.3).
+
+## 2026-10-02 — Trava de líder dos laços periódicos (28.1, branch feat/28-1-trava)
+
+- Migração `066_travas.sql` e `app/taskqueue/travas.py` (`Lideranca`): tomada por CAS no relógio do banco, prazo de 120 s, renovação a cada 20 s num laço próprio do `AppState` (`travas-de-lider`), token de cerca crescente, tomada idempotente, dono = `OWNER_ID`, devolução na saída limpa e faxina de partida para o mesmo dono.
+- `state.py`: saldos, curadoria e retenção rodam só no líder; os outros backends pulam a volta sem erro. O fechamento do dia (não idempotente) roda cercado pelo token (`TravaPerdida` recusa o líder que perdeu o mandato).
+- Prova `simulated`: `backend/tests/test_travas.py` (7: dois bancos, expiração, renovação, token antigo recusado, corrida de 8 conexões, dois `AppState` no mesmo banco). PostgreSQL pulado (sem `TEST_DATABASE_URL`); segundo backend real no central `not_run`. Limite conhecido: `saldos.CONCILIACOES` é memória do processo, e o seguidor com chave de administrador mostra a conciliação velha na saúde.
+- Decisão registrada no [ADR-064](docs/decisoes.md) (aceito; número confirmado pelo orquestrador): CAS no relógio do banco, cerca por token, renovação no `AppState` (desvio consciente do §7.3), dono = `OWNER_ID` com retomada imediata, e os limites aceitos.
 
 ## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
 

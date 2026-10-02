@@ -81,6 +81,8 @@ from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
+from .taskqueue.travas import (CURADORIA, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
+                               TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
 from .util import now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
@@ -229,6 +231,9 @@ class AppState:
         # Outbox: a entrega DEVIDA gravada na mesma transação que aceita o comando (item 5.6). Sem ela, uma
         # queda entre gravar `dispatched` e agendar a tarefa perdia o comando para sempre.
         self.outbox = CommandOutbox(self.db, owner_id=cfg.owner_id, transport=cfg.env.command_transport)
+        # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
+        # saldos, curadoria e retenção; os outros pulam a volta sem erro.
+        self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -2240,6 +2245,11 @@ class AppState:
             # DEPOIS da reconciliação, e só aqui: ela já deixou de fora o que tem entrega pendente, e é este
             # dreno que publica o que a queda anterior aceitou e nunca enviou (item 5.6).
             await self._drenar_outbox()
+            # Antes dos laços que elas guardam: o que ficou no nome deste backend é resto da queda (mesmo `OWNER_ID`),
+            # e a tomada já aqui é o que deixa a primeira volta da retenção acontecer agora e não daqui a 6 h.
+            self.lideranca.soltar_da_queda()
+            self._manter_travas()
+            self._bg.append(asyncio.create_task(self._laco_das_travas(), name="travas-de-lider"))
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
@@ -2384,6 +2394,11 @@ class AppState:
             if self._digestoes:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
+            try:
+                # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
+                self.lideranca.soltar_todas()
+            except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
+                log.exception("encerramento: falha ao soltar as travas de líder")
             self.db.close()
 
     def _check_health(self) -> None:
@@ -2445,40 +2460,85 @@ class AppState:
         except Exception:  # noqa: BLE001 - o aprendizado nunca derruba o fim de uma execução
             log.exception("aprendizado: digest da execução %s", run_id)
 
+    # ------------------------------------------------------------------ trava de líder (item 28.1)
+    def _manter_travas(self) -> None:
+        try:
+            self.lideranca.manter(TRAVAS_DOS_LACOS)
+        except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz
+            log.exception("travas de líder: renovação")
+
+    async def _laco_das_travas(self) -> None:
+        """Renova o mandato do líder e deixa o seguidor assumir a trava vencida. Os laços dormem de 10 min a 6 h; o
+        prazo é de 2 min — sem este laço, o líder perderia a trava entre duas voltas do próprio laço."""
+        while True:
+            await asyncio.sleep(RENOVAR_TRAVA_S)
+            self._manter_travas()
+
+    def _lider(self, nome: str) -> int | None:
+        """Token do mandato de `nome` se este backend é o líder; `None` (e a volta é pulada, sem erro) se não.
+
+        Seguidor que vira líder (o outro caiu) só age na próxima volta do PRÓPRIO laço: até 10 min nos saldos, 15 na
+        curadoria e 6 h na retenção. Aceito: são faxina e conciliação, não trabalho com prazo.
+        """
+        try:
+            token = self.lideranca.tomar(nome)
+        except Exception:  # noqa: BLE001 - sem banco não há como saber quem é o líder: pular é o lado seguro
+            log.exception("trava %s: não foi possível conferir o líder", nome)
+            return None
+        if token is None:
+            log.debug("trava %s: outro backend é o líder; volta pulada", nome)
+        return token
+
     async def _curadoria_loop(self) -> None:
         """A régua diária durável e os passos registrados pelos pacotes seguintes, a cada `aprendizado.curadoria_s`."""
         while True:
             await asyncio.sleep(max(60, int(self.cfg.file.aprendizado.curadoria_s)))
-            try:
-                await asyncio.to_thread(self.learning.curar)
-            except Exception:  # noqa: BLE001 - a curadoria nunca derruba o processo
-                log.exception("aprendizado: curadoria")
+            await self._curadoria_uma_vez()
+
+    async def _curadoria_uma_vez(self) -> bool:
+        """Uma volta da curadoria, só no líder. Idempotente por construção (chaves únicas e CAS): a trava é por
+        eficiência. Devolve se rodou."""
+        if self._lider(CURADORIA) is None:
+            return False
+        try:
+            await asyncio.to_thread(self.learning.curar)
+        except Exception:  # noqa: BLE001 - a curadoria nunca derruba o processo
+            log.exception("aprendizado: curadoria")
+        return True
 
     async def _retention_loop(self) -> None:
         while True:
-            try:
-                s = self.settings.get()
-                cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
-                removed = self.bus.purge_older_than(cutoff)
-                ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
-                old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
-                # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
-                # faxina o outbox cresceria para sempre, e a consulta do dreno de partida com ele.
-                self.outbox.purge_settled(cutoff)
-                # Achado #144: só `appium.log.1` vencia. `emulator-<avd>.log` passou a rotacionar do mesmo jeito
-                # (`devices/emulator.py::_rotate_log`, achado #144) e sobras de `scripts/probe-image.ps1`
-                # (rodado à mão, sem retenção própria: `data/logs/probe-*` e o AVD inteiro em `data/avd-probe`,
-                # medido em 3,4 GB) nunca tinham prazo nenhum.
-                arquivos = self._purgar_arquivos_vencidos(s.log_retention_days)
-                # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
-                # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
-                outras = self._purgar_demais_tabelas(cutoff)
-                if removed or old or outras or arquivos:
-                    log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
-                             "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
-            except Exception:  # noqa: BLE001
-                log.exception("retenção")
+            await self._retencao_uma_vez()
             await asyncio.sleep(6 * 3600)
+
+    async def _retencao_uma_vez(self) -> bool:
+        """Uma volta da retenção, só no líder. Apagar o que já venceu é idempotente (a segunda volta não acha nada):
+        a trava é por eficiência. Devolve se rodou."""
+        if self._lider(RETENCAO) is None:
+            return False
+        try:
+            s = self.settings.get()
+            cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
+            removed = self.bus.purge_older_than(cutoff)
+            ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
+            old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
+            # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
+            # faxina o outbox cresceria para sempre, e a consulta do dreno de partida com ele.
+            self.outbox.purge_settled(cutoff)
+            # Achado #144: só `appium.log.1` vencia. `emulator-<avd>.log` passou a rotacionar do mesmo jeito
+            # (`devices/emulator.py::_rotate_log`, achado #144) e sobras de `scripts/probe-image.ps1`
+            # (rodado à mão, sem retenção própria: `data/logs/probe-*` e o AVD inteiro em `data/avd-probe`,
+            # medido em 3,4 GB) nunca tinham prazo nenhum.
+            arquivos = self._purgar_arquivos_vencidos(s.log_retention_days)
+            # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
+            # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
+            outras = self._purgar_demais_tabelas(cutoff)
+            if removed or old or outras or arquivos:
+                log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
+                         "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
+        except Exception:  # noqa: BLE001
+            log.exception("retenção")
+        return True
 
     def _purgar_demais_tabelas(self, cutoff: str) -> int:
         """Retenção para o resto das tabelas que cresciam sem limite (achados #39/#143).
@@ -2604,13 +2664,35 @@ class AppState:
         provedor e fecha o dia das contas com âncora velha. Sem isto a conciliação só andava quando alguém abria o
         painel — e o roteador e a saúde leem o que ela deixou."""
         while True:
-            try:
-                await conciliacao.atualizar(self.db, self.cfg, forcar=True)
-                if await asyncio.to_thread(saldos.fechar_dia, self.db, self.cfg):
-                    await conciliacao.atualizar(self.db, self.cfg, forcar=True)     # linha de base da âncora nova
-            except Exception:  # noqa: BLE001 - relatório fora do ar não derruba o processo; a saúde mostra
-                log.exception("livro-caixa das contas de IA")
+            await self._saldos_uma_vez()
             await asyncio.sleep(SALDOS_INTERVALO_S)
+
+    async def _saldos_uma_vez(self) -> bool:
+        """Uma volta do livro-caixa, só no líder (item 28.1). Devolve se rodou.
+
+        A consulta ao relatório é por eficiência (é paga e lenta, e as linhas de base que ela grava são por id). O
+        fechamento do dia NÃO é idempotente — dois líderes gravariam dois "fechamentos" na mesma conta —, então ele
+        roda cercado pelo token tirado no começo da volta: quem perdeu o mandato no meio é recusado na escrita.
+
+        Limite conhecido: `saldos.CONCILIACOES` é memória do processo; o seguidor não a atualiza pelo laço, e com
+        chave de administrador a saúde dele mostra a conciliação velha (como já acontece na réplica `ROLE=api`).
+        """
+        token = self._lider(SALDOS)
+        if token is None:
+            return False
+        try:
+            await conciliacao.atualizar(self.db, self.cfg, forcar=True)
+            if await asyncio.to_thread(self._fechar_dia_cercado, token):
+                await conciliacao.atualizar(self.db, self.cfg, forcar=True)     # linha de base da âncora nova
+        except TravaPerdida as exc:
+            log.warning("livro-caixa: fechamento recusado, %s", exc)
+        except Exception:  # noqa: BLE001 - relatório fora do ar não derruba o processo; a saúde mostra
+            log.exception("livro-caixa das contas de IA")
+        return True
+
+    def _fechar_dia_cercado(self, token: int) -> list[str]:
+        with self.lideranca.cercada(SALDOS, token):
+            return saldos.fechar_dia(self.db, self.cfg)
 
     def _problemas_de_saldo(self) -> list[Problem]:
         """Só conta EM USO vira problema: uma conta sem função nem imagem apontada para ela não para nada."""

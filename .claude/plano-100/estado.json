@@ -4668,6 +4668,28 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T18:21:36+00:00"
+  },
+  "17.12": {
+   "id": "17.12",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed.",
+   "blocker": "Prova real not_run: depois do merge e do deploy, so o caso msg-todos-os-contatos no android-05, teto US$ 0,80, sem nova tentativa paga (instrucao do orquestrador 02/10).",
+   "files": [
+    "backend/app/taskqueue/foreach.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/config.py",
+    "backend/tests/test_teto_proporcional_for_each.py",
+    "docs/ia.md",
+    "config/config.example.yaml"
+   ],
+   "testes": "backend/tests/test_teto_proporcional_for_each.py -> 8 passed (simulated)",
+   "grupo": "sessao:jev-17-12",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T18:40:34+00:00"
   }
  },
  "rodadas": [
@@ -5653,6 +5675,15 @@
    ],
    "grupos": [
     "sessao:jev-7-4"
+   ]
+  },
+  {
+   "quando": "2026-10-02T18:40:34+00:00",
+   "itens": [
+    "17.12"
+   ],
+   "grupos": [
+    "sessao:jev-17-12"
    ]
   }
  ]
