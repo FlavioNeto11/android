@@ -597,6 +597,26 @@ describe('grupos de acesso', () => {
     expect(chips.querySelectorAll('[data-sem-conta]')).toHaveLength(2);    // o estilo discreto só nos sem conta
   });
 
+  it('29.25 (B3): o editor lista o membro sem conta (fora da listagem de perfis) e deixa tirá-lo do grupo', async () => {
+    const grupo = { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
+                    members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                              { id: 'ig-7', username: '', name: 'Beatriz Rocha' }],
+                    created_at: '', updated_at: '' };
+    rotasBase([grupo]);
+    backend.on('GET', /\/instagram\/policy-groups\/grp-1$/, () => json(grupo));
+    backend.on('PUT', /\/instagram\/policy-groups\/grp-1$/, () => json({ ...grupo, members: grupo.members.slice(0, 1) }));
+    await render();
+    await waitFor(() => expect(text()).toContain('Cautelosos'));
+    await click(byRole('button', /^Editar$/i));
+    const beatriz = await waitFor(() => byRole('checkbox', /^Beatriz Rocha · sem conta$/) as HTMLInputElement);
+    expect(beatriz.checked).toBe(true);                                    // a contagem (2) bate com o que se vê
+    await click(beatriz);
+    await click(byRole('button', /Salvar grupo/i));
+    await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-1$/)).toHaveLength(1));
+    expect((backend.callsTo('PUT', /policy-groups\/grp-1$/)[0]!.body as { profile_ids: string[] }).profile_ids)
+      .toEqual(['ig-1']);
+  });
+
   it('criar um grupo manda nome, políticas escolhidas e os perfis marcados (só quem tem conta)', async () => {
     rotasBase([]);
     backend.on('POST', /\/instagram\/policy-groups$/, (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));

@@ -171,6 +171,9 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     grupo ? { [pacoteDaLista]: grupo.capabilities } : {});
   const [limites, setLimites] = useState<Record<string, number>>(grupo?.limits ?? {});
   const [membros, setMembros] = useState<Set<string>>(new Set(grupo?.members.map((m) => m.id) ?? []));
+  // Membro cuja conta saiu da plataforma (29.23) some da listagem de perfis, mas continua no grupo: sem esta lista,
+  // o editor contava 2 e mostrava 1, e não havia como tirá-lo do grupo (29.25).
+  const foraDaLista = (grupo?.members ?? []).filter((m) => !profiles.some((p) => p.id === m.id));
   const [padraoLimites, setPadraoLimites] = useState<Record<string, number>>({});
   const [salvando, setSalvando] = useState(false);
   const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
@@ -327,7 +330,17 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
 
         <fieldset className={styles.memberPick}>
           <legend>Perfis neste grupo <Badge size="sm">{membros.size}</Badge></legend>
-          {profiles.length === 0 ? <p className={styles.detail}>Nenhuma persona com conta cadastrada.</p> : null}
+          {profiles.length === 0 && foraDaLista.length === 0
+            ? <p className={styles.detail}>Nenhuma persona com conta cadastrada.</p> : null}
+          {foraDaLista.map((m) => {
+            const q = rotuloDaConta({ username: m.username, name: m.name });
+            return (
+              <label key={m.id} className={styles.memberOption} data-checked={membros.has(m.id) || undefined}>
+                <input type="checkbox" aria-label={q.texto} checked={membros.has(m.id)} onChange={() => alternar(m.id)} />
+                <span data-sem-conta={q.semConta || undefined}>{q.texto}</span>
+              </label>
+            );
+          })}
           {profiles.map((p) => {
             const outro = p.policy_group_id && p.policy_group_id !== grupo?.id ? nomeDoGrupo.get(p.policy_group_id) : null;
             const q = rotuloDaConta({ username: p.username, name: nomeDe(p) });

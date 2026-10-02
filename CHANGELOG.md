@@ -27,8 +27,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
 - **Privacidade:** `GET /api/flows/match?command=` virou `POST /api/flows/match` com corpo `{command}` (máx. 4000): o rascunho, às vezes com e-mail, não vai mais
   para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.59). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
-- Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+1). Real: `not_run`
-  (o ajuste do celular precisa ser visto no navegador).
+- **Editor do grupo:** o membro sem conta some da listagem de perfis (29.23), e o diálogo contava 2 mas mostrava 1, sem como tirá-lo do grupo;
+  agora ele aparece como "Nome · sem conta" e pode ser desmarcado (achado na validação no navegador).
+- Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+2);
+  painel 1243/1243. Validado no navegador contra backend simulado do worktree (8766, IA simulada; a 8000 não foi tocada): chip e editor do grupo,
+  cabeçalho a 375 e 1280 px, `POST /api/flows/match` sem query string; capturas em `data/ux-validacao/2026-10-02-29-25/` (fora do Git). Real: `not_run`.
 
 ## 2026-10-02 — 29.24: rota para resolver a quarentena e aviso sem o @ de conta retirada (branch feat/29-24-resolver-quarentena)
 
