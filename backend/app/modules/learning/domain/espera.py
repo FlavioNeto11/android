@@ -61,7 +61,9 @@ def motivo_de_saida(*, por_sistema: bool, para_aposentado: bool) -> MotivoDeSaid
 
 
 def href_do_item(kind: str, ref: str) -> str:
-    return f"#/aprendizado?item={kind}:{ref}"
+    # Com a aba: o link sai no aviso externo (Telegram) e tem de abrir o item mesmo num painel que ainda não trate
+    # `item` sozinho (o painel novo também aceita sem a aba).
+    return f"#/aprendizado?aba=aprendido&item={kind}:{ref}"
 
 
 @dataclass(frozen=True, slots=True)

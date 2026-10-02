@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
+
+- Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.
+- android-03: verify `session_ready`; coleta `r-20261002221213-8d1c0a` com `OPEN_PROFILE` comprovado pela árvore local (**real**) e `OPEN_POST` parado por grade vazia.
+  android-06 fora (sem rede medida pelo produto e pelo ping); android-01 fora (verify com timeout do UiAutomator). US$ 0,15.
+- `REPLY_COMMENT`, `edit` em aparelho, `learn_from` de comentário e `for_each` com itens reais seguem `not_run`; registro em `docs/relatorio-validacao.md` §8.9 e no estado do 8.3.
+
+## 2026-10-02 — Aprendizado: achados da validação no Chrome do deploy 1 (branch feat/aprendizado-ux-deploy1)
+
+- **B2 (versão):** já estava corrigida pelo #105 (e9de6697), implantado em b5baf3e5. Medido no central (só leitura, 02/10 ~22:05Z): 160 itens, nenhum `versao_aposentada`, Atenção = 11. A validação pegou um deploy anterior.
+- **Links (I1):** o `href` do item sai com a aba (`#/aprendizado?aba=aprendido&item=…`, adendo v0.59). O painel aceita `item` sem aba, então os avisos antigos também abrem o item. "Revisar" das Pendências leva ao item.
+- **Atenção (I2):** um bloco recolhível por rótulo (degradando, provavelmente obsoleto, sem evidência), filtro por app no Global, 10 por bloco com "Mostrar todos". Fila longa abre só o bloco mais grave.
+- **Abas no celular (I3):** a faixa rola até a aba ativa vinda de um link (`components/Tabs.tsx`, vale para todo o painel; rola a faixa, não a página).
+- **Jargão (I4, I5 antiga):** em "O que mais falha", o erro cru do provedor vira frase ("Saldo da conta de IA esgotado…"). O backlog vira "Correção: aberto". A tentativa vira "android-05 · open_app · tentativa 1". A tendência vira "36 na semana anterior → 11 nesta". O id do grupo, o "Onde alterar", os erros originais e o "Copiar para sessão" ficam recolhidos em "Para quem desenvolve".
+- **Evidência (I5):** na receita, a linha diz "Reproduções: X deram certo · Y falharam", diferente de "Evidência registrada" no detalhe. A medida passa a "Base medida: N registros (reproduções e evidências)". A linha "Versão do app: sem dado" da saúde some quando a seção Versão está na tela.
+- **Para aprovar (B3):** ao lado de Aprovar/Rejeitar, "O que faz" (passos em frase, com o passo de efeito marcado), "Aprendida" (aparelho, execução e quando) e "Versão do app".
+- **Outros:**
+  - **I6:** item publicado que ainda espera o dono passa a dizer "Publicado antes da regra de aprovação (…): vale revisar". O selo "Só na loja" vira "Sem declaração".
+  - **Sinais:** separador por dia.
+- **Prova:**
+  - **simulated:** vitest 1249/1249, typecheck e `test_learning_espera.py`.
+  - **Navegador, simulado** (backend 8766 com cópia nova do banco do central, 02/10 ~22:20Z): Global com Atenção em 3 blocos (593 px; antes, ~6.700 px) e filtro por app (7 de 11); link antigo sem aba abrindo a receita 73; Para aprovar com o diferencial de 108 × 106; Rejeitar (106); aprovar em lote (108); desligar em lote no Revisar (22); filtros do Aprendido (fluxo + Instagram = 12); janela das falhas (16 → 8 grupos); bloco "Para quem desenvolve" com o Copiar; "Ver no catálogo Aprendido"; estado de erro com o backend parado e "Tentar de novo" recuperando; celular 375 px com a aba Sinais visível e sem rolagem horizontal.
+  - **Não exercitado:** o balde "não resolvido", que não existe nos dados; está coberto pelo vitest.
+
 ## 2026-10-03 — Pedidos: data prevista na lista e sinal do laço desligado (28.12, ajustes de API; branch feat/28-12-sinais-da-lista)
 
 - `PedidoView.proxima_prevista`: sem `proxima_em` (laço desligado ou ainda sem gerar) e com agenda, a lista traz a 1ª data

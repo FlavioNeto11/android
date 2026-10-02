@@ -280,7 +280,9 @@ function Conteudo({ c }: { c: ConteudoDoItem }) {
 
 // ---------------------------------------------------------------- saúde
 
-function Saude({ s }: { s: SaudeDoItem }) {
+/** `comVersao`: a seção "Versão do app" vem logo abaixo; a linha "Versão do app: sem dado" da saúde a contradiria. */
+function Saude({ s, comVersao = false }: { s: SaudeDoItem; comVersao?: boolean }) {
+  const dimensoes = comVersao ? s.dimensoes.filter((d) => !(d.nome === 'versao' && (d.estado === 'desconhecida' || d.valor === null))) : s.dimensoes;
   const meta = metaDeSaude(s.rotulo);
   return (
     <Secao slug="saude" titulo="Saúde">
@@ -290,12 +292,12 @@ function Saude({ s }: { s: SaudeDoItem }) {
           {s.motivos.map((m, i) => <li key={`${m.codigo}-${i}`}>{textoDoMotivo(m)}</li>)}
         </ul>
       ) : null}
-      {s.dimensoes.length > 0 ? (
+      {dimensoes.length > 0 ? (
         <table className={styles.tabelaDetalhe}>
           <caption>O que foi medido</caption>
           <thead><tr><th scope="col">Medida</th><th scope="col">Valor</th></tr></thead>
           <tbody>
-            {s.dimensoes.map((d) => (
+            {dimensoes.map((d) => (
               <tr key={d.nome}>
                 <th scope="row">{rotuloDaDimensao(d.nome)}</th>
                 <td title={`Fonte: ${d.fonte}`}>
@@ -458,7 +460,7 @@ export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
         {conteudo ? (
           <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} /></Secao>
         ) : null}
-        {saude ? <Saude s={saude} /> : null}
+        {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} /> : null}
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />

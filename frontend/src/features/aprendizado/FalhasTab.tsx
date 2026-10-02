@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
+import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -12,6 +13,7 @@ import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '..
 import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { descreverTentativa, rotuloDoBacklog, traduzirErro } from './falhasTexto';
 import {
   CAMADAS, type GrupoDeFalha, type RelatorioDeFalhas, mdDoItem, ordenarFalhas, rotuloDaCamada, rotuloDaFalha,
 } from './model';
@@ -36,8 +38,8 @@ function Tendencia({ t }: { t: GrupoDeFalha['tendencia'] }) {
   const Icon = sobe ? TrendingUp : TrendingDown;
   return (
     <Badge tone={sobe ? 'danger' : t.atual < t.anterior ? 'success' : 'neutral'} size="sm" icon={Icon}
-           title="Últimos 7 dias contra os 7 anteriores">
-      {formatInt(t.anterior)} → {formatInt(t.atual)}
+           title="Ocorrências nos 7 dias anteriores e nos últimos 7 dias">
+      {formatInt(t.anterior)} na semana anterior → {formatInt(t.atual)} nesta
     </Badge>
   );
 }
@@ -62,12 +64,12 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
         {g.falso_positivo ? <Badge tone="danger" size="sm" title="Sucesso mascarado: sempre no topo">falso positivo do verificador</Badge> : null}
         <Badge tone="neutral" size="sm">{rotuloDaCamada(g.camada)}</Badge>
         {g.retroativo ? <Badge tone="muted" size="sm" title="Legado classificado na leitura; nada foi gravado">retroativo</Badge> : null}
-        {g.estado_backlog ? <Badge tone="info" size="sm">backlog: {g.estado_backlog}</Badge> : null}
+        {g.estado_backlog ? <Badge tone="info" size="sm" title="Situação deste grupo na lista de correções do desenvolvimento">
+          Correção: {rotuloDoBacklog(g.estado_backlog)}</Badge> : null}
         <Tendencia t={g.tendencia} />
       </div>
       <div className={styles.itemMeta}>
         <span><span className={styles.mono}>{onde}</span>{g.failure_screen ? <> · tela <span className={styles.mono}>{g.failure_screen}</span></> : null}</span>
-        <span className={styles.mono}>{g.id}</span>
       </div>
       <div className={styles.numeros}>
         <Numero valor={formatInt(g.ocorrencias)} rotulo={g.taxa !== null ? `ocorrências (${formatPercent(g.taxa * 100)})` : 'ocorrências'} />
@@ -77,26 +79,44 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
         <Numero valor={g.execucoes !== null ? formatInt(g.execucoes) : '—'} rotulo="execuções" />
         <Numero valor={g.aparelhos !== null ? formatInt(g.aparelhos) : '—'} rotulo="aparelhos" />
       </div>
-      {g.onde_alterar.length > 0 ? (
-        <p className={styles.secaoLead}>
-          Onde alterar: {g.onde_alterar.map((a, i) => <span key={a}>{i > 0 ? ', ' : ''}<span className={styles.mono}>{a}</span></span>)}
-          {g.prova ? <> · prova: {g.prova}</> : null}
-        </p>
-      ) : null}
       {g.exemplos.length > 0 ? (
         <ul className={styles.exemplos} aria-label="Exemplos">
-          {g.exemplos.map((x) => (
-            <li key={`${x.run_id}-${x.attempt_id ?? ''}`}>
-              <button type="button" className={styles.linkBtn} onClick={() => abrirExecucao(x.run_id)}>{x.run_id}</button>
-              {x.attempt_id ? <span className={styles.mono}> / {x.attempt_id}</span> : null}
-              {x.erro ? <> — {x.erro}</> : null}
-            </li>
-          ))}
+          {g.exemplos.map((x) => {
+            const tentativa = descreverTentativa(x.attempt_id);
+            return (
+              <li key={`${x.run_id}-${x.attempt_id ?? ''}`}>
+                {tentativa ?? 'Execução'}{' '}
+                <button type="button" className={styles.linkBtn} title={x.run_id} onClick={() => abrirExecucao(x.run_id)}>abrir a execução</button>
+                {x.erro ? <> — {traduzirErro(x.erro)}</> : null}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-      <div className={styles.itemAcoes}>
-        <Button size="sm" variant="outline" icon={ClipboardCopy} onClick={() => void copiar()}>Copiar para sessão</Button>
-      </div>
+      {/* O que só serve a quem altera o código fica recolhido: o dono opera, a sessão de desenvolvimento copia. */}
+      <Disclosure bare summary="Para quem desenvolve">
+        {() => (
+          <div className={styles.secao}>
+            <p className={styles.secaoLead}>Grupo <span className={styles.mono}>{g.id}</span></p>
+            {g.onde_alterar.length > 0 ? (
+              <p className={styles.secaoLead}>
+                Onde alterar: {g.onde_alterar.map((a, i) => <span key={a}>{i > 0 ? ', ' : ''}<span className={styles.mono}>{a}</span></span>)}
+                {g.prova ? <> · prova: {g.prova}</> : null}
+              </p>
+            ) : null}
+            {g.exemplos.some((x) => x.erro && traduzirErro(x.erro) !== x.erro) ? (
+              <ul className={styles.exemplos} aria-label="Erros originais">
+                {g.exemplos.filter((x) => x.erro && traduzirErro(x.erro) !== x.erro).map((x) => (
+                  <li key={`orig-${x.attempt_id ?? x.run_id}`} className={styles.mono}>{x.attempt_id ?? x.run_id}: {x.erro}</li>
+                ))}
+              </ul>
+            ) : null}
+            <div className={styles.itemAcoes}>
+              <Button size="sm" variant="outline" icon={ClipboardCopy} onClick={() => void copiar()}>Copiar para sessão</Button>
+            </div>
+          </div>
+        )}
+      </Disclosure>
     </li>
   );
 }

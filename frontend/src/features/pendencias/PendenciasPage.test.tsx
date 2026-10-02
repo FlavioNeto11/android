@@ -170,7 +170,8 @@ describe('caixa de pendências', () => {
     await act(async () => { root.render(<PendenciasPage />); });
     await waitFor(() => expect(container.querySelectorAll('li[data-origem]')).toHaveLength(4));
     const hrefs = Array.from(container.querySelectorAll('li a')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toContain('#/aprendizado?aba=aprovar');
+    // "Revisar" leva direto ao item (o mesmo link do aviso externo), não à fila inteira.
+    expect(hrefs.some((h) => /^#\/aprendizado\?aba=aprendido&item=receita(:|%3A)/.test(h ?? ''))).toBe(true);
     expect(hrefs).toContain('#/personas/p1/aprovacoes');
     expect(hrefs).toContain('#/execucoes/r-espera');
     expect(backend.callsTo('POST', /./)).toHaveLength(0);

@@ -3564,7 +3564,7 @@ fechado (também é persistida e transmitida).
 | `faixa` | `B` ou `C` (§8.4 de `design/aprendizado-vivo.md`) |
 | `aguardando` | `true` ao entrar na espera; `false` ao sair |
 | `motivo` | entrada: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; saída: `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
-| `href` | `#/aprendizado?item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
+| `href` | `#/aprendizado?aba=aprendido&item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
 | `desde` | ISO UTC de quando entrou na espera (também no evento de saída) |
 
 **Nunca** vai no evento: conteúdo de receita ou fluxo, seletor, texto digitado, parâmetro, texto de persona, nota nem conclusão de IA.
@@ -3809,3 +3809,10 @@ e o `item` do detalhe `GET /api/aprendizado/{kind}/{ref}` ganham **`capability`*
 - **fluxo, habilidade, memória** e o resto: `null` (o fluxo é um comando inteiro, não pertence a uma capability).
 
 Lida em lote (uma consulta por tipo, como a `saude`); o painel agrupa por ela em `agruparPorCapability`.
+
+## Adendo v0.59 (02/10/2026) — o `href` do item do Livro abre a aba certa
+
+Muda o VALOR de um campo, não o tipo. O `href` de `learning.needs_person` (30.21) e do aviso externo (28.14, Telegram) passa de
+`#/aprendizado?item=<kind>:<ref>` para **`#/aprendizado?aba=aprendido&item=<kind>:<ref>`**. Sem a aba, o painel caía na visão
+Aplicativos e não abria o item (validação no Chrome de 02/10, I1). O painel aceita os dois formatos: `item` sem `aba` abre o
+catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcionando. "Revisar" das Pendências usa o mesmo link.

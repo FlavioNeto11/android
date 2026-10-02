@@ -137,7 +137,8 @@ describe('detalhe rico: saúde', () => {
       .find((tb) => /O que foi medido/.test(tb.textContent ?? ''))!.querySelectorAll('tbody tr');
     const porNome = Object.fromEntries(Array.from(linhas).map((tr) => [tr.querySelector('th')?.textContent, tr.querySelector('td')?.textContent]));
     expect(porNome['Eficácia']).toBe('60% (em 10)');
-    expect(porNome['Versão do app']).toBe('sem dado');
+    // Com a seção "Versão do app" logo abaixo, a linha "Versão do app: sem dado" da saúde sai (ela a contradiria).
+    expect(porNome['Versão do app']).toBeUndefined();
     expect(porNome['Intervenção humana']).toBe('sem dado');
     expect(Object.values(porNome)).not.toContain('0');
   });

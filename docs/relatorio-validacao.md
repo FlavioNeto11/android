@@ -599,6 +599,24 @@ existe e hoje não tem nenhum chamador.
 * **Nada foi publicado.** As seis aprovações das execuções de validação foram decididas em 19/09 às 13:12, mas
   nenhuma chegou à tela do aparelho — ver 8.8. Não há nenhum comentário desta série publicado no Instagram.
 
+**Tentativa real de 02/10/2026 (roteiro `.claude/handoffs/roteiro-8-3-final.md`, central `b5baf3e5`, migração 073):
+`REPLY_COMMENT` continua `not_run`, sem nenhum gesto público e sem aprovação criada.** Linha de base às ~22:09Z: 0
+aprovações pendentes, política dos três perfis vivos com `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` e
+nada afrouxado. Ordem 03 > 06 > 01:
+
+* **android-03:** verify só de observação `session_ready` (comando `c-20261002221051-1bab35`); coleta
+  `r-20261002221213-8d1c0a` com plano só de leitura aceito (OPEN_PROFILE → OPEN_POST → OPEN_COMMENTS →
+  COLLECT_COMMENTS). `OPEN_PROFILE` foi comprovado pela árvore local, sem IA (**real**); `OPEN_POST` parou honesto em
+  `waiting_user` porque o perfil não tem publicação nenhuma (grade vazia). US$ 0,15.
+* **android-06:** fora sem execução: o próprio produto media `connectivity.state=unavailable` (DNS e TCP 443 falhos)
+  e o ping do convidado não alcança nem IP. Não se mexeu na rede.
+* **android-01:** verify `c-20261002221357-328657` terminou `failed` com o timeout do UiAutomator ("waiting for the
+  root AccessibilityNodeInfo"), o mesmo das 19:30Z; pelo roteiro, saiu sem execução e sem nova tentativa.
+
+Custo total US$ 0,15 de um teto de US$ 1,50. Ficam `not_run`: `COLLECT_COMMENTS` com itens, `REPLY_COMMENT`, o verbo
+`edit` em aparelho, o `learn_from` de comentário e o `for_each` com itens reais. O próximo passo é do dono: esperar um
+comentário orgânico num post nosso e repetir uma vez, ou comentar de uma conta pessoal com consentimento explícito.
+
 **Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
 muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
 interação. Saíram **8 respostas distintas**, cada uma reconhecível pela persona declarada:
