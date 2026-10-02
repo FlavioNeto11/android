@@ -475,7 +475,8 @@ Quem quer o detalhe abre o `href`, com a autenticação do painel.
 da espera, por qualquer transição. Idempotente por (`kind:ref`, `aguardando`): sem mudança, não publica de novo.
 
 **Consumidores, sem acoplamento direto** (assinam o evento, o Livro não os conhece): o aviso fora do painel do 28.11 (Telegram, frente Jev, que
-hoje escuta `approval.pending`, `run.updated` em `needs_input`, `session.needs_person` e `pedido.aviso`) e a caixa de Pendências (ADR-062).
+escuta `approval.pending`, `run.updated` em `needs_input`, `session.needs_person`, `pedido.aviso` e, desde o 28.14, este evento: só a entrada na
+faixa C por padrão, chave `learning:{kind}:{ref}:{desde}`, nenhum identificador do item na mensagem) e a caixa de Pendências (ADR-062).
 Item 30.21. A linha entra na tabela de eventos do `api-contract.md` no adendo da implementação.
 
 ---

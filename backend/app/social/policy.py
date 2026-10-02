@@ -35,6 +35,7 @@ from ..models import InteractionStatus, InteractionType
 from ..planning.capabilities import Capability, normalizar_alvo
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
+from .contas_nossas import eh_conta_nossa
 from .repository import SocialRepository
 
 # Padrões conservadores. O perfil pode ENDURECER (nunca afrouxar sozinho os tetos de frota — esses moram em
@@ -274,6 +275,11 @@ class PolicyEngine:
                     "por alvo não tem como ser conferida", None,
                     f"Diga no comando quem recebe a ação (o @ em `{cap.counterparty}`, por exemplo o de quem publicou) "
                     "e refaça o plano.")
+        if eh_conta_nossa(self.repo.db, alvo):
+            # Conta NOSSA (viva ou aposentada por bloqueio, 29.23/ADR-068) nunca é alvo de ação com efeito: uma persona
+            # engajando com outra da frota é engajamento simulado (ADR-050).
+            return ("o alvo é uma conta da própria frota: nada se faz entre contas nossas (ADR-050)", None,
+                    "Escolha outro alvo: uma conta nossa não recebe curtida, comentário, seguir nem mensagem.")
         s = self._settings()
         dias = max(1, int(getattr(s, "fleet_target_window_days", 30) or 30))
         teto = self.teto_de_contas(cap, s)

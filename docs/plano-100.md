@@ -686,6 +686,7 @@ mecanismo quando a prova deles existir, não por fecharem aqui.
 | 29.20 | **Nenhum aparelho pela saída da casa**: a plataforma mede a saída do próprio central e acusa, por aparelho, a medida igual a ela (IPv4 ou IPv6) e o IPv6 medido quando o perfil não leva IPv6; o painel mostra quem ainda sai pela casa | P1, 29.6 | M |
 | 29.21 | **Reinício pedido pela rede que nunca sai** (android-05, 02/10: `exigida_com_bloqueio` acordou a frio sem `tun0`, a convergência pôs `configurado` e religou pela interface, e NENHUM `restart` foi aberto; a execução que esperava a rede ficou presa 7 min): `_pedir_reinicio` achava o aparelho ocupado nas 24 tentativas e punha 300 s de mudez sem dizer qual termo o segurou. Agora diz o termo (controle, worker, objetivo, comando exclusivo, estado, verbo ausente) na linha, uma vez por termo, e com objetivo parado em `wait_reason='rede'` retenta em 30 s em vez de 300 s. Dívida registrada: o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e zeram no restart do central (a linha `configurado` persistida reabre o ciclo). Causa exata do "ocupado" ainda não provada (prova real: reproduzir no android-05) | P1 | P |
 | 29.22 | **Tráfego verificado não atravessa boot novo** (android-05, 02/10 19:50: a linha estava `trafego_verificado` pela medição #134 das 19:20; o aparelho foi parado e ligado a frio às 19:50 e a porta da rede liberou a tarefa às 19:52 com a MESMA medição, enquanto o aparelho acusava "sem internet: DNS não responde"; sem vazamento só porque havia bloqueio): `rede.verificacao_invalida` ganha o motivo `boot` (`boot_depois_da_medicao`: o marco de boot é mais novo que `verified_at`), pelo `instances.emulator_started_at` (boot a frio e acordar do snapshot; sobrevive ao restart do central) ou, no aparelho de worker, pela entrada no ar que o central viu (`online_since_mono`, renovada quando o agente conclui `start`/`wake`/`restart`/`reset` com boot novo). A porta segura com frase própria, a convergência mede ao ligar e na varredura, e só a medição posterior ao boot libera; sem coluna nova. Wake quente também invalida (custo: uma medição por wake). Prova real pendente: parar e ligar a frio um aparelho `exigida` no central | android-05 02/10 19:50 | P |
+| 29.23 | **Conta bloqueada sai na hora; a persona fica** (dono, 02/10: bloqueio CONFIRMADO tira a conta de listagens, roteamento, contagens e painel; credencial e ciphertext saem do cofre, sessões e vínculo encerram; a persona segue viva e `active`, sem @; o produto guarda só o hash do @ para nunca tratá-lo como terceiro, ADR-050): ação `retirar_conta_bloqueada` + rota `POST …/accounts/{id}/retire`, gatilho no bloqueio confirmado (`marcar_conta_travada`), lápide `contas_retiradas` (071), `eh_conta_nossa()` no filtro de frota, gancho `limpezas_ao_retirar` para outros módulos. Opção A do histórico (provas antigas intactas). ADR-068, K-074 | dono 02/10 | P |
 
 **Fecha quando:** o CI está verde no commit publicado; um reinício do backend com prova válida não reinicia nenhum
 aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
@@ -725,6 +726,31 @@ lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `tr
 
 **Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
 o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.
+
+### Fase 31 — Jev na plataforma: decisão por conjunto fechado · 13 itens (roteiro de 02/10/2026; ADR-069 proposto)
+
+Origem: a direção do dono de 02/10 ("analise tudo em que ele pode funcionar na plataforma e acelerar") e o roteiro com verificação adversarial em
+`.claude/handoffs/roteiro-jev.md`. Peça comum da frente Jev no hub de IA: a porta `DecisaoFechada`. Nada envia dado antes do ADR-069 e das respostas
+do dono (31.8 em diante); Jev fora do social e da persona (D-J5); a chave é girada pelo dono antes de qualquer chamada nova (D-J3).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 31.1 | **Trava de 255 opções e opção `nenhuma`** no adaptador do Jev-retrieval, com teste (pré-requisito R4) | roteiro-jev §5 | P |
+| 31.2 | **Coluna `origem` (e `ref`) em `ai_calls`** (P2 do hub, migração 073), separando os usos de `role="plan"` fora de execução; serve também ao 30.12 | roteiro-jev §5; hub P2 | M |
+| 31.3 | **Texto do ADR-069** para o dono: emenda ao ADR-063 cobrindo dado de runtime, constantes fechadas, fases de dado (C0–C8), Telemetria do MCA, M1 e E3 fora | roteiro-jev §4 D-J1 | P |
+| 31.4 | **Porta `DecisaoFechada` no hub**: contrato, provedores falso e nulo, `Privacidade.validar()` com `JEV_RUNTIME_SEND_APPROVED=False` e `JEV_ALLOWED_CLASSES=frozenset()`, recusa total em C7, teste de cliente único, modos `off/shadow/on`, fan-out e recurso ao caminho atual; nada sai | roteiro-jev §3 | G |
+| 31.5 | **Registro do Jev**: tabela de sombra durável com retenção própria e agregado diário (padrão 055), preço do `jev-1.13.0` em `ai.prices`, conta TypeSafe no livro-caixa (ADR-051), `notice` de `/api/ai` e chave só como "configurada" | roteiro-jev §3.5 | M |
+| 31.6 | **`fatia_jev` na rubrica única de gasto** (`AIError.motivo` fechado, P6 do hub) | roteiro-jev §3.4; hub §3 | P |
+| 31.7 | **Golden set e limiares pré-registrados** (rótulos de desfecho e da fila "Para aprovar", português × inglês, braço de controle local gratuito), sem chamada; com a frente Aprendizado | roteiro-jev §3.8 | M |
+| 31.8 | **Triagem do curador em sombra** (R1) com dado F1 (lições e receitas por campos fechados; memórias fora); depende de 30.11, 30.12, 31.3–31.7 e do ADR aprovado | roteiro-jev §2 R1 | M |
+| 31.9 | **Intenção em sombra** (R2/R3) fora da cadeia: assíncrona depois do `_plan`, catálogo inteiro como conjunto fechado, comparada ao desfecho real; dado F2+F3 só com as respostas do dono | roteiro-jev §2 R2/R3 | G |
+| 31.10 | **Prova real pontual** [A]: sombra do 31.8 (e do 31.9, se liberado) com teto e relatório GO/NO-GO | roteiro-jev §5 | M |
+| 31.11 | **Jev como braço offline na bateria** (M2) [A], com o adaptador MIT | roteiro-jev §5 | M |
+| 31.12 | **`on` por consumidor aprovado**, A/B por perfil 17.7; na intenção, só sugere até o GO de "aceite errado" (D-J7: medição de português antes) | roteiro-jev §5 | G |
+| 31.13 | **Apps candidatos do comando em sombra** (R5), dado F2+F3 | roteiro-jev §2 R5 | M |
+
+**Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
+custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

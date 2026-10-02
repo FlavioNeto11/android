@@ -331,6 +331,9 @@ async def test_rotas_da_visao_por_app(visao: VisaoPorApp, mundo: Mundo) -> None:
         assert d.status_code == 200, d.text
         assert {x["ref"] for x in d.json()["absorvido"]} == {"li-tela-abs"}
         assert d.json()["absorvido"][0]["absorvida_em"] == "abc1234"
+        # A linha da visão por app traz a MESMA saúde da lista do Livro (30.4), sem o painel completar por outra rota.
+        assert all("saude" in x for x in d.json()["absorvido"] + d.json()["aprendido"])
+        assert d.json()["absorvido"][0]["saude"] is not None
         assert {x["tipo"] for x in d.json()["declarado"]} == {"app", "catalogo", "telas", "sessao", "loja"}
         assert (await c.get(f"/api/aprendizado/apps/{APP_NAO_RESOLVIDO}")).status_code == 200
         assert (await c.get("/api/aprendizado/apps/com.exemplo.nao.existe")).status_code == 404

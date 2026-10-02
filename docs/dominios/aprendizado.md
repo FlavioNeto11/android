@@ -445,6 +445,7 @@ tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `Lear
 - **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
 - Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
 
+
 ## Saúde do item (30.4)
 
 Cada item do Livro (lista, `pendentes`, `revisar` e detalhe) traz `saude`: dimensões medidas, UM rótulo por regra e os `motivos[]` que o
@@ -480,7 +481,6 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
 - **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
   varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
 - **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
-
 ## Conta removida (29.23)
 
 `esquecer_conta(db, *, profile_id, account_id, handle, app_id)` (`app.modules.learning`, implementação em `infrastructure/esquecer_conta.py`) é a
@@ -528,9 +528,30 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
   `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 
+## Saúde do item (30.4)
+
+
 ## Curador, aplicação (30.11)
 
 Desenho em `design/aprendizado-vivo.md` §8.5-8.8 e §8.11. Só com o adaptador SIMULADO: o do hub de IA é o 30.12 (frente Jev).
+
+## Obsolescência (30.14)
+
+`obsoleto_provavel` entra na ordem da saúde depois de `degradando` e antes de `sem_evidencia`, só para o publicado (contrato no adendo
+v0.54; desenho §9.2). A regra é pura (`domain/obsolescencia.py`, `domain/saude.py`); a leitura é `application/obsolescencia.py`
+(`LeitorDeObsolescencia`, pendurado no serviço por `infrastructure/ligar_obsolescencia.py`), e a lista e o detalhe usam o mesmo
+`ContextoDeObsolescencia.sinais`. Sinais com fonte: substituta viva, versão fora do parque ou versão viva sem reprodução (o quadro do
+30.6, em lote por `infrastructure/obsolescencia_sql.py`), efeito sem respaldo no catálogo, fluxo nunca casado há `sem_uso_dias` e tela
+absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave vizinha, habilidade com a mesma `match_key`.
+
+- **Rebaixamento `catalogo_sem_efeito`** (passo da curadoria `RebaixamentoPorCatalogo`, sem IA, idempotente): receita ou fluxo vivo com
+  `commit` num app com catálogo (o do registro de apps) que não respalda o efeito — catálogo sem nenhuma ação com efeito (`*`, o Outlook
+  hoje) ou capability conhecida, sem ambiguidade, cuja ação não tem efeito. App sem catálogo nunca; capability ambígua ou desconhecida
+  num catálogo com efeito vira só o sinal (`duvidoso`). Vai por `LearningService.mudar_estado(by='sistema')`, o mesmo caminho do Livro
+  (CAS, trilha, aviso de espera): em prova → `disabled`, publicado → `deprecated` (fluxo: `disabled`). `recipes.py` não foi tocado.
+- **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
+  varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
+- **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
 
 - **Porta** `CuradorDeIA` (`application/ports.py`): `revisar(PedidoDeRevisao) -> RespostaDeRevisao`, mais os atributos `provedor` e
   `simulado` (vão ao registro). `PedidoDeRevisao{dossie, dossie_hash, classe: A|B|C, opcoes: dict[str, list[str]], modelo_sugerido:

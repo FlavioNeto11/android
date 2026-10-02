@@ -19,6 +19,38 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Conta bloqueada sai na hora e a persona fica (29.23, ADR-068, branch feat/29-23-conta-bloqueada-sai)
+
+- Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
+- Migração 071 `contas_retiradas`: lápide só com o hash do @; `eh_conta_nossa()` e o filtro de frota recusam ação sobre conta nossa (ADR-050). `memory_items` reescritos para "[conta removida]"; gancho `limpezas_ao_retirar` para outros módulos. Histórico intacto (opção A do dono).
+- Testes: `test_conta_bloqueada_sai.py` (16); asserções de bloqueio em `test_detector_conta_travada`, `test_quarentena_de_conta`, `test_escopo_do_desafio` e `test_sessao_declarada` atualizadas de propósito (o bloqueio agora retira a conta e devolve a persona a `active`). Prova `simulated`; real e PostgreSQL `not_run`.
+- Retirada AUTOMÁTICA só no Instagram (conta âncora) e só com sinal forte: `ChallengeActivity` em foco (`DeviceManager.observe` lê o foco quando a árvore já parece conta travada) ou declaração do dono. Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
+
+## 2026-10-03 — Aprendizado: versão viva comparada no formato da receita (fix, branch fix/aprendizado-versao-nome-codigo)
+
+- A receita grava `app_version` como `nome(código)` (`447.0.0.55.81(385311929)`), e `fontes.vivas` agrupava só
+  `device_app_state.observed_version_name`: TODA receita aparecia como "versão fora do parque" e a saúde (30.4/30.14) marcava
+  78 de 160 itens `obsoleto_provavel` numa cópia do banco do central. Agora as vivas saem no formato da receita
+  (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
+  Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
+  Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
+
+## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
+
+- O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:
+  - só a ENTRADA na espera avisa;
+  - a saída, e a saída sem a entrada correspondente depois de reinício, é no-op;
+  - só a faixa C avisa por padrão (`avisos.aprendizado_faixas`, novo; a B é aprovação em lote e fica na caixa);
+  - a mensagem leva o título fixo e o link `#/pendencias`, nunca kind, ref, app ou motivo.
+- Chave de deduplicação comum aos eventos que avisam: `chave_do_fato(família, …)`. Famílias e formatos:
+  - `approval:{id}`;
+  - `run:{id}:needs_input`;
+  - `session:{evento}` (era `evento:{id}`);
+  - `pedido:{id}` (era `pedido-aviso:{id}`);
+  - `learning:{kind}:{ref}:{desde}`.
+  A troca de nome é inofensiva: o laço só lê eventos novos, a partir de `last_id`.
+- Prova `simulated`: `backend/tests/test_avisos_aprendizado.py` (6), mais os testes de avisos vizinhos. Real: `not_run`.
+
 ## 2026-10-02 — Aprendizado: curador por IA, aplicação com adaptador simulado (30.11, branch feat/30-11-curador-aplicacao)
 
 - Porta `CuradorDeIA` (`PedidoDeRevisao`/`RespostaDeRevisao`, combinados com a frente Jev) e adaptador SIMULADO determinístico; laço
@@ -26,7 +58,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `shadow` / `on` (= `shadow` nesta fatia). Gatilhos, filtros (hash, cooldown, orçamento, prioridade) e o orçamento proporcional
   aprovado (`B_W = min(α·G_W, k·N_W·c̄)`, α 0,10, k 1,5, W 7 dias, `c_max = 4 × mediana`) em `domain/orcamento_do_curador.py`; corte
   com motivo próprio `orcamento_da_janela`. Revisões em `learning_reviews` (069) com `usd = 0` = não medido (o custo é do 30.12);
-  `learning.needs_person` com `motivo: parecer_da_ia` (`api-contract.md`, adendo v0.55). A IA nunca decide.
+  `learning.needs_person` com `motivo: parecer_da_ia` (`api-contract.md`, adendo v0.57). A IA nunca decide.
 - Config `aprendizado.curador` (núcleo: `config.py`, `CuradorCfg`) e uma linha em `state.py`. Sem migração, sem IA paga. Prova
   `simulated` (`tests/test_learning_curador.py`); `not_run` no central.
 
@@ -61,6 +93,39 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
 - Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
 
+## 2026-10-02 — Aprendizado: obsolescência e rebaixamento `catalogo_sem_efeito` (30.14, branch feat/30-14-obsolescencia)
+
+- `saude.rotulo` ganha `obsoleto_provavel` (depois de `degradando`, antes de `sem_evidencia`, só no publicado), com os sinais do §9.2 que têm
+  fonte: substituta viva, versão fora do parque, versão viva sem reprodução, efeito sem respaldo no catálogo, fluxo nunca casado e tela
+  absorvida (`api-contract.md`, adendo v0.54). Só leitura.
+- Passo novo da curadoria, `catalogo_sem_efeito`: receita ou fluxo vivo com `commit` num app cujo catálogo atual não respalda o efeito é
+  rebaixado pelo sistema (sempre → `disabled`, para a pessoa poder reativar) pelo caminho do Livro, com o motivo
+  `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
+  Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
+## 2026-10-02 — Aprendizado: saúde, falhas, capability e fila Atenção por app no painel (30.15 restante, branch feat/30-15-painel-resto)
+
+- A aba Aplicativos ganha, só no painel (`frontend/src/features/aprendizado/`): a contagem por rótulo de saúde no cartão e no detalhe do
+  app ("1 degradando, 2 saudáveis"), a fila **Atenção** (degradando, provavelmente obsoleto e sem evidência, só leitura, com o motivo
+  principal em português e o link `?aba=aprendido&item=<tipo>:<ref>`), global abaixo dos cartões e por app no detalhe, e o bloco "O que
+  falha" no detalhe do app (as falhas do backlog filtradas por `app`, agrupadas por capability). A saúde é CONTADA da lista do Livro
+  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude`; as linhas de `/apps/{pacote}` passam a trazer a `saude`
+  da mesma função do Livro (`presentation/apps.py`, `LearningService.saudes`). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
+  (só existe em `conteudo.capability` do detalhe do item): o aprendido segue plano e a tela diz por quê; agrupa sozinho se a linha
+  passar a trazer `capability`. Prova `simulated` (`frontend/src/features/aprendizado/SaudeDoApp.test.tsx`); `not_run` no central.
+
+## 2026-10-02 — Aprendizado: detalhe rico do item do Livro no painel (30.16, branch feat/30-16-detalhe-rico)
+
+- O detalhe do item (Aprendido, "Detalhes, evidência e trilha") ganha as seções do §11.2 do desenho, só as aplicáveis: Identidade,
+  Conteúdo (receita com ações, alvo, NOMES de parâmetro, selo do commit, capability ambígua marcada, origem com link para a execução,
+  uso, sombra e versões vizinhas; fluxo, habilidade, lição e tela), Saúde (rótulo, motivos com fato e limiar, dimensões com "sem dado"
+  no lugar de zero), Versão do app (quadro por versão), Evidência, Histórico, Relações (links para o item no próprio Livro) e o que
+  a pessoa pode fazer. A linha da lista continua enxuta e ganha só o selo de saúde. `?aba=aprendido&item=<tipo>:<ref>` abre o item de
+  um link no topo do catálogo. Só painel: lê `conteudo`, `versao`, `saude` e `relacoes` já mandados (adendos v0.50 a v0.53) e não
+  recalcula nada. Faltam no contrato `camada_de_uso` e `classe_de_risco` do §11.2: não são exibidas. Prova `simulated`
+  (`frontend/src/features/aprendizado/DetalheRico.test.tsx`); `not_run` no central.
+
+
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
 - `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,
@@ -71,6 +136,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (sem critério seguro). `nasceu de`, `complementa / depende de` e `revisado por` ficam fora.
 - `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
   Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
 
 ## 2026-10-02 — Aprendizado: saúde do item do Livro (30.4, branch feat/30-4-saude)
 
@@ -83,7 +149,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `EntradaDoLivro.falhas_seguidas` novo (opcional), preenchido de `recipes.consecutive_fail`. Limiares = D-5, aprovada pelo dono em 02/10.
 - Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
   lista = detalhe); `not_run` no central.
-
 ## 2026-10-02 — Aprendizado: esquecer_conta (29.23, branch feat/29-23-esquecer-conta-aprendizado)
 
 - `app.modules.learning.esquecer_conta(db, *, profile_id, account_id, handle, app_id)` reescreve o rastro textual da conta (handle com e sem `@`, `account_id`) para `[conta removida]` em `learning_items`, `learning_evidence`, `learning_transitions`, `learning_backlog`, `learning_reviews` e `learning_signals`; roda na transação de quem chama (sem commit), não apaga linha nem muda hash/id, é idempotente e casa por fronteira de palavra (handle `ana` não estraga "banana"). Parte Aprendizado do 29.23; a frente Android (`memory_items`, chamada) é outra. Sem migração e sem rota. Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (13); PostgreSQL: `not_run`. Detalhe em `docs/dominios/aprendizado.md` ("Conta removida (29.23)").
@@ -102,6 +167,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   confiança derivada da probabilidade da escolha e a conclusão como único texto livre, opcional (`invalida:<motivo>` em vocabulário
   fechado). Sem rota, sem migração, sem chamada de IA nem prompt. Prova `simulated`
   (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
+
+## 2026-10-02 — Aprendizado: saúde do item do Livro (30.4, branch feat/30-4-saude)
+
+- `saude` na lista, em `pendentes`/`revisar` e no detalhe do Livro (`api-contract.md`, adendo v0.52): dimensões medidas (uso, eficácia, base de
+  evidência, frescor, contestação; versão e intervenção humana `desconhecidas`), UM rótulo por regra (`inativo`, `em_prova`, `degradando`,
+  `sem_evidencia`, `parado`, `pouca_amostra`, `saudavel`, mais `indeterminado` quando falta medida) e `motivos[]` com o fato e o limiar. Regras e
+  limiares da proposta D-5 (medidos no banco real); eficácia acumulada, sem janela por item; `obsoleto_provavel` fica para o 30.13.
+- `domain/saude.py` puro; `LearningService.saude_de`/`saudes` são a única fonte do cálculo (evidência lida só dos publicados); limiares em
+  `aprendizado.saude` (`sem_uso_dias`, `amostra_minima`, `taxa_minima`, `falhas_seguidas`, `contestacao_dias`), via `Ajustes.saude`.
+- `EntradaDoLivro.falhas_seguidas` novo (opcional), preenchido de `recipes.consecutive_fail`. Limiares = D-5, aprovada pelo dono em 02/10.
+- Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
+  lista = detalhe); `not_run` no central.
+
 
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
