@@ -1,5 +1,5 @@
 import { CalendarClock, TriangleAlert, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toApiError } from '../../api/client';
 import type { Autonomia, PedidoCorpo, PedidoPrevia } from '../../api/pedidos';
 import { Banner } from '../../components/Banner';
@@ -54,6 +54,8 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
   const chave = useRef<{ impressao: string; valor: string } | null>(null);
 
   const mudou = () => { setPrevia(null); setErro(null); };
+  // O objetivo mudou no Comando: a prévia de antes era de outro texto.
+  useEffect(() => { setPrevia(null); }, [comando]);
   const gatilho = gatilhoDoQuando(quando);
   const numero = (t: string): number | undefined => (t.trim() !== '' && Number.isFinite(Number(t)) ? Number(t) : undefined);
 
