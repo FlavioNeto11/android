@@ -4672,24 +4672,23 @@
   "17.12": {
    "id": "17.12",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed. Merge PR #61 (c82a5210), implantado no central 02/10 ~19:05Z.",
-   "blocker": "Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede exigida_com_bloqueio vpn-central-wireguard acordou sem tun0; a Android investiga), US$ 0,1346, nenhum envio, teto nao exercitado -> not_run. Uma nova tentativa autorizada (teto US$ 0,80) no android-07 (sem conta real, sem rede pedida). 2a tentativa 02/10 19:57Z r-20261002195703-1b94e3 no android-07: barrada na 1a etapa (Abrir o QA Messenger) por auth_challenge conta_travada 'confirm you're human' (nada tocado), US$ 0,1027 (so o plano); cancelada e 07 hibernado. Total gasto no 17.12 real: US$ 0,2373 (teto 0,80). Segue not_run por bloqueio de ambiente; nova tentativa so com nova autorizacao, depois da captura do 07 pela Android.",
+   "proof": "real",
+   "evidence": "Real 02/10/2026 ~20:48-20:57Z, central WIN-7S2UASNLFOP, main implantada c11f8217 (070). eval_run label 17-12-real-02-10-d, caso msg-todos-os-contatos (bateria congelada, 8 contatos do QA Messenger, app nosso) no android-05: execucao r-20261002204836-dcb516 succeeded (run completed, 43 etapas succeeded, 5 skipped do plano v1), verificacao independente por ContentProvider: 8 mensagens desta execucao para 8 contatos. 78 chamadas de IA, ACIMA da base ai_max_calls_per_objective=60 e abaixo do teto calculado 60+12x7=144 (foreach.teto_de_chamadas). US$ 0,7335 (530.899 tokens in). Tentativas anteriores do dia: r-20261002185832-7385f3 (rede, android-05), r-20261002195703-1b94e3 (bloqueio real do Instagram no android-07), r-20261002202101-eab933 (cortada pelo vigia de custo em 49 chamadas, nao prova o teto); total do 17.12 no dia US$ 1,5317, autorizado pela orquestradora.",
+   "blocker": "",
    "files": [
     "backend/app/taskqueue/foreach.py",
     "backend/app/taskqueue/executor.py",
-    "backend/app/config.py",
-    "backend/tests/test_teto_proporcional_for_each.py",
-    "docs/ia.md",
-    "config/config.example.yaml"
+    "backend/app/config.py"
    ],
-   "testes": "backend/tests/test_teto_proporcional_for_each.py -> 8 passed (simulated)",
-   "grupo": "sessao:jev-28-11-real",
+   "testes": [
+    "backend/tests/test_teto_proporcional_for_each.py"
+   ],
+   "grupo": "sessao:jev-17-12-real",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:02:41+00:00"
+   "quando": "2026-10-02T21:19:30+00:00"
   },
   "28.1": {
    "id": "28.1",
@@ -5109,6 +5108,23 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T20:40:34+00:00"
+  },
+  "31.3": {
+   "id": "31.3",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Telemetria do MCA aceita), D-J2 (C0/C1 em F1, C2 em F2, C3 em F3 so na sombra da intencao), D-J3 (fatia US$ 0,50/dia; prova real 31.10/31.11 autorizada CONDICIONADA a troca da chave TypeSafe pelo dono antes de qualquer chamada), D-J5 (Jev fora de social/persona). Sem codigo: prova de ambiente nao se aplica.",
+   "blocker": "",
+   "files": [
+    "docs/decisoes.md"
+   ],
+   "testes": [],
+   "grupo": "sessao:jev-31",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T21:19:30+00:00"
   }
  },
  "rodadas": [
@@ -6181,6 +6197,24 @@
    ],
    "grupos": [
     "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:19:30+00:00",
+   "itens": [
+    "17.12"
+   ],
+   "grupos": [
+    "sessao:jev-17-12-real"
+   ]
+  },
+  {
+   "quando": "2026-10-02T21:19:30+00:00",
+   "itens": [
+    "31.3"
+   ],
+   "grupos": [
+    "sessao:jev-31"
    ]
   }
  ]
