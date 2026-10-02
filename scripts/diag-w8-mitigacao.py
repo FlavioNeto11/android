@@ -49,6 +49,7 @@ API = boot.API
 SEED = "w8-mitigacao-20261002"                                                    # identifica este protocolo; não há sorteio (braço único)
 MAX_BOOTS = 6                                                                     # REINÍCIOS REAIS, contando os que o produto pede
 MAX_ITERACOES = 6
+PIOR_CASO_PADRAO = 3                                                              # 1 reinício da reaplicação + rede.reinicios_max (2); lido da config em `rodar`
 CATEGORIAS = ("NO_FAILURE", "RECOVERED_BY_UI", "RECOVERED_BY_RESTART", "NOT_RECOVERED", "BOOT_INVALID", "UNKNOWN")
 JANELA_DO_BOOT_S = 900.0                                                          # 180 s de espera do tun0 + Start + reinício, com folga
 PAUSA_TTL_S = 1800
@@ -85,7 +86,7 @@ def classificar_iteracao(o: dict[str, Any]) -> tuple[str, str]:
     return "NO_FAILURE", "o tun0 subiu sem o Start (o always-on funcionou neste boot)"
 
 
-def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots: int = MAX_BOOTS) -> tuple[str, str] | None:
+def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots: int = MAX_BOOTS, pior_caso: int = PIOR_CASO_PADRAO) -> tuple[str, str] | None:
     """Regra de parada depois de cada iteração. (veredito, motivo) ou None para seguir. FAIL em qualquer ruim; PASS com 2 RECOVERED_BY_UI."""
     ruins = [r for r in regs if r["RESULT"] in RUINS]
     if ruins:
@@ -93,8 +94,9 @@ def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots:
         return "FAIL", f"iteração {u['ITERACAO']} terminou em {u['RESULT']}: {u.get('motivo', '')}"[:300]
     if sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI") >= 2:
         return "PASS", "2 recuperações pelo Start da interface, sem desfecho ruim"
-    if boots_consumidos >= max_boots or len(regs) >= MAX_ITERACOES:
-        return desfecho(regs, "TETO"), f"teto atingido ({boots_consumidos} boots, {len(regs)} iterações)"
+    if not pode_iniciar(boots_consumidos, len(regs), pior_caso, max_boots):
+        return desfecho(regs, "TETO"), (f"teto: {boots_consumidos} reinícios usados + pior caso de uma iteração nova ({pior_caso}) > {max_boots}"
+                                        f" ou {len(regs)} iterações")
     return None
 
 
@@ -107,8 +109,21 @@ def desfecho(regs: list[dict[str, Any]], motivo: str = "") -> str:
     return "PASS" if n >= 2 else "PARTIAL" if n == 1 else "INCONCLUSIVE"
 
 
-def pode_iniciar(boots_consumidos: int, iteracoes: int) -> bool:
-    return boots_consumidos < MAX_BOOTS and iteracoes < MAX_ITERACOES
+def pode_iniciar(boots_consumidos: int, iteracoes: int, pior_caso: int = PIOR_CASO_PADRAO, max_boots: int = MAX_BOOTS) -> bool:
+    """Uma iteração NOVA só começa se o pior caso dela cabe no teto do dono (até 6 reinícios reais): 1 reinício da reaplicação + `rede.reinicios_max`
+    do produto. Com 4 usados e só NO_FAILURE já não começa a 5ª (4 + 3 > 6); com 3 usados começa (3 + 3 <= 6). Decidido ANTES do 1º boot."""
+    return boots_consumidos + pior_caso <= max_boots and iteracoes < MAX_ITERACOES
+
+
+def reinicios_max_da_config(raiz: Path = ROOT) -> int:
+    """`rede.reinicios_max` da config REAL da instalação (`config/config.yaml`, fora do Git; nunca o `.env`). Ausente, ilegível ou fora de 1..10: 2 (o
+    padrão do produto, `backend/app/config.py`), isto é, o pior caso de 3."""
+    try:
+        import yaml                                                               # type: ignore[import-untyped]
+        v = ((yaml.safe_load((raiz / "config" / "config.yaml").read_text(encoding="utf-8")) or {}).get("rede") or {}).get("reinicios_max")
+        return int(v) if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 10 else 2
+    except Exception:                                                             # noqa: BLE001 - qualquer falha de leitura cai no padrão
+        return 2
 
 
 def reinicios_desde(comandos: list[dict[str, Any]], quem: str) -> int:
@@ -187,6 +202,7 @@ def firewall_liberado(resposta: dict[str, Any] | None) -> tuple[bool, str, list[
 
 def plano_json() -> dict[str, Any]:
     return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "max_iteracoes": MAX_ITERACOES,
+            "regra_do_teto": "iteração NOVA só começa se reinícios_usados + (1 + rede.reinicios_max da config; 3 se ilegível) <= 6",
             "um_braco": "mitigação ligada (o padrão do produto); o ator só observa",
             "politica_a_aplicar": POLITICA, "rollback": ROLLBACK, "pausa_do_reparo": {"ttl_s": PAUSA_TTL_S, "rota": f"PUT /api/instances/{IID}/repair-pause"},
             "sequencia": ["deploy conferido (commit com a pausa e o PR #17)", "firewall-check (leitura): liberado", "janela ociosa de 02/03/05/06",
@@ -433,8 +449,10 @@ def rodar(amb: Any, api: Api, run: Path) -> dict[str, Any]:
         return saida
     regs: list[dict[str, Any]] = []
     boots = 0
+    pior_caso = 1 + reinicios_max_da_config()
+    saida["pior_caso_da_iteracao"] = pior_caso
     try:
-        while pode_iniciar(boots, len(regs)):
+        while pode_iniciar(boots, len(regs), pior_caso):
             r = uma_iteracao(amb, api, run, len(regs) + 1, not regs, reg)
             regs.append(r)
             boots += max(1, int(r.get("reinicios_totais") or 0))
@@ -443,7 +461,7 @@ def rodar(amb: Any, api: Api, run: Path) -> dict[str, Any]:
             if r.get("wg_parou"):                                                  # janela ociosa não veio, ou um par online não reconectou
                 saida["veredito"], saida["motivo"] = "INCONCLUSIVE", f"ABORTADO no servidor WireGuard: {r['motivo']}"
                 break
-            p = avaliar_parada(regs, boots)
+            p = avaliar_parada(regs, boots, MAX_BOOTS, pior_caso)
             if p:
                 saida["veredito"], saida["motivo"] = p
                 break
