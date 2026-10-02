@@ -1106,8 +1106,7 @@ de transporte encerra a bateria inteira.
 **O que funcionou.** Rodar os casos que faltavam à parte (`-Cases`), com o mesmo rótulo, e contar a execução órfã
 como fora da medição.
 
-**Aplicabilidade.** Vigente até o `eval_run.py` repetir a leitura em `RemoteProtocolError` e `ReadError` (item P).
-Em bateria longa, confira o total de casos em `eval-results.jsonl` antes de ler o placar.
+**Aplicabilidade.** Corrigido no item 17.11 (02/10/2026): o `eval_run.py` usa `Resistente`, que repete a chamada (4 tentativas, espera crescente) em `RemoteProtocolError`, `ReadError`, `WriteError`, `ConnectError` e `ReadTimeout`; o POST de `/api/runs` repete com a mesma `idempotency_key`, e o laço de espera da execução tolera uma leitura que esgote as tentativas (a execução está viva) até o prazo, em vez de largá-la órfã. Resposta HTTP de erro não é repetida. `simulated`: `scripts/tests/test_eval_run.py`. Em bateria longa, ainda vale conferir o total de casos em `eval-results.jsonl` antes de ler o placar.
 
 ### K-046 — Voltar o `config.yaml` depois de testar um modelo novo deixa as chamadas dele sem preço, e o teto do dia infla
 
