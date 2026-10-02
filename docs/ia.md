@@ -122,7 +122,17 @@ deixava Sonnet 5 e Haiku 4.5 sem cache (46 decisões medidas em 24/09 com `cache
 4.5 é hoje **inerte** (abaixo do mínimo declarado do modelo) — decisão consciente de não mover o prefixo, porque
 só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato que Opus com cache neste tamanho.
 
-**Verificador (J9, 02/10):** o ponto de cache já é pedido no caminho do verificador e o custo já lê `cache_read`/`cache_creation`; nada disso era o que faltava. A medição: o prefixo cacheável do verificador é só `VERIFIER_SYSTEM` (sem ferramentas; a tela e a pós-condição vão na mensagem, depois do ponto), 2.248 caracteres ≈ 560 tokens pela conta `len//4`, abaixo do mínimo do Haiku 4.5 (4096) e também do Sonnet 5 (1024). Por isso as 49 verificações de 25/09 saíram com `cache_read=0`: a API ignora o ponto, sem erro e sem custo. Só haveria cache com um prefixo maior (encher o prompt para cruzar o mínimo custa mais do que o cache devolve) ou num modelo de mínimo menor (Opus 5.5/5, 512, mas a tarifa é bem maior) — escolha de custo que é do dono. Prova `simulated`: `backend/tests/test_anthropic_provider.py::test_verificador_pede_o_ponto_de_cache_e_o_uso_le_os_campos_de_cache`, `::test_uso_com_cache_vai_para_ai_calls_sem_contar_o_cache_como_entrada_nova` e `::test_prefixo_do_verificador_fica_abaixo_do_minimo_do_haiku`. `cache_read>0` com a API de verdade: `not_run` (exigiria chamada paga, e hoje não há o que cachear).
+**Verificador (J9, 02/10):** o ponto de cache já era pedido no caminho do verificador e o custo já lê `cache_read`/`cache_creation`; o que faltava era prova. `simulated`: `backend/tests/test_anthropic_provider.py::test_verificador_pede_o_ponto_de_cache_e_o_uso_le_os_campos_de_cache`, `::test_uso_com_cache_vai_para_ai_calls_sem_contar_o_cache_como_entrada_nova` e `::test_prefixo_do_verificador_fica_abaixo_do_minimo_do_haiku`.
+
+**Prova `real` (02/10, máquina central, `scripts/verifier-cache-probe.py`, base `origin/main` 5a50f80 + este PR):** o mesmo `VERIFIER_SYSTEM` e o ponto de cache do `AnthropicProvider`, tela sintética sem imagem (nenhum código do repositório saiu), `max_retries=0`, duas chamadas seguidas por modelo, teto US$ 0,50, gasto US$ 0,0241. O prefixo cacheável medido por `count_tokens` (system + esquema da saída) é de **~1 290 tokens**; a conta `len//4` do system sozinho dava ≈ 560 e subcontava, e a primeira versão deste parágrafo concluía errado que nem o Sonnet 5 alcançava o mínimo.
+
+| modelo | mínimo cacheável | 1ª chamada | 2ª chamada | custo 1ª / 2ª |
+|---|---|---|---|---|
+| `claude-haiku-4-5` (padrão do verificador) | 4096 | cache 0 / 0 | cache 0 / 0 | US$ 0,001625 / 0,001615 |
+| `claude-sonnet-5` | 1024 | gravou 1 290 | **leu 1 290** | US$ 0,004855 / 0,002028 |
+| `claude-opus-5-5` | 512 | gravou 1 290 | **leu 1 290** | US$ 0,010238 / 0,003706 |
+
+Conclusão `real`: **o cache do verificador funciona** (`cache_read > 0` na 2ª chamada) em Sonnet 5 e Opus 5.5 e é **inerte só no Haiku 4.5**, cujo mínimo (4096) é maior que o prefixo (~1 290). As 49 verificações de 25/09 com `cache_read=0` eram Haiku. Mesmo assim o Haiku sem cache (US$ 0,0016 por verificação) custa menos que o Sonnet com cache (US$ 0,0020 a partir da 2ª): trocar o modelo do verificador só para cachear não compensa neste tamanho; a medição não muda o padrão. Os ids das requisições não são expostos pelo caminho `verify` (só o uso de tokens).
 
 ## 6. Limites
 

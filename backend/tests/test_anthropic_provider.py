@@ -409,13 +409,12 @@ def test_uso_com_cache_vai_para_ai_calls_sem_contar_o_cache_como_entrada_nova(tm
 
 
 def test_prefixo_do_verificador_fica_abaixo_do_minimo_do_haiku(tmp_path: Path) -> None:
-    """Medição que explica as 49 verificações de 25/09 com cache_read = 0: o prefixo cacheável do verificador é só o
-    system (sem ferramentas), ≈ len//4 tokens, e o Haiku 4.5 só cacheia a partir de 4096. O ponto de cache é pedido e
-    ignorado sem erro e sem custo. Se este teste falhar porque o prompt cresceu, a expectativa muda de verdade: ajuste
-    `docs/ia.md` §5 e o relatório antes de contar com cache no verificador."""
+    """Explica as 49 verificações de 25/09 com cache_read = 0: o Haiku 4.5 só cacheia a partir de 4096 tokens, e o
+    prefixo do verificador (system + esquema da saída) mediu 1 290 com a API de verdade (02/10, `docs/ia.md` §5). O ponto
+    de cache é pedido e ignorado sem erro e sem custo. A conta `len//4` do system sozinho SUBCONTA (≈560 contra os ~710
+    medidos só do system), então aqui só se fixa o que vale em qualquer contagem: o system já passa folgado de 4096/8."""
     from app.planning import prompts
 
     cfg = make_config(tmp_path)
-    estimado = len(prompts.VERIFIER_SYSTEM) // 4
-    assert estimado < cfg.model_caps("claude-haiku-4-5").min_cache_tokens == 4096
-    assert estimado < cfg.model_caps("claude-sonnet-5").min_cache_tokens        # nem no Sonnet 5 (1024) chega lá
+    assert cfg.model_caps("claude-haiku-4-5").min_cache_tokens == 4096
+    assert len(prompts.VERIFIER_SYSTEM) // 4 < 4096
