@@ -14,8 +14,9 @@
 -- As linhas nascem sob demanda e nunca são apagadas: apagar zeraria o token e reabriria a porta ao escritor velho.
 --
 -- O número: 059 era o nome no plano, mas a main já aplicou 063 e 064 no central; um arquivo de número menor criado
--- depois entra em ordem diferente num banco novo e no do central. A 065 ficou separada pela coordenação para outro
--- trabalho em curso (02/10); o executor aplica por nome e tolera o buraco.
+-- depois entra em ordem diferente num banco novo e no do central. 066 foi o número indicado pela coordenação da
+-- Fase 28 (02/10); em 02/10 não havia 065 em nenhum branch deste checkout. O executor aplica por nome e tolera o
+-- buraco.
 --
 -- Compatível com SQLite e PostgreSQL: só tipos comuns, sem `{{PK_AUTO}}` (a chave é o nome).
 -- Sem BEGIN/COMMIT: o executor de migrações já abre a transação.
