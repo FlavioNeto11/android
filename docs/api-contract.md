@@ -3812,7 +3812,7 @@ Muda o VALOR de um campo, não o tipo. O `href` de `learning.needs_person` (30.2
 Aplicativos e não abria o item (validação no Chrome de 02/10, I1). O painel aceita os dois formatos: `item` sem `aba` abre o
 catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcionando. "Revisar" das Pendências usa o mesmo link.
 
-## Adendo v0.60 (03/10/2026) — gatilhos `evento`, `condicao` e `persona` no `PedidoCorpo` (item 28.8)
+## Adendo v0.60 (02/10/2026; número a confirmar no merge) — gatilhos `evento`, `condicao` e `persona` no `PedidoCorpo` (item 28.8)
 
 Aditivo para quem lê; muda a resposta para quem já mandava esses tipos. Antes, `evento`, `condicao` e `persona` davam sempre
 `gatilho_nao_suportado` (adendo v0.45). Agora são aceitos, com a `spec` validada (desenho em `docs/design/pedidos-laco.md` §14):
@@ -3835,6 +3835,7 @@ Códigos novos (em `previa`, viram `bloqueios[]`):
 - `proximas` (prévia) mostra a primeira visita da persona e nenhuma data para evento e condição: elas dependem do que acontecer.
 - A edição (`PATCH`) continua trocando só `agora`, `horario` e `recorrencia`. Os gatilhos dos três tipos novos ficam como
   foram criados.
-- Avisos `eventos_perdidos` e `condicao_atendida`: dependem da migração do 28.8 (número a confirmar) para entrar no CHECK de
-  `pedido_avisos.tipo`. Até lá, o fato fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
-  `condicao.<gatilho>`, `descoberta`) e no log.
+- Dois tipos novos de aviso (`pedido.aviso` e `GET /api/pedidos/avisos`), migração 076: `eventos_perdidos` (warn;
+  `dados`: `de_id`, `ate_id`) e `condicao_atendida` (warn; `dados`: `gatilho_id`, `observacao`, `op`). Os dois com
+  `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
+  `condicao.<gatilho>`, `descoberta`).

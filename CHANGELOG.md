@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-03 — Gatilhos de evento, condição e persona nos pedidos (28.8, branch feat/28-8-gatilhos-evento)
+## 2026-10-02 — Gatilhos de evento, condição e persona nos pedidos (28.8, branch feat/28-8-gatilhos-evento)
 
 - `PedidoCorpo` aceita `evento`, `condicao` e `persona` (adendo v0.60 do contrato; antes, `gatilho_nao_suportado`). Os
   códigos novos são `gatilho_invalido` e `condicao_sem_observacao`, e a persona com `intervalo_min_s` abaixo do piso dá
@@ -33,9 +33,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `proxima_visita_s` presa a [mínimo, máximo], ou do máximo.
 - **Condição:** avaliada por borda sobre as observações; grava a memória `descoberta` e não cria ocorrência.
 - Passado `fim_em`, evento e persona encerram o pedido.
-- Os avisos `eventos_perdidos` e `condicao_atendida` esperam a migração do CHECK de `pedido_avisos` (número pedido à
-  coordenação).
-- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (20 testes) e os de pedidos e arquitetura; no painel, as mensagens de `gatilho_invalido` e
+- Migração `076_pedido_avisos_gatilhos`: o CHECK de `pedido_avisos.tipo` ganha `eventos_perdidos` e `condicao_atendida`.
+  No SQLite a tabela é reconstruída (molde da 047, sem perder aviso); no PostgreSQL, DROP/ADD da constraint. O buraco e
+  a condição atendida viram aviso gravado.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (23 testes) e os de pedidos e arquitetura; no painel, as mensagens de `gatilho_invalido` e
   `condicao_sem_observacao`. PostgreSQL: `not_run`.
   No navegador, a lista, o filtro "Quando acontecer" e as ocorrências "Por evento" e "Por persona" foram conferidos a
   1366 e 375 px contra o backend simulado. `real`: `not_run`.

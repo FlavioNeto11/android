@@ -418,3 +418,47 @@ async def test_patch_nao_troca_para_gatilho_novo(h: Harness) -> None:
     r = c.patch(f"/api/pedidos/{pid}", json={"versao": versao, "gatilhos": [
         {"tipo": "evento", "spec": {"kinds": ["run.failed"]}}]})
     assert r.status_code == 422 and r.json()["detail"]["code"] == "gatilho_nao_suportado", r.text
+
+
+async def test_buraco_e_condicao_viram_aviso_gravado_uma_vez(h: Harness) -> None:
+    """O aceite do 28.8 por inteiro: o buraco gera AVISO (`eventos_perdidos`, migração 076), não disparo; a condição
+    atendida também (`condicao_atendida`). Mesma fiação do `AppState` (`avisar` → `registrar_aviso`)."""
+    r = Relogio()
+    db = h.state.db
+    h.state.pedidos.relogio = r
+    velhos = [_evento(db, "run.failed", r.t - timedelta(days=20)) for _ in range(3)]
+    _pedido_de_evento(db, r, cursor=f"ev:{velhos[0]}")
+    _gatilho(db, "gcond", "ped1", "condicao", {"observacao": "preco_total", "op": "<", "valor": 3500},
+             r.t - timedelta(minutes=1))
+    db.execute("DELETE FROM events WHERE id <= ?", (velhos[2],))
+    _evento(db, "run.started", r.t - timedelta(seconds=30))
+    db.execute("INSERT INTO pedido_ocorrencias(id, pedido_id, pedido_versao, gatilho_id, previsto_para, chave, origem,"
+               " estado, criada_em, terminada_em) VALUES ('o1','ped1',1,'gev','2026-01-01T00:00:00Z','ped:ped1:gev:x',"
+               "'evento','concluida',?,?)", (to_iso(r.t), to_iso(r.t)))
+    _observacao(db, "o1", "preco_total", "3400", quando=r.t)
+    laco = _laco(h, r)
+    laco.avisar = h.state.pedidos_api.registrar_aviso
+    laco.uma_volta()
+    laco.uma_volta()
+    avisos = db.query("SELECT tipo, nivel, requer_pessoa, mensagem, dados FROM pedido_avisos WHERE pedido_id='ped1'"
+                      " ORDER BY tipo")
+    assert [(a["tipo"], a["nivel"], a["requer_pessoa"]) for a in avisos] == [
+        ("condicao_atendida", "warn", 0), ("eventos_perdidos", "warn", 0)], "um de cada, mesmo com duas voltas"
+    assert "preco_total < 3500" in avisos[0]["mensagem"] and "3400" not in avisos[0]["mensagem"]
+    assert json.loads(avisos[1]["dados"])["de_id"] == velhos[1]
+    assert [o["origem"] for o in _ocs(db)] == ["evento"], "o buraco não disparou nada (só a ocorrência montada à mão)"
+
+
+async def test_evento_pulado_pela_sobreposicao_guarda_a_faixa_de_eventos(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    _pedido_de_evento(db, r)
+    laco = _laco(h, r)
+    _evento(db, "run.failed", r.t - timedelta(seconds=30))
+    laco.uma_volta()                                 # a primeira vira execução e fica rodando
+    r.avancar(1000)
+    novo = _evento(db, "run.failed", r.t - timedelta(seconds=30))
+    laco.uma_volta()
+    pulada = _ocs(db)[1]
+    assert pulada["estado"] == "pulada" and "a anterior ainda roda" in pulada["motivo"]
+    assert f"eventos: 1 evento(s) run.failed (#{novo})" in pulada["motivo"]

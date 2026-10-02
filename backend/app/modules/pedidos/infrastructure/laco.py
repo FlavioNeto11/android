@@ -859,6 +859,11 @@ class LacoDePedidos:
                de: str = "devida") -> None:
         for oid, motivo in pular:
             transicionar_ocorrencia(de, "pulada", motivo=motivo)
+            antes = self.repo.ocorrencia(oid)
+            if antes is not None and antes["origem"] == "evento" and antes["motivo"]:
+                # O motivo da ocorrência de evento é a faixa de eventos que a gerou (28.8): a razão do pulo se ANEXA a
+                # ela, senão a pessoa vê que pulou mas não o que tinha acontecido.
+                motivo = f"{motivo}; eventos: {antes['motivo']}"[:500]
             with self.lideranca.cercada(PEDIDOS, token):
                 if self.repo.mover(oid, de, "pulada", motivo=motivo, terminada_em=to_iso(agora)):
                     r.puladas += 1

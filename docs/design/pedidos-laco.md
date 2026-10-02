@@ -619,7 +619,7 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
 - Não feito (fora do 28.5): `needs_input` → `aguardando_pessoa` (`fechamento.py` o deixa para depois; ainda sem código), as rotas
   de resolver a `incerta` e a tabela de avisos (28.9).
 
-## 14. 28.8: gatilhos de evento, condição e persona (03/10/2026, branch `feat/28-8-gatilhos-evento`)
+## 14. 28.8: gatilhos de evento, condição e persona (02/10/2026, branch `feat/28-8-gatilhos-evento`)
 
 Desenho do §7.8 de `pedidos-persistentes.md`, escrito antes do código. A 067 já aceita os três tipos (`pedido_gatilhos.tipo`),
 as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede migração é o aviso: o CHECK de
@@ -734,12 +734,12 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
   - O texto do aviso não leva valor observado de terceiro: só o nome da observação, o operador e o limiar que a própria
     pessoa escreveu. O título do pedido entra por função, nunca por `str.format`, porque um `{` no título derrubaria o
     aviso.
-- **Migração `NNN_pedido_avisos_gatilhos.sql`** (número a confirmar com a coordenação):
+- **Migração `076_pedido_avisos_gatilhos.sql`** (número dado pela coordenação em 02/10; 074 e 075 entram antes):
   - SQLite: reconstrói `pedido_avisos` com o CHECK ampliado (molde da 047). A FK para `pedidos` com CASCADE e o
     índice `ix_pedido_avisos_pedido` ficam; nada aponta para a tabela;
   - PostgreSQL: `DROP CONSTRAINT pedido_avisos_tipo_check` / `ADD CONSTRAINT`.
-- Até a migração existir, o código só grava a memória e registra no log. O aviso fica atrás de
-  `avisos.TIPOS`, que o teste confere contra o CHECK.
+- O laço grava a memória E emite o aviso pelo ponto único (`CaixaDeAvisos.registrar`, dedupe pela chave). `avisos.TIPOS`
+  é conferido contra o CHECK da 076 em `test_pedidos_avisos.py`.
 
 ### 14.6 Edição e encerramento
 
@@ -750,7 +750,7 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
   disso, o pedido segue vivo. A condição não segura o pedido sozinha: com a recorrência esgotada, o pedido encerra mesmo
   que a condição exista.
 
-### 14.7 O que foi feito (03/10/2026, branch `feat/28-8-gatilhos-evento`)
+### 14.7 O que foi feito (02/10/2026, branch `feat/28-8-gatilhos-evento`)
 
 - **Domínio:** `domain/gatilhos_dinamicos.py` (puro), com validação da `spec`, cursores, `buraco`, `proxima_visita`,
   `avaliar`, `disparou` e `descrever`.
@@ -758,9 +758,12 @@ as três origens (`pedido_ocorrencias.origem`) e o `cursor TEXT`. O que pede mig
   piso da persona. `_datas` dá à persona a data da ativação.
 - **Laço:** o passo `_gatilhos_dinamicos`, entre materializar e orçamentos; `_agendar_pedido` passou a tratar `fim_em`.
 - **Linha de base:** `RepositorioDePedidos.base_dos_eventos` é chamado na ativação e na retomada `daqui`.
-- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (20 testes). O aceite "cursor abaixo do menor
-  evento registra o buraco, não dispara" está em `test_buraco_da_retencao_registra_e_nao_dispara`. O aviso de buraco
-  depende da migração (§14.5); até lá, ficam a memória `pendencia` e o log. `real`: `not_run`.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (23 testes). O aceite "cursor abaixo do menor
+  evento gera aviso de buraco, não disparo" está em `test_buraco_e_condicao_viram_aviso_gravado_uma_vez` (com a 076) e
+  em `test_buraco_da_retencao_registra_e_nao_dispara`. A migração está em `test_pedidos_avisos.py` (reconstrução sem
+  perder aviso, tipos novos aceitos, cascata e índice). PostgreSQL e `real`: `not_run`.
+- **Ocorrência de evento pulada pela sobreposição:** o motivo do pulo se anexa à faixa de eventos (`…; eventos: N
+  evento(s) …`), sem substituí-la.
 
 ### 14.8 Tela
 
