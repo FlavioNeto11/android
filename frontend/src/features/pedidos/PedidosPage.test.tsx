@@ -92,10 +92,23 @@ describe('lista', () => {
     expect(q?.get('ordem')).toBe('proxima');
   });
 
-  it('lista vazia diz como criar um pedido', async () => {
+  it('lista vazia tem uma frase só e o botão "Novo pedido" leva ao Comando com o painel de pedido pedido', async () => {
     backend.on('GET', /^\/api\/pedidos$/, () => json({ items: [], proximo_cursor: null, total_por_estado: {} }));
     await montar();
     await waitFor(() => expect(text(container)).toContain('Nenhum pedido ainda'));
+    expect(text(container)).not.toContain('Nada para mostrar');
+    await click(byRole('button', /Novo pedido/));
+    expect(window.location.hash).toBe('#/painel');
+    expect(useUiStore.getState().novoPedidoRequest).not.toBeNull();
+  });
+
+  it('cartão da lista: agenda com a hora, sem o fuso do pedido repetido e com dólar brasileiro', async () => {
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resumo diário do feed'));
+    const cartao = text(container.querySelectorAll('ul[aria-label="Pedidos"] > li')[0] as HTMLElement);
+    expect(cartao).not.toContain('(America/Sao_Paulo)');
+    expect(cartao).toMatch(/Gasto US\$ \d+,\d{2}/);
+    expect(cartao).toContain('Nenhuma ocorrência ainda');
   });
 });
 
@@ -126,6 +139,29 @@ describe('detalhe e navegação por hash', () => {
     await waitFor(() => expect(text(container.querySelector('section[aria-label="Memória"]') as HTMLElement)).toContain('Ainda não disponível'));
     expect(text(container.querySelector('section[aria-label="Relatórios recentes"]') as HTMLElement)).toContain('Vazio');
     expect(text(container.querySelector('section[aria-label="Observações recentes"]') as HTMLElement)).toContain('Ainda não disponível');
+  });
+
+  it('cabeçalho curto e Resumo em cartões: Agenda com a hora, aparelhos do alvo e próxima calculada', async () => {
+    const objetivo = 'Resuma o feed do Instagram e me conte as novidades mais importantes dos perfis que sigo, com tudo detalhado e organizado por assunto';
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      titulo: objetivo, objetivo, personas: [], proxima_em: null, proxima_local: null,
+      alvos: { targets: [{ instance_id: 'android-01', profile_id: 'p1', app_id: null, origem: 'ui' }], device_policy: 'one' },
+      gatilhos_resumo: [{ tipo: 'recorrencia', descricao: 'Todo dia (America/Sao_Paulo)' }],
+      gatilhos: [{ id: 'g1', tipo: 'recorrencia', ativo: true, criado_em: '2026-10-01T10:00:00Z', cursor: null, spec: { dtstart: '2026-10-02T19:00:00', rrule: 'FREQ=DAILY' } }],
+      proximas: [{ gatilho: 0, nominal: '2026-10-03T19:00:00', local: '2026-10-03 19:00 -03:00', utc: '2026-10-03T22:00:00Z', desviado: false, repetido: false }],
+    })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(container.querySelector('section[aria-label="Agenda"]')).not.toBeNull());
+    expect(text(container.querySelector('h1') as HTMLElement).length).toBeLessThan(100);
+    expect(text(container.querySelector('h1') as HTMLElement)).toContain('…');
+    const agenda = text(container.querySelector('section[aria-label="Agenda"]') as HTMLElement);
+    expect(agenda).toContain('Todo dia às 19:00');
+    expect(agenda).toContain('sáb, 03/10 às 19:00');
+    expect(agenda).toContain('calculada pela agenda');
+    expect(text(container.querySelector('section[aria-label="Quem faz"]') as HTMLElement)).toContain('android-01');
+    expect(text(container.querySelector('section[aria-label="Objetivo"]') as HTMLElement)).toContain(objetivo);
+    for (const nome of ['Custos e limites', 'Comportamento', 'Autoria']) expect(container.querySelector(`section[aria-label="${nome}"]`)).not.toBeNull();
   });
 
   it('pedido inexistente: 404 vira "este pedido não existe"', async () => {

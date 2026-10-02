@@ -33,6 +33,14 @@ describe('pedido na caixa de Pendências', () => {
     expect(pedido?.detalhe).toContain('2 decisões');
   });
 
+  it('o motivo vem em palavras: ocorrência incerta pede conferir se a ação aconteceu e o item leva a decidir e retomar', () => {
+    const incerto = makePedido({ id: 'ped_i', titulo: 'Postar resumo', estado: 'aguardando_pessoa', ocorrencias_por_estado: { incerta: 1 } });
+    const [p] = montarPendencias({ aprendizado: [], aprovacoes: [], execucoes: [], pedidos: [incerto] });
+    expect(p?.detalhe).toContain('Ocorrência incerta: confira se a ação aconteceu');
+    expect(p?.detalhe).toContain('decidir e retomar');
+    expect(p?.destino).toEqual({ tela: 'pedidos', segmentos: ['ped_i'] });
+  });
+
   it('só `aguardando_pessoa` conta: pausado, ativo e terminais ficam de fora', () => {
     const lista = montarPendencias({
       aprendizado: [], aprovacoes: [], execucoes: [],

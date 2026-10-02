@@ -144,7 +144,8 @@ export function pendenciasDePedidos(
       chave: `pedido:${p.id}`,
       origem: 'pedido',
       titulo: p.titulo,
-      detalhe: `Pedido aguardando você${filhas.length > 0 ? ` · ${filhas.length} ${filhas.length === 1 ? 'decisão' : 'decisões'} dentro dele` : ''}`,
+      // O motivo em palavras: a ocorrência incerta é o caso que mais confunde (não há prova de que a ação aconteceu).
+      detalhe: `${(p.ocorrencias_por_estado?.incerta ?? 0) > 0 ? 'Ocorrência incerta: confira se a ação aconteceu' : 'Uma decisão sua está aberta neste pedido'}${filhas.length > 0 ? ` · ${filhas.length} ${filhas.length === 1 ? 'decisão' : 'decisões'} dentro dele` : ''}. Abra o pedido para decidir e retomar.`,
       desde: p.atualizado_em ?? null,
       acao: 'Decidir',
       destino: { tela: 'pedidos', segmentos: [p.id] },
