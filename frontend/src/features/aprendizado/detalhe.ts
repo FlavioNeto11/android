@@ -89,7 +89,7 @@ export function textoDoMotivo(m: MotivoDeSaude): string {
 }
 
 const DIMENSAO_LABEL: Record<string, string> = {
-  uso: 'Uso', eficacia: 'Eficácia', base_de_evidencia: 'Base de evidência', frescor: 'Frescor', versao: 'Versão do app',
+  uso: 'Uso', eficacia: 'Eficácia', base_de_evidencia: 'Base medida', frescor: 'Frescor', versao: 'Versão do app',
   contestacao: 'Contestação', intervencao_humana: 'Intervenção humana',
 };
 
@@ -104,7 +104,8 @@ export function valorDaDimensao(d: DimensaoDeSaude): string {
   switch (d.nome) {
     case 'uso': return `${num(d.valor)} usos`;
     case 'eficacia': return `${pct(d.valor)}${amostra}`;
-    case 'base_de_evidencia': return `${num(d.valor)} evidências`;
+    // Na receita a base são as reproduções (deram certo + falharam), não as evidências registradas no Livro.
+    case 'base_de_evidencia': return `${num(d.valor)} registros (reproduções e evidências)`;
     case 'frescor': return `${dias(d.valor)} desde o último uso (ou desde a criação)`;
     case 'contestacao': return `${num(d.valor)} nos últimos dias`;
     default: return num(d.valor);

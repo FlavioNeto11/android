@@ -29,7 +29,9 @@ export function AprendizadoPage() {
   // A guia vem do link (`#/aprendizado?aba=falhas`); "Aplicativos" é a padrão (o Global) e não entra nele.
   const abaDoLink = useUiStore((s) => s.rota.query.aba);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
-  const aba: Aba = isAba(abaDoLink) ? abaDoLink : 'apps';
+  // Um link com `item` e sem aba (o do aviso externo antes da v0.59) abre o item no catálogo, não o Global.
+  const itemDoLink = useUiStore((s) => s.rota.query.item);
+  const aba: Aba = isAba(abaDoLink) ? abaDoLink : itemDoLink ? 'aprendido' : 'apps';
   const pendentes = useContagemDoAprendizado((s) => s.pendentes);
 
   useEffect(() => {

@@ -453,7 +453,7 @@ publica no barramento o evento **`learning.needs_person`**, no padrão de `appro
 | `faixa` | `B` ou `C` |
 | `aguardando` | `true` ao entrar na espera; `false` ao sair (decidido, rebaixado pelo sistema, substituído) |
 | `motivo` | vocabulário fechado e curto: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; na saída, `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
-| `href` | link interno do painel para o detalhe (`#/aprendizado?item=<kind>:<ref>`) |
+| `href` | link interno do painel para o detalhe (`#/aprendizado?aba=aprendido&item=<kind>:<ref>`) |
 | `desde` | quando entrou na espera |
 
 **Nunca** vai no payload: conteúdo da receita ou do fluxo, seletor, texto digitado ou parâmetro, texto de persona, nota, conclusão da IA.

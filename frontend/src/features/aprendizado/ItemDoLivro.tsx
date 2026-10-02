@@ -154,6 +154,8 @@ interface ItemDoLivroProps {
 export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const porQue = porQueOSistemaNaoPublica(e);
+  // Publicado e ainda "espera o dono": é item anterior à regra de aprovação (efeito externo publicado antes do D1).
+  const anterior = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
   const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
@@ -183,7 +185,10 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           </span>
         ) : null}
         <span>{ORIGEM_LABEL[e.origin] ?? e.origin}</span>
-        {!memoria ? <span>Evidência: {e.evidence.for} a favor · {e.evidence.against} contra</span> : null}
+        {/* Na receita os números são as reproduções; "Evidência" ficava contra a seção "Evidência registrada" do detalhe. */}
+        {memoria ? null : e.kind === 'receita'
+          ? e.evidence.for + e.evidence.against === 0 ? null : <span>Reproduções: {formatInt(e.evidence.for)} deram certo · {formatInt(e.evidence.against)} falharam</span>
+          : <span>Evidência: {e.evidence.for} a favor · {e.evidence.against} contra</span>}
         {typeof e.uses === 'number' && e.uses > 0 ? <span>Usos: {formatInt(e.uses)}</span> : null}
         {e.last_used_at ? <span title={formatDateTime(e.last_used_at)}>Último uso: {formatQuando(e.last_used_at)}</span>
           : e.uses === 0 && !memoria ? <span>Nunca usado</span> : null}
@@ -191,7 +196,11 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {uso ? <span title={uso.porque ?? undefined}>Uso: {uso.rotulo}</span> : null}
         <span className={styles.refDoItem} title="A referência do item no Livro">{chaveDoItem(e)}</span>
       </div>
-      {espera ? <p className={styles.avisoDoItem}>Espera o dono: {espera}</p> : null}
+      {espera ? (
+        <p className={styles.avisoDoItem}>
+          {anterior ? `Publicado antes da regra de aprovação (${espera}): vale revisar.` : `Espera o dono: ${espera}`}
+        </p>
+      ) : null}
       {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
       {extra}
       {acoes.length > 0 && !aberta ? (

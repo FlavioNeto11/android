@@ -75,7 +75,8 @@ export function pendenciasDeAprendizado(itens: readonly EntradaDoLivro[]): Pende
         : e.side_effect ? 'tem efeito fora do sistema' : e.human_origin ? 'texto escrito por uma pessoa' : 'espera a sua aprovação'}`,
     desde: e.state_at ?? e.created_at,
     acao: 'Revisar',
-    destino: { tela: 'aprendizado', query: { aba: 'aprovar' } },
+    // Direto ao item (o mesmo link do aviso externo): quem clica "Revisar" quer ESTE item, não a fila inteira.
+    destino: { tela: 'aprendizado', query: { aba: 'aprendido', item: `${e.kind}:${e.ref}` } },
   }));
 }
 

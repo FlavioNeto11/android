@@ -172,12 +172,15 @@ describe('saúde por app', () => {
 describe('fila Atenção', () => {
   it('no Global lista só degradando, obsoleto provável e sem evidência, do mais grave ao menos, com o motivo e o link do item', async () => {
     await montar();
+    // Um bloco por rótulo (degradando, obsoleto provável, sem evidência); fila curta abre todos.
     const fila = await waitFor(() => {
-      const f = container.querySelector('[aria-label="Itens que pedem atenção"]') as HTMLElement;
-      expect(f).toBeTruthy();
+      const f = container.querySelector('section[aria-label="Atenção"]') as HTMLElement;
+      expect(f?.querySelector('li[data-atencao]')).toBeTruthy();
       return f;
     });
-    const itens = Array.from(fila.querySelectorAll('li')).map((li) => li.getAttribute('data-atencao'));
+    expect(Array.from(fila.querySelectorAll('[data-grupos-de-atencao] > details > summary')).map((s) => text(s as HTMLElement)))
+      .toEqual([expect.stringContaining('Degradando'), expect.stringContaining('Provavelmente obsoleto'), expect.stringContaining('Sem evidência')]);
+    const itens = Array.from(fila.querySelectorAll('li[data-atencao]')).map((li) => li.getAttribute('data-atencao'));
     expect(itens).toEqual(['receita:8', 'licao:li-1', 'fluxo:3']);
     expect(text(container.querySelector('[aria-label="Atenção"]') as HTMLElement)).toContain('Atenção (3)');
 
@@ -197,8 +200,8 @@ describe('fila Atenção', () => {
   it('no detalhe do app a fila é só daquele app, sem repetir o nome do app', async () => {
     await montar();
     await abrirDetalhe();
-    const fila = container.querySelector('[aria-label="Itens que pedem atenção"]') as HTMLElement;
-    expect(Array.from(fila.querySelectorAll('li')).length).toBe(3);
+    const fila = container.querySelector('section[aria-label="Atenção"]') as HTMLElement;
+    expect(Array.from(fila.querySelectorAll('li[data-atencao]')).length).toBe(3);
     expect(text(fila)).not.toContain('Exemplo Cheio');
   });
 

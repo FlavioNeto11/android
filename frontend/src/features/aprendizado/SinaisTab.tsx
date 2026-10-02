@@ -1,5 +1,5 @@
 import { FlaskConical, MessageSquareText, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
@@ -20,6 +20,14 @@ const POLARIDADE: Record<Polaridade, { label: string; tone: Tone }> = {
   negative: { label: 'negativo', tone: 'danger' },
   neutral: { label: 'neutro', tone: 'neutral' },
 };
+
+/** O dia do sinal como cabeçalho ("hoje", "ontem", "29/09"); sem instante, `null` (não abre separador). */
+export function diaDoSinal(iso: string | null | undefined, agoraMs: number = Date.now()): string | null {
+  if (!iso) return null;
+  const q = formatQuando(iso, agoraMs);
+  if (q === '—') return null;
+  return q.startsWith('hoje') ? 'Hoje' : q.startsWith('ontem') ? 'Ontem' : q.split(' ')[0] ?? null;
+}
 
 /** Quem registrou o sinal, em português: o painel e o sistema são atores, não nomes. */
 export function quemRegistrou(por: string): string {
@@ -127,7 +135,17 @@ export function SinaisTab() {
         </EmptyState>
       ) : (
         <ul className={styles.lista} aria-label="Sinais recentes">
-          {sinais.map((s, i) => <LinhaDeSinal key={`${s.id ?? s.source_ref}-${i}`} s={s} />)}
+          {/* Um separador por dia: a janela mistura até 30 dias, e a hora sozinha não diz de quando é. */}
+          {sinais.map((s, i) => {
+            const dia = diaDoSinal(s.created_at);
+            const anterior = i > 0 ? diaDoSinal(sinais[i - 1]?.created_at) : null;
+            return (
+              <Fragment key={`${s.id ?? s.source_ref}-${i}`}>
+                {dia && dia !== anterior ? <li className={styles.separadorDeDia} aria-hidden data-dia={dia}>{dia}</li> : null}
+                <LinhaDeSinal s={s} />
+              </Fragment>
+            );
+          })}
         </ul>
       )}
     </section>
