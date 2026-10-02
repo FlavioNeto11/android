@@ -43,6 +43,8 @@ def ajustes_do_config(cfg: LearningCfg) -> Ajustes:
     return Ajustes(enabled=cfg.enabled, curadoria_s=cfg.curadoria_s, modo_licoes=Modo(cfg.licoes.modo),
                    modo_telas=ModoDeTelas(cfg.telas.modo), modo_voz=Modo(cfg.voz.modo),
                    modo_preferencias=Modo(cfg.preferencias.modo),
+                   por_licoes={p: Modo(m) for p, m in cfg.licoes.por_app.items()},
+                   por_telas={p: ModoDeTelas(m) for p, m in cfg.telas.por_app.items()},
                    retencao=Retencao(sinais_dias=r.sinais_dias, feedback_dias=r.feedback_dias,
                                      exposicoes_dias=r.exposicoes_dias, evidencias_por_item=r.evidencias_por_item,
                                      diario_dias=r.diario_dias,
