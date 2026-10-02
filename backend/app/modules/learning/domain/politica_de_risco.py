@@ -53,7 +53,7 @@ class Razao(StrEnum):
     POLITICA_MANUAL = "politica_manual"                 # catálogo: `default_policy: manual_only | disabled`
     TEXTO_PARA_OUTRA_PESSOA = "texto_para_outra_pessoa"  # catálogo: `needs_draft` (mensagem, comentário)
     FAMILIA_DE_ALTO_RISCO = "familia_de_alto_risco"     # catálogo: efeito da família envio, publicação ou exclusão
-    COMMIT_FORA_DO_CATALOGO = "commit_fora_do_catalogo"  # conteúdo com `commit`, catálogo diz que a etapa não tem efeito
+    COMMIT_FORA_DO_CATALOGO = "commit_fora_do_catalogo"  # há `commit`, e o catálogo diz que a etapa não tem efeito
     RISCO_MEDIO = "risco_medio"                         # catálogo: `risk: medium`
     EFEITO_DECLARADO = "efeito_declarado"               # catálogo: `side_effect: true`
     COMMIT_SEM_FATOS_DA_ETAPA = "commit_sem_fatos_da_etapa"  # app com catálogo, capability da etapa não derivável
@@ -228,7 +228,9 @@ def conferir_aceite(classe: ClasseDeRisco, *, por_pessoa: bool, em_lote: bool) -
     if classe is ClasseDeRisco.A:
         return RecusaDoAceite.PARECER_NA_CLASSE_A
     if not por_pessoa:
-        return RecusaDoAceite.DECISAO_AUTOMATICA_EM_C if classe is ClasseDeRisco.C else RecusaDoAceite.DECISAO_AUTOMATICA
+        if classe is ClasseDeRisco.C:
+            return RecusaDoAceite.DECISAO_AUTOMATICA_EM_C
+        return RecusaDoAceite.DECISAO_AUTOMATICA
     if em_lote and classe is ClasseDeRisco.C:
         return RecusaDoAceite.LOTE_NA_CLASSE_C
     return None
