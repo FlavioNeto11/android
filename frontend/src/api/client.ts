@@ -393,9 +393,11 @@ export type FrameMode = 'thumb' | 'full';
  * URL da imagem do frame. O parâmetro `f` NÃO faz parte do contrato: é apenas um "cache key" para que o
  * navegador só busque de novo quando `frame.id` mudar (o backend ignora parâmetros desconhecidos).
  */
-/** URL da foto do perfil. Responde 404 quando não há foto — o `Avatar` cai nas iniciais nesse caso. */
-export function profileAvatarUrl(profileId: string): string {
-  return `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar`;
+/** URL da foto do perfil, ou `undefined` quando o perfil não tem foto (`has_avatar` do DTO): o `Avatar` mostra as
+ *  iniciais SEM requisição. Antes a rota era chamada sempre e respondia 404 (um erro no console por persona sem foto,
+ *  29.26). `temFoto` ausente (fixture antiga, DTO sem o campo) conta como sem foto: na dúvida, nenhuma requisição. */
+export function profileAvatarUrl(profileId: string, temFoto: boolean | undefined): string | undefined {
+  return temFoto ? `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar` : undefined;
 }
 
 /** URL do ícone do aplicativo, extraído do próprio APK. Só vale pedir quando `release.has_icon`: sem ícone

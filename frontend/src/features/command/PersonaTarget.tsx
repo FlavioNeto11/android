@@ -93,7 +93,7 @@ export function PersonaTarget({ pessoas, selecionadas, politica, estreitar, onPe
                       aria-label={`${nome}${handle ? ` (@${handle})` : ''}${n === 0 ? ', sem aparelho' : ''}`}
                       title={`${handle ? `@${handle} · ` : 'sem conta de cadastro · '}${n ? plural(n, 'aparelho', 'aparelhos') : 'sem aparelho vinculado'}`}
                       onClick={() => onPessoas(alternar(selecionadas, p.id))}>
-                <Avatar src={profileAvatarUrl(p.id)} name={nome} size={20} />
+                <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={nome} size={20} />
                 <span className={styles.personaChipNome}>{nome}</span>
                 {n === 0 ? <span className={styles.previaNota}>sem aparelho</span> : null}
               </button>

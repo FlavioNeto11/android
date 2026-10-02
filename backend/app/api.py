@@ -961,7 +961,8 @@ async def delete_profile(request: Request, profile_id: str) -> Response:
 
 @router.get("/instagram/profiles/{profile_id}/avatar")
 async def profile_avatar(request: Request, profile_id: str) -> Any:
-    """Foto do perfil. 404 quando não há — o portal cai nas iniciais sozinho, sem precisar de campo no DTO."""
+    """Foto do perfil. 404 quando não há. O painel só chama com `has_avatar` verdadeiro no DTO (29.26) e, sem ele, mostra
+    as iniciais sem requisição; o 404 fica para quem chama sem olhar o campo."""
     s = st(request)
     try:
         perfil = s.social.get_profile(profile_id)

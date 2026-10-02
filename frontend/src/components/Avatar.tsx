@@ -3,7 +3,8 @@ import { cx } from '../lib/format';
 import ui from './Avatar.module.css';
 
 interface AvatarProps {
-  /** Endereço da foto. A API responde 404 quando o perfil não tem — e aí caímos nas iniciais. */
+  /** Endereço da foto, ou `undefined` quando o perfil não tem (`profileAvatarUrl(id, has_avatar)`): aí são as
+   *  iniciais, sem requisição (a rota responde 404 sem foto). Se a foto falhar ao carregar, também caem as iniciais. */
   src?: string;
   /** Nome de exibição, usado para as iniciais e para o texto alternativo. */
   name: string;

@@ -290,7 +290,7 @@ export function InstancesSection() {
                       <div className={styles.instanceCardProfile}>
                         {profile ? (
                           <>
-                            <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name ?? profile.username} size={18} />
+                            <Avatar src={profileAvatarUrl(profile.id, profile.has_avatar)} name={profile.display_name ?? profile.username} size={18} />
                             <span>@{profile.username}</span>
                           </>
                         ) : (

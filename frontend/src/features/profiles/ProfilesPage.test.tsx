@@ -125,6 +125,18 @@ describe('personas', () => {
     expect(backend.callsTo('GET', /^\/api\/instagram\/profiles$/)).toHaveLength(0);
   });
 
+  it('foto só com `has_avatar`: sem foto são as iniciais e NENHUMA <img> (nem o 404 de /avatar); com foto, a imagem (29.26)', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({ has_avatar: true }), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Helena Prado'));
+    const imgs = [...container.querySelectorAll('img')].map((i) => i.getAttribute('src') ?? '');
+    // Só a Mariana (com foto) pede a imagem; a Helena aparece com as iniciais "HP", sem <img> e sem requisição.
+    expect(imgs.length).toBeGreaterThan(0);
+    expect(imgs.every((u) => u.endsWith('/instagram/profiles/ig-1/avatar'))).toBe(true);
+    expect(imgs.some((u) => u.includes('ig-9'))).toBe(false);
+    expect(text()).toContain('HP');
+  });
+
   it('o cartão é a pessoa: contas, aparelho e situação — sem senha, sessão nem Conectar', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa({ accounts_count: 2 })]));
     await render();

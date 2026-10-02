@@ -546,6 +546,8 @@ class PersonaOnDeviceDTO(BaseModel):
     is_primary: bool = False
     bound_at: str | None = None
     session: SessionInfo | None = None
+    #: Como em `PersonaDTO.has_avatar` (29.26): sem foto principal pronta o painel usa as iniciais, sem requisição.
+    has_avatar: bool = False
 
 
 class ActionGate(BaseModel):
@@ -974,6 +976,9 @@ class PersonaDTO(PersonaVoiceDTO):
     accounts_count: int = 0
     images: list[PersonaImageDTO] = Field(default_factory=list)
     primary_image_id: str | None = None
+    #: Há foto principal pronta (29.26): é o que `GET /instagram/profiles/{id}/avatar` serve. Sem ela o painel nem pede
+    #: a imagem (a rota responde 404) e mostra as iniciais.
+    has_avatar: bool = False
     last_verified_at: str | None = None
     last_activity_at: str | None = None
 

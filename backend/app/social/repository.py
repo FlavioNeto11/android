@@ -1092,6 +1092,11 @@ class SocialRepository:
                              " ORDER BY id DESC LIMIT ?", (profile_id, account_id, limit))
 
     # ------------------------------------------------------------------ DTO
+    def tem_avatar(self, profile_id: str) -> bool:
+        """Há foto principal PRONTA: o que a rota do avatar serve (29.26). Sem ela a rota responde 404."""
+        imagens = self.imagens_de(profile_id) if self.imagens_de is not None else []
+        return any(i.is_primary and i.status == "ready" for i in imagens)
+
     def profile_dto(self, profile_id: str) -> InstagramProfileDTO | None:
         row = self.profile_row(profile_id)
         if row is None:
@@ -1103,6 +1108,7 @@ class SocialRepository:
         pessoa = campos_de_persona(row)
         imagens = self.imagens_de(row["id"]) if self.imagens_de is not None else []
         principal = next((i.id for i in imagens if i.is_primary), None)
+        tem_foto = any(i.is_primary and i.status == "ready" for i in imagens)
         return InstagramProfileDTO(
             **pessoa, visual=visual_da_linha(row),
             generation=PersonaGeneration.model_validate(loads(row["generation"], {}) or {}),
@@ -1110,7 +1116,7 @@ class SocialRepository:
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
             # A persona é a própria pessoa: o painel de hoje acha "a persona do perfil" por estes dois campos.
             persona_id=row["id"], persona_name=pessoa["name"], status=row["status"],
-            accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal,
+            accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal, has_avatar=tem_foto,
             policy_group_id=row["policy_group_id"],
             policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
                                if row["policy_group_id"] else None),

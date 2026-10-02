@@ -538,7 +538,8 @@ class SocialService:
                 profile_id=pid, username=linha["username"] or None, display_name=linha["display_name"],
                 name=str(campos_de_persona(linha)["name"]), status=linha["status"] or "active", app_id=v["app_id"],
                 is_primary=bool(v["is_primary"]), bound_at=v["bound_at"],
-                session=self.repo.sessao_no_aparelho(pid, v["app_id"], instance_id)))
+                session=self.repo.sessao_no_aparelho(pid, v["app_id"], instance_id),
+                has_avatar=self.repo.tem_avatar(pid)))
         return saida
 
     # ------------------------------------------------------------------ personas (= pessoas)
