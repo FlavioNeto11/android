@@ -73,6 +73,7 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
 - Migração `066_travas.sql` e `app/taskqueue/travas.py` (`Lideranca`): tomada por CAS no relógio do banco, prazo de 120 s, renovação a cada 20 s num laço próprio do `AppState` (`travas-de-lider`), token de cerca crescente, tomada idempotente, dono = `OWNER_ID`, devolução na saída limpa e faxina de partida para o mesmo dono.
 - `state.py`: saldos, curadoria e retenção rodam só no líder; os outros backends pulam a volta sem erro. O fechamento do dia (não idempotente) roda cercado pelo token (`TravaPerdida` recusa o líder que perdeu o mandato).
 - Prova `simulated`: `backend/tests/test_travas.py` (7: dois bancos, expiração, renovação, token antigo recusado, corrida de 8 conexões, dois `AppState` no mesmo banco). PostgreSQL pulado (sem `TEST_DATABASE_URL`); segundo backend real no central `not_run`. Limite conhecido: `saldos.CONCILIACOES` é memória do processo, e o seguidor com chave de administrador mostra a conciliação velha na saúde.
+- Decisão registrada no [ADR-064](docs/decisoes.md) (aceito; número confirmado pelo orquestrador): CAS no relógio do banco, cerca por token, renovação no `AppState` (desvio consciente do §7.3), dono = `OWNER_ID` com retomada imediata, e os limites aceitos.
 
 ## 2026-10-02 — 17.10 real parcial: rejulgamento do "sim" em efeito externo provado; a cascata do bloqueio não foi acionada; `eval_run.py` no console cp1252
 
