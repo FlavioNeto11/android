@@ -21,6 +21,7 @@ from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import LimiaresDeSaude
+from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import VersaoViva
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, ModoDeTelas, Polaridade, Posicao, SignalKind)
 from app.modules.skills.domain.document import JsonObject
@@ -165,6 +166,11 @@ class FontesDoLivro(Protocol):
 
     def vivas(self, app: str) -> tuple[VersaoViva, ...]:
         """As versões do app observadas hoje em aparelho ativo (o eixo de comparação do §7)."""
+        ...
+
+    def sucessoras_da_habilidade(self, skill_id: str, versao: int) -> list[Sucessora]:
+        """As versões da habilidade editadas a partir desta (`parent_version` = `versao`), para a relação
+        `substituida_por` (30.7)."""
         ...
 
 

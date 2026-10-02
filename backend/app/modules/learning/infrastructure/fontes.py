@@ -18,6 +18,7 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
+from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
@@ -153,6 +154,14 @@ class FontesSql:
             (pacote, linhas.texto(row, "app_signature"), linhas.texto(row, "variant"), linhas.texto(row, "step_hash")))]
         propria = next(o for o in da_chave if o.ref == str(recipe_id))
         return quadro_da_receita(propria, app=pacote, da_chave=da_chave, vivas=self.vivas(pacote))
+
+    # ------------------------------------------------------------------ relações (30.7)
+    def sucessoras_da_habilidade(self, skill_id: str, versao: int) -> list[Sucessora]:
+        """As versões do mesmo `skill_id` cujo `parent_version` é esta. A leitura do pai (`parent_version` da própria
+        versão) já vem no `conteudo`; só o caminho de volta precisa de uma consulta."""
+        return [Sucessora(linhas.texto(r, "id"), linhas.inteiro(r, "version"), linhas.texto(r, "state"))
+                for r in self._db.query("SELECT id, version, state FROM skill_versions WHERE skill_id=?"
+                                        " AND parent_version=? ORDER BY version", (skill_id, versao))]
 
     def _etapa_de_origem(self, step_id: str) -> EtapaDeOrigem | None:
         row = self._db.one("SELECT id, run_id, capability FROM steps WHERE id=?", (step_id,))

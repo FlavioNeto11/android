@@ -3601,3 +3601,29 @@ não há janela por item. `versao` e `intervencao_humana` saem `desconhecida` po
 Fora desta fatia: `obsoleto_provavel` (30.13); `acoes[]` já existe em `item` (§5.4) e não ganhou `motivo_de_bloqueio`. `falhas_seguidas` vem de
 `recipes.consecutive_fail`. Limiares aprovados pelo dono em 02/10 (D-5). Prova
 `simulated` (`tests/test_learning_saude.py`); `not_run` no central.
+
+## Adendo v0.53 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `relacoes` (item 30.7)
+
+O detalhe do Livro ganha `relacoes` (lista, sempre presente, `[]` quando nada se deriva), ao lado de `conteudo` (v0.50) e `versao` (v0.51).
+Só leitura, montada na leitura do que já existe; **sem tabela de arestas e sem migração**. Desenho: `design/aprendizado-vivo.md` §6.
+(A v0.52 está reservada ao 30.4, a saúde.)
+
+Forma de cada relação: `{tipo, kind, ref, rotulo, fonte}`. `kind` e `ref` apontam para o detalhe do alvo (`GET /api/aprendizado/{kind}/{ref}`),
+salvo `absorvida`; `rotulo` é texto curto para exibir (pode ser `null`); `fonte` diz de onde a relação foi derivada. A lista vem ordenada por
+`tipo` (na ordem da tabela) e depois por `kind` e `ref`.
+
+| `tipo` | Onde aparece | De onde sai (`fonte`) | Alvo |
+|---|---|---|---|
+| `substitui` / `substituida_por` | receita | `recipes`: mesma chave (pacote, versão do app, assinatura, variante, `step_hash`), versão anterior e seguinte (a leitura do `conteudo.substitui`/`substituida_por`, v0.50) | `receita/<id>`; `rotulo` `v<n> (<status>)` |
+| `substitui` / `substituida_por` | habilidade | `skill_versions.parent_version` (o pai) e as versões que a têm por pai | `habilidade/<skill>@<n>` |
+| `substitui` / `substituida_por` | item (`tela`, `licao`, `voz`, `preferencia`) | `learning_items.parent_id` (o pai; os itens que o têm por pai). Pai que sumiu do banco não gera relação | `<kind>/<li-...>` |
+| `derivado_de` | habilidade `flow:<id>@1` | o `skill_id` do fluxo legado | `fluxo/<id>` |
+| `absorvida` | item | `state_detail = absorvida:<commit>`. Tela: o alvo é a regra declarada pelo nome (`kind` `regra_declarada`, `ref` o nome da tela); sem nome, `kind` `commit` e `ref` o commit | ver ao lado |
+| `contradiz` | receita, tela | mesmo `scope_key`, `content_hash` diferente e os DOIS vivos (`candidate`, `validated`, `published`). Receita: duas vivas na mesma chave com caminho diferente (anomalia: a versão nova aposenta as vivas da chave). Tela: o `scope_key` é só o app, então exige o mesmo nome de regra (`conteudo.tela`) | `receita/<id>` ou `tela/<li-...>` |
+
+**O que NÃO sai (e por quê).** `contradiz` não é derivado em `fluxo` (`flows.match_key` é único), `habilidade` (as versões da mesma habilidade
+dividem o comando) nem `licao`, `voz` e `preferencia` (o `scope_key` não nomeia a proposição: acusaria toda lição do mesmo passo). A evidência
+`conflict` da tela aponta para um aparelho, não para outro item: não vira relação. `nasceu de` (já exposto em `conteudo.origem`), `complementa / depende de`
+e `revisado por` (IA, §8.5) ficam fora: o primeiro já existe, os outros dois não têm fonte hoje. `memoria` devolve `relacoes: []`.
+
+Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.

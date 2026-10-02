@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,
+  `substituida_por`, `derivado_de`, `absorvida` e `contradiz`, cada uma lida do que já existe (versão vizinha da receita, `parent_version`,
+  `parent_id`, `flow:<id>` do fluxo legado, `absorvida:<commit>`, mesmo `scope_key` com `content_hash` diferente e os dois vivos). Sem tabela
+  de arestas e sem migração.
+- Sem inventar: `contradiz` só em receita (chave exata) e tela (mesmo nome de regra); fluxo, habilidade, lição, voz e preferência ficam sem ele
+  (sem critério seguro). `nasceu de`, `complementa / depende de` e `revisado por` ficam fora.
+- `domain/relacoes.py` (puro), `FontesSql.sucessoras_da_habilidade` (única leitura nova), `LearningService._relacoes`, `DetalheDoLivro.relacoes`.
+  Prova `simulated` (`tests/test_learning_relacoes.py`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: saúde do item do Livro (30.4, branch feat/30-4-saude)
 
 - `saude` na lista, em `pendentes`/`revisar` e no detalhe do Livro (`api-contract.md`, adendo v0.52): dimensões medidas (uso, eficácia, base de
