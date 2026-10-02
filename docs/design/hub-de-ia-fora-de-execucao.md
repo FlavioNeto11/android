@@ -1,6 +1,6 @@
 # Hub de IA fora de execução: curador do Livro (30.12) e rubrica única de gasto — PROPOSTA
 
-**Estado:** proposta da frente Jev, dona do hub de IA (`planning/`, `routing`, `config.ai`), em 02/10/2026. **Nada
+**Estado:** PROPOSTA com as decisões P1–P6 anotadas no §4 (orquestradora, 02/10); implementação do 30.12 PARADA até o roteiro do Jev e a D0. Autoria: frente Jev, dona do hub de IA (`planning/`, `routing`, `config.ai`), em 02/10/2026. **Nada
 implementado.** Pedido da orquestradora (mapa de amarração M1, §3 "30.12" e "30.11, 28.6 e ADR-051"). Duas decisões
 abertas podem mudar o desenho:
 
@@ -80,11 +80,11 @@ frase. Precisa estar fechado ANTES de o 30.11 gravar `learning_reviews.usd`.
 
 ## 4. Decisões que esta proposta pede
 
-| # | Decisão | De quem | Recomendação |
-|---|---|---|---|
-| P1 | Papel do curador: `plan` emprestado ou papel novo | frente Jev, com o Aprendizado | `plan` emprestado, com perfil 17.7 para baratear |
-| P2 | Marcador em `ai_calls`: coluna `origem` (migração) ou `step_id` codificado | orquestradora (número) | coluna |
-| P3 | Fatia do curador = α × min(saldo, teto do dia) | dono (α já decidido) | sim |
-| P4 | Fatia própria para a soma dos pedidos | dono | não por ora; medir no 28.12 |
-| P5 | Triagem pelo `choice` do Jev-retrieval | dono (roteiro, ADR-063) | sim, em `shadow` primeiro |
-| P6 | `AIError.motivo` fechado | frente Jev | sim, junto com a rubrica |
+| # | Decisão | De quem | Recomendação | Decidido |
+|---|---|---|---|---|
+| P1 | Papel do curador: `plan` emprestado ou papel novo | frente Jev, com o Aprendizado | `plan` emprestado, com perfil 17.7 para baratear | OK (orquestradora, 02/10) |
+| P2 | Marcador em `ai_calls`: coluna `origem` (migração) ou `step_id` codificado | orquestradora (número) | coluna | OK; número na implementação (tende à 073) |
+| P3 | Fatia do curador = α × min(saldo, teto do dia) | dono (α já decidido) | sim | OK (aplica o α=10 % do dono) |
+| P4 | Fatia própria para a soma dos pedidos | dono | não por ora; medir no 28.12 | NÃO por ora; medir no 28.12 (orquestradora) |
+| P5 | Triagem pelo `choice` do Jev-retrieval | dono (roteiro, ADR-063) | sim, em `shadow` primeiro | vai ao dono com o roteiro do Jev |
+| P6 | `AIError.motivo` fechado | frente Jev | sim, junto com a rubrica | OK, junto com a rubrica |
