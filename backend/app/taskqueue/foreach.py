@@ -21,6 +21,23 @@ def sanitize_item(text: str) -> str:
     return re.sub(r"\s+", " ", clean).strip()[:ITEM_MAX_CHARS]
 
 
+def teto_de_chamadas(base: int, por_item: int, absoluto: int, itens: int) -> tuple[int, str]:
+    """Item 17.12: o teto de chamadas de IA de um objetivo com `for_each`, e de onde ele veio (para a mensagem).
+
+    `base + por_item × (itens − 1)`, limitado por `absoluto`. O PRIMEIRO item já cabe no `base` (a abertura, a coleta e
+    o relatório são custo fixo); cada item a mais soma `por_item`. Sem `for_each` (0 ou 1 item) ou com `por_item=0`, o
+    teto é exatamente `base`. O absoluto só limita o CRESCIMENTO: nunca derruba o teto abaixo do `base` que o dono
+    escolheu (senão subir o base acima do absoluto encolheria o teto de objetivos sem `for_each`)."""
+    extra = max(0, int(por_item)) * max(0, itens - 1)
+    if extra == 0:
+        return base, f"{base}"
+    origem = f"{base} + {por_item} × {itens - 1} itens do for_each"
+    proporcional = base + extra
+    if proporcional > absoluto:
+        return max(base, absoluto), origem + f", limitado ao teto absoluto de {absoluto}"
+    return proporcional, origem
+
+
 def _copy_key(key: str, n: int) -> str:
     suffix = f"_i{n}"
     return key[:41 - len(suffix)] + suffix

@@ -404,6 +404,7 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.8 | **Flex para trabalho offline** (geração de persona, rejulgamento) com `service_tier: flex` | segunda onda | P |
 | 17.10 | **Cascata para ator barato**: `step_blocked` do tier 0 sobe ao tier 1 antes de `waiting_user`, e o "sim" do verificador barato em etapa com efeito externo é rejulgado (como no B14). Pré-condição para medir de novo o gpt-6-luna como ator | bateria de 28/09 (relatório §18) | M |
 | 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
+| 17.12 | **Teto de chamadas proporcional ao for_each** (`teto = base + por_item × (itens − 1)`, limitado por um absoluto; o rejulgamento continua contando; tetos em US$ e de tokens intactos) | achado do 7.4 real (r-20261002181642-eff15b) | P |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Fase 18 — Conhecimento de app como dado e execução medida · 8 itens (pedido do dono de 28/09/2026; ADR-052)

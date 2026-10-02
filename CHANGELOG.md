@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Teto de chamadas de IA proporcional ao `for_each` (17.12, branch jev/17-12-teto-for-each)
+
+- `backend/app/taskqueue/executor.py::_ai` / `_teto_de_chamadas` e `backend/app/taskqueue/foreach.py::teto_de_chamadas`: o teto de chamadas por objetivo passa a ser `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))`; sem `for_each` (ou com 1 item) continua exatamente `ai_max_calls_per_objective`. Os itens saem das etapas já gravadas (`item_index` em `steps.variables`, todas as versões do plano), só consultadas quando o base já foi atingido. O rejulgamento do 17.10 continua contando; `ai_max_usd_per_run`/`per_day` e o teto de tokens ficam como estavam. A mensagem diz o teto efetivo e a origem (`60 + 12 × 7 itens do for_each`).
+- Config: campos novos `ai_max_calls_per_item` (padrão 12 = ~8 chamadas medidas por envio na `r-20261002181642-eff15b`, com folga; 0 desliga) e `ai_max_calls_absolute` (padrão 300; só limita o crescimento, nunca baixa o base); expostos em Configuração › Orçamento de IA, `config.example.yaml` e `docs/api-contract.md`. Sem migração (os limites vivem em `settings`).
+- Prova `simulated`: `backend/tests/test_teto_proporcional_for_each.py` (8 testes: fórmula, 5 contatos que estouram com o teto fixo e fecham com o proporcional, sem lista = 60, absoluto corta, rejulgamento conta, US$ intacto); frontend `validation.test.ts`. Prova `real`: `not_run` (reexecutar `msg-todos-os-contatos` depois do deploy exige autorização de gasto).
+
 ## 2026-10-02 — 7.4: linha de base real da configuração implantada, 13/14 por US$ 1,45; achado do teto de chamadas no `for_each`
 
 - Real (02/10, central, deploy `25624c4`, android-05 sem conta real): 14 casos do QA Messenger, 13 corretos, US$ 1,449; `msg-todos-os-contatos` bateu no teto de 60 chamadas por objetivo no 7º de 8 contatos (`r-20261002181642-eff15b`). HTTP 500 do verificador: 2/423. Rejulgamento das 56 não repetido (vale o de 25/09). `docs/ia.md` §8; estado do 7.4 pelo mecanismo (`implemented`, `real`).
