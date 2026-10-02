@@ -97,6 +97,8 @@ class AcoesDePedidos:
             if modo == "daqui":
                 for g in self.repo.gatilhos_ativos(pedido_id):
                     self._pular_o_da_pausa(p, g, agora, em)
+                # Evento (28.8): pausa = não observar; o que aconteceu durante ela não dispara na retomada `daqui`.
+                self.repo.base_dos_eventos(pedido_id)
         self.acordar()
 
     def _pular_o_da_pausa(self, p: Row, g: Row, agora: datetime, em: str) -> None:

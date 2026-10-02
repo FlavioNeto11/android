@@ -22,12 +22,12 @@ import base64
 import hashlib
 import json
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from app.modules.pedidos.domain import gatilhos as dominio_gatilhos
-from app.modules.pedidos.domain import recorrencia
+from app.modules.pedidos.domain import gatilhos_dinamicos, recorrencia
 from app.modules.pedidos.domain.chave import TAMANHO_MAXIMO_DO_ID, formatar_instante
 from app.modules.pedidos.domain.estados import (ATOR_PESSOA, AUTONOMIAS, PEDIDO_ATORES, SOBREPOSICOES,
                                                 TIPOS_DE_GATILHO)
@@ -158,12 +158,19 @@ def conferir_fuso(fuso: str) -> str:
     return fuso.strip()
 
 
-def normalizar_gatilho(tipo: str, spec: Mapping[str, object], fuso: str, indice: int = 0) -> GatilhoPedido:
+def normalizar_gatilho(tipo: str, spec: Mapping[str, object], fuso: str, indice: int = 0, *,
+                       efemeros: Iterable[str] = ()) -> GatilhoPedido:
     """A forma que o laço lê (`gatilhos.py`), com a `rrule` na forma canônica. `horario` aceita `local` (o que o laço
-    lê) e `dtstart` (o nome que o contrato propôs): grava sempre `local`."""
+    lê) e `dtstart` (o nome que o contrato propôs): grava sempre `local`. `evento`, `condicao` e `persona` (28.8) são
+    validados em `gatilhos_dinamicos`; `efemeros` são os tipos de evento que nunca vão ao log (`EPHEMERAL_KINDS`)."""
     campo = f"gatilhos[{indice}]"
     if tipo not in TIPOS_DE_GATILHO:
         raise ErroDeCorpo("gatilho_nao_suportado", f"Tipo de gatilho desconhecido: {tipo!r}.", campo)
+    if tipo in gatilhos_dinamicos.DINAMICOS:
+        try:
+            return GatilhoPedido(tipo, gatilhos_dinamicos.normalizar(tipo, spec, efemeros=efemeros))
+        except gatilhos_dinamicos.SpecInvalida as e:
+            raise ErroDeCorpo("gatilho_invalido", str(e), f"{campo}.{e.campo}") from None
     if tipo not in dominio_gatilhos.SUPORTADOS:
         raise ErroDeCorpo("gatilho_nao_suportado", f"O gatilho `{tipo}` ainda não existe (vem com o item 28.8).", campo)
     if tipo == "agora":
@@ -191,9 +198,11 @@ def normalizar_gatilho(tipo: str, spec: Mapping[str, object], fuso: str, indice:
 
 def _datas(g: GatilhoPedido, indice: int, fuso: str, agora: datetime, limite: int) -> list[DataPrevista]:
     """As próximas datas do gatilho a partir de `agora`, ordenadas."""
-    if g.tipo == "agora":
+    if g.tipo in ("agora", "persona"):         # a persona faz a primeira visita na ativação; as outras dependem dela
         local = agora.astimezone(recorrencia.carregar_fuso(fuso)).replace(tzinfo=None, microsecond=0)
         return [DataPrevista(indice, recorrencia.localizar(local, fuso))]
+    if g.tipo in ("evento", "condicao"):      # sem data: dependem do que acontecer
+        return []
     if g.tipo == "horario":
         inst = recorrencia.localizar(datetime.fromisoformat(str(g.spec["local"])), fuso)
         return [DataPrevista(indice, inst)] if inst.utc > agora else []
@@ -204,10 +213,11 @@ def _datas(g: GatilhoPedido, indice: int, fuso: str, agora: datetime, limite: in
 
 def proximas_do_pedido(gatilhos: Sequence[GatilhoPedido], fuso: str, agora: datetime, quantas: int,
                        fim_em: datetime | None = None) -> list[DataPrevista]:
-    """As próximas datas de um pedido JÁ criado: o gatilho `agora` não conta (já foi materializado na ativação)."""
+    """As próximas datas de um pedido JÁ criado: o gatilho `agora` não conta (já foi materializado na ativação), nem a
+    persona (a visita seguinte só existe quando a anterior fecha; quando existe, é uma `prevista` no banco)."""
     todas: list[DataPrevista] = []
     for i, g in enumerate(gatilhos):
-        if g.tipo == "agora":
+        if g.tipo in ("agora", "persona"):
             continue
         try:
             todas.extend(_datas(g, i, fuso, agora, quantas))
@@ -227,6 +237,8 @@ def descrever_gatilho(g: GatilhoPedido | tuple[str, Mapping[str, object]], fuso:
         return "Uma vez, agora"
     if tipo == "horario":
         return f"Uma vez, em {str(spec.get('local', '?')).replace('T', ' às ')} ({fuso})"
+    if tipo in gatilhos_dinamicos.DINAMICOS:
+        return gatilhos_dinamicos.descrever(tipo, spec)
     if tipo != "recorrencia":
         return tipo
     try:
@@ -315,6 +327,16 @@ def analisar(p: ParametrosDoPedido, *, agora: datetime, piso_observar_s: int, pi
     if len(janela) >= 2:
         intervalo = int(min((y.instante.utc - x.instante.utc).total_seconds() for x, y in zip(janela, janela[1:])))
     piso = _piso(p.autonomia, piso_observar_s, piso_agir_s)
+    for i, g in enumerate(p.gatilhos):
+        # A persona escolhe quando volta, mas nunca abaixo do piso da autonomia (o evento respeita o piso no laço).
+        minimo = g.spec.get("intervalo_min_s") if g.tipo == "persona" else None
+        if isinstance(minimo, int) and minimo < piso:
+            b.append(Bloqueio("frequencia_abaixo_do_piso", f"A persona pode voltar a cada {minimo} s e o mínimo para "
+                              f"`{p.autonomia}` é {piso} s (piso_s={piso}, observado_s={minimo}).",
+                              f"gatilhos[{i}].spec.intervalo_min_s"))
+    if p.gatilhos and all(g.tipo == "condicao" for g in p.gatilhos):
+        b.append(Bloqueio("condicao_sem_observacao", "A condição é avaliada nas observações das ocorrências: junte a ela "
+                          "um gatilho que observe (recorrência, horário, evento ou persona).", "gatilhos"))
     if intervalo is not None and intervalo < piso:
         b.append(Bloqueio("frequencia_abaixo_do_piso", f"O menor intervalo entre as ocorrências é {intervalo} s e o "
                           f"mínimo para `{p.autonomia}` é {piso} s (piso_s={piso}, observado_s={intervalo}).",
