@@ -43,12 +43,17 @@ from .conftest import Harness, make_config
 
 IG = "com.instagram.android"
 OUTLOOK = "com.microsoft.office.outlook"
+# A mecânica do plano entre apps (etapa livre, segunda trava, ordem dos apps) precisa de um app SEM catálogo. O Outlook
+# ganhou catálogo só de leitura (12.3, ADR-065) e é coberto pelos testes `*_outlook_real_*` / "do catálogo" no fim do
+# arquivo; para a mecânica, este e-mail de pacote qualquer segue com o MESMO id e rótulo ("no Outlook" nos comandos).
+EMAIL_LIVRE = "com.exemplo.email.livre"
 QA = "com.pocqa.messenger"
 LEITOR = "com.exemplo.leitor"
 
 INSTAGRAM = AppContext("instagram", "Instagram", IG, None, "dicas do IG", {"feed": "id=feed"})
 # O cadastro diz "Microsoft Outlook"; quem escreve o comando diz "no Outlook" (o rótulo do manifesto).
 OUTLOOK_APP = AppContext("outlook", "Microsoft Outlook", OUTLOOK, None, "caixa de entrada na aba Email", None)
+OUTLOOK_LIVRE = AppContext("outlook", "Microsoft Outlook", EMAIL_LIVRE, None, "caixa de entrada na aba Email", None)
 QA_APP = AppContext("qa-messenger", "QA Messenger", QA, ".MainActivity", None, None)
 CHROME = AppContext("chrome", "Chrome", "com.android.chrome", None, None, None)
 LEITOR_APP = AppContext("leitor", "Leitor", LEITOR, None, None, None)
@@ -59,6 +64,12 @@ NO_QA = [{"instance_id": "android-01", "account_label": "qa-user-01", "app_id": 
 
 def _catalogo_ig() -> CapabilityCatalog:
     catalogo = load_catalog(IG)
+    assert catalogo is not None
+    return catalogo
+
+
+def _catalogo_outlook() -> CapabilityCatalog:
+    catalogo = load_catalog(OUTLOOK)
     assert catalogo is not None
     return catalogo
 
@@ -82,10 +93,11 @@ def _livre(titulo: str, *, efeito: bool = False) -> dict[str, Any]:
 
 
 def _etapa(key: str, app_id: str, *, capability: str | None = None, bindings: dict[str, str] | None = None,
-           livre: dict[str, Any] | None = None, depends_on: list[str] | None = None) -> dict[str, Any]:
+           livre: dict[str, Any] | None = None, depends_on: list[str] | None = None,
+           saidas: list[str] | None = None) -> dict[str, Any]:
     return {"key": key, "app_id": app_id, "capability": capability,
             "bindings": [{"name": k, "value": v} for k, v in (bindings or {}).items()], "livre": livre,
-            "depends_on": depends_on or [], "for_each": None}
+            "depends_on": depends_on or [], "for_each": None, "saidas": saidas or []}
 
 
 def _bruto(steps: list[dict[str, Any]], app_id: str | None = "instagram", missing: list[Any] | None = None) -> str:
@@ -96,7 +108,7 @@ def _bruto(steps: list[dict[str, Any]], app_id: str | None = "instagram", missin
 def _pedido(catalogs: dict[str, Any], apps: list[AppContext] | None = None,
             command: str = "Leia o último e-mail no Outlook e curta o post de @ana") -> PlanRequest:
     return PlanRequest(command=command, run_id="r-entre", instances=NO_IG,
-                       apps=apps if apps is not None else [INSTAGRAM, OUTLOOK_APP, CHROME], catalogs=catalogs)
+                       apps=apps if apps is not None else [INSTAGRAM, OUTLOOK_LIVRE, CHROME], catalogs=catalogs)
 
 
 def _montar(raw: str, req: PlanRequest) -> Plan:
@@ -133,8 +145,13 @@ def test_um_app_com_catalogo_sem_outro_app_segue_no_planejamento_por_catalogo() 
 
 
 def test_sem_catalogo_nenhum_o_plano_e_livre_com_todos_os_apps() -> None:
-    comando = 'Abra o QA Messenger e depois o Outlook'
+    comando = 'Abra o QA Messenger e depois o Chrome'
     assert RunService._catalogos(comando, TODOS, NO_QA) == (None, {}, TODOS, None)  # noqa: SLF001
+    # Com o Outlook (12.3: catálogo só de leitura) o comando deixa de ser livre: é entre apps, e o Outlook vai com o
+    # catálogo dele. Antes ele era o app de etapa livre desta frase.
+    catalog, catalogs, _, pacote = RunService._catalogos(  # noqa: SLF001
+        'Abra o QA Messenger e depois o Outlook', TODOS, NO_QA)
+    assert catalog is None and list(catalogs) == ["outlook"] and pacote is None
     # Um app só, sem catálogo: o plano é livre, mas as lições do planejador são as DELE (o pacote vai junto).
     assert RunService._catalogos("envie oi para a ana", TODOS, NO_QA) == (None, {}, TODOS, QA)  # noqa: SLF001
     assert RunService._catalogos("abra o site https://exemplo.test", TODOS, NO_QA)[3] is None  # noqa: SLF001
@@ -142,12 +159,18 @@ def test_sem_catalogo_nenhum_o_plano_e_livre_com_todos_os_apps() -> None:
 
 def test_citar_outro_app_ou_um_site_nao_derruba_o_catalogo() -> None:
     """R1/R2: antes, os dois comandos iam para o planejador LIVRE, e o efeito no Instagram ficava sem ação."""
-    for comando in ("Leia o último e-mail no Outlook e curta o post de @ana",
-                    "Entre no site https://exemplo.test e depois curta o post de @ana"):
+    # O Outlook (12.3) entra com o catálogo dele, na ordem em que o comando o cita (antes, só o Instagram).
+    # No comando do site o Outlook, que agora tem catálogo e não é candidato, fica fora da lista de apps (senão entraria
+    # como app de etapa LIVRE, por fora da política dele).
+    for comando, esperados, ids in (
+            ("Leia o último e-mail no Outlook e curta o post de @ana", ["outlook", "instagram"],
+             ["instagram", "outlook", "qa-messenger", "chrome"]),
+            ("Entre no site https://exemplo.test e depois curta o post de @ana", ["instagram"],
+             ["instagram", "qa-messenger", "chrome"])):
         catalog, catalogs, apps, pacote = RunService._catalogos(comando, TODOS, NO_IG)  # noqa: SLF001
         assert catalog is None and pacote is None
-        assert list(catalogs) == ["instagram"] and catalogs["instagram"].package == IG
-        assert [a.id for a in apps] == ["instagram", "outlook", "qa-messenger", "chrome"]
+        assert list(catalogs) == esperados and catalogs["instagram"].package == IG
+        assert [a.id for a in apps] == ids
     # aparelho do QA e comando que cita o Instagram: o catálogo do Instagram vai junto
     catalog, catalogs, _, _ = RunService._catalogos("Abra o QA Messenger e curta no Instagram o post de @ana",  # noqa: SLF001
                                                     TODOS, NO_QA)
@@ -161,7 +184,7 @@ def test_app_com_catalogo_que_nao_e_candidato_fica_fora_da_lista(monkeypatch: py
                         lambda pacote: leitor if pacote == LEITOR else load_catalog(pacote))
     catalog, catalogs, apps, _ = RunService._catalogos(  # noqa: SLF001
         "Leia o último e-mail no Outlook e curta o post de @ana", [*TODOS, LEITOR_APP], NO_IG)
-    assert catalog is None and list(catalogs) == ["instagram"]
+    assert catalog is None and list(catalogs) == ["outlook", "instagram"]       # o Outlook tem catálogo (12.3)
     assert "leitor" not in {a.id for a in apps} and "outlook" in {a.id for a in apps}
     # citado, ele é candidato: vão os dois catálogos
     _, catalogs, apps, _ = RunService._catalogos(  # noqa: SLF001
@@ -242,7 +265,7 @@ def test_app_do_plano_e_um_app_em_que_o_plano_roda() -> None:
     req = _pedido({"instagram": _catalogo_ig()})
     plano = _montar(_bruto([_etapa("ler_email", "outlook", livre=_livre("Abrir o e-mail")),
                             _etapa("feed", "instagram", capability="OPEN_FEED")], app_id="chrome"), req)
-    assert plano.app_id == "outlook" and plano.app_package == OUTLOOK
+    assert plano.app_id == "outlook" and plano.app_package == EMAIL_LIVRE
     assert [s.app_id for s in plano.steps] == [None, "instagram"]
     assert plano.required_apps == ["outlook", "instagram"]
 
@@ -307,7 +330,7 @@ def test_etapa_sem_app_em_aparelhos_de_apps_diferentes_nao_exige_o_app_do_outro(
 
 # ================================================================== prompt
 def test_prompt_entre_apps_traz_os_dois_tipos_de_app_e_as_regras_de_sempre() -> None:
-    req = _pedido({"instagram": _catalogo_ig()}, apps=[INSTAGRAM, OUTLOOK_APP, CHROME])
+    req = _pedido({"instagram": _catalogo_ig()}, apps=[INSTAGRAM, OUTLOOK_LIVRE, CHROME])
     texto = prompts.planner_multiapp_user(req, 9)
     com, sem = texto.split("Apps SEM catálogo")
     assert "Apps COM catálogo" in com and "- id: instagram | nome: Instagram | package: com.instagram.android" in com
@@ -509,11 +532,100 @@ async def test_execucao_planeja_entre_apps_e_grava_o_app_de_cada_etapa(harness: 
     await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=30)
     assert s.repo.run_row(run.id)["status"] == "planned"
     req = pedidos[0]
-    assert req.catalog is None and list(req.catalogs) == ["instagram"]
+    # O Outlook entra com o catálogo dele (12.3), na ordem em que o comando o cita
+    assert req.catalog is None and list(req.catalogs) == ["outlook", "instagram"]
     assert {a.id for a in req.apps} == {"qa-messenger", "instagram", "outlook"}
     plano = Plan.model_validate_json(s.repo.run_row(run.id)["plan"])
     assert plano.required_apps == ["qa-messenger", "outlook", "instagram"]
     etapas = {r["key"]: (r["app_id"], r["capability"]) for r in s.db.query(
         "SELECT key, app_id, capability FROM steps WHERE run_id=?", (run.id,))}
-    assert etapas == {"open_app": (None, None), "confirm_account": (None, None), "abrir_outlook": ("outlook", None),
+    # a etapa do Outlook agora é AÇÃO do catálogo dele (a entrada do app, no simulador), e não mais a etapa livre
+    # `abrir_outlook`
+    assert etapas == {"open_app": (None, None), "confirm_account": (None, None),
+                      "open_mail_inbox": ("outlook", "OPEN_MAIL_INBOX"),
                       "open_profile": ("instagram", "OPEN_PROFILE"), "like_post": ("instagram", "LIKE_POST")}
+
+
+# ================================================================== o Outlook real: catálogo só de leitura (12.3)
+def _ler_pelo_catalogo(citada: str = "assunto", saidas: list[str] | None = None,
+                       capability: str = "OPEN_MAIL_INBOX") -> str:
+    """O C1 do dono com o catálogo REAL do Outlook: a ação do catálogo entrega o assunto e o Instagram o usa."""
+    return _bruto([_etapa("ler_email", "outlook", capability=capability,
+                          saidas=["Assunto"] if saidas is None else saidas),
+                   _etapa("perfil", "instagram", capability="OPEN_PROFILE",
+                          bindings={"username": "{{saida:" + citada + "}}"})])
+
+
+def _pedido_outlook(command: str = "Leia o assunto do último e-mail no Outlook e abra no Instagram o perfil citado"
+                    ) -> PlanRequest:
+    return _pedido({"outlook": _catalogo_outlook(), "instagram": _catalogo_ig()},
+                   apps=[INSTAGRAM, OUTLOOK_APP, CHROME], command=command)
+
+
+def test_c1_ler_no_outlook_pelo_catalogo_e_usar_no_instagram() -> None:
+    """C1 (item 24.3) com o Outlook COM catálogo: a ação OPEN_MAIL_INBOX declara entregar o assunto (o nome vai
+    normalizado), a etapa do Instagram o cita, e o valor liga as duas — o que antes só a etapa livre fazia."""
+    plano = _montar(_ler_pelo_catalogo(), _pedido_outlook())
+    assert not plano.missing
+    ler, perfil = plano.steps
+    assert (ler.app_id, ler.capability, ler.saidas, ler.side_effect) == ("outlook", "OPEN_MAIL_INBOX", ["assunto"],
+                                                                        False)
+    assert perfil.capability == "OPEN_PROFILE" and referencias(perfil) == ["assunto"]
+    ligada = {s.key: s for s in _dependencias_das_saidas(plano.steps)}["perfil"]
+    assert "ler_email" in ligada.depends_on
+    assert resolver(perfil.bindings["username"], {"assunto": "@ciclano"}) == ("@ciclano", [])
+    assert plano.required_apps == ["outlook", "instagram"] and plano.app_id == "instagram"
+
+
+def test_ler_e_citar_so_o_que_a_acao_do_catalogo_declara() -> None:
+    # nome que a ação não declara (um código, até): vira pergunta, o plano zera e nada é lido
+    plano = _montar(_ler_pelo_catalogo(saidas=["codigo"], citada="codigo"), _pedido_outlook())
+    # duas perguntas: a ação não entrega "codigo" e, sem a etapa, ninguém lê o que o Instagram cita
+    assert plano.steps == [] and [m.field for m in plano.missing] == ["open_mail_inbox", "saida"]
+    assert "codigo" in plano.missing[0].question and "remetente, assunto" in plano.missing[0].question
+    # ação que não entrega valor nenhum (a coleta)
+    plano = _montar(_ler_pelo_catalogo(capability="COLLECT_MAIL_HEADERS"), _pedido_outlook())
+    assert plano.steps == [] and "não entrega valor" in plano.missing[0].question
+    # citar o valor sem declarar a leitura: a pergunta de sempre (24.3), agora também para a ação de catálogo
+    plano = _montar(_ler_pelo_catalogo(saidas=[]), _pedido_outlook())
+    assert plano.steps == [] and [m.field for m in plano.missing] == ["saida"]
+
+
+def test_acao_de_catalogo_sem_saidas_na_etapa_nao_le_nada() -> None:
+    """Sem `saidas` na etapa a ação de catálogo segue sem ler nada (a receita continua valendo): é o padrão."""
+    plano = _montar(_bruto([_etapa("abrir", "outlook", capability="OPEN_MAIL_INBOX")], app_id="outlook"),
+                    _pedido_outlook("Abra a caixa de entrada do Outlook"))
+    assert not plano.missing and plano.steps[0].saidas == []
+
+
+def test_etapa_livre_no_outlook_continua_vedada_e_enviar_nao_e_acao() -> None:
+    """Efeito no Outlook não ganha caminho novo: etapa livre num app com catálogo vira pergunta (T19), e enviar não é
+    ação do catálogo."""
+    plano = _montar(_bruto([_etapa("enviar", "outlook", livre=_livre("Enviar o e-mail", efeito=True))],
+                           app_id="outlook"), _pedido_outlook("Envie um e-mail pelo Outlook"))
+    assert plano.steps == [] and [m.field for m in plano.missing] == ["capability"]
+    assert not any(c.side_effect for c in _catalogo_outlook().capabilities)
+
+
+async def test_planejador_ensina_o_valor_entregue_pela_acao_do_catalogo(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    cfg.env.ai_provider = "anthropic"
+    p = AnthropicProvider(cfg)
+    chamadas: list[dict[str, Any]] = []
+
+    async def criar(**kwargs: Any) -> Any:
+        chamadas.append(kwargs)
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=_ler_pelo_catalogo())],
+                               stop_reason="end_turn", model="claude-opus-5",
+                               usage=SimpleNamespace(input_tokens=10, output_tokens=5, cache_read_input_tokens=0,
+                                                     cache_creation_input_tokens=0))
+    falso = SimpleNamespace(create=criar)
+    p.configured = True
+    p._client = SimpleNamespace(messages=falso, beta=SimpleNamespace(messages=falso))  # noqa: SLF001
+    plano, _ = await p.plan(_pedido_outlook())
+    chamada = chamadas[0]
+    assert "[pode entregar em `saidas`: remetente, assunto]" in chamada["messages"][0]["content"][0]["text"]
+    assert "`saidas` da etapa" in chamada["system"][0]["text"]
+    etapa = chamada["output_config"]["format"]["schema"]["properties"]["steps"]["items"]
+    assert "saidas" in etapa["required"]
+    assert not plano.missing and plano.steps[0].saidas == ["assunto"]

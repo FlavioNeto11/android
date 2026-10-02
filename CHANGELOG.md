@@ -28,6 +28,38 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `scripts/avisos-telegram.py descobrir|testar`: a descoberta do `chat_id` (getUpdates SEM offset, só lê) e a mensagem de teste. Escolhido script e não rota: é passo de instalação, funciona antes do restart com o token novo e não cria rota que dispara chamada de saída. Procedimento de 6 passos em `docs/operacao.md` §15.
 - Prova `simulated`: `backend/tests/test_avisos_fila.py` (15), `test_avisos_telegram.py` (16, `httpx.MockTransport`: envio, 429, erro sem vazar o token, descoberta, script) e `test_avisos_servico.py` (11: dedupe, só o líder, desligado, segredo ausente, saúde, sem dado de persona, laço de ponta a ponta). Prova `real`: `not_run` (o dono cadastra o token e o chat_id).
 
+## 2026-10-02 — Laço de pedidos (28.4, branch feat/28-4-laco)
+
+- `backend/app/modules/pedidos/`: domínio puro (`materializar`, `gatilhos`, `sobreposicao`, `fechamento`) e aplicação
+  (`repositorio`, `laco`, `acoes`). O laço materializa as ocorrências com janela de recuperação e coalescência, despacha
+  uma execução por `RunService.create` com a chave `chave:t<n>` (procurada antes de criar) e fecha pela varredura.
+  Só o líder age (trava nova `pedidos` em `travas.py`, escrita cercada).
+- `RunService.create`/`Repository.create_run`: parâmetro interno `origem=(pedido_id, ocorrencia_id)` no mesmo `INSERT`;
+  `RunCreate` segue recusando campo extra.
+- Config: bloco `pedidos:` (`enabled: false` de fábrica, `tick_s`, `horizonte_s`, `prazo_inicio_s`, `janela_padrao_s`,
+  `lote_max`, `posse_s`) em `config.py` e `config/config.example.yaml`. Desligado, o laço nem sobe. Sem migração.
+- ADR-066; `docs/design/pedidos-laco.md` (decisões D1 a D7 fechadas e seção 10 com o que foi feito e onde) e §7.9 de
+  `pedidos-persistentes.md` (editar = gatilho novo, versão trocada no lugar).
+- Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
+  `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
+
+## 2026-10-02 — Catálogo do Outlook na main e valor lido entre etapas (12.3, branch feat/12-3-outlook-catalogo)
+
+- 12.3: catálogo só de leitura do Outlook na `main`, valor lido entre etapas. `backend/app/conhecimento/apps/com.microsoft.office.outlook/catalogo.yaml`
+  (`OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS`, `SEARCH_MAIL`; nenhuma ação com efeito) e `Capability.saidas`
+  (`planning/capabilities.py`): a ação declara os nomes que pode entregar (`remetente`, `assunto` na abertura da caixa e
+  na busca); o planejador entre apps leva `saidas` na etapa de catálogo (`planning/parsing.py`, `prompts.py`) e o
+  executor lê o valor como na etapa livre. ADR-065; sem migração. `CapabilityDefinition.output.values`.
+- `simulated_provider.py`: o simulador cai na entrada do app quando o catálogo não tem as ações que ele conhece.
+- Testes: `test_planejador_entre_apps.py` (catálogos do Outlook entram no pedido; C1 provado com o catálogo real),
+  `test_porta_de_politica_por_app.py` (efeito no Outlook sem ação do catálogo é recusado), `test_catalogo_como_dado.py`,
+  `test_outlook_declarado.py`. Prova: `simulated`; a leitura real no aparelho é `not_run`.
+
+## 2026-10-02 — Fase 28: decisões do dono e do coordenador registradas (28.9, emenda à ADR-062, 28.11 Telegram)
+
+- `docs/api-contract.md` (Adendo v0.45): as oito decisões em aberto do 28.9 viram decisões tomadas; o dono confirmou a emenda à ADR-062 e o piso de frequência (observar/preparar ≥ 15 min, agir ≥ 1 h). O ponto de extensão do 28.11 registra o canal escolhido: Telegram, com token e chat_id só pelo cofre/.env.
+- `docs/decisoes.md`: emenda de 02/10 à ADR-062 (pedido em `aguardando_pessoa` é origem agrupada da caixa de Pendências; o aviso informativo não é pendência).
+
 ## 2026-10-02 — Teto de chamadas de IA proporcional ao `for_each` (17.12, branch jev/17-12-teto-for-each)
 
 - `backend/app/taskqueue/executor.py::_ai` / `_teto_de_chamadas` e `backend/app/taskqueue/foreach.py::teto_de_chamadas`: o teto de chamadas por objetivo passa a ser `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))`; sem `for_each` (ou com 1 item) continua exatamente `ai_max_calls_per_objective`. Os itens saem das etapas já gravadas (`item_index` em `steps.variables`, todas as versões do plano), só consultadas quando o base já foi atingido. O rejulgamento do 17.10 continua contando; `ai_max_usd_per_run`/`per_day` e o teto de tokens ficam como estavam. A mensagem diz o teto efetivo e a origem (`60 + 12 × 7 itens do for_each`).

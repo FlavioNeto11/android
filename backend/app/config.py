@@ -1009,6 +1009,27 @@ class SensitiveScreenSeed(BaseModel):
     why: str | None = None            #: aparece na mensagem da etapa e na evidência
 
 
+class PedidosCfg(BaseModel):
+    """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
+    ocorrência despachada chama o planejador PAGO e o teto de orçamento é do 28.6; até ele entrar, ligar é decisão do
+    dono, por instalação. Desligado, o laço nem sobe (e este backend não toma a trava `pedidos`)."""
+
+    enabled: bool = False
+    #: De quanto em quanto tempo o laço acorda sem ninguém chamar. Também é a latência máxima do fechamento das
+    #: execuções que assentam sem passar pelo gancho do worker (D6).
+    tick_s: float = Field(15.0, ge=1.0, le=3600.0)
+    #: Quanto à frente a recorrência é materializada como `prevista` (global, D2).
+    horizonte_s: int = Field(3600, ge=60, le=86_400)
+    #: Quanto uma execução despachada pode ficar sem começar antes de o laço cancelá-la (global, D2).
+    prazo_inicio_s: int = Field(3600, ge=60, le=604_800)
+    #: Janela de recuperação de `horario` sem efeito, de `agora` e de recorrência diária ou mais lenta (D7).
+    janela_padrao_s: int = Field(1800, ge=0, le=604_800)
+    #: Teto de linhas materializadas por gatilho e de execuções criadas por volta.
+    lote_max: int = Field(500, ge=1, le=5000)
+    #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
+    posse_s: int = Field(120, ge=10, le=3600)
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1025,6 +1046,7 @@ class AppConfigFile(BaseModel):
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
     avisos: AvisosCfg = AvisosCfg()
+    pedidos: PedidosCfg = PedidosCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 

@@ -492,7 +492,7 @@ só em dado, entra no registro com catálogo, leitura e login). Os testes leem o
 | `app.yaml` | `provedor_de_sessao: microsoft`, perfil e internet obrigatórios, `ancora_do_perfil: false` (desafio para só a conta Outlook, item 23.5), `renderizador_recusado: [swiftshader]` (29.11) |
 | `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", as intermediárias do primeiro uso, gaveta e caixa; extração do e-mail da conta dentro do painel da gaveta |
 | `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensas (recusas globais, botão por tela e Voltar no diálogo do sistema), conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
-| `catalogo.yaml` | fora da `main` (abaixo) |
+| `catalogo.yaml` | 3 ações só de leitura; `OPEN_MAIL_INBOX` e `SEARCH_MAIL` entregam `remetente` e `assunto` (12.3, ADR-065) |
 
 O caminho do login: boas-vindas → "Add account" → e-mail no `auto_complete_input_email` → "Continue" → ~10 s de
 `common_auth_webview_progressbar` → WebView `common_auth_webview`; em "Verify your email" com "Use your password",
@@ -544,13 +544,11 @@ aparelho (`RunService._mundo`), e remover a conta recusa só a do app âncora (`
 recusava toda conta com login automático). O painel ainda esconde o botão de remover para conta com login automático
 (`GuiaContas.tsx`): a do Outlook sai pela API.
 
-**Catálogo: fora da `main`.** Com `catalogo.yaml`, o Outlook deixaria de ser app de etapa livre no plano entre apps
-(ADR-058) e ação de catálogo não lê valor para outra etapa (item 24.3); 16 testes que provam esse fluxo ficariam
-vermelhos (`test_planejador_entre_apps.py`: 13; `test_porta_de_politica_por_app.py`: 3). Por isso o catálogo fica FORA
-da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do
-Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit
-`806eed9` do branch `worktree-agent-a2c596de1676ca7fa` (fora da história atual do branch), para quando ação de
-catálogo puder entregar valor a outra etapa.
+**Catálogo (12.3, ADR-065).** `catalogo.yaml` com `OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS` e `SEARCH_MAIL`, sem
+nenhuma ação com efeito (T17 do ADR-057). Com ele o Outlook deixa de ser app de etapa livre no plano entre apps
+(ADR-058), e o cenário C1 do dono (ler no Outlook e usar no Instagram) passa pela ação de catálogo que entrega o
+valor lido (`saidas`), como descrito em [apps-e-loja](apps-e-loja.md). Provas dos ids da caixa seguem `model_judged`
+até a observação real (29.12).
 
 Riscos conhecidos, para a próxima observação real: os sinais genéricos que já existiam ("verify your account",
 "security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista

@@ -233,3 +233,25 @@ async def test_a_saude_do_backend_mostra_o_segredo_que_falta(tmp_path: Path) -> 
         assert "avisos_sem_segredo" not in {p.code for p in s.health().problems}
     finally:
         await s.stop()
+
+
+@pytest.mark.parametrize("ligado", [False, True])
+async def test_trava_de_avisos_so_com_o_aviso_ligado(tmp_path: Path, ligado: bool) -> None:
+    """Desligado, o backend não toma nem renova a trava `avisos`: senão seguraria o líder e o backend com o aviso
+    ligado nunca enviaria (mesma regra da trava `pedidos`, 28.4)."""
+    from app.taskqueue.travas import AVISOS
+
+    from .conftest import Harness
+
+    hh = Harness(tmp_path, 1)
+    hh.cfg.file.avisos.enabled = ligado
+    await hh.boot()
+    try:
+        hh.state._manter_travas()
+        trava = hh.state.db.one("SELECT dono FROM travas WHERE nome=?", (AVISOS,))
+        if ligado:
+            assert trava is not None and trava["dono"] is not None
+        else:
+            assert trava is None or trava["dono"] is None, "desligado: não segura a trava"
+    finally:
+        await hh.state.stop()
