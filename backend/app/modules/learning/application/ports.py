@@ -17,6 +17,7 @@ from typing import Protocol
 
 from app.modules.learning.domain.ciclo import Desligamento, SkillState
 from app.modules.learning.domain.efeito import Exposicao
+from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, ModoDeTelas, Polaridade, Posicao, SignalKind)
@@ -165,6 +166,20 @@ class Minerador(Protocol):
     nome: str
 
     def minerar(self, run_id: str) -> int: ...
+
+
+class PortaDeEventos(Protocol):
+    """O que o Livro avisa ao mundo (30.21). A infraestrutura a cumpre sobre o barramento (`EventBus.emit`), e quem
+    assina (o aviso do 28.11, a caixa de Pendências) não é conhecido daqui. Nunca levanta: avisar não derruba o gesto."""
+
+    def esperando_a_pessoa(self, aviso: AvisoDeEspera) -> None: ...
+
+
+class CatalogoDeRisco(Protocol):
+    """O que o catálogo de ações do app diz do risco, só em fatos (nada de texto de ação). Sem catálogo, `None`."""
+
+    def tem_catalogo(self, app: str) -> bool: ...
+    def da_capability(self, app: str, capability: str) -> FatosDoCatalogo | None: ...
 
 
 class PassoDeCuradoria(Protocol):

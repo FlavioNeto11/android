@@ -467,8 +467,9 @@ class ServicoDeTelas:
                 conferir_transicao(item.state, para, SYSTEM_ACTOR, side_effect=item.side_effect,
                                    human_origin=item.human_origin,
                                    modo_publica=self.modo_efetivo(item.escopo.app) is ModoDeTelas.ON)
-                self._repo.transicionar_item(item, para, by=SYSTEM_ACTOR, reason=reason, detalhe=detalhe,
-                                             run_id=run_id)
+                novo = self._repo.transicionar_item(item, para, by=SYSTEM_ACTOR, reason=reason, detalhe=detalhe,
+                                                    run_id=run_id)
+                self._livro.avisar_item(item, novo, by=SYSTEM_ACTOR)         # 30.21: não passou por `mudar_estado`
         except ErroDeAprendizado as exc:
             log.info("aprendizado: a tela %s não foi de %s para %s (%s)", item.id, item.state, para, exc)
             return 0

@@ -73,6 +73,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Migração **069 provisória** (`backend/migrations/069_revisoes_do_aprendizado.sql`): tabela `learning_reviews`, a trilha auditável das revisões do curador por IA (`aprendizado-vivo.md` §8.5), sem FK e sem CHECK, nunca purgada, com `UNIQUE (item_ref, dossie_hash)` como salvaguarda do orçamento (§8.7). Só a forma; o curador é 30.10/30.11. `simulated`: `test_migracao_069_revisoes.py` (SQLite); PostgreSQL `not_run` (P17).
 
+## 2026-10-02 — Aprendizado: evento `learning.needs_person` (30.21, branch feat/30-21-evento-needs-person)
+
+- O Livro publica `learning.needs_person` quando um item entra na espera do dono (faixa B ou C da política de risco) e quando sai
+  dela (decidido pela pessoa, rebaixado pelo sistema, substituído). Payload de lista fechada, sem conteúdo (`api-contract.md`,
+  adendo v0.49). Porta de eventos do módulo (`PortaDeEventos`), adaptador sobre o `EventBus` em `infrastructure/eventos.py`;
+  classificação mínima em `domain/espera.py` (o 30.10 a estende); idempotente por (`kind:ref`, `aguardando`).
+- `montar_aprendizado(eventos=...)`: sem o argumento nada é publicado; `state.py` passa `eventos=self.bus`.
+- Prova `simulated`: `tests/test_learning_espera.py` (barramento falso e `EventBus` sobre SQLite). `not_run` no central.
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
