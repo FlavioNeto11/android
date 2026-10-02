@@ -108,6 +108,23 @@ async def test_so_o_reparo_automatico_e_segurado(h: Harness) -> None:
     assert len(_comandos(h, "android-01")) == 4
 
 
+async def test_pausa_ativa_nao_aleija_o_reinicio_pedido_pela_rede(h: Harness) -> None:
+    """A mitigação do W8 (PR #17) é a convergência de rede: o Start pela interface e, se ele não religar, o `restart` que ela pede
+    (`_reiniciar_ou_desistir` → `_pedir_reinicio` → `pedir_ciclo_de_vida(requested_by=QUEM)`). A pausa do reparo NÃO pode segurá-lo,
+    senão a validação real mediria a mitigação aleijada. Usa a constante do próprio produto, não um literal."""
+    from app.devices.rede_convergencia import QUEM
+
+    s = h.state
+    assert QUEM not in REPARO_AUTOMATICO
+    _pausar(h)
+    assert s.devices.pausa_de_reparo(s.devices.get("android-01")) is not None
+    cid = pedir_ciclo_de_vida(s, "android-01", "restart", "rede: [interface: tun_nao_subiu] o túnel não subiu", requested_by=QUEM)
+    assert cid is not None and s.commands.get(cid)["requested_by"] == QUEM
+    assert s.commands.get(cid)["state"] != "rejected"
+    # e a escada, no mesmo aparelho e no mesmo instante, segue segura
+    assert remediar(s, "android-01", "o system_server caiu") is None
+
+
 async def test_pausa_nao_segura_o_que_nao_e_restart_nem_reset(h: Harness) -> None:
     """A escada com conta vinculada termina em `stop` (parar não apaga nada): a pausa não o impede."""
     _pausar(h)
