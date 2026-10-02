@@ -38,7 +38,8 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
 
 # ================================================================== 1. remover_entidades
 @pytest.mark.parametrize("texto, esperado", [
-    ("abra o instagram e curta o primeiro post", "abra o instagram e curta o primeiro post"),
+    ("abra o app e curta o primeiro post", "abra o app e curta o primeiro post"),
+    ("abra o instagram e curta o primeiro post", "abra o [termo] e curta o primeiro post"),    # app sai só pelo vocabulário
     ("curta 25 posts do feed", "curta [numero] posts do feed"),                   # todo número vira marcador
     ("curta o post de Maria Silva", "curta o post de [termo]"),
     ("Maria, abra o aplicativo", "[termo], abra o aplicativo"),
@@ -144,6 +145,9 @@ def test_vocabulario_do_catalogo_entra_na_lista_permitida_e_o_limiar_recusa() ->
     assert remover_entidades("abra o qamessenger agora") == "abra o [termo] agora"
     assert remover_entidades("abra o qamessenger agora", vocabulario=vocabulario_de(["QA Messenger: QAMessenger"])) == \
         "abra o qamessenger agora"
+    # nome de app não é lista fixa (ADR-052): sai pelo id do app que o consumidor soma ao vocabulário
+    assert remover_entidades("abra o instagram e curta o post", vocabulario=vocabulario_de(["com.instagram.android"])) == \
+        "abra o instagram e curta o post"
     # metade ou mais desconhecida: o que sobra é quase só máscara, e o texto inteiro não sai
     assert remover_entidades("joana pedro marcos ana") is None
     assert remover_entidades("curta joana") == "curta [termo]"             # 1 de 2: no limite, sai mascarado

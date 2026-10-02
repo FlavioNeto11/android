@@ -82,7 +82,8 @@ _MISTO = re.compile(r"\b(?=\w*[^\W\d_])(?=\w*[\d_])\w+\b")
 #: O vocabulário PERMITIDO fixo (normalizado: minúsculas, sem acento). Português e inglês (D-J7 mede os dois), palavras
 #: funcionais, verbos de comando nas formas comuns e substantivos do domínio de aparelhos e apps. NENHUMA palavra que
 #: também seja nome de pessoa (rosa, clara, flor, luz, mar, sol, vitoria, graca, celeste, aurora, marco, mark, ...): cada uma seria um
-#: nome de terceiro passando. Palavra que falta aqui só custa utilidade (vira `[termo]`), nunca privacidade.
+#: nome de terceiro passando. Palavra que falta aqui só custa utilidade (vira `[termo]`), nunca privacidade. Nome de app
+#: também não entra (ADR-052: conhecimento de app é dado): vem do id do app e do catálogo, por `vocabulario_de`.
 _COMUNS: Final[frozenset[str]] = frozenset("""
 a o as os um uma uns umas de da do das dos em na no nas nos num numa por pelo pela pelos pelas para pra pro com sem sob
 sobre entre ate apos antes depois durante desde e ou mas nem que se ao aos a la lo isso isto esse essa este esta aquele
@@ -127,7 +128,7 @@ arquivo arquivos documento documentos configuracao configuracoes ajuste ajustes 
 produtos loja lojas carrinho pedido pedidos busca resultado resultados item itens noticia noticias manchete manchetes
 texto textos titulo titulos relatorio relatorios resumo resumos nome nomes numero numeros data datas lido lidos lida lidas nao_lido novo
 aparelho aparelhos celular telefone emulador wifi rede internet bluetooth bateria som volume brilho tema modo
-instagram outlook chrome whatsapp gmail youtube facebook tiktok twitter telegram google maps play store navegador
+maps play store navegador
 camera galeria agenda calendario relogio calculadora contatos
 profile account message messages conversation photo photos image images caption comments likes followers following
 friend friends group page screen button tab settings inbox folder file files price prices product products store
