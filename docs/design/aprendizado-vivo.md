@@ -12,7 +12,8 @@ Onde o fato não foi conferido no código, está escrito **a conferir**.
 Números do central usados no desenho (`real`, leitura, 02/10):
 - 0 lições e 0 exposições, apesar de 29 contrastes falha→sucesso em 14 dias: em `shadow` a lição não grava exposição
   (`modules/learning/application/licoes.py:171-179`). Causa medida: o digest que minera lições só existe desde 29/09 (migração 055) e não há backfill; os 12 contrastes aprováveis são anteriores.
-  Decisão do dono: backfill único e idempotente, sem IA (30.22).
+  Decisão do orquestrador (02/10, ambiente central de validação, sem IA, sem aparelho, sem conta; dono informado): backfill único e idempotente
+  só das lições, só nas 12 execuções com contraste aprovável (30.22).
 - ~10 candidatos novos por dia (pico 45); 29 de 31 transições foram do sistema; fila do dono: 1 pendente + 39 "a revisar".
 - 23 receitas com ação `commit` (4 Instagram, 18 QAMessenger, 1 Outlook). A do Outlook (receita 100) é anomalia: veio do envio do cenário C1
   de 01/10, no planejamento livre, antes do catálogo. Desde o 12.3 a porta de política recusa efeito no Outlook sem ação do catálogo, e o
@@ -402,7 +403,8 @@ concordância ≥ 90% na classe B. A decisão de ligar é do dono (D-3).
 ### 8.10 Modo por app para lições e telas (decisão do dono, 02/10)
 
 Hoje `aprendizado.licoes.modo` e `aprendizado.telas.modo` são globais (`config.py:841`, `:851`). O dono decidiu ligar por app:
-- **lições**: não ligam agora. Depois da correção do app por etapa (§12), ligam primeiro no **QAMessenger**;
+- **lições**: não ligam agora. Depois do backfill (30.22) e do modo por app (30.20), ligam primeiro no **QAMessenger**, com braço de controle
+  (a premissa antiga, "depois da correção do app por etapa", caiu: o app por etapa já existe, `app_da_etapa`, PR #65);
 - **telas** `on`: primeiro no **Outlook**, depois da leitura real no android-01.
 
 Desenho: override por pacote, `aprendizado.licoes.por_app: {<pacote>: off|shadow|on}` e `aprendizado.telas.por_app: {<pacote>: off|observe|on}`,
@@ -605,7 +607,7 @@ a partir de `modules/learning/infrastructure/`). Testes de backend no harness (`
 | 30.19 | Docs: ADR-067 em `decisoes.md`, `docs/dominios/aprendizado.md`, adendo do contrato, CHANGELOG, estado pelo mecanismo | P | `docs/*` | Aprendizado | depois do PR do índice de ADRs | `python scripts/docs-check.py` |
 | 30.20 | Modo por app para lições e telas (§8.10): `por_app` com padrão = global, `modo_efetivo(tipo, pacote)` na coleta, no D1, nos fornecedores e na camada de uso | M | `config.py` (só `LearningCfg`), `config/config.example.yaml`, `application/licoes.py`, `application/telas.py`, `infrastructure/ligar_telas.py`, `ligar_licoes.py`, `domain/camada.py`, testes | Aprendizado | — (ligar de fato: lições no QAMessenger e telas no Outlook, depois da leitura real no android-01) | `simulated` (dois pacotes, modos diferentes; sem override = global); ligar no central = `real` |
 | 30.21 | Evento `learning.needs_person` (§8.11): porta de eventos do Livro, publicação na entrada e na saída da espera (faixas B e C), payload sem conteúdo, idempotente; linha na tabela de eventos | P | `application/ports.py`, `application/servico.py`, `application/nativos.py`, `infrastructure/montagem.py`, `docs/api-contract.md`, testes | Aprendizado | — (consumidores: 28.11 da Jev e Pendências, ADR-062, assinam depois) | `simulated` (barramento falso: entra, sai, não repete; o payload não tem campo de conteúdo) |
-| 30.22 | Backfill único e idempotente do digest (lições e demais mineradores) para execuções reais anteriores à 055, sem IA; só `runs.simulated=0`; reexecutar não duplica (chaves únicas e CAS dos mineradores) | P | `application/` (comando de manutenção), `infrastructure/montagem.py`, testes | Aprendizado | — | `simulated` (rodar 2× = mesmo resultado); `real` = contagem de candidatas antes e depois no central |
+| 30.22 | Backfill único e idempotente SÓ dos mineradores de lição, nas 12 execuções reais com contraste aprovável anteriores à 055 (lista explícita tirada do dry-run), sem IA; confere a migração do banco antes de gravar; backup antes; reexecutar não duplica | P | `scripts/aprendizado-backfill-licoes.py` (novo), `modules/learning/**`, testes | Aprendizado | — | `simulated` (rodar 2× = mesmo resultado); `real` = contagem de candidatas antes e depois no central |
 
 Ordem sugerida: 30.20 e 30.21 são independentes e podem ir cedo (a decisão do dono já existe). 30.1, 30.2 e 30.5 em paralelo (não compartilham arquivo, exceto `fontes.py` entre 30.1 e 30.2: em sequência). Depois 30.3 → (30.4, 30.6,
 30.7) → 30.10. Migração (30.9) cedo, porque depende do número. Front (30.15, 30.16) atrás dos contratos. 30.11 → 30.12/30.13/30.14 → 30.17 → 30.18.
@@ -642,7 +644,7 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
 8. **Modo por app** para lições e telas (override por pacote, padrão = global).
 9. **Rebaixamento determinístico** de receita ou fluxo com efeito num app cujo catálogo atual não tem ação de efeito para a etapa.
 10. **Evento `learning.needs_person`** na entrada e na saída da espera humana (faixas B e C), sem conteúdo, para os consumidores de aviso e Pendências.
-11. **Backfill único** do digest para execuções reais anteriores à 055 (decisão do dono, sem IA).
+11. **Backfill único** só das lições, nas 12 execuções reais com contraste aprovável anteriores à 055 (decisão do orquestrador, sem IA).
 
 **Alternativas recusadas.** Copiar o declarado para `learning_items` (segunda verdade). Nota de saúde 0–100 (sem origem explicável).
 Grafo de conhecimento (custo sem uso medido). IA aprovando direto (perde o D1 e a auditoria). Reaproveitar `ia_resumos_por_dia` ou `PassoDeCuradoria`
@@ -657,7 +659,7 @@ O painel de Aprendizado é refeito sobre contratos novos. A atribuição de app 
 ## 15. Decisões do dono
 
 Já decididas (02/10), incorporadas acima: política de risco A/B/C, com a mais restritiva entre catálogo e `commit` (§8.4); orçamento
-proporcional com α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana`, prioridades e salvaguardas (§8.7); backfill do digest das lições (30.22); lições e telas
+proporcional com α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana`, prioridades e salvaguardas (§8.7); backfill das lições nas 12 execuções aprováveis (30.22, decisão do orquestrador com o dono informado); lições e telas
 por app (§8.10): lições ainda não ligam e, depois, primeiro no QAMessenger; telas `on` primeiro no Outlook, depois da leitura real no android-01.
 
 Em aberto:
