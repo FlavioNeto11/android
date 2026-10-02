@@ -204,8 +204,8 @@ class LearningService:
     def saude_de(self, e: EntradaDoLivro, evidencias: tuple[Evidencia, ...],
                  trilha: tuple[Transicao, ...] = ()) -> Saude | None:
         """A ÚNICA fonte do cálculo de saúde (30.4): lê os sinais do que o livro já tem e entrega a `domain/saude.py`.
-        O que o livro ainda não expõe (falhas seguidas, taxa da janela, intervenção humana, obsolescência do §9.2) vai
-        como `None` e a dimensão sai `desconhecida`; nunca como zero."""
+        O que o livro não expõe (item sem contador, intervenção humana) vai como `None` e a dimensão sai
+        `desconhecida`; nunca como zero."""
         agora = self._relogio()
         if e.kind in (LivroKind.RECEITA, *KINDS_DE_ITEM):
             a_favor, contra = e.a_favor, e.contra          # contadores da própria fonte (sobrevivem à retenção)
@@ -223,7 +223,8 @@ class LearningService:
         return calcular(SinaisDeSaude(
             kind=e.kind, estado=e.state, agora=agora, criado_em=e.created_at, estado_desde=e.state_at,
             ultimo_uso=e.last_used_at, usos=e.uses, a_favor=a_favor, contra=contra, exige_o_dono=e.requires_owner,
-            detalhe=motivo or e.detail, contestacoes_recentes=recentes), self.ajustes.saude)
+            detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes),
+            self.ajustes.saude)
 
     def _conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
         """O `conteudo` do detalhe (30.3): das fontes nativas, pela fonte; lição e tela, do `content` do item. Voz e

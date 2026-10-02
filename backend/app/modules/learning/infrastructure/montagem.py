@@ -51,10 +51,10 @@ def ajustes_do_config(cfg: LearningCfg) -> Ajustes:
                                      exposicoes_dias=r.exposicoes_dias, evidencias_por_item=r.evidencias_por_item,
                                      diario_dias=r.diario_dias,
                                      candidata_sem_evidencia_dias=r.candidata_sem_evidencia_dias),
-                   saude=LimiaresDeSaude(sem_uso_dias=cfg.saude.sem_uso_dias, janela_usos=cfg.saude.janela_usos,
-                                         taxa_minima=cfg.saude.taxa_minima, queda_pp=cfg.saude.queda_pp / 100,
-                                         contestacao_dias=cfg.saude.contestacao_dias,
-                                         intervencoes_minimas=cfg.saude.intervencoes_minimas))
+                   saude=LimiaresDeSaude(sem_uso_dias=cfg.saude.sem_uso_dias,
+                                         amostra_minima=cfg.saude.amostra_minima, taxa_minima=cfg.saude.taxa_minima,
+                                         falhas_seguidas=cfg.saude.falhas_seguidas,
+                                         contestacao_dias=cfg.saude.contestacao_dias))
 
 
 class GuardaDoFluxo:

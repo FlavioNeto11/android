@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: saúde do item do Livro (30.4, branch feat/30-4-saude)
+
+- `saude` na lista, em `pendentes`/`revisar` e no detalhe do Livro (`api-contract.md`, adendo v0.52): dimensões medidas (uso, eficácia, base de
+  evidência, frescor, contestação; versão e intervenção humana `desconhecidas`), UM rótulo por regra (`inativo`, `em_prova`, `degradando`,
+  `sem_evidencia`, `parado`, `pouca_amostra`, `saudavel`, mais `indeterminado` quando falta medida) e `motivos[]` com o fato e o limiar. Regras e
+  limiares da proposta D-5 (medidos no banco real); eficácia acumulada, sem janela por item; `obsoleto_provavel` fica para o 30.13.
+- `domain/saude.py` puro; `LearningService.saude_de`/`saudes` são a única fonte do cálculo (evidência lida só dos publicados); limiares em
+  `aprendizado.saude` (`sem_uso_dias`, `amostra_minima`, `taxa_minima`, `falhas_seguidas`, `contestacao_dias`), via `Ajustes.saude`.
+- `EntradaDoLivro.falhas_seguidas` novo (opcional): `fontes.py` ainda não o preenche (posse do 30.6); sem ele a regra das falhas seguidas não dispara.
+- Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
+  lista = detalhe); `not_run` no central.
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.

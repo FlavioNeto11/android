@@ -911,15 +911,14 @@ class RetencaoDoAprendizadoCfg(BaseModel):
 
 
 class SaudeCfg(BaseModel):
-    """Limiares da saúde do item do Livro (30.4, `docs/design/aprendizado-vivo.md` §5.3). Os defaults são os valores
-    iniciais do desenho; mudar aqui muda o rótulo de todos os itens na próxima leitura (nada é gravado)."""
+    """Limiares da saúde do item do Livro (30.4; proposta D-5, medida no banco real). Os defaults são os medidos;
+    mudar aqui muda o rótulo de todos os itens na próxima leitura (nada é gravado)."""
 
-    sem_uso_dias: int = Field(14, ge=1, le=3650)           # publicado sem uso nem evidência há isto = sem_evidencia
-    janela_usos: int = Field(10, ge=1, le=10_000)          # usos recentes para a taxa da janela valer
-    taxa_minima: float = Field(0.8, ge=0, le=1)            # eficácia mínima para `saudavel`
-    queda_pp: float = Field(20.0, ge=0, le=100)            # taxa da janela < histórica − isto (pontos percentuais)
-    contestacao_dias: int = Field(7, ge=1, le=365)         # janela da contestação e da intervenção humana
-    intervencoes_minimas: int = Field(2, ge=1, le=1000)
+    sem_uso_dias: int = Field(14, ge=1, le=3650)           # nunca usado há isto = sem_evidencia; sem uso há mais = parado
+    amostra_minima: int = Field(5, ge=1, le=10_000)        # usos para a eficácia valer (abaixo: pouca_amostra)
+    taxa_minima: float = Field(0.8, ge=0, le=1)            # eficácia acumulada mínima (abaixo, com amostra: degradando)
+    falhas_seguidas: int = Field(2, ge=1, le=1000)         # consecutive_fail a partir do qual degrada
+    contestacao_dias: int = Field(7, ge=1, le=365)         # janela da evidência contra/conflito
 
 
 class LearningCfg(BaseModel):

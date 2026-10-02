@@ -412,6 +412,24 @@ tela saem do `content` do item) e `DetalheDoLivro.conteudo` o carrega até `pres
 - Fora do escopo desta fatia (§4 do desenho): pré e pós-condição da etapa de origem, aparelhos em que reproduziu, trilha de promoção
   por receita e quadro de versão.
 
+## Saúde do item (30.4)
+
+Cada item do Livro (lista, `pendentes`, `revisar` e detalhe) traz `saude`: dimensões medidas, UM rótulo por regra e os `motivos[]` que o
+produziram (contrato no adendo v0.52 de `api-contract.md`; desenho em `design/aprendizado-vivo.md` §5, com as regras da proposta D-5
+medidas no banco real). A regra é pura (`domain/saude.py`); `LearningService.saude_de` é a única fonte do cálculo e `saudes` a aplica à
+lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura: não é estado, não move nada.
+
+- **Ordem (o primeiro que casa vence):** `inativo`, `em_prova`, `degradando` (`consecutive_fail ≥ 2`, eficácia `< 0,8` com `≥ 5` usos, ou
+  contra/conflito em 7 dias), `sem_evidencia` (publicado há ≥ 14 dias e nunca usado), `parado` (sem uso há mais de 14 dias),
+  `pouca_amostra` (< 5 usos), `saudavel`. Limiares em `aprendizado.saude` (`Ajustes.saude`).
+- **Sem dado não é bom nem ruim.** Dimensão sem medida sai `desconhecida` (`valor: null`, nunca 0); publicado sem contador de uso, sem data
+  do último uso ou sem eficácia/contestação medida é `indeterminado`. Habilidade e itens sem contador de uso (tela, lição, voz,
+  preferência) ficam `indeterminado` até haver fonte de uso por item.
+- **Eficácia acumulada.** Receita: `replay_ok/(ok+fail)`; fluxo e itens: evidências a favor/contra. Não há janela dos últimos N usos por item.
+- **Lacunas conhecidas.** `fontes.py` ainda não preenche `EntradaDoLivro.falhas_seguidas` (`recipes.consecutive_fail`); `obsoleto_provavel`
+  é do 30.13; `intervencao_humana` e `versao` ficam `desconhecida`; `acoes[]` não traz `motivo_de_bloqueio`. A lista lê a evidência de cada
+  publicado (uma consulta indexada por item): trocar por consulta em lote se a lista crescer.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
