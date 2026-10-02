@@ -84,6 +84,11 @@ no local, com a razão em `fallback_reason` (`timeout`, `rate_limited`, `overloa
 `provider_error`). Há teto de chamadas por pedido e por sessão, tokens de entrada, custo e prazo; e todo payload tem teto de
 arquivos, chunks e bytes (`PayloadLimits`). Falha só da etapa B devolve a etapa A, sem regiões semânticas.
 
+**Trava de 255 e `nenhuma` (31.1, ADR-069).** O `choice` do Jev aceita no máximo 255 opções, contando a `nenhuma`. O adaptador recusa
+acima disso localmente (`ProviderOptionLimit`, razão `provider_error`), antes de montar o corpo e sem tocar a rede; um mapa com 255
+arquivos ou mais cai, portanto, no local na etapa A. A opção `nenhuma` (id opaco `opt:nenhuma`) vai sempre; escolhê-la é abster-se e
+não produz candidato. A porta `DecisaoFechada` do hub ([ia.md §16](../ia.md#16-decisão-por-conjunto-fechado-fase-31)) usa o mesmo teto.
+
 ## Índice BM25 persistente e lote
 
 O índice BM25 mora em disco, em `data/context_retrieval/bm25/bm25-<raiz>-<chave>.json`, e é carregado em vez de reconstruído.

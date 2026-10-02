@@ -19,6 +19,34 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Porta `DecisaoFechada` no hub e trava de 255 opções no Jev (31.1 e 31.4, branch feat/31-4-decisao-fechada)
+
+- 31.1: o `choice` do adaptador Jev (`modules/context_retrieval/adapters/jev.py`) recusa localmente, antes de montar o corpo, mais de 255 opções
+  (contando a `nenhuma`; novo `ProviderOptionLimit`) e sempre leva a opção `nenhuma`, de id opaco, que nunca vira arquivo ou região.
+- 31.4: nova porta `backend/app/planning/decisao_fechada/` (ADR-069), **desligada e sem decisor real**:
+  - contrato puro (`PedidoDeDecisao`, `Pergunta`, `RespostaDeDecisao`, vocabulários fechados), `DecisorNulo` (padrão) e `DecisorFalso`;
+  - `Privacidade.validar` falha fechada antes de qualquer corpo: `JEV_RUNTIME_SEND_APPROVED = False`, `JEV_ALLOWED_CLASSES` com o teto do
+    ADR-069 (C0 a C3; a C3 só na origem `intencao` e só em `shadow`), C7 e social/persona recusam o pedido inteiro, `redact` em toda string;
+  - modos `off` (padrão), `shadow` (fora do caminho crítico) e `on` por consumidor; timeout de 1 s e 5 s, sem retentativa, fallback fechado
+    que nunca conta como acerto; fan-out de um estado e N perguntas em uma chamada;
+  - config `ai.decisao_fechada` (`enabled: false`, `consumidores`, `classes_permitidas`; o YAML só restringe), no `config.example.yaml`.
+- Teste de cliente único: só o adaptador de retrieval contém o host da TypeSafe.
+- Prova `simulated`: `backend/tests/test_decisao_fechada.py` (40), `test_context_retrieval_semantic.py` (+3). Real: `not_run` (nenhuma chamada ao Jev).
+
+## 2026-10-02 — 12.4: etapa que declara saídas só é comprovada com elas (branch fix/12-4-saidas-obrigatorias)
+
+- `backend/app/taskqueue/executor.py`: `saidas_exigidas` (o que o planejador escolheu em `steps.saidas` ou, sem escolha, o que a
+  ação declara em `Capability.saidas`) passa a valer em `run_step` e `_run_step`, no lugar de só `steps.saidas`. Achado real:
+  r-20261002204347-8c3f6e, Outlook no android-01, `OPEN_MAIL_INBOX` com a caixa aberta, "1 de 1 com sucesso comprovado" e nenhum
+  remetente nem assunto: o plano não escolheu saída, então nada foi exigido e a verificação comprovou a tela. Agora a etapa lê
+  (`read_value`) ou falha com o nome que faltou; com efeito disparado seria `uncertain`. Coleta sem item continua falha, salvo
+  vazio comprovado pela tela (`_prova_de_vazio`, julgamento "a lista está vazia" explícito), marcado em `StepResult.vazio_comprovado`.
+  Mensagem de `step_done` sem leitura passa a citar os nomes. Núcleo tocado: `taskqueue/executor.py` e `models.py` (um campo em
+  `StepResult`); não toca `scheduler.py`, `state.py`, eventos, config, api, `planning/` nem pedidos.
+- Prova `simulated`: `tests/test_saidas_obrigatorias.py` (9 casos: caso real reconstruído, saída faltando, saídas lidas, subconjunto
+  do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
+- Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
+
 ## 2026-10-02 — Aprendizado: passe de design do painel (branch feat/aprendizado-passe-de-design)
 
 - Regra do dono (layout bom, UX, todos os fluxos validados no navegador). Detalhe do app na ordem do que pede ação: Atenção → Aprendido → O que falha → Declarado → Absorvido. O Aprendido ganha o nível Capability: um bloco recolhível por capability com contagem, "pede(m) atenção" e saúde no resumo (abre sozinho o bloco com item em atenção); fluxo (comando inteiro) e item sem capability em blocos próprios; sem o campo (backend anterior), agrupa por tipo. "Como é usado" vira chips por tipo; Declarado vira grade compacta.

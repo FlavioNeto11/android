@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-267 de 313 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+268 de 314 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -91,7 +91,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 11.10 | implemented | simulated | sessao | — | Migração 036 (policy_groups + instagram_profiles.policy_group_id); social/policy.py _own/_group/origin_for/limits_origin (escolha própria → grupo → padrão); service._aplicar_politica compartilhada (null = herdar; aviso… |  |
 | 12.1 | implemented | simulated | sessao | — | Migração 037 (profile_accounts com backfill da conta Instagram — conferido numa cópia do banco de produção: 8 contas, 18 memórias e 39 interações marcadas instagram; account_credentials; app_id em memory_items/social_in… |  |
 | 12.2 | implemented | simulated | sessao | — | Backend: app/apps_overview.py (/apps-overview e /apps/{id}/overview: contas, aparelhos, execuções, custo de IA por app/dia, etapas por origem, falhas, receitas, fluxos; preenche runs.app_ids antigos a partir do plano).… |  |
-| 12.3 | partial | real | opus | — | App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vin… | Falta o critério do item: uma execução com efeito no app, com login pela credencial da conta. Depende do Outlook abrir no parque (renderizador do emulador, 29.… |
+| 12.3 | partial | real |  | — | App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vin… | Leitura real de remetente e assunto not_run: depende do 12.4 (etapa com saidas so comprovada com elas preenchidas). Depois de implantado: repetir a leitura no… |
+| 12.4 | implemented | simulated |  | — | Branch fix/12-4-saidas-obrigatorias (eaa94e7f, a08abd53, 8a8c57db da Jev, eace8f30 + merges): saidas_exigidas (a escolha do plano ou, sem escolha, tudo o que a acao declara em Capability.saidas) em run_step/_run_step e… | Prova real not_run: depois do deploy, UMA nova leitura do Outlook no android-01 (verify antes, nunca Conectar) deve terminar succeeded so com remetente e assun… |
 | 13.1 | implemented | simulated | sessao | — | Migração 038 (training_sessions, training_inputs); app/training/recorder.py (gravação com UiTree.at + _safe_target; senha/código/tela sensível não gravados — parece_senha_ou_codigo); ganchos em DeviceManager.manual_inpu… |  |
 | 13.2 | implemented | simulated | sessao | — | planning/training.py (TRAINER_SYSTEM, _TrainOut, proposta_simulada), generalize em anthropic/openai/simulated/routing (papel plan, só texto); app/training/skills.py (propose/save → FlowStore.learn_from_plan + flow_scope… |  |
 | 13.3 | implemented | simulated | sessao | — | features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relató… |  |
