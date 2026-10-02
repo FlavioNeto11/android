@@ -306,7 +306,7 @@ ai:
   #   social:  {provider: anthropic, refusal_fallback: false}   # sem fallback pago na escrita da persona
   #
   # SEM `fallback_provider` escrito, a falha do endpoint local NÃO cai no provedor pago: o erro sobe. Prazos
-  # por função sem nada declarado: plan 120 s · decide 45 s · verify 30 s · escalation 60 s · social 60 s.
+  # por função sem nada declarado: plan 120 s · decide 45 s · verify 30 s · escalation 60 s · social 60 s · persona 60 s.
   #
   # Fase 17 — ator e verificador baratos em nuvem (candidatos; só adote depois da bateria, docs/plano-provedores-ia-*):
   #
@@ -358,6 +358,13 @@ ai:
   #   verify:  {provider: openai-flex, model: gpt-6-luna, timeout_s: 900, max_retries: 5}   # modelo declarado em ai.models
   #
   # `timeout_s` não tem teto de validação e é o prazo TOTAL do papel, esperas das repetições inclusas.
+  #
+  # Persona no flex (item 17.8): a geração e o enriquecimento de persona são a função `persona`, separada do `social`
+  # da execução. SEM a linha abaixo ela herda o `social` por inteiro (provedor, modelo, prazo, vagas, fallback) e nada
+  # muda. Com ela, só a persona vai ao flex; o `social` (comentário, DM) continua no provedor dele. O bloco do `social`
+  # NÃO vaza para a persona com bloco próprio: escreva aqui o `model` (declarado em ai.models) e o que mais precisar.
+  # roles:
+  #   persona: {provider: openai-flex, model: gpt-6-luna, timeout_s: 900, max_retries: 5}
 
 releases:                         # entrega e conferência de versão no parque
   verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga
