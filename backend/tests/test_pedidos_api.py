@@ -308,7 +308,9 @@ async def test_pedido_aguardando_pessoa_e_um_item_com_os_filhos_agrupados(h: Har
                " VALUES ('ap-1', ?, 'comentar', 'resumo', 'pending', '2026-10-02T10:00:00.000Z')", (o["run_id"],))
     db.execute("UPDATE pedidos SET estado='aguardando_pessoa' WHERE id=?", (pid,))
     # uma execução AVULSA em needs_input (sem pedido): essa continua contando sozinha
-    db.execute("UPDATE runs SET status='needs_input' WHERE id=?", (o["run_id"],))
+    avulsa = h.state.runs.create(RunCreate(command=COMMAND, instance_ids=["android-01"],
+                                           idempotency_key="chave-avulsa-0001"))
+    db.execute("UPDATE runs SET status='needs_input' WHERE id=?", (avulsa.id,))
     snap = c.get("/api/snapshot").json()
     ped = snap["pedidos"]
     assert ped["por_estado"]["aguardando_pessoa"] == 1 and ped["avisos_nao_lidos"] == 0
@@ -319,7 +321,8 @@ async def test_pedido_aguardando_pessoa_e_um_item_com_os_filhos_agrupados(h: Har
     runs = {x["id"]: x for x in snap["runs"]}
     assert runs[o["run_id"]]["pedido_id"] == pid and runs[o["run_id"]]["ocorrencia_id"] == o["id"]
     soltas = [x for x in snap["runs"] if x["status"] == "needs_input" and x["id"] not in filhos_do_pedido]
-    assert len(ped["aguardando_pessoa"]) + len(soltas) == 1, "a decisão do pedido conta UMA vez, não três"
+    assert [x["id"] for x in soltas] == [avulsa.id], "a execução do pedido não é solta: é filha dele"
+    assert len(ped["aguardando_pessoa"]) + len(soltas) == 2, "pedido (1, com pergunta e aprovação) + avulsa (1)"
     d = c.get(f"/api/pedidos/{pid}").json()
     assert len(d["pendencias"]) == 2
     pend = c.post(f"/api/pedidos/{pid}/retomar", json={})
@@ -332,6 +335,7 @@ async def test_pedido_aguardando_pessoa_e_um_item_com_os_filhos_agrupados(h: Har
     livre = c.post(f"/api/pedidos/{pid}/retomar", json={}).json()
     assert livre["pedido"]["estado"] == "ativo" and livre["sem_mudanca"] is False
     assert c.get("/api/snapshot").json()["pedidos"]["aguardando_pessoa"] == []
+    assert pid in {x["id"] for x in c.get("/api/pedidos?estado=ativo").json()["items"]}
 
 
 async def test_run_create_publico_continua_recusando_campo_de_pedido() -> None:

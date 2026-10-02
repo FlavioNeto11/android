@@ -3417,6 +3417,7 @@ contrato, salvo o abaixo.
   (info|warn|error), mensagem TEXT NOT NULL, dados TEXT NOT NULL DEFAULT '{}', requer_pessoa INTEGER NOT NULL DEFAULT 0,
   chave_dedupe TEXT NOT NULL UNIQUE, criado_em TEXT NOT NULL, lido_em TEXT)` mais índice `(pedido_id, lido_em)`; o `id` do
   `AvisoDTO` passa a ser a chave primária (hoje é `tipo:pedido:ocorrencia:instante`).
+  `GET /api/pedidos?pede_atencao=1` cobre `pausado` e `aguardando_pessoa`, sem a cláusula "ou com aviso não lido" (não há `lido_em`).
 - Gatilhos do `PedidoCorpo`: `evento`, `condicao` e `persona` → `gatilho_nao_suportado` (28.8). `alvos.distribute` não é
   aceito (422 por `extra="forbid"`): a seleção é `instance_ids`, `profile_ids` e `targets`.
 - `PATCH` troca a recorrência por UMA só (`gatilhos` com um item; mais de um → `limite_invalido`), porque o laço troca o
