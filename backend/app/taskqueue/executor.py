@@ -44,7 +44,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import CONHECIMENTO_DE_APPS, capability_of, contraparte, guardas_do_cartao
+from ..planning.capabilities import CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
@@ -2462,12 +2462,12 @@ class _RecipeRun:
             self.exercised.append(kind.value)
 
 
-def saidas_exigidas(escolhidas: list[str], cap: Any) -> list[str]:
+def saidas_exigidas(escolhidas: list[str], cap: Capability | None) -> list[str]:
     """Item 12.4: os valores que a etapa TEM de entregar para ser comprovada. O planejador escolhe o subconjunto que as
     etapas seguintes usam (`steps.saidas`); sem escolha, vale tudo o que a ação do catálogo declara
     (`Capability.saidas`). Antes só a escolha contava: o plano que não citou nenhum valor tinha `saidas=[]`, e a
     verificação — que prova a TELA — dava a etapa por comprovada sem remetente nem assunto (r-20261002204347-8c3f6e)."""
-    return list(escolhidas) or list(getattr(cap, "saidas", ()) or ())
+    return list(escolhidas) or list(cap.saidas if cap is not None else ())
 
 
 def _saidas_do_desfecho(lidos: dict[str, tuple[str, str]]) -> dict[str, str] | None:
