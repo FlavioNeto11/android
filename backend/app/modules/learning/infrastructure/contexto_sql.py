@@ -142,8 +142,8 @@ class ContextoDeFalhaSql:
             else:
                 aproximada = True
                 candidatas = [x for x in todas.values() if linhas.texto(x, "app_package") == app_de[aid]
-                              and linhas.texto(x, "step_hash") == linhas.texto_ou_nulo(r, "template_hash")] \
-                    if r in conduzidas else []
+                              and linhas.texto(x, "step_hash") == linhas.texto_ou_nulo(r, "template_hash")
+                              ] if aid in a_aproximar else []
                 x = max(candidatas, key=lambda c: (linhas.texto(c, "status") == "active", linhas.inteiro(c, "id")),
                         default=None)
             if x is not None:

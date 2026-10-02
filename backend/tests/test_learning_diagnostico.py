@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -230,3 +231,157 @@ def test_kind_do_provedor_vence_o_texto_e_o_texto_segue_como_legado() -> None:
                              "failed") is FailureKind.OUTRO
 
 
+
+
+# ------------------------------------------------------------------ com banco semeado
+@pytest.fixture
+def db(tmp_path: Path) -> Iterator[Database]:
+    d = banco_migrado(tmp_path, "diagnostico.sqlite3")
+    yield d
+    d.close()
+
+
+@pytest.fixture
+def mundo(db: Database) -> Mundo:
+    return montar(db)
+
+
+def falha_de_ia(db: Database, run_id: str, quando, kind: str) -> None:
+    """Uma chamada de IA que falhou com o `AIError.kind` dado, ligada à tentativa (o que o executor grava)."""
+    sid = f"{run_id}:android-06:v1:abrir"
+    db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens,"
+               " output_tokens, attempt_id, usd, ok, error_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (iso(quando + timedelta(seconds=30)), run_id, f"{run_id}:android-06", sid, "decide", "modelo-x", 0, 0, 0,
+                f"{sid}:a1", 0.0, 0, kind))
+
+
+def tres_falhas(db: Database, *, erro: str, driven_by: str = "ai", template_hash: str | None = None,
+                tipo: str | None = None, tela: str | None = None, prefixo: str = "r-dg") -> list[str]:
+    ids = []
+    for i in range(3):
+        run = f"{prefixo}{i}"
+        semear(db, run, AGORA - timedelta(days=1 + i * 0.3),
+               [Etapa("abrir", "OPEN_POST", "failed", [T("failed", erro, tipo=tipo, tela=tela)], driven_by=driven_by,
+                      template_hash=template_hash)])
+        ids.append(run)
+    return ids
+
+
+def a_linha(mundo: Mundo, tipo: str, **kw):
+    rel = mundo.falhas.relatorio(**kw)
+    return next(x for x in rel.itens if x.grupo.chave.tipo == tipo)
+
+
+def test_teto_do_pedido_so_o_tipo_resolve_e_o_gravado_em_outro_e_corrigido(mundo: Mundo, db: Database) -> None:
+    texto = "Orçamento do pedido atingido nesta ocorrência: US$ 1.00 de US$ 1.00. Ajuste o orçamento do pedido."
+    for i, run in enumerate(tres_falhas(db, erro=texto, tipo="outro", tela="feed")):
+        falha_de_ia(db, run, AGORA - timedelta(days=1 + i * 0.3), "budget")   # dentro da própria tentativa
+    sem_tipo = mundo.falhas.relatorio(retroativo=False)                  # só o que a execução gravou: `outro`
+    assert [x.grupo.chave.tipo for x in sem_tipo.itens] == ["outro"]
+    linha = a_linha(mundo, "ia_orcamento")
+    assert linha.grupo.retroativas == 3 and dict(linha.grupo.erros_de_ia) == {"budget": 3}
+    d = linha.diagnostico
+    assert d is not None and d.causa is CausaProvavel.TETO_DE_IA and d.proposta is None
+    assert any("error_kind=budget em 3" in f.valor for f in d.fatos)
+
+
+def test_teto_so_pelo_texto_continua_como_legado_sem_ai_calls(mundo: Mundo, db: Database) -> None:
+    tres_falhas(db, erro="Limite de 40 chamadas de IA por objetivo atingido.", tela="feed")
+    d = a_linha(mundo, "ia_orcamento").diagnostico
+    assert d is not None and d.causa is CausaProvavel.TETO_DE_IA
+    assert any("legado" in f.valor for f in d.fatos)
+
+
+def test_receita_quarentenada_que_conduziu_e_receita_divergiu_com_proposta_filha_do_grupo(mundo: Mundo,
+                                                                                         db: Database) -> None:
+    db.execute("INSERT INTO recipes(app_package, app_version, step_hash, step_key, version, status, actions,"
+               " created_at, consecutive_fail) VALUES (?,?,?,?,?,?,?,?,?)",
+               (PACOTE, "1.0", "th-1", "abrir", 1, "quarantined", "[]", iso(AGORA - timedelta(days=9)), 3))
+    receita_id = db.scalar("SELECT id FROM recipes WHERE step_hash='th-1'")
+    tres_falhas(db, erro="Alvo ausente: o botão sumiu", driven_by="recipe+ai", template_hash="th-1", tela="feed")
+    linha = a_linha(mundo, "alvo_ausente")
+    d = linha.diagnostico
+    assert d is not None and d.causa is CausaProvavel.RECEITA_DIVERGIU
+    ref = f"receita:{receita_id}"
+    envolvida = next(k for k in d.conhecimento if k.ref == ref)
+    assert envolvida.aproximado is True and envolvida.etapas == 3            # sem `attempts.recipe_id`: junção aproximada
+    assert d.proposta is not None and (d.proposta.tipo, d.proposta.alvo) == (TipoDeProposta.REBAIXAR_RECEITA, ref)
+    # Exata: com o `recipe_id` gravado na tentativa, a junção deixa de ser aproximada.
+    db.execute("UPDATE attempts SET recipe_id=? WHERE id LIKE 'r-dg%'", (receita_id,))
+    exata = next(k for k in a_linha(mundo, "alvo_ausente").diagnostico.conhecimento if k.ref == ref)
+    assert exata.aproximado is False
+    # A proposta vira linha do backlog com `parent_id` = o grupo, e a curadoria é idempotente.
+    mundo.livro.curar()
+    mundo.livro.curar()
+    linhas_ = db.query("SELECT id, parent_id, state FROM learning_backlog"
+                       " WHERE category='proposta' AND cluster_key LIKE 'rebaixar_receita|%'")
+    assert len(linhas_) == 1 and linhas_[0]["parent_id"] == linha.grupo.id and linhas_[0]["state"] == "open"
+    # O detalhe da proposta resolve pelo grupo-pai e traz causa e alvo.
+    detalhe = mundo.falhas.linha(linhas_[0]["id"])
+    assert detalhe.proposta is not None and detalhe.proposta.causa == "receita_divergiu"
+    assert detalhe.proposta.alvo == ref and detalhe.proposta.parent_id == linha.grupo.id
+
+
+def test_licao_exposta_com_taxa_pior_que_o_controle_e_licao_atrapalha(mundo: Mundo, db: Database) -> None:
+    db.execute("INSERT INTO learning_items(id, kind, state, scope_app, scope_capability, content, content_hash,"
+               " summary, source_kind, created_by, created_at, state_detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+               ("li-ruim", "licao", "published", PACOTE, "OPEN_POST", "{}", "h1", "toque duas vezes", "manual",
+                "flavio", iso(AGORA - timedelta(days=20)), "em_prova"))
+    runs = tres_falhas(db, erro="Alvo ausente: o botão sumiu", tela="feed")
+    for run in runs:
+        db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, tokens, run_id, app_package,"
+                   " capability, created_at, outcome) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   ("li-ruim", f"step:{run}:android-06:v1:abrir", "actor", "with", 20, run, PACOTE, "OPEN_POST",
+                    iso(AGORA - timedelta(days=1)), "failed"))
+    for n in range(4):                                  # o resto do braço com a lição (1 sucesso) e o controle
+        db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, tokens, created_at, outcome)"
+                   " VALUES (?,?,?,?,?,?,?)", ("li-ruim", f"step:x{n}", "actor", "with", 20, iso(AGORA),
+                                              "succeeded" if n == 0 else "failed"))
+        db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, tokens, created_at, outcome)"
+                   " VALUES (?,?,?,?,?,?,?)", ("li-ruim", f"step:y{n}", "actor", "holdout", 0, iso(AGORA),
+                                              "failed" if n == 0 else "succeeded"))
+    d = a_linha(mundo, "alvo_ausente").diagnostico
+    assert d is not None and d.causa is CausaProvavel.LICAO_ATRAPALHA
+    assert d.proposta is not None and (d.proposta.tipo, d.proposta.alvo) == (TipoDeProposta.REVISAR_LICAO, "li-ruim")
+    exposta = next(k for k in d.conhecimento if k.ref == "li-ruim")
+    assert exposta.etapas == 3 and exposta.kind == "licao"
+
+
+def test_tela_fora_do_conhecimento_declarado_e_tela_desconhecida(mundo: Mundo, db: Database) -> None:
+    tres_falhas(db, erro="Alvo ausente: o botão sumiu")
+    d = a_linha(mundo, "alvo_ausente").diagnostico
+    assert d is not None and d.causa is CausaProvavel.TELA_DESCONHECIDA
+    assert d.proposta is not None and d.proposta.tipo is TipoDeProposta.REAPRENDER_TELA
+
+
+def test_json_e_md_levam_o_diagnostico_e_o_detalhe_do_grupo_tambem(mundo: Mundo, db: Database) -> None:
+    tres_falhas(db, erro="Alvo ausente: o botão sumiu", tela="feed")
+    rel = mundo.falhas.relatorio()
+    j = relatorio_json(rel)
+    item = j["itens"][0]
+    assert item["diagnostico"]["causa"] == "falta_conhecimento" and item["diagnostico"]["indeterminada"] is False
+    assert {"codigo", "valor"} <= set(item["diagnostico"]["fatos"][0])
+    assert item["diagnostico"]["proposta"]["tipo"] == "investigar"
+    assert {"alvo", "causa", "parent_id"} <= set(j["propostas"][0])
+    assert "causa provável: **falta_conhecimento**" in relatorio_md(rel)
+    detalhe = mundo.falhas.linha(item["id"])
+    assert detalhe.diagnostico is not None and detalhe.diagnostico.causa is CausaProvavel.FALTA_CONHECIMENTO
+
+
+def test_texto_que_nenhuma_regra_conhece_e_indeterminada_dado_sem_ia(mundo: Mundo, db: Database) -> None:
+    """`outro` fica `indeterminada` e vira proposta `investigar`; o serviço nem recebe uma porta de IA."""
+    tres_falhas(db, erro="O texto de uma falha que nenhuma regra conhece")
+    d = a_linha(mundo, "outro").diagnostico
+    assert d is not None and d.indeterminada
+    assert d.proposta is not None and d.proposta.tipo is TipoDeProposta.INVESTIGAR
+
+
+def test_o_diagnostico_nao_derruba_o_relatorio_quando_a_fonte_de_contexto_falha(mundo: Mundo, db: Database) -> None:
+    tres_falhas(db, erro="Alvo ausente: o botão sumiu", tela="feed")
+
+    def quebrada(_ids):
+        raise RuntimeError("banco indisponível")
+
+    mundo.falhas._fontes.contextos = quebrada                    # type: ignore[attr-defined]
+    d = a_linha(mundo, "alvo_ausente").diagnostico
+    assert d is not None and d.indeterminada and d.fatos[0].codigo == "sem_contexto"

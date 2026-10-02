@@ -32,7 +32,9 @@ from app.modules.learning.domain.ciclo import ConflitoDeEstado
 from app.modules.learning.domain.falhas import classificar_falha, classificar_pelo_tipo_da_ia
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, CategoriaDoBacklog, EstadoDoBacklog,
                                                      SignalKind)
+from app.modules.learning.domain.diagnostico import ContextoDaTentativa, EstatisticaDaLicao
 from app.modules.learning.infrastructure import linhas
+from app.modules.learning.infrastructure.contexto_sql import ContextoDeFalhaSql
 from app.modules.skills.domain.document import JsonObject, NotJson, canonical_json, parse_json_object
 from app.planning import costs
 from app.security.redaction import redact
@@ -85,6 +87,14 @@ class FontesDeFalhaSql:
         """`precos`: a tabela de `ai.prices`, para o US$ das chamadas antigas sem `usd` gravado (anteriores à 048)."""
         self._db = db
         self._precos = precos if precos is not None else dict
+        self._contexto = ContextoDeFalhaSql(db)
+
+    # ================================================================== contexto do diagnóstico (item 30.13)
+    def contextos(self, attempt_ids: Sequence[str]) -> dict[str, ContextoDaTentativa]:
+        return self._contexto.contextos(attempt_ids)
+
+    def licoes(self, refs: Sequence[str]) -> dict[str, EstatisticaDaLicao]:
+        return self._contexto.licoes(refs)
 
     # ================================================================== apoio
     def _pacotes(self) -> dict[str, str]:

@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.learning.application.falhas import (DetalheDoBacklog, LinhaDaProposta, LinhaDoRelatorio,
                                                      RelatorioDeFalhas, ServicoDeFalhas)
 from app.modules.learning.domain.backlog import GrupoDeFalha, LinhaDoBacklog, Proposta, RegrasDoBacklog
+from app.modules.learning.domain.diagnostico import Diagnostico
 from app.modules.learning.domain.falhas import Camada
 from app.modules.learning.domain.vocabulario import EstadoDoBacklog
 from app.modules.learning.presentation.livro import _chamar, _quem, _servico
@@ -64,14 +65,29 @@ def grupo_json(g: GrupoDeFalha, regras: RegrasDoBacklog) -> JsonObject:
     }
 
 
+def diagnostico_json(d: Diagnostico | None) -> JsonObject | None:
+    """O diagnóstico determinístico de um grupo (item 30.13). `indeterminada` é dado, não erro: o curador a lê."""
+    if d is None:
+        return None
+    return {
+        "causa": d.causa.value, "indeterminada": d.indeterminada, "amostra": d.amostra,
+        "fatos": [{"codigo": f.codigo, "valor": f.valor} for f in d.fatos],
+        "conhecimento_envolvido": [{"ref": k.ref, "kind": k.kind, "papel": k.papel.value, "etapas": k.etapas,
+                                    "aproximado": k.aproximado, "estado": k.estado} for k in d.conhecimento],
+        "proposta": ({"tipo": d.proposta.tipo.value, "alvo": d.proposta.alvo, "causa": d.proposta.causa.value}
+                     if d.proposta else None),
+    }
+
+
 def _item(x: LinhaDoRelatorio, regras: RegrasDoBacklog) -> JsonObject:
     return {**grupo_json(x.grupo, regras), "estado": x.estado.value, "registrado": x.registrado,
-            "plan_item": x.plan_item, "licoes_ativas": x.licoes_ativas}
+            "plan_item": x.plan_item, "licoes_ativas": x.licoes_ativas, "diagnostico": diagnostico_json(x.diagnostico)}
 
 
 def _proposta(p: Proposta) -> JsonObject:
     return {"id": p.id, "cluster_key": p.cluster_key, "tipo": p.tipo.value, "ref": p.ref, "app": p.app,
-            "titulo": p.titulo, "detalhe": p.detalhe, "fragmento": p.fragmento}
+            "titulo": p.titulo, "detalhe": p.detalhe, "fragmento": p.fragmento, "alvo": p.alvo, "causa": p.causa,
+            "parent_id": p.parent_id}
 
 
 def _linha_da_proposta(x: LinhaDaProposta) -> JsonObject:
@@ -117,7 +133,8 @@ def relatorio_json(rel: RelatorioDeFalhas) -> JsonObject:
 def _detalhe(d: DetalheDoBacklog, regras: RegrasDoBacklog) -> JsonObject:
     return {"linha": linha_json(d.linha), "registrado": d.registrado,
             "grupo": grupo_json(d.grupo, regras) if d.grupo else None,
-            "proposta": _proposta(d.proposta) if d.proposta else None}
+            "proposta": _proposta(d.proposta) if d.proposta else None,
+            "diagnostico": diagnostico_json(d.diagnostico)}
 
 
 # ------------------------------------------------------------------ Markdown
@@ -171,6 +188,16 @@ def relatorio_md(rel: RelatorioDeFalhas) -> str:
             out.append(f"- **{g.id}** — prova sugerida: {g.onde_alterar.prova} (doc: {g.onde_alterar.doc})."
                        + (f" Lições publicadas no escopo: {x.licoes_ativas}." if x.licoes_ativas else "")
                        + (f" Erros do provedor: {dict(g.erros_de_ia)}." if g.erros_de_ia else ""))
+            d = x.diagnostico
+            if d is not None:
+                aproximados = sum(1 for k in d.conhecimento if k.aproximado)
+                out.append(f"  - causa provável: **{d.causa.value}**"
+                           + (" (indeterminada: o curador decide se pede a IA)" if d.indeterminada else "")
+                           + f" — {_cel('; '.join(f'{f.codigo}: {f.valor}' for f in d.fatos))}."
+                           + (f" Conhecimento: {', '.join(k.ref + ('~' if k.aproximado else '') for k in d.conhecimento[:6])}"
+                              + (f" (~ = junção aproximada, {aproximados})" if aproximados else "") + "."
+                              if d.conhecimento else "")
+                           + (f" Proposta: {d.proposta.tipo.value} → {d.proposta.alvo}." if d.proposta else ""))
             for e in g.exemplos:
                 out.append(f"  - `{e.run_id}` / `{e.attempt_id}` em {e.quando}: {_cel(e.erro or '(sem texto)')}")
     else:
@@ -194,8 +221,8 @@ def relatorio_md(rel: RelatorioDeFalhas) -> str:
         for n, p in enumerate(rel.propostas[:PROPOSTAS_NO_MD]):
             out.append(f"- **{p.proposta.id}** ({p.proposta.tipo.value}, {p.estado.value}): {_cel(p.proposta.titulo)} "
                        f"— {p.proposta.detalhe}")
-            if n < FRAGMENTOS_NO_MD:
-                out += ["", "```yaml", p.proposta.fragmento, "```", ""]
+            if n < FRAGMENTOS_NO_MD and p.proposta.fragmento:
+                out +=["", "```yaml", p.proposta.fragmento, "```", ""]
         if len(rel.propostas) > PROPOSTAS_NO_MD:
             out.append(f"- … e mais {len(rel.propostas) - PROPOSTAS_NO_MD} no JSON (`formato=json`, chave `propostas`).")
     else:
