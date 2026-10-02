@@ -6,7 +6,7 @@
  * Duas regras de leitura: valor desconhecido aparece como "sem dado" (nunca como zero) e valor de parâmetro nunca
  * existe aqui (o backend manda só os NOMES; a regra do segredo é dele).
  */
-import { CircleAlert, CircleCheck, CircleDashed, CircleHelp, CirclePause, CircleOff, TrendingDown, type LucideIcon } from 'lucide-react';
+import { Archive, CircleAlert, CircleCheck, CircleDashed, CircleHelp, CirclePause, CircleOff, TrendingDown, type LucideIcon } from 'lucide-react';
 import { formatInt, formatPercent } from '../../lib/format';
 import type { Tone } from '../../lib/status';
 import {
@@ -28,6 +28,7 @@ interface MetaDeSaude {
 export const SAUDE_META: Record<RotuloDeSaude, MetaDeSaude> = {
   saudavel: { label: 'Saudável', tone: 'success', icon: CircleCheck, description: 'Usado há pouco, com amostra e acerto suficientes e sem contestação recente.' },
   degradando: { label: 'Degradando', tone: 'danger', icon: TrendingDown, description: 'Publicado, mas falhando ou contestado: vale olhar.' },
+  obsoleto_provavel: { label: 'Provavelmente obsoleto', tone: 'warning', icon: Archive, description: 'Publicado, mas algo indica que perdeu a razão de existir (substituto, versão, catálogo). Nada é desligado sozinho por isso.' },
   em_prova: { label: 'Em prova', tone: 'info', icon: CircleDashed, description: 'Ainda não valeu: espera repetir ou uma decisão.' },
   pouca_amostra: { label: 'Pouca amostra', tone: 'info', icon: CircleDashed, description: 'Usado poucas vezes: cedo para julgar.' },
   sem_evidencia: { label: 'Sem evidência', tone: 'warning', icon: CircleAlert, description: 'Publicado há tempo e nunca usado.' },
@@ -75,6 +76,13 @@ export function textoDoMotivo(m: MotivoDeSaude): string {
     case 'idade_desconhecida': return 'Sem dado: não se sabe desde quando está publicado';
     case 'eficacia_desconhecida': return 'Sem dado: nenhuma tentativa medida ainda';
     case 'contestacao_desconhecida': return 'Sem dado: as contestações não puderam ser lidas';
+    case 'substituta_viva': return `Há uma versão mais nova em uso (${String(valor ?? '')})`;
+    case 'versao_fora_do_parque': return `Só existe na versão ${String(valor ?? '')} do app, que nenhum aparelho tem mais`;
+    case 'versao_viva_sem_reproducao': return `Nunca reproduzido na versão do app em uso (${String(valor ?? '')})`;
+    case 'efeito_sem_respaldo_no_catalogo':
+      return `Age fora da máquina, mas o catálogo atual do app não permite esse efeito (${String(valor ?? '*')})`;
+    case 'fluxo_nunca_casado': return `Publicado há ${dias(valor)} e nunca usado (limite: ${dias(limite)})`;
+    case 'absorvida': return 'Já faz parte do conhecimento declarado do app';
     case 'estado_desconhecido': return 'Sem dado: o estado do item não é conhecido';
     default: return com(`${m.codigo}${valor !== null ? `: ${num(valor)}` : ''}${limite !== null ? ` (limite ${num(limite)})` : ''}`, detalhe);
   }

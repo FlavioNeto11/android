@@ -6,7 +6,7 @@ import { FakeBackend, installBrowserStubs, json, openDetails, text, waitFor } fr
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import { DetalheRico, hrefDoItem } from './DetalheRico';
-import { destinoDaRelacao, textoDoMotivo, valorDaDimensao } from './detalhe';
+import { destinoDaRelacao, metaDeSaude, textoDoMotivo, valorDaDimensao } from './detalhe';
 import { itemDoLink } from './AprendidoTab';
 import type {
   ConteudoDaReceita, ConteudoDoItem, DetalheDoLivro, DimensaoDeSaude, EntradaDoLivro, SaudeDoItem, VersaoDoItem,
@@ -156,6 +156,12 @@ describe('detalhe rico: saúde', () => {
     const d: DimensaoDeSaude = { nome: 'eficacia', estado: 'desconhecida', valor: null, amostra: null, fonte: 'x' };
     expect(valorDaDimensao(d)).toBe('sem dado');
     expect(valorDaDimensao({ ...d, nome: 'frescor', estado: 'medida', valor: 0 })).toContain('0 dias');
+  });
+
+  it('obsoleto_provavel (30.14): rótulo traduzido e o sinal do catálogo em palavras', () => {
+    expect(metaDeSaude('obsoleto_provavel')?.label).toBe('Provavelmente obsoleto');
+    expect(textoDoMotivo({ codigo: 'efeito_sem_respaldo_no_catalogo', dimensao: null, valor: '*', limite: null, detalhe: 'catalogo.yaml' }))
+      .toMatch(/catálogo atual do app não permite/);
   });
 });
 

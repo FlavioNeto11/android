@@ -125,7 +125,7 @@ export interface DetalheDoLivro {
 // ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda
 
 /** `domain/saude.py::Rotulo` (vocabulário fechado; o painel só traduz). */
-export type RotuloDeSaude = 'inativo' | 'em_prova' | 'degradando' | 'sem_evidencia' | 'parado' | 'pouca_amostra'
+export type RotuloDeSaude = 'inativo' | 'em_prova' | 'degradando' | 'obsoleto_provavel' | 'sem_evidencia' | 'parado' | 'pouca_amostra'
   | 'saudavel' | 'indeterminado';
 
 /** Um fato que produziu o rótulo: `valor` é o medido, `limite` o cruzado, `detalhe` a janela, a amostra ou o motivo da trilha. */
