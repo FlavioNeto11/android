@@ -227,7 +227,22 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 | Orçamento de sessão em lote, modo sombra, híbrido EXACT/SEMANTIC/MIXED, cache x política | `simulated` | `backend/tests/test_context_retrieval_hardening.py` |
 | Regra híbrida nova x regra v1 do piloto (30 perguntas públicas) | `simulated` | `backend/tests/test_context_retrieval_pilot_regression.py` |
 | Integração com o gerador de pacotes (saída idêntica com a flag desligada) | `simulated` | `scripts/tests/test_pacotes_contexto.py` |
-| Chamada real ao Jev | `not_run` | `REAL_JEV_NETWORK_CALLS = 0`; sem autorização para código privado |
+| Chamada real ao Jev, só em código PÚBLICO | `real` | 02/10/2026, máquina central, `python-poetry/poetry` @ `94b6e35`, commits `a07ff80` (rodada 1) e `a88d609` (rodada 2, por etapa); `scripts/context-retrieval-public-smoke.py` (rodada 1: `--run`; rodada 2: `--cases H13,H14 --max-calls 4 --run`). 11 de 12 chamadas, todas HTTP 200, 0 fallbacks, US$ 0,0043 + 0,0016 (~0,006). Passou pela MESMA política de produção (remoto público, HEAD público, worktree limpo), sem atalho. Detalhe abaixo |
+| Chamada real ao Jev em código PRIVADO (este repositório) | `not_run` | negado por constante de código (`PRIVATE_CODE_SEND_APPROVED = False`); sem autorização |
+
+### Smoke real público (02/10/2026)
+
+- **Escopo:** só `python-poetry/poetry` no SHA fixado `94b6e35b9091991887aa54feeb3771a86d3bd692` (clone público, `origin` público, worktree limpo); nenhum código deste repositório saiu. `TYPESAFE_API_KEY` configurada, valor em nenhum arquivo, log, PR ou doc.
+- **Rodada 1 (`a07ff80`, 6 perguntas do holdout: H01, H02, H13, H14, H25, H26):** 8 chamadas de rede (7 mais 1 da repetição de cache), todas 200, 0 fallbacks locais, origem `hybrid` nos 6, hit@3 e hit@5 em 6/6, US$ 0,0043. O resumo ainda não separava as etapas.
+- **Rodada 2 (`a88d609`, por etapa, `--cases H13,H14 --max-calls 4`, sem repetição de cache):** 3 chamadas, 200, 0 fallbacks, US$ 0,0016.
+
+  | Caso | Etapa A | Etapa B | Chunks enviados | Observação |
+  |---|---|---|---|---|
+  | H14 | 1 chamada | 1 chamada | 21 | 195 arquivos no mapa |
+  | H13 | 1 chamada | 0 | 0 | B bloqueada por `budget_exceeded` (`stage_b_reason`) |
+
+- **Total acumulado: 11 de 12 chamadas.** Isto valida o adaptador e o pipeline, não é benchmark.
+- **Leitura:** a etapa B só roda quando o payload cabe no teto de entrada por pedido (`max_input_tokens`, padrão 24.000) e a etapa A já consome cerca de 15,6k tokens; neste repositório a B é a exceção. É o comportamento esperado do orçamento, não bug. Que as 7 chamadas da rodada 1 foram 6 de A e 1 de B (só o H14, que gastou ~23,3k tokens) é inferência, não medição por etapa.
 
 ## Limites conhecidos
 
@@ -237,6 +252,14 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
   (`shutil.which`, que no Windows aplica o PATHEXT: acha `rg.exe` e `rg.cmd`). Nenhum caminho de instalação é presumido, e candidato que não
   responde `--version` como ripgrep é descartado. Sem `rg`, o motor é o Python, com o mesmo ranking (testado).
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
+- **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
+  1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda. Decidir o teto, ou a divisão por etapa, antes de ligar (proposta em J6).
+  2. **Rótulo `cache_b: miss`** também sai quando a B é bloqueada pelo orçamento (é gravado antes de `check_call`): ler `stage_b_reason` e `chunks_sent`.
+  3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
+  4. **`assume-unchanged` / `skip-worktree`** escondem alterações do `git status`, logo o gate de worktree limpo não as vê.
+  5. **Rede de forks**: não há prova de que o commit também não vive só num fork privado.
+  6. **Só GitHub**: outro host de remoto é negado.
+  7. **Data dir dentro do worktree** pode sujá-lo sozinho.
 
 ## Próximas fatias
 

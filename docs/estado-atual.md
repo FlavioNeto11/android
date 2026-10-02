@@ -5,6 +5,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **Context Retrieval (ADR-063): PR #18 MERGEADO na `main` (`c1046db`, 02/10); NÃO implantado; desligado por padrão (`context_retrieval.enabled: false`).** Prova `real` (02/10, central, `python-poetry/poetry` @ `94b6e35`, commits `a07ff80` e `a88d609`): smoke público no Jev, 11 de 12 chamadas, todas 200, 0 fallbacks, ~US$ 0,006; H14 exerceu a etapa A e a B, H13 só a A (B bloqueada por `budget_exceeded`). Código deste repositório nunca saiu (`PRIVATE_CODE_SEND_APPROVED = False`). Dívidas para habilitar o remoto em [dominios/context-retrieval.md](dominios/context-retrieval.md) (Limites conhecidos). Backend completo no HEAD `a07ff80`: 4576 ok e 1 falha preexistente de worktree (`test_instalacao_do_worker`, reproduzida na `main` limpa).
 - **Revisão de UX/UI do portal, rodada 2 (01/10): INTEGRADA NA `main` e IMPLANTADA (só o frontend, 01/10 12:23, hora local do build).** Seis briefings do dono (cabeçalho compacto no
   celular, texto cortado com tooltip, detalhe da persona em 5 seções e com nome legível na URL, acessibilidade residual,
   resumo da execução e regra de pendências, revalidação) mais a rodada de correções do revisor. Relatórios em
