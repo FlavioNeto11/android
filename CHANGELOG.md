@@ -97,6 +97,12 @@ mergear não muda comportamento nenhum. Prova `simulated` (provedores falsos, tr
   real é público (git remote + GitHub anônimo, `UNKNOWN` bloqueia, cache de 15 min só de `PUBLIC`); o status não faz rede e não afirma
   autorização sem prova vigente; segredo mole e duro no mapa da etapa A é omitido (`RETRIEVAL_VERSION` 2). Prova:
   `test_context_retrieval_privacy_gates.py`.
+- **Procedência pública (PR #18)**: remoto público não provava que o CONTEÚDO LOCAL era público (arquivo não rastreado entra no universo
+  do workspace; o HEAD local pode não estar publicado). O envio remoto agora exige também worktree LIMPO (`git status --porcelain=v1
+  --untracked-files=all` vazio, lido a cada chamada, sem cache) e HEAD público (`GET /repos/{dono}/{repo}/commits/{sha}` anônimo,
+  `sha` exato). Prova por remoto + SHA; sujar bloqueia na hora e sem rede; o status traz `remote_visibility_verified`,
+  `head_public_verified`, `worktree_clean`. `RETRIEVAL_VERSION` 3. Prova `simulated`: `test_context_retrieval_privacy_gates.py` (git
+  real em diretório temporário, GitHub simulado); Jev real `not_run`.
 - **Privacidade (PR #18)**: `synthetic` + provedor remoto passa de permitido a NEGADO (constante de código `SYNTHETIC_REMOTE_SEND_APPROVED = False`,
   sem campo de configuração). Remoto: privado negado, sintético negado, público só com `allow_public` explícito. Prova: `test_context_retrieval_{core,semantic,hardening}.py`.
 - **Revisão final do PR #18** (duas revisões independentes, só leitura): a chamada ao provedor passa a contar quando autorizada (falha

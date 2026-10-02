@@ -7,8 +7,9 @@ Nenhum `if provider == "jev"` espalhado pelo código: a política olha onde o pr
 - provedor FAKE (teste): o gate de caminho e de segredo vale como se fosse externo (para exercitar o pipeline), a
   classe do repositório não;
 - provedor REMOTE: repositório PRIVADO → NEGADO; SINTÉTICO → NEGADO; PÚBLICO → só com `allow_public` explícito E com
-  prova independente de que o repositório REAL é público (`RepositoryVisibilityVerifier`); sem prova (erro, dúvida, remoto
-  ausente) a política falha FECHADA. Em todos, caminho sensível e segredo duro negam.
+  prova independente (`RepositoryVisibilityVerifier`) de que o repositório REAL é público, de que o HEAD local existe nele e de
+  que o worktree está LIMPO (nada modificado, preparado, removido ou não rastreado); sem prova (erro, dúvida, remoto ausente) a
+  política falha FECHADA. Em todos, caminho sensível e segredo duro negam.
 
 `PRIVATE_CODE_SEND_APPROVED` e `SYNTHETIC_REMOTE_SEND_APPROVED` são constantes de CÓDIGO, não de configuração, de propósito:
 mudar um deles é decisão do dono, registrada num ADR, e não um `true` esquecido num YAML (ADR-063). A classe do repositório
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .model import FallbackReason
-from .ports import ProviderLocality, RepositoryVisibilityVerifier, Visibility
+from .ports import ProviderLocality, RepositoryProof, RepositoryVisibilityVerifier, Visibility
 from .sensitive import SensitivePathMatcher, default_matcher, hard_secret_kind, has_soft_secret
 
 PRIVATE_CODE_SEND_APPROVED = False
@@ -65,7 +66,8 @@ class ExternalContextPolicy:
     def fingerprint(self) -> str:
         """Identidade da política vigente. Entra na chave do cache da resposta semântica: mudar o que pode sair da máquina
         (classe do repositório, padrões sensíveis, provedor) nunca reaproveita uma resposta dada sob a política antiga."""
-        return f"{self.repository.value}/{self.locality.value}/{int(self.allow_public)}/{self._sensitive.fingerprint()}"
+        return (f"{self.repository.value}/{self.locality.value}/{int(self.allow_public)}/provenance2/"
+                f"{self._sensitive.fingerprint()}")
 
     @property
     def _sai_da_maquina(self) -> bool:
@@ -90,13 +92,16 @@ class ExternalContextPolicy:
             return d
         return self._decidir_pela_prova(self._provar)
 
-    def peek_repository(self) -> tuple[Decision, Visibility | None]:
-        """Como `can_send_repository`, mas sem rede: usa só a prova que já está vigente. Para o endpoint de status."""
+    def peek_repository(self) -> tuple[Decision, RepositoryProof | None]:
+        """Como `can_send_repository`, mas sem rede: usa só a prova que já está vigente e o estado local do git. Para o status."""
         d = self.configured_for_remote()
         if not d.allowed or not self._exige_prova:
             return d, None
-        v = self._verifier.peek() if self._verifier is not None else Visibility.UNKNOWN
-        return self._decidir_pela_prova(lambda: v), v
+        try:
+            prova = self._verifier.peek() if self._verifier is not None else RepositoryProof()
+        except Exception:  # noqa: BLE001 - mesma regra de `_provar`
+            prova = RepositoryProof()
+        return self._decidir_pela_prova(lambda: prova), prova
 
     @property
     def _exige_prova(self) -> bool:
@@ -104,22 +109,28 @@ class ExternalContextPolicy:
         liberar a constante de código, não têm o que provar (e nunca seriam públicos)."""
         return self.locality is ProviderLocality.REMOTE and self.repository is RepositoryClass.PUBLIC
 
-    def _provar(self) -> Visibility:
+    def _provar(self) -> RepositoryProof:
         if self._verifier is None:
-            return Visibility.UNKNOWN
+            return RepositoryProof()
         try:
             return self._verifier.verify()
         except Exception:  # noqa: BLE001 - o verificador é infraestrutura: qualquer falha dele é "não provado"
-            return Visibility.UNKNOWN
+            return RepositoryProof()
 
     @staticmethod
-    def _decidir_pela_prova(prova: "Callable[[], Visibility]") -> Decision:
-        v = prova()
-        if v is Visibility.PUBLIC:
-            return _ALLOW
-        if v is Visibility.PRIVATE:
+    def _decidir_pela_prova(prova: "Callable[[], RepositoryProof]") -> Decision:
+        """Worktree primeiro (fato local, não depende de rede nem de TTL), depois o remoto, por fim o HEAD. Não decide arquivo
+        por arquivo: qualquer alteração local derruba o envio remoto inteiro."""
+        p = prova()
+        if p.worktree_clean is False:
+            return Decision(False, "repository_worktree_dirty", FallbackReason.PRIVACY_BLOCK)
+        if p.remote is Visibility.PRIVATE:
             return Decision(False, "repository_not_public", FallbackReason.PRIVACY_BLOCK)
-        return Decision(False, "repository_visibility_unverified", FallbackReason.PRIVACY_BLOCK)
+        if p.remote is not Visibility.PUBLIC or p.worktree_clean is not True:     # `None`: o git não respondeu
+            return Decision(False, "repository_visibility_unverified", FallbackReason.PRIVACY_BLOCK)
+        if p.head_public is not True:
+            return Decision(False, "repository_head_not_public", FallbackReason.PRIVACY_BLOCK)
+        return _ALLOW
 
     def can_send_file(self, path: str) -> Decision:
         if not self._sai_da_maquina:

@@ -137,11 +137,12 @@ def estado_do_retrieval(cfg: Config) -> dict[str, object]:
         repository=RepositoryClass(cc.semantic.repository_class), locality=locality,
         allow_public=cc.semantic.allow_public, verifier=criar_verificador(cfg, cfg.root.resolve(), locality))
     configurado = politica.configured_for_remote()
-    envio, visibilidade = politica.peek_repository()      # `peek`: só o que já está provado; o status nunca vai à rede
-    if visibilidade is None:
+    envio, prova = politica.peek_repository()      # `peek`: só o que já está provado + git local; o status nunca vai à rede
+    if prova is None:
         estado = "not_applicable" if locality is not ProviderLocality.REMOTE or not configurado.allowed else "unverified"
     else:
-        estado = visibilidade.value if visibilidade is not Visibility.UNKNOWN else "unverified"
+        estado = prova.remote.value if prova.remote is not Visibility.UNKNOWN else "unverified"
+    remoto_ok = prova is not None and prova.remote is Visibility.PUBLIC
     return {
         "enabled": cc.enabled, "mode": cc.effective_mode, "top_k": cc.top_k,
         "provider": {"name": cc.semantic.provider, "model": prov.model if prov is not None else "",
@@ -149,7 +150,10 @@ def estado_do_retrieval(cfg: Config) -> dict[str, object]:
         "external_send": {"allowed": envio.allowed, "reason": envio.reason,
                           "repository_class": cc.semantic.repository_class,
                           "configured_for_remote": configurado.allowed and locality is ProviderLocality.REMOTE,
-                          "visibility_verified": visibilidade is Visibility.PUBLIC, "visibility": estado},
+                          "visibility_verified": remoto_ok, "visibility": estado,
+                          "remote_visibility_verified": remoto_ok,
+                          "head_public_verified": prova is not None and prova.head_public,
+                          "worktree_clean": None if prova is None else prova.worktree_clean},
         "budget": {"timeout_ms": cc.semantic.timeout_ms, "max_calls": cc.semantic.max_calls,
                    "max_cost_usd": cc.semantic.max_cost_usd},
         "summary": resumir(RetrievalMetrics(pasta_de_dados(cfg)).recentes(500)),

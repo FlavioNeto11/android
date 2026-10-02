@@ -63,8 +63,8 @@ Não se otimiza para top-1; o contrato é top-3/top-5 de contexto.
 - A política responde `can_send_repository/file/chunk/query/payload` e olha **onde o provedor executa** e a **classe do
   repositório**, nunca o nome do provedor. Local: tudo passa. Falso: caminho e segredo valem como se fosse externo.
   Remoto (matriz): **privado NEGADO; sintético NEGADO; público só com `allow_public: true` E prova independente de que o
-  repositório real é público**. Sem prova (privado, desconhecido, erro de rede, remoto ausente ou não suportado) a política falha
-  FECHADA: nenhum mapa, nenhum chunk, nenhuma chamada. FAKE e LOCAL não sofrem o bloqueio de classe nem a verificação.
+  remoto real é público, de que o HEAD local existe nele e de que o worktree está LIMPO**. Sem prova (privado, desconhecido, erro
+  de rede, remoto ausente ou não suportado, HEAD não publicado, worktree sujo) a política falha FECHADA: nenhum mapa, nenhum chunk, nenhuma chamada. FAKE e LOCAL não sofrem o bloqueio de classe nem a verificação.
   `synthetic` é útil para fixtures e testes (com provedor FAKE ou LOCAL); **não** constitui autorização para enviar código
   remoto.
 - `PRIVATE_CODE_SEND_APPROVED = False` e `SYNTHETIC_REMOTE_SEND_APPROVED = False` são constantes de **código**. Mudar é decisão do
@@ -125,11 +125,26 @@ Registrados, não corrigidos nesta fatia; nenhum deles bloqueia o uso atual (CLI
 - Fora do módulo: `test_instalacao_do_worker::test_o_instalador_windows_grava_a_versao_derivada_do_commit` falha em qualquer
   `git worktree` (inclusive da `main`): `worker-install.ps1` lê `.git\HEAD` como arquivo. Dívida separada.
 
-## Prova de que o repositório é público
+## Prova de que o que sai é público
 
 `repository_class: public` no YAML é só uma declaração. O envio a provedor REMOTE exige a prova independente de uma porta do
-domínio, `RepositoryVisibilityVerifier` (`verify()` pode ir à rede; `peek()` nunca vai). A política não sabe como se prova.
-Implementação: `adapters/github_visibility.py`.
+domínio, `RepositoryVisibilityVerifier` (`verify()` pode ir à rede; `peek()` nunca vai), que devolve um `RepositoryProof`
+(`remote`, `head_public`, `worktree_clean`). A política não sabe como se prova: domínio = contrato, `adapters/github_visibility.py`
+= git e GitHub, política = decisão. As TRÊS partes autorizam juntas (regra final do público remoto: **config `public` + `allow_public`
++ remoto verificado público + HEAD verificado público + worktree limpo**):
+
+1. **Remoto público** (abaixo).
+2. **Worktree limpo**: `git status --porcelain=v1 --untracked-files=all` sem NENHUMA linha (modificado, preparado, removido, renomeado,
+   não rastreado). Não se decide arquivo por arquivo: não existe "alteração segura". Lido do git a CADA chamada, nunca de cache: sujar
+   bloqueia na hora (`reason: repository_worktree_dirty`), sem rede e sem esperar TTL. Falha do git é `None` e bloqueia. Arquivo
+   ignorado não conta, porque o workspace (`git ls-files -co --exclude-standard`) também não o lê. Por isso o diretório de dados do
+   retrieval precisa ficar fora do worktree ou ser ignorado (o `data/` do repositório é).
+3. **HEAD público**: `GET /repos/{dono}/{repo}/commits/{sha}` anônimo; só 200 com `sha` IGUAL ao pedido, em pelo menos um dos remotos
+   já provados públicos (`reason: repository_head_not_public`). 404, 403, 5xx, redirecionamento, rede, resposta incoerente ou SHA
+   ilegível bloqueiam. Branch, nome de remoto e clone limpo não bastam. A prova fica ligada à identidade canônica dos remotos MAIS o
+   SHA: trocar o HEAD a invalida; limpar de novo o worktree reaproveita a prova do mesmo HEAD ainda vigente.
+
+Implementação do remoto:
 - Lê TODOS os remotos do git (`git remote -v`, que aplica `insteadOf`), canoniza cada um para `github.com/dono/repo` (https, ssh,
   `git@`, `git://`; credencial na URL é descartada) e pergunta ao GitHub, **anonimamente** (sem token, sem proxy do ambiente, sem
   seguir redirecionamento), `GET /repos/{dono}/{repo}`. `PUBLIC` só com 200, `private: false`, `visibility` pública se vier e o
@@ -141,13 +156,17 @@ Implementação: `adapters/github_visibility.py`.
 - Cache curto da prova: só `PUBLIC`, TTL de 15 min, na memória e em `data/context_retrieval/visibility.json` (para o status ler
   sem rede); chave = identidade canônica do conjunto de remotos, então trocar o `origin` invalida. `UNKNOWN` nunca vira `PUBLIC` e
   não vai ao disco (só é lembrado por 60 s para um laço de pedidos não bater no GitHub a cada item).
-- **Status** (`GET /api/context-retrieval/status`) não faz chamada externa: `external_send` traz `configured_for_remote`,
-  `visibility_verified`, `visibility` (`public`, `private`, `unverified`, `not_applicable`), `allowed` e `reason`. Com `public` no
-  YAML e sem prova vigente: `allowed: false`, `reason: repository_visibility_unverified`.
-- O smoke público (`python-poetry/poetry`) passa pela MESMA regra: `public` + `allow_public` + prova de visibilidade (uma ida à
-  `api.github.com`, além das chamadas ao Jev). Não há atalho nem campo de configuração que dispense a verificação.
-- Limite: a prova é sobre o repositório REMOTO. Alteração local não commitada (ou um clone cujo remoto é público mas que guarda
-  arquivos privados) não é detectada: a política de caminho sensível e o portão de segredo seguem valendo, e nada mais.
+- **Status** (`GET /api/context-retrieval/status`) não faz chamada externa (só o git local): `external_send` traz `configured_for_remote`,
+  `visibility_verified` (= `remote_visibility_verified`), `visibility` (`public`, `private`, `unverified`, `not_applicable`),
+  `remote_visibility_verified`, `head_public_verified`, `worktree_clean` (`true`, `false`, `null` se não se aplica ou o git não
+  respondeu), `allowed` e `reason`. Com `public` no YAML e sem prova vigente: `allowed: false`, `reason:
+  repository_visibility_unverified`; remoto provado e HEAD não: `repository_head_not_public`; HEAD provado e worktree sujo:
+  `repository_worktree_dirty`, imediatamente.
+- O smoke público (`python-poetry/poetry`) passa pela MESMA regra: `public` + `allow_public` + prova de visibilidade (duas idas à
+  `api.github.com`: repositório e commit pinado, além das chamadas ao Jev); clone limpo no SHA pinado satisfaz as três partes. Não há atalho nem campo de configuração que dispense a verificação.
+- Limites que restam: a conferência é por pedido (uma edição entre a decisão e a leitura dos arquivos, dentro do MESMO pedido, não é
+  vista); `git update-index --assume-unchanged/--skip-worktree` esconde alteração do `git status`; e um commit que só existe numa
+  rede de forks do repositório público conta como público (é o que o GitHub serve a qualquer anônimo).
 
 ## Mapa da etapa A e segredo
 

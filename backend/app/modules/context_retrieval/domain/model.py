@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 
 #: Versão do conjunto retriever+regra híbrida. Entra na chave dos caches: mudar a regra invalida o que foi guardado.
-RETRIEVAL_VERSION = "2"  # 2: o mapa da etapa A omite entrada com segredo; prova de visibilidade pública para o envio remoto
+RETRIEVAL_VERSION = "3"  # 3: envio remoto exige worktree limpo e HEAD público; 2: mapa da etapa A omite entrada com segredo
 
 
 class RetrievalMode(str, Enum):

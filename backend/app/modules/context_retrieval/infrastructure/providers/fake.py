@@ -17,7 +17,7 @@ from ...domain.errors import ProviderError
 from ...domain.model import (
     Chunk, FileChoice, FilesReply, ProviderUsage, RegionChoice, RegionsReply, RepoMap,
 )
-from ...domain.ports import ProviderLocality, Visibility
+from ...domain.ports import ProviderLocality, RepositoryProof, Visibility
 
 #: Palavras que não distinguem arquivo nenhum (português e inglês). Lista curta de propósito: é um fake, não um NLP.
 STOPWORDS = frozenset({
@@ -43,24 +43,30 @@ def _serializar_chunks(chunks: Sequence[Chunk]) -> str:
 
 
 class FixedVisibilityVerifier:
-    """`RepositoryVisibilityVerifier` de teste: devolve sempre a mesma visibilidade (ou levanta) e conta as chamadas.
-    Nunca vai à rede nem lê o git."""
+    """`RepositoryVisibilityVerifier` de teste: devolve sempre a mesma prova (ou levanta) e conta as chamadas.
+    Nunca vai à rede nem lê o git. Por padrão HEAD público e worktree limpo; o teste suja um ou outro explicitamente."""
 
-    def __init__(self, visibility: Visibility = Visibility.PUBLIC, *, raises: Exception | None = None) -> None:
+    def __init__(self, visibility: Visibility = Visibility.PUBLIC, *, raises: Exception | None = None,
+                 head_public: bool = True, worktree_clean: bool = True) -> None:
         self.visibility = visibility
         self.raises = raises
+        self.head_public = head_public
+        self.worktree_clean = worktree_clean
         self.verify_calls = 0
         self.peek_calls = 0
 
-    def verify(self) -> Visibility:
+    def _prova(self) -> RepositoryProof:
+        return RepositoryProof(remote=self.visibility, head_public=self.head_public, worktree_clean=self.worktree_clean)
+
+    def verify(self) -> RepositoryProof:
         self.verify_calls += 1
         if self.raises is not None:
             raise self.raises
-        return self.visibility
+        return self._prova()
 
-    def peek(self) -> Visibility:
+    def peek(self) -> RepositoryProof:
         self.peek_calls += 1
-        return self.visibility
+        return self._prova()
 
 
 class FakeSemanticProvider:

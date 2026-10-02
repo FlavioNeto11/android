@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
@@ -24,19 +25,34 @@ class Visibility(str, Enum):
     UNKNOWN = "unknown"
 
 
-class RepositoryVisibilityVerifier(Protocol):
-    """Evidência INDEPENDENTE da configuração de que o repositório real é público.
+@dataclass(frozen=True)
+class RepositoryProof:
+    """Tudo o que se PROVOU sobre o conteúdo que o envio remoto levaria. O padrão de cada campo é "não provado".
 
-    A política não sabe como se prova (GitHub, git remote, ...): só pergunta. Erro, remoto ausente, remoto de host não
-    suportado, resposta ambígua: tudo é `UNKNOWN`, nunca `PUBLIC`.
+    `remote`: o repositório real (todos os remotos) é público. `head_public`: o commit HEAD local existe no repositório público.
+    `worktree_clean`: `True` só com nada modificado, removido, preparado ou não rastreado (nem ignorado) no worktree. Saber que o REMOTE é
+    público não diz que o conteúdo LOCAL é: o universo do workspace inclui arquivo não rastreado e o HEAD local pode não ter
+    sido publicado. Só os três juntos autorizam o envio.
     """
 
-    def verify(self) -> Visibility:
+    remote: Visibility = Visibility.UNKNOWN
+    head_public: bool = False
+    worktree_clean: bool | None = None     # None = não deu para ler o git; False = sujo
+
+
+class RepositoryVisibilityVerifier(Protocol):
+    """Evidência INDEPENDENTE da configuração de que o que sai é público: remoto público, HEAD público, worktree limpo.
+
+    A política não sabe como se prova (GitHub, git remote, ...): só pergunta. Erro, remoto ausente, remoto de host não
+    suportado, resposta ambígua, git que falha: tudo é "não provado", nunca público.
+    """
+
+    def verify(self) -> RepositoryProof:
         """Pode ir à rede. Só é chamada quando o provedor é REMOTE e a configuração já pede envio de repositório público."""
         ...
 
-    def peek(self) -> Visibility:
-        """Só o que já está provado e vigente (cache); NUNCA vai à rede. Serve ao endpoint de status."""
+    def peek(self) -> RepositoryProof:
+        """Só o que já está provado e vigente (cache) mais o estado LOCAL do git; NUNCA vai à rede. Serve ao endpoint de status."""
         ...
 
 
