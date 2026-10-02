@@ -6,6 +6,7 @@ import io
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 from xml.sax.saxutils import quoteattr
 
 from PIL import Image
@@ -121,6 +122,10 @@ class FakeQaDevice:
     _mortes: list[tuple[float, int]] = field(default_factory=list)   # (time.monotonic() da morte, pid)
     hang_s: float = 3.0
     action_delay_s: float = 0.0
+    # T.2: a hora que o aparelho usa para envelhecer a mensagem ("Enviando…" → "Enviada" → "Entregue") e datar as
+    # mortes por ANR. É `time.monotonic` por padrão; o teste que PULA o tempo (`tests/relogio_virtual.py`) entrega um
+    # relógio que avança junto com o `dormir` das ferramentas, e o aparelho envelhece o que o `wait_for` esperou.
+    relogio: Callable[[], float] = time.monotonic
     sent_after_s: float = 0.15
     delivered_after_s: float = 0.4
     calls: list[str] = field(default_factory=list)
@@ -143,7 +148,7 @@ class FakeQaDevice:
             self.concurrent -= 1
 
     def status_of(self, m: Message) -> str:
-        age = time.monotonic() - m.sent_at
+        age = self.relogio() - m.sent_at
         if age < self.sent_after_s:
             return "Enviando…"
         if age < self.delivered_after_s or m.contact == "QA-002":
@@ -202,7 +207,7 @@ class FakeQaDevice:
 
     def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
         """Mesmo contrato do `Adb.app_deaths`: as mortes por ANR do app, com a idade medida agora."""
-        agora = time.monotonic()
+        agora = self.relogio()
         if package != PKG:
             return []
         return [MorteDoApp(quando=f"t+{t:.3f}", pid=pid, motivo=6, anr=True, idade_s=agora - t,
@@ -213,7 +218,7 @@ class FakeQaDevice:
         """Abrir o app a partir do launcher. Com `anr_ao_abrir`, a partida a frio morre por ANR e o launcher volta."""
         if self.anr_ao_abrir > 0:
             self.anr_ao_abrir -= 1
-            self._mortes.append((time.monotonic(), 4000 + len(self._mortes)))
+            self._mortes.append((self.relogio(), 4000 + len(self._mortes)))
             self.screen = "launcher"
             return
         self.screen = "login" if self.require_login else "home"
@@ -332,7 +337,7 @@ class FakeQaDevice:
         if fault == "error_lost":
             raise DriverError("socket hang up (simulado): o toque não chegou ao app", effect_possible=True)
         if self.input_text.strip():
-            self.messages.append(Message(self.contact or "", self.input_text.strip(), time.monotonic()))
+            self.messages.append(Message(self.contact or "", self.input_text.strip(), self.relogio()))
             self.input_text = ""
         if fault == "error_after_effect":
             raise DriverError("socket hang up (simulado) após o toque", effect_possible=True)
