@@ -3951,7 +3951,8 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    SINAL FORTE**: a atividade `com.instagram.challenge.activity.ChallengeActivity` em foco (`dumpsys window`, lida por
    `DeviceManager.observe` quando a árvore já parece conta travada, validade de 120 s) ou a declaração do dono. Só TEXTO na
    tela não retira: fica `blocked` + pessoa, com uma linha no histórico dizendo que faltou o sinal. Sem leitura do foco
-   (falha de adb), sem sinal. Isso reduz o falso positivo de uma frase parecida em outra tela. O gatilho roda sob savepoint e
+   (falha de adb), sem sinal. Uma detecção só pelas telas declaradas do app (`telas.yaml`, sem o texto genérico) também não
+   dispara a leitura do foco e portanto não retira sozinha (aprovado pelo orquestrador; cobri-la é extensão futura). Isso reduz o falso positivo de uma frase parecida em outra tela. O gatilho roda sob savepoint e
    nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. O disjuntor de
    conta (ADR-055) é acionado direto pela retirada, porque o agendador só o dispara ao VER `blocked` e a persona volta a
    `active` no mesmo gesto.
