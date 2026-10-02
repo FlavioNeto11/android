@@ -60,6 +60,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
+from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
@@ -430,6 +431,10 @@ class AppState:
             precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus)
+        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO até o 31.8. A sombra grava só ids e
+        # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
+        self.decisao_sombra = RepositorioDeSombra(self.db)
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -2610,6 +2615,11 @@ class AppState:
             total += self.learning.aplicar_retencao()        # `aprendizado.retencao` (ADR-054)
         except Exception:  # noqa: BLE001 - idem
             log.exception("aprendizado: retenção")
+        try:
+            # Sombra da porta `DecisaoFechada` (074): prazo próprio; o agregado diário é calculado antes de purgar e fica.
+            total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
+        except Exception:  # noqa: BLE001 - idem
+            log.exception("decisao_fechada: retenção da sombra")
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:
@@ -2772,8 +2782,15 @@ class AppState:
             log.exception("não foi possível calcular os saldos de IA")
             contas = []
         # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
-        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg),
-                                         "balances": contas})
+        # Transparência do Jev (ADR-069 item 8): só a PRESENÇA da chave entra; o valor nunca é lido para este fim.
+        jev = self.cfg.file.ai.decisao_fechada
+        chave = self.cfg.env.typesafe_api_key is not None
+        aviso_jev = transparencia.aviso(jev, chave_configurada=chave)
+        extra: dict[str, object] = {"image": status_de_imagem(self.persona_images, self.cfg), "balances": contas}
+        if aviso_jev is not None:
+            extra["notice"] = f"{status.notice} {aviso_jev}"
+            extra["decisao_fechada"] = transparencia.status(jev, chave_configurada=chave)
+        return status.model_copy(update=extra)
 
     def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
         """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?
