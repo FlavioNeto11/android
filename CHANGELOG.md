@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: obsolescência e rebaixamento `catalogo_sem_efeito` (30.14, branch feat/30-14-obsolescencia)
+
+- `saude.rotulo` ganha `obsoleto_provavel` (depois de `degradando`, antes de `sem_evidencia`, só no publicado), com os sinais do §9.2 que têm
+  fonte: substituta viva, versão fora do parque, versão viva sem reprodução, efeito sem respaldo no catálogo, fluxo nunca casado e tela
+  absorvida (`api-contract.md`, adendo v0.54). Só leitura.
+- Passo novo da curadoria, `catalogo_sem_efeito`: receita ou fluxo vivo com `commit` num app cujo catálogo atual não respalda o efeito é
+  rebaixado pelo sistema (em prova → `disabled`, publicado → `deprecated`; fluxo → `disabled`) pelo caminho do Livro, com o motivo
+  `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
+  Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
 - `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,

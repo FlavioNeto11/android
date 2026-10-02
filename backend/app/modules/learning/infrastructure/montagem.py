@@ -26,7 +26,8 @@ from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.camada import ModosDeRuntime
 from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
-from app.modules.learning.infrastructure import ligar_costuras, ligar_licoes, ligar_nativos, ligar_telas, ligar_voz
+from app.modules.learning.infrastructure import (ligar_costuras, ligar_licoes, ligar_nativos, ligar_obsolescencia,
+                                                 ligar_telas, ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.eventos import Barramento, EventosNoBarramento, RiscoDoRegistro
 from app.modules.learning.infrastructure.fontes import FontesSql
@@ -135,4 +136,6 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_licoes.ligar(servico, repo, db, config=lambda: config().licoes, precos=precos, relogio=relogio)
     # A8 (fatia 5): as telas aprendidas precisam do repositório e do banco, e penduram-se nas extensões das costuras.
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
+    # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
+    ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
     return servico
