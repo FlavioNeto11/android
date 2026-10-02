@@ -145,7 +145,7 @@ class Repository:
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
                    ai_profile: tuple[str, str] | None = None,
-                   origem: tuple[str, str] | None = None) -> tuple[Row, bool]:
+                   origem: tuple[str, str] | None = None, prioridade: int = 0) -> tuple[Row, bool]:
         """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução.
 
         `targets`: a foto JSON dos alvos resolvidos (migração 051) — persona e origem de cada aparelho e o comando
@@ -155,7 +155,10 @@ class Repository:
 
         `origem`: `(pedido_id, ocorrencia_id)` quando a execução nasce de uma ocorrência de pedido (item 28.4, migração
         067), gravado no MESMO `INSERT`: a ligação nunca existe pela metade. Parâmetro de chamada INTERNA (D3): o
-        `RunCreate` da API pública tem `extra="forbid"` e não ganhou o campo."""
+        `RunCreate` da API pública tem `extra="forbid"` e não ganhou o campo.
+
+        `prioridade` (item 28.6, migração 067): número MAIOR passa na frente em `dispatchable_objectives`; 0 é o que
+        toda execução sempre foi. Também só de chamada interna (o laço de pedidos), pelo mesmo motivo de `origem`."""
         perfil, perfil_origem = ai_profile if ai_profile is not None else (None, None)
         pedido_id, ocorrencia_id = origem if origem is not None else (None, None)
         run_id = new_run_id()
@@ -163,12 +166,13 @@ class Repository:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
-                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id, prioridade)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
                      int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, perfil_origem,
-                     pedido_id, ocorrencia_id))
+                     pedido_id, ocorrencia_id, int(prioridade)))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
@@ -1026,7 +1030,8 @@ class Repository:
         return self.db.query("SELECT * FROM runs WHERE status IN ('running','cancelling') ORDER BY created_at")
 
     def dispatchable_objectives(self) -> list[Row]:
-        """Objetivos com etapa pronta, de execuções em andamento e não pausadas — a execução mais antiga primeiro.
+        """Objetivos com etapa pronta, de execuções em andamento e não pausadas — a de maior `prioridade` primeiro e,
+        entre as de mesma prioridade, a mais antiga (28.6; todo o legado é 0, então a ordem de sempre não muda).
 
         **Só o que ESTE backend hospeda** (item 5.1, achado #171). Sem o filtro, um segundo backend no mesmo banco
         via o objetivo de um aparelho que ele não tem e fazia coisa destrutiva com ele: bloqueava com "Instância
@@ -1043,7 +1048,7 @@ class Repository:
             " AND o.status IN ('pending','running')"
             " AND (i.hosted_by IS NULL OR i.hosted_by=?)"
             " AND EXISTS (SELECT 1 FROM steps s WHERE s.objective_id=o.id AND s.plan_version=o.plan_version AND s.status='ready')"
-            " ORDER BY r.created_at, o.instance_id", (self.owner_id,))
+            " ORDER BY r.prioridade DESC, r.created_at, o.instance_id", (self.owner_id,))
 
     def instances_with_open_work(self) -> set[str]:
         """Aparelhos com objetivo ainda por fazer em execução ativa (inclui etapas em retry_wait, que

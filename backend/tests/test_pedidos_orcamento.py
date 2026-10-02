@@ -15,13 +15,17 @@ from datetime import timezone
 import pytest
 import pytest_asyncio
 
+from pydantic import ValidationError
+
 from app.config import PedidosCfg
+from app.models import RunCreate
 from app.modules.pedidos.infrastructure.laco import LacoDePedidos
 from app.planning import costs
 from app.taskqueue.travas import Lideranca
 
 from .conftest import Harness
-from .test_pedidos_laco import _agora, _assentar, _ocs
+from .test_hospedeiro import _objetivo_pronto, _parque
+from .test_pedidos_laco import _agora, _assentar, _ocs, _runs
 from .test_travas import Relogio
 
 UTC = timezone.utc
@@ -125,3 +129,47 @@ async def test_sem_a_leitura_injetada_o_fechamento_grava_zero_e_nao_quebra(h: Ha
     _chamada(db, o["run_id"], 0.50)
     _assentar(db, o["run_id"], "completed")
     assert laco.uma_volta().fechadas == 1 and _ocs(db)[0]["custo_usd"] == 0
+
+
+# =============================================================================================== prioridade
+def _tres_execucoes(db, prioridades: dict[str, int]) -> None:
+    """Três execuções prontas em aparelhos diferentes, criadas às 10:00, 10:30 e 11:00 de um mesmo dia."""
+    _parque(db, hosted_by=None, ids=["prio-a", "prio-b", "prio-c"], base_idx=50)
+    for run_id, aparelho, hora in (("run-a", "prio-a", "10:00"), ("run-b", "prio-b", "10:30"), ("run-c", "prio-c", "11:00")):
+        _objetivo_pronto(db, aparelho, run_id)
+        db.execute("UPDATE runs SET created_at=?, prioridade=? WHERE id=?",
+                   (f"2026-09-22T{hora}:00Z", prioridades.get(run_id, 0), run_id))
+
+
+async def test_prioridade_maior_passa_na_frente_e_a_igual_segue_a_ordem_de_chegada(h: Harness) -> None:
+    db = h.state.db
+    _tres_execucoes(db, {"run-c": 5, "run-b": 1})
+    ordem = [o["run_id"] for o in h.state.repo.dispatchable_objectives() if o["run_id"].startswith("run-")]
+    assert ordem == ["run-c", "run-b", "run-a"], "maior primeiro; a de prioridade 0 por último"
+
+
+async def test_todo_o_legado_prioridade_zero_mantem_a_ordem_antiga(h: Harness) -> None:
+    db = h.state.db
+    _tres_execucoes(db, {})
+    ordem = [o["run_id"] for o in h.state.repo.dispatchable_objectives() if o["run_id"].startswith("run-")]
+    assert ordem == ["run-a", "run-b", "run-c"], "só `created_at`, como antes da 28.6"
+    assert db.scalar("SELECT MIN(prioridade) FROM runs") == 0 == db.scalar("SELECT MAX(prioridade) FROM runs")
+
+
+async def test_o_laco_grava_a_prioridade_na_execucao_e_o_padrao_e_zero(h: Harness, monkeypatch) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    _agora(db, "ped1", r)
+    laco.uma_volta()
+    assert [x["prioridade"] for x in _runs(db)] == [0]
+    # A costura: quando o pedido tiver o campo, `_prioridade` o devolve e a execução nasce com ele.
+    _agora(db, "ped2", r)
+    monkeypatch.setattr(LacoDePedidos, "_prioridade", staticmethod(lambda p: 7 if p["id"] == "ped2" else 0))
+    laco.uma_volta()
+    assert {x["pedido_id"]: x["prioridade"] for x in _runs(db)} == {"ped1": 0, "ped2": 7}
+
+
+async def test_a_api_publica_nao_aceita_prioridade(h: Harness) -> None:
+    with pytest.raises(ValidationError):
+        RunCreate(command="abra o app", instance_ids=["android-01"], prioridade=9)

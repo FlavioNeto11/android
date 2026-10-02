@@ -52,6 +52,11 @@ log = logging.getLogger("poc.pedidos")
 
 _UM_SEGUNDO = timedelta(seconds=1)
 
+#: Prioridade da execução de uma ocorrência (`runs.prioridade`, 28.6). A 067 não deu campo de prioridade ao pedido, então
+#: todas valem 0 (o que o comando de hoje também vale) e nada muda de ordem; `_prioridade` é a costura para quando o
+#: pedido ganhar o campo (o desenho do §10 quer a interativa à frente da de fundo).
+PRIORIDADE_PADRAO = 0
+
 
 @dataclass
 class Resumo:
@@ -390,7 +395,8 @@ class LacoDePedidos:
             run_id = existente["id"]    # A2: nunca chamar `create` de novo (o pré-voo poderia recusar uma execução que existe)
         else:
             try:
-                run_id = self.runs.create(self._requisicao(p, chave_exec), origem=(p["id"], o["id"])).id
+                run_id = self.runs.create(self._requisicao(p, chave_exec), origem=(p["id"], o["id"]),
+                                          prioridade=self._prioridade(p)).id
             except RunError as e:
                 self._criacao_falhou(p, o, token, agora, r, f"{e.code}: {e.message}")
                 return False
@@ -406,6 +412,11 @@ class LacoDePedidos:
             if self.repo.marcar_despachada(o["id"], run_id, n):
                 r.despachadas += 1
         return True
+
+    @staticmethod
+    def _prioridade(p: Row) -> int:
+        """`runs.prioridade` da execução desta ocorrência: o padrão, até o pedido ter o campo (a 067 não o criou)."""
+        return PRIORIDADE_PADRAO
 
     def _criacao_falhou(self, p: Row, o: Row, token: int, agora: datetime, r: Resumo, texto: str) -> None:
         """A ocorrência fica `devida`, solta a reserva e grava o último motivo; passou de `previsto_para + J` (J = a
