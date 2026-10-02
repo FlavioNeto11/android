@@ -288,6 +288,32 @@ O boot 1 (K, bloco 1) **não chegou ao restart**. Depois de gravar o always-on e
 
 Falha do baseline, não do experimento: o gate lia só o shell do aparelho e não a automação de UI. Corrigido **só como leitura** (commit seguinte): o baseline agora exige que a API de hierarquia responda e falha **antes** de escrever qualquer coisa. Falta o dono decidir como recuperar a sessão UiAutomator2 do 09 (ação na automação do aparelho, não feita) e se autoriza reexecutar o estágio 1 do slot 1.
 
+### 17.2 Resultado da retomada de 02/10 12:47Z: boot 1 (K) = `TUN_OK`; parada ES2 (1 boot real consumido)
+
+Retomada autorizada pelo dono depois do PR #19 (self-heal de sessão UiAutomator2, `3d3cac7`, provado em real). Executor `scripts/diag-w8-boot-estagio1.py`, branch em `7d74adb`, pasta de evidência nova `data/diag-w8-boot/estagio1-20261002-r2/` (fora do Git). Prova `real`: 02/10/2026, máquina central, comando de restart `c-20261002124726-2515e1`.
+
+| Campo | Boot 1 (bloco 1, K `os+stopped`) |
+|---|---|
+| RESULT | `TUN_OK` (`tun0` às 12:48:44Z) |
+| STOPPED_FIRST_ADB | `null` (o `pm` ainda não respondia no 1º adb); `stopped=false` no `boot_completed` |
+| BOOT_RECEIVER | `DELIVERED` 09:48:33.442 (terminou 16 ms depois, 8,15 s antes do `startForeground`) |
+| SECOND_START | `OBSERVED` (indício: `Background started FGS` do próprio app, 09:48:41.606; `INFERRED`, ausência não é prova) |
+| FIRST_NETWORK / DEFAULT_NETWORK_AT_SERVICE_START | `WIFI` (celular chegou 9,2 s depois) / `NONE_YET` (o processo do serviço nasceu antes da rede padrão) |
+| NETWORK_SWITCH | **nenhuma** troca de transporte na janela |
+| FGS_START / FGS_STOP / STOP_DELTA | 09:48:41.611 / nenhum / n.a. (o FGS não parou) |
+| PID_EXIT | mesmo pid 1736, sem ANR, crash, kill ou died |
+| UIA2_RECOVERY | o `restart` recriou a sessão pelo caminho normal "online" (`sessão de automação pronta` 12:49:06Z); hierarquia 200 antes e depois; sem 503 |
+
+Parada: **ES2** (K com `TUN_OK`). Baseline devolvido (`always_on` null, lockdown 0, sem `tun0`; hierarquia 200 depois). Slots 2–6 **não** rodaram (`BOOTS_CONSUMED=1`).
+
+**Leitura (sem transformar correlação em causa), n=1:**
+- `PROVED`: com `force-stop` ~3 s antes do restart, **sem troca de rede**, o serviço **não** parou; logo o `force-stop` **sozinho não é suficiente** para o `SILENT_STOP`. O E2 não se reproduziu nas mesmas condições **de rede**: o E2 teve troca celular → Wi-Fi na janela; este boot não teve.
+- `NOT_TESTED`: o `force-stop` é necessário? (o braço R não rodou.) A troca de rede é necessária ou suficiente? (nenhuma falha; nenhuma troca.) A interação H1∧H2 (só K com troca) **segue aberta**: este boot não a falsifica, porque não teve troca.
+- `INFERRED`: H4 (2ª partida causal) enfraquecida: houve `BootReceiver` entregue e 2ª partida indicada, com `TUN_OK`. Fraca: n=1 e o indício da 2ª partida é indireto.
+- A ordem das redes é covariável **não controlada**; é exatamente o fator que o desenho não separa (ADR-056: manipular a rede está fora da matriz).
+
+**Observações do ambiente (não invalidam o boot):** a escada de reparo do central tentou um `restart` às 12:47:41Z, enquanto o do experimento rodava, e foi **rejeitada** (`já tem o comando 'restart' em andamento`); aviso de pressão de CPU do convidado (load 15 em 2 vCPU) logo depois do boot, normalizado em ~1 min. O digest do servidor WireGuard difere antes/depois **só** porque `peers[].last_connection` (android-03/06) é telemetria que muda sozinha (medição periódica de rede da própria plataforma); o conjunto de peers (02, 03, 05, 06; o 09 não é peer), a `signature` (`ab82064daf07`), `in_sync` e `started_at` (WireGuard não reiniciou) não mudaram. Para a próxima rodada, o digest deve excluir `last_connection`.
+
 ## 18. UiAutomator2 morto no android-09 (02/10/2026 ~00:45Z; só leitura; nada recuperado)
 
 **Classificação:** `SESSION_STALE` + `INSTRUMENTATION_DEAD` (consequência do primeiro). Não é `APPIUM_SERVER_PROBLEM`, `PACKAGE_PROBLEM` nem (por si) `SYSTEM_PORT_PROBLEM`.
