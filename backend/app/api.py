@@ -399,6 +399,7 @@ def _saldos_dto(s: AppState) -> dict[str, object]:
             "note": "Livro-caixa: saldo = última âncora (leitura, recarga ou fechamento diário) menos o consumo desde "
                     "ela. Anthropic e OpenAI pelo relatório oficial de uso do provedor (a Anthropic de hora em hora); "
                     "o Gemini pelo consumo medido em cada chamada (usageMetadata), porque a chave é só da plataforma. "
+                    "A TypeSafe (Jev) nasce sem âncora e sem leitura automática: o dono registra a recarga. "
                     "Recarga: registre em Configuração › IA."}
 
 

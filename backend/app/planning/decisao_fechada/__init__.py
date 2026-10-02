@@ -11,8 +11,10 @@ from .contrato import (
 from .decisores import Decisor, DecisorFalso, DecisorNulo
 from .porta import Porta, RegistroDeDecisao, construir_porta, modo_efetivo
 from .privacidade import JEV_ALLOWED_CLASSES, JEV_RUNTIME_SEND_APPROVED, Veredito, validar
+from .sombra import DESFECHOS, RepositorioDeSombra, observador_de_sombra
 
-__all__ = ["Decisor", "DecisorFalso", "DecisorNulo", "FalhaDeDecisao", "ID_NENHUMA", "JEV_ALLOWED_CLASSES",
+__all__ = ["DESFECHOS", "Decisor", "DecisorFalso", "DecisorNulo", "FalhaDeDecisao", "ID_NENHUMA", "JEV_ALLOWED_CLASSES",
            "JEV_RUNTIME_SEND_APPROVED", "MAX_OPCOES", "PedidoDeDecisao", "Pergunta", "Porta", "RegistroDeDecisao",
-           "RespostaDeDecisao", "ResultadoDeDecisao", "Veredito", "construir_porta", "modo_efetivo",
+           "RepositorioDeSombra", "RespostaDeDecisao", "ResultadoDeDecisao", "Veredito", "construir_porta",
+           "modo_efetivo", "observador_de_sombra",
            "pergunta_choice", "validar"]

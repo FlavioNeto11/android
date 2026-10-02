@@ -2011,6 +2011,9 @@ class AiStatus(BaseModel):
     account_blocked_reason: str | None = None
     #: Saldo estimado de cada conta de IA (ADR-051): o mesmo de GET /api/ai/balances, para o cabeçalho do painel.
     balances: list[dict[str, object]] = []
+    #: Jev (TypeSafe System One, ADR-069): presente só com `ai.decisao_fechada.enabled` e algum consumidor em shadow/on. Traz
+    #: consumidores, classes que podem sair, se o envio está aprovado no código e a chave como "configurada" (só presença).
+    decisao_fechada: dict[str, object] | None = None
 
 
 class Problem(BaseModel):

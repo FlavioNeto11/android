@@ -536,6 +536,9 @@ class DecisaoFechadaCfg(BaseModel):
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+    #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
+    #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.
+    retencao_dias: int = Field(180, ge=1, le=3650)
 
 
 class AiCfg(BaseModel):
@@ -611,6 +614,10 @@ class AiCfg(BaseModel):
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
         "claude-opus-4-8": [5.0, 0.5, 6.25, 25.0],
+        # Jev (TypeSafe System One, ADR-069): US$ 0,042 por milhão de tokens de entrada, saída grátis, sem cache. A chamada
+        # grava o `usd` declarado (costs soma a coluna quando existe); a entrada aqui evita que o modelo, não cadastrado,
+        # pague o preço MAIS CARO da tabela.
+        "jev-1.13.0": [0.042, 0.0, 0.0, 0.0],
     }
     #: Capacidade DECLARADA por modelo. Chave por família (o sufixo de data é ignorado no casamento).
     #: `min_cache_tokens` (achado #100): prefixo cacheável mínimo de CADA modelo — não é monótono entre gerações

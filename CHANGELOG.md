@@ -135,6 +135,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `AIError.motivo` fechado (`saldo | dia | fatia_curador | fatia_jev | execucao | pedido`), só com `kind="budget"`; `_budget` e o orçamento do pedido (28.6) passam a informar o motivo, sem mudar mensagem nem ordem. Fatias dentro do teto do dia, por origem: `ai.limits.curador_max_usd_per_day` (padrão 0,10 × teto do dia) e `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50, D-J3 a confirmar). O saldo da conta (ADR-051) não muda nesta etapa.
 - Prova `simulated`: `backend/tests/test_origem_e_rubrica_de_ia.py` (13). Real: `not_run`.
 
+## 2026-10-02 — Sombra da porta `DecisaoFechada`: registro, preço, livro-caixa e transparência (31.5, branch feat/31-5-sombra-registro)
+
+- Migração 074 (`decisao_fechada_sombra` e `decisao_fechada_diario`): uma linha por pergunta respondida ou por fallback, só ids opacos e
+  categorias (nunca o estado enviado nem o texto das opções); agregado diário durável (concordância, acima do limiar, aceite errado,
+  fallbacks à parte, US$, p95); retenção própria `ai.decisao_fechada.retencao_dias` (180) com agregação antes de purgar, no padrão da 055.
+- `planning/decisao_fechada/sombra.py`: `RepositorioDeSombra`, `observador_de_sombra` (ligado à porta em `AppState`) e
+  `casar_decisao_real`/`casar_desfecho` por `ref` ou `step_id` para o 31.8 e o 31.9.
+- `ai.prices` ganha `jev-1.13.0` (US$ 0,042/M de entrada, saída 0); `costs` já soma o `usd` declarado. A conta `typesafe` entra em
+  `/api/ai/balances` sem âncora, sem leitura nem rede.
+- `GET /api/ai`: com o Jev em `shadow` ou `on`, o `notice` nomeia a TypeSafe e as classes que podem sair e o bloco `decisao_fechada` lista o
+  Jev; a chave aparece só como configurada ou não. Envio continua FECHADO (`JEV_RUNTIME_SEND_APPROVED = False`).
+- Prova `simulated`: `backend/tests/test_decisao_fechada_sombra.py` (DecisorFalso, relógio falso). Chamada real à TypeSafe: `not_run`.
+
 ## 2026-10-02 — Porta `DecisaoFechada` no hub e trava de 255 opções no Jev (31.1 e 31.4, branch feat/31-4-decisao-fechada)
 
 - 31.1: o `choice` do adaptador Jev (`modules/context_retrieval/adapters/jev.py`) recusa localmente, antes de montar o corpo, mais de 255 opções
