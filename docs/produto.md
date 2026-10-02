@@ -174,7 +174,9 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   - **Aplicativos** (a inicial, 30.15): um cartão por app (existência declarado, loja ou só aprendido; o declarado, o aprendido
     por tipo e estado, o absorvido e como o aprendido é usado, inclusive "medido, não usado"), os baldes "App não resolvido" e
     "Fora do eixo" e, por app (`?aba=apps&app=<pacote>`), o detalhe Declarado, Aprendido e Absorvido, com link de volta nos dois
-    sentidos. O filtro de app do Aprendido vem dessa lista.
+    sentidos. O filtro de app do Aprendido vem dessa lista. Cada app mostra a contagem por rótulo de saúde (contada da lista do Livro,
+    nunca recalculada), a fila **Atenção** (degradando, provavelmente obsoleto ou sem evidência, só leitura, com o motivo e o link do
+    item; global e por app) e, no detalhe, "O que falha" com os grupos do backlog do app agrupados por capability.
   - **Para aprovar:** a fila do D1 (receita com commit, fluxo com efeito, texto de pessoa, habilidade validada), com a
     evidência ao lado, motivo obrigatório e aprovação em lote ("Selecionar todos", "Aprovar selecionados"). A
     habilidade se decide ali pela rota das habilidades. Embaixo, **Revisar**: receitas e fluxos ativos com efeito,

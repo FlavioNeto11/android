@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: saúde, falhas, capability e fila Atenção por app no painel (30.15 restante, branch feat/30-15-painel-resto)
+
+- A aba Aplicativos ganha, só no painel (`frontend/src/features/aprendizado/`): a contagem por rótulo de saúde no cartão e no detalhe do
+  app ("1 degradando, 2 saudáveis"), a fila **Atenção** (degradando, provavelmente obsoleto e sem evidência, só leitura, com o motivo
+  principal em português e o link `?aba=aprendido&item=<tipo>:<ref>`), global abaixo dos cartões e por app no detalhe, e o bloco "O que
+  falha" no detalhe do app (as falhas do backlog filtradas por `app`, agrupadas por capability). A saúde é CONTADA da lista do Livro
+  (`GET /api/aprendizado`, v0.52), nunca recalculada: `/apps` não traz `saude` e as linhas de `/apps/{pacote}` chegam com `saude: null`
+  (o painel completa o selo do item pela lista do Livro do app). Falta no backend a `capability` na lista do Livro e em `/apps/{pacote}`
+  (só existe em `conteudo.capability` do detalhe do item): o aprendido segue plano e a tela diz por quê; agrupa sozinho se a linha
+  passar a trazer `capability`. Prova `simulated` (`frontend/src/features/aprendizado/SaudeDoApp.test.tsx`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: detalhe rico do item do Livro no painel (30.16, branch feat/30-16-detalhe-rico)
 
 - O detalhe do item (Aprendido, "Detalhes, evidência e trilha") ganha as seções do §11.2 do desenho, só as aplicáveis: Identidade,
