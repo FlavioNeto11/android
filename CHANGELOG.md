@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Flex para trabalho offline (17.8, branch jev/17-8-flex)
+
+- `backend/app/planning/openai_provider.py`: o `OpenAICompatProvider` passa a honrar `ai.roles.<papel>.max_retries`
+  (antes só o provedor da Anthropic o usava): repete 429 (menos `insufficient_quota`) e 5xx, com `Retry-After` ou 5 s
+  dobrando até 60 s; padrão 0, então nada muda no caminho interativo. É o que faz o `service_tier: flex` (429
+  "Resource Unavailable" esperado) funcionar como entrada de provedor com `extra_body`.
+- `config/config.example.yaml` e `docs/ia.md` §13: bloco comentado `openai-flex` e o desenho. `timeout_s` já não tinha
+  teto de validação. O rejulgamento offline (`scripts/eval_rejudge.py --sobrepor`) já aceitava a entrada, sem mudar o
+  script.
+- **Não feito, por decisão pendente:** a geração de persona fica de fora. `generate_persona` e
+  `generate_social_response` usam o mesmo papel `social`, e o segundo roda dentro da execução; separar exige um papel
+  novo (`persona`), que não foi criado.
+- Prova `simulated`: `backend/tests/test_openai_provider.py::test_flex_*` e afins (25 passam) e
+  `scripts/tests/test_eval_rejudge.py::test_sobreposicao_flex_*` (9 passam), transporte e `sleep` falsos. Chamada real
+  ao flex: `not_run`.
+
 ## 2026-10-02 — A8/A9/A10 executados em real: túnel em PowerShell 5.1, relógio do notebook e agente `f9eed71`
 
 - Real (02/10, central + `worker-lan-01`, deploy `f9eed71`, backup `20261002-132234`/`132239`, com a pausa de reparo do android-09 conferida no health): tarefa `farm-tunel-192.168.1.11` reinstalada com `powershell.exe` 5.1 (forwards 15555..15565 e reverso `18000 → 8010`, worker `up`, hierarquia do android-09 200); agente do notebook `0.1.0+5d8b545` → `0.1.0+f9eed71`; relógio do notebook +8,857 s → +0,002 s pela tarefa `farm-relogio` (`C:\farm\relogio`), 1ª execução agendada com resultado 0, e o `degraded` por relógio saiu sozinho.
