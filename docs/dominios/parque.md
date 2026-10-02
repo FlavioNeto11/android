@@ -576,6 +576,8 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   `direct`. O log em nível `info` é a evidência: `ultima_conexao(10.66.0.N)` lê `inbound connection from` na cauda,
   e o log é renomeado no início seguinte a `rede.servidor.log_max_mb`.
 
+  **Desfazer sem religar o cliente (A11, 02/10/2026, W8 r2/r3):** o `desfazer` faz `am force-stop` do cliente VPN, ESPERA ~10 s (`PARADA_PERSISTIR_S`, em `rede_aplicacao.py`) para o estado `stopped` chegar ao disco e só então o reinício é pedido (reiniciar na hora o perdia: o cliente, que lembra que estava ligado, religava sozinho no boot com um `tun0` para um par que já saiu do servidor). Se mesmo assim, depois do boot, o always-on e o bloqueio estão fora mas o `tun0` está no ar (`Observacao.cliente_solto`), a convergência para o cliente (`force-stop`, sem reinício) e apaga a linha em vez de pedir outro reinício (que o religaria de novo); se o túnel não cai, vale o caminho de antes (reiniciar até `rede.reinicios_max`).
+
 Rotas do 25.4: `POST /api/network/devices/{id}/apply` (202: o passo que falta, já, pela fila do aparelho; fora do ar
 responde `executed: false` e aplica quando ligar; ocupado ou com comando de ciclo de vida em voo, 409 `device_busy`;
 as recusas de `verify`/`reapply` valem igual) e `GET /api/network/server` (se roda, PID, assinatura, pares com endereço,

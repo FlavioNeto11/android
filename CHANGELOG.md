@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Rede por aparelho: o desfazer espera o `stopped` persistir e para o cliente que religou sozinho (A11, achado do W8 r2)
+
+- `devices/rede_aplicacao.py`: `desfazer` espera ~10 s depois do `am force-stop` do cliente VPN e lê `stopped=` antes do reinício (`PARADA_PERSISTIR_S`); `Observacao.cliente_solto()`. `devices/rede_convergencia.py`: com a rede tirada, o boot passado e o `tun0` ainda no ar (o cliente religou sozinho), a convergência faz `force-stop` do cliente e apaga a linha em vez de pedir outro reinício; se o túnel não cai, o reinício até o teto continua. Prova `simulated` (`backend/tests/test_rede_aplicacao.py`, 3 testes novos, um deles falha sem a correção; 186 testes de rede e arquitetura passam); a prova real é o rollback do r3 (1 reinício, SFA não religou, com o `force-stop` do ator). Não implantado ainda.
+
 ## 2026-10-02 — A9: o desvio de relógio do worker é re-medido a cada batida (branch `feat/a8-a9-codigo`)
 
 - **Defeito.** O agente media o desvio UMA vez por conexão (`Welcome.server_time`) e a batida repetia o número, então o
