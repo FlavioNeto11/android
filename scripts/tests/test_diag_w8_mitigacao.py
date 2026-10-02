@@ -123,7 +123,8 @@ class SegurancaDoScript(unittest.TestCase):
             self.assertEqual(mod.main([]), 0)
         p = json.loads(out.getvalue())
         self.assertEqual(p["modo"], "plano (nenhuma chamada)")
-        self.assertEqual((p["instancia"], p["seed"], p["max_boots_reais"]), ("android-09", "w8-mitigacao-20261002", 6))
+        self.assertEqual((p["instancia"], p["seed"], p["max_boots_reais"]), ("android-09", "w8-mitigacao-20261002-r3", 6))
+        self.assertEqual(p["boots_ja_usados"], 1)
         self.assertEqual(p["politica_a_aplicar"]["instance_ids"], ["android-09"])
 
     def test_recusa_outro_aparelho_falta_de_confirmacao_e_pasta_suja(self) -> None:
@@ -139,9 +140,14 @@ class SegurancaDoScript(unittest.TestCase):
 
     def test_o_script_so_escreve_pelas_rotas_do_produto(self) -> None:
         fonte = (ROOT / "scripts" / "diag-w8-mitigacao.py").read_text(encoding="utf-8").split('"""', 2)[2]
-        for proibido in ("amb.shell(", "settings put", "am force-stop", "svc wifi", "svc data", "pm clear", "wg set", "wg-quick", "input tap",
+        for proibido in ("settings put", "svc wifi", "svc data", "pm clear", "wg set", "wg-quick", "input tap",
                          "uninstall", "KEYCODE", "tocar_botao", "preparar("):
             self.assertNotIn(proibido, fonte, proibido)
+        # A ÚNICA escrita do ator no aparelho: o force-stop do cliente VPN, só no rollback e só no android-09 (decisão do dono, r3).
+        self.assertEqual(fonte.count("am force-stop"), 1)
+        self.assertEqual(fonte.count("amb.shell("), 2, "só o force-stop e a leitura do estado stopped, ambos em parar_cliente_antes_do_rollback")
+        corpo = fonte.split("def parar_cliente_antes_do_rollback", 1)[1].split("\n\n\n", 1)[0]
+        self.assertIn("am force-stop {CLIENTE_VPN}", corpo)
         rotas = {"/api/network/assign", "/repair-pause", "/reapply", "/apply"}
         self.assertTrue(all(r in fonte for r in rotas))
 
@@ -181,6 +187,13 @@ class _AmbWG:
         self.liberar_runs_em: float | None = None
         self.reconecta_apos_s: float | None = 30.0
         self.restart_em: float | None = None
+        self.shells: list[str] = []
+        self.rede_rows: list[tuple[Any, ...]] = []
+        self.peer09 = False
+
+    def shell(self, cmd: str, timeout: float = 20) -> tuple[int, str, str]:
+        self.shells.append(cmd)
+        return 0, "stopped=true\n" if "dumpsys" in cmd else "", ""
 
     def agora(self) -> float:
         return self.t
@@ -196,6 +209,8 @@ class _AmbWG:
         self.pid, self.started, self.restart_em = self.pid + 1, self.t, self.t
 
     def sql(self, consulta: str, params: tuple = ()) -> list[tuple]:
+        if "device_network" in consulta:
+            return list(self.rede_rows)
         return list(self.runs) if "FROM runs" in consulta else list(self.cmds)
 
     def snapshot(self) -> dict[str, Any]:
@@ -207,7 +222,8 @@ class _AmbWG:
             return None if t is None else datetime.fromtimestamp(t, tz=timezone.utc).strftime("+0000 %Y-%m-%d %H:%M:%S")
         iso = datetime.fromtimestamp(self.started, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         return {"running": True, "pid": self.pid, "started_at": iso, "signature": "s",
-                "peers": [{"instance_id": i, "last_connection": fmt(self.conn.get(i))} for i in mod.PARQUE_DO_SERVIDOR]}
+                "peers": [{"instance_id": i, "last_connection": fmt(self.conn.get(i))} for i in mod.PARQUE_DO_SERVIDOR]
+                + ([{"instance_id": "android-09", "last_connection": None}] if self.peer09 else [])}
 
 
 class _gate_ok:
@@ -282,7 +298,10 @@ class UrlsDoApi(unittest.TestCase):
 
 
 class BaselineDaIteracao(unittest.TestCase):
-    """Defeito do 1º disparo real (02/10): a iteração 2 reaproveitou o baseline do estágio 1, que exige 'sem peer/always-on/tun0', o contrário do que a política aplicada produz."""
+    """Defeito do 1º disparo real (02/10): a iteração 2 reaproveitou o baseline do estágio 1, que exige 'sem peer/always-on/tun0', o contrário do que a política aplicada produz.
+    A 1ª iteração exige o estado LIMPO; as seguintes exigem a linha e o par DESTA política."""
+
+    LIMPO_COM_POLITICA = ["sem_peer_no_servidor", "always_on_null", "tun0_ausente", "vpn_nao_conectada", "sem_linha_de_rede"]
 
     def test_separa_o_que_a_politica_inverte_do_que_continua_valendo(self) -> None:
         reais, esperadas = mod.separar_falhas(["sem_execucao_ativa_no_snapshot", "sem_linha_de_rede", "sem_comando_aberto", "sem_peer_no_servidor",
@@ -293,33 +312,75 @@ class BaselineDaIteracao(unittest.TestCase):
     def _com_baseline(self, leituras: list[list[str]]):
         orig = mod.est1.baseline
         it = iter(leituras)
-        mod.est1.baseline = lambda _a: {"ok": False, "falhas": next(it, leituras[-1]), "gate": {}}      # type: ignore[assignment]
+        mod.est1.baseline = lambda _a: {"ok": False, "falhas": list(next(it, leituras[-1])), "gate": {}}      # type: ignore[assignment]
         return orig
 
-    def test_espera_o_aparelho_assentar_e_passa_com_duas_leituras_limpas(self) -> None:
+    def _amb_da_politica(self) -> _AmbWG:
         amb = _AmbWG()
-        ocupado = ["sem_execucao_ativa_no_snapshot", "sem_comando_aberto", "tun0_ausente"]
-        limpo = ["sem_peer_no_servidor", "always_on_null", "tun0_ausente", "vpn_nao_conectada", "sem_linha_de_rede"]
-        orig = self._com_baseline([ocupado, ocupado, limpo, limpo])
+        amb.rede_rows = [("vpn-central-wireguard", "livre")]
+        amb.peer09 = True
+        return amb
+
+    def test_a_primeira_iteracao_exige_o_estado_limpo_a_politica_nao_vale(self) -> None:
+        amb = self._amb_da_politica()
+        orig = self._com_baseline([self.LIMPO_COM_POLITICA])                     # o que um aparelho COM a política devolve ao baseline limpo
         try:
-            b = mod.baseline_assentado(amb)                                       # type: ignore[arg-type]
+            b = mod.baseline_assentado(amb, politica_aplicada=False)             # type: ignore[arg-type]
+        finally:
+            mod.est1.baseline = orig                                              # type: ignore[assignment]
+        self.assertFalse(b["ok"])
+        self.assertEqual(b["falhas"], self.LIMPO_COM_POLITICA)
+
+    def test_as_seguintes_exigem_a_linha_e_o_par_desta_politica(self) -> None:
+        amb = self._amb_da_politica()
+        orig = self._com_baseline([self.LIMPO_COM_POLITICA])
+        try:
+            b = mod.baseline_assentado(amb, politica_aplicada=True)              # type: ignore[arg-type]
+        finally:
+            mod.est1.baseline = orig                                              # type: ignore[assignment]
+        self.assertTrue(b["ok"], b)
+        self.assertEqual(b["falhas"], [])
+        self.assertEqual(len(b["falhas_esperadas_com_a_politica"]), 5)
+        # sem a linha da política ou sem o par: continua inválido
+        amb2 = _AmbWG()
+        orig = self._com_baseline([self.LIMPO_COM_POLITICA])
+        try:
+            b2 = mod.baseline_assentado(amb2, politica_aplicada=True, limite_s=30.0)    # type: ignore[arg-type]
+        finally:
+            mod.est1.baseline = orig                                              # type: ignore[assignment]
+        self.assertFalse(b2["ok"])
+        self.assertEqual(b2["falhas"], ["linha_da_politica_ausente", "peer_do_09_ausente"])
+        amb3 = self._amb_da_politica()
+        amb3.rede_rows = [("outro-perfil", "livre")]
+        self.assertEqual(mod.falhas_da_politica(amb3), ["linha_da_politica_ausente"])        # type: ignore[arg-type]
+
+    def test_espera_o_aparelho_assentar_e_passa_com_duas_leituras_limpas(self) -> None:
+        amb = self._amb_da_politica()
+        ocupado = ["sem_execucao_ativa_no_snapshot", "sem_comando_aberto", "tun0_ausente"]
+        orig = self._com_baseline([ocupado, ocupado, self.LIMPO_COM_POLITICA, self.LIMPO_COM_POLITICA])
+        try:
+            b = mod.baseline_assentado(amb, politica_aplicada=True)              # type: ignore[arg-type]
         finally:
             mod.est1.baseline = orig                                              # type: ignore[assignment]
         self.assertTrue(b["ok"])
-        self.assertEqual(b["falhas"], [])
-        self.assertEqual(len(b["falhas_esperadas_com_a_politica"]), 5)
         self.assertGreaterEqual(amb.t - amb.T0, 45.0, "esperou as leituras ocupadas antes de passar")
 
     def test_aparelho_que_nao_assenta_no_limite_invalida_em_vez_de_iniciar_o_boot(self) -> None:
-        amb = _AmbWG()
+        amb = self._amb_da_politica()
         orig = self._com_baseline([["sem_comando_aberto"]])
         try:
-            b = mod.baseline_assentado(amb)                                       # type: ignore[arg-type]
+            b = mod.baseline_assentado(amb, politica_aplicada=True)              # type: ignore[arg-type]
         finally:
             mod.est1.baseline = orig                                              # type: ignore[assignment]
         self.assertFalse(b["ok"])
         self.assertEqual(b["falhas"], ["sem_comando_aberto"])
         self.assertGreaterEqual(amb.t - amb.T0, mod.ASSENTAR_LIMITE_S)
+
+    def test_o_teto_parte_do_boot_ja_usado_no_r2(self) -> None:
+        """1 boot já usado: 1+3, 2+3 e 3+3 <= 6 → até 3 iterações se tudo der NO_FAILURE; com 4 usados a seguinte não começa."""
+        self.assertEqual(mod.BOOTS_JA_USADOS, 1)
+        self.assertTrue(all(mod.pode_iniciar(u, i) for u, i in ((1, 0), (2, 1), (3, 2))))
+        self.assertFalse(mod.pode_iniciar(4, 3))
 
 
 class Executor(unittest.TestCase):
@@ -345,6 +406,9 @@ class Executor(unittest.TestCase):
         self.assertEqual(r["http"], 202)
         self.assertTrue(r["par_removido"])
         self.assertIn("fora dos 6 boots", r["reinicio_do_09_pelo_rollback"])
+        self.assertEqual(amb.shells[0], "am force-stop io.nekohasekai.sfa", "o cliente VPN para ANTES do assign vpn=null")
+        self.assertEqual(r["cliente"]["stopped"], "stopped=true")
+        self.assertGreaterEqual(amb.t - amb.T0, 10.0, "esperou o estado stopped persistir")
 
     def test_sem_par_aplicado_so_encerra_a_pausa(self) -> None:
         api = _Api()

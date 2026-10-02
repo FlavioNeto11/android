@@ -46,7 +46,8 @@ IID = boot.IID
 API = boot.API
 
 # ------------------------------------------------------------------------------------------------ o compromisso (antes do 1º boot)
-SEED = "w8-mitigacao-20261002"                                                    # identifica este protocolo; não há sorteio (braço único)
+SEED = "w8-mitigacao-20261002-r3"                                                 # identifica este protocolo (3ª versão, depois do defeito do r2); sem sorteio (braço único)
+BOOTS_JA_USADOS = 1                                                               # o boot da iteração 1 do r2 (02/10 15:29Z, NO_FAILURE) conta no teto de 6 do dono
 MAX_BOOTS = 6                                                                     # REINÍCIOS REAIS, contando os que o produto pede
 MAX_ITERACOES = 6
 PIOR_CASO_PADRAO = 3                                                              # 1 reinício da reaplicação + rede.reinicios_max (2); lido da config em `rodar`
@@ -201,7 +202,7 @@ def firewall_liberado(resposta: dict[str, Any] | None) -> tuple[bool, str, list[
 
 
 def plano_json() -> dict[str, Any]:
-    return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "max_iteracoes": MAX_ITERACOES,
+    return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "boots_ja_usados": BOOTS_JA_USADOS, "max_iteracoes": MAX_ITERACOES,
             "regra_do_teto": "iteração NOVA só começa se reinícios_usados + (1 + rede.reinicios_max da config; 3 se ilegível) <= 6",
             "um_braco": "mitigação ligada (o padrão do produto); o ator só observa",
             "politica_a_aplicar": POLITICA, "rollback": ROLLBACK, "pausa_do_reparo": {"ttl_s": PAUSA_TTL_S, "rota": f"PUT /api/instances/{IID}/repair-pause"},
@@ -371,19 +372,49 @@ def separar_falhas(falhas: list[str]) -> tuple[list[str], list[str]]:
     return [f for f in falhas if f not in esperadas], esperadas
 
 
-def baseline_assentado(amb: Any, limite_s: float = ASSENTAR_LIMITE_S) -> dict[str, Any]:
-    """Baseline da iteração >= 2: espera o aparelho ASSENTAR do boot anterior (o produto ainda reconcilia o app, mede a rede e fecha comandos logo
-    depois do boot) e só então confere o que vale com a política aplicada. Duas leituras seguidas sem falha real; esgotado o limite, o baseline
-    é falho (e a iteração, BOOT_INVALID): nunca se inicia um boot sobre um aparelho ocupado."""
+def falhas_da_politica(amb: Any) -> list[str]:
+    """Iteração >= 2: a linha de rede e o par DESTA política têm de existir (o oposto do estado limpo da 1ª)."""
+    falhas: list[str] = []
+    r = amb.sql("SELECT vpn_profile_id, policy FROM device_network WHERE instance_id=?", (IID,))
+    if not r or r[0][0] != POLITICA["vpn_profile_id"] or r[0][1] != POLITICA["policy"]:
+        falhas.append("linha_da_politica_ausente")
+    if IID not in {p.get("instance_id") for p in amb.servidor().get("peers", [])}:
+        falhas.append("peer_do_09_ausente")
+    return falhas
+
+
+def baseline_assentado(amb: Any, *, politica_aplicada: bool, limite_s: float = ASSENTAR_LIMITE_S) -> dict[str, Any]:
+    """Baseline por iteração. `politica_aplicada` False (1ª iteração): o estado LIMPO do estágio 1 (sem linha, sem par, always-on null, sem tun0).
+    True (>= 2): o aparelho precisa ter ASSENTADO do boot anterior (o produto ainda reconcilia o app, mede a rede e fecha comandos logo depois do
+    boot) e só então vale o que a política inverte: worker, aparelho online, sem execução nem comando aberto, automação, e a linha e o par desta
+    revisão presentes. Duas leituras seguidas sem falha real; esgotado o limite, o baseline é falho (e a iteração, BOOT_INVALID): nunca se inicia um
+    boot sobre um aparelho ocupado."""
     fim, seguidas, b = amb.agora() + limite_s, 0, {}
     while True:
         b = est1.baseline(amb)
-        reais, esperadas = separar_falhas(list(b["falhas"]))
-        b = {**b, "ok": not reais, "falhas": reais, "falhas_esperadas_com_a_politica": esperadas}
+        if politica_aplicada:
+            reais, esperadas = separar_falhas(list(b["falhas"]))
+            reais += falhas_da_politica(amb)
+            b = {**b, "ok": not reais, "falhas": reais, "falhas_esperadas_com_a_politica": esperadas}
         seguidas = seguidas + 1 if b["ok"] else 0
         if seguidas >= 2 or amb.agora() >= fim:
             return b
         amb.dormir(15.0)
+
+
+CLIENTE_VPN = "io.nekohasekai.sfa"
+
+
+def parar_cliente_antes_do_rollback(amb: Any, reg: Callable[..., None]) -> dict[str, Any]:
+    """Imediatamente ANTES do `assign vpn=null`: `force-stop` do cliente VPN do android-09 e ~10 s para o estado `stopped` persistir (§13, F1). App
+    parado não recebe BOOT_COMPLETED: sem always-on, nada deve religar o SFA no boot do rollback (no r2 ele religou sozinho e a convergência pediu
+    um 2º reinício). Só o android-09; é a ÚNICA escrita do ator no aparelho, e só no rollback."""
+    rc, _o, _e = amb.shell(f"am force-stop {CLIENTE_VPN}", 20)
+    amb.dormir(10.0)
+    rc2, out, _e2 = amb.shell(f"dumpsys package {CLIENTE_VPN} | grep -m1 -o 'stopped=[a-z]*'", 20)
+    r = {"force_stop_rc": rc, "stopped": out.strip() or None, "leitura_rc": rc2}
+    reg("force_stop_do_cliente_antes_do_rollback", **r)
+    return r
 
 
 def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Callable[..., None]) -> dict[str, Any]:
@@ -398,9 +429,9 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
     st_h, saude = api.get("/api/health")                                          # a pausa é só em memória (um reinício do central a apaga)
     if st_h != 200 or not pausa_vigente(saude if isinstance(saude, dict) else None):
         return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": "a pausa não consta em features.repair_pause do health antes do boot", "reinicios_da_rede": 0}
-    b = baseline_assentado(amb) if not primeira else {"ok": True, "falhas": [], "nota": "a 1ª iteração parte do baseline do pré-voo"}
+    b = baseline_assentado(amb, politica_aplicada=not primeira)
     (d / "baseline.json").write_text(json.dumps(b, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-    if not b["ok"] and not primeira:
+    if not b["ok"]:
         invalidos.append(f"baseline: {b['falhas']}")
     wg_parou, wg = False, {}
     if primeira:
@@ -477,7 +508,7 @@ def rodar(amb: Any, api: Api, run: Path) -> dict[str, Any]:
         saida["comandos_do_dono"] = comandos_fw
         return saida
     regs: list[dict[str, Any]] = []
-    boots = 0
+    boots = BOOTS_JA_USADOS
     pior_caso = 1 + reinicios_max_da_config()
     saida["pior_caso_da_iteracao"] = pior_caso
     try:
@@ -510,7 +541,11 @@ def reverter(amb: Any, api: Api, reg: Callable[..., None], *, desfazer: bool = T
     traz o que fazer. `urgente` (depois de uma falha de reconexão) não espera. Sem par aplicado (`desfazer` False) só encerra a pausa."""
     saida: dict[str, Any] = {"par_removido": False, "reinicio_do_09_pelo_rollback": "fora dos 6 boots; contado e registrado à parte"}
     if desfazer:
-        wg = mexer_no_servidor(amb, reg, "rollback do par", lambda: api.post("/api/network/assign", ROLLBACK), urgente=urgente)
+        def _acao() -> tuple[int, Any]:
+            saida["cliente"] = parar_cliente_antes_do_rollback(amb, reg)
+            return api.post("/api/network/assign", ROLLBACK)
+
+        wg = mexer_no_servidor(amb, reg, "rollback do par", _acao, urgente=urgente)
         saida.update({"http": wg.get("http"), "wg": wg, "par_removido": bool(wg.get("acao_executada"))})
         if not wg["ok"] and not wg.get("acao_executada"):
             saida["rollback_pendente"] = f"o par do {IID} CONTINUA no servidor: {wg['fase']}; refazer o POST /api/network/assign {json.dumps(ROLLBACK)} numa janela ociosa"

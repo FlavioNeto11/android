@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — W8: protocolo r3 (baseline por iteração, force-stop do SFA no rollback, seed nova) antes do 1º boot do r3
+
+- `scripts/diag-w8-mitigacao.py`: seed `w8-mitigacao-20261002-r3`; a 1ª iteração exige o estado limpo e as seguintes esperam o aparelho assentar e exigem a linha e o par da política (o oposto do baseline do estágio 1, que invalidou o r2); `BOOTS_JA_USADOS = 1` com a regra `usados + 1 + reinicios_max <= 6`; o rollback faz `force-stop` do SFA no 09 antes do `assign vpn=null`. `docs/handoffs/w8-boot-recovery.md` §17.6 reclassifica o r2 (`INCONCLUSIVE_HARNESS_DEFECT`) e §17.7 registra o desvio. Prova `simulated` (72 testes); nada executado (`not_run`).
+
 ## 2026-10-02 — W8: 1º disparo real da validação da mitigação (real, `bcea158`): NO_FAILURE no boot 1, FAIL por defeito do executor, rollback incompleto no produto
 
 - `docs/handoffs/w8-boot-recovery.md` §17.6: deploy `bcea158`; política `livre` + `vpn-central-wireguard` só no android-09; 2 reinícios do servidor WireGuard em janela ociosa (03/06 reconectaram em 20 s cada); **iteração 1 `NO_FAILURE`** (mitigação NÃO exercitada); iteração 2 `BOOT_INVALID` por defeito do executor (baseline do estágio 1 reaproveitado) → veredito pré-comprometido `FAIL`, desfecho substantivo `INCONCLUSIVE`; 1 de 6 boots usados. Achado de produto: o rollback da rede não para o SFA, que religa sozinho no boot (`tun0` para um par removido) e a convergência pede mais um reinício; baseline restaurado à mão (`force-stop` do SFA no 09).
