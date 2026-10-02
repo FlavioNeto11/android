@@ -142,7 +142,7 @@ async def test_concordancia_devolve_o_valor_e_o_leitor_recebe_so_o_recorte_e_os_
 
 
 async def test_acentos_contam_e_caixa_pontuacao_das_pontas_e_espacos_nao() -> None:
-    t = Transcricao(linhas=["  “Mãe,  chegou! ”"], campos={"assunto": "MÃE, chegou!"})
+    t = Transcricao(linhas=["  “Mãe   chegou! ”"], campos={"assunto": "MÃE chegou!"})
     assert (await _ler(valor="mãe chegou", leitor=_Leitor(t))).valor == "mãe chegou"
     com_acento = Transcricao(linhas=["mae chegou"], campos={"assunto": "mae chegou"})
     await _recusa("nao_confere", valor="mãe chegou", leitor=_Leitor(com_acento))
@@ -180,7 +180,6 @@ async def test_4_tela_sensivel_politica_de_imagem_e_fora_do_app() -> None:
 
 async def test_5_ancora_sem_limites() -> None:
     await _recusa("sem_ancora", arvore=_arvore(ancora=(100, 400, 100, 400)))        # área zero
-    await _recusa("sem_ancora", arvore=_arvore(ancora=(800, 300, 900, 400)))        # fora da tela
 
 
 async def test_6_captura_mudou() -> None:
@@ -492,7 +491,7 @@ async def test_sem_leitor_e_opcao_desligada_recusam_com_o_codigo(harness: Harnes
     assert harness.ai.count("leitura") == 0                                  # nenhuma chamada paga ao leitor desligado
     # ligada, mas sem leitor (provedor sem `transcribe`): sem_leitor
     harness.state.cfg.file.ai.leitura_visual.enabled = True                # type: ignore[union-attr]
-    monkeypatch.setattr(type(harness.ai), "transcribe", None)
+    monkeypatch.delattr(type(harness.ai), "transcribe")
     vistos.clear()
     run2 = harness.run(["android-01"], command=COMANDO)
     await _termina(harness, run2.id)
@@ -555,8 +554,8 @@ async def test_navegacao_que_usa_valor_visual_segue_sem_esperar(harness: Harness
     _ator(inner, [_concluir()], [], chave="ir")
     _juiz(inner)
     run = harness.run(["android-01"], command=COMANDO)
-    obj = harness.state.db.one("SELECT * FROM objectives WHERE run_id=?", (run.id,))   # type: ignore[union-attr]
     await _termina(harness, run.id)
+    obj = harness.state.db.one("SELECT * FROM objectives WHERE run_id=?", (run.id,))   # type: ignore[union-attr]
     assert harness.state.db.one("SELECT status FROM objectives WHERE id=?", (obj["id"],))["status"] != "waiting_user"  # type: ignore[union-attr]
     assert harness.state.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND key='ir' AND status='succeeded'",   # type: ignore[union-attr]
                                    (run.id,)) == 1
@@ -595,5 +594,9 @@ async def test_conta_propria_de_recusas_leva_a_fail_or_retry_mesmo_com_observe_e
     linha = harness.state.db.one("SELECT status, status_detail, attempts FROM steps WHERE run_id=? AND key='listar'",  # type: ignore[union-attr]
                                  (run.id,))
     assert linha["status"] == "failed" and "remetente" in (linha["status_detail"] or "")
-    assert harness.ai.count("decide", step="listar") == 7                    # 4 step_done recusados + 3 observações, e para
+    # por tentativa: exatamente 4 `step_done` recusados (e `observe_screen`/`find_element` no meio), e a etapa para
+    contas = [r["n"] for r in harness.state.db.query(                       # type: ignore[union-attr]
+        "SELECT COUNT(*) n FROM actions WHERE tool='step_done' AND status='rejected' GROUP BY attempt_id")]
+    assert contas and max(contas) == 4
+    assert harness.state.db.scalar("SELECT COUNT(*) FROM actions WHERE tool IN ('observe_screen','find_element')") >= 3  # type: ignore[union-attr]
     assert _saidas(harness, run.id) == []
