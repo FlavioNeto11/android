@@ -27,7 +27,7 @@ from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, ReadValue, StepBlocked, StepDone, TelaDeContaTravada,
                                 ToolContext, ToolValidationError, esperar_foco, execute_tool, looks_like_commit,
                                 resolve_point, urls_do_texto, validate_call)
-from ..config import Config
+from ..config import Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
@@ -593,7 +593,7 @@ class StepExecutor:
         assert last is not None
         raise last
 
-    def _teto_de_chamadas(self, objective_id: str, feitas: int, s: Any) -> tuple[int, str]:
+    def _teto_de_chamadas(self, objective_id: str, feitas: int, s: LimitsCfg) -> tuple[int, str]:
         """Item 17.12: o teto de chamadas deste objetivo — `ai_max_calls_per_objective` fixo, ou proporcional aos itens do
         `for_each` (`foreach.teto_de_chamadas`). Os itens saem das etapas JÁ GRAVADAS (`item_index` em `steps.variables`,
         em todas as versões do plano: uma recuperação recomeça só com o que faltava e os itens já feitos continuam
