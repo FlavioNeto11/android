@@ -4,10 +4,10 @@ que FAIXA da política de risco (§8.4) e por quê. Puro: sem relógio, sem banc
 Só as faixas que esperam alguém existem aqui. A faixa A (o sistema decide pela regra determinística) nunca aguarda a
 pessoa, e o item "fora das três" (origem humana, sem efeito) entra como B (D-2, decidido pelo dono em 02/10).
 
-A classificação é a MÍNIMA do que já existe hoje (`side_effect`, `human_origin`, catálogo do app); o item 30.10
-(`politica_de_risco.py`) a estende com a política completa e deve reaproveitar `classificar_espera` em vez de a
-duplicar. O que NÃO é derivado ainda: o mapa de `interaction_type` para envio/publicação/exclusão (§8.4: dado do
-catálogo de cada app, a conferir) e `sessao_ou_autenticacao` por conteúdo de tela (hoje só o item nascido de
+A classificação é a da política de risco (30.10, `domain/politica_de_risco.py`, a fonte única): `classificar_espera`
+só a traduz para a faixa do evento (a classe A não espera ninguém). `FatosDoCatalogo` e `MotivoDeEntrada` moram lá e
+são reexportados aqui. O que NÃO é derivado ainda: a família de efeito (envio/publicação/exclusão) que o catálogo de
+cada app ainda não declara (§8.4) e `sessao_ou_autenticacao` por conteúdo de tela (hoje só o item nascido de
 `session_unknown` o carrega).
 
 O payload é um contrato de PRIVACIDADE: `CAMPOS_DO_PAYLOAD` é a lista fechada, e `AvisoDeEspera.como_dados` só sabe
@@ -19,19 +19,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.modules.learning.domain.politica_de_risco import (ClasseDeRisco, FatosDeRisco, FatosDoCatalogo,
+                                                           MotivoDeEntrada, classificar)
+
 
 class Faixa(StrEnum):
+    """A classe de risco de quem ESPERA a pessoa. Enum próprio (sem A) para o evento não poder dizer faixa A."""
+
     B = "B"                     # o dono decide, em lote, com a recomendação da IA
     C = "C"                     # o dono decide item a item
-
-
-class MotivoDeEntrada(StrEnum):
-    EFEITO_EXTERNO = "efeito_externo"
-    TEXTO_DE_PESSOA = "texto_de_pessoa"
-    COMMIT_SEM_CATALOGO = "commit_sem_catalogo"
-    ALTO_RISCO = "alto_risco"
-    SESSAO_OU_AUTENTICACAO = "sessao_ou_autenticacao"
-    PARECER_DA_IA = "parecer_da_ia"         # publicado pelo curador (30.11); a porta está pronta, ninguém a chama ainda
 
 
 class MotivoDeSaida(StrEnum):
@@ -44,31 +40,16 @@ class MotivoDeSaida(StrEnum):
 CAMPOS_DO_PAYLOAD = frozenset({"kind", "ref", "app", "faixa", "aguardando", "motivo", "href", "desde"})
 
 
-@dataclass(frozen=True, slots=True)
-class FatosDoCatalogo:
-    """O que o catálogo do app diz da capability da etapa (`governance` e `side_effect`); texto de ação nunca entra."""
-
-    risco: str = "low"                      # low | medium | high
-    politica: str = "autonomous"            # autonomous | approval_required | manual_only | disabled
-    precisa_rascunho: bool = False          # `needs_draft`: a ação envia conteúdo escrito (mensagem, comentário)
-    efeito_externo: bool = False
-
-
 def classificar_espera(*, side_effect: bool, human_origin: bool, tem_catalogo: bool,
                        catalogo: FatosDoCatalogo | None = None,
                        sessao_ou_autenticacao: bool = False) -> tuple[Faixa, MotivoDeEntrada] | None:
-    """A faixa e o motivo de um item que ESPERA a pessoa; `None` se nada o põe nas faixas B ou C. Vale a mais
-    restritiva (§8.4): alto risco, sessão e autenticação vencem o efeito, que vence o texto de pessoa."""
-    if sessao_ou_autenticacao:
-        return Faixa.C, MotivoDeEntrada.SESSAO_OU_AUTENTICACAO
-    if catalogo is not None and (catalogo.risco == "high" or catalogo.politica == "manual_only"
-                                 or catalogo.precisa_rascunho):
-        return Faixa.C, MotivoDeEntrada.ALTO_RISCO
-    if side_effect or (catalogo is not None and (catalogo.efeito_externo or catalogo.risco == "medium")):
-        return Faixa.B, MotivoDeEntrada.EFEITO_EXTERNO if tem_catalogo else MotivoDeEntrada.COMMIT_SEM_CATALOGO
-    if human_origin:
-        return Faixa.B, MotivoDeEntrada.TEXTO_DE_PESSOA
-    return None
+    """A faixa e o motivo de um item que ESPERA a pessoa; `None` se a política o põe na classe A. A regra (a mais
+    restritiva, §8.4) é a de `politica_de_risco.classificar`; aqui só a tradução para o evento."""
+    c = classificar(FatosDeRisco(side_effect=side_effect, human_origin=human_origin, tem_catalogo=tem_catalogo,
+                                 catalogo=catalogo, sessao_ou_autenticacao=sessao_ou_autenticacao))
+    if c.classe is ClasseDeRisco.A or c.motivo is None:
+        return None
+    return Faixa(c.classe.value), c.motivo
 
 
 def motivo_de_saida(*, por_sistema: bool, para_aposentado: bool) -> MotivoDeSaida:
