@@ -10,6 +10,13 @@
 # Abrir uma MENSAGEM também fica de fora: marca a mensagem como lida na conta (e pode disparar confirmação de leitura
 # para o remetente) — é mudança de estado da conta, não leitura.
 #
+# VALOR ENTRE ETAPAS (item 24.3, ADR-063): `saidas` lista os nomes que a ação PODE entregar às etapas seguintes (o
+# remetente e o assunto da mensagem mais recente da lista, lidos da linha à vista, sem abrir a mensagem). O planejador
+# escolhe, por etapa, os que usa; quem tira o valor é o executor, do texto do elemento na tela (`read_value`), nunca da
+# palavra do modelo. Código de verificação, senha e token nunca são saída (ADR-009, ADR-022): por isso não há nome
+# "codigo" aqui e a triagem recusaria o valor se a linha o trouxesse. A coleta (COLLECT_MAIL_HEADERS) entrega lista
+# pelo `for_each`, outro mecanismo, e não declara `saidas`.
+#
 # As provas são `model_judged` e `items_collected`: as telas depois do login não foram observadas neste parque, e um
 # `element_present` com id inventado reprovaria a etapa certa (ou aprovaria a errada). Quando a caixa for observada
 # (29.12), os ids entram como prova local, como no Instagram.
@@ -24,6 +31,7 @@ acoes:
   - key: OPEN_MAIL_INBOX
     title: Abrir a caixa de entrada do Outlook
     goal: Ir para a Caixa de Entrada do Outlook, sem abrir nenhuma mensagem.
+    saidas: [remetente, assunto]
     post_kind: model_judged
     post_value: caixa de entrada aberta
     post_description: A tela mostra a Caixa de Entrada do Outlook com a lista de mensagens.
@@ -44,6 +52,7 @@ acoes:
     title: Buscar "{query}" no Outlook
     bindings: [query]
     goal: Buscar {query} pela busca do Outlook e deixar a lista de resultados à vista, sem abrir nenhuma mensagem.
+    saidas: [remetente, assunto]
     post_kind: model_judged
     post_value: resultados da busca por {query}
     post_description: A tela mostra os resultados da busca do Outlook por {query} (ou diz que não há resultado).

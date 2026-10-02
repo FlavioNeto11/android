@@ -23,7 +23,7 @@ from typing import Any, get_args
 
 import yaml
 
-from ..models import MissingInfo, PlanStep, Postcondition
+from ..models import SAIDA_NOME_RE, MissingInfo, PlanStep, Postcondition
 
 # Política padrão por capability. O perfil pode endurecer (nunca afrouxar em silêncio) em `automation_policy`.
 POLICIES = ("autonomous", "approval_required", "manual_only", "disabled")
@@ -120,12 +120,18 @@ class Capability:
     # `band_guard`). Com `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova
     # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
+    # Item 24.3 (ADR-063): os NOMES dos valores que esta ação PODE entregar às etapas seguintes (`{{saida:<nome>}}`). É
+    # o que a ação declara; o planejador escolhe, por etapa, quais usa (`CapabilityNode.saidas`) — uma ação que sempre
+    # entregasse forçaria `read_value` (e desligaria a receita) em todo uso, mesmo sem ninguém citar o valor. Quem tira
+    # o valor continua sendo o executor, do texto do elemento na tela, com a triagem de segredo de sempre.
+    saidas: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""
         argumentos = ", ".join(self.bindings + tuple(f"{b}?" for b in self.optional_bindings)) or "sem argumentos"
         efeito = " [EFEITO EXTERNO]" if self.side_effect else ""
-        return f"- {self.key}({argumentos}){efeito}: {self.title}"
+        entrega = f" [pode entregar em `saidas`: {', '.join(self.saidas)}]" if self.saidas else ""
+        return f"- {self.key}({argumentos}){efeito}{entrega}: {self.title}"
 
 
 class UnknownCapability(LookupError):
@@ -145,6 +151,8 @@ class CapabilityNode:
     depends_on: list[str] = field(default_factory=list)
     bindings: dict[str, str] = field(default_factory=dict)
     for_each: str | None = None
+    # Item 24.3: dos valores que a ação declara poder entregar (`Capability.saidas`), os que ESTA etapa entrega.
+    saidas: tuple[str, ...] = ()
 
 
 #: Formas aceitas de `Capability.local_proof` (a semântica está em `taskqueue/proofs.py`).
@@ -210,6 +218,22 @@ def counterparty_error(cap: Capability) -> str | None:
     return None
 
 
+def saidas_error(cap: Capability) -> str | None:
+    """Motivo pelo qual as saídas declaradas por uma ação são inválidas; `None` quando estão bem formadas. Conferido
+    na carga, com a mesma regra de nome do `PlanStep`: YAML torto não pode esperar o planejamento para falhar. A coleta
+    fica de fora: ela entrega a LISTA pelo `collect_list` e o `for_each`, que é outro mecanismo."""
+    if not cap.saidas:
+        return None
+    if cap.collect:
+        return "ação de coleta não declara saidas (a lista vai pelo for_each); use uma ação de leitura"
+    for nome in cap.saidas:
+        if not SAIDA_NOME_RE.fullmatch(nome):
+            return f"nome de saída inválido: {nome!r} (use {SAIDA_NOME_RE.pattern})"
+    if len(set(cap.saidas)) != len(cap.saidas):
+        return "nomes de saída repetidos"
+    return None
+
+
 class CapabilityCatalog:
     def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
         self.package = package
@@ -229,6 +253,9 @@ class CapabilityCatalog:
             erro = counterparty_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.counterparty — {erro}")
+            erro = saidas_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.saidas — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
 
     @property
@@ -258,6 +285,12 @@ class CapabilityCatalog:
         """Monta a etapa a partir do catálogo. O texto é do backend; do modelo vêm só os argumentos."""
         cap = self.get(node.capability)
         valores = {k: v for k, v in node.bindings.items() if v is not None}
+        fora = [n for n in node.saidas if n not in cap.saidas]
+        if fora:
+            # Entregar o que a ação não declara é inventar leitura: o ator nunca é mandado ler e o plano seguiria sem o
+            # valor. Vira pergunta, como a ação que não existe.
+            raise MissingBinding(f"{cap.key} não entrega {', '.join(fora)}"
+                                 + (f" (entrega: {', '.join(cap.saidas)})" if cap.saidas else " (não entrega valor)"))
         faltando = [b for b in cap.bindings if not (valores.get(b) or "").strip()]
         if cap.needs_draft and not (valores.get(BRIEFING) or "").strip() and not (valores.get(TEXTO) or "").strip():
             # Etapa que escreve precisa de UM dos dois: a intenção (para cada perfil escrever a sua) ou o texto
@@ -288,7 +321,7 @@ class CapabilityCatalog:
             timeout_s=cap.timeout_s, max_attempts=1 if cap.side_effect else cap.max_attempts,
             capability=cap.key, commit_selector=cap.commit_selector,
             band_guard=guardas(cap.band_guard), bindings=dict(valores),
-            for_each=node.for_each, variables={})
+            for_each=node.for_each, variables={}, saidas=list(node.saidas))
 
 
 def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[list[PlanStep], list[MissingInfo]]:
