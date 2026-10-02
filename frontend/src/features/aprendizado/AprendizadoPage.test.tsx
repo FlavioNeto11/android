@@ -270,6 +270,10 @@ describe('página Aprendizado', () => {
     // o falso positivo do verificador vem primeiro, mesmo sem custo
     const linhas = Array.from(container.querySelectorAll('[data-item^="fk-"]')).map((el) => el.getAttribute('data-item'));
     expect(linhas).toEqual(['fk-ffffffffff', 'fk-a1b2c3d4e5']);
+    // O botão é de quem desenvolve: fica no bloco recolhido "Para quem desenvolve".
+    const tecnico = item('fk-a1b2c3d4e5').querySelector('details') as HTMLDetailsElement;
+    expect(text(tecnico.querySelector('summary') as HTMLElement)).toContain('Para quem desenvolve');
+    await act(async () => { tecnico.open = true; tecnico.dispatchEvent(new Event('toggle')); });
     await click(byRole('button', /^Copiar para sessão/, item('fk-a1b2c3d4e5')));
     await waitFor(() => expect(clipboard).toHaveBeenCalledTimes(1));
     const md = String(clipboard.mock.calls[0]?.[0]);

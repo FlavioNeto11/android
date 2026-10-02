@@ -164,7 +164,7 @@ export function lerDetalheDoApp(raw: unknown): DetalheDoApp {
 
 export const EXISTENCIA_META: Record<Existencia, { label: string; tone: Tone; dica: string }> = {
   declarado: { label: 'Declarado', tone: 'success', dica: 'Está no registro de apps do sistema (arquivos declarados).' },
-  loja: { label: 'Só na loja', tone: 'neutral', dica: 'Está na tabela de apps da loja, sem declaração própria.' },
+  loja: { label: 'Sem declaração', tone: 'neutral', dica: 'Conhecido pela loja (ou é do sistema), mas sem arquivos declarados: o que se sabe dele foi aprendido.' },
   so_aprendido: { label: 'Só aprendido', tone: 'warning', dica: 'Só existe porque algo foi aprendido; nada foi declarado nem instalado pela loja.' },
 };
 
@@ -220,6 +220,14 @@ export function linhaDeUso(uso: Contagem): string {
     return `${rotuloDoKind(tipo)}: ${camadas.join(', ')}`;
   });
   return partes.length > 0 ? partes.join('; ') : 'Nada aprendido para usar ainda.';
+}
+
+/** O mesmo que `linhaDeUso`, um item por tipo ("Receita" → "decide sem a IA 19 · inerte 4"), para chips e linhas. */
+export function usoPorTipo(uso: Contagem): { tipo: string; texto: string }[] {
+  return tiposComConteudo(uso).map(([tipo, porCamada]) => ({
+    tipo: rotuloDoKind(tipo),
+    texto: Object.entries(porCamada).filter(([, n]) => n > 0).map(([c, n]) => `${rotuloDoUso(c)} ${n}`).join(' · '),
+  }));
 }
 
 /** Há algo que o sistema mede e não usa (shadow e observe)? Vira um aviso no cartão. */

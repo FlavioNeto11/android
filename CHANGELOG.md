@@ -21,7 +21,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-02 — 29.26: texto livre fora da query string e persona sem foto sem requisição (branch feat/29-26-texto-fora-da-query)
 
-- **Privacidade (varredura da classe, adendo v0.6x, número definido no merge):** `GET /api/runs/distribution?command=` virou `POST /api/runs/distribution`
+- **Privacidade (varredura da classe, adendo v0.65):** `GET /api/runs/distribution?command=` virou `POST /api/runs/distribution`
   (corpo `{count, app_id?, command?}`; o GET responde 405 `metodo_removido`). A varredura de todas as rotas `GET`/`DELETE` com parâmetro de query achou mais
   duas com texto livre: `GET /instagram/profiles/{id}/context` (`content` é a mensagem recebida; virou `POST` com `{counterparty?, thread_key?, content?}`) e a busca `q`
   de `GET /api/pedidos` (procura no título e no objetivo; virou `POST /api/pedidos/busca`, e `GET` com `q` na URL responde 422 `busca_no_corpo`). Ficaram na URL, por serem
@@ -41,7 +41,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **I6:** abaixo de 480 px o `CardHeader` (`components/ui.module.css`, serve a `PageSection` e a toda guia) põe o texto em largura total e desce a ação;
   antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
 - **Privacidade:** `GET /api/flows/match?command=` virou `POST /api/flows/match` com corpo `{command}` (máx. 4000): o rascunho, às vezes com e-mail, não vai mais
-  para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.59). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
+  para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.64). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
 - **Editor do grupo:** o membro sem conta some da listagem de perfis (29.23), e o diálogo contava 2 mas mostrava 1, sem como tirá-lo do grupo;
   agora ele aparece como "Nome · sem conta" e pode ser desmarcado (achado na validação no navegador).
 - Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+2);
@@ -51,12 +51,74 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-02 — 29.24: rota para resolver a quarentena e aviso sem o @ de conta retirada (branch feat/29-24-resolver-quarentena)
 
 - `POST /api/instances/{id}/locked-account/resolve` (corpo `{nota}` obrigatória; 404 `no_locked_account` sem marcador aberto): só banco, resolve o
-  marcador de quarentena, sincroniza o rótulo e emite `device.locked_account` "resolvido". Nunca automática. Adendo v0.57 em `api-contract.md`.
+  marcador de quarentena, sincroniza o rótulo e emite `device.locked_account` "resolvido". Nunca automática. Adendo v0.61 em `api-contract.md`.
 - O @ de conta retirada (29.23) sai do produto vivo: `SocialRepository.mascarar_contas_retiradas()` (na retirada e na subida, sem migração) troca
   por `[conta removida]` o `handle` dos marcadores abertos e o rótulo derivado do aparelho; os avisos (frase da quarentena, recusa, start confirmado,
   anúncio e saída do evento, problem do `/health`) dizem "conta retirada (bloqueada)". Conta viva continua com o @; evento antigo fica (ADR-068, item 10).
 - Núcleo tocado: `api.py`, `state.py` (texto da quarentena e do health), `commands/despacho.py`, `social/` (`contas_nossas`, `repository`, `service`), `models.py` (re-exporta o corpo).
   Prova `simulated`: `test_resolver_quarentena.py` (8), `test_conta_bloqueada_sai.py` (asserção do marcador agora `[conta removida]`). Real: `not_run`.
+
+## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
+
+- **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a
+  receita, em vez de `obsoleto_provavel`/`fluxo_nunca_casado` (motivo removido; `domain/saude.py`, adendo v0.63 provisório). O
+  texto passa a "Nunca usado desde que foi publicado, há N dias (prazo: 14 dias)", sem o "(limite: 14)" que parecia contradição.
+  Na Atenção do central (b5baf3e5), os 4 fluxos que estavam em "provavelmente obsoleto" só por isso passam a "sem evidência"
+  (11 itens antes e depois: 4 degradando, 7 sem evidência).
+- **O grupo diz o nome, não o código.** `capability_nome` em cada linha do Livro, de `/apps/{pacote}` e em cada grupo de
+  `/falhas`: o `title` do catálogo do app sem as lacunas (`OPEN_PROFILE` → "Abrir o perfil"; porta `TitulosDoCatalogo`,
+  adaptador `TitulosDoRegistro`). O painel mostra o nome nos grupos do Aprendido e nas falhas, com o código no `title`; sem
+  catálogo, o código em mono como antes.
+- **Título curto na Atenção.** O fluxo, cujo título é o comando inteiro, aparece cortado na palavra (80 caracteres) com o texto
+  inteiro no `title` (`resumirTitulo`).
+- Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `test_learning_obsolescencia.py`,
+  `test_learning_rotas_falhas.py`; `SaudeDoApp.test.tsx`, `DetalheRico.test.tsx`. Navegador: preview com cópia do banco do central.
+
+## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
+
+- Central `b5baf3e5` (073). Linha de base: 0 aprovações pendentes; `REPLY_COMMENT`/`CREATE_COMMENT` em `approval_required` nos três perfis vivos.
+- android-03: verify `session_ready`; coleta `r-20261002221213-8d1c0a` com `OPEN_PROFILE` comprovado pela árvore local (**real**) e `OPEN_POST` parado por grade vazia.
+  android-06 fora (sem rede medida pelo produto e pelo ping); android-01 fora (verify com timeout do UiAutomator). US$ 0,15.
+- `REPLY_COMMENT`, `edit` em aparelho, `learn_from` de comentário e `for_each` com itens reais seguem `not_run`; registro em `docs/relatorio-validacao.md` §8.9 e no estado do 8.3.
+
+## 2026-10-02 — Aprendizado: achados da validação no Chrome do deploy 1 (branch feat/aprendizado-ux-deploy1)
+
+- **B2 (versão):** já estava corrigida pelo #105 (e9de6697), implantado em b5baf3e5. Medido no central (só leitura, 02/10 ~22:05Z): 160 itens, nenhum `versao_aposentada`, Atenção = 11. A validação pegou um deploy anterior.
+- **Links (I1):** o `href` do item sai com a aba (`#/aprendizado?aba=aprendido&item=…`, adendo v0.59). O painel aceita `item` sem aba, então os avisos antigos também abrem o item. "Revisar" das Pendências leva ao item.
+- **Atenção (I2):** um bloco recolhível por rótulo (degradando, provavelmente obsoleto, sem evidência), filtro por app no Global, 10 por bloco com "Mostrar todos". Fila longa abre só o bloco mais grave.
+- **Abas no celular (I3):** a faixa rola até a aba ativa vinda de um link (`components/Tabs.tsx`, vale para todo o painel; rola a faixa, não a página).
+- **Jargão (I4, I5 antiga):** em "O que mais falha", o erro cru do provedor vira frase ("Saldo da conta de IA esgotado…"). O backlog vira "Correção: aberto". A tentativa vira "android-05 · open_app · tentativa 1". A tendência vira "36 na semana anterior → 11 nesta". O id do grupo, o "Onde alterar", os erros originais e o "Copiar para sessão" ficam recolhidos em "Para quem desenvolve".
+- **Evidência (I5):** na receita, a linha diz "Reproduções: X deram certo · Y falharam", diferente de "Evidência registrada" no detalhe. A medida passa a "Base medida: N registros (reproduções e evidências)". A linha "Versão do app: sem dado" da saúde some quando a seção Versão está na tela.
+- **Para aprovar (B3):** ao lado de Aprovar/Rejeitar, "O que faz" (passos em frase, com o passo de efeito marcado), "Aprendida" (aparelho, execução e quando) e "Versão do app".
+- **Outros:**
+  - **I6:** item publicado que ainda espera o dono passa a dizer "Publicado antes da regra de aprovação (…): vale revisar". O selo "Só na loja" vira "Sem declaração".
+  - **Sinais:** separador por dia.
+- **Prova:**
+  - **simulated:** vitest 1249/1249, typecheck e `test_learning_espera.py`.
+  - **Navegador, simulado** (backend 8766 com cópia nova do banco do central, 02/10 ~22:20Z): Global com Atenção em 3 blocos (593 px; antes, ~6.700 px) e filtro por app (7 de 11); link antigo sem aba abrindo a receita 73; Para aprovar com o diferencial de 108 × 106; Rejeitar (106); aprovar em lote (108); desligar em lote no Revisar (22); filtros do Aprendido (fluxo + Instagram = 12); janela das falhas (16 → 8 grupos); bloco "Para quem desenvolve" com o Copiar; "Ver no catálogo Aprendido"; estado de erro com o backend parado e "Tentar de novo" recuperando; celular 375 px com a aba Sinais visível e sem rolagem horizontal.
+  - **Não exercitado:** o balde "não resolvido", que não existe nos dados; está coberto pelo vitest.
+
+## 2026-10-02 — Origem das chamadas de IA e rubrica única de gasto (31.2 e 31.6, branch feat/31-2-origem-rubrica)
+
+- Migração 073 (`ai_calls.origem`, `ai_calls.ref`, índice `(origem, ts)`); as 071 e 072 estão em outros branches e entram antes, e a lacuna de número é tolerada pelo executor.
+- `Usage.origem`/`ref`: o hub (`RoutingProvider._call`) preenche e `add_usage` grava. Vocabulário fechado `ORIGENS_DE_IA`: `execucao` (padrão com `run_id`), `ensino`, `orquestracao`, `assistente`, `social`, `persona`, `curador`, `decisao_fechada`. Linhas antigas ficam NULL.
+- `costs.spent_usd` e `spent_today_usd` ganham o filtro `origem=`.
+- `AIError.motivo` fechado (`saldo | dia | fatia_curador | fatia_jev | execucao | pedido`), só com `kind="budget"`; `_budget` e o orçamento do pedido (28.6) passam a informar o motivo, sem mudar mensagem nem ordem. Fatias dentro do teto do dia, por origem: `ai.limits.curador_max_usd_per_day` (padrão 0,10 × teto do dia) e `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50, D-J3 a confirmar). O saldo da conta (ADR-051) não muda nesta etapa.
+- Prova `simulated`: `backend/tests/test_origem_e_rubrica_de_ia.py` (13). Real: `not_run`.
+
+## 2026-10-02 — Porta `DecisaoFechada` no hub e trava de 255 opções no Jev (31.1 e 31.4, branch feat/31-4-decisao-fechada)
+
+- 31.1: o `choice` do adaptador Jev (`modules/context_retrieval/adapters/jev.py`) recusa localmente, antes de montar o corpo, mais de 255 opções
+  (contando a `nenhuma`; novo `ProviderOptionLimit`) e sempre leva a opção `nenhuma`, de id opaco, que nunca vira arquivo ou região.
+- 31.4: nova porta `backend/app/planning/decisao_fechada/` (ADR-069), **desligada e sem decisor real**:
+  - contrato puro (`PedidoDeDecisao`, `Pergunta`, `RespostaDeDecisao`, vocabulários fechados), `DecisorNulo` (padrão) e `DecisorFalso`;
+  - `Privacidade.validar` falha fechada antes de qualquer corpo: `JEV_RUNTIME_SEND_APPROVED = False`, `JEV_ALLOWED_CLASSES` com o teto do
+    ADR-069 (C0 a C3; a C3 só na origem `intencao` e só em `shadow`), C7 e social/persona recusam o pedido inteiro, `redact` em toda string;
+  - modos `off` (padrão), `shadow` (fora do caminho crítico) e `on` por consumidor; timeout de 1 s e 5 s, sem retentativa, fallback fechado
+    que nunca conta como acerto; fan-out de um estado e N perguntas em uma chamada;
+  - config `ai.decisao_fechada` (`enabled: false`, `consumidores`, `classes_permitidas`; o YAML só restringe), no `config.example.yaml`.
+- Teste de cliente único: só o adaptador de retrieval contém o host da TypeSafe.
+- Prova `simulated`: `backend/tests/test_decisao_fechada.py` (40), `test_context_retrieval_semantic.py` (+3). Real: `not_run` (nenhuma chamada ao Jev).
 
 ## 2026-10-02 — 12.4: etapa que declara saídas só é comprovada com elas (branch fix/12-4-saidas-obrigatorias)
 
@@ -71,6 +133,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_saidas_obrigatorias.py` (9 casos: caso real reconstruído, saída faltando, saídas lidas, subconjunto
   do planejador, navegação pura, vazio comprovado, lista à vista, julgamento em dúvida). Real: `not_run`.
 - Docs: `docs/dominios/execution.md` (Saídas obrigatórias), `docs/conhecimento/aprendizados.md` (K-075).
+
+## 2026-10-02 — Aprendizado: passe de design do painel (branch feat/aprendizado-passe-de-design)
+
+- Regra do dono (layout bom, UX, todos os fluxos validados no navegador). Detalhe do app na ordem do que pede ação: Atenção → Aprendido → O que falha → Declarado → Absorvido. O Aprendido ganha o nível Capability: um bloco recolhível por capability com contagem, "pede(m) atenção" e saúde no resumo (abre sozinho o bloco com item em atenção); fluxo (comando inteiro) e item sem capability em blocos próprios; sem o campo (backend anterior), agrupa por tipo. "Como é usado" vira chips por tipo; Declarado vira grade compacta.
+- Item do Livro: sem o pacote repetido dentro da página do app; título longo (comando de fluxo) em duas linhas; "Último uso" com o dia (`formatQuando`: "hoje, 20:47", "29/09 20:47"; antes só a hora, que fazia um uso de três dias atrás parecer de hoje); "Nunca usado" no lugar de "Usos: 0"; "sombra 0/0" some e "sombra a/b" vira "na sombra, concordou com a IA em a de b"; "Espera o dono" em faixa própria; referência discreta. Sinais: "pelo painel"/"pelo sistema" e data. Detalhe: "Evidência registrada" explica a diferença para os usos da linha.
+- Prova: `simulated` (vitest 1243/1243; typecheck) e navegador contra backend simulado com cópia do banco (porta 8766, 02/10 ~21:55Z). **Exercitado** (clique e resultado): Global → Ver o app → detalhe do Instagram com 11 blocos de capability; Atenção → Abrir o item → detalhe rico da receita 73; desligar → reativar da receita 25 com motivo e trilha; 375 px sem rolagem horizontal. **Só visto** (tela lida, sem interação): Para aprovar, Aprendido, O que mais falha, Sinais. **Ainda não no navegador** (cobertos só pelo vitest): Aprovar/Rejeitar e aprovar em lote, Desligar em lote do Revisar, filtros do Aprendido, janela/camada e "Copiar para sessão" das falhas, "Ver no catálogo Aprendido", o balde não resolvido e os estados vazio/carregando/erro.
+
+## 2026-10-02 — Aprendizado: `capability` em cada linha do Livro e de `/apps/{pacote}` (branch feat/aprendizado-capability-na-linha)
+
+- A lista do Livro (`/api/aprendizado`, `/pendentes`, `/revisar`), as linhas de `/apps/{pacote}` e o `item` do detalhe trazem `capability` (`"<nome>"` ou `null`), para a hierarquia App → Capability → Item do painel. Receita: a derivação do detalhe, em lote (`FontesSql.capabilities_das_receitas`); lição e tela: `escopo.capability` (sem vazio nem `*`); fluxo, habilidade e memória: `null`. Sem migração; adendo v0.58 do contrato. Prova `simulated` (`test_learning_capability_na_linha.py`).
 
 ## 2026-10-02 — Caixa de avisos dos pedidos e coerência tela × API (28.9, branch jev/integ-28-9)
 

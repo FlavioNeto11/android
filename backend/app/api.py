@@ -2975,7 +2975,7 @@ async def preview_distribution(request: Request, body: DistributionPreviewBody) 
 
 
 @router.get("/runs/distribution", include_in_schema=False)
-async def preview_distribution_get_removido() -> Any:
+async def preview_distribution_get_removido() -> None:
     """Sem isto, o GET antigo cairia em `/runs/{run_id}` e responderia 404 "Execução não encontrada" (29.26)."""
     raise HTTPException(405, detail={"code": "metodo_removido", "message": "A prévia da distribuição agora é POST /api/runs/distribution, "
                                      "com o comando no corpo."}, headers={"Allow": "POST"})

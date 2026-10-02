@@ -3,7 +3,7 @@ import { createContext, useContext, useId, type ReactNode } from 'react';
 import { Badge } from '../../components/Badge';
 import { formatInt } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
-import { formatClock, formatDateTime } from '../../lib/time';
+import { formatDateTime, formatQuando } from '../../lib/time';
 import { abrirApp } from './apps';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -178,7 +178,7 @@ function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
         <Fato rotulo="Origem"><OrigemDaReceitaTexto o={c.origem} /></Fato>
         <Fato rotulo="Uso">
           deu certo {formatInt(uso.replay_ok)} · falhou {formatInt(uso.replay_fail)} · falhas seguidas {formatInt(uso.consecutive_fail)}
-          {uso.last_used_at ? ` · último uso ${formatClock(uso.last_used_at)}` : ' · nunca usada'}
+          {uso.last_used_at ? ` · último uso ${formatQuando(uso.last_used_at)}` : ' · nunca usada'}
         </Fato>
         {sombra.shadow_total > 0 ? (
           <Fato rotulo="Em sombra">concordou com a IA em {formatInt(sombra.shadow_agree)} de {formatInt(sombra.shadow_total)}</Fato>
@@ -280,7 +280,9 @@ function Conteudo({ c }: { c: ConteudoDoItem }) {
 
 // ---------------------------------------------------------------- saúde
 
-function Saude({ s }: { s: SaudeDoItem }) {
+/** `comVersao`: a seção "Versão do app" vem logo abaixo; a linha "Versão do app: sem dado" da saúde a contradiria. */
+function Saude({ s, comVersao = false }: { s: SaudeDoItem; comVersao?: boolean }) {
+  const dimensoes = comVersao ? s.dimensoes.filter((d) => !(d.nome === 'versao' && (d.estado === 'desconhecida' || d.valor === null))) : s.dimensoes;
   const meta = metaDeSaude(s.rotulo);
   return (
     <Secao slug="saude" titulo="Saúde">
@@ -290,12 +292,12 @@ function Saude({ s }: { s: SaudeDoItem }) {
           {s.motivos.map((m, i) => <li key={`${m.codigo}-${i}`}>{textoDoMotivo(m)}</li>)}
         </ul>
       ) : null}
-      {s.dimensoes.length > 0 ? (
+      {dimensoes.length > 0 ? (
         <table className={styles.tabelaDetalhe}>
           <caption>O que foi medido</caption>
           <thead><tr><th scope="col">Medida</th><th scope="col">Valor</th></tr></thead>
           <tbody>
-            {s.dimensoes.map((d) => (
+            {dimensoes.map((d) => (
               <tr key={d.nome}>
                 <th scope="row">{rotuloDaDimensao(d.nome)}</th>
                 <td title={`Fonte: ${d.fonte}`}>
@@ -355,8 +357,10 @@ const POSTURA: Record<EvidenciaDoLivro['stance'], string> = { for: 'a favor', ag
 function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   const n = (s: EvidenciaDoLivro['stance']) => evid.filter((x) => x.stance === s).length;
   return (
-    <Secao slug="evidencia" titulo="Evidência">
+    <Secao slug="evidencia" titulo="Evidência registrada">
       <p className={styles.secaoLead}>
+        As evidências que o Livro guardou (execução, aparelho e versão de cada uma); os usos da linha do item contam as
+        reproduções.{' '}
         {n('for')} a favor · {n('against')} contra · {n('conflict')} em conflito
         {evid.some((x) => x.simulated) ? ' (as simuladas nunca contam para publicar)' : ''}.
       </p>
@@ -386,7 +390,7 @@ function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
         <ol className={styles.trilha} aria-label="Trilha">
           {trilha.map((t) => (
             <li key={t.id}>
-              {formatClock(t.decided_at)} · {t.from ? `${rotuloDoEstado(t.from)} → ` : ''}{rotuloDoEstado(t.to)} por{' '}
+              {formatQuando(t.decided_at)} · {t.from ? `${rotuloDoEstado(t.from)} → ` : ''}{rotuloDoEstado(t.to)} por{' '}
               <strong>{t.decided_by}</strong>: {t.reason}
             </li>
           ))}
@@ -456,7 +460,7 @@ export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
         {conteudo ? (
           <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} /></Secao>
         ) : null}
-        {saude ? <Saude s={saude} /> : null}
+        {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} /> : null}
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />

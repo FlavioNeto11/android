@@ -1,5 +1,5 @@
 import { FlaskConical, MessageSquareText, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
@@ -7,7 +7,7 @@ import { Field, Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock } from '../../lib/time';
+import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { type Polaridade, SINAL_KINDS, type Sinal, rotuloDaFalha, rotuloDoMotivo, rotuloDoSinal } from './model';
@@ -20,6 +20,22 @@ const POLARIDADE: Record<Polaridade, { label: string; tone: Tone }> = {
   negative: { label: 'negativo', tone: 'danger' },
   neutral: { label: 'neutro', tone: 'neutral' },
 };
+
+/** O dia do sinal como cabeçalho ("hoje", "ontem", "29/09"); sem instante, `null` (não abre separador). */
+export function diaDoSinal(iso: string | null | undefined, agoraMs: number = Date.now()): string | null {
+  if (!iso) return null;
+  const q = formatQuando(iso, agoraMs);
+  if (q === '—') return null;
+  return q.startsWith('hoje') ? 'Hoje' : q.startsWith('ontem') ? 'Ontem' : q.split(' ')[0] ?? null;
+}
+
+/** Quem registrou o sinal, em português: o painel e o sistema são atores, não nomes. */
+export function quemRegistrou(por: string): string {
+  if (!por) return 'autor desconhecido';
+  if (por === 'panel' || por === 'painel') return 'pelo painel';
+  if (por === 'sistema' || por === 'system') return 'pelo sistema';
+  return `por ${por}`;
+}
 
 function LinhaDeSinal({ s }: { s: Sinal }) {
   const pol = s.polarity ? POLARIDADE[s.polarity] : null;
@@ -37,8 +53,8 @@ function LinhaDeSinal({ s }: { s: Sinal }) {
         {s.simulated ? <Badge tone="warning" size="sm" icon={FlaskConical} title="Execução simulada: nunca desliga nem promove nada real">simulado</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
-        {s.created_at ? <span>{formatClock(s.created_at)}</span> : null}
-        <span>por <strong>{s.created_by || '—'}</strong></span>
+        {s.created_at ? <span title={formatDateTime(s.created_at)}>{formatQuando(s.created_at)}</span> : null}
+        <span>{quemRegistrou(s.created_by)}</span>
         {onde ? <span className={styles.mono}>{onde}</span> : null}
         {s.reason ? <span>Motivo: {rotuloDoMotivo(s.reason)}</span> : null}
         {s.failure_kind ? <span>Falha: {rotuloDaFalha(s.failure_kind)}</span> : null}
@@ -119,7 +135,17 @@ export function SinaisTab() {
         </EmptyState>
       ) : (
         <ul className={styles.lista} aria-label="Sinais recentes">
-          {sinais.map((s, i) => <LinhaDeSinal key={`${s.id ?? s.source_ref}-${i}`} s={s} />)}
+          {/* Um separador por dia: a janela mistura até 30 dias, e a hora sozinha não diz de quando é. */}
+          {sinais.map((s, i) => {
+            const dia = diaDoSinal(s.created_at);
+            const anterior = i > 0 ? diaDoSinal(sinais[i - 1]?.created_at) : null;
+            return (
+              <Fragment key={`${s.id ?? s.source_ref}-${i}`}>
+                {dia && dia !== anterior ? <li className={styles.separadorDeDia} aria-hidden data-dia={dia}>{dia}</li> : null}
+                <LinhaDeSinal s={s} />
+              </Fragment>
+            );
+          })}
         </ul>
       )}
     </section>

@@ -7,8 +7,21 @@ abertas podem mudar o desenho:
 - a D0 do dono, sobre o sentido de "Jev para o fluxo de navegação";
 - o roteiro do Jev-retrieval (`choice`), que traz a emenda ao ADR-063 e as classes de dado que podem sair da máquina.
 
+**Porta do Jev (31.4, 02/10): IMPLEMENTADA** em `backend/app/planning/decisao_fechada/` (contrato, privacidade que falha
+fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts; o decisor real é o 31.8). Decisão: ADR-069. Resumo em
+[ia.md §16](../ia.md#16-decisão-por-conjunto-fechado-fase-31). Não muda o desenho do curador (30.12) nem a rubrica de gasto.
+
 Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **Jev-retrieval** = o provedor remoto de
 `modules/context_retrieval` (ADR-063).
+
+**Implementação (31.2 e 31.6, 02/10/2026):** a coluna `ai_calls.origem`/`ref` (migração 073), `Usage.origem`, o filtro
+`costs.spent_usd(origem=)`, `AIError.motivo` fechado e as fatias `curador` e `decisao_fechada` em `_budget` estão no
+código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. Faltam o método do curador (30.12), a porta de decisão
+do Jev e o saldo da conta (ADR-051) dentro da mesma ordem.
+
+**PENDÊNCIA registrada (orquestradora, 02/10):** a ordem das réguas ficou a existente (pedido > execução > dia > fatia) e o saldo
+da conta continua em `_saldo` (`kind="balance"`). UNIFICAR o saldo na rubrica (o `motivo="saldo"` e a fatia `α × min(saldo, teto)`) é o
+passo seguinte, a fazer antes do 30.11 gravar `learning_reviews.usd` e antes do 31.10.
 
 ## 1. O que já existe (PROVED no código)
 

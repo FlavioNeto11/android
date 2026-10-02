@@ -182,8 +182,14 @@ class RoutingProvider:
             "spend_limit_run_usd": getattr(s, "ai_max_usd_per_run", None)})
 
     # ------------------------------------------------------------------ orçamento em US$
-    def _budget(self, run_id: str | None) -> None:
-        """Teto em DINHEIRO, por execução e por dia (achado #95). Barrar aqui cobre TODO caminho de IA."""
+    def _budget(self, run_id: str | None, origem: str | None = None) -> None:
+        """Teto em DINHEIRO, por execução e por dia (achado #95). Barrar aqui cobre TODO caminho de IA.
+
+        Rubrica única (31.6): toda recusa sai com `AIError(kind="budget", motivo=...)` e quem decide o que fazer lê o
+        MOTIVO, nunca a frase. Ordem das réguas, a primeira que estourar vence: orçamento do pedido (`pedido`), teto da
+        execução (`execucao`), teto do dia (`dia`) e, por último, a FATIA da origem dentro do dia (`fatia_curador`,
+        `fatia_jev`). A fatia vem depois do dia porque é parte dele: passar no dia é pré-requisito, e uma fatia
+        estourada não barra outra origem. O saldo da conta (ADR-051) segue em `_saldo`, fora desta função."""
         if self.repo is None or self.get_settings is None:
             return
         s = self.get_settings()
@@ -195,22 +201,42 @@ class RoutingProvider:
             gasto = costs.spent_usd(self.repo.db, prices, run_id=run_id)
             if gasto >= teto_pedido:
                 raise AIError(f"Orçamento do pedido atingido nesta ocorrência: US$ {gasto:.2f} de US$ {teto_pedido:.2f}. "
-                              "Ajuste o orçamento do pedido para continuar.", kind="budget")
-        for rotulo, limite, gasto_fn, chave in (
+                              "Ajuste o orçamento do pedido para continuar.", kind="budget", motivo="pedido")
+        teto_dia = float(getattr(s, "ai_max_usd_per_day", 0) or 0)
+        for rotulo, limite, gasto_fn, chave, motivo in (
                 ("desta execução", float(getattr(s, "ai_max_usd_per_run", 0) or 0),
-                 (lambda: costs.spent_usd(self.repo.db, prices, run_id=run_id)), f"run:{run_id}"),
-                ("do dia", float(getattr(s, "ai_max_usd_per_day", 0) or 0),
-                 (lambda: costs.spent_today_usd(self.repo.db, prices)), f"dia:{costs.day_start_iso()}")):
+                 (lambda: costs.spent_usd(self.repo.db, prices, run_id=run_id)), f"run:{run_id}", "execucao"),
+                ("do dia", teto_dia,
+                 (lambda: costs.spent_today_usd(self.repo.db, prices)), f"dia:{costs.day_start_iso()}", "dia"),
+                *self._fatia_da_origem(origem, teto_dia, prices)):
             if limite <= 0 or (rotulo.endswith("execução") and not run_id):
                 continue
             gasto = gasto_fn()
             if gasto >= limite:
                 raise AIError(f"Teto de gasto de IA {rotulo} atingido: US$ {gasto:.2f} de US$ {limite:.2f}. "
-                              "Ajuste o limite em Configuração › Limites para retomar.", kind="budget")
+                              "Ajuste o limite em Configuração › Limites para retomar.", kind="budget", motivo=motivo)
             if gasto >= limite * AVISO and chave not in self._avisados:
                 self._avisados.add(chave)
                 self.repo.bus.emit("log", f"Gasto de IA {rotulo} em US$ {gasto:.2f} de US$ {limite:.2f} "
                                           f"({gasto / limite:.0%} do teto).", level="warn", run_id=run_id)
+
+    def _fatia_da_origem(self, origem: str | None, teto_dia: float, prices: dict[str, list[float]]
+                         ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
+        """A régua da fatia desta origem, no mesmo formato das de `_budget` (vazia quando não há fatia).
+
+        Só `curador` e `decisao_fechada` têm fatia. Sem fatia configurada nada muda: o curador sem valor explícito e sem
+        teto do dia não tem fatia (a fração é do teto do dia, e `0` o desliga), e `0` em qualquer uma a desliga."""
+        limites = self.cfg.file.ai.limits
+        if origem == "curador":
+            explicito = limites.curador_max_usd_per_day
+            limite = float(explicito) if explicito is not None else limites.curador_fracao_do_dia * teto_dia
+            rotulo, motivo = "da fatia do curador", "fatia_curador"
+        elif origem == "decisao_fechada":
+            limite, rotulo, motivo = float(limites.jev_max_usd_per_day), "da fatia da decisão fechada", "fatia_jev"
+        else:
+            return ()
+        return ((rotulo, limite, lambda: costs.spent_today_usd(self.repo.db, prices, origem=origem),
+                 f"fatia:{origem}:{costs.day_start_iso()}", motivo),)
 
     # ------------------------------------------------------------------ saldo da conta (ADR-051)
     def _saldo(self, r: ResolvedRole) -> None:
@@ -263,12 +289,16 @@ class RoutingProvider:
         return (self.roles_por_perfil[perfil][papel] if perfil else self.roles[papel]), perfil
 
     # ------------------------------------------------------------------ despacho
-    async def _call(self, papel: str, run_id: str | None, fn: Callable[[AIProvider], Any]) -> tuple[Any, Usage]:
+    async def _call(self, papel: str, run_id: str | None, fn: Callable[[AIProvider], Any], *,
+                    origem: str | None = None, ref: str | None = None) -> tuple[Any, Usage]:
+        """`origem`/`ref` (31.2): quem pediu e o item de origem. Com `run_id` e sem origem, é `execucao`; os métodos
+        fora de execução passam a sua. O `Usage` devolvido leva os dois e `add_usage` grava em `ai_calls`."""
+        origem = origem or ("execucao" if run_id else None)
         r, perfil = self._funcao(papel, run_id)
         if r.kind != "simulated":
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
-            self._budget(run_id)
+            self._budget(run_id, origem)
         try:
             self._saldo(r)
             try:
@@ -281,6 +311,7 @@ class RoutingProvider:
                 # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
                 self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
                                     f"(cobrado na tarifa de {usage.model}).")
+            usage.origem, usage.ref = origem, ref
             return resultado, usage
         except AIError as exc:
             alvo = r.fallback_provider
@@ -301,6 +332,7 @@ class RoutingProvider:
             usage.requested_model = r.model
             self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
                                 f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
+            usage.origem, usage.ref = origem, ref
             return resultado, usage
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
@@ -344,15 +376,15 @@ class RoutingProvider:
 
     async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
         """Modo treinamento (item 13.2): mesma função/modelo/orçamento do planejador, sem execução."""
-        return await self._call("plan", None, lambda p: p.generalize(req))
+        return await self._call("plan", None, lambda p: p.generalize(req), origem="ensino")
 
     async def orchestrate_targets(self, req: PedidoDeOrquestracao) -> tuple[OrquestracaoOut, Usage]:
         """Quem faz (ADR-050): mesma função/modelo/orçamento do planejador, sem execução."""
-        return await self._call("plan", None, lambda p: p.orchestrate_targets(req))
+        return await self._call("plan", None, lambda p: p.orchestrate_targets(req), origem="orquestracao")
 
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando (ADR-047): mesma função/modelo/orçamento do planejador, sem execução."""
-        return await self._call("plan", None, lambda p: p.refine_command(req))
+        return await self._call("plan", None, lambda p: p.refine_command(req), origem="assistente")
 
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         # Escalonamento pode ser OUTRO provedor, não só outro modelo: o despacho olha o tier.
@@ -367,12 +399,12 @@ class RoutingProvider:
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         # Sem `run_id` (a prévia de persona nasce do portal): o teto por execução não se aplica, o do dia sim —
         # e era exatamente este o caminho que passava por fora de qualquer orçamento.
-        return await self._call("social", None, lambda p: p.generate_social_response(req))
+        return await self._call("social", None, lambda p: p.generate_social_response(req), origem="social")
 
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         # Papel `persona` (item 17.8: herda o `social` até alguém configurá-lo), sem `run_id`: nasce do portal, como
         # a prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
-        return await self._call("persona", None, lambda p: p.generate_persona(req))
+        return await self._call("persona", None, lambda p: p.generate_persona(req), origem="persona")
 
 
 def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = None) -> ResolvedRole:

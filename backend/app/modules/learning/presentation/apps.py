@@ -70,17 +70,24 @@ def _item_declarado(i: ItemDeclarado) -> JsonObject:
             "quantidade": i.quantidade, "uso": _uso(i.uso)}
 
 
-def _linha(x: LinhaDoAprendido, servico: LearningService, saudes: dict[str, Saude]) -> JsonObject:
-    return {**_entrada(x.entrada, servico, saudes.get(x.entrada.trail_ref)), "origem_na_visao": x.origem.value,
+def _linha(x: LinhaDoAprendido, servico: LearningService, saudes: dict[str, Saude],
+           capabilities: dict[str, str | None], nomes: dict[str, str | None]) -> JsonObject:
+    ref = x.entrada.trail_ref
+    return {**_entrada(x.entrada, servico, saudes.get(ref), capabilities.get(ref), nomes.get(ref)),
+            "origem_na_visao": x.origem.value,
             "uso": _uso(x.uso), "absorvida_em": x.absorvida_em}
 
 
 def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
     # A saúde sai da MESMA função da lista do Livro (30.4): o painel não a recalcula nem a completa por outra rota.
-    saudes = servico.saudes([x.entrada for x in (*d.aprendido, *d.absorvido)])
+    entradas = [x.entrada for x in (*d.aprendido, *d.absorvido)]
+    saudes = servico.saudes(entradas)
+    capabilities = servico.capabilities(entradas)       # em lote, como a saúde: nunca uma consulta por linha
+    nomes = servico.nomes_das_capabilities(entradas, capabilities)
     return {"app": _resumo(d.resumo), "declarado": [_item_declarado(i) for i in d.declarado],
-            "aprendido": [_linha(x, servico, saudes) for x in d.aprendido],
-            "absorvido": [_linha(x, servico, saudes) for x in d.absorvido], "modos": _modos(d.modos)}
+            "aprendido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.aprendido],
+            "absorvido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.absorvido],
+            "modos": _modos(d.modos)}
 
 
 @router.get("/apps", response_model=None)

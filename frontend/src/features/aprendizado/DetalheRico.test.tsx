@@ -137,7 +137,8 @@ describe('detalhe rico: saúde', () => {
       .find((tb) => /O que foi medido/.test(tb.textContent ?? ''))!.querySelectorAll('tbody tr');
     const porNome = Object.fromEntries(Array.from(linhas).map((tr) => [tr.querySelector('th')?.textContent, tr.querySelector('td')?.textContent]));
     expect(porNome['Eficácia']).toBe('60% (em 10)');
-    expect(porNome['Versão do app']).toBe('sem dado');
+    // Com a seção "Versão do app" logo abaixo, a linha "Versão do app: sem dado" da saúde sai (ela a contradiria).
+    expect(porNome['Versão do app']).toBeUndefined();
     expect(porNome['Intervenção humana']).toBe('sem dado');
     expect(Object.values(porNome)).not.toContain('0');
   });
@@ -149,7 +150,10 @@ describe('detalhe rico: saúde', () => {
 
   it('textoDoMotivo e valorDaDimensao: desconhecido nunca vira número', () => {
     expect(textoDoMotivo({ codigo: 'nunca_usado', dimensao: 'uso', valor: 20, limite: 14, detalhe: 'dias publicado' }))
-      .toBe('Publicado há 20 dias e nunca usado (limite: 14 dias)');
+      .toBe('Nunca usado desde que foi publicado, há 20 dias (prazo: 14 dias)');
+    // o mesmo fato no fluxo (backend anterior) sai com o mesmo texto
+    expect(textoDoMotivo({ codigo: 'fluxo_nunca_casado', dimensao: 'uso', valor: 20, limite: 14, detalhe: null }))
+      .toBe('Nunca usado desde que foi publicado, há 20 dias (prazo: 14 dias)');
     expect(textoDoMotivo({ codigo: 'eficacia_desconhecida', dimensao: 'eficacia', valor: null, limite: null, detalhe: null }))
       .toMatch(/^Sem dado/);
     expect(textoDoMotivo({ codigo: 'codigo_novo', dimensao: null, valor: 3, limite: null, detalhe: null })).toBe('codigo_novo: 3');
@@ -207,9 +211,9 @@ describe('detalhe rico: relações e seções ausentes', () => {
 
   it('sem conteúdo, saúde, versão e relações: só Identidade, Evidência e Histórico', async () => {
     await mostrar({ item: entrada({ kind: 'licao', ref: 'li-1', saude: null }), evidencias: [], trilha: [], exposicoes: [] });
-    expect(secoes()).toEqual(['Identidade', 'Evidência', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Histórico']);
     await mostrar(detalhe({ conteudo: null, versao: undefined, item: { saude: null }, relacoes: [] }));
-    expect(secoes()).toEqual(['Identidade', 'Evidência', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Histórico']);
   });
 
   it('histórico e evidência com link para a execução; ids dos títulos não se repetem entre dois detalhes', async () => {
@@ -280,7 +284,7 @@ describe('no catálogo Aprendido', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/receita\/12$/)).toHaveLength(0);
     await openDetails(/Detalhes, evidência e trilha/, linha);
     await waitFor(() => expect(linha.querySelector('h4')).not.toBeNull());
-    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência registrada', 'Histórico']);
   });
 
   it('?item=kind:ref abre o item do link no topo, já com o detalhe', async () => {

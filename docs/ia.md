@@ -153,6 +153,33 @@ Conclusão `real`: **o cache do verificador funciona** (`cache_read > 0` na 2ª 
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`). **Item 17.12:** o teto de chamadas é proporcional aos itens do `for_each`: `min(ai_max_calls_absolute, ai_max_calls_per_objective + ai_max_calls_per_item × (itens − 1))` (padrões 60 / 12 / 300; 8 itens = 144; sem lista ou com 1 item, 60 como antes). Os itens saem das etapas gravadas (`item_index` em `steps.variables`, `executor.py::_teto_de_chamadas`), o rejulgamento continua contando e a mensagem diz de onde veio o teto ("60 + 12 × 7 itens do for_each") | por objetivo |
 | Por etapa, medido (item 18.3) | `taskqueue/projecao.py` + `executor.py::_conferir_orcamento_da_etapa`: mediana e p90 de chamadas por (app, ação) nas etapas concluídas da janela; acima do p90, aviso na linha do tempo; acima de `max(p90 × ai.step_budget.p90_factor, p90 + slack)`, a etapa para (`budget`). Ação sem `min_samples` amostras não tem orçamento próprio. A mesma medição projeta o plano (`GET /api/runs/{id}/projection`) | por etapa |
 
+### Rubrica única de gasto e fatias por origem (31.2 e 31.6)
+
+Toda recusa por dinheiro do hub sai como `AIError(kind="budget", motivo=<régua>)`. O `motivo` é um vocabulário FECHADO
+(`planning/provider.py::MOTIVOS_DE_ORCAMENTO`) e só existe com `kind="budget"`: o painel, o aviso e a 30.13 leem o
+motivo, nunca a frase. A ordem em que `RoutingProvider._budget` confere (a primeira que estourar vence) e o que cada
+motivo quer dizer:
+
+| Ordem | `motivo` | Régua | Aplica a |
+|---|---|---|---|
+| 1 | `pedido` | orçamento do pedido persistente (28.6), por ocorrência | só execução nascida de pedido com orçamento |
+| 2 | `execucao` | `ai_max_usd_per_run` | só chamada com `run_id` |
+| 3 | `dia` | `ai_max_usd_per_day`, o mesmo número para todos | toda chamada |
+| 4 | `fatia_curador` | `ai.limits.curador_max_usd_per_day`; sem valor, `curador_fracao_do_dia` (α = 0,10) × teto do dia | `origem='curador'` |
+| 4 | `fatia_jev` | `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50; D-J3 aprovada pelo dono no ADR-069) | `origem='decisao_fechada'` |
+| (fora de `_budget`) | `saldo` | saldo da conta (ADR-051), em `RoutingProvider._saldo` | hoje sai com `kind="balance"`; o valor já está no vocabulário para a etapa que o unificar |
+
+- A fatia é PARTE do teto do dia, nunca soma por fora: a chamada passa no dia E na fatia da própria origem, e uma fatia
+  estourada barra só aquela origem. O gasto da fatia é o do dia filtrado por origem (`costs.spent_today_usd(origem=)`,
+  `ai_calls.origem`, migração 073). `0` desliga a fatia; curador sem valor explícito e sem teto do dia fica sem fatia.
+- O vocabulário de `origem` (`ORIGENS_DE_IA`): `execucao` (padrão com `run_id`), `ensino` (`generalize`),
+  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` e `decisao_fechada`. Linha antiga
+  fica NULL. Quem pede passa `origem=`/`ref=` a `RoutingProvider._call`; o `Usage` leva os dois e `add_usage` grava.
+- Os tetos de CHAMADAS e de tokens do executor (17.12 e 18.3) continuam em `kind="budget"` sem `motivo`: protegem
+  contra laço, não contra preço, e não são uma régua de dinheiro.
+- Passos seguintes, não feitos aqui: levar o saldo da conta (ADR-051) para dentro da mesma ordem, com `motivo="saldo"`,
+  e α sobre `min(saldo, teto do dia)`. Desenho: `docs/design/hub-de-ia-fora-de-execucao.md` §3.
+
 ## 7. Receitas, fluxos e provas locais
 
 Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, resumido:
@@ -322,6 +349,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
+| `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -499,3 +527,40 @@ o que toca a IA. Nenhuma chamada de IA escreve, escolhe ou mede lição (`aprend
 
 Prova: `simulated` (`backend/tests/test_prompts_licoes.py`, `test_learning_licoes.py`, `test_learning_efeito.py`);
 exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md)).
+
+
+## 16. Decisão por conjunto fechado (Fase 31)
+
+A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
+System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
+real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
+continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de dado: ADR-069.
+
+- **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
+  step_id, ref)`, `Pergunta(id, tipo, instrucoes, opcoes, limiar)` e `RespostaDeDecisao(escolha, probabilidades, confianca,
+  fallback_reason, tokens, usd, ms)`. Origens: `curador`, `intencao`, `desempate`, `apps`. Até 255 opções, sempre com
+  `nenhuma` (`pergunta_choice` a acrescenta; o adaptador de retrieval aplica a mesma trava e recusa localmente acima de 255).
+  Um estado, N perguntas, **uma** chamada; o custo mora no `ResultadoDeDecisao`.
+- **Privacidade que falha fechada**, antes de montar corpo (`privacidade.py`, ADR-069 itens 3 e 4):
+  - `JEV_RUNTIME_SEND_APPROVED = False` recusa tudo;
+  - `JEV_ALLOWED_CLASSES` é o teto de código (C0 e C1 em F1 para todos, C2 em F2, C3 em F3), e **a C3 só vale na origem
+    `intencao` e só em `shadow`** (em outra origem, ou em `on`, é recusada);
+  - C4 em diante não existe no vocabulário;
+  - qualquer marcador de C7 no pedido (tela sensível ou protegida, aparelho-loja, segredo, credencial, desafio/2FA/CAPTCHA)
+    recusa o pedido INTEIRO, na sombra também; `social_persona` e qualquer origem fora das quatro (D-J5) também recusam;
+  - o estado só leva campos nomeados da lista da origem (`CAMPOS_POR_ORIGEM`, vazia até cada consumidor registrar os seus);
+  - toda string do corpo passa por `security.redaction.redact` (cobre segredo, não nome de terceiro: por isso a classe é
+    limitada).
+- **Modos.** `ai.decisao_fechada.enabled: false` vence tudo; `ai.decisao_fechada.consumidores.<origem>: off|shadow|on`
+  (ausente = `off`); o modo efetivo é o MENOR entre o do pedido e o do consumidor. `ai.decisao_fechada.classes_permitidas`
+  só estreita o teto de código. `shadow` roda fora do caminho crítico e nada usa a resposta (só o `observador`, que recebe
+  ids e categorias, nunca o estado); `on` só por consumidor, com GO pré-registrado.
+- **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
+  `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
+  `privacidade`, `desligado`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
+  resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+- **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
+  varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_context_retrieval_semantic.py`: decisores nulo e falso e
+transporte falso). Chamada real ao Jev: `not_run`.

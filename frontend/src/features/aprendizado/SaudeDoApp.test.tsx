@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { agruparPorCapability, contarPorRotulo, falhasPorCapability, filaDeAtencao, motivoPrincipal } from './atencao';
+import {
+  agruparPorCapability, contarPorRotulo, falhasPorCapability, filaDeAtencao, gruposDoAprendido, motivoPrincipal, resumirTitulo,
+} from './atencao';
 import type { EntradaDoLivro, RotuloDeSaude, SaudeDoItem } from './model';
 
 /**
@@ -163,7 +165,7 @@ describe('saúde por app', () => {
     expect(saudeDoApp).toContain('1 saudável');
     expect(saudeDoApp).toContain('1 degradando');
     // O selo do item vem da lista do Livro: a linha de /apps/{pacote} chegou sem `saude`.
-    const lista = container.querySelector('ul[aria-label="Aprendido"]') as HTMLElement;
+    const lista = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
     expect(text(lista)).toContain('Saúde: Degradando');
     expect(text(lista)).toContain('Saúde: Saudável');
   });
@@ -172,12 +174,15 @@ describe('saúde por app', () => {
 describe('fila Atenção', () => {
   it('no Global lista só degradando, obsoleto provável e sem evidência, do mais grave ao menos, com o motivo e o link do item', async () => {
     await montar();
+    // Um bloco por rótulo (degradando, obsoleto provável, sem evidência); fila curta abre todos.
     const fila = await waitFor(() => {
-      const f = container.querySelector('[aria-label="Itens que pedem atenção"]') as HTMLElement;
-      expect(f).toBeTruthy();
+      const f = container.querySelector('section[aria-label="Atenção"]') as HTMLElement;
+      expect(f?.querySelector('li[data-atencao]')).toBeTruthy();
       return f;
     });
-    const itens = Array.from(fila.querySelectorAll('li')).map((li) => li.getAttribute('data-atencao'));
+    expect(Array.from(fila.querySelectorAll('[data-grupos-de-atencao] > details > summary')).map((s) => text(s as HTMLElement)))
+      .toEqual([expect.stringContaining('Degradando'), expect.stringContaining('Provavelmente obsoleto'), expect.stringContaining('Sem evidência')]);
+    const itens = Array.from(fila.querySelectorAll('li[data-atencao]')).map((li) => li.getAttribute('data-atencao'));
     expect(itens).toEqual(['receita:8', 'licao:li-1', 'fluxo:3']);
     expect(text(container.querySelector('[aria-label="Atenção"]') as HTMLElement)).toContain('Atenção (3)');
 
@@ -185,7 +190,7 @@ describe('fila Atenção', () => {
     expect(degradando).toContain('3 falhas seguidas (o limite é 2)');
     expect(degradando).toContain('Exemplo Cheio');                      // no Global a fila mostra o app
     expect(text(fila.querySelector('[data-atencao="licao:li-1"]') as HTMLElement)).toContain('Há uma versão mais nova em uso (9)');
-    expect(text(fila.querySelector('[data-atencao="fluxo:3"]') as HTMLElement)).toContain('nunca usado');
+    expect(text(fila.querySelector('[data-atencao="fluxo:3"]') as HTMLElement)).toContain('Nunca usado');
 
     const link = byRole('link', /Abrir o item/, fila.querySelector('[data-atencao="receita:8"]') as HTMLElement);
     expect(link.getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=receita%3A8');
@@ -197,8 +202,8 @@ describe('fila Atenção', () => {
   it('no detalhe do app a fila é só daquele app, sem repetir o nome do app', async () => {
     await montar();
     await abrirDetalhe();
-    const fila = container.querySelector('[aria-label="Itens que pedem atenção"]') as HTMLElement;
-    expect(Array.from(fila.querySelectorAll('li')).length).toBe(3);
+    const fila = container.querySelector('section[aria-label="Atenção"]') as HTMLElement;
+    expect(Array.from(fila.querySelectorAll('li[data-atencao]')).length).toBe(3);
     expect(text(fila)).not.toContain('Exemplo Cheio');
   });
 
@@ -236,12 +241,15 @@ describe('falhas e capability no detalhe do app', () => {
     expect(useUiStore.getState().rota.query).toMatchObject({ aba: 'falhas' });
   });
 
-  it('o aprendido segue plano e a tela diz por quê quando o backend não manda a capability na lista', async () => {
+  it('sem a capability na lista (backend anterior), o aprendido é agrupado por tipo e nunca fica plano', async () => {
     await montar();
     await abrirDetalhe();
-    expect(container.querySelector('[data-sem-capability]')).toBeTruthy();
-    expect(text(container)).toContain('o backend só informa a capability no detalhe de cada item');
-    expect(container.querySelector('ul[aria-label="Aprendido"]')).toBeTruthy();
+    const secao = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
+    expect(Array.from(secao.querySelectorAll('[data-grupos] > details > summary')).map((s) => text(s as HTMLElement))).toEqual([
+      expect.stringContaining('Fluxo'), expect.stringContaining('Lição'), expect.stringContaining('Receita'),
+    ]);
+    // O grupo com item pedindo atenção já abre; o resto fica recolhido até a pessoa abrir.
+    expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy();
   });
 
   it('quando a linha traz `capability`, o aprendido é agrupado por ela', async () => {
@@ -256,10 +264,17 @@ describe('falhas e capability no detalhe do app', () => {
     backend.on('GET', new RegExp(`^/api/aprendizado/apps/${CHEIO.replace(/\./g, '\\.')}$`), () => json(comCapability));
     await montar();
     await abrirDetalhe();
-    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido — enviar_mensagem"]')).toBeTruthy());
-    expect(container.querySelector('ul[aria-label="Aprendido — abrir_conversa"]')).toBeTruthy();
-    expect(container.querySelector('ul[aria-label="Aprendido — Etapa livre (sem capability)"]')).toBeTruthy();
-    expect(container.querySelector('[data-sem-capability]')).toBeNull();
+    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido: enviar_mensagem"]')).toBeTruthy());
+    const secao = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
+    const resumos = Array.from(secao.querySelectorAll('[data-grupos] > details > summary')).map((s) => text(s as HTMLElement));
+    // Capability primeiro, em ordem; o fluxo (comando inteiro) no seu bloco, por último.
+    expect(resumos).toEqual([
+      expect.stringContaining('abrir_conversa'), expect.stringContaining('enviar_mensagem'),
+      expect.stringContaining('Fluxos (o comando inteiro)'),
+    ]);
+    expect(resumos[1]).toContain('1 pede atenção');
+    // Sem item pedindo atenção, o bloco fica recolhido.
+    expect(container.querySelector('ul[aria-label="Aprendido: abrir_conversa"]')).toBeNull();
   });
 });
 
@@ -289,6 +304,33 @@ describe('funções puras', () => {
     expect(agruparPorCapability([{ a: 1 }, { a: 2 }])).toBeNull();
     const g = agruparPorCapability([{ capability: 'b' }, { x: 1 }, { capability: 'a' }, { capability: '*' }]);
     expect(g?.map((x) => [x.capability, x.itens.length])).toEqual([['a', 1], ['b', 1], ['*', 2]]);
+  });
+
+  it('o grupo mostra o nome em português do catálogo e guarda o código; sem nome, o código em mono', () => {
+    const g = gruposDoAprendido([
+      { kind: 'receita' as const, capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' },
+      { kind: 'receita' as const, capability: 'CREATE_COMMENT', capability_nome: 'Comentar na publicação' },
+      { kind: 'licao' as const, capability: 'NOVA_ACAO', capability_nome: null },
+      { kind: 'fluxo' as const, capability: null },
+    ], (k) => k);
+    // em ordem do que a pessoa lê (o nome), o código sem nome no meio pela mesma regra, os fluxos por último
+    expect(g.map((x) => [x.titulo, x.ehCapability, x.codigo])).toEqual([
+      ['Abrir o perfil', false, 'OPEN_PROFILE'], ['Comentar na publicação', false, 'CREATE_COMMENT'],
+      ['NOVA_ACAO', true, null], ['Fluxos (o comando inteiro)', false, null],
+    ]);
+    const f = falhasPorCapability([{ capability: 'OPEN_POST', capability_nome: 'Abrir a publicação' }, { capability: '*', capability_nome: null }]);
+    expect(f.map((x) => [x.capability, x.nome])).toEqual([['OPEN_POST', 'Abrir a publicação'], ['*', null]]);
+  });
+
+  it('resumirTitulo corta o comando longo na palavra e deixa o curto como está', () => {
+    expect(resumirTitulo('Abrir o feed')).toBe('Abrir o feed');
+    const longo = 'No Outlook, na caixa de entrada, leia o remetente e o assunto da mensagem mais recente, sem abrir a mensagem.';
+    const r = resumirTitulo(longo);
+    expect(r.length).toBeLessThanOrEqual(81);
+    expect(r.endsWith('…')).toBe(true);
+    expect(longo.startsWith(r.slice(0, -1))).toBe(true);
+    expect(r).not.toMatch(/[ ,]…$/);
+    expect(resumirTitulo(`${'x'.repeat(120)}`)).toBe(`${'x'.repeat(80)}…`);
   });
 
   it('falhasPorCapability junta pelo nome e deixa `*` (e o vazio) por último', () => {

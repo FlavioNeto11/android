@@ -1569,7 +1569,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
 ([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
 
-**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.59) (`api.py::flows_match`):
+**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.64) (`api.py::flows_match`):
 
 - Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
   `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
@@ -3559,7 +3559,7 @@ fechado (também é persistida e transmitida).
 | `faixa` | `B` ou `C` (§8.4 de `design/aprendizado-vivo.md`) |
 | `aguardando` | `true` ao entrar na espera; `false` ao sair |
 | `motivo` | entrada: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; saída: `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
-| `href` | `#/aprendizado?item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
+| `href` | `#/aprendizado?aba=aprendido&item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
 | `desde` | ISO UTC de quando entrou na espera (também no evento de saída) |
 
 **Nunca** vai no evento: conteúdo de receita ou fluxo, seletor, texto digitado, parâmetro, texto de persona, nota nem conclusão de IA.
@@ -3723,7 +3723,7 @@ Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_relacoes.py
 | `versao_fora_do_parque` | receita, tela | a versão do item, que nenhum aparelho ativo tem (`versao.estado = versao_aposentada`); `device_app_state` |
 | `versao_viva_sem_reproducao` | receita, tela | as versões vivas em que a chave não tem receita e que não são provadamente mais antigas (tela: `incompativel`) |
 | `efeito_sem_respaldo_no_catalogo` | receita, fluxo | a capability (ou `*`); `catalogo.yaml (<sem_respaldo\|duvidoso>): <fato>` |
-| `fluxo_nunca_casado` | fluxo | dias publicado sem nenhum uso (`limite` = `sem_uso_dias`); `flows.uses`. Toma o lugar de `sem_evidencia` no fluxo |
+| ~~`fluxo_nunca_casado`~~ | fluxo | **removido na v0.63**: o fluxo nunca usado é `sem_evidencia`/`nunca_usado`, como a receita |
 | `absorvida` | item | o commit de `state_detail = absorvida:<commit>` |
 
 Fora (sem fonte hoje): "sem uso enquanto a etapa roda por outro caminho", "duplicado" em chaves vizinhas e "habilidade publicada com a
@@ -3754,7 +3754,7 @@ Resposta 200: `{profile_id, account_id, retirada, ancora, limpezas, status_da_pe
 `app_id`, `ancora`, `origem`, `autor`, `evidencia`, `limpezas`, `status_da_persona`). O aparelho não é tocado.
 
 
-## Adendo v0.57 (02/10/2026) — `POST /api/instances/{instance_id}/locked-account/resolve`: a pessoa resolve a quarentena (item 29.24, ADR-068)
+## Adendo v0.61 (02/10/2026) — `POST /api/instances/{instance_id}/locked-account/resolve`: a pessoa resolve a quarentena (item 29.24, ADR-068)
 
 Depois de limpar o app do aparelho (o que é decisão e ato da pessoa), a quarentena (marcador de conta travada, ADR-055) só sai por
 este gesto explícito. Corpo `{"nota": "1 a 500 caracteres"}`, **obrigatória** (vazia, só espaços ou longa demais: 422). A nota
@@ -3806,7 +3806,7 @@ legado para a que não tem. Na leitura retroativa (`retroativo=true`) o tipo ven
 
 Prova `simulated` (`tests/test_learning_diagnostico.py`); `not_run` no central.
 
-## Adendo v0.59 (02/10/2026) — `flows/match` passa a `POST` com corpo JSON; `members[].name` nos grupos de acesso (item 29.25)
+## Adendo v0.64 (02/10/2026) — `flows/match` passa a `POST` com corpo JSON; `members[].name` nos grupos de acesso (item 29.25)
 
 **Quebra de contrato só para o painel do mesmo commit.** `GET /api/flows/match?command=<rascunho>` deixa de existir (responde 405) e vira
 `POST /api/flows/match` com corpo `{"command": "1 a 4000 caracteres"}` (`extra="forbid"`; vazio, longo demais ou campo a mais: 422). Motivo: o
@@ -3821,7 +3821,7 @@ Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/insta
 sobrenome ou o @; `null` se nada existir). `username` continua `""`/nulo para quem teve a conta retirada (29.23); o painel mostra "nome · sem conta".
 Prova `simulated` (`test_intencao_chamadores.py`, `test_grupos_de_acesso.py`); `not_run` no central.
 
-## Adendo v0.6x (número definido no merge) (02/10/2026) — texto livre fora da query string; `has_avatar` (item 29.26)
+## Adendo v0.65 (02/10/2026) — texto livre fora da query string; `has_avatar` (item 29.26)
 
 **Quebra de contrato só para o painel do mesmo commit.** Continuação do v0.59: nenhuma rota `GET` carrega mais comando, mensagem ou busca de conteúdo na URL (query string vira linha de log de acesso e o texto pode ter e-mail ou nome).
 
@@ -3836,3 +3836,39 @@ O resto da classe ficou na URL de propósito (varredura em `CHANGELOG.md`): ids,
 Adição (compatível): `has_avatar: bool` em `PersonaDTO`/`InstagramProfileDTO` (`/api/personas`, `/api/instagram/profiles`), em `PersonaOnDeviceDTO` (`GET /api/instances/{id}/personas`) e em `profiles[]` do contexto operacional: verdadeiro quando há imagem principal pronta, a que `GET /api/instagram/profiles/{id}/avatar` serve. O painel só pede a foto com ele e, sem foto, mostra as iniciais sem requisição (antes: um 404 por persona sem foto). A rota não mudou (404 sem foto); o jpg legado ainda não importado para a 048 (o import roda na partida) conta como sem foto no campo.
 
 Prova `simulated` (`test_distribuicao_pelo_comando.py`, `test_limites_por_servidor.py`, `test_social_memory.py`, `test_pedidos_api.py`, `test_persona_imagens.py`, `Avatar.test.tsx`, `ProfilesPage.test.tsx`, `CommandPanel.test.tsx`, `PedidosPage.test.tsx`); `not_run` no central e no navegador.
+
+## Adendo v0.58 (02/10/2026) — `capability` em cada linha do Livro e de `/apps/{pacote}` (hierarquia App → Capability → Item)
+
+Aditivo: nenhum campo some nem muda de tipo, nenhum código de erro novo, sem migração. (A v0.57 é de outra frente: 30.11.)
+
+Cada linha de `GET /api/aprendizado` (e de `/pendentes` e `/revisar`), de `GET /api/aprendizado/apps/{pacote}` (`aprendido[]` e `absorvido[]`)
+e o `item` do detalhe `GET /api/aprendizado/{kind}/{ref}` ganham **`capability`**: `"<nome>"` ou `null`. O que não se sabe é `null`, nunca palpite:
+
+- **receita**: a mesma derivação do `conteudo.capability` do detalhe (a capability da etapa de origem `learned_from`; sem ela, as etapas com o mesmo
+  `step_hash` no mesmo app); ambígua (mais de uma capability distinta), sem fonte, treino e etapa livre `*` saem `null`;
+- **lição e tela** (itens do livro): `escopo.capability`, exceto vazio e `*`;
+- **fluxo, habilidade, memória** e o resto: `null` (o fluxo é um comando inteiro, não pertence a uma capability).
+
+Lida em lote (uma consulta por tipo, como a `saude`); o painel agrupa por ela em `agruparPorCapability`.
+
+## Adendo v0.59 (02/10/2026) — o `href` do item do Livro abre a aba certa
+
+Muda o VALOR de um campo, não o tipo. O `href` de `learning.needs_person` (30.21) e do aviso externo (28.14, Telegram) passa de
+`#/aprendizado?item=<kind>:<ref>` para **`#/aprendizado?aba=aprendido&item=<kind>:<ref>`**. Sem a aba, o painel caía na visão
+Aplicativos e não abria o item (validação no Chrome de 02/10, I1). O painel aceita os dois formatos: `item` sem `aba` abre o
+catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcionando. "Revisar" das Pendências usa o mesmo link.
+
+## Adendo v0.63 (02/10/2026) — mesmo rótulo para o mesmo fato e o nome da capability
+
+Número provisório: a orquestradora renumera no merge se outro adendo chegar antes.
+
+- **`saude`: sai o motivo `fluxo_nunca_casado`.** O fluxo publicado e nunca usado há `sem_uso_dias` passa a sair como
+  `sem_evidencia`, com o motivo `nunca_usado`, igual à receita. Antes, o mesmo fato era `obsoleto_provavel` no fluxo e
+  `sem_evidencia` na receita, e o dono via o rótulo mudar sem saber por quê (validação no Chrome do deploy 2). A obsolescência
+  do fluxo continua sendo a `substituta_viva`. Um cliente que ainda recebe `fluxo_nunca_casado` de um backend anterior mostra o
+  mesmo texto do `nunca_usado`.
+- **`capability_nome`** (texto ou `null`), campo novo ao lado de `capability` em cada linha de `GET /api/aprendizado`,
+  `/pendentes`, `/revisar`, no `item` do detalhe, nas linhas de `/apps/{pacote}` e em cada grupo de `GET /api/aprendizado/falhas`
+  (`itens[]` e `verificacao[]`, só no JSON; o Markdown segue com o código). É o `title` da capability no catálogo do app, com as
+  internas, sem as lacunas de parâmetro: `OPEN_PROFILE` → "Abrir o perfil", `SEARCH_MAIL` → "Buscar no Outlook". Vem `null` se o
+  app não tem catálogo, se a capability é desconhecida ou se a linha não tem capability. Nesses casos o painel mostra o código.

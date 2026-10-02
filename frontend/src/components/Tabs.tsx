@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cx } from '../lib/format';
 import ui from './ui.module.css';
 
@@ -24,6 +24,19 @@ interface TabsProps<T extends string> {
 /** Abas WAI-ARIA: setas ←/→, Home/End, tabindex itinerante. */
 export function Tabs<T extends string>({ tabs, active, onChange, idBase, label }: TabsProps<T>) {
   const refs = useRef(new Map<string, HTMLButtonElement>());
+  const lista = useRef<HTMLDivElement>(null);
+
+  // No celular a faixa de abas rola na horizontal e a aba ativa (vinda de um link) podia nascer fora da tela. Rola só
+  // a FAIXA (scrollLeft), nunca a página: `scrollIntoView` puxaria a tela inteira para a faixa.
+  useEffect(() => {
+    const faixa = lista.current;
+    const aba = refs.current.get(active);
+    if (!faixa || !aba || faixa.scrollWidth <= faixa.clientWidth) return;
+    const inicio = aba.offsetLeft - faixa.offsetLeft;
+    const fim = inicio + aba.offsetWidth;
+    if (inicio < faixa.scrollLeft) faixa.scrollLeft = Math.max(0, inicio - 16);
+    else if (fim > faixa.scrollLeft + faixa.clientWidth) faixa.scrollLeft = fim - faixa.clientWidth + 16;
+  }, [active]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const idx = tabs.findIndex((t) => t.id === active);
@@ -41,7 +54,7 @@ export function Tabs<T extends string>({ tabs, active, onChange, idBase, label }
   };
 
   return (
-    <div role="tablist" aria-label={label} className={ui.tabs} onKeyDown={onKeyDown}>
+    <div ref={lista} role="tablist" aria-label={label} className={ui.tabs} onKeyDown={onKeyDown}>
       {tabs.map((t) => {
         const selected = t.id === active;
         const Icon = t.icon;

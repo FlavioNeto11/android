@@ -10,7 +10,7 @@ diário (`learning_daily`) recalculado por inteiro, só para dias ainda intactos
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -19,13 +19,13 @@ from app.modules.learning.application.espera import AvisadorDeEspera
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
                                                     NovoSinal, PassoDeCuradoria, PortaDeEventos,
-                                                    RepositorioDeAprendizado, TriagemDeTexto)
+                                                    RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
-from app.modules.learning.domain.conteudo import licao_legivel, tela_legivel
+from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
@@ -121,10 +121,12 @@ class LearningService:
                  ajustes: Callable[[], Ajustes], relogio: Callable[[], datetime],
                  retencao_de_logs_dias: Callable[[], int],
                  mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
-                 eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None) -> None:
+                 eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
+                 titulos: TitulosDoCatalogo | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
-        publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C."""
+        publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
+        capability no catálogo (sem ele, o painel mostra o código)."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -135,6 +137,7 @@ class LearningService:
         self._passos: list[PassoDeCuradoria] = list(passos)
         self._extensoes: list[object] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio)
+        self._titulos = titulos
 
     @property
     def ajustes(self) -> Ajustes:
@@ -218,6 +221,47 @@ class LearningService:
             saude = self.saude_de(e, tuple(evidencias), contexto=contexto)
             if saude is not None:
                 saida[e.trail_ref] = saude
+        return saida
+
+    def capabilities(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, str | None]:
+        """A capability de cada entrada, pela ref da trilha, para a hierarquia App → Capability → Item do painel. Em
+        lote (uma leitura por tipo, nunca por linha), como `saudes`. Receita: a derivação do detalhe; lição e tela
+        (itens): a `scope_capability` do item. Fluxo, habilidade, memória e o resto: `None` (o fluxo é um comando
+        inteiro). O que não se sabe é `None`; nunca palpite."""
+        refs_de_receita = [e.ref for e in entradas if e.kind is LivroKind.RECEITA]
+        refs_de_item = [e.ref for e in entradas if e.kind in KINDS_DE_ITEM]
+        da_receita = self._fontes.capabilities_das_receitas(refs_de_receita) if refs_de_receita else {}
+        do_item = self._repo.capabilities_dos_itens(refs_de_item) if refs_de_item else {}
+        saida: dict[str, str | None] = {}
+        for e in entradas:
+            if e.kind is LivroKind.RECEITA:
+                saida[e.trail_ref] = da_receita.get(e.ref)
+            elif e.kind in KINDS_DE_ITEM:
+                saida[e.trail_ref] = capability_unica(do_item.get(e.ref))
+            else:
+                saida[e.trail_ref] = None
+        return saida
+
+    def nome_da_capability(self, app: str | None, capability: str | None) -> str | None:
+        """O nome em português da capability no catálogo do app (`domain/conteudo.nome_da_capability`), para o grupo
+        do painel. Sem catálogo, sem app ou capability desconhecida: `None` (o painel mostra o código)."""
+        if self._titulos is None or not app or not capability:
+            return None
+        return nome_da_capability(self._titulos.titulo(app, capability))
+
+    def nomes_das_capabilities(self, entradas: Sequence[EntradaDoLivro],
+                               capabilities: Mapping[str, str | None]) -> dict[str, str | None]:
+        """`nome_da_capability` de cada linha, pela ref da trilha; uma consulta por par (app, capability)."""
+        vistos: dict[tuple[str, str], str | None] = {}
+        saida: dict[str, str | None] = {}
+        for e in entradas:
+            c = capabilities.get(e.trail_ref)
+            if not c or not e.app:
+                saida[e.trail_ref] = None
+                continue
+            if (e.app, c) not in vistos:
+                vistos[(e.app, c)] = self.nome_da_capability(e.app, c)
+            saida[e.trail_ref] = vistos[(e.app, c)]
         return saida
 
     def _contexto_de_obsolescencia(self) -> ContextoDeObsolescencia | None:

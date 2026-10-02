@@ -123,6 +123,10 @@ class MudancaNativa:
 class RepositorioDeAprendizado(Protocol):
     def item(self, item_id: str) -> ItemDeAprendizado | None: ...
     def itens(self, *, kind: LivroKind | None = None, state: SkillState | None = None) -> list[ItemDeAprendizado]: ...
+    def capabilities_dos_itens(self, item_ids: Sequence[str]) -> dict[str, str]:
+        """A `scope_capability` de cada item pedido (id -> valor cru, vazio inclusive), em consulta em lote."""
+        ...
+
     def item_vivo(self, novo: NovoItem) -> ItemDeAprendizado | None: ...
     def criar_item(self, novo: NovoItem, *, by: str, estado: SkillState, detalhe: str | None,
                    reason: str, run_id: str | None = None) -> ItemDeAprendizado: ...
@@ -158,6 +162,11 @@ class FontesDoLivro(Protocol):
     def conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
         """O conteúdo legível (30.3) de receita, fluxo ou habilidade, montado do que já está no banco; `None` nos
         outros tipos ou quando a linha sumiu."""
+        ...
+
+    def capabilities_das_receitas(self, refs: Sequence[str]) -> dict[str, str | None]:
+        """A capability de cada receita pedida (ref -> nome ou `None`: sem fonte, ambígua ou etapa livre), pela MESMA
+        regra do detalhe (`capability_da_receita`), em consultas em lote (nunca uma por receita)."""
         ...
 
     def versao(self, kind: LivroKind, ref: str) -> JsonObject | None:
@@ -202,6 +211,13 @@ class CatalogoDeRisco(Protocol):
 
     def tem_catalogo(self, app: str) -> bool: ...
     def da_capability(self, app: str, capability: str) -> FatosDoCatalogo | None: ...
+
+
+class TitulosDoCatalogo(Protocol):
+    """O `title` que o catálogo do app dá a uma capability (inclusive as internas), para o painel nomear o grupo em
+    português. É texto do catálogo, não da execução. App sem catálogo ou capability desconhecida: `None`."""
+
+    def titulo(self, app: str, capability: str) -> str | None: ...
 
 
 class PassoDeCuradoria(Protocol):

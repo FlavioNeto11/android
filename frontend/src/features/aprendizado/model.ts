@@ -43,6 +43,10 @@ export interface EntradaDoLivro {
   native_status: string | null;
   title: string;
   app: string | null;
+  /** A capability da linha (hierarquia App → Capability → Item) e o nome dela em português, do catálogo do app
+   *  (`OPEN_PROFILE` → "Abrir o perfil"). Ausentes no backend anterior; `null` quando não se sabe. */
+  capability?: string | null;
+  capability_nome?: string | null;
   origin: Origem;
   side_effect: boolean;
   human_origin: boolean;
@@ -407,6 +411,9 @@ export function rotuloDoDetalhe(d: string | null | undefined): string | null {
   };
   if (fixos[d]) return fixos[d] ?? d;
   if (d.startsWith('absorvida:')) return `absorvida pelo YAML (${d.slice('absorvida:'.length)})`;
+  // A receita manda "sombra <iguais>/<total>": a comparação com a IA no modo sombra. Sem comparação, não há o que dizer.
+  const sombra = /^sombra (\d+)\/(\d+)$/.exec(d);
+  if (sombra) return Number(sombra[2]) === 0 ? null : `na sombra, concordou com a IA em ${sombra[1]} de ${sombra[2]}`;
   return d;
 }
 
@@ -526,6 +533,8 @@ export interface GrupoDeFalha {
   id: string;
   app: string;
   capability: string;
+  /** O nome em português, do catálogo do app; `null` sem catálogo (o painel mostra o código). */
+  capability_nome: string | null;
   failure_kind: string;
   failure_screen: string | null;
   titulo: string | null;
@@ -620,6 +629,7 @@ function lerGrupo(linha: unknown): GrupoDeFalha | null {
     id,
     app,
     capability,
+    capability_nome: str(v.capability_nome),
     failure_kind: tipo,
     failure_screen: tela,
     titulo: str(campo(v, 'title', 'titulo')),
