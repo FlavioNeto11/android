@@ -28,6 +28,12 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 #: SEM bloco próprio ela herda a configuração de `social` por inteiro (`Config.ai_role`), então existe para poder ir a
 #: outro provedor sem arrastar o `social` da execução (comentário, DM) junto.
 AI_ROLES = ("plan", "decide", "verify", "escalation", "social", "persona")
+#: Funções que SÓ existem quando escritas em `ai.roles` (item 12.5, ADR-070). `leitura` é o segundo leitor da leitura
+#: visual: transcreve o recorte de uma linha que a árvore não expõe, sem ver o valor do ator. NÃO herda nada de outra
+#: função (nem provedor, nem modelo, nem `fallback_provider`), porque a conferência vale pela independência dele, e não
+#: aparece em `ai.profiles` (o perfil troca o ator, não o conferente). Sem bloco, `Config.ai_leitura()` é `None` e a
+#: leitura visual recusa com `sem_leitor`.
+ROLES_OPCIONAIS = ("leitura",)
 
 
 class EnvSettings(BaseSettings):
@@ -448,6 +454,8 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "social": {"timeout_s": 60.0, "concurrency": 4},
     # Mesmos números do social: sem `ai.roles.persona` a geração de persona se comporta como sempre.
     "persona": {"timeout_s": 60.0, "concurrency": 4},
+    # Recorte de ~720x150 px e saída curta: a chamada mais barata do hub (item 12.5).
+    "leitura": {"timeout_s": 30.0, "concurrency": 2},
 }
 
 
@@ -523,6 +531,13 @@ class AiLimitsCfg(BaseModel):
     #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a D-J3, aprovada pelo
     #: dono no ADR-069; vale para as chamadas da porta `DecisaoFechada` (31.4).
     jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+
+
+class LeituraVisualCfg(BaseModel):
+    """Leitura visual de uma saída de etapa (item 12.5, ADR-070). Desligada por padrão: ligar manda o RECORTE de uma linha
+    de tela para o provedor de `ai.roles.leitura` (outro destino das capturas quando ele não é o do ator)."""
+
+    enabled: bool = False
 
 
 class DecisaoFechadaCfg(BaseModel):
@@ -640,6 +655,8 @@ class AiCfg(BaseModel):
     #: Fatias do teto do dia por origem de chamada (item 31.6). Vazio = os padrões da classe.
     limits: AiLimitsCfg = AiLimitsCfg()
     decisao_fechada: DecisaoFechadaCfg = DecisaoFechadaCfg()
+    #: Item 12.5 (ADR-070): a saída de etapa lida da imagem, conferida às cegas pelo papel `leitura`. Desligada.
+    leitura_visual: LeituraVisualCfg = LeituraVisualCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
@@ -1214,8 +1231,21 @@ class AppConfigFile(BaseModel):
         blocos = [("ai.roles", ai.roles)] + [(f"ai.profiles.{nome}.roles", p.roles) for nome, p in ai.profiles.items()]
         for onde, roles in blocos:
             for papel in roles:
+                if papel in ROLES_OPCIONAIS and onde == "ai.roles":
+                    continue
                 if papel not in AI_ROLES:
-                    raise ValueError(f"{onde}.{papel}: função desconhecida (use {', '.join(AI_ROLES)})")
+                    raise ValueError(f"{onde}.{papel}: função desconhecida (use {', '.join(AI_ROLES)}"
+                                     + (f"; `{papel}` só vale em ai.roles, não por perfil" if papel in ROLES_OPCIONAIS
+                                        else "") + ")")
+        leitura = ai.roles.get("leitura")
+        if leitura is not None:
+            # Sem herança (item 12.5): o conferente que herdasse o provedor ou o modelo do ator deixaria de ser outro.
+            # O fallback também não: ele mandaria o recorte de uma conta real para um destino que ninguém escolheu.
+            if not leitura.provider or not leitura.model:
+                raise ValueError("ai.roles.leitura: escreva `provider` e `model` (o papel não herda de outra função)")
+            if leitura.fallback_provider:
+                raise ValueError("ai.roles.leitura.fallback_provider: não existe fallback para o leitor; o recorte só "
+                                 "vai ao provedor escolhido aqui")
         if ai.canary.profile and ai.canary.profile not in ai.profiles:
             raise ValueError(f"ai.canary.profile: perfil '{ai.canary.profile}' não está em ai.profiles")
         for nome, prov in ai.providers.items():
@@ -1272,6 +1302,7 @@ class Config:
         self.root = root
         if env.android_sdk_root:
             self.file.android.sdk_root = env.android_sdk_root
+        self.validar_leitura()
 
     def path(self, rel: str) -> Path:
         p = Path(rel)
@@ -1446,6 +1477,11 @@ class Config:
         a campo; o que ele não escreve continua o do padrão. Perfil inexistente é `KeyError` — quem chama confere.
         """
         ai = self.file.ai
+        if role in ROLES_OPCIONAIS:
+            lido = ai.roles.get(role)
+            if lido is None:
+                raise KeyError(f"ai.roles.{role} não está configurado (função opcional, sem herança)")
+            profile = None                  # o perfil de execução não troca o leitor
         # `persona` (item 17.8) sem bloco em `ai.roles` É o `social`: lê o bloco dele e, em cada perfil, a camada dele
         # (depois a própria, por cima). Com bloco próprio, o `social` deixa de valer para ela — herdar só o modelo ou
         # o `fallback_provider` do social ao apontar a persona para outro provedor daria um modelo que o destino não tem.
@@ -1477,6 +1513,26 @@ class Config:
 
     def ai_roles(self, profile: str | None = None) -> dict[str, ResolvedRole]:
         return {papel: self.ai_role(papel, profile) for papel in AI_ROLES}
+
+    def ai_leitura(self) -> ResolvedRole | None:
+        """O leitor da leitura visual (item 12.5), ou `None` quando `ai.roles.leitura` não está escrito."""
+        return self.ai_role("leitura") if "leitura" in self.file.ai.roles else None
+
+    def validar_leitura(self) -> None:
+        """O leitor tem de ser independente do ator e ver imagem (ADR-070): modelo igual ao do `decide` ou ao do
+        `escalation` é recusado (os dois erram juntos), e modelo declarado sem visão também. Compara o modelo, e não só
+        o provedor: o mesmo provedor com outro modelo é aceito, a Anthropic com Haiku é a alternativa documentada."""
+        r = self.ai_leitura()
+        if r is None:
+            return
+        for papel in ("decide", "escalation"):
+            outro = self.ai_role(papel)
+            if r.model == outro.model and r.kind != "simulated":
+                raise ValueError(f"ai.roles.leitura.model: '{r.model}' é o mesmo modelo de {papel}; o segundo leitor "
+                                 "precisa ser outro modelo (de preferência de outra família: OpenAI ou Gemini)")
+        if r.kind != "simulated" and not self.model_caps(r.model).vision:
+            raise ValueError(f"ai.roles.leitura.model: '{r.model}' está declarado sem visão em ai.models; o leitor "
+                             "transcreve uma imagem")
 
     def model_caps(self, model: str) -> ModelCaps:
         """Capacidade DECLARADA do modelo. Sem declaração, o conservador: nada de strict, nada de thinking/effort.

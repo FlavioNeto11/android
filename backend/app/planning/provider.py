@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -186,6 +187,58 @@ class VerifyRequest:
     escalate: bool = False
 
 
+#: Teto do que um leitor devolve (item 12.5): uma linha de lista de e-mail tem poucas linhas curtas; passar disto é
+#: o modelo narrando em vez de transcrever, e vira recusa em vez de ser cortado calado.
+TRANSCRICAO_LINHAS_MAX = 12
+TRANSCRICAO_TEXTO_MAX = 400
+
+
+class Transcricao(BaseModel):
+    """A leitura cega de um recorte (item 12.5, ADR-070): o que o segundo leitor VIU, sem conhecer o valor do ator.
+
+    - `linhas`: o texto do recorte, linha a linha, como está escrito;
+    - `campos`: para cada saída pedida, o trecho que a responde (`None` = não achei);
+    - `legivel`: `False` quando não deu para ler (nada mais vale);
+    - `truncado`: `True` quando o texto aparece cortado ("…", reticências, palavra pela metade na borda).
+    O executor confere o valor do ator contra isto; quem transcreve nunca recebe o valor, o comando nem os fatos."""
+
+    linhas: list[str] = []
+    campos: dict[str, str | None] = {}
+    legivel: bool = True
+    truncado: bool = False
+
+
+class _CampoLido(BaseModel):
+    nome: str
+    valor: str | None = None
+
+
+class TranscricaoWire(BaseModel):
+    """O formato PEDIDO ao modelo: `campos` como lista de pares, porque um mapa de chaves livres não cabe na gramática
+    estrita (`additionalProperties: false`). `para_transcricao` o converte no que o executor consome."""
+
+    linhas: list[str]
+    campos: list[_CampoLido]
+    legivel: bool
+    truncado: bool
+
+    def para_transcricao(self) -> Transcricao:
+        return Transcricao(linhas=self.linhas, campos={c.nome: c.valor for c in self.campos},
+                           legivel=self.legivel, truncado=self.truncado)
+
+
+@dataclass(slots=True)
+class LeituraRequest:
+    """Pedido ao papel `leitura`: SÓ o recorte (JPEG) e os nomes e descrições das saídas pedidas.
+
+    De propósito não há valor do ator, comando, fatos, histórico nem `run_id` de conteúdo: o `run_id` existe só para o
+    teto e a contabilidade do hub (`ai_calls`), e o provedor não o põe no prompt."""
+
+    recorte: bytes
+    saidas: dict[str, str]                    # nome → descrição ("remetente" → "quem enviou a mensagem")
+    run_id: str | None = None
+
+
 @dataclass(slots=True)
 class SocialRequest:
     """Geração social: papel próprio, separado do planejador e do ator.
@@ -231,6 +284,27 @@ class AIProvider(Protocol):
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]: ...
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]: ...
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]: ...
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]: ...
+
+
+def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
+    """JSON do modelo → `Transcricao`, revalidado. Só entram os campos PEDIDOS (um nome a mais é o modelo inventando), e
+    cada pedido volta (`None` quando faltou). Excesso de linhas ou de texto é `invalid_output`, nunca corte calado."""
+    texto = (raw or "").strip()
+    if texto.startswith("```"):
+        texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
+        texto = re.sub(r"\s*```$", "", texto).strip()
+    try:
+        dados = json.loads(texto)
+        t = TranscricaoWire.model_validate(dados).para_transcricao()
+    except (ValueError, ValidationError) as exc:
+        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output") from exc
+    if len(t.linhas) > TRANSCRICAO_LINHAS_MAX or any(len(x) > TRANSCRICAO_TEXTO_MAX for x in t.linhas):
+        raise AIError("A transcrição do leitor passou do tamanho de um recorte.", kind="invalid_output")
+    campos = {n: ((t.campos.get(n) or None) if n in t.campos else None) for n in pedidas}
+    if any(v is not None and len(v) > TRANSCRICAO_TEXTO_MAX for v in campos.values()):
+        raise AIError("Um campo da transcrição passou do tamanho de um recorte.", kind="invalid_output")
+    return Transcricao(linhas=t.linhas, campos=campos, legivel=t.legivel, truncado=t.truncado)
 
 
 def persona_draft_from_json(raw: str) -> PersonaDraft:

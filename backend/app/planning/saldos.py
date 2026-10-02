@@ -252,7 +252,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
     agora = agora or now()
     regras = {r["account"]: r for r in db.query("SELECT * FROM ai_billing_accounts")}
     papeis: dict[str, list[str]] = {}
-    for papel in AI_ROLES:
+    # `leitura` (item 12.5) só entra quando está escrita: o leitor de outra família gasta de OUTRA conta que o ator.
+    for papel in (*AI_ROLES, *(("leitura",) if "leitura" in cfg.file.ai.roles else ())):
         conta = conta_do_papel(cfg, papel)
         if conta:
             papeis.setdefault(conta, []).append(papel)
