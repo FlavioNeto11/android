@@ -86,5 +86,5 @@ frase. Precisa estar fechado ANTES de o 30.11 gravar `learning_reviews.usd`.
 | P2 | Marcador em `ai_calls`: coluna `origem` (migração) ou `step_id` codificado | orquestradora (número) | coluna | OK; número na implementação (tende à 073) |
 | P3 | Fatia do curador = α × min(saldo, teto do dia) | dono (α já decidido) | sim | OK (aplica o α=10 % do dono) |
 | P4 | Fatia própria para a soma dos pedidos | dono | não por ora; medir no 28.12 | NÃO por ora; medir no 28.12 (orquestradora) |
-| P5 | Triagem pelo `choice` do Jev-retrieval | dono (roteiro, ADR-063) | sim, em `shadow` primeiro | vai ao dono com o roteiro do Jev |
+| P5 | Triagem pelo `choice` do Jev-retrieval | dono (roteiro, ADR-063) | sim, em `shadow` primeiro | **APROVADO pelo dono (~21:00Z, 02/10), em `shadow` primeiro**; implementação espera o roteiro geral do Jev (porta comum de decisão por conjunto fechado e regra de dados) |
 | P6 | `AIError.motivo` fechado | frente Jev | sim, junto com a rubrica | OK, junto com a rubrica |
