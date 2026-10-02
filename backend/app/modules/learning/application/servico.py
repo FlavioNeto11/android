@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from app.modules.learning.application.espera import AvisadorDeEspera
+from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
                                                     NovoSinal, PassoDeCuradoria, PortaDeEventos,
                                                     RepositorioDeAprendizado, TriagemDeTexto)
@@ -211,19 +212,31 @@ class LearningService:
         """A saúde de cada entrada, pela ref da trilha. A evidência só é lida dos PUBLICADOS (os outros estados decidem
         o rótulo pelo estado), com o mesmo limite do detalhe: o rótulo é o mesmo nos dois."""
         saida: dict[str, Saude] = {}
+        contexto = self._contexto_de_obsolescencia()             # os lotes são lidos uma vez para a lista inteira
         for e in entradas:
             evidencias = self._repo.evidencias(e.trail_ref) if e.state is SkillState.PUBLISHED else ()
-            saude = self.saude_de(e, tuple(evidencias))
+            saude = self.saude_de(e, tuple(evidencias), contexto=contexto)
             if saude is not None:
                 saida[e.trail_ref] = saude
         return saida
 
-    def saude_de(self, e: EntradaDoLivro, evidencias: tuple[Evidencia, ...],
-                 trilha: tuple[Transicao, ...] = ()) -> Saude | None:
+    def _contexto_de_obsolescencia(self) -> ContextoDeObsolescencia | None:
+        leitor = self.extensao(LeitorDeObsolescencia)
+        return leitor.contexto() if leitor is not None else None
+
+    def saude_de(self, e: EntradaDoLivro, evidencias: tuple[Evidencia, ...], trilha: tuple[Transicao, ...] = (), *,
+                 contexto: ContextoDeObsolescencia | None = None) -> Saude | None:
         """A ÚNICA fonte do cálculo de saúde (30.4): lê os sinais do que o livro já tem e entrega a `domain/saude.py`.
         O que o livro não expõe (item sem contador, intervenção humana) vai como `None` e a dimensão sai
-        `desconhecida`; nunca como zero."""
+        `desconhecida`; nunca como zero. Os sinais de obsolescência (30.14) só existem com o leitor pendurado pela
+        composição e só para o publicado; a tela leva o quadro de versão que o detalhe também mostra."""
         agora = self._relogio()
+        if contexto is None:
+            contexto = self._contexto_de_obsolescencia()
+        obsolescencia = None
+        if contexto is not None and e.state is SkillState.PUBLISHED:
+            versao = self._versao(e, evidencias) if e.kind is LivroKind.TELA else None
+            obsolescencia = contexto.sinais(e, versao=versao)
         if e.kind in (LivroKind.RECEITA, *KINDS_DE_ITEM):
             a_favor, contra = e.a_favor, e.contra          # contadores da própria fonte (sobrevivem à retenção)
         elif e.kind is LivroKind.FLUXO:                    # o fluxo não tem contador de acerto: só as evidências
@@ -240,7 +253,8 @@ class LearningService:
         return calcular(SinaisDeSaude(
             kind=e.kind, estado=e.state, agora=agora, criado_em=e.created_at, estado_desde=e.state_at,
             ultimo_uso=e.last_used_at, usos=e.uses, a_favor=a_favor, contra=contra, exige_o_dono=e.requires_owner,
-            detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes),
+            detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes,
+            obsolescencia=obsolescencia),
             self.ajustes.saude)
 
     def _relacoes(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[JsonObject, ...]:
