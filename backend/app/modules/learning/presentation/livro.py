@@ -27,7 +27,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.learning.application.servico import DetalheDoLivro, LearningService
 from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizado, NaoEncontrado, SkillState,
                                                UseARotaDasHabilidades)
-from app.modules.learning.domain.livro import EntradaDoLivro, Transicao
+from app.modules.learning.domain.livro import (EntradaDoLivro, Transicao, acoes_da_pessoa,
+                                               por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -83,11 +84,17 @@ def _chamar(fn: Callable[[], T]) -> T:
 
 # ------------------------------------------------------------------ JSON
 def _entrada(e: EntradaDoLivro) -> JsonObject:
+    """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`."""
+    motivo = por_que_o_sistema_nao_publica(e)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
             "native_status": e.native_status, "title": e.title, "app": e.app, "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
             "created_at": e.created_at, "state_at": e.state_at, "last_used_at": e.last_used_at, "uses": e.uses,
-            "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail}
+            "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail,
+            "acoes": [{"to": a.to.value, "rotulo": a.rotulo, "exige_motivo": a.exige_motivo}
+                      for a in acoes_da_pessoa(e)],
+            "por_que_nao_publica": None if motivo is None else {
+                "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe}}
 
 
 def _evidencia(e: Evidencia) -> JsonObject:
