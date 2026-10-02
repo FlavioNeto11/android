@@ -93,6 +93,9 @@ AUTORIZACAO = {
     '29.14': 'ligar o Docker/WSL no central para a suíte em PostgreSQL, ou o job do CI depois do limite de gasto',
     '29.19': ('decidir a escala e contratar os IPv4 (dono); trocar a saída de aparelho com conta real só com '
               'autorização por aparelho'),
+    # Aprendizado vivo (Fase 30): o ato que cada item [A] exige.
+    '30.12': 'a revisão pontual paga no central com custo registrado (dentro do orçamento proporcional aprovado em 02/10)',
+    '30.18': 'a leitura real do Outlook no android-01, executada pela frente Android; nenhum efeito em conta de terceiros',
 }
 #: Teto de itens por agente. Não é estética: um agente com oito itens e vinte arquivos perde o fio, e quando erra
 #: leva junto tudo o que já tinha feito. Pedaços do mesmo grupo correm em SEQUÊNCIA, então não há conflito.
