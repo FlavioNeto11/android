@@ -1,6 +1,6 @@
 # Definição do Outlook como DADO (ADR-052, ADR-057). Junto de `telas.yaml` (telas, desafios da Microsoft e estado
-# conhecido) e `sessao.yaml` (login gerenciado em etapas), é tudo que a plataforma sabe do app: nenhuma linha de
-# Python. Item 23.8. A senha da conta Outlook da persona, se consentida, só
+# conhecido), `sessao.yaml` (login gerenciado em etapas) e `catalogo.yaml` (ações só de LEITURA), é tudo que a
+# plataforma sabe do app: nenhuma linha de Python. Item 23.8. A senha da conta Outlook da persona, se consentida, só
 # passa pelo canal sensível (`type_secret`, ADR-040), no pacote desta conta e na página da Microsoft que mostra o
 # e-mail dela.
 app: com.microsoft.office.outlook

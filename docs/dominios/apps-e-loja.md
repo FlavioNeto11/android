@@ -118,12 +118,20 @@ sessão, que perguntam a este registro (ciclo).
 
 **O Outlook é o segundo pacote de dado** (`app/conhecimento/apps/com.microsoft.office.outlook/`, item 23.8,
 [perfis](perfis-e-instagram.md#o-outlook-como-dado-item-238)): `provedor_de_sessao: microsoft` sem ser âncora,
-`telas.yaml` + `sessao.yaml` com o login em etapas da conta Microsoft, e — fora da `main` — um `catalogo.yaml` só de
-leitura (abrir a caixa, levantar remetente e assunto, buscar). Enviar, responder e abrir uma mensagem (que a marca como lida) ficam
-fora: com o catálogo, uma etapa com efeito no Outlook sem ação dele é recusada pela porta de política (item 13.2), e o
-Outlook deixa de ser app de etapa livre no plano entre apps — e ação de catálogo não lê valor para outra etapa (item
-24.3), então "ler no Outlook e usar no Instagram" viraria pergunta, e 16 testes do plano entre apps ficariam
-vermelhos. Por isso o catálogo fica FORA da `main` (decisão da IDE na integração, 30/09): o cenário C1 do dono (ler no Outlook e usar no Instagram) depende do Outlook como app de etapa livre com `read_value` (24.3), e o catálogo o tiraria disso. Ele está pronto no commit `806eed9` do branch `worktree-agent-a2c596de1676ca7fa`, para quando ação de catálogo puder entregar valor a outra etapa. O que ele declara depois da senha é
+`telas.yaml` + `sessao.yaml` com o login em etapas da conta Microsoft, e um `catalogo.yaml` SÓ DE LEITURA (item
+12.3: `OPEN_MAIL_INBOX`, `COLLECT_MAIL_HEADERS` e `SEARCH_MAIL`, nenhuma com efeito). Enviar, responder e abrir uma
+mensagem (que a marca como lida) ficam fora: uma etapa com efeito no Outlook sem ação dele é recusada pela porta de
+política (item 13.2, `manual_only`), e etapa livre num app com catálogo vira pergunta no planejador (ADR-058).
+
+**Valor entre etapas pelo catálogo (ADR-065).** Com catálogo o Outlook deixou de ser app de etapa livre, então a ação
+de catálogo passou a poder entregar um valor lido (o `read_value` da etapa livre, item 24.3) a outra etapa, sem
+Python por app: a ação declara no `catalogo.yaml` os nomes que PODE entregar (`saidas: [remetente, assunto]` em
+`OPEN_MAIL_INBOX` e `SEARCH_MAIL`); o planejador entre apps diz, por etapa, quais usa (`saidas` da etapa, só nomes
+da lista; fora dela, ou numa ação sem `saidas`, vira pergunta e o plano sai sem etapas); a etapa seguinte os cita como
+`{{saida:<nome>}}`. Quem lê é o executor, do texto do elemento na tela, com a triagem de segredo de sempre: código de
+verificação, senha e token nunca são saída (por isso não há nome `codigo` e o cenário "ler o código no Outlook" segue
+com a pessoa). A coleta não declara `saidas` (a lista vai pelo `for_each`). Etapa de catálogo com `saidas` não usa
+receita (ler é decisão sobre a tela da vez); sem `saidas` na etapa, tudo segue como antes. O que ele declara depois da senha é
 suposição, marcada nos arquivos.
 
 **O QA Messenger é a prova de extensibilidade, e só em teste.** `backend/tests/fake_dois_apps.py::manifesto_do_qa`

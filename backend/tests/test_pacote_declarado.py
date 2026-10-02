@@ -191,4 +191,6 @@ def test_outlook_embutido_entra_com_login_gerenciado_sem_ser_ancora() -> None:
     m = manifestos[outlook]
     assert m.definition.needs_profile and m.definition.requires_internet
     assert m.definition.session_provider == "microsoft" and m.session is not None and m.screen is None
+    # Catálogo só de leitura (23.8, T17 do ADR-057).
+    assert m.catalog is not None and not any(c.side_effect for c in m.catalog.capabilities)
     assert [p for p, mm in manifestos.items() if mm.definition.profile_anchor] == [PKG]
