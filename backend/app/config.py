@@ -52,6 +52,10 @@ class EnvSettings(BaseSettings):
     #: Chave do provedor semântico de retrieval de contexto (`context_retrieval.semantic.provider: jev`). Só do ambiente
     #: ou do `.env`, nunca do `config.yaml`; ausente = provedor indisponível e o retrieval cai no local (ADR-063).
     typesafe_api_key: SecretStr | None = Field(default=None, alias="TYPESAFE_API_KEY")
+    #: Aviso fora do painel (item 28.11): o token do bot criado no @BotFather e o chat para onde ele escreve. Nomes
+    #: FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. `SecretStr`: não aparecem em repr nem em log.
+    telegram_bot_token: SecretStr | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: SecretStr | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -840,9 +844,26 @@ class LicoesDoPapelCfg(BaseModel):
     max: int = Field(3, ge=0, le=20)
 
 
+_PACOTE_DO_APRENDIZADO = re.compile(r"^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$")
+
+
+def _conferir_pacotes_por_app(por_app: dict[str, str]) -> dict[str, str]:
+    """As chaves de `por_app` são pacotes Android (o mesmo formato que as telas aprendidas aceitam): dado de instalação,
+    nunca regra de código (ADR-052). Chave fora do formato é erro de config, não item ignorado."""
+    for pacote in por_app:
+        if not _PACOTE_DO_APRENDIZADO.match(pacote):
+            raise ValueError(f"'{pacote}' não é um pacote Android (ex.: com.exemplo.app)")
+    return por_app
+
+
 class LicoesCfg(BaseModel):
     #: off = não grava · shadow = grava e mede sem ir ao prompt · on = publica sem efeito e vai ao prompt (em prova)
     modo: Literal["off", "shadow", "on"] = "shadow"
+    #: Override por app (§8.10): `{<pacote>: off|shadow|on}`. Vazio (padrão) = o `modo` global vale para todo app; o
+    #: pacote que aparece aqui usa o modo dele. Nada liga sozinho: quem escreve o pacote é a instalação.
+    por_app: dict[str, Literal["off", "shadow", "on"]] = Field(default_factory=dict)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
     ator: LicoesDoPapelCfg = LicoesDoPapelCfg()
     planejador: LicoesDoPapelCfg = LicoesDoPapelCfg(tokens=150)
     minimo_por_braco: int = Field(8, ge=1, le=1000)        # unidades por braço para o veredito de efeito
@@ -853,8 +874,12 @@ class LicoesCfg(BaseModel):
 class TelasAprendidasCfg(BaseModel):
     #: off = não observa · observe = grava, minera e valida, sem a sessão consumir · on = publica sozinha (D1)
     modo: Literal["off", "observe", "on"] = "observe"
+    #: Override por app (§8.10): `{<pacote>: off|observe|on}`; vazio = o `modo` global vale para todo app.
+    por_app: dict[str, Literal["off", "observe", "on"]] = Field(default_factory=dict)
     observacoes: int = Field(3, ge=1, le=100)
     execucoes: int = Field(2, ge=1, le=100)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
 
 
 class FluxoAprendidoCfg(BaseModel):
@@ -904,6 +929,25 @@ class LearningCfg(BaseModel):
     ia_resumos_por_dia: int = Field(0, ge=0, le=0)
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
+
+
+class AvisosCfg(BaseModel):
+    """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062):
+    tipo do evento e link, nunca dado de persona. Desligado de fábrica; ligar exige `TELEGRAM_BOT_TOKEN` e
+    `TELEGRAM_CHAT_ID` no `.env` (procedimento em `docs/operacao.md`). Os valores nunca moram aqui."""
+
+    enabled: bool = False
+    canal: Literal["telegram"] = "telegram"
+    #: Base pública do painel para o link `<base>/#/pendencias`. Vazia: a mensagem leva só o texto.
+    url_painel: str | None = None
+    intervalo_s: int = Field(15, ge=5, le=3600)             # de quanto em quanto tempo o laço olha a fila
+    lote: int = Field(5, ge=1, le=50)                       # avisos por volta (o limite do Telegram é ~1 msg/s por chat)
+    timeout_s: float = Field(10.0, gt=0, le=60)
+    max_tentativas: int = Field(5, ge=1, le=20)
+    backoff_s: float = Field(30.0, gt=0, le=3600)
+    validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
+    incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
+    retencao_dias: float = Field(30.0, gt=0, le=3650)
 
 
 class ContextRetrievalLexicalCfg(BaseModel):
@@ -990,6 +1034,27 @@ class SensitiveScreenSeed(BaseModel):
     why: str | None = None            #: aparece na mensagem da etapa e na evidência
 
 
+class PedidosCfg(BaseModel):
+    """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
+    ocorrência despachada chama o planejador PAGO e o teto de orçamento é do 28.6; até ele entrar, ligar é decisão do
+    dono, por instalação. Desligado, o laço nem sobe (e este backend não toma a trava `pedidos`)."""
+
+    enabled: bool = False
+    #: De quanto em quanto tempo o laço acorda sem ninguém chamar. Também é a latência máxima do fechamento das
+    #: execuções que assentam sem passar pelo gancho do worker (D6).
+    tick_s: float = Field(15.0, ge=1.0, le=3600.0)
+    #: Quanto à frente a recorrência é materializada como `prevista` (global, D2).
+    horizonte_s: int = Field(3600, ge=60, le=86_400)
+    #: Quanto uma execução despachada pode ficar sem começar antes de o laço cancelá-la (global, D2).
+    prazo_inicio_s: int = Field(3600, ge=60, le=604_800)
+    #: Janela de recuperação de `horario` sem efeito, de `agora` e de recorrência diária ou mais lenta (D7).
+    janela_padrao_s: int = Field(1800, ge=0, le=604_800)
+    #: Teto de linhas materializadas por gatilho e de execuções criadas por volta.
+    lote_max: int = Field(500, ge=1, le=5000)
+    #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
+    posse_s: int = Field(120, ge=10, le=3600)
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1005,6 +1070,8 @@ class AppConfigFile(BaseModel):
     provisioning: ProvisioningCfg = ProvisioningCfg()
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
+    avisos: AvisosCfg = AvisosCfg()
+    pedidos: PedidosCfg = PedidosCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 

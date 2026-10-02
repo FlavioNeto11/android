@@ -2830,6 +2830,10 @@ com "credencial" é tratado como segredo pela redação.
   - O despacho troca a referência pelo valor na linha da etapa antes da porta de política. A ferramenta `read_value`
     lê o valor do texto do elemento, e `step_done` sem a leitura é recusado.
   - Código de verificação, senha e token nunca são saída.
+  - Ação de catálogo também entrega valor (ADR-065): a capability declara `saidas` (nomes que pode entregar), a etapa
+    de catálogo do plano entre apps leva `saidas` com um subconjunto delas, e o `PlanStep.saidas` gravado é o mesmo
+    da etapa livre. Nome fora do declarado vira `missing` (`field` = a ação em minúsculas). Sem mudança de rota,
+    de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
 
@@ -3293,7 +3297,7 @@ Quem age é sempre a **pessoa** (`ator = pessoa`, de `estados.py`); as arestas d
   PedidoView[]}`, completo desde a primeira carga e sem janela (a regra 2 da ADR-062). Os `aguardando_pessoa` alimentam a
   caixa de Pendências como uma origem nova. **Para não contar duas vezes** a decisão que já tem item próprio (a aprovação
   e a execução `needs_input`), o item do pedido é o que conta, e os itens daquele pedido aparecem agrupados sob ele
-  (`pedido_id`) sem contar de novo. Isso muda a definição de Pendência e **exige emenda à ADR-062** (decisão em aberto 1).
+  (`pedido_id`) sem contar de novo. Isso muda a definição de Pendência e **pede emenda à ADR-062**, confirmada pelo dono em 02/10 (decisão 1).
 ```ts
 type AvisoTipo = 'pausa_automatica' | 'orcamento_80' | 'orcamento_esgotado' | 'ocorrencia_perdida'
                | 'relatorio_pronto' | 'encerramento'                         // informativos: vão para a caixa de avisos
@@ -3312,8 +3316,9 @@ interface AvisoDTO {
 - `GET /api/pedidos/avisos?lido=0` alimenta a caixa; `requer_pessoa=0` é o filtro do painel (o aviso de aprovação,
   pergunta ou incerteza existe para o canal de fora e não repete na caixa de avisos). `POST /api/pedidos/avisos/ler` marca
   lido e é idempotente.
-- **Ponto de extensão do 28.11** (aviso fora do painel, decisão do dono: canal e conta): o canal externo assina o evento
-  `pedido.aviso`, que sai para TODOS os tipos, `requer_pessoa` ou não. O 28.9 não envia nada para fora do painel.
+- **Ponto de extensão do 28.11** (aviso fora do painel; o dono escolheu o **Telegram** em 02/10, com token e chat_id só
+  pelo cofre/.env): o canal externo assina o evento `pedido.aviso`, que sai para TODOS os tipos, `requer_pessoa` ou não. O
+  28.9 não envia nada para fora do painel.
 
 ### Eventos (WebSocket `/api/ws`, `EventRecord.kind`)
 
@@ -3377,21 +3382,20 @@ nunca vence. A prévia não grava, mas passa pelo mesmo portão (ela resolve alv
 | re-resolução dos alvos a cada ocorrência (a persona pode ter mudado de aparelho) | fora deste contrato | 28.4 |
 | `estados.py`: `aguardando_pessoa` não vai a `pausado`, e `fim_em` que passa nessa espera não encerra (linhas 20–24) | a API não inventa a aresta; `pausar` ali é `409 invalid_state` | 28.4 e 28.5 |
 
-### Decisões em aberto (do dono ou do coordenador)
+### Decisões tomadas (02/10/2026)
 
-1. **ADR-062:** o pedido `aguardando_pessoa` vira uma origem da caixa de Pendências, agrupando a aprovação e a execução
-   `needs_input` dele para não contar em dobro? É a recomendação; muda a definição e pede emenda ao ADR.
-2. **Prévia como `POST`** (divergência do §11, que escreve `GET`).
-3. **Repetir ação de estado:** `200 sem_mudanca` (proposto, como `retomar` repetido e o `cancel` de comando) ou `409`.
-4. **Retomar de `aguardando_pessoa`:** pela mesma rota `retomar`, sem rota `responder` (proposto), e sem retorno automático
-   (a aresta é só da pessoa em `estados.py`).
-5. **Idempotência de criação:** `id` determinístico (proposto, sem migração) ou coluna `idempotency_key` UNIQUE.
-6. **`backfill`:** a chave leva o instante de cada slot (proposto, repetir não duplica), enquanto o §6.3 diz "o instante do
-   pedido do dono, arredondado ao segundo".
-7. **Avisos:** a lista de tipos é a do §11 mais `ocorrencia_perdida` e `encerramento` (acréscimos desta proposta); e o
-   padrão `pausar` sem motivo.
-8. **Piso de frequência de `preparar`:** o §10 diz "efeito externo ≥ 1 h"; esta proposta trata `preparar` (só rascunho, com
-   aprovação) como `observar`, 15 min, e põe a hora cheia só em `agir`.
+O coordenador decidiu todas com a recomendação desta proposta; o dono confirmou em chat as marcadas com **(dono)**.
+
+1. **(dono) Emenda à ADR-062:** o pedido `aguardando_pessoa` é uma origem da caixa de Pendências, agrupando a aprovação e a
+   execução `needs_input` dele para não contar em dobro (texto da emenda na própria ADR-062).
+2. **Prévia como `POST /api/pedidos/previa`** (o texto do comando não vai em query string); o `GET` do §11 fica superado.
+3. **Repetir ação de estado:** `200 sem_mudanca`.
+4. **Retomar de `aguardando_pessoa`:** pela mesma rota `retomar`, sem rota `responder` e sem retorno automático.
+5. **Idempotência de criação:** `id` determinístico a partir da `idempotency_key`, sem migração, com o hash INTEIRO
+   (`uuid5` ou `sha256`), nunca truncado a ponto de colidir.
+6. **`backfill`:** a chave leva o instante de cada slot (repetir não duplica); o §6.3 do desenho é ajustado.
+7. **Avisos:** os tipos do §11 mais `ocorrencia_perdida` e `encerramento`; `pausar` sem motivo usa "Pausado pela pessoa".
+8. **(dono) Piso de frequência:** `observar` e `preparar` ≥ 15 min; `agir` ≥ 1 h.
 
 ### Aceite proposto e prova
 
@@ -3399,7 +3403,59 @@ Aceite do 28.9 (desenho §13): `typecheck`, testes e navegador contra o backend 
 `simulated` (testes de contrato da API com pedido, gatilho e execução falsos; nomes dos arquivos definidos na implementação).
 `real`: só no 28.12, com ocorrências ligadas a `runs` reais. **Hoje: `not_run` em todos os níveis** (este adendo é texto).
 
-## Adendo v0.46 (02/10/2026) — Papel de IA `persona` (item 17.8)
+## Adendo v0.46 (02/10/2026) — Aprendizado vivo, item 30.5: ações permitidas calculadas no backend
+
+Mudança aditiva na `Entrada` do livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` de
+`GET /api/aprendizado/{kind}/{ref}`). Corpos em `backend/app/modules/learning/presentation/livro.py`; a regra mora em
+`domain/livro.py` (`acoes_da_pessoa`, `por_que_o_sistema_nao_publica`), sobre `ciclo.TRANSICOES` e `permitido`.
+O painel deixou de espelhar o `ciclo.py`: só traduz as chaves para texto.
+
+- `acoes: [{to, rotulo, exige_motivo}]`: os passos que uma PESSOA pode dar agora, na ordem da tabela do ciclo.
+  `to` é o estado de destino (o corpo de `POST …/status`); `rotulo` é a chave estável `validar | aprovar | rejeitar |
+  aposentar | desligar | reativar`; `exige_motivo` é `true` (decidir deixa o motivo na trilha). Vazio em `habilidade` (rota
+  própria das habilidades), em `memoria`, em item sem estado, em receita substituída (`deprecated` não volta) e sem o
+  destino `deprecated` em fluxo (sai de circulação como `disabled`). O veto e o modo do tipo não travam a pessoa.
+- `por_que_nao_publica: {codigo, espera_o_dono, detalhe} | null`: por que o sistema não publica sozinho. `codigo`:
+  `habilidade`, `efeito_externo`, `texto_de_pessoa` (esperam o dono: `espera_o_dono=true`), `vetado` (`detalhe` = razão do
+  veto) ou `modo_desligado`; `null` quando o sistema publica sozinho. Nesta entrega a rota só preenche os três
+  primeiros; veto e modo precisam de leitura do repositório e do ajuste, e entram quando o serviço os expuser.
+
+Prova `simulated`: `backend/tests/test_learning_acoes.py` percorre `TRANSICOES` × D1 × tipo × estado e confere que `acoes`
+só tem transições válidas para `by=pessoa` e que nenhuma válida falta (salvo as exceções acima). `real`: `not_run`.
+
+## Adendo v0.47 (02/10/2026) — Aprendizado vivo: visão por app e chave de app canônica (Fase 30, itens 30.1 e 30.2)
+
+Compatível para trás: duas rotas novas, só leitura, sem tabela nova e sem cópia de conteúdo (composição de leitura sobre o
+registro de apps, a tabela `apps` e o Livro); no Livro, `app` passa a ser o PACOTE também em fluxo e habilidade, e entra o
+campo `app_ref`. Prova: `simulated` (`backend/tests/test_learning_apps.py`, registro de apps falso). `real` (leitura no
+central depois do deploy): `not_run`.
+
+**Chave canônica (30.2).** `GET /api/aprendizado` (e o item) mostram `app` = pacote. O `app_id` de fluxo e habilidade vira
+pacote pela tabela `apps` e pelo registro de apps; sem principal, os apps exigidos valem só se derem um pacote único. O que
+não resolve vai ao balde `app = "nao_resolvido"` (filtrável: `?app=nao_resolvido`), com o id cru em `app_ref` (`null` nas
+demais linhas). A memória é da persona: `app = null`, nunca no balde.
+
+**`GET /api/aprendizado/apps`** — a lista: registro de apps ∪ apps da loja ∪ pacotes com linha no Livro. Um app sem linha
+aparece com zeros.
+
+| Campo | Significado |
+|---|---|
+| `apps[]` | por app: `pacote`, `nome`, `existencia` (`declarado`, `loja` ou `so_aprendido`), `declarado` (`arquivos{app,catalogo,telas,sessao}`, `acoes`, `telas`, `login_gerenciado`; `null` fora do registro), `loja` (`nome`, `nav_hints`, `known_selectors`; `null` fora da tabela `apps`), `aprendido{total, contagem{tipo:{estado:n}}}`, `absorvido` (n; o que o repositório absorveu não entra no aprendido) e `uso{tipo:{camada:n}}` |
+| `nao_resolvido` | o balde, no mesmo formato de um app (`existencia: null`) |
+| `fora_do_eixo` | contagem por tipo e estado do que não tem eixo de app (memória, voz, preferência, lição sem app) |
+| `modos` | os modos usados na camada: `receitas`, `fluxos`, `habilidades`, `licoes`, `telas` (`null` = não lido) |
+
+**`GET /api/aprendizado/apps/{pacote}`** — o detalhe (também de `nao_resolvido`): `app` (o resumo acima), `declarado[]`
+(`tipo` `app`/`catalogo`/`telas`/`sessao`/`loja`, `arquivo`, `presente`, `quantidade` de ações ou telas, `uso`), `aprendido[]`
+e `absorvido[]` (cada linha é a do Livro mais `origem_na_visao`, `uso` e `absorvida_em`, o commit) e `modos`. `404 not_found`
+se o pacote não está em nenhuma das três fontes. As duas rotas entram antes de `/{kind}/{ref}`.
+
+**Camada de uso** (`uso.camada`, com `uso.porque`): `decide_sem_ia`, `vai_ao_prompt`, `classifica_tela`, `login_fora_da_ia`,
+`pre_preenche`, `contexto_da_persona`, `medido_nao_usado`, `nao_medido`, `inerte` e `desconhecida` (o modo de que depende não
+foi lido). Vale o modo GLOBAL (`ai.recipes`, `ai.flows`, `skills.enabled`, `aprendizado.licoes.modo`, `aprendizado.telas.modo`);
+o modo por app é o item 30.20.
+
+## Adendo v0.47 (02/10/2026) — Papel de IA `persona` (item 17.8)
 
 - `GET /api/ai`: `roles` ganha uma linha `role: "persona"` (a ordem é a de `AI_ROLES`: plan, decide, verify, escalation, social, persona) e `models.persona`. Sem `ai.roles.persona` a linha é idêntica à do `social`.
 - `GET /api/usage`: as chamadas de geração e enriquecimento de persona passam a vir com `role="persona"` (antes `social`); consumidores que filtravam por `social` para somar custo de persona devem somar os dois.

@@ -170,8 +170,10 @@ Como é cada etapa:
 - Use só os apps listados, e só os que o comando precisa: app que o pedido não usa fica fora do plano. Não crie
   etapa só para trocar de app: cada etapa é conduzida no app dela. `depends_on` pode citar etapa de outro app.
 - Valor lido num app e usado em outro (ex.: o perfil citado no assunto do e-mail, procurado na rede social): quem lê é
-  uma etapa LIVRE, com o nome em `livre.saidas`; a etapa seguinte, livre ou do catálogo, o cita como
-  {{{{saida:<nome>}}}} no texto ou num argumento de `bindings`. Ação do catálogo não lê valor.
+  uma etapa LIVRE, com o nome em `livre.saidas`, ou uma ação do catálogo que diga "[pode entregar em `saidas`: …]",
+  com o nome em `saidas` da etapa (só um dos nomes que a ação lista; as demais ações não leem valor, e `saidas` fica
+  []). A etapa seguinte, livre ou do catálogo, o cita como {{{{saida:<nome>}}}} no texto ou num argumento de
+  `bindings`. Declare só o que uma etapa seguinte de fato usa.
 - `app_id` do plano é o app principal: o do resultado que o comando pede.
 - Código de verificação, senha ou token lido num app NUNCA é usado em outro (ex.: código de login recebido por
   e-mail): não planeje isso; devolva `missing` dizendo que essa etapa fica com a pessoa.

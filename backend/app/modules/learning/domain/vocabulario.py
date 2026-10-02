@@ -131,8 +131,23 @@ class DetalheDeEstado(StrEnum):
     CONTRADITA = "contradita"
 
 
+PREFIXO_ABSORVIDA = "absorvida:"
+
+
 def absorvida(commit: str) -> str:
-    return f"absorvida:{commit.strip()}"
+    return f"{PREFIXO_ABSORVIDA}{commit.strip()}"
+
+
+def absorvida_em(detalhe: str | None) -> str | None:
+    """O commit de um `state_detail` `absorvida:<commit>`; `None` quando o detalhe é de outra coisa."""
+    if detalhe is None or not detalhe.startswith(PREFIXO_ABSORVIDA):
+        return None
+    return detalhe[len(PREFIXO_ABSORVIDA):].strip() or "desconhecido"
+
+
+#: O balde "app não resolvido" (30.2): fluxo e habilidade cujo `app_id` não casa com `apps` nem com um pacote
+#: conhecido. Não é pacote Android (pacote tem ponto), então nunca colide com um; o filtro `app=` do livro o aceita.
+APP_NAO_RESOLVIDO = "nao_resolvido"
 
 
 class EstadoDoBacklog(StrEnum):

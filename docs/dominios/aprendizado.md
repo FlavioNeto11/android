@@ -74,6 +74,12 @@ origem.
   intactos, antes da purga de `ai_calls`), as provas do backlog, os vereditos das lições, as propostas, a voz e as
   preferências.
 - `aprendizado.enabled: false` desliga o digest, a curadoria e o consumo; a leitura do livro continua.
+- **Backfill único das lições** (`scripts/aprendizado-backfill-licoes.py`): as execuções reais fechadas antes da 055
+  nunca passaram pelo digest. `--banco <poc.sqlite3> --antes-da-055` (ou `--run-id ID`) roda SÓ `licoes.contraste` e
+  `licoes.plano`, pela mesma lógica de produção, em modo fixo `shadow` (nada publica, sem IA, sem rede). O padrão é o
+  ENSAIO numa cópia do banco; `--aplicar` grava (faça backup antes). Idempotente (índices `ux_learning_items_vivo` e
+  `ux_learning_evidence`): rodar de novo não duplica nada. Aborta sem escrever se a maior migração do banco difere da
+  do código (nunca migra). Código em `infrastructure/backfill_licoes.py`; é para rodar uma vez.
 
 ## Costuras nos arquivos quentes (A2)
 
@@ -274,6 +280,13 @@ com o banco aberto só para leitura.
   ou não houve observação nesta tentativa. Nunca texto da tela. A trava achada dentro de uma ferramenta devolve a tela
   pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`. As telas aprendidas ficam fora, para a
   chave do grupo não depender do modo do livro.
+- **App por etapa no aprendizado (medido em 02/10, `test_aprendizado_app_por_etapa.py`).** `steps.app_id` NULL é o
+  desenho, não perda: o plano só grava o app da etapa quando ele difere do app do plano (`planning/parsing.py`), e
+  `runs.app_ids` leva o app do plano primeiro. A régua diária, o relatório de falhas, as lições e as costuras resolvem
+  por `app_da_etapa` (etapa, depois `app_ids[0]`), então uma execução Instagram + Outlook já conta cada etapa no app
+  dela. Não gravar o app do plano em `steps.app_id`: mudaria a conta esperada (`do_aparelho`) e a identidade da receita.
+  `failure_screen` vazio é, em quase tudo, tela desconhecida por desenho, app sem `telas.yaml` ou tentativa anterior ao
+  escritor.
 - **Backlog sem falso corrigido (22.3).** A chave do grupo não mudou, mas a MEDIDA de uma linha segue
   `ChaveDoGrupo.abrange`: a linha sem tela (as abertas antes do escritor, e as de tela desconhecida) mede o mesmo
   `(app, capability, failure_kind)` em QUALQUER tela, na linha de base, na prova e na reincidência; a linha com tela
@@ -357,6 +370,15 @@ lista de linhas `{kind, ref, titulo, estado, papel, braco, failure_kind, n}`. O 
 Bloco `aprendizado` do `config.example.yaml`; os modos vão entre aspas, porque `off`/`on` sem aspas viram booleano no
 YAML. Padrões e significado na tabela do [adendo v0.38](../api-contract.md). Nenhum modo passa a `on` sem prova real e
 decisão do dono.
+
+**Modo por app (30.20, §8.10 do desenho).** `aprendizado.licoes.por_app: {<pacote>: off|shadow|on}` e
+`aprendizado.telas.por_app: {<pacote>: off|observe|on}` sobrescrevem o modo global de UM pacote (chave = pacote Android,
+validada no config); vazio, o padrão, é o global. A regra é uma só, `domain/modo_por_app.modo_efetivo`, e vale na coleta
+e na validação (mineradores, curadoria, observadores de tela), no consumo (`licoes_para`, fornecedor de telas) e na
+publicação sozinha das telas; `enabled: false` vence tudo. O pacote vem só do config (ADR-052). Limite até a próxima
+fatia: o D1 de um pacote MAIS permissivo que o global (global `shadow`/`observe`, pacote `on`) ainda é recusado, porque
+`LearningService._modo_publica` e o portão global de `CosturasDoLivro.licoes_para` leem só o modo global
+(`test_learning_modo_por_app.py`, dois `xfail(strict)`). Prova `simulated`; nada foi ligado no central.
 
 ## Pendências conhecidas
 

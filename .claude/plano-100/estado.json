@@ -4673,8 +4673,8 @@
    "id": "17.12",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed.",
-   "blocker": "Prova real not_run: depois do merge e do deploy, so o caso msg-todos-os-contatos no android-05, teto US$ 0,80, sem nova tentativa paga (instrucao do orquestrador 02/10).",
+   "evidence": "Branch jev/17-12-teto-for-each (9f8c46f7). Decisao do orquestrador 02/10 (opcao a): teto de chamadas por objetivo proporcional aos itens do for_each, rejulgamento do 17.10 CONTA no teto, limite absoluto mantido, tetos em US$ e tokens intactos. teto = min(ai_max_calls_absolute=300, ai_max_calls_per_objective=60 + ai_max_calls_per_item=12 x (itens-1)), com o base como piso; sem for_each ou 1 item = 60 e mensagem antiga. Itens = item_index distintos em steps.variables do objetivo (dado persistido). Padrao 12/item medido: r-20261002181642-eff15b gastou 62 chamadas com 6 envios + o 7o parcial (~8 por item + ~10 fixo). Codigo: backend/app/taskqueue/foreach.py teto_de_chamadas, executor.py _teto_de_chamadas em _ai, config.py LimitsCfg; painel types/validation/fixtures. Prova simulated: backend/tests/test_teto_proporcional_for_each.py (8: formula, for_each de 5 estoura no fixo e fecha no proporcional, 1 item = 60, absoluto corta, rejulgamento conta, teto US$ barra) + afetados 173 passed + 38 passed; frontend typecheck e vitest settings 97 passed. Merge PR #61 (c82a5210), implantado no central 02/10 ~19:05Z.",
+   "blocker": "Prova real: 1a tentativa 02/10 18:58-19:07Z r-20261002185832-7385f3 (msg-todos-os-contatos, android-05) CANCELADA por bloqueio de ambiente (android-05 com rede exigida_com_bloqueio vpn-central-wireguard acordou sem tun0; a Android investiga), US$ 0,1346, nenhum envio, teto nao exercitado -> not_run. Uma nova tentativa autorizada (teto US$ 0,80) no android-07 (sem conta real, sem rede pedida).",
    "files": [
     "backend/app/taskqueue/foreach.py",
     "backend/app/taskqueue/executor.py",
@@ -4684,12 +4684,131 @@
     "config/config.example.yaml"
    ],
    "testes": "backend/tests/test_teto_proporcional_for_each.py -> 8 passed (simulated)",
-   "grupo": "sessao:jev-17-12",
+   "grupo": "sessao:jev-fase28",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T18:40:34+00:00"
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.1": {
+   "id": "28.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #56 via #61 (merge c82a5210, 02/10). Trava de lider dos lacos periodicos: migracao 066_travas, taskqueue/travas.py (Lideranca: CAS no relogio do banco, cerca por token, renovacao em laco proprio do AppState), saldos/curadoria/retencao so no lider; fechamento do dia cercado. ADR-064. Suite -n 8 da arvore integrada 5110 passed (1 falha de Any do 17.12 corrigida). Implantado no central em c82a5210 (health migration 067, problems []).",
+   "blocker": "Prova real com DOIS backends no mesmo banco: not_run (o central roda um so).",
+   "files": [
+    "backend/migrations/066_travas.sql",
+    "backend/app/taskqueue/travas.py",
+    "backend/app/state.py",
+    "backend/tests/test_travas.py",
+    "docs/decisoes.md"
+   ],
+   "testes": "backend/tests/test_travas.py (simulated)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.2": {
+   "id": "28.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #55 via #61 (merge c82a5210). Migracao 067_pedidos (pedidos, gatilhos, ocorrencias; runs.pedido_id/ocorrencia_id), modules/pedidos/domain/estados.py e chave.py (chave deterministica, formatar_instante). Implantado no central (health migration 067).",
+   "blocker": "Uso real dos dados so com o laco ligado (28.6/28.12).",
+   "files": [
+    "backend/migrations/067_pedidos.sql",
+    "backend/app/modules/pedidos/domain/estados.py",
+    "backend/app/modules/pedidos/domain/chave.py"
+   ],
+   "testes": "backend/tests/test_pedidos_modelo.py (simulated)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.3": {
+   "id": "28.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #54 (d372a4c7). modules/pedidos/domain/recorrencia.py puro (RRULE parcial, zoneinfo, tzdata declarado em requirements.in).",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/recorrencia.py"
+   ],
+   "testes": "backend/tests/test_pedidos_recorrencia.py 79 passed (simulated)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.4": {
+   "id": "28.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Desenho PR #59 (docs/design/pedidos-laco.md); implementacao PR #73 (merge e6e9cd13, 02/10) junto com o 28.11. ADR-066. Laco desligado de fabrica (pedidos.enabled=false; D1 confirmada pelo dono), origem interna (pedido_id, ocorrencia_id) no mesmo INSERT da execucao (D3), edicao por gatilho novo com versao no lugar (D5), max_ocorrencias conta so as que viraram execucao (D4, dono), janela padrao 1800 s (D7), fechamento sem worker pela varredura ate tick_s (D6). Modulos em modules/pedidos/domain e modules/pedidos/infrastructure (camada corrigida pelo teste de arquitetura). Achados A1-A6 com teste. Suite -n 8 Idle da arvore combinada: 5230 passed, 2 falhas pre-existentes na main (f8, corrigidas no PR #71); afetados na main final 109 passed.",
+   "blocker": "Laco desligado ate o orcamento do 28.6; prova real no 28.12; PostgreSQL not_run.",
+   "files": [
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/acoes.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/state.py",
+    "docs/design/pedidos-laco.md",
+    "docs/decisoes.md"
+   ],
+   "testes": "backend/tests/test_pedidos_laco.py, test_pedidos_origem.py, test_pedidos_materializar.py, test_pedidos_fechamento.py, test_pedidos_sobreposicao.py (simulated)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.9": {
+   "id": "28.9",
+   "status": "partial",
+   "proof": "not_run",
+   "evidence": "Adendo do contrato v0.45 (docs/api-contract.md, 16 rotas, DTOs alinhados a 067 e estados.py, eventos, erros) e tela Pedidos em docs/produto.md: PR #60. Decisoes tomadas em 02/10 (PR #62): emenda a ADR-062 e piso confirmados pelo dono; POST /api/pedidos/previa; 200 sem_mudanca; retomar sem retorno automatico; id deterministico pelo hash inteiro da idempotency_key; chave do backfill pelo instante do slot.",
+   "blocker": "Implementacao (rotas, tela, caixa de avisos) pendente; depende do 28.4 (feito) e do 28.7; migracao da caixa de avisos pela regra do numero maior.",
+   "files": [
+    "docs/api-contract.md",
+    "docs/produto.md"
+   ],
+   "testes": "not_run (so documento)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "28.11": {
+   "id": "28.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila duravel com deduplicacao, so o lider envia (trava avisos, tomada so com avisos.enabled), enabled=false de fabrica, Problem avisos_sem_segredo, conteudo minimo (tipo + link #/pendencias). TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID lidos pelo EnvSettings. Descoberta do chat_id por scripts/avisos-telegram.py descobrir|testar. Procedimento em docs/operacao.md secao 15.",
+   "blocker": "Prova real not_run: depois do deploy de e6e9cd13, descobrir o chat_id, o dono confirma, TELEGRAM_CHAT_ID no .env, testar (UMA mensagem, autorizada pelo dono).",
+   "files": [
+    "backend/migrations/068_avisos_entregas.sql",
+    "backend/app/modules/avisos",
+    "scripts/avisos-telegram.py",
+    "docs/operacao.md"
+   ],
+   "testes": "backend/tests/test_avisos_fila.py, test_avisos_telegram.py, test_avisos_servico.py (simulated)",
+   "grupo": "sessao:jev-fase28",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:30:15+00:00"
   }
  },
  "rodadas": [
@@ -5684,6 +5803,21 @@
    ],
    "grupos": [
     "sessao:jev-17-12"
+   ]
+  },
+  {
+   "quando": "2026-10-02T19:30:15+00:00",
+   "itens": [
+    "28.1",
+    "28.2",
+    "28.3",
+    "28.4",
+    "28.9",
+    "28.11",
+    "17.12"
+   ],
+   "grupos": [
+    "sessao:jev-fase28"
    ]
   }
  ]
