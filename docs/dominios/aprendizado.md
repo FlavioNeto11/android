@@ -386,7 +386,7 @@ e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o mod
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
 decide é `application/espera.py::AvisadorDeEspera` (compara o item antes e depois, memória do último aviso por `kind:ref`); a
-faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.10 a estende). A porta é `PortaDeEventos`
+faixa e o motivo saem de `domain/espera.py::classificar_espera`, tradução da política de risco (30.10). A porta é `PortaDeEventos`
 (`ports.py`), o adaptador sobre o `EventBus` é `infrastructure/eventos.py`, e o catálogo entra como fatos de risco
 (`CatalogoDeRisco`, nunca texto de ação). Os pontos de chamada: `mudar_estado`, `propor`, `avisar_item` (a tela absorvida) e
 `avisar_mudanca_nativa` (os ouvintes das lojas de receita e fluxo). Contrato do payload: `api-contract.md`, adendo v0.49.
@@ -425,6 +425,27 @@ versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra
 - **Incerteza explícita.** Sem nenhum aparelho observado a receita com prova fica `desconhecido` (não `comprovado`); a tela só vira
   `incompativel` ou `versao_aposentada` com sinal, e fora disso é `desconhecido` ("sem sinal de quebra"), nunca `comprovado` (esse é de receita).
 - Fora do escopo: o painel (30.16), o gatilho `versao_nova` do backlog e o veto por versão em `learning_transitions.app_version`.
+
+## Curador, domínio e política de risco (30.10)
+
+Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, o laço e o orçamento são do 30.11.
+
+- **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
+  `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
+  e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
+  em lote só na B; a classe A não tem parecer. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+- **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
+  lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
+  intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
+  `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
+  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
+- **Contrato de saída** (`validar_saida`): os campos do §8.3, nada além; decisão e confiança em vocabulário fechado; citação só de id do
+  dossiê; `alvo` só em `substituir`/`fundir` e só de item relacionado. A falha vira `invalida:<motivo>` (vocabulário fechado, cabe em
+  `learning_reviews.validade`); o `Parecer` válido serializa na forma de `learning_reviews.saida`.
+- Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
+  `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 
 ## Pendências conhecidas
 

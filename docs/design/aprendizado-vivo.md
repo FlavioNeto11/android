@@ -317,6 +317,18 @@ A IA não publica nada em nenhuma classe. Toda transição confere `conferir_tra
 O mapeamento de `interaction_type` para "envio/publicação/exclusão" sai do catálogo de cada app (dado, não código). Quais valores existem
 hoje: **a conferir** em `catalogo.yaml`.
 
+**Nota de implementação (30.10, 02/10).** Decisões que o texto acima não fixava:
+- *Divergência*: com os fatos da etapa presentes e dizendo "sem efeito", um `commit` no conteúdo é **C** (`commit_fora_do_catalogo`,
+  motivo do evento `efeito_externo`), pela regra "vale a mais restritiva" aprovada pelo dono; isso substitui o parêntese da linha B
+  (o rebaixamento por obsolescência do §9.2 continua possível, não exclusivo). Sem fatos da etapa (capability não derivável ou
+  desconhecida do catálogo), o `commit` fica **B**, como na 30.21.
+- `default_policy: disabled` conta como `manual_only` (C).
+- Os catálogos de hoje (Instagram, Outlook) **não declaram família**; os `interaction_type` existentes são `dm_sent`,
+  `comment_replied`, `comment_liked`, `post_liked`, `post_unliked`, `followed`, `unfollowed`, `follow_request_*`. O domínio recebe
+  a família como fato (`familia_do_efeito`); as ações de envio e comentário do Instagram já caem em C por `risk: high`/`needs_draft`.
+- "A IA não decide" vira regra de domínio (`conferir_aceite`): aceite de parecer só por pessoa; lote só na B; a classe A não recebe
+  parecer (a validação a marca `invalida:classe_sem_revisao`).
+
 ### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
 Precisa ser tabela própria porque `ai_calls` é purgada pela retenção e a auditoria não pode sumir.

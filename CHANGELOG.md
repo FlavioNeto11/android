@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: curador, domínio e política de risco (30.10, branch feat/30-10-curador-dominio)
+
+- `domain/politica_de_risco.py` (puro) é a fonte única da classe A/B/C do §8.4 (aprovada pelo dono em 02/10): vale a mais
+  restritiva entre o catálogo da etapa e o `commit` do conteúdo; o `commit` numa etapa que o catálogo declara sem efeito (a receita 100
+  do Outlook) é C. A classe A nunca gasta IA; `conferir_aceite` torna impossível a decisão automática por parecer e o lote na C.
+  `domain/espera.py::classificar_espera` (30.21) passou a ser tradução dela (mesmo payload do evento; `FatosDoCatalogo` e
+  `MotivoDeEntrada` mudaram para lá e são reexportados).
+- `domain/curador.py` (puro): dossiê de fatos por lista branca (sem valor de parâmetro, texto digitado, texto de tela ou de pessoa;
+  item de sessão sem conteúdo), ids citáveis, `dossie_hash` estável (chave da 069), e validação do contrato de saída do §8.3
+  (`invalida:<motivo>` em vocabulário fechado). Sem rota, sem migração, sem chamada de IA. Prova `simulated`
+  (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
