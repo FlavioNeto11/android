@@ -479,8 +479,7 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
   (CAS, trilha, aviso de espera): em prova → `disabled`, publicado → `deprecated` (fluxo: `disabled`). `recipes.py` não foi tocado.
 - **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
   varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
-- **Atenção do dono.** Receita publicada rebaixada vira `superseded`, que o Livro não reativa (`_mover_nativo`) e que o quadro de versão
-  mostra como `superseded`; trocar por `disabled` é uma linha (`destino_do_rebaixamento`).
+- **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
 
 ## Pendências conhecidas
 

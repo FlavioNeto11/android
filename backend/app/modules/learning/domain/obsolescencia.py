@@ -136,15 +136,13 @@ def respaldo_do_fluxo(conteudo: JsonObject | None, catalogo: CatalogoDoApp | Non
 
 
 def destino_do_rebaixamento(kind: LivroKind, estado: SkillState | None) -> SkillState | None:
-    """Para onde o sistema leva o item sem respaldo (§9.2): em prova → `disabled`, publicado → `deprecated`. O fluxo
-    não tem aposentadoria (`STATUS_DO_FLUXO`): publicado → `disabled`. `None`: já fora de circulação (nada a fazer).
-
-    Ponto único de propósito: a receita `deprecated` vira `superseded` e o Livro não a reativa
-    (`LearningService._mover_nativo`); se o dono preferir que ela volte por pessoa, a troca é esta linha."""
-    if estado in (SkillState.CANDIDATE, SkillState.VALIDATED):
+    """Para onde o sistema leva o item sem respaldo (§9.2): sempre `disabled`, em prova ou publicado. O §9.2 diz que
+    reativar é de pessoa, e só `disabled` deixa isso possível: a receita `deprecated` vira `superseded`, que o Livro não
+    reativa (`LearningService._mover_nativo`), e o fluxo nem tem aposentadoria (`STATUS_DO_FLUXO`). Se o catálogo
+    ganhar a ação com efeito, a pessoa reativa. `None`: já fora de circulação (nada a fazer)."""
+    del kind                                  # o destino não depende do tipo; fica na assinatura para quem chama
+    if estado in (SkillState.CANDIDATE, SkillState.VALIDATED, SkillState.PUBLISHED):
         return SkillState.DISABLED
-    if estado is SkillState.PUBLISHED:
-        return SkillState.DEPRECATED if kind is LivroKind.RECEITA else SkillState.DISABLED
     return None
 
 

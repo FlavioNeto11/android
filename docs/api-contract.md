@@ -3653,11 +3653,10 @@ registro de apps, que a porta de política aplica) não respalda o efeito. Rebai
 externo → motivo `catalogo_sem_efeito:*`, ou (b) a capability é conhecida sem ambiguidade e a ação dela no catálogo não tem efeito →
 `catalogo_sem_efeito:<CAPABILITY>`. App sem catálogo: nunca. Capability desconhecida ou ambígua num catálogo com efeito: só o motivo
 `efeito_sem_respaldo_no_catalogo` (`duvidoso`). Transição pelo sistema (`decided_by = sistema`, `reason` = o motivo) pelo mesmo caminho do
-Livro (`LearningService.mudar_estado`): `candidate`/`validated` → `disabled` (receita `quarantined`); `published` → `deprecated` (receita
-`superseded`); fluxo publicado → `disabled` (fluxo não tem aposentadoria). O item rebaixado aparece `inativo` com o motivo da trilha em
+Livro (`LearningService.mudar_estado`): `candidate`/`validated`/`published` → `disabled` (receita `quarantined`); nunca `deprecated`, porque a receita
+`superseded` não volta pelo Livro e o §9.2 diz que reativar é de pessoa. O item rebaixado aparece `inativo` com o motivo da trilha em
 `motivos[0].detalhe` — é o dado que o curador (30.11) vai ler. O `validated` que esperava o dono sai da espera com
-`learning.needs_person` `motivo: rebaixado_pelo_sistema` (adendo v0.49). Reativar é de pessoa; a receita `superseded` não volta pelo
-Livro (regra atual de `_mover_nativo`).
+`learning.needs_person` `motivo: rebaixado_pelo_sistema` (adendo v0.49). Reativar é de pessoa (`disabled` → `published`).
 
 Nenhum campo novo além do vocabulário, nenhuma migração, nenhum código de erro novo. Prova `simulated`
 (`tests/test_learning_obsolescencia.py`); `not_run` no central.

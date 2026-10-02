@@ -107,7 +107,7 @@ def test_fluxo_cada_etapa_com_efeito_e_conferida() -> None:
 def test_destino_do_rebaixamento() -> None:
     assert destino_do_rebaixamento(LivroKind.RECEITA, S.CANDIDATE) is S.DISABLED
     assert destino_do_rebaixamento(LivroKind.RECEITA, S.VALIDATED) is S.DISABLED
-    assert destino_do_rebaixamento(LivroKind.RECEITA, S.PUBLISHED) is S.DEPRECATED
+    assert destino_do_rebaixamento(LivroKind.RECEITA, S.PUBLISHED) is S.DISABLED      # reativar é de pessoa (§9.2)
     assert destino_do_rebaixamento(LivroKind.FLUXO, S.PUBLISHED) is S.DISABLED       # fluxo não tem aposentadoria
     for fora in (S.DISABLED, S.DEPRECATED, None):
         assert destino_do_rebaixamento(LivroKind.RECEITA, fora) is None
@@ -266,11 +266,11 @@ def test_receita_100_do_outlook_e_desligada_pelo_sistema_uma_vez_so(mundo: Mundo
     assert saude.motivos[0].detalhe == "catalogo_sem_efeito:*"
 
 
-def test_receita_ativa_do_outlook_e_aposentada(mundo: Mundo) -> None:
+def test_receita_ativa_do_outlook_e_desligada_e_pode_voltar_por_pessoa(mundo: Mundo) -> None:
     receita = _receita(mundo.db, OUTLOOK, "send_email", status="active")
     mundo.servico.curar()
-    assert mundo.status(receita) == "superseded"                           # deprecated na fonte da receita
-    assert mundo.trilha(LivroKind.RECEITA, str(receita)) == [("deprecated", SYSTEM_ACTOR, "catalogo_sem_efeito:*")]
+    assert mundo.status(receita) == "quarantined"                          # disabled na fonte da receita
+    assert mundo.trilha(LivroKind.RECEITA, str(receita)) == [("disabled", SYSTEM_ACTOR, "catalogo_sem_efeito:*")]
 
 
 def test_validada_esperando_o_dono_sai_da_espera_rebaixada_pelo_sistema(mundo: Mundo) -> None:
