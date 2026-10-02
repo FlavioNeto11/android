@@ -165,7 +165,7 @@ Implementação do remoto:
 - O smoke público (`python-poetry/poetry`) passa pela MESMA regra: `public` + `allow_public` + prova de visibilidade (duas idas à
   `api.github.com`: repositório e commit pinado, além das chamadas ao Jev); clone limpo no SHA pinado satisfaz as três partes. Não há atalho nem campo de configuração que dispense a verificação.
 - Limites que restam: a conferência é por pedido (uma edição entre a decisão e a leitura dos arquivos, dentro do MESMO pedido, não é
-  vista); `git update-index --assume-unchanged/--skip-worktree` esconde alteração do `git status`; e um commit que só existe numa
+  vista); e um commit que só existe numa
   rede de forks do repositório público conta como público (é o que o GitHub serve a qualquer anônimo).
 
 ## Mapa da etapa A e segredo
@@ -254,9 +254,9 @@ no `top_k`; (3) o piloto não definia fallback para falha do provedor, aqui cai 
 - A revisão não percebe edição que preserva tamanho e data de modificação (o mesmo limite do `git status`).
 - **Dívidas para HABILITAR o uso remoto** (nenhuma bloqueou o merge do PR #18; a feature vem desligada por padrão):
   1. **Teto `max_input_tokens`** (24.000 por pedido): com a etapa A em ~15,6k, a B quase nunca roda. Decidir o teto, ou a divisão por etapa, antes de ligar (proposta em J6).
-  2. **Rótulo `cache_b: miss`** também sai quando a B é bloqueada pelo orçamento (é gravado antes de `check_call`): ler `stage_b_reason` e `chunks_sent`.
+  2. ~~Rótulo `cache_b: miss` também saía quando a B era bloqueada pelo orçamento~~ **Fechada (J3a):** o rótulo só vira `miss` depois de `check_call` aprovar a chamada; bloqueada pelo orçamento fica `skipped`, com `stage_b_reason`.
   3. **Checagem por pedido**: a prova de proveniência é refeita a cada pedido, sem monitoramento contínuo.
-  4. **`assume-unchanged` / `skip-worktree`** escondem alterações do `git status`, logo o gate de worktree limpo não as vê.
+  4. ~~`assume-unchanged` / `skip-worktree` escondiam alterações do `git status`~~ **Fechada (J3b):** o gate lê também `git ls-files -v -z` e trata qualquer arquivo marcado (minúscula = `assume-unchanged`, `S` = `skip-worktree`) como worktree sujo, mesmo sem alteração (fail closed); `ls-files` que falha vale `None`. Efeito colateral aceito: um sparse-checkout, que usa `skip-worktree`, também bloqueia o envio remoto.
   5. **Rede de forks**: não há prova de que o commit também não vive só num fork privado.
   6. **Só GitHub**: outro host de remoto é negado.
   7. **Data dir dentro do worktree** pode sujá-lo sozinho.

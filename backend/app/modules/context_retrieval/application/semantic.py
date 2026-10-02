@@ -256,10 +256,10 @@ class SemanticRetriever:
             run.meta["stage_b_cache"] = "hit"
             return em_cache, ()
 
-        run.meta["stage_b_cache"] = "miss"
         motivo = run.rb.check_call(est_input_tokens=len(payload) // 4)
         if motivo is not None:
-            return self._b_falhou(run, motivo.value)
+            return self._b_falhou(run, motivo.value)   # sem chamada: o rótulo segue "skipped", não "miss"
+        run.meta["stage_b_cache"] = "miss"
         try:
             resposta = prov.select_regions(request.query, enviar, max_regions=request.top_k,
                                            timeout_s=run.rb.timeout_s)
