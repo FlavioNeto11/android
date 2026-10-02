@@ -187,7 +187,15 @@ a visão por app e as métricas usam a mesma função. O front não recalcula ta
 
 Dimensão sem dado é `desconhecida` (nunca zero), no mesmo espírito de `metricas.py`.
 
-### 5.3 Rótulos e regras (limiares no config, valores iniciais propostos)
+### 5.3 Rótulos e regras (limiares no config; APROVADOS pelo dono em 02/10, D-5)
+
+**D-5 (aprovada como proposta, 02/10):** a tabela abaixo foi o rascunho. Vale a versão aprovada, medida sobre as 79 receitas ativas do
+central: `degradando` = ≥ 2 falhas seguidas, ou eficácia < 0,8 com ≥ 5 usos, ou contra/conflito em 7 dias; `sem_evidencia` = publicado
+há ≥ 14 dias e nunca usado; `parado` (novo) = já usado, sem uso há > 14 dias; `pouca_amostra` (novo) = usado nos últimos 14 dias com < 5
+usos; `saudavel` = o resto com uso recente, ≥ 5 usos, eficácia ≥ 0,8 e sem contestação; `indeterminado` = sem dado para decidir (nunca
+vira `saudavel`). Eficácia acumulada (`replay_ok/(ok+fail)`), sem janela de 10 usos. Rótulo só de leitura: nada desligado sozinho,
+exibido no painel, sem aviso no Telegram. Config `aprendizado.saude.{sem_uso_dias: 14, amostra_minima: 5, taxa_minima: 0.8,
+falhas_seguidas: 2, contestacao_dias: 7}`. Detalhe e números: `api-contract.md` adendo v0.52.
 
 | Rótulo | Regra (todas determinísticas) |
 |---|---|
@@ -641,6 +649,8 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
      prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.
    - **Curador (decisões do dono, 02/10)**: modelo barato por padrão (Haiku na triagem), escalada a Opus só em faixa C ou conflito (D-1);
      origem humana sem efeito = faixa B (D-2); `shadow` → `on` só com ≥ 30 revisões válidas e ≥ 90 % de acordo (D-3); faixa C sempre item a item.
+   - **Saúde (D-5, decisão do dono, 02/10)**: rótulo só de leitura com 2 falhas seguidas, eficácia 0,8 com 5 usos, 14 dias sem uso e contra
+     em 7 dias (§5.3); nada é desligado pela saúde e não há aviso fora do painel.
 6. **Trilha própria `learning_reviews`**, nunca purgada, com modelo, template, custo, decisão, override e resultado posterior.
 7. **Falha → proposta** pelo backlog existente: conhecimento envolvido e causa provável determinísticos; IA só no indeterminado; prova da correção medida como hoje.
 8. **Modo por app** para lições e telas (override por pacote, padrão = global).
@@ -672,10 +682,10 @@ Decididas pelo dono em 02/10 (via orquestrador), depois do desenho:
 | D-2 | Conhecimento de origem humana sem efeito (lição de nota, preferência) entra na **faixa B**: a IA recomenda e o dono aprova em lote; nunca publica sozinho |
 | D-3 | Curador de `shadow` para `on` só com **≥ 30 revisões válidas em sombra e ≥ 90 % de acordo** com as decisões do dono; a faixa C continua sempre com o dono |
 | Faixa C | Confirmada: a IA dá parecer (prioridade 2 do orçamento), mas a decisão é **sempre do dono, item a item, nunca em lote** |
+| D-5 | Limiares da saúde **aprovados como propostos** (§5.3): 2 falhas seguidas, eficácia 0,8 com 5 usos, 14 dias, contra em 7 dias; rótulo só de leitura, no painel, sem Telegram |
 | 30.9 | Migração `learning_reviews` = **069, provisória**: confirmar com o orquestrador no commit; quem mergear depois renumera para ficar acima de todas da `main` |
 
 Em aberto:
 
 | # | Decisão | Recomendação |
 |---|---|---|
-| D-5 | Limiares iniciais da saúde (§5.3) | os propostos; o orquestrador leva ao dono quando houver números do desenho aplicados aos dados |

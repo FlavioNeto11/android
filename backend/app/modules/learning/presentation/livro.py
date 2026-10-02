@@ -132,7 +132,7 @@ def _transicao(t: Transicao) -> JsonObject:
 def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     return {"item": _entrada(d.entrada, servico, d.saude), "evidencias": [_evidencia(e) for e in d.evidencias],
             "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
-            "conteudo": d.conteudo}
+            "conteudo": d.conteudo, "versao": d.versao}
 
 
 def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:

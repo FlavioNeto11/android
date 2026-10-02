@@ -30,9 +30,11 @@ from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
+from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
                                                      SourceKind)
 from app.modules.skills.domain.document import JsonObject, JsonValue
+from app.util import parse_iso
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -64,6 +66,9 @@ class DetalheDoLivro:
     conteudo: JsonObject | None = None
     #: A saúde do item (30.4); `None` na memória.
     saude: Saude | None = None
+    #: O estado de versão do item (30.6, `domain/versao.py`, §7): em que versões foi validado, quais estão vivas no
+    #: parque e o estado por versão. Sempre presente; o que não se sabe é `desconhecido`, nunca inventado.
+    versao: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,7 +184,7 @@ class LearningService:
     def detalhe(self, kind: LivroKind, ref: str) -> DetalheDoLivro:
         e = self.entrada(kind, ref)
         if kind is LivroKind.MEMORIA:
-            return DetalheDoLivro(e, (), ())            # só a contagem: o conteúdo da memória nunca sai no livro
+            return DetalheDoLivro(e, (), (), versao=quadro_independente())   # só a contagem: o conteúdo nunca sai
         exposicoes: tuple[JsonValue, ...] = ()
         if kind is LivroKind.LICAO:                     # as mais recentes: o braço e o desfecho de cada unidade
             todas = self._repo.exposicoes(e.ref, limite=100_000)
@@ -187,7 +192,7 @@ class LearningService:
         evidencias = tuple(self._repo.evidencias(e.trail_ref))
         trilha = tuple(self._repo.trilha(e.trail_ref))
         return DetalheDoLivro(e, evidencias, trilha, exposicoes, self._conteudo(kind, e.ref),
-                              self.saude_de(e, evidencias, trilha))
+                              saude=self.saude_de(e, evidencias, trilha), versao=self._versao(e, evidencias))
 
     # ================================================================== saúde (30.4)
     def saudes(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, Saude]:
@@ -225,6 +230,18 @@ class LearningService:
             ultimo_uso=e.last_used_at, usos=e.uses, a_favor=a_favor, contra=contra, exige_o_dono=e.requires_owner,
             detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes),
             self.ajustes.saude)
+
+    def _versao(self, e: EntradaDoLivro, evidencias: Sequence[Evidencia]) -> JsonObject:
+        """O `versao` do detalhe (30.6): a receita pela chave nas versões vivas; a tela pela regra `sem_casar`; os
+        demais tipos não dependem de versão (§7)."""
+        if e.kind is LivroKind.RECEITA:
+            return self._fontes.versao(e.kind, e.ref) or quadro_independente() | {"estado": "desconhecido"}
+        if e.kind is not LivroKind.TELA:
+            return quadro_independente()
+        favor = [t for t in (parse_iso(x.observed_at) for x in evidencias if x.stance is Posicao.FOR) if t]
+        return quadro_da_tela(app=e.app, app_version=e.app_version, vivas=self._fontes.vivas(e.app) if e.app else (),
+                              ultima_a_favor=max(favor, default=None), criada=parse_iso(e.created_at or ""),
+                              agora=self._relogio())
 
     def _conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
         """O `conteudo` do detalhe (30.3): das fontes nativas, pela fonte; lição e tela, do `content` do item. Voz e

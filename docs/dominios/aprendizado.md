@@ -412,6 +412,20 @@ tela saem do `content` do item) e `DetalheDoLivro.conteudo` o carrega até `pres
 - Fora do escopo desta fatia (§4 do desenho): pré e pós-condição da etapa de origem, aparelhos em que reproduziu, trilha de promoção
   por receita e quadro de versão.
 
+## Estado de versão no detalhe (30.6)
+
+O detalhe do Livro devolve `versao` (contrato no adendo v0.51 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §7): em que
+versões do app o item foi validado, quais estão vivas no parque e o estado por versão. A regra é pura e mora em `domain/versao.py`;
+`FontesSql.vivas` lê `device_app_state` (aparelho ativo, app presente) e `FontesSql.versao` junta a chave exata da receita em todas as
+versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra `sem_casar`, o resto `independente`).
+
+- **Viva** = observada hoje em aparelho não aposentado (`instances.retired_at`) e com o app (`state <> 'missing'`). É o eixo de comparação.
+- **`nao_testado`** é a versão viva em que a chave não tem receita nenhuma; a receita da versão antiga mostra em `nao_testada_em[]`. Nada se
+  apaga: se um aparelho voltar à versão antiga, a receita volta a valer (o `find` usa a chave exata).
+- **Incerteza explícita.** Sem nenhum aparelho observado a receita com prova fica `desconhecido` (não `comprovado`); a tela só vira
+  `incompativel` ou `versao_aposentada` com sinal, e fora disso é `desconhecido` ("sem sinal de quebra"), nunca `comprovado` (esse é de receita).
+- Fora do escopo: o painel (30.16), o gatilho `versao_nova` do backlog e o veto por versão em `learning_transitions.app_version`.
+
 ## Saúde do item (30.4)
 
 Cada item do Livro (lista, `pendentes`, `revisar` e detalhe) traz `saude`: dimensões medidas, UM rótulo por regra e os `motivos[]` que o
@@ -426,7 +440,7 @@ lista, de modo que a lista e o detalhe nunca discordam. O rótulo é só leitura
   do último uso ou sem eficácia/contestação medida é `indeterminado`. Habilidade e itens sem contador de uso (tela, lição, voz,
   preferência) ficam `indeterminado` até haver fonte de uso por item.
 - **Eficácia acumulada.** Receita: `replay_ok/(ok+fail)`; fluxo e itens: evidências a favor/contra. Não há janela dos últimos N usos por item.
-- **Lacunas conhecidas.** `fontes.py` ainda não preenche `EntradaDoLivro.falhas_seguidas` (`recipes.consecutive_fail`); `obsoleto_provavel`
+- **Lacunas conhecidas.** `obsoleto_provavel`
   é do 30.13; `intervencao_humana` e `versao` ficam `desconhecida`; `acoes[]` não traz `motivo_de_bloqueio`. A lista lê a evidência de cada
   publicado (uma consulta indexada por item): trocar por consulta em lote se a lista crescer.
 

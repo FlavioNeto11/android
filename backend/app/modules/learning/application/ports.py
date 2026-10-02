@@ -21,6 +21,7 @@ from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import LimiaresDeSaude
+from app.modules.learning.domain.versao import VersaoViva
 from app.modules.learning.domain.vocabulario import (LivroKind, Modo, ModoDeTelas, Polaridade, Posicao, SignalKind)
 from app.modules.skills.domain.document import JsonObject
 
@@ -156,6 +157,14 @@ class FontesDoLivro(Protocol):
     def conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
         """O conteúdo legível (30.3) de receita, fluxo ou habilidade, montado do que já está no banco; `None` nos
         outros tipos ou quando a linha sumiu."""
+        ...
+
+    def versao(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O quadro de versão (30.6, `domain/versao.py`) de uma receita; `None` nos outros tipos ou sem a linha."""
+        ...
+
+    def vivas(self, app: str) -> tuple[VersaoViva, ...]:
+        """As versões do app observadas hoje em aparelho ativo (o eixo de comparação do §7)."""
         ...
 
 

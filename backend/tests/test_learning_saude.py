@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +26,6 @@ from app.db import Database
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SkillState
-from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import (CodigoDoMotivo, Dimensao, LimiaresDeSaude, Rotulo, SinaisDeSaude,
                                                calcular)
 from app.modules.learning.domain.vocabulario import LivroKind
@@ -201,22 +199,6 @@ def _contra(db: Database, ref: str, quando: str, origem: str) -> None:
                " VALUES (?,?,?,0,?)", (ref, "against", origem, quando))
 
 
-class _FontesComFalhas(FontesSql):
-    """Faz o que `fontes.py` passa a fazer quando o coordenador integrar o 30.6: preencher `falhas_seguidas` da receita
-    com `recipes.consecutive_fail`. O teste prova que o serviço honra o campo de `EntradaDoLivro`."""
-
-    def _com(self, e: EntradaDoLivro) -> EntradaDoLivro:
-        linha = self._db.one("SELECT consecutive_fail FROM recipes WHERE id=?", (int(e.ref),))
-        return replace(e, falhas_seguidas=int(linha["consecutive_fail"]) if linha else None)
-
-    def receitas(self) -> list[EntradaDoLivro]:
-        return [self._com(e) for e in super().receitas()]
-
-    def receita(self, ref: str) -> EntradaDoLivro | None:
-        e = super().receita(ref)
-        return None if e is None else self._com(e)
-
-
 class Mundo:
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -239,7 +221,7 @@ class Mundo:
                    ("2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z"))
         habilidades = SqlSkillRepository(db, ValidadorFalso())
         repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades), precos=dict)
-        self.servico = LearningService(repo, _FontesComFalhas(db), TriagemDeCredencial(), ajustes=Ajustes,
+        self.servico = LearningService(repo, FontesSql(db), TriagemDeCredencial(), ajustes=Ajustes,
                                        relogio=lambda: AGORA, retencao_de_logs_dias=lambda: 14)
 
 
