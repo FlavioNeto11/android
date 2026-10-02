@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
+
+- O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:
+  - só a ENTRADA na espera avisa;
+  - a saída, e a saída sem a entrada correspondente depois de reinício, é no-op;
+  - só a faixa C avisa por padrão (`avisos.aprendizado_faixas`, novo; a B é aprovação em lote e fica na caixa);
+  - a mensagem leva o título fixo e o link `#/pendencias`, nunca kind, ref, app ou motivo.
+- Chave de deduplicação comum aos eventos que avisam: `chave_do_fato(família, …)`. Famílias e formatos:
+  - `approval:{id}`;
+  - `run:{id}:needs_input`;
+  - `session:{evento}` (era `evento:{id}`);
+  - `pedido:{id}` (era `pedido-aviso:{id}`);
+  - `learning:{kind}:{ref}:{desde}`.
+  A troca de nome é inofensiva: o laço só lê eventos novos, a partir de `last_id`.
+- Prova `simulated`: `backend/tests/test_avisos_aprendizado.py` (6), mais os testes de avisos vizinhos. Real: `not_run`.
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
