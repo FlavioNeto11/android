@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — A9: o desvio de relógio do worker é re-medido a cada batida (branch `feat/a8-a9-codigo`)
+
+- **Defeito.** O agente media o desvio UMA vez por conexão (`Welcome.server_time`) e a batida repetia o número, então o
+  `degraded` "relógio desalinhado" refletia a fotografia da conexão e só mudava reconectando.
+- **Mudança mínima compatível.** `Heartbeat.sent_at` (opcional, relógio local do agente na saída); o central calcula
+  `relógio do banco na chegada − sent_at` (`WorkerRegistry.desvio_de_relogio`, latência de ida inclusa) e a regra de saúde
+  segue a mesma (limite 5 s, mesma mensagem; o `degraded` por relógio some sozinho quando o desvio volta ao limite).
+  Agente antigo (sem `sent_at`) cai no `clock_offset_s` da conexão; central antigo ignora o campo. Sem versão nem feature.
+  Esquema do fio recongelado em `test_contratos_do_worker.py` (`heartbeat`, aditivo).
+- Prova: `simulated` (`backend/tests/test_workers.py` 4 testes novos, `test_worker_agent.py::test_toda_batida_leva_o_relogio_local…`,
+  contrato). `not_run`: agente e central reais em máquinas com relógios diferentes. Docs: `docs/worker.md`,
+  `docs/api-contract.md`, `docs/parque-distribuido.md`.
+
 ## 2026-10-02 — A8: o instalador do túnel nunca registra o pwsh da Microsoft Store (branch `feat/a8-a9-codigo`)
 
 - **Achado real.** No central a tarefa `farm-tunel-192.168.1.11` foi instalada com `-AceitarStore` e executava

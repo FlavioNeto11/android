@@ -87,8 +87,14 @@ Precisa de: **Python 3.12 ou mais novo** (o worker real roda 3.12.10), Android S
 pwsh -File scripts\install-prereqs.ps1 -SkipAppium
 ```
 
-Acerte o relógio ANTES de inscrever — o agente mede o desvio em relação ao central uma vez por conexão, e
-acima de 5 s o worker fica `degradado` ("relógio desalinhado") até reconectar:
+Acerte o relógio ANTES de inscrever — acima de 5 s de desvio contra o central o worker fica `degradado`
+("relógio desalinhado"). O desvio é **re-medido a cada batida** (A9, 02/10/2026): o agente manda o relógio local da
+saída em `Heartbeat.sent_at` e o central calcula `relógio do banco na chegada − sent_at` (positivo = worker
+atrasado; inclui a latência de ida, de dezenas de ms contra os 5 s). O `degradado` por relógio some sozinho quando o
+desvio volta ao limite, sem reconectar. Antes do A9 o número era o do `welcome`, repetido em toda batida, e o estado
+só se corrigia reconectando. Compatibilidade: `sent_at` é opcional, sem versão nem feature; agente antigo não o manda
+e o central usa o `clock_offset_s` da conexão (comportamento de antes); central antigo ignora o campo e segue com
+`clock_offset_s`, que o agente novo continua mandando.
 
 ```bash
 pwsh -File scripts\hora-certa.ps1        # como Administrador; no central também

@@ -314,6 +314,21 @@ async def test_central_antigo_sem_accepted_features_nao_liga_nada(tmp_path: Path
         await _encerrar(tarefa)
 
 
+async def test_toda_batida_leva_o_relogio_local_e_mantem_o_desvio_da_conexao(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A9: `sent_at` (relógio local na saída) vai em CADA batida — é com ele que o central re-mede o desvio —, e o
+    `clock_offset_s` da conexão continua indo, para o central antigo, que ignora o campo novo."""
+    async with CentralFalso(heartbeat_s=0.05) as central:
+        agente, tarefa = await _conectar(central, tmp_path, monkeypatch, _nada)
+        await _esperar(lambda: len(central.de_tipo("heartbeat")) >= 2, "duas batidas")
+        batidas = central.de_tipo("heartbeat")
+        assert all(b.get("sent_at") for b in batidas)
+        assert len({b["sent_at"] for b in batidas}) == len(batidas)            # medido de novo, não repetido
+        assert all("clock_offset_s" in b for b in batidas)
+        assert (agent_mod.parse_iso(batidas[-1]["sent_at"]) - agent_mod.now()).total_seconds() < 5
+        await _encerrar(tarefa)
+
+
 # ---------------------------------------------------------------- reentrega DEPOIS do ack (frente F4, item A3)
 async def test_reentrega_depois_do_result_ack_devolve_o_mesmo_desfecho_e_nao_executa(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
