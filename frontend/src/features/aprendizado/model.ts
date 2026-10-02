@@ -57,6 +57,28 @@ export interface EntradaDoLivro {
   count: number | null;
   /** `state_detail`: `em_prova`, `medida:ajuda`, `absorvida:<commit>`… */
   detail: string | null;
+  /** O que a PESSOA pode fazer agora, calculado no backend (`ciclo.TRANSICOES` + D1): o painel não decide. */
+  acoes: AcaoPermitida[];
+  /** Por que o sistema não publica sozinho (D1, veto, modo); `null` quando publica. */
+  por_que_nao_publica: MotivoDeNaoPublicar | null;
+}
+
+/** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
+export type RotuloDaAcao = 'validar' | 'aprovar' | 'rejeitar' | 'aposentar' | 'desligar' | 'reativar';
+
+export interface AcaoPermitida {
+  to: EstadoDoLivro;
+  rotulo: RotuloDaAcao;
+  exige_motivo: boolean;
+}
+
+export type CodigoDeNaoPublicar = 'habilidade' | 'efeito_externo' | 'texto_de_pessoa' | 'vetado' | 'modo_desligado';
+
+export interface MotivoDeNaoPublicar {
+  codigo: CodigoDeNaoPublicar;
+  /** Só o dono decide (D1); falso para veto e modo desligado. */
+  espera_o_dono: boolean;
+  detalhe: string | null;
 }
 
 export interface ListaDoLivro {
@@ -191,12 +213,18 @@ export function camadaDaFalha(k: string | null | undefined): Camada | null {
   return k ? FALHA[k]?.camada ?? null : null;
 }
 
-/** Por que este item espera o dono (D1): o sistema publica sozinho só o que não tem efeito nem texto de pessoa. */
-export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'kind' | 'side_effect' | 'human_origin'>): string | null {
-  if (e.kind === 'habilidade') return 'habilidade: publicar é sempre de uma pessoa';
-  if (e.side_effect) return 'tem efeito externo';
-  if (e.human_origin) return 'tem texto de pessoa';
-  return null;
+/** O texto do motivo que o backend mandou (apresentação: a regra é do domínio). */
+export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_publica'>): string | null {
+  const m = e.por_que_nao_publica;
+  if (!m) return null;
+  switch (m.codigo) {
+    case 'habilidade': return 'habilidade: publicar é sempre de uma pessoa';
+    case 'efeito_externo': return 'tem efeito externo';
+    case 'texto_de_pessoa': return 'tem texto de pessoa';
+    case 'vetado': return m.detalhe ?? 'vetado pelo sistema';
+    case 'modo_desligado': return 'o modo deste tipo não está ligado';
+    default: return m.codigo;
+  }
 }
 
 /** `state_detail` em português (o que a medida disse, a prova em andamento). */
@@ -223,39 +251,37 @@ export interface AcaoDoItem {
 
 const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });
 
+/** Texto dos botões por chave do backend (apresentação). `perigo` pinta o que tira o item de circulação. */
+const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; perigo: boolean }> = {
+  validar: { label: 'Validar', confirmar: 'Confirmar validação', perigo: false },
+  aprovar: { label: 'Aprovar', confirmar: 'Confirmar aprovação', perigo: false },
+  rejeitar: { label: 'Rejeitar', confirmar: 'Confirmar rejeição', perigo: true },
+  aposentar: { label: 'Aposentar', confirmar: 'Confirmar aposentadoria', perigo: false },
+  desligar: { label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true },
+  reativar: { label: 'Reativar', confirmar: 'Confirmar reativação', perigo: false },
+};
+
 /**
- * As transições que uma PESSOA pode fazer a partir do estado atual — o espelho de `ciclo.py::TRANSICOES` (ator
- * PERSON), com as exceções do serviço: habilidade tem rota e ciclo próprios, memória fica fora do D1, fluxo não tem
- * `deprecated` (sai de circulação como `disabled`) e receita substituída não volta.
+ * As ações que a PESSOA pode fazer, como o backend as calculou (`acoes`: tabela do ciclo, D1 e regras de cada fonte).
+ * Aqui só se põe o texto em português; nenhuma regra de transição mora no painel. Chave desconhecida (backend mais
+ * novo) aparece como veio, sem botão de perigo.
  */
-export function acoesDoItem(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem[] {
-  if (e.kind === 'habilidade' || e.kind === 'memoria' || !e.state) return [];
-  switch (e.state) {
-    case 'candidate':
-      return [A('validated', 'Validar', 'Confirmar validação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
-    case 'validated':
-      return [A('published', 'Aprovar', 'Confirmar aprovação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
-    case 'published':
-      return e.kind === 'fluxo'
-        ? [A('disabled', 'Desligar', 'Confirmar desligamento', true)]
-        : [A('deprecated', 'Aposentar', 'Confirmar aposentadoria'), A('disabled', 'Desligar', 'Confirmar desligamento', true)];
-    case 'deprecated':
-      return e.kind === 'receita' ? [] : [A('published', 'Reativar', 'Confirmar reativação')];
-    case 'disabled':
-      return [A('published', 'Reativar', 'Confirmar reativação')];
-    default:
-      return [];
-  }
+export function acoesDoItem(e: Pick<EntradaDoLivro, 'acoes'>): AcaoDoItem[] {
+  return (e.acoes ?? []).map((a) => {
+    const t = TEXTO_DA_ACAO[a.rotulo];
+    return t ? { to: a.to, ...t } : A(a.to, a.rotulo, `Confirmar ${a.rotulo}`);
+  });
 }
 
-/** O passo "para cima" que a fila Para aprovar oferece (e a aprovação em lote aplica). */
-export function acaoDeAprovar(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem | null {
-  const acao = acoesDoItem(e)[0];
-  return acao && (e.state === 'candidate' || e.state === 'validated') ? acao : null;
+/** O passo "para cima" que a fila Para aprovar oferece (e a aprovação em lote aplica): validar ou aprovar. */
+export function acaoDeAprovar(e: Pick<EntradaDoLivro, 'acoes'>): AcaoDoItem | null {
+  const a = e.acoes?.find((x) => x.rotulo === 'validar' || x.rotulo === 'aprovar');
+  return a ? acoesDoItem({ acoes: [a] })[0] ?? null : null;
 }
 
-export function acaoDeRejeitar(e: Pick<EntradaDoLivro, 'kind' | 'state'>): AcaoDoItem | null {
-  return acoesDoItem(e).find((a) => a.to === 'disabled') ?? null;
+export function acaoDeRejeitar(e: Pick<EntradaDoLivro, 'acoes'>): AcaoDoItem | null {
+  const a = e.acoes?.find((x) => x.rotulo === 'rejeitar');
+  return a ? acoesDoItem({ acoes: [a] })[0] ?? null : null;
 }
 
 // ---------------------------------------------------------------- habilidade na fila (a rota das habilidades)
@@ -279,16 +305,16 @@ export function refDaHabilidade(ref: string): { skillId: string; version: number
  * As ações da fila Para aprovar. O livro põe TODA versão de habilidade validada nesta fila (publicar é sempre de uma
  * pessoa), mas não a move: a rota do livro devolve 409 `use_skills_route`. Então, para a habilidade, a fila oferece o
  * passo da PESSOA no ciclo dela (`skills/domain/lifecycle.py::TRANSITIONS`: validated → published | disabled) e
- * `aplicarTransicao` o manda pela rota das habilidades. Os outros tipos seguem a tabela do livro (`acoesDoItem`).
+ * `aplicarTransicao` o manda pela rota das habilidades. Os outros tipos seguem as `acoes` do backend (`acoesDoItem`).
  */
-export function acoesNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem[] {
+export function acoesNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref' | 'acoes'>): AcaoDoItem[] {
   if (e.kind !== 'habilidade') return [acaoDeAprovar(e), acaoDeRejeitar(e)].filter((a): a is AcaoDoItem => a !== null);
   if (e.state !== 'validated' || !refDaHabilidade(e.ref)) return [];
   return [A('published', 'Publicar', 'Confirmar publicação'), A('disabled', 'Rejeitar', 'Confirmar rejeição', true)];
 }
 
 /** O passo "para cima" da fila, que a aprovação em lote aplica: para a habilidade validada, publicar. */
-export function acaoDeAprovarNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref'>): AcaoDoItem | null {
+export function acaoDeAprovarNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | 'ref' | 'acoes'>): AcaoDoItem | null {
   return e.kind === 'habilidade' ? acoesNaFila(e).find((a) => a.to === 'published') ?? null : acaoDeAprovar(e);
 }
 

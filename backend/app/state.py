@@ -38,6 +38,8 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
+from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
@@ -78,10 +80,11 @@ from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, gu
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
+from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
-from .taskqueue.travas import (CURADORIA, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
+from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
 from .util import now, now_iso, parse_iso, to_iso
@@ -234,6 +237,8 @@ class AppState:
         # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
+        # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
+        self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -436,6 +441,9 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
+        # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
+        self.pedidos = LacoDePedidos(self.db, self.runs, self.lideranca, cfg.file.pedidos)
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
         # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),
@@ -2250,10 +2258,16 @@ class AppState:
             self.lideranca.soltar_da_queda()
             self._manter_travas()
             self._bg.append(asyncio.create_task(self._laco_das_travas(), name="travas-de-lider"))
+            if self.cfg.file.pedidos.enabled:
+                # Depois de `resume_planning_after_restart` e de `soltar_da_queda`: a primeira volta é imediata, acha
+                # a execução pela chave antes de criar e retoma o que a queda deixou (pedidos-laco.md §6).
+                self._bg.append(asyncio.create_task(self.pedidos.laco(), name="pedidos"))
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
+            # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
+            self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura (e a rede de cada
@@ -2446,6 +2460,7 @@ class AppState:
     def _execucao_assentada(self, run_id: str) -> None:
         """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
         self._draft_locks.pop(run_id, None)
+        self.pedidos.ao_assentar(run_id)             # só acorda o laço de pedidos (28.4); nunca escreve aqui
         try:
             laco = asyncio.get_running_loop()
         except RuntimeError:
@@ -2463,7 +2478,12 @@ class AppState:
     # ------------------------------------------------------------------ trava de líder (item 28.1)
     def _manter_travas(self) -> None:
         try:
-            self.lideranca.manter(TRAVAS_DOS_LACOS)
+            # `pedidos` e `avisos` só com o laço ligado: um backend com ele desligado não pode segurar a trava e deixar
+            # o ligado sem líder (28.4, 28.11).
+            desligadas = {PEDIDOS} if not self.cfg.file.pedidos.enabled else set()
+            if not self.cfg.file.avisos.enabled:
+                desligadas.add(AVISOS)
+            self.lideranca.manter([n for n in TRAVAS_DOS_LACOS if n not in desligadas])
         except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz
             log.exception("travas de líder: renovação")
 
@@ -2937,6 +2957,7 @@ class AppState:
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         problems.extend(self._problemas_de_saldo())
+        problems.extend(self.avisos.problemas())
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

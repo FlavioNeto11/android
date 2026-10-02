@@ -145,7 +145,9 @@ class RunService:
             return canario.profile, "canary"
         return None
 
-    def create(self, req: RunCreate) -> RunSummary:
+    def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None) -> RunSummary:
+        """Cria a execução. `origem` = `(pedido_id, ocorrencia_id)` é só do laço de pedidos (28.4, D3): vai no mesmo
+        `INSERT` de `runs` e não existe na API pública (`RunCreate` recusa campo extra)."""
         self._recusar_credencial(req.command)
         perfil_de_ia = self._perfil_de_ia(req)
         pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
@@ -169,7 +171,7 @@ class RunService:
                            409, {"targets": [a.as_dict() for a in nao_confirmados], "command_sem_destinos": comando})
         req = req.model_copy(update={"instance_ids": resolucao.instance_ids})
         if resolucao.perguntas:
-            return self._criar_com_perguntas(req, resolucao, comando, pedido, perfil_de_ia)
+            return self._criar_com_perguntas(req, resolucao, comando, pedido, perfil_de_ia, origem)
         perfis = {a.instance_id: a.profile_id for a in resolucao.alvos}
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
         if unknown:
@@ -202,7 +204,7 @@ class RunService:
         # são NOMES, montados no planejamento, e o consentimento já foi dado na conta.
         row, created = self.repo.create_run(req, simulated=self.provider.simulated,
                                             targets=self._foto(req, resolucao, comando, pedido),
-                                            ai_profile=perfil_de_ia)
+                                            ai_profile=perfil_de_ia, origem=origem)
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
@@ -405,12 +407,13 @@ class RunService:
                       "command_sem_destinos": comando, "device_policy": req.device_policy, "pedido": dict(pedido)})
 
     def _criar_com_perguntas(self, req: RunCreate, resolucao: Resolucao, comando: str,
-                             pedido: Mapping[str, object], perfil_de_ia: tuple[str, str] | None = None) -> RunSummary:
+                             pedido: Mapping[str, object], perfil_de_ia: tuple[str, str] | None = None,
+                             origem: tuple[str, str] | None = None) -> RunSummary:
         """Contradição ou ambiguidade de destino: a execução nasce em `needs_input` com as perguntas estruturadas
         (o mesmo formato das da RESOLVE), sem plano — nem parcial — e sem chamar o planejador."""
         row, created = self.repo.create_run(req, simulated=self.provider.simulated,
                                             targets=self._foto(req, resolucao, comando, pedido),
-                                            ai_profile=perfil_de_ia)
+                                            ai_profile=perfil_de_ia, origem=origem)
         if created:
             self._pedir_resposta(row["id"], [p.as_dict() for p in resolucao.perguntas])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)

@@ -31,7 +31,7 @@ const ITEM = (ref: string, over: Partial<EntradaDoLivro> = {}): EntradaDoLivro =
   kind: 'receita', ref, state: 'validated', native_status: 'validated', title: `Receita ${ref}`, app: 'instagram',
   origin: 'execucao', side_effect: true, human_origin: false, requires_owner: true,
   created_at: '2026-09-28T10:00:00Z', state_at: '2026-09-28T10:00:00Z', last_used_at: null, uses: 2,
-  evidence: { for: 3, against: 0 }, count: null, detail: null, ...over,
+  evidence: { for: 3, against: 0 }, count: null, detail: null, acoes: [], por_que_nao_publica: null, ...over,
 });
 
 const APROVACAO = (id: string, over: Partial<Approval> = {}): Approval => ({
