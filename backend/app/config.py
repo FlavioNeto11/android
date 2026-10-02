@@ -840,9 +840,26 @@ class LicoesDoPapelCfg(BaseModel):
     max: int = Field(3, ge=0, le=20)
 
 
+_PACOTE_DO_APRENDIZADO = re.compile(r"^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$")
+
+
+def _conferir_pacotes_por_app(por_app: dict[str, str]) -> dict[str, str]:
+    """As chaves de `por_app` são pacotes Android (o mesmo formato que as telas aprendidas aceitam): dado de instalação,
+    nunca regra de código (ADR-052). Chave fora do formato é erro de config, não item ignorado."""
+    for pacote in por_app:
+        if not _PACOTE_DO_APRENDIZADO.match(pacote):
+            raise ValueError(f"'{pacote}' não é um pacote Android (ex.: com.exemplo.app)")
+    return por_app
+
+
 class LicoesCfg(BaseModel):
     #: off = não grava · shadow = grava e mede sem ir ao prompt · on = publica sem efeito e vai ao prompt (em prova)
     modo: Literal["off", "shadow", "on"] = "shadow"
+    #: Override por app (§8.10): `{<pacote>: off|shadow|on}`. Vazio (padrão) = o `modo` global vale para todo app; o
+    #: pacote que aparece aqui usa o modo dele. Nada liga sozinho: quem escreve o pacote é a instalação.
+    por_app: dict[str, Literal["off", "shadow", "on"]] = Field(default_factory=dict)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
     ator: LicoesDoPapelCfg = LicoesDoPapelCfg()
     planejador: LicoesDoPapelCfg = LicoesDoPapelCfg(tokens=150)
     minimo_por_braco: int = Field(8, ge=1, le=1000)        # unidades por braço para o veredito de efeito
@@ -853,8 +870,12 @@ class LicoesCfg(BaseModel):
 class TelasAprendidasCfg(BaseModel):
     #: off = não observa · observe = grava, minera e valida, sem a sessão consumir · on = publica sozinha (D1)
     modo: Literal["off", "observe", "on"] = "observe"
+    #: Override por app (§8.10): `{<pacote>: off|observe|on}`; vazio = o `modo` global vale para todo app.
+    por_app: dict[str, Literal["off", "observe", "on"]] = Field(default_factory=dict)
     observacoes: int = Field(3, ge=1, le=100)
     execucoes: int = Field(2, ge=1, le=100)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
 
 
 class FluxoAprendidoCfg(BaseModel):
