@@ -163,7 +163,15 @@ def test_normaliza_apostrofo_tipografico_acento_e_caixa() -> None:
     assert normalizar_texto_de_tela("Confirme que você é humano") == "confirme que voce e humano"
 
 
-@pytest.mark.parametrize("texto", [TRAVA_EN, TRAVA_PT, "Confirm you are human", "Confirm you're human"])
+#: Variantes próximas da redação relatada (item 8.3). A hierarquia é SINTÉTICA (`_tela`): a tela real não existe mais,
+#: a conta que a mostrou foi perdida — o que se prova aqui é o casamento da redação, não a tela do app.
+VARIANTES_DA_TRAVA = ["Verify you're human", "Prove you are a human", "Confirm you're a real person",
+                      "Confirmar que você é humano", "Comprove que você é uma pessoa real",
+                      "Confirme que você é uma pessoa", "Verifique que você é humano"]
+
+
+@pytest.mark.parametrize("texto", [TRAVA_EN, TRAVA_PT, "Confirm you are human", "Confirm you're human",
+                                   *VARIANTES_DA_TRAVA])
 def test_tela_de_conta_travada_sem_campo_e_detectada_e_sensivel(texto: str) -> None:
     """Buraco 1: sem campo de texto a tela passava como comum — a imagem ia ao modelo e ninguém parava."""
     from app.automation.conhecimento_de_telas import detectar_conta_travada
@@ -173,11 +181,20 @@ def test_tela_de_conta_travada_sem_campo_e_detectada_e_sensivel(texto: str) -> N
     for k in (None, do_app(PKG).telas):
         trava = detectar_conta_travada(tela, k)
         assert trava is not None and trava.subtipo == "conta_travada", (texto, k)
-        assert "human" in trava.trecho or "humano" in trava.trecho
+        assert any(p in trava.trecho for p in ("human", "person", "pessoa"))
+
+
+@pytest.mark.parametrize("texto", ["Can you confirm you're a person who likes it?", "Confirm your email address",
+                                   "Verify you're coming tomorrow"])
+def test_conversa_comum_nao_vira_conta_travada(texto: str) -> None:
+    """O detector roda no meio da execução, em DMs e legendas: só frase de desafio, nunca verbo solto."""
+    from app.automation.conhecimento_de_telas import detectar_conta_travada
+
+    assert detectar_conta_travada(_tela(texto), do_app(PKG).telas) is None
 
 
 @pytest.mark.parametrize("locale", ["en-US", "pt-BR", None])
-@pytest.mark.parametrize("texto", [TRAVA_EN, TRAVA_PT])
+@pytest.mark.parametrize("texto", [TRAVA_EN, TRAVA_PT, VARIANTES_DA_TRAVA[0], VARIANTES_DA_TRAVA[3]])
 def test_classificacao_casa_a_uniao_dos_idiomas(locale: str | None, texto: str) -> None:
     """Buraco 3: o idioma do APARELHO não diz o idioma da tela de verificação (o Instagram mostrou inglês num
     aparelho em português). A tabela única por `ro.product.locale` deixava a tela "desconhecida"."""

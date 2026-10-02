@@ -58,7 +58,8 @@ PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {cont
 #:   do MENU de configurações não é pedido de código.
 _CONTA_TRAVADA = re.compile(
     # português
-    r"(confirme que (?:voce )?e (?:um[ae]? pessoa|humano)|confirme que e voce|ajude a confirmar|verifique sua conta|"
+    r"((?:confirme|confirmar|verifique|comprove) que (?:voce )?e (?:um[ae]? pessoa(?: real)?|humano)|"
+    r"confirme que e voce|ajude a confirmar|verifique sua conta|"
     r"detectamos (?:uma? |algum[ae]? )?(?:tentativa|atividade|acesso|login|comportamento)|"
     r"(?:atividade|tentativa de login|login|acesso|comportamento) (?:suspeit|incomum)|comportamento automatizado|"
     r"nao sou um rob|ajude-nos a proteger (?:a )?sua conta|"
@@ -66,7 +67,7 @@ _CONTA_TRAVADA = re.compile(
     # comprovar um contato (item 23.8). As outras frases de desafio da Microsoft ("your account has been locked",
     # "enter code") ficam só no `telas.yaml` do Outlook, ancoradas na linha: soltas aqui, um DM de golpe com "your
     # account has been locked" travaria uma conta viva do Instagram.
-    r"confirm (?:that )?you(?:'?re| are) (?:a )?human|confirm it'?s you|help us confirm|verify your account|"
+    r"(?:confirm|verify|prove) (?:that )?you(?:'?re| are) (?:a )?(?:human|real person)|confirm it'?s you|help us confirm|verify your account|"
     r"help us protect your account|"
     r"(?:we|we'?ve|we have) detected (?:an? |some )?(?:unusual|suspicious)|"
     r"(?:suspicious|unusual) (?:login|activity|attempt|behavio)|automated behavio|"
