@@ -123,14 +123,14 @@ def roteador(cfg: Any, fakes: dict[str, FakeProvider]) -> RoutingProvider:
 
 # ====================================================================== 7.1 — provedor por função
 def test_sem_roles_o_hub_e_o_de_sempre(tmp_path: Path) -> None:
-    """Sem bloco `ai.roles`, as cinco funções resolvem para UMA instância — o comportamento de antes do hub."""
+    """Sem bloco `ai.roles`, as seis funções (a `persona` do 17.8 herda o social) resolvem para UMA instância — o comportamento de antes do hub."""
     cfg = make_config(tmp_path)
     cfg.env.ai_provider = "anthropic"
     cfg.env.ai_model_actor = "claude-sonnet-5"
     r = RoutingProvider(cfg)
     assert {papel: rr.model for papel, rr in r.roles.items()} == {
         "plan": "claude-opus-5", "decide": "claude-sonnet-5", "verify": "claude-sonnet-5",
-        "escalation": "claude-opus-5", "social": "claude-opus-5"}
+        "escalation": "claude-opus-5", "social": "claude-opus-5", "persona": "claude-opus-5"}
     assert all(rr.provider == "anthropic" and rr.fallback_provider is None for rr in r.roles.values())
     # Uma instância por combinação distinta de (provedor, modelo, prazo): funções com a MESMA resolução
     # compartilham a instância, em vez de cada papel abrir um cliente só por existir.
