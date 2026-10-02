@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-243 de 274 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+243 de 296 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -276,12 +276,34 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.18 | implemented | real |  | — | Real, 02/10/2026, central, commit 40aa08fd (branch docs/29-18-fechamento, base a0a03b7): docs/relatorio-validacao.md §28 (os 20 itens 29.1 a 29.20 com estado e nível de prova, veredito por cláusula do 'Fecha quando' e q… |  |
 | 29.19 | blocked | not_run | opus | — | Objetivo do dono de 30/09 (~18:10Z): saída própria por aparelho e nenhum pelo IP da casa. Desenho e custo por escala no handoff (Oracle grátis para 2; Lightsail US$ 65/mês para 13; Vultr ~US$ 41/mês, a conferir); script… | ADIADO POR DECISÃO DO DONO em 30/09 ~18:15Z, junto com o 29.7. A escala (aparelhos × IPv4) e a troca de saída de conta real (autorização por aparelho) seguem c… |
 | 29.20 | implemented | simulated |  | — | Commits d02e316e (saída da casa por aparelho e medida do central) e 3a12502c (aparelho sem rede pedida: presumido ou medido), merge a0a03b7 na integração; ainda não em origin/main nem implantado. backend/app/devices/red… | Real not_run: medir a saída do central de verdade e conferir o android-09 com vpn-central-wireguard só depois do merge e do deploy (deploy.ps1 permitido, leitu… |
+| 30.1 | pendente | — | — | — |  |  |
+| 30.2 | pendente | — | — | — |  |  |
+| 30.3 | pendente | — | — | — |  |  |
+| 30.4 | pendente | — | — | — |  |  |
+| 30.5 | pendente | — | — | — |  |  |
+| 30.6 | pendente | — | — | — |  |  |
+| 30.7 | pendente | — | — | — |  |  |
+| 30.8 | pendente | — | — | — |  |  |
+| 30.9 | pendente | — | — | — |  |  |
+| 30.10 | pendente | — | — | — |  |  |
+| 30.11 | pendente | — | — | — |  |  |
+| 30.12 | pendente | — | — | — |  |  |
+| 30.13 | pendente | — | — | — |  |  |
+| 30.14 | pendente | — | — | — |  |  |
+| 30.15 | pendente | — | — | — |  |  |
+| 30.16 | pendente | — | — | — |  |  |
+| 30.17 | pendente | — | — | — |  |  |
+| 30.18 | pendente | — | — | — |  |  |
+| 30.19 | pendente | — | — | — |  |  |
+| 30.20 | pendente | — | — | — |  |  |
+| 30.21 | pendente | — | — | — |  |  |
+| 30.22 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (31): 8.3, 8.4, 12.3, 15.15, 17.6, 17.8, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, T.2
+Pendentes (53): 8.3, 8.4, 12.3, 15.15, 17.6, 17.8, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.1, 28.2, 28.3, 28.4, 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.8, 30.9, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.20, 30.21, 30.22, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

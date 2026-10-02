@@ -689,6 +689,41 @@ mecanismo quando a prova deles existir, não por fecharem aqui.
 aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
 parque; e cada pendência restante tem o que ficou pronto e a ação exata que falta.
 
+### Fase 30 — Aprendizado vivo · 22 itens (desenho de 02/10/2026; ADR-067 proposto)
+
+Origem: o pedido do dono de 02/10 para a frente Aprendizado (conhecimento, receitas, validação, curadoria, falhas e ciclo de vida). Diagnóstico em
+[design/aprendizado-vivo-diagnostico.md](design/aprendizado-vivo-diagnostico.md) e desenho em [design/aprendizado-vivo.md](design/aprendizado-vivo.md) (§13 traz arquivos, dono, dependências e
+validação de cada item). Decisões do dono já tomadas: política de risco A/B/C, orçamento proporcional da curadoria (α = 10 %) e modo por app de
+lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `travas.py` nem `state.py`.
+
+| ID | O que | Achados | Tam. |
+|---|---|---|---|
+| 30.1 | **Visão por app no backend** (§3): lista e detalhe de app como composição de leitura (registro de apps ∪ loja ∪ Livro), origem `declarado`/`aprendido`/`absorvido` e camada de uso em runtime; sem tabela nova | diagnóstico C1, C2, C12 | M |
+| 30.2 | **Chave de app canônica** (§3): fluxo e habilidade sem `apps.package` resolvidos; balde "app não resolvido"; memória fora do eixo de app | diagnóstico C1, D | P |
+| 30.3 | **Conteúdo legível** no detalhe (§4): receita (ações, efeito, capability derivada, etapa e execução de origem, substituta), fluxo e habilidade; nenhum valor de parâmetro | diagnóstico C3; briefing §4 | M |
+| 30.4 | **Saúde** (§5): `domain/saude.py` puro, dimensões medidas, rótulo por regra com motivos, limiares no config; uma fonte de cálculo no backend | diagnóstico C6, C9; briefing §11 | M |
+| 30.5 | **Ações permitidas calculadas no backend**; o front apaga o espelho de `ciclo.py` | diagnóstico C10 | P |
+| 30.6 | **Estado de versão por item** (§7) a partir de `device_app_state` e das chaves de receita | diagnóstico C4; briefing §13 | M |
+| 30.7 | **Relações derivadas** (§6: substitui, derivado de, absorvida, contradiz) no detalhe; sem tabela de arestas | diagnóstico C5; briefing §14 | P |
+| 30.8 | **Métricas do aprendizado** (`/metricas`, §10), reaproveitando `aproveitamento.py` e a trilha | briefing §16 | M |
+| 30.9 | **Migração `learning_reviews`** (§8.5; número > 068 pedido ao orquestrador) e `docs/banco.md` | briefing §7 | P |
+| 30.10 | **Curador, domínio** (§8.2–8.4): dossiê determinístico, contrato de saída com citações validadas, política de risco A/B/C (mais restritiva entre catálogo e `commit`; decisão do dono de 02/10) | briefing §6–§8 | M |
+| 30.11 | **Curador, aplicação** (§8.6–8.8): porta `CuradorDeIA`, adaptador simulado, laço sob a trava de líder, gatilhos e filtros, orçamento proporcional (α = 10 %, decisão do dono de 02/10), modos `off/shadow/on` | briefing §15 | G |
+| 30.12 | **Adaptador do curador para o hub de IA** e custo em `learning_reviews` [A] — combinar com a frente Jev (`config.py`, `planning/routing.py`) | briefing §7 | M |
+| 30.13 | **Falhas → diagnóstico → proposta** (§9.1): conhecimento envolvido, causa provável determinística, proposta estruturada; IA só no indeterminado | diagnóstico C8; briefing §9 | M |
+| 30.14 | **Obsolescência** (§9.2): rótulo `obsoleto_provavel`; rebaixamento determinístico de receita com efeito em app cujo catálogo não tem a ação (receita 100 do Outlook) | briefing §10 | M |
+| 30.15 | **Painel: Global → App → Capability → Item**, filtro de app, fila Atenção (§11.1) | diagnóstico C1; briefing §3, §5 | G |
+| 30.16 | **Painel: detalhe rico** (§11.2: identidade, conteúdo, evidência, saúde, histórico, lineage, IA, ações) | briefing §17 | M |
+| 30.17 | **Painel: parecer da IA**, aceitar ou recusar com motivo (override), pedir revisão | briefing §7 | M |
+| 30.18 | **Prova real**: Instagram, QAMessenger e Outlook (só leitura, android-01 primeiro) na visão nova, curador em `shadow` [A] | briefing §22 | M |
+| 30.19 | **Docs**: ADR-067 em `decisoes.md`, `dominios/aprendizado.md`, adendo do contrato, CHANGELOG | briefing §23 | P |
+| 30.20 | **Modo por app para lições e telas** (§8.10; decisão do dono de 02/10): override por pacote, padrão = global; lições depois no QAMessenger, telas `on` no Outlook depois da leitura real | diagnóstico C12 | M |
+| 30.21 | **Evento `learning.needs_person`** (§8.11): entrada e saída da espera humana (faixas B e C), sem conteúdo, para o aviso (28.11) e as Pendências (ADR-062) | pedido do orquestrador, 02/10 | P |
+| 30.22 | **Backfill único das lições** nas 12 execuções reais com contraste aprovável anteriores à 055, idempotente, sem IA, com backup antes | causa medida das 0 lições (02/10) | P |
+
+**Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
+o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

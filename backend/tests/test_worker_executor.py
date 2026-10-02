@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -24,7 +25,7 @@ from app.devices import recursos
 from app.devices.adb import AdbError
 from app.metricas import metricas
 from app.worker import executor as executor_mod
-from app.worker.executor import VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
+from app.worker.executor import MARCA_DE_FILA, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from app.worker.settings import DeviceSpec, WorkerSettings
 
 
@@ -115,8 +116,22 @@ def _sem_guarda_de_ram(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(ex, "_guarda_de_ram", lambda _spec: None)
 
 
+def _sem_processos_reais(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nenhum emulador "no ar" nesta máquina, e SEM ler os processos do host. `pid_do_avd` faz `psutil.process_iter`
+    + `cmdline()` sobre os processos REAIS com "qemu"/"emulator" no nome: neste host são ~60 ms sob pytest, tempo
+    que o teste não controla e que estourava as esperas fixas de 50 ms. Quem testa a varredura em si NÃO usa isto:
+    injeta o próprio `pid_do_avd` (ou `process_iter`) depois."""
+    monkeypatch.setattr(ex, "pid_do_avd", lambda _avd: None)
+
+
 def _estado_falso(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch, valor: str,
-                  threads: set[str] | None = None) -> None:
+                  threads: set[str] | None = None, *, processos_reais: bool = False) -> None:
+    """Troca `estado` (que varre processos) e, por padrão, isola também `pid_do_avd` (`_sem_processos_reais`): o
+    `start` varre processos antes e dentro da fila, e nenhum teste daqui depende do que roda no host. Um teste que
+    quer o `pid_do_avd` próprio o atribui DEPOIS; `processos_reais=True` deixa a leitura real (de propósito)."""
+    if not processos_reais:
+        _sem_processos_reais(ex, monkeypatch)
+
     def estado(_spec: Any) -> tuple[str, str | None]:
         if threads is not None:
             threads.add("principal" if threading.current_thread() is threading.main_thread() else "auxiliar")
@@ -313,12 +328,16 @@ async def test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila(tmp_path: Pat
     por_avd[primeiro.avd_name].liberar = threading.Event()
     por_serial = {d.serial: por_avd[d.avd_name] for d in ex.settings.devices}
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
+    recados: list[str] = []
+    ex.progress = recados.append
 
     t1 = asyncio.create_task(ex.run("start", primeiro, {"boot_timeout_s": 5}))
     await _ate(lambda: subidos == [primeiro.avd_name], "o primeiro subir")   # espera o fato, não 50 ms: o 1º start frio passa disso
     assert subidos == [primeiro.avd_name], "o primeiro não chegou a subir"
     t2 = asyncio.create_task(ex.run("start", ex.settings.devices[1], {"boot_timeout_s": 5}))
-    await asyncio.sleep(0.05)                       # o segundo está na FILA, e a RAM acabou nesse meio-tempo
+    # O segundo está na FILA (o recado de espera é dito logo antes de entrar nela), e a RAM já acabou: espera o
+    # FATO, não 50 ms fixos (a varredura de processos que antecede o recado leva mais que isso sob carga).
+    await _ate(lambda: any(MARCA_DE_FILA in m for m in recados), "o segundo esperar na fila de boot")
     por_avd[primeiro.avd_name].liberar.set()
     await asyncio.wait_for(t1, timeout=10)
     with pytest.raises(VerbRefused) as saida:
@@ -541,12 +560,76 @@ async def test_a_espera_na_fila_de_boot_e_dita_em_progresso(tmp_path: Path,
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
 
     tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
-    await asyncio.sleep(0.05)
-    assert any("fila de boot" in m for m in recados), recados
+    await _ate(lambda: any("fila de boot" in m for m in recados), "o recado de espera na fila de boot")
     for falso in por_avd.values():
         falso.liberar.set()
     await asyncio.wait_for(asyncio.gather(*tarefas), timeout=10)
     assert len(subidos) == 2
+
+
+async def _dois_starts_ate_a_fila(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Dois `start` com UMA vaga de boot; devolve os recados quando o segundo diz que está na fila (espera o fato)."""
+    recados: list[str] = []
+    ex.progress = recados.append
+    _sem_emulador(monkeypatch)
+    _sem_guarda_de_ram(ex, monkeypatch)
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    por_avd = {d.avd_name: AdbFalso(pronto_depois_de=1) for d in ex.settings.devices}
+    for falso in por_avd.values():
+        falso.liberar = threading.Event()
+    por_serial = {d.serial: por_avd[d.avd_name] for d in ex.settings.devices}
+    monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
+    tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
+    ate_a_espera: list[str] = []         # fotografia do que foi dito ATÉ a espera; o que vier ao drenar não conta
+    try:
+        await _ate(lambda: any(MARCA_DE_FILA in m for m in recados), "o recado de espera na fila de boot")
+        ate_a_espera = list(recados)
+    finally:
+        for falso in por_avd.values():
+            falso.liberar.set()
+        await asyncio.wait_for(asyncio.gather(*tarefas, return_exceptions=True), timeout=15)
+    return ate_a_espera
+
+
+async def test_a_fila_de_boot_e_esperada_pelo_fato_mesmo_com_a_varredura_de_processos_lenta(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CAUSA do teste que oscilava: antes do recado, cada `start` varre os processos do host (`process_iter`) numa
+    thread — ~60 ms neste host, mais com carga. Aqui a varredura demora 0,2 s DE PROPÓSITO e SEM o isolamento: o
+    recado só chega depois dela, e uma espera fixa de 50 ms (a de antes) falharia sempre. Esperar o fato passa."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2)
+    _estado_falso(ex, monkeypatch, "stopped", processos_reais=True)
+    varreduras: list[float] = []
+
+    def varredura_lenta(*_a: Any, **_k: Any) -> Any:
+        varreduras.append(time.monotonic())
+        time.sleep(0.2)                     # a leitura de processos reais, devagar; não há processo nenhum aqui
+        return iter(())
+
+    monkeypatch.setattr(executor_mod.psutil, "process_iter", varredura_lenta)
+    inicio = time.monotonic()
+    recados = await _dois_starts_ate_a_fila(ex, monkeypatch)
+    assert any("fila de boot" in m for m in recados), recados
+    assert varreduras, "a varredura lenta não foi exercitada: o teste não prova a causa"
+    assert time.monotonic() - inicio > 0.2, "o recado veio antes da varredura lenta: nada foi provado"
+
+
+async def test_com_o_isolamento_a_varredura_de_processos_do_host_nao_e_lida(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O isolamento dos testes da fila: `psutil.process_iter` (os processos reais do host) não é chamado."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2)
+    _estado_falso(ex, monkeypatch, "stopped")
+    chamadas: list[int] = []
+
+    def varredura(*_a: Any, **_k: Any) -> Any:
+        chamadas.append(1)
+        return iter(())
+
+    monkeypatch.setattr(executor_mod.psutil, "process_iter", varredura)
+    recados = await _dois_starts_ate_a_fila(ex, monkeypatch)
+    assert any("fila de boot" in m for m in recados), recados
+    assert chamadas == [], "o teste leu os processos reais do host"
 
 
 async def test_cancelar_na_fila_de_boot_nao_sobe_emulador_nenhum(tmp_path: Path,
@@ -566,6 +649,8 @@ async def test_cancelar_na_fila_de_boot_nao_sobe_emulador_nenhum(tmp_path: Path,
     por_avd[ex.settings.devices[0].avd_name].liberar = threading.Event()
     por_serial = {d.serial: por_avd[d.avd_name] for d in ex.settings.devices}
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
+    recados: list[str] = []
+    ex.progress = recados.append
 
     efeito: list[str | None] = []
 
@@ -576,9 +661,9 @@ async def test_cancelar_na_fila_de_boot_nao_sobe_emulador_nenhum(tmp_path: Path,
             efeito.append(executor_mod.EFEITO_INICIADO.get())
 
     primeiro = asyncio.create_task(ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5}))
-    await asyncio.sleep(0.05)
+    await _ate(lambda: subidos == [ex.settings.devices[0].avd_name], "o primeiro subir")
     segundo = asyncio.create_task(start_na_fila(ex.settings.devices[1]))
-    await asyncio.sleep(0.05)
+    await _ate(lambda: any(MARCA_DE_FILA in m for m in recados), "o segundo esperar na fila de boot")
     assert subidos == [ex.settings.devices[0].avd_name], "o segundo subiu antes da vez dele"
 
     segundo.cancel()                                # o painel pediu o cancelamento enquanto ele esperava vaga

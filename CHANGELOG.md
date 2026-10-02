@@ -27,6 +27,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` (4 casos) e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; `tests/test_rede_*.py` e os testes da vitrine passam. Real `not_run`: reproduzir no android-05.
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.21), `docs/conhecimento/aprendizados.md` (K-071).
 
+## 2026-10-02 — Aprendizado: backfill único e idempotente das lições anteriores à 055 (branch feat/aprendizado-backfill-licoes)
+
+- `scripts/aprendizado-backfill-licoes.py` + `learning/infrastructure/backfill_licoes.py`: passa só `licoes.contraste` e
+  `licoes.plano` pelas execuções reais anteriores ao `applied_at` da 055 (ou por `--run-id`), em `shadow`, sem IA e sem
+  rede; ensaio numa cópia por padrão, `--aplicar` grava; aborta se a migração do banco difere da do código. Prova
+  `simulated` (`test_aprendizado_backfill_licoes.py`, 11 testes); a rodada no banco do central é `not_run` até a
+  coordenadora fazer backup e rodar.
+
+## 2026-10-02 — Teste da fila de boot do worker espera o fato e não lê os processos do host (fix/teste-fila-de-boot)
+
+- `test_worker_executor.py::test_a_espera_na_fila_de_boot_e_dita_em_progresso` falhava neste host: esperava `sleep(0.05)` pelo
+  recado "fila de boot", mas antes dele cada `start` varre os processos REAIS do host (`pid_do_avd`: `psutil.process_iter` +
+  `cmdline()`, ~60 ms sob pytest). Agora as esperas que significam "algo acontece" usam `_ate(...)` (o recado de fila, o primeiro
+  emulador subir) e `_estado_falso` isola também `pid_do_avd` (`_sem_processos_reais`; `processos_reais=True` deixa a leitura
+  real). Dois testes novos provam a causa (varredura lenta de 0,2 s sem isolamento; `process_iter` não é chamado com ele).
+  Só teste e doc; `backend/app/` intacto. Aprendizado K-070.
+
 ## 2026-10-02 — Catálogo do Outlook na main e valor lido entre etapas (12.3, branch feat/12-3-outlook-catalogo)
 
 - 12.3: catálogo só de leitura do Outlook na `main`, valor lido entre etapas. `backend/app/conhecimento/apps/com.microsoft.office.outlook/catalogo.yaml`
@@ -38,6 +55,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Testes: `test_planejador_entre_apps.py` (catálogos do Outlook entram no pedido; C1 provado com o catálogo real),
   `test_porta_de_politica_por_app.py` (efeito no Outlook sem ação do catálogo é recusado), `test_catalogo_como_dado.py`,
   `test_outlook_declarado.py`. Prova: `simulated`; a leitura real no aparelho é `not_run`.
+
+## 2026-10-02 — Aprendizado: atribuição de app por etapa travada em teste (branch fix/aprendizado-app-por-etapa)
+
+- `backend/tests/test_aprendizado_app_por_etapa.py`: régua diária e relatório de falhas contam cada etapa de uma execução
+  Instagram + Outlook no app dela e levam a tela da falha à chave; sem mudança de código (o `steps.app_id` NULL é o
+  desenho). Prova `simulated`.
 
 ## 2026-10-02 — Fase 28: decisões do dono e do coordenador registradas (28.9, emenda à ADR-062, 28.11 Telegram)
 
