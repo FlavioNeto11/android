@@ -2,13 +2,13 @@
 
 O que se prova, chamando `AppState._policy_gate` etapa por etapa (a execução fica com `pause_requested=1`, então o
 despacho não pega o objetivo por conta própria):
-- a mistura Outlook (leitura, app sem catálogo) + Instagram (efeito sem capability) segue recusada NA ETAPA DE
-  EFEITO, com `manual_only`; a leitura no Outlook passa;
+- a mistura Outlook (leitura) + Instagram (efeito sem capability) segue recusada NA ETAPA DE EFEITO, com
+  `manual_only`; a leitura no Outlook passa;
 - uma capability que o app da etapa não tem conta como nenhuma: `NAO_EXISTE` numa etapa do Instagram com efeito é
-  recusada (antes, `cap is None` liberava); `LIKE_POST` numa etapa do Outlook vale como etapa sem ação num app sem
-  catálogo;
-- a regra não muda (ADR-058, T19): app sem catálogo segue pela IA livre, sozinho ou num comando entre apps — é o
-  comportamento decidido em `test_modo_treinamento.py::test_portao_recusa_efeito_sem_acao_num_app_com_catalogo`;
+  recusada (antes, `cap is None` liberava); `LIKE_POST` numa etapa do Outlook também (12.3: o Outlook tem catálogo só
+  de leitura, então efeito nele sem ação do catálogo é recusado — enviar e-mail é da pessoa);
+- a regra não muda (ADR-058, T19): app SEM catálogo (o QA Messenger) segue pela IA livre, sozinho ou num comando entre
+  apps — é o comportamento decidido em `test_modo_treinamento.py::test_portao_recusa_efeito_sem_acao_num_app_com_catalogo`;
 - a ação do catálogo do Instagram numa etapa do Instagram, dentro de um plano cujo app principal é o Outlook, é
   resolvida pelo app da etapa e segue para a política;
 - o QA Messenger sozinho segue livre com efeito, como sempre.
@@ -68,9 +68,12 @@ async def _porta(harness: Harness, key: str) -> Any:
                                     state.repo.run_row(RUN))
 
 
-def test_premissa_outlook_sem_catalogo_e_instagram_com() -> None:
-    """Se o Outlook ganhar catálogo (T17: só leitura), a mistura abaixo muda de natureza: o teste tem de ser revisto."""
-    assert load_catalog(OUTLOOK) is None
+def test_premissa_outlook_catalogo_so_de_leitura_e_instagram_com() -> None:
+    """Desde o 12.3 o Outlook tem catálogo, SÓ DE LEITURA (T17 do ADR-057): nenhuma ação com efeito. É o que faz a
+    porta recusar o efeito nele sem ação (enviar e-mail é da pessoa) e liberar a leitura. Se alguém declarar uma ação
+    com efeito ali, a mistura abaixo muda de natureza: este teste obriga a rever."""
+    outlook = load_catalog(OUTLOOK)
+    assert outlook is not None and outlook.offered and not any(c.side_effect for c in outlook.capabilities)
     assert load_catalog(IG) is not None
 
 
@@ -78,7 +81,7 @@ async def test_outlook_leitura_mais_instagram_efeito_sem_capability_segue_recusa
     _preparar(harness, plano_app="instagram", required=["outlook", "instagram"], etapas=[
         {"key": "ler_email", "app_id": "outlook", "side_effect": False},
         {"key": "curtir", "app_id": None, "side_effect": True}])
-    assert await _porta(harness, "ler_email") is None                  # leitura no app sem catálogo: IA livre
+    assert await _porta(harness, "ler_email") is None                  # leitura sem efeito: nada a recusar
     veredito = await _porta(harness, "curtir")
     assert veredito is not None and not veredito.allowed and veredito.policy == "manual_only"
     assert "Instagram" in veredito.reason and "sem a ação do catálogo" in veredito.reason
@@ -94,17 +97,31 @@ async def test_capability_que_o_app_da_etapa_nao_tem_conta_como_nenhuma(harness:
     assert "Instagram sem a ação do catálogo (a ação NAO_EXISTE não é do catálogo dele)" in inventada.reason
     assert await _porta(harness, "inventada_leitura") is None          # sem efeito: nada a recusar
     # A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram: no app DA ETAPA ela não
-    # existe, e o Outlook não tem catálogo — segue como etapa livre desse app (a regra de sempre, T19).
-    assert await _porta(harness, "curtir_no_outlook") is None
+    # existe. Antes do 12.3 o Outlook não tinha catálogo e a etapa seguia livre (T19); agora ele tem, e efeito ali sem
+    # ação do catálogo dele é recusado, como o do Instagram.
+    no_outlook = await _porta(harness, "curtir_no_outlook")
+    assert no_outlook is not None and not no_outlook.allowed and no_outlook.policy == "manual_only"
+    assert "Outlook" in no_outlook.reason and "sem a ação do catálogo" in no_outlook.reason
 
+
+async def test_enviar_email_no_outlook_segue_recusado_e_ler_nao(harness: Harness) -> None:
+    """12.3: o catálogo do Outlook é só de leitura; a etapa que ENVIA (efeito sem ação do catálogo) é recusada, e a
+    que LÊ pela ação do catálogo passa."""
+    _preparar(harness, plano_app="instagram", required=["outlook", "instagram"], etapas=[
+        {"key": "enviar_email", "app_id": "outlook", "side_effect": True},
+        {"key": "ler_caixa", "app_id": "outlook", "side_effect": False, "capability": "OPEN_MAIL_INBOX"}])
+    envio = await _porta(harness, "enviar_email")
+    assert envio is not None and not envio.allowed and envio.policy == "manual_only"
+    assert await _porta(harness, "ler_caixa") is None
 
 async def test_app_sem_catalogo_num_comando_entre_apps_segue_livre(harness: Harness) -> None:
     """A regra não muda (ADR-058 decisão 2): o app sem catálogo segue pela IA livre também quando o comando
-    atravessa um app com catálogo. É o decidido em `test_modo_treinamento.py` (etapa `enviar_qa`)."""
-    _preparar(harness, plano_app="instagram", required=["outlook", "instagram"], etapas=[
-        {"key": "enviar_email", "app_id": "outlook", "side_effect": True},
+    atravessa um app com catálogo. É o decidido em `test_modo_treinamento.py` (etapa `enviar_qa`). O app sem catálogo
+    é o QA Messenger: o Outlook (12.3) agora tem catálogo."""
+    _preparar(harness, plano_app="instagram", required=["qa-messenger", "instagram"], etapas=[
+        {"key": "enviar_qa", "app_id": "qa-messenger", "side_effect": True},
         {"key": "abrir_feed", "app_id": None, "side_effect": False, "capability": "OPEN_FEED"}])
-    assert await _porta(harness, "enviar_email") is None
+    assert await _porta(harness, "enviar_qa") is None
     assert await _porta(harness, "abrir_feed") is None
 
 
