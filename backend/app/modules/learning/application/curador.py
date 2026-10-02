@@ -178,7 +178,9 @@ class CuradorPorIA:
                 invalidas.append(ref)
                 continue
             revisadas.append(ref)
-            if x.dossie.classe in (ClasseDeRisco.B, ClasseDeRisco.C):
+            # Parecer do adaptador SIMULADO nunca vira aviso ao dono: o evento chega ao Telegram (28.14) sem marca de
+            # simulado, e um parecer falso lá é pior que nenhum. Fica só o registro (`learning_reviews.simulated=1`).
+            if x.dossie.classe in (ClasseDeRisco.B, ClasseDeRisco.C) and not self._curador.simulado:
                 avisos += int(self._livro.avisar_parecer(x.entrada, Faixa(x.dossie.classe.value)))
         if cortados:
             log.info("aprendizado: curador deixou %d item(ns) para depois: %s", len(cortados),

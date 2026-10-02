@@ -162,6 +162,7 @@ def test_o_laco_e_registrado_a_parte_da_curadoria(tmp_path: Path) -> None:
 def test_shadow_grava_revisao_valida_e_avisa_o_dono_sem_transicionar(db: Database) -> None:
     m = Mundo(db)
     ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)       # texto de pessoa: B, espera o dono
+    m.ia.simulado = False                                     # um provedor "real" de teste: só ele avisa o dono
     trilha_antes = len(m.repo.trilha(ref))
     eventos_antes = len(m.barramento.emitidos)
     r = m.volta()
@@ -170,7 +171,7 @@ def test_shadow_grava_revisao_valida_e_avisa_o_dono_sem_transicionar(db: Databas
     assert (linha["item_ref"], linha["item_kind"], linha["gatilho"], linha["validade"]) == (
         ref, "licao", Gatilho.NOVA_PENDENCIA_DO_DONO.value, "ok")
     assert (linha["classe_de_risco"], linha["politica"]) == ("B", "dono_em_lote")
-    assert (linha["provedor"], linha["simulated"], linha["usd"]) == ("simulado", 1, 0)
+    assert (linha["provedor"], linha["simulated"], linha["usd"]) == ("simulado", 0, 0)
     assert json.loads(str(linha["saida"]))["decisao"] in ("manter", "observar")
     assert TEXTO_DA_PESSOA not in str(linha["dossie"]) and TEXTO_DA_PESSOA not in str(linha["saida"])
     [aviso] = m.barramento.pareceres()
@@ -181,6 +182,16 @@ def test_shadow_grava_revisao_valida_e_avisa_o_dono_sem_transicionar(db: Databas
     assert len(m.repo.trilha(ref)) == trilha_antes
     assert m.servico.entrada(LivroKind.LICAO, ref).state is S.CANDIDATE
     assert conferir_aceite(ClasseDeRisco.B, por_pessoa=False, em_lote=True) is not None
+
+
+def test_parecer_do_adaptador_simulado_nunca_avisa_o_dono(db: Database) -> None:
+    """O evento vai ao Telegram (28.14) sem marca de simulado: parecer falso não pode chegar ao dono."""
+    m = Mundo(db)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    r = m.volta()
+    assert r.revisadas == (ref,) and r.avisos == 0 and m.barramento.pareceres() == []
+    [linha] = m.revisoes()
+    assert (linha["simulated"], linha["validade"]) == (1, "ok")
 
 
 def test_mesmo_dossie_nao_revisa_de_novo_e_evidencia_nova_revisa(db: Database) -> None:
@@ -249,6 +260,7 @@ def test_classe_c_gera_parecer_e_evento_nunca_aceite(db: Database) -> None:
     m = Mundo(db)
     ref = m.licao(efeito=True, fonte=SourceKind.RECOVERY, capability="ALTO")
     m.servico.mudar_estado(LivroKind.LICAO, ref, S.VALIDATED, by=SYSTEM_ACTOR, reason="prova")   # espera o dono
+    m.ia.simulado = False                                     # só o provedor "real" avisa o dono
     r = m.volta()
     assert r.revisadas == (ref,)
     [linha] = m.revisoes()
