@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
+
+- `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
+  da porta fixa não se sustenta (`ServidorDeUmaVez` já usa a porta 0 efêmera); a corrida era o teste afirmar `entregues == 1` no
+  instante em que o cliente recebe o corpo, enquanto o servidor conta DEPOIS de gravá-lo. Agora o teste espera o fato
+  (`_ate_o_fato`) e roda também com um atraso de 0,3 s depois do corpo (`_atrasar_depois_do_corpo`), que torna a corrida
+  certa para quem não espera; um teste novo confirma que dois servidores ao mesmo tempo não colidem na porta. Só teste e doc;
+  `backend/app/` intacto. Aprendizado K-072.
+
 ## 2026-10-02 — 29.21: reinício pedido pela rede que nunca sai (retentativa de 30 s e termo que segurou, branch fix/29-21-reinicio-da-rede)
 
 - `backend/app/devices/rede_convergencia.py`: `_pedir_reinicio` diz na linha (`detail`) QUAL termo do "ocupado" segurou o reinício (worker, controle, objetivo, comando exclusivo, estado do aparelho, verbo `restart` ausente ou recusa), uma vez por termo e uma no esgotamento das 24 tentativas, sem ruído a cada 5 s; com objetivo parado em `wait_reason='rede'` neste aparelho o esgotamento retenta em `retentativa_do_reinicio_s` (30 s) em vez de pôr 300 s de mudez (android-05, 02/10: a execução ficou presa 7 min).
