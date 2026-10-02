@@ -29,7 +29,7 @@ from app.modules.learning.domain.backlog import (SEM_CONDUCAO, AcaoLivre, Chamad
                                                  LinhaDoBacklog, Ocorrencia, SaudeDasExecucoes, TipoDeVerificacao,
                                                  chave_do_grupo)
 from app.modules.learning.domain.ciclo import ConflitoDeEstado
-from app.modules.learning.domain.falhas import classificar_falha
+from app.modules.learning.domain.falhas import classificar_falha, classificar_pelo_tipo_da_ia
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, CategoriaDoBacklog, EstadoDoBacklog,
                                                      SignalKind)
 from app.modules.learning.infrastructure import linhas
@@ -132,6 +132,13 @@ class FontesDeFalhaSql:
         saida: list[Ocorrencia] = []
         for t, tipo, retro in escolhidas:
             aid, sid = linhas.texto(t, "id"), linhas.texto(t, "step_id")
+            # O TIPO do erro do provedor (`ai_calls.error_kind`, o `AIError.kind`) vence o texto: o gravado em
+            # `attempts.failure_kind` também sai de texto (`repository.finish_attempt`), e o teto do pedido, por
+            # exemplo, ficava em `outro`. Só na leitura retroativa: `retroativo=0` conta o que a execução gravou.
+            pelo_tipo = classificar_pelo_tipo_da_ia(erros_de_ia.get(aid, ()))
+            if (retroativo and pelo_tipo is not None and pelo_tipo.value != tipo
+                    and linhas.texto_ou_nulo(t, "status") != "interrupted"):
+                tipo, retro = pelo_tipo.value, True
             fim = linhas.texto(t, "finished_at")
             app = self._app(pacotes, t)
             chave = chave_do_grupo(app, linhas.texto_ou_nulo(t, "capability"), tipo,
@@ -420,8 +427,8 @@ class SqlBacklogRepository:
     def registrar(self, nova: LinhaDoBacklog, *, agora: str) -> bool:
         row = self._db.one(
             "INSERT INTO learning_backlog(id, category, cluster_key, app_package, capability, failure_kind,"
-            " failure_screen, title, state, first_seen, last_seen, updated_by, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " failure_screen, title, state, first_seen, last_seen, updated_by, updated_at, parent_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (cluster_key) DO UPDATE SET"
             " first_seen = CASE WHEN excluded.first_seen < learning_backlog.first_seen THEN excluded.first_seen"
             " ELSE learning_backlog.first_seen END,"
@@ -431,7 +438,7 @@ class SqlBacklogRepository:
             " OR excluded.title <> learning_backlog.title RETURNING id",
             (nova.id, nova.category.value, nova.cluster_key, nova.app_package, nova.capability, nova.failure_kind,
              nova.failure_screen, nova.title, EstadoDoBacklog.OPEN.value, nova.first_seen, nova.last_seen,
-             "sistema", agora))
+             "sistema", agora, nova.parent_id))
         return row is not None
 
     def salvar(self, linha: LinhaDoBacklog, *, de_estado: EstadoDoBacklog) -> LinhaDoBacklog:
