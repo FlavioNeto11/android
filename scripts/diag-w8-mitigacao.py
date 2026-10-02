@@ -11,6 +11,8 @@ política de rede UMA vez e, a cada iteração, pede a REAPLICAÇÃO da revisão
 SEGURO POR PADRÃO: sem `--execute` só imprime o plano. `--execute` exige `--instance android-09`, uma pasta de evidência vazia e as TRÊS
 confirmações explícitas (`--aplicar-politica`, `--aceito-reinicio-do-servidor-wireguard`, `--deploy-conferido`): aplicar a política cria o
 par do 09 e REINICIA o servidor WireGuard do central (pisca o túnel de 02/03/05/06), e o rollback o reinicia de novo (revisão do dono).
+Autorização do dono, 02/10, via sessão orquestradora: os 2 reinícios do servidor WireGuard só em JANELA OCIOSA de 02/03/05/06 (sem execução nem comando
+aberto; espera, nunca interrompe), com a reconexão medida (≤ 2 min, senão PARA e tira o par); o firewall só é LIDO (regra ausente = bloqueado, não cria).
 Só o android-09; não toca outro aparelho; não mexe em DHCP, relógio, túnel SSH, firewall nem contas; sem chamada paga de IA.
 """
 from __future__ import annotations
@@ -47,9 +49,13 @@ API = boot.API
 SEED = "w8-mitigacao-20261002"                                                    # identifica este protocolo; não há sorteio (braço único)
 MAX_BOOTS = 6                                                                     # REINÍCIOS REAIS, contando os que o produto pede
 MAX_ITERACOES = 6
+PIOR_CASO_PADRAO = 3                                                              # 1 reinício da reaplicação + rede.reinicios_max (2); lido da config em `rodar`
 CATEGORIAS = ("NO_FAILURE", "RECOVERED_BY_UI", "RECOVERED_BY_RESTART", "NOT_RECOVERED", "BOOT_INVALID", "UNKNOWN")
 JANELA_DO_BOOT_S = 900.0                                                          # 180 s de espera do tun0 + Start + reinício, com folga
 PAUSA_TTL_S = 1800
+PARQUE_DO_SERVIDOR = ("android-02", "android-03", "android-05", "android-06")     # os pares que o reinício do servidor WireGuard pisca
+JANELA_OCIOSA_LIMITE_S = 1800.0                                                   # quanto espera por uma janela ociosa; nunca interrompe
+RECONEXAO_PRAZO_S = 120.0                                                         # depois do reinício do servidor: sem handshake novo → PARAR
 POLITICA = {"instance_ids": [IID], "vpn_profile_id": "vpn-central-wireguard", "policy": "livre"}      # NÃO aplicada por este módulo sem as 3 flags
 ROLLBACK = {"instance_ids": [IID], "vpn_profile_id": None, "proxy_profile_id": None}
 MARCA_DO_START = "religado pelo Start da interface do cliente"
@@ -80,7 +86,7 @@ def classificar_iteracao(o: dict[str, Any]) -> tuple[str, str]:
     return "NO_FAILURE", "o tun0 subiu sem o Start (o always-on funcionou neste boot)"
 
 
-def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots: int = MAX_BOOTS) -> tuple[str, str] | None:
+def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots: int = MAX_BOOTS, pior_caso: int = PIOR_CASO_PADRAO) -> tuple[str, str] | None:
     """Regra de parada depois de cada iteração. (veredito, motivo) ou None para seguir. FAIL em qualquer ruim; PASS com 2 RECOVERED_BY_UI."""
     ruins = [r for r in regs if r["RESULT"] in RUINS]
     if ruins:
@@ -88,8 +94,9 @@ def avaliar_parada(regs: list[dict[str, Any]], boots_consumidos: int, max_boots:
         return "FAIL", f"iteração {u['ITERACAO']} terminou em {u['RESULT']}: {u.get('motivo', '')}"[:300]
     if sum(1 for r in regs if r["RESULT"] == "RECOVERED_BY_UI") >= 2:
         return "PASS", "2 recuperações pelo Start da interface, sem desfecho ruim"
-    if boots_consumidos >= max_boots or len(regs) >= MAX_ITERACOES:
-        return desfecho(regs, "TETO"), f"teto atingido ({boots_consumidos} boots, {len(regs)} iterações)"
+    if not pode_iniciar(boots_consumidos, len(regs), pior_caso, max_boots):
+        return desfecho(regs, "TETO"), (f"teto: {boots_consumidos} reinícios usados + pior caso de uma iteração nova ({pior_caso}) > {max_boots}"
+                                        f" ou {len(regs)} iterações")
     return None
 
 
@@ -102,8 +109,21 @@ def desfecho(regs: list[dict[str, Any]], motivo: str = "") -> str:
     return "PASS" if n >= 2 else "PARTIAL" if n == 1 else "INCONCLUSIVE"
 
 
-def pode_iniciar(boots_consumidos: int, iteracoes: int) -> bool:
-    return boots_consumidos < MAX_BOOTS and iteracoes < MAX_ITERACOES
+def pode_iniciar(boots_consumidos: int, iteracoes: int, pior_caso: int = PIOR_CASO_PADRAO, max_boots: int = MAX_BOOTS) -> bool:
+    """Uma iteração NOVA só começa se o pior caso dela cabe no teto do dono (até 6 reinícios reais): 1 reinício da reaplicação + `rede.reinicios_max`
+    do produto. Com 4 usados e só NO_FAILURE já não começa a 5ª (4 + 3 > 6); com 3 usados começa (3 + 3 <= 6). Decidido ANTES do 1º boot."""
+    return boots_consumidos + pior_caso <= max_boots and iteracoes < MAX_ITERACOES
+
+
+def reinicios_max_da_config(raiz: Path = ROOT) -> int:
+    """`rede.reinicios_max` da config REAL da instalação (`config/config.yaml`, fora do Git; nunca o `.env`). Ausente, ilegível ou fora de 1..10: 2 (o
+    padrão do produto, `backend/app/config.py`), isto é, o pior caso de 3."""
+    try:
+        import yaml                                                               # type: ignore[import-untyped]
+        v = ((yaml.safe_load((raiz / "config" / "config.yaml").read_text(encoding="utf-8")) or {}).get("rede") or {}).get("reinicios_max")
+        return int(v) if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 10 else 2
+    except Exception:                                                             # noqa: BLE001 - qualquer falha de leitura cai no padrão
+        return 2
 
 
 def reinicios_desde(comandos: list[dict[str, Any]], quem: str) -> int:
@@ -124,10 +144,73 @@ def comandos_do_sistema_nao_rejeitados(comandos: list[dict[str, Any]]) -> list[d
     return [c for c in comandos if c["requested_by"] == "system" and c["state"] != "rejected"]
 
 
+def epoch_da_conexao(txt: Any) -> float | None:
+    """`last_connection` do servidor: o relógio do log do sing-box, `-0300 2026-10-02 11:55:12` (deslocamento e hora local) → epoch UTC."""
+    m = re.fullmatch(r"([+-])(\d{2})(\d{2}) (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})", str(txt or "").strip())
+    if not m:
+        return None
+    sinal, hh, mm, dia, hora = m.groups()
+    local = datetime.strptime(f"{dia} {hora}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    deslocamento = (int(hh) * 3600 + int(mm) * 60) * (1 if sinal == "+" else -1)
+    return local - deslocamento
+
+
+def conexoes_dos_pares(srv: dict[str, Any]) -> dict[str, float | None]:
+    return {p["instance_id"]: epoch_da_conexao(p.get("last_connection")) for p in srv.get("peers", []) if p.get("instance_id") in PARQUE_DO_SERVIDOR}
+
+
+def ocupacao(runs: list[tuple[Any, ...]], comandos: list[tuple[Any, ...]]) -> list[str]:
+    """Por que o parque do servidor WireGuard NÃO está ocioso (lista vazia = ocioso). `runs`: (id, status, instance_ids, instances_used) das
+    execuções não terminais; `comandos`: (instance_id, verb, state) dos comandos não terminais recentes. Execução sem alvo declarado conta
+    como ocupada (pode estar nos quatro)."""
+    motivos: list[str] = []
+    for rid, status, ids, usados in runs:
+        alvos = f"{ids or ''} {usados or ''}"
+        if not (ids or "").strip("[] \n") or any(i in alvos for i in PARQUE_DO_SERVIDOR):
+            motivos.append(f"execução {rid} ({status})")
+    for iid, verb, state in comandos:
+        if iid in PARQUE_DO_SERVIDOR:
+            motivos.append(f"comando {verb}/{state} em {iid}")
+    return motivos
+
+
+def avaliar_reconexao(antes: dict[str, float | None], depois: dict[str, float | None], online: set[str], t_restart: float) -> tuple[bool, list[str], list[str]]:
+    """(tudo_ok, pendentes, sem_evidencia). Um aparelho ONLINE que já tinha handshake antes precisa de um handshake DEPOIS do reinício do
+    servidor; sem handshake anterior (ou aparelho que não está online) não há como medir por aqui: vai em `sem_evidencia` (não é sucesso nem
+    falha: é incerteza declarada)."""
+    pendentes: list[str] = []
+    sem: list[str] = []
+    for iid in PARQUE_DO_SERVIDOR:
+        if iid not in online or antes.get(iid) is None:
+            sem.append(iid)
+        elif (depois.get(iid) or 0.0) < t_restart:
+            pendentes.append(iid)
+    return not pendentes, pendentes, sem
+
+
+def pausa_vigente(health: dict[str, Any] | None, iid: str = IID) -> bool:
+    """`GET /api/health` → `features.repair_pause` tem o aparelho (a pausa é só em memória: reiniciar o central a apaga)."""
+    return bool(health) and iid in ((health or {}).get("features", {}) or {}).get("repair_pause", {})
+
+
+def firewall_liberado(resposta: dict[str, Any] | None) -> tuple[bool, str, list[str]]:
+    """`POST /api/network/server/firewall-check` (só leitura): o par remoto chega pela LAN e só passa com a regra do dono. Qualquer estado
+    que não seja `liberado` bloqueia: o script NÃO cria regra; devolve os comandos que o dono roda."""
+    fw = (resposta or {}).get("firewall") or {}
+    return fw.get("state") == "liberado", str(fw.get("state")), list(fw.get("commands") or [])
+
+
 def plano_json() -> dict[str, Any]:
     return {"modo": "plano (nenhuma chamada)", "instancia": IID, "seed": SEED, "max_boots_reais": MAX_BOOTS, "max_iteracoes": MAX_ITERACOES,
+            "regra_do_teto": "iteração NOVA só começa se reinícios_usados + (1 + rede.reinicios_max da config; 3 se ilegível) <= 6",
             "um_braco": "mitigação ligada (o padrão do produto); o ator só observa",
             "politica_a_aplicar": POLITICA, "rollback": ROLLBACK, "pausa_do_reparo": {"ttl_s": PAUSA_TTL_S, "rota": f"PUT /api/instances/{IID}/repair-pause"},
+            "sequencia": ["deploy conferido (commit com a pausa e o PR #17)", "firewall-check (leitura): liberado", "janela ociosa de 02/03/05/06",
+                          "pausa do reparo ligada e CONFERIDA no health ANTES de cada boot", "par do 09 (reinício 1 do servidor WireGuard) e "
+                          f"medição da reconexão (≤ {RECONEXAO_PRAZO_S:.0f} s)", "boots (até 6)", "janela ociosa de novo, rollback (reinício 2 do servidor) e "
+                          "medição da reconexão", "o reinício do android-09 pelo rollback fica FORA dos 6 e é contado à parte"],
+            "janela_ociosa": {"parque": PARQUE_DO_SERVIDOR, "espera_max_s": JANELA_OCIOSA_LIMITE_S, "nunca_interrompe": True},
+            "reconexao": {"prazo_s": RECONEXAO_PRAZO_S, "parada": "algum aparelho online do parque sem handshake novo no prazo → PARAR, tirar o par, relatar"},
             "iteracao": ["pausar o reparo automático (A2)", "baseline", "1ª: a atribuição da política aplica e pede o reinício; demais: POST "
                          f"/api/network/devices/{IID}/reapply + /apply", "observar até o estado final ou {JANELA_DO_BOOT_S:.0f} s",
                          "ler tun0 e a linha de rede", "classificar", "regra de parada"],
@@ -200,6 +283,80 @@ def outros_aparelhos(amb: Any, desde_iso: str) -> list[str]:
     return [f"{a}:{b}:{c}" for a, b, c in r]
 
 
+def parque_ocupado(amb: Any) -> list[str]:
+    """O parque do servidor WireGuard está ocupado? (leitura: execuções não terminais e comandos abertos dos últimos 30 min em 02/03/05/06)."""
+    runs = amb.sql("SELECT id, status, instance_ids, instances_used FROM runs WHERE status IN ('planning','needs_input','running','paused','cancelling')")
+    cmds = amb.sql("SELECT instance_id, verb, state FROM commands WHERE created_at>=? AND state NOT IN ('succeeded','failed','rejected','cancelled','uncertain')",
+                   (_iso(amb.agora() - 1800.0),))
+    return ocupacao(runs, cmds)
+
+
+def esperar_janela_ociosa(amb: Any, reg: Callable[..., None], rotulo: str, limite_s: float = JANELA_OCIOSA_LIMITE_S) -> tuple[bool, list[str]]:
+    """Espera duas leituras seguidas (15 s) sem ocupação. Nunca interrompe nada: esgotado o limite, devolve (False, motivos) e o chamador NÃO mexe."""
+    fim, seguidas, motivos = amb.agora() + limite_s, 0, []
+    while True:
+        motivos = parque_ocupado(amb)
+        seguidas = 0 if motivos else seguidas + 1
+        if seguidas >= 2:
+            reg("janela_ociosa", rotulo=rotulo, ok=True)
+            return True, []
+        if amb.agora() >= fim:
+            reg("janela_ociosa", rotulo=rotulo, ok=False, ocupacao=motivos)
+            return False, motivos
+        amb.dormir(15.0)
+
+
+def _epoch_iso(txt: Any) -> float | None:
+    try:
+        return datetime.fromisoformat(str(txt).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def esperar_reinicio_do_servidor(amb: Any, ref: tuple[Any, Any], limite_s: float = 180.0) -> float | None:
+    """O servidor WireGuard reiniciou? (pid ou `started_at` diferentes e `running`). Devolve o epoch do novo `started_at`, ou None."""
+    fim = amb.agora() + limite_s
+    while True:
+        srv = amb.servidor()
+        if srv.get("running") and (srv.get("pid"), srv.get("started_at")) != ref:
+            return _epoch_iso(srv.get("started_at")) or amb.agora()
+        if amb.agora() >= fim:
+            return None
+        amb.dormir(5.0)
+
+
+def medir_reconexao(amb: Any, antes: dict[str, float | None], t_restart: float, prazo_s: float = RECONEXAO_PRAZO_S) -> dict[str, Any]:
+    """Depois do reinício do servidor: cada par ONLINE que já tinha handshake precisa de um novo. Registra quanto levou e o que não mediu."""
+    t0 = amb.agora()
+    online = {i["id"] for i in amb.snapshot().get("instances", []) if (i.get("state") or i.get("status")) == "online"}
+    while True:
+        ok, pendentes, sem = avaliar_reconexao(antes, conexoes_dos_pares(amb.servidor()), online, t_restart)
+        if ok or amb.agora() - t0 >= prazo_s:
+            return {"ok": ok, "pendentes": pendentes, "sem_evidencia": sem, "levou_s": round(amb.agora() - t0, 1), "online": sorted(online)}
+        amb.dormir(10.0)
+
+
+def mexer_no_servidor(amb: Any, reg: Callable[..., None], rotulo: str, acao: Callable[[], tuple[int, Any]], *, urgente: bool = False) -> dict[str, Any]:
+    """Uma mudança de pares que REINICIA o servidor WireGuard do central: janela ociosa antes (salvo `urgente`, o rollback depois de uma
+    falha de reconexão), ação pela rota do produto, reinício observado e reconexão medida. `ok` False = o chamador PARA e reverte."""
+    if not urgente:
+        ok, motivos = esperar_janela_ociosa(amb, reg, rotulo)
+        if not ok:
+            return {"ok": False, "fase": "janela_ociosa", "ocupacao": motivos, "acao_executada": False}
+    srv = amb.servidor()
+    antes, ref, t_acao = conexoes_dos_pares(srv), (srv.get("pid"), srv.get("started_at")), amb.agora()
+    st, corpo = acao()
+    reg("servidor_wg", rotulo=rotulo, http=st)
+    if st >= 300:
+        return {"ok": False, "fase": "acao_recusada", "http": st, "corpo": str(corpo)[:200], "acao_executada": False}
+    t_restart = esperar_reinicio_do_servidor(amb, ref)
+    if t_restart is None:
+        return {"ok": False, "fase": "reinicio_nao_observado", "acao_executada": True}
+    rec = medir_reconexao(amb, antes, t_restart)
+    reg("reconexao", rotulo=rotulo, **rec)
+    return {"ok": rec["ok"], "fase": "reconexao", "acao_executada": True, "http": st, "reinicio_apos_s": round(t_restart - t_acao, 1), **rec}
+
+
 def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Callable[..., None]) -> dict[str, Any]:
     d = run / f"i{n}"
     d.mkdir(parents=True, exist_ok=False)
@@ -209,15 +366,20 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
     st, _ = api.put(f"/api/instances/{IID}/repair-pause", {"ttl_s": PAUSA_TTL_S, "reason": f"validação da mitigação W8, iteração {n}"})
     if st != 200:
         return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": f"a pausa do reparo não foi aceita (HTTP {st})", "reinicios_da_rede": 0}
+    st_h, saude = api.get("/api/health")                                          # a pausa é só em memória (um reinício do central a apaga)
+    if st_h != 200 or not pausa_vigente(saude if isinstance(saude, dict) else None):
+        return {"ITERACAO": n, "RESULT": "BOOT_INVALID", "motivo": "a pausa não consta em features.repair_pause do health antes do boot", "reinicios_da_rede": 0}
     b = est1.baseline(amb) if not primeira else {"ok": True, "falhas": [], "nota": "a 1ª iteração parte do baseline do pré-voo"}
     (d / "baseline.json").write_text(json.dumps(b, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if not b["ok"] and not primeira:
         invalidos.append(f"baseline: {b['falhas']}")
+    wg_parou, wg = False, {}
     if primeira:
-        st, corpo = api.post("/api/network/assign", POLITICA)
-        reg("atribuir", http=st)
-        if st >= 300:
-            invalidos.append(f"atribuição recusada (HTTP {st}): {str(corpo)[:120]}")
+        wg = mexer_no_servidor(amb, reg, "par do android-09", lambda: api.post("/api/network/assign", POLITICA))
+        (d / "servidor-wg.json").write_text(json.dumps(wg, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        if not wg["ok"]:
+            wg_parou = True
+            invalidos.append(f"servidor WireGuard ({wg['fase']}): {json.dumps({k: wg[k] for k in ('pendentes', 'ocupacao', 'http') if k in wg}, ensure_ascii=False)}")
     else:
         st1, _ = api.post(f"/api/network/devices/{IID}/reapply")
         st2, _ = api.post(f"/api/network/devices/{IID}/apply")
@@ -264,7 +426,7 @@ def uma_iteracao(amb: Any, api: Api, run: Path, n: int, primeira: bool, reg: Cal
     cat, motivo = classificar_iteracao(o)
     reg_final = {"ITERACAO": n, "RESULT": cat, "motivo": motivo, "reinicios_da_rede": o["reinicios_da_rede"], "ui_ok": o["ui_ok"],
                  "falhas_da_interface": o["falhas_da_interface"], "boots_observados": resets, "reinicios_totais": max(resets, reinicios_desde(cmds, "rede")),
-                 "linha_de_rede": linha, "tun": final.get("tun")}
+                 "linha_de_rede": linha, "tun": final.get("tun"), "wg_parou": wg_parou, "wg": wg}
     (d / "resultado.json").write_text(json.dumps(reg_final, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return reg_final
 
@@ -278,21 +440,34 @@ def rodar(amb: Any, api: Api, run: Path) -> dict[str, Any]:
     if not g["ok"]:
         saida["veredito"], saida["motivo"] = "FAIL", f"pré-voo falhou antes de qualquer escrita: {g['falhas']}"
         return saida
+    _st, resp = api.post("/api/network/server/firewall-check")                    # só leitura: nunca cria regra (é do dono)
+    liberado, estado_fw, comandos_fw = firewall_liberado(resp if isinstance(resp, dict) else None)
+    reg("firewall_check", estado=estado_fw, liberado=liberado)
+    if not liberado:
+        saida["veredito"], saida["motivo"] = "INCONCLUSIVE", f"BLOQUEADO: a regra do firewall para o par remoto não está liberada ({estado_fw}); nada foi escrito"
+        saida["comandos_do_dono"] = comandos_fw
+        return saida
     regs: list[dict[str, Any]] = []
     boots = 0
+    pior_caso = 1 + reinicios_max_da_config()
+    saida["pior_caso_da_iteracao"] = pior_caso
     try:
-        while pode_iniciar(boots, len(regs)):
+        while pode_iniciar(boots, len(regs), pior_caso):
             r = uma_iteracao(amb, api, run, len(regs) + 1, not regs, reg)
             regs.append(r)
             boots += max(1, int(r.get("reinicios_totais") or 0))
             saida["iteracoes"], saida["boots_consumidos"] = regs, boots
             (run / "mitigacao.estado.json").write_text(json.dumps(saida, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-            p = avaliar_parada(regs, boots)
+            if r.get("wg_parou"):                                                  # janela ociosa não veio, ou um par online não reconectou
+                saida["veredito"], saida["motivo"] = "INCONCLUSIVE", f"ABORTADO no servidor WireGuard: {r['motivo']}"
+                break
+            p = avaliar_parada(regs, boots, MAX_BOOTS, pior_caso)
             if p:
                 saida["veredito"], saida["motivo"] = p
                 break
     finally:
-        saida["rollback"] = reverter(amb, api, reg)
+        wg1 = (regs[0].get("wg") or {}) if regs else {}
+        saida["rollback"] = reverter(amb, api, reg, desfazer=bool(wg1.get("acao_executada")), urgente=bool(regs and regs[0].get("wg_parou")))
     saida["veredito"] = saida["veredito"] or desfecho(regs)
     saida["wg_depois"] = est1.digest_servidor(amb.servidor())
     saida["fim"] = boot.iso()
@@ -300,11 +475,18 @@ def rodar(amb: Any, api: Api, run: Path) -> dict[str, Any]:
     return saida
 
 
-def reverter(amb: Any, api: Api, reg: Callable[..., None]) -> dict[str, Any]:
-    """Tira a política (a plataforma desfaz o always-on e reinicia o aparelho UMA vez, fora da conta dos boots) e encerra a pausa."""
-    st, corpo = api.post("/api/network/assign", ROLLBACK)
-    reg("rollback_da_politica", http=st)
-    return {"http": st, "corpo": str(corpo)[:200], "pausa_encerrada": api.delete(f"/api/instances/{IID}/repair-pause")[0]}
+def reverter(amb: Any, api: Api, reg: Callable[..., None], *, desfazer: bool = True, urgente: bool = False) -> dict[str, Any]:
+    """Tira a política (a plataforma desfaz o always-on, reinicia o aparelho UMA vez, FORA da conta dos 6 boots e contado à parte, e reinicia o
+    servidor WireGuard) e encerra a pausa. O rollback do par espera a janela ociosa (nunca interrompe): sem ela fica PENDENTE e o relatório
+    traz o que fazer. `urgente` (depois de uma falha de reconexão) não espera. Sem par aplicado (`desfazer` False) só encerra a pausa."""
+    saida: dict[str, Any] = {"par_removido": False, "reinicio_do_09_pelo_rollback": "fora dos 6 boots; contado e registrado à parte"}
+    if desfazer:
+        wg = mexer_no_servidor(amb, reg, "rollback do par", lambda: api.post("/api/network/assign", ROLLBACK), urgente=urgente)
+        saida.update({"http": wg.get("http"), "wg": wg, "par_removido": bool(wg.get("acao_executada"))})
+        if not wg["ok"] and not wg.get("acao_executada"):
+            saida["rollback_pendente"] = f"o par do {IID} CONTINUA no servidor: {wg['fase']}; refazer o POST /api/network/assign {json.dumps(ROLLBACK)} numa janela ociosa"
+    saida["pausa_encerrada"] = api.delete(f"/api/instances/{IID}/repair-pause")[0]
+    return saida
 
 
 def main(argv: list[str] | None = None, amb: Any = None, api: Api | None = None) -> int:
@@ -332,9 +514,10 @@ def main(argv: list[str] | None = None, amb: Any = None, api: Api | None = None)
     api = api or Api()
     r = rodar(amb, api, Path(a.run))
     print(json.dumps({"veredito": r["veredito"], "motivo": r.get("motivo"), "boots_consumidos": r.get("boots_consumidos"),
-                      "iteracoes": [{k: i.get(k) for k in ("ITERACAO", "RESULT")} for i in r["iteracoes"]], "rollback": r.get("rollback")},
+                      "iteracoes": [{k: i.get(k) for k in ("ITERACAO", "RESULT")} for i in r["iteracoes"]], "rollback": r.get("rollback"),
+                      "comandos_do_dono": r.get("comandos_do_dono")},
                      ensure_ascii=False, indent=2))
-    return 0
+    return 3 if (r.get("rollback") or {}).get("rollback_pendente") else 0
 
 
 if __name__ == "__main__":
