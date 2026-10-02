@@ -1505,8 +1505,8 @@
    "id": "8.3",
    "status": "partial",
    "proof": "real",
-   "evidence": "104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (migração 034); authentication.py:147,156 passam reobserved=True nos dois pontos onde classify() realmente rodou; state.py:587 inclui unknown em _SESSAO_PARA_REOBSERVAR, state.py:736-742 bloqueia automação após settings.session_unknown_retry_cap (config.py:192, default 3) reobservações seguidas sem reconhecer a tela. 114: policy.py DEFAULT_LIMITS ganha *_per_day + warmup_days/warmup_percent; policy.py:125-137 _aquecendo/_teto_com_aquecimento; policy.py:140-172 _fleet_gate usa repository.py:492 fleet_targeting (única exceção documentada ao isolamento por perfil) e LimitsCfg.fleet_* (config.py); state.py:1086 passa counterparty (username-alvo) a policies.check(); policy.py:90-116 fixa o docstring de policy_for (afrouxar sempre foi aceito) e adiciona is_loosened; models.py ProfilePolicyDTO.loosened; service.py get_policy popula loosened e set_policy emite log warn quando uma capability de risco alto é afrouxada abaixo do padrão; frontend: types.ts, ProfileDetail.tsx (badge 'mais frouxo que o padrão'), fixtures.ts, validation.ts (grupo 'Sinais e limites do Instagram'). 109: approvals.py:133 expire_for_objective ganhou dois chamadores — scheduler.py:855-856 _expirar_aprovacoes, chamado em _finish_cancel (~941) e em _fail_objective (~845); state.py liga scheduler.expirar_aprovacoes_do_objetivo=self.approvals.expire_for_objective. REPLY_COMMENT/editar em aparelho real: não mexido (depende de aparelho ligado). 115: config.py não tem mais auto_switch_account; authentication.py:262-271 _wrong_account virou caminho único (conta errada é sempre intervenção humana).",
-   "blocker": "REPLY_COMMENT e 'editar' rodarem de fato num aparelho (android-05/instância real) continuam not_run — exige emulador ligado e Appium ativo, fora do escopo desta chamada (regra 6).",
+   "evidence": "Tentativa real 02/10/2026 ~22:10Z (central b5baf3e5, 073; roteiro-8-3-final): linha de base 0 pendentes, REPLY_COMMENT/CREATE_COMMENT approval_required nos 3 perfis vivos; android-03 verify session_ready c-20261002221051-1bab35, coleta r-20261002221213-8d1c0a: OPEN_PROFILE comprovado pela arvore local (real), OPEN_POST waiting_user por grade vazia (0 posts), US$ 0,15; android-06 sem rede (connectivity unavailable, ping a IP falha), sem execucao; android-01 verify c-20261002221357-328657 failed por timeout do UiAutomator, sem execucao. Nenhum gesto publico, nenhuma aprovacao. docs/relatorio-validacao.md 8.9. 104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (migração 034); authentication.py:147,156 passam reobserved=True nos dois pontos onde classify() realmente rodou; state.py:587 inclui unknown em _SESSAO_PARA_REOBSERVAR, state.py:736-742 bloqueia automação após settings.session_unknown_retry_cap (config.py:192, default 3) reobservações seguidas sem reconhecer a tela. 114: policy.py DEFAULT_LIMITS ganha *_per_day + warmup_days/warmup_percent; policy.py:125-137 _aquecendo/_teto_com_aquecimento; policy.py:140-172 _fleet_gate usa repository.py:492 fleet_targeting (única exceção documentada ao isolamento por perfil) e LimitsCfg.fleet_* (config.py); state.py:1086 passa counterparty (username-alvo) a policies.check(); policy.py:90-116 fixa o docstring de policy_for (afrouxar sempre foi aceito) e adiciona is_loosened; models.py ProfilePolicyDTO.loosened; service.py get_policy popula loosened e set_policy emite log warn quando uma capability de risco alto é afrouxada abaixo do padrão; frontend: types.ts, ProfileDetail.tsx (badge 'mais frouxo que o padrão'), fixtures.ts, validation.ts (grupo 'Sinais e limites do Instagram'). 109: approvals.py:133 expire_for_objective ganhou dois chamadores — scheduler.py:855-856 _expirar_aprovacoes, chamado em _finish_cancel (~941) e em _fail_objective (~845); state.py liga scheduler.expirar_aprovacoes_do_objetivo=self.approvals.expire_for_objective. REPLY_COMMENT/editar em aparelho real: não mexido (depende de aparelho ligado). 115: config.py não tem mais auto_switch_account; authentication.py:262-271 _wrong_account virou caminho único (conta errada é sempre intervenção humana).",
+   "blocker": "REPLY_COMMENT, edit em aparelho, learn_from de comentario, COLLECT_COMMENTS com itens e for_each com itens reais seguem not_run (02/10): bruno sem publicacao, android-06 sem rede, android-01 com timeout do UiAutomator; sem comentario de terceiro elegivel. Proximo passo do dono: esperar comentario organico em post nosso e repetir uma vez, ou comentar de conta pessoal com consentimento.",
    "arquivos": [
     "backend/app/integrations/instagram/navigation.py",
     "backend/app/social/repository.py",
@@ -1525,15 +1525,16 @@
     "frontend/src/features/settings/validation.ts",
     "frontend/src/features/settings/validation.test.ts",
     "backend/tests/test_instagram_auth.py",
-    "backend/tests/test_capabilities.py"
+    "backend/tests/test_capabilities.py",
+    "docs/relatorio-validacao.md"
    ],
    "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instagram_auth.py tests/test_capabilities.py tests/test_social_dm.py -> 133 passed em 73.43s. cd frontend && npx vitest run src/features/profiles/ProfileDetail.test.tsx src/features/settings src/app.integration.test.tsx -> todos passed (12+29+16). cd frontend && npx tsc --noEmit -p . -> sem erros.",
    "grupo": "8-operacao:8.3+8.4",
-   "modelo": "sonnet",
+   "modelo": "opus",
    "esforco": "high",
-   "conferido": true,
-   "conferencia": "Todas as 17 modificações declaradas existem com implementações completas. Navegação, repositório, autenticação, estado, política, frontend e agendador contêm o código esperado; nenhum TODO/FIXME/stub encontrado.",
-   "quando": "2026-09-23T10:47:46+00:00"
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T22:19:31+00:00"
   },
   "8.4": {
    "id": "8.4",
@@ -6329,6 +6330,15 @@
    "grupos": [
     "12-3-outlook-leitura",
     "12-4-saidas"
+   ]
+  },
+  {
+   "quando": "2026-10-02T22:19:31+00:00",
+   "itens": [
+    "8.3"
+   ],
+   "grupos": [
+    "8-operacao:8.3+8.4"
    ]
   }
  ]
