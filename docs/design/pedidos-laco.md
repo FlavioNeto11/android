@@ -401,9 +401,9 @@ Prova `simulated` (`backend/tests/test_pedidos_*.py`); `real` só no 28.12.
 | Instantes devidos de `agora`/`horario`/`recorrencia` | `modules/pedidos/domain/gatilhos.py` |
 | Sobreposição e teto por autonomia | `modules/pedidos/domain/sobreposicao.py` (`decidir`) |
 | Tabela de fechamento e prazo de início | `modules/pedidos/domain/fechamento.py` (`fechar`, `prazo_de_inicio_vencido`) |
-| SQL das três tabelas (CAS por estado e versão) | `modules/pedidos/application/repositorio.py` |
-| O laço (`uma_volta`: fechar, materializar, despachar, agendar) | `modules/pedidos/application/laco.py` |
-| Pausar, retomar, cancelar, editar | `modules/pedidos/application/acoes.py` |
+| SQL das três tabelas (CAS por estado e versão) | `modules/pedidos/infrastructure/repositorio.py` |
+| O laço (`uma_volta`: fechar, materializar, despachar, agendar) | `modules/pedidos/infrastructure/laco.py` |
+| Pausar, retomar, cancelar, editar | `modules/pedidos/infrastructure/acoes.py` |
 | Parâmetro interno `origem` (D3) | `taskqueue/service.py` (`create`, `_criar_com_perguntas`), `taskqueue/repository.py` (`create_run`) |
 | Trava `PEDIDOS` e ligação | `taskqueue/travas.py`, `state.py` (`self.pedidos`, tarefa `pedidos`, `_execucao_assentada`, `_manter_travas`) |
 | Configuração | `config.py::PedidosCfg`, bloco `pedidos:` de `config/config.example.yaml` |

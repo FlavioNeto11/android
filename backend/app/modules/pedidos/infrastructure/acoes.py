@@ -23,15 +23,18 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from app.db import Row, loads
-from app.modules.pedidos.application.repositorio import RepositorioDePedidos, novo_id
+from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos, novo_id
 from app.modules.pedidos.domain import gatilhos
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, formatar_instante
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, ATOR_SISTEMA, transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.materializar import truncar
 from app.util import parse_iso, to_iso
+
+if TYPE_CHECKING:  # só para a anotação: o serviço de execuções vem de quem monta o laço
+    from app.taskqueue.service import RunService
 
 log = logging.getLogger("poc.pedidos")
 
@@ -47,7 +50,7 @@ class AcaoInvalida(ValueError):
 
 
 class AcoesDePedidos:
-    def __init__(self, repo: RepositorioDePedidos, runs: Any, relogio: Callable[[], datetime],
+    def __init__(self, repo: RepositorioDePedidos, runs: RunService, relogio: Callable[[], datetime],
                  acordar: Callable[[], None]):
         self.repo = repo
         self.runs = runs
@@ -127,7 +130,7 @@ class AcoesDePedidos:
         self.acordar()
 
     # ------------------------------------------------------------------ editar
-    def editar(self, pedido_id: str, campos: Mapping[str, Any] | None = None, *, gatilho: tuple[str, Mapping] | None = None,
+    def editar(self, pedido_id: str, campos: Mapping[str, object] | None = None, *, gatilho: tuple[str, Mapping] | None = None,
                ator: str = ATOR_PESSOA) -> int:
         """Devolve a versão nova. `gatilho=(tipo, spec)` troca a recorrência/horário (gatilho novo, D5)."""
         campos = dict(campos or {})
