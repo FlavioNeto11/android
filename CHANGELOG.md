@@ -203,6 +203,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
 - Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
 
+## 2026-10-02 — Aprendizado: a revisão do curador ligada à chamada medida (migração 075, branch feat/075-revisoes-ai-call-id)
+
+- `learning_reviews.ai_call_id` (075, nulável, sem FK): a revisão grava a linha de `ai_calls` que o hub mediu (30.12). O `usd` medido NÃO é gravado ainda (pendência da rubrica no `hub-de-ia-fora-de-execucao.md`); `usd = 0` segue = não medido, e o orçamento segue estimando pelo tamanho do dossiê.
+- `RespostaDeRevisao.simulado` (opcional): o simulado da RESPOSTA vale sobre o do adaptador; parecer simulado nunca avisa o dono. Seguro também com revisões concorrentes.
+- Em cima do 30.12 (feat/30-12-curador-hub, que está sobre o 30.11): merge na ordem 30.11 → 30.12 → 075, na suíte combinada. Prova `simulated`: `test_migracao_075_revisoes_ai_call_id.py`, `test_learning_curador.py` (dois testes novos), `test_migracao_069_revisoes.py`.
+
 ## 2026-10-02 — Curador do Livro pelo hub de IA (30.12, branch feat/30-12-curador-hub)
 
 - `AIRouter.review_knowledge(PedidoDeParecer)`: papel `plan` emprestado, sem execução, `origem = curador` e `ref = dossie_hash`
