@@ -10,12 +10,13 @@ Os ajustes chegam como dado (`Ajustes`), não como o `Config` do central: a apli
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.modules.learning.domain.ciclo import Desligamento, SkillState
+from app.modules.learning.domain.curador import Dossie
 from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
@@ -218,6 +219,129 @@ class TitulosDoCatalogo(Protocol):
     português. É texto do catálogo, não da execução. App sem catálogo ou capability desconhecida: `None`."""
 
     def titulo(self, app: str, capability: str) -> str | None: ...
+
+
+# ------------------------------------------------------------------ o curador por IA (30.11, §8.5-8.8)
+#: Tipos combinados com a frente Jev (o hub os espelha em `planning/schemas.py`). O hub valida só o JSON; a validação
+#: do parecer (citação, vocabulário, classe) é do aprendizado (`domain/curador.validar_saida`).
+ClasseDoPedido = Literal["A", "B", "C"]
+ModeloSugerido = Literal["triagem", "escalada"]
+
+
+@dataclass(frozen=True, slots=True)
+class PedidoDeRevisao:
+    dossie: JsonObject                      # `Dossie.como_dados()`: só fatos, já triado
+    dossie_hash: str
+    classe: ClasseDoPedido
+    opcoes: dict[str, list[str]]            # `OPCOES_FECHADAS` + `opcoes_do_dossie` (citáveis e alvos)
+    modelo_sugerido: ModeloSugerido
+
+
+@dataclass(frozen=True, slots=True)
+class RespostaDeRevisao:
+    bruto: JsonObject                       # a escolha como veio; quem valida é `validar_saida`
+    probabilidade: float | None             # a da escolha da decisão, medida pelo adaptador (nunca dita pela IA)
+    modelo: str
+    usd: float | None                       # o hub mede (30.12); aqui NUNCA se calcula custo à parte
+    ai_call_id: int | None
+
+
+class RecusaDoProvedor(Exception):
+    """O que o adaptador levanta quando o provedor não responde. O adaptador do hub (30.12) traduz o `AIError` dele
+    nesta (a aplicação não importa `app.planning`). `kind == "budget"`: o hub cortou por orçamento, e o lote da volta
+    para ali, sem nova tentativa em laço."""
+
+    def __init__(self, mensagem: str, *, kind: str = "error") -> None:
+        super().__init__(mensagem)
+        self.kind = kind
+
+
+class CuradorDeIA(Protocol):
+    """Quem dá o PARECER sobre um item. Nunca decide nada: o parecer vai a `learning_reviews` e o aceite é da pessoa
+    (`politica_de_risco.conferir_aceite`). `provedor` e `simulado` vão ao registro (`simulated = 1` nunca é prova)."""
+
+    provedor: str
+    simulado: bool
+
+    def revisar(self, pedido: PedidoDeRevisao) -> RespostaDeRevisao: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AjustesDoCurador:
+    """`aprendizado.curador` do config, como dado."""
+
+    modo: Modo = Modo.OFF
+    intervalo_s: int = 3600
+    cooldown_h: float = 24.0
+    alfa: float = 0.10
+    k: float = 1.5
+    janela_dias: int = 7
+    m_cmax: float = 4.0
+
+
+@dataclass(frozen=True, slots=True)
+class NovaRevisao:
+    """Uma linha de `learning_reviews` (069). Sem `ai_call_id`: a 069 não tem a coluna (30.12)."""
+
+    item_ref: str
+    item_kind: str
+    scope_app: str
+    gatilho: str
+    dossie_hash: str
+    dossie: JsonObject
+    template_id: str
+    template_versao: str
+    provedor: str
+    modelo: str
+    simulated: bool
+    validade: str
+    saida: JsonObject | None
+    classe_de_risco: str | None
+    politica: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class LeituraDaJanela:
+    """O que o orçamento precisa ler do banco (§8.7). A estimativa do gasto da curadoria sem medida é feita aqui pelo
+    tamanho do dossiê GRAVADO (reprodutível) e só serve para decidir."""
+
+    gasto_da_operacao: float
+    custos_medidos: tuple[float, ...]
+    tamanhos_sem_medida: tuple[int, ...]     # bytes do dossiê das revisões da janela sem `usd` medido
+    tamanhos_sem_medida_na_hora: tuple[int, ...]
+    gasto_medido: float
+    gasto_medido_na_hora: float
+    revisoes_antes_de_hoje: int
+    revisoes_de_hoje: int
+
+
+class RegistroDeRevisoes(Protocol):
+    """`learning_reviews` (069): uma linha por revisão, nunca purgada."""
+
+    def existe(self, item_ref: str, dossie_hash: str) -> bool: ...
+    def ultima(self, item_ref: str) -> str | None:
+        """`created_at` da revisão mais recente do item (para o cooldown); `None` se nunca revisado."""
+        ...
+
+    def gravar(self, nova: NovaRevisao, agora: datetime) -> str | None:
+        """Grava e devolve o id (`lr-…`); `None` se (item, dossiê) já existia (corrida entre réplicas)."""
+        ...
+
+    def janela(self, agora: datetime, dias: int) -> LeituraDaJanela: ...
+
+
+class FonteDeDossies(Protocol):
+    """Monta o dossiê (§8.2) de uma entrada do Livro, sem IA. `None` quando o item sumiu ou não tem dossiê (memória)."""
+
+    def dossie(self, entrada: EntradaDoLivro, *, max_evidencias: int | None = None) -> Dossie | None: ...
+
+
+class LacoPeriodico(Protocol):
+    """Um laço do aprendizado que o `AppState` sobe à parte da curadoria, sob a trava de líder que ele passa."""
+
+    nome: str
+
+    async def laco(self, lider: Callable[[], int | None]) -> None: ...
 
 
 class PassoDeCuradoria(Protocol):

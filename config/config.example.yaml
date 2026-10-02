@@ -501,6 +501,17 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     taxa_minima: 0.8              # eficácia acumulada replay_ok/(ok+fail); abaixo disto, com amostra, = degradando
     falhas_seguidas: 2            # consecutive_fail a partir do qual o item degrada
     contestacao_dias: 7           # janela da evidência contra/conflito (contestação recente = degradando)
+  # Curador por IA (30.11, §8.6-8.8): pede PARECER sobre itens do Livro; a IA nunca decide (o aceite é da pessoa).
+  # "off" (padrão) não roda · "shadow" revisa e grava o parecer · "on" faz o mesmo nesta fatia. Orçamento proporcional
+  # ao gasto da operação: B = min(alfa·gasto da janela, k·itens·custo médio); custo máximo = m_cmax × mediana.
+  curador:
+    modo: "off"
+    intervalo_s: 3600             # de quanto em quanto tempo o laço olha os gatilhos (sob a trava de líder)
+    cooldown_h: 24                # o mesmo item não é revisado de novo antes disto
+    alfa: 0.10
+    k: 1.5
+    janela_dias: 7
+    m_cmax: 4
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

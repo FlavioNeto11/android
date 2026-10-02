@@ -233,6 +233,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `api-contract` adendo v0.56 (`diagnostico`, `alvo`/`causa`/`parent_id` nas propostas). `tests/test_learning_diagnostico.py` (45, `simulated`); em
   `test_learning_backlog.py` uma contagem passou a filtrar `category='falha'` (a curadoria agora também grava propostas do diagnóstico).
 
+## 2026-10-02 — Aprendizado: curador por IA, aplicação com adaptador simulado (30.11, branch feat/30-11-curador-aplicacao)
+
+- Porta `CuradorDeIA` (`PedidoDeRevisao`/`RespostaDeRevisao`, combinados com a frente Jev) e adaptador SIMULADO determinístico; laço
+  próprio `aprendizado.curador.intervalo_s` sob a trava de líder `curadoria`, separado do `PassoDeCuradoria`; modos `off` (padrão) /
+  `shadow` / `on` (= `shadow` nesta fatia). Gatilhos, filtros (hash, cooldown, orçamento, prioridade) e o orçamento proporcional
+  aprovado (`B_W = min(α·G_W, k·N_W·c̄)`, α 0,10, k 1,5, W 7 dias, `c_max = 4 × mediana`) em `domain/orcamento_do_curador.py`; corte
+  com motivo próprio `orcamento_da_janela`. Revisões em `learning_reviews` (069) com `usd = 0` = não medido (o custo é do 30.12);
+  `learning.needs_person` com `motivo: parecer_da_ia` (`api-contract.md`, adendo v0.57). A IA nunca decide.
+- Config `aprendizado.curador` (núcleo: `config.py`, `CuradorCfg`) e uma linha em `state.py`. Sem migração, sem IA paga. Prova
+  `simulated` (`tests/test_learning_curador.py`); `not_run` no central.
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
@@ -245,8 +256,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decisão: wake quente também invalida (uma medição a mais por acordar); a linha não regride de estado, a porta é que não aceita.
 - Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
-
-
 
 ## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
 
@@ -738,7 +747,6 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
-
 ## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
 
 - **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
@@ -751,7 +759,6 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
   node 22). Cobre a seleção, a leitura do config, um `node` de verdade encerrado com o de outra árvore poupado, a
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
-
 
 ## 2026-10-02 — Testes: sondas do `_wait_boot` (T.2, J10)
 
@@ -1862,7 +1869,6 @@ contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no W
   sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
   sob um `applied` do pedido velho.
 
-
 ## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
 
 Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
@@ -1901,7 +1907,6 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
   com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
   offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
   (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
-
 
 ## 2026-09-26 — identidade do backend em /api/health (implantado com `5b81c1a`)
 

@@ -953,6 +953,21 @@ class SaudeCfg(BaseModel):
     contestacao_dias: int = Field(7, ge=1, le=365)         # janela da evidência contra/conflito
 
 
+class CuradorCfg(BaseModel):
+    """O curador por IA (30.11, `aprendizado-vivo.md` §8.6-8.8): o laço que pede PARECER sobre itens do Livro. De
+    fábrica `off` (nada roda). `shadow` revisa e grava o parecer em `learning_reviews`; `on`, nesta fatia, faz o mesmo
+    (o aceite é sempre da pessoa). O orçamento é proporcional ao gasto da operação (decisão do dono, 02/10):
+    `B_W = min(alfa·G_W, k·N_W·c̄)` na janela de `janela_dias`; `c_max = m_cmax × mediana` do custo por revisão."""
+
+    modo: Literal["off", "shadow", "on"] = "off"
+    intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço olha os gatilhos
+    cooldown_h: float = Field(24.0, ge=0, le=24 * 90)       # o mesmo item não é revisado de novo antes disto
+    alfa: float = Field(0.10, ge=0, le=1)
+    k: float = Field(1.5, ge=0, le=100)
+    janela_dias: int = Field(7, ge=1, le=90)
+    m_cmax: float = Field(4.0, gt=0, le=100)
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -973,6 +988,7 @@ class LearningCfg(BaseModel):
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
     saude: SaudeCfg = SaudeCfg()
+    curador: CuradorCfg = CuradorCfg()
 
 
 class AvisosCfg(BaseModel):
