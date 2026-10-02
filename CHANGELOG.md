@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: curador por IA, aplicação com adaptador simulado (30.11, branch feat/30-11-curador-aplicacao)
+
+- Porta `CuradorDeIA` (`PedidoDeRevisao`/`RespostaDeRevisao`, combinados com a frente Jev) e adaptador SIMULADO determinístico; laço
+  próprio `aprendizado.curador.intervalo_s` sob a trava de líder `curadoria`, separado do `PassoDeCuradoria`; modos `off` (padrão) /
+  `shadow` / `on` (= `shadow` nesta fatia). Gatilhos, filtros (hash, cooldown, orçamento, prioridade) e o orçamento proporcional
+  aprovado (`B_W = min(α·G_W, k·N_W·c̄)`, α 0,10, k 1,5, W 7 dias, `c_max = 4 × mediana`) em `domain/orcamento_do_curador.py`; corte
+  com motivo próprio `orcamento_da_janela`. Revisões em `learning_reviews` (069) com `usd = 0` = não medido (o custo é do 30.12);
+  `learning.needs_person` com `motivo: parecer_da_ia` (`api-contract.md`, adendo v0.55). A IA nunca decide.
+- Config `aprendizado.curador` (núcleo: `config.py`, `CuradorCfg`) e uma linha em `state.py`. Sem migração, sem IA paga. Prova
+  `simulated` (`tests/test_learning_curador.py`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: obsolescência e rebaixamento `catalogo_sem_efeito` (30.14, branch feat/30-14-obsolescencia)
 
 - `saude.rotulo` ganha `obsoleto_provavel` (depois de `degradando`, antes de `sem_evidencia`, só no publicado), com os sinais do §9.2 que têm
@@ -28,6 +39,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   rebaixado pelo sistema (sempre → `disabled`, para a pessoa poder reativar) pelo caminho do Livro, com o motivo
   `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
   Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
@@ -71,6 +83,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `EntradaDoLivro.falhas_seguidas` novo (opcional), preenchido de `recipes.consecutive_fail`. Limiares = D-5, aprovada pelo dono em 02/10.
 - Sem migração e sem ADR. Prova `simulated`: `backend/tests/test_learning_saude.py` (tabela de casos por rótulo, fronteiras, desconhecida, config, HTTP
   lista = detalhe); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: esquecer_conta (29.23, branch feat/29-23-esquecer-conta-aprendizado)
 
 - `app.modules.learning.esquecer_conta(db, *, profile_id, account_id, handle, app_id)` reescreve o rastro textual da conta (handle com e sem `@`, `account_id`) para `[conta removida]` em `learning_items`, `learning_evidence`, `learning_transitions`, `learning_backlog`, `learning_reviews` e `learning_signals`; roda na transação de quem chama (sem commit), não apaga linha nem muda hash/id, é idempotente e casa por fronteira de palavra (handle `ana` não estraga "banana"). Parte Aprendizado do 29.23; a frente Android (`memory_items`, chamada) é outra. Sem migração e sem rota. Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (13); PostgreSQL: `not_run`. Detalhe em `docs/dominios/aprendizado.md` ("Conta removida (29.23)").

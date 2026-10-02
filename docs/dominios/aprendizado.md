@@ -480,6 +480,7 @@ absorvida. Sem fonte e fora: uso da etapa por outro caminho, duplicado em chave 
 - **Custo.** As receitas são lidas uma vez por leitura do Livro (vizinha seguinte e quadro de versão em lote); o `conteudo` (que pode
   varrer `steps` sem índice em `template_hash`) só para o vivo com `commit` num catálogo que tem efeito.
 - **Destino.** O rebaixamento vai sempre para `disabled` (receita `quarantined`), nunca `deprecated`: só assim a pessoa pode reativar (§9.2).
+
 ## Conta removida (29.23)
 
 `esquecer_conta(db, *, profile_id, account_id, handle, app_id)` (`app.modules.learning`, implementação em `infrastructure/esquecer_conta.py`) é a
@@ -526,6 +527,45 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   é do hub.
 - Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
   `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
+
+## Curador, aplicação (30.11)
+
+Desenho em `design/aprendizado-vivo.md` §8.5-8.8 e §8.11. Só com o adaptador SIMULADO: o do hub de IA é o 30.12 (frente Jev).
+
+- **Porta** `CuradorDeIA` (`application/ports.py`): `revisar(PedidoDeRevisao) -> RespostaDeRevisao`, mais os atributos `provedor` e
+  `simulado` (vão ao registro). `PedidoDeRevisao{dossie, dossie_hash, classe: A|B|C, opcoes: dict[str, list[str]], modelo_sugerido:
+  triagem|escalada}` (opções = `OPCOES_FECHADAS` + `opcoes_do_dossie`; `escalada` só na C) e `RespostaDeRevisao{bruto, probabilidade,
+  modelo, usd, ai_call_id}`. O hub valida só o JSON; o learning valida com `validar_saida`. Falha do provedor chega como
+  `RecusaDoProvedor(kind)` (o adaptador traduz o `AIError`); `kind = budget` para o lote da volta sem nova tentativa.
+- **Adaptador simulado** (`infrastructure/curador_simulado.py`): determinístico, sem rede e sem custo; grava `provedor = simulado` e
+  `simulated = 1` (nunca prova). É o padrão da montagem até o 30.12.
+- **Laço** (`infrastructure/ligar_curador.py::LacoDoCurador`, a cada `aprendizado.curador.intervalo_s`), separado do
+  `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
+  `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta.
+- **Modos**: `off` (padrão) não roda; `shadow` revisa, grava em `learning_reviews` e publica `learning.needs_person` com
+  `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` é igual a `shadow`
+  nesta fatia (a fila com parecer e o aceite em lote são itens seguintes). A IA nunca decide: nada transiciona aqui
+  (`conferir_aceite`).
+- **Gatilhos ligados**: `nova_pendencia_do_dono` (fila "Para aprovar"), `a_revisar`, `degradando` e `obsoleto_provavel` (saúde do
+  publicado) e `conflito` (publicado com relação `contradiz`). `versao_nova`, `grupo_de_falha_acima_do_minimo` e `pedido_da_pessoa`
+  existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
+  sem grupos do backlog, votos e intervenções nesta fatia.
+- **Filtros**, em ordem: modo → (item, `dossie_hash`) já revisado → cooldown (`cooldown_h`) → orçamento → prioridade. A triagem de
+  credencial corre nas folhas de TEXTO do conteúdo do dossiê (o JSON inteiro não: a regra recusa hash longo, data ISO e `receita:12`);
+  recusa = linha `recusada:triagem` sem o dossiê. A `conclusao` com cara de credencial é gravada como `null` (o parecer segue válido).
+- **Orçamento** (`domain/orcamento_do_curador.py`): `B_W = min(alfa·G_W, k·N_W·c̄)`, `G_W` = `SUM(learning_daily.usd)` na janela (sem
+  filtro de falha); `N_W` = revisões da janela + elegíveis da volta; `c̄` = média do `usd` MEDIDO ou, sem medida, da estimativa
+  (`tamanho_em_bytes`/3 tokens × o preço de entrada mais caro de `ai.prices` + 400 tokens de saída). A estimativa só decide; o gasto
+  já feito sem medida entra por ela, recalculada do dossiê gravado. Ordem estrita: 1 contra/conflito em publicado B/C, 2 classe C,
+  3 falha recorrente, 4 classe B, 5 classe A (sempre por último, mesmo contestada: `so_com_sobra`). O corte é `orcamento_da_janela`
+  (motivo próprio, não o `fatia_curador` do hub), `gasto_da_hora` (`B_W/W/2`, conferido sobre o já gasto), `pico_de_entrada`,
+  `lote_interrompido` ou `erro_do_provedor`; o corte NÃO vira linha (não gasta a chave (item, dossiê)) e fica no resultado e no log.
+  Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`.
+- **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0` e não tem `ai_call_id`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0`
+  conta como medida). O `usd` vai sair de `costs.spent_usd(origem='curador')` quando a 073 (31.2) existir; o NULL e o `ai_call_id`
+  pedem migração própria (30.12).
+- Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
+  gatilhos sem fonte, e o `resultado_posterior`.
 
 ## Pendências conhecidas
 

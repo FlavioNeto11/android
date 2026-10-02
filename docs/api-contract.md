@@ -3492,8 +3492,8 @@ fechado (também é persistida e transmitida).
 **Quando publica.** Na transição ou no nascimento que deixa o item na fila "Para aprovar" (`validated` com `requires_owner`;
 candidata de origem humana) e em qualquer transição que o tira dela, incluindo a mudança que a própria loja de receitas ou de
 fluxos faz. Idempotente por (`kind:ref`, `aguardando`): mover entre dois estados que não mudam a espera, ou repetir a mesma
-mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` existe no
-vocabulário para o curador do 30.11; ninguém o publica ainda.
+mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` é publicado
+pelo curador do 30.11 (adendo v0.55).
 
 **Faixa (mínima, `domain/espera.py::classificar_espera`; o 30.10 a estende).** C: `risk=high`, `default_policy=manual_only`,
 ação que envia texto escrito (`needs_draft`) ou item nascido de sessão desconhecida. B: efeito externo médio ou commit sem
@@ -3667,3 +3667,13 @@ Livro (`LearningService.mudar_estado`): `candidate`/`validated`/`published` → 
 
 Nenhum campo novo além do vocabulário, nenhuma migração, nenhum código de erro novo. Prova `simulated`
 (`tests/test_learning_obsolescencia.py`); `not_run` no central.
+
+## Adendo v0.55 (02/10/2026) — `learning.needs_person` publica `motivo: parecer_da_ia` (item 30.11)
+
+O curador por IA (`aprendizado.curador.modo` ≠ `off`; de fábrica `off`) passa a publicar o motivo `parecer_da_ia`, que já existia no
+vocabulário (v0.49): quando um parecer B ou C **novo e válido** é gravado em `learning_reviews` para um item que JÁ está na fila "Para
+aprovar". Mesmo payload (`aguardando: true`, `faixa`, `desde` = quando entrou na espera); a conclusão da IA nunca vai no evento. Não é
+idempotente por (`kind:ref`, `aguardando`): cada parecer novo avisa uma vez (a chave única (item, dossiê) da 069 garante); a saída da
+espera continua avisada normalmente. Parecer da faixa A, inválido ou recusado não publica. Em `shadow` também publica (o parecer não
+decide nada; o aceite é da pessoa). Nenhuma rota, nenhuma migração, nenhum código de erro novo. Prova `simulated`
+(`tests/test_learning_curador.py`); `not_run` no central.
