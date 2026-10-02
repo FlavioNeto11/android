@@ -386,7 +386,7 @@ e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o mod
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
 decide é `application/espera.py::AvisadorDeEspera` (compara o item antes e depois, memória do último aviso por `kind:ref`); a
-faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.10 a estende). A porta é `PortaDeEventos`
+faixa e o motivo saem de `domain/espera.py::classificar_espera`, tradução da política de risco (30.10). A porta é `PortaDeEventos`
 (`ports.py`), o adaptador sobre o `EventBus` é `infrastructure/eventos.py`, e o catálogo entra como fatos de risco
 (`CatalogoDeRisco`, nunca texto de ação). Os pontos de chamada: `mudar_estado`, `propor`, `avisar_item` (a tela absorvida) e
 `avisar_mudanca_nativa` (os ouvintes das lojas de receita e fluxo). Contrato do payload: `api-contract.md`, adendo v0.49.
@@ -464,6 +464,33 @@ TEXTUAL (o `handle`, com e sem `@`, e o `account_id`) para o marcador exato `[co
   `account_id` casa exato (hífen conta como parte). Handle vazio ou só `@` não faz nada.
 - **Limite conhecido**: `learning_evidence.origin_ref` entra num índice único; se a troca colidisse com outra linha, ela é PULADA para não derrubar a
   transação do chamador (o rastro fica naquela coluna). Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (SQLite); PostgreSQL e uso real: `not_run`.
+
+## Curador, domínio e política de risco (30.10)
+
+Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, o laço e o orçamento são do 30.11.
+
+- **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
+  `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
+  e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
+  em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
+  `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+- **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
+  lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
+  intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
+  `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
+  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
+- **Contrato de saída** (`validar_saida`): escolha entre RÓTULOS FECHADOS, pensada para um adaptador de `choice` (provedor Jev):
+  `decisao` (obrigatória), `faixa`, `causa`, `riscos`, `inconsistencias`, `falta`, com as opções em `OPCOES_FECHADAS`; `alvo` e
+  `evidencias_citadas` escolhem entre os ids do dossiê (`opcoes_do_dossie`). Citação inventada, rótulo fora do conjunto ou campo extra
+  invalidam. A confiança vem da `probabilidade` da escolha que o adaptador mede (entrada opcional; limiares 0,60 e 0,85); sem ela, um
+  rótulo categórico; nunca número dito pela IA. A `conclusao` (≤ 300) é o único texto livre, opcional, e não entra na decisão. A
+  `faixa` da IA nunca afrouxa a da política (`faixa_efetiva`). A falha vira `invalida:<motivo>` (vocabulário fechado, cabe em
+  `learning_reviews.validade`); o `Parecer` válido serializa na forma de `learning_reviews.saida`. Nenhum prompt no módulo: o template
+  é do hub.
+- Fica para o 30.11: a `TriagemDeTexto` do dossiê e das listas livres antes de gravar, o corte por custo (`tamanho_em_bytes`), e o
+  `RiscoDoRegistro` preencher `familia_do_efeito` e `interacao` quando o catálogo os declarar.
 
 ## Pendências conhecidas
 

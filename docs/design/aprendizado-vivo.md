@@ -263,7 +263,7 @@ fatos (dossiê determinístico)  →  interpretação (IA, saída estruturada)  
 ```
 
 A IA nunca transiciona. O que ela devolve é um **parecer** gravado em `learning_reviews`. A publicação e o rebaixamento automáticos continuam
-sendo só os das regras determinísticas de hoje. A faixa A não recebe parecer. Na faixa B, o parecer é recomendação para o dono aprovar em lote;
+sendo só os das regras determinísticas de hoje. Na faixa A, o parecer (só com sobra de orçamento) é só registro. Na faixa B, o parecer é recomendação para o dono aprovar em lote;
 na C, apoio à decisão item a item. Quem transiciona é sempre o `ciclo.py`: pelo sistema, nas regras atuais, ou pela pessoa, com `review_id` registrando o aceite ou
 o override. A tabela do `ciclo.py` não ganha linha.
 
@@ -306,7 +306,7 @@ a etapa de efeito do fluxo). A política coincide com o D1 e o estreita; não o 
 
 | Classe | Como se reconhece | Quem decide | Papel da IA |
 |---|---|---|---|
-| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **nenhum: a faixa A nunca gasta IA** (decisão do orçamento, §8.7); o dossiê determinístico basta |
+| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **só opinião de registro, e só com sobra** de orçamento depois das prioridades 1 a 4 (decisão do dono, 02/10; ver a nota abaixo); nunca muda o resultado |
 | **B: efeito médio, ou `commit` em app sem catálogo** | capability com `risk=medium`; ou receita/fluxo com `commit` em app sem `catalogo.yaml` (com catálogo e sem ação de efeito para a etapa, a regra é a de obsolescência do §9.2, que rebaixa) | o dono, **em lote** | recomenda (aprovar, observar, pedir evidência, desativar); o dono aceita um lote de pareceres com um gesto (`by = pessoa`, um `review_id` por item) ou recusa com motivo (override) |
 | **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
 
@@ -316,6 +316,26 @@ como a classe B, recomendação da IA e aprovação em lote (D-2, decidido pelo 
 A IA não publica nada em nenhuma classe. Toda transição confere `conferir_transicao(by, side_effect, human_origin, modo)` e o veto, como hoje.
 O mapeamento de `interaction_type` para "envio/publicação/exclusão" sai do catálogo de cada app (dado, não código). Quais valores existem
 hoje: **a conferir** em `catalogo.yaml`.
+
+**Nota de implementação (30.10, 02/10).** Decisões que o texto acima não fixava:
+- *Divergência*: com os fatos da etapa presentes e dizendo "sem efeito", um `commit` no conteúdo é **C** (`commit_fora_do_catalogo`,
+  motivo do evento `efeito_externo`), pela regra "vale a mais restritiva" aprovada pelo dono; isso substitui o parêntese da linha B
+  (o rebaixamento por obsolescência do §9.2 continua possível, não exclusivo). Sem fatos da etapa (capability não derivável ou
+  desconhecida do catálogo), o `commit` fica **B**, como na 30.21.
+- `default_policy: disabled` conta como `manual_only` (C).
+- Os catálogos de hoje (Instagram, Outlook) **não declaram família**; os `interaction_type` existentes são `dm_sent`,
+  `comment_replied`, `comment_liked`, `post_liked`, `post_unliked`, `followed`, `unfollowed`, `follow_request_*`. O domínio recebe
+  a família como fato (`familia_do_efeito`); as ações de envio e comentário do Instagram já caem em C por `risk: high`/`needs_draft`.
+- "A IA não decide" vira regra de domínio (`conferir_aceite`): aceite de parecer só por pessoa; lote só na B.
+- *Faixa A com sobra* (decisão do dono, 02/10, prioridade 5; revê a célula "nunca gasta IA" da tabela, a frase do §8.1 e o
+  §8.6-8.7 onde dizem o mesmo): quem decide continua sendo a regra determinística e a IA nunca muda o resultado de um item A, mas
+  ela PODE opinar se sobrar orçamento na janela depois das prioridades 1 a 4. No domínio: `ia_permitida(A) = "so_com_sobra"`
+  (B e C: `"sim"`; o corte por orçamento é do 30.11); o parecer da A é válido e só de registro (`efeito_do_parecer = "so_registro"`),
+  `conferir_aceite` recusa qualquer efeito dele (`so_registro_na_classe_a`) e a `faixa` apontada pela IA não a muda.
+- *Saída em rótulos fechados* (orientação da coordenação, 02/10; revê o §8.3): `decisao`, `faixa`, `causa`, `riscos`,
+  `inconsistencias` e `falta` são escolhas de conjuntos fechados (`curador.OPCOES_FECHADAS`), para um adaptador de `choice` com
+  probabilidade; `confianca` sai da probabilidade da escolha (baixa < 0,60 ≤ média < 0,85 ≤ alta, a recalibrar no `shadow`) e só sem
+  ela de um rótulo; `conclusao` vira opcional e é o único texto livre. A `faixa` apontada pela IA só pode endurecer a da política.
 
 ### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
@@ -373,7 +393,7 @@ Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ 
 2. alto risco (faixa C);
 3. falha recorrente, ordenada por US$ perdido + intervenções;
 4. risco médio (faixa B);
-5. baixo risco (faixa A): **nunca gasta IA**.
+5. baixo risco (faixa A): a regra determinística decide; a IA **nunca decide** e só opina (registro) se sobrar orçamento depois de 1–4.
 
 **Salvaguardas relativas** (decisão do dono):
 - 1 revisão por (item, `dossie_hash`);
@@ -635,7 +655,7 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
    com a decisão final no `ciclo.py`. A IA nunca transiciona. Modos `off` (fábrica) / `shadow` / `on`; laço sob a trava de líder; porta própria
    (independente de `context_retrieval`).
    - **Política de risco (decisão do dono, 02/10)**, valendo a mais restritiva entre catálogo e `commit`: (a) navegação e leitura publica pela
-     regra determinística atual e nunca gasta IA; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
+     regra determinística atual, e a IA só opina (registro) se sobrar orçamento; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
      (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
    - **Orçamento proporcional (decisão do dono, 02/10)**: `B_W = min(α·G_W, k·N_W·c̄)`, α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana(c_rev)`;
      prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.

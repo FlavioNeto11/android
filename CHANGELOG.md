@@ -55,6 +55,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `app.modules.learning.esquecer_conta(db, *, profile_id, account_id, handle, app_id)` reescreve o rastro textual da conta (handle com e sem `@`, `account_id`) para `[conta removida]` em `learning_items`, `learning_evidence`, `learning_transitions`, `learning_backlog`, `learning_reviews` e `learning_signals`; roda na transação de quem chama (sem commit), não apaga linha nem muda hash/id, é idempotente e casa por fronteira de palavra (handle `ana` não estraga "banana"). Parte Aprendizado do 29.23; a frente Android (`memory_items`, chamada) é outra. Sem migração e sem rota. Prova `simulated`: `backend/tests/test_learning_esquecer_conta.py` (13); PostgreSQL: `not_run`. Detalhe em `docs/dominios/aprendizado.md` ("Conta removida (29.23)").
 
+## 2026-10-02 — Aprendizado: curador, domínio e política de risco (30.10, branch feat/30-10-curador-dominio)
+
+- `domain/politica_de_risco.py` (puro) é a fonte única da classe A/B/C do §8.4 (aprovada pelo dono em 02/10): vale a mais
+  restritiva entre o catálogo da etapa e o `commit` do conteúdo; o `commit` numa etapa que o catálogo declara sem efeito (a receita 100
+  do Outlook) é C. Na classe A a IA só opina com sobra de orçamento
+  (`ia_permitida = so_com_sobra`) e o parecer é só registro; `conferir_aceite` torna impossível a decisão automática por parecer e o lote na C.
+  `domain/espera.py::classificar_espera` (30.21) passou a ser tradução dela (mesmo payload do evento; `FatosDoCatalogo` e
+  `MotivoDeEntrada` mudaram para lá e são reexportados).
+- `domain/curador.py` (puro): dossiê de fatos por lista branca (sem valor de parâmetro, texto digitado, texto de tela ou de pessoa;
+  item de sessão sem conteúdo), ids citáveis, `dossie_hash` estável (chave da 069), e validação do contrato de saída do §8.3
+  em rótulos fechados (decisão, faixa, causa, riscos, inconsistências, falta; opções prontas para um adaptador de `choice`), com a
+  confiança derivada da probabilidade da escolha e a conclusão como único texto livre, opcional (`invalida:<motivo>` em vocabulário
+  fechado). Sem rota, sem migração, sem chamada de IA nem prompt. Prova `simulated`
+  (`tests/test_learning_politica_de_risco.py`, `tests/test_learning_curador_dominio.py`).
+
 ## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
 
 - Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
