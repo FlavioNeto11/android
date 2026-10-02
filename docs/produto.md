@@ -180,7 +180,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     habilidade se decide ali pela rota das habilidades. Embaixo, **Revisar**: receitas e fluxos ativos com efeito,
     anteriores ao D1, que só se rebaixam;
   - **Aprendido:** o catálogo unificado (receitas, fluxos, habilidades, memória em contagem, telas, lições, vozes,
-    preferências), por tipo e estado, com desligar, aposentar e reativar;
+    preferências), por tipo e estado, com desligar, aposentar e reativar. Cada linha mostra o selo de saúde; o detalhe (30.16) traz
+    identidade, conteúdo legível (só nomes de parâmetro), saúde com motivos, versão do app, evidência, histórico e relações com link;
   - **O que mais falha:** grupos por app, ação, tipo de falha e tela, com US$, minutos e intervenções separados, a
     camada, "onde alterar" e o estado no backlog. O falso positivo do verificador fica no topo;
   - **Sinais:** os votos e os gestos que viram evidência.

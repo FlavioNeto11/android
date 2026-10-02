@@ -66,6 +66,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `catalogo_sem_efeito:<capability|*>` na trilha. Conservador: app sem catálogo nunca; capability ambígua ou desconhecida só vira sinal.
   Sem IA, sem migração. Prova `simulated` (`tests/test_learning_obsolescencia.py`); `not_run` no central.
 
+## 2026-10-02 — Aprendizado: detalhe rico do item do Livro no painel (30.16, branch feat/30-16-detalhe-rico)
+
+- O detalhe do item (Aprendido, "Detalhes, evidência e trilha") ganha as seções do §11.2 do desenho, só as aplicáveis: Identidade,
+  Conteúdo (receita com ações, alvo, NOMES de parâmetro, selo do commit, capability ambígua marcada, origem com link para a execução,
+  uso, sombra e versões vizinhas; fluxo, habilidade, lição e tela), Saúde (rótulo, motivos com fato e limiar, dimensões com "sem dado"
+  no lugar de zero), Versão do app (quadro por versão), Evidência, Histórico, Relações (links para o item no próprio Livro) e o que
+  a pessoa pode fazer. A linha da lista continua enxuta e ganha só o selo de saúde. `?aba=aprendido&item=<tipo>:<ref>` abre o item de
+  um link no topo do catálogo. Só painel: lê `conteudo`, `versao`, `saude` e `relacoes` já mandados (adendos v0.50 a v0.53) e não
+  recalcula nada. Faltam no contrato `camada_de_uso` e `classe_de_risco` do §11.2: não são exibidas. Prova `simulated`
+  (`frontend/src/features/aprendizado/DetalheRico.test.tsx`); `not_run` no central.
+
 ## 2026-10-02 — Aprendizado: relações derivadas no detalhe do Livro (30.7, branch feat/30-7-relacoes)
 
 - `GET /api/aprendizado/{kind}/{ref}` ganha `relacoes` (`api-contract.md`, adendo v0.53): `{tipo, kind, ref, rotulo, fonte}` com `substitui`,
