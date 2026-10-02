@@ -4610,6 +4610,31 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T16:42:55+00:00"
+  },
+  "17.7": {
+   "id": "17.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch jev/17-7-perfil-ia, commit f05588d (base 25624c4), 02/10/2026, sessao jev. backend/app/config.py: AiProfileCfg/AiCanaryCfg, ai.profiles por cima de ai.roles campo a campo, conferidos em _ia_coerente (funcao, provedor, modelo declarado, canario -> perfil existente); Config.ai_role(role, profile). backend/app/planning/routing.py: roles_por_perfil no MESMO RoutingProvider (teto US$, vagas por funcao e _por_chave compartilhados), perfil_da_execucao(run_id) le runs.ai_profile (cache), perfil sumido da config -> AIError not_configured (nao cai no padrao), aviso de dados do /api/ai inclui perfis externos. backend/app/taskqueue/service.py: _perfil_de_ia (explicito > canario com sorteio injetavel > padrao; desconhecido 422 ai_profile_desconhecido antes de criar). models.py: RunCreate.ai_profile, RunSummary.ai_profile/ai_profile_source. Migracao 064_perfil_de_ia (runs.ai_profile, ai_profile_source CHECK explicit/canary). scripts/eval_run.py --profile (corpo_da_execucao, grava ai_profile no jsonl). Docs: ia.md 10c, banco.md 064, api-contract.md, config.example.yaml, CHANGELOG.",
+   "blocker": "Real not_run: primeiro uso real e a bateria do 17.10 (gpt-6-luna como ator via --profile), que depende de saldo e autorizacao. Painel sem seletor de perfil (so API e bateria). Suite completa pendente (RunCreate e nucleo): aguardando 'host livre' do orquestrador.",
+   "files": [
+    "backend/app/config.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/models.py",
+    "backend/migrations/064_perfil_de_ia.sql",
+    "scripts/eval_run.py",
+    "backend/tests/test_perfil_de_ia.py",
+    "scripts/tests/test_eval_run.py"
+   ],
+   "testes": "02/10 WIN-7S2UASNLFOP: pytest -q tests/test_perfil_de_ia.py -> 16 passed; tests/test_hub_de_ia.py tests/test_db.py tests/test_arquitetura.py tests/test_pre_voo.py tests/test_cascata_ator_barato.py tests/test_perfil_de_ia.py -> 105 passed + 3 falhas corrigidas (repo falso sem db), depois test_hub_de_ia+test_configuracao_de_exemplo+test_perfil_de_ia+test_eval_run -> 64 passed; scripts/tests/test_eval_run.py -> 11 passed; docs-check 0/0",
+   "grupo": "sessao:jev-17-7",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T17:43:19+00:00"
   }
  },
  "rodadas": [
@@ -5557,6 +5582,15 @@
    ],
    "grupos": [
     "sessao:jev-xdist"
+   ]
+  },
+  {
+   "quando": "2026-10-02T17:43:19+00:00",
+   "itens": [
+    "17.7"
+   ],
+   "grupos": [
+    "sessao:jev-17-7"
    ]
   }
  ]

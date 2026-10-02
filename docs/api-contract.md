@@ -277,7 +277,7 @@ interface Snapshot {
 | `PUT /api/instances/{id}/repair-pause` | `{ttl_s: 60..10800, reason: string(3..200)}` | `RepairPauseInfo` `{until, since, reason, by, remaining_s}`; pausa o reparo AUTOMÁTICO (escada e reinício por saúde) só deste aparelho; `ttl_s` obrigatório, expira sozinha, repetir renova; `422` sem prazo ou fora dos limites, `404` aparelho desconhecido |
 | `DELETE /api/instances/{id}/repair-pause` | – | `{status:'resumed'}`; `404 {code:'no_repair_pause'}` sem pausa em vigor |
 | `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'not_controller'}` |
-| `POST /api/runs` | `{command, instance_ids, idempotency_key, mode:'plan'|'execute'}` | `RunSummary` (`deduplicated:true` se a chave já existia) |
+| `POST /api/runs` | `{command, instance_ids, idempotency_key, mode:'plan'|'execute', ai_profile?}` | `RunSummary` (`deduplicated:true` se a chave já existia; `ai_profile`/`ai_profile_source:'explicit'|'canary'|null`, item 17.7); `422 {code:'ai_profile_desconhecido'}` se `ai_profile` não está em `ai.profiles` |
 | `GET /api/runs?limit=20` | – | `RunSummary[]` |
 | `GET /api/runs/{id}` | – | `RunDetail` |
 | `GET /api/runs/{id}/events?after=0&limit=500` | – | `EventRecord[]` |
