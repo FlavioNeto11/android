@@ -437,6 +437,25 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 
+class AiProfileCfg(BaseModel):
+    """Perfil de IA nomeado (item 17.7): o que MUDA nas funções para as execuções que o escolhem.
+
+    Cada função do perfil soma-se por cima de `ai.roles` campo a campo — um perfil que só troca o modelo do `decide`
+    deixa o resto exatamente como o padrão. É o que torna o A/B honesto: a única diferença entre os braços é a que
+    está escrita aqui, não a soma de tudo o que o perfil esqueceu de repetir."""
+
+    roles: dict[str, RoleCfg] = {}
+    note: str = ""                              # para que serve: só documentação do YAML (nada o exibe ainda)
+
+
+class AiCanaryCfg(BaseModel):
+    """Canário (item 17.7): uma fatia das execuções SEM perfil escolhido vai para `profile`. Sorteio por execução,
+    registrado nela (`runs.ai_profile_source = 'canary'`) para a comparação separar o canário do pedido explícito."""
+
+    profile: str | None = None                  # vazio = sem canário
+    fraction: float = Field(0.0, ge=0.0, le=1.0)
+
+
 class StepBudgetCfg(BaseModel):
     """Orçamento de chamadas de IA por ETAPA, medido no histórico da ação (item 18.3; execução e31953). Etapa de uma
     ação com pelo menos `min_samples` etapas concluídas nos últimos `window_days` dias para ao passar de
@@ -571,6 +590,10 @@ class AiCfg(BaseModel):
     balance_consoles: dict[str, str] = {}
     #: Provedor/modelo/prazo por FUNÇÃO. Vazio = tudo herdado do `.env` (nada muda).
     roles: dict[str, RoleCfg] = {}
+    #: Perfis de IA por execução (item 17.7): `RunCreate.ai_profile` escolhe um; sem escolha vale `roles`. Trocar o
+    #: modelo de UMA execução não exige reiniciar o central nem mexer no que as outras usam.
+    profiles: dict[str, AiProfileCfg] = {}
+    canary: AiCanaryCfg = AiCanaryCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
@@ -1028,22 +1051,28 @@ class AppConfigFile(BaseModel):
     def _ia_coerente(self) -> "AppConfigFile":
         """Papel, provedor e preço conferidos na PARTIDA — não na primeira chamada paga (achados #91 e #97)."""
         ai = self.ai
-        for papel in ai.roles:
-            if papel not in AI_ROLES:
-                raise ValueError(f"ai.roles.{papel}: função desconhecida (use {', '.join(AI_ROLES)})")
+        # As funções de cada perfil passam pelas MESMAS conferências das de `ai.roles` (item 17.7): um perfil
+        # inválido recusa a partida, não a primeira execução que o escolher.
+        blocos = [("ai.roles", ai.roles)] + [(f"ai.profiles.{nome}.roles", p.roles) for nome, p in ai.profiles.items()]
+        for onde, roles in blocos:
+            for papel in roles:
+                if papel not in AI_ROLES:
+                    raise ValueError(f"{onde}.{papel}: função desconhecida (use {', '.join(AI_ROLES)})")
+        if ai.canary.profile and ai.canary.profile not in ai.profiles:
+            raise ValueError(f"ai.canary.profile: perfil '{ai.canary.profile}' não está em ai.profiles")
         for nome, prov in ai.providers.items():
             if prov.kind == "openai" and not (prov.base_url or "").strip():
                 raise ValueError(f"ai.providers.{nome}: kind=openai exige base_url (ex.: http://127.0.0.1:8001/v1)")
-        for papel, r in ai.roles.items():
+        for onde, papel, r in ((onde, papel, r) for onde, roles in blocos for papel, r in roles.items()):
             for campo, alvo in (("provider", r.provider), ("fallback_provider", r.fallback_provider)):
                 if alvo and alvo not in ai.providers:
-                    raise ValueError(f"ai.roles.{papel}.{campo}: provedor '{alvo}' não está em ai.providers")
+                    raise ValueError(f"{onde}.{papel}.{campo}: provedor '{alvo}' não está em ai.providers")
             # A família manda, como em `Config.model_caps`: produção usa `claude-haiku-4-5-20251001`, e exigir a
             # chave exata aqui rejeitaria uma configuração que o runtime aceitaria.
             declarado = (r.model in ai.models or re.sub(r"-\d{8}$", "", r.model or "") in ai.models
                          or any((r.model or "").startswith(k) for k in ai.models))
             if r.model and r.provider and ai.providers[r.provider].kind != "simulated" and not declarado:
-                raise ValueError(f"ai.roles.{papel}.model: '{r.model}' não está declarado em ai.models "
+                raise ValueError(f"{onde}.{papel}.model: '{r.model}' não está declarado em ai.models "
                                  "(capacidade por modelo é declarada, não descoberta por erro 400)")
         return self
 
@@ -1248,14 +1277,21 @@ class Config:
             return env.ai_effort_verifier or env.ai_effort_actor
         return env.ai_effort_actor
 
-    def ai_role(self, role: str) -> ResolvedRole:
+    def ai_role(self, role: str, profile: str | None = None) -> ResolvedRole:
         """A função resolvida: YAML manda, `.env` é o padrão, `ROLE_DEFAULTS` fecha o que ninguém disse.
 
         Sem bloco `ai.roles` no YAML o resultado é EXATAMENTE o de antes do hub — provedor único do `.env`,
         modelo por função pela cadeia de sempre. É o que mantém o `.env` de produção valendo sem uma linha nova.
+
+        `profile` (item 17.7): o que `ai.profiles.<perfil>.roles.<função>` escreve vale por cima de `ai.roles`, campo
+        a campo; o que ele não escreve continua o do padrão. Perfil inexistente é `KeyError` — quem chama confere.
         """
         ai = self.file.ai
         r = ai.roles.get(role) or RoleCfg()
+        if profile is not None:
+            sobre = ai.profiles[profile].roles.get(role)
+            if sobre is not None:
+                r = r.model_copy(update=sobre.model_dump(exclude_none=True))
         padrao = ROLE_DEFAULTS.get(role, {"timeout_s": 60.0, "concurrency": 4})
         nome = r.provider or (self.env.ai_provider or "anthropic").strip().lower()
         prov = ai.providers.get(nome)
@@ -1274,8 +1310,8 @@ class Config:
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
             effort=self.ai_effort_for(role), extra_body=prov.extra_body)
 
-    def ai_roles(self) -> dict[str, ResolvedRole]:
-        return {papel: self.ai_role(papel) for papel in AI_ROLES}
+    def ai_roles(self, profile: str | None = None) -> dict[str, ResolvedRole]:
+        return {papel: self.ai_role(papel, profile) for papel in AI_ROLES}
 
     def model_caps(self, model: str) -> ModelCaps:
         """Capacidade DECLARADA do modelo. Sem declaração, o conservador: nada de strict, nada de thinking/effort.

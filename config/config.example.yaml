@@ -324,6 +324,17 @@ ai:
   #   escalation: {provider: anthropic, model: claude-sonnet-5}
   #   plan:    {provider: anthropic}
   #   social:  {provider: anthropic, refusal_fallback: false}
+  #
+  # Perfil de IA por execução e canário (item 17.7, docs/ia.md §10c): A/B sem reiniciar o central. Cada função do
+  # perfil vale por cima de `roles`, campo a campo; o que ele não escreve continua o padrão. Uma execução escolhe com
+  # `POST /api/runs {"ai_profile": "luna-ator"}` (ou `scripts/eval_run.py --profile luna-ator`); sem escolha, o
+  # canário sorteia a fatia `fraction` das execuções para `canary.profile`. Perfil inválido recusa a partida.
+  # profiles:
+  #   luna-ator:
+  #     note: candidato a ator barato (bateria 17.10)
+  #     roles:
+  #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
 
 releases:                         # entrega e conferência de versão no parque
   verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga

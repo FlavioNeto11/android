@@ -37,6 +37,28 @@ def test_plano_lista_os_efeitos_de_cada_caso() -> None:
     assert "force-stop" in texto and "provision-qa.ps1" in texto and "prazo 90 s" in texto
 
 
+def test_perfil_de_ia_vai_no_corpo_da_execucao_e_no_plano() -> None:
+    """Item 17.7: `--profile` escolhe o perfil SÓ das execuções da bateria; sem ele, o corpo é o de sempre."""
+    caso = {"id": "a", "command": "abra"}
+    assert mod.corpo_da_execucao(caso, ["android-01"], "cand")["ai_profile"] == "cand"
+    assert "ai_profile" not in mod.corpo_da_execucao(caso, ["android-01"], None)
+    spec = {"defaults": {"instances": ["android-01"], "timeout_s": 600}}
+    ns = mod.argparse.Namespace(base="http://b", label="x", instances="", profile="cand")
+    assert "perfil de IA 'cand'" in mod.plano([{"id": "a", "expect": "succeeded"}], spec, ns)
+
+
+def test_console_cp1252_nao_derruba_a_bateria(monkeypatch: pytest.MonkeyPatch) -> None:
+    """02/10: o "≈" do aviso de provedor real derrubava a bateria no console cp1252, antes do primeiro POST."""
+    import io
+    bruto = io.BytesIO()
+    console = io.TextIOWrapper(bruto, encoding="cp1252")
+    monkeypatch.setattr(mod.sys, "stdout", console)
+    mod.saida_segura()
+    print("Referência medida: ≈US$ 0,05–0,45")
+    console.flush()
+    assert b"?US$" in bruto.getvalue()
+
+
 def test_ajuda_diz_o_que_o_yes_libera(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         mod.main(["--help"])

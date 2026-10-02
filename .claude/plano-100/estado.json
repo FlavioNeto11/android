@@ -4570,6 +4570,70 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-01T08:20:06+00:00"
+  },
+  "17.10": {
+   "id": "17.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10). REAL PARCIAL 02/10/2026 17:49-17:54Z, central WIN-7S2UASNLFOP, deploy 25624c4, android-05 (sem conta real), scripts/eval_run.py --instances android-05, gasto do dia 0,0 -> 0,295547 (US$ 0,2955, teto 0,50); ator claude-sonnet-5, verificador claude-haiku-4-5, escalonamento claude-opus-5-5. REGRA 2 PROVADA: r-20261002175209-1a252b (msg-qa001, succeeded, US$ 0,0467), etapa 'Enviar a mensagem': 'o verificador aprovou uma etapa com efeito externo; conferindo com o modelo de escalonamento', ai_calls verify haiku x2 e opus x2. REGRA 1 NAO ACIONADA: r-20261002175004-ea377e (perfil-campo-inexistente, waiting_user, US$ 0,1926): tier 0 declarou step_done, verificador reprovou, 2a tentativa subiu ao tier 1 pela regra antiga (nova tentativa) e o tier 1 relatou step_blocked. NEGATIVO: r-20261002175257-0e9362 (sessao-expirada, waiting_user, US$ 0,0562): zero escalonamento, barrado pelo detector deterministico de tela sensivel antes da IA. docs/ia.md 10b.",
+   "blocker": "Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com chamada paga. auth_required vindo da IA tambem nao exercitado em real. Medicao do gpt-6-luna como ator (eval_run.py --profile, 17.7) pendente de bateria paga autorizada.",
+   "files": [
+    "backend/app/taskqueue/executor.py",
+    "backend/tests/test_cascata_ator_barato.py",
+    "docs/ia.md",
+    "scripts/eval_run.py"
+   ],
+   "testes": "real: 3 execucoes acima (eval_run.py, PYTHONIOENCODING=utf-8); simulated: scripts/tests/test_eval_run.py -> 12 passed (inclui console cp1252)",
+   "grupo": "sessao:jev-17-10-real",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T17:55:17+00:00"
+  },
+  "17.11": {
+   "id": "17.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simulated: scripts/tests/test_eval_run.py (transporte falso). Contagem em testes.",
+   "blocker": "",
+   "files": [
+    "scripts/eval_run.py",
+    "scripts/tests/test_eval_run.py",
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "02/10 (mesma base): pytest -q scripts/tests/test_eval_run.py -> 10 passed",
+   "grupo": "sessao:jev-xdist",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T16:42:55+00:00"
+  },
+  "17.7": {
+   "id": "17.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch jev/17-7-perfil-ia, commit f05588d (base 25624c4), 02/10/2026, sessao jev. backend/app/config.py: AiProfileCfg/AiCanaryCfg, ai.profiles por cima de ai.roles campo a campo, conferidos em _ia_coerente (funcao, provedor, modelo declarado, canario -> perfil existente); Config.ai_role(role, profile). backend/app/planning/routing.py: roles_por_perfil no MESMO RoutingProvider (teto US$, vagas por funcao e _por_chave compartilhados), perfil_da_execucao(run_id) le runs.ai_profile (cache), perfil sumido da config -> AIError not_configured (nao cai no padrao), aviso de dados do /api/ai inclui perfis externos. backend/app/taskqueue/service.py: _perfil_de_ia (explicito > canario com sorteio injetavel > padrao; desconhecido 422 ai_profile_desconhecido antes de criar). models.py: RunCreate.ai_profile, RunSummary.ai_profile/ai_profile_source. Migracao 064_perfil_de_ia (runs.ai_profile, ai_profile_source CHECK explicit/canary). scripts/eval_run.py --profile (corpo_da_execucao, grava ai_profile no jsonl). Docs: ia.md 10c, banco.md 064, api-contract.md, config.example.yaml, CHANGELOG.",
+   "blocker": "Real not_run: primeiro uso real e a bateria do 17.10 (gpt-6-luna como ator via --profile), que depende de saldo e autorizacao. Painel sem seletor de perfil (so API e bateria). Suite completa pendente (RunCreate e nucleo): aguardando 'host livre' do orquestrador.",
+   "files": [
+    "backend/app/config.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/models.py",
+    "backend/migrations/064_perfil_de_ia.sql",
+    "scripts/eval_run.py",
+    "backend/tests/test_perfil_de_ia.py",
+    "scripts/tests/test_eval_run.py"
+   ],
+   "testes": "02/10 WIN-7S2UASNLFOP: pytest -q tests/test_perfil_de_ia.py -> 16 passed; tests/test_hub_de_ia.py tests/test_db.py tests/test_arquitetura.py tests/test_pre_voo.py tests/test_cascata_ator_barato.py tests/test_perfil_de_ia.py -> 105 passed + 3 falhas corrigidas (repo falso sem db), depois test_hub_de_ia+test_configuracao_de_exemplo+test_perfil_de_ia+test_eval_run -> 64 passed; scripts/tests/test_eval_run.py -> 11 passed; docs-check 0/0",
+   "grupo": "sessao:jev-17-7",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T17:43:19+00:00"
   }
  },
  "rodadas": [
@@ -5507,6 +5571,34 @@
    ],
    "grupos": [
     "sessao:jev-vocabulario"
+   ]
+  },
+  {
+   "quando": "2026-10-02T16:42:55+00:00",
+   "itens": [
+    "17.10",
+    "17.11"
+   ],
+   "grupos": [
+    "sessao:jev-xdist"
+   ]
+  },
+  {
+   "quando": "2026-10-02T17:43:19+00:00",
+   "itens": [
+    "17.7"
+   ],
+   "grupos": [
+    "sessao:jev-17-7"
+   ]
+  },
+  {
+   "quando": "2026-10-02T17:55:17+00:00",
+   "itens": [
+    "17.10"
+   ],
+   "grupos": [
+    "sessao:jev-17-10-real"
    ]
   }
  ]

@@ -16,6 +16,10 @@ Três regras que este módulo existe para cumprir:
 3. **Teto em dinheiro.** Por execução e por dia, em US$, conferido AQUI — o que cobre também o planejamento e a
    prévia de persona, que passavam por fora dos tetos por não estarem dentro do `_ai` do executor.
 
+**Perfil por execução** (item 17.7): `ai.profiles.<nome>` troca funções para as execuções que o escolhem
+(`runs.ai_profile`, migração 064). Continua UM hub: os perfis são outras linhas de função dentro dele, com os mesmos
+tetos em US$, as mesmas vagas por função e as mesmas instâncias de provedor quando a combinação coincide.
+
 **Onde a execução de IA roda** (decisão registrada, não pendente): continua neste processo, dentro do scheduler.
 Separá-la em serviço próprio só se paga quando houver mais de um consumidor do hub, e hoje há um. O agente do
 worker segue fixado em provedor simulado (`worker/settings.py`), de propósito: ele não decide, executa verbos.
@@ -85,6 +89,18 @@ class RoutingProvider:
             if chave not in self._por_chave:
                 self._por_chave[chave] = build_one(cfg, r)
             self.providers[papel] = self._por_chave[chave]
+        # Item 17.7: as funções de cada perfil, resolvidas e conferidas na PARTIDA como as do padrão. As instâncias
+        # passam pelo mesmo `_por_chave` (o perfil que só muda o `decide` reaproveita os outros quatro provedores) e as
+        # vagas são as da FUNÇÃO, divididas entre perfis — um canário não ganha concorrência própria.
+        self.roles_por_perfil: dict[str, dict[str, ResolvedRole]] = {}
+        for nome in cfg.file.ai.profiles:
+            roles = cfg.ai_roles(nome)
+            _valida_capacidade(cfg, roles, f"ai.profiles.{nome}.roles")
+            for papel, r in roles.items():
+                self._instance(papel, r)
+            self.roles_por_perfil[nome] = roles
+        #: run_id → perfil. O perfil da execução é gravado na criação e não muda depois: lê-se uma vez.
+        self._perfil_por_execucao: dict[str, str | None] = {}
         self._gates = {papel: _RoleGate(r.concurrency) for papel, r in self.roles.items()}
         self.simulated = all(getattr(p, "simulated", False) for p in self.providers.values())
         principal = self.providers["decide"]
@@ -136,11 +152,17 @@ class RoutingProvider:
                 gasto = costs.spent_today_usd(self.repo.db, prices)
             except Exception:  # noqa: BLE001 - o painel de IA nunca cai por causa do relatório de custo
                 log.exception("não foi possível calcular o gasto de hoje")
+        # Um perfil que manda função para fora desta máquina também é "dados saindo" (item 17.7): sem isto, o aviso
+        # do painel dizia "não sai daqui" enquanto o canário mandava capturas para um provedor externo.
+        por_perfil = sorted({f"{nome} ({papel})" for nome, roles in self.roles_por_perfil.items()
+                             for papel, r in roles.items() if r.sends_data_externally and papel not in externas})
+        if por_perfil:
+            aviso += " Perfis de IA que enviam dados para fora desta máquina: " + ", ".join(por_perfil) + "."
         refusal = any(linha.refusal_fallback for linha in linhas)
         return base.model_copy(update={
             "models": {papel: self.roles[papel].model for papel in AI_ROLES},
             "roles": linhas, "notice": aviso, "configured": self.configured,
-            "sends_data_externally": bool(externas), "simulated": self.simulated,
+            "sends_data_externally": bool(externas or por_perfil), "simulated": self.simulated,
             "provider": self.name, "model": self.model,
             "refusal_fallback": refusal,
             "refusal_fallback_target": REFUSAL_FALLBACK_TARGET if refusal else None,
@@ -196,9 +218,34 @@ class RoutingProvider:
         saldos.registrar_esgotado(self.repo.db, self.cfg, saldos.conta_por_endpoint(r.kind, r.base_url, r.api_key_env),
                                   f"{r.provider}/{r.model}: {exc}")
 
+    # ------------------------------------------------------------------ perfil da execução (17.7)
+    def perfil_da_execucao(self, run_id: str | None) -> str | None:
+        """O perfil de IA gravado na execução (`runs.ai_profile`), ou `None` para o padrão.
+
+        Perfil gravado que a configuração não tem mais (alguém o tirou do YAML e reiniciou) NÃO cai no padrão em
+        silêncio: a execução diria "rodou no perfil X" tendo rodado em outro, e a comparação A/B mentiria. Vira erro
+        de configuração, com o nome do perfil."""
+        db = getattr(self.repo, "db", None)
+        if not run_id or db is None:
+            return None                                  # sem banco não há perfil gravado: vale o padrão
+        if run_id not in self._perfil_por_execucao:
+            linha = db.one("SELECT ai_profile FROM runs WHERE id=?", (run_id,))
+            if len(self._perfil_por_execucao) > 4096:
+                self._perfil_por_execucao.clear()        # cache de conveniência: perder é só reler uma linha
+            self._perfil_por_execucao[run_id] = (linha["ai_profile"] or None) if linha is not None else None
+        perfil = self._perfil_por_execucao[run_id]
+        if perfil is not None and perfil not in self.roles_por_perfil:
+            raise AIError(f"A execução usa o perfil de IA '{perfil}', que não está mais em ai.profiles. Devolva o perfil "
+                          "à configuração ou crie a execução de novo sem ele.", kind="not_configured")
+        return perfil
+
+    def _funcao(self, papel: str, run_id: str | None) -> tuple[ResolvedRole, str | None]:
+        perfil = self.perfil_da_execucao(run_id)
+        return (self.roles_por_perfil[perfil][papel] if perfil else self.roles[papel]), perfil
+
     # ------------------------------------------------------------------ despacho
     async def _call(self, papel: str, run_id: str | None, fn: Callable[[AIProvider], Any]) -> tuple[Any, Usage]:
-        r = self.roles[papel]
+        r, perfil = self._funcao(papel, run_id)
         if r.kind != "simulated":
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
@@ -222,7 +269,7 @@ class RoutingProvider:
                 raise
             # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
             # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
-            alternativo = _com_provedor(self.cfg, papel, alvo)
+            alternativo = _com_provedor(self.cfg, papel, alvo, perfil)
             self._saldo(alternativo)
             log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
                         papel, r.provider, exc, alvo, alternativo.model, papel)
@@ -309,13 +356,13 @@ class RoutingProvider:
         return await self._call("social", None, lambda p: p.generate_persona(req))
 
 
-def _com_provedor(cfg: Config, papel: str, provedor: str) -> ResolvedRole:
+def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = None) -> ResolvedRole:
     """A mesma função, resolvida contra OUTRO provedor — o declarado em `ai.roles.<papel>.fallback_provider`.
 
     O MODELO do destino sai de `ai.providers.<destino>.fallback_model`, quando declarado, e do `.env` quando não:
     o modelo do endpoint local quase nunca existe no provedor pago, então herdá-lo seria garantir um 404.
     """
-    r = cfg.ai_role(papel)
+    r = cfg.ai_role(papel, perfil)
     outro = cfg.file.ai.providers.get(provedor)
     kind = outro.kind if outro else "anthropic"
     return ResolvedRole(
@@ -328,7 +375,7 @@ def _com_provedor(cfg: Config, papel: str, provedor: str) -> ResolvedRole:
         concurrency=r.concurrency, effort=r.effort, extra_body=outro.extra_body if outro else None)
 
 
-def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole]) -> None:
+def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole], onde: str = "ai.roles") -> None:
     """Função que precisa de visão não pode apontar para modelo declarado sem visão (achado #97).
 
     Recusar na PARTIDA é a diferença entre "o backend não sobe e diz qual linha corrigir" e "o aparelho ligou, a
@@ -342,6 +389,6 @@ def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole]) -> None:
         caps = cfg.model_caps(r.model)
         if not caps.vision:
             raise ValueError(
-                f"ai.roles.{papel}: o modelo '{r.model}' está declarado sem visão em ai.models, mas "
+                f"{onde}.{papel}: o modelo '{r.model}' está declarado sem visão em ai.models, mas "
                 f"ai.image_policy={cfg.file.ai.image_policy} manda imagem para essa função. "
                 "Aponte a função para um modelo com visão ou use ai.image_policy: never.")

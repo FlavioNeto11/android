@@ -258,7 +258,41 @@ Duas regras que tornam seguro um ator ou verificador baratos (Haiku, `gpt-6-luna
 2. **`rejudge_yes_on_side_effect`:** o "sim" do verificador barato numa etapa com efeito externo (ou que confirma o nível de entrega dele) é conferido UMA vez pelo modelo de escalonamento, e o veredito do mais forte é o que vale (discordou, não conta como prova). É a outra metade do B14/7.10, que já rejulgava o "não". Só age quando o modelo do verificador é DIFERENTE do de escalonamento.
 
 - **Custo:** a regra 1 só custa quando o ator barato bloqueou (antes era uma pessoa); a 2 soma uma verificação do modelo forte (US$ 0,004 a 0,010 pelos preços observados em 02/10) por etapa com efeito aprovada. Os dois botões existem para a bateria poder medir com e sem.
-- **Prova:** `simulated`, `backend/tests/test_cascata_ator_barato.py` (12): sobe ao tier 1 e resolve, uma subida só, os três kinds de pessoa não sobem, chave desligada, forte concordando fecha, forte discordando não conta, mesmo modelo não rejulga. Mutações das duas regras derrubam os testes. **`real`: `not_run`** — a medição do `gpt-6-luna` como ator (a pré-condição que este item destrava) é a próxima bateria paga, autorizada pelo dono e ainda não executada.
+- **Prova:** `simulated`, `backend/tests/test_cascata_ator_barato.py` (12): sobe ao tier 1 e resolve, uma subida só, os três kinds de pessoa não sobem, chave desligada, forte concordando fecha, forte discordando não conta, mesmo modelo não rejulga. Mutações das duas regras derrubam os testes.
+- **`real` (02/10/2026 17:49–17:54Z, central WIN-7S2UASNLFOP, deploy `25624c4`, android-05 sem conta real, `eval_run.py --instances android-05`, US$ 0,2955 no total, teto 0,50; ator `claude-sonnet-5`, verificador `claude-haiku-4-5`, escalonamento `claude-opus-5-5`):**
+  - **Regra 2 provada:** `r-20261002175209-1a252b` (`msg-qa001`, `succeeded`, US$ 0,0467): na etapa "Enviar a mensagem", "o verificador aprovou uma etapa com efeito externo; conferindo com o modelo de escalonamento"; `ai_calls`: `verify` Haiku ×2 e Opus ×2.
+  - **Regra 1 `not_run`:** `r-20261002175004-ea377e` (`perfil-campo-inexistente`, `waiting_user`, US$ 0,1926) — o tier 0 declarou `step_done` em "Abrir a tela de Perfil", o verificador reprovou e a 2ª tentativa subiu ao tier 1 pela regra ANTIGA (nova tentativa da mesma etapa); quem relatou `step_blocked` foi o tier 1. A cascata não foi acionada porque o tier 0 não bloqueou. Não se cacou outro gatilho com chamada paga.
+  - **Negativo:** `r-20261002175257-0e9362` (`sessao-expirada`, `waiting_user`, US$ 0,0562): nenhuma chamada de escalonamento, mas quem barrou foi o detector determinístico de tela sensível (campo de senha), antes da IA — o `auth_required` vindo da IA não foi exercitado.
+  - A medição do `gpt-6-luna` como ator continua por fazer (agora com `eval_run.py --profile`, item 17.7).
+
+## 10c. Perfil de IA por execução e canário (item 17.7)
+
+Trocar o modelo de uma função para **algumas** execuções, sem reiniciar o central e sem mexer no que as outras usam:
+
+- **`ai.profiles.<nome>.roles.<função>`** vale por cima de `ai.roles`, **campo a campo**: o perfil que só troca o
+  modelo do `decide` deixa as outras quatro funções e os outros campos do `decide` iguais ao padrão. A diferença entre
+  os braços do A/B é só o que está escrito no perfil.
+- **Escolha por execução:** `POST /api/runs` com `ai_profile` (nome de `ai.profiles`; desconhecido = `422
+  ai_profile_desconhecido`, antes de criar a execução). Na bateria, `scripts/eval_run.py --profile <nome>` (grava
+  `ai_profile` em `data/eval-results.jsonl`).
+- **Canário:** `ai.canary: {profile, fraction}` sorteia, por execução, a fração das execuções SEM perfil escolhido. O
+  sorteio é injetável (`RunService.sorteio`) e o resultado fica na execução.
+- **A execução guarda o perfil e a origem** (`runs.ai_profile`, `runs.ai_profile_source` = `explicit`|`canary`,
+  migração 064; também em `RunSummary`). A comparação junta `ai_calls` por `run_id`.
+- **Um hub só** (`planning/routing.py`): os perfis são outras linhas de função dentro do mesmo `RoutingProvider`, com o
+  mesmo teto em US$ por execução e por dia, as mesmas vagas por função (divididas entre perfis) e as mesmas instâncias
+  de provedor quando a combinação coincide. O perfil vale para TODA chamada que leva o `run_id` (plano, ação,
+  verificação, escalonamento); a prévia de persona e o refino do comando não têm execução e ficam no padrão.
+- **Conferido na partida:** função desconhecida, provedor ausente, modelo sem capacidade declarada e canário apontando
+  para perfil inexistente recusam a configuração, como em `ai.roles`. Perfil gravado numa execução que **sumiu** da
+  configuração depois não cai no padrão em silêncio: a chamada falha com `not_configured` dizendo o nome do perfil
+  (cair no padrão faria a execução dizer que rodou no candidato sem ter rodado).
+- **Aviso de dados:** um perfil que manda função para fora desta máquina entra no aviso do `GET /api/ai`
+  ("Perfis de IA que enviam dados para fora desta máquina: …") e liga `sends_data_externally`.
+- **O que NÃO muda:** o modelo que a aba IA mostra é o do padrão (o `/api/ai` não conhece a execução); a do perfil está
+  em `ai_calls.model`. O painel não tem seletor de perfil ainda (só API e bateria).
+- **Prova:** `simulated`, `backend/tests/test_perfil_de_ia.py` (16) e `scripts/tests/test_eval_run.py`. **`real`:
+  `not_run`** — o primeiro uso real é a bateria do 17.10 (`gpt-6-luna` como ator), que depende de saldo e autorização.
 
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
