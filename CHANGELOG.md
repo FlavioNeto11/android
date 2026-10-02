@@ -19,6 +19,56 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — W8: rodada r4 real: `PASS` (a mitigação do PR #17 religou o túnel em 2 de 2 boots válidos)
+
+- `docs/handoffs/w8-boot-recovery.md` §17.10 (real, `bcea158`): o `tun0` não subiu sozinho e o Start pela interface o religou aos 193 s, sem reinício extra; vizinhos 01/03/06 com reparo pausado, sem ciclo de vida alheio; rollback com `force-stop` do SFA fez 1 reinício; servidor WireGuard reiniciado 2x (03/06 reconectaram em 30 s). Veredito pelo critério pré-registrado (§17.9): `PASS` (a recuperação válida do r3 + a do r4). Causa raiz segue `NARROWED`. `docs/estado-atual.md` atualizado.
+
+## 2026-10-02 — W8: pré-registro do r4 (1 iteração, critério PASS/PARTIAL/FAIL, vizinhos com reparo pausado) antes do boot
+
+- `scripts/diag-w8-mitigacao.py`: seed `w8-mitigacao-20261002-r4`, `BOOTS_JA_USADOS = 3` (exatamente 1 iteração), critério do r4 (PASS com a `RECOVERED_BY_UI` do r3 + uma; PARTIAL com `NO_FAILURE`/`BOOT_INVALID`/`UNKNOWN`; FAIL com `NOT_RECOVERED`/`RECOVERED_BY_RESTART`) e pausa do reparo automático de android-01/03/06 (TTL 900 s, conferida no health, encerrada no fim; a regra de bystander não muda). `docs/handoffs/w8-boot-recovery.md` §17.9. Prova `simulated` (76 testes); nada executado (`not_run`).
+
+## 2026-10-02 — Rede por aparelho: o desfazer espera o `stopped` persistir e para o cliente que religou sozinho (A11, achado do W8 r2)
+
+- `devices/rede_aplicacao.py`: `desfazer` espera ~10 s depois do `am force-stop` do cliente VPN e lê `stopped=` antes do reinício (`PARADA_PERSISTIR_S`); `Observacao.cliente_solto()`. `devices/rede_convergencia.py`: com a rede tirada, o boot passado e o `tun0` ainda no ar (o cliente religou sozinho), a convergência faz `force-stop` do cliente e apaga a linha em vez de pedir outro reinício; se o túnel não cai, o reinício até o teto continua. Prova `simulated` (`backend/tests/test_rede_aplicacao.py`, 3 testes novos, um deles falha sem a correção; 186 testes de rede e arquitetura passam); a prova real é o rollback do r3 (1 reinício, SFA não religou, com o `force-stop` do ator). Não implantado ainda.
+
+## 2026-10-02 — A9: o desvio de relógio do worker é re-medido a cada batida (branch `feat/a8-a9-codigo`)
+
+- **Defeito.** O agente media o desvio UMA vez por conexão (`Welcome.server_time`) e a batida repetia o número, então o
+  `degraded` "relógio desalinhado" refletia a fotografia da conexão e só mudava reconectando.
+- **Mudança mínima compatível.** `Heartbeat.sent_at` (opcional, relógio local do agente na saída); o central calcula
+  `relógio do banco na chegada − sent_at` (`WorkerRegistry.desvio_de_relogio`, latência de ida inclusa) e a regra de saúde
+  segue a mesma (limite 5 s, mesma mensagem; o `degraded` por relógio some sozinho quando o desvio volta ao limite).
+  Agente antigo (sem `sent_at`) cai no `clock_offset_s` da conexão; central antigo ignora o campo. Sem versão nem feature.
+  Esquema do fio recongelado em `test_contratos_do_worker.py` (`heartbeat`, aditivo).
+- Prova: `simulated` (`backend/tests/test_workers.py` 4 testes novos, `test_worker_agent.py::test_toda_batida_leva_o_relogio_local…`,
+  contrato). `not_run`: agente e central reais em máquinas com relógios diferentes. Docs: `docs/worker.md`,
+  `docs/api-contract.md`, `docs/parque-distribuido.md`.
+
+## 2026-10-02 — A8: o instalador do túnel nunca registra o pwsh da Microsoft Store (branch `feat/a8-a9-codigo`)
+
+- **Achado real.** No central a tarefa `farm-tunel-192.168.1.11` foi instalada com `-AceitarStore` e executava
+  `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`, caminho com a versão do
+  MSIX que some quando a Store atualiza: no boot seguinte o túnel não sobe e o worker (e o android-09) cai.
+- **Código** (`scripts/worker-tunnel.ps1`): `Resolve-Pwsh` virou `Resolve-Interpretador` (MSI estável → outro pwsh fora
+  do WindowsApps → Windows PowerShell 5.1 do sistema → falha clara); trava final antes do `New-ScheduledTaskAction`;
+  `-AceitarStore` agora é erro explicado; BOM no arquivo para o 5.1 ler UTF-8. Arquitetura do túnel intacta
+  (`-R 18000:8010`, nunca 8000; forwards ADB inalterados).
+- Prova: `simulated` (`backend/tests/test_tunel_restrito.py`, 23 testes; escolha da função extraída do script com caminhos
+  falsos em pwsh 7 e no 5.1, parser do 5.1, `-Instalar -Simular` no 5.1). `not_run`: reinstalar a tarefa real no central
+  (exige autorização: mexe no túnel). Docs: `docs/worker.md`.
+
+## 2026-10-02 — W8: rodada r3 real: o Start pela interface recuperou o túnel sem reinício extra (PARTIAL; veredito formal FAIL por reinício de saúde do android-01)
+
+- `docs/handoffs/w8-boot-recovery.md` §17.8 (real, `bcea158`): iteração 1 `RECOVERED_BY_UI` (o `tun0` não subiu sozinho; UM Start pela interface aos 198 s religou, sem reinício extra); iteração 2 invalidada pela regra (`restart` automático por saúde do android-01, interrupções acumuladas), com dados concordantes mas inadmissíveis; veredito formal `FAIL`, desfecho substantivo `PARTIAL` (1 válido; PASS exige 2); rollback com `force-stop` do SFA fez UM só reinício (no r2 foram 2); servidor WireGuard reiniciado 2x, 03/06 reconectaram em 20 a 30 s. 3 de 6 boots usados.
+
+## 2026-10-02 — W8: protocolo r3 (baseline por iteração, force-stop do SFA no rollback, seed nova) antes do 1º boot do r3
+
+- `scripts/diag-w8-mitigacao.py`: seed `w8-mitigacao-20261002-r3`; a 1ª iteração exige o estado limpo e as seguintes esperam o aparelho assentar e exigem a linha e o par da política (o oposto do baseline do estágio 1, que invalidou o r2); `BOOTS_JA_USADOS = 1` com a regra `usados + 1 + reinicios_max <= 6`; o rollback faz `force-stop` do SFA no 09 antes do `assign vpn=null`. `docs/handoffs/w8-boot-recovery.md` §17.6 reclassifica o r2 (`INCONCLUSIVE_HARNESS_DEFECT`) e §17.7 registra o desvio. Prova `simulated` (72 testes); nada executado (`not_run`).
+
+## 2026-10-02 — W8: 1º disparo real da validação da mitigação (real, `bcea158`): NO_FAILURE no boot 1, FAIL por defeito do executor, rollback incompleto no produto
+
+- `docs/handoffs/w8-boot-recovery.md` §17.6: deploy `bcea158`; política `livre` + `vpn-central-wireguard` só no android-09; 2 reinícios do servidor WireGuard em janela ociosa (03/06 reconectaram em 20 s cada); **iteração 1 `NO_FAILURE`** (mitigação NÃO exercitada); iteração 2 `BOOT_INVALID` por defeito do executor (baseline do estágio 1 reaproveitado) → veredito pré-comprometido `FAIL`, desfecho substantivo `INCONCLUSIVE`; 1 de 6 boots usados. Achado de produto: o rollback da rede não para o SFA, que religa sozinho no boot (`tun0` para um par removido) e a convergência pede mais um reinício; baseline restaurado à mão (`force-stop` do SFA no 09).
+
 ## 2026-10-02 — W8: o executor da validação real não dobra o prefixo /api (achado ANTES do 1º boot)
 
 - `scripts/diag-w8-mitigacao.py`: `Api` montava `/api/api/...` (a base já termina em `/api`); o firewall-check do 1º disparo real (02/10 15:25Z) devolveu 405 e o protocolo parou em `INCONCLUSIVE` "BLOQUEADO" sem escrever nada, nenhum boot. Corrigido com teste (`UrlsDoApi`) e saída em UTF-8 (o plano com `≤` quebrava no console cp1252). O protocolo pré-comprometido não muda; nada tinha rodado.

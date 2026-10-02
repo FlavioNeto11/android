@@ -573,6 +573,12 @@ async def provisionar(ap: AparelhoDaRede, db: Database, secrets: SecretStore, pl
             f"always-on={app}, lockdown={lockdown} relidos; relatórios de falha apagados; sync")
 
 
+#: Quanto esperar, no DESFAZER, depois do `am force-stop` do cliente VPN e antes do reinício: o estado `stopped` do pacote só chega ao disco
+#: depois de um instante; reiniciando na hora ele se perde e o cliente (que lembra que estava ligado) religa sozinho no boot, com o `tun0` para um
+#: par que já saiu do servidor (W8, r2, 02/10/2026; com ~10 s de espera no r3 o cliente não religou). 0 desliga a espera (testes).
+PARADA_PERSISTIR_S = 10.0
+
+
 async def desfazer(ap: AparelhoDaRede, cfg: RedeCfg) -> str:
     """O espelho da provisão: tira o always-on e o bloqueio, para o cliente e sincroniza. O bloqueio que está na
     MEMÓRIA do Android só sai com o reinício, que a convergência pede depois. O perfil fica dentro do app (sem root
@@ -586,7 +592,29 @@ async def desfazer(ap: AparelhoDaRede, cfg: RedeCfg) -> str:
     app, lockdown = await _reler_always_on(ap)
     if app not in ("", "null") or lockdown not in ("0", "", "null"):
         raise RedeAplicacaoError(f"o always-on não saiu (lido: app={app or 'vazio'}, lockdown={lockdown or 'vazio'})")
-    return f"always-on e bloqueio tirados (relidos: app={app or 'null'}, lockdown={lockdown or '0'}); {pkg} parado; sync"
+    parado = await _esperar_parada_persistir(ap, pkg, PARADA_PERSISTIR_S)
+    return (f"always-on e bloqueio tirados (relidos: app={app or 'null'}, lockdown={lockdown or '0'}); {pkg} parado"
+            f"{f' ({parado})' if parado else ''}; sync")
+
+
+async def _esperar_parada_persistir(ap: AparelhoDaRede, pkg: str, espera_s: float) -> str:
+    """O `force-stop` só vale no boot seguinte se o estado `stopped` do pacote chegou ao disco (W8 §13, F1): espera `espera_s` e lê
+    `stopped=` (melhor esforço: a leitura não derruba o desfazer). Devolve o que leu, ou vazio sem espera nem leitura."""
+    if espera_s <= 0:
+        return ""
+    await asyncio.sleep(espera_s)
+    try:
+        lido = await ap.shell(f"dumpsys package {pkg} | grep -m1 -o 'stopped=[a-z]*'", timeout=30)
+    except Exception:  # noqa: BLE001 - a leitura é só evidência
+        return "estado stopped não lido"
+    return lido.strip() or "estado stopped não lido"
+
+
+async def parar_cliente_solto(ap: AparelhoDaRede, pkg: str, *, espera_s: float = 2.0) -> None:
+    """O cliente VPN religou sozinho (auto-início) depois de a rede ter sido tirada: `force-stop`, sem reiniciar o aparelho. O `tun0`
+    cai com o processo; quem chama relê a observação."""
+    await ap.shell(f"am force-stop {pkg}", timeout=30)
+    await asyncio.sleep(espera_s)
 
 
 # ============================================================================ a conferência (uid 2000)
@@ -618,6 +646,12 @@ class Observacao:
     def removida(self) -> bool:
         return (self.always_on in ("", "null") and self.lockdown in ("", "0", "null") and not self.tun
                 and not self.regras_de_bloqueio)
+
+    def cliente_solto(self) -> bool:
+        """A rede foi tirada (always-on e bloqueio fora, sem regras) mas o cliente VPN ficou ligado por conta própria (auto-início do cliente
+        no boot): só o túnel sobrou. Reiniciar não resolve (ele religa de novo); o remédio é parar o cliente."""
+        return (self.always_on in ("", "null") and self.lockdown in ("", "0", "null") and not self.regras_de_bloqueio
+                and (self.tun or self.vpn_conectada))
 
     def descrever(self, pacote: str) -> str:
         return (f"uid {self.uid}; always-on={self.always_on or 'null'}; lockdown={self.lockdown or 'null'}; "

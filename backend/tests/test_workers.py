@@ -347,6 +347,71 @@ def test_batida_sem_desvio_relatado_nao_mexe_em_detalhe_de_outra_causa(tmp_path:
     assert dto.state_detail == "motivo não relacionado a relógio"
 
 
+def _sent_at(deslocamento_s: float) -> str:
+    """Relógio de um worker `deslocamento_s` segundos ATRASADO em relação ao do central (negativo = adiantado)."""
+    from datetime import timedelta
+
+    from app.util import now, to_iso
+
+    return to_iso(now() - timedelta(seconds=deslocamento_s))
+
+
+def test_desvio_re_medido_a_cada_batida_muda_o_estado(tmp_path: Path) -> None:
+    """A9: com `sent_at` o central mede o desvio de AGORA, não a fotografia do `welcome` — o `degraded` por relógio
+    aparece quando o relógio do worker se afasta no meio da conexão e SOME sozinho quando volta, sem reconectar."""
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=0.2, sent_at=_sent_at(0.0)))
+    assert reg.dtos()[0].state == "online"                       # conexão alinhada
+
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=0.2, sent_at=_sent_at(97.0)))
+    dto = reg.dtos()[0]
+    assert dto.state == "degraded"                               # o `clock_offset_s` velho dizia 0,2 s: ele perde
+    assert dto.state_detail is not None and dto.state_detail.startswith("relógio desalinhado: +9")
+
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=0.2, sent_at=_sent_at(-60.0)))
+    assert "-6" in (reg.dtos()[0].state_detail or "")            # worker ADIANTADO: sinal negativo
+
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=0.2, sent_at=_sent_at(0.3)))
+    dto = reg.dtos()[0]
+    assert dto.state == "online" and dto.state_detail is None    # voltou ao limite: o degraded some sozinho
+
+
+def test_a_fotografia_da_conexao_nao_prende_mais_o_degraded(tmp_path: Path) -> None:
+    """O defeito de antes: `clock_offset_s=97` medido no `welcome` era repetido em toda batida, e o worker nunca
+    saía de `degraded` mesmo depois de o relógio ser acertado. Com `sent_at`, a medida nova vale."""
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=97.0))
+    assert reg.dtos()[0].state == "degraded"
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=97.0, sent_at=_sent_at(0.1)))
+    assert reg.dtos()[0].state == "online"
+
+
+def test_agente_antigo_sem_sent_at_continua_aceito_pelo_clock_offset_da_conexao(tmp_path: Path) -> None:
+    from app.workers.protocol import Heartbeat as HB
+
+    antigo = HB.model_validate({"type": "heartbeat", "clock_offset_s": -97.0})   # o fio de um agente de antes do A9
+    assert antigo.sent_at is None
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", antigo)
+    assert reg.dtos()[0].state == "degraded"
+    assert reg.desvio_de_relogio(antigo) == -97.0
+
+
+def test_sent_at_ilegivel_cai_no_desvio_da_conexao_e_sem_nenhum_nao_inventa_desvio(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    assert reg.desvio_de_relogio(Heartbeat(clock_offset_s=3.0, sent_at="lixo-nao-e-data")) == 3.0
+    assert reg.desvio_de_relogio(Heartbeat(sent_at="lixo-nao-e-data")) is None
+    assert reg.desvio_de_relogio(Heartbeat()) is None
+    medido = reg.desvio_de_relogio(Heartbeat(sent_at=_sent_at(2.0)))
+    assert medido is not None and 1.5 < medido < 4.0             # +2 s de relógio atrasado, mais a latência do teste
+    reg.on_heartbeat("worker-lan-01", Heartbeat(sent_at="lixo-nao-e-data"))
+    assert reg.dtos()[0].state == "online"                       # ilegível não degrada nem derruba a batida
+
+
 def test_calculo_do_desvio_de_relogio_e_puro() -> None:
     from datetime import datetime, timezone
 
