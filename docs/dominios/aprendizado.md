@@ -393,6 +393,25 @@ faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.1
 Um gesto da pessoa que passa por dois estados (`mudar_status_nativo`: candidata, validada, publicada) pode publicar entrada e saída
 na mesma ação. `state.py` passa `eventos=self.bus`.
 
+## Conteúdo legível no detalhe (30.3)
+
+O detalhe do Livro (`GET /api/aprendizado/{kind}/{ref}`) devolve `conteudo`: o que o item FAZ, em estrutura legível, montado só do que
+já está no banco (sem migração; contrato no adendo v0.50 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §4). A regra de
+montagem é pura e mora em `domain/conteudo.py`; as leituras de SQL (a etapa de origem em `steps`, as etapas com o mesmo
+`template_hash`, as versões vizinhas da receita) ficam em `FontesSql.conteudo`; `LearningService._conteudo` escolhe a fonte (lição e
+tela saem do `content` do item) e `DetalheDoLivro.conteudo` o carrega até `presentation/livro.py`.
+
+- **Lista branca, não cópia.** Cada ação da receita é lida campo a campo (ferramenta, seletores, `commit`, nomes de parâmetro, rolagem).
+  O texto digitado não sai nem em pedaço, o valor de parâmetro nunca existe aqui, e `type_secret` ou nome sigiloso (`SENSITIVE_PARAM`)
+  viram `segredo: true` sem nome. O domínio copia `TEMPLATE_RE` e `SENSITIVE_PARAM` do executor (não pode importá-lo); um teste
+  confere que as cópias não divergem.
+- **Capability é derivada.** A receita não a grava. Vale a etapa de origem (`learned_from_step`); sem ela, as etapas com o mesmo
+  `template_hash` cujo app (o da etapa ou o de `runs.app_ids`) é o da receita; várias capabilities distintas = `ambigua`. Etapa de
+  execução antiga sem app conhecido entra na conta (a dúvida aparece como `ambigua`, nunca escondida).
+- **Vizinhas** são a versão imediatamente menor e a imediatamente maior da mesma chave (`recipes.py` define a chave), qualquer estado.
+- Fora do escopo desta fatia (§4 do desenho): pré e pós-condição da etapa de origem, aparelhos em que reproduziu, trilha de promoção
+  por receita e quadro de versão.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

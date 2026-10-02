@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: conteúdo legível no detalhe do Livro (30.3, branch feat/30-3-conteudo-legivel)
+
+- `GET /api/aprendizado/{kind}/{ref}` ganha o campo `conteudo`: o que a receita, o fluxo, a habilidade, a lição e a tela FAZEM, montado só
+  do que já está no banco (sem migração, sem coluna nova; `api-contract.md`, adendo v0.50). Receita: identidade, ações (ferramenta, alvo por
+  seletor, `commit`, NOMES dos parâmetros), efeito e qual ação o faz, capability derivada (origem, ou mesmo `step_hash` no app; `ambigua`),
+  origem (`execucao`/`treino`/`desconhecida`), uso, sombra e versões vizinhas. Nunca sai valor de parâmetro nem texto digitado; `type_secret`
+  e parâmetro sigiloso saem só como `segredo`.
+- `domain/conteudo.py` (puro), `FontesSql.conteudo` (leituras de `steps` e das versões vizinhas) e `DetalheDoLivro.conteudo`.
+- Prova `simulated`: `tests/test_learning_conteudo.py`. `not_run` no central.
+
 ## 2026-10-02 — Teste do servidor de uso único espera o contador em vez de afirmá-lo ao receber a resposta (fix/teste-servidor-de-uma-vez)
 
 - `test_rede_aplicacao.py::test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token` falhava às vezes com `-n 8`. A hipótese
