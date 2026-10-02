@@ -249,6 +249,38 @@ class _Api:
         return 200, {}
 
 
+class UrlsDoApi(unittest.TestCase):
+    def test_a_url_nao_dobra_o_prefixo_api(self) -> None:
+        """Regressão de 02/10 (antes do 1º boot): `boot.API` termina em /api e as rotas do script começam por /api/: a URL saía /api/api/..."""
+        vistas: list[str] = []
+
+        class _Resp:
+            status = 200
+
+            def __enter__(self) -> "_Resp":
+                return self
+
+            def __exit__(self, *_a: Any) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return b"{}"
+
+        original = mod.urllib.request.urlopen
+        mod.urllib.request.urlopen = lambda req, timeout=0: (vistas.append(req.full_url), _Resp())[1]       # type: ignore[assignment]
+        try:
+            api = mod.Api("http://127.0.0.1:8000/api")
+            api.get("/api/health")
+            api.post("/api/network/server/firewall-check")
+            api.put("/api/instances/android-09/repair-pause", {"ttl_s": 60, "reason": "xxx"})
+            api.delete("/api/instances/android-09/repair-pause")
+        finally:
+            mod.urllib.request.urlopen = original                                 # type: ignore[assignment]
+        self.assertEqual(vistas, ["http://127.0.0.1:8000/api/health", "http://127.0.0.1:8000/api/network/server/firewall-check",
+                                  "http://127.0.0.1:8000/api/instances/android-09/repair-pause", "http://127.0.0.1:8000/api/instances/android-09/repair-pause"])
+        self.assertTrue(all("/api/api/" not in v for v in vistas))
+
+
 class Executor(unittest.TestCase):
     def test_pre_voo_falho_nao_escreve_nada(self) -> None:
         amb, api = _Amb(), _Api()

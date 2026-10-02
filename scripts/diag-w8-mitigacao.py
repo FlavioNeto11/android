@@ -233,6 +233,8 @@ class Api:
 
     def _req(self, metodo: str, caminho: str, corpo: dict[str, Any] | None = None) -> tuple[int, Any]:
         dados = json.dumps(corpo).encode() if corpo is not None else None
+        if self.base.endswith("/api") and caminho.startswith("/api/"):             # `boot.API` já termina em /api: sem isto a URL sairia /api/api/...
+            caminho = caminho[len("/api"):]
         req = urllib.request.Request(self.base + caminho, data=dados, method=metodo, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=60) as r:                    # noqa: S310 - loopback do central
@@ -498,6 +500,8 @@ def main(argv: list[str] | None = None, amb: Any = None, api: Api | None = None)
     ap.add_argument("--aceito-reinicio-do-servidor-wireguard", action="store_true")
     ap.add_argument("--deploy-conferido", action="store_true", help="o central roda um commit com a pausa do reparo (A2) e o PR #17")
     a = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):                                        # o plano e o resultado têm acentos e símbolos (≤, →): console cp1252 quebrava
+        sys.stdout.reconfigure(encoding="utf-8")
     if not a.execute:
         print(json.dumps(plano_json(), ensure_ascii=False, indent=2))
         return 0

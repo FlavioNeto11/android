@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — W8: o executor da validação real não dobra o prefixo /api (achado ANTES do 1º boot)
+
+- `scripts/diag-w8-mitigacao.py`: `Api` montava `/api/api/...` (a base já termina em `/api`); o firewall-check do 1º disparo real (02/10 15:25Z) devolveu 405 e o protocolo parou em `INCONCLUSIVE` "BLOQUEADO" sem escrever nada, nenhum boot. Corrigido com teste (`UrlsDoApi`) e saída em UTF-8 (o plano com `≤` quebrava no console cp1252). O protocolo pré-comprometido não muda; nada tinha rodado.
+
 ## 2026-10-02 — pausa do reparo automático por aparelho (W8, quase-acidente do §17.4) (branch `feat/pausa-de-reparo`)
 
 - **Plataforma.** `PUT`/`DELETE /api/instances/{id}/repair-pause`: o central deixa de emitir `restart`/`reset` AUTOMÁTICOS
