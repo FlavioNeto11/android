@@ -38,15 +38,13 @@ from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
 from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit_needs_person_change
-from .contas_nossas import reescrever_memoria, sem_o_rastro
-from .memory import MemoryRefused, MemoryStore
+from .contas_nossas import sem_o_rastro
+from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
                          sessao_vencida)
 
 log = logging.getLogger("poc.social")
-#: O único app cuja conta bloqueada sai SOZINHA (29.23, ADR-068): o Instagram; nos demais, só pela rota manual.
-PACOTE_DO_INSTAGRAM = "com.instagram.android"
 
 # Quantas interações o contexto mostra inteiras. Acima disso, a conversa ganha uma nota dizendo que há mais.
 _RECENTES_NO_CONTEXTO = 6
@@ -1386,7 +1384,7 @@ class SocialService:
 
     # ------------------------------------------------------------------ conta bloqueada sai (29.23, ADR-068)
     def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, origem: str = "declarado",
-                                autor: str = "painel", evidencia: str | None = None) -> dict[str, Any]:
+                                autor: str = "painel", evidencia: str | None = None) -> dict[str, object]:
         """Bloqueio confirmado numa conta: ela sai da plataforma NA HORA, como se não existisse; a PERSONA fica.
 
         Numa transação só (nada pela metade): as limpezas registradas por outros módulos, a credencial da conta E a
@@ -1469,9 +1467,12 @@ class SocialService:
         fica `blocked`, o estado seguro, com o erro visível no histórico; a rota manual refaz depois. A transação de
         fora (o salvamento da sessão, o vínculo) segue. Sem conta achada, não há o que retirar."""
         conta = self._conta_do_bloqueio(profile_id, app_id, handle)
-        if conta is None or self.repo.pacote_da_conta(profile_id, str(conta["id"])) != PACOTE_DO_INSTAGRAM:
+        if conta is None:
             return
-        if not self.repo.eh_pacote_ancora(profile_id, PACOTE_DO_INSTAGRAM):
+        pacote = self.repo.pacote_da_conta(profile_id, str(conta["id"]))
+        # Só sai sozinha a conta âncora de um app que DECLARA a janela de conta perdida (`app.yaml`,
+        # `atividades_de_conta_perdida`; hoje só o Instagram): nos demais, a conta travada é da pessoa (ADR-068).
+        if not self.repo.eh_pacote_ancora(profile_id, pacote) or not capabilities_of(pacote).lost_account_activities:
             return
         forte = origem == "declarado" or bool(self.sinal_de_desafio is not None and self.sinal_de_desafio(instance_id))
         if not forte:
@@ -1491,8 +1492,8 @@ class SocialService:
                                              else f"conta travada em {instance_id}")
         except Exception as exc:  # noqa: BLE001 - ver docstring
             self.bus.emit("log", f"{instance_id}: bloqueio confirmado na conta {chave[1]}, mas a retirada falhou "
-                                 f"({type(exc).__name__}): a conta fica como estava; refaça por "
-                                 "POST /api/instagram/profiles/{id}/accounts/{conta}/retire.", level="error",
+                                 f"({type(exc).__name__}): a conta fica como estava; refaça pela rota de retirada da conta "
+                                 "(retire).", level="error",
                           instance_id=instance_id, data={"profile_id": profile_id, "account_id": chave[1],
                                                          "erro": type(exc).__name__})
         finally:

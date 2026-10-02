@@ -80,34 +80,5 @@ def sem_o_rastro(texto: str | None, handle: str | None, account_id: str | None =
     return texto
 
 
-def _previa(handle: str | None, account_id: str | None) -> list[str]:
+def previa_do_rastro(handle: str | None, account_id: str | None) -> list[str]:
     return [p for p in (normalizar(handle), (account_id or "").lower()) if p]
-
-
-def reescrever_memoria(db: Database, *, profile_id: str, handle: str | None, account_id: str | None) -> int:
-    """`memory_items` da PERSONA: `subject` e `content` passam a dizer `[conta removida]` onde diziam o @ da conta
-    (com e sem `@`, sem diferenciar caixa) ou o id dela. A linha FICA: a persona sobrevive e lembra do que viveu.
-
-    O `fingerprint` (unique por perfil) é recalculado com o texto novo; se colidir com outra lembrança, a linha
-    guarda um fingerprint próprio em vez de ser apagada ou mesclada. Devolve quantas lembranças mudaram."""
-    from .memory import fingerprint        # import tardio: `memory` importa o repositório, que importa este módulo
-
-    previas = _previa(handle, account_id)
-    if not previas:
-        return 0
-    casa = " OR ".join(f"lower({c}) LIKE ?" for c in ("subject", "content") for _ in previas)
-    args = tuple(f"%{p}%" for _ in ("subject", "content") for p in previas)
-    mudou = 0
-    for m in db.query(f"SELECT seq, subject, content, fingerprint FROM memory_items WHERE profile_id=? AND ({casa})",
-                      (profile_id, *args)):
-        assunto, conteudo = sem_o_rastro(m["subject"], handle, account_id), sem_o_rastro(m["content"], handle, account_id)
-        if assunto == m["subject"] and conteudo == m["content"]:
-            continue
-        fp = fingerprint(str(assunto), str(conteudo))
-        if db.one("SELECT 1 FROM memory_items WHERE profile_id=? AND fingerprint=? AND seq<>?",
-                  (profile_id, fp, m["seq"])) is not None:
-            fp = f"{fp[:24]}r{m['seq']}"
-        db.execute("UPDATE memory_items SET subject=?, content=?, fingerprint=? WHERE seq=?",
-                   (assunto, conteudo, fp, m["seq"]))
-        mudou += 1
-    return mudou

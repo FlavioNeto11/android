@@ -21,7 +21,6 @@ from app.models import RunCreate, SessionStatus
 from app.modules.identity.presentation.schemas import PersonaDeviceBody
 from app.planning.capabilities import capability_of
 from app.social.contas_nossas import MARCADOR, eh_conta_nossa, hash_do_handle, sem_o_rastro
-from app.devices.manager import DeviceManager
 from app.social.policy import PolicyEngine
 from app.util import now_iso
 
@@ -33,7 +32,8 @@ from .test_sessao_por_conta import IID, correio_registrado, estado, persona_com_
 
 __all__ = ["correio_registrado"]
 
-ATIVIDADE = DeviceManager.ATIVIDADE_DE_DESAFIO
+#: A janela que o `app.yaml` do Instagram declara como conta perdida (`atividades_de_conta_perdida`), como o dumpsys a dá.
+ATIVIDADE = "com.instagram.challenge.activity.ChallengeActivity"
 FELIPE = "felipe.teste01"
 LUCAS = "lucas.teste02"
 
@@ -285,8 +285,12 @@ async def test_atividade_de_desafio_em_foco_retira_e_a_leitura_do_foco_a_produz(
     s = estado(harness)
     rt = s.devices.devices[IID]
     # A leitura do foco (o que `observe` faz ao ver a árvore de conta travada): só a ChallengeActivity vale.
-    for foco, esperado in (((IG_PKG, ATIVIDADE), True), ((IG_PKG, "com.instagram.mainactivity.MainActivity"), False),
-                           ((None, None), False)):
+    # Só a janela que o PRÓPRIO app declara (`atividades_de_conta_perdida`),
+    # e a mesma atividade num pacote que não a declarou (o correio de exemplo) NÃO vale.
+    from .test_sessao_declarada import CORREIO
+    for foco, esperado in (((IG_PKG, ATIVIDADE), True),
+                           ((IG_PKG, "com.instagram.mainactivity.MainActivity"), False),
+                           ((CORREIO, ATIVIDADE), False), ((None, None), False)):
         monkeypatch.setattr(rt.io, "current_focus", lambda f=foco: f)
         await s.devices._ler_atividade_de_desafio(rt)
         assert s.devices.tem_atividade_de_desafio(IID) is esperado

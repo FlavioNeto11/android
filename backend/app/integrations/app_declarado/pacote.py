@@ -36,7 +36,7 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 #: Os campos que o `app.yaml` aceita. Campo fora daqui é erro de digitação que seria ignorado em silêncio.
 _CAMPOS = frozenset({"app", "nome", "rotulo", "provedor_de_sessao", "precisa_de_perfil", "precisa_de_internet",
                      "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura",
-                     "renderizador_recusado"})
+                     "renderizador_recusado", "atividades_de_conta_perdida"})
 _PACOTE_ANDROID = re.compile(r"^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$")
 
 
@@ -141,7 +141,9 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
                          profile_anchor=_booleano(dados.get("ancora_do_perfil"), f"{onde}: ancora_do_perfil"),
                          profile_link_hosts=hosts, profile_link_reserved=reservados,
                          refused_renderers=_renderizadores(dados.get("renderizador_recusado"),
-                                                           f"{onde}: renderizador_recusado"))
+                                                           f"{onde}: renderizador_recusado"),
+                         lost_account_activities=_textos(dados.get("atividades_de_conta_perdida"),
+                                                         f"{onde}: atividades_de_conta_perdida"))
 
 
 def _ler(caminho: Path) -> object:

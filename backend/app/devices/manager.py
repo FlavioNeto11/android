@@ -27,6 +27,7 @@ from ..config import AndroidCfg, Config
 from ..db import INTEGRITY_ERRORS, Database, dumps, loads
 from ..events import EventBus
 from ..metricas import metricas
+from ..modules.applications.infrastructure.registry import capabilities_of
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics, RendererInfo,
                       RepairPauseInfo)
@@ -499,6 +500,15 @@ class DeviceRuntime:
             return emu.normalizar_renderizador(self.renderer.gles)
         pedido = self.renderizador_pedido
         return None if pedido == "auto" else pedido
+
+
+def janela_completa(pacote: str | None, atividade: str | None) -> str | None:
+    """`pacote/atividade` completo e minúsculo, como o `app.yaml` declara: o `dumpsys` às vezes abrevia a atividade
+    (`.challenge.X` = `<pacote>.challenge.X`)."""
+    if not pacote or not atividade:
+        return None
+    nome = f"{pacote}{atividade}" if atividade.startswith(".") else atividade
+    return f"{pacote}/{nome}".lower()
 
 
 class DeviceManager:
@@ -3476,8 +3486,6 @@ class DeviceManager:
         rt.classificacao = (rt.geracao, tree.sensitive, time.monotonic())
         return tree
 
-    #: A janela em foco da verificação "Confirm you're human" do Instagram (sinal forte do 29.23, ADR-068).
-    ATIVIDADE_DE_DESAFIO = "com.instagram.challenge.activity.ChallengeActivity"
     #: Por quanto tempo a leitura vale como sinal (s): cobre a volta do detector até a marcação, nada além.
     VALIDADE_DA_ATIVIDADE_S = 120.0
 
@@ -3485,13 +3493,16 @@ class DeviceManager:
         """Só roda quando a árvore já parece conta travada (uma leitura do foco, sem custo no resto). Falha ao ler =
         sem sinal forte: a conta fica bloqueada para a pessoa, nunca retirada por incerteza."""
         try:
-            _, atividade = await rt.executor.run(rt.io.current_focus, timeout=15, label="janela em foco")
+            pacote, atividade = await rt.executor.run(rt.io.current_focus, timeout=15, label="janela em foco")
         except Exception as exc:  # noqa: BLE001 - sem leitura, sem sinal
             log.info("%s: sem ler o foco da trava (%s)", rt.id, exc)
             rt.atividade_de_desafio = None
             return
-        rt.atividade_de_desafio = ((str(atividade), time.monotonic())
-                                   if atividade and str(atividade).endswith("ChallengeActivity") else None)
+        janela = janela_completa(pacote, atividade)
+        # Sinal forte só quando a janela é uma das que o PRÓPRIO app declara como conta perdida (`app.yaml`,
+        # `atividades_de_conta_perdida`): o núcleo não conhece nome de atividade de app nenhum (ADR-052).
+        declaradas = capabilities_of(pacote).lost_account_activities if pacote else ()
+        rt.atividade_de_desafio = (janela, time.monotonic()) if janela and janela in declaradas else None
 
     def tem_atividade_de_desafio(self, instance_id: str) -> bool:
         """A atividade de desafio do Instagram estava em foco na última observação de conta travada deste aparelho?"""

@@ -1595,7 +1595,7 @@ class RetirarContaBody(BaseModel):
 
 @router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/retire")
 async def retire_profile_account(request: Request, profile_id: str, account_id: str,
-                                 body: RetirarContaBody | None = None) -> dict[str, Any]:
+                                 body: RetirarContaBody | None = None) -> dict[str, object]:
     """Bloqueio confirmado (29.23, ADR-068): a conta SAI na hora (credencial, cofre, sessão, vínculo, linha) e a
     persona fica. Vale também para a âncora, que a remoção comum recusa. Idempotente: a conta que já saiu é 200 com
     `retirada: false`. O aparelho não é tocado."""

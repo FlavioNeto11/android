@@ -3948,8 +3948,10 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
 8. **Gatilho automático** (`SocialRepository.on_conta_bloqueada`, ao fim de `marcar_conta_travada`), com DOIS limites
    decididos pelo dono/orquestrador: (a) **só o Instagram** (conta âncora, pacote `com.instagram.android`): a conta travada
    de outro app (Outlook etc.) segue como antes, marcada/`blocked` para a pessoa, e só sai pela rota manual; (b) **só com
-   SINAL FORTE**: a atividade `com.instagram.challenge.activity.ChallengeActivity` em foco (`dumpsys window`, lida por
-   `DeviceManager.observe` quando a árvore já parece conta travada, validade de 120 s) ou a declaração do dono. Só TEXTO na
+   SINAL FORTE**: a janela que o PRÓPRIO app declara como conta perdida em foco (`atividades_de_conta_perdida` no
+   `app.yaml`; no Instagram, a `ChallengeActivity`), lida do `dumpsys window` por `DeviceManager.observe` quando a árvore
+   já parece conta travada (validade de 120 s), ou a declaração do dono. O núcleo não guarda nome de atividade nem de
+   pacote (ADR-052): app que não declara a janela não retira conta sozinho. Só TEXTO na
    tela não retira: fica `blocked` + pessoa, com uma linha no histórico dizendo que faltou o sinal. Sem leitura do foco
    (falha de adb), sem sinal. Uma detecção só pelas telas declaradas do app (`telas.yaml`, sem o texto genérico) também não
    dispara a leitura do foco e portanto não retira sozinha (aprovado pelo orquestrador; cobri-la é extensão futura). Isso reduz o falso positivo de uma frase parecida em outra tela. O gatilho roda sob savepoint e
