@@ -345,6 +345,12 @@ class ToolContext:
     #: Prazo da ETAPA (`time.monotonic()`): o que a ferramenta espera no aparelho (o foco de `open_app`) não passa
     #: dele — a mesma regra de `_com_prazo` para a chamada de IA (achado #96). `None` = sem etapa (só o teto próprio).
     deadline: float | None = None
+    #: T.2 (achado #164): como a ferramenta ESPERA o aparelho assentar (0,4 s depois de tocar no campo, 0,5 s antes de
+    #: conferir a digitação, `wait_for`, a rolagem...). Era `asyncio.sleep` fixo: cada passo de mensagem pagava ~2,9 s
+    #: de tempo real, e a suíte do rodízio e das execuções era feita quase só disso. Injetável, como o `relogio` do
+    #: scheduler e do gerenciador: a produção dorme de verdade; o teste que quer pular o tempo entrega um `dormir`
+    #: que AVANÇA o relógio do aparelho falso em vez de esperar (`tests/relogio_virtual.py`).
+    dormir: Callable[[float], Awaitable[None]] = asyncio.sleep
 
 
 @dataclass
@@ -517,7 +523,7 @@ async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | No
                 "reason": "sem leitura da tela para conferir o campo: o texto não foi comprovado"}
     anterior: str | None = None
     for tentativa in range(DIGITACAO_COMPLEMENTOS + 1):
-        await asyncio.sleep(0.5)
+        await ctx.dormir(0.5)
         campo = _campo_digitado(await _ler_depois_do_gesto(ctx), alvo)
         if campo is None:
             return {"typed_chars": 0, "requested_chars": pedidos, "verified": False,
@@ -570,7 +576,7 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
         for _ in range(COLLECT_MAX_PAGES):
             before = _content_in(tree, area)
             await ctx.call(ctx.io.swipe, cx, cy - dy, cx, cy + dy, 450)
-            await asyncio.sleep(0.6)
+            await ctx.dormir(0.6)
             tree = await ctx.observe()                 # type: ignore[misc]
             if _content_in(tree, area) == before:
                 break
@@ -594,7 +600,7 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
             break
         before = _content_in(tree, area)
         await ctx.call(ctx.io.swipe, cx, cy + dy, cx, cy - dy, 450)
-        await asyncio.sleep(0.8)
+        await ctx.dormir(0.8)
         tree = await ctx.observe()
         if _content_in(tree, area) == before:
             at_end = True
@@ -607,7 +613,7 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
         for _ in range(pages - 1):
             before = _content_in(tree, area)
             await ctx.call(ctx.io.swipe, cx, cy - dy, cx, cy + dy, 450)
-            await asyncio.sleep(0.6)
+            await ctx.dormir(0.6)
             tree = await ctx.observe()                 # type: ignore[misc]
             if _content_in(tree, area) == before:
                 break
@@ -665,7 +671,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         await ctx.call(io.swipe, *moves[args.direction], 450)
         result: dict[str, Any] = {"scrolled": args.direction}
         if ctx.observe is not None:                # fato do aparelho: o conteúdo da área rolada mudou?
-            await asyncio.sleep(0.8)
+            await ctx.dormir(0.8)
             depois = await _ler_depois_do_gesto(ctx)
             motivo = _sobreposicao_nova(ctx.tree, depois, recipientes)
             if motivo:
@@ -673,7 +679,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
                 # para sair dele) ou abriu outra janela. Fecha-se aqui, sem a IA, e a rolagem NÃO aconteceu: dizer
                 # `changed=true` (o conteúdo "mudou" porque a janela é outra) era mentir; `at_end=true`, também.
                 await ctx.call(io.press_key, "back")
-                await asyncio.sleep(0.8)
+                await ctx.dormir(0.8)
                 result.update(changed=False, at_end=False, overlay_dismissed=motivo)
                 return ToolOutcome(result)
             changed = _content_in(depois, area) != before
@@ -691,7 +697,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         if args.element_id:
             x, y, el = resolve_point(ctx, args.element_id, None, None)
             await ctx.call(io.tap, x, y)
-            await asyncio.sleep(0.4)
+            await ctx.dormir(0.4)
         via = await _escrever(ctx, args.text, clear_first=args.clear_first)
         conferencia = await _conferir_digitacao(ctx, args.text, el, clear_first=args.clear_first)
         # Texto incompleto não se "confirma" com Enter: num chat, isso mandaria a mensagem cortada.
@@ -718,7 +724,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
                               + (", ".join(sorted(ctx.allowed_urls | ctx.allowed_hosts)) or "nenhum nesta execução"),
                               effect_possible=False)
         await ctx.call(io.open_url, url)
-        await asyncio.sleep(2.0)
+        await ctx.dormir(2.0)
         return ToolOutcome({"opened_url": url})
     if isinstance(args, PressBack):
         await ctx.call(io.press_key, "back")
@@ -741,14 +747,14 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
     if isinstance(args, WaitFor):
         total = max(0.5, min(float(args.seconds), 15.0))
         if not args.text or ctx.observe is None:
-            await asyncio.sleep(total)
+            await ctx.dormir(total)
             return ToolOutcome({"waited_s": total})
         waited = 0.0
         while waited < total:
             tree = await ctx.observe()
             if tree.contains_text(args.text):
                 return ToolOutcome({"found": True, "waited_s": round(waited, 1)})
-            await asyncio.sleep(1.0)
+            await ctx.dormir(1.0)
             waited += 1.0
         return ToolOutcome({"found": False, "waited_s": total})
     raise DriverError(f"Ferramenta {name} não é executável.", effect_possible=False)

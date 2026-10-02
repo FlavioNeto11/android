@@ -139,7 +139,9 @@ typing-inspection==0.4.4
     #   pydantic
     #   pydantic-settings
 tzdata==2026.4
-    # via psycopg
+    # via
+    #   -r requirements.in
+    #   psycopg
 urllib3==2.8.0
     # via selenium
 uvicorn==0.53.0
