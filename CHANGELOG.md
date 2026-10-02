@@ -81,6 +81,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — W8: protocolo da validação real com as condições do servidor WireGuard (A3, `not_run`)
+
+- **`scripts/diag-w8-mitigacao.py`**: antes de cada reinício do servidor WireGuard (par do android-09 entrando e saindo) espera a **janela ociosa** de 02/03/05/06 (sem execução nem comando aberto; nunca interrompe), observa o reinício e mede a **reconexão** (handshake novo dos pares online em ≤ 120 s; senão para, tira o par e relata); lê o firewall (`firewall-check`, nunca cria regra: sem `liberado` o resultado é BLOQUEADO com os comandos do dono); confere a **pausa do reparo no health antes de cada boot**; o reinício do 09 pelo rollback fica fora dos 6 boots e é registrado à parte. Prova `simulated`: `scripts/tests/test_diag_w8_mitigacao.py` (29 testes). Nada foi executado no parque (`not_run`).
+- `docs/handoffs/w8-boot-recovery.md` §17.5: autorização do dono (02/10, via sessão orquestradora), condições e sequência registradas antes do 1º boot.
+
 ## 2026-10-02 — Retrieval: escopo padrão de código no consumidor do plano-100 (J7)
 
 - **`scripts/plano-100-pacotes.py --contexto`** passa a consultar só `backend/app/`, `frontend/src/` e `scripts/` por padrão (`--contexto-escopo PREFIXO`, repetível, troca o padrão; `--contexto-sem-escopo` consulta tudo). Vale só para este consumidor opt-in: serviço, CLI do módulo e API não mudam; sem a flag `--contexto` a saída continua byte a byte a de sempre. `real` (02/10, `context-retrieval-local-eval.py --consumidor`, 40 commits): hit@3 22,5% → 70,0%, hit@5 37,5% → 77,5%, MRR@10 0,195 → 0,555. `simulated`: `scripts/tests/test_pacotes_contexto.py` (11 → 15 testes; o de saída idêntica segue verde) e `test_context_retrieval_local_eval.py` (9). O `local-eval` ganhou `--consumidor`.
