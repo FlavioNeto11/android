@@ -154,13 +154,32 @@ class TrilhaDasLojas:
 
 
 # ------------------------------------------------------------------ o D1 dentro das lojas
+#: `LearningService.avisar_mudanca_nativa`: o evento `learning.needs_person` (30.21) da mudança que a loja fez.
+AvisoDeMudanca = Callable[..., None]
+
+
+def _anunciar(db: Database, avisar: AvisoDeMudanca | None, kind: LivroKind, ref: str, de: str | None, para: str,
+              por: str) -> None:
+    """O aviso da espera do dono (30.21) da mudança que a loja fez, DEPOIS da trilha e num `savepoint` próprio: a falha
+    dele (log, nunca exceção) não leva a trilha junto, e a loja da execução nunca cai por ele."""
+    if avisar is None:
+        return
+    try:
+        with db.savepoint():
+            avisar(kind, ref, de, para, by=por)
+    except Exception:  # noqa: BLE001
+        log.exception("aprendizado: aviso de espera de %s %s", kind.value, ref)
+
+
 class PoliticaD1DoFluxo:
     """`flows.PoliticaDoFluxo`: o status com que o fluxo nasce de uma execução, e a trilha do que a loja mudou."""
 
-    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas, db: Database) -> None:
+    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas, db: Database,
+                 avisar: AvisoDeMudanca | None = None) -> None:
         self._d1 = d1
         self._trilha = trilha
         self._db = db
+        self._avisar = avisar
 
     def ao_nascer(self, nascimento: NascimentoDoFluxo) -> str | None:
         try:
@@ -180,15 +199,19 @@ class PoliticaD1DoFluxo:
                                        run_id=m.run_id)
         except Exception:  # noqa: BLE001 - a trilha informa; o fluxo aprendido não cai por causa dela
             log.exception("aprendizado: trilha do fluxo %s", m.flow_id)
+        _anunciar(self._db, self._avisar, LivroKind.FLUXO, m.flow_id, m.de, m.para, m.por)
+
 
 
 class OuvinteD1DasReceitas:
     """`recipes.OuvinteDasReceitas`: o veto do caminho que uma pessoa desligou e a trilha do que a loja mudou."""
 
-    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas, db: Database) -> None:
+    def __init__(self, d1: D1Nativo, trilha: TrilhaDasLojas, db: Database,
+                 avisar: AvisoDeMudanca | None = None) -> None:
         self._d1 = d1
         self._trilha = trilha
         self._db = db
+        self._avisar = avisar
 
     def vetada(self, receita: ReceitaVista) -> bool:
         r = receita
@@ -211,6 +234,8 @@ class OuvinteD1DasReceitas:
                                        por=m.por, run_id=origem)
         except Exception:  # noqa: BLE001 - a trilha informa; a receita não cai por causa dela
             log.exception("aprendizado: trilha da receita %s", m.recipe_id)
+        _anunciar(self._db, self._avisar, LivroKind.RECEITA, str(m.recipe_id), m.de, m.para, m.por)
+
 
     def _execucao_de_origem(self, recipe_id: int) -> str | None:
         row = self._db.one("SELECT s.run_id FROM recipes r JOIN steps s ON s.id = r.learned_from_step WHERE r.id=?",
@@ -251,9 +276,9 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
                                                          decidir=decidir))
         habilidades.flow_trail = TrilhaDaAdocao(trilha)
     if fluxos is not None:
-        fluxos.politica = PoliticaD1DoFluxo(d1, trilha, db)
+        fluxos.politica = PoliticaD1DoFluxo(d1, trilha, db, servico.avisar_mudanca_nativa)
     if receitas is not None:
-        receitas.ouvinte = OuvinteD1DasReceitas(d1, trilha, db)
+        receitas.ouvinte = OuvinteD1DasReceitas(d1, trilha, db, servico.avisar_mudanca_nativa)
     return d1
 
 
