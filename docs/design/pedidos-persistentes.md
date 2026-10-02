@@ -456,8 +456,8 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
 | Recurso | Regra proposta | Existe hoje |
 |---|---|---|
 | Orçamento do pedido | `orcamento_total_usd` e `orcamento_ocorrencia_usd`; o custo da ocorrência é somado de `ai_calls` da execução no fechamento e gravado em `pedido_ocorrencias.custo_usd` (sobrevive à purga de 14 dias) | `ai_max_usd_per_run`, `ai_max_usd_per_day`, `ai_calls` |
-| Antes de despachar | estimativa = mediana das últimas 5 ocorrências (ou teto por ocorrência na primeira); saldo restante menor que a estimativa → `pulada: orçamento` e pausa com aviso | — |
-| Saldo das contas de IA (ADR-051) | conta em `block_below` → ocorrência `adiada: saldo`, dentro da janela; fora dela, `perdida`. Não é falha e não conta para `pausa_por_falha` | `AIError(kind="balance")` |
+| Antes de despachar | estimativa = mediana das últimas 5 ocorrências (ou teto por ocorrência na primeira); saldo restante menor que a estimativa → `pulada: orçamento` e pausa com aviso (28.6: a ocorrência vira `pulada: orçamento: …` e, sem execução aberta, o pedido ENCERRA com `encerrado_motivo='orcamento'` em vez de pausar; a pausa com aviso é do 28.9) | — |
+| Saldo das contas de IA (ADR-051) | conta em `block_below` → ocorrência `adiada: saldo`, dentro da janela; fora dela, `perdida`. Não é falha e não conta para `pausa_por_falha` (28.6: implementado SEM o `perdida` fora da janela: a adiada fica `devida` até o saldo voltar; `pedidos-laco.md` §11) | `AIError(kind="balance")` |
 | Piso de frequência | `observar` ≥ 15 min; efeito externo ≥ 1 h e dentro dos limites do perfil; cada pedido declara o intervalo, a interface mostra o custo por mês estimado | — |
 | Concorrência | ocorrências são execuções: `max_active_devices`, teto por servidor, vagas de IA (`ai_slots`) | existe |
 | Prioridade | `runs.prioridade`: comando interativo antes de ocorrência de fundo; `dispatchable_objectives` passa a ordenar por prioridade e depois por `created_at` | ordena só por `created_at` |

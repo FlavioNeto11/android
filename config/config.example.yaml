@@ -472,8 +472,8 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
              candidata_sem_evidencia_dias: 90}
 
 pedidos:                          # pedidos persistentes (28.4): o objetivo que dura e volta (docs/design/pedidos-laco.md)
-  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO e o teto de orçamento
-                                  # é do 28.6; ligar é decisão do dono, por instalação
+  enabled: false                  # DESLIGADO de fábrica: cada ocorrência chama o planejador PAGO; o orçamento
+                                  # (28.6) limita o gasto por pedido, mas ligar é decisão do dono, por instalação
   tick_s: 15                      # o laço acorda a cada tanto (e quando uma execução do pedido assenta)
   horizonte_s: 3600               # quanto à frente a recorrência vira ocorrência `prevista`
   prazo_inicio_s: 3600            # execução despachada que não começa neste prazo é cancelada (a ocorrência fica `perdida`)

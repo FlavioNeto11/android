@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
+
+- Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
+- Orçamento total: `modules/pedidos/domain/orcamento.py` (puro). Restante menor que a estimativa (mediana das últimas 5 ocorrências; sem histórico, `orcamento_ocorrencia_usd`) ou `<= 0` pula o que não virou execução (`orçamento: …`) e encerra o pedido com `encerrado_motivo='orcamento'` (espera a execução aberta fechar). Pedido sem orçamento não muda de comportamento.
+- Teto por ocorrência na execução: `AIRouter._budget` consulta `Repository.teto_usd_da_execucao` (menor entre o resto do teto da ocorrência e o resto do orçamento total) e barra a chamada com `AIError(kind="budget")` antes de gastar. Sem coluna nova.
+- Saldo (ADR-051): `modules/pedidos/infrastructure/saldo.py` lê o mesmo serviço de `GET /api/ai/balances` (sem chamada paga); conta de IA em uso bloqueada, ou abaixo de `pedidos.saldo_minimo_usd` (novo; 0 desliga o mínimo), ADIA o despacho: a ocorrência fica `devida`, sem falha e sem virar `perdida`, com `resumo = "adiada: …"`.
+- Prioridade: `dispatchable_objectives` ordena `prioridade DESC, created_at`; `RunService.create`/`create_run` ganham o parâmetro interno `prioridade` (padrão 0, fora do `RunCreate` público). O laço grava 0 (a 067 não deu campo ao pedido).
+- Sem migração e sem ADR novo. Prova `simulated`: `backend/tests/test_pedidos_orcamento.py` (25); PostgreSQL e laço ligado no central (28.12): `not_run`. Desenho em `docs/design/pedidos-laco.md` §11.
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.

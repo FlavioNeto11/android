@@ -1011,7 +1011,7 @@ class SensitiveScreenSeed(BaseModel):
 
 class PedidosCfg(BaseModel):
     """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
-    ocorrência despachada chama o planejador PAGO e o teto de orçamento é do 28.6; até ele entrar, ligar é decisão do
+    ocorrência despachada chama o planejador PAGO e o orçamento (28.6) já limita o gasto, mas ligar segue sendo decisão do
     dono, por instalação. Desligado, o laço nem sobe (e este backend não toma a trava `pedidos`)."""
 
     enabled: bool = False
