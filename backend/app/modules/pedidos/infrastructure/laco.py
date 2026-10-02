@@ -36,13 +36,17 @@ from app.config import PedidosCfg
 from app.db import Database, Row, loads
 from app.models import RunCreate, RunTarget
 from app.modules.pedidos.infrastructure.acoes import AcoesDePedidos
+from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
+from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
 from app.modules.pedidos.domain import gatilhos
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
 from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
 from app.modules.pedidos.domain.materializar import janela_padrao_s, materializar, truncar
+from app.modules.pedidos.domain.orcamento import (ULTIMAS_PARA_ESTIMAR, custo_estimado, motivo_sem_orcamento,
+                                                  quantas_cabem)
 from app.modules.pedidos.domain.sobreposicao import Devida, decidir
 from app.taskqueue.service import RunError
 from app.taskqueue.travas import PEDIDOS, Lideranca, TravaPerdida
@@ -52,6 +56,11 @@ log = logging.getLogger("poc.pedidos")
 
 _UM_SEGUNDO = timedelta(seconds=1)
 
+#: Prioridade da execução de uma ocorrência (`runs.prioridade`, 28.6). A 067 não deu campo de prioridade ao pedido, então
+#: todas valem 0 (o que o comando de hoje também vale) e nada muda de ordem; `_prioridade` é a costura para quando o
+#: pedido ganhar o campo (o desenho do §10 quer a interativa à frente da de fundo).
+PRIORIDADE_PADRAO = 0
+
 
 @dataclass
 class Resumo:
@@ -59,6 +68,8 @@ class Resumo:
     materializadas: int = 0
     despachadas: int = 0
     fechadas: int = 0
+    adiadas: int = 0
+    encerrados: int = 0
     puladas: int = 0
     erros: int = 0
     lider: bool = True
@@ -66,16 +77,30 @@ class Resumo:
 
 class LacoDePedidos:
     def __init__(self, db: Database, runs, lideranca: Lideranca, cfg: PedidosCfg, *,
-                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None):
+                 relogio: Callable[[], datetime] | None = None, lider: Callable[[], int | None] | None = None,
+                 custo_da_execucao: Callable[[str], float] | None = None,
+                 adiar_por_saldo: Callable[[], str | None] | None = None,
+                 resumidor: ResumidorDeRelatorio | None = None):
         self.db = db
         self.runs = runs
         self.lideranca = lideranca
         self.cfg = cfg
+        #: US$ gastos pela execução (`ai_calls`, pela mesma conta do painel de uso: `costs.spent_usd`). Injetado por
+        #: `AppState` (precisa de `ai.prices`, que o laço não conhece); sem ele o fechamento grava custo 0 (28.6).
+        self.custo_da_execucao: Callable[[str], float] | None = custo_da_execucao
+        #: Devolve o motivo de ADIAR o despacho (saldo da conta de IA abaixo do mínimo, ADR-051) ou `None` (28.6). Sem
+        #: ele o laço nunca adia por saldo. Lido uma vez por volta, só quando há o que despachar.
+        self.adiar_por_saldo: Callable[[], str | None] | None = adiar_por_saldo
+        self._adiamento: str | None = None
         #: Atributo (e não só parâmetro) para o teste trocar o relógio de um laço já de pé, como em `Lideranca`.
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._lider = lider
         self.repo = RepositorioDePedidos(db)
-        self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar)
+        #: Observações do fechamento, memória e relatório (28.7). O resumo por IA só existe com `resumo_ia` ligado E um
+        #: `resumidor` injetado; sem os dois, nada de IA é chamado.
+        self.relatorios = ServicoDeRelatorios(db, lambda: self.relogio(), resumidor=resumidor, resumo_ia=cfg.resumo_ia,
+                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd)
+        self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None
 
@@ -148,6 +173,7 @@ class LacoDePedidos:
             self._fechar(token, agora, r)
             self._fechar_dos_parados(token, agora, r)
             self._materializar(token, agora, r)
+            self._orcamentos(token, agora, r)       # DEPOIS de materializar: a `devida` nascida agora também é barrada
             self._despachar(token, agora, r)
             self._agendar(token, agora, r)
         except TravaPerdida as e:
@@ -188,11 +214,42 @@ class LacoDePedidos:
         if fech is None:
             return
         transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
+        # O custo é lido ANTES de fechar e gravado no mesmo UPDATE do fechamento (28.6): a retenção apaga `ai_calls`
+        # por `ts`, mas não toca as de execução de ocorrência ainda aberta (`state._purgar_demais_tabelas`), então
+        # esta leitura sempre vê as chamadas inteiras. Só o fechamento terminal soma (uma vez por tentativa).
+        custo = self._custo_da_tentativa(o) if fech.terminal else None
+        preparo = self._observar(o, fech) if fech.terminal else None
         with self.lideranca.cercada(PEDIDOS, token):
             moveu = self.repo.mover(o["id"], o["estado"], fech.estado, motivo=fech.motivo,
-                                    iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None)
+                                    iniciada_em=fech.iniciada_em, terminada_em=to_iso(agora) if fech.terminal else None,
+                                    custo_usd=custo)
+            if moveu and preparo is not None:
+                # Na MESMA transação do fechamento: a ocorrência fecha com as observações dela, ou nada muda e a varredura
+                # repete (a observação é reentrante). Depois do fechamento a execução pode ser purgada; a observação fica.
+                self.relatorios.gravar_do_fechamento(preparo, pedido_id=o["pedido_id"], ocorrencia_id=o["id"])
         if moveu and fech.terminal:
             r.fechadas += 1
+
+    def _custo_da_tentativa(self, o: Row) -> float:
+        """US$ das chamadas de IA da execução desta tentativa; 0 sem execução ou sem a leitura injetada. Falha na
+        leitura não impede o fechamento (a ocorrência não pode ficar aberta por causa de um número): registra e grava 0."""
+        if not o["run_id"] or self.custo_da_execucao is None:
+            return 0.0
+        try:
+            return max(0.0, float(self.custo_da_execucao(o["run_id"])))
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: custo da execução %s", o["run_id"])
+            return 0.0
+
+    def _observar(self, o: Row, fech):
+        """O que a ocorrência observou (28.7), lido ANTES de fechar. Falha aqui não trava o fechamento: a ocorrência fecha sem
+        observação e o relatório a lista como `sem_observacao` em "não coberto" (falta de prova nunca vira sucesso)."""
+        try:
+            return self.relatorios.observacoes_do_fechamento(o, estado=fech.estado, motivo=fech.motivo,
+                                                             versao_do_pedido=int(o["pedido_versao"]))
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: observações do fechamento da ocorrência %s", o["id"])
+            return None
 
     def _cancelar_por_prazo(self, o: Row, token: int) -> None:
         """Cancela a execução que não começou a tempo e grava a INTENÇÃO; o estado final só sai quando ela assenta."""
@@ -212,6 +269,44 @@ class LacoDePedidos:
             with self.lideranca.cercada(PEDIDOS, token):
                 if self.repo.mover(linha["id"], linha["estado"], para, motivo=motivo, terminada_em=to_iso(agora)):
                     r.puladas += 1
+
+    # ------------------------------------------------------------------ 1b. orçamento total (28.6)
+    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float]:
+        """`(total, gasto, necessario)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram e o que
+        a próxima deve custar (`domain/orcamento.py::custo_estimado`)."""
+        total = p["orcamento_total_usd"]
+        necessario = custo_estimado(self.repo.ultimos_custos(p["id"], ULTIMAS_PARA_ESTIMAR), p["orcamento_ocorrencia_usd"])
+        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario
+
+    def _orcamentos(self, token: int, agora: datetime, r: Resumo) -> None:
+        """Pedido cujo orçamento total não cobre outra ocorrência: o que ainda não virou execução é `pulada`
+        (`orçamento: …`) e, sem execução aberta, o pedido ENCERRA com `encerrado_motivo='orcamento'` (§6.5). Com uma
+        aberta, espera ela fechar (o custo dela é o que decide) e a volta seguinte encerra. Pedido sem orçamento total
+        nunca passa por aqui: nada muda para ele."""
+        for p in self.repo.com_orcamento_total():
+            try:
+                self._conferir_orcamento(p, token, agora, r)
+            except TravaPerdida:
+                raise
+            except Exception:  # noqa: BLE001 - um pedido com defeito não para os outros
+                log.exception("pedidos: orçamento do pedido %s", p["id"])
+                r.erros += 1
+
+    def _conferir_orcamento(self, p: Row, token: int, agora: datetime, r: Resumo) -> bool:
+        """`True` = sem orçamento para outra ocorrência."""
+        total, gasto, necessario = self._situacao_do_orcamento(p)
+        motivo = motivo_sem_orcamento(total, gasto, necessario)
+        if motivo is None:
+            return False
+        for linha in self.repo.ids_prevista_devida(p["id"]):
+            self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
+        if self.repo.quantas_em_aberto(p["id"]) == 0:
+            transicionar_pedido("ativo", "encerrado", ator="sistema", motivo="orcamento")
+            with self.lideranca.cercada(PEDIDOS, token):
+                if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
+                                                    encerrado_motivo="orcamento"):
+                    r.encerrados += 1
+        return True
 
     # ------------------------------------------------------------------ 2. materialização
     def _materializar(self, token: int, agora: datetime, r: Resumo) -> None:
@@ -289,6 +384,7 @@ class LacoDePedidos:
         por_pedido: dict[str, list[Row]] = {}
         for o in self.repo.devidas():
             por_pedido.setdefault(o["pedido_id"], []).append(o)
+        self._adiamento = self._motivo_de_saldo() if por_pedido else None
         criacoes = 0
         for pedido_id, devidas in por_pedido.items():
             p = self.repo.pedido(pedido_id)
@@ -321,14 +417,43 @@ class LacoDePedidos:
                 ja = {i for i, _ in pular}
                 pular += [(o["id"], motivo) for o in devidas if o["id"] not in ja]
         self._pular(pular, token, agora, r)
+        if p["orcamento_total_usd"] is not None:
+            # O que sobra do orçamento total deixa despachar só `cabem` ocorrências nesta volta; o resto fica `devida`
+            # e a volta seguinte, já com o custo das fechadas, decide (ou encerra o pedido: `_orcamentos`).
+            cabem = quantas_cabem(*self._situacao_do_orcamento(p))
+            if cabem is not None:
+                despachar = despachar[:cabem]
         criou = 0
         por_id = {o["id"]: o for o in devidas}
         for oid in despachar:
             if criou >= orcamento:
                 break
+            if self._adiamento is not None:
+                self._adiar(por_id[oid], self._adiamento, r)
+                continue
             if self._despachar_uma(p, por_id[oid], token, agora, r):
                 criou += 1
         return criou
+
+    def _motivo_de_saldo(self) -> str | None:
+        """O saldo adia, nunca falha: erro ao ler o saldo não segura o despacho (a execução já tem a própria barreira
+        no `AIRouter`, que recusa a chamada de conta bloqueada)."""
+        if self.adiar_por_saldo is None:
+            return None
+        try:
+            return self.adiar_por_saldo()
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: leitura do saldo das contas de IA")
+            return None
+
+    def _adiar(self, o: Row, motivo: str, r: Resumo) -> None:
+        """A ocorrência FICA `devida` (sem reserva, sem execução, sem tentativa gasta, sem passar a `perdida`: adiar não
+        é falha) e o motivo vai em `resumo`, só quando mudou, para a volta de 15 s não reescrever a mesma linha."""
+        texto = f"adiada: {motivo}"[:500]
+        if o["resumo"] != texto:
+            self.repo.soltar_reserva(o["id"], texto)
+            log.info("pedidos: ocorrência %s segue devida (%s)", o["id"], texto)
+        r.adiadas += 1
 
     def _pular(self, pular: list[tuple[str, str]], token: int, agora: datetime, r: Resumo, *,
                de: str = "devida") -> None:
@@ -370,7 +495,8 @@ class LacoDePedidos:
             run_id = existente["id"]    # A2: nunca chamar `create` de novo (o pré-voo poderia recusar uma execução que existe)
         else:
             try:
-                run_id = self.runs.create(self._requisicao(p, chave_exec), origem=(p["id"], o["id"])).id
+                run_id = self.runs.create(self._requisicao(p, chave_exec), origem=(p["id"], o["id"]),
+                                          prioridade=self._prioridade(p)).id
             except RunError as e:
                 self._criacao_falhou(p, o, token, agora, r, f"{e.code}: {e.message}")
                 return False
@@ -386,6 +512,11 @@ class LacoDePedidos:
             if self.repo.marcar_despachada(o["id"], run_id, n):
                 r.despachadas += 1
         return True
+
+    @staticmethod
+    def _prioridade(p: Row) -> int:
+        """`runs.prioridade` da execução desta ocorrência: o padrão, até o pedido ter o campo (a 067 não o criou)."""
+        return PRIORIDADE_PADRAO
 
     def _criacao_falhou(self, p: Row, o: Row, token: int, agora: datetime, r: Resumo, texto: str) -> None:
         """A ocorrência fica `devida`, solta a reserva e grava o último motivo; passou de `previsto_para + J` (J = a
@@ -457,9 +588,20 @@ class LacoDePedidos:
         if esgotado and self.repo.quantas_em_aberto(p["id"]) == 0:
             motivo_fim = "contagem" if atingiu else ("prazo" if "prazo" in motivos else "contagem")
             transicionar_pedido("ativo", "encerrado", ator="sistema", motivo=motivo_fim)
+            relatorio = self._relatorio_final(p)
             with self.lideranca.cercada(PEDIDOS, token):
-                self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
-                                                 encerrado_motivo=motivo_fim)
+                if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
+                                                    encerrado_motivo=motivo_fim) and relatorio is not None:
+                    self.relatorios.gravar_relatorio(relatorio)       # encerrar gera o relatório final (§6.5), atômico
             return
         with self.lideranca.cercada(PEDIDOS, token):
             self.repo.definir_proxima_em(p["id"], p["versao"], proxima_em, to_iso(agora))
+
+    def _relatorio_final(self, p: Row):
+        """O relatório de encerramento, montado antes de a transação abrir. Falha não impede o encerramento: o relatório
+        sai depois, sob demanda (`ServicoDeRelatorios.gerar`)."""
+        try:
+            return self.relatorios.preparar_relatorio(p, gatilho="encerramento")
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: relatório de encerramento do pedido %s", p["id"])
+            return None

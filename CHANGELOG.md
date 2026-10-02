@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Orçamento, saldo e prioridade dos pedidos (28.6, branch feat/28-6-orcamento-prioridade)
+
+- Custo da ocorrência: o laço soma o custo de `ai_calls` da execução (`costs.spent_usd`, a conta do painel de uso) a `pedido_ocorrencias.custo_usd` no MESMO `UPDATE` do fechamento (acumula entre tentativas; CAS perdido não soma). A retenção (`_purgar_demais_tabelas`) não leva `ai_calls` de execução de ocorrência ainda `despachada`/`rodando`.
+- Orçamento total: `modules/pedidos/domain/orcamento.py` (puro). Restante menor que a estimativa (mediana das últimas 5 ocorrências; sem histórico, `orcamento_ocorrencia_usd`) ou `<= 0` pula o que não virou execução (`orçamento: …`) e encerra o pedido com `encerrado_motivo='orcamento'` (espera a execução aberta fechar). Pedido sem orçamento não muda de comportamento.
+- Teto por ocorrência na execução: `AIRouter._budget` consulta `Repository.teto_usd_da_execucao` (menor entre o resto do teto da ocorrência e o resto do orçamento total) e barra a chamada com `AIError(kind="budget")` antes de gastar. Sem coluna nova.
+- Saldo (ADR-051): `modules/pedidos/infrastructure/saldo.py` lê o mesmo serviço de `GET /api/ai/balances` (sem chamada paga); conta de IA em uso bloqueada, ou abaixo de `pedidos.saldo_minimo_usd` (novo; 0 desliga o mínimo), ADIA o despacho: a ocorrência fica `devida`, sem falha e sem virar `perdida`, com `resumo = "adiada: …"`.
+- Prioridade: `dispatchable_objectives` ordena `prioridade DESC, created_at`; `RunService.create`/`create_run` ganham o parâmetro interno `prioridade` (padrão 0, fora do `RunCreate` público). O laço grava 0 (a 067 não deu campo ao pedido).
+- Sem migração e sem ADR novo. Prova `simulated`: `backend/tests/test_pedidos_orcamento.py` (25); PostgreSQL e laço ligado no central (28.12): `not_run`. Desenho em `docs/design/pedidos-laco.md` §11.
+
+## 2026-10-02 — Memória, observações e relatório do pedido (28.7, branch feat/28-7-memoria-relatorio)
+
+- Migração **070** `pedidos_memoria` (reservada pela coordenação; a 069 é de outra frente e entra antes): `pedido_memoria` (chave/valor por pedido, versão, tipos do §8.1), `pedido_observacoes` (o que cada ocorrência observou, sem chave estrangeira para a execução: sobrevive à purga) e `pedido_relatorios` (conteúdo JSON determinístico, `sha256`, sequência por pedido, relatório de encerramento único por índice parcial). Só tabelas novas.
+- Domínio puro em `modules/pedidos/domain/`: `memoria.py` (versionada, segredo recusado, `compactar` sem IA), `observacao.py` (observado, incerto ou ausente) e `relatorio.py` (observado, conclusão, não coberto; mesmas entradas dão o mesmo relatório; incerteza, falha e ausência nunca viram conclusão).
+- O laço registra as observações no fechamento da ocorrência, na mesma transação cercada que a fecha, a partir das saídas lidas entre etapas (056); sem saída estruturada grava o resultado com valor ausente. O relatório sai sob demanda, no encerramento e no cancelamento, e falha dele nunca impede a transição.
+- Resumo por IA: só o ponto de extensão (`ResumidorDeRelatorio`, `pedidos.resumo_ia: false`); nenhuma chamada paga.
+- Prova `simulated`: `backend/tests/test_pedidos_memoria.py` (23) e `test_pedidos_relatorio.py` (28); a corrida contra PostgreSQL é pulada sem `TEST_DATABASE_URL`. `real`: `not_run` (o 28.12 liga o laço no central). Desenho: `docs/design/pedidos-laco.md` §11.
+
 ## 2026-10-02 — 28.11 provado em real: aviso de teste chegou ao Telegram do dono
 
 - Real (02/10 ~20:02Z, central, a1fa730): `scripts/avisos-telegram.py testar` enviou a mensagem de teste e o dono confirmou o recebimento no chat; avisos ligados (`avisos.enabled: true`) desde o reinício das ~20:01Z. Estado do 28.11 pelo mecanismo: `implemented`, `real`. Junto: o 17.8 registrado (`simulated`) e a 2ª tentativa real do 17.12 (android-07, barrada por tela de verificação; segue `not_run`, US$ 0,2373 no total).

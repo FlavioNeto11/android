@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from app.db import Row, loads
+from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos, novo_id
 from app.modules.pedidos.domain import gatilhos
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, formatar_instante
@@ -51,8 +52,9 @@ class AcaoInvalida(ValueError):
 
 class AcoesDePedidos:
     def __init__(self, repo: RepositorioDePedidos, runs: RunService, relogio: Callable[[], datetime],
-                 acordar: Callable[[], None]):
+                 acordar: Callable[[], None], relatorios: ServicoDeRelatorios | None = None):
         self.repo = repo
+        self.relatorios = relatorios
         self.runs = runs
         self.relogio = relogio
         self.acordar = acordar
@@ -122,12 +124,24 @@ class AcoesDePedidos:
                 transicionar_ocorrencia(linha["estado"], "cancelada", motivo="pedido cancelado")
                 self.repo.mover(linha["id"], linha["estado"], "cancelada", motivo="pedido cancelado", terminada_em=em)
             abertas = self.repo.execucoes_abertas(pedido_id)
+        self._relatorio_final(pedido_id)
         for run_id in abertas:          # fora da transação: `cancel` abre a própria; a varredura fecha a ocorrência
             try:
                 self.runs.cancel(run_id, por=por)
             except Exception as e:  # noqa: BLE001 - já terminou, ou outra aba cancelou: a varredura fecha como estiver
                 log.info("pedidos: execução %s não pôde ser cancelada com o pedido (%s)", run_id, e)
         self.acordar()
+
+    def _relatorio_final(self, pedido_id: str) -> None:
+        """Cancelar também encerra (§6.5): o relatório final sai logo depois do cancelamento, já com as ocorrências
+        `prevista`/`devida` canceladas. O que ainda roda aparece em "não coberto" como em aberto; o que essas execuções
+        ainda observarem entra nos relatórios sob demanda seguintes. Falha aqui nunca desfaz o cancelamento."""
+        if self.relatorios is None:
+            return
+        try:
+            self.relatorios.gerar(pedido_id, gatilho="encerramento")
+        except Exception:  # noqa: BLE001
+            log.exception("pedidos: relatório de encerramento do pedido %s", pedido_id)
 
     # ------------------------------------------------------------------ editar
     def editar(self, pedido_id: str, campos: Mapping[str, object] | None = None, *, gatilho: tuple[str, Mapping] | None = None,
