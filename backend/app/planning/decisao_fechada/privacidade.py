@@ -33,6 +33,9 @@ C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.
 CAMPOS_POR_ORIGEM: dict[str, frozenset[str]] = {o: frozenset() for o in ORIGENS}
+#: Intenção (31.9): `comando` (C3, já sem destinos, sem segredo e sem entidades: `entidades.remover_entidades`) e `app` (id do
+#: app do comando, quando há). O consumidor é `intencao.py`.
+CAMPOS_POR_ORIGEM["intencao"] = frozenset({"comando", "app"})
 
 
 @dataclass(frozen=True)

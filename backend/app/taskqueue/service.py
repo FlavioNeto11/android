@@ -40,6 +40,7 @@ from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendiza
 from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
+from .sombra_intencao import SombraDaIntencao
 
 log = logging.getLogger("poc.runs")
 
@@ -111,6 +112,8 @@ class RunService:
         #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições do planejador e o aviso dos gestos
         #: de uma pessoa (resolver um item, repetir itens). No-op por padrão; nunca mudam o que o gesto faz.
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
+        #: Sombra da intenção (31.9, ADR-069), injetada pelo AppState. `None` = não observa. Só lê; nunca muda o plano.
+        self.sombra_intencao: SombraDaIntencao | None = None
         #: Sorteio do canário de IA (item 17.7), em [0, 1). Injetável: o teste fixa o valor em vez de depender da sorte.
         self.sorteio: Callable[[], float] = random.random
 
@@ -828,6 +831,26 @@ class RunService:
         # planejamento pago da mesma execução ao subir com ela ainda em `planning`.
         self.repo.db.execute("UPDATE runs SET planned_by=? WHERE id=?", (self.repo.owner_id, run_id))
         self._planning[run_id] = asyncio.create_task(self._plan(run_id), name=f"plan-{run_id}")
+        self._planning[run_id].add_done_callback(lambda _t: self._intencao_em_sombra(run_id))   # 31.9: só observa
+
+    def _intencao_em_sombra(self, run_id: str) -> None:
+        """Depois do `_plan` (qualquer desfecho): entrega a sombra da intenção (31.9, ADR-069) e esquece. Só observa: não
+        decide, não grava na execução e uma falha aqui nunca vira falha do plano. Inerte com a config padrão."""
+        sombra = self.sombra_intencao
+        if sombra is None or not sombra.ativo():
+            return
+        try:
+            run = self.repo.run_row(run_id)
+            if run is None:
+                return
+            perfis, comando, perguntas = self._perfis_da_execucao(run)
+            if perguntas:
+                return
+            apps = loads(str(run["app_ids"] or "[]"), [])
+            sombra.agendar(run_id, comando, [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
+                           str(apps[0]) if apps else None)
+        except Exception:  # noqa: BLE001
+            log.warning("sombra da intenção da execução %s", run_id)
 
     def resume_planning_after_restart(self) -> None:
         """Retoma o planejamento que EU deixei pela metade — nunca o que outro backend está planejando agora.

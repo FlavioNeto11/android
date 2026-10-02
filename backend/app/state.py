@@ -61,6 +61,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
 from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
@@ -86,6 +87,7 @@ from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
+from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
@@ -447,6 +449,12 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Sombra da intenção (31.9, ADR-069): R2 e R3 fora da cadeia, depois do `_plan`. Com a config padrão é inerte.
+        self.runs.sombra_intencao = SombraDaIntencao(
+            ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
+            catalogo=lambda: catalogo_de(
+                lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
+                skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
