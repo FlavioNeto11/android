@@ -111,9 +111,9 @@ def main() -> int:
     ap.add_argument('--run', action='store_true', help='as chamadas reais')
     ap.add_argument('--env', default=None, help='arquivo .env que o EnvSettings carrega (não é lido por este script)')
     ap.add_argument('--max-calls', type=int, default=12)
-    ap.add_argument('--max-candidate-files', type=int, default=None, help='só nesta execução (padrão do produto: 8)')
-    ap.add_argument('--max-chunks', type=int, default=None, help='só nesta execução (padrão do produto: 24)')
-    ap.add_argument('--max-input-tokens', type=int, default=None, help='só nesta execução (padrão do produto: 24000)')
+    ap.add_argument('--max-candidate-files', type=int, default=None, help='só nesta execução (padrão do produto desde o J13: 5; antes, 8)')
+    ap.add_argument('--max-chunks', type=int, default=None, help='só nesta execução (padrão do produto desde o J13: 16; antes, 24)')
+    ap.add_argument('--max-input-tokens', type=int, default=None, help='só nesta execução (padrão do produto desde o J13: 32000; antes, 24000)')
     ap.add_argument('--out', type=Path, default=None)
     args = ap.parse_args()
     if not (args.analise or args.run):
@@ -157,8 +157,8 @@ def main() -> int:
                             max_chunks=s.max_chunks, max_bytes=s.max_bytes)
     config_do_teste = {'max_candidate_files': s.max_candidate_files, 'max_chunks': s.max_chunks,
                        'max_bytes': s.max_bytes, 'max_input_tokens': s.max_input_tokens, 'max_calls': args.max_calls,
-                       'padroes_do_produto': {'max_candidate_files': 8, 'max_chunks': 24, 'max_bytes': 48000,
-                                              'max_input_tokens': 24000}}
+                       'padroes_antes_do_J13': {'max_candidate_files': 8, 'max_chunks': 24, 'max_bytes': 48000,
+                                              'max_input_tokens': 24000, 'selecao_de_chunks': 'inicio do arquivo, sequencial'}}
 
     with tempfile.TemporaryDirectory() as dados:
         cfg.file.paths.data_dir = dados
@@ -170,13 +170,13 @@ def main() -> int:
         gratis: list[dict] = []
         for p in perguntas:
             esperadas = p['expected_regions']
-            sozinho = chunker.chunks_for([e for e in p['expected_files']], max_chunks=s.max_chunks, max_bytes=s.max_bytes)
+            sozinho = chunker.chunks_for([e for e in p['expected_files']], max_chunks=s.max_chunks, max_bytes=s.max_bytes, query=p['question'])
             loc = local.gather(p['question'], scope=ESCOPO)
             arq = [f.path for f in loc.files]
             reg = [(r.path, r.start_line, r.end_line) for r in loc.regions]
             top5_local = arq[:5]
             # payload que a B teria se os candidatos fossem os 5 primeiros do local (proxy, não são os da A)
-            proxy = chunker.chunks_for(top5_local, max_chunks=s.max_chunks, max_bytes=s.max_bytes)
+            proxy = chunker.chunks_for(top5_local, max_chunks=s.max_chunks, max_bytes=s.max_bytes, query=p['question'])
             gratis.append({
                 'id': p['id'], 'group': p['group'],
                 'esperada_alcancavel_se_o_arquivo_for_o_1o_candidato': alcancavel([(x.path, x.start_line, x.end_line) for x in sozinho], esperadas),
