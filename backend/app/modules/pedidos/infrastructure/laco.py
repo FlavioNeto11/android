@@ -43,6 +43,8 @@ from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transici
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
 from app.modules.pedidos.domain.materializar import janela_padrao_s, materializar, truncar
+from app.modules.pedidos.domain.orcamento import (ULTIMAS_PARA_ESTIMAR, custo_estimado, motivo_sem_orcamento,
+                                                  quantas_cabem)
 from app.modules.pedidos.domain.sobreposicao import Devida, decidir
 from app.taskqueue.service import RunError
 from app.taskqueue.travas import PEDIDOS, Lideranca, TravaPerdida
@@ -64,6 +66,7 @@ class Resumo:
     materializadas: int = 0
     despachadas: int = 0
     fechadas: int = 0
+    encerrados: int = 0
     puladas: int = 0
     erros: int = 0
     lider: bool = True
@@ -157,6 +160,7 @@ class LacoDePedidos:
             self._fechar(token, agora, r)
             self._fechar_dos_parados(token, agora, r)
             self._materializar(token, agora, r)
+            self._orcamentos(token, agora, r)       # DEPOIS de materializar: a `devida` nascida agora também é barrada
             self._despachar(token, agora, r)
             self._agendar(token, agora, r)
         except TravaPerdida as e:
@@ -237,6 +241,44 @@ class LacoDePedidos:
             with self.lideranca.cercada(PEDIDOS, token):
                 if self.repo.mover(linha["id"], linha["estado"], para, motivo=motivo, terminada_em=to_iso(agora)):
                     r.puladas += 1
+
+    # ------------------------------------------------------------------ 1b. orçamento total (28.6)
+    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float]:
+        """`(total, gasto, necessario)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram e o que
+        a próxima deve custar (`domain/orcamento.py::custo_estimado`)."""
+        total = p["orcamento_total_usd"]
+        necessario = custo_estimado(self.repo.ultimos_custos(p["id"], ULTIMAS_PARA_ESTIMAR), p["orcamento_ocorrencia_usd"])
+        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario
+
+    def _orcamentos(self, token: int, agora: datetime, r: Resumo) -> None:
+        """Pedido cujo orçamento total não cobre outra ocorrência: o que ainda não virou execução é `pulada`
+        (`orçamento: …`) e, sem execução aberta, o pedido ENCERRA com `encerrado_motivo='orcamento'` (§6.5). Com uma
+        aberta, espera ela fechar (o custo dela é o que decide) e a volta seguinte encerra. Pedido sem orçamento total
+        nunca passa por aqui: nada muda para ele."""
+        for p in self.repo.com_orcamento_total():
+            try:
+                self._conferir_orcamento(p, token, agora, r)
+            except TravaPerdida:
+                raise
+            except Exception:  # noqa: BLE001 - um pedido com defeito não para os outros
+                log.exception("pedidos: orçamento do pedido %s", p["id"])
+                r.erros += 1
+
+    def _conferir_orcamento(self, p: Row, token: int, agora: datetime, r: Resumo) -> bool:
+        """`True` = sem orçamento para outra ocorrência."""
+        total, gasto, necessario = self._situacao_do_orcamento(p)
+        motivo = motivo_sem_orcamento(total, gasto, necessario)
+        if motivo is None:
+            return False
+        for linha in self.repo.ids_prevista_devida(p["id"]):
+            self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
+        if self.repo.quantas_em_aberto(p["id"]) == 0:
+            transicionar_pedido("ativo", "encerrado", ator="sistema", motivo="orcamento")
+            with self.lideranca.cercada(PEDIDOS, token):
+                if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
+                                                    encerrado_motivo="orcamento"):
+                    r.encerrados += 1
+        return True
 
     # ------------------------------------------------------------------ 2. materialização
     def _materializar(self, token: int, agora: datetime, r: Resumo) -> None:
@@ -346,6 +388,12 @@ class LacoDePedidos:
                 ja = {i for i, _ in pular}
                 pular += [(o["id"], motivo) for o in devidas if o["id"] not in ja]
         self._pular(pular, token, agora, r)
+        if p["orcamento_total_usd"] is not None:
+            # O que sobra do orçamento total deixa despachar só `cabem` ocorrências nesta volta; o resto fica `devida`
+            # e a volta seguinte, já com o custo das fechadas, decide (ou encerra o pedido: `_orcamentos`).
+            cabem = quantas_cabem(*self._situacao_do_orcamento(p))
+            if cabem is not None:
+                despachar = despachar[:cabem]
         criou = 0
         por_id = {o["id"]: o for o in devidas}
         for oid in despachar:

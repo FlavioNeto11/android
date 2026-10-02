@@ -58,6 +58,23 @@ class RepositorioDePedidos:
                               " estado='ativo'", (proxima_em, em, pedido_id, versao))
         return (cur.rowcount or 0) == 1
 
+    def com_orcamento_total(self) -> list[Row]:
+        """Pedidos `ativo` com orçamento total (28.6): os únicos que o laço confere a cada volta."""
+        return self.db.query("SELECT * FROM pedidos WHERE estado='ativo' AND orcamento_total_usd IS NOT NULL"
+                             " ORDER BY criado_em, id")
+
+    def custo_total(self, pedido_id: str) -> float:
+        """US$ já gravados em todas as ocorrências do pedido (só as que FECHARAM somam: ver `mover`)."""
+        return float(self.db.scalar("SELECT COALESCE(SUM(custo_usd), 0) FROM pedido_ocorrencias WHERE pedido_id=?",
+                                    (pedido_id,)) or 0.0)
+
+    def ultimos_custos(self, pedido_id: str, quantos: int) -> list[float]:
+        """`custo_usd` das últimas ocorrências FECHADAS COM execução, a mais recente primeiro (a estimativa do §10)."""
+        return [float(r["custo_usd"]) for r in self.db.query(
+            "SELECT custo_usd FROM pedido_ocorrencias WHERE pedido_id=? AND run_id IS NOT NULL AND estado IN"
+            " ('concluida','falhou','incerta','cancelada') ORDER BY terminada_em DESC, id DESC LIMIT ?",
+            (pedido_id, quantos))]
+
     def mudar_estado_do_pedido(self, pedido_id: str, de: str, para: str, em: str, *, versao: int | None = None,
                                pausado_motivo: str | None = None, encerrado_motivo: str | None = None) -> bool:
         sql = ("UPDATE pedidos SET estado=?, atualizado_em=?, proxima_em=NULL,"

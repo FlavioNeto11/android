@@ -22,6 +22,7 @@ from ..modules.execution.domain.states import ATTEMPT, OBJECTIVE, RUN, STEP, Maq
 from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.learning.domain.falhas import classificar_falha
+from ..modules.pedidos.domain.orcamento import teto_da_execucao
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
@@ -1025,6 +1026,27 @@ class Repository:
         """
         return (f" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id={coluna}"
                 " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+
+    def teto_usd_da_execucao(self, run_id: str | None) -> float | None:
+        """Teto de gasto, em US$, que o orçamento do pedido dá a esta execução (item 28.6); `None` para a execução que não
+        nasceu de ocorrência de pedido ou cujo pedido não tem orçamento (a quase totalidade: nada muda para ela).
+
+        Mora aqui, e não no repositório de pedidos, porque o `AIRouter._budget` já tem este repositório e é ele quem barra
+        a chamada ANTES de gastar. `domain/orcamento.py::teto_da_execucao` faz a conta."""
+        if not run_id:
+            return None
+        linha = self.db.one(
+            "SELECT p.orcamento_total_usd AS total, p.orcamento_ocorrencia_usd AS por_ocorrencia,"
+            " o.custo_usd AS custo_ocorrencia,"
+            " (SELECT COALESCE(SUM(x.custo_usd), 0) FROM pedido_ocorrencias x WHERE x.pedido_id=p.id) AS gasto"
+            " FROM runs r JOIN pedido_ocorrencias o ON o.id=r.ocorrencia_id JOIN pedidos p ON p.id=o.pedido_id"
+            " WHERE r.id=?", (run_id,))
+        if linha is None:
+            return None
+        def _f(v: object) -> float | None:
+            return None if v is None else float(v)
+        return teto_da_execucao(_f(linha["total"]), float(linha["gasto"] or 0.0), _f(linha["por_ocorrencia"]),
+                                float(linha["custo_ocorrencia"] or 0.0))
 
     def active_runs(self) -> list[Row]:
         return self.db.query("SELECT * FROM runs WHERE status IN ('running','cancelling') ORDER BY created_at")

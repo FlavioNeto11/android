@@ -177,6 +177,14 @@ class RoutingProvider:
             return
         s = self.get_settings()
         prices = self.cfg.file.ai.prices
+        # Orçamento do PEDIDO (28.6): o que o pedido ainda pode gastar nesta ocorrência. `None` (a execução comum, ou o
+        # pedido sem orçamento) não muda nada; é uma leitura pela chave primária da execução, ao lado da que já se faz.
+        teto_pedido = self.repo.teto_usd_da_execucao(run_id) if run_id else None
+        if teto_pedido is not None:
+            gasto = costs.spent_usd(self.repo.db, prices, run_id=run_id)
+            if gasto >= teto_pedido:
+                raise AIError(f"Orçamento do pedido atingido nesta ocorrência: US$ {gasto:.2f} de US$ {teto_pedido:.2f}. "
+                              "Ajuste o orçamento do pedido para continuar.", kind="budget")
         for rotulo, limite, gasto_fn, chave in (
                 ("desta execução", float(getattr(s, "ai_max_usd_per_run", 0) or 0),
                  (lambda: costs.spent_usd(self.repo.db, prices, run_id=run_id)), f"run:{run_id}"),
