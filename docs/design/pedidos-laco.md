@@ -419,3 +419,113 @@ Desvios e escolhas do código, onde o desenho dizia INFERRED:
 - `test_pedidos_laco.py` cobre A1, A2, A3, A5, A6, dois líderes e a cerca, coalescência, perdidas, sobreposição,
   `max_ocorrencias`, reinício, pausa/retomada/cancelamento e o laço desligado; A4 está em `test_pedidos_origem.py`.
   PostgreSQL (`TEST_DATABASE_URL`): `not_run`.
+
+## 11. 28.6 — o que foi feito (02/10/2026, branch `feat/28-6-orcamento-prioridade`)
+
+Prova `simulated` (`backend/tests/test_pedidos_orcamento.py`, relógio falso, provedor e `ai_calls` à mão); `real` só no
+28.12. PostgreSQL (`TEST_DATABASE_URL`): `not_run`. Sem migração (a 067 já trazia as colunas) e sem ADR novo. Com isto a
+condição da D1 (o orçamento do 28.6 na `main`) está cumprida; LIGAR o laço (`pedidos.enabled`) continua sendo o gesto do 28.12.
+
+| Peça | Onde |
+|---|---|
+| Regras puras: estimativa (mediana das últimas 5), motivo de esgotamento, quantas cabem, teto da execução | `modules/pedidos/domain/orcamento.py` |
+| Custo gravado no fechamento, SOMADO no mesmo `UPDATE` do CAS de estado | `repositorio.py::mover(custo_usd=…)`, `laco.py::_fechar_uma`, `_custo_da_tentativa` |
+| Retenção que não leva `ai_calls` de execução de ocorrência aberta | `state.py::_purgar_demais_tabelas` |
+| Orçamento total: pula o que não cabe e encerra com `encerrado_motivo='orcamento'` | `laco.py::_orcamentos`, `_conferir_orcamento`; `repositorio.py::com_orcamento_total`, `custo_total`, `ultimos_custos` |
+| Teto por ocorrência NA execução | `taskqueue/repository.py::teto_usd_da_execucao`, `planning/routing.py::_budget` |
+| Saldo (ADR-051) adia | `infrastructure/saldo.py::motivo_de_adiamento`, `laco.py::_motivo_de_saldo`, `_adiar`; `PedidosCfg.saldo_minimo_usd` |
+| `runs.prioridade` | `taskqueue/repository.py` (`create_run(prioridade=)`, `dispatchable_objectives`), `taskqueue/service.py::create(prioridade=)`, `laco.py::_prioridade` |
+
+Decisões e limites:
+
+- **Custo antes da purga.** `uma_volta` lê o custo (`costs.spent_usd`, a conta do painel de uso e do teto, injetada em
+  `AppState` como `custo_da_execucao`) e o soma a `custo_usd` no MESMO `UPDATE` do fechamento terminal: CAS perdido não
+  soma, queda não deixa ocorrência fechada sem custo, e as tentativas do 28.5 acumulam. A retenção apaga `ai_calls` por
+  `ts` (14 dias); a única janela de perda era uma ocorrência aberta há mais que isso (rara, mas possível com `needs_input`).
+  Escolhi o menor conserto: o `DELETE` de `ai_calls` não leva a chamada cuja execução pertence a ocorrência
+  `despachada`/`rodando`. Não se grava custo parcial antes do fechamento (somaria em dobro). `runs` não é purgada por
+  nenhuma retenção (só `ai_calls`, `events`, evidências): a linha ausente do §5.3 segue sendo defesa.
+- **O custo em andamento não conta no total até a ocorrência fechar.** O excesso possível é o de uma ocorrência aberta por
+  vez (sobreposição `pular`/`guardar_uma`); com `permitir_todas` (só `observar`), `quantas_cabem` limita a volta pela
+  estimativa. O que passa disso o teto da execução barra (abaixo).
+- **Estimativa** = mediana do `custo_usd` das últimas 5 ocorrências fechadas COM execução e custo > 0; sem histórico, o
+  `orcamento_ocorrencia_usd`; sem os dois, 0 (a primeira sai). Restante do total menor que a estimativa (ou <= 0) =
+  sem orçamento: o que ainda não virou execução vira `pulada` (`orçamento: …`) e, sem execução aberta, o pedido encerra com
+  `orcamento`; com uma aberta, espera ela fechar (o custo real decide). `_orcamentos` roda DEPOIS de materializar e ANTES de
+  despachar, para a `devida` nascida na mesma volta também ser barrada. Pedido sem `orcamento_total_usd` nunca entra no
+  caminho: comportamento idêntico ao do 28.4.
+- **Teto por ocorrência na execução.** `AIRouter._budget` (que já barra `ai_max_usd_per_run`/`per_day` ANTES de gastar)
+  pergunta ao repositório o teto do pedido: o menor entre `orcamento_ocorrencia_usd − custo das tentativas anteriores` e
+  `orcamento_total_usd − gasto fechado do pedido`. Estourado, `AIError(kind="budget")`, como o teto global. Não há campo
+  novo em `runs` nem mudança no executor; a leitura é uma consulta pela chave primária da execução, e a execução que não é
+  de pedido recebe `None` e não muda. Limite: a checagem é por chamada, então a chamada em voo pode passar do teto pelo
+  custo dela.
+- **Saldo adia, não falha, não perde.** Uma leitura por volta (`saldos.estado`, o mesmo serviço de `GET /api/ai/balances`; sem
+  chamada paga), só quando há `devida`. Adia se uma conta que paga alguma função de IA está `bloqueia` (bloqueio do dono ou
+  crédito esgotado) ou, com `pedidos.saldo_minimo_usd > 0`, com saldo estimado abaixo do mínimo; conta sem leitura não adia.
+  A ocorrência fica `devida`, sem reserva e sem tentativa gasta, com `resumo = "adiada: …"` (regravado só quando muda).
+  **Diverge do §10 de `pedidos-persistentes.md`** ("fora da janela, `perdida`"): por pedido do coordenador a adiada nunca
+  vira `perdida` por causa do saldo; o custo é que, com o saldo baixo por dias, as `devida` se acumulam (a sobreposição
+  `pular` ainda descarta o excesso, com motivo) e a mais antiga sai primeiro quando o saldo volta. Contar a adiada como
+  `perdida` depois de `previsto_para + janela` é uma linha em `_adiar`, se o dono preferir.
+- **Prioridade.** `dispatchable_objectives` ordena `r.prioridade DESC, r.created_at, o.instance_id`: prioridade 0 (todo o
+  legado) mantém a ordem de antes. `RunService.create(prioridade=)` e `create_run(prioridade=)` são parâmetros INTERNOS,
+  como `origem`; `RunCreate` segue com `extra="forbid"`. A 067 não deu campo de prioridade ao pedido: o laço grava
+  `PRIORIDADE_PADRAO = 0` por `_prioridade(p)`, a costura para quando o pedido ganhar o campo (o §10 do desenho quer a
+  interativa à frente da de fundo, o que exigirá valor de fundo abaixo de 0 ou interativa acima de 0 e é decisão do 28.9).
+
+
+## 12. 28.7 — o que foi feito (02/10/2026, branch `feat/28-7-memoria-relatorio`)
+
+Prova `simulated` (`backend/tests/test_pedidos_memoria.py`, `test_pedidos_relatorio.py`); `real` só no 28.12. Migração
+**070** `pedidos_memoria` (a 069 é de outra frente; ver `docs/banco.md`).
+
+| Peça | Onde |
+|---|---|
+| Tabelas `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` | `backend/migrations/070_pedidos_memoria.sql` |
+| Memória versionada (valor igual não sobe a versão, segredo recusado, pendência resolvível, `compactar` sem IA) | `modules/pedidos/domain/memoria.py` |
+| Como uma leitura vira observação (`observado` / `incerto` / `ausente`, recusa de credencial, teto) | `modules/pedidos/domain/observacao.py` |
+| Relatório determinístico: observado, conclusão, não coberto | `modules/pedidos/domain/relatorio.py` (`montar`, `serializar`, `sha256_de`) |
+| Ponto de extensão do resumo por IA (`ResumidorDeRelatorio`, `SemResumo`) | `modules/pedidos/domain/resumo.py` |
+| SQL das três tabelas | `modules/pedidos/infrastructure/repositorio_memoria.py` |
+| Serviço: observações do fechamento, memória, `preparar`/`gravar`/`gerar` o relatório | `modules/pedidos/infrastructure/relatorios.py` |
+| Ligação ao laço e ao cancelamento | `laco.py` (`_fechar_uma`, `_observar`, `_agendar_pedido`, `_relatorio_final`), `acoes.py` (`cancelar`) |
+| Configuração | `config.py::PedidosCfg` (`resumo_ia: false`, `resumo_ia_teto_usd`), bloco `pedidos:` do exemplo |
+
+**Observação no fechamento.** Ao fechar uma ocorrência (`_fechar_uma`), o laço lê as saídas da execução (`step_outputs`, 056, o
+"valor lido entre etapas" do 12.3) ANTES de a purga apagá-la e grava as observações na MESMA transação cercada do `mover`: ou a
+ocorrência fecha com as observações dela, ou nada muda e a varredura repete (`UNIQUE (ocorrencia_id, alvo, nome)` + `ON CONFLICT
+DO NOTHING`). Valor lido numa ocorrência `concluida` é `observado`; em qualquer outro fim (`falhou`, `incerta`, `cancelada`…) é
+`incerto`; sem saída estruturada (ou execução já purgada) grava UMA observação `resultado` com valor ausente e o motivo do
+fechamento em `trecho`. O valor com formato de credencial ou de código de verificação (ADR-009) é recusado e vira `ausente`. Quando
+o valor é comprovado, a memória guarda `fonte:<nome>[:<alvo>]` com os 16 primeiros caracteres do `sha256` (a base do espaçamento
+adaptativo do §8.2; o código que espaça é do 28.5/28.6). Se ler a saída falhar, a ocorrência fecha sem observação e o relatório a
+lista como `sem_observacao`.
+
+**Relatório.** Três blocos que não se misturam. *Observado*: só valor com fonte e instante de ocorrência `concluida` E observação
+gravada `observado` (o domínio rebaixa o resto a incerto, mesmo que a linha diga o contrário). *Conclusão*: contagem da amostra,
+último valor e variação entre as duas últimas observações comprovadas, sempre com o alcance ("na amostra coletada"); sem observação
+a conclusão é VAZIA (`sem_conclusao`), nunca "nada mudou", e só é `sustentada` quando não há nenhum item em "não coberto".
+*Não coberto*: ocorrências perdidas, puladas, incertas, que falharam, canceladas e em aberto, valores incertos, ocorrência
+concluída sem valor ou sem observação, lacunas (sequência de ocorrências sem observação comprovada), pendências abertas da
+memória e cada critério de sucesso (os critérios são texto livre no contrato 28.9; nenhum é verificável em estrutura nesta
+versão, então todos ficam como `criterio_nao_avaliado`). Mesmas entradas, mesmo `conteudo`, byte a byte (listas ordenadas,
+sem relógio; o instante de geração mora em `pedido_relatorios.gerado_em`); o `sha256` do conteúdo vai na linha. Tetos: 500 itens
+em "observado" e 500 em "não coberto", com um item que diz quantos ficaram de fora.
+
+**Quando sai.** Sob demanda (`ServicoDeRelatorios.gerar`, `gatilho = sob_demanda`, sequência crescente; a rota é do 28.9); no
+encerramento do laço (`_agendar_pedido`, atômico com a mudança de estado, `gatilho = encerramento`); e no cancelamento
+(`AcoesDePedidos.cancelar`, logo depois do commit do cancelamento, de modo que a execução ainda em curso aparece como em aberto).
+O relatório de encerramento é UM por pedido (índice único parcial). Falha ao montá-lo nunca impede o encerramento ou o
+cancelamento: o relatório sai depois, sob demanda. O gatilho `periodo` (diário, semanal) existe no vocabulário mas ainda não tem
+agendador: é do 28.6/28.9.
+
+**Resumo por IA.** Só o ponto de extensão: `ResumidorDeRelatorio.resumir(relatorio, teto_usd)`, `SemResumo` por padrão e
+`pedidos.resumo_ia: false`. Mesmo ligado, sem um resumidor injetado em `LacoDePedidos(resumidor=...)` nada é chamado; com ele, o
+texto vai em `resumo_texto`/`resumo_por`/`custo_usd` ao lado do conteúdo, nunca no lugar nem na "conclusão", e falha do resumidor
+não derruba o relatório. Nenhuma chamada paga existe nesta entrega.
+
+Não feito (fora do 28.7): rotas `GET /api/pedidos/{id}/relatorios` e `/observacoes` e os campos `memoria`, `relatorios_recentes`,
+`observacoes_recentes` do `PedidoView` (28.9; os repositórios `relatorios` e `observacoes` já paginam); leitura da memória no plano
+da ocorrência (`memoria_para_o_plano` está pronto, o 28.5 o usa); espaçamento adaptativo do §8.2 (usa o `sha256`); agendador do
+relatório por período; aviso `relatorio_pronto` (28.11).

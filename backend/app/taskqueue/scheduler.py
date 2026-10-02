@@ -293,7 +293,7 @@ class Scheduler:
             iid = obj["instance_id"]
             if iid in taken:
                 continue
-            taken.add(iid)                      # a execução mais antiga tem a vez naquele aparelho
+            taken.add(iid)                      # a de maior prioridade e, a igual, a mais antiga tem a vez naquele aparelho
             if iid in self.workers:
                 continue
             if (motivo_conta := self._motivo_da_conta(obj.get("profile_id"), iid)) is not None:

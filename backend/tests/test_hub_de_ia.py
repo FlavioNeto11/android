@@ -96,6 +96,9 @@ class FakeRepo:
     def decision(self, text: str, **kw: Any) -> None:
         self.decisions.append(text)
 
+    def teto_usd_da_execucao(self, run_id: str | None) -> float | None:
+        return None                      # nenhuma execução destes testes nasceu de pedido com orçamento (28.6)
+
 
 def com_hub(tmp: Path, roles: dict[str, Any], providers: dict[str, Any] | None = None,
             models: dict[str, Any] | None = None) -> Any:
