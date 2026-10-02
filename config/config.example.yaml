@@ -347,6 +347,14 @@ ai:
   #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
   # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
   #
+  # Item 31.6 — fatias do teto de gasto DO DIA para usos fora de execução (docs/ia.md §6). São PARTES do teto do dia
+  # (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: uma fatia estourada barra só a origem dela
+  # (`AIError.motivo` = fatia_curador | fatia_jev) e as outras seguem. 0 desliga a fatia. Os valores abaixo são os padrões.
+  # limits:
+  #   curador_max_usd_per_day:        # (vazio) curador do Livro: sem valor = curador_fracao_do_dia × teto do dia; sem teto do dia, sem fatia
+  #   curador_fracao_do_dia: 0.10     # (0.10) o α do dono (30.11)
+  #   jev_max_usd_per_day: 0.50       # (0.50) decisão por conjunto fechado (D-J3, a confirmar); ainda sem chamador
+  #
   # Item 17.8 — Flex para trabalho OFFLINE (a OpenAI cobra ~metade, mas responde 429 "Resource Unavailable" quando
   # não há capacidade ociosa e pode levar minutos). A entrada de provedor é um endpoint como outro qualquer, com o
   # campo no corpo; quem aponta para ela é um papel com prazo longo e `max_retries` (que repete 429 e 5xx, com

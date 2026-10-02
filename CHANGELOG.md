@@ -63,6 +63,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Teste de cliente único: só o adaptador de retrieval contém o host da TypeSafe.
 - Prova `simulated`: `backend/tests/test_decisao_fechada.py` (40), `test_context_retrieval_semantic.py` (+3). Real: `not_run` (nenhuma chamada ao Jev).
 
+## 2026-10-02 — Origem das chamadas de IA e rubrica única de gasto (31.2 e 31.6, branch feat/31-2-origem-rubrica)
+
+- Migração 073 (`ai_calls.origem`, `ai_calls.ref`, índice `(origem, ts)`); as 071 e 072 estão em outros branches e entram antes, e a lacuna de número é tolerada pelo executor.
+- `Usage.origem`/`ref`: o hub (`RoutingProvider._call`) preenche e `add_usage` grava. Vocabulário fechado `ORIGENS_DE_IA`: `execucao` (padrão com `run_id`), `ensino`, `orquestracao`, `assistente`, `social`, `persona`, `curador`, `decisao_fechada`. Linhas antigas ficam NULL.
+- `costs.spent_usd` e `spent_today_usd` ganham o filtro `origem=`.
+- `AIError.motivo` fechado (`saldo | dia | fatia_curador | fatia_jev | execucao | pedido`), só com `kind="budget"`; `_budget` e o orçamento do pedido (28.6) passam a informar o motivo, sem mudar mensagem nem ordem. Fatias dentro do teto do dia, por origem: `ai.limits.curador_max_usd_per_day` (padrão 0,10 × teto do dia) e `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50, D-J3 a confirmar). O saldo da conta (ADR-051) não muda nesta etapa.
+- Prova `simulated`: `backend/tests/test_origem_e_rubrica_de_ia.py` (13). Real: `not_run`.
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:
