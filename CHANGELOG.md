@@ -165,6 +165,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A decisão real casada é o parecer do curador (concordância, não acerto); sem GO até os limiares do 31.7.
 - Prova `simulated`: `backend/tests/test_decisao_fechada_curador.py`. Envio ao Jev continua fechado no código; real `not_run`.
 
+## 2026-10-02 — Sombra da intenção no Jev: R2 e R3 fora da cadeia, com C3 por lista de permissão (31.9, branch feat/31-9-intencao-sombra)
+
+- `planning/decisao_fechada/entidades.py`: `remover_entidades(texto, *, vocabulario=()) -> str | None`, função pura por LISTA DE
+  PERMISSÃO: só sai palavra do vocabulário comum de comandos ou do catálogo do dono; o resto vira `[termo]` (em qualquer caixa), todo
+  número vira `[numero]`, e endereço, e-mail ofuscado, algarismos por extenso ou excesso de palavras desconhecidas devolvem `None`
+  (o pedido não sai, `fallback_reason='privacidade'`). Correção da revisão independente: a versão por detector deixava passar nome em
+  minúsculas, nome no começo de frase e os destinos que o TargetExtractor não pega.
+- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao` (C3, sempre
+  `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre os empatados), numa
+  chamada. C7 em prosa (senha, código, 2FA, captcha…) marca `credencial` e a porta recusa o pedido inteiro. Desligado (inclusive com
+  `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho`
+  ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]` registra `comando` e `app`.
+- `planning/decisao_fechada/porta.py`: `consultar(pedido, *, ao_registrar=None)`, chamado depois de o observador gravar (o casamento
+  da decisão real sem polling).
+- Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning`; só plano bem-sucedido: cancelado, com
+  exceção ou recusado não vira sombra; a leitura da execução vai para a thread) e fiação em `state.py` (o `stop()` espera as sombras
+  antes de fechar o banco). `intent_ports.py` e `intent_resolver.py` não mudam.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_intencao.py`, `DecisorFalso`, com os vazamentos medidos pela revisão como
+  testes negativos). `JEV_RUNTIME_SEND_APPROVED` continua `False`; chamada real ao Jev: `not_run`.
+
 ## 2026-10-02 — Sombra da porta `DecisaoFechada`: registro, preço, livro-caixa e transparência (31.5, branch feat/31-5-sombra-registro)
 
 - Migração 074 (`decisao_fechada_sombra` e `decisao_fechada_diario`): uma linha por pergunta respondida ou por fallback, só ids opacos e

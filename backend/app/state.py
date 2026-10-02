@@ -64,6 +64,7 @@ from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
 from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
+from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
@@ -91,6 +92,7 @@ from .modules.pedidos.infrastructure.servico import PedidosApi
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
+from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
@@ -469,6 +471,12 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Sombra da intenção (31.9, ADR-069): R2 e R3 fora da cadeia, depois do `_plan`. Com a config padrão é inerte.
+        self.runs.sombra_intencao = SombraDaIntencao(
+            ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
+            catalogo=lambda: catalogo_de(
+                lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
+                skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
@@ -2427,6 +2435,9 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
+        if self.runs.sombra_intencao is not None:
+            self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
+            self.runs.sombra_intencao = None            # e nenhuma nova: um plano que termine agora não agenda outra
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
@@ -2454,6 +2465,11 @@ class AppState:
             if self._digestoes:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
+            try:
+                # Idem para a sombra da porta `DecisaoFechada` (31.9): a linha da chamada já feita é gravada antes do close.
+                await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, 6.0)
+            except Exception:  # noqa: BLE001 - esperar a sombra nunca impede fechar o banco
+                log.exception("encerramento: sombras da decisão fechada")
             try:
                 # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
                 self.lideranca.soltar_todas()

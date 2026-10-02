@@ -39,6 +39,9 @@ CAMPOS_POR_ORIGEM["curador"] = frozenset({
     "kind", "estado", "origem", "side_effect", "human_origin", "classe_de_risco", "politica",
     "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
     "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
+#: Intenção (31.9): `comando` (C3, já sem destinos, sem segredo e sem entidades: `entidades.remover_entidades`) e `app` (id do
+#: app do comando, quando há). O consumidor é `intencao.py`.
+CAMPOS_POR_ORIGEM["intencao"] = frozenset({"comando", "app"})
 
 
 @dataclass(frozen=True)
