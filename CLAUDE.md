@@ -81,8 +81,8 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 | O quê | Comando | Observação |
 |---|---|---|
 | Testes do backend, um arquivo | `cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_x.py` | durante o trabalho |
-| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q` | ~11 min em SQLite; só antes do commit, em segundo plano |
-| Suíte em PostgreSQL | a mesma, com `TEST_DATABASE_URL=postgresql://…` | ~14 min; `docs/banco.md` |
+| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q -n 8` | ~6 min em SQLite (36 min em série, mesmo resultado); uma suíte por vez na máquina, em prioridade baixa (`start /low`); só antes do merge |
+| Suíte em PostgreSQL | a mesma, com `TEST_DATABASE_URL=postgresql://…` | ~14 min em série; `docs/banco.md` |
 | Testes dos scripts | `backend/.venv/Scripts/python.exe -m pytest -q scripts/tests` | a partir da raiz |
 | Frontend | `cd frontend && npm run typecheck && npm test` | `npm run build` gera o `dist` que o backend serve |
 | Estado do plano-100 | `python scripts/claude-plan-100.py check` | não chama IA |

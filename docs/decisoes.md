@@ -3687,6 +3687,13 @@ crescerem muito, criar índice em `runs(status)`.
 [revisoes-ux/12-decisoes.md](revisoes-ux/12-decisoes.md); ADR-054 (aprendizado) e ADR-055 (proteção de contas), origens das
 aprovações e intervenções.
 
+**Emenda (02/10/2026, confirmada pelo dono; Fase 28, item 28.9).** O pedido persistente em `aguardando_pessoa` é uma origem
+nova da caixa. Para não contar duas vezes a decisão que já tem item próprio (a aprovação pendente ou a execução
+`needs_input` que o pedido criou), a caixa agrupa esses itens sob o pedido (`pedido_id`): um item por pedido, com os filhos
+dentro. A regra 1 (pendência é só o que depende de uma pessoa) e a regra 2 (snapshot completo, sem janela) continuam; o
+aviso informativo do pedido (`pedido.aviso`) NÃO é pendência. Contrato em [api-contract.md](api-contract.md) (Adendo v0.45,
+"Avisos e Pendências").
+
 
 ## ADR-063 — Retrieval de contexto de código: léxico + BM25 locais, semântico plugável, política única de envio
 
