@@ -47,6 +47,7 @@ from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
 from .modules.learning.infrastructure import ligar_voz
+from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.skills.application.registry import CompositeSkillRegistry
@@ -435,12 +436,17 @@ class AppState:
         # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
         # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
         # As lojas do scheduler ganham o D1 (fluxo nasce candidato; receita com efeito para em `validated`) e a trilha.
+        # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
+        self._curador_do_hub = CuradorDoHub(self.provider, self.db,
+                                            registrar_uso=lambda u: self.repo.add_usage(None, None, u),
+                                            precos=lambda: self.cfg.file.ai.prices)
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
             precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
             receitas=self.scheduler.executor.recipes,
-            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus)
+            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
+            curador_de_ia=self._curador_do_hub)
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -2245,6 +2251,7 @@ class AppState:
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:
         self.bus.bind_loop(asyncio.get_running_loop())
+        self._curador_do_hub.ligar_laco(asyncio.get_running_loop())
         # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
         # ar, a falha tem de ser na partida, alta e visível — nunca no meio de um comando de aparelho.
         await self.transport.start(lambda envelope: despacho.executar_envelope(self, envelope))
