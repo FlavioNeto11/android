@@ -81,6 +81,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
 
+## 2026-10-02 — Testes: sondas do `_wait_boot` (T.2, J10)
+
+- `backend/tests/test_wait_boot_sondas.py` (novo, 7 testes `simulated`): `boot_completed` antes de `ui_ready`, a interface só sondada depois do boot, `AdbError`/`DriverError` nas sondas engolidos e repetidos, os 120 s sem interface depois do boot (relógio injetável em `manager`, sem dormir), prazo estourado sem `boot_completed`, preparo que falha rápido sem impedir a entrada no ar e o ajuste de apps de fundo virando evento. Só dublês nas três chamadas ao `Adb`; o laço, a fase de prontidão e o estado são os de produção. Mutação (120 s→12000 s; ordem das sondas) derruba os testes. Nenhum código de produção mudou (`manager.py`, `despacho.py` intocados). Ainda de fora: o veredito do snapshot no boot e a extração no agente remoto. Sem deploy.
+
 ## 2026-10-02 — IA: cache de prompt do verificador, prova simulada e medição do prefixo (J9, achado #100)
 
 - O ponto de cache (`cache_control`) já era pedido no verificador e o custo já lia `cache_read`/`cache_creation`; faltava prova e a conta. Três testes novos em `backend/tests/test_anthropic_provider.py` (`simulated`): a requisição do verificador carrega o marcador só no prefixo estável, o uso devolve os campos e `ai_calls` guarda a entrada não cacheada separada do cache lido/gravado. A medição explica as 49 verificações de 25/09 com `cache_read=0`: o prefixo do verificador (≈560 tokens) está abaixo do mínimo do Haiku 4.5 (4096) e do Sonnet 5 (1024), então a API ignora o ponto. Nenhuma mudança de código de produção; `cache_read>0` real: `not_run` (chamada paga, e não há prefixo para cachear). `docs/ia.md` §5 atualizado.
