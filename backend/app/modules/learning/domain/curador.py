@@ -409,7 +409,6 @@ class MotivoDeInvalidade(StrEnum):
 
     JSON_INVALIDO = "json_invalido"
     NAO_E_OBJETO = "nao_e_objeto"
-    CLASSE_SEM_REVISAO = "classe_sem_revisao"           # parecer para a classe A, que nunca vai à IA
     CAMPO_EXTRA = "campo_extra"
     CAMPO_AUSENTE = "campo_ausente"
     DECISAO_FORA_DO_VOCABULARIO = "decisao_fora_do_vocabulario"
@@ -474,8 +473,11 @@ class Parecer:
     conclusao: str | None = None            # o único texto livre; não entra na decisão
 
     def faixa_efetiva(self, da_politica: ClasseDeRisco) -> ClasseDeRisco:
-        """Vale a mais restritiva entre a da política e a que a IA apontou."""
-        if self.faixa is None or _ORDEM_DA_CLASSE[self.faixa] <= _ORDEM_DA_CLASSE[da_politica]:
+        """Vale a mais restritiva entre a da política e a que a IA apontou, exceto na A: lá a IA nunca muda o resultado
+        da regra determinística, e a faixa que ela aponte fica só no registro."""
+        if da_politica is ClasseDeRisco.A or self.faixa is None:
+            return da_politica
+        if _ORDEM_DA_CLASSE[self.faixa] <= _ORDEM_DA_CLASSE[da_politica]:
             return da_politica
         return self.faixa
 
@@ -564,8 +566,6 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
         dados = bruto
     if not isinstance(dados, Mapping):
         raise _Invalida(MotivoDeInvalidade.NAO_E_OBJETO)
-    if dossie.classe is ClasseDeRisco.A:
-        raise _Invalida(MotivoDeInvalidade.CLASSE_SEM_REVISAO)
     chaves = set(dados)
     if chaves - CAMPOS_DA_SAIDA:
         raise _Invalida(MotivoDeInvalidade.CAMPO_EXTRA)

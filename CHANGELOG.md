@@ -23,7 +23,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `domain/politica_de_risco.py` (puro) é a fonte única da classe A/B/C do §8.4 (aprovada pelo dono em 02/10): vale a mais
   restritiva entre o catálogo da etapa e o `commit` do conteúdo; o `commit` numa etapa que o catálogo declara sem efeito (a receita 100
-  do Outlook) é C. A classe A nunca gasta IA; `conferir_aceite` torna impossível a decisão automática por parecer e o lote na C.
+  do Outlook) é C. Na classe A a IA só opina com sobra de orçamento
+  (`ia_permitida = so_com_sobra`) e o parecer é só registro; `conferir_aceite` torna impossível a decisão automática por parecer e o lote na C.
   `domain/espera.py::classificar_espera` (30.21) passou a ser tradução dela (mesmo payload do evento; `FatosDoCatalogo` e
   `MotivoDeEntrada` mudaram para lá e são reexportados).
 - `domain/curador.py` (puro): dossiê de fatos por lista branca (sem valor de parâmetro, texto digitado, texto de tela ou de pessoa;

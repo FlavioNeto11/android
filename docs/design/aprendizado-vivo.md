@@ -263,7 +263,7 @@ fatos (dossiê determinístico)  →  interpretação (IA, saída estruturada)  
 ```
 
 A IA nunca transiciona. O que ela devolve é um **parecer** gravado em `learning_reviews`. A publicação e o rebaixamento automáticos continuam
-sendo só os das regras determinísticas de hoje. A faixa A não recebe parecer. Na faixa B, o parecer é recomendação para o dono aprovar em lote;
+sendo só os das regras determinísticas de hoje. Na faixa A, o parecer (só com sobra de orçamento) é só registro. Na faixa B, o parecer é recomendação para o dono aprovar em lote;
 na C, apoio à decisão item a item. Quem transiciona é sempre o `ciclo.py`: pelo sistema, nas regras atuais, ou pela pessoa, com `review_id` registrando o aceite ou
 o override. A tabela do `ciclo.py` não ganha linha.
 
@@ -306,7 +306,7 @@ a etapa de efeito do fluxo). A política coincide com o D1 e o estreita; não o 
 
 | Classe | Como se reconhece | Quem decide | Papel da IA |
 |---|---|---|---|
-| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **nenhum: a faixa A nunca gasta IA** (decisão do orçamento, §8.7); o dossiê determinístico basta |
+| **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **só opinião de registro, e só com sobra** de orçamento depois das prioridades 1 a 4 (decisão do dono, 02/10; ver a nota abaixo); nunca muda o resultado |
 | **B: efeito médio, ou `commit` em app sem catálogo** | capability com `risk=medium`; ou receita/fluxo com `commit` em app sem `catalogo.yaml` (com catálogo e sem ação de efeito para a etapa, a regra é a de obsolescência do §9.2, que rebaixa) | o dono, **em lote** | recomenda (aprovar, observar, pedir evidência, desativar); o dono aceita um lote de pareceres com um gesto (`by = pessoa`, um `review_id` por item) ou recusa com motivo (override) |
 | **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
 
@@ -326,8 +326,12 @@ hoje: **a conferir** em `catalogo.yaml`.
 - Os catálogos de hoje (Instagram, Outlook) **não declaram família**; os `interaction_type` existentes são `dm_sent`,
   `comment_replied`, `comment_liked`, `post_liked`, `post_unliked`, `followed`, `unfollowed`, `follow_request_*`. O domínio recebe
   a família como fato (`familia_do_efeito`); as ações de envio e comentário do Instagram já caem em C por `risk: high`/`needs_draft`.
-- "A IA não decide" vira regra de domínio (`conferir_aceite`): aceite de parecer só por pessoa; lote só na B; a classe A não recebe
-  parecer (a validação a marca `invalida:classe_sem_revisao`).
+- "A IA não decide" vira regra de domínio (`conferir_aceite`): aceite de parecer só por pessoa; lote só na B.
+- *Faixa A com sobra* (decisão do dono, 02/10, prioridade 5; revê a célula "nunca gasta IA" da tabela, a frase do §8.1 e o
+  §8.6-8.7 onde dizem o mesmo): quem decide continua sendo a regra determinística e a IA nunca muda o resultado de um item A, mas
+  ela PODE opinar se sobrar orçamento na janela depois das prioridades 1 a 4. No domínio: `ia_permitida(A) = "so_com_sobra"`
+  (B e C: `"sim"`; o corte por orçamento é do 30.11); o parecer da A é válido e só de registro (`efeito_do_parecer = "so_registro"`),
+  `conferir_aceite` recusa qualquer efeito dele (`so_registro_na_classe_a`) e a `faixa` apontada pela IA não a muda.
 - *Saída em rótulos fechados* (orientação da coordenação, 02/10; revê o §8.3): `decisao`, `faixa`, `causa`, `riscos`,
   `inconsistencias` e `falta` são escolhas de conjuntos fechados (`curador.OPCOES_FECHADAS`), para um adaptador de `choice` com
   probabilidade; `confianca` sai da probabilidade da escolha (baixa < 0,60 ≤ média < 0,85 ≤ alta, a recalibrar no `shadow`) e só sem

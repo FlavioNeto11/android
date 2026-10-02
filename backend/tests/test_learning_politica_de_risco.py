@@ -2,7 +2,8 @@
 
 - as três classes, cada razão que as faz, e a regra "vale a mais restritiva" entre catálogo e `commit` (a anomalia da
   receita do Outlook com `commit` num catálogo só de leitura cai em C);
-- a classe A nunca gasta IA e é a única que decide sozinha; o aceite de parecer é sempre da pessoa e, na C, item a item;
+- a classe A é a única que decide sozinha (pela regra), e a IA só opina nela com sobra de orçamento (parecer só de
+  registro); o aceite de parecer é sempre da pessoa e, na C, item a item;
 - `classificar_espera` (30.21) é tradução fiel da política (fonte única), em toda combinação de entradas;
 - os catálogos REAIS do repositório (YAML) lidos pelo adaptador da 30.21 classificam como esperado.
 
@@ -35,11 +36,12 @@ def _classe(**kw: object) -> ClasseDeRisco:
 
 
 # ------------------------------------------------------------------ as classes
-def test_classe_a_navegacao_e_leitura_nunca_gasta_ia_e_decide_pela_regra() -> None:
+def test_classe_a_navegacao_e_leitura_decide_pela_regra_e_ia_so_com_sobra() -> None:
     c = classificar(FatosDeRisco(side_effect=False, human_origin=False, tem_catalogo=True,
                                  catalogo=FatosDoCatalogo()))
     assert c.classe is ClasseDeRisco.A and c.razoes == () and c.motivo is None
-    assert not c.gasta_ia and c.decide_sozinho and not c.aceita_lote
+    assert c.ia_permitida == "so_com_sobra" and c.efeito_do_parecer == "so_registro"
+    assert c.decide_sozinho and not c.aceita_lote
     assert c.politica is PoliticaDaClasse.REGRA_DETERMINISTICA
     assert _classe(tem_catalogo=False) is ClasseDeRisco.A          # leitura em app sem catálogo também é A
 
@@ -55,7 +57,8 @@ def test_classe_b_recomendacao_e_lote(fatos: dict[str, object], razao: Razao) ->
     base: dict[str, object] = {"side_effect": False, "human_origin": False, "tem_catalogo": True}
     c = classificar(FatosDeRisco(**{**base, **fatos}))  # type: ignore[arg-type]
     assert c.classe is ClasseDeRisco.B and razao in c.razoes
-    assert c.gasta_ia and not c.decide_sozinho and c.aceita_lote
+    assert c.ia_permitida == "sim" and c.efeito_do_parecer == "recomendacao_em_lote"
+    assert not c.decide_sozinho and c.aceita_lote
     assert c.politica is PoliticaDaClasse.DONO_EM_LOTE
 
 
@@ -77,6 +80,7 @@ def test_classe_c_sempre_o_dono_item_a_item(fatos: dict[str, object], razao: Raz
     base: dict[str, object] = {"side_effect": False, "human_origin": False, "tem_catalogo": True}
     c = classificar(FatosDeRisco(**{**base, **fatos}))  # type: ignore[arg-type]
     assert c.classe is ClasseDeRisco.C and razao in c.razoes and c.motivo is motivo
+    assert c.ia_permitida == "sim" and c.efeito_do_parecer == "apoio_item_a_item"
     assert not c.decide_sozinho and not c.aceita_lote
     assert c.politica is PoliticaDaClasse.DONO_ITEM_A_ITEM
 
@@ -165,9 +169,10 @@ def test_classe_b_lote_da_pessoa_sim_sistema_nao() -> None:
     assert conferir_aceite(ClasseDeRisco.B, por_pessoa=False, em_lote=False) is RecusaDoAceite.DECISAO_AUTOMATICA
 
 
-def test_classe_a_nao_tem_parecer_a_aceitar() -> None:
+def test_classe_a_parecer_so_registro_nada_a_aceitar() -> None:
     for pessoa, lote in itertools.product((False, True), (False, True)):
-        assert conferir_aceite(ClasseDeRisco.A, por_pessoa=pessoa, em_lote=lote) is RecusaDoAceite.PARECER_NA_CLASSE_A
+        recusa = conferir_aceite(ClasseDeRisco.A, por_pessoa=pessoa, em_lote=lote)
+        assert recusa is RecusaDoAceite.SO_REGISTRO_NA_CLASSE_A
 
 
 # ------------------------------------------------------------------ sessão e autenticação

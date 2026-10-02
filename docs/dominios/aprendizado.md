@@ -435,7 +435,8 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
   sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
-  em lote só na B; a classe A não tem parecer. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+  em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
+  `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
 - **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,

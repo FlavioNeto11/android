@@ -239,6 +239,8 @@ def test_faixa_da_ia_nunca_afrouxa_a_da_politica() -> None:
     assert c is not None and c.faixa_efetiva(ClasseDeRisco.C) is ClasseDeRisco.C
     b = validar_saida(_saida(faixa="C"), _dossie()).parecer
     assert b is not None and b.faixa_efetiva(ClasseDeRisco.B) is ClasseDeRisco.C
+    a = validar_saida(_saida(faixa="C"), _dossie(A)).parecer
+    assert a is not None and a.faixa_efetiva(ClasseDeRisco.A) is ClasseDeRisco.A     # na A, a IA não muda nada
 
 
 def test_sem_citacao_so_para_manter() -> None:
@@ -268,10 +270,14 @@ def test_json_cru_e_formas_erradas() -> None:
     assert v.parecer is not None and v.parecer.evidencias_citadas == ("ev:1", "voto:5")
 
 
-def test_classe_a_nao_vai_a_ia_e_nao_aceita_parecer() -> None:
+def test_classe_a_parecer_valido_so_de_registro() -> None:
     d = _dossie(A)
-    assert d.classe is ClasseDeRisco.A and not d.risco.gasta_ia
-    assert validar_saida(_saida(), d).motivo is MotivoDeInvalidade.CLASSE_SEM_REVISAO
+    assert d.classe is ClasseDeRisco.A and d.risco.ia_permitida == "so_com_sobra"
+    v = validar_saida(_saida(decisao="rebaixar"), d)
+    assert v.ok and v.validade == "ok"                              # gravado em `learning_reviews`...
+    assert d.risco.efeito_do_parecer == "so_registro"               # ...mas nunca move o item
+    for pessoa, lote in ((False, False), (True, False), (True, True)):
+        assert conferir_aceite(d.classe, por_pessoa=pessoa, em_lote=lote) is RecusaDoAceite.SO_REGISTRO_NA_CLASSE_A
 
 
 def test_classe_c_parecer_valido_mas_nunca_decisao_automatica() -> None:

@@ -4,8 +4,9 @@ CLASSE é um item do livro (A, B ou C), por quê, e o que isso permite. Fonte Ú
 (o catálogo do app vem do YAML pela infraestrutura); sem I/O, sem relógio.
 
 As três classes:
-- **A** (navegação e leitura, sem `commit`, sem origem humana): o sistema decide pela regra determinística de hoje. A
-  faixa A NUNCA gasta IA (decisão do orçamento, §8.7): não há parecer a dar.
+- **A** (navegação e leitura, sem `commit`, sem origem humana): o sistema decide pela regra determinística de hoje, e
+  a IA nunca muda esse resultado. A IA PODE opinar, mas só com sobra de orçamento na janela, depois das prioridades
+  1 a 4 (decisão do dono, 02/10; o corte é do 30.11): o parecer da A é só registro.
 - **B** (efeito médio; `commit` em app sem catálogo; origem humana sem efeito, D-2): a IA recomenda, o dono aprova EM
   LOTE.
 - **C** (alto risco: `risk=high`, `manual_only`, sessão e autenticação, família de envio, publicação ou exclusão,
@@ -24,12 +25,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 
 from app.modules.skills.domain.document import JsonObject
 
 
 class ClasseDeRisco(StrEnum):
-    A = "A"                     # o sistema decide pela regra determinística; nunca vai à IA
+    A = "A"                     # o sistema decide pela regra determinística; a IA só opina, com sobra
     B = "B"                     # o dono decide em lote, com a recomendação da IA
     C = "C"                     # o dono decide item a item; a IA só dá parecer
 
@@ -143,9 +145,12 @@ class Classificacao:
         return _POLITICA[self.classe]
 
     @property
-    def gasta_ia(self) -> bool:
-        """A faixa A nunca vai à IA (§8.4, §8.7); B recebe recomendação; C, parecer de apoio."""
-        return self.classe is not ClasseDeRisco.A
+    def ia_permitida(self) -> IaPermitida:
+        return ia_permitida(self.classe)
+
+    @property
+    def efeito_do_parecer(self) -> EfeitoDoParecer:
+        return efeito_do_parecer(self.classe)
 
     @property
     def decide_sozinho(self) -> bool:
@@ -221,14 +226,37 @@ class RecusaDoAceite(StrEnum):
     DECISAO_AUTOMATICA = "decisao_automatica"           # o sistema aplicaria um parecer sozinho
     DECISAO_AUTOMATICA_EM_C = "decisao_automatica_em_c"
     LOTE_NA_CLASSE_C = "lote_na_classe_c"
-    PARECER_NA_CLASSE_A = "parecer_na_classe_a"         # a classe A não recebe parecer: não há o que aceitar
+    SO_REGISTRO_NA_CLASSE_A = "so_registro_na_classe_a"  # o parecer da A é só registro: nada a aceitar
+
+
+#: Quando a IA pode ser chamada para o item. `nunca` existe no tipo para quem o consome (nenhuma classe o usa hoje).
+type IaPermitida = Literal["nunca", "so_com_sobra", "sim"]
+#: O que um parecer válido pode fazer: na A, só ficar registrado (nunca move o item); na B, ser aceito em lote pela
+#: pessoa; na C, apoiar a decisão da pessoa item a item.
+type EfeitoDoParecer = Literal["so_registro", "recomendacao_em_lote", "apoio_item_a_item"]
+
+_IA_PERMITIDA: dict[ClasseDeRisco, IaPermitida] = {ClasseDeRisco.A: "so_com_sobra", ClasseDeRisco.B: "sim",
+                                                   ClasseDeRisco.C: "sim"}
+_EFEITO_DO_PARECER: dict[ClasseDeRisco, EfeitoDoParecer] = {
+    ClasseDeRisco.A: "so_registro", ClasseDeRisco.B: "recomendacao_em_lote", ClasseDeRisco.C: "apoio_item_a_item"}
+
+
+def ia_permitida(classe: ClasseDeRisco) -> IaPermitida:
+    """A: só com sobra do orçamento da janela, depois das prioridades 1 a 4 (§8.7; o corte é do 30.11). B e C: sim,
+    pela ordem de prioridade."""
+    return _IA_PERMITIDA[classe]
+
+
+def efeito_do_parecer(classe: ClasseDeRisco) -> EfeitoDoParecer:
+    return _EFEITO_DO_PARECER[classe]
 
 
 def conferir_aceite(classe: ClasseDeRisco, *, por_pessoa: bool, em_lote: bool) -> RecusaDoAceite | None:
     """Se um parecer pode virar decisão assim. `None` = pode (e quem transiciona continua sendo o `ciclo.py`, com o D1
-    e o veto). A IA nunca decide: aceitar um parecer é sempre gesto da pessoa; na classe C, um item de cada vez."""
+    e o veto). A IA nunca decide: aceitar um parecer é sempre gesto da pessoa; na classe C, um item de cada vez. Na
+    classe A o parecer é só registro: qualquer efeito é recusado, por quem for."""
     if classe is ClasseDeRisco.A:
-        return RecusaDoAceite.PARECER_NA_CLASSE_A
+        return RecusaDoAceite.SO_REGISTRO_NA_CLASSE_A
     if not por_pessoa:
         if classe is ClasseDeRisco.C:
             return RecusaDoAceite.DECISAO_AUTOMATICA_EM_C
@@ -239,5 +267,6 @@ def conferir_aceite(classe: ClasseDeRisco, *, por_pessoa: bool, em_lote: bool) -
 
 
 __all__ = ["FALHAS_DE_SESSAO", "FAMILIAS_DE_ALTO_RISCO", "ORIGENS_DE_SESSAO", "ClasseDeRisco", "Classificacao",
-           "FatosDeRisco", "FatosDoCatalogo", "MotivoDeEntrada", "PoliticaDaClasse", "Razao", "RecusaDoAceite",
-           "classificar", "conferir_aceite", "toca_sessao_ou_autenticacao"]
+           "EfeitoDoParecer", "FatosDeRisco", "FatosDoCatalogo", "IaPermitida", "MotivoDeEntrada", "PoliticaDaClasse",
+           "Razao", "RecusaDoAceite", "classificar", "conferir_aceite", "efeito_do_parecer", "ia_permitida",
+           "toca_sessao_ou_autenticacao"]
