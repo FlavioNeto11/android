@@ -39,13 +39,18 @@ const ehAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readon
 const ID = 'pedido';
 
 const TITULO_MAX = 90;
+/** Quantas ocorrências o `GET /api/pedidos/{id}` traz em `ocorrencias_recentes` (o `LIMIT 20` de `servico.detalhe`). */
+const RECENTES_NO_DETALHE = 20;
 
 /**
- * O título do cabeçalho: `titulo` quando a pessoa deu um; sem ele o backend usa o começo do objetivo, que pode ser longo
- * e repetir o Resumo. Aqui vira UMA linha curta; o objetivo inteiro mora no Resumo (e no `title` do cabeçalho).
+ * O título do cabeçalho: `titulo` quando a pessoa deu um, inteiro (o backend limita a 120 e o cabeçalho quebra a linha:
+ * cortar escondia o fim do nome que ela escreveu). Sem ele, o começo do objetivo, que pode ser longo e repetir o Resumo:
+ * esse vira uma linha curta, e o objetivo inteiro mora no Resumo (e no `title` do cabeçalho).
  */
 function tituloDoPedido(p: Pick<PedidoDetalhe, 'titulo' | 'objetivo'>): string {
-  const t = (p.titulo?.trim() || p.objetivo).replace(/\s+/g, ' ');
+  const dado = p.titulo?.trim();
+  if (dado) return dado.replace(/\s+/g, ' ');
+  const t = p.objetivo.replace(/\s+/g, ' ');
   return t.length > TITULO_MAX ? `${t.slice(0, TITULO_MAX - 1).trimEnd()}…` : t;
 }
 
@@ -304,6 +309,8 @@ function Ocorrencias({ p }: { p: PedidoDetalhe }) {
   const recentes = p.ocorrencias_recentes ?? [];
   const lista = [...recentes, ...extra.filter((e) => !recentes.some((r) => r.id === e.id))];
   const maisAntiga = lista[lista.length - 1]?.previsto_para;
+  // O detalhe traz até RECENTES_NO_DETALHE; com menos, não há mais antigas e o botão só sumiria depois de um clique vazio.
+  const semMais = fim || (extra.length === 0 && recentes.length < RECENTES_NO_DETALHE);
 
   const maisAntigas = async () => {
     if (!maisAntiga) return;
@@ -325,7 +332,7 @@ function Ocorrencias({ p }: { p: PedidoDetalhe }) {
     <>
       <ul className={styles.lista} aria-label="Ocorrências">{lista.map((o) => <LinhaDaOcorrencia key={o.id} o={o} agora={agora} />)}</ul>
       {erro ? <Banner tone="warning" icon={TriangleAlert} compact role="status">{erro}</Banner> : null}
-      {!fim ? <Button onClick={() => void maisAntigas()} loading={carregando}>Carregar mais antigas</Button> : null}
+      {!semMais ? <Button onClick={() => void maisAntigas()} loading={carregando}>Carregar mais antigas</Button> : null}
     </>
   );
 }

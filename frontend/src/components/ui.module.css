@@ -456,7 +456,8 @@
   .kvVal { min-width: 0; overflow-wrap: anywhere; margin-bottom: 6px; }
   .cardHeader { flex-wrap: wrap; }
   /* O texto tem prioridade: com `flex: 1` nos dois, o X de fechar dividia a sobra do cabeçalho com o título (uns 110 px de
-     coluna em 386 px). Agora o texto pede a largura toda e a ação vai para o canto, ou para a linha de baixo se não couber. */
-  .cardHeaderText { flex: 1 1 min(100%, 16rem); }
+     coluna em 386 px). Agora o texto cresce sozinho e a ação fica no canto, ou vai para a linha de baixo se não couber.
+     A base de 12rem deixa um ícone (o X) caber ao lado do texto em 375–386 px; com 16rem ele caía sozinho numa linha. */
+  .cardHeaderText { flex: 1 1 min(100%, 12rem); }
   .cardActions { flex: 0 1 auto; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 }
