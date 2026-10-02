@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: "Como mudar o modo deste app" legível (30.20, branch fix/30-20-como-mudar)
+
+- O passo a passo diz o arquivo (`config/config.yaml`), mostra o trecho do bloco `aprendizado:` com o modo que vale hoje,
+  explica cada valor (`on`, `shadow`/`observe`, `off`) e manda reiniciar a tarefa `farm-central`. Antes era uma chave
+  pontilhada e "off, shadow ou on" sem explicação.
+- Os adendos v0.63 e v0.64 deixam de ser provisórios (regra nova: quem mergeia usa o próximo número livre da main).
+- A ideia de editar o modo pelo painel fica registrada no §8.10 do desenho, com as duas formas e o conflito com o §8.10.
+
 ## 2026-10-02 — Aprendizado: interface do modo por app de lições e telas (30.20, branch feat/30-20-modo-por-app-painel)
 
 - O detalhe do app mostra "Lições e telas neste app": o modo que vale, "definido para este app" ou "segue o global", o que

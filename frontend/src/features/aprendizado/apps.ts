@@ -343,9 +343,22 @@ export function excecoesPorApp(m: ModosDaVisao, nomes?: ReadonlyMap<string, stri
   return saida.sort((a, b) => a.app.localeCompare(b.app, 'pt-BR') || a.tipo.localeCompare(b.tipo, 'pt-BR'));
 }
 
-/** A chave do config que muda o modo deste tipo neste app (o painel não grava o config: diz onde mudar). */
-export function chaveDoConfig(tipo: TipoComModoPorApp, pacote: string): string {
-  return `aprendizado.${tipo}.por_app.${pacote}`;
+/**
+ * O trecho do `config.yaml` com o modo que vale HOJE neste app, para a pessoa trocar o valor (o painel não grava o
+ * config: mostra onde e como mudar). O formato é o do bloco `aprendizado:` (§8.10).
+ */
+export function trechoDeConfig(pacote: string, m: ModosDoApp): string {
+  const linhas = ['aprendizado:'];
+  for (const { chave } of TIPOS_COM_MODO_POR_APP) {
+    linhas.push(`  ${chave}:`, '    por_app:', `      ${pacote}: ${m[chave].modo ?? (chave === 'licoes' ? 'shadow' : 'observe')}`);
+  }
+  return linhas.join('\n');
+}
+
+/** Os valores que cada tipo aceita, com o que fazem, na ordem do mais ligado ao desligado. */
+export function valoresDoModo(tipo: TipoComModoPorApp): { valor: string; rotulo: string; efeito: string }[] {
+  const ordem = tipo === 'licoes' ? ['on', 'shadow', 'off'] : ['on', 'observe', 'off'];
+  return ordem.map((valor) => ({ valor, rotulo: rotuloDoModo(valor), efeito: EFEITO_DO_MODO[tipo][valor] ?? '' }));
 }
 
 /** O que há de declarado, em uma frase: "3 arquivos · 12 ações · 8 telas". `null` fora do registro de apps. */

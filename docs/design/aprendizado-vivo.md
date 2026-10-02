@@ -440,6 +440,19 @@ com padrão = o modo global. Uma função só, `modo_efetivo(tipo, pacote)`, usa
 efetivo do pacote do item), pelo fornecedor de lições, pelo fornecedor de telas e pela camada de uso do §3.3. O pacote é dado de instalação
 (config), não código: nenhuma regra por app no Python. Item 30.20.
 
+**Painel (30.20, só leitura; adendo v0.64).** O detalhe do app mostra o modo que vale e se é do app ou do global, com o
+passo a passo para mudar (arquivo, trecho, reiniciar o central).
+
+**Ideia de backlog (fora do escopo; decisão da orquestradora, 02/10): editar o modo pelo painel.** Hoje o painel só
+mostra, porque o config é lido uma vez, ao iniciar (`state.py`), e não há escrita de config no backend. Duas formas, as
+duas mexem em núcleo e vão à suíte combinada:
+- **(a) gravar o `config.yaml` e recarregar** o bloco `aprendizado` sem reiniciar: toca `config.py` e `state.py`;
+  preserva o "dado de instalação" deste §8.10, mas abre escrita em arquivo de instalação pelo painel;
+- **(b) levar o override para o banco** (tabela própria ou o store de `settings`), editável com trilha: **conflita com
+  este §8.10**, que diz que o pacote é dado de instalação (config), não estado do banco.
+
+Fica para quando o dono pedir edição pelo painel; a orquestradora leva a ele.
+
 ### 8.11 Evento de domínio: conhecimento aguardando a pessoa
 
 Quando um item entra nas faixas **B** ou **C** da política (§8.4) e passa a esperar decisão humana, e quando sai dessa espera, o Livro

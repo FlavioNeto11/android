@@ -505,3 +505,18 @@
 .chipsDeModo { display: flex; flex-wrap: wrap; gap: 4px; }
 .excecoes { display: flex; flex-direction: column; gap: 4px; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
 .excecoes ul { margin: 0; padding-left: var(--sp-4); }
+
+.passosDeConfig { margin: 0; padding-left: var(--sp-5); list-style: decimal; }
+.passosDeConfig > li + li { margin-top: var(--sp-2); }
+.trechoDeConfig {
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-1);
+  white-space: pre;
+  overflow-x: auto;
+}
+.valoresDoModo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--sp-2); }
+.valoresDoModo ul { margin: 2px 0 0; padding-left: var(--sp-4); }
