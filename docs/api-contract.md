@@ -3790,3 +3790,17 @@ Quem consome o `tipo` (painel) deve tolerar valor desconhecido.
 legado para a que não tem. Na leitura retroativa (`retroativo=true`) o tipo vence o `failure_kind` gravado, e a ocorrência conta em `retroativas`.
 
 Prova `simulated` (`tests/test_learning_diagnostico.py`); `not_run` no central.
+
+## Adendo v0.58 (02/10/2026) — `capability` em cada linha do Livro e de `/apps/{pacote}` (hierarquia App → Capability → Item)
+
+Aditivo: nenhum campo some nem muda de tipo, nenhum código de erro novo, sem migração. (A v0.57 é de outra frente: 30.11.)
+
+Cada linha de `GET /api/aprendizado` (e de `/pendentes` e `/revisar`), de `GET /api/aprendizado/apps/{pacote}` (`aprendido[]` e `absorvido[]`)
+e o `item` do detalhe `GET /api/aprendizado/{kind}/{ref}` ganham **`capability`**: `"<nome>"` ou `null`. O que não se sabe é `null`, nunca palpite:
+
+- **receita**: a mesma derivação do `conteudo.capability` do detalhe (a capability da etapa de origem `learned_from`; sem ela, as etapas com o mesmo
+  `step_hash` no mesmo app); ambígua (mais de uma capability distinta), sem fonte, treino e etapa livre `*` saem `null`;
+- **lição e tela** (itens do livro): `escopo.capability`, exceto vazio e `*`;
+- **fluxo, habilidade, memória** e o resto: `null` (o fluxo é um comando inteiro, não pertence a uma capability).
+
+Lida em lote (uma consulta por tipo, como a `saude`); o painel agrupa por ela em `agruparPorCapability`.

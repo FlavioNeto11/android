@@ -179,6 +179,23 @@ def capability_da_receita(origem: EtapaDeOrigem | None, do_mesmo_template: Itera
     return {"nomes": nomes, "ambigua": len(nomes) > 1, "fonte": "mesmo_step_hash"}
 
 
+def capability_unica(valor: str | None) -> str | None:
+    """A capability que vai na LINHA da lista (hierarquia App → Capability → Item): o nome, ou `None` quando não há
+    capability (vazia) ou a etapa é livre (`*`), que não é uma capability. Nunca palpite."""
+    return valor if valor and valor != "*" else None
+
+
+def capability_da_linha_da_receita(derivada: JsonObject | None) -> str | None:
+    """A capability de UMA receita na lista, da mesma derivação do detalhe (`capability_da_receita`): só quando há
+    exatamente um nome e ele não é ambíguo; ambígua ou sem fonte, `None`."""
+    if derivada is None or derivada.get("ambigua") is True:
+        return None
+    nomes = derivada.get("nomes")
+    if not isinstance(nomes, list) or len(nomes) != 1 or not isinstance(nomes[0], str):
+        return None
+    return capability_unica(nomes[0])
+
+
 def origem_da_receita(aprendida_de: str | None, etapa: EtapaDeOrigem | None) -> JsonObject:
     """`treino` (prefixo `training:`), `execucao` (com `run_id` e `step_id`) ou `desconhecida`."""
     if not aprendida_de:

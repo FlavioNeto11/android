@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Aprendizado: `capability` em cada linha do Livro e de `/apps/{pacote}` (branch feat/aprendizado-capability-na-linha)
+
+- A lista do Livro (`/api/aprendizado`, `/pendentes`, `/revisar`), as linhas de `/apps/{pacote}` e o `item` do detalhe trazem `capability` (`"<nome>"` ou `null`), para a hierarquia App → Capability → Item do painel. Receita: a derivação do detalhe, em lote (`FontesSql.capabilities_das_receitas`); lição e tela: `escopo.capability` (sem vazio nem `*`); fluxo, habilidade e memória: `null`. Sem migração; adendo v0.58 do contrato. Prova `simulated` (`test_learning_capability_na_linha.py`).
+
 ## 2026-10-02 — Caixa de avisos dos pedidos e coerência tela × API (28.9, branch jev/integ-28-9)
 
 - **Passe de design e UX da tela Pedidos (28.9, só `frontend/`, prova `simulated`).** Lista: cartão estruturado (chips de estado e autonomia, agenda "Todo dia às 19:00 · próxima sex 02/10 19:00", gasto e ocorrências como metadados discretos; fuso só se difere do navegador; US$ no formato brasileiro), esqueleto no formato do cartão, erro com "Tentar de novo" e o vazio com **Novo pedido** (leva ao Comando com o painel aberto). Detalhe: título curto (o objetivo inteiro fica no Resumo) e Resumo em cartões (Agenda, Quem faz, Custos e limites, Comportamento, Autoria); a próxima data, quando o laço ainda não a gerou, é a primeira das calculadas. Painel "Repetir ou acompanhar" em seções (Quando, O que conta como feito, Limites, Avançado recolhido), prévia em blocos com datas legíveis, e a pergunta real do Automático ("marque aparelhos no modo Manual ou escolha uma persona") no lugar do erro genérico. Avisos com seletor segmentado e "Marcar todos" só com não lidos. Guias sem a barra vertical solta (`.tabs`, vale para todas as telas). Pendências: o pedido diz o motivo (ocorrência incerta). Testes: `PedidosPage.test.tsx`, `NovoPedido.test.tsx`, `formato.test.ts`, `pedidosNaCaixa.test.ts`.
