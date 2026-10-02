@@ -10,7 +10,7 @@ Os ajustes chegam como dado (`Ajustes`), não como o `Config` do central: a apli
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
@@ -42,6 +42,10 @@ class Ajustes:
     modo_telas: ModoDeTelas = ModoDeTelas.OBSERVE
     modo_voz: Modo = Modo.OFF
     modo_preferencias: Modo = Modo.OFF
+    #: `aprendizado.licoes.por_app` / `aprendizado.telas.por_app` (§8.10): o modo de cada pacote que sobrescreve o
+    #: global. Vazio = o global vale. O D1 do item lê o do pacote dele (`LearningService._modo_publica`).
+    por_licoes: Mapping[str, Modo] = field(default_factory=dict)
+    por_telas: Mapping[str, ModoDeTelas] = field(default_factory=dict)
     #: Dias recalculados em `learning_daily` a cada passo da curadoria (o dia de hoje e os anteriores).
     dias_recalculados: int = 3
     retencao: Retencao = field(default_factory=Retencao)

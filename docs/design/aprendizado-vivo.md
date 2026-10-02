@@ -311,13 +311,13 @@ a etapa de efeito do fluxo). A política coincide com o D1 e o estreita; não o 
 | **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
 
 Fica fora das três: item com `human_origin=1` e sem efeito (lição de nota, preferência). O D1 já o entrega ao dono. Tratamento proposto:
-como a classe B, recomendação da IA e aprovação em lote (D-2 do §15).
+como a classe B, recomendação da IA e aprovação em lote (D-2, decidido pelo dono em 02/10).
 
 A IA não publica nada em nenhuma classe. Toda transição confere `conferir_transicao(by, side_effect, human_origin, modo)` e o veto, como hoje.
 O mapeamento de `interaction_type` para "envio/publicação/exclusão" sai do catálogo de cada app (dado, não código). Quais valores existem
 hoje: **a conferir** em `catalogo.yaml`.
 
-### 8.5 Registro auditável: `learning_reviews` (migração nova, número > 068 pedido ao orquestrador)
+### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
 Precisa ser tabela própria porque `ai_calls` é purgada pela retenção e a auditoria não pode sumir.
 
@@ -398,7 +398,7 @@ combinado (30.12). **Nada de `modules/context_retrieval/`** no caminho; se um di
 
 Com `shadow`: concordância parecer × decisão humana por classe e tipo, e taxa de override. Com `resultado_posterior`: dos pareceres
 aceitos, quantos foram refutados ou revertidos em 30 dias. Critério proposto para passar de `shadow` a `on`: ≥ 30 revisões válidas e
-concordância ≥ 90% na classe B. A decisão de ligar é do dono (D-3).
+concordância ≥ 90% na classe B. Decidido pelo dono em 02/10 (D-3); a faixa C continua sempre com o dono.
 
 ### 8.10 Modo por app para lições e telas (decisão do dono, 02/10)
 
@@ -594,7 +594,7 @@ a partir de `modules/learning/infrastructure/`). Testes de backend no harness (`
 | 30.6 | Estado de versão por item (§7) a partir de `device_app_state` e das chaves de receita | M | `domain/versao.py` (novo), `infrastructure/fontes.py`, testes | Aprendizado | 30.3 | `simulated` (duas versões vivas, receita só na antiga = `nao_testado`) |
 | 30.7 | Relações derivadas (§6) no detalhe | P | `domain/relacoes.py` (novo), `application/servico.py`, testes | Aprendizado | 30.3 | `simulated` |
 | 30.8 | Métricas do aprendizado (`/metricas`), reaproveitando `aproveitamento.py` e a trilha | M | `application/metricas.py` (novo), `infrastructure/relatorio_sql.py`, `presentation/` (rota), testes | Aprendizado | 30.1, 30.4 | `simulated`; `real` = leitura no central |
-| 30.9 | Migração `learning_reviews` (número > 068, **pedido ao orquestrador**) e `docs/banco.md` | P | `migrations/0NN_revisoes_do_aprendizado.sql`, `docs/banco.md` | Aprendizado | número do orquestrador | `simulated` (SQLite na suíte); PostgreSQL: P17 (29.14) |
+| 30.9 | Migração `learning_reviews` (**069, provisória**; confirmar no commit e renumerar se outra entrar antes) e `docs/banco.md` | P | `migrations/0NN_revisoes_do_aprendizado.sql`, `docs/banco.md` | Aprendizado | número do orquestrador | `simulated` (SQLite na suíte); PostgreSQL: P17 (29.14) |
 | 30.10 | Curador, domínio: dossiê, contrato de saída e validação de citações, política de risco por classe (§8.2-8.4) | M | `domain/curador.py`, `domain/politica_de_risco.py` (novos), testes | Aprendizado | 30.4, 30.6, 30.7 | `simulated` (citação inventada = inválida; classe C sem chamada à IA; vale a classe mais restritiva entre catálogo e `commit`) |
 | 30.11 | Curador, aplicação: porta `CuradorDeIA`, adaptador simulado, gravação, laço sob trava de líder, gatilhos e filtros, orçamento proporcional (§8.7), modos `off/shadow/on`, `aprendizado.curador` no config | G | `application/ports.py`, `application/curador.py`, `infrastructure/curador_sql.py`, `infrastructure/montagem.py`, `config.py` (só `LearningCfg`), testes | Aprendizado | 30.9, 30.10; ADR-064 (na main) | `simulated` (provedor falso; `G_W = 0` não revisa; prioridade quando o orçamento acaba; salvaguarda de disparo; `dossie_hash` repetido não revisa; o parecer nunca transiciona) |
 | 30.12 | Adaptador do curador para o hub de IA (papel ou chamada genérica), custo em `learning_reviews` | M | `planning/` e `config.py` (`ai.roles`): **combinar com a Jev** (17.x) | Aprendizado + Jev | 30.11; parâmetros do orçamento (D-1) | `simulated`; `real` = uma revisão pontual no central com custo registrado (autorização (b) de 02/10) |
@@ -639,6 +639,8 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
      (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
    - **Orçamento proporcional (decisão do dono, 02/10)**: `B_W = min(α·G_W, k·N_W·c̄)`, α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana(c_rev)`;
      prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.
+   - **Curador (decisões do dono, 02/10)**: modelo barato por padrão (Haiku na triagem), escalada a Opus só em faixa C ou conflito (D-1);
+     origem humana sem efeito = faixa B (D-2); `shadow` → `on` só com ≥ 30 revisões válidas e ≥ 90 % de acordo (D-3); faixa C sempre item a item.
 6. **Trilha própria `learning_reviews`**, nunca purgada, com modelo, template, custo, decisão, override e resultado posterior.
 7. **Falha → proposta** pelo backlog existente: conhecimento envolvido e causa provável determinísticos; IA só no indeterminado; prova da correção medida como hoje.
 8. **Modo por app** para lições e telas (override por pacote, padrão = global).
@@ -662,11 +664,18 @@ Já decididas (02/10), incorporadas acima: política de risco A/B/C, com a mais 
 proporcional com α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana`, prioridades e salvaguardas (§8.7); backfill das lições nas 12 execuções aprováveis (30.22, decisão do orquestrador com o dono informado); lições e telas
 por app (§8.10): lições ainda não ligam e, depois, primeiro no QAMessenger; telas `on` primeiro no Outlook, depois da leitura real no android-01.
 
+Decididas pelo dono em 02/10 (via orquestrador), depois do desenho:
+
+| # | Decisão do dono |
+|---|---|
+| D-1 | Curador com modelo **barato por padrão** (Haiku na triagem); escalada para Opus **só em alto risco (faixa C) ou conflito**, sempre dentro de `c_max` |
+| D-2 | Conhecimento de origem humana sem efeito (lição de nota, preferência) entra na **faixa B**: a IA recomenda e o dono aprova em lote; nunca publica sozinho |
+| D-3 | Curador de `shadow` para `on` só com **≥ 30 revisões válidas em sombra e ≥ 90 % de acordo** com as decisões do dono; a faixa C continua sempre com o dono |
+| Faixa C | Confirmada: a IA dá parecer (prioridade 2 do orçamento), mas a decisão é **sempre do dono, item a item, nunca em lote** |
+| 30.9 | Migração `learning_reviews` = **069, provisória**: confirmar com o orquestrador no commit; quem mergear depois renumera para ficar acima de todas da `main` |
+
 Em aberto:
 
 | # | Decisão | Recomendação |
 |---|---|---|
-| D-1 | Modelo/perfil do curador | modelo barato como padrão (c̄ medido ≈ US$ 0,008); o mais caro só em `pedido_da_pessoa`, dentro de `c_max` |
-| D-2 | Item `human_origin` sem efeito (lição de nota, preferência): tratar como a classe B (recomendação e aprovação em lote)? | sim; continua sendo gesto do dono, só em lote |
-| D-3 | Critério para passar o curador de `shadow` a `on` | §8.9: ≥ 30 revisões válidas, concordância ≥ 90% na classe B |
-| D-5 | Limiares iniciais da saúde (§5.3) | os propostos, ajustados após uma semana de leitura real |
+| D-5 | Limiares iniciais da saúde (§5.3) | os propostos; o orquestrador leva ao dono quando houver números do desenho aplicados aos dados |

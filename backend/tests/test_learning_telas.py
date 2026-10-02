@@ -255,7 +255,9 @@ def mundo(tmp_path: Path) -> Iterator[Mundo]:
     cfg = TelasAprendidasCfg(modo="on")
     repo = SqlLearningRepository(db, clock=lambda: to_iso(relogio[0]))
     livro = LearningService(repo, FontesSql(db), TriagemDeCredencial(),
-                            ajustes=lambda: Ajustes(modo_telas=ModoDeTelas(cfg.modo)), relogio=lambda: relogio[0],
+                            ajustes=lambda: Ajustes(modo_telas=ModoDeTelas(cfg.modo),
+                                                      por_telas={p: ModoDeTelas(m) for p, m in cfg.por_app.items()}),
+                            relogio=lambda: relogio[0],
                             retencao_de_logs_dias=lambda: 14)
     servico = ligar_telas.ligar(livro, repo, db, config=lambda: cfg, relogio=lambda: relogio[0],
                                 commit=lambda: "abc1234", pasta=pasta)

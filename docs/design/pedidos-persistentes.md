@@ -383,8 +383,10 @@ hospedeiros com PostgreSQL gerenciado.
 - Cancelar o pedido: ocorrências futuras `canceladas`; a execução em curso recebe `RunService.cancel` (o caminho de
   `cancel_requested` que o `_tick` já trata); nenhuma ocorrência nova nasce depois do CAS de estado.
 - Pausar: para de materializar; retomar oferece "daqui para frente" (padrão) ou "recuperar dentro da janela".
-- Editar: `versao + 1`; ocorrências `prevista`/`devida` da versão anterior são refeitas; as despachadas terminam na
-  versão em que nasceram.
+- Editar: `versao + 1`; as ocorrências `prevista`/`devida` passam à versão nova NA MESMA LINHA (nunca canceladas e
+  recriadas: a chave não tem versão, e a nova seria engolida pelo `ON CONFLICT DO NOTHING`). Mudar a recorrência ou o
+  horário desativa o gatilho (as `prevista`/`devida` dele viram `cancelada`, motivo `edição`) e cria um gatilho novo, com
+  id e, portanto, chaves novas. As despachadas terminam na versão em que nasceram (28.4, D5; ADR-066).
 - Reinício do backend: nada novo — o laço relê `proxima_em`, as ocorrências e as execuções do banco; o que estava
   `despachada` sem execução é recriado pela chave (devolve a mesma, se existir).
 
@@ -478,8 +480,15 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
 - **Ações:** editar (nova versão, com prévia do que muda nas próximas), pausar, retomar (daqui ou recuperar), executar
   agora, backfill (só `observar`), cancelar (confirma e diz se há execução em curso), responder pendência.
 - **Aviso ao dono:** caixa de avisos no painel (evento `pedido.*` persistido + contador na barra), para: pausa
-  automática, aprovação pendente, `incerta`, orçamento a 80%, relatório pronto. Canal fora do painel (e-mail,
-  mensagem) é item separado e depende do dono (§13, 28.11).
+  automática, aprovação pendente, `incerta`, orçamento a 80%, relatório pronto.
+- **Aviso fora do painel (28.11): o canal decidido pelo dono (02/10) é o Telegram**, por um bot do @BotFather, só saída
+  (sem webhook). É o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva o tipo do evento e o
+  link `#/pendencias` (base `avisos.url_painel`; sem base, só o texto), nunca persona, conta, conteúdo nem terceiro. A
+  fonte são os eventos que já viram pendência (`approval.pending`, `run.updated` em `needs_input`, `session.needs_person`)
+  mais o `pedido.aviso` do 28.9, que sai para TODOS os tipos (o informativo, que não vai à caixa, segue sem link). Fila
+  durável `avisos_entregas` (migração 068) com chave única por fato; só o líder da trava `avisos` envia; envio
+  interrompido por queda fica `incerto` e não é reenviado. Segredos `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`.
+  Procedimento em [`operacao.md` §15](../operacao.md).
 - API proposta (adendo novo do contrato): `GET/POST /api/pedidos`, `GET/PATCH /api/pedidos/{id}`,
   `POST /api/pedidos/{id}/pausar|retomar|cancelar|executar|backfill`, `GET /api/pedidos/{id}/ocorrencias`,
   `/relatorios`, `/observacoes`, `GET /api/pedidos/previa` (próximas datas e custo, sem efeito).

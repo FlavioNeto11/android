@@ -165,7 +165,9 @@ class CosturasDoLivro:
     def licoes_para(self, pedido: PedidoDeLicoes) -> list[str]:
         ajustes = self._servico.ajustes
         fornecedor = self._ext.licoes
-        if not ajustes.enabled or ajustes.modo_licoes is Modo.OFF or fornecedor is None:
+        # O fornecedor aplica o modo efetivo por pacote (§8.10): com um pacote ligado, o global em `off` não cala.
+        ligado = ajustes.modo_licoes is not Modo.OFF or any(m is not Modo.OFF for m in ajustes.por_licoes.values())
+        if not ajustes.enabled or not ligado or fornecedor is None:
             return []
         return list(fornecedor.licoes_para(pedido))
 

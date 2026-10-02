@@ -315,7 +315,7 @@ e `consent_by`), `consent_at`, `session` (`SessionInfo`, com `stale`), `session_
 
 ## Geração por IA (`POST /api/personas/generate`)
 
-Chamada **paga**, pelo papel `social`, sem gravar nada: a resposta tem o formato de `PersonaCreate`, para a pessoa
+Chamada **paga**, pelo papel `persona` (item 17.8; sem `ai.roles.persona` herda o `social`), sem gravar nada: a resposta tem o formato de `PersonaCreate`, para a pessoa
 revisar e então criar.
 
 - **Pedido**: `PersonaGenerateBody` (`modules/identity/presentation/schemas.py`): `prompt` (3–2000), `locale?`,
@@ -329,7 +329,7 @@ revisar e então criar.
 - **Provedor**: `planning/provider.py::AIProvider.generate_persona` em todos: `anthropic_provider.py` (papel
   `social`, `strict_schema(PersonaDraft)`, `max_tokens=6000`), `openai_provider.py` (mesmo esquema, com a dica JSON
   do modelo), `simulated_provider.py::persona_simulada` (sorteio determinístico pelo hash do pedido, sempre adulta,
-  sem custo). `planning/routing.py::RoutingProvider.generate_persona` roteia pelo papel `social` **sem `run_id`**:
+  sem custo). `planning/routing.py::RoutingProvider.generate_persona` roteia pelo papel `persona` (herda o `social` até ser configurado) **sem `run_id`**:
   o teto do dia vale, o da execução não. `persona_draft_from_json` revalida o JSON do modelo (desembrulha cerca de
   código).
 - **Validação do rascunho** (`SocialService.generate_persona_draft`): `problemas_do_rascunho` recusa nome que não é

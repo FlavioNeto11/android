@@ -401,13 +401,13 @@ async def test_enriquecer_completa_as_crencas_de_quem_nao_tem_e_mantem_as_existe
         assert pessoa.voice_gaps == [] and lacunas_da_biografia(pessoa.biography.model_dump(exclude_none=True)) == []
         assert pessoa.biography.beliefs == BioBeliefs()
         cheia = await svc.enrich_persona(pessoa.id)
-        assert contador.count("social", kind="persona", enrich=True) == 1
+        assert contador.count("persona", kind="persona", enrich=True) == 1
         religiao, politica = cheia.biography.beliefs.religion, cheia.biography.beliefs.politics
         assert religiao is not None and religiao.affiliation and politica is not None and politica.orientation
         assert (cheia.summary, cheia.traits, cheia.biography.home) == (pessoa.summary, pessoa.traits,
                                                                        pessoa.biography.home)
         await svc.enrich_persona(pessoa.id)
-        assert contador.count("social", kind="persona") == 1                  # nada mais falta: não chama de novo
+        assert contador.count("persona", kind="persona") == 1                  # nada mais falta: não chama de novo
 
         # Quem já tem uma crença a mantém: a política (vazia) é completada e a religião não perde o que tinha.
         dados["name"] = "Outra Pessoa"
@@ -430,7 +430,7 @@ class _Duble:
         self.draft = draft
 
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
-        return self.draft, Usage(calls=1, role="social", model="m", provider="duble")
+        return self.draft, Usage(calls=1, role="persona", model="m", provider="duble")
 
 
 async def test_crenca_com_formato_de_segredo_e_recusada_como_sempre(tmp_path: Path) -> None:

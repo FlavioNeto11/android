@@ -24,8 +24,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 #: Esforço aceito pela API. Fora desta lista é erro de configuração, não um 400 a ser "aprendido".
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
-#: As cinco funções de IA. A ordem é a que o painel mostra.
-AI_ROLES = ("plan", "decide", "verify", "escalation", "social")
+#: As funções de IA. A ordem é a que o painel mostra. `persona` (item 17.8) é a geração/enriquecimento de persona:
+#: SEM bloco próprio ela herda a configuração de `social` por inteiro (`Config.ai_role`), então existe para poder ir a
+#: outro provedor sem arrastar o `social` da execução (comentário, DM) junto.
+AI_ROLES = ("plan", "decide", "verify", "escalation", "social", "persona")
 
 
 class EnvSettings(BaseSettings):
@@ -50,6 +52,10 @@ class EnvSettings(BaseSettings):
     #: Chave do provedor semântico de retrieval de contexto (`context_retrieval.semantic.provider: jev`). Só do ambiente
     #: ou do `.env`, nunca do `config.yaml`; ausente = provedor indisponível e o retrieval cai no local (ADR-063).
     typesafe_api_key: SecretStr | None = Field(default=None, alias="TYPESAFE_API_KEY")
+    #: Aviso fora do painel (item 28.11): o token do bot criado no @BotFather e o chat para onde ele escreve. Nomes
+    #: FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. `SecretStr`: não aparecem em repr nem em log.
+    telegram_bot_token: SecretStr | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: SecretStr | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -440,6 +446,8 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "verify": {"timeout_s": 30.0, "concurrency": 8},
     "escalation": {"timeout_s": 60.0, "concurrency": 4},
     "social": {"timeout_s": 60.0, "concurrency": 4},
+    # Mesmos números do social: sem `ai.roles.persona` a geração de persona se comporta como sempre.
+    "persona": {"timeout_s": 60.0, "concurrency": 4},
 }
 
 
@@ -476,7 +484,7 @@ class StepBudgetCfg(BaseModel):
 
 
 class ImageCfg(BaseModel):
-    """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos cinco papéis de IA (`AI_ROLES`): o saldo da
+    """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos papéis de IA de texto (`AI_ROLES`): o saldo da
     Anthropic não compra imagem, então é outro provedor, outra chave (`OPENAI_API_KEY`) e preço por imagem
     DECLARADO — a API de imagens não devolve custo. `simulated` (padrão) gera um degradê determinístico com Pillow,
     sem chave e sem nada sair da máquina; `openai` é `gpt-image-1-mini` por `/v1/images/generations`."""
@@ -836,9 +844,26 @@ class LicoesDoPapelCfg(BaseModel):
     max: int = Field(3, ge=0, le=20)
 
 
+_PACOTE_DO_APRENDIZADO = re.compile(r"^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$")
+
+
+def _conferir_pacotes_por_app(por_app: dict[str, str]) -> dict[str, str]:
+    """As chaves de `por_app` são pacotes Android (o mesmo formato que as telas aprendidas aceitam): dado de instalação,
+    nunca regra de código (ADR-052). Chave fora do formato é erro de config, não item ignorado."""
+    for pacote in por_app:
+        if not _PACOTE_DO_APRENDIZADO.match(pacote):
+            raise ValueError(f"'{pacote}' não é um pacote Android (ex.: com.exemplo.app)")
+    return por_app
+
+
 class LicoesCfg(BaseModel):
     #: off = não grava · shadow = grava e mede sem ir ao prompt · on = publica sem efeito e vai ao prompt (em prova)
     modo: Literal["off", "shadow", "on"] = "shadow"
+    #: Override por app (§8.10): `{<pacote>: off|shadow|on}`. Vazio (padrão) = o `modo` global vale para todo app; o
+    #: pacote que aparece aqui usa o modo dele. Nada liga sozinho: quem escreve o pacote é a instalação.
+    por_app: dict[str, Literal["off", "shadow", "on"]] = Field(default_factory=dict)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
     ator: LicoesDoPapelCfg = LicoesDoPapelCfg()
     planejador: LicoesDoPapelCfg = LicoesDoPapelCfg(tokens=150)
     minimo_por_braco: int = Field(8, ge=1, le=1000)        # unidades por braço para o veredito de efeito
@@ -849,8 +874,12 @@ class LicoesCfg(BaseModel):
 class TelasAprendidasCfg(BaseModel):
     #: off = não observa · observe = grava, minera e valida, sem a sessão consumir · on = publica sozinha (D1)
     modo: Literal["off", "observe", "on"] = "observe"
+    #: Override por app (§8.10): `{<pacote>: off|observe|on}`; vazio = o `modo` global vale para todo app.
+    por_app: dict[str, Literal["off", "observe", "on"]] = Field(default_factory=dict)
     observacoes: int = Field(3, ge=1, le=100)
     execucoes: int = Field(2, ge=1, le=100)
+
+    valida_pacotes = field_validator("por_app")(_conferir_pacotes_por_app)
 
 
 class FluxoAprendidoCfg(BaseModel):
@@ -900,6 +929,25 @@ class LearningCfg(BaseModel):
     ia_resumos_por_dia: int = Field(0, ge=0, le=0)
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
+
+
+class AvisosCfg(BaseModel):
+    """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062):
+    tipo do evento e link, nunca dado de persona. Desligado de fábrica; ligar exige `TELEGRAM_BOT_TOKEN` e
+    `TELEGRAM_CHAT_ID` no `.env` (procedimento em `docs/operacao.md`). Os valores nunca moram aqui."""
+
+    enabled: bool = False
+    canal: Literal["telegram"] = "telegram"
+    #: Base pública do painel para o link `<base>/#/pendencias`. Vazia: a mensagem leva só o texto.
+    url_painel: str | None = None
+    intervalo_s: int = Field(15, ge=5, le=3600)             # de quanto em quanto tempo o laço olha a fila
+    lote: int = Field(5, ge=1, le=50)                       # avisos por volta (o limite do Telegram é ~1 msg/s por chat)
+    timeout_s: float = Field(10.0, gt=0, le=60)
+    max_tentativas: int = Field(5, ge=1, le=20)
+    backoff_s: float = Field(30.0, gt=0, le=3600)
+    validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
+    incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
+    retencao_dias: float = Field(30.0, gt=0, le=3650)
 
 
 class ContextRetrievalLexicalCfg(BaseModel):
@@ -986,6 +1034,27 @@ class SensitiveScreenSeed(BaseModel):
     why: str | None = None            #: aparece na mensagem da etapa e na evidência
 
 
+class PedidosCfg(BaseModel):
+    """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
+    ocorrência despachada chama o planejador PAGO e o teto de orçamento é do 28.6; até ele entrar, ligar é decisão do
+    dono, por instalação. Desligado, o laço nem sobe (e este backend não toma a trava `pedidos`)."""
+
+    enabled: bool = False
+    #: De quanto em quanto tempo o laço acorda sem ninguém chamar. Também é a latência máxima do fechamento das
+    #: execuções que assentam sem passar pelo gancho do worker (D6).
+    tick_s: float = Field(15.0, ge=1.0, le=3600.0)
+    #: Quanto à frente a recorrência é materializada como `prevista` (global, D2).
+    horizonte_s: int = Field(3600, ge=60, le=86_400)
+    #: Quanto uma execução despachada pode ficar sem começar antes de o laço cancelá-la (global, D2).
+    prazo_inicio_s: int = Field(3600, ge=60, le=604_800)
+    #: Janela de recuperação de `horario` sem efeito, de `agora` e de recorrência diária ou mais lenta (D7).
+    janela_padrao_s: int = Field(1800, ge=0, le=604_800)
+    #: Teto de linhas materializadas por gatilho e de execuções criadas por volta.
+    lote_max: int = Field(500, ge=1, le=5000)
+    #: Validade da reserva de uma ocorrência por um laço (eficiência; a correção vem da chave).
+    posse_s: int = Field(120, ge=10, le=3600)
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1001,6 +1070,8 @@ class AppConfigFile(BaseModel):
     provisioning: ProvisioningCfg = ProvisioningCfg()
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
+    avisos: AvisosCfg = AvisosCfg()
+    pedidos: PedidosCfg = PedidosCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 
@@ -1285,11 +1356,12 @@ class Config:
         por_papel["escalation"] = env.ai_model_escalation or por_papel["plan"]
         # Escrever como a persona é redação, não navegação: por padrão usa o modelo do planejador.
         por_papel["social"] = env.ai_model_social or por_papel["plan"]
+        por_papel["persona"] = por_papel["social"]       # 17.8: sem `ai.roles.persona`, o modelo de sempre do social
         return por_papel.get(role, base)
 
     def ai_effort_for(self, role: str) -> Effort:
         env = self.env
-        if role == "plan" or role == "social":
+        if role in ("plan", "social", "persona"):
             return env.ai_effort_planner
         if role == "verify":
             return env.ai_effort_verifier or env.ai_effort_actor
@@ -1305,11 +1377,17 @@ class Config:
         a campo; o que ele não escreve continua o do padrão. Perfil inexistente é `KeyError` — quem chama confere.
         """
         ai = self.file.ai
-        r = ai.roles.get(role) or RoleCfg()
+        # `persona` (item 17.8) sem bloco em `ai.roles` É o `social`: lê o bloco dele e, em cada perfil, a camada dele
+        # (depois a própria, por cima). Com bloco próprio, o `social` deixa de valer para ela — herdar só o modelo ou
+        # o `fallback_provider` do social ao apontar a persona para outro provedor daria um modelo que o destino não tem.
+        herda_social = role == "persona" and "persona" not in ai.roles
+        r = ai.roles.get("social" if herda_social else role) or RoleCfg()
         if profile is not None:
-            sobre = ai.profiles[profile].roles.get(role)
-            if sobre is not None:
-                r = r.model_copy(update=sobre.model_dump(exclude_none=True))
+            camadas = ai.profiles[profile].roles
+            for nome in (("social",) if herda_social else ()) + (role,):
+                sobre = camadas.get(nome)
+                if sobre is not None:
+                    r = r.model_copy(update=sobre.model_dump(exclude_none=True))
         padrao = ROLE_DEFAULTS.get(role, {"timeout_s": 60.0, "concurrency": 4})
         nome = r.provider or (self.env.ai_provider or "anthropic").strip().lower()
         prov = ai.providers.get(nome)

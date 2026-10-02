@@ -1,7 +1,8 @@
 """Rotas do livro de aprendizado (ADR-054, fluxo §8): a leitura única e o status com trilha.
 
 - `GET  /api/aprendizado?kind=&state=&app=&origem=`: a união (receita, fluxo, habilidade, memória e os itens do
-  livro), com a contagem por tipo e estado;
+  livro), com a contagem por tipo e estado. `app=` é o PACOTE (chave canônica) ou `nao_resolvido` (o balde do fluxo e
+  da habilidade cujo app não resolve, 30.2); a memória é da persona e não entra em nenhum dos dois;
 - `GET  /api/aprendizado/pendentes`: a fila do D1 ("Para aprovar") e a contagem da barra do topo;
 - `GET  /api/aprendizado/revisar`: receitas e fluxos ATIVOS com efeito externo que nenhuma pessoa decidiu pelo livro
   (o legado anterior ao D1);
@@ -27,7 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.learning.application.servico import DetalheDoLivro, LearningService
 from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizado, NaoEncontrado, SkillState,
                                                UseARotaDasHabilidades)
-from app.modules.learning.domain.livro import EntradaDoLivro, Transicao
+from app.modules.learning.domain.livro import (EntradaDoLivro, Transicao, acoes_da_pessoa,
+                                               por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -82,12 +84,25 @@ def _chamar(fn: Callable[[], T]) -> T:
 
 
 # ------------------------------------------------------------------ JSON
-def _entrada(e: EntradaDoLivro) -> JsonObject:
+def _entrada(e: EntradaDoLivro, servico: LearningService | None = None) -> JsonObject:
+    """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`.
+    Com o `servico`, o motivo conhece o modo do tipo e do pacote e o veto (`vetado`, `modo_desligado`); sem ele, só o
+    que o próprio item diz (efeito externo, texto de pessoa, habilidade)."""
+    if servico is None:
+        motivo = por_que_o_sistema_nao_publica(e)
+    else:
+        modo_publica, veto = servico.contexto_de_publicacao(e)
+        motivo = por_que_o_sistema_nao_publica(e, modo_publica=modo_publica, veto=veto)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
-            "native_status": e.native_status, "title": e.title, "app": e.app, "origin": e.origin.value,
+            "native_status": e.native_status, "title": e.title, "app": e.app, "app_ref": e.app_ref,
+            "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
             "created_at": e.created_at, "state_at": e.state_at, "last_used_at": e.last_used_at, "uses": e.uses,
-            "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail}
+            "evidence": {"for": e.a_favor, "against": e.contra}, "count": e.count, "detail": e.detail,
+            "acoes": [{"to": a.to.value, "rotulo": a.rotulo, "exige_motivo": a.exige_motivo}
+                      for a in acoes_da_pessoa(e)],
+            "por_que_nao_publica": None if motivo is None else {
+                "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe}}
 
 
 def _evidencia(e: Evidencia) -> JsonObject:
@@ -100,13 +115,13 @@ def _transicao(t: Transicao) -> JsonObject:
             "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id}
 
 
-def _detalhe(d: DetalheDoLivro) -> JsonObject:
-    return {"item": _entrada(d.entrada), "evidencias": [_evidencia(e) for e in d.evidencias],
+def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
+    return {"item": _entrada(d.entrada, servico), "evidencias": [_evidencia(e) for e in d.evidencias],
             "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes)}
 
 
-def _lista(entradas: tuple[EntradaDoLivro, ...]) -> JsonObject:
-    return {"itens": [_entrada(e) for e in entradas], "total": len(entradas)}
+def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:
+    return {"itens": [_entrada(e, servico) for e in entradas], "total": len(entradas)}
 
 
 class CorpoDeStatus(BaseModel):
@@ -120,25 +135,28 @@ class CorpoDeStatus(BaseModel):
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
                     app: str | None = None, origem: Origem | None = None) -> JsonObject:
-    livro = _servico(request).livro(kind=kind, state=state, app=app, origem=origem)
+    servico = _servico(request)
+    livro = servico.livro(kind=kind, state=state, app=app, origem=origem)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
-    return {"itens": [_entrada(e) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
+    return {"itens": [_entrada(e, servico) for e in livro.itens], "total": len(livro.itens), "contagem": contagem}
 
 
 @router.get("/pendentes", response_model=None)
 async def pendentes(request: Request) -> JsonObject:
-    return _lista(_servico(request).pendentes())
+    servico = _servico(request)
+    return _lista(servico.pendentes(), servico)
 
 
 @router.get("/revisar", response_model=None)
 async def revisar(request: Request) -> JsonObject:
-    return _lista(_servico(request).revisar())
+    servico = _servico(request)
+    return _lista(servico.revisar(), servico)
 
 
 @router.get("/{kind}/{ref}", response_model=None)
 async def ler_item(request: Request, kind: LivroKind, ref: str) -> JsonObject:
     servico = _servico(request)
-    return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)))
+    return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)), servico)
 
 
 @router.post("/{kind}/{ref}/status", response_model=None)
@@ -146,4 +164,4 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
     servico = _servico(request)
     quem = _quem(request)
     entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
-    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
