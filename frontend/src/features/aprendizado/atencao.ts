@@ -95,3 +95,45 @@ export function falhasPorCapability<T extends { capability: string }>(grupos: re
   return [...por.entries()].sort(([a], [b]) => Number(a === ETAPA_LIVRE) - Number(b === ETAPA_LIVRE) || a.localeCompare(b))
     .map(([capability, itens]) => ({ capability, itens }));
 }
+
+/** Um grupo do aprendido de um app: a capability (ou o que faz as vezes dela) e os itens, com quantos pedem atenção. */
+export interface GrupoDoAprendido<T> {
+  chave: string;
+  titulo: string;
+  /** `true` quando o título é uma capability do catálogo (vai em fonte mono, como nas falhas). */
+  ehCapability: boolean;
+  itens: T[];
+}
+
+const FLUXOS = '§fluxos';
+const SEM_CAPABILITY = '§sem';
+
+/**
+ * O nível "Capability" da hierarquia Global → App → Capability → Item. Com a capability na linha, um grupo por
+ * capability; o fluxo (um comando inteiro, não uma capability) e o item sem capability conhecida vão a grupos próprios,
+ * por último. Sem o campo em nenhuma linha (backend anterior), agrupa pelo tipo, para a lista nunca ficar plana.
+ */
+export function gruposDoAprendido<T extends Pick<EntradaDoLivro, 'kind'>>(
+  itens: readonly T[], rotuloDoTipo: (kind: T['kind']) => string,
+): GrupoDoAprendido<T>[] {
+  const cap = (e: T): string | null => {
+    const c = (e as { capability?: unknown }).capability;
+    return typeof c === 'string' && c && c !== ETAPA_LIVRE ? c : null;
+  };
+  const comCapability = itens.some((e) => cap(e) !== null);
+  const por = new Map<string, T[]>();
+  for (const e of itens) {
+    const chave = comCapability ? (cap(e) ?? (e.kind === 'fluxo' ? FLUXOS : SEM_CAPABILITY)) : `tipo:${e.kind}`;
+    por.set(chave, [...(por.get(chave) ?? []), e]);
+  }
+  const peso = (k: string) => (k === FLUXOS ? 1 : k === SEM_CAPABILITY ? 2 : 0);
+  return [...por.entries()]
+    .sort(([a], [b]) => peso(a) - peso(b) || a.localeCompare(b))
+    .map(([chave, lista]) => ({
+      chave,
+      titulo: chave === FLUXOS ? 'Fluxos (o comando inteiro)' : chave === SEM_CAPABILITY ? 'Sem capability conhecida'
+        : chave.startsWith('tipo:') && lista[0] ? rotuloDoTipo(lista[0].kind) : chave,
+      ehCapability: comCapability && peso(chave) === 0,
+      itens: lista,
+    }));
+}

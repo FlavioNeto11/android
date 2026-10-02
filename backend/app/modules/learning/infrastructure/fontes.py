@@ -11,10 +11,11 @@ as fontes com o mesmo valor. O que não resolve cai no balde `APP_NAO_RESOLVIDO`
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 
 from app.db import Database, Row
 from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrigem, ReceitaLida, Vizinha,
+                                                  capability_da_linha_da_receita, capability_da_receita,
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
@@ -122,6 +123,59 @@ class FontesSql:
         seguinte = self._db.one(base + ">? ORDER BY version ASC LIMIT 1", (*chave, r.versao))
         return receita_legivel(r, etapa=etapa, do_mesmo_template=mesmos,
                                anterior=_vizinha(anterior), seguinte=_vizinha(seguinte))
+
+    # ------------------------------------------------------------------ capability na linha
+    def capabilities_das_receitas(self, refs: Sequence[str]) -> dict[str, str | None]:
+        """A capability de cada receita para a LINHA da lista: a mesma regra do detalhe (`capability_da_receita`:
+        etapa de origem e, sem ela, as etapas com o mesmo `step_hash` no mesmo app), mas em lote: uma consulta de
+        receitas, uma de etapas de origem, uma de etapas por `template_hash` e uma de apps, por lote de ids."""
+        ids = sorted({int(r) for r in refs if r.isdigit()})
+        receitas: list[Row] = []
+        for lote in linhas.lotes(ids):
+            receitas += self._db.query(
+                "SELECT id, app_package, step_hash, learned_from_step FROM recipes"
+                f" WHERE id IN ({linhas.marcas(len(lote))})", tuple(lote))
+        if not receitas:
+            return {}
+        etapas_de = [s for s in {linhas.texto_ou_nulo(r, "learned_from_step") or "" for r in receitas}
+                     if s and not s.startswith(PREFIXO_DE_TREINO)]
+        origem: dict[str, EtapaDeOrigem] = {}
+        for lote in linhas.lotes(sorted(etapas_de)):
+            for e in self._db.query(f"SELECT id, run_id, capability FROM steps WHERE id IN ({linhas.marcas(len(lote))})",
+                                    tuple(lote)):
+                origem[linhas.texto(e, "id")] = EtapaDeOrigem(linhas.texto(e, "id"), linhas.texto(e, "run_id"),
+                                                              linhas.texto_ou_nulo(e, "capability"))
+        # Só as receitas SEM capability na origem precisam do `step_hash`: o mesmo atalho do detalhe.
+        sem_origem = [r for r in receitas
+                      if not (o := origem.get(linhas.texto_ou_nulo(r, "learned_from_step") or "")) or not o.capability]
+        por_hash = self._capabilities_por_template(sorted({linhas.texto(r, "step_hash") for r in sem_origem}))
+        pacotes = self._pacotes_dos_apps() if por_hash else {}
+        saida: dict[str, str | None] = {}
+        for r in receitas:
+            etapa = origem.get(linhas.texto_ou_nulo(r, "learned_from_step") or "")
+            mesmos = [] if etapa is not None and etapa.capability else [
+                cap for cap, ids_do_app in por_hash.get(linhas.texto(r, "step_hash"), ())
+                if not ids_do_app or linhas.texto(r, "app_package") in {pacotes.get(i, i) for i in ids_do_app}]
+            saida[str(linhas.inteiro(r, "id"))] = capability_da_linha_da_receita(capability_da_receita(etapa, mesmos))
+        return saida
+
+    def _pacotes_dos_apps(self) -> dict[str, str]:
+        return {linhas.texto(a, "id"): linhas.texto_ou_nulo(a, "package") or linhas.texto(a, "id")
+                for a in self._db.query("SELECT id, package FROM apps")}
+
+    def _capabilities_por_template(self, hashes: Sequence[str]) -> dict[str, list[tuple[str, list[str]]]]:
+        """Por `template_hash`: (capability, ids de app da etapa). Os ids de app são o da etapa ou, sem ele, os da
+        execução; lista vazia = não dá para saber o app (conta, como no detalhe: esconder a dúvida seria pior)."""
+        saida: dict[str, list[tuple[str, list[str]]]] = {}
+        for lote in linhas.lotes(list(hashes)):
+            for s in self._db.query(
+                    "SELECT DISTINCT s.template_hash, s.capability, s.app_id, r.app_ids FROM steps s"
+                    " JOIN runs r ON r.id = s.run_id WHERE s.capability IS NOT NULL AND s.capability <> ''"
+                    f" AND s.template_hash IN ({linhas.marcas(len(lote))})", tuple(lote)):
+                app_id = linhas.texto_ou_nulo(s, "app_id")
+                ids = [app_id] if app_id else _ids_do_json(linhas.texto_ou_nulo(s, "app_ids"))
+                saida.setdefault(linhas.texto(s, "template_hash"), []).append((linhas.texto(s, "capability"), ids))
+        return saida
 
     # ------------------------------------------------------------------ versão (30.6)
     def vivas(self, app: str) -> tuple[VersaoViva, ...]:

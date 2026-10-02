@@ -7,7 +7,7 @@ import { Field, Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock } from '../../lib/time';
+import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { type Polaridade, SINAL_KINDS, type Sinal, rotuloDaFalha, rotuloDoMotivo, rotuloDoSinal } from './model';
@@ -20,6 +20,14 @@ const POLARIDADE: Record<Polaridade, { label: string; tone: Tone }> = {
   negative: { label: 'negativo', tone: 'danger' },
   neutral: { label: 'neutro', tone: 'neutral' },
 };
+
+/** Quem registrou o sinal, em português: o painel e o sistema são atores, não nomes. */
+export function quemRegistrou(por: string): string {
+  if (!por) return 'autor desconhecido';
+  if (por === 'panel' || por === 'painel') return 'pelo painel';
+  if (por === 'sistema' || por === 'system') return 'pelo sistema';
+  return `por ${por}`;
+}
 
 function LinhaDeSinal({ s }: { s: Sinal }) {
   const pol = s.polarity ? POLARIDADE[s.polarity] : null;
@@ -37,8 +45,8 @@ function LinhaDeSinal({ s }: { s: Sinal }) {
         {s.simulated ? <Badge tone="warning" size="sm" icon={FlaskConical} title="Execução simulada: nunca desliga nem promove nada real">simulado</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
-        {s.created_at ? <span>{formatClock(s.created_at)}</span> : null}
-        <span>por <strong>{s.created_by || '—'}</strong></span>
+        {s.created_at ? <span title={formatDateTime(s.created_at)}>{formatQuando(s.created_at)}</span> : null}
+        <span>{quemRegistrou(s.created_by)}</span>
         {onde ? <span className={styles.mono}>{onde}</span> : null}
         {s.reason ? <span>Motivo: {rotuloDoMotivo(s.reason)}</span> : null}
         {s.failure_kind ? <span>Falha: {rotuloDaFalha(s.failure_kind)}</span> : null}
