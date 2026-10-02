@@ -1294,6 +1294,7 @@ class TrainingSaveBody(BaseModel):
 class PolicyGroupMember(BaseModel):
     id: str
     username: str | None = None               # pessoa sem conta também pode estar num grupo
+    name: str | None = None                   # 29.25: o nome da pessoa (para quem não tem @ mostrar quem é)
 
 
 class PolicyGroupDTO(BaseModel):

@@ -1219,7 +1219,8 @@ export interface PolicyGroup {
   capabilities: Record<string, PolicyName>;
   limits: Record<string, number>;
   loosened: string[];
-  members: { id: string; username: string }[];
+  /** `username` vem vazio ou nulo quando a conta da persona foi retirada (29.23); `name` (29.25) é a pessoa. */
+  members: { id: string; username: string | null; name?: string | null }[];
   created_at: string;
   updated_at: string;
 }

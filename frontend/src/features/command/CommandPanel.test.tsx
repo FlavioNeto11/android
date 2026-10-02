@@ -26,7 +26,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(async () => {
   backend = new FakeBackend();
   backend
-    .on('GET', /^\/api\/flows\/match$/, () => json(null))
+    .on('POST', /^\/api\/flows\/match$/, () => json(null))
     .on('POST', /^\/api\/runs$/, () => json(makeRun()));
   backend.install();
   window.localStorage.clear();

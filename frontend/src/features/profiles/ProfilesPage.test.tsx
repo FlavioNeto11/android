@@ -581,6 +581,22 @@ describe('grupos de acesso', () => {
     expect(text()).toContain('nenhum — padrão do catálogo');      // o Bruno não tem grupo
   });
 
+  it('29.25 (B3): membro cuja conta saiu aparece pelo nome e "sem conta", nunca como um "@" sozinho', async () => {
+    rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
+                 members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                           { id: 'ig-7', username: '', name: 'Beatriz Rocha' },
+                           { id: 'ig-8', username: null, name: null }],
+                 created_at: '', updated_at: '' }]);
+    await render();
+    const chips = await waitFor(() => document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement);
+    const textos = Array.from(chips.querySelectorAll('span[data-sem-conta], span[class*="memberChip"]')).map((e) => e.textContent);
+    expect(textos).toContain('@andre.carvalho9543');
+    expect(textos).toContain('Beatriz Rocha · sem conta');
+    expect(textos).toContain('Pessoa sem nome · sem conta');              // sem nome nenhum, ainda assim não é "@"
+    expect(textos.filter((t) => (t ?? '').trim() === '@')).toHaveLength(0);
+    expect(chips.querySelectorAll('[data-sem-conta]')).toHaveLength(2);    // o estilo discreto só nos sem conta
+  });
+
   it('criar um grupo manda nome, políticas escolhidas e os perfis marcados (só quem tem conta)', async () => {
     rotasBase([]);
     backend.on('POST', /\/instagram\/policy-groups$/, (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));

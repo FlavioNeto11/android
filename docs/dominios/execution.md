@@ -79,7 +79,7 @@ A divisão continua a mesma: **o sucesso é gravado pelo executor (VERIFY) e os 
   - `legacy_flow_id` só existe para `flow:<id>@1`. A v1 de um fluxo **adotado** é da skill: grava `skill_id` e não
     grava `flow_id` nem incrementa `flows.used` (a trilha por fluxo adotado é decisão da fase J).
 - **A mesma porta para quatro perguntas** (decisão P2): `RunService._plan`, `RunService.apps_exigidos`,
-  `GET /api/flows/match` e `POST /api/skills/resolve` (fase I) usam `AppState.skill_planner`. A estimativa do painel,
+  `POST /api/flows/match` e `POST /api/skills/resolve` (fase I) usam `AppState.skill_planner`. A estimativa do painel,
   o pré-voo e a prévia não divergem do que a execução faz
   (`backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`, `simulated`).
 - **Composição** (`state.py::AppState.__init__`):
@@ -108,7 +108,7 @@ O que **não** acontece: `runs.plan` fica nulo, nenhum objetivo é materializado
 quis uma habilidade; mandar o comando ao planejador seria escolher às cegas, e pago. A execução também não cai para o
 fluxo que casaria o mesmo comando ([skills](skills.md#resolução-de-intenção)).
 
-`RunService.apps_exigidos` e `GET /api/flows/match` tratam a pergunta como "nada casou": `[]` e `null`.
+`RunService.apps_exigidos` e `POST /api/flows/match` tratam a pergunta como "nada casou": `[]` e `null`.
 
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
@@ -276,7 +276,7 @@ O que mudou mesmo com `skills.enabled` desligado (fase G):
 - os quatro campos novos de `steps` entram no `INSERT` (nulos, sem `origin`);
 - `FlowStore.learn_from_run` consulta `skill_versions`;
 - a prova local passa pelo provider, com o desvio da marca de falha ([abaixo](#verify-pela-porta-de-capability));
-- `GET /api/flows/match` passa a respeitar `ai.flows` ([contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)).
+- `POST /api/flows/match` passa a respeitar `ai.flows` ([contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)).
 
 Provas (`simulated`):
 

@@ -1569,7 +1569,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
 ([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
 
-**`GET /api/flows/match?command=`** (`api.py::flows_match`):
+**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.59) (`api.py::flows_match`):
 
 - Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
   `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
@@ -1694,7 +1694,7 @@ Nada implantado; prova `simulated`.
   vazio não casava e ia ao fluxo ou ao planejador.
 - `handle` chega ao plano como `@nome` em minúsculas; `integer`, `boolean` e `enum` chegam normalizados
   ([DSL](skill-dsl.md#tipos-extração-e-normalização-fase-i)). `@ana` sai igual ao de antes.
-- `GET /api/flows/match` responde `null` quando a resolução é pergunta, como para skill que não compila.
+- `POST /api/flows/match` responde `null` quando a resolução é pergunta, como para skill que não compila.
 - Com `skills.enabled` desligado, nada muda: o fluxo legado responde como em v0.21.
 
 **Provas (`simulated`):** `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`,
@@ -3805,3 +3805,18 @@ Quem consome o `tipo` (painel) deve tolerar valor desconhecido.
 legado para a que não tem. Na leitura retroativa (`retroativo=true`) o tipo vence o `failure_kind` gravado, e a ocorrência conta em `retroativas`.
 
 Prova `simulated` (`tests/test_learning_diagnostico.py`); `not_run` no central.
+
+## Adendo v0.59 (02/10/2026) — `flows/match` passa a `POST` com corpo JSON; `members[].name` nos grupos de acesso (item 29.25)
+
+**Quebra de contrato só para o painel do mesmo commit.** `GET /api/flows/match?command=<rascunho>` deixa de existir (responde 405) e vira
+`POST /api/flows/match` com corpo `{"command": "1 a 4000 caracteres"}` (`extra="forbid"`; vazio, longo demais ou campo a mais: 422). Motivo: o
+rascunho do comando, às vezes com e-mail, ia na query string e ficava na linha do log de acesso. A resposta não muda (cobertura do fluxo ou da
+habilidade, ou `null` sem casamento) e o painel (`api.flowsMatch`) já chama o POST; quem usava o GET por fora precisa migrar.
+
+Conferido (nada mudado fora do escopo): `POST /api/skills/resolve` e `POST /api/runs/targets/suggest` já recebem o comando no corpo. **Pendente, fora
+deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `api.py::preview_distribution`) ainda leva o texto do comando na query
+e portanto no log de acesso; é o mesmo vazamento e pede o mesmo tratamento (POST com corpo).
+
+Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/instagram/policy-groups`) ganha `name` (nome da pessoa: exibição, nome e
+sobrenome ou o @; `null` se nada existir). `username` continua `""`/nulo para quem teve a conta retirada (29.23); o painel mostra "nome · sem conta".
+Prova `simulated` (`test_intencao_chamadores.py`, `test_grupos_de_acesso.py`); `not_run` no central.

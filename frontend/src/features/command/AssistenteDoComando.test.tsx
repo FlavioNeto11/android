@@ -39,7 +39,7 @@ beforeEach(() => {
   backend = new FakeBackend();
   let n = 0;
   backend
-    .on('GET', /^\/api\/flows\/match$/, () => json(null))
+    .on('POST', /^\/api\/flows\/match$/, () => json(null))
     .on('POST', /^\/api\/commands\/refine$/, () => json((n += 1) === 1 ? RODADA_1 : RODADA_2));
   backend.install();
   window.localStorage.clear();

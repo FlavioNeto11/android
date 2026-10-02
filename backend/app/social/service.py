@@ -24,7 +24,7 @@ from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfile
                       ProfileAccountDTO, ProfilePolicyDTO, SessionInfo, SessionStatus, SocialContextDTO,
                       SocialDraftDTO, voice_gaps)
 from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idade_em, lacunas_da_biografia,
-                                               mesclar_secao, normalizar_biografia, separar_nome,
+                                               mesclar_secao, nome_exibido, normalizar_biografia, separar_nome,
                                                separar_visual_legado)
 from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
@@ -1627,7 +1627,9 @@ class SocialService:
         return PolicyGroupDTO(
             id=row["id"], name=row["name"], description=row["description"] or "", package=pacote,
             capabilities=caps, limits=loads(row["limits"], {}) or {}, loosened=afrouxadas,
-            members=[PolicyGroupMember(id=m["id"], username=m["username"])
+            members=[PolicyGroupMember(id=m["id"], username=m["username"],
+                                       name=nome_exibido(m["display_name"], m["first_name"], m["last_name"],
+                                                         m["username"]) or None)
                      for m in self.repo.policy_group_members(row["id"])],
             created_at=row["created_at"], updated_at=row["updated_at"])
 

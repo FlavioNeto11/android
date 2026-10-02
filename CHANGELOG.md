@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
+
+- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
+  `aria-label` e as opções do diálogo seguem a mesma regra (`rotuloDaConta`, em `pessoa.ts`). `members[]` do grupo ganha `name` no backend (só adição).
+- **I6:** abaixo de 480 px o `CardHeader` (`components/ui.module.css`, serve a `PageSection` e a toda guia) põe o texto em largura total e desce a ação;
+  antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
+- **Privacidade:** `GET /api/flows/match?command=` virou `POST /api/flows/match` com corpo `{command}` (máx. 4000): o rascunho, às vezes com e-mail, não vai mais
+  para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.59). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
+- Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+1). Real: `not_run`
+  (o ajuste do celular precisa ser visto no navegador).
+
 ## 2026-10-02 — 29.24: rota para resolver a quarentena e aviso sem o @ de conta retirada (branch feat/29-24-resolver-quarentena)
 
 - `POST /api/instances/{id}/locked-account/resolve` (corpo `{nota}` obrigatória; 404 `no_locked_account` sem marcador aberto): só banco, resolve o

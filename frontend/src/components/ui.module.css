@@ -113,7 +113,7 @@
   border-bottom: 1px solid var(--border-1);
 }
 .cardHeaderText { min-width: 0; flex: 1; }
-.cardTitle { font-size: var(--fs-lg); font-weight: 600; }
+.cardTitle { font-size: var(--fs-lg); font-weight: 600; overflow-wrap: normal; word-break: normal; hyphens: manual; }
 .cardSubtitle { margin-top: 2px; color: var(--text-3); font-size: var(--fs-sm); }
 .cardActions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .cardBody { padding: var(--sp-5); }
@@ -456,4 +456,13 @@
   .kvVal { min-width: 0; overflow-wrap: anywhere; margin-bottom: 6px; }
   .cardHeader { flex-wrap: wrap; }
   .cardActions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* 29.25 (I6) — celular: o texto do cabeçalho do cartão não divide a linha com a ação. Com `flex: 1` (base 0) o texto
+   ficava com ~1/3 da largura ao lado de "Adicionar conta" e o título quebrava no meio da palavra ("Recuperaç/ão"). Abaixo
+   de 480 px o texto ocupa a linha inteira e a ação desce, alinhada à esquerda. É o ponto compartilhado: `CardHeader`
+   serve a `PageSection`, aos cartões de grupo de acesso e à guia "Contas e acesso". */
+@media (max-width: 479px) {
+  .cardHeaderText { flex: 1 1 100%; }
+  .cardActions { flex: 1 1 100%; justify-content: flex-start; }
 }

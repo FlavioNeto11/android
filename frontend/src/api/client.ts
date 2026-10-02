@@ -478,9 +478,10 @@ export const api = {
 
   listFlows: (signal?: AbortSignal) => request<Flow[]>('GET', '/flows', { signal }),
   flowsCoverage: (signal?: AbortSignal) => request<FlowCoverage[]>('GET', '/flows/cobertura', { signal }),
-  /** Item 7.7: o comando digitado casa com um fluxo conhecido? `null` sem casamento — nada a estimar. */
+  /** Item 7.7: o comando digitado casa com um fluxo conhecido? `null` sem casamento — nada a estimar. POST com o
+   *  texto no corpo (29.25): o rascunho pode ter e-mail e query string vira linha de log de acesso. */
   flowsMatch: (command: string, signal?: AbortSignal) =>
-    request<FlowCoverage | null>('GET', '/flows/match', { query: { command }, signal }),
+    request<FlowCoverage | null>('POST', '/flows/match', { body: { command }, signal }),
   profileCapabilities: (profileId: string) =>
     request<ProfileCapabilities>('GET', `/instagram/profiles/${enc(profileId)}/capacidades`),
   updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),

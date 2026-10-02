@@ -226,7 +226,7 @@ disambiguator=None)`:
   - erro de compilação → `plan = None` com os `issues`. Nunca plano parcial.
 - `RunPlan.flow_id` (fase J): o fluxo cujo plano congelado a execução roda. É o `legacy_flow_id` de `flow:<id>@1` e
   também o da v1 que **adotou** um fluxo (conteúdo `schema_version` 0); nulo para versão da DSL.
-  `RunPlan.legacy_flow_id` mantém o sentido estreito (só `flow:<id>@1`), que `GET /api/flows/match` usa.
+  `RunPlan.legacy_flow_id` mantém o sentido estreito (só `flow:<id>@1`), que `POST /api/flows/match` usa.
 - `SkillRunPlanner.compiler` (fase J): o mesmo `SkillPlanCompiler` da execução, exposto para o descompilador conferir
   a ida e volta pelo compilador real.
 - `RunPlan.resolved`, `ref`, `skill_id`, `skill_version`, `skill_hash` e `name` são `None` no empate: não há **uma**
@@ -252,7 +252,7 @@ disambiguator=None)`:
 - Casou e não compilou: `RunService._skill_sem_plano` grava a trilha, emite `log` com os `issues` e põe a execução em
   `needs_input`. Não cai para o fluxo nem para o planejador.
 - Nada casou: o planejador, como sempre.
-- `RunService.apps_exigidos`, `GET /api/flows/match` e `POST /api/skills/resolve` fazem a mesma pergunta (decisão
+- `RunService.apps_exigidos`, `POST /api/flows/match` e `POST /api/skills/resolve` fazem a mesma pergunta (decisão
   P2). Com pergunta pendente, as duas primeiras respondem como se nada tivesse casado (`[]` e `null`).
 
 ### `Repository._insert_steps`
@@ -275,7 +275,7 @@ marca de falha visível e prova positiva, o modelo julga (mais conservador;
 - **Com `skills.enabled` desligado, o comportamento de resolução é o de antes:** o mesmo fluxo, o mesmo plano, o mesmo
   `flow_id`, o mesmo `flows.used`, a mesma decisão; sem fluxo, o planejador. Mudam só colunas de trilha, gravadas
   sempre (a lista está em [execution](dominios/execution.md#com-as-skills-desligadas-o-que-ficou-igual-e-o-que-não)),
-  e `GET /api/flows/match`, que passa a respeitar `ai.flows`.
+  e `POST /api/flows/match`, que passa a respeitar `ai.flows`.
 - Prova: `backend/tests/test_fatia_abrir_conversa.py::test_com_as_habilidades_desligadas_o_comando_vai_ao_planejador`
   (`simulated`).
 - A fase I também não muda nada com `skills.enabled` desligado: o fluxo não tem tipo, não empata e não casa com buraco

@@ -258,7 +258,7 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                # linhas do perfil já buscadas com o `profile_id` (ADR-040: as ações de sessão são por conta).
                "app_e_acoes_do_pacote",
                # Grupo de acesso (migração 036) é CONFIGURAÇÃO compartilhada de propósito, como a persona: não guarda
-               # conteúdo de perfil nenhum. `policy_group_members` devolve só id e @ (o mesmo que `list_profile_ids`).
+               # conteúdo de perfil nenhum. `policy_group_members` devolve só id, @ e nome (o mesmo que `list_profile_ids`).
                "create_policy_group", "policy_group_row", "policy_group_by_name", "list_policy_groups",
                "update_policy_group", "delete_policy_group", "policy_group_members", "set_policy_group_members",
                # O marcador de conta travada (migração 054, ADR-055) é do APARELHO, como `localidade_da_instancia`:

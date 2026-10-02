@@ -25,6 +25,15 @@ export function rotuloDoIdentificador(identificador: string): string {
   return ehEndereco(identificador) ? identificador : `@${identificador.replace(/^@/, '')}`;
 }
 
+/** Como citar uma pessoa que pode ter perdido a conta (29.23): com @, `@user`; sem @, o nome dela e "sem conta" — nunca
+ *  um "@" sozinho. `name` é o nome da pessoa (o `name` do DTO ou, no membro de grupo, o que o backend manda). */
+export function rotuloDaConta(p: { username?: string | null; name?: string | null }):
+  { texto: string; semConta: boolean } {
+  const arroba = (p.username ?? '').trim().replace(/^@/, '');
+  if (arroba) return { texto: `@${arroba}`, semConta: false };
+  return { texto: `${(p.name ?? '').trim() || 'Pessoa sem nome'} · sem conta`, semConta: true };
+}
+
 export function nomeDe(p: Pessoa): string {
   const nome = ('name' in p && typeof p.name === 'string' ? p.name : '').trim();
   if (nome) return nome;

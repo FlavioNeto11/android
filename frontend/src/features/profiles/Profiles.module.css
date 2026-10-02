@@ -283,6 +283,9 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   background: var(--surface-3); color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 29.25 (B3): persona cuja conta saiu aparece pelo nome + "sem conta", discreta — nunca um "@" sozinho. */
+.memberChip[data-sem-conta], .memberOption span[data-sem-conta] { color: var(--text-3); font-style: italic; }
+.memberChip[data-sem-conta] { background: transparent; border: 1px dashed var(--border-2); }
 
 .groupDialog { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .groupDialogTop { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }

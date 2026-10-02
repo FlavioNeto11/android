@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocke
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError
@@ -716,8 +716,15 @@ async def flows_coverage(request: Request) -> Any:
     return cobertura_dos_fluxos(st(request))
 
 
-@router.get("/flows/match")
-async def flows_match(request: Request, command: str = Query(..., min_length=1)) -> Any:
+class FlowMatchBody(BaseModel):
+    """Corpo de `POST /flows/match` (29.25): o rascunho do comando, que pode trazer e-mail e nunca deve ir para a URL
+    (query string vira linha de log de acesso). O teto é o do comando de uma execução e de `/skills/resolve`."""
+    model_config = ConfigDict(extra="forbid")
+    command: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/flows/match")
+async def flows_match(request: Request, body: FlowMatchBody) -> Any:
     """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com uma habilidade ou um fluxo
     conhecido? Devolve a cobertura e a estimativa em US$ do plano, ou `null` — sem nada casado não há o que estimar.
 
@@ -728,7 +735,7 @@ async def flows_match(request: Request, command: str = Query(..., min_length=1))
     from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
 
     s = st(request)
-    casado = s.skill_planner.for_command(s.runs.sem_destinos(command), None)   # como a execução o vê (onda C)
+    casado = s.skill_planner.for_command(s.runs.sem_destinos(body.command), None)   # como a execução o vê (onda C)
     if casado is None or casado.plan is None:
         return None
     if casado.legacy_flow_id is not None:

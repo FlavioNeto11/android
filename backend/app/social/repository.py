@@ -437,8 +437,8 @@ class SocialRepository:
             self.db.execute("DELETE FROM policy_groups WHERE id=?", (group_id,))
 
     def policy_group_members(self, group_id: str) -> list[Row]:
-        return self.db.query("SELECT id, username FROM instagram_profiles WHERE policy_group_id=? ORDER BY username",
-                             (group_id,))
+        return self.db.query("SELECT id, username, display_name, first_name, last_name FROM instagram_profiles "
+                             "WHERE policy_group_id=? ORDER BY username, id", (group_id,))
 
     def set_policy_group_members(self, group_id: str, profile_ids: list[str]) -> None:
         """A lista é a COMPLETA: quem estava no grupo e não está nela sai (volta a herdar só do padrão)."""

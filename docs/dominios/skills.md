@@ -197,7 +197,7 @@ Os dois backends cumprem `application/ports.py::SkillSource` e, desde a fase I,
 
 Na produção, quem compõe é `state.py::AppState.__init__` (fase G): `AppState.skill_repo`, `AppState.skill_registry` e
 o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), que é o que a execução, o pré-voo,
-`GET /api/flows/match` e `POST /api/skills/resolve` consultam
+`POST /api/flows/match` e `POST /api/skills/resolve` consultam
 ([execution](execution.md#resolve-e-compile-skillrunplanner)).
 
 **Ordem dos candidatos** (`CompositeSkillRegistry.candidates(command, profile_ids)`, fase I):
@@ -543,7 +543,7 @@ por `presentation/router.py::_http`:
 
 **O que a fase G ligou** (integrada em `0b736f3`; o ciclo está em [execution](execution.md)):
 
-- `RunService._plan`, `RunService.apps_exigidos` e `GET /api/flows/match` resolvem pelo registro, pela mesma porta
+- `RunService._plan`, `RunService.apps_exigidos` e `POST /api/flows/match` resolvem pelo registro, pela mesma porta
   (`AppState.skill_planner`).
 - **Validador de produção:** `infrastructure/document_validator.py::DslDocumentValidator` cumpre `DocumentValidator`
   com o esquema `automation/v1alpha1` e o mesmo `SkillPlanCompiler` da execução.
@@ -565,7 +565,7 @@ por `presentation/router.py::_http`:
     `::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`);
   - `PUT /api/flows/{id}` recusa religar fluxo adotado com 409 `flow_adopted`
     (`test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`);
-  - `GET /api/flows/match` passa a respeitar `ai.flows`
+  - `POST /api/flows/match` passa a respeitar `ai.flows`
     (`backend/tests/test_perfil_bloqueado_e_capacidades.py::test_estimativa_de_custo_por_fluxo`).
 - **Aprendizado de fluxo:** `FlowStore.learn_from_run` não aprende de execução de skill nem de comando que uma skill
   publicada cobre (`::test_fluxo_nao_se_aprende_de_skill_nem_do_comando_que_uma_skill_publicada_cobre`).

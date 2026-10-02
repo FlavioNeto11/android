@@ -20,6 +20,7 @@ import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
 import { LimitsEditor, PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
 import styles from './Profiles.module.css';
+import { nomeDe, rotuloDaConta } from './pessoa';
 
 /** Apps com catálogo de ações, o âncora primeiro (23.10). Antes o painel pegava "o primeiro app com login
  *  gerenciado NA ORDEM DA LISTA" — só funcionava porque, até aqui, o Instagram era o único; um segundo app com
@@ -125,7 +126,10 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
                     <Badge size="sm" tone={g.members.length ? 'info' : 'muted'}>
                       <Users size={12} aria-hidden /> {plural(g.members.length, 'persona', 'personas')}
                     </Badge>
-                    {g.members.slice(0, 8).map((m) => <span key={m.id} className={styles.memberChip}>@{m.username}</span>)}
+                    {g.members.slice(0, 8).map((m) => {
+                      const q = rotuloDaConta(m);
+                      return <span key={m.id} className={styles.memberChip} data-sem-conta={q.semConta || undefined}>{q.texto}</span>;
+                    })}
                     {g.members.length > 8 ? <span className={styles.muted}>+{g.members.length - 8}</span> : null}
                   </div>
                 </CardBody>
@@ -304,7 +308,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
               {({ id }) => (
                 <Select id={id} defaultValue="" disabled={!pronto} onChange={(e) => void partirDe(e.target.value)}>
                   <option value="">Padrão do catálogo</option>
-                  {profiles.map((p) => <option key={p.id} value={p.id}>o acesso de hoje de @{p.username}</option>)}
+                  {profiles.map((p) => <option key={p.id} value={p.id}>o acesso de hoje de {rotuloDaConta({ username: p.username, name: nomeDe(p) }).texto}</option>)}
                 </Select>
               )}
             </Field>
@@ -326,10 +330,11 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
           {profiles.length === 0 ? <p className={styles.detail}>Nenhuma persona com conta cadastrada.</p> : null}
           {profiles.map((p) => {
             const outro = p.policy_group_id && p.policy_group_id !== grupo?.id ? nomeDoGrupo.get(p.policy_group_id) : null;
+            const q = rotuloDaConta({ username: p.username, name: nomeDe(p) });
             return (
               <label key={p.id} className={styles.memberOption} data-checked={membros.has(p.id) || undefined}>
-                <input type="checkbox" aria-label={`@${p.username}`} checked={membros.has(p.id)} onChange={() => alternar(p.id)} />
-                <span>@{p.username}</span>
+                <input type="checkbox" aria-label={q.texto} checked={membros.has(p.id)} onChange={() => alternar(p.id)} />
+                <span data-sem-conta={q.semConta || undefined}>{q.texto}</span>
                 {outro ? <span className={styles.muted}>{membros.has(p.id) ? `sai de ${outro}` : `em ${outro}`}</span> : null}
               </label>
             );
