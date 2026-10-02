@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 29.18: fechamento da Fase 29
+
+- `docs/relatorio-validacao.md` §28 (novo): os 20 itens 29.1 a 29.20, cada um com estado e nível de prova (`real` com data, máquina, commit e ids; `simulated` com `arquivo::teste`; `not_run`) e, para o que não fechou, o que ficou pronto e a ação exata e quem decide. Real sem ressalva: 29.1, 29.4, 29.10, 29.11, 29.14, 29.16, 29.17; real com resto: 29.9, 29.12, 29.13; só simulado: 29.2, 29.3, 29.6, 29.20; `not_run` adiados pelo dono: 29.7 e 29.19.
+- A fase **não fecha ainda**, por uma cláusula: "CI verde no commit publicado". O cron de 02/10 05:28Z (run 36969076830, `52237c4`) passou em tudo menos no job de documentação (link para o handoff local e aviso de vocabulário), já corrigidos na integração (`3a48efdc`, `c1109079`); nenhum run de CI os cobriu e o commit implantado (`f9eed71`) não tem run (processo `[skip ci]`). Ação: `workflow_dispatch` na `main` depois do merge, ou o cron de 03/10 05:17Z. As outras três cláusulas estão cumpridas (6 h do 29.4; Outlook no login, 29.10 e 29.13; pendências com ação exata).
+- Estado pelo mecanismo (`aplicar`): 29.18 passa a `implemented`, 29.20 é registrado (`implemented`, `simulated`) e o 29.9 ganha o bloqueio reescrito com o W8 `PASS` de 02/10 (política `livre`) e o que falta (W8 com bloqueio). `docs/estado-atual.md` e a linha da Fase 29 em `docs/roadmap.md` atualizados.
+- Documentação e processo: só documentação e registro do plano; nenhum código, teste de produto ou ação em aparelho.
+
 ## 2026-10-02 — 29.20: nenhum aparelho pela saída da casa (medida do central e `egress_home`)
 
 - `backend/app/devices/rede_saida_central.py` (novo): mede a saída do próprio central (mesmos ecos da sonda, família forçada por socket, em segundo plano, cache com TTL `rede.sonda.central_ttl_s`, sem bloquear a API) e dá o veredito por aparelho (`mesma_saida`, `perfil_leva_ipv6`, `veredito`). `sonda_rede.ip_da_resposta_http` fatorada de `ler_ip_de_saida`.
