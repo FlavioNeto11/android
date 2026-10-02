@@ -1740,6 +1740,27 @@ fotografia dos recados antes de drenar as tarefas (senão o recado chega durante
 **Aplicabilidade.** Todo teste do executor que não testa a varredura; quem testa `pid_do_avd` atribui o seu depois ou usa
 `processos_reais=True`. `sleep` fixo só como janela NEGATIVA (nada deve acontecer), nunca para esperar que algo aconteça.
 
+
+### K-071 — Pedido em `call_later` que esgota calado: quem espera o reinício não pode pagar pela espera de 5 minutos
+
+**Data:** 02/10/2026 · **Área:** rede por aparelho (29.21, android-05)
+
+**Sintoma.** `exigida_com_bloqueio` acordou a frio sem `tun0`; a convergência pôs `configurado`, religou pela interface e nunca
+abriu um `restart`; a execução que esperava a rede ficou presa 7 min. Nada no log nem no histórico dizia o motivo.
+
+**Causa.** O reinício é pedido por `call_later` em memória (24 tentativas de 5 s) e o esgotamento punha `espera_ate` 300 s, que
+cala a varredura e a porta. O termo que segurava o aparelho ("ocupado") não ia a lugar nenhum, então o defeito não tinha
+rastro. Qual termo segurou no android-05 segue sem prova.
+
+**O que não funcionou.** Supor o termo pelos eventos (IA liberou, `device.network` fechado, o objetivo da rede é excluído da
+conta): nenhum deveria segurar, e a suposição não é evidência.
+
+**O que funcionou.** Dizer o termo na linha (uma vez por termo) e, havendo objetivo parado em `wait_reason='rede'` no
+aparelho, retentar em 30 s em vez de 300 s. Teto, agendamento e `espera_ate` seguem em memória (dívida).
+
+**Aplicabilidade.** Qualquer espera em memória que cale um laço de decisão precisa dizer por que calou e ter uma saída curta
+quando alguém depende dela.
+
 ### K-072 — Teste que afirma o contador de uma thread de servidor no instante em que o cliente recebe a resposta
 
 **Data:** 02/10/2026 · **Área:** testes (`test_rede_aplicacao.py`, `ServidorDeUmaVez`)

@@ -576,6 +576,26 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   `direct`. O log em nível `info` é a evidência: `ultima_conexao(10.66.0.N)` lê `inbound connection from` na cauda,
   e o log é renomeado no início seguinte a `rede.servidor.log_max_mb`.
 
+  **O reinício que a rede pede e o aparelho ocupado não deixa sair (29.21, 02/10/2026, android-05):** o `restart` é
+  pedido em memória (`_agendar_reinicio`: 1 s depois e a cada 5 s por 24 vezes, até o trabalho soltar o aparelho). No
+  android-05 (`exigida_com_bloqueio`, acordou a frio sem `tun0`) a linha foi a `configurado`, a interface religou o
+  cliente e NENHUM `restart` foi aberto: as 24 tentativas viram o aparelho "ocupado" e o esgotamento punha `espera_ate`
+  300 s, que cala a varredura e a porta; a execução que esperava a rede ficou presa 7 min. Agora (a) o termo de
+  `ocupado` que segurou (`_quem_segura_o_reinicio`: "worker no scheduler (objetivo X)", "controle da IA" ou "de uma
+  pessoa", "objetivo X em andamento", "comando exclusivo aberto X (verbo)"; e ainda "estado <x>" e a recusa do
+  `pedir_ciclo_de_vida`, com ou sem o verbo `restart` no worker) vai para o `detail` da linha, UMA vez por termo e
+  uma para o esgotamento; (b) com um objetivo de execução ativa parado em `wait_reason='rede'` neste aparelho
+  (`pending`, pela porta de despacho, ou `running`, suspenso entre etapas) o esgotamento NÃO põe os 300 s: o pedido
+  segue agendado e retenta em `retentativa_do_reinicio_s` (30 s) com mais 24 tentativas, enquanto o objetivo
+  esperar; sem ele, a espera de 5 min de antes. O objetivo que espera a rede nunca conta como ocupado (o worker, o
+  controle e `objetivo_em_andamento(..., exceto_quem_espera_a_rede=True)` são conferidos à parte). **Dívida
+  conhecida, não corrigida:** o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e
+  zeram no restart do central (a linha `configurado` persistida reabre o ciclo, então o aparelho não fica órfão, mas
+  o teto recomeça). **Causa exata do "ocupado" no android-05: não provada** (os eventos não mostravam termo nenhum
+  ocupando); a observação nova é o que vai dizer na próxima ocorrência. Prova `simulated`:
+  `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` e
+  `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; real: `not_run` (reproduzir no android-05).
+
   **Desfazer sem religar o cliente (A11, 02/10/2026, W8 r2/r3):** o `desfazer` faz `am force-stop` do cliente VPN, ESPERA ~10 s (`PARADA_PERSISTIR_S`, em `rede_aplicacao.py`) para o estado `stopped` chegar ao disco e só então o reinício é pedido (reiniciar na hora o perdia: o cliente, que lembra que estava ligado, religava sozinho no boot com um `tun0` para um par que já saiu do servidor). Se mesmo assim, depois do boot, o always-on e o bloqueio estão fora mas o `tun0` está no ar (`Observacao.cliente_solto`), a convergência para o cliente (`force-stop`, sem reinício) e apaga a linha em vez de pedir outro reinício (que o religaria de novo); se o túnel não cai, vale o caminho de antes (reiniciar até `rede.reinicios_max`).
 
 Rotas do 25.4: `POST /api/network/devices/{id}/apply` (202: o passo que falta, já, pela fila do aparelho; fora do ar

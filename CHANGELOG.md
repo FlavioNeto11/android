@@ -28,6 +28,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   certa para quem não espera; um teste novo confirma que dois servidores ao mesmo tempo não colidem na porta. Só teste e doc;
   `backend/app/` intacto. Aprendizado K-072.
 
+## 2026-10-02 — 29.21: reinício pedido pela rede que nunca sai (retentativa de 30 s e termo que segurou, branch fix/29-21-reinicio-da-rede)
+
+- `backend/app/devices/rede_convergencia.py`: `_pedir_reinicio` diz na linha (`detail`) QUAL termo do "ocupado" segurou o reinício (worker, controle, objetivo, comando exclusivo, estado do aparelho, verbo `restart` ausente ou recusa), uma vez por termo e uma no esgotamento das 24 tentativas, sem ruído a cada 5 s; com objetivo parado em `wait_reason='rede'` neste aparelho o esgotamento retenta em `retentativa_do_reinicio_s` (30 s) em vez de pôr 300 s de mudez (android-05, 02/10: a execução ficou presa 7 min).
+- `backend/app/vitrine.py`: `objetivo_que_segura` (o id que `objetivo_em_andamento` conta) e `objetivo_esperando_a_rede`.
+- Dívida registrada: o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e zeram no restart do central. Causa exata do "ocupado" no android-05 NÃO provada.
+- Prova `simulated`: `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` (4 casos) e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; `tests/test_rede_*.py` e os testes da vitrine passam. Real `not_run`: reproduzir no android-05.
+- Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.21), `docs/conhecimento/aprendizados.md` (K-071).
+
+## 2026-10-02 — Papel de IA `persona` para a geração de persona (17.8, branch jev/17-8-papel-persona)
+
+- `backend/app/config.py`: `AI_ROLES` ganha `persona`; `Config.ai_role` resolve `persona` SEM `ai.roles.persona` como o `social` (o bloco dele e, nos perfis do 17.7, a camada `social` e depois a `persona`); com bloco próprio o do `social` não vale para ela. `ROLE_DEFAULTS`, `ai_model_for` e `ai_effort_for` tratam `persona` como `social`: instalação existente não muda sem mexer na configuração.
+- `routing.py::generate_persona` chama o papel `persona` (mesmo semáforo do `social` enquanto `ai.roles.persona.concurrency` não for escrito); `anthropic_provider.py`/`openai_provider.py` gravam `role="persona"` no uso. A resposta social da execução segue `social`. Sem migração: `ai_calls.role` é texto livre (linhas antigas de persona ficam `social`).
+- Painel: `custos.ts` lê o papel `persona` (cai no `social` em backend antigo), rótulos e tipos da aba IA e dos custos.
+- Docs: `docs/ia.md` §1 e o parágrafo do 17.8 (como apontar a persona para `openai-flex`), `docs/dominios/persona.md`, `config/config.example.yaml`, `docs/api-contract.md` (adendo v0.48).
+- Prova `simulated`: `backend/tests/test_papel_persona.py` (20 testes: herança do social, bloco próprio, perfis do 17.7, validação da partida, roteamento e papel no uso, vagas compartilhadas) e `frontend/src/features/profiles/custos.test.ts`. `real`: `not_run` (sem chamada ao flex).
+
 ## 2026-10-02 — Aviso fora do painel pelo Telegram (28.11, branch feat/28-11-aviso-telegram)
 
 - Decisão do dono (02/10): o canal é o **Telegram**, por um bot do @BotFather; só saída (sem webhook nem rota de entrada). O aviso é o ESPELHO da caixa de Pendências (ADR-062), não um conceito novo: a mensagem leva só o tipo do evento e o link `<avisos.url_painel>/#/pendencias`, nunca persona, conta, conteúdo nem dado de terceiro.
@@ -51,6 +67,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `pedidos-persistentes.md` (editar = gatilho novo, versão trocada no lugar).
 - Prova `simulated`: `test_pedidos_materializar.py`, `test_pedidos_sobreposicao.py`, `test_pedidos_fechamento.py`,
   `test_pedidos_origem.py`, `test_pedidos_laco.py` (A1, A2, A3, A5, A6, dois líderes, reinício). Real e PostgreSQL: `not_run`.
+
+## 2026-10-02 — Aprendizado: follow-up do modo por app e do veto na rota (30.20 e 30.5, branch feat/30-servico-modo-e-veto)
+
+- 30.20: o D1 de lição e tela usa o modo efetivo do pacote do item (`_modo_publica(kind, app)`; `Ajustes.por_licoes` e
+  `por_telas`), o portão de `licoes_para` consulta o fornecedor com algum pacote ligado, e a camada de uso da visão por
+  app usa o modo do pacote; os dois `xfail(strict)` de `test_learning_modo_por_app.py` viraram testes normais.
+- 30.5: `por_que_nao_publica` passa a trazer `vetado` e `modo_desligado` nas rotas do livro e da visão por app
+  (`LearningService.contexto_de_publicacao`). Prova `simulated` (`test_learning_rota_publicacao.py`); nada implantado.
 
 ## 2026-10-02 — Aprendizado: modo por app para lições e telas (30.20, branch feat/30-20-modo-por-app)
 

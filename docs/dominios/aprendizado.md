@@ -375,10 +375,12 @@ decisão do dono.
 `aprendizado.telas.por_app: {<pacote>: off|observe|on}` sobrescrevem o modo global de UM pacote (chave = pacote Android,
 validada no config); vazio, o padrão, é o global. A regra é uma só, `domain/modo_por_app.modo_efetivo`, e vale na coleta
 e na validação (mineradores, curadoria, observadores de tela), no consumo (`licoes_para`, fornecedor de telas) e na
-publicação sozinha das telas; `enabled: false` vence tudo. O pacote vem só do config (ADR-052). Limite até a próxima
-fatia: o D1 de um pacote MAIS permissivo que o global (global `shadow`/`observe`, pacote `on`) ainda é recusado, porque
-`LearningService._modo_publica` e o portão global de `CosturasDoLivro.licoes_para` leem só o modo global
-(`test_learning_modo_por_app.py`, dois `xfail(strict)`). Prova `simulated`; nada foi ligado no central.
+publicação sozinha (D1) de lições e telas (`LearningService._modo_publica(kind, app)`, com o pacote do item: um
+pacote em `on` publica mesmo com o global em `shadow`/`observe`, e o contrário também vale); `enabled: false` vence
+tudo. O portão de `CosturasDoLivro.licoes_para` consulta o fornecedor se o global OU algum pacote não está `off`. A
+rota do livro traz `por_que_nao_publica` com `modo_desligado` e `vetado` (30.5, `LearningService.contexto_de_publicacao`),
+e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o modo efetivo do pacote
+(`ModosDeUso.do_pacote`). O pacote vem só do config (ADR-052). Prova `simulated`; nada foi ligado no central.
 
 ## Pendências conhecidas
 

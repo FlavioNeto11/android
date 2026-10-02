@@ -151,7 +151,8 @@ class VisaoPorApp:
         r = runtime or ModosDeRuntime()
         ajustes = self._servico.ajustes
         return ModosDeUso(receitas=r.receitas, fluxos=r.fluxos, habilidades=r.habilidades, licoes=ajustes.modo_licoes,
-                          telas=ajustes.modo_telas)
+                          telas=ajustes.modo_telas, licoes_por_app=ajustes.por_licoes,
+                          telas_por_app=ajustes.por_telas)
 
     def _ler(self) -> tuple[dict[str, Declarado], dict[str, AppDaLoja], dict[str, list[EntradaDoLivro]],
                             list[EntradaDoLivro]]:
@@ -196,7 +197,7 @@ def _nome(pacote: str, declarados: dict[str, Declarado] | dict[str, Declarado | 
 
 def _linha(e: EntradaDoLivro, modos: ModosDeUso) -> LinhaDoAprendido:
     origem = origem_do_aprendido(e.kind, e.detail)
-    return LinhaDoAprendido(e, origem, uso_do_item(e.kind, e.state, modos, detalhe=e.detail),
+    return LinhaDoAprendido(e, origem, uso_do_item(e.kind, e.state, modos.do_pacote(e.app), detalhe=e.detail),
                             absorvida_em(e.detail) if origem is OrigemNaVisao.ABSORVIDO else None)
 
 

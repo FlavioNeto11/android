@@ -391,10 +391,10 @@ class OpenAICompatProvider:
 
     # ------------------------------------------------------------------ geração de persona
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
-        modelo = self.models.get("social", self.model)
+        modelo = self.models.get("persona", self.model)
         esquema = strict_schema(PersonaDraft)
         texto = persona_generation_user_text(req) + self._json_hint(modelo, esquema)
-        msg, usage = await self._create(role="social", model=modelo, system=PERSONA_GENERATION_SYSTEM,
+        msg, usage = await self._create(role="persona", model=modelo, system=PERSONA_GENERATION_SYSTEM,
                                         content=[{"type": "text", "text": texto}],
                                         max_tokens=MAX_TOKENS_DO_RASCUNHO, schema=esquema, schema_name="persona")
         return persona_draft_from_json(self._texto(msg)), usage

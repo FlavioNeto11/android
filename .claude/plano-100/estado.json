@@ -4809,6 +4809,25 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T19:30:15+00:00"
+  },
+  "29.21": {
+   "id": "29.21",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071.",
+   "blocker": "Prova real not_run: boot a frio do android-05 (snapshot descartado) com objetivo de QA Messenger esperando a rede, depois de implantado; esperado reinicio em ~30 s e tunel conectado (teto US$ 0,30, autorizado pelo orquestrador). Causa exata do 'ocupado' nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria (zeram no restart do central).",
+   "arquivos": [
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/vitrine.py",
+    "backend/tests/test_rede_aplicacao.py"
+   ],
+   "testes": "pytest -n 8 tests/test_rede_*.py + test_distribute, test_loja_de_apps, test_quarentena_de_conta, test_sempre_na_promovida, test_app_repository, test_arquitetura: 317 passed, 1 falha conhecida de corrida com -n 8 (test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token, passa isolado com e sem a mudanca); test_reinicio_com_objetivo_esperando_a_rede (4 casos) e test_reinicio_que_nao_sai_diz_qual_termo_segurou",
+   "grupo": "29-21-rede",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T19:47:17+00:00"
   }
  },
  "rodadas": [
@@ -5818,6 +5837,15 @@
    ],
    "grupos": [
     "sessao:jev-fase28"
+   ]
+  },
+  {
+   "quando": "2026-10-02T19:47:17+00:00",
+   "itens": [
+    "29.21"
+   ],
+   "grupos": [
+    "29-21-rede"
    ]
   }
  ]
