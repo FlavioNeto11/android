@@ -138,7 +138,7 @@ export function AcoesDoPedido({ pedido, onMudou }: { pedido: PedidoDetalhe; onMu
     }
     const r = await confirm({
       title: 'Ativar o pedido?', confirmLabel: 'Ativar', icon: CirclePlay,
-      body: <ProximasDatas datas={previa.proximas_depois} titulo="O pedido passa a rodar nestas datas" />,
+      body: <ProximasDatas datas={previa.proximas_depois} titulo="O pedido passa a rodar nestas datas" fuso={pedido.fuso} />,
     });
     if (!r.confirmed) return;
     await apiPedidos.ativar(pedido.id, previa.confirmacao);

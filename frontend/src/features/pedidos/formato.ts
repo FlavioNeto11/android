@@ -3,6 +3,7 @@
  * lê "sex, 02/10 às 19:00". O fuso só aparece quando é diferente do navegador, e uma vez só (no título da seção, nunca em
  * cada data).
  */
+import type { PedidoView, ProximaData } from '../../api/pedidos';
 import { parseTs } from '../../lib/time';
 
 /** O fuso IANA do navegador ("America/Sao_Paulo"); vazio quando o ambiente não informa. */
@@ -63,4 +64,32 @@ export function agendaLegivel(descricao: string, fuso: string, hora?: string | n
   const texto = descricao.endsWith(sufixo) ? descricao.slice(0, -sufixo.length) : descricao;
   if (hora && COM_HORA_FIXA.test(texto) && !texto.includes(' às ')) return `${texto} às ${hora}`;
   return texto;
+}
+
+/** Quem faz, como a pessoa lê: as personas do pedido ou, quando o alvo é um aparelho, os aparelhos (`android-01`). */
+export function quemFazDoPedido(p: Pick<PedidoView, 'personas' | 'alvos'>): { personas: string[]; aparelhos: string[] } {
+  const personas = (p.personas ?? []).map((x) => x.nome);
+  const aparelhos = [...new Set((p.alvos?.targets ?? []).map((t) => t.instance_id).filter((x): x is string => !!x))];
+  return { personas, aparelhos };
+}
+
+/**
+ * A próxima data do pedido. `proxima_em` é o que o laço já materializou; sem ele, a primeira das `proximas` (que a API
+ * calcula pelos gatilhos, só no detalhe) vale como data PREVISTA, marcada como `calculada`. Sem nenhuma das duas, `null`.
+ */
+export function proximaDoPedido(
+  p: Pick<PedidoView, 'proxima_em' | 'proxima_local'>, proximas?: readonly Pick<ProximaData, 'utc' | 'local'>[] | null,
+): { iso: string; calculada: boolean } | null {
+  const iso = p.proxima_em ?? p.proxima_local;
+  if (iso) return { iso, calculada: false };
+  const primeira = proximas?.[0];
+  return primeira ? { iso: primeira.utc, calculada: true } : null;
+}
+
+/** "sáb, 03/10 às 08:00" de um valor de `<input type="datetime-local">` (`YYYY-MM-DDTHH:MM`, hora do navegador). */
+export function dataCurtaDeCampo(campo: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(campo);
+  if (!m) return campo || '—';
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  return dataCurta(d.toISOString());
 }

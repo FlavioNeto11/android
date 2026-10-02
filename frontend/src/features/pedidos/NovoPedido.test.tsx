@@ -87,12 +87,13 @@ describe('prévia e criação', () => {
     // Sem efeito e sem IA: só a rota da prévia foi chamada.
     expect(backend.callsTo('POST', /^\/api\/pedidos$/)).toHaveLength(0);
     const previa = container.querySelector('section[aria-label="Prévia do pedido"]') as HTMLElement;
-    expect(text(previa)).toContain('2026-10-03 08:00 -03:00');
+    expect(text(previa)).toMatch(/sáb, 03\/10 às \d{2}:\d{2}/);
+    expect(text(previa)).not.toContain('2026-10-03T');
     expect(text(previa)).toContain('hora repetida, roda só na primeira');
     expect(text(previa)).toContain('hora desviada');
     expect(text(previa)).toContain('android-01');
     expect(text(previa)).toContain('Fica recusado: publicar');
-    expect(text(previa)).toContain('sem base de custo');
+    expect(text(previa)).toContain('Sem base de custo');
     expect(text(previa)).toContain('A persona Ana ainda não tem sessão pronta.');
     expect(corpoDe(/previa$/)).toMatchObject({
       objetivo: 'Resuma o feed.', alvos: { instance_ids: ['android-01'] }, autonomia: 'observar', gatilhos: [{ tipo: 'agora', spec: {} }], proximas: 5,
@@ -199,13 +200,16 @@ describe('integração com o Comando', () => {
     await act(async () => { root.render(<CommandPanel />); });
   }
 
-  it('"Repetir ou acompanhar…" está indisponível sem comando e, com ele, leva à prévia com os aparelhos marcados', async () => {
+  it('"Repetir ou acompanhar…" abre mesmo sem comando (a prévia espera o texto) e, com ele, leva à prévia com os aparelhos marcados', async () => {
     await comando();
     const botao = () => byRole('button', /Repetir ou acompanhar/);
-    expect(botao().getAttribute('aria-disabled')).toBe('true');
-    await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'Resuma o feed todo dia');
     expect(botao().getAttribute('aria-disabled')).toBeNull();
     await click(botao());
+    expect(text(container)).toContain('Quem faz: android-01');
+    expect(byRole('button', /Ver a prévia/).getAttribute('aria-disabled')).toBe('true');
+    expect(text(byRole('button', /Ver a prévia/))).toContain('Escreva o comando');
+    await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'Resuma o feed todo dia');
+    expect(byRole('button', 'Ver a prévia').getAttribute('aria-disabled')).toBeNull();
     await click(byRole('button', 'Ver a prévia'));
     await waitFor(() => expect(backend.callsTo('POST', /previa$/)).toHaveLength(1));
     expect(corpoDe(/previa$/)).toMatchObject({ objetivo: 'Resuma o feed todo dia', alvos: { instance_ids: ['android-01'] } });

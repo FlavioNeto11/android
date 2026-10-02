@@ -139,6 +139,8 @@ export function CommandPanel() {
   const clearSelection = useUiStore((s) => s.clearSelection);
   const selectRun = useUiStore((s) => s.selectRun);
   const draftRequest = useUiStore((s) => s.commandDraftRequest);
+  const novoPedidoRequest = useUiStore((s) => s.novoPedidoRequest);
+  const novoPedidoAtendido = useUiStore((s) => s.novoPedidoAtendido);
   const apps = useAppStore((s) => s.apps);
 
   // Alvo do comando: os aparelhos marcados na grade, as personas (ADR-044: o sistema escolhe o aparelho delas, com
@@ -229,6 +231,15 @@ export function CommandPanel() {
     textRef.current?.focus();
     scrollToElement(textRef.current, 'center');
   }, [draftRequest]);
+
+  // "Novo pedido" da tela Pedidos: abre o painel "Repetir ou acompanhar" e leva o foco ao texto do comando.
+  useEffect(() => {
+    if (novoPedidoRequest === null) return;
+    setPedidoAberto(true);
+    novoPedidoAtendido();
+    textRef.current?.focus();
+    scrollToElement(textRef.current, 'center');
+  }, [novoPedidoRequest, novoPedidoAtendido]);
 
   const trimmed = command.trim();
   const total = order.length;
@@ -444,6 +455,11 @@ export function CommandPanel() {
     : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
     : distribuir ? 'O pedido persistente não distribui por contas (o backend recusa `alvos.distribute`): escolha as personas ou os aparelhos.'
     : alvoInvalido;
+  /** Em uma frase, quem fará o pedido do jeito que o Comando está agora (a prévia mostra o resultado de verdade). */
+  const quemFazDoPedido: string = distribuir ? 'distribuir por contas (não vale em pedido)'
+    : porPersona ? (selecionadas.length > 0 ? `persona ${selecionadas.map((id) => nomeDaPersona(id).nome).join(', ')}` : 'nenhuma persona escolhida')
+    : automatico ? 'a IA escolhe (confira na prévia)'
+    : selectedIds.length > 0 ? `${selectedIds.join(', ')}` : 'nenhum aparelho marcado';
   /** Quem faz e onde, do jeito que o Comando está agora, no formato dos alvos do pedido. */
   const alvosDoPedido = async (): Promise<PedidoCorpo['alvos']> => {
     if (distribuir) throw new Error('Distribuir por contas não vale em pedido persistente.');   // `pedidoImpede` já barra
@@ -453,10 +469,13 @@ export function CommandPanel() {
     // resolveu sem pergunta nem alerta de conduta, fixado em `targets` para o backend não re-escolher.
     const dados = await api.suggestRunTargets({ command: trimmed });
     const eco = ecoDosAlvos(dados.targets);
+    // A pergunta que o backend fez é o que a pessoa precisa responder: vai inteira, não resumida.
+    const pergunta = dados.questions[0]?.question ?? dados.perguntas[0];
     const impede = dados.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
-      : dados.questions.length > 0 || dados.perguntas.length > 0 ? 'Há uma pergunta sobre quem faz: ajuste o comando ou escolha manualmente.'
+      : pergunta ? `A IA não sabe quem deve fazer isto: «${pergunta}»`
+      : dados.questions.length > 0 || dados.perguntas.length > 0 ? 'Há uma pergunta sobre quem faz.'
       : eco.erro;
-    if (impede || !eco.eco) throw new ApiError(422, 'alvos_a_decidir', impede ?? 'Nenhum aparelho sugerido: escolha manualmente.');
+    if (impede || !eco.eco) throw new ApiError(422, 'alvos_a_decidir', impede ?? 'Nenhum aparelho sugerido.');
     return { instance_ids: eco.eco.instance_ids, targets: eco.eco.targets };
   };
 
@@ -730,13 +749,18 @@ export function CommandPanel() {
           mostra o plano, sem mexer nos aparelhos · <strong>Executar</strong> faz o trabalho em cada aparelho.
         </p>
         <div className={styles.actions}>
-          <Button size="sm" variant="ghost" icon={CalendarClock} aria-expanded={pedidoAberto} disabledReason={pedidoImpede}
+          {/* Só o que NUNCA vai funcionar tira o botão (senha no texto, distribuir por contas); comando curto, não: o painel abre e a prévia espera o texto. */}
+          <Button size="sm" variant="outline" icon={CalendarClock} aria-expanded={pedidoAberto}
+                  disabledReason={pareceCredencial(trimmed) ? SENHA_NO_COMANDO : distribuir ? pedidoImpede : null}
                   onClick={() => setPedidoAberto((a) => !a)}>
             Repetir ou acompanhar…
           </Button>
-          <span className={styles.shortcut}>transforma este comando num pedido que se repete, com prévia antes de criar</span>
+          <span className={styles.shortcut}>vira um pedido com agenda, com prévia antes de criar</span>
         </div>
-        {pedidoAberto ? <NovoPedido comando={trimmed} resolverAlvos={alvosDoPedido} onFechar={() => setPedidoAberto(false)} /> : null}
+        {pedidoAberto ? (
+          <NovoPedido comando={trimmed} resolverAlvos={alvosDoPedido} impede={pedidoImpede} quemFaz={quemFazDoPedido}
+                      onFechar={() => setPedidoAberto(false)} />
+        ) : null}
         {sugestao ? (
           <SugestaoDeAlvos
             sugestao={sugestao.dados}

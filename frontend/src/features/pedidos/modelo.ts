@@ -115,6 +115,8 @@ const MENSAGEM_DO_ERRO: Record<string, string> = {
 
 /** Texto de um erro da API para a pessoa: a explicação do código quando existe, a mensagem do backend e a dica geral. */
 export function mensagemDoErro(e: ApiError): string {
+  // A IA não decidiu quem faz: a pergunta vem na mensagem; o que a pessoa faz é escolher quem faz.
+  if (e.code === 'alvos_a_decidir') return `${e.message} Para seguir: marque aparelhos no modo Manual ou escolha uma persona.`;
   const propria = MENSAGEM_DO_ERRO[e.code];
   if (propria) return e.code === 'recorrencia_invalida' || e.code === 'frequencia_abaixo_do_piso' ? `${propria} ${e.message}` : propria;
   return e.message ? `${e.message} ${hintForError(e)}` : hintForError(e);

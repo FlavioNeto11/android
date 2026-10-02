@@ -1,4 +1,5 @@
 import type { GatilhoSpec, TipoDeGatilho } from '../../api/pedidos';
+import { dataCurtaDeCampo } from './formato';
 
 /**
  * O "Quando" da criação (produto.md §3): agora, em um horário, repetir, acompanhar. "Quando acontecer" (evento,
@@ -58,8 +59,8 @@ export function gatilhoDoQuando(e: EstadoDoQuando): { tipo: TipoDeGatilho; spec:
 /** O que "Repetir" e "Acompanhar" dizem em português, para a prévia e para o rótulo do botão. */
 export function falaDoQuando(e: EstadoDoQuando): string {
   if (e.modo === 'agora') return 'Uma vez, agora';
-  if (e.modo === 'horario') return `Uma vez, em ${e.inicio.replace('T', ' às ')}`;
+  if (e.modo === 'horario') return `Uma vez, em ${dataCurtaDeCampo(e.inicio)}`;
   const cada = e.intervalo > 1 ? `a cada ${e.intervalo}` : 'a cada';
   const unidade = { HOURLY: ['hora', 'horas'], DAILY: ['dia', 'dias'], WEEKLY: ['semana', 'semanas'], MONTHLY: ['mês', 'meses'] }[e.frequencia];
-  return `${cada} ${e.intervalo > 1 ? unidade[1] : unidade[0]}, desde ${e.inicio.replace('T', ' às ')}`;
+  return `${cada} ${e.intervalo > 1 ? unidade[1] : unidade[0]}, desde ${dataCurtaDeCampo(e.inicio)}`;
 }

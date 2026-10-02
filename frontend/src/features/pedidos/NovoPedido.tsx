@@ -1,19 +1,22 @@
-import { CalendarClock, TriangleAlert, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CalendarClock, TriangleAlert, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { toApiError } from '../../api/client';
-import type { Autonomia, PedidoCorpo, PedidoPrevia } from '../../api/pedidos';
+import type { Autonomia, PedidoCorpo, PedidoPrevia, Sobreposicao } from '../../api/pedidos';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
+import { Card, CardBody, CardHeader } from '../../components/Card';
+import { Disclosure } from '../../components/Disclosure';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
+import { cx } from '../../lib/format';
 import { uuid } from '../../lib/ids';
 import { useUiStore } from '../../store/ui';
 import { toast } from '../../store/toasts';
 import { apiPedidos } from './api';
+import { fusoDoNavegador } from './formato';
 import {
   DIAS_DA_SEMANA, falaDoQuando, gatilhoDoQuando, quandoInicial, type EstadoDoQuando, type Frequencia, type ModoQuando,
 } from './gatilho';
-import { ROTULO_DA_AUTONOMIA, instanteCanonico, mensagemDoErro } from './modelo';
+import { ROTULO_DA_AUTONOMIA, ROTULO_DA_SOBREPOSICAO, instanteCanonico, mensagemDoErro } from './modelo';
 import { PreviaDoPedido } from './PreviaDoPedido';
 import styles from './Pedidos.module.css';
 
@@ -30,15 +33,32 @@ interface Props {
   comando: string;
   /** Quem faz e onde, do jeito que o Comando está agora (no Automático pergunta à sugestão; nada é criado). */
   resolverAlvos: () => Promise<PedidoCorpo['alvos']>;
+  /** Por que a prévia ainda não pode ser pedida (comando curto, senha no texto…); `null`/ausente = pode. */
+  impede?: string | null;
+  /** Uma frase com quem fará o pedido pelo Comando de agora ("android-01", "persona Ana", "a IA escolhe"). */
+  quemFaz?: string;
   onFechar: () => void;
 }
 
+/** Uma seção do formulário: título curto e os campos dela, sem moldura própria (o cartão já é a moldura). */
+function Secao({ titulo, dica, children }: { titulo: string; dica?: string; children: ReactNode }) {
+  return (
+    <section className={styles.secao} aria-label={titulo}>
+      <div className={styles.secaoCabeca}>
+        <h4 className={styles.secaoTitulo}>{titulo}</h4>
+        {dica ? <p className={styles.secaoDica}>{dica}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 /**
- * Criar um pedido a partir do Comando: "Quando" + autonomia + limites → PRÉVIA (sem efeito, sem custo, sem IA) → só
+ * Criar um pedido a partir do Comando: "Quando" + critérios + limites → PRÉVIA (sem efeito, sem custo, sem IA) → só
  * "Confirmar e criar", com o selo da prévia, cria o pedido ativo (ADR-044). Mexeu em qualquer campo: a prévia vira
  * velha e some, e a confirmação exige uma nova.
  */
-export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
+export function NovoPedido({ comando, resolverAlvos, impede, quemFaz, onFechar }: Props) {
   const navegar = useUiStore((s) => s.navegar);
   const [quando, setQuando] = useState<EstadoDoQuando>(() => quandoInicial());
   const [autonomia, setAutonomia] = useState<Autonomia>('observar');
@@ -48,6 +68,9 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
   const [fim, setFim] = useState('');
   const [maximo, setMaximo] = useState('');
   const [orcamento, setOrcamento] = useState('');
+  const [orcamentoOcorrencia, setOrcamentoOcorrencia] = useState('');
+  const [sobreposicao, setSobreposicao] = useState<'' | Sobreposicao>('');
+  const [tentativas, setTentativas] = useState('');
   const [previa, setPrevia] = useState<{ dados: PedidoPrevia; corpo: PedidoCorpo } | null>(null);
   const [carregando, setCarregando] = useState<'previa' | 'criar' | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -58,6 +81,8 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
   useEffect(() => { setPrevia(null); }, [comando]);
   const gatilho = gatilhoDoQuando(quando);
   const numero = (t: string): number | undefined => (t.trim() !== '' && Number.isFinite(Number(t)) ? Number(t) : undefined);
+  const fusoEfetivo = fuso.trim() || 'America/Sao_Paulo';
+  const relogio = fusoDoNavegador();
 
   const montarCorpo = async (): Promise<PedidoCorpo | null> => {
     if (!gatilho) return null;
@@ -65,12 +90,17 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
     const lista = criterios.split('\n').map((l) => l.trim()).filter(Boolean);
     const max = numero(maximo);
     const orc = numero(orcamento);
+    const orcOc = numero(orcamentoOcorrencia);
+    const tent = numero(tentativas);
     return {
-      objetivo: comando, alvos, autonomia, fuso: fuso.trim() || 'America/Sao_Paulo', gatilhos: [gatilho],
+      objetivo: comando, alvos, autonomia, fuso: fusoEfetivo, gatilhos: [gatilho],
       ...(lista.length > 0 ? { criterios_sucesso: lista } : {}),
       ...(fim ? { fim_em: instanteCanonico(new Date(fim)) } : {}),
       ...(max !== undefined ? { max_ocorrencias: max } : {}),
       ...(orc !== undefined ? { orcamento_total_usd: orc } : {}),
+      ...(orcOc !== undefined ? { orcamento_ocorrencia_usd: orcOc } : {}),
+      ...(sobreposicao ? { sobreposicao } : {}),
+      ...(tent !== undefined ? { max_tentativas: tent } : {}),
     };
   };
 
@@ -131,100 +161,131 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
     }
   };
 
+  const semPrevia = impede ?? (!gatilho ? 'Preencha o horário de início.' : null);
   return (
     <Card aria-label="Novo pedido">
-      <div className={styles.formulario}>
-        <div className={styles.topo}>
-          <CalendarClock size={16} aria-hidden />
-          <strong>Repetir ou acompanhar este comando</strong>
-          <Button size="sm" variant="ghost" iconOnly icon={X} label="Fechar o pedido" onClick={onFechar} />
-        </div>
-        <p className={styles.nota}>
-          Um pedido é um objetivo que dura: gera uma ocorrência por data, e cada ocorrência vira uma execução comum. A prévia
-          não gasta nada e não chama IA; só “Confirmar e criar” cria o pedido.
-        </p>
-
-        <div className={styles.segmentado} role="group" aria-label="Quando">
-          {MODOS.map((m) => (
-            <Button key={m.id} size="sm" variant={quando.modo === m.id ? 'primary' : 'outline'} aria-pressed={quando.modo === m.id}
-                    onClick={() => escolherModo(m.id)}>{m.rotulo}</Button>
-          ))}
-        </div>
-
-        {quando.modo !== 'agora' ? (
-          <div className={styles.duas}>
-            <Field label={agendado ? 'Começa em' : 'Quando'} hint={`Hora local, no fuso do pedido (${fuso || 'America/Sao_Paulo'}).`}>
-              {({ id, describedBy }) => (
-                <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={quando.inicio}
-                           onChange={(e) => { mudou(); setQuando({ ...quando, inicio: e.target.value }); }} />
-              )}
-            </Field>
-            {agendado ? (
-              <Field label="A cada">
-                {({ id, describedBy }) => (
-                  <div className={styles.acoes}>
-                    <TextInput id={id} aria-describedby={describedBy} type="number" min={1} value={quando.intervalo} style={{ width: 80 }}
-                               onChange={(e) => { mudou(); setQuando({ ...quando, intervalo: Number(e.target.value) }); }} />
-                    <Select aria-label="Unidade da repetição" value={quando.frequencia}
-                            onChange={(e) => { mudou(); setQuando({ ...quando, frequencia: e.target.value as Frequencia }); }}>
-                      {FREQUENCIAS.map((f) => <option key={f.id} value={f.id}>{f.rotulo}</option>)}
-                    </Select>
-                  </div>
-                )}
-              </Field>
-            ) : null}
-          </div>
+      <CardHeader level={3} title="Repetir ou acompanhar este comando"
+                  subtitle="Um pedido é um objetivo que dura: gera uma ocorrência por data. A prévia não gasta nada; só “Confirmar e criar” cria."
+                  actions={<Button size="sm" variant="ghost" iconOnly icon={X} label="Fechar o pedido" onClick={onFechar} />} />
+      <CardBody className={styles.formulario}>
+        {quemFaz ? (
+          <p className={styles.quemFaz}>
+            <Users size={14} aria-hidden /> <span>Quem faz:</span> <strong>{quemFaz}</strong>
+          </p>
         ) : null}
-        {agendado && quando.frequencia === 'WEEKLY' ? (
-          <div className={styles.dias} role="group" aria-label="Dias da semana">
-            {DIAS_DA_SEMANA.map((d) => (
-              <Button key={d.id} size="sm" variant={quando.dias.includes(d.id) ? 'primary' : 'outline'} aria-pressed={quando.dias.includes(d.id)}
-                      onClick={() => { mudou(); setQuando({ ...quando, dias: quando.dias.includes(d.id) ? quando.dias.filter((x) => x !== d.id) : [...quando.dias, d.id] }); }}>
-                {d.rotulo}
-              </Button>
+
+        <Field label="Título" unit="opcional">
+          {({ id }) => <TextInput id={id} value={titulo} maxLength={120} placeholder="Sem título: usa o começo do objetivo"
+                                  onChange={(e) => setTitulo(e.target.value)} />}
+        </Field>
+
+        <Secao titulo="Quando">
+          <div className={styles.seletor} role="group" aria-label="Quando">
+            {MODOS.map((m) => (
+              <button key={m.id} type="button" className={cx(styles.seletorItem, quando.modo === m.id && styles.seletorAtivo)}
+                      aria-pressed={quando.modo === m.id} onClick={() => escolherModo(m.id)}>{m.rotulo}</button>
             ))}
           </div>
-        ) : null}
+          {quando.modo !== 'agora' ? (
+            <div className={styles.duas}>
+              <Field label={agendado ? 'Começa em' : 'Quando'}
+                     hint={fusoEfetivo === relogio ? 'Hora do seu relógio.' : `Hora local, no fuso do pedido (${fusoEfetivo}).`}>
+                {({ id, describedBy }) => (
+                  <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={quando.inicio}
+                             onChange={(e) => { mudou(); setQuando({ ...quando, inicio: e.target.value }); }} />
+                )}
+              </Field>
+              {agendado ? (
+                <Field label="A cada">
+                  {({ id, describedBy }) => (
+                    <div className={styles.acoes}>
+                      <TextInput id={id} aria-describedby={describedBy} type="number" min={1} value={quando.intervalo} style={{ width: 80 }}
+                                 onChange={(e) => { mudou(); setQuando({ ...quando, intervalo: Number(e.target.value) }); }} />
+                      <Select aria-label="Unidade da repetição" value={quando.frequencia}
+                              onChange={(e) => { mudou(); setQuando({ ...quando, frequencia: e.target.value as Frequencia }); }}>
+                        {FREQUENCIAS.map((f) => <option key={f.id} value={f.id}>{f.rotulo}</option>)}
+                      </Select>
+                    </div>
+                  )}
+                </Field>
+              ) : null}
+            </div>
+          ) : null}
+          {agendado && quando.frequencia === 'WEEKLY' ? (
+            <div className={styles.dias} role="group" aria-label="Dias da semana">
+              {DIAS_DA_SEMANA.map((d) => (
+                <Button key={d.id} size="sm" variant={quando.dias.includes(d.id) ? 'primary' : 'outline'} aria-pressed={quando.dias.includes(d.id)}
+                        onClick={() => { mudou(); setQuando({ ...quando, dias: quando.dias.includes(d.id) ? quando.dias.filter((x) => x !== d.id) : [...quando.dias, d.id] }); }}>
+                  {d.rotulo}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {quando.modo !== 'agora' ? (
+            <Field label="Prazo final" unit="opcional" hint="Depois dele o pedido se encerra sozinho. Hora do navegador.">
+              {({ id, describedBy }) => <TextInput id={id} aria-describedby={describedBy} type="datetime-local" value={fim}
+                                                   onChange={(e) => { mudou(); setFim(e.target.value); }} />}
+            </Field>
+          ) : null}
+        </Secao>
 
-        <div className={styles.duas}>
-          <Field label="Autonomia" hint={ROTULO_DA_AUTONOMIA[autonomia].dica}>
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} value={autonomia}
-                      onChange={(e) => { mudou(); setAutonomia(e.target.value as Autonomia); }}>
-                {(['observar', 'preparar', 'agir'] as const).map((a) => <option key={a} value={a}>{ROTULO_DA_AUTONOMIA[a].rotulo}</option>)}
-              </Select>
-            )}
+        <Secao titulo="O que conta como feito" dica="Sem critério, só prazo, contagem ou orçamento encerram o pedido.">
+          <Field label="Critérios de sucesso" unit="opcional, um por linha">
+            {({ id }) => <TextArea id={id} rows={2} value={criterios} placeholder="Ex.: o relatório foi enviado"
+                                   onChange={(e) => { mudou(); setCriterios(e.target.value); }} />}
           </Field>
-          <Field label="Título" unit="opcional">
-            {({ id }) => <TextInput id={id} value={titulo} maxLength={120} placeholder="Sem título: usa o começo do objetivo"
-                                    onChange={(e) => setTitulo(e.target.value)} />}
-          </Field>
-        </div>
-        <Field label="Critérios de sucesso" unit="opcional, um por linha" hint="O que prova que o objetivo foi cumprido. Sem critério, só prazo, contagem ou orçamento encerram o pedido.">
-          {({ id, describedBy }) => <TextArea id={id} aria-describedby={describedBy} rows={2} value={criterios}
-                                              onChange={(e) => { mudou(); setCriterios(e.target.value); }} />}
-        </Field>
-        <div className={styles.duas}>
-          <Field label="Fuso">
-            {({ id }) => <TextInput id={id} value={fuso} onChange={(e) => { mudou(); setFuso(e.target.value); }} />}
-          </Field>
-          <Field label="Prazo final" unit="opcional, horário do navegador">
-            {({ id }) => <TextInput id={id} type="datetime-local" value={fim} onChange={(e) => { mudou(); setFim(e.target.value); }} />}
-          </Field>
-          <Field label="Máximo de ocorrências" unit="opcional">
-            {({ id }) => <TextInput id={id} type="number" min={1} value={maximo} onChange={(e) => { mudou(); setMaximo(e.target.value); }} />}
-          </Field>
-          <Field label="Orçamento total (US$)" unit="opcional">
-            {({ id }) => <TextInput id={id} type="number" min={0} step="0.01" value={orcamento} onChange={(e) => { mudou(); setOrcamento(e.target.value); }} />}
-          </Field>
-        </div>
+        </Secao>
+
+        <Secao titulo="Limites">
+          <div className={styles.duas}>
+            <Field label="Autonomia" hint={ROTULO_DA_AUTONOMIA[autonomia].dica}>
+              {({ id, describedBy }) => (
+                <Select id={id} aria-describedby={describedBy} value={autonomia}
+                        onChange={(e) => { mudou(); setAutonomia(e.target.value as Autonomia); }}>
+                  {(['observar', 'preparar', 'agir'] as const).map((a) => <option key={a} value={a}>{ROTULO_DA_AUTONOMIA[a].rotulo}</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="Máximo de ocorrências" unit="opcional">
+              {({ id }) => <TextInput id={id} type="number" min={1} value={maximo} onChange={(e) => { mudou(); setMaximo(e.target.value); }} />}
+            </Field>
+            <Field label="Orçamento total (US$)" unit="opcional">
+              {({ id }) => <TextInput id={id} type="number" min={0} step="0.01" value={orcamento} onChange={(e) => { mudou(); setOrcamento(e.target.value); }} />}
+            </Field>
+            <Field label="Orçamento por ocorrência (US$)" unit="opcional">
+              {({ id }) => <TextInput id={id} type="number" min={0} step="0.01" value={orcamentoOcorrencia}
+                                      onChange={(e) => { mudou(); setOrcamentoOcorrencia(e.target.value); }} />}
+            </Field>
+          </div>
+        </Secao>
+
+        <Disclosure summary="Avançado" meta="fuso, sobreposição, tentativas">
+          <div className={styles.duas}>
+            <Field label="Fuso" hint="O fuso em que “todo dia às 19:00” é lido.">
+              {({ id, describedBy }) => <TextInput id={id} aria-describedby={describedBy} value={fuso}
+                                                   onChange={(e) => { mudou(); setFuso(e.target.value); }} />}
+            </Field>
+            <Field label="Se a anterior ainda roda" hint="O que fazer quando uma data chega com a ocorrência anterior em andamento.">
+              {({ id, describedBy }) => (
+                <Select id={id} aria-describedby={describedBy} value={sobreposicao}
+                        onChange={(e) => { mudou(); setSobreposicao(e.target.value as '' | Sobreposicao); }}>
+                  <option value="">Padrão da autonomia</option>
+                  {(Object.keys(ROTULO_DA_SOBREPOSICAO) as Sobreposicao[]).map((s) => <option key={s} value={s}>{ROTULO_DA_SOBREPOSICAO[s]}</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="Tentativas por ocorrência" unit="opcional">
+              {({ id }) => <TextInput id={id} type="number" min={1} value={tentativas} onChange={(e) => { mudou(); setTentativas(e.target.value); }} />}
+            </Field>
+          </div>
+        </Disclosure>
 
         {erro ? <Banner tone="danger" icon={TriangleAlert} compact role="alert">{erro}</Banner> : null}
-        {previa ? <PreviaDoPedido previa={previa.dados} resumoQuando={falaDoQuando(quando)} /> : null}
+        {previa ? <PreviaDoPedido previa={previa.dados} resumoQuando={falaDoQuando(quando)} fuso={previa.corpo.fuso ?? fusoEfetivo} /> : null}
 
         <div className={styles.acoes}>
           <Button icon={CalendarClock} loading={carregando === 'previa'} disabled={carregando === 'criar'}
-                  disabledReason={!gatilho ? 'Preencha o horário de início.' : null} onClick={() => void verPrevia()}>
+                  disabledReason={semPrevia} onClick={() => void verPrevia()}>
             {previa ? 'Ver a prévia de novo' : 'Ver a prévia'}
           </Button>
           <Button variant="primary" loading={carregando === 'criar'}
@@ -234,7 +295,7 @@ export function NovoPedido({ comando, resolverAlvos, onFechar }: Props) {
             Confirmar e criar
           </Button>
         </div>
-      </div>
+      </CardBody>
     </Card>
   );
 }
