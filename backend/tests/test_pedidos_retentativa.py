@@ -351,3 +351,21 @@ async def test_o_maximo_de_ocorrencias_nao_barra_a_nova_tentativa_da_que_ja_viro
     [o] = _ocs(db)
     assert o["estado"] == "despachada" and o["tentativa"] == 2, "executadas já é 1 = o máximo, e a repetição sai"
     assert _pedido_estado(db)["estado"] == "ativo", "nem o pedido encerra com a repetição pendente"
+
+
+# =============================================================================================== ligação no estado
+async def test_o_estado_liga_o_aviso_ao_barramento_como_pedido_aviso(h: Harness) -> None:
+    """A costura de produção (`AppState`): o aviso vira o evento `pedido.aviso` com `{aviso: AvisoDTO}`, que o 28.11 assina."""
+    import json
+    from app.modules.avisos.domain.mensagem import aviso_de_evento
+    db = h.state.db
+    assert h.state.pedidos.avisar is not None
+    h.state.pedidos.avisar({"id": "o1:ocorrencia_incerta", "pedido_id": "p1", "pedido_titulo": "t", "ocorrencia_id": "o1",
+                            "tipo": "ocorrencia_incerta", "nivel": "warn", "mensagem": "Algo incerto", "dados": {},
+                            "requer_pessoa": True, "criado_em": "2026-10-02T12:00:00.000Z", "lido_em": None})
+    e = db.one("SELECT kind, level, message, data FROM events WHERE kind='pedido.aviso' ORDER BY id DESC LIMIT 1")
+    assert (e["kind"], e["level"], e["message"]) == ("pedido.aviso", "warn", "Algo incerto")
+    assert json.loads(e["data"])["aviso"]["tipo"] == "ocorrencia_incerta"
+    # O consumidor do 28.11 entende o que saiu: tipo `pedido.ocorrencia_incerta`, pendência (pede a pessoa).
+    a = aviso_de_evento("pedido.aviso", json.loads(e["data"]), 1, "http://painel")
+    assert a is not None and a.tipo == "pedido.ocorrencia_incerta"

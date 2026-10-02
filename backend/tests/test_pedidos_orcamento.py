@@ -286,6 +286,32 @@ async def test_com_execucao_aberta_espera_ela_fechar_para_encerrar(h: Harness) -
     assert db.scalar("SELECT encerrado_motivo FROM pedidos WHERE id='ped1'") == "orcamento"
 
 
+async def test_limite_conhecido_o_excesso_do_orcamento_e_no_maximo_o_custo_de_uma_ocorrencia_aberta(h: Harness) -> None:
+    """LIMITE CONHECIDO (28.6, `pedidos-laco.md` §11): o custo só entra no total quando a ocorrência FECHA; por isso o
+    excesso máximo do orçamento é o custo de UMA ocorrência aberta, limitado pelo teto da execução. Nenhuma outra sai."""
+    r = Relogio()
+    laco, db = _pedido_horario(h, r)
+    _orcamento(db, total=1.0)
+    for i in range(3):
+        _fechada(db, f"a{i}", 0.2, minuto=i)                # gasto 0.6, mediana 0.2: sobram 0.4 e UMA cabe (a volta passa)
+    laco.uma_volta()
+    [run] = _runs(db)
+    assert h.state.repo.teto_usd_da_execucao(run["id"]) == pytest.approx(0.4), "o teto da execução é o que sobra do total"
+    _chamada(db, run["id"], 0.45)                           # a chamada em voo passa do teto pelo custo dela (só ela)
+    laco.uma_volta()
+    assert len(_runs(db)) == 1, "com uma aberta nenhuma outra é despachada, mesmo com `devida` acumulada"
+    assert db.scalar("SELECT estado FROM pedidos WHERE id='ped1'") == "ativo", "a aberta ainda decide o custo final"
+    _assentar(db, run["id"], "completed")
+    laco.uma_volta()
+    total = laco.repo.custo_total("ped1")
+    assert total == pytest.approx(1.05) and total > 1.0, "o orçamento foi ultrapassado"
+    assert total - 1.0 <= 0.45 + 1e-9, "…em no máximo o custo da ocorrência aberta"
+    assert db.scalar("SELECT encerrado_motivo FROM pedidos WHERE id='ped1'") == "orcamento"
+    r.avancar(4 * 3600)
+    laco.uma_volta()
+    assert len(_runs(db)) == 1, "e nada mais é despachado depois"
+
+
 async def test_a_estimativa_limita_quantas_ocorrencias_saem_numa_volta(h: Harness) -> None:
     r = Relogio()
     r.t = datetime(2026, 10, 2, 12, 10, 0, tzinfo=UTC)
