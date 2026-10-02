@@ -29,7 +29,7 @@ from ..models import SAIDA_VALOR_MAX, SAIDA_VALUE_KINDS, PlanStep
 
 if TYPE_CHECKING:
     from ..planning.provider import Transcricao
-from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo
+from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo, redact
 from ..util import url_abrivel
 
 #: `{{saida:<nome>}}`, o nome no alfabeto de `SAIDA_NOME_RE`. Espaço junto das chaves é tolerado (o planejador escreve
@@ -480,3 +480,12 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     if motivo is not None:
         raise LeituraVisualRecusada("triagem", motivo)
     return LeituraVisual(valor=valor, recorte=recorte, sha256=hashlib.sha256(recorte).hexdigest(), alvo=ancora)
+
+
+def razao_sem_segredo(texto: str | None) -> str:
+    """O motivo de um `step_blocked` (texto do MODELO, que pode citar o que viu: um código de verificação, um segredo), no
+    que se pode gravar em `steps.status_detail`, `attempts.error`, na nota da evidência e no evento (item 12.5). Redigido
+    (`security.redaction.redact`) e triado: se a triagem acusar, "motivo omitido (triagem: <motivo>)"."""
+    limpo = redact(texto or "") or ""
+    motivo = triagem(limpo, do_elemento=limpo, da_tela=limpo)
+    return limpo if motivo is None else f"motivo omitido (triagem: {motivo})"
