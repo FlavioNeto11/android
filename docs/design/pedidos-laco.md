@@ -445,6 +445,9 @@ Decisões e limites:
   Escolhi o menor conserto: o `DELETE` de `ai_calls` não leva a chamada cuja execução pertence a ocorrência
   `despachada`/`rodando`. Não se grava custo parcial antes do fechamento (somaria em dobro). `runs` não é purgada por
   nenhuma retenção (só `ai_calls`, `events`, evidências): a linha ausente do §5.3 segue sendo defesa.
+- **LIMITE CONHECIDO: o excesso máximo de orçamento é o custo de UMA ocorrência aberta, limitado pelo teto da execução**
+  (o custo só entra no total quando a ocorrência fecha). Fixado em
+  `test_pedidos_orcamento.py::test_limite_conhecido_o_excesso_do_orcamento_e_no_maximo_o_custo_de_uma_ocorrencia_aberta`.
 - **O custo em andamento não conta no total até a ocorrência fechar.** O excesso possível é o de uma ocorrência aberta por
   vez (sobreposição `pular`/`guardar_uma`); com `permitir_todas` (só `observar`), `quantas_cabem` limita a volta pela
   estimativa. O que passa disso o teto da execução barra (abaixo).
@@ -464,10 +467,11 @@ Decisões e limites:
   chamada paga), só quando há `devida`. Adia se uma conta que paga alguma função de IA está `bloqueia` (bloqueio do dono ou
   crédito esgotado) ou, com `pedidos.saldo_minimo_usd > 0`, com saldo estimado abaixo do mínimo; conta sem leitura não adia.
   A ocorrência fica `devida`, sem reserva e sem tentativa gasta, com `resumo = "adiada: …"` (regravado só quando muda).
-  **Diverge do §10 de `pedidos-persistentes.md`** ("fora da janela, `perdida`"): por pedido do coordenador a adiada nunca
-  vira `perdida` por causa do saldo; o custo é que, com o saldo baixo por dias, as `devida` se acumulam (a sobreposição
-  `pular` ainda descarta o excesso, com motivo) e a mais antiga sai primeiro quando o saldo volta. Contar a adiada como
-  `perdida` depois de `previsto_para + janela` é uma linha em `_adiar`, se o dono preferir.
+  **Segue o §10 de `pedidos-persistentes.md`** ("fora da janela, `perdida`"), por decisão do coordenador (02/10, revisando a
+  primeira versão, que deixava a adiada `devida` para sempre): dentro de `previsto_para + max(janela, tick_s)` a ocorrência
+  segue `devida` ("adiada: ..."); passou disso, `_adiar` a leva a `perdida` com o motivo `adiada por saldo além da janela: ...`
+  (`_limite_da_janela`, o mesmo cálculo de `_criacao_falhou`). O pedido segue vivo, sem execução criada. Teste:
+  `test_pedidos_orcamento.py::test_saldo_baixo_alem_da_janela_vira_perdida_com_o_motivo_do_saldo`.
 - **Prioridade.** `dispatchable_objectives` ordena `r.prioridade DESC, r.created_at, o.instance_id`: prioridade 0 (todo o
   legado) mantém a ordem de antes. `RunService.create(prioridade=)` e `create_run(prioridade=)` são parâmetros INTERNOS,
   como `origem`; `RunCreate` segue com `extra="forbid"`. A 067 não deu campo de prioridade ao pedido: o laço grava
@@ -529,3 +533,88 @@ Não feito (fora do 28.7): rotas `GET /api/pedidos/{id}/relatorios` e `/observac
 `observacoes_recentes` do `PedidoView` (28.9; os repositórios `relatorios` e `observacoes` já paginam); leitura da memória no plano
 da ocorrência (`memoria_para_o_plano` está pronto, o 28.5 o usa); espaçamento adaptativo do §8.2 (usa o `sha256`); agendador do
 relatório por período; aviso `relatorio_pronto` (28.11).
+
+## 13. 28.5 — o que foi feito (02/10/2026, branch `feat/28-5-tentativas-efeito`)
+
+Prova `simulated` (`backend/tests/test_pedidos_tentativas.py` para o domínio puro, `test_pedidos_retentativa.py` para o laço em
+SQLite, relógio falso e `RunService` de verdade com o planejamento desligado); `real` só no 28.12. PostgreSQL
+(`TEST_DATABASE_URL`): `not_run`. Sem migração e sem ADR. Na mesma entrega, os dois acréscimos do coordenador ao 28.6 (§11):
+a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
+
+| Peça | Onde |
+|---|---|
+| Decisão (repetir, `incerta`, definitiva), atraso exponencial com teto, falhas seguidas, `AvisoDTO` | `modules/pedidos/domain/tentativas.py` |
+| Fechamento com a decisão; `falhou → devida` na mesma linha; `incerta` → pedido `aguardando_pessoa`; pausa; avisos | `laco.py` (`_fechar_uma`, `_decidir_tentativa`, `_retentar`, `_efeitos_no_pedido`, `_emitir`) |
+| `retentar` (CAS + custo + instante), `efeito_possivel`, `desfechos_recentes` | `repositorio.py` |
+| Espera da nova tentativa no despacho; janela contada do atraso | `laco.py` (`_em_espera`, `_limite_da_janela`) |
+| `pedido.aviso` no barramento (o 28.11 já o assina) | `state.py` (`avisar=` do `LacoDePedidos`) |
+| Configuração | `config.py::PedidosCfg` (`max_tentativas`, `falhas_para_pausar`, `retentativa_base_s`, `retentativa_teto_s`), bloco `pedidos:` do exemplo |
+
+**Regras.**
+
+- **Nova tentativa** só quando a execução `falhou` (status `failed` ou `completed_with_issues` sem objetivo `uncertain`) SEM
+  ação com efeito possível: `actions.effect_possible = 1` OU `status IN ('intended','unknown')` em qualquer tentativa de
+  qualquer etapa (o que `Scheduler._reconciliar` deixa marcado), e a execução PURGADA conta como efeito possível (o que não se
+  sabe não é seguro repetir). `max_tentativas` é o TOTAL de execuções por ocorrência (2 = a primeira e uma repetição); o atraso
+  é `min(retentativa_teto_s, retentativa_base_s * 2**(n-1))` (60 s e 900 s por padrão). `incerta` (etapa `uncertain`) nunca repete.
+- **Falha com efeito possível é `incerta`, não `falhou`** (decisão do coordenador, 02/10; a primeira versão a deixava `falhou`).
+  Se o efeito pode ter acontecido, o mundo está incerto, e um `falhou` definitivo deixaria a PRÓXIMA ocorrência refazê-lo (um
+  segundo envio); falha ou incerteza nunca contam como sucesso. O laço sobe o fechamento `falhou` para `incerta` (motivo
+  "…; efeito externo possível: só se verifica, sem nova tentativa", `domain/tentativas.decidir` → `ACAO_INCERTA`), qualquer que
+  seja o estado do pedido; o pedido `ativo` vai a `aguardando_pessoa` com o aviso `ocorrencia_incerta`, igual à `incerta` que o
+  `fechar` já decidia (objetivo `uncertain`). A execução PURGADA também (não se sabe o que ela fez). Só fica `falhou`, e só
+  então pode repetir, a execução que COMPROVADAMENTE não produziu efeito: falhou antes de qualquer ação com efeito (nenhuma
+  ação, ou só leitura como `observe_screen`, `effect_possible = 0`), ou o driver provou que nada chegou ao aparelho (ação
+  registrada `failed` com `effect_possible = 0`, que o executor grava quando `DriverError.effect_possible` é falso). Não há
+  outra "verificação que prova ausência" no código: é esta a prova. CONSEQUÊNCIA: `tap`, `long_press`, `drag` e `type_text` são
+  `EFFECT_CAPABLE` e gravam `effect_possible = 1` até quando deram certo, inclusive em etapa de navegação (sem `side_effect`);
+  logo toda falha DEPOIS de um toque desses vira `incerta`, e a nova tentativa fica para as falhas antes do primeiro toque
+  (planejamento, aparelho indisponível, leitura) e para as provadas sem efeito. Restringir o predicado às ações de commit
+  (`actions.side_effect = 1`) é uma linha em `RepositorioDePedidos.efeito_possivel`. DECISÃO (coordenador, 02/10): MANTER o
+  predicado largo ("na dúvida, `incerta`"); com os pedidos desligados o custo só aparece no 28.12. PARÂMETRO A REVISITAR com
+  números no 28.12: a contagem de ocorrências `incerta` cuja falha veio depois de toque SEM `side_effect`. Se for alta,
+  restringir às ações de commit passa a ser decisão com dado, não suposição.
+  Testes: `test_pedidos_retentativa.py` (efeito → `incerta`, `aguardando_pessoa` e aviso, sem nova tentativa; antes de qualquer
+  ação com efeito → repete; driver provou ausência → repete e esgotada vira `falhou`; `unknown`/`intended`; purgada; pedido pausado).
+- **A nova tentativa é a MESMA linha.** `retentar` faz `despachada|rodando → devida` num só `UPDATE` (CAS de estado, custo da
+  tentativa somado, motivo = a falha), sem coluna nova: `terminada_em` carrega o instante `nao_antes_de` enquanto a ocorrência
+  é `devida` com `tentativa > 0` (`marcar_despachada` o zera). `tentativa` e `run_id` ficam; o despacho usa `n = tentativa+1`
+  e `chave:t<n>`, e a execução da chave é PROCURADA antes de criar (A2): duas voltas, dois líderes ou queda no meio não criam
+  duas tentativas (teste). A aresta `falhou → devida` é validada em duas chamadas de `transicionar_ocorrencia`
+  (`rodando → falhou`, `falhou → devida`) embora o banco só grave a segunda.
+- **A repetição passa por tudo o que o despacho passa:** sobreposição (não é aberta consigo mesma), orçamento (`_orcamentos`,
+  `quantas_cabem`) e saldo (`_adiar`, com a janela contada do `nao_antes_de`, depois `perdida`). Antes de repetir, a decisão
+  confere o orçamento: sem verba para outra tentativa (total ou teto da ocorrência), a falha é definitiva e o motivo diz o
+  orçamento, em vez de deixá-la `devida` para ser `pulada`. `max_ocorrencias` conta a ocorrência uma vez (já tem `run_id`) e
+  não barra a repetição; `_agendar_pedido` também não a pula (`sem_retentativas`).
+- **`incerta` → pedido `aguardando_pessoa`** (ator `sistema`, só se o pedido está `ativo`; o CAS `WHERE estado='ativo'` fecha a
+  corrida com a pessoa), na MESMA transação do fechamento da ocorrência, mais o aviso `ocorrencia_incerta` (`requer_pessoa`).
+  Quem resolve é a pessoa (`aguardando_pessoa → ativo`, ação do 28.9).
+- **Falhas seguidas.** Conta OCORRÊNCIAS finais `falhou` (a que falhou e foi repetida só conta se a última tentativa também
+  falhar); `concluida` e `incerta` zeram, `cancelada` não conta nem zera. Ao atingir `pedidos.pausa_por_falha` (coluna do
+  pedido) o laço pausa o pedido (ator `sistema`, `pausado_motivo = "N falhas seguidas"`) e emite `pausa_automatica`
+  (informativo). O laço só marca o estado: as prevista/devida do pedido pausado são `puladas` por `_fechar_dos_parados` na volta
+  seguinte.
+- **Avisos.** `pedido.aviso` com `{aviso: AvisoDTO}` (contrato 28.9), id determinístico (`<ocorrencia>:ocorrencia_incerta`,
+  `<pedido>:pausa_automatica:<ocorrencia>`) para o canal de fora deduplicar. Emitido DEPOIS da transação; falha ao emitir é
+  registrada e nunca desfaz o estado. Não há tabela `pedido_avisos` ainda (28.9): o `id` do `AvisoDTO` é sintético até lá.
+- **Efeito externo, a segunda cerca** (`CONTAM`, política social): não foi tocada. Uma nova tentativa só existe quando a
+  anterior NÃO teve efeito possível, e cada execução passa pela política como qualquer comando; não há teste novo sobre ela aqui.
+
+**Divergências e limites.**
+
+- O prompt pedia `max_tentativas` e `falhas_para_pausar` no bloco `pedidos` da configuração, mas a 067 já tem as colunas
+  `pedidos.max_tentativas` (padrão 2) e `pedidos.pausa_por_falha` (padrão 3), NOT NULL. Vale a coluna do pedido; os dois valores
+  da configuração são o padrão global (usado se a coluna vier nula e o que a criação do 28.9 deve gravar). `retentativa_base_s`
+  e `retentativa_teto_s` só existem na configuração.
+- **A espera da nova tentativa mora em `terminada_em`** (a 067 não tem coluna para ela e o 28.5 não leva migração): enquanto a
+  ocorrência é `devida` com `tentativa > 0`, `terminada_em` é o instante `nao_antes_de`, que o despacho respeita (`_em_espera`) e
+  de onde a janela de recuperação passa a contar (`_limite_da_janela`); `marcar_despachada` o zera. É reaproveitar uma coluna
+  fora do sentido (uma `devida` não terminou nada); o custo é essa convenção, documentada aqui e no docstring de
+  `RepositorioDePedidos.retentar`, e a saída limpa é uma coluna `proxima_tentativa_em` numa migração futura. Além disso, a
+  nova tentativa sai até `tick_s` (15 s) DEPOIS do instante, porque `_espera` olha só a próxima materialização e não o
+  `nao_antes_de`; aceito como a D6.
+- Os testes do 28.4 inserem o pedido com `max_tentativas=1` (`test_pedidos_laco._pedido`): medem o fechamento, e uma falha sem
+  efeito agora ganharia uma repetição. O padrão de verdade (2) é exercido em `test_pedidos_retentativa.py`.
+- Não feito (fora do 28.5): `needs_input` → `aguardando_pessoa` (`fechamento.py` o deixa para depois; ainda sem código), as rotas
+  de resolver a `incerta` e a tabela de avisos (28.9).

@@ -416,6 +416,7 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
+  # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
@@ -503,6 +504,10 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
                                   # (fica devida, sem falha); 0 desliga o mínimo (o bloqueio do dono na conta adia mesmo assim)
   resumo_ia: false                # resumo do relatório por IA (28.7): só o ponto de extensão; o relatório determinístico sai sempre
   resumo_ia_teto_usd: 0.05        # teto por relatório que o resumidor deve respeitar (o 28.6 conta no orçamento do pedido)
+  max_tentativas: 2               # execuções por ocorrência (2 = a primeira e uma repetição); só repete se a falha NÃO teve efeito possível (28.5)
+  falhas_para_pausar: 3           # ocorrências seguidas que terminam `falhou` pausam o pedido, com aviso (28.5)
+  retentativa_base_s: 60          # atraso da nova tentativa: base * 2**(n-1) ...
+  retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
