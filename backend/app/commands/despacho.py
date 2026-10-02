@@ -449,7 +449,7 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
     # já está destrancado para o próximo pedido — a readoção acontece por trás, como faria o monitor.
     try:
         if not local:
-            await s.devices.readotar_depois_do_worker(rt, action, alvo.value)
+            await s.devices.readotar_depois_do_worker(rt, action, alvo.value, dados)
     except Exception:  # noqa: BLE001 - readoção é observação: falhar aqui não muda o desfecho do comando
         log.exception("readoção de %s depois do comando %s", rt.id, command_id)
 
