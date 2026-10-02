@@ -1153,6 +1153,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
+| `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -3467,3 +3468,100 @@ o modo por app é o item 30.20.
 - `GET /api/ai`: `roles` ganha uma linha `role: "persona"` (a ordem é a de `AI_ROLES`: plan, decide, verify, escalation, social, persona) e `models.persona`. Sem `ai.roles.persona` a linha é idêntica à do `social`.
 - `GET /api/usage`: as chamadas de geração e enriquecimento de persona passam a vir com `role="persona"` (antes `social`); consumidores que filtravam por `social` para somar custo de persona devem somar os dois.
 - Sem mudança de rota, corpo ou código de erro; `POST /api/personas/generate` e `.../enrich` seguem pagos e sob o teto do dia.
+
+## Adendo v0.49 (02/10/2026) — Evento `learning.needs_person`: conhecimento aguardando a pessoa (item 30.21)
+
+Evento persistido no barramento (`events`, fora de `EPHEMERAL_KINDS`), no padrão de `approval.pending` e `session.needs_person`.
+Sem `instance_id`. `level`: `warn` ao entrar na faixa C, `info` nos demais. A `message` só tem identificadores e o vocabulário
+fechado (também é persistida e transmitida).
+
+**`data`** (lista fechada, `CAMPOS_DO_PAYLOAD`; um teste falha se aparecer outra chave):
+
+| Campo | Conteúdo |
+|---|---|
+| `kind`, `ref` | o item (`receita` + `100`; `licao` + `li-…`) |
+| `app` | pacote (`""` se o item não tem app) |
+| `faixa` | `B` ou `C` (§8.4 de `design/aprendizado-vivo.md`) |
+| `aguardando` | `true` ao entrar na espera; `false` ao sair |
+| `motivo` | entrada: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; saída: `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
+| `href` | `#/aprendizado?item=<kind>:<ref>` (o detalhe exige a autenticação do painel) |
+| `desde` | ISO UTC de quando entrou na espera (também no evento de saída) |
+
+**Nunca** vai no evento: conteúdo de receita ou fluxo, seletor, texto digitado, parâmetro, texto de persona, nota nem conclusão de IA.
+
+**Quando publica.** Na transição ou no nascimento que deixa o item na fila "Para aprovar" (`validated` com `requires_owner`;
+candidata de origem humana) e em qualquer transição que o tira dela, incluindo a mudança que a própria loja de receitas ou de
+fluxos faz. Idempotente por (`kind:ref`, `aguardando`): mover entre dois estados que não mudam a espera, ou repetir a mesma
+mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` existe no
+vocabulário para o curador do 30.11; ninguém o publica ainda.
+
+**Faixa (mínima, `domain/espera.py::classificar_espera`; o 30.10 a estende).** C: `risk=high`, `default_policy=manual_only`,
+ação que envia texto escrito (`needs_draft`) ou item nascido de sessão desconhecida. B: efeito externo médio ou commit sem
+catálogo no app, e origem humana sem efeito (D-2). O mapa de `interaction_type` para envio, publicação e exclusão e a
+autenticação por conteúdo de tela ainda não são derivados.
+
+**Ligação.** `montar_aprendizado(..., eventos=<EventBus>)`. Sem `eventos`, nada é publicado; `state.py` passa
+`eventos=self.bus`. Prova `simulated` (`tests/test_learning_espera.py`).
+
+## Adendo v0.50 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `conteudo` (item 30.3)
+
+O detalhe do Livro ganha `conteudo` (objeto, ou `null`), ao lado de `item`, `evidencias`, `trilha` e `exposicoes` (que não mudam). Só
+leitura, montado do que já existe no banco (nenhuma migração). Sempre traz `tipo` (`receita`, `fluxo`, `habilidade`, `licao`, `tela`).
+`null` em `memoria` (só a contagem sai), `voz` e `preferencia` (texto de pessoa).
+
+**Regra do segredo.** Nunca sai valor de parâmetro nem texto digitado: o texto de uma receita é 100 % parâmetro e só os NOMES saem
+(`{nome}`). A ação `type_secret` e o parâmetro sigiloso (`senha`, `token`, `código`...) saem só como `segredo: true`, sem nome; dentro
+de um seletor o parâmetro sigiloso vira `{segredo}`.
+
+**`receita`**
+
+| Campo | Conteúdo |
+|---|---|
+| `identidade` | `app`, `app_version`, `assinatura`, `variante` (`null` se vazios), `step_key`, `step_hash`, `versao`, `estado` (o status nativo da receita) |
+| `acoes[]` | `indice` (base 0), `ferramenta`, `commit` (bool), `alvo[]` (um por seletor, em ordem de confiança: `tipo` = `rid+text`, `rid+desc`, `rid`, `desc`, `text`, mais `rid`, `texto`, `desc` do que existir), `parametros[]` (nomes não sigilosos), `segredo` (bool); quando se aplicam: `digita` (`limpa_antes`, `enter`, `so_parametro`), `pacote`, `duracao_ms`, `coleta` (`seletor_do_item`, `exclusoes`), `rolagem` (`direcao`, `max`) |
+| `efeito` | `externo` (o selo de `side_effect`) e `acoes_commit[]` (índices de `acoes[]` que fazem o commit) |
+| `capability` | `null` se nenhuma fonte diz; senão `nomes[]`, `ambigua` (bool) e `fonte`: `origem` (a etapa em `learned_from_step`) ou `mesmo_step_hash` (etapas com o mesmo `template_hash` no app; mais de um nome: todos listados e `ambigua: true`). A receita não grava capability: é derivada |
+| `origem` | `{tipo: "execucao", step_id, run_id}` (`run_id` `null` se a etapa não existe mais), `{tipo: "treino", ref}` (prefixo `training:`) ou `{tipo: "desconhecida"}` |
+| `uso` | `replay_ok`, `replay_fail`, `consecutive_fail`, `last_used_at` |
+| `sombra` | `shadow_agree`, `shadow_total` |
+| `substitui`, `substituida_por` | `{id, versao, estado}` da versão vizinha da mesma chave (app, versão do app, assinatura, variante, `step_hash`), ou `null` |
+
+**`fluxo`**: `nome`, `comando_modelo`, `origem` (`{tipo: "execucao"|"treino", fonte, source_run_id}`), `etapas[]` (`indice`, `chave`,
+`capability`, `alvo` = `commit_selector`, `efeito`, `pos_condicao` = `{tipo, descricao}` ou `null`, `parametros[]` = nomes dos `bindings`,
+`segredo`) e `efeito` (`externo`, `etapas_com_efeito[]`).
+
+**`habilidade`**: `skill_id`, `versao`, `schema_version`, `estado`, `source_kind`, `source_ref`, `parent_version`, `command_template`,
+`content_hash`, `parametros[]`, `nos[]` (`id`, `tipo`), `total_de_nos`, `rota` (`/api/skills/{id}/versions/{versao}`; o ciclo e a
+edição continuam nas rotas das habilidades).
+
+**`licao`**: `texto` (o `summary`, o que o ator lê e que `item.title` já mostra), `modelo`, `acao`, `alvo` (`{tipo, valor}`; `valor` de
+`parametro` é o NOME), `escopo` (`app`, `capability`, `step_hash`, `role`), `tokens`. A nota crua da pessoa não sai além do `texto`.
+
+**`tela`**: `tela`, `casa`, `autenticada`, `ids_todos[]`, `razao`.
+
+Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_conteudo.py`); `not_run` no central.
+
+## Adendo v0.51 (02/10/2026) — `GET /api/aprendizado/{kind}/{ref}`: campo `versao` (item 30.6)
+
+O detalhe do Livro ganha `versao` (objeto, sempre presente), ao lado de `conteudo` (v0.50). Só leitura, montado de `device_app_state` (as
+versões do app vivas no parque) e das chaves de `recipes` (a receita não cruza versão do app). Nenhuma migração. Desenho: `design/aprendizado-vivo.md` §7.
+
+Forma: `{estado, app, app_version, vivas[], nao_testada_em[], por_versao[]}`.
+
+| Campo | Conteúdo |
+|---|---|
+| `estado` | o estado de versão DO ITEM, na versão dele: `independente`, `comprovado`, `nao_testado`, `em_prova`, `falhando`, `incompativel`, `superseded`, `versao_aposentada` (os do §7) ou `desconhecido` (o "não sei" explícito: sem pacote, sem versão ou sem nenhum aparelho observado; nunca um estado inventado) |
+| `app`, `app_version` | o pacote e a versão do app do item; `null` onde não se aplica (`independente`) |
+| `vivas[]` | `{versao, aparelhos}`: as versões do app observadas hoje em aparelho ativo (aparelho aposentado, app `missing` e versão vazia não contam), ordenadas pelo texto da versão |
+| `nao_testada_em[]` | as versões vivas em que a chave da receita não tem receita nenhuma (`nao_testado`) |
+| `por_versao[]` | uma linha por versão em que a chave tem receita OU que está viva: `{versao, viva, aparelhos, estado, receita_ref}`; `receita_ref` é a de maior versão da chave naquela versão do app, `null` em `nao_testado` |
+
+**Por tipo.** `receita`: o quadro completo; a chave é (pacote, assinatura, variante, `step_hash`) em todas as versões do app. Regras: `superseded` se a
+linha foi trocada; `versao_aposentada` se a versão dela não está viva (não é falha); quarentena = `incompativel` se uma versão anterior da chave
+estava comprovada, senão `falhando`; `consecutive_fail > 0` = `falhando`; `active` com `replay_ok > 0` = `comprovado` (precisa de versão viva;
+sem nenhuma observada vira `desconhecido`); `active` sem prova = `em_prova`. `tela`: `incompativel` (dias sem casar E versão nova no parque, a regra `sem_casar` das
+telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao` vazio. `fluxo`, `habilidade`, `licao`, `voz`, `preferencia`,
+`memoria` (e o declarado): `{estado: "independente", app: null, app_version: null, vivas: [], nao_testada_em: [], por_versao: []}`.
+
+Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
+equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.

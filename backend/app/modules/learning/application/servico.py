@@ -15,19 +15,25 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from functools import partial
 
-from app.modules.learning.application.ports import (Ajustes, FontesDoLivro, Minerador, MudancaNativa, NovoSinal,
-                                                    PassoDeCuradoria, RepositorioDeAprendizado, TriagemDeTexto)
+from app.modules.learning.application.espera import AvisadorDeEspera
+from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
+                                                    NovoSinal, PassoDeCuradoria, PortaDeEventos,
+                                                    RepositorioDeAprendizado, TriagemDeTexto)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
+from app.modules.learning.domain.conteudo import licao_legivel, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
-from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem)
-from app.modules.skills.domain.document import JsonValue
+from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
+from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
+                                                     SourceKind)
+from app.util import parse_iso
+from app.modules.skills.domain.document import JsonObject, JsonValue
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -50,6 +56,13 @@ class DetalheDoLivro:
     trilha: tuple[Transicao, ...]
     #: As exposições de uma lição (pacote A7): braço, tokens e desfecho de cada unidade; vazio nos outros tipos.
     exposicoes: tuple[JsonValue, ...] = ()
+    #: O conteúdo legível do item (30.3): o que a receita, o fluxo, a habilidade, a lição ou a tela FAZEM, só do que
+    #: já está no banco (`domain/conteudo.py`). `None` na memória (só a contagem sai) e na voz e preferência (texto
+    #: de pessoa).
+    conteudo: JsonObject | None = None
+    #: O estado de versão do item (30.6, `domain/versao.py`, §7): em que versões foi validado, quais estão vivas no
+    #: parque e o estado por versão. Sempre presente; o que não se sabe é `desconhecido`, nunca inventado.
+    versao: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,9 +93,11 @@ class LearningService:
     def __init__(self, repo: RepositorioDeAprendizado, fontes: FontesDoLivro, triagem: TriagemDeTexto, *,
                  ajustes: Callable[[], Ajustes], relogio: Callable[[], datetime],
                  retencao_de_logs_dias: Callable[[], int],
-                 mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = ()) -> None:
+                 mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
+                 eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
-        onde `ai_calls` ainda está inteiro."""
+        onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
+        publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -92,6 +107,7 @@ class LearningService:
         self._mineradores: list[Minerador] = list(mineradores)
         self._passos: list[PassoDeCuradoria] = list(passos)
         self._extensoes: list[object] = []
+        self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio)
 
     @property
     def ajustes(self) -> Ajustes:
@@ -153,13 +169,40 @@ class LearningService:
     def detalhe(self, kind: LivroKind, ref: str) -> DetalheDoLivro:
         e = self.entrada(kind, ref)
         if kind is LivroKind.MEMORIA:
-            return DetalheDoLivro(e, (), ())            # só a contagem: o conteúdo da memória nunca sai no livro
+            return DetalheDoLivro(e, (), (), versao=quadro_independente())   # só a contagem: o conteúdo nunca sai
         exposicoes: tuple[JsonValue, ...] = ()
         if kind is LivroKind.LICAO:                     # as mais recentes: o braço e o desfecho de cada unidade
             todas = self._repo.exposicoes(e.ref, limite=100_000)
             exposicoes = tuple(exposicao_json(x) for x in todas[-EXPOSICOES_NO_DETALHE:])
-        return DetalheDoLivro(e, tuple(self._repo.evidencias(e.trail_ref)), tuple(self._repo.trilha(e.trail_ref)),
-                              exposicoes)
+        evidencias = tuple(self._repo.evidencias(e.trail_ref))
+        return DetalheDoLivro(e, evidencias, tuple(self._repo.trilha(e.trail_ref)), exposicoes,
+                              self._conteudo(kind, e.ref), self._versao(e, evidencias))
+
+    def _versao(self, e: EntradaDoLivro, evidencias: Sequence[Evidencia]) -> JsonObject:
+        """O `versao` do detalhe (30.6): a receita pela chave nas versões vivas; a tela pela regra `sem_casar`; os
+        demais tipos não dependem de versão (§7)."""
+        if e.kind is LivroKind.RECEITA:
+            return self._fontes.versao(e.kind, e.ref) or quadro_independente() | {"estado": "desconhecido"}
+        if e.kind is not LivroKind.TELA:
+            return quadro_independente()
+        favor = [t for t in (parse_iso(x.observed_at) for x in evidencias if x.stance is Posicao.FOR) if t]
+        return quadro_da_tela(app=e.app, app_version=e.app_version, vivas=self._fontes.vivas(e.app) if e.app else (),
+                              ultima_a_favor=max(favor, default=None), criada=parse_iso(e.created_at or ""),
+                              agora=self._relogio())
+
+    def _conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O `conteudo` do detalhe (30.3): das fontes nativas, pela fonte; lição e tela, do `content` do item. Voz e
+        preferência são texto de pessoa e ficam sem conteúdo aqui (o título já é o que o detalhe expõe)."""
+        if kind in (LivroKind.RECEITA, LivroKind.FLUXO, LivroKind.HABILIDADE):
+            return self._fontes.conteudo(kind, ref)
+        item = self._repo.item(ref) if kind in (LivroKind.LICAO, LivroKind.TELA) else None
+        if item is None:
+            return None
+        if kind is LivroKind.TELA:
+            return tela_legivel(item.content)
+        return licao_legivel(item.content, texto=item.summary, app=item.escopo.app,
+                             capability=item.escopo.capability, step_hash=item.escopo.step_hash,
+                             role=item.escopo.role, tokens=item.tokens)
 
     def pendentes(self) -> tuple[EntradaDoLivro, ...]:
         """"Para aprovar": a fila do D1 (e a contagem da barra do topo)."""
@@ -249,7 +292,9 @@ class LearningService:
                                    human_origin=item.human_origin, modo_publica=self._modo_publica(kind, item.escopo.app))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED):
             self._conferir_veto(item.content_hash, item.escopo.chave(kind), item.app_version)
-        return self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
+        novo = self._repo.transicionar_item(item, para, by=by, reason=reason, detalhe=detalhe, run_id=run_id)
+        self.avisar_item(item, novo, by=by)
+        return novo
 
     def _mover_nativo(self, e: EntradaDoLivro, para: SkillState, *, by: str, reason: str,
                       run_id: str | None) -> None:
@@ -269,6 +314,8 @@ class LearningService:
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=para_status,
                           de_estado=e.state, para_estado=para, content_hash=e.content_hash, scope_key=e.scope_key,
                           app_version=e.app_version), by=by, reason=reason, run_id=run_id)
+        self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
+                                      por_sistema=by == SYSTEM_ACTOR)
 
     def _conferir_veto(self, content_hash: str, scope_key: str, app_version: str | None) -> None:
         motivo = motivo_do_veto(self._repo.desligamentos(content_hash, scope_key), agora=self._relogio(),
@@ -295,8 +342,34 @@ class LearningService:
             return vivo
         if by == SYSTEM_ACTOR:
             self._conferir_veto(novo.content_hash, novo.escopo.chave(novo.kind), novo.app_version)
-        return self._repo.criar_item(novo, by=by, estado=SkillState.CANDIDATE, detalhe=None,
-                                     reason="nascimento", run_id=run_id)
+        criado = self._repo.criar_item(novo, by=by, estado=SkillState.CANDIDATE, detalhe=None,
+                                       reason="nascimento", run_id=run_id)
+        self.avisar_item(None, criado, by=by)
+        return criado
+
+    # ================================================================== o evento `learning.needs_person` (30.21)
+    def avisar_item(self, antes: ItemDeAprendizado | None, depois: ItemDeAprendizado, *, by: str) -> None:
+        """Chamado depois de um item de `learning_items` nascer (`antes=None`) ou mudar de estado: publica a entrada na
+        espera do dono ou a saída dela (§8.11). Quem muda o estado SEM passar por `mudar_estado` (a tela absorvida,
+        que confere a tabela e vai ao repositório) chama isto. Nunca levanta."""
+        self._espera.mudou_sem_falhar(entrada_do_item(antes) if antes is not None else None, entrada_do_item(depois),
+                                      por_sistema=by == SYSTEM_ACTOR, capability=depois.escopo.capability,
+                                      sessao_ou_autenticacao=depois.source_kind is SourceKind.SESSION_UNKNOWN)
+
+    def avisar_mudanca_nativa(self, kind: LivroKind, ref: str, de_status: str | None, para_status: str, *,
+                              by: str) -> None:
+        """A mudança de status que a LOJA da receita ou do fluxo fez (nascimento, prova, quarentena, substituição): ela
+        não passa por `mudar_estado`. Lê a entrada já gravada e compara com o status anterior (`None` = nasceu). PROPAGA
+        a falha: a loja chama isto DENTRO da transação dela, num `savepoint` próprio (22.5) que precisa vê-la."""
+        if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+            return
+        depois = self._fontes.receita(ref) if kind is LivroKind.RECEITA else self._fontes.fluxo(ref)
+        if depois is None:
+            return
+        antes = None
+        if de_status is not None:
+            antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)
+        self._espera.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)
 
     def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
                         um_por_evento: bool = False) -> int | None:

@@ -14,11 +14,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from app.db import Database, Row
+from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrigem, ReceitaLida, Vizinha,
+                                                  fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
+from app.modules.learning.domain.versao import ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
-from app.modules.skills.domain.document import content_hash
+from app.modules.skills.domain.document import JsonObject, content_hash
 
 _ORIGEM_DA_HABILIDADE = {"teaching": Origem.ENSINO, "legacy_flow": Origem.EXECUCAO, "run": Origem.EXECUCAO,
                          "manual": Origem.PESSOA, "import": Origem.PESSOA}
@@ -86,6 +89,117 @@ class FontesSql:
         row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
         return _receita(row) if row else None
 
+    # ------------------------------------------------------------------ conteúdo legível (30.3)
+    def conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O conteúdo legível de uma fonte nativa (receita, fluxo, habilidade), só do que já está no banco. `None`:
+        o tipo não tem conteúdo nativo (item do livro e memória) ou a linha sumiu."""
+        if kind is LivroKind.RECEITA:
+            return self._conteudo_da_receita(ref)
+        if kind is LivroKind.FLUXO:
+            return self._conteudo_do_fluxo(ref)
+        if kind is LivroKind.HABILIDADE:
+            return self._conteudo_da_habilidade(ref)
+        return None
+
+    def _conteudo_da_receita(self, ref: str) -> JsonObject | None:
+        try:
+            recipe_id = int(ref)
+        except ValueError:
+            return None
+        row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        if row is None:
+            return None
+        r = _receita_lida(row)
+        treino = (r.aprendida_de or "").startswith(PREFIXO_DE_TREINO)
+        etapa = None if not r.aprendida_de or treino else self._etapa_de_origem(r.aprendida_de)
+        mesmos = [] if etapa is not None and etapa.capability else self._capabilities_do_template(r.app, r.step_hash)
+        chave = (r.app, r.app_version, r.assinatura, r.variante, r.step_hash)
+        base = ("SELECT id, version, status FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                " AND variant=? AND step_hash=? AND version")
+        anterior = self._db.one(base + "<? ORDER BY version DESC LIMIT 1", (*chave, r.versao))
+        seguinte = self._db.one(base + ">? ORDER BY version ASC LIMIT 1", (*chave, r.versao))
+        return receita_legivel(r, etapa=etapa, do_mesmo_template=mesmos,
+                               anterior=_vizinha(anterior), seguinte=_vizinha(seguinte))
+
+    # ------------------------------------------------------------------ versão (30.6)
+    def vivas(self, app: str) -> tuple[VersaoViva, ...]:
+        """As versões do app observadas HOJE em aparelho ativo, com o número de aparelhos (§7). Aparelho aposentado
+        (`instances.retired_at`) e app ausente (`missing`) não contam; a linha sem `instances` (teste, aparelho já
+        removido) conta como viva: o `NOT EXISTS` só exclui o que se sabe aposentado."""
+        return agrupar_vivas(
+            (linhas.texto(r, "v"), linhas.inteiro(r, "n")) for r in self._db.query(
+                "SELECT d.observed_version_name AS v, COUNT(*) AS n FROM device_app_state d WHERE d.package_name=?"
+                " AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> '' AND d.state <> 'missing'"
+                " AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id = d.instance_id AND i.retired_at IS NOT NULL)"
+                " GROUP BY d.observed_version_name", (app,)))
+
+    def versao(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        """O quadro de versão de uma receita (`domain/versao.py`): a chave exata (pacote, assinatura, variante,
+        `step_hash`) em TODAS as versões do app, contra as versões vivas. `None`: o tipo não tem quadro nativo aqui
+        ou a linha sumiu."""
+        if kind is not LivroKind.RECEITA:
+            return None
+        try:
+            recipe_id = int(ref)
+        except ValueError:
+            return None
+        row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        if row is None:
+            return None
+        pacote = linhas.texto(row, "app_package")
+        da_chave = [_receita_da_chave(r) for r in self._db.query(
+            "SELECT id, app_version, version, status, replay_ok, consecutive_fail, created_at FROM recipes"
+            " WHERE app_package=? AND app_signature=? AND variant=? AND step_hash=? ORDER BY app_version, version",
+            (pacote, linhas.texto(row, "app_signature"), linhas.texto(row, "variant"), linhas.texto(row, "step_hash")))]
+        propria = next(o for o in da_chave if o.ref == str(recipe_id))
+        return quadro_da_receita(propria, app=pacote, da_chave=da_chave, vivas=self.vivas(pacote))
+
+    def _etapa_de_origem(self, step_id: str) -> EtapaDeOrigem | None:
+        row = self._db.one("SELECT id, run_id, capability FROM steps WHERE id=?", (step_id,))
+        if row is None:
+            return None
+        return EtapaDeOrigem(linhas.texto(row, "id"), linhas.texto(row, "run_id"),
+                             linhas.texto_ou_nulo(row, "capability"))
+
+    def _capabilities_do_template(self, pacote: str, step_hash: str) -> list[str]:
+        """As capabilities das etapas com o mesmo `template_hash`, no mesmo app. O app da etapa é o dela
+        (`steps.app_id`) ou, sem ele, o da execução (`runs.app_ids`); id de app vira pacote pela tabela `apps`. Etapa
+        cujo app não dá para saber (execução antiga, sem `app_ids`) conta: o `step_hash` já amarra chave, pós-condição
+        e guardas, e esconder a dúvida seria pior que marcá-la `ambigua`."""
+        por_id = {linhas.texto(a, "id"): linhas.texto_ou_nulo(a, "package") or linhas.texto(a, "id")
+                  for a in self._db.query("SELECT id, package FROM apps")}
+        achadas = self._db.query(
+            "SELECT DISTINCT s.capability, s.app_id, r.app_ids FROM steps s JOIN runs r ON r.id = s.run_id"
+            " WHERE s.template_hash=? AND s.capability IS NOT NULL AND s.capability <> ''", (step_hash,))
+        capabilities: list[str] = []
+        for s in achadas:
+            ids = [linhas.texto_ou_nulo(s, "app_id")] if linhas.texto_ou_nulo(s, "app_id") else _ids_do_json(
+                linhas.texto_ou_nulo(s, "app_ids"))
+            if not ids or pacote in {por_id.get(i, i) for i in ids}:
+                capabilities.append(linhas.texto(s, "capability"))
+        return capabilities
+
+    def _conteudo_do_fluxo(self, ref: str) -> JsonObject | None:
+        row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
+        if row is None:
+            return None
+        return fluxo_legivel(linhas.json_legado(linhas.texto(row, "plan")), nome=linhas.texto(row, "name"),
+                             comando_modelo=linhas.texto(row, "command_template"),
+                             fonte=linhas.texto_ou_nulo(row, "source"),
+                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"))
+
+    def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
+        row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"
+                           " source_kind, source_ref, parent_version FROM skill_versions WHERE id=?", (ref,))
+        if row is None:
+            return None
+        return habilidade_legivel(
+            linhas.json_legado(linhas.texto(row, "content")), skill_id=linhas.texto(row, "skill_id"),
+            versao=linhas.inteiro(row, "version"), schema_version=linhas.inteiro(row, "schema_version"),
+            estado=linhas.texto(row, "state"), source_kind=linhas.texto(row, "source_kind"),
+            source_ref=linhas.texto_ou_nulo(row, "source_ref"), parent_version=linhas.inteiro_ou_nulo(row, "parent_version"),
+            command_template=linhas.texto_ou_nulo(row, "command_template"), content_hash=linhas.texto(row, "content_hash"))
+
     # ------------------------------------------------------------------ fluxo
     def fluxos(self) -> list[EntradaDoLivro]:
         resolvedor = self._resolvedor()
@@ -147,6 +261,35 @@ def _receita(r: Row) -> EntradaDoLivro:
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
         app_version=linhas.texto(r, "app_version"))
+
+
+def _receita_lida(r: Row) -> ReceitaLida:
+    return ReceitaLida(
+        id=linhas.inteiro(r, "id"), app=linhas.texto(r, "app_package"), app_version=linhas.texto(r, "app_version"),
+        assinatura=linhas.texto(r, "app_signature"), variante=linhas.texto(r, "variant"),
+        step_hash=linhas.texto(r, "step_hash"), step_key=linhas.texto(r, "step_key"),
+        versao=linhas.inteiro(r, "version"), status=linhas.texto(r, "status"),
+        acoes=linhas.json_legado(linhas.texto(r, "actions")), aprendida_de=linhas.texto_ou_nulo(r, "learned_from_step"),
+        replay_ok=linhas.inteiro(r, "replay_ok"), replay_fail=linhas.inteiro(r, "replay_fail"),
+        consecutive_fail=linhas.inteiro(r, "consecutive_fail"), shadow_agree=linhas.inteiro(r, "shadow_agree"),
+        shadow_total=linhas.inteiro(r, "shadow_total"), last_used_at=linhas.texto_ou_nulo(r, "last_used_at"))
+
+
+def _receita_da_chave(r: Row) -> ReceitaDaChave:
+    return ReceitaDaChave(
+        ref=str(linhas.inteiro(r, "id")), app_version=linhas.texto(r, "app_version"), versao=linhas.inteiro(r, "version"),
+        status=linhas.texto(r, "status"), replay_ok=linhas.inteiro(r, "replay_ok"),
+        consecutive_fail=linhas.inteiro(r, "consecutive_fail"), criada_em=linhas.texto(r, "created_at"))
+
+
+def _vizinha(r: Row | None) -> Vizinha | None:
+    return None if r is None else Vizinha(linhas.inteiro(r, "id"), linhas.inteiro(r, "version"),
+                                          linhas.texto(r, "status"))
+
+
+def _ids_do_json(bruto: str | None) -> list[str]:
+    valor = linhas.json_legado(bruto)
+    return [i for i in valor if isinstance(i, str)] if isinstance(valor, list) else []
 
 
 def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaDoLivro:

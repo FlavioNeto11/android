@@ -382,6 +382,50 @@ rota do livro traz `por_que_nao_publica` com `modo_desligado` e `vetado` (30.5, 
 e a camada de uso da visão por app (`/api/aprendizado/apps/{pacote}`) usa o modo efetivo do pacote
 (`ModosDeUso.do_pacote`). O pacote vem só do config (ADR-052). Prova `simulated`; nada foi ligado no central.
 
+## Evento `learning.needs_person` (30.21)
+
+Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
+decide é `application/espera.py::AvisadorDeEspera` (compara o item antes e depois, memória do último aviso por `kind:ref`); a
+faixa e o motivo saem de `domain/espera.py::classificar_espera` (mínima; o 30.10 a estende). A porta é `PortaDeEventos`
+(`ports.py`), o adaptador sobre o `EventBus` é `infrastructure/eventos.py`, e o catálogo entra como fatos de risco
+(`CatalogoDeRisco`, nunca texto de ação). Os pontos de chamada: `mudar_estado`, `propor`, `avisar_item` (a tela absorvida) e
+`avisar_mudanca_nativa` (os ouvintes das lojas de receita e fluxo). Contrato do payload: `api-contract.md`, adendo v0.49.
+Um gesto da pessoa que passa por dois estados (`mudar_status_nativo`: candidata, validada, publicada) pode publicar entrada e saída
+na mesma ação. `state.py` passa `eventos=self.bus`.
+
+## Conteúdo legível no detalhe (30.3)
+
+O detalhe do Livro (`GET /api/aprendizado/{kind}/{ref}`) devolve `conteudo`: o que o item FAZ, em estrutura legível, montado só do que
+já está no banco (sem migração; contrato no adendo v0.50 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §4). A regra de
+montagem é pura e mora em `domain/conteudo.py`; as leituras de SQL (a etapa de origem em `steps`, as etapas com o mesmo
+`template_hash`, as versões vizinhas da receita) ficam em `FontesSql.conteudo`; `LearningService._conteudo` escolhe a fonte (lição e
+tela saem do `content` do item) e `DetalheDoLivro.conteudo` o carrega até `presentation/livro.py`.
+
+- **Lista branca, não cópia.** Cada ação da receita é lida campo a campo (ferramenta, seletores, `commit`, nomes de parâmetro, rolagem).
+  O texto digitado não sai nem em pedaço, o valor de parâmetro nunca existe aqui, e `type_secret` ou nome sigiloso (`SENSITIVE_PARAM`)
+  viram `segredo: true` sem nome. O domínio copia `TEMPLATE_RE` e `SENSITIVE_PARAM` do executor (não pode importá-lo); um teste
+  confere que as cópias não divergem.
+- **Capability é derivada.** A receita não a grava. Vale a etapa de origem (`learned_from_step`); sem ela, as etapas com o mesmo
+  `template_hash` cujo app (o da etapa ou o de `runs.app_ids`) é o da receita; várias capabilities distintas = `ambigua`. Etapa de
+  execução antiga sem app conhecido entra na conta (a dúvida aparece como `ambigua`, nunca escondida).
+- **Vizinhas** são a versão imediatamente menor e a imediatamente maior da mesma chave (`recipes.py` define a chave), qualquer estado.
+- Fora do escopo desta fatia (§4 do desenho): pré e pós-condição da etapa de origem, aparelhos em que reproduziu, trilha de promoção
+  por receita e quadro de versão.
+
+## Estado de versão no detalhe (30.6)
+
+O detalhe do Livro devolve `versao` (contrato no adendo v0.51 de `api-contract.md`, desenho em `design/aprendizado-vivo.md` §7): em que
+versões do app o item foi validado, quais estão vivas no parque e o estado por versão. A regra é pura e mora em `domain/versao.py`;
+`FontesSql.vivas` lê `device_app_state` (aparelho ativo, app presente) e `FontesSql.versao` junta a chave exata da receita em todas as
+versões; `LearningService._versao` escolhe (receita pela chave, tela pela regra `sem_casar`, o resto `independente`).
+
+- **Viva** = observada hoje em aparelho não aposentado (`instances.retired_at`) e com o app (`state <> 'missing'`). É o eixo de comparação.
+- **`nao_testado`** é a versão viva em que a chave não tem receita nenhuma; a receita da versão antiga mostra em `nao_testada_em[]`. Nada se
+  apaga: se um aparelho voltar à versão antiga, a receita volta a valer (o `find` usa a chave exata).
+- **Incerteza explícita.** Sem nenhum aparelho observado a receita com prova fica `desconhecido` (não `comprovado`); a tela só vira
+  `incompativel` ou `versao_aposentada` com sinal, e fora disso é `desconhecido` ("sem sinal de quebra"), nunca `comprovado` (esse é de receita).
+- Fora do escopo: o painel (30.16), o gatilho `versao_nova` do backlog e o veto por versão em `learning_transitions.app_version`.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
