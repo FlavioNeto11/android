@@ -1,0 +1,76 @@
+{
+  "workspace": {"id": "ari:cloud:trello::workspace/6ac1399c0c5cfe6a3373f1c6", "url": "https://trello.com/w/centraldeaparelhos"},
+  "quadros": {
+    "execucao": {
+      "id": "ari:cloud:trello::board/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f8e2",
+      "url": "https://trello.com/b/GalGk5Ya",
+      "listas": {
+        "como_ler": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b157622b098013b88fe",
+        "proximas": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b17a670feab8e9d3f4c",
+        "em_execucao": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b19b13017ef2d3ead07",
+        "em_validacao": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b1a043b867572d9dc49",
+        "bloqueado": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b1c092eb81c906d2c34",
+        "concluido_hoje": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b1d2b3e0ab6f1126112",
+        "central_automatico": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13e76c8be5977a3571f4c",
+        "aprovado": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13e78a667a22fea91cb9c",
+        "vetado": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13e7ad0949fa4352baf43"
+      },
+      "etiquetas": {
+        "android": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f911",
+        "orquestradora_dono": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f912",
+        "custo_pago": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f913",
+        "bloqueado_urgente": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f914",
+        "jev": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f915",
+        "aprendizado": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeda5570365d020f916"
+      }
+    },
+    "programa": {
+      "id": "ari:cloud:trello::board/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13aeffc0ac80f9dc4edb3",
+      "url": "https://trello.com/b/rf9PaM2E",
+      "listas": {
+        "objetivos": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b1f5375dcc8ae61b753",
+        "metricas": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2184d32358b14c8e35",
+        "maturidade": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b220c73defb7c8cc83c",
+        "custos": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2495a72019a34a9752",
+        "marcos": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b26ef76296b0f9d4f58",
+        "decisoes": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2880553e615cef8845",
+        "riscos": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b29c1cd055b2a27a352"
+      },
+      "etiquetas": {}
+    },
+    "historico": {
+      "id": "ari:cloud:trello::board/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f1741536",
+      "url": "https://trello.com/b/1wCjXnBn",
+      "listas": {
+        "Fases 0–5 · fundação": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2bf30a8c256b6442df",
+        "Fases 6–10 · apps, IA e operação": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2cd106b52fb7a154e6",
+        "Fase 11 · painel": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b2e00cd973511c1e76c",
+        "Fases 14–15 · desempenho e skills": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3037a659337b8c7672",
+        "Fases 16–17 · persona, custo e imagem": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3119f12352275dee1a",
+        "Fases 18–20 · conhecimento, Instagram e aprendizado": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3313241d293ac47f8d",
+        "Fases 21–22 · proteção de contas": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b354c76e0d21b34a4b4",
+        "Fases 23–27 · terceira evolução": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b36b79679d36cd96c80",
+        "Fase 28 · pedidos persistentes": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b38cab572726cfabf1c",
+        "Fase 29 · pendências da evolução 3": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3ab394b2857922b111",
+        "Fase 30 · aprendizado vivo": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3b7f75bc35c0d3678d",
+        "Fase 31 · Jev": "ari:cloud:trello::list/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13b3ddfbeb66e50f0a20d"
+      },
+      "etiquetas": {
+        "android": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f174153c",
+        "orquestradora_dono": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f174153d",
+        "custo_pago": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f174153e",
+        "bloqueado_urgente": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f174153f",
+        "jev": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f1741540",
+        "aprendizado": "ari:cloud:trello::label/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13af1b3229189f1741541"
+      }
+    }
+  },
+  "legenda_cores": {
+    "green": "Android (parque, API, painel, operação)",
+    "purple": "Jev (decisão fechada, filtro de privacidade, calibração)",
+    "blue": "Aprendizado (fluxos, receitas, curador, validação)",
+    "yellow": "Orquestradora / decisão do dono",
+    "orange": "Custo pago (IA ou infra)",
+    "red": "Bloqueado ou urgente"
+  }
+}

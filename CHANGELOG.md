@@ -19,6 +19,38 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Canais externos: o contrato comum do Telegram (28.15) e do Trello (32.2)
+
+- `docs/design/canais-externos.md`, aprovado pela orquestradora (~18:15Z) e citado pelos ADR-071 e ADR-072. Define:
+  - a entrada comum `Comando(canal, autor, id_externo, alvo, verbo, argumento)`;
+  - a gramática fechada, alinhada ao cf7303ba da Android: `/ajuda`, `/status` (`/estado`), `/pendencias`,
+    `/aprovar` e `/vetar <id> [nota]`, `/responder <id> <texto>`, `/para <aparelho|persona> <objetivo>`, o texto
+    livre e `/orq`; com fato, "sim" e "não";
+  - o fato pelo reply ou pelo cartão;
+  - a identidade conferida na entrada, com o operador `telegram:dono`;
+  - as políticas do painel;
+  - o dedupe pela 085 genérica `canal_entradas`, com a 086 do 32.2 reduzida a cartões e cursor;
+  - a credencial por formato, que apaga quando pode e não ecoa;
+  - a redação na saída e os testes de contrato.
+- `trello-integracao.md` §3 alinhado: o `/para` é pedido com destino (não há verbo de parar), e o comando livre fica
+  desligado de fábrica no Trello.
+
+## 2026-10-03 — 32.1: estudo da integração da Central com o Trello do dono (branch docs/32-1-estudo-trello)
+
+- `docs/design/trello-integracao.md` (até 2 páginas; sem código; nenhuma chamada ao Trello, `not_run`). Cobre:
+  - o acesso: REST com chave + token só no `.env`, o passo a passo do dono, os limites, e polling no lugar do
+    webhook, que exigiria URL pública;
+  - o espelho: um cartão por fato, sem ruído por evento;
+  - os comandos de volta: mover para Aprovado/Vetado e a gramática `/aprovar`, `/vetar`, `/responder`, `/para`,
+    `/estado`, proposta comum ao 28.15. A identidade é o membro do dono, com dedupe pela action id;
+  - os vínculos ao painel, ao plano, aos ADRs, aos K-*, ao conhecimento de app e ao Livro, e a rota proposta
+    `GET /api/conhecimento/resumo`;
+  - o que não fazer;
+  - o desenho do 32.2 em 10 linhas.
+- Decidido pela orquestradora (03/10, ~18:05Z): token sem expiração com revogação documentada, as 3 listas criadas
+  por ela no Execução, conteúdo redigido (a regra do Telegram) e link do painel só na LAN (limitação no ADR-072). Fase 32
+  no plano-100: 32.1 (este estudo) e 32.2 (implementação, Android, depois do 28.15).
+
 ## 2026-10-03 — Jev: leitura preliminar real da sombra de intenção (31.10 partial/real)
 
 - Central WIN-7S2UASNLFOP, deploy 12 (`d5a1c3a9`), às 17:19:44Z.
