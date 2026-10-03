@@ -188,13 +188,39 @@ do Instagram passam cada uma pela pergunta do seu app. A regra não muda (T19); 
 - **O que mudou no 24.2:** uma capability que o app da etapa não tem conta como nenhuma. Antes, `cap is None`
   liberava a etapa com o efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora da
   política. Agora cai na recusa do item 13.2, e o motivo cita a chave estranha.
-- A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram. No app da etapa ela não existe,
-  e o Outlook não tem catálogo: segue como etapa livre do Outlook.
+- A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram: no app da etapa ela não existe.
+  Desde o 12.3 o Outlook tem catálogo (só leitura), então a etapa com efeito cai na recusa do item 13.2 (antes, sem
+  catálogo, seguia como etapa livre do Outlook).
 - Etapa com efeito num app sem catálogo, dentro de um comando que também usa um app com catálogo, segue livre. É o
   decidido em `test_modo_treinamento.py::test_portao_recusa_efeito_sem_acao_num_app_com_catalogo`. Fechá-la exige
   decisão (ADR novo), não este item.
 - **Prova.** `tests/test_porta_de_politica_por_app.py` é `simulated` (harness, banco de teste, sem aparelho nem IA).
   Cobre a mistura Outlook (leitura) + Instagram (efeito sem capability), recusada na etapa de efeito.
+
+### A mesma porta no planejamento (RA-7, 03/10/2026)
+
+A regra da tabela acima mora em `planning/capabilities.py::efeito_fora_do_catalogo` e vale em dois lugares: no
+despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService._plan`, para TODO plano
+(planejador, fluxo e skill), antes de qualquer etapa existir.
+
+- O app da etapa é resolvido como no `_app_context`, por aparelho: o da etapa, senão o do plano, senão o do aparelho.
+- Basta uma etapa recusada para o plano inteiro sair sem etapas, com uma pergunta (`missing`, campo `policy`) por
+  etapa recusada. A execução vai a `needs_input`, nada é materializado e nenhuma decisão é gasta. Recusar só a
+  etapa com efeito deixaria os preparativos (abrir, preencher destinatário, assunto) rodarem à toa.
+- A linha do tempo recebe a frase; o evento `plan.refused` (persistido) leva `{motivo: "efeito_fora_do_catalogo",
+  etapas: [{key, title, app_id, app, capability, motivo}]}`, com o motivo de cada etapa no vocabulário fechado
+  `sem_acao_do_catalogo` | `acao_de_outro_catalogo`.
+- App sem catálogo (o QA Messenger) segue livre com efeito. Os 12 fluxos ativos do central com `send_message` livre
+  são todos dele (medido em 03/10, só leitura).
+- **O caso que motivou** (r-20261001190557-e7bc42, 01/10 19:05Z: "enviar e-mail pelo Outlook", `fill_recipient`
+  com 16 e 17 decisões) rodou ANTES de o catálogo do Outlook existir no central: o runtime de 01/10 (`5d8b545`) e
+  o deploy de 02/10 ~16:20Z (`f9eed71`) não têm o `catalogo.yaml`. Sem catálogo, a porta não tinha o que recusar.
+  Depois que ele chegou, 5 de 5 planos com etapa no Outlook ligaram a capability (`OPEN_MAIL_INBOX`), contra 0 de
+  5 antes: o binding do planejador já está feito, e esta porta é a trava para fluxo, skill e provedor que não
+  passa pelo parser do 24.1.
+- **Prova.** `tests/test_recusa_no_planejamento.py` é `simulated` (harness, provedor por roteiro, sem aparelho nem
+  IA). Sem a porta, os 4 testes de execução falham. A prova real (5 leituras no android-01, decisões por etapa) é da
+  frente Android: `not_run`.
 
 ### Roteamento por conjunto de apps (item 24.5, ADR-058)
 

@@ -19,7 +19,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 import yaml
 
@@ -479,6 +479,26 @@ def load_catalog(package: str | None) -> CapabilityCatalog | None:
     from .catalog import get
 
     return get(package)
+
+
+#: Por que uma etapa com efeito foi recusada pela regra do item 13.2. Vocabulário FECHADO: vai no evento
+#: `plan.refused` (RA-7) e só cresce no código.
+MotivoForaDoCatalogo = Literal["sem_acao_do_catalogo", "acao_de_outro_catalogo"]
+
+
+def efeito_fora_do_catalogo(side_effect: bool, capability: str | None,
+                            package: str | None) -> MotivoForaDoCatalogo | None:
+    """A regra do item 13.2 num lugar só: etapa com EFEITO externo, num app que TEM catálogo, sem uma ação desse
+    catálogo, passaria por fora de política, aprovação, limite e coordenação de frota. `None` = a regra não recusa.
+
+    Vale no despacho (`AppState._policy_gate`) e, desde o RA-7, no planejamento (`RunService._plan`), antes de
+    qualquer etapa existir: o plano que pede enviar e-mail no Outlook (catálogo só de leitura) não gasta uma decisão
+    nos preparativos. App sem catálogo (o QA Messenger) segue livre, com ou sem efeito, como sempre."""
+    if not side_effect or not package or load_catalog(package) is None:
+        return None
+    if capability and capability_of(package, capability) is not None:
+        return None
+    return "acao_de_outro_catalogo" if capability else "sem_acao_do_catalogo"
 
 
 # ---------------------------------------------------------------------------------------------------- carga (dado)

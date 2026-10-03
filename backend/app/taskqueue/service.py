@@ -22,12 +22,12 @@ from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
-from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
+from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState, MissingInfo,
                       ObjectiveDTO, ObjectiveStatus, Plan, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
-from ..planning.capabilities import CapabilityCatalog, load_catalog
+from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
@@ -995,6 +995,12 @@ class RunService:
             log.exception("planejamento %s", run_id)
             repo.set_run_status(run_id, RunStatus.failed, f"Erro interno no planejamento: {exc}", level="error")
             return
+        # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
+        # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
+        # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
+        recusadas = self._efeitos_fora_do_catalogo(plan, instances, apps)
+        if recusadas:
+            self._recusar_no_planejamento(run_id, plan, recusadas)
         repo.save_plan(run_id, plan)
         repo.decision(f"Plano ({'SIMULADO' if plan.planner.simulated else plan.planner.model}): {plan.summary} — "
                       f"{len(plan.steps)} etapa(s): " + " → ".join(s.title for s in plan.steps), run_id=run_id)
@@ -1015,6 +1021,53 @@ class RunService:
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
+
+    @staticmethod
+    def _efeitos_fora_do_catalogo(plan: Plan, instances: Sequence[Mapping[str, object]],
+                                  apps: Sequence[AppContext]) -> list[dict[str, object]]:
+        """As etapas que a regra do item 13.2 recusaria no despacho, vistas no plano (RA-7).
+
+        O app da etapa é o do despacho (`Scheduler._app_context`): o dela, senão o do plano, senão o do aparelho —
+        por aparelho, porque dois aparelhos podem ter apps padrão diferentes e a etapa sem app roda no de cada um.
+        Basta um aparelho em que a etapa seria recusada: o plano é o mesmo para todos."""
+        por_id = {a.id: a for a in apps if a.id}
+        recusadas: dict[str, dict[str, object]] = {}
+        for passo in plan.steps:
+            if not passo.side_effect:
+                continue
+            for inst in instances or ({},):
+                app_id = passo.app_id or plan.app_id or inst.get("app_id")
+                app = por_id.get(str(app_id)) if app_id else None
+                pacote = app.package if app else plan.app_package
+                motivo = efeito_fora_do_catalogo(True, passo.capability, pacote)
+                if motivo:
+                    recusadas[passo.key] = {"key": passo.key, "title": passo.title, "app_id": app.id if app else None,
+                                            "app": (app.name or app.id) if app else pacote,
+                                            "capability": passo.capability, "motivo": motivo}
+                    break
+        return list(recusadas.values())
+
+    def _recusar_no_planejamento(self, run_id: str, plan: Plan, recusadas: list[dict[str, object]]) -> None:
+        """O plano inteiro sai sem etapas, com uma pergunta por etapa recusada: o caminho do `missing` (a execução
+        vai a `needs_input`, nada é materializado, nenhuma decisão é gasta). Recusar só a etapa com efeito deixaria os
+        preparativos rodarem à toa; um plano meio montado é pior que nenhum (a regra do `compose` e do 24.1).
+
+        O evento `plan.refused` leva o motivo FECHADO de cada etapa (`MotivoForaDoCatalogo`) para o painel e a
+        medição; a linha do tempo leva a mesma frase da porta do despacho."""
+        partes = []
+        for r in recusadas:
+            estranha = f" (a ação {r['capability']} não é do catálogo dele)" if r["capability"] else ""
+            frase = (f"a etapa '{r['title']}' tem efeito externo em {r['app']} sem a ação do catálogo{estranha} — ela "
+                     "passaria por fora da política e dos limites do perfil")
+            partes.append(frase)
+            plan.missing.append(MissingInfo(
+                field="policy", question=f"Recusado no planejamento: {frase}. Peça só o que o catálogo do app faz, ou "
+                                         "faça esta parte você mesmo."))
+        plan.steps = []
+        texto = "Porta de política no planejamento (item 13.2): " + "; ".join(partes) + "."
+        self.repo.decision(texto, run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "efeito_fora_do_catalogo", "etapas": recusadas})
 
     def projecao(self, plan: Plan) -> dict[str, object]:
         """Item 18.3: o normal medido de cada etapa do plano (chamadas de IA, tempo, US$ — mediana e p90 por ação),

@@ -66,7 +66,7 @@ from .planning import conciliacao, costs, saldos
 from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
-from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
+from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -1898,8 +1898,9 @@ class AppState:
         if cap is None:
             # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
             # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
-            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo.
-            if srow["side_effect"] and pacote and load_catalog(pacote) is not None:
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
+            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
+            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
                 nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
                 estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
                 return Verdict(allowed=False, policy="manual_only",

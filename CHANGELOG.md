@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: a porta de política do item 13.2 também no planejamento (RA-7, branch feat/ra-7-recusa-no-planejamento)
+
+- `planning/capabilities.py::efeito_fora_do_catalogo` concentra a regra do item 13.2 (etapa com efeito, num app com
+  catálogo, sem ação daquele catálogo). A porta do despacho passa a usá-la, com a mesma frase.
+- `RunService._plan` aplica a regra a todo plano (planejador, fluxo, skill) antes de materializar. Uma etapa recusada
+  zera o plano, a execução vai a `needs_input` com uma pergunta por etapa, e o evento `plan.refused` leva o motivo
+  fechado (`sem_acao_do_catalogo` | `acao_de_outro_catalogo`). Nenhuma decisão é gasta nos preparativos.
+- O caso de 01/10 no Outlook (`fill_recipient` com 16 e 17 decisões) é anterior ao catálogo do Outlook no central;
+  desde que ele chegou, 5 de 5 planos ligam a capability (`docs/dominios/execution.md`).
+- Prova: simulated (`test_recusa_no_planejamento.py`, 12 testes; 616 afetados verdes). Real no android-01: `not_run`
+  (frente Android).
+
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 
 - **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
