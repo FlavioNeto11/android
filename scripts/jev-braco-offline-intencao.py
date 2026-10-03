@@ -55,8 +55,8 @@ from app.planning.decisao_fechada.apps import NAO, SIM  # noqa: E402
 from app.planning.decisao_fechada.decisores import Decisor  # noqa: E402
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, id_opaco  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
-from app.taskqueue.lote_intencao import (DESDE_ITEM_21, CasoDaIntencao, LeituraDoLote, LoteOffline,  # noqa: E402
-                                         SalvaguardaB, consumidor_do_lote, em_portugues, ler_lote)
+from app.taskqueue.lote_intencao import (DESDE_ITEM_21, ORIGENS_DO_PISO, CasoDaIntencao, LeituraDoLote,  # noqa: E402
+                                         LoteOffline, SalvaguardaB, consumidor_do_lote, em_portugues, ler_lote)
 
 _spec = importlib.util.spec_from_file_location("jev_braco_offline", RAIZ / "scripts" / "jev-braco-offline.py")
 braco = importlib.util.module_from_spec(_spec)
@@ -64,7 +64,9 @@ sys.modules[_spec.name] = braco
 _spec.loader.exec_module(braco)  # type: ignore[union-attr]
 rel = braco.rel
 
-#: O mínimo de comandos reais enviáveis para a rodada paga (orquestradora, 03/10): abaixo disto, só o seco.
+#: O mínimo de comandos reais enviáveis para a rodada paga (orquestradora, 03/10): abaixo disto, só o seco. Conta
+#: comandos DISTINTOS por `estado_hash`, das origens do piso (golden set §8, "Origem do caso", aprovado em 03/10): a
+#: validação repete o comando do dono, e repetir não prova o filtro de novo.
 MIN_COMANDOS_REAIS: Final = 10
 #: Só o caso `c` vai ao Jev (orquestradora, 03/10 19:33Z): toda linha que sai tem a igualdade do texto provada pelo
 #: hash. O `b` é calculado e relatado (quantas passariam), sem liberar envio.
@@ -108,6 +110,11 @@ def codigo_igual(raiz: Path, commits: Sequence[str]) -> tuple[bool, dict[str, st
 
 
 # ------------------------------------------------------------------ casos, rótulos e rodada
+def distintos_do_piso(casos: Sequence[CasoDaIntencao]) -> int:
+    """Os comandos distintos (por `estado_hash`) das origens que contam para o piso."""
+    return len({c.estado_hash for c in casos if c.origem in ORIGENS_DO_PISO})
+
+
 def _com_parametro(db: Any) -> set[str]:
     """Os fluxos com `{parâmetro}` (golden set §3: um acerto neles ainda pede o parâmetro), pelo id opaco da opção."""
     return {id_opaco(f"flow:{r['id']}") for r in db.query("SELECT id, command_template FROM flows")
@@ -366,7 +373,8 @@ def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
         "casos": {"lidos": len(leitura.casos), "por_salvaguarda": dict(Counter(c.salvaguarda for c in leitura.casos)),
                   "enviaveis": len(enviaveis), "fora": dict(leitura.fora),
                   "por_origem": dict(Counter(c.origem for c in enviaveis)),
-                  "distintos": len({c.estado_hash for c in enviaveis})},
+                  "distintos": len({c.estado_hash for c in enviaveis}), "distintos_do_piso": distintos_do_piso(enviaveis),
+                  "piso": MIN_COMANDOS_REAIS},
         "salvaguarda_b": {**salvaguarda_b, "libera_envio": False, "ultima_remocao": leitura.ultima_remocao,
                           "horizonte_dos_eventos": leitura.horizonte_dos_eventos},
         "pedidos_secos": pedidos_secos,
@@ -403,7 +411,8 @@ def em_markdown(r: Mapping[str, Any]) -> str:
               f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; interrompido: {r['interrompido'] or 'não'}.",
               f"- Casos lidos {c['lidos']} {c['por_salvaguarda'] or ''}; enviáveis {c['enviaveis']} (só `c`, o hash);"
               f" fora {c['fora'] or '—'}.",
-              f"- Enviáveis por origem {c['por_origem'] or '—'}; comandos distintos {c['distintos']}.",
+              f"- Enviáveis por origem {c['por_origem'] or '—'}; comandos distintos {c['distintos']}"
+              f" ({c['distintos_do_piso']} no piso de {c['piso']}).",
               f"- Salvaguarda b: código igual {b['codigo_igual']} {b['commits'] or '(sem commits)'}; última remoção"
               f" {b['ultima_remocao'] or '—'}; eventos desde {b['horizonte_dos_eventos'] or '—'}; só relatada,"
               f" não libera envio.",
@@ -483,8 +492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         com_parametro = _com_parametro(db)
     finally:
         db.close()
-    if teto is not None and len(enviaveis) < MIN_COMANDOS_REAIS:
-        raise SystemExit(f"{len(enviaveis)} casos enviáveis, menos que {MIN_COMANDOS_REAIS}: nada foi enviado")
+    if teto is not None and distintos_do_piso(enviaveis) < MIN_COMANDOS_REAIS:
+        raise SystemExit(f"{distintos_do_piso(enviaveis)} comandos distintos enviáveis ({len(enviaveis)} casos), menos que"
+                         f" {MIN_COMANDOS_REAIS}: nada foi enviado")
     decisor = braco.decisor_real(teto) if teto is not None else seco
     registros, interrompido = rodar(enviaveis, decisor, r5=args.r5)
     secos = (sum(1 for q in seco.pedidos if q.origem == "intencao"), sum(1 for q in seco.pedidos if q.origem == "apps"))

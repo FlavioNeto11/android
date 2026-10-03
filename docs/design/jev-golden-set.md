@@ -438,8 +438,23 @@ vale para GO. O código é `scripts/jev-braco-offline-intencao.py`, com `backend
   lote de acompanhamento.
 - **Portões da rodada paga.**
   - `--enviar --teto` de no máximo US$ 0,05, numa rodada só, sem repetição.
-  - Ao menos 10 casos enviáveis (`MIN_COMANDOS_REAIS`); abaixo disso, a recusa vem antes de qualquer chamada.
+  - Ao menos 10 COMANDOS DISTINTOS enviáveis (`MIN_COMANDOS_REAIS`, por `estado_hash`, das origens do piso; ver
+    "Origem do caso" abaixo). Abaixo disso, a recusa vem antes de qualquer chamada.
   - O custo fica no JSON e no registro do estado, não em `ai_calls`.
+
+**Origem do caso** (texto aprovado pela orquestradora às 20:28Z de 03/10, com 0 casos `c` existentes: é pré-registro;
+gravado no commit que traz esta seção).
+- Conta como `c` toda execução que a sombra da intenção mandou com hash, seja do dono (`pessoa`), seja re-execução da
+  validação do Aprendizado (`validacao`, `learning_validations.run_id`), que repete o comando do dono.
+- O piso de 10 (`MIN_COMANDOS_REAIS`) conta COMANDOS DISTINTOS por `estado_hash`, não execuções: a validação repete o
+  texto, e repetir não prova o filtro de novo.
+- Uma bateria neutra, se houver, é origem própria (`bateria`): entra no lote e no relatório separado, mas fica FORA do
+  piso e do GO do 31.10, porque não é comando do dono.
+- Comando resolvido por fluxo, com POST e hash, é `c` válido: a §8 não depende de o planejador ter decidido. Ele
+  conta para o piso e para a precisão da R2 (rótulo = o fluxo que terminou em sucesso comprovado). Pela §3, NÃO
+  entra na métrica principal do 31.10 (RA-2: só execuções sem fluxo, `sem_casamento`).
+- A origem vem hoje de `lote_intencao.origem_da_execucao`. Passa a vir do contrato do 32.3 (`app/contracts/origem.py`)
+  quando ele estiver na main, com um mapa para este vocabulário.
 
 Prova `simulated`:
 - `backend/tests/test_lote_intencao.py`, inclusive o `AppState` do harness: a sombra do runtime manda, e o lote remonta

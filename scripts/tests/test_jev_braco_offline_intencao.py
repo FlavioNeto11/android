@@ -331,3 +331,18 @@ def test_relatorio_total_e_por_origem_com_os_distintos(mundo: Mundo, tmp_path: P
         assert o["r5"]["casos_com_r5"] == 1 and set(o["r5"]["medidas"]) == {"en", "pt"}
     texto = (tmp_path / "saida.md").read_text(encoding="utf-8")
     assert "## Origem: validacao" in texto and SEGREDO not in texto
+
+
+def test_piso_conta_comandos_distintos_e_nao_execucoes(mundo: Mundo, tmp_path: Path,
+                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Golden set §8, "Origem do caso" (aprovado em 03/10): a validação repete o comando do dono; dois casos com o mesmo
+    `estado_hash` são UM comando para o piso."""
+    mundo.viva("run-3", f"abra o feed do instagram e curta o post da {SEGREDO}")      # a validação do run-1
+    _de_validacao(mundo.db, "run-3")
+    monkeypatch.setattr(lote, "MIN_COMANDOS_REAIS", 2)
+    monkeypatch.setattr(lote.braco, "decisor_real", lambda teto: pytest.fail("não podia montar o decisor"))
+    with pytest.raises(SystemExit, match=r"1 comandos distintos enviáveis \(2 casos\), menos que 2"):
+        lote.main(mundo.argv(tmp_path, "--enviar", "--teto", "0.05"))
+    assert lote.main(mundo.argv(tmp_path)) == 0                                      # o seco segue: só relata
+    c = _saida(tmp_path)["casos"]
+    assert (c["enviaveis"], c["distintos"], c["distintos_do_piso"], c["piso"]) == (2, 1, 1, 2)

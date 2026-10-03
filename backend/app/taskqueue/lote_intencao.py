@@ -80,8 +80,11 @@ INSTRUCOES_PT: Final[Mapping[str, str]] = MappingProxyType({
 #: De onde veio a execução do caso (orquestradora, 03/10: o resultado total e por origem, para ninguém discutir
 #: representatividade depois). `validacao`: a re-execução da validação do Aprendizado (30.31,
 #: `learning_validations.run_id`), que repete o comando da execução de origem; `pessoa`: o resto (o dono pelo painel,
-#: pela API ou por um canal).
+#: pela API ou por um canal). Uma bateria neutra, se houver, será origem própria (`bateria`), fora do piso.
 ORIGENS_DO_CASO: Final = ("pessoa", "validacao")
+#: As origens que contam para o piso de comandos reais do lote (golden set §8, "Origem do caso"): o comando do dono,
+#: direto ou repetido pela validação. Contadas em comandos DISTINTOS por `estado_hash`.
+ORIGENS_DO_PISO: Final = frozenset({"pessoa", "validacao"})
 MENSAGEM_PERFIL_REMOVIDO: Final = "Perfil removido"
 MENSAGEM_CONTA_REMOVIDA: Final = "Conta removida do perfil"
 
@@ -218,7 +221,11 @@ def ultima_remocao(db: Database, desde: str) -> str | None:
 
 
 def origem_da_execucao(db: Database, run_id: str) -> str:
-    """`validacao` quando a execução é uma re-execução da validação do Aprendizado; senão `pessoa`."""
+    """`validacao` quando a execução é uma re-execução da validação do Aprendizado; senão `pessoa`.
+
+    Provisória: o contrato de origem é o do 32.3 (frente Canais, `app/contracts/origem.py::origem_da_execucao`, pela
+    `prova_fluxo_id` e pela `idempotency_key` "validacao:lv-…"). Quando ele estiver na main, esta função passa a usá-lo,
+    com um mapa para o vocabulário deste relatório: dois vocabulários de origem não ficam (orquestradora, 03/10)."""
     return "validacao" if db.one("SELECT 1 FROM learning_validations WHERE run_id=?", (run_id,)) else "pessoa"
 
 
@@ -338,5 +345,5 @@ def consumidor_do_lote(porta: Porta, db: Database) -> ConsumidorDeIntencao:
 
 
 __all__ = ["DESDE_ITEM_21", "FALLBACKS_DEPOIS_DO_POST", "INSTRUCOES_PT", "MENSAGEM_CONTA_REMOVIDA",
-           "MENSAGEM_PERFIL_REMOVIDO", "ORIGENS_DO_CASO", "origem_da_execucao", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "PedidoDaR5", "SalvaguardaB",
+           "MENSAGEM_PERFIL_REMOVIDO", "ORIGENS_DO_CASO", "ORIGENS_DO_PISO", "origem_da_execucao", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "PedidoDaR5", "SalvaguardaB",
            "consumidor_do_lote", "em_portugues", "enviada", "ler_lote", "ultima_remocao"]
