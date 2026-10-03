@@ -190,6 +190,11 @@ class AndroidCfg(BaseModel):
     density: int = 320
     data_partition: str = "4G"
     gpu_mode: str = "swiftshader_indirect"
+    #: `-crash-report-mode` do emulador (29.55). Com relatório de falha pendente (`emu-crash-*.db/reports/*.dmp`,
+    #: deixado por um emulador que caiu na saída), o padrão do emulador é PERGUNTAR, e a subida sem janela parava no
+    #: diálogo ("Showing crashdialog to get consent") sem ninguém para responder (incidente de 03/10/2026 19:00Z).
+    #: `never` não pergunta nem envia. `""` não passa a flag (volta ao padrão do emulador).
+    crash_report_mode: Literal["never", "disabled", "ask", "always", ""] = "never"
     boot_timeout_s: int = 480
     est_instance_ram_mb: int | None = None      # RAM real por instância no host; None = ram_mb + 1100 (medido)
     min_free_ram_mb_after_boot: int = 1500      # folga que o host deve manter depois de cada boot

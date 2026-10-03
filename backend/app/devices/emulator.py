@@ -2,11 +2,13 @@
 gravado e encerra SOMENTE processos que este projeto iniciou."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,8 @@ import psutil
 from ..config import AndroidCfg, Config
 from .adb import Adb
 from .sdk import IS_WINDOWS, NEW_GROUP, NO_WINDOW, SdkTools
+
+log = logging.getLogger("poc.devices.emulator")
 
 
 class EmulatorError(RuntimeError):
@@ -44,6 +48,8 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
     janela = [] if a.window else ["-no-window"]
     args = [str(tools.emulator), "-avd", avd_name, "-port", str(console_port), *janela, "-no-audio",
             "-no-boot-anim", *snap, "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
+    if a.crash_report_mode:
+        args.extend(["-crash-report-mode", a.crash_report_mode])
     if wipe_data:
         args.append("-wipe-data")
     if a.dns_servers:
@@ -67,10 +73,90 @@ def _rotate_log(path: Path, limite_bytes: int = 8 * 1024 * 1024) -> None:
         pass  # rotação é higiene, nunca motivo para recusar o boot
 
 
+#: A linha que o emulador escreve quando PARA esperando o consentimento para enviar um relatório de falha pendente.
+#: Sem janela, ninguém responde, e a subida fica ali até o prazo do boot (incidente de 03/10/2026 19:00Z, 29.55).
+LINHA_DO_DIALOGO_DE_CRASH = "Showing crashdialog"
+
+#: Pasta, dentro da pasta de dados (`cfg.data_dir`), para onde vão os relatórios de falha pendentes. Mover, nunca
+#: apagar: o dump é a única evidência do crash que o deixou.
+PASTA_DA_QUARENTENA = "quarentena-crash"
+
+
+def relatorios_pendentes(env: dict[str, str]) -> list[Path]:
+    """Os dumps que o crashpad do emulador deixou para enviar: `<TEMP>/AndroidEmulator/emu-crash-<versão>.db/reports/
+    *.dmp`. O TEMP é o do ambiente que o EMULADOR recebe (`tools.env()`), nunca o deste processo: sem TEMP declarado, não
+    há o que procurar (e um teste com ambiente vazio não alcança os dumps de verdade da máquina)."""
+    temp = env.get("TEMP") or env.get("TMP") or env.get("TMPDIR")
+    if not temp:
+        return []
+    raiz = Path(temp) / "AndroidEmulator"
+    try:
+        return sorted(p for p in raiz.glob("emu-crash-*.db/reports/*.dmp") if p.is_file())
+    except OSError:
+        return []
+
+
+def quarentenar_relatorios(env: dict[str, str], destino: Path) -> list[Path]:
+    """Move os relatórios de falha pendentes para `destino` e devolve onde cada um foi parar. Um dump travado (o emulador
+    que o escreveu ainda vivo) fica onde está e só vai para o log: a quarentena é higiene, nunca motivo para recusar o
+    boot. Nome repetido ganha sufixo em vez de sobrescrever a evidência anterior."""
+    pendentes = relatorios_pendentes(env)
+    if not pendentes:
+        return []
+    movidos: list[Path] = []
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.warning("quarentena de relatórios de falha indisponível (%s): %s", destino, exc)
+        return []
+    for origem in pendentes:
+        alvo = destino / origem.name
+        n = 1
+        while alvo.exists():
+            alvo = destino / f"{origem.stem}-{n}{origem.suffix}"
+            n += 1
+        try:
+            os.replace(origem, alvo)
+        except OSError as exc:
+            log.warning("relatório de falha pendente não pôde ir para a quarentena (%s): %s", origem, exc)
+            continue
+        movidos.append(alvo)
+    if movidos:
+        log.warning("%d relatório(s) de falha pendente(s) do emulador foram para a quarentena em %s",
+                    len(movidos), destino)
+    return movidos
+
+
+def dialogo_de_crash(log_path: Path, offset: int = 0) -> bool:
+    """A subida DESTA vez (o log a partir de `offset`, o tamanho dele no spawn) parou no diálogo de consentimento de um
+    relatório de falha (29.55 c)? Log menor que o offset foi rotacionado no spawn (`_rotate_log`): lê do começo."""
+    try:
+        with log_path.open("rb") as fh:
+            if offset > log_path.stat().st_size:
+                offset = 0
+            fh.seek(offset)
+            texto = fh.read(2_000_000).decode("utf-8", errors="replace")
+    except OSError:
+        return False
+    return LINHA_DO_DIALOGO_DE_CRASH in texto
+
+
 def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
-                  *, wipe_data: bool = False, from_snapshot: bool = False) -> int:
+                  *, wipe_data: bool = False, from_snapshot: bool = False,
+                  ao_quarentenar: Callable[[list[Path]], None] | None = None) -> int:
     if not tools.emulator.exists():
         raise EmulatorError(f"emulator não encontrado em {tools.emulator}")
+    # 29.55 (b): um relatório de falha pendente faz o emulador perguntar se pode enviá-lo, e a subida sem janela para
+    # no diálogo. Mesmo com `-crash-report-mode never` (a), o dump sai do caminho antes de cada subida.
+    try:
+        env = tools.env()
+        movidos = (quarentenar_relatorios(env, Path(cfg.data_dir) / PASTA_DA_QUARENTENA)
+                   if relatorios_pendentes(env) else [])
+    except Exception:  # noqa: BLE001 - higiene antes do boot: nunca derruba a subida
+        log.exception("%s: falha ao conferir os relatórios de falha pendentes", avd_name)
+        movidos = []
+    if movidos and ao_quarentenar is not None:
+        ao_quarentenar(movidos)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = cfg.logs_dir / f"emulator-{avd_name}.log"
     _rotate_log(log_path)

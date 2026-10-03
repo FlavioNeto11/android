@@ -25,6 +25,7 @@ lacuna no agente remoto.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -41,8 +42,10 @@ class EmulatorBackend(Protocol):
         """Memória disponível AGORA, em MB. É a entrada da guarda de capacidade."""
 
     def start_process(self, cfg: Any, tools: Any, avd_name: str, console_port: int, android: Any, *,
-                      wipe_data: bool, from_snapshot: bool) -> int:
-        """Sobe o processo do emulador e devolve o PID."""
+                      wipe_data: bool, from_snapshot: bool,
+                      ao_quarentenar: Callable[[list[Path]], None] | None = None) -> int:
+        """Sobe o processo do emulador e devolve o PID. `ao_quarentenar` recebe os relatórios de falha pendentes que
+        foram para a quarentena antes da subida (29.55), quando houve algum."""
 
     def stop_process(self, adb: Any, pid: int | None, avd_name: str) -> str:
         """Encerra o processo. Devolve a frase de como ele foi encerrado."""
@@ -64,9 +67,10 @@ class RealEmulatorBackend:
         return psutil.virtual_memory().available / 2**20
 
     def start_process(self, cfg: Any, tools: Any, avd_name: str, console_port: int, android: Any, *,
-                      wipe_data: bool, from_snapshot: bool) -> int:
+                      wipe_data: bool, from_snapshot: bool,
+                      ao_quarentenar: Callable[[list[Path]], None] | None = None) -> int:
         return emu.start_process(cfg, tools, avd_name, console_port, android, wipe_data=wipe_data,
-                                 from_snapshot=from_snapshot)
+                                 from_snapshot=from_snapshot, ao_quarentenar=ao_quarentenar)
 
     def stop_process(self, adb: Any, pid: int | None, avd_name: str) -> str:
         return emu.stop_process(adb, pid, avd_name)
@@ -107,14 +111,20 @@ class FakeEmulatorBackend:
         # pedido, que decide (o emulador real cai para o SwiftShader sem reclamar). `None` = a subida não escreve a
         # linha `emuglConfig_init`, e o selecionado fica "não se sabe". Quem quer provar o fallback escolhe aqui.
         self.gles: str | None = None
+        # 29.55: o que a quarentena "moveu" antes da subida. Vazio = nenhum relatório de falha pendente.
+        self.relatorios_em_quarentena: list[Path] = []
         self.vulkan: str | None = None
 
     def free_ram_mb(self) -> float:
         return self.free_mb
 
     def start_process(self, cfg: Any, tools: Any, avd_name: str, console_port: int, android: Any, *,
-                      wipe_data: bool, from_snapshot: bool) -> int:
+                      wipe_data: bool, from_snapshot: bool,
+                      ao_quarentenar: Callable[[list[Path]], None] | None = None) -> int:
         self.started.append((avd_name, wipe_data, from_snapshot))
+        if self.relatorios_em_quarentena and ao_quarentenar is not None:
+            # O teste declara o que a quarentena "moveu"; nenhum arquivo de verdade é tocado.
+            ao_quarentenar(list(self.relatorios_em_quarentena))
         if self.gles is not None:
             # No MESMO arquivo e em append, como `emu.start_process`: é de lá que o gerenciador lê.
             cfg.logs_dir.mkdir(parents=True, exist_ok=True)

@@ -472,6 +472,10 @@ class DeviceRuntime:
         self.ui_variant: str | None = None            # idioma + faixa de densidade: parte da identidade da receita
         self.external_checked_mono = 0.0
         self.boot_log_offset = 0
+        # 29.55 (c): a última subida parou no diálogo de relatório de falha. Enquanto valer, o reparo automático não
+        # sobe degrau neste aparelho (a escada chegou ao terceiro degrau num aparelho com conta, 03/10 19:00Z); cai na
+        # próxima subida, de pessoa ou do rodízio.
+        self.bloqueio_de_crash = False
         self.snapshot_failures = 0
         self.snapshot_unsupported = False           # o emulador recusou o snapshot deste AVD 2× seguidas: para de salvar
         # 1ª sessão depois de criar/resetar o AVD: o hardware dessa sessão (initPath, partição de dados recém-criada)
@@ -1279,6 +1283,8 @@ class DeviceManager:
             return False                 # ninguém pediu este aparelho no ar; reiniciá-lo seria decisão nossa
         if rt.control != ControlOwner.none:
             return False                 # alguém (pessoa ou IA) está com o aparelho: reiniciar por baixo, nunca
+        if rt.bloqueio_de_crash:
+            return False                 # 29.55 (c): parou no diálogo de relatório de falha; o motivo é claro e é da pessoa
         if time.monotonic() < rt.restart_backoff_until:
             return False
         rt.restart_attempts += 1
@@ -2556,7 +2562,8 @@ class DeviceManager:
                     self._set_state(rt, InstanceState.booting, "acordando do snapshot…" if warm else
                                     "emulador iniciado" + (" (dados apagados)" if wipe else ""))
                     ok = await self._wait_boot(rt, t0, warm=warm)
-                    if warm and not ok:            # snapshot corrompido/incompatível: descarta e tenta UMA vez a frio
+                    # Parar no diálogo de relatório de falha (29.55) não diz nada do snapshot: ele fica.
+                    if warm and not ok and not rt.bloqueio_de_crash:  # snapshot corrompido/incompatível: descarta e tenta UMA vez a frio
                         log.warning("%s: acordar do snapshot falhou; boot a frio", rt.id)
                         await asyncio.to_thread(self.emulator.stop_process, rt.adb, rt.pid, rt.avd_name)
                         self._save_pid(rt, None)
@@ -2619,6 +2626,9 @@ class DeviceManager:
                     return False                   # quem chamou descarta o snapshot e tenta a frio
                 self._set_state(rt, InstanceState.error, f"Boot excedeu {timeout}s", level="error",
                                 attention="O boot não concluiu a tempo. Veja data/logs/emulator-%s.log" % rt.avd_name)
+                return False
+            if emu.dialogo_de_crash(self.cfg.logs_dir / f"emulator-{rt.avd_name}.log", rt.boot_log_offset):
+                await self._parou_no_dialogo_de_crash(rt)
                 return False
             if rt.pid and not emu.is_our_emulator(rt.pid, rt.avd_name):
                 if warm:
@@ -2785,11 +2795,33 @@ class DeviceManager:
         if tocado:
             self.publish(rt, f"{rt.id}: diálogo do sistema dispensado ao entrar no ar ('{descricao[:80]}' → {tocado})")
 
+    async def _parou_no_dialogo_de_crash(self, rt: DeviceRuntime) -> None:
+        """29.55 (c): a subida parou no diálogo de consentimento de um relatório de falha pendente. Sem janela, ninguém
+        responde, e esperar o prazo do boot (8 min) só para cair na escada de reparo era o incidente de 03/10 19:00Z.
+        Encerra o lançador preso, diz o motivo e marca o aparelho para a escada não subir degrau por isso. A próxima
+        subida tira o dump do caminho (b) antes do `Popen`."""
+        rt.bloqueio_de_crash = True
+        await asyncio.to_thread(self.emulator.stop_process, rt.adb, rt.pid, rt.avd_name)
+        self._save_pid(rt, None)
+        self._set_state(rt, InstanceState.error, "O emulador parou no diálogo de relatório de falha.", level="error",
+                        attention="A subida parou no diálogo de consentimento de um relatório de falha pendente do "
+                                  "emulador, e sem janela ninguém responde. O processo foi encerrado, e o reparo "
+                                  "automático não sobe degrau por isso. Ligue de novo: a próxima subida tira o "
+                                  f"relatório do caminho. Log: data/logs/emulator-{rt.avd_name}.log")
+
     def _spawn(self, rt: DeviceRuntime, a: Any, wipe: bool, from_snapshot: bool = False) -> None:
         """Inicia o emulador e grava o PID na MESMA seção crítica: um cancelamento nunca deixa processo órfão."""
+        rt.bloqueio_de_crash = False
+        def ao_quarentenar(movidos: list[Path]) -> None:
+            # 29.55 (b): relatório de falha pendente faria a subida sem janela parar no diálogo de consentimento.
+            self.bus.emit("log", f"{rt.id}: {len(movidos)} relatório(s) de falha pendente(s) do emulador foram para a "
+                          f"quarentena antes da subida ({', '.join(p.name for p in movidos)})", level="warn",
+                          instance_id=rt.id, data={"quarentena": [str(p) for p in movidos]})
+
         with rt.spawn_lock:
             pid = self.emulator.start_process(self.cfg, self.tools, rt.avd_name, rt.console_port, a,
-                                              wipe_data=wipe, from_snapshot=from_snapshot)
+                                              wipe_data=wipe, from_snapshot=from_snapshot,
+                                              ao_quarentenar=ao_quarentenar)
             self._save_pid(rt, pid)
 
     # ------------------------------------------------------------------ snapshot (hibernação)
