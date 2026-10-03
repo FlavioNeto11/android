@@ -100,6 +100,20 @@ item nem aceita parecer (ADR-069 item 2).
   - Conclusão: nenhum `kind` tem amostra para GO. A rodada offline da R1 (teto US$ 0,05) é acompanhamento: ela diz se
     a entrada carrega sinal e dá a grade de sensibilidade.
 
+*Registro de 03/10 (18:53Z), 31.11, a rodada real da R1 no braço offline.* É acompanhamento: nenhum número vale para
+GO (rótulos 1 e 2 = 0). Nenhum limiar mudou.
+- **Execução:** `scripts/jev-braco-offline.py` no checkout central @ `926b4f6f`, WIN-7S2UASNLFOP, `--enviar --teto
+  0.05`, uma vez.
+- **Volume e custo:** 29 casos de receita, 29 chamadas ok, US$ 0,000764. Essas chamadas não estão em `ai_calls`.
+- **Sinal:** os 9 estados C0 distintos deram a MESMA resposta de maior probabilidade (`revisar`), e nenhum estado
+  repetido mudou de resposta. Só a probabilidade varia com o estado, de 0,57 a 0,87. O estado C0 de hoje não separa
+  os casos.
+- **Cobertura no limiar 0,85:** 3 de 29.
+- **Concordâncias (acompanhamento):** o controle concorda com o curador em 2 de 29. Nenhum estado tem mais evidência
+  contra que a favor, então as contagens de evidência não explicam o parecer do curador.
+- **Proposta enviada à orquestradora:** campos fechados do dossiê que podem dar sinal (versão viva testada, uso,
+  idade da evidência, motivos de saúde e de risco, trilha).
+
 *Nota de 03/10 (~18:55Z), PROPOSTA, NÃO VIGENTE: a validação automática como rótulo "2v".* Fica pré-registrada
 antes de existir qualquer rótulo e não muda o GO da tabela. A orquestradora reavalia depois do deploy 14, com o P4
 de volta e volume real, e só então decide o contrato com a Aprendizado.
