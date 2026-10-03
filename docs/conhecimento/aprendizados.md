@@ -1981,6 +1981,19 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     (5554) e o gRPC (8554) do emulador, e o lado do host que só o parque toca. O mesmo sintoma do UiAutomator2 apareceu no
     android-06 às 06:09Z (`WebDriverException … root AccessibilityNodeInfo` ao religar o cliente VPN pela interface, OBSERVED),
     e o 25.12 passou a contar essa falha como tentativa.
+- **O laço não está no convidado** (`real`, 03/10, 07:36:57–07:37:57Z, android-01 ocioso, sem lease, 4 vCPU; `data/diag-ra3b/guest-01.json`
+  e `guest-01-top.txt`). Janela de 60 s, com o convidado e o host medidos juntos:
+  - no convidado (`/proc/stat`): 92,6 % ocioso, 3,25 % irq, 0,15 % softirq; load 0,31. No `top -H` nenhuma thread passa de
+    5 % (o Instagram a 5,0; o próprio `top` a 2,6), e não aparecem `ksoftirqd` nem thread de irq;
+  - interrupções por segundo: CAL (IPI) 444,6, LOC 371,2, virtio23 87,7. No AVD sem gerência, com 2 vCPU (braços A e D),
+    cada linha ficava perto de 100/s com o host a ~7 %. Por vCPU, o 01 tem cerca do dobro de CAL e LOC, mas o convidado
+    continua quase todo ocioso: a taxa não explica um núcleo inteiro;
+  - no host, na mesma janela, a thread 36288 ficou a 99,0 % (88,5 em kernel). Ela não expõe endereço de início (`StartAddress`
+    0x0, enquanto as outras threads do qemu começam em `ntdll+0x8C510`), fica sempre em `Running` e acumulou 4 h 26 min de
+    kernel em 4 h 57 min de vida do processo.
+  - Conclusão (INFERRED, forte): o laço é do lado do host, numa thread que não é vCPU (o tempo de vCPU no WHPX aparece como
+    usuário). O próximo passo proposto é uma amostragem ETW de CPU com pilha (`wpr`, já instalado) de ~20 s no qemu do 01,
+    lida por módulo (ntoskrnl, winhvr, afd, …), sem símbolos de fora. Só leitura, mas mais pesada que as anteriores.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
