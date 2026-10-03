@@ -4140,7 +4140,7 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
 
-## Adendo v0.75 (03/10/2026; número provisório; o final vem do orquestrador) — `steps.driven_by` ganha `sem_ator` (caminho rápido 1)
+## Adendo v0.81 (03/10/2026) — `steps.driven_by` ganha `sem_ator` (caminho rápido 1)
 
 Sem rota nova. O campo `driven_by` do `Step` (e a chave `steps_driven_by` de `GET /api/profiles/{id}/capacidades`, os
 contadores por origem de `apps_overview` e do `aproveitamento` de fluxos) passa a poder ser `sem_ator`, além de `ai`,
