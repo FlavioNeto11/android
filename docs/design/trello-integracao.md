@@ -48,10 +48,13 @@ As listas atuais do Execução são do programa de desenvolvimento (`.claude/tre
 
 ## 3. O que aceita de volta
 
-- **Mover o cartão** de aprovação para **✅ Aprovado** ou **⛔ Vetado** (listas novas) vira
-  `POST /api/approvals/{id}/decide` com `verb` `approve` ou `reject`. O `edit` fica no painel.
+- **Mover o cartão** de aprovação para **⛔ Vetado** (lista nova) vira `POST /api/approvals/{id}/decide` com `verb`
+  `reject`: vetar não causa ação no mundo real. Mover para **✅ Aprovado NÃO aprova** (regra da orquestradora, 03/10):
+  no Trello nem o dono autoriza ação real em conta real. A Central comenta `🤖 ANA · HH:MMZ · para aprovar, confirme no
+  painel ou no Telegram` e não chama o `decide`. O `edit` fica no painel.
 - **Comentário com comando:** a gramática comum de `canais-externos.md`, a mesma do Telegram. O fato é o cartão.
-  - Num cartão de aprovação, "sim" ou `/aprovar [nota]` aprova, e "não" ou `/vetar [nota]` veta.
+  - Num cartão de aprovação, "não" ou `/vetar [nota]` veta. "sim" e `/aprovar [nota]` valem o mesmo que mover para ✅:
+    só pedem a confirmação no painel ou no Telegram.
   - Num cartão de `needs_input`, o texto ou `/responder <texto>` é a resposta.
   - `/status` (`/estado`), `/pendencias` e `/ajuda` valem em qualquer cartão.
   - O `/para <aparelho|persona> <objetivo>` e o texto livre ficam desligados de fábrica no Trello
@@ -169,16 +172,40 @@ coisas do §6:
 5. **Marcos e custos:** o mesmo reconciliador mantém um cartão por deploy, quando `commit` e `migration` de
    `/api/health` mudam na partida, e um cartão de custo do dia, no máximo de hora em hora, em Programa.
 6. **`LeitorDoTrello`** (no líder), reconciliação do webhook do §8:
-   `GET /1/boards/{id}/actions?filter=commentCard,updateCard:idList&since=<cursor>`, a cada `trello.reconciliar_s`
-   (300 s com o webhook ligado, 60 s sem ele). O que o webhook já trouxe cai no dedupe pela action id. A
-   tradução é a MESMA função do §8 (`recebida_da_action`). Cada action vira uma `Recebida`. `do_dono` = `idMemberCreator == trello.membro_dono`. O fato é a `chave` do cartão
-   em `trello_cartoes`. Mover para ✅ ou ⛔ vira o texto "sim"/"não" com o fato. A `ConversaDoCanal` faz o resto, com o
-   operador `trello:<idMember>`.
-7. **`SaidaDoTrello`:** `responder` comenta no cartão, `apagar` devolve False (a resposta pede ao dono que apague),
-   `botoes` não existe (a prévia vira o comentário "comente `/executar`"). Isso só acontece com
-   `trello.comando_livre: true`, que é desligado de fábrica. A porta do 28.15 depois da integração da suíte 14
-   (7fd72929), `pergunta_sensivel(ref|None)`, vale igual: com o cartão do `needs_input` como fato (ref = o id da
-   execução) ou sem ref, para o texto curto com pergunta de senha aberta (E6).
+   `GET /1/boards/{id}/actions?filter=commentCard,updateCard:idList,createCard&since=<cursor>`, a cada
+   `trello.reconciliar_s` (300 s com o webhook ligado, 60 s sem ele). O que o webhook já trouxe cai no dedupe pela action
+   id. A tradução é a MESMA função do §8 (`recebida_da_action`, em `infrastructure/trello_leitor.py`). Cada action vira
+   uma `Recebida`, e a `ConversaDoTrello` (a `ConversaDoCanal` com as regras abaixo) faz o resto, com o operador
+   `trello:<idMember>` do AUTOR.
+   - `do_dono` = `idMemberCreator == trello.membro_dono` (ou um de `membros_autorizados`, vazia) E o quadro é um dos
+     `trello.quadros`. O fato é a `chave` do cartão em `trello_cartoes` (cartão sem linha = fato None).
+   - `commentCard` → `mensagem`; `updateCard` que leva um cartão de APROVAÇÃO à lista ✅ ou ⛔ → `botao` "sim"/"não";
+     cartão novo e o resto → `outro`, sem texto. Mover outro tipo de cartão (uma pergunta, um deploy) para ✅ não vale
+     como "sim".
+   - **Aprovar não aprova no Trello** (mover para ✅, "sim", `/aprovar`): a resposta é `para aprovar, confirme no painel ou
+     no Telegram`, e o `decidir` não é chamado. **Vetar veta** (mover para ⛔, "não", `/vetar`): o mesmo serviço do
+     painel, com `decided_by='trello:<id>'`. O membro autorizado pede, mas não decide nem responde pergunta.
+   - A resposta a uma pergunta de execução (texto no cartão `run:…:needs_input` ou `/responder`) passa pela porta
+     `pergunta_sensivel`: credencial pela forma ou pelo contexto é recusada sem eco, e a resposta pede ao dono que apague o
+     comentário.
+   - `/status`, `/pendencias`, `/ajuda` respondem em comentário curto, pelo roteador do 28.15. A `/pendencias` do Trello
+     lista só tipo e id curto (o resumo traz alvo e texto, que não vão a servidor de terceiros).
+   - Anotação sem barra num cartão que não é da Central só é registrada; o comando com barra vale em qualquer cartão.
+   - **Convidado** (autor que não é o dono): nada executa e a linha fica sem texto. Com `responder_convidados: false`
+     (padrão) o Trello fica em silêncio, e o pedido (não a pergunta) vira um aviso ao dono pela fila de avisos existente,
+     sem o texto nem o nome. Com `true`, a pergunta pura (`/status`, `/pendencias`, `/ajuda` ou texto terminado em "?")
+     recebe o resumo do `/status`, e o pedido recebe `recebido; aguardando o dono` mais o aviso. Teto de 10 reações por
+     hora, e a escrita velha (E2) não recebe resposta.
+   - Cursor em `trello_cursor`; na 1ª subida (quadro sem linha) o cursor vai para a action mais nova e o histórico não é
+     tratado. A saúde `trello_leitor_atrasado` compara a última LEITURA que deu certo (`atualizado_em` do cursor, que anda
+     mesmo sem action nova) com 3 × `reconciliar_s`: um quadro quieto não é atraso.
+7. **`SaidaDoTrello`:** `responder` comenta no cartão (o da `ref_mensagem`), `apagar` devolve False (a resposta pede ao dono
+   que apague o comentário) e não há botões. Todo texto leva o prefixo `🤖 ANA · HH:MMZ · `, passa pela redação dos avisos
+   (mais e-mail, @conta e IP) e é cortado em 1000 caracteres; o que a Central escreveu volta como action do dono (o token
+   é o dele) e é ignorado, pelo prefixo e pelo registro de enviadas. Nenhuma resposta copia texto de pedido, de evidência
+   ou de convidado. `/para` e o texto livre ficam atrás de `trello.comando_livre: true` (desligado: `comando livre está
+   desligado no Trello; use o painel ou o Telegram`); ligado, o Trello só MOSTRA a prévia (alvos), sem botão e sem
+   executar: a execução se confirma no painel ou no Telegram. A porta `pergunta_sensivel(ref|None)` vale igual.
 8. **Config `trello:`** (`enabled: false`, `quadros`, `listas`, `membro_dono`, `espelho_s`, `reconciliar_s`,
    `comando_livre: false`, `idade_max_s`, e o bloco `webhook:` do §8). Saúde: `trello_sem_segredo`, `trello_recusado`
    (401/403), `trello_limite` (429 seguidos) e as do §8.

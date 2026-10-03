@@ -288,6 +288,11 @@ class ConversaDoCanal:
         #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
         self._antigas = 0
 
+    def _idade_max_s(self) -> float:
+        """Quanto uma mensagem pode ter de idade para ser tratada (E2). O canal que tem a regra dele (o Trello:
+        `trello.idade_max_s`) sobrepõe; o padrão é o da conversa do Telegram."""
+        return self.cfg.file.avisos.entrada.idade_max_s
+
     def gravar_falha(self, r: Recebida, erro: str) -> bool:
         """O leitor não conseguiu registrar a update: o mínimo (sem texto) como `falhou`, para a ordem andar."""
         return self._linha(r, None, "falhou", erro)
@@ -303,7 +308,7 @@ class ConversaDoCanal:
         if not self._antigas:
             return
         n, self._antigas = self._antigas, 0
-        minutos = round(self.cfg.file.avisos.entrada.idade_max_s / 60)
+        minutos = round(self._idade_max_s() / 60)
         texto = RESPOSTA_ANTIGAS.format(
             quantas="1 mensagem foi escrita" if n == 1 else f"{n} mensagens foram escritas", min=minutos,
             foi="foi" if n == 1 else "foram", s="" if n == 1 else "s", ela="ela" if n == 1 else "elas")
@@ -335,7 +340,7 @@ class ConversaDoCanal:
         de novo, mas não para sempre) e só as de credencial ou de pergunta sensível: a recusa por tamanho
         (`RESPOSTA_LONGA`) gravada sem saída fica sem resposta, porque não há credencial a avisar e o texto nem foi
         guardado."""
-        for linha in self.repo.recusadas_sem_resposta(self.cfg.file.avisos.entrada.idade_max_s):
+        for linha in self.repo.recusadas_sem_resposta(self._idade_max_s()):
             ident = self._id(linha)
             pergunta = "pergunta" in str(linha.get("erro") or "")
             texto = RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR if pergunta else RESPOSTA_CREDENCIAL_SEM_APAGAR
@@ -383,7 +388,7 @@ class ConversaDoCanal:
                                            RESPOSTA_PERGUNTA_CREDENCIAL + extra,
                                            RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR + extra)
             return
-        if r.escrita_em is not None and self._agora() - r.escrita_em > self.cfg.file.avisos.entrada.idade_max_s:
+        if r.escrita_em is not None and self._agora() - r.escrita_em > self._idade_max_s():
             # E2: o Telegram guarda até 24 h, e a Central fora por horas traria um "/aprovar" ou um "sim" velho que
             # executaria sem ninguém olhar. Vale em TODA subida, não só na 1ª (o descarte do histórico é só a 1ª).
             if self._linha(r, None, "ignorada", "antiga: escrita com a Central fora do ar"):

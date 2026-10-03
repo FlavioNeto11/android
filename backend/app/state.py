@@ -43,10 +43,11 @@ from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
 from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
-from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello
+from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
@@ -544,6 +545,13 @@ class AppState:
                             _FontesDoEspelhoDoTrello(lambda: self.pedidos_api, RegistroDeValidacoesSql(self.db)),
                             lambda: cfg.file.avisos.url_painel),
             lider=self._lider, versao=self._versao_do_deploy, custos=self._linhas_de_custo, relogio=self.db.agora)
+        # O leitor do Trello (32.2, passo 4): as actions do quadro viram comandos do dono, pela MESMA conversa do Telegram; só o
+        # dono comanda, aprovar pede confirmação fora do Trello. Desligado de fábrica (`trello.enabled`). Convidado que pede
+        # algo vira um aviso ao dono pela fila existente.
+        self.trello_leitor = LeitorDoTrello(
+            cfg, EntradasDoCanal(self.db, canal="trello"), CartoesDoTrello(self.db, self.db.agora),
+            CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
+            redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
         # (30.25): os dois medem contra o MESMO catálogo.
@@ -2437,6 +2445,7 @@ class AppState:
             self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
             # O espelho do Trello (32.2): reconciliador no líder da trava `avisos`; sem `trello.enabled` não chama nada.
             self._bg.append(asyncio.create_task(self.trello_espelho.laco(), name="trello-espelho"))
+            self._bg.append(asyncio.create_task(self.trello_leitor.laco(), name="trello-leitor"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
@@ -3246,7 +3255,11 @@ class AppState:
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
         problems.extend(self.telegram_entrada.problemas())
-        problems.extend(self.trello_espelho.problemas())
+        achados_do_espelho = self.trello_espelho.problemas()
+        problems.extend(achados_do_espelho)
+        # A recusa do Trello é uma só para o espelho e o leitor (o mesmo token): não aparece duas vezes.
+        ja_ditos = {a.code for a in achados_do_espelho}
+        problems.extend(p for p in self.trello_leitor.problemas() if p.code not in ja_ditos)
         problems.extend(problemas_do_trello(self.cfg))
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.

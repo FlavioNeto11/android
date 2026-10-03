@@ -27,7 +27,7 @@ from app.events import EventBus
 from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
-from app.modules.avisos.domain.mensagem import aviso_de_evento
+from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.taskqueue.travas import AVISOS, Lideranca, TravaPerdida
 
@@ -107,6 +107,18 @@ class ServicoDeAvisos:
         try:
             return self.fila.enfileirar(aviso)
         except Exception:  # noqa: BLE001 - o aviso nunca derruba o emissor nem o laço
+            log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
+            return False
+
+    def enfileirar_aviso(self, aviso: Aviso) -> bool:
+        """Enfileira um aviso JÁ montado (o leitor do Trello avisa o dono do pedido de um convidado, 32.2). Mesma guarda
+        do evento: sem o aviso fora do painel ligado e com o canal pronto, nada entra (a linha ficaria `pendente` para
+        sempre). Idempotente pela chave."""
+        if not self.ligado or self.canal() is None:
+            return False
+        try:
+            return self.fila.enfileirar(aviso)
+        except Exception:  # noqa: BLE001 - o aviso nunca derruba quem o pediu
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
 

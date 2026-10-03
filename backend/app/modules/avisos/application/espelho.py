@@ -25,6 +25,8 @@ FAMILIAS_ESPELHADAS = ("approval", "run", "pedido", "livro")
 PARA_LEIGO = "**Para quem não é técnico:**"
 TECNICO = "**Técnico:**"
 PREFIXO_DA_MARCA = "🤖 chave: "
+#: O começo fixo do comentário da Central (a hora vem depois): o leitor ignora o comentário que começa assim.
+PREFIXO_DA_IA = f"🤖 {NOME_DA_IA} ·"
 
 #: Frase de desfecho por família, para o comentário que antecede o arquivamento. Fixa: o desfecho real está no painel.
 DESFECHO = {"approval": "a aprovação foi decidida ou perdeu a validade",
@@ -172,5 +174,11 @@ def fato_de_custo(dia: str, contas: list[LinhaDeCusto]) -> Fato:
                            linhas or ["sem conta de IA em uso"], None, chave_do_fato("custo", dia)))
 
 
+def prefixo_da_ia(agora: datetime) -> str:
+    """O começo de TODA escrita da Central no Trello: `🤖 ANA · HH:MMZ · `. Uma constante só, para o espelho e a saída do
+    leitor não divergirem, e para o leitor reconhecer (e ignorar) o que a própria Central escreveu."""
+    return f"{PREFIXO_DA_IA} {agora:%H:%M}Z · "
+
+
 def comentario_de_desfecho(familia: str, agora: datetime) -> str:
-    return f"🤖 {NOME_DA_IA} · {agora:%H:%M}Z · resolvido: {DESFECHO.get(familia, 'o fato deixou de pedir atenção')}"
+    return f"{prefixo_da_ia(agora)}resolvido: {DESFECHO.get(familia, 'o fato deixou de pedir atenção')}"
