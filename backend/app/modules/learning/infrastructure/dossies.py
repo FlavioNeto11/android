@@ -18,12 +18,12 @@ from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, NaoEncontrado
 from app.modules.learning.domain.curador import (MAX_EVIDENCIAS, Dossie, Evidencia, IdentidadeDoItem, PassoDaTrilha,
                                                  Relacao, montar_dossie)
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
-from app.modules.learning.domain.politica_de_risco import (EtapaDeRisco, FatosDeRisco, FatosDoCatalogo,
-                                                           toca_sessao_ou_autenticacao)
+from app.modules.learning.domain.politica_de_risco import FatosDeRisco, toca_sessao_ou_autenticacao
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, LivroKind
 from app.modules.learning.infrastructure import linhas
+from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo, capability_do_item
 from app.modules.skills.domain.document import JsonObject
 
 
@@ -37,24 +37,15 @@ def _saude(s: Saude | None) -> JsonObject | None:
                         for m in s.motivos]}
 
 
-def _capability(e: EntradaDoLivro, conteudo: JsonObject | None, item_capability: str) -> str:
-    if e.kind in KINDS_DE_ITEM:
-        return item_capability
-    cap = (conteudo or {}).get("capability")
-    if isinstance(cap, dict) and cap.get("ambigua") is not True:
-        nomes = cap.get("nomes")
-        if isinstance(nomes, list) and len(nomes) == 1 and isinstance(nomes[0], str):
-            return nomes[0]
-    return ""
-
-
 class DossiesSql:
     def __init__(self, db: Database, servico: LearningService, repo: RepositorioDeAprendizado,
                  catalogo: CatalogoDeRisco | None) -> None:
         self._db = db
         self._servico = servico
         self._repo = repo
-        self._catalogo = catalogo
+        # 30.33: a capability, as etapas do fluxo e os fatos do catálogo vêm do mesmo leitor do aviso
+        # `learning.needs_person`.
+        self._risco = RiscoDoConteudo(db, catalogo)
 
     def _evidencias(self, item_ref: str) -> list[Evidencia]:
         return [Evidencia(id=linhas.inteiro(r, "id"), posicao=linhas.texto(r, "stance"),
@@ -65,37 +56,6 @@ class DossiesSql:
                     "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at"
                     " FROM learning_evidence WHERE item_ref=? ORDER BY id DESC LIMIT 200", (item_ref,))]
 
-    def _fatos_do_catalogo(self, app: str, capability: str) -> tuple[bool, FatosDoCatalogo | None]:
-        tem = bool(app) and self._catalogo is not None and self._catalogo.tem_catalogo(app)
-        if not tem or self._catalogo is None or not capability or capability == "*":
-            return tem, None
-        return tem, self._catalogo.da_capability(app, capability)
-
-    def _pacote(self, app_id: str) -> str:
-        """O `app_id` da etapa (12.1: `instagram`, `outlook`) é o id de `apps`; o catálogo é pelo pacote. Sem linha,
-        nada: a etapa fica sem fatos (e, se for de efeito, o fluxo fica na lacuna de sempre)."""
-        r = self._db.one("SELECT package FROM apps WHERE id=?", (app_id,))
-        return (linhas.texto_ou_nulo(r, "package") or "") if r is not None else ""
-
-    def _etapas_do_fluxo(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[EtapaDeRisco, ...]:
-        """30.32: cada etapa do fluxo com os fatos do catálogo do app DELA (`app` nulo = o app do fluxo). A classe do
-        fluxo é a da etapa mais restritiva (`politica_de_risco._razoes`); sem isto, todo fluxo com efeito caía em
-        `commit_sem_fatos_da_etapa` (B), inclusive comentar, mandar mensagem e seguir, que o catálogo diz C."""
-        if e.kind is not LivroKind.FLUXO:
-            return ()
-        etapas = (conteudo or {}).get("etapas")
-        saida: list[EtapaDeRisco] = []
-        for etapa in etapas if isinstance(etapas, list) else []:
-            if not isinstance(etapa, dict):
-                continue
-            capability = etapa.get("capability")
-            capability = capability if isinstance(capability, str) else ""
-            app = etapa.get("app")
-            pacote = self._pacote(app) if isinstance(app, str) and app else e.app or ""
-            _, fatos = self._fatos_do_catalogo(pacote, capability)
-            saida.append(EtapaDeRisco(capability=capability, efeito=etapa.get("efeito") is True, catalogo=fatos))
-        return tuple(saida)
-
     def dossie(self, entrada: EntradaDoLivro, *, max_evidencias: int | None = None) -> Dossie | None:
         if entrada.kind in (LivroKind.MEMORIA, LivroKind.HABILIDADE):
             return None
@@ -105,14 +65,14 @@ class DossiesSql:
             return None
         e = d.entrada
         item = self._repo.item(e.ref) if e.kind in KINDS_DE_ITEM else None
-        capability = _capability(e, d.conteudo, item.escopo.capability if item is not None else "")
+        capability = capability_do_item(e, d.conteudo, item.escopo.capability if item is not None else "")
         tela_autenticada = e.kind is LivroKind.TELA and (d.conteudo or {}).get("autenticada") is True
         source_kind = item.source_kind.value if item is not None else None
-        tem, fatos = self._fatos_do_catalogo(e.app or "", capability)
+        tem, fatos = self._risco.fatos_do_catalogo(e.app or "", capability)
         risco = FatosDeRisco(side_effect=e.side_effect, human_origin=e.human_origin, tem_catalogo=tem, catalogo=fatos,
                              sessao_ou_autenticacao=toca_sessao_ou_autenticacao(source_kind=source_kind,
                                                                                 tela_autenticada=tela_autenticada),
-                             reaprendido=e.reaprendido is not None, etapas=self._etapas_do_fluxo(e, d.conteudo))
+                             reaprendido=e.reaprendido is not None, etapas=self._risco.etapas(e, d.conteudo))
         identidade = IdentidadeDoItem(kind=e.kind.value, ref=e.ref, app=e.app or "", capability=capability,
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,

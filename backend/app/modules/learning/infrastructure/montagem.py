@@ -35,6 +35,7 @@ from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBa
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
+from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
@@ -120,11 +121,15 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     risco = RiscoDoRegistro()
-    servico = LearningService(repo, FontesSql(db, pacotes_do_registro=pacotes_do_registro),
+    fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro)
+    # 30.33: o aviso `learning.needs_person` lê a receita e o fluxo pelo mesmo leitor do dossiê do curador.
+    lido = RiscoDoConteudo(db, risco)
+    servico = LearningService(repo, fontes,
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
                               eventos=EventosNoBarramento(eventos) if eventos is not None else None,
-                              catalogo_de_risco=risco, titulos=TitulosDoRegistro())
+                              catalogo_de_risco=risco, titulos=TitulosDoRegistro(),
+                              risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)))
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

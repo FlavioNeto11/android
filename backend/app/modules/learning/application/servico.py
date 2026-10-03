@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
-from app.modules.learning.application.espera import AvisadorDeEspera
+from app.modules.learning.application.espera import AvisadorDeEspera, RiscoDoNativo
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
                                                     LacoPeriodico, NovoSinal, PassoDeCuradoria, PortaDeEventos,
@@ -141,11 +141,13 @@ class LearningService:
                  retencao_de_logs_dias: Callable[[], int],
                  mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
                  eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
-                 titulos: TitulosDoCatalogo | None = None) -> None:
+                 titulos: TitulosDoCatalogo | None = None,
+                 risco_do_nativo: RiscoDoNativo | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
         publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
-        capability no catálogo (sem ele, o painel mostra o código)."""
+        capability no catálogo (sem ele, o painel mostra o código); `risco_do_nativo`: a capability da receita e as
+        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33)."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -156,7 +158,7 @@ class LearningService:
         self._passos: list[PassoDeCuradoria] = list(passos)
         self._extensoes: list[object] = []
         self._lacos: list[LacoPeriodico] = []
-        self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio)
+        self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio, risco_do_nativo)
         self._titulos = titulos
 
     @property

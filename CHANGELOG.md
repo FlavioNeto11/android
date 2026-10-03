@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o aviso `learning.needs_person` da receita e do fluxo com a classe do dossiê (30.33-B; branch feat/30-33-aviso-do-fluxo)
+
+- A faixa do aviso de uma fonte nativa passa a ser a classe do dossiê do curador:
+  - na receita, pela capability derivada;
+  - no fluxo, pela etapa mais restritiva (30.32).
+- O leitor é comum aos dois (`RiscoDoConteudo`, tirado de `DossiesSql`).
+- Comentar, responder, mandar mensagem e seguir avisam C (`alto_risco`) em vez de B (`efeito_externo`).
+- O payload não muda.
+- Prova `simulated`: `test_learning_classe_do_fluxo.py`, com 5 casos novos:
+  - o fluxo pelo serviço;
+  - o fluxo sem o leitor;
+  - a montagem com o catálogo do repositório;
+  - a receita com e sem o leitor.
 ## 2026-10-03 — 31.20: as lacunas da rodada I e a A-média aprovada pelo dono (branch feat/31-18-forma-a)
 
 - A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19).
