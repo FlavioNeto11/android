@@ -326,8 +326,12 @@ def test_porta_aberta_reconfere_o_que_o_decisor_real_devolve(monkeypatch: pytest
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
     db = _banco(tmp_path)
     cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "on"})  # type: ignore[arg-type]
+    # 31.19: o limiar mede a probabilidade devolvida da escolha, não a `confidence` do fio
+    real_de_0310 = {"opt:a": 0.6, "opt:b": 0.35, "opt:nenhuma": 0.05}          # confiança 0,50, maior prob. 0,60
     for resposta, motivo in ((_ok("opt:zzz"), "unknown_choice"), (_ok(confianca=0.5), "abaixo_do_limiar"),
-                             (_ok(), None)):
+                             (_ok(), None), (_ok(confianca=0.5, probabilities=real_de_0310), "abaixo_do_limiar"),
+                             (_ok(confianca=0.5, probabilities={"opt:a": 0.9, "opt:b": 0.1}), None),
+                             (_ok(probabilities={"opt:a": 0.05, "opt:b": 0.95}), "abaixo_do_limiar")):
         decisor, _ = _decisor(Servidor(resposta))
         res = Porta(decisor, cfg=cfg, observador=observador_de_sombra(RepositorioDeSombra(db))).consultar(
             _pedido(modo="on"))

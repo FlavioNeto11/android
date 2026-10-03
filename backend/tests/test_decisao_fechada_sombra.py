@@ -60,7 +60,10 @@ def _pedido(**kw: object) -> PedidoDeDecisao:
 
 
 def _resp(escolha: str | None = "opt:a", conf: float = 0.95) -> RespostaDeDecisao:
-    return RespostaDeDecisao(escolha=escolha, probabilidades={"opt:a": conf, "opt:b": round(1 - conf, 2)}, confianca=conf)
+    """A probabilidade devolvida da escolha é a `conf` (o limiar do `choice` a mede, 31.19)."""
+    alta = escolha if escolha is not None else "opt:a"
+    outra = "opt:b" if alta != "opt:b" else "opt:a"
+    return RespostaDeDecisao(escolha=escolha, probabilidades={alta: conf, outra: round(1 - conf, 2)}, confianca=conf)
 
 
 @pytest.fixture
