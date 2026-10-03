@@ -48,8 +48,8 @@ from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..planning.capabilities import CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
-                                 MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento, ScreenInput,
-                                 StepContext, Transcricao, Usage, Verdict, VerifyRequest)
+                                 MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
+                                 PreparoDaDecisao, ScreenInput, StepContext, Transcricao, Usage, Verdict, VerifyRequest)
 from ..db import Row, loads
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
@@ -60,6 +60,7 @@ from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, Fe
 from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
+from .latencia import TemposDaTentativa, ms_desde
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
@@ -416,6 +417,9 @@ class StepExecutor:
         # retentativa NÃO repete no modelo barato. Some no desfecho final. Memória do processo: reiniciado o backend, a
         # retentativa começa no tier 0 sem este gatilho (os outros — erros seguidos, ciclo, efeito — seguem valendo).
         self._ultima_acao_da_etapa: dict[str, tuple[str, str]] = {}
+        # Item 31.24 (C-4): o juiz e a evidência de cada tentativa EM CURSO, somados enquanto ela roda e gravados uma
+        # vez no fim (`_registrar_estrategia`). Some no fim da tentativa, saia ela como sair.
+        self._tempos_da_tentativa: dict[str, TemposDaTentativa] = {}
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
@@ -576,7 +580,8 @@ class StepExecutor:
     # ------------------------------------------------------------------ IA com limites
     async def _ai(self, run_id: str, objective_id: str | None, coro_factory: Callable[[], Any], *,
                   step_id: str | None = None, role: str = "", deadline: float | None = None,
-                  attempt_id: str | None = None, marca: MarcaDaChamada | None = None) -> Any:
+                  attempt_id: str | None = None, marca: MarcaDaChamada | None = None,
+                  preparo: PreparoDaDecisao | None = None) -> Any:
         """Ponto único de toda chamada de IA de uma execução: disjuntor, tetos, limite global e novas tentativas.
 
         `objective_id=None` é uso ligado à execução mas a objetivo nenhum — é assim que o PLANEJAMENTO passa a
@@ -593,6 +598,10 @@ class StepExecutor:
         `marca` (RA-10, migração 080): para que a chamada foi feita, por que subiu de modelo e por que a imagem foi. Vai
         para a linha da chamada, inclusive a de erro e a de orçamento recusado (a recusa de uma decisão escalada ainda
         é de uma decisão escalada); o veredito sai do resultado.
+
+        Item 31.24 (migração 088): toda linha que sai daqui leva `started_at` (a hora em que a chamada foi entregue ao
+        provedor, já com a vaga) e `vaga_ms` (a espera pela vaga). `preparo` é o que o executor gastou para chegar a
+        esta decisão do ator: vai só na linha da resposta, e `_ai` devolve nele o id dela (`preparo.ai_call_id`).
         """
         s = self.get_settings()
         tripped = self._tripped_runs.get(run_id)
@@ -636,16 +645,21 @@ class StepExecutor:
                     objective_id,
                     f"aguardando vaga de IA ({self.ai_limiter.active} de {self.ai_limiter.limit} em uso)" if cheio
                     else "aguardando vaga de IA", wait_reason="ai_capacity")
+            t_vaga = time.monotonic()
             async with self.ai_limiter:       # limite de chamadas simultâneas ao modelo (≠ aparelhos ativos)
+                vaga_ms = ms_desde(t_vaga)
                 if objective_id is not None:
                     self.repo.note_waiting(objective_id, f"aguardando resposta do modelo ({role or 'ia'})",
                                            wait_reason="model_response")
+                entregue = now_iso()
                 try:
                     result, usage = await _com_prazo(coro_factory(), deadline, role)
-                    self.repo.add_usage(run_id, objective_id,
-                                        self._carimbar(usage if usage.calls or self.provider.simulated
-                                                       else Usage(calls=1), marca, result),
-                                        step_id=step_id, attempt_id=attempt_id)
+                    uso = self._carimbar(usage if usage.calls or self.provider.simulated else Usage(calls=1), marca,
+                                         result)
+                    uso.started_at, uso.vaga_ms, uso.preparo = entregue, vaga_ms, preparo
+                    chamada = self.repo.add_usage(run_id, objective_id, uso, step_id=step_id, attempt_id=attempt_id)
+                    if preparo is not None:
+                        preparo.ai_call_id = chamada
                     return result
                 except AIError as exc:
                     # Achado #101: o log é o único jeito de casar uma chamada com erro à exceção real quando o
@@ -653,7 +667,9 @@ class StepExecutor:
                     # não pôde ser feita" — casando horário com data/logs/backend.log). E a linha de custo passa
                     # a gravar o modelo REALMENTE pedido e o tipo do erro — nunca mais o pseudo-modelo '(erro)'.
                     log.warning("%s: chamada de IA (%s) falhou: %s", role or "ia", exc.kind, exc, exc_info=True)
-                    self.repo.add_usage(run_id, objective_id, self._uso_sem_resposta(role, marca, exc.model),
+                    falha = self._uso_sem_resposta(role, marca, exc.model)
+                    falha.started_at, falha.vaga_ms = entregue, vaga_ms
+                    self.repo.add_usage(run_id, objective_id, falha,
                                         step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
                                         error_message=str(exc), attempt_id=attempt_id)
                     last = exc
@@ -919,6 +935,7 @@ class StepExecutor:
                 log.warning("%s: receitas indisponíveis nesta etapa: %s", rt.id, exc)
                 rr = _RecipeRun(mode="off")
         fechada = False
+        self._tempos_da_tentativa[attempt_id] = TemposDaTentativa()
         try:
             outcome = await self._run_step(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt,
                                            app=app, account_label=account_label, remaining=remaining,
@@ -983,8 +1000,9 @@ class StepExecutor:
         """Trilha da 045: a cadeia exercida e a receita reproduzida (só quando ela foi de fato consultada). Vale
         também quando a tentativa sai por exceção — o que ela já fez aconteceu."""
         receita = rr.row["id"] if rr.row is not None and StrategyKind.recipe.value in rr.exercised else None
+        tempos = self._tempos_da_tentativa.pop(attempt_id, None)      # 31.24 (C-4): no mesmo UPDATE
         try:
-            self.repo.note_attempt_strategy(attempt_id, ">".join(rr.exercised) or None, receita)
+            self.repo.note_attempt_strategy(attempt_id, ">".join(rr.exercised) or None, receita, tempos)
         except Exception:  # noqa: BLE001 - trilha é registro: nunca derruba a etapa nem esconde o erro dela
             log.exception("tentativa %s: estratégia não registrada", attempt_id)
 
@@ -1376,7 +1394,25 @@ class StepExecutor:
                 raise TelaDeContaTravada(trava, pacote)
             return tree
 
+        tempos = self._tempos(attempt_id)
+        # C-1 (31.24): a linha de `ai_calls` do decide desta volta; `None` quando quem decide é a receita ou o executor.
+        chamada_do_ator: int | None = None
+
+        def intencao(tool: str, args: dict[str, object], rationale: str | None, *, side_effect: bool,
+                     source: str = "ai") -> int:
+            return repo.log_intent(attempt_id, tool, args, rationale, side_effect=side_effect, source=source,
+                                   ai_call_id=chamada_do_ator)
+
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
+            # C-4 (31.24): o tempo das capturas e gravações de evidência da tentativa (`attempts.evidencia_ms`).
+            t_evidencia = time.monotonic()
+            try:
+                await registrar_evidencia(obs, note, kind)
+            finally:
+                if tempos is not None:
+                    tempos.evidencia_ms += ms_desde(t_evidencia)
+
+        async def registrar_evidencia(obs: Observation | None, note: str, kind: str) -> None:
             # `add_evidence_async`: a ESCRITA do arquivo sai do laço de eventos (item 5.7). Em disco local isso
             # era inofensivo; com o storage apontado para um bucket, gravar aqui dentro travaria o scheduler
             # inteiro a cada captura de tela.
@@ -1592,7 +1628,10 @@ class StepExecutor:
                           "nesta mesma tentativa", run_id=run_id, instance_id=iid, step_id=step.id)
             return False
 
+        settle_pendente: int | None = None     # C-2 (31.24): o assentamento depois da ação, para a decisão seguinte
         for _ in range(max_actions + 1):
+            chamada_do_ator = None
+            settle_da_volta, settle_pendente = settle_pendente, None
             # ---------- ponto seguro
             why = stop_reason()
             if why:
@@ -1606,11 +1645,13 @@ class StepExecutor:
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
                         requested=image_requested, ai=ai_cfg)
+            t_observacao = time.monotonic()
             try:
                 obs = last_obs = await reler_se_ocupada(
                     lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
                                                  imagem=lambda t: not receita_decide and self._want_image(t, **pede)),
                     prazo=deadline, quem=iid)
+                observacao_ms = ms_desde(t_observacao)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
             except (DriverBusy, FalhaDeLeitura) as exc:
@@ -1731,14 +1772,16 @@ class StepExecutor:
                     if decision is None:                       # receita esgotada: falta só comprovar
                         if judged_step or self._postcondition_holds(step, obs, cartao, pacote=app.package):
                             rr.completed_by_recipe = True
-                            aid = repo.log_intent(attempt_id, "step_done", {"rationale": "[receita] ações reproduzidas"},
-                                                  f"[receita v{rep.version}] ações reproduzidas; conferindo a pós-condição",
-                                                  side_effect=False, source="recipe")
+                            aid = intencao("step_done", {"rationale": "[receita] ações reproduzidas"},
+                                           f"[receita v{rep.version}] ações reproduzidas; conferindo a pós-condição",
+                                           side_effect=False, source="recipe")
                             repo.finish_action(aid, ActionStatus.done, result={"declared": True})
                             break
                         rr.settle += 1
                         if rr.settle <= 3:                     # a interface pode estar assentando
+                            t_settle = time.monotonic()
                             await asyncio.sleep(float(self.cfg.file.ai.recipe_settle_s))
+                            settle_pendente = ms_desde(t_settle)
                             continue
                         raise RecipeDiverged("ações reproduzidas, mas a pós-condição não apareceu")
                     from_recipe = True
@@ -1841,12 +1884,15 @@ class StepExecutor:
                               else _FRASE_DO_ESCALONAMENTO.get(escalonamento or "", ""))
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
+                t_prompt = time.monotonic()                     # C-2 (31.24): daqui até `_ai` é a montagem do pedido
+                arvore_ms, imagem_ms, completar_ms = obs.ms_arvore, obs.ms_imagem, 0
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
                                                        trouble=trouble, requested=image_requested, ai=ai_cfg)
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
                     # pelo mesmo executor e sem ação no meio.
+                    t_completar = time.monotonic()
                     try:
                         obs = last_obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout,
                                                                              lado_max=ai_cfg.screenshot_max_side)
@@ -1854,6 +1900,7 @@ class StepExecutor:
                         return await self._stuck(rt, step, fired, str(exc))
                     except DriverError as exc:
                         log.info("%s: imagem para a decisão indisponível (%s); decide pela árvore", iid, exc)
+                    completar_ms = ms_desde(t_completar)
                 screen, scale = self._screen(obs, with_image=quer_imagem,
                                              protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
                                              ai=ai_cfg)
@@ -1866,21 +1913,29 @@ class StepExecutor:
                 pedidas = licoes
                 marca = MarcaDaChamada(motivo="cascata" if cascata else "decisao", escalate=escalonamento,
                                        image_reason=motivo_imagem)
+                preparo = PreparoDaDecisao(
+                    settle_ms=settle_da_volta, observacao_ms=observacao_ms + completar_ms,
+                    arvore_ms=round(arvore_ms) if arvore_ms is not None else None,
+                    imagem_ms=(round(imagem_ms or 0) + completar_ms) if (imagem_ms is not None or completar_ms)
+                    else None,
+                    prompt_ms=max(0, ms_desde(t_prompt) - completar_ms))
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
                         DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier,
                                         lessons=list(pedidas))),
-                        step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id, marca=marca)
+                        step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id, marca=marca,
+                        preparo=preparo)
                 except AIError as exc:
                     return await desfecho_de_ia(exc, obs, "a decisão da IA")
+                chamada_do_ator = preparo.ai_call_id
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
             try:
                 args = validate_call(decision.tool, decision.args)
             except ToolValidationError as exc:
-                aid = repo.log_intent(attempt_id, decision.tool, _safe_args(decision.args), None, side_effect=False,
-                                      source="recipe" if from_recipe else "ai")
+                aid = intencao(decision.tool, _safe_args(decision.args), None, side_effect=False,
+                               source="recipe" if from_recipe else "ai")
                 repo.finish_action(aid, ActionStatus.rejected, error=str(exc))
                 if from_recipe:
                     rr.diverged = f"ação da receita inválida: {exc}"
@@ -2002,8 +2057,8 @@ class StepExecutor:
                     # `action.logged`: o erro não cita valor (`saidas.ler_valor`), os argumentos saem sem o recorte e
                     # sem nome ou id que não tenham forma de nome ou de id (`args_da_chamada_invalida`), e a
                     # justificativa, que pode citar o valor, fica de fora como no caminho recusado pela triagem.
-                    aid = repo.log_intent(attempt_id, "read_value", args_da_chamada_invalida(bruto, obs.tree), None,
-                                          side_effect=False)
+                    aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None,
+                                   side_effect=False)
                     repo.finish_action(aid, ActionStatus.rejected, error=erro)
                     history.append(f"read_value REJEITADA: {erro}")
                     if visual:
@@ -2037,7 +2092,7 @@ class StepExecutor:
                     # D3 (ADR-009, ADR-022, ADR-058): a etapa PARA. O valor não vai para a tabela de saídas, nem para os
                     # argumentos da ação, nem para evento ou evidência — que sai em texto, sem captura da tela que o
                     # mostra; a justificativa do modelo, que pode citá-lo, também fica de fora.
-                    aid = repo.log_intent(attempt_id, "read_value", args_sem_valor(bruto), None, side_effect=False)
+                    aid = intencao("read_value", args_sem_valor(bruto), None, side_effect=False)
                     repo.finish_action(aid, ActionStatus.rejected, error=f"valor recusado pela triagem: {motivo}")
                     texto = (f"O valor '{args.name}' lido na tela tem formato de {motivo}: código de verificação, "
                              "senha e token não passam de uma etapa a outra (ADR-009, ADR-058). Nada foi gravado.")
@@ -2060,8 +2115,8 @@ class StepExecutor:
                         note=f"Recorte da linha de '{args.name}', lido da imagem; conferido às cegas por {leitor} "
                              f"(captura {sha8}).", data=lido_da_imagem.recorte)
                     visuais[args.name] = (leitor, lido_da_imagem.sha256, evidencia_id)
-                    aid = repo.log_intent(attempt_id, "read_value", args_da_chamada_invalida(bruto, obs.tree), None,
-                                          side_effect=False)
+                    aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None,
+                                   side_effect=False)
                     repo.finish_action(aid, ActionStatus.done,
                                        result={"name": args.name, "value_kind": args.value_kind, "chars": len(valor),
                                                "origem": "visual", "frame_id": obs.frame_id,
@@ -2075,7 +2130,7 @@ class StepExecutor:
                                   run_id=run_id, instance_id=iid, step_id=step.id)
                 else:
                     visuais.pop(args.name, None)          # a releitura pela árvore substitui uma leitura visual antiga
-                    aid = repo.log_intent(attempt_id, "read_value", bruto, rationale, side_effect=False)
+                    aid = intencao("read_value", bruto, rationale, side_effect=False)
                     repo.finish_action(aid, ActionStatus.done,
                                        result={"name": args.name, "value_kind": args.value_kind, "chars": len(valor),
                                                "origem": "arvore"},
@@ -2097,8 +2152,8 @@ class StepExecutor:
                 # Etapa entre apps (item 24.7): as telas de dois apps podem mostrar a mesma coisa ("Conta: …", a lista),
                 # e concluir ou coletar na tela do app errado seria dar por comprovado o que não foi. Recusa aqui, sem
                 # gastar tentativa nem verificação, e diz ao ator qual app abrir; `_verify` tem a mesma trava.
-                aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
-                                      side_effect=False, source="recipe" if from_recipe else "ai")
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=False, source="recipe" if from_recipe else "ai")
                 repo.finish_action(aid, ActionStatus.rejected,
                                    error=f"a tela é do app {frente}, não do app da etapa ({app.package})")
                 if from_recipe:
@@ -2110,7 +2165,7 @@ class StepExecutor:
                     return await fail_or_retry("A IA insistiu em concluir a etapa fora do app dela.", obs)
                 continue
             if isinstance(args, StepDone) and faltam_saidas():
-                aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.rejected, error="valor da etapa ainda não lido")
                 history.append("step_done REJEITADA: esta etapa entrega " + ", ".join(f"'{n}'" for n in faltam_saidas())
                                + " às seguintes — leia na tela com read_value antes de concluir.")
@@ -2121,7 +2176,7 @@ class StepExecutor:
                                                + ", ".join(f"'{n}'" for n in faltam_saidas()) + ".", obs)
                 continue
             if isinstance(args, StepDone) and collecting:
-                aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.rejected, error="etapa de coleta: use collect_list")
                 history.append("step_done REJEITADA: esta é uma etapa de COLETA — chame collect_list na lista; "
                                "os itens têm de ser lidos pelo executor.")
@@ -2131,7 +2186,7 @@ class StepExecutor:
                 continue
             if isinstance(args, StepDone):
                 declared = args
-                aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.done, result={"declared": True})
                 break
             if isinstance(args, StepBlocked):
@@ -2139,8 +2194,8 @@ class StepExecutor:
                 # vai a quatro destinos — `steps.status_detail` e `attempts.error` (pelo desfecho), a nota da evidência e o
                 # evento `decision` — e todos recebem a versão triada: se a triagem acusar, "motivo omitido (triagem: …)".
                 razao = razao_sem_segredo(args.reason)
-                aid = repo.log_intent(attempt_id, "step_blocked", {**args.model_dump(mode="json"), "reason": razao},
-                                      rationale, side_effect=False)
+                aid = intencao("step_blocked", {**args.model_dump(mode="json"), "reason": razao},
+                               rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.done, result={"kind": args.kind})
                 await evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {razao}")
                 repo.decision(f"{iid}: etapa '{step.title}' bloqueada — {razao}", run_id=run_id, instance_id=iid,
@@ -2207,8 +2262,8 @@ class StepExecutor:
                     if alegado and not casa:
                         rejeicao_seletor = (f"o efeito desta etapa é disparado por '{step.commit_selector}'; "
                                             "o elemento escolhido não é ele")
-                        aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
-                                              side_effect=True, source="recipe" if from_recipe else "ai")
+                        aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                                       side_effect=True, source="recipe" if from_recipe else "ai")
                         repo.finish_action(aid, ActionStatus.rejected, error=rejeicao_seletor)
                         if from_recipe:
                             rr.diverged = f"alvo do efeito externo: {rejeicao_seletor}"
@@ -2241,8 +2296,8 @@ class StepExecutor:
                 except DriverError:
                     fora_do_cartao = None      # o próprio toque falha adiante, sem chegar ao aparelho
                 if fora_do_cartao:
-                    aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
-                                          side_effect=False, source="recipe" if from_recipe else "ai")
+                    aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                                   side_effect=False, source="recipe" if from_recipe else "ai")
                     repo.finish_action(aid, ActionStatus.rejected, error=fora_do_cartao)
                     if from_recipe:            # a receita tocaria outra publicação: não decide mais nada nesta etapa
                         rr.diverged = f"controle de outro cartão: {fora_do_cartao}"
@@ -2258,8 +2313,8 @@ class StepExecutor:
                 else:
                     reject = rejeicao_do_commit(step.commit_guard, step.band_guard, cartao, obs.tree, target)
                 if reject:
-                    aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
-                                          source="recipe" if from_recipe else "ai")
+                    aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
+                                   source="recipe" if from_recipe else "ai")
                     repo.finish_action(aid, ActionStatus.rejected, error=reject)
                     if from_recipe:            # guarda de commit não atendida: a receita não decide mais nada nesta etapa
                         rr.diverged = f"guarda do efeito externo: {reject}"
@@ -2282,8 +2337,8 @@ class StepExecutor:
                 return await fail_or_retry(ciclo, obs)
 
             # ---------- agir (intenção gravada ANTES)
-            aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
-                                  source="recipe" if from_recipe else "ai")
+            aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
+                           source="recipe" if from_recipe else "ai")
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
@@ -2383,7 +2438,9 @@ class StepExecutor:
                     break                  # fato medido pelo executor: dispensa verificador
             if getattr(args, "need_image", False):
                 image_requested = True
+            t_settle = time.monotonic()
             await asyncio.sleep(float(self.cfg.file.ai.action_settle_s))   # deixa a interface assentar antes da próxima observação
+            settle_pendente = ms_desde(t_settle)
             if is_commit:
                 break                  # depois do efeito não há mais o que decidir: só comprovar (sem outra chamada)
             if getattr(args, "expect_done", False) and not judged_step:
@@ -2582,6 +2639,10 @@ class StepExecutor:
             return None, f"a verificação não pôde ser feita ({type(exc).__name__})"
         return (texto, "") if ok else (None, texto or "a tela não mostra o estado vazio")
 
+    def _tempos(self, attempt_id: str | None) -> TemposDaTentativa | None:
+        """Os tempos da tentativa em curso (31.24, C-4), ou `None` fora de `run_step` (chamada sem tentativa)."""
+        return self._tempos_da_tentativa.get(attempt_id) if attempt_id else None
+
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
@@ -2590,6 +2651,27 @@ class StepExecutor:
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                       proposito: MotivoDaChamada = "julgamento"
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
+        """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
+        `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
+        inicio = time.monotonic()
+        try:
+            return await self._verificar(rt, step, ctx_for, run_id, objective_id, deadline, call_timeout,
+                                         patient=patient, facts=facts, failure_marks=failure_marks,
+                                         local_proof=local_proof, capability=capability, attempt_id=attempt_id,
+                                         cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
+                                         uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito)
+        finally:
+            if (tempos := self._tempos(attempt_id)) is not None:
+                tempos.verificacao_ms += ms_desde(inicio)
+
+    async def _verificar(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
+                         objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
+                         facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
+                         local_proof: str | None = None, capability: CapabilityRef | None = None,
+                         attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
+                         imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
+                         proposito: MotivoDaChamada = "julgamento"
+                         ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
         (LT-1/LT-2): ali um "não" devolve a etapa ao ator na mesma tentativa, e esperar o orçamento inteiro custaria
@@ -2622,7 +2704,7 @@ class StepExecutor:
                                                            or DELIVERY_ORDER[need] <= DELIVERY_ORDER[DeliveryLevel.sent])
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
-            await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+            await self._esperar_o_juiz(attempt_id)
         lado_max = ai_cfg.screenshot_max_side
         while True:
             # Só a árvore: a maioria das conferências é determinística. A imagem vem logo antes do julgamento que a
@@ -2808,7 +2890,17 @@ class StepExecutor:
                     level, obs, False
             if ok or uma_rodada or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
+            await self._esperar_o_juiz(attempt_id)
+
+    async def _esperar_o_juiz(self, attempt_id: str | None) -> None:
+        """A espera deliberada do verificador (`judge_wait_s`), somada na tentativa (31.24, C-4:
+        `attempts.juiz_espera_ms`)."""
+        inicio = time.monotonic()
+        try:
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+        finally:
+            if (tempos := self._tempos(attempt_id)) is not None:
+                tempos.juiz_espera_ms += ms_desde(inicio)
 
     @staticmethod
     def _marcas_pendentes(capability: CapabilityRef | None) -> tuple[str, ...]:

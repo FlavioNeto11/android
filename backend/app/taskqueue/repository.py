@@ -27,6 +27,7 @@ from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, truncate
+from .latencia import TemposDaTentativa, motivo_da_espera
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
@@ -694,11 +695,20 @@ class Repository:
         self.emit_attempt(attempt_id, row)
         return attempt
 
-    def note_attempt_strategy(self, attempt_id: str, strategy: str | None, recipe_id: int | None) -> None:
+    def note_attempt_strategy(self, attempt_id: str, strategy: str | None, recipe_id: int | None,
+                              tempos: TemposDaTentativa | None = None) -> None:
         """Trilha da 045: a cadeia de estratégias que a tentativa EXERCEU (`recipe`, `ai_actor`, `recipe>ai_actor`) e
         a receita reproduzida. Não é desfecho — quem decide o sucesso é a verificação —, então não passa pela cerca
-        de `finish_attempt`: a linha é desta tentativa, e ninguém mais a escreve."""
-        self.db.execute("UPDATE attempts SET strategy=?, recipe_id=? WHERE id=?", (strategy, recipe_id, attempt_id))
+        de `finish_attempt`: a linha é desta tentativa, e ninguém mais a escreve.
+
+        `tempos` (item 31.24, C-4): o juiz e a evidência da tentativa, no MESMO UPDATE (nenhuma escrita a mais)."""
+        if tempos is None:
+            self.db.execute("UPDATE attempts SET strategy=?, recipe_id=? WHERE id=?", (strategy, recipe_id, attempt_id))
+            return
+        self.db.execute("UPDATE attempts SET strategy=?, recipe_id=?, juiz_espera_ms=?, verificacao_ms=?,"
+                        " evidencia_ms=? WHERE id=?",
+                        (strategy, recipe_id, tempos.juiz_espera_ms, tempos.verificacao_ms, tempos.evidencia_ms,
+                         attempt_id))
 
     def note_run_skill(self, run_id: str, *, skill_id: str | None, skill_version: int | None,
                        skill_hash: str | None) -> None:
@@ -759,13 +769,15 @@ class Repository:
 
     # ================================================================== ações (diário intenção → resultado)
     def log_intent(self, attempt_id: str, tool: str, args: dict[str, Any], rationale: str | None,
-                   *, side_effect: bool, source: str = "ai") -> int:
+                   *, side_effect: bool, source: str = "ai", ai_call_id: int | None = None) -> int:
+        """`ai_call_id` (item 31.24, C-1): a linha de `ai_calls` do decide que escolheu esta ação; `None` quando quem
+        decidiu foi a receita ou o executor."""
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq),0)+1 FROM actions WHERE attempt_id=?", (attempt_id,)))
         action_id = int(self.db.inserted_id(
-            "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at, source)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at, source,"
+            " ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (attempt_id, seq, tool, dumps(args), truncate(rationale, 400), ActionStatus.intended.value,
-             int(side_effect), now_iso(), source)) or 0)
+             int(side_effect), now_iso(), source, ai_call_id)) or 0)
         self.emit_action(action_id)
         return action_id
 
@@ -849,8 +861,11 @@ class Repository:
 
     def add_usage(self, run_id: str | None, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
                   ok: bool = True, error_kind: str | None = None, error_status: int | None = None,
-                  error_message: str | None = None, attempt_id: str | None = None) -> None:
-        """`run_id` nulo é uso de IA fora de execução (ex.: gerar uma resposta social pelo portal): entra no
+                  error_message: str | None = None, attempt_id: str | None = None) -> int | None:
+        """Devolve o id da linha de `ai_calls` gravada (item 31.24: a ação escolhida aponta para ela), ou `None` quando
+        nada foi gravado.
+
+        `run_id` nulo é uso de IA fora de execução (ex.: gerar uma resposta social pelo portal): entra no
         relatório de custo por função e não soma a execução nenhuma.
 
         `error_kind`/`error_status`/`error_message` (migração 033, achado #101): só em linhas `ok=False`. Sem
@@ -862,17 +877,20 @@ class Repository:
         tentativa que a receita resolveu ficava indistinguível da que a IA pagou.
         """
         if not usage.calls and not usage.input_tokens:
-            return
+            return None
+        chamada: int | None = None
         if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo
             fresh = max(0, usage.input_tokens - usage.cache_read_tokens - usage.cache_write_tokens)
+            prep = usage.preparo
             # `requested_model`/`fallback`/`provider` (migração 032): o que foi PEDIDO, por que houve troca e qual
             # endpoint cobrou. Sem eles, "respondeu o fallback" era indistinguível de "estava configurado assim".
-            self.db.execute(
+            chamada = self.db.inserted_id(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
                 " error_kind, error_status, error_message, attempt_id, origem, ref,"
-                " verdict, escalate, motivo, image_reason)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " verdict, escalate, motivo, image_reason, started_at, vaga_ms, prep_settle_ms, prep_observacao_ms,"
+                " prep_arvore_ms, prep_imagem_ms, prep_prompt_ms)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
@@ -882,7 +900,11 @@ class Repository:
                  # (erro do executor) ainda é `execucao` quando há `run_id`. Fora de execução sem origem fica NULL.
                  usage.origem or ("execucao" if run_id else None), usage.ref,
                  # RA-10 (migração 080): o executor carimba; fora dele, NULO (a chamada não é de etapa).
-                 usage.verdict, usage.escalate, usage.motivo, usage.image_reason))
+                 usage.verdict, usage.escalate, usage.motivo, usage.image_reason,
+                 # Item 31.24 (migração 088): idem — início, vaga e o preparo da decisão do ator.
+                 usage.started_at, usage.vaga_ms, prep.settle_ms if prep else None,
+                 prep.observacao_ms if prep else None, prep.arvore_ms if prep else None,
+                 prep.imagem_ms if prep else None, prep.prompt_ms if prep else None))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
@@ -890,6 +912,7 @@ class Repository:
                 "UPDATE objectives SET ai_calls=ai_calls+?, ai_input_tokens=ai_input_tokens+?,"
                 " ai_output_tokens=ai_output_tokens+? WHERE id=?",
                 (usage.calls, usage.input_tokens, usage.output_tokens, objective_id))
+        return int(chamada) if chamada is not None else None
 
     def decision(self, text: str, *, run_id: str, instance_id: str | None = None, step_id: str | None = None) -> None:
         self.bus.emit("decision", text, run_id=run_id, instance_id=instance_id, step_id=step_id, data={"text": text})
@@ -910,7 +933,8 @@ class Repository:
         # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
         # `waiting_user` continua sem escrever nada aqui: o motivo "pessoa" é DERIVADO do próprio status no
         # frontend, não precisa de coluna.
-        anterior = self.db.scalar("SELECT status FROM objectives WHERE id=?", (objective_id,))
+        antes = self.db.one("SELECT status, wait_reason FROM objectives WHERE id=?", (objective_id,))
+        anterior = antes["status"] if antes else None
         fields = ["status=?", "status_detail=?", "blocked_reason=?", "needs=?", "wait_reason=NULL"]
         params: list[Any] = [status.value, truncate(detail, 600), truncate(blocked_reason, 600), truncate(needs, 600)]
         if blocked_kind is not None:
@@ -929,6 +953,9 @@ class Repository:
             params.append(delivery_level.value)
         self.db.execute(f"UPDATE objectives SET {', '.join(fields)} WHERE id=?", (*params, objective_id))
         row = self.objective_row(objective_id)
+        if antes is not None:
+            self._trocar_espera(objective_id, row["run_id"], motivo_da_espera(anterior, antes["wait_reason"]),
+                                motivo_da_espera(status.value, None))
         self._conferir(OBJECTIVE, anterior, status, entidade=objective_id, run_id=row["run_id"],
                        instance_id=row["instance_id"])
         self.bus.emit("objective.updated", message or f"{row['instance_id']}: objetivo {status.value}"
@@ -1160,6 +1187,8 @@ class Repository:
         if mudou_wait:
             self.db.execute("UPDATE objectives SET status_detail=?, wait_reason=? WHERE id=?",
                             (truncate(detail, 600), wait_reason, objective_id))
+            self._trocar_espera(objective_id, row["run_id"], motivo_da_espera(row["status"], _col(row, "wait_reason")),
+                                motivo_da_espera(row["status"], wait_reason))
         else:
             self.db.execute("UPDATE objectives SET status_detail=? WHERE id=?", (truncate(detail, 600), objective_id))
         self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
@@ -1187,7 +1216,24 @@ class Repository:
                             (novo_detail, objective_id))
         else:
             self.db.execute("UPDATE objectives SET wait_reason=NULL WHERE id=?", (objective_id,))
+        if mudou_wait:
+            self._trocar_espera(objective_id, row["run_id"], motivo_da_espera(row["status"], _col(row, "wait_reason")),
+                                motivo_da_espera(row["status"], None))
         self.emit_objective(objective_id)
+
+    def _trocar_espera(self, objective_id: str, run_id: str | None, anterior: str | None, novo: str | None) -> None:
+        """Item 31.24 (C-5, migração 088): fecha a espera aberta do objetivo e abre a do motivo novo, SÓ quando o
+        motivo muda. Quem chama já tem o estado de antes na mão (nenhuma leitura a mais); sem mudança de motivo,
+        nenhuma escrita (as duas anotações de cada chamada de IA caem aqui sem custo: vaga e resposta do modelo não têm
+        motivo)."""
+        if anterior == novo:
+            return
+        agora = now_iso()
+        if anterior is not None:
+            self.db.execute("UPDATE esperas SET fim=? WHERE objective_id=? AND fim IS NULL", (agora, objective_id))
+        if novo is not None:
+            self.db.execute("INSERT INTO esperas(run_id, objective_id, motivo, inicio) VALUES (?,?,?,?)",
+                            (run_id, objective_id, novo, agora))
 
     def interrupted_steps(self) -> list[Row]:
         """Etapas em execução que são MINHAS — mais as sem dono, que só existem de antes da posse existir.

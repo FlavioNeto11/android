@@ -1519,3 +1519,108 @@ pares por leitor). APROVOU nos dois leitores.
   deploy da suíte 7. Até lá segue desligada.
 - Armadilha da medição: rodar a bancada com o `app` de um worktree faz o `.env` ser procurado na raiz do worktree. As
   chaves vêm vazias (401 da OpenAI, "Missing or invalid Authorization header" do Gemini) e parecem revogadas, mas não estão.
+
+## 18. Latência por etapa (item 31.24, migração 088)
+
+Pedido do dono (03/10): saber onde a automação perde tempo entre a decisão e a ação. A latência por etapa passa a ser
+métrica de primeira classe, ao lado do custo e do sucesso. A 088 só mede: nenhum comportamento muda, e nenhuma coluna
+guarda texto. Os limites exatos de cada coluna estão no cabeçalho de `backend/migrations/088_latencia_por_etapa.sql`.
+
+| Colunas | Medida | Quem grava |
+|---|---|---|
+| `ai_calls.started_at`, `vaga_ms` (C-3) | hora em que a chamada foi entregue ao provedor, já com a vaga, e a espera pela vaga; `ts` segue sendo o fim e `ms` a ida e volta | `StepExecutor._ai`; NULOS fora dele (curador e leitor pelo hub, sombra, imagem, social) |
+| `ai_calls.prep_settle_ms`, `prep_observacao_ms`, `prep_arvore_ms`, `prep_imagem_ms`, `prep_prompt_ms` (C-2) | o preparo de cada decisão do ator; árvore e imagem são partes da observação | o laço de `_run_step`, via `PreparoDaDecisao` |
+| `actions.ai_call_id` (C-1) | o decide que escolheu a ação; NULO quando decidiu a receita ou o executor | `log_intent`, pelo fechamento `intencao` |
+| `attempts.juiz_espera_ms`, `verificacao_ms`, `evidencia_ms` (C-4) | esperas deliberadas do juiz (`judge_wait_s`), o tempo inteiro em `_verify` e as capturas de evidência | `run_step`, no mesmo UPDATE da trilha da 045 |
+| tabela `esperas` (C-5) | intervalo em que o objetivo esperou com motivo: `aparelho`, `perfil`, `rede`, `caminho`, `pessoa` | `note_waiting`, `clear_wait_reason`, `set_objective`, só quando o motivo muda |
+
+Fora de `esperas`, de propósito:
+
+- a vaga de IA e a resposta do modelo, que já estão em `ai_calls`;
+- a aprovação, que já se mede em `pending_approvals` (de `created_at` a `decided_at`).
+
+Da ação anterior (ou do início da tentativa) até `started_at`, o tempo se divide em settle, observação, prompt,
+`vaga_ms` e "outros". "Outros" (detector de trava, receita, o atalho LT-1, a nova tentativa de uma chamada com erro)
+sai por diferença.
+
+**Execução pendurada** é derivada pela leitura e não é gravada, porque gravá-la pediria um laço de vigia. Ela é o
+tempo da execução aberta sem tentativa, sem chamada de IA, sem ação e sem espera aberta ("sem dono"). Acima de
+`--pendurada-min` (10 min), a leitura lista o id da execução.
+
+Antes da 088, a espera de pessoa contava como sem dono. As "4 execuções penduradas por 7 a 8 h" de 03/10 eram isso:
+r-20261002221213-8d1c0a ficou em `waiting_user` das 22:13Z às 05:25Z, até o cancelamento. Agora esse tempo entra como
+`pessoa`.
+
+**Sobrecarga** (`simulated`):
+
+- **Instruções ao banco** (`backend/tests/test_latencia_por_etapa.py::test_sobrecarga_em_instrucoes_ao_banco`):
+  - 0 a mais por decisão e por ação, porque as colunas vão no mesmo INSERT;
+  - 0 a mais por tentativa, porque os tempos vão no mesmo UPDATE;
+  - 0 por anotação que não muda o motivo, incluindo as duas de cada chamada de IA;
+  - até 2 escritas em `esperas` por troca de motivo.
+- **CPU**: cerca de 4,8 µs por decisão (`time.monotonic`, `now_iso`, um `PreparoDaDecisao`), ou 0,0002 % do p50 do
+  decide.
+- Nenhuma chamada a mais ao aparelho nem à IA: árvore e imagem usam os números que `observe` já media para
+  `observacao.ms`.
+
+**A leitura** é `scripts/latencia-por-etapa.py`:
+
+- SQLite em `mode=ro` mais `query_only`; só números, ids e o prefixo da `idempotency_key`;
+- `--sem-bateria` tira as execuções `eval-` até o contrato de origem do 32.3;
+- funciona no esquema de antes da 088 e lista `colunas_ausentes`;
+- testes em `scripts/tests/test_latencia_por_etapa.py`.
+
+### O "antes" (real, 03/10/2026)
+
+Medido em WIN-7S2UASNLFOP, no banco central em `mode=ro`, com o central no código 51270b9c (deploy 14, migração 086,
+sem a 088). Janela de 2026-10-02T21:09:19Z a 2026-10-03T21:09:19Z. Comando:
+
+`scripts/latencia-por-etapa.py --desde 2026-10-02T21:09:19Z --ate 2026-10-03T21:09:19Z --sem-bateria`
+
+A janela teve 48 execuções: 30 da bateria `eval-` (a rodada QA pareada do planejador, fora daqui), 10 provas, 7
+validações e 1 outra. Nenhuma foi comando direto do dono. As 444 chamadas da janela têm `ok=1`.
+
+| Função · modelo | n | p50 ms | p95 ms |
+|---|---|---|---|
+| planejador · Opus 5.5 | 6 | 9.118 | 17.432 |
+| planejador · Sonnet 5.5 (o padrão desde ~07:38Z) | 6 | 3.538 | 4.417 |
+| ator · Sonnet 5 (t0) | 71 | 2.220 | 3.588 |
+| ator · Opus 5.5 (t1) | 14 | 4.330 | 6.167 |
+| conferência · Haiku 4.5 | 19 | 2.490 | 3.300 |
+| conferência · Opus 5.5 | 16 | 3.318 | 6.970 |
+| curador · Sonnet 5.5 / Opus 5.5 | 44 / 21 | 3.783 / 5.150 | 4.208 / 5.794 |
+| sombra · jev-1.13.0 | 17 | 479 | 611 |
+| leitor · Gemini 3.1 flash-lite / gpt-6-luna | 66 / 64 | 1.103 / 1.658 | 1.672 / 2.689 |
+
+Parede das 13 execuções de trabalho de até 15 min: p50 34,0 s, p95 258 s, total 996 s.
+
+| Fase | Total | % |
+|---|---|---|
+| plano | 29 s | 2,9 % |
+| IA dentro das tentativas | 239 s | 24,0 % |
+| ações no aparelho | 32 s | 3,2 % |
+| **resto dentro das tentativas** (sem dono antes da 088) | **227 s** | **22,8 %** |
+| entre tentativas | 423 s | 42,5 % |
+| cauda e o resto | 45 s | 4,5 % |
+
+Os 423 s entre tentativas são quase todos uma lacuna única de 413 s, numa execução `prova-8.3`. Sem ela, a parede é
+583 s e se divide assim:
+
+- **IA 46 %**;
+- **resto dentro das tentativas 39 %**;
+- **ações no aparelho 5,5 %**;
+- outros 9 %.
+
+As 5 execuções acima de 15 min eram espera de pessoa (4, de 7 a 8 h) e uma aprovação de 21,8 min.
+
+Decisão → ação, casada por tentativa e ordem no tempo (inferido antes da 088):
+
+- do fim do decide à intenção da 1ª ação: p50 2 ms, p95 348 ms (n = 84);
+- do fim de uma ação no aparelho ao próximo decide (reobservar): p50 1.540 ms, p95 7.300 ms (n = 37);
+- duração da ação: tap 140 ms, `type_text` 2.002 ms, `open_app` 2.694 ms (p50).
+
+Leitura: a passagem da decisão para a ação não é o gargalo, e a fila fica perto de 0. Os 39 % do "resto" eram o maior
+bloco sem dono. Na mesma janela, com a bateria, só a árvore somou 467 s (média 1,25 s, p95 de até 35,7 s numa
+janela), contra 86 s de ações no aparelho; as 3.107 capturas de prévia do painel somaram 30 min de screencap. A 088 é o que permite dividir
+esse "resto" por decisão e por tentativa. Os cortes (reaproveitar a árvore, tirar a imagem quando a árvore basta, tirar
+a prévia do caminho do ADB) são item da Android, com os números do "depois" na mão.
