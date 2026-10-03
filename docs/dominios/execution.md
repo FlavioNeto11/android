@@ -404,7 +404,8 @@ de pagar outro.
   o ator agindo e segue `ai`.
 - **LT-3, `flows.match` com parâmetro RESERVED.** `account_label`, `instance_id` e `run_id` nunca são capturados do
   comando; o valor é do aparelho e entra na materialização. O fluxo que os carrega deixou de ser recusado pelo molde
-  sem valor; um parâmetro NÃO reservado sem valor continua recusando. `_learn_flow` não mudou.
+  sem valor; um parâmetro NÃO reservado sem valor continua recusando. `_learn_flow` não mudou. O caminho da
+  habilidade (`skills/domain/matching.py::bind_template_parameters`) ficou de fora e seguiu recusando até o 30.29.
 
 Prova `simulated`: `tests/test_caminho_rapido_executor.py` (LT-1 e LT-2: contagem de `decide`/`verify`, "não" volta ao ator
 com `attempts == 1`, `sem_ator`), `tests/test_flows_account_label.py::test_fluxo_com_account_label_casa` (LT-3) e
