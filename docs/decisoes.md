@@ -3192,7 +3192,7 @@ provavelmente é boa: o falso foi a leitura.
     são exceção ao "só leitura" do plano da Fase 30, aceita pela coordenação, e entram pela suíte 6.
 
 Prova `simulated`: `backend/tests/test_learning_evidencia_invalida.py` e o vitest de `DetalheRico.test.tsx`.
-`not_run`: a marca no central (109 e o fluxo, depois do deploy) e um renascimento real. Contrato: adendo v0.68 de
+`not_run`: a marca no central (109 e o fluxo, depois do deploy) e um renascimento real. Contrato: adendo v0.70 de
 [api-contract.md](api-contract.md). Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "Evidência inválida".
 
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta

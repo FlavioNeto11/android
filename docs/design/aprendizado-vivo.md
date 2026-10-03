@@ -566,7 +566,7 @@ vetaria para sempre um conteúdo cuja navegação provavelmente é boa (o falso 
 - **Limites.** A receita renasce como versão nova, e a desligada vira `superseded` (o veto sobrevive à arrumação). O escopo
   da receita inclui a versão do app, como o veto de sempre.
 
-Contrato: adendo v0.68 do [`api-contract.md`](../api-contract.md).
+Contrato: adendo v0.70 do [`api-contract.md`](../api-contract.md).
 
 ---
 

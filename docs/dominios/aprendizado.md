@@ -616,7 +616,7 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
 ## Evidência inválida e o reaprendido (30.23)
 
 Decisão da coordenação (03/10), registrada como emenda ao ADR-054. Desenho: `design/aprendizado-vivo.md` §9.3. Contrato:
-adendo v0.68 de `api-contract.md`. Caso que a motivou: a receita 109 e o fluxo `no-outlook-abrir-a-caixa-de-entrada-e-le`,
+adendo v0.70 de `api-contract.md`. Caso que a motivou: a receita 109 e o fluxo `no-outlook-abrir-a-caixa-de-entrada-e-le`,
 aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar o que fez.
 
 - **Gramática fechada, sem migração.** `domain/evidencia_invalida.py` define o motivo `evidencia_invalida:<run>` (execução

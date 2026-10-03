@@ -3928,7 +3928,7 @@ Códigos novos (em `previa`, viram `bloqueios[]`):
   `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
   `condicao.<gatilho>`, `descoberta`).
 
-## Adendo v0.68 (03/10/2026) — evidência inválida: ação própria, trilha com tipo e o item reaprendido (item 30.23)
+## Adendo v0.70 (03/10/2026) — evidência inválida: ação própria, trilha com tipo e o item reaprendido (item 30.23)
 
 Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-054; o desenho, o §9.3 de
 `design/aprendizado-vivo.md`.

@@ -36,7 +36,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   candidata não sobe nem ganha motivo na trilha; a próxima concordância pergunta de novo.
 - `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
   UTC porque a semente cruzava o dia.
-- Adendo v0.68; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+- Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 
